@@ -1,0 +1,37 @@
+# How many texts go through BGE-M3 in one model pass (EMBED_MODEL_CHUNK_SIZE).
+# A batch is sorted by length and split into chunks of this size, so short
+# queries are not padded to the longest one. 256 keeps a batch of 64 in one
+# pass. Breakpoint on the GPU with every other tuned setting on.
+name = "model_chunks"
+
+[service_env]
+EMBED_BATCH_MAX_SIZE = "64"
+EMBED_MAX_CONCURRENCY = "1"
+QDRANT_QUERY_BATCH_MAX_SIZE = "8"
+QDRANT_QUERY_BATCH_CONCURRENCY = "16"
+QDRANT_PREFER_GRPC = "true"
+QDRANT_SEARCH_RESCORE = "true"
+QDRANT_SEARCH_OVERSAMPLING = "4.0"
+
+[load]
+test_type = "breakpoint"
+
+[load.k6]
+MAX_RATE = "1500"
+BREAKPOINT_DURATION = "5m"
+WITH_PAYLOAD = "false"
+
+[[variant]]
+name = "one pass per batch (256)"
+[variant.service_env]
+EMBED_MODEL_CHUNK_SIZE = "256"
+
+[[variant]]
+name = "chunks of 32"
+[variant.service_env]
+EMBED_MODEL_CHUNK_SIZE = "32"
+
+[[variant]]
+name = "chunks of 16"
+[variant.service_env]
+EMBED_MODEL_CHUNK_SIZE = "16"

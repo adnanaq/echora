@@ -1,0 +1,30 @@
+# How many model calls may run at once (EMBED_MAX_CONCURRENCY), at a steady
+# 500 searches/s, IDs only. ECHO-54 finding 24 measured 1 against 2 on the
+# laptop GPU: p50 82 against 102 ms.
+name = "embed_concurrency"
+
+# Every variant gets these on top of the environment's service settings.
+[service_env]
+EMBED_BATCH_MAX_SIZE = "64"
+QDRANT_QUERY_BATCH_MAX_SIZE = "64"
+QDRANT_PREFER_GRPC = "true"
+QDRANT_SEARCH_RESCORE = "true"
+QDRANT_SEARCH_OVERSAMPLING = "4.0"
+
+[load]
+test_type = "load"
+
+[load.k6]
+RATE = "500"
+HOLD = "60s"
+WITH_PAYLOAD = "false"
+
+[[variant]]
+name = "one model call at a time"
+[variant.service_env]
+EMBED_MAX_CONCURRENCY = "1"
+
+[[variant]]
+name = "two model calls at a time"
+[variant.service_env]
+EMBED_MAX_CONCURRENCY = "2"

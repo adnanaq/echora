@@ -193,6 +193,34 @@ async def _encode_image_bytes(
             os.remove(temp_path)
 
 
+def _record_search_request(
+    span: trace.Span,
+    *,
+    query_text: str,
+    has_text: bool,
+    has_image: bool,
+    entity_type: str,
+    limit: int,
+    with_payload: bool,
+) -> None:
+    """Record what a search asked for on its span.
+
+    Pass an empty ``query_text`` unless query text recording is on: it is user
+    input. Filter fields are recorded separately, once validated.
+    """
+    attributes: dict[str, str | bool | int] = {
+        "search.has_text": has_text,
+        "search.has_image": has_image,
+        "search.limit": limit,
+        "search.with_payload": with_payload,
+    }
+    if entity_type:
+        attributes["search.entity_type"] = entity_type
+    if query_text:
+        attributes["search.query_text"] = query_text
+    span.set_attributes(attributes)
+
+
 async def search(
     runtime: VectorRuntime,
     request: vector_search_pb2.SearchRequest,
@@ -217,6 +245,28 @@ async def search(
             request.query_text.strip() if request.HasField("query_text") else ""
         )
         has_image = bool(request.image)
+        entity_type = (
+            request.entity_type.strip() if request.HasField("entity_type") else ""
+        )
+        # Normalise entity_type to a bounded set of known values before using
+        # it as a metric attribute — prevents cardinality explosion.
+        safe_entity_type = (
+            entity_type if entity_type in _KNOWN_ENTITY_TYPES else "unknown"
+        )
+        raw_limit = request.limit if request.HasField("limit") else 10
+        with_payload = (
+            request.with_payload if request.HasField("with_payload") else True
+        )
+
+        _record_search_request(
+            current_span,
+            query_text=query_text if runtime.record_query_text else "",
+            has_text=bool(query_text),
+            has_image=has_image,
+            entity_type=safe_entity_type,
+            limit=raw_limit,
+            with_payload=with_payload,
+        )
         if not query_text and not has_image:
             return vector_search_pb2.SearchResponse(
                 error=error(
@@ -233,21 +283,15 @@ async def search(
                     request.filters, runtime.qdrant_client.indexed_fields
                 )
                 filter_conditions = _map_filter_conditions(request.filters)
+                current_span.set_attribute(
+                    "search.filter_fields",
+                    [condition.field for condition in filter_conditions],
+                )
             except InvalidFiltersPayloadError:
                 raise
             except Exception as exc:
                 logger.debug(f"Filter mapping failed: {exc}")
                 _raise_invalid_filters()
-
-        entity_type = (
-            request.entity_type.strip() if request.HasField("entity_type") else ""
-        )
-        # Normalise entity_type to a bounded set of known values before using
-        # it as a metric attribute — prevents cardinality explosion.
-        safe_entity_type = (
-            entity_type if entity_type in _KNOWN_ENTITY_TYPES else "unknown"
-        )
-        raw_limit = request.limit if request.HasField("limit") else 10
 
         current_span.add_event("validation.complete")
 
@@ -300,6 +344,7 @@ async def search(
                 entity_type=entity_type or None,
                 limit=_normalize_limit(raw_limit),
                 filters=filter_conditions,
+                with_payload=with_payload,
             )
         )
 
@@ -315,7 +360,9 @@ async def search(
             vector_search_pb2.SearchData(
                 id=hit.id,
                 similarity_score=hit.score,
-                payload_json=json.dumps(hit.payload, ensure_ascii=False),
+                payload_json=(
+                    json.dumps(hit.payload, ensure_ascii=False) if with_payload else ""
+                ),
             )
             for hit in raw_hits
         ]

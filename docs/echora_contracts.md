@@ -22,7 +22,7 @@ The hand-written Pydantic model in `libs/common/src/common/models/anime.py` is t
 
 **The ingestion pipeline owns the schema.**
 
-The ingestion pipeline calls all external APIs (Jikan, AniList, Kitsu, AniDB, etc.), enriches data through 5 stages, and determines what fields are worth capturing. When a new API starts returning a useful field, the ingestion developer adds it to `anime.py`. When a field turns out to be useless, they remove it. The proto update is part of the same PR.
+The ingestion pipeline fetches from all external sources (MyAnimeList, AniList, Kitsu, AniDB, etc.), enriches data through 5 stages, and determines what fields are worth capturing. When a new API starts returning a useful field, the ingestion developer adds it to `anime.py`. When a field turns out to be useless, they remove it. The proto update is part of the same PR.
 
 This means the schema change and the enrichment code change are **one atomic PR** in the same repo.
 

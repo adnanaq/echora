@@ -1,0 +1,27 @@
+# CPU only, one run per container size: how searches/s grow with CPUs. Set the
+# CPU limit and the matching thread count from the command line, e.g.
+#   --set service_start.kind=docker --set service_start.qdrant_url=http://qdrant:6333
+#   --set service_start.docker_cpus=4 --set service_start.docker_memory=8g
+#   --set service_start.env.OMP_NUM_THREADS=4
+name = "cpu_scaling"
+
+[service_env]
+ENABLE_GPU = "false"
+EMBED_BATCH_MAX_SIZE = "64"
+EMBED_MAX_CONCURRENCY = "1"
+QDRANT_QUERY_BATCH_MAX_SIZE = "8"
+QDRANT_QUERY_BATCH_CONCURRENCY = "16"
+QDRANT_SEARCH_RESCORE = "true"
+QDRANT_SEARCH_OVERSAMPLING = "4.0"
+
+[load]
+test_type = "breakpoint"
+
+[load.k6]
+MAX_RATE = "60"
+BREAKPOINT_DURATION = "5m"
+WITH_PAYLOAD = "false"
+
+[[variant]]
+name = "threads matched to CPU limit"
+[variant.service_env]

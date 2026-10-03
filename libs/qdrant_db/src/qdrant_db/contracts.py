@@ -238,6 +238,10 @@ class SearchRequest(BaseModel):
     )
     filters: list[SearchFilterCondition] = Field(default_factory=list)
     fusion_method: FusionMethod = "rrf"
+    with_payload: bool = Field(
+        default=True,
+        description="Return each hit's payload; False returns IDs and scores only",
+    )
 
     # Reranking support
     query_text: str | None = Field(

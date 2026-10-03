@@ -19,7 +19,7 @@ from lxml import etree
 logger = logging.getLogger(__name__)
 
 _CACHE_CONFIG = get_cache_config()
-TTL_MAL = _CACHE_CONFIG.ttl_jikan
+TTL_MAL = _CACHE_CONFIG.ttl_mal
 
 _CHARACTER_TABLE_XPATH = "//table[contains(@class,'js-anime-character-table')]"
 _CHARACTER_LINK_IN_TABLE_XPATH = ".//td[1]//a[contains(@href,'/character/')]/@href"

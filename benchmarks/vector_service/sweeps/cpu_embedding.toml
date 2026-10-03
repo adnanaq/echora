@@ -1,0 +1,54 @@
+# CPU only: model calls at a time (EMBED_MAX_CONCURRENCY) and embedding batch
+# size, breakpoint. Run with the docker kind and a CPU limit matching
+# OMP_NUM_THREADS below, e.g.
+#   --set service_start.kind=docker --set service_start.qdrant_url=http://qdrant:6333
+#   --set service_start.docker_cpus=4 --set service_start.docker_memory=8g
+name = "cpu_embedding"
+
+[service_env]
+ENABLE_GPU = "false"
+OMP_NUM_THREADS = "4"
+EMBED_BATCH_MAX_SIZE = "64"
+EMBED_MAX_CONCURRENCY = "1"
+QDRANT_QUERY_BATCH_MAX_SIZE = "8"
+QDRANT_QUERY_BATCH_CONCURRENCY = "16"
+QDRANT_SEARCH_RESCORE = "true"
+QDRANT_SEARCH_OVERSAMPLING = "4.0"
+
+[load]
+test_type = "breakpoint"
+
+[load.k6]
+MAX_RATE = "60"
+BREAKPOINT_DURATION = "5m"
+WITH_PAYLOAD = "false"
+
+[[variant]]
+name = "batch 64, one call at a time"
+[variant.service_env]
+
+[[variant]]
+name = "batch 16, one call at a time"
+[variant.service_env]
+EMBED_BATCH_MAX_SIZE = "16"
+
+[[variant]]
+name = "batch 8, one call at a time"
+[variant.service_env]
+EMBED_BATCH_MAX_SIZE = "8"
+
+[[variant]]
+name = "no batching, one call at a time"
+[variant.service_env]
+EMBED_BATCH_MAX_SIZE = "1"
+
+[[variant]]
+name = "batch 64, two calls with 4 threads each"
+[variant.service_env]
+EMBED_MAX_CONCURRENCY = "2"
+
+[[variant]]
+name = "batch 64, two calls with 2 threads each"
+[variant.service_env]
+EMBED_MAX_CONCURRENCY = "2"
+OMP_NUM_THREADS = "2"

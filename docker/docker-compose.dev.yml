@@ -106,6 +106,26 @@ services:
       - QDRANT_PREFETCH_LIMIT_MULTIPLIER=10
       - QDRANT_RRF_K=2
 
+      # Search throughput and accuracy (docs/vector_service_capacity_plan.md)
+      - EMBED_BATCH_MAX_SIZE=64
+      - EMBED_BATCH_MAX_WAIT_MS=0
+      - EMBED_MAX_CONCURRENCY=1
+      # Texts per BGE-M3 pass; 32 cuts padding (ECHO-54 findings 29-31)
+      - EMBED_MODEL_CHUNK_SIZE=32
+      # Token budget per pass; off until each pass costs less under load
+      # (finding 31)
+      - EMBED_MODEL_MAX_TOKENS_PER_PASS=0
+      - QDRANT_QUERY_BATCH_MAX_SIZE=8
+      - QDRANT_QUERY_BATCH_MAX_WAIT_MS=0
+      - QDRANT_QUERY_BATCH_CONCURRENCY=16
+      # gRPC to Qdrant is ~30% faster when searches ask for IDs and scores only
+      # (with_payload=false) but ~60% slower when they return payloads, which
+      # the load test and manual searches do by default (ECHO-54 finding 25).
+      - QDRANT_PREFER_GRPC=true
+      - QDRANT_GRPC_PORT=6334
+      - QDRANT_SEARCH_RESCORE=true
+      - QDRANT_SEARCH_OVERSAMPLING=4.0
+
       # API Configuration
       - API_TITLE=Anime Vector Service
       - API_VERSION=1.0.0
@@ -122,6 +142,8 @@ services:
       - OTEL_ENABLE_TRACING=true
       - OTEL_ENABLE_METRICS=true
       - OTEL_ENABLE_LOGGING=true
+      # Dev only: put each search's query text on its trace span
+      - OTEL_RECORD_QUERY_TEXT=true
 
       # HTTP Cache Configuration
       - CACHE_ENABLED=true

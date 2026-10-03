@@ -12,6 +12,7 @@ import time
 from typing import Any, cast
 
 from common.config import EmbeddingConfig
+from common.utils.request_batcher import RequestBatcher
 from opentelemetry import metrics as otel_metrics
 from opentelemetry import trace as otel_trace
 from vector_db_interface import SparseVectorData
@@ -69,6 +70,18 @@ class TextProcessor:
         self.model = model
         self._semaphore = asyncio.Semaphore(config.embed_max_concurrency)
         self._cache = embedding_cache
+        self._batcher: (
+            RequestBatcher[str, tuple[list[float] | None, SparseVectorData | None]]
+            | None
+        ) = None
+        if config.embed_batch_max_size > 1:
+            self._batcher = RequestBatcher(
+                self._encode_texts_as_pairs,
+                max_batch_size=config.embed_batch_max_size,
+                max_wait_seconds=config.embed_batch_max_wait_ms / 1000,
+                concurrency=config.embed_max_concurrency,
+                name="text_embedding",
+            )
 
         logger.info(f"Initialized TextProcessor with model: {model.model_name}")
 
@@ -241,6 +254,8 @@ class TextProcessor:
 
         Uses one forward pass when the underlying model supports sparse output
         (``model.supports_sparse``). Falls back to dense-only for other models.
+        With ``embed_batch_max_size`` above 1, concurrent calls are combined
+        into shared model calls.
 
         Args:
             text: Input text to encode.
@@ -259,8 +274,11 @@ class TextProcessor:
                     "embedding.model": self.model.model_name,
                     "embedding.input_length": len(text),
                     "embedding.sparse": True,
+                    "embedding.batched": self._batcher is not None,
                 },
             ):
+                if self._batcher is not None:
+                    return await self._batcher.submit(text)
                 async with self._semaphore:
                     _start = time.perf_counter()
                     dense_list, sparse_list = await asyncio.to_thread(
@@ -344,6 +362,11 @@ class TextProcessor:
 
         return dense_result, sparse_result
 
+    async def close(self) -> None:
+        """Stop the query batcher, if batching is on."""
+        if self._batcher is not None:
+            await self._batcher.close()
+
     def get_zero_embedding(self) -> list[float]:
         """Get a zero embedding vector matching model dimensions.
 
@@ -360,3 +383,10 @@ class TextProcessor:
             embedding size, and other model-specific details.
         """
         return self.model.get_model_info()
+
+    async def _encode_texts_as_pairs(
+        self, texts: list[str]
+    ) -> list[tuple[list[float] | None, SparseVectorData | None]]:
+        """Encode a batch and pair each text's dense and sparse vectors."""
+        dense, sparse = await self.encode_texts_batch_with_sparse(texts)
+        return list(zip(dense, sparse, strict=True))

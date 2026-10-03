@@ -600,7 +600,7 @@ def test_character_roles_keep_page_order_without_repeats() -> None:
 # =============================================================================
 
 
-@pytest.mark.usefixtures("mock_redis_cache_miss")
+@pytest.mark.usefixtures("redis_cache_miss")
 @patch(_PATCH_FETCH_PAGE)
 async def test_fetch_character_success(
     mock_page: AsyncMock, ap_character_html: str
@@ -616,7 +616,7 @@ async def test_fetch_character_success(
     assert result["name"] == "Monkey D. Luffy"
 
 
-@pytest.mark.usefixtures("mock_redis_cache_miss")
+@pytest.mark.usefixtures("redis_cache_miss")
 @patch(_PATCH_FETCH_PAGE, new_callable=AsyncMock)
 async def test_fetch_character_failure_returns_none(mock_page: AsyncMock) -> None:
     mock_page.return_value = None

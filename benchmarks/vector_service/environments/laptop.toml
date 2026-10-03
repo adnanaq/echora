@@ -1,0 +1,52 @@
+# Development laptop: RTX 4070 Laptop GPU, local Qdrant from docker-compose.dev.yml.
+# Values match what the ECHO-54 measurements used. Override any value for one
+# run with --set section.field=value.
+name = "laptop"
+results_dir = "benchmarks/vector_service/load/results"
+
+# Where the load test sends searches.
+[service_target]
+address = "localhost:8011"
+tls = false
+
+# How the benchmark starts its own service instance (never the dev container).
+[service_start]
+kind = "local_process"
+port = 8011
+python = ".venv/bin/python"
+# Used when kind = "docker": the dev image on the dev stack's network, reaching
+# Qdrant by its Compose name. Rebuild the image to benchmark current code.
+docker_image = "echora-vector-service:dev"
+docker_network = "echora-dev_echora-network"
+
+# Environment variables every benchmark service instance gets; sweeps add
+# their own on top. Code defaults apply to anything not listed: the local
+# service starts in the results folder, so the repository's .env is not read.
+[service_start.env]
+ENVIRONMENT = "development"
+ENABLE_GPU = "true"
+OTEL_ENABLED = "false"
+
+[qdrant]
+url = "http://localhost:6333"
+api_key_env = "QDRANT_API_KEY"
+container = "echora-dev-qdrant"
+
+[collections]
+load = "anime_load_test"
+accuracy = "anime_accuracy_test"
+image_load = "anime_image_load_test"
+image_accuracy = "anime_image_accuracy_test"
+
+# service: "process" (local process, /proc), "container" (Docker), or "none".
+[resources]
+service = "process"
+qdrant = true
+gpu = true
+sample_seconds = 2.0
+
+[k6]
+image = "grafana/k6:2.3.0"
+prometheus_url = "http://localhost:9090/api/v1/write"
+html_report = true
+csv_time_format = "unix_milli"

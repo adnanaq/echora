@@ -206,7 +206,7 @@ echora/
 
 ### Enrichment Pipeline Usage
 
-**Script**: `run_enrichment.py` - Main entry point for programmatic enrichment
+**Script**: `scripts/run_enrichment.py` - Main entry point for programmatic enrichment
 
 **Database**: Reads from `assets/seed_data/anime-offline-database.json` (39,244+ anime entries)
 
@@ -216,31 +216,31 @@ echora/
 - `--title "Title"`: Search for anime by title (case-insensitive, partial match)
 - `--file PATH`: Use custom database file (optional)
 - `--agent "name"`: Specify agent directory name (optional, auto-generated if not provided)
-- `--skip service1 service2`: Skip specific services (e.g., `--skip jikan anidb`)
+- `--skip service1 service2`: Skip specific services (e.g., `--skip mal anidb`)
 - `--only service1 service2`: Only fetch specific services (e.g., `--only anime_planet`)
 
-**Available Services**: `jikan`, `anilist`, `kitsu`, `anidb`, `anime_planet`, `anisearch`, `animeschedule`
+**Available Services**: `mal`, `anilist`, `kitsu`, `anidb`, `anime_planet`, `anisearch`, `animeschedule`
 
 **Example Usage**:
 
 ```bash
 # Process first anime in database
-python run_enrichment.py --index 0
+python scripts/run_enrichment.py --index 0
 
 # Process One Piece
-python run_enrichment.py --title "One Piece"
+python scripts/run_enrichment.py --title "One Piece"
 
 # Use custom database
-python run_enrichment.py --file custom.json --index 5
+python scripts/run_enrichment.py --file custom.json --index 5
 
 # Specify agent directory
-python run_enrichment.py --title "Dandadan" --agent "Dandadan_test"
+python scripts/run_enrichment.py --title "Dandadan" --agent "Dandadan_test"
 
 # Skip specific services
-python run_enrichment.py --title "Dandadan" --skip animeschedule anidb
+python scripts/run_enrichment.py --title "Dandadan" --skip animeschedule anidb
 
 # Only fetch from specific services
-python run_enrichment.py --title "Dandadan" --only anime_planet anisearch
+python scripts/run_enrichment.py --title "Dandadan" --only anime_planet anisearch
 ```
 
 **Notes**:
@@ -259,7 +259,7 @@ All stage scripts follow a consistent pattern for multi-agent concurrent process
 
 **Multi-agent Directory Structure**: `temp/<agent_id>/` (e.g., `temp/One_agent1/`, `temp/Dandadan_agent1/`)
 
-**Note**: When using `run_enrichment.py`, agent IDs are assigned automatically. Manual specification only needed for independent stage script execution.
+**Note**: When using `scripts/run_enrichment.py`, agent IDs are assigned automatically. Manual specification only needed for independent stage script execution.
 
 #### Stage 1: Metadata, Relationships and Statistics
 
@@ -428,3 +428,40 @@ Order class members top to bottom as follows:
 - **gRPC servicers**: Thin adapter classes — method order should mirror the proto service definition order, no reordering needed.
 
 > **Enforcement**: ruff has no class-member-order rule; enforce via PR review.
+
+### Test Conventions
+
+**Names** follow `test_<unit>_<scenario>_<expected_result>`:
+
+- `<unit>` is the function, method or class under test (without a leading underscore), so the name starts with what is tested.
+- `<scenario>` is the case being exercised; leave it out for the default case.
+- `<expected_result>` is the observable outcome.
+- No articles (`a`, `an`, `the`) and no hedging, contrast or filler words (`instead`, `maybe`, `could`, `would`, `might`, `probably`, `as long as`). Domain terms that match one, such as Qdrant's `should` clause, are fine.
+
+```python
+def test_submit_wrong_result_count_fails_every_request(): ...
+def test_get_by_id_missing_point_returns_none(): ...
+def test_encode_text_empty_string_returns_zero_embedding(): ...
+```
+
+**Files**
+
+- One test file per source module, named after it: `qdrant_db/tracing.py` is tested by `tests/libs/qdrant_db/unit/test_tracing.py`. Add tests to the existing file rather than splitting it.
+- The 500-line limit applies to source files only; test files have no line limit.
+- No comments or docstrings in test files; the test name says what it checks.
+
+**Mocks, fakes and spies** (from [Thea Flowers' Python testing style guide](https://blog.thea.codes/my-python-testing-style-guide/))
+
+- Use the real object when it is cheap to build: `Settings`, `EmbeddingConfig`, dataclasses such as `VectorRuntime`, protobuf messages, Qdrant's response models (`qdrant_client.http.models.QueryResponse`, `ScoredPoint`, `Record`), grpc's `HealthServicer`.
+- When a collaborator must be replaced, autospec it: `create_autospec(AsyncQdrantClient, instance=True)` or `patch.object(module, "name", autospec=True)`. Never a plain `Mock()`, `MagicMock()` or `AsyncMock()`, and never a hand-written `spec=[...]` list: they accept any method and arguments, so a test keeps passing after the real interface changes. Autospec gives async methods an `AsyncMock` automatically.
+- To see calls on a real object while keeping its behaviour, use a spy: `Mock(wraps=real_object)`.
+- A fake (a working implementation with shortcuts, such as an in-memory store) should subclass the collaborator it stands in for.
+- Name a mock like the collaborator it replaces (`client`, `text_model`), without a `mock_` prefix.
+- Assert outcomes (return values, published state, recorded spans and metrics) rather than which calls were made. Check call arguments only when the request sent to an external service is what the test is about, such as the query a search builds for Qdrant.
+
+**Shared setup** (`tests/conftest.py`)
+
+- Tests that check spans or metrics use the `span_exporter` and `metric_reader` fixtures. Never call `trace.set_tracer_provider` or `metrics.set_meter_provider` in a test file: OpenTelemetry keeps only the first provider set in a process, so a second one makes other files' tests collect nothing when pytest runs them together.
+- Settings classes ignore `.env` during tests, so tests see code defaults plus explicitly set environment variables. Set what a test needs with `patch.dict("os.environ", ...)`, never through `.env`.
+- Tests must pass both under Pants (one process per file) and in a single `pytest` process over many files.
+

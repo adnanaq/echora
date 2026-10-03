@@ -5,7 +5,7 @@
 
 ---
 
-## MAL/Jikan Structure
+## MAL Structure
 
 **Discovery**: MAL uses two-level hierarchy
 
@@ -254,7 +254,7 @@ RelatedAnimeEntry:
 
 - No enum for relationship types
 - No field for entry format/type
-- Losing format information from Jikan
+- Losing format information from MAL
 
 ---
 
@@ -264,7 +264,7 @@ RelatedAnimeEntry:
 2. Check AniList temp files - is there format information?
 3. Check AniSearch temp files - is there format information?
 4. Check AnimSchedule temp files - relationship vs format?
-5. Look at Jikan temp files - verify two-level structure
+5. Look at MAL temp files (`mal_anime.jsonl`) - verify two-level structure
 
 ---
 

@@ -45,9 +45,6 @@ def _setup_observability(settings) -> None:
         enable_aiohttp_client_instrumentation=(
             settings.observability.otel_enable_aiohttp_client_instrumentation
         ),
-        enable_qdrant_client_instrumentation=(
-            settings.observability.otel_enable_qdrant_client_instrumentation
-        ),
         enable_redis_instrumentation=(
             settings.observability.otel_enable_redis_instrumentation
         ),
@@ -141,6 +138,8 @@ async def serve() -> None:
         except Exception:
             logger.exception("Failed to publish NOT_SERVING during shutdown")
         await server.stop(grace=5)
+        await runtime.text_processor.close()
+        await runtime.qdrant_client.close()
         if runtime.embedding_cache is not None:
             await runtime.embedding_cache.close()
         await runtime.async_qdrant_client.close()

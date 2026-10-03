@@ -48,18 +48,20 @@ class FilterCondition(_message.Message):
     def __init__(self, field: _Optional[str] = ..., operator: _Optional[_Union[FilterOperator, str]] = ..., value: _Optional[_Union[_struct_pb2.Value, _Mapping]] = ..., clause: _Optional[_Union[FilterClause, str]] = ...) -> None: ...
 
 class SearchRequest(_message.Message):
-    __slots__ = ("query_text", "image", "entity_type", "limit", "filters")
+    __slots__ = ("query_text", "image", "entity_type", "limit", "filters", "with_payload")
     QUERY_TEXT_FIELD_NUMBER: _ClassVar[int]
     IMAGE_FIELD_NUMBER: _ClassVar[int]
     ENTITY_TYPE_FIELD_NUMBER: _ClassVar[int]
     LIMIT_FIELD_NUMBER: _ClassVar[int]
     FILTERS_FIELD_NUMBER: _ClassVar[int]
+    WITH_PAYLOAD_FIELD_NUMBER: _ClassVar[int]
     query_text: str
     image: bytes
     entity_type: str
     limit: int
     filters: _containers.RepeatedCompositeFieldContainer[FilterCondition]
-    def __init__(self, query_text: _Optional[str] = ..., image: _Optional[bytes] = ..., entity_type: _Optional[str] = ..., limit: _Optional[int] = ..., filters: _Optional[_Iterable[_Union[FilterCondition, _Mapping]]] = ...) -> None: ...
+    with_payload: bool
+    def __init__(self, query_text: _Optional[str] = ..., image: _Optional[bytes] = ..., entity_type: _Optional[str] = ..., limit: _Optional[int] = ..., filters: _Optional[_Iterable[_Union[FilterCondition, _Mapping]]] = ..., with_payload: _Optional[bool] = ...) -> None: ...
 
 class SearchData(_message.Message):
     __slots__ = ("id", "similarity_score", "payload_json")

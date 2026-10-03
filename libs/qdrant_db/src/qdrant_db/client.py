@@ -7,12 +7,12 @@ All write and search entry points use explicit contract models and domain errors
 
 import logging
 import time
-from contextlib import AbstractContextManager
 from typing import Any, Protocol, cast
 
 from common.config import QdrantConfig
-from opentelemetry import trace
+from common.utils.request_batcher import RequestBatcher
 from qdrant_client import AsyncQdrantClient
+from qdrant_client.http.models import QueryResponse
 from qdrant_client.models import (
     Filter,
     Fusion,
@@ -21,6 +21,7 @@ from qdrant_client.models import (
     PointStruct,
     PointVectors,
     Prefetch,
+    QueryRequest,
     Rrf,
     RrfQuery,
     SetPayload,
@@ -49,13 +50,12 @@ from qdrant_db.query_builder import (
     build_filter,
     build_prefetch_queries,
     build_sparse_query,
+    build_text_search_params,
 )
+from qdrant_db.tracing import qdrant_span
 from qdrant_db.utils import DuplicateKeyError, deduplicate_items, retry_with_backoff
 
 logger = logging.getLogger(__name__)
-# The Qdrant auto-instrumentation does not wrap the async client's query_points
-# or retrieve, so those calls get their spans here.
-_tracer = trace.get_tracer("echora.qdrant_db")
 
 
 class _Telemetry(Protocol):
@@ -95,6 +95,11 @@ class QdrantClient(VectorDBClient):
         self._sparse_vector_names = set(config.sparse_vector_names)
         self._primary_sparse_vector_name = config.primary_sparse_vector_name
         self._prefetch_limit_multiplier = config.prefetch_limit_multiplier
+        self._text_search_params = build_text_search_params(
+            hnsw_ef=config.qdrant_search_hnsw_ef,
+            rescore=config.qdrant_search_rescore,
+            oversampling=config.qdrant_search_oversampling,
+        )
         self._rrf_k = config.rrf_k
 
         self._vector_size = config.vector_names[self._text_vector_name]
@@ -110,6 +115,15 @@ class QdrantClient(VectorDBClient):
             async_client=async_qdrant_client,
             collection_name=self._collection_name,
         )
+        self._query_batcher: RequestBatcher[QueryRequest, list[SearchHit]] | None = None
+        if config.qdrant_query_batch_max_size > 1:
+            self._query_batcher = RequestBatcher(
+                self._query_batch,
+                max_batch_size=config.qdrant_query_batch_max_size,
+                max_wait_seconds=config.qdrant_query_batch_max_wait_ms / 1000,
+                concurrency=config.qdrant_query_batch_concurrency,
+                name="qdrant_query",
+            )
 
     @property
     def collection_name(self) -> str:
@@ -188,7 +202,8 @@ class QdrantClient(VectorDBClient):
             ``True`` when Qdrant responds, else ``False``.
         """
         try:
-            await self._async_client.get_collections()
+            with qdrant_span("get_collections"):
+                await self._async_client.get_collections()
             return True
         except Exception:
             logger.exception("Health check failed")
@@ -211,14 +226,16 @@ class QdrantClient(VectorDBClient):
             PermanentQdrantError: If stats retrieval fails.
         """
         try:
-            collection_info = await self._async_client.get_collection(
-                self.collection_name
-            )
-            count_result = await self._async_client.count(
-                collection_name=self.collection_name,
-                count_filter=None,
-                exact=True,
-            )
+            with qdrant_span("get_collection", self.collection_name):
+                collection_info = await self._async_client.get_collection(
+                    self.collection_name
+                )
+            with qdrant_span("count", self.collection_name):
+                count_result = await self._async_client.count(
+                    collection_name=self.collection_name,
+                    count_filter=None,
+                    exact=True,
+                )
             stats = collection_info.model_dump()
             stats.update(
                 {
@@ -251,13 +268,14 @@ class QdrantClient(VectorDBClient):
         Returns:
             Tuple of points list and next offset cursor.
         """
-        return await self._async_client.scroll(
-            collection_name=self.collection_name,
-            limit=limit,
-            with_vectors=with_vectors,
-            offset=offset,
-            scroll_filter=build_filter(scroll_filter) if scroll_filter else None,
-        )
+        with qdrant_span("scroll", self.collection_name):
+            return await self._async_client.scroll(
+                collection_name=self.collection_name,
+                limit=limit,
+                with_vectors=with_vectors,
+                offset=offset,
+                scroll_filter=build_filter(scroll_filter) if scroll_filter else None,
+            )
 
     async def add_documents(
         self,
@@ -318,11 +336,12 @@ class QdrantClient(VectorDBClient):
             ]
 
             async def _upsert(pts: list[PointStruct] = batch_points) -> None:
-                await self._async_client.upsert(
-                    collection_name=self.collection_name,
-                    points=pts,
-                    wait=True,
-                )
+                with qdrant_span("upsert", self.collection_name):
+                    await self._async_client.upsert(
+                        collection_name=self.collection_name,
+                        points=pts,
+                        wait=True,
+                    )
 
             try:
                 await retry_with_backoff(
@@ -394,11 +413,12 @@ class QdrantClient(VectorDBClient):
         ]
 
         async def _perform_update() -> None:
-            await self._async_client.update_vectors(
-                collection_name=self.collection_name,
-                points=point_updates,
-                wait=True,
-            )
+            with qdrant_span("update_vectors", self.collection_name):
+                await self._async_client.update_vectors(
+                    collection_name=self.collection_name,
+                    points=point_updates,
+                    wait=True,
+                )
 
         try:
             await retry_with_backoff(
@@ -481,11 +501,12 @@ class QdrantClient(VectorDBClient):
                 )
 
         async def _perform_update() -> None:
-            await self._async_client.batch_update_points(
-                collection_name=self.collection_name,
-                update_operations=operations,
-                wait=True,
-            )
+            with qdrant_span("batch_update_points", self.collection_name):
+                await self._async_client.batch_update_points(
+                    collection_name=self.collection_name,
+                    update_operations=operations,
+                    wait=True,
+                )
 
         try:
             await retry_with_backoff(
@@ -519,7 +540,7 @@ class QdrantClient(VectorDBClient):
             Dictionary with ``id``, ``payload``, and (if requested) ``vector``
             when found, else ``None``.
         """
-        with self._qdrant_span("qdrant.retrieve"):
+        with qdrant_span("retrieve", self.collection_name):
             points = await self._async_client.retrieve(
                 collection_name=self.collection_name,
                 ids=[point_id],
@@ -564,17 +585,6 @@ class QdrantClient(VectorDBClient):
         except Exception:
             logger.debug(f"Telemetry emission failed for {operation}", exc_info=True)
 
-    def _qdrant_span(self, operation: str) -> AbstractContextManager[trace.Span]:
-        """Start a CLIENT span for one Qdrant call on this collection."""
-        return _tracer.start_as_current_span(
-            operation,
-            kind=trace.SpanKind.CLIENT,
-            attributes={
-                "db.system": "qdrant",
-                "db.collection.name": self.collection_name,
-            },
-        )
-
     async def _search_single_vector(
         self,
         vector_name: str,
@@ -582,6 +592,7 @@ class QdrantClient(VectorDBClient):
         limit: int,
         filters: Filter | None,
         score_threshold: float | None = None,
+        with_payload: bool = True,
     ) -> list[SearchHit]:
         """Run a single-vector query and normalize hits.
 
@@ -591,23 +602,29 @@ class QdrantClient(VectorDBClient):
             limit: Max hit count.
             filters: Optional Qdrant filter.
             score_threshold: Optional minimum score cutoff applied server-side.
+            with_payload: Return each hit's payload.
 
         Returns:
             List of normalized search hits.
         """
         _start = time.perf_counter()
         try:
-            with self._qdrant_span("qdrant.query_points"):
-                response = await self._async_client.query_points(
-                    collection_name=self.collection_name,
+            hits = await self._run_query(
+                QueryRequest(
                     query=vector_data,
                     using=vector_name,
+                    params=(
+                        self._text_search_params
+                        if vector_name == self._text_vector_name
+                        else None
+                    ),
                     limit=limit,
-                    with_payload=True,
-                    with_vectors=False,
-                    query_filter=filters,
+                    with_payload=with_payload,
+                    with_vector=False,
+                    filter=filters,
                     score_threshold=score_threshold,
                 )
+            )
             if self._telemetry:
                 _elapsed = time.perf_counter() - _start
                 _tel = self._telemetry
@@ -617,14 +634,6 @@ class QdrantClient(VectorDBClient):
                     ),
                     "search_single_vector.duration",
                 )
-            return [
-                SearchHit(
-                    id=str(point.id),
-                    payload=dict(point.payload) if point.payload else {},
-                    score=float(point.score),
-                )
-                for point in response.points
-            ]
         except Exception:
             if self._telemetry:
                 _tel = self._telemetry
@@ -635,6 +644,7 @@ class QdrantClient(VectorDBClient):
                     "search_single_vector.error",
                 )
             raise
+        return hits
 
     async def _search_fusion(
         self,
@@ -642,6 +652,7 @@ class QdrantClient(VectorDBClient):
         limit: int,
         fusion_method: str,
         score_threshold: float | None = None,
+        with_payload: bool = True,
     ) -> list[SearchHit]:
         """Run fused multi-query search using Query API prefetch + fusion.
 
@@ -650,6 +661,7 @@ class QdrantClient(VectorDBClient):
             limit: Max hit count.
             fusion_method: Fusion mode (``rrf`` or ``dbsf``).
             score_threshold: Optional minimum score cutoff applied server-side.
+            with_payload: Return each hit's payload.
 
         Returns:
             List of normalized search hits.
@@ -661,16 +673,16 @@ class QdrantClient(VectorDBClient):
 
         _start = time.perf_counter()
         try:
-            with self._qdrant_span("qdrant.query_points"):
-                response = await self._async_client.query_points(
-                    collection_name=self.collection_name,
+            hits = await self._run_query(
+                QueryRequest(
                     prefetch=prefetch_queries,
                     query=query,
                     limit=limit,
-                    with_payload=True,
-                    with_vectors=False,
+                    with_payload=with_payload,
+                    with_vector=False,
                     score_threshold=score_threshold,
                 )
+            )
             if self._telemetry:
                 _elapsed = time.perf_counter() - _start
                 _tel = self._telemetry
@@ -680,14 +692,6 @@ class QdrantClient(VectorDBClient):
                     ),
                     "search_fusion.duration",
                 )
-            return [
-                SearchHit(
-                    id=str(point.id),
-                    payload=dict(point.payload) if point.payload else {},
-                    score=float(point.score),
-                )
-                for point in response.points
-            ]
         except Exception:
             if self._telemetry:
                 _tel = self._telemetry
@@ -696,6 +700,49 @@ class QdrantClient(VectorDBClient):
                     "search_fusion.error",
                 )
             raise
+        return hits
+
+    async def _run_query(self, request: QueryRequest) -> list[SearchHit]:
+        """Send one query, through the batcher when query batching is on."""
+        if self._query_batcher is not None:
+            return await self._query_batcher.submit(request)
+        with qdrant_span("query_points", self.collection_name):
+            response = await self._async_client.query_points(
+                collection_name=self.collection_name,
+                prefetch=request.prefetch,
+                query=request.query,
+                using=request.using,
+                query_filter=request.filter,
+                search_params=request.params,
+                limit=request.limit if request.limit is not None else 10,
+                with_payload=(
+                    request.with_payload if request.with_payload is not None else True
+                ),
+                with_vectors=False,
+                score_threshold=request.score_threshold,
+            )
+        return self._hits(response)
+
+    async def _query_batch(self, requests: list[QueryRequest]) -> list[list[SearchHit]]:
+        """Send concurrent searches in one ``query_batch_points`` call."""
+        with qdrant_span("query_batch_points", self.collection_name) as span:
+            if len(requests) > 1:
+                span.set_attribute("db.operation.batch.size", len(requests))
+            responses = await self._async_client.query_batch_points(
+                collection_name=self.collection_name, requests=requests
+            )
+        return [self._hits(response) for response in responses]
+
+    def _hits(self, response: QueryResponse) -> list[SearchHit]:
+        """Normalize Qdrant points into search hits."""
+        return [
+            SearchHit(
+                id=str(point.id),
+                payload=dict(point.payload) if point.payload else {},
+                score=float(point.score),
+            )
+            for point in response.points
+        ]
 
     async def search(self, request: SearchRequest) -> list[SearchHit]:
         """Execute strict-contract search request.
@@ -747,6 +794,7 @@ class QdrantClient(VectorDBClient):
                 limit=request.limit,
                 filters=qdrant_filter,
                 score_threshold=request.score_threshold,
+                with_payload=request.with_payload,
             )
 
         prefetch_queries = build_prefetch_queries(
@@ -756,6 +804,7 @@ class QdrantClient(VectorDBClient):
             sparse_vector_name=self._primary_sparse_vector_name,
             qdrant_filter=qdrant_filter,
             prefetch_limit=request.limit * self._prefetch_limit_multiplier,
+            text_search_params=self._text_search_params,
         )
 
         if len(prefetch_queries) < 2:
@@ -768,4 +817,10 @@ class QdrantClient(VectorDBClient):
             limit=request.limit,
             fusion_method=request.fusion_method,
             score_threshold=request.score_threshold,
+            with_payload=request.with_payload,
         )
+
+    async def close(self) -> None:
+        """Stop the query batcher, if query batching is on."""
+        if self._query_batcher is not None:
+            await self._query_batcher.close()

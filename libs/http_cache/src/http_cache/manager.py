@@ -138,7 +138,7 @@ class HTTPCacheManager:
         aiohttp.ClientSession if caching is disabled or unavailable.
 
         Args:
-            service: Service name used to determine cache TTL (e.g., "anilist", "jikan").
+            service: Service name used to determine cache TTL (e.g., "anilist", "mal").
             **session_kwargs: Additional arguments forwarded to session constructor
                 (e.g., timeout, headers, connector).
 
@@ -316,7 +316,7 @@ class HTTPCacheManager:
         """Retrieve cache TTL in seconds for the specified service.
 
         Args:
-            service: Service name (e.g., "anilist", "jikan", "kitsu").
+            service: Service name (e.g., "anilist", "mal", "kitsu").
 
         Returns:
             TTL in seconds for the service, defaults to 86400 (24 hours) if not

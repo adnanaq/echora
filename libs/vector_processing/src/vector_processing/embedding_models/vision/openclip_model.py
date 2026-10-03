@@ -148,10 +148,17 @@ class OpenClipModel(VisionEmbeddingModel):
             # Stack images
             image_tensor = torch.stack(processed_images).to(self.device)
 
-            # Generate embeddings
-            with torch.no_grad():
-                image_features = self.model.encode_image(image_tensor)
-                # Normalize features
+            # Half precision on a GPU: ~2.8x more images/s, same embeddings
+            # within rounding (cosine >= 0.9998 on real images, ECHO-54)
+            with (
+                torch.no_grad(),
+                torch.autocast(
+                    device_type=self.device,
+                    dtype=torch.float16,
+                    enabled=self.uses_half_precision,
+                ),
+            ):
+                image_features = self.model.encode_image(image_tensor).float()
                 image_features = image_features / image_features.norm(
                     dim=-1, keepdim=True
                 )
@@ -161,6 +168,11 @@ class OpenClipModel(VisionEmbeddingModel):
         except Exception:
             logger.exception("OpenCLIP encoding failed")
             raise
+
+    @property
+    def uses_half_precision(self) -> bool:
+        """Whether images are encoded in fp16, which only pays off on a GPU."""
+        return self.device == "cuda"
 
     @property
     def embedding_size(self) -> int:

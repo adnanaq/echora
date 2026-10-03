@@ -766,7 +766,7 @@ def test_determine_season_from_date(
 # =============================================================================
 
 
-@pytest.mark.usefixtures("mock_redis_cache_miss")
+@pytest.mark.usefixtures("redis_cache_miss")
 @patch(_PATCH_FETCH_HTML)
 async def test_fetch_success_with_html_fixture(
     mock_fetch: AsyncMock, ap_anime_html: str
@@ -783,7 +783,7 @@ async def test_fetch_success_with_html_fixture(
     assert any(c["name"] == "Toei Animation" for c in anime["companies"])
 
 
-@pytest.mark.usefixtures("mock_redis_cache_miss")
+@pytest.mark.usefixtures("redis_cache_miss")
 @patch(_PATCH_FETCH_HTML)
 async def test_fetch_accepts_non_www_url(
     mock_fetch: AsyncMock, ap_anime_html: str
@@ -794,7 +794,7 @@ async def test_fetch_accepts_non_www_url(
     assert any("one-piece" in s for s in anime.get("sources", []))
 
 
-@pytest.mark.usefixtures("mock_redis_cache_miss")
+@pytest.mark.usefixtures("redis_cache_miss")
 @patch(_PATCH_FETCH_DATA, new_callable=AsyncMock)
 async def test_fetch_extracts_slug_for_cache(mock_inner: AsyncMock) -> None:
     mock_inner.return_value = None
@@ -802,7 +802,7 @@ async def test_fetch_extracts_slug_for_cache(mock_inner: AsyncMock) -> None:
     mock_inner.assert_called_once_with("one-piece")
 
 
-@pytest.mark.usefixtures("mock_redis_cache_miss")
+@pytest.mark.usefixtures("redis_cache_miss")
 @patch(_PATCH_FETCH_HTML)
 @pytest.mark.parametrize(
     "html",
@@ -822,7 +822,7 @@ async def test_fetch_returns_none_on_failure(
     )
 
 
-@pytest.mark.usefixtures("mock_redis_cache_miss")
+@pytest.mark.usefixtures("redis_cache_miss")
 @patch(_PATCH_FETCH_HTML)
 async def test_fetch_season_from_season_url(mock_fetch: AsyncMock) -> None:
     mock_fetch.return_value = _make_html({**_BASE_JSON_LD, "startDate": "2024-07-10"})
@@ -832,7 +832,7 @@ async def test_fetch_season_from_season_url(mock_fetch: AsyncMock) -> None:
     assert anime["season"] == "FALL"
 
 
-@pytest.mark.usefixtures("mock_redis_cache_miss")
+@pytest.mark.usefixtures("redis_cache_miss")
 @patch(_PATCH_FETCH_HTML)
 async def test_fetch_season_falls_back_to_start_date(mock_fetch: AsyncMock) -> None:
     # HTML with no season link in entryBar → falls back to startDate
@@ -847,7 +847,7 @@ async def test_fetch_season_falls_back_to_start_date(mock_fetch: AsyncMock) -> N
     assert anime["season"] == "SPRING"
 
 
-@pytest.mark.usefixtures("mock_redis_cache_miss")
+@pytest.mark.usefixtures("redis_cache_miss")
 @patch(_PATCH_FETCH_HTML)
 @pytest.mark.parametrize(
     "start_date, end_date, expected_status",

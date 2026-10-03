@@ -12,7 +12,9 @@ from qdrant_client.models import (
     MatchExcept,
     MatchValue,
     Prefetch,
+    QuantizationSearchParams,
     Range,
+    SearchParams,
     SparseVector,
 )
 
@@ -116,6 +118,29 @@ def build_sparse_query(sparse_embedding: SparseVectorData) -> SparseVector:
     )
 
 
+def build_text_search_params(
+    hnsw_ef: int | None, rescore: bool | None, oversampling: float | None
+) -> SearchParams | None:
+    """Build the search parameters for the dense text vector.
+
+    Args:
+        hnsw_ef: HNSW candidates kept during graph search, or None for Qdrant's default.
+        rescore: Re-rank quantized candidates with the original vectors.
+        oversampling: Extra quantized candidates fetched for rescoring.
+
+    Returns:
+        Search parameters, or None when nothing is set so Qdrant's defaults apply.
+    """
+    quantization = None
+    if rescore is not None or oversampling is not None:
+        quantization = QuantizationSearchParams(
+            rescore=rescore, oversampling=oversampling
+        )
+    if hnsw_ef is None and quantization is None:
+        return None
+    return SearchParams(hnsw_ef=hnsw_ef, quantization=quantization)
+
+
 def build_prefetch_queries(
     request: SearchRequest,
     text_vector_name: str,
@@ -123,6 +148,7 @@ def build_prefetch_queries(
     sparse_vector_name: str,
     qdrant_filter: Filter | None,
     prefetch_limit: int,
+    text_search_params: SearchParams | None = None,
 ) -> list[Prefetch]:
     """Assemble prefetch branches for fusion search.
 
@@ -133,6 +159,7 @@ def build_prefetch_queries(
         sparse_vector_name: Named sparse vector field.
         qdrant_filter: Optional pre-built Qdrant filter.
         prefetch_limit: Candidate pool size per branch fed into fusion.
+        text_search_params: Search parameters for the dense text branches.
 
     Returns:
         List of prefetch query branches (one per active embedding signal).
@@ -146,6 +173,7 @@ def build_prefetch_queries(
                 query=request.text_embedding,
                 limit=prefetch_limit,
                 filter=qdrant_filter,
+                params=text_search_params,
             )
         )
         for expansion in request.expanded_text_embeddings or []:
@@ -155,6 +183,7 @@ def build_prefetch_queries(
                     query=expansion,
                     limit=prefetch_limit,
                     filter=qdrant_filter,
+                    params=text_search_params,
                 )
             )
 

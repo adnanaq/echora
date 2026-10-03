@@ -460,8 +460,7 @@ echora-deploy/
 │       └── dashboards/              # Provisioned from echora-obs
 │           ├── vector-service-overview.json
 │           ├── enrichment-service-overview.json
-│           ├── service-overview.json
-│           └── trace-journey.json
+│           └── qdrant-overview.json
 │
 ├── values/                          # Environment-specific overrides
 │   ├── dev.yaml                     # k3d, local backends, 1 replica
@@ -1234,7 +1233,7 @@ env:
 | gRPC health | Ready | Standard `HealthServicer` in `main.py` |
 | Graceful shutdown | Ready | SIGTERM handler, 5s grace period |
 | HTTP cache (Hishel) | Ready | `CacheConfig` in `libs/http_cache/config.py`: `CACHE_ENABLED`, `REDIS_URL`, `FORCE_CACHE`, per-service TTLs |
-| Inter-service calls | N/A | Only calls external APIs (Jikan, AniList, Kitsu, etc.) — no internal gRPC yet |
+| Inter-service calls | N/A | Only calls external sources (MyAnimeList, AniList, Kitsu, etc.) — no internal gRPC yet |
 | NATS integration | N/A | Not integrated yet — will be needed when ingestion pipeline publishes events |
 | File system | Needs PVC | Reads `/app/data` (anime-offline-database.json), writes `/app/assets/seed_data` |
 | Service name | OK | Hardcoded `"echora-enrichment-service"` in `main.py` |

@@ -153,7 +153,7 @@ message AiredDates {
   optional google.protobuf.Timestamp aired_to = 2;
 }
 
-// Weekly broadcast slot (from MAL/Jikan) plus per-version streaming times
+// Weekly broadcast slot (from MAL) plus per-version streaming times
 // and premiere dates (from AnimSchedule). Merged from the old separate
 // Broadcast + BroadcastSchedule + PremiereDates messages.
 message Broadcast {

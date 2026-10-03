@@ -1,0 +1,36 @@
+# Token budget per BGE-M3 pass (EMBED_MODEL_MAX_TOKENS_PER_PASS) on top of
+# chunks of 32, GPU, every other tuned setting on (ECHO-54 finding 31).
+name = "token_budget_breakpoint"
+
+[service_env]
+EMBED_BATCH_MAX_SIZE = "64"
+EMBED_MAX_CONCURRENCY = "1"
+EMBED_MODEL_CHUNK_SIZE = "32"
+QDRANT_QUERY_BATCH_MAX_SIZE = "8"
+QDRANT_QUERY_BATCH_CONCURRENCY = "16"
+QDRANT_PREFER_GRPC = "true"
+QDRANT_SEARCH_RESCORE = "true"
+QDRANT_SEARCH_OVERSAMPLING = "4.0"
+
+[load]
+test_type = "breakpoint"
+
+[load.k6]
+MAX_RATE = "2000"
+BREAKPOINT_DURATION = "5m"
+WITH_PAYLOAD = "false"
+
+[[variant]]
+name = "chunks of 32, no budget"
+[variant.service_env]
+EMBED_MODEL_MAX_TOKENS_PER_PASS = "0"
+
+[[variant]]
+name = "chunks of 32, budget 256"
+[variant.service_env]
+EMBED_MODEL_MAX_TOKENS_PER_PASS = "256"
+
+[[variant]]
+name = "chunks of 32, budget 512"
+[variant.service_env]
+EMBED_MODEL_MAX_TOKENS_PER_PASS = "512"

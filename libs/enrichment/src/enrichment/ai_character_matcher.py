@@ -1145,7 +1145,7 @@ class AICharacterMatcher:
 
         Args:
             character: Character data dictionary
-            source: Source of this character data (jikan, anilist, anidb)
+            source: Source of this character data (mal, anilist, anidb)
             target_source: Target source we're matching against (used for MAL to decide if Japanese should be included)
         """
 
@@ -1186,7 +1186,7 @@ class AICharacterMatcher:
 
         Args:
             character: Character data dictionary
-            source: Source of this character data (jikan, anilist, anidb, animeplanet)
+            source: Source of this character data (mal, anilist, anidb, animeplanet)
 
         Returns:
             Image URL or None if not available

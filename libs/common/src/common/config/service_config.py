@@ -20,7 +20,11 @@ class ServiceConfig(BaseModel):
         default=8002, ge=1, le=65535, description="Enrichment service port"
     )
     enable_gpu: bool = Field(
-        default=False, description="Enable GPU usage for embedding models"
+        default=False,
+        description=(
+            "Run the embedding models on the GPU; the vector service stops at "
+            "start-up if no GPU is usable. False hides the GPU"
+        ),
     )
     enrichment_default_file_path: str = Field(
         default="assets/seed_data/anime-offline-database.json",

@@ -211,3 +211,4 @@ gha-creds-*.json
 .claude/skills/
 
 .obsidian/
+benchmarks/vector_service/load/results/

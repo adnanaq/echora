@@ -1,0 +1,29 @@
+# One search per second (smoke test) over HTTP and over gRPC to Qdrant, with
+# the recommended settings. Run with --timed to see the Qdrant call's time at
+# low load (ECHO-54 finding 37).
+name = "low_load_transport"
+
+[service_env]
+EMBED_BATCH_MAX_SIZE = "64"
+EMBED_MAX_CONCURRENCY = "1"
+EMBED_MODEL_CHUNK_SIZE = "32"
+QDRANT_QUERY_BATCH_MAX_SIZE = "8"
+QDRANT_QUERY_BATCH_CONCURRENCY = "16"
+QDRANT_SEARCH_RESCORE = "true"
+QDRANT_SEARCH_OVERSAMPLING = "4.0"
+
+[load]
+test_type = "smoke"
+
+[load.k6]
+WITH_PAYLOAD = "false"
+
+[[variant]]
+name = "HTTP"
+[variant.service_env]
+QDRANT_PREFER_GRPC = "false"
+
+[[variant]]
+name = "gRPC"
+[variant.service_env]
+QDRANT_PREFER_GRPC = "true"

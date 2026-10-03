@@ -18,6 +18,7 @@ This document outlines the verified strategies for detecting new anime entries a
 ## Service Details
 
 ### MyAnimeList (via Jikan API v4)
+*   **Scope:** Discovery only. The enrichment crawlers read MAL's own pages and do not call Jikan; Jikan is used here because its `unapproved=true` search shows new entries before MAL's staff approve them.
 *   **Strategy:** Use the search endpoint sorted by ID descending.
 *   **Endpoint:** `GET https://api.jikan.moe/v4/anime?order_by=mal_id&sort=desc&unapproved=true`
 *   **Important Findings:**

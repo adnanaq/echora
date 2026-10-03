@@ -43,12 +43,9 @@ services:
       - prometheus
       - loki
       - tempo
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8888/metrics"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
+    # No healthcheck: the image holds only the collector binary (no shell or
+    # wget). Prometheus scrapes its internal metrics, and the EchoraServiceDown
+    # alert fires when it stops answering.
     networks:
       - observability-network
 

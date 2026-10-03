@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import inspect
+
 import observability
+from observability.metrics import _HISTOGRAM_VIEWS
 
 
 def _reset_telemetry_state(monkeypatch) -> None:
@@ -8,7 +11,9 @@ def _reset_telemetry_state(monkeypatch) -> None:
     monkeypatch.setattr(observability, "_telemetry_init_signature", None)
 
 
-def test_setup_telemetry_initializes_all_signal_pipelines(monkeypatch) -> None:
+def test_setup_telemetry_all_signals_enabled_initializes_every_pipeline(
+    monkeypatch,
+) -> None:
     _reset_telemetry_state(monkeypatch)
     calls: list[tuple[str, object]] = []
 
@@ -64,12 +69,29 @@ def test_setup_telemetry_initializes_all_signal_pipelines(monkeypatch) -> None:
     ]
 
 
-def test_no_grpc_server_hook_is_exported() -> None:
+def test_observability_package_exports_no_grpc_server_hook() -> None:
     assert "instrument_grpc_server" not in observability.__all__
     assert not hasattr(observability, "instrument_grpc_server")
 
 
-def test_setup_telemetry_respects_signal_toggles(monkeypatch) -> None:
+def test_observability_package_offers_no_qdrant_client_auto_instrumentation() -> None:
+    assert "instrument_qdrant_client" not in observability.__all__
+    assert not hasattr(observability, "instrument_qdrant_client")
+    assert (
+        "enable_qdrant_client_instrumentation"
+        not in inspect.signature(observability.setup_telemetry).parameters
+    )
+
+
+def test_histogram_views_batcher_histograms_have_explicit_buckets() -> None:
+    names = {view._instrument_name for view in _HISTOGRAM_VIEWS}
+    assert {
+        "echora_batcher_queue_wait_seconds",
+        "echora_batcher_batch_size",
+    } <= names
+
+
+def test_setup_telemetry_signals_turned_off_skips_their_pipelines(monkeypatch) -> None:
     _reset_telemetry_state(monkeypatch)
     calls: list[str] = []
 
@@ -96,7 +118,7 @@ def test_setup_telemetry_respects_signal_toggles(monkeypatch) -> None:
     assert calls == ["metrics"]
 
 
-def test_setup_telemetry_idempotent_repeated_calls(monkeypatch) -> None:
+def test_setup_telemetry_repeated_calls_initializes_once(monkeypatch) -> None:
     _reset_telemetry_state(monkeypatch)
     calls: list[str] = []
 

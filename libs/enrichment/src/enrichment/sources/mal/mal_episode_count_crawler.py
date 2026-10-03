@@ -19,7 +19,7 @@ from lxml import etree
 logger = logging.getLogger(__name__)
 
 _CACHE_CONFIG = get_cache_config()
-TTL_MAL = _CACHE_CONFIG.ttl_jikan
+TTL_MAL = _CACHE_CONFIG.ttl_mal
 
 _EPISODE_COUNT_XPATH = (
     "//h2[@class='h2_overwrite'][text()='Episodes']/following-sibling::span[1]"

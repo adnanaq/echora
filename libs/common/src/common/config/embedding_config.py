@@ -68,6 +68,44 @@ class EmbeddingConfig(BaseModel):
         le=16,
         description="Maximum concurrent embedding tasks per process",
     )
+    embed_batch_max_size: int = Field(
+        default=1,
+        ge=1,
+        le=256,
+        description=(
+            "Most concurrent single-text encodes (search queries) combined into "
+            "one model call; 1 encodes each text on its own"
+        ),
+    )
+    embed_model_chunk_size: int = Field(
+        default=256,
+        ge=1,
+        le=1024,
+        description=(
+            "Most texts in one BGE-M3 model pass. A batch is sorted by length "
+            "and split into chunks of this size, so short texts are not padded "
+            "to the longest one; 256 keeps a query batch in one pass"
+        ),
+    )
+    embed_model_max_tokens_per_pass: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Most padded tokens in one BGE-M3 model pass (texts times the "
+            "chunk's longest text). A length-sorted batch is cut where one more "
+            "text would pass it, so long texts are not run with short ones; "
+            "0 turns it off"
+        ),
+    )
+    embed_batch_max_wait_ms: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=100.0,
+        description=(
+            "How long a batch that is not full waits for more texts before "
+            "encoding, in milliseconds; 0 encodes whatever has queued at once"
+        ),
+    )
 
     # ==================== Reranking Configuration ====================
 

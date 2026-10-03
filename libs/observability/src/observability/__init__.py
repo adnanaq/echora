@@ -14,7 +14,6 @@ from .context import (
 from .instrumentation import (
     instrument_aiohttp_client,
     instrument_grpc_client,
-    instrument_qdrant_client,
     instrument_redis,
 )
 from .interceptors import AioServerInterceptor
@@ -33,7 +32,6 @@ __all__ = [
     "AioServerInterceptor",
     "instrument_aiohttp_client",
     "instrument_grpc_client",
-    "instrument_qdrant_client",
     "instrument_redis",
     "extract_context_from_nats_headers",
     "extract_context_from_temporal_headers",
@@ -63,7 +61,6 @@ def setup_telemetry(
     enable_metrics: bool = True,
     enable_grpc_client_instrumentation: bool = False,
     enable_aiohttp_client_instrumentation: bool = False,
-    enable_qdrant_client_instrumentation: bool = False,
     enable_redis_instrumentation: bool = False,
     metric_export_interval_millis: int = 15000,
     trace_sample_ratio: float = 1.0,
@@ -83,7 +80,6 @@ def setup_telemetry(
         enable_metrics: When True, configures MeterProvider with OTLP exporter.
         enable_grpc_client_instrumentation: Auto-instrument gRPC client stubs.
         enable_aiohttp_client_instrumentation: Auto-instrument aiohttp sessions.
-        enable_qdrant_client_instrumentation: Auto-instrument Qdrant client.
         metric_export_interval_millis: How often metrics are pushed to the
             collector (default: 15 000 ms). 15 s is the minimum resolution
             required for multi-window burn-rate SLO alerting.
@@ -109,7 +105,6 @@ def setup_telemetry(
         enable_metrics,
         enable_grpc_client_instrumentation,
         enable_aiohttp_client_instrumentation,
-        enable_qdrant_client_instrumentation,
         enable_redis_instrumentation,
         metric_export_interval_millis,
         trace_sample_ratio,
@@ -162,8 +157,6 @@ def setup_telemetry(
             instrument_grpc_client()
         if enable_aiohttp_client_instrumentation:
             instrument_aiohttp_client()
-        if enable_qdrant_client_instrumentation:
-            instrument_qdrant_client()
         if enable_redis_instrumentation:
             instrument_redis()
 
