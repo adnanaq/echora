@@ -1,9 +1,12 @@
 import asyncio
+import functools
+import http.server
 import os
 import re
 import statistics
 import subprocess
 import sys
+import threading
 import time
 from collections.abc import Iterator
 from pathlib import Path
@@ -14,6 +17,7 @@ import zendriver
 from enrichment.pipeline.enrichment_pipeline import EnrichmentPipeline
 from enrichment.sources.base import browser as browser_module
 from enrichment.sources.base.browser import (
+    BACKGROUND_DOWNLOAD_SWITCHES,
     OWNER_FILE_NAME,
     UNOWNED_PROFILE_GRACE_SECONDS,
     BrowserPoolSizeError,
@@ -22,6 +26,7 @@ from enrichment.sources.base.browser import (
     configure_browser_pool,
     reap_orphans,
 )
+from zendriver import cdp
 from zendriver.core.config import find_executable
 
 SOURCES_DIR = Path(browser_module.__file__).resolve().parents[1]
@@ -29,10 +34,12 @@ SOURCES_DIR = Path(browser_module.__file__).resolve().parents[1]
 
 @pytest.fixture(autouse=True)
 def unlimited_pool() -> Iterator[None]:
+    blocking = browser_module._block_unused_resources
     browser_module._max_browsers = None
     browser_module._slots_by_loop.clear()
     yield
     browser_module._max_browsers = None
+    browser_module._block_unused_resources = blocking
     browser_module._slots_by_loop.clear()
 
 
@@ -42,6 +49,7 @@ def started_browsers() -> Iterator[list[zendriver.Browser]]:
 
     async def start_fake_browser(**_: object) -> zendriver.Browser:
         browser = create_autospec(zendriver.Browser, instance=True)
+        browser.main_tab = create_autospec(zendriver.Tab, instance=True)
         browsers.append(browser)
         return browser
 
@@ -156,13 +164,60 @@ async def test_browser_session_block_raises_releases_slot_and_closes_browser(
     started_browsers[0].stop.assert_awaited_once_with()
 
 
-async def test_browser_session_passes_headless_to_zendriver_start(
+async def test_browser_session_starts_chrome_with_headless_setting_and_background_switches(
     started_browsers: list[zendriver.Browser],
 ) -> None:
     async with browser_session(headless=False):
         pass
 
-    zendriver.start.assert_awaited_once_with(headless=False)
+    zendriver.start.assert_awaited_once_with(
+        headless=False, browser_args=list(BACKGROUND_DOWNLOAD_SWITCHES)
+    )
+
+
+async def test_browser_session_allowed_site_resolves_only_that_domain_and_subdomains(
+    started_browsers: list[zendriver.Browser],
+) -> None:
+    configure_browser_pool(4, block_unused_resources=True)
+
+    async with browser_session(headless=True, allowed_site="myanimelist.net"):
+        pass
+
+    switches = zendriver.start.call_args.kwargs["browser_args"]
+    assert switches == [
+        *BACKGROUND_DOWNLOAD_SWITCHES,
+        "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE myanimelist.net, "
+        "EXCLUDE *.myanimelist.net",
+    ]
+
+
+async def test_browser_session_blocking_off_ignores_allowed_site(
+    started_browsers: list[zendriver.Browser],
+) -> None:
+    configure_browser_pool(4, block_unused_resources=False)
+
+    async with browser_session(headless=True, allowed_site="myanimelist.net"):
+        pass
+
+    assert zendriver.start.call_args.kwargs["browser_args"] == list(
+        BACKGROUND_DOWNLOAD_SWITCHES
+    )
+
+
+async def test_browser_session_restart_keeps_allowed_site(
+    started_browsers: list[zendriver.Browser],
+) -> None:
+    configure_browser_pool(4, block_unused_resources=True)
+
+    async with browser_session(
+        headless=True, allowed_site="myanimelist.net"
+    ) as session:
+        await session.restart()
+
+    first_switches, restart_switches = (
+        started.kwargs["browser_args"] for started in zendriver.start.call_args_list
+    )
+    assert restart_switches == first_switches
 
 
 async def test_browser_session_restart_closes_old_browser_and_keeps_slot(
@@ -271,13 +326,28 @@ def test_crawler_sources_keep_each_site_headless_setting() -> None:
     for path in _crawler_sources():
         site = path.relative_to(SOURCES_DIR).parts[0]
         sessions.setdefault(site, []).extend(
-            re.findall(r"browser_session\(headless=(True|False)\)", path.read_text())
+            re.findall(r"browser_session\(headless=(True|False)\b", path.read_text())
         )
 
     assert sessions["anisearch"] == ["False"] * 8
     assert sessions["anidb"] == ["False"]
     assert sessions["mal"] == ["True"] * 7
     assert sessions["anime_planet"] == ["True"] * 4
+
+
+def test_crawler_sources_use_allowed_site_on_mal_only() -> None:
+    sites_with_rule = {
+        path.relative_to(SOURCES_DIR).parts[0]
+        for path in _crawler_sources()
+        if "allowed_site=" in path.read_text()
+    }
+    mal_sessions = sum(
+        path.read_text().count("allowed_site=MAL_DOMAIN")
+        for path in (SOURCES_DIR / "mal").glob("*.py")
+    )
+
+    assert sites_with_rule == {"mal"}
+    assert mal_sessions == 7
 
 
 RUNS = 10
@@ -409,3 +479,119 @@ async def test_browser_session_inside_enrichment_pipeline_leaves_no_browser_afte
             tree = _process_tree(session.browser._process_pid)
 
     assert _still_present(tree) == []
+
+
+SITE_PAGE = """<html><head>
+<link rel=stylesheet href=style.css>
+<style>@font-face{font-family:F;src:url(font.woff2)} body{font-family:F}</style>
+<script src=app.js></script>
+</head><body><p id=x>ready</p><img src=picture.png><video src=clip.mp4 autoplay muted></video>
+<script>
+fetch('data.json').then(response => response.json()).then(data => {document.body.dataset.fetched = data.ok});
+const request = new XMLHttpRequest(); request.open('GET', 'data.json');
+request.onload = () => {document.body.dataset.xhr = request.status}; request.send();
+</script></body></html>"""
+
+
+class QuietRequestHandler(http.server.SimpleHTTPRequestHandler):
+    def log_message(self, format: str, *args: object) -> None:
+        return
+
+
+@pytest.fixture
+def local_site(tmp_path: Path) -> Iterator[str]:
+    site = tmp_path / "site"
+    site.mkdir()
+    (site / "index.html").write_text(SITE_PAGE)
+    (site / "app.js").write_text("document.documentElement.dataset.script = 'ran';")
+    (site / "data.json").write_text('{"ok": "yes"}')
+    for name in ("style.css", "font.woff2", "picture.png", "clip.mp4", "favicon.ico"):
+        (site / name).write_bytes(b"x" * 100)
+    handler = functools.partial(QuietRequestHandler, directory=str(site))
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    yield f"http://127.0.0.1:{server.server_address[1]}/index.html"
+    server.shutdown()
+    server.server_close()
+    thread.join()
+
+
+async def _load_site(url: str) -> tuple[dict[str, str], dict[str, object]]:
+    kinds: dict[str, str] = {}
+    outcomes: dict[str, str] = {}
+
+    async def requested(event: cdp.network.RequestWillBeSent) -> None:
+        kinds[event.request_id] = event.type_.value if event.type_ else "Other"
+
+    async def loaded(event: cdp.network.LoadingFinished) -> None:
+        outcomes.setdefault(event.request_id, "loaded")
+
+    async def failed(event: cdp.network.LoadingFailed) -> None:
+        outcomes[event.request_id] = event.error_text
+
+    async with browser_session(headless=True) as session:
+        tab = session.browser.main_tab
+        tab.add_handler(cdp.network.RequestWillBeSent, requested)
+        tab.add_handler(cdp.network.LoadingFinished, loaded)
+        tab.add_handler(cdp.network.LoadingFailed, failed)
+        page = await session.browser.get(url)
+        async with asyncio.timeout(10):
+            while not await page.evaluate("document.body?.dataset.xhr || ''"):
+                await asyncio.sleep(0.05)
+        await asyncio.sleep(0.5)
+        page_state = {
+            "text": await page.evaluate("document.getElementById('x').textContent"),
+            "script": await page.evaluate("document.documentElement.dataset.script"),
+            "fetch": await page.evaluate("document.body.dataset.fetched"),
+            "xhr": await page.evaluate("document.body.dataset.xhr"),
+        }
+    by_kind = {kinds[request]: outcome for request, outcome in outcomes.items()}
+    return by_kind, page_state
+
+
+@pytest.mark.integration
+@requires_browser
+@pytest.mark.usefixtures("browser_home")
+async def test_browser_session_default_fails_static_requests_and_loads_documents_scripts_and_data(
+    local_site: str,
+) -> None:
+    outcomes, page_state = await _load_site(local_site)
+
+    assert {
+        kind: outcomes[kind] for kind in ("Image", "Font", "Media", "Stylesheet")
+    } == {
+        kind: "net::ERR_BLOCKED_BY_CLIENT.Inspector"
+        for kind in ("Image", "Font", "Media", "Stylesheet")
+    }
+    assert {
+        kind: outcomes[kind] for kind in ("Document", "Script", "XHR", "Fetch")
+    } == {kind: "loaded" for kind in ("Document", "Script", "XHR", "Fetch")}
+    assert page_state == {
+        "text": "ready",
+        "script": "ran",
+        "fetch": "yes",
+        "xhr": "200",
+    }
+
+
+@pytest.mark.integration
+@requires_browser
+@pytest.mark.usefixtures("browser_home")
+async def test_browser_session_blocking_off_loads_every_request(
+    local_site: str,
+) -> None:
+    configure_browser_pool(4, block_unused_resources=False)
+
+    outcomes, page_state = await _load_site(local_site)
+
+    assert set(outcomes.values()) == {"loaded"}
+    assert {"Image", "Font", "Stylesheet", "Document", "Script", "XHR", "Fetch"} <= (
+        outcomes.keys()
+    )
+    assert page_state == {
+        "text": "ready",
+        "script": "ran",
+        "fetch": "yes",
+        "xhr": "200",
+    }
