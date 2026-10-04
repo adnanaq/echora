@@ -17,6 +17,7 @@ import re
 import sys
 from typing import Any, cast
 
+from enrichment.sources.base.browser import browser_session
 from enrichment.sources.base.framework import (
     BaseCrawler,
     FileRepository,
@@ -457,16 +458,9 @@ async def _fetch_mal_character_data(url: str) -> tuple[dict[str, Any], str] | No
     Returns:
         Tuple of (raw extraction dict, canonical URL), or None on failure.
     """
-    import zendriver as zd
-
-    browser = await zd.start(headless=True)
-    try:
+    async with browser_session(headless=True) as session:
+        browser = session.browser
         result = await _fetch_character_html(browser, url)
-    finally:
-        try:
-            await browser.stop()
-        except Exception as exc:
-            logger.debug(f"browser stop failed: {exc}")
 
     if result is None:
         return None
@@ -618,10 +612,8 @@ async def fetch_mal_characters(
 
     missing_indices = sorted(set(missing_indices))
 
-    import zendriver as zd
-
-    browser = await zd.start(headless=True)
-    try:
+    async with browser_session(headless=True) as session:
+        browser = session.browser
         for i, idx in enumerate(missing_indices):
             url = urls[idx]
             result = await _fetch_character_html(browser, url)
@@ -649,11 +641,6 @@ async def fetch_mal_characters(
 
             if i < len(missing_indices) - 1:
                 await asyncio.sleep(_INTER_REQUEST_DELAY)
-    finally:
-        try:
-            await browser.stop()
-        except Exception as exc:
-            logger.debug(f"browser stop failed: {exc}")
 
     return characters
 

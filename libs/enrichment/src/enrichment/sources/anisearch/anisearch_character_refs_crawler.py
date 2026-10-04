@@ -10,6 +10,7 @@ Each dict contains {"url": str, "role": str}. All other character data
 import logging
 from typing import cast
 
+from enrichment.sources.base.browser import browser_session
 from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
 
@@ -113,10 +114,8 @@ async def _fetch_anisearch_character_refs_data(
     characters_url: str,
 ) -> list[dict[str, str]] | None:
     """Fetch /anime/{id},{slug}/characters and extract character refs. Cached by URL."""
-    import zendriver as zd
-
-    browser = await zd.start(headless=False)
-    try:
+    async with browser_session(headless=False) as session:
+        browser = session.browser
         try:
             page = await browser.get(characters_url)
             await page.wait_for(selector="#content", timeout=10)
@@ -125,11 +124,6 @@ async def _fetch_anisearch_character_refs_data(
         except Exception:
             logger.exception(f"navigation failed for {characters_url}")
             return None
-    finally:
-        try:
-            await browser.stop()
-        except Exception as exc:
-            logger.debug(f"browser stop failed: {exc}")
 
     if not html_text:
         logger.error(f"No HTML from characters page {characters_url}")

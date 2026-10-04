@@ -24,6 +24,7 @@ from enrichment.sources.anisearch.anisearch_anime_models import (
     AniSearchEpisodesPage,
 )
 from enrichment.sources.anisearch.anisearch_mapper import episode_from_anisearch
+from enrichment.sources.base.browser import browser_session
 from enrichment.sources.base.framework import (
     BaseCrawler,
     NullRepository,
@@ -199,10 +200,8 @@ def _parse_episode_row(raw: dict[str, Any]) -> dict[str, Any] | None:
 )
 async def _fetch_anisearch_episode_data(url: str) -> dict[str, Any] | None:
     """Fetch the /episodes page and return the raw body dict. Cached by URL."""
-    import zendriver as zd
-
-    browser = await zd.start(headless=False)
-    try:
+    async with browser_session(headless=False) as session:
+        browser = session.browser
         try:
             page = await browser.get(url)
             await page.wait_for(selector="table.episodes", timeout=15)
@@ -212,11 +211,6 @@ async def _fetch_anisearch_episode_data(url: str) -> dict[str, Any] | None:
         except Exception as exc:
             logger.warning(f"navigation failed for {url}: {exc}")
             return None
-    finally:
-        try:
-            await browser.stop()
-        except Exception as exc:
-            logger.debug(f"browser stop failed: {exc}")
 
     if not html_text:
         logger.warning(f"No HTML from episodes page: {url}")

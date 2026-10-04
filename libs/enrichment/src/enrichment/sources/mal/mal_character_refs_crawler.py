@@ -12,6 +12,7 @@ import asyncio
 import logging
 from typing import Any, cast
 
+from enrichment.sources.base.browser import browser_session
 from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
 from lxml import etree
@@ -58,22 +59,16 @@ def _extract_character_urls(html: str) -> list[str]:
 
 
 async def _fetch_characters_page_html(url: str) -> str | None:
-    import zendriver as zd
-
-    browser = await zd.start(headless=True)
-    try:
-        page = await browser.get(url)
-        await page.wait_for(selector="table.js-anime-character-table", timeout=30)
-        await asyncio.sleep(2)
-        return await page.get_content()
-    except Exception as exc:
-        logger.warning(f"navigation failed for {url}: {exc}")
-        return None
-    finally:
+    async with browser_session(headless=True) as session:
+        browser = session.browser
         try:
-            await browser.stop()
+            page = await browser.get(url)
+            await page.wait_for(selector="table.js-anime-character-table", timeout=30)
+            await asyncio.sleep(2)
+            return await page.get_content()
         except Exception as exc:
-            logger.debug(f"browser stop failed: {exc}")
+            logger.warning(f"navigation failed for {url}: {exc}")
+            return None
 
 
 @cached_result(
