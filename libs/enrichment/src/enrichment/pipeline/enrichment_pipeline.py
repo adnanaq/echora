@@ -333,13 +333,17 @@ class EnrichmentPipeline:
         """
         Enter the asynchronous context for the pipeline.
 
-        Sets the process-wide browser limit from the config and stops browsers
-        and profiles left behind by crawler runs that were killed.
+        Sets the process-wide browser limit and resource blocking from the
+        config, and stops browsers and profiles left behind by crawler runs that
+        were killed.
 
         Returns:
             EnrichmentPipeline: The pipeline instance.
         """
-        configure_browser_pool(self.config.max_concurrent_browsers)
+        configure_browser_pool(
+            self.config.max_concurrent_browsers,
+            block_unused_resources=self.config.block_unused_resources,
+        )
         await asyncio.to_thread(reap_orphans)
         return self
 

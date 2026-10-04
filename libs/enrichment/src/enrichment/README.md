@@ -166,6 +166,21 @@ AniDB pass `headless=False`; a batch that hits a browser crash calls
 `session.restart()`. `EnrichmentPipeline` sets the limit and runs `reap_orphans()`
 when it starts.
 
+Browsers never download what the crawlers do not read:
+
+* Every browser fails its image, font, media and stylesheet requests. The
+  crawlers parse only the HTML, and image URLs are read from attributes, so the
+  extracted data is the same on every page type; scripts, XHR and fetch requests
+  always load, because MAL renders parts of its pages with them and Cloudflare's
+  checks are scripts.
+* MAL sessions pass `allowed_site=MAL_DOMAIN`: the browser may connect only to
+  `myanimelist.net` and its subdomains, so the ad and tracking servers MAL's pages
+  pull in are never reached. Never set it for Anime-Planet or AniDB: their
+  Cloudflare check is served from `challenges.cloudflare.com`, another website.
+* Chrome's background downloads are switched off on every browser.
+
+`ENRICHMENT_BLOCK_UNUSED_RESOURCES=false` turns the resource and host blocking off.
+
 Key behaviours:
 - **WAF/Cloudflare bypass**: CDP-controlled Chrome passes browser-integrity checks natively
 - **lxml XPath extraction**: raw HTML parsed with lxml for fast, typed field extraction
