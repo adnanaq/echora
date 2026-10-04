@@ -22,8 +22,14 @@ class EnrichmentConfig(BaseSettings):
         default=200,
         description="Timeout for each API call in seconds (200s allows ~400 detailed MAL requests at 0.5s each)",
     )
-    max_concurrent_apis: int = Field(
-        default=6, description="Maximum concurrent API calls"
+    max_concurrent_browsers: int = Field(
+        default=4,
+        ge=1,
+        description=(
+            "Maximum Chrome browsers open at once in this process. Each costs about "
+            "200-400 MB and 14 processes; 4 lets one anime's four browser-based "
+            "providers (MAL, AniSearch, Anime-Planet, AniDB) run side by side"
+        ),
     )
     retry_attempts: int = Field(
         default=3, description="Number of retry attempts for failed API calls"
@@ -189,7 +195,7 @@ class EnrichmentConfig(BaseSettings):
         """Log current configuration for debugging (context-rich errors)."""
         logger.info("Enrichment Pipeline Configuration:")
         logger.info(f"  API Timeout: {self.api_timeout}s")
-        logger.info(f"  Max Concurrent APIs: {self.max_concurrent_apis}")
+        logger.info(f"  Max Concurrent Browsers: {self.max_concurrent_browsers}")
         logger.info(f"  Batch Size: {self.batch_size}")
         logger.info(f"  Caching: {'Enabled' if self.enable_caching else 'Disabled'}")
         logger.info(

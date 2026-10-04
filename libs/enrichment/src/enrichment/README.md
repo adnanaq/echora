@@ -145,18 +145,26 @@ uv run python -m enrichment.sources.animeschedule.animeschedule_helper "One Piec
 ## Browser Automation
 
 All browser-based sources (MAL, AniSearch, Anime-Planet, AniDB) use `zendriver`
-(CDP-based Chrome automation) directly inside each crawler's `fetch_raw_data` method.
-No external Docker sidecar is required.
+(CDP-based Chrome automation). No external Docker sidecar is required. Crawlers
+never call `zd.start()` or `browser.stop()` themselves; they open a browser through
+`sources/base/browser.py`:
 
 ```python
-import zendriver as zd
+from enrichment.sources.base.browser import browser_session
 
-browser = await zd.start()
-page = await browser.get(url)
-await page.wait_for("css-selector")
-html = await page.get_content()
-await browser.stop()
+async with browser_session(headless=True) as session:
+    page = await session.browser.get(url)
+    await page.wait_for("css-selector")
+    html = await page.get_content()
 ```
+
+`browser_session()` closes the browser in tens of milliseconds, holds a slot from
+the process-wide limit `EnrichmentConfig.max_concurrent_browsers`
+(`ENRICHMENT_MAX_CONCURRENT_BROWSERS`, default 4) while it is open, and marks the
+browser's profile so a later run can clean up after a killed one. AniSearch and
+AniDB pass `headless=False`; a batch that hits a browser crash calls
+`session.restart()`. `EnrichmentPipeline` sets the limit and runs `reap_orphans()`
+when it starts.
 
 Key behaviours:
 - **WAF/Cloudflare bypass**: CDP-controlled Chrome passes browser-integrity checks natively
