@@ -76,9 +76,10 @@ class PoliteHttpClient:
         Raises:
             ServiceBlockedError: If the site blocked this request or an earlier one.
         """
-        if self._blocked_reason is not None:
-            raise ServiceBlockedError(self._blocked_reason, service=self.site)
+        self._raise_if_blocked()
         await self._wait_for_request_slot()
+        # Another fetch may have been blocked while this one waited for its slot.
+        self._raise_if_blocked()
         try:
             async with (
                 aiohttp.ClientSession(
@@ -114,6 +115,10 @@ class PoliteHttpClient:
             if wait > 0:
                 await asyncio.sleep(wait)
             self._next_request_at = time.monotonic() + self.min_interval
+
+    def _raise_if_blocked(self) -> None:
+        if self._blocked_reason is not None:
+            raise ServiceBlockedError(self._blocked_reason, service=self.site)
 
     def _block(self, reason: str) -> None:
         self._blocked_reason = reason

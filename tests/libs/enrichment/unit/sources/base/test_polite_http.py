@@ -113,6 +113,21 @@ async def test_fetch_block_status_raises_and_sends_nothing_afterwards(
     assert "TestSite blocked this client" in caplog.text
 
 
+async def test_fetch_waiting_for_slot_when_site_blocks_sends_nothing(
+    site: str,
+) -> None:
+    client = _client(min_interval=0.3)
+
+    results = await asyncio.gather(
+        client.fetch(f"{site}/locked"),
+        client.fetch(f"{site}/page"),
+        return_exceptions=True,
+    )
+
+    assert [type(result) for result in results] == [ServiceBlockedError] * 2
+    assert [requested for requested, _, _ in ScriptedSite.requests] == ["/locked"]
+
+
 async def test_fetch_connection_refused_raises_and_blocks(closed_port: int) -> None:
     client = _client()
 
