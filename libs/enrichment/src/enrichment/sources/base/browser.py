@@ -216,7 +216,7 @@ async def _wait_for_children(pids: set[int]) -> None:
         logger.warning(
             f"browser processes {still_running} outlived Chrome; killing them"
         )
-        _stop_processes(still_running)
+        await asyncio.to_thread(_stop_processes, still_running)
 
 
 def _descendant_pids(root_pid: int) -> set[int]:
@@ -261,10 +261,11 @@ def _write_profile_owner(browser: Any) -> None:
     if not Path(profile).name.startswith(PROFILE_PREFIX):
         return
     pid = os.getpid()
+    start_ticks = _process_start_ticks(pid)
+    if start_ticks is None:
+        return
     try:
-        (Path(profile) / OWNER_FILE_NAME).write_text(
-            f"{pid} {_process_start_ticks(pid)}"
-        )
+        (Path(profile) / OWNER_FILE_NAME).write_text(f"{pid} {start_ticks}")
     except OSError as error:
         logger.debug(f"could not mark browser profile {profile}: {error}")
 
@@ -273,7 +274,10 @@ def _is_abandoned(profile: Path, pids: list[int]) -> bool:
     try:
         owner_pid, owner_start = (profile / OWNER_FILE_NAME).read_text().split()
     except OSError, ValueError:
-        age = time.time() - profile.stat().st_mtime
+        try:
+            age = time.time() - profile.stat().st_mtime
+        except OSError:
+            return False
         return not pids and age > UNOWNED_PROFILE_GRACE_SECONDS
     return _process_start_ticks(int(owner_pid)) != _parse_ticks(owner_start)
 
