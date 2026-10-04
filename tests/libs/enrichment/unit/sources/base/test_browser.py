@@ -227,6 +227,30 @@ async def test_browser_session_restart_keeps_allowed_site(
     assert restart_switches == first_switches
 
 
+async def test_browser_session_blocking_setup_fails_closes_browser_and_releases_slot(
+    started_browsers: list[zendriver.Browser],
+) -> None:
+    configure_browser_pool(1)
+
+    with (
+        patch.object(
+            browser_module,
+            "install_static_resource_blocking",
+            autospec=True,
+            side_effect=RuntimeError("connection closed"),
+        ),
+        pytest.raises(RuntimeError, match="connection closed"),
+    ):
+        async with browser_session(headless=True):
+            pass
+    async with asyncio.timeout(1):
+        async with browser_session(headless=True):
+            pass
+
+    started_browsers[0].stop.assert_awaited_once_with()
+    assert len(started_browsers) == 2
+
+
 async def test_browser_session_restart_closes_old_browser_and_keeps_slot(
     started_browsers: list[zendriver.Browser],
 ) -> None:
