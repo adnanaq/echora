@@ -7,16 +7,16 @@ HTML fixtures are real pages captured from:
 mal_anime_extracted is the XPath-extracted dict derived from the HTML fixture.
 """
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, create_autospec
 
 import pytest
+import zendriver
 from enrichment.sources.mal.mal_anime_crawler import (
     _XPATHS,
     _build_anime_from_raw,
     _extract_anime_from_html,
     _extract_pics_from_html,
     _fetch_mal_anime_data,
-    _fetch_page_html,
     _fetch_pics_html,
     _normalize_mal_url,
     _parse_all_related_entries,
@@ -141,63 +141,26 @@ def test_extract_pics_filters_non_anime_urls() -> None:
 
 
 # =============================================================================
-# _fetch_page_html
-# =============================================================================
-
-
-@pytest.mark.asyncio
-async def test_fetch_page_html_with_wait_selector(mocker) -> None:
-    page = mocker.AsyncMock()
-    page.wait_for = AsyncMock()
-    page.get_content = AsyncMock(return_value="<html>ok</html>")
-    browser = mocker.AsyncMock()
-    browser.get = AsyncMock(return_value=page)
-
-    result = await _fetch_page_html(
-        browser, "https://example.com", wait_selector="div.main"
-    )
-    page.wait_for.assert_called_once()
-    assert result == "<html>ok</html>"
-
-
-@pytest.mark.asyncio
-async def test_fetch_page_html_without_wait_selector_uses_sleep(mocker) -> None:
-    page = mocker.AsyncMock()
-    page.get_content = AsyncMock(return_value="<html>ok</html>")
-    browser = mocker.AsyncMock()
-    browser.get = AsyncMock(return_value=page)
-    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
-
-    result = await _fetch_page_html(browser, "https://example.com")
-    assert result == "<html>ok</html>"
-
-
-@pytest.mark.asyncio
-async def test_fetch_page_html_exception_returns_none(mocker) -> None:
-    browser = mocker.AsyncMock()
-    browser.get = AsyncMock(side_effect=Exception("timeout"))
-    assert await _fetch_page_html(browser, "https://example.com") is None
-
-
-# =============================================================================
 # _fetch_pics_html
 # =============================================================================
 
 
-@pytest.mark.asyncio
-async def test_fetch_pics_html_scrolls_and_returns_content(mocker) -> None:
-    page = mocker.AsyncMock()
-    page.wait_for = AsyncMock()
-    page.scroll_down = AsyncMock()
-    page.get_content = AsyncMock(return_value="<html>pics</html>")
-    browser = mocker.AsyncMock()
-    browser.get = AsyncMock(return_value=page)
-    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+def _browser_showing(html: str) -> zendriver.Browser:
+    browser = create_autospec(zendriver.Browser, instance=True)
+    tab = create_autospec(zendriver.Tab, instance=True)
+    tab.evaluate.return_value = "complete"
+    tab.get_content.return_value = html
+    browser.get.return_value = tab
+    return browser
+
+
+async def test_fetch_pics_html_returns_page_content() -> None:
+    browser = _browser_showing("<html>pics</html>")
 
     result = await _fetch_pics_html(
         browser, "https://myanimelist.net/anime/21/One_Piece/pics"
     )
-    page.scroll_down.assert_called_once()
+
     assert result == "<html>pics</html>"
 
 

@@ -8,9 +8,10 @@ No network calls are made.
 """
 
 import json
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, create_autospec
 
 import pytest
+import zendriver
 from enrichment.sources.anisearch.anisearch_character_crawler import (
     _ANISEARCH_BASE_URL,
     _XPATHS,
@@ -27,7 +28,6 @@ from enrichment.sources.anisearch.anisearch_character_crawler import (
     _fetch_page_html,
     _parse_favorites,
     _post_process_character,
-    _wait_until_document_parsed,
     fetch_anisearch_character,
     fetch_anisearch_characters,
 )
@@ -338,67 +338,36 @@ def test_extract_character_from_html_empty_body_returns_partial() -> None:
 # =============================================================================
 
 
-@pytest.mark.asyncio
-async def test_fetch_page_html_with_wait_selector(mocker) -> None:
-    page_mock = mocker.AsyncMock()
-    page_mock.wait_for = AsyncMock()
-    page_mock.get_content = AsyncMock(return_value="<html></html>")
-    browser_mock = mocker.AsyncMock()
-    browser_mock.get = AsyncMock(return_value=page_mock)
+async def test_fetch_page_html_navigation_fails_returns_none() -> None:
+    browser = create_autospec(zendriver.Browser, instance=True)
+    browser.get.side_effect = RuntimeError("nav failed")
 
-    result = await _fetch_page_html(
-        browser_mock, "https://example.com", wait_selector="#htitle"
-    )
-    assert result == "<html></html>"
-    page_mock.wait_for.assert_awaited_once_with(selector="#htitle", timeout=10)
-
-
-@pytest.mark.asyncio
-async def test_fetch_page_html_without_wait_selector(mocker) -> None:
-    page_mock = mocker.AsyncMock()
-    page_mock.get_content = AsyncMock(return_value="<html></html>")
-    browser_mock = mocker.AsyncMock()
-    browser_mock.get = AsyncMock(return_value=page_mock)
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler.asyncio.sleep",
-        new_callable=AsyncMock,
-    )
-
-    result = await _fetch_page_html(browser_mock, "https://example.com")
-    assert result == "<html></html>"
-
-
-@pytest.mark.asyncio
-async def test_fetch_page_html_exception_returns_none(mocker) -> None:
-    browser_mock = mocker.AsyncMock()
-    browser_mock.get = AsyncMock(side_effect=Exception("nav failed"))
-
-    assert await _fetch_page_html(browser_mock, "https://example.com") is None
+    assert await _fetch_page_html(browser, _LUFFY_URL, "#htitle") is None
 
 
 def _still_arriving(html: str) -> str:
     return html[: html.index('id="htitle"') + 400]
 
 
-class _PageStillLoading:
+class StillLoadingTab(zendriver.Tab):
     def __init__(self, html: str, loading_reads: int) -> None:
-        self._html = html
-        self._loading_reads = loading_reads
+        self.html = html
+        self.loading_reads = loading_reads
 
-    async def wait_for(self, selector: str, timeout: float) -> None:
+    async def wait_for(self, selector: str | None = None, **_: object) -> None:
         return None
 
-    async def evaluate(self, expression: str) -> str:
-        if self._loading_reads:
-            self._loading_reads -= 1
+    async def evaluate(self, expression: str, **_: object) -> str:
+        if self.loading_reads:
+            self.loading_reads -= 1
             return "loading"
         return "interactive"
 
-    async def get_content(self) -> str:
-        return _still_arriving(self._html) if self._loading_reads else self._html
+    async def get_content(self, **_: object) -> str:
+        return _still_arriving(self.html) if self.loading_reads else self.html
 
 
-def test_a_character_page_read_mid_load_loses_its_late_fields(
+def test_extract_character_from_html_mid_load_page_loses_late_fields(
     luffy_char_html: str,
 ) -> None:
     complete = _extract_character_from_html(luffy_char_html)
@@ -410,33 +379,15 @@ def test_a_character_page_read_mid_load_loses_its_late_fields(
     assert complete["screenshot_images"] and not partial["screenshot_images"]
 
 
-@pytest.mark.asyncio
-async def test_character_page_is_read_after_its_document_finishes_loading(
-    luffy_char_html: str, mocker
+async def test_fetch_page_html_document_still_loading_returns_finished_page(
+    luffy_char_html: str,
 ) -> None:
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler.asyncio.sleep",
-        new_callable=AsyncMock,
-    )
-    browser_mock = mocker.AsyncMock()
-    browser_mock.get = AsyncMock(
-        return_value=_PageStillLoading(luffy_char_html, loading_reads=3)
-    )
+    browser = create_autospec(zendriver.Browser, instance=True)
+    browser.get.return_value = StillLoadingTab(luffy_char_html, loading_reads=3)
 
-    html = await _fetch_page_html(browser_mock, _LUFFY_URL, wait_selector="#htitle")
+    html = await _fetch_page_html(browser, _LUFFY_URL, "#htitle")
 
     assert html == luffy_char_html
-
-
-@pytest.mark.asyncio
-async def test_a_document_that_never_finishes_is_read_after_the_timeout(
-    luffy_char_html: str, caplog
-) -> None:
-    page = _PageStillLoading(luffy_char_html, loading_reads=1_000_000)
-
-    await _wait_until_document_parsed(page, _LUFFY_URL, timeout=0.1)
-
-    assert "still loading" in caplog.text
 
 
 # =============================================================================

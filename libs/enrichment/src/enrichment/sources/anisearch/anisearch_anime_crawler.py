@@ -23,6 +23,7 @@ from enrichment.sources.base.framework import (
     FileRepository,
     NullRepository,
 )
+from enrichment.sources.base.page_readiness import wait_for_page
 from enrichment.sources.base.utils import parse_broadcast_string, parse_iso_date
 from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
@@ -256,15 +257,10 @@ def _process_relation_tooltips(relations: list[dict[str, Any]]) -> None:
 # ---------------------------------------------------------------------------
 
 
-async def _fetch_page_html(
-    browser: Any, url: str, wait_selector: str | None = None
-) -> str | None:
+async def _fetch_page_html(browser: Any, url: str, wait_selector: str) -> str | None:
     try:
         page = await browser.get(url)
-        if wait_selector:
-            await page.wait_for(selector=wait_selector, timeout=10)
-        else:
-            await asyncio.sleep(2)
+        await wait_for_page(page, wait_selector, url)
         return await page.get_content()
     except Exception as exc:
         logger.warning(f"navigation failed for {url}: {exc}")
@@ -405,8 +401,7 @@ async def _fetch_anisearch_anime_data(canonical_path: str) -> dict[str, Any] | N
         browser = session.browser
         try:
             main_page = await browser.get(base_url)
-            await main_page.wait_for(selector="#htitle", timeout=10)
-            await asyncio.sleep(2)  # genres/stats sections render after htitle
+            await wait_for_page(main_page, "#htitle", base_url)
             final_url = main_page.url  # capture post-redirect slug URL
             main_html = await main_page.get_content()
         except Exception as exc:
@@ -428,9 +423,7 @@ async def _fetch_anisearch_anime_data(canonical_path: str) -> dict[str, Any] | N
 
         canonical_base = final_url.rstrip("/") if final_url else base_url
         rels_url = f"{canonical_base}/relations?show=overall"
-        rels_html = await _fetch_page_html(
-            browser, rels_url, wait_selector="#relations_anime"
-        )
+        rels_html = await _fetch_page_html(browser, rels_url, "#relations_anime")
         rels_raw = _extract_relations_from_html(rels_html) if rels_html else None
 
     data = _post_process_main(main_raw)

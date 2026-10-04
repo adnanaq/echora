@@ -13,6 +13,7 @@ import re
 from typing import Any, cast
 
 from enrichment.sources.base.browser import browser_session
+from enrichment.sources.base.page_readiness import wait_for_page
 from enrichment.sources.mal.mal_base import MAL_DOMAIN
 from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
@@ -65,7 +66,7 @@ async def _fetch_episode_count_html(url: str) -> str | None:
         browser = session.browser
         try:
             page = await browser.get(url)
-            await page.wait_for(selector="h2.h2_overwrite", timeout=15)
+            await wait_for_page(page, "h2.h2_overwrite", url)
             return await page.get_content()
         except Exception as exc:
             logger.warning(f"navigation failed for {url}: {exc}")

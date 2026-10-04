@@ -23,6 +23,7 @@ from enrichment.sources.base.framework import (
     FileRepository,
     NullRepository,
 )
+from enrichment.sources.base.page_readiness import wait_for_page
 from enrichment.sources.mal.mal_base import (
     MAL_DOMAIN,
     parse_number,
@@ -419,8 +420,8 @@ def _extract_ography(content_html: str, section: str) -> list[MalOgraphyEntry]:
 async def _fetch_character_html(browser: Any, url: str) -> tuple[str, str] | None:
     """Navigate to a MAL character URL and return (html, canonical_url).
 
-    The Voice Actors section uses intersection-observer lazy loading — it only
-    renders when scrolled into view. scroll_down triggers it before capture.
+    Only the voice actors' images load when scrolled into view; their names and
+    links come with the page's HTML, so no scrolling is needed.
 
     Args:
         browser: Active zendriver browser instance.
@@ -431,9 +432,7 @@ async def _fetch_character_html(browser: Any, url: str) -> tuple[str, str] | Non
     """
     try:
         page = await browser.get(url)
-        await page.wait_for(selector="h2.normal_header", timeout=10)
-        await page.scroll_down(amount=1000, speed=3000)
-        await asyncio.sleep(2)
+        await wait_for_page(page, "h2.normal_header", url)
         return await page.get_content(), page.url or url
     except Exception as exc:
         logger.warning(f"navigation failed for {url}: {exc}")

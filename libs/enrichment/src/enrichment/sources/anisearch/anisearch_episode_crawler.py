@@ -29,6 +29,7 @@ from enrichment.sources.base.framework import (
     BaseCrawler,
     NullRepository,
 )
+from enrichment.sources.base.page_readiness import wait_for_page
 from enrichment.sources.base.utils import parse_iso_date, sanitize_output_path
 from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
@@ -204,9 +205,7 @@ async def _fetch_anisearch_episode_data(url: str) -> dict[str, Any] | None:
         browser = session.browser
         try:
             page = await browser.get(url)
-            await page.wait_for(selector="table.episodes", timeout=15)
-            await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-            await asyncio.sleep(2)
+            await wait_for_page(page, "table.episodes", url)
             html_text = await page.get_content()
         except Exception as exc:
             logger.warning(f"navigation failed for {url}: {exc}")

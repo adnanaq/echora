@@ -23,6 +23,7 @@ from enrichment.sources.base.framework import (
     FileRepository,
     NullRepository,
 )
+from enrichment.sources.base.page_readiness import wait_for_page
 from enrichment.sources.mal.mal_base import (
     MAL_BASE_URL,
     MAL_DOMAIN,
@@ -333,52 +334,22 @@ def _extract_pics_from_html(html_text: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-async def _fetch_page_html(
-    browser: Any, url: str, wait_selector: str | None = None
-) -> str | None:
-    """Navigate to a URL with zendriver and return the rendered HTML.
-
-    Args:
-        browser: Active zendriver browser instance.
-        url: Page URL to fetch.
-        wait_selector: CSS selector to wait for before capturing HTML. If None,
-            waits 2 seconds instead.
-
-    Returns:
-        Rendered HTML string, or None if navigation fails.
-    """
-    try:
-        page = await browser.get(url)
-        if wait_selector:
-            await page.wait_for(selector=wait_selector, timeout=10)
-        else:
-            await asyncio.sleep(2)
-        return await page.get_content()
-    except Exception as exc:
-        logger.warning(f"navigation failed for {url}: {exc}")
-        return None
-
-
 async def _fetch_pics_html(browser: Any, url: str) -> str | None:
-    """Fetch a MAL /pics page, scrolling to trigger lazy-loaded gallery images.
+    """Fetch a MAL /pics page and return its HTML.
 
-    The gallery uses an intersection-observer; images only load when they enter
-    the viewport. scroll_down(amount=1000) scrolls 10x the page height, ensuring
-    all images are triggered before HTML is captured.
+    The gallery images load only when scrolled into view, but the picture links
+    read from the page come with its HTML, so no scrolling is needed.
 
     Args:
         browser: Active zendriver browser instance.
         url: MAL /pics page URL (e.g. https://myanimelist.net/anime/21/One_Piece/pics).
 
     Returns:
-        Rendered HTML with all gallery images loaded, or None if navigation fails.
+        Rendered HTML, or None if navigation fails.
     """
     try:
         page = await browser.get(url)
-        await page.wait_for(selector="div.picSurround", timeout=10)
-        # Gallery uses intersection-observer lazy loading — scroll to load all images
-        await page.scroll_down(amount=1000, speed=3000)
-        await asyncio.sleep(2)
+        await wait_for_page(page, "div.picSurround", url)
         return await page.get_content()
     except Exception as exc:
         logger.warning(f"navigation failed for {url}: {exc}")
@@ -741,8 +712,8 @@ async def _fetch_mal_anime_data(url: str) -> dict[str, Any] | None:
     """Fetch and extract a MAL anime detail page via zendriver. Result is cached by URL.
 
     Opens a single browser session, fetches the main detail page and the /pics
-    gallery page sequentially, waits for Vue-rendered sections (theme songs,
-    related anime), and scrolls the /pics page to trigger lazy-loaded images.
+    gallery page sequentially, and reads each once its HTML has arrived. Theme
+    songs and related entries come with the main page's HTML.
 
     Args:
         url: Full MAL anime URL (e.g. ``https://myanimelist.net/anime/21/One_Piece``).
@@ -755,13 +726,7 @@ async def _fetch_mal_anime_data(url: str) -> dict[str, Any] | None:
         browser = session.browser
         try:
             main_page = await browser.get(url)
-            await main_page.wait_for(selector="h1.title-name", timeout=10)
-            # Theme songs and related entries are Vue-rendered; wait for them
-            try:
-                await main_page.wait_for(selector="div.theme-songs", timeout=15)
-            except Exception as exc:
-                logger.debug(f"theme-songs wait timed out: {exc}")
-            await asyncio.sleep(2)
+            await wait_for_page(main_page, "h1.title-name", url)
             final_url = main_page.url
             main_html = await main_page.get_content()
         except Exception as exc:

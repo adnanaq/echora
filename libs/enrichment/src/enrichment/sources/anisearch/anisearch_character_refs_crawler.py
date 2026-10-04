@@ -11,6 +11,7 @@ import logging
 from typing import cast
 
 from enrichment.sources.base.browser import browser_session
+from enrichment.sources.base.page_readiness import wait_for_page
 from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
 
@@ -118,8 +119,7 @@ async def _fetch_anisearch_character_refs_data(
         browser = session.browser
         try:
             page = await browser.get(characters_url)
-            await page.wait_for(selector="#content", timeout=10)
-            await page.scroll_down(amount=1000, speed=3000)
+            await wait_for_page(page, "#content", characters_url)
             html_text = await page.get_content()
         except Exception:
             logger.exception(f"navigation failed for {characters_url}")

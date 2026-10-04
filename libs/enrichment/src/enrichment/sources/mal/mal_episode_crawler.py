@@ -23,6 +23,7 @@ from enrichment.sources.base.framework import (
     FileRepository,
     NullRepository,
 )
+from enrichment.sources.base.page_readiness import wait_for_page
 from enrichment.sources.mal.mal_base import (
     MAL_DOMAIN,
     parse_duration_seconds,
@@ -316,7 +317,7 @@ async def _fetch_episode_html(browser: Any, url: str) -> tuple[str, str] | None:
     """
     try:
         page = await browser.get(url)
-        await page.wait_for(selector="h2.fs18", timeout=15)
+        await wait_for_page(page, "h2.fs18", url)
         return await page.get_content(), page.url or url
     except Exception as exc:
         logger.warning(f"navigation failed for {url}: {exc}")
