@@ -7,9 +7,12 @@ Edge-case branches use inline overrides on top of the real fixture dict.
 No network calls are made.
 """
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
+from enrichment.sources.anisearch import (
+    anisearch_character_refs_crawler as crawler_module,
+)
 from enrichment.sources.anisearch.anisearch_character_refs_crawler import (
     _ANISEARCH_BASE_URL,
     _XPATHS,
@@ -20,6 +23,7 @@ from enrichment.sources.anisearch.anisearch_character_refs_crawler import (
     _post_process_refs,
     fetch_anisearch_character_refs,
 )
+from enrichment.sources.base.polite_http import FetchedPage
 
 pytestmark = pytest.mark.asyncio
 
@@ -184,79 +188,71 @@ def test_post_process_refs_missing_url_skipped() -> None:
 # =============================================================================
 
 
-def _make_browser_mock(mocker, html: str | None):
-    page_mock = mocker.AsyncMock()
-    page_mock.wait_for = AsyncMock()
-    page_mock.scroll_down = AsyncMock()
-    if html is None:
-        page_mock.wait_for.side_effect = Exception("timeout")
-    else:
-        page_mock.get_content = AsyncMock(return_value=html)
-    browser_mock = mocker.AsyncMock()
-    browser_mock.get = AsyncMock(return_value=page_mock)
-    browser_mock.stop = AsyncMock()
-    return browser_mock
+def _cast_page(html: str | None) -> FetchedPage | None:
+    return None if html is None else FetchedPage(url=_ONE_PIECE_CHARS_URL, html=html)
 
 
-async def test_fetch_refs_navigation_failure_returns_none(mocker) -> None:
-    mocker.patch(
-        "http_cache.result_cache.get_cache_config",
-        return_value=mocker.MagicMock(cache_enabled=False),
-    )
-    browser_mock = _make_browser_mock(mocker, html=None)
-    browser_mock.stop.side_effect = Exception("stop failed")
-    mocker.patch("zendriver.start", new_callable=AsyncMock, return_value=browser_mock)
-    assert await _fetch_anisearch_character_refs_data(_ONE_PIECE_CHARS_URL) is None
+@pytest.mark.usefixtures("cache_off")
+async def test_fetch_anisearch_character_refs_data_page_unreadable_returns_none() -> (
+    None
+):
+    with patch.object(
+        crawler_module, "fetch_anisearch_page", autospec=True, return_value=None
+    ):
+        assert await _fetch_anisearch_character_refs_data(_ONE_PIECE_CHARS_URL) is None
 
 
-async def test_fetch_refs_real_fixture_returns_refs(mocker, one_piece_refs_raw) -> None:
-    mocker.patch(
-        "http_cache.result_cache.get_cache_config",
-        return_value=mocker.MagicMock(cache_enabled=False),
-    )
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_refs_crawler._extract_refs_from_html",
-        return_value=one_piece_refs_raw,
-    )
-    mocker.patch(
-        "zendriver.start",
-        new_callable=AsyncMock,
-        return_value=_make_browser_mock(mocker, html="<html></html>"),
-    )
-    refs = await _fetch_anisearch_character_refs_data(_ONE_PIECE_CHARS_URL)
-    assert refs is not None
-    assert len(refs) > 0
+@pytest.mark.usefixtures("cache_off")
+async def test_fetch_anisearch_character_refs_data_real_refs_returns_absolute_urls(
+    one_piece_refs_raw: dict,
+) -> None:
+    with (
+        patch.object(
+            crawler_module,
+            "fetch_anisearch_page",
+            autospec=True,
+            return_value=_cast_page("<html></html>"),
+        ),
+        patch.object(
+            crawler_module,
+            "_extract_refs_from_html",
+            autospec=True,
+            return_value=one_piece_refs_raw,
+        ),
+    ):
+        refs = await _fetch_anisearch_character_refs_data(_ONE_PIECE_CHARS_URL)
+
+    assert refs == _post_process_refs(one_piece_refs_raw, _ONE_PIECE_CHARS_URL)
     assert refs[0]["url"].startswith("https://")
 
 
-async def test_fetch_refs_extraction_failure_returns_none(mocker) -> None:
-    mocker.patch(
-        "http_cache.result_cache.get_cache_config",
-        return_value=mocker.MagicMock(cache_enabled=False),
-    )
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_refs_crawler._extract_refs_from_html",
-        return_value=None,
-    )
-    mocker.patch(
-        "zendriver.start",
-        new_callable=AsyncMock,
-        return_value=_make_browser_mock(mocker, html="<html></html>"),
-    )
-    assert await _fetch_anisearch_character_refs_data(_ONE_PIECE_CHARS_URL) is None
+@pytest.mark.usefixtures("cache_off")
+async def test_fetch_anisearch_character_refs_data_extraction_fails_returns_none() -> (
+    None
+):
+    with (
+        patch.object(
+            crawler_module,
+            "fetch_anisearch_page",
+            autospec=True,
+            return_value=_cast_page("<html></html>"),
+        ),
+        patch.object(
+            crawler_module, "_extract_refs_from_html", autospec=True, return_value=None
+        ),
+    ):
+        assert await _fetch_anisearch_character_refs_data(_ONE_PIECE_CHARS_URL) is None
 
 
-async def test_fetch_refs_empty_content_returns_none(mocker) -> None:
-    mocker.patch(
-        "http_cache.result_cache.get_cache_config",
-        return_value=mocker.MagicMock(cache_enabled=False),
-    )
-    mocker.patch(
-        "zendriver.start",
-        new_callable=AsyncMock,
-        return_value=_make_browser_mock(mocker, html=""),
-    )
-    assert await _fetch_anisearch_character_refs_data(_ONE_PIECE_CHARS_URL) is None
+@pytest.mark.usefixtures("cache_off")
+async def test_fetch_anisearch_character_refs_data_empty_page_returns_none() -> None:
+    with patch.object(
+        crawler_module,
+        "fetch_anisearch_page",
+        autospec=True,
+        return_value=_cast_page(""),
+    ):
+        assert await _fetch_anisearch_character_refs_data(_ONE_PIECE_CHARS_URL) is None
 
 
 # =============================================================================

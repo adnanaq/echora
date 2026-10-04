@@ -28,7 +28,7 @@ libs/enrichment/src/enrichment/
 │   ├── mal/            # MyAnimeList — browser scraping via zendriver
 │   ├── kitsu/          # Kitsu — REST API
 │   ├── anilist/        # AniList — GraphQL API
-│   ├── anisearch/      # AniSearch — browser scraping via zendriver
+│   ├── anisearch/      # AniSearch — plain HTTP scraping
 │   ├── anime_planet/   # Anime-Planet — browser scraping via zendriver
 │   ├── anidb/          # AniDB — XML API (characters via zendriver)
 │   └── animeschedule/  # AnimSchedule — REST API
@@ -159,7 +159,7 @@ uv run python -m enrichment.sources.animeschedule.animeschedule_helper "One Piec
 
 ## Browser Automation
 
-All browser-based sources (MAL, AniSearch, Anime-Planet, AniDB) use `zendriver`
+The browser-based sources (MAL, Anime-Planet, AniDB) use `zendriver`
 (CDP-based Chrome automation). No external Docker sidecar is required. Crawlers
 never call `zd.start()` or `browser.stop()` themselves; they open a browser through
 `sources/base/browser.py` and wait for pages through
@@ -178,9 +178,16 @@ async with browser_session(headless=True) as session:
 `browser_session()` closes the browser in tens of milliseconds, holds a slot from
 the process-wide limit `EnrichmentConfig.max_concurrent_browsers`
 (`ENRICHMENT_MAX_CONCURRENT_BROWSERS`, default 4) while it is open, and marks the
-browser's profile so a later run can clean up after a killed one. AniSearch and
-AniDB pass `headless=False`; a batch that hits a browser crash calls
-`session.restart()`, which keeps the session's settings.
+browser's profile so a later run can clean up after a killed one. AniDB passes
+`headless=False`; a batch that hits a browser crash calls `session.restart()`,
+which keeps the session's settings.
+
+AniSearch needs no browser: its pages arrive complete over plain HTTP. Every
+AniSearch request goes through `sources/anisearch/anisearch_http.py`, which sends
+the headers Chrome sends, starts requests at least 3 s apart across the process,
+and stops all AniSearch traffic at the first block (HTTP 403, 423 or 429, or a
+refused connection), with no retry (`sources/base/polite_http.py`). AniSearch
+bans clients by User-Agent, and a ban refuses every connection from that IP.
 
 `wait_for_page()` waits up to 30 s for an element only the expected page has,
 then until the page's HTML has fully arrived, and reads it then. Everything the

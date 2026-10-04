@@ -1,12 +1,11 @@
-"""Crawls anime information from anisearch.com via zendriver + lxml XPath.
+"""Crawls anime information from anisearch.com over plain HTTP + lxml XPath.
 
 Extracts metadata and relations using lxml XPath on raw page HTML.
-Results are cached in Redis. Two sequential page fetches per anime
-(main + /relations?show=overall), one after the other with a delay between
-them, to stay polite to AniSearch.
+Results are cached in Redis. Two page fetches per anime (main +
+/relations?show=overall), spaced out like every AniSearch request; see
+``anisearch_http``.
 """
 
-import asyncio
 import html
 import logging
 import re
@@ -17,14 +16,13 @@ from enrichment.sources.anisearch.anisearch_anime_models import (
     AniSearchRelatedEntry,
     AniSearchStatistics,
 )
+from enrichment.sources.anisearch.anisearch_http import fetch_anisearch_page
 from enrichment.sources.anisearch.anisearch_mapper import anime_from_anisearch
-from enrichment.sources.base.browser import browser_session
 from enrichment.sources.base.framework import (
     BaseCrawler,
     FileRepository,
     NullRepository,
 )
-from enrichment.sources.base.page_readiness import wait_for_page
 from enrichment.sources.base.utils import parse_broadcast_string, parse_iso_date
 from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
@@ -36,7 +34,6 @@ TTL_ANISEARCH = _CACHE_CONFIG.ttl_anisearch
 
 BASE_ANIME_URL = "https://www.anisearch.com/anime/"
 _ANISEARCH_BASE_URL = "https://www.anisearch.com"
-_INTER_REQUEST_DELAY = 3.0
 
 _LABEL_RE = re.compile(r"^\s*[^:]+:\s*")
 _DATE_RANGE_RE = re.compile(r"(\d{2}\.\d{2}\.\d{4})\s*[-–‑]\s*(\d{2}\.\d{2}\.\d{4})")
@@ -254,21 +251,6 @@ def _process_relation_tooltips(relations: list[dict[str, Any]]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Browser navigation helper
-# ---------------------------------------------------------------------------
-
-
-async def _fetch_page_html(browser: Any, url: str, wait_selector: str) -> str | None:
-    try:
-        page = await browser.get(url)
-        await wait_for_page(page, wait_selector, url)
-        return await page.get_content()
-    except Exception as exc:
-        logger.warning(f"navigation failed for {url}: {exc}")
-        return None
-
-
-# ---------------------------------------------------------------------------
 # Post-processing helpers (unchanged — pure dict transforms)
 # ---------------------------------------------------------------------------
 
@@ -391,45 +373,32 @@ def _parse_relations(
 async def _fetch_anisearch_anime_data(canonical_path: str) -> dict[str, Any] | None:
     """Fetch and extract raw anime data for a given AniSearch anime path.
 
-    Two sequential page fetches (main, relations) in one browser session, with
-    a delay between them to stay polite to AniSearch. Cached by canonical path;
+    Two page fetches (main, relations) over plain HTTP, spaced out by
+    ``anisearch_http``. Cached by canonical path;
     cache is automatically invalidated when any extraction function changes.
 
     Returns a JSON-serializable dict of primitives ready for _build_anime_from_raw.
     """
     base_url = f"{BASE_ANIME_URL}{canonical_path}"
-    async with browser_session(headless=False) as session:
-        browser = session.browser
-        try:
-            main_page = await browser.get(base_url)
-            await wait_for_page(main_page, "#htitle", base_url)
-            final_url = main_page.url  # capture post-redirect slug URL
-            main_html = await main_page.get_content()
-        except Exception as exc:
-            logger.warning(f"navigation failed for {base_url}: {exc}")
-            return None
+    main_page = await fetch_anisearch_page(base_url)
+    if main_page is None:
+        logger.warning(f"No HTML from AniSearch main page: {base_url}")
+        return None
 
-        if not main_html:
-            logger.warning(f"No HTML from AniSearch main page: {base_url}")
-            return None
+    main_raw = _extract_anime_from_html(main_page.html)
+    if main_raw is None:
+        logger.warning(f"Failed to extract data from AniSearch main page: {base_url}")
+        return None
 
-        main_raw = _extract_anime_from_html(main_html)
-        if main_raw is None:
-            logger.warning(
-                f"Failed to extract data from AniSearch main page: {base_url}"
-            )
-            return None
-
-        await asyncio.sleep(_INTER_REQUEST_DELAY)
-
-        canonical_base = final_url.rstrip("/") if final_url else base_url
-        rels_url = f"{canonical_base}/relations?show=overall"
-        rels_html = await _fetch_page_html(browser, rels_url, "#relations_anime")
-        rels_raw = _extract_relations_from_html(rels_html) if rels_html else None
+    final_url = main_page.url
+    rels_page = await fetch_anisearch_page(
+        f"{final_url.rstrip('/')}/relations?show=overall"
+    )
+    rels_raw = _extract_relations_from_html(rels_page.html) if rels_page else None
 
     data = _post_process_main(main_raw)
     data["anime_relations"], data["manga_relations"] = _parse_relations(rels_raw)
-    if final_url and final_url != base_url:
+    if final_url != base_url:
         data["_canonical_url"] = final_url
     return data
 
@@ -498,7 +467,7 @@ def _build_anime_from_raw(raw: dict[str, Any], url: str) -> AniSearchAnime:
 
 
 class AniSearchAnimeCrawler(BaseCrawler[AniSearchAnime, dict[str, Any]]):
-    """Crawler for AniSearch anime detail pages via zendriver + lxml XPath."""
+    """Crawler for AniSearch anime detail pages over plain HTTP + lxml XPath."""
 
     def get_extraction_schema(self) -> dict[str, Any]:
         return {"xpaths": _XPATHS}

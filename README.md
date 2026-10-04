@@ -180,11 +180,11 @@ Pants resolves its own interpreter from `PATH`, independently of the venv. If
 uv python install 3.14   # creates ~/.local/bin/python3.14
 ```
 
-The enrichment pipeline's MAL, AniSearch, Anime-Planet and AniDB sources drive a
-real Chrome through zendriver, so running them needs Chrome or Chromium
-installed. AniSearch and AniDB open a visible window (AniDB's Cloudflare check
-does not clear in a headless browser), so they also need a display: a desktop
-session, or Xvfb. Both Docker images (`apps/enrichment_service/Dockerfile.dev`
+The enrichment pipeline's MAL, Anime-Planet and AniDB sources drive a real
+Chrome through zendriver, so running them needs Chrome or Chromium installed.
+AniDB opens a visible window (its Cloudflare check does not clear in a headless
+browser), so it also needs a display: a desktop session, or Xvfb. AniSearch is
+fetched over plain HTTP and needs neither. Both Docker images (`apps/enrichment_service/Dockerfile.dev`
 and `Dockerfile.prd`) install Chromium and start Xvfb, so Path A needs neither.
 
 ---

@@ -1,4 +1,4 @@
-"""AniSearch episode crawler using zendriver + lxml XPath.
+"""AniSearch episode crawler over plain HTTP + lxml XPath.
 
 Fetches the /episodes sub-page of an AniSearch anime URL and extracts per-episode
 metadata (number, filler/recap flags, duration, air date, and titles in up to 5
@@ -23,13 +23,12 @@ from enrichment.sources.anisearch.anisearch_anime_models import (
     AniSearchEpisode,
     AniSearchEpisodesPage,
 )
+from enrichment.sources.anisearch.anisearch_http import fetch_anisearch_page
 from enrichment.sources.anisearch.anisearch_mapper import episode_from_anisearch
-from enrichment.sources.base.browser import browser_session
 from enrichment.sources.base.framework import (
     BaseCrawler,
     NullRepository,
 )
-from enrichment.sources.base.page_readiness import wait_for_page
 from enrichment.sources.base.utils import parse_iso_date, sanitize_output_path
 from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
@@ -200,22 +199,15 @@ def _parse_episode_row(raw: dict[str, Any]) -> dict[str, Any] | None:
     dependencies=[_extract_episodes_from_html],
 )
 async def _fetch_anisearch_episode_data(url: str) -> dict[str, Any] | None:
-    """Fetch the /episodes page and return the raw body dict. Cached by URL."""
-    async with browser_session(headless=False) as session:
-        browser = session.browser
-        try:
-            page = await browser.get(url)
-            await wait_for_page(page, "table.episodes", url)
-            html_text = await page.get_content()
-        except Exception as exc:
-            logger.warning(f"navigation failed for {url}: {exc}")
-            return None
+    """Fetch the /episodes page and return the raw body dict. Cached by URL.
 
-    if not html_text:
+    The whole list comes with the page's HTML (1,200 episodes for One Piece).
+    """
+    page = await fetch_anisearch_page(url)
+    if page is None or not page.html:
         logger.warning(f"No HTML from episodes page: {url}")
         return None
-
-    return _extract_episodes_from_html(html_text)
+    return _extract_episodes_from_html(page.html)
 
 
 # ---------------------------------------------------------------------------

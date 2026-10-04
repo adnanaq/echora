@@ -11,9 +11,13 @@ Fixtures are real XPath extraction output captured from:
 """
 
 import json
+from collections.abc import Iterator
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
+from enrichment.sources.anisearch import anisearch_http
+from http_cache.config import CacheConfig
 
 _FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -99,3 +103,24 @@ def one_piece_episodes_raw() -> dict:
 def one_piece_episodes_html() -> str:
     """Full page HTML for https://www.anisearch.com/anime/2227,one-piece/episodes."""
     return (_FIXTURES / "one_piece_episodes.html").read_text()
+
+
+@pytest.fixture(autouse=True)
+def no_real_anisearch_requests() -> Iterator[None]:
+    with patch.object(
+        anisearch_http.ANISEARCH_CLIENT,
+        "fetch",
+        autospec=True,
+        side_effect=AssertionError("a unit test tried to reach AniSearch"),
+    ):
+        yield
+
+
+@pytest.fixture
+def cache_off() -> Iterator[None]:
+    with patch(
+        "http_cache.result_cache.get_cache_config",
+        autospec=True,
+        return_value=CacheConfig(cache_enabled=False),
+    ):
+        yield

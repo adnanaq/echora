@@ -1,19 +1,21 @@
-"""Unit tests for anisearch_episode_crawler (zendriver + lxml XPath)."""
+"""Unit tests for anisearch_episode_crawler (plain HTTP + lxml XPath)."""
 
-from unittest.mock import AsyncMock
-
-import pytest
+import json
+from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+from enrichment.sources.anisearch import anisearch_episode_crawler as crawler_module
 from enrichment.sources.anisearch.anisearch_episode_crawler import (
-    AniSearchEpisodeCrawler,
     _XPATHS,
+    AniSearchEpisodeCrawler,
     _extract_episodes_from_html,
     _fetch_anisearch_episode_data,
     _parse_episode_row,
     fetch_anisearch_episodes,
 )
 from enrichment.sources.base.framework import NullRepository
+from enrichment.sources.base.polite_http import FetchedPage
 
 _URL = "https://www.anisearch.com/anime/2227,one-piece"
 
@@ -242,51 +244,40 @@ def test_parse_episode_row_title_ja_without_kanji() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _make_browser_mock(mocker, html: str | None):
-    page_mock = mocker.AsyncMock()
-    page_mock.wait_for = AsyncMock()
-    if html is None:
-        page_mock.wait_for.side_effect = Exception("timeout")
-    else:
-        page_mock.get_content = AsyncMock(return_value=html)
-    browser_mock = mocker.AsyncMock()
-    browser_mock.get = AsyncMock(return_value=page_mock)
-    browser_mock.stop = AsyncMock()
-    return browser_mock
+def _episodes_page(html: str | None) -> FetchedPage | None:
+    return None if html is None else FetchedPage(url=f"{_URL}/episodes", html=html)
 
 
-@pytest.mark.asyncio
-async def test_fetch_episodes_returns_parsed_list(
-    mocker, one_piece_episodes_raw
+@pytest.mark.usefixtures("cache_off")
+async def test_fetch_anisearch_episodes_real_page_returns_parsed_list(
+    one_piece_episodes_raw: dict,
 ) -> None:
-    mocker.patch(
-        "http_cache.result_cache.get_cache_config",
-        return_value=mocker.MagicMock(cache_enabled=False),
-    )
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_episode_crawler._extract_episodes_from_html",
-        return_value=one_piece_episodes_raw,
-    )
-    mocker.patch(
-        "zendriver.start",
-        new_callable=AsyncMock,
-        return_value=_make_browser_mock(mocker, "<html></html>"),
-    )
+    with (
+        patch.object(
+            crawler_module,
+            "fetch_anisearch_page",
+            autospec=True,
+            return_value=_episodes_page("<html></html>"),
+        ),
+        patch.object(
+            crawler_module,
+            "_extract_episodes_from_html",
+            autospec=True,
+            return_value=one_piece_episodes_raw,
+        ),
+    ):
+        result = await fetch_anisearch_episodes(_URL)
 
-    result = await fetch_anisearch_episodes(_URL)
     assert result is not None
     assert len(result) == 7
     assert result[0]["episode_number"] == 1
     assert (
         result[0]["title"] == "I'm Luffy! The Man Who's Gonna Be King Of The Pirates!"
     )
-    # ep 279: both filler and recap
     assert result[2]["filler"] is True
     assert result[2]["recap"] is True
-    # ep 457: recap only
     assert result[3]["recap"] is True
     assert result[3]["filler"] is False
-    # ep 50: filler only
     assert result[4]["filler"] is True
     assert result[4]["recap"] is False
     assert result[0]["titles"] == {
@@ -299,63 +290,64 @@ async def test_fetch_episodes_returns_parsed_list(
     assert result[5]["episode_number"] == 1144
 
 
-@pytest.mark.asyncio
-async def test_fetch_episodes_navigation_failure_returns_none(mocker) -> None:
-    mocker.patch(
-        "http_cache.result_cache.get_cache_config",
-        return_value=mocker.MagicMock(cache_enabled=False),
-    )
-    browser_mock = _make_browser_mock(mocker, html=None)
-    browser_mock.stop.side_effect = Exception("stop failed")
-    mocker.patch("zendriver.start", new_callable=AsyncMock, return_value=browser_mock)
-
-    assert await fetch_anisearch_episodes(_URL) is None
+@pytest.mark.usefixtures("cache_off")
+async def test_fetch_anisearch_episodes_page_unreadable_returns_none() -> None:
+    with patch.object(
+        crawler_module, "fetch_anisearch_page", autospec=True, return_value=None
+    ):
+        assert await fetch_anisearch_episodes(_URL) is None
 
 
-@pytest.mark.asyncio
-async def test_fetch_episodes_filters_out_unparseable_rows(
-    mocker, one_piece_episodes_raw
+@pytest.mark.usefixtures("cache_off")
+async def test_fetch_anisearch_episodes_unparseable_rows_dropped(
+    one_piece_episodes_raw: dict,
 ) -> None:
-    bad_row = {"episode_number_raw": ""}
-    fixture_with_bad = {
-        "episodes": [
-            one_piece_episodes_raw["episodes"][0],
-            bad_row,
-            one_piece_episodes_raw["episodes"][1],
-        ]
-    }
+    episodes = one_piece_episodes_raw["episodes"]
+    with_bad_row = {"episodes": [episodes[0], {"episode_number_raw": ""}, episodes[1]]}
+    with (
+        patch.object(
+            crawler_module,
+            "fetch_anisearch_page",
+            autospec=True,
+            return_value=_episodes_page("<html></html>"),
+        ),
+        patch.object(
+            crawler_module,
+            "_extract_episodes_from_html",
+            autospec=True,
+            return_value=with_bad_row,
+        ),
+    ):
+        result = await fetch_anisearch_episodes(_URL)
 
-    mocker.patch(
-        "http_cache.result_cache.get_cache_config",
-        return_value=mocker.MagicMock(cache_enabled=False),
-    )
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_episode_crawler._extract_episodes_from_html",
-        return_value=fixture_with_bad,
-    )
-    mocker.patch(
-        "zendriver.start",
-        new_callable=AsyncMock,
-        return_value=_make_browser_mock(mocker, "<html></html>"),
-    )
-
-    result = await fetch_anisearch_episodes(_URL)
     assert result is not None
-    assert len(result) == 2
-    assert result[0]["episode_number"] == 1
-    assert result[1]["episode_number"] == 2
+    assert [episode["episode_number"] for episode in result] == [1, 2]
 
 
-@pytest.mark.asyncio
-async def test_fetch_episode_data_empty_content_returns_none(mocker) -> None:
-    mocker.patch(
-        "http_cache.result_cache.get_cache_config",
-        return_value=mocker.MagicMock(cache_enabled=False),
-    )
-    browser_mock = _make_browser_mock(mocker, html="")
-    mocker.patch("zendriver.start", new_callable=AsyncMock, return_value=browser_mock)
+@pytest.mark.usefixtures("cache_off")
+async def test_fetch_anisearch_episode_data_empty_page_returns_none() -> None:
+    with patch.object(
+        crawler_module,
+        "fetch_anisearch_page",
+        autospec=True,
+        return_value=_episodes_page(""),
+    ):
+        assert await _fetch_anisearch_episode_data(_URL) is None
 
-    assert await _fetch_anisearch_episode_data(_URL) is None
+
+@pytest.mark.usefixtures("cache_off")
+async def test_fetch_anisearch_episode_data_real_html_returns_all_rows(
+    one_piece_episodes_html: str,
+) -> None:
+    with patch.object(
+        crawler_module,
+        "fetch_anisearch_page",
+        autospec=True,
+        return_value=_episodes_page(one_piece_episodes_html),
+    ):
+        result = await _fetch_anisearch_episode_data(_URL)
+
+    assert result == _extract_episodes_from_html(one_piece_episodes_html)
 
 
 def test_get_extraction_schema_returns_xpaths() -> None:
@@ -364,29 +356,27 @@ def test_get_extraction_schema_returns_xpaths() -> None:
     assert schema == {"xpaths": _XPATHS}
 
 
-@pytest.mark.asyncio
-async def test_fetch_anisearch_episodes_writes_output_path(
-    mocker, tmp_path, one_piece_episodes_raw
+@pytest.mark.usefixtures("cache_off")
+async def test_fetch_anisearch_episodes_output_path_writes_each_episode(
+    tmp_path: Path, one_piece_episodes_raw: dict
 ) -> None:
-    mocker.patch(
-        "http_cache.result_cache.get_cache_config",
-        return_value=mocker.MagicMock(cache_enabled=False),
-    )
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_episode_crawler._extract_episodes_from_html",
-        return_value=one_piece_episodes_raw,
-    )
-    mocker.patch(
-        "zendriver.start",
-        new_callable=AsyncMock,
-        return_value=_make_browser_mock(mocker, "<html></html>"),
-    )
+    output = tmp_path / "episodes.jsonl"
+    with (
+        patch.object(
+            crawler_module,
+            "fetch_anisearch_page",
+            autospec=True,
+            return_value=_episodes_page("<html></html>"),
+        ),
+        patch.object(
+            crawler_module,
+            "_extract_episodes_from_html",
+            autospec=True,
+            return_value=one_piece_episodes_raw,
+        ),
+    ):
+        result = await fetch_anisearch_episodes(_URL, output_path=str(output))
 
-    output = str(tmp_path / "episodes.jsonl")
-    result = await fetch_anisearch_episodes(_URL, output_path=output)
     assert result is not None
     assert len(result) == 7
-    import json
-
-    lines = [json.loads(l) for l in open(output)]
-    assert len(lines) == 7
+    assert len([json.loads(line) for line in output.read_text().splitlines()]) == 7

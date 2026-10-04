@@ -8,10 +8,11 @@ Edge-case branches use field overrides on top of the real fixture dict.
 No network calls are made.
 """
 
-from unittest.mock import AsyncMock, create_autospec
+from collections.abc import Awaitable, Callable
+from unittest.mock import AsyncMock, patch
 
 import pytest
-import zendriver
+from enrichment.sources.anisearch import anisearch_anime_crawler as crawler_module
 from enrichment.sources.anisearch.anisearch_anime_crawler import (
     _XPATHS,
     BASE_ANIME_URL,
@@ -21,13 +22,14 @@ from enrichment.sources.anisearch.anisearch_anime_crawler import (
     _extract_path_from_url,
     _extract_relations_from_html,
     _fetch_anisearch_anime_data,
-    _fetch_page_html,
     _parse_relations,
     _post_process_main,
     _process_relation_tooltips,
     fetch_anisearch_anime,
 )
+from enrichment.sources.base.exceptions import ServiceBlockedError
 from enrichment.sources.base.framework import NullRepository
+from enrichment.sources.base.polite_http import FetchedPage
 
 _URL = "https://www.anisearch.com/anime/2227,one-piece"
 
@@ -612,57 +614,33 @@ def test_build_source_model_falls_back_to_input_url(one_piece_processed) -> None
 
 
 # =============================================================================
-# _fetch_anisearch_anime_data — async, mocked
+# _fetch_anisearch_anime_data
 # =============================================================================
 
 
-def _make_browser_mock(
-    mocker,
-    main_html: str | None,
-    final_url: str = "https://www.anisearch.com/anime/2227,one-piece",
-):
-    """Build a mock zendriver browser whose main page returns `main_html`."""
-    page_mock = mocker.AsyncMock()
-    page_mock.wait_for = AsyncMock()
-    page_mock.url = final_url
-    if main_html is None:
-        page_mock.wait_for.side_effect = Exception("timeout")
-    else:
-        page_mock.get_content = AsyncMock(return_value=main_html)
-    browser_mock = mocker.AsyncMock()
-    browser_mock.get = AsyncMock(return_value=page_mock)
-    browser_mock.stop = AsyncMock()
-    return browser_mock
+def _site(
+    pages: dict[str, str | None],
+) -> Callable[[str], Awaitable[FetchedPage | None]]:
+    async def fetch(url: str) -> FetchedPage | None:
+        html = pages.get(url)
+        return None if html is None else FetchedPage(url=_URL, html=html)
+
+    return fetch
 
 
-@pytest.mark.asyncio
-async def test_fetch_anime_data_main_html_none_returns_none(mocker) -> None:
-    mocker.patch(
-        "http_cache.result_cache.get_cache_config",
-        return_value=mocker.MagicMock(cache_enabled=False),
-    )
-    browser_mock = _make_browser_mock(mocker, main_html=None)
-    browser_mock.stop.side_effect = Exception("stop failed")
-    mocker.patch("zendriver.start", new_callable=AsyncMock, return_value=browser_mock)
-    assert await _fetch_anisearch_anime_data("2227,one-piece") is None
-
-
-@pytest.mark.asyncio
-async def test_fetch_anime_data_real_fixture(
-    mocker, one_piece_main_html, one_piece_relations_html
+@pytest.mark.usefixtures("cache_off")
+async def test_fetch_anisearch_anime_data_real_pages_returns_processed_data(
+    one_piece_main_html: str, one_piece_relations_html: str
 ) -> None:
-    mocker.patch(
-        "http_cache.result_cache.get_cache_config",
-        return_value=mocker.MagicMock(cache_enabled=False),
-    )
-    browser_mock = _make_browser_mock(mocker, one_piece_main_html)
-    mocker.patch("zendriver.start", new_callable=AsyncMock, return_value=browser_mock)
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_anime_crawler._fetch_page_html",
-        new_callable=AsyncMock,
-        return_value=one_piece_relations_html,
-    )
-    result = await _fetch_anisearch_anime_data("2227,one-piece")
+    pages = {
+        f"{BASE_ANIME_URL}2227": one_piece_main_html,
+        f"{_URL}/relations?show=overall": one_piece_relations_html,
+    }
+    with patch.object(
+        crawler_module, "fetch_anisearch_page", autospec=True, side_effect=_site(pages)
+    ):
+        result = await _fetch_anisearch_anime_data("2227")
+
     assert result is not None
     assert result["title_ja"] == "One Piece"
     assert result["type"] == "TV-Series"
@@ -670,27 +648,56 @@ async def test_fetch_anime_data_real_fixture(
     assert result["statistics"]["score"] == pytest.approx(4.18)
     assert len(result["anime_relations"]) == 79
     assert len(result["manga_relations"]) == 2
+    assert result["_canonical_url"] == _URL
 
 
-@pytest.mark.asyncio
-async def test_fetch_anime_data_relations_none_still_returns_data(
-    mocker, one_piece_main_html
+@pytest.mark.usefixtures("cache_off")
+async def test_fetch_anisearch_anime_data_main_page_unreadable_returns_none() -> None:
+    with patch.object(
+        crawler_module, "fetch_anisearch_page", autospec=True, side_effect=_site({})
+    ):
+        assert await _fetch_anisearch_anime_data("2227,one-piece") is None
+
+
+@pytest.mark.usefixtures("cache_off")
+async def test_fetch_anisearch_anime_data_empty_main_page_returns_none() -> None:
+    pages = {f"{BASE_ANIME_URL}2227,one-piece": ""}
+    with patch.object(
+        crawler_module, "fetch_anisearch_page", autospec=True, side_effect=_site(pages)
+    ):
+        assert await _fetch_anisearch_anime_data("2227,one-piece") is None
+
+
+@pytest.mark.usefixtures("cache_off")
+async def test_fetch_anisearch_anime_data_relations_unreadable_returns_data_without_relations(
+    one_piece_main_html: str,
 ) -> None:
-    mocker.patch(
-        "http_cache.result_cache.get_cache_config",
-        return_value=mocker.MagicMock(cache_enabled=False),
-    )
-    browser_mock = _make_browser_mock(mocker, one_piece_main_html)
-    mocker.patch("zendriver.start", new_callable=AsyncMock, return_value=browser_mock)
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_anime_crawler._fetch_page_html",
-        new_callable=AsyncMock,
-        return_value=None,
-    )
-    result = await _fetch_anisearch_anime_data("2227,one-piece")
+    pages = {f"{BASE_ANIME_URL}2227,one-piece": one_piece_main_html}
+    with patch.object(
+        crawler_module, "fetch_anisearch_page", autospec=True, side_effect=_site(pages)
+    ):
+        result = await _fetch_anisearch_anime_data("2227,one-piece")
+
     assert result is not None
     assert result["anime_relations"] == []
     assert result["manga_relations"] == []
+    assert "_canonical_url" not in result
+
+
+@pytest.mark.usefixtures("cache_off")
+async def test_fetch_anisearch_anime_data_blocked_raises_service_blocked_error() -> (
+    None
+):
+    with (
+        patch.object(
+            crawler_module,
+            "fetch_anisearch_page",
+            autospec=True,
+            side_effect=ServiceBlockedError("HTTP 423", service="anisearch"),
+        ),
+        pytest.raises(ServiceBlockedError),
+    ):
+        await _fetch_anisearch_anime_data("2227,one-piece")
 
 
 # =============================================================================
@@ -735,88 +742,6 @@ async def test_fetch_anisearch_anime_sources_uses_canonical_url(
     result = await fetch_anisearch_anime("https://www.anisearch.com/anime/2227")
     assert result is not None
     assert result["sources"] == [canonical]
-
-
-# =============================================================================
-# _fetch_page_html — direct unit tests (body is mocked everywhere else)
-# =============================================================================
-
-
-async def test_fetch_page_html_returns_page_content() -> None:
-    browser = create_autospec(zendriver.Browser, instance=True)
-    tab = create_autospec(zendriver.Tab, instance=True)
-    tab.evaluate.return_value = "complete"
-    tab.get_content.return_value = "<html></html>"
-    browser.get.return_value = tab
-
-    result = await _fetch_page_html(browser, _URL, "#relations_anime")
-
-    assert result == "<html></html>"
-
-
-async def test_fetch_page_html_navigation_fails_returns_none() -> None:
-    browser = create_autospec(zendriver.Browser, instance=True)
-    browser.get.side_effect = RuntimeError("nav failed")
-
-    assert await _fetch_page_html(browser, _URL, "#relations_anime") is None
-
-
-# =============================================================================
-# _fetch_anisearch_anime_data — additional branch coverage
-# =============================================================================
-
-
-@pytest.mark.asyncio
-async def test_fetch_anime_data_empty_content_returns_none(mocker) -> None:
-    mocker.patch(
-        "http_cache.result_cache.get_cache_config",
-        return_value=mocker.MagicMock(cache_enabled=False),
-    )
-    browser_mock = _make_browser_mock(mocker, main_html="")
-    mocker.patch("zendriver.start", new_callable=AsyncMock, return_value=browser_mock)
-
-    assert await _fetch_anisearch_anime_data("2227,one-piece") is None
-
-
-@pytest.mark.asyncio
-async def test_fetch_anime_data_extraction_fails_returns_none(
-    mocker, one_piece_main_html
-) -> None:
-    mocker.patch(
-        "http_cache.result_cache.get_cache_config",
-        return_value=mocker.MagicMock(cache_enabled=False),
-    )
-    browser_mock = _make_browser_mock(mocker, one_piece_main_html)
-    mocker.patch("zendriver.start", new_callable=AsyncMock, return_value=browser_mock)
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_anime_crawler._extract_anime_from_html",
-        return_value=None,
-    )
-
-    assert await _fetch_anisearch_anime_data("2227,one-piece") is None
-
-
-@pytest.mark.asyncio
-async def test_fetch_anime_data_slug_redirect_sets_canonical_url(
-    mocker, one_piece_main_html, one_piece_relations_html
-) -> None:
-    mocker.patch(
-        "http_cache.result_cache.get_cache_config",
-        return_value=mocker.MagicMock(cache_enabled=False),
-    )
-    # Use numeric-only path; mock returns slug URL after redirect
-    slug_url = "https://www.anisearch.com/anime/2227,one-piece"
-    browser_mock = _make_browser_mock(mocker, one_piece_main_html, final_url=slug_url)
-    mocker.patch("zendriver.start", new_callable=AsyncMock, return_value=browser_mock)
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_anime_crawler._fetch_page_html",
-        new_callable=AsyncMock,
-        return_value=one_piece_relations_html,
-    )
-
-    result = await _fetch_anisearch_anime_data("2227")
-    assert result is not None
-    assert result["_canonical_url"] == slug_url
 
 
 def test_get_extraction_schema_returns_xpaths() -> None:
