@@ -25,11 +25,12 @@ import logging
 import sys
 import time
 from collections.abc import AsyncGenerator
-from contextlib import aclosing
+from contextlib import AsyncExitStack, aclosing
 from typing import Any, cast
 
 from enrichment.sources.anidb.anidb_mapper import character_from_anidb
 from enrichment.sources.anidb.anidb_models import AniDBCharacter, AniDBCharacterPage
+from enrichment.sources.base.browser import BrowserSession, browser_session
 from enrichment.sources.base.utils import sanitize_output_path
 from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
@@ -329,89 +330,92 @@ async def fetch_anidb_characters(
     if not char_ids:
         return
 
-    import zendriver as zd
-
     cached_values, missing_indices = await _anidb_character_cache.cache_batch_get(
         char_ids
     )  # type: ignore[attr-defined]
     missing_set = set(missing_indices)
 
-    browser: Any = None
+    session: BrowserSession | None = None
     succeeded = 0
 
     try:
-        for i, char_id in enumerate(char_ids):
-            if i not in missing_set:
-                val = cached_values[i]
-                yield char_id, AniDBCharacterPage.model_validate(val) if val else None
-                continue
+        async with AsyncExitStack() as browser_stack:
+            for i, char_id in enumerate(char_ids):
+                if i not in missing_set:
+                    val = cached_values[i]
+                    yield (
+                        char_id,
+                        AniDBCharacterPage.model_validate(val) if val else None,
+                    )
+                    continue
 
-            # Cache miss — launch browser lazily on first miss
-            if browser is None:
-                browser = await zd.start(headless=False)
+                # Cache miss — launch browser lazily on first miss
+                if session is None:
+                    session = await browser_stack.enter_async_context(
+                        browser_session(headless=False)
+                    )
 
-            url = f"{_BASE_URL}/{char_id}"
-            html, crashed, current_page = await _fetch_page_html(browser, url)
+                url = f"{_BASE_URL}/{char_id}"
+                html, crashed, current_page = await _fetch_page_html(
+                    session.browser, url
+                )
 
-            if crashed:
-                logger.warning(f"browser crashed — restarting for char {char_id}")
-                try:
-                    await browser.stop()
-                except Exception:  # noqa: S110
-                    pass
-                browser = await zd.start(headless=False)
-                await asyncio.sleep(2)
-                html, crashed, current_page = await _fetch_page_html(browser, url)
                 if crashed:
-                    logger.error(f"browser crashed again on char {char_id} — skipping")
+                    logger.warning(f"browser crashed — restarting for char {char_id}")
+                    await session.restart()
+                    await asyncio.sleep(2)
+                    html, crashed, current_page = await _fetch_page_html(
+                        session.browser, url
+                    )
+                    if crashed:
+                        logger.error(
+                            f"browser crashed again on char {char_id} — skipping"
+                        )
+                        yield char_id, None
+                        continue
+
+                if html is None:
+                    logger.warning(
+                        f"could not read page for char {char_id} — skipping "
+                        f"(transport failure, not a missing character)"
+                    )
                     yield char_id, None
                     continue
 
-            if html is None:
-                logger.warning(
-                    f"could not read page for char {char_id} — skipping "
-                    f"(transport failure, not a missing character)"
-                )
-                yield char_id, None
-                continue
+                if _is_blocked(html):
+                    logger.info(f"block on char {char_id} — solving")
+                    if not await _solve_cf(current_page):
+                        logger.error(f"block did not clear for char {char_id}")
+                        yield char_id, None
+                        continue
+                    await current_page
+                    try:
+                        html = await current_page.get_content()
+                    except Exception:
+                        yield char_id, None
+                        continue
 
-            if _is_blocked(html):
-                logger.info(f"block on char {char_id} — solving")
-                if not await _solve_cf(current_page):
-                    logger.error(f"block did not clear for char {char_id}")
+                if not _has_character_data(html):
+                    logger.warning(
+                        f"no character data for char {char_id} (deleted/invalid)"
+                    )
                     yield char_id, None
-                    continue
-                await current_page
-                try:
-                    html = await current_page.get_content()
-                except Exception:
-                    yield char_id, None
-                    continue
+                else:
+                    page = _extract_from_html(html)
+                    if page is not None:
+                        succeeded += 1
+                    page_dict = (
+                        page.model_dump(mode="json") if page is not None else None
+                    )
+                    # Cache immediately so cancellation doesn't lose progress
+                    await _anidb_character_cache.cache_batch_set([char_id], [page_dict])  # type: ignore[attr-defined]
+                    yield char_id, page
 
-            if not _has_character_data(html):
-                logger.warning(
-                    f"no character data for char {char_id} (deleted/invalid)"
-                )
-                yield char_id, None
-            else:
-                page = _extract_from_html(html)
-                if page is not None:
-                    succeeded += 1
-                page_dict = page.model_dump(mode="json") if page is not None else None
-                # Cache immediately so cancellation doesn't lose progress
-                await _anidb_character_cache.cache_batch_set([char_id], [page_dict])  # type: ignore[attr-defined]
-                yield char_id, page
-
-            # Delay only between browser requests
-            if any(j in missing_set for j in range(i + 1, len(char_ids))):
-                await asyncio.sleep(_INTER_REQUEST_DELAY)
+                # Delay only between browser requests
+                if any(j in missing_set for j in range(i + 1, len(char_ids))):
+                    await asyncio.sleep(_INTER_REQUEST_DELAY)
 
     finally:
-        if browser is not None:
-            try:
-                await browser.stop()
-            except Exception:  # noqa: S110
-                pass
         cache_hits = len(char_ids) - len(missing_set)
         logger.info(
             f"anidb character fetch: {succeeded}/{len(missing_set)} succeeded, {cache_hits} cache hits"

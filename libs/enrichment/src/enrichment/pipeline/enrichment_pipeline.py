@@ -16,6 +16,8 @@ from typing import Any
 
 from opentelemetry import trace as otel_trace
 
+from enrichment.sources.base.browser import configure_browser_pool, reap_orphans
+
 from .api_fetcher import ApiFetcher
 from .config import EnrichmentConfig
 from .id_extractor import PlatformIDExtractor
@@ -304,13 +306,15 @@ class EnrichmentPipeline:
         """
         Produce a human-readable performance report for the pipeline.
 
-        The report includes the configured maximum concurrent APIs and batch size. If available, it also lists a timing breakdown for pipeline steps and per-API response times.
+        The report includes the configured maximum concurrent browsers and batch size. If available, it also lists a timing breakdown for pipeline steps and per-API response times.
 
         Returns:
             report (str): A multi-line string containing the assembled performance report.
         """
         report = ["Performance Report:"]
-        report.append(f"  Total APIs configured: {self.config.max_concurrent_apis}")
+        report.append(
+            f"  Max concurrent browsers: {self.config.max_concurrent_browsers}"
+        )
         report.append(f"  Batch size: {self.config.batch_size}")
 
         if self.timing_breakdown:
@@ -329,9 +333,14 @@ class EnrichmentPipeline:
         """
         Enter the asynchronous context for the pipeline.
 
+        Sets the process-wide browser limit from the config and stops browsers
+        and profiles left behind by crawler runs that were killed.
+
         Returns:
             EnrichmentPipeline: The pipeline instance.
         """
+        configure_browser_pool(self.config.max_concurrent_browsers)
+        await asyncio.to_thread(reap_orphans)
         return self
 
     async def __aexit__(

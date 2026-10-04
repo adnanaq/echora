@@ -24,6 +24,7 @@ from enrichment.sources.anime_planet.animeplanet_mapper import (
     character_from_animeplanet,
 )
 from enrichment.sources.base.ad_annotations import remove_ad_annotations
+from enrichment.sources.base.browser import browser_session
 from enrichment.sources.base.framework import (
     BaseCrawler,
     FileRepository,
@@ -396,20 +397,13 @@ async def _fetch_character_data(url: str) -> dict[str, Any] | None:
     Returns:
         Raw extraction dict, or None on failure.
     """
-    import zendriver as zd
-
-    browser = await zd.start(headless=True)
-    try:
+    async with browser_session(headless=True) as session:
+        browser = session.browser
         html = await _fetch_page_html(browser, url)
         if not html:
             logger.error(f"No HTML for character {url}")
             return None
         return _extract_character_from_html(html)
-    finally:
-        try:
-            await browser.stop()
-        except Exception as exc:
-            logger.debug(f"browser stop failed: {exc}")
 
 
 # ---------------------------------------------------------------------------
@@ -499,10 +493,8 @@ async def fetch_animeplanet_characters(
     missing_indices = sorted(set(missing_indices))
     missing_urls = [urls[i] for i in missing_indices]
 
-    import zendriver as zd
-
-    browser = await zd.start(headless=True)
-    try:
+    async with browser_session(headless=True) as session:
+        browser = session.browser
         for i, url in enumerate(missing_urls):
             if i > 0:
                 await asyncio.sleep(_INTER_REQUEST_DELAY)
@@ -524,10 +516,5 @@ async def fetch_animeplanet_characters(
             await _fetch_character_data.cache_batch_set(  # type: ignore[attr-defined]
                 [url], [raw]
             )
-    finally:
-        try:
-            await browser.stop()
-        except Exception as exc:
-            logger.debug(f"browser stop failed: {exc}")
 
     return characters

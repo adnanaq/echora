@@ -1,102 +1,96 @@
-"""
-Tests for EnrichmentConfig validation and logging.
-"""
+import logging
+from unittest.mock import patch
 
 import pytest
 from enrichment.pipeline.config import EnrichmentConfig
 from pydantic import ValidationError
 
 
-class TestEnrichmentConfigDefaults:
-    """Default values are valid and reflect documented settings."""
-
-    def test_default_api_timeout(self):
-        assert EnrichmentConfig().api_timeout == 200
-
-    def test_default_batch_size(self):
-        assert EnrichmentConfig().batch_size == 10
-
-    def test_default_cache_ttl(self):
-        assert EnrichmentConfig().cache_ttl == 86400
-
-    def test_default_skip_failed_apis(self):
-        assert EnrichmentConfig().skip_failed_apis is True
-
-    def test_default_verbose_logging(self):
-        assert EnrichmentConfig().verbose_logging is False
+@pytest.mark.parametrize(
+    ("field", "expected"),
+    [
+        ("api_timeout", 200),
+        ("batch_size", 10),
+        ("cache_ttl", 86400),
+        ("skip_failed_apis", True),
+        ("verbose_logging", False),
+        ("max_concurrent_browsers", 4),
+    ],
+)
+def test_enrichment_config_returns_documented_default(
+    field: str, expected: object
+) -> None:
+    assert getattr(EnrichmentConfig(), field) == expected
 
 
-class TestValidateTimeout:
-    """validate_timeout rejects out-of-range values."""
-
-    def test_valid_minimum(self):
-        assert EnrichmentConfig(api_timeout=1).api_timeout == 1
-
-    def test_valid_maximum(self):
-        assert EnrichmentConfig(api_timeout=3600).api_timeout == 3600
-
-    def test_too_low_raises(self):
-        with pytest.raises(ValidationError, match="between 1 and 3600"):
-            EnrichmentConfig(api_timeout=0)
-
-    def test_too_high_raises(self):
-        with pytest.raises(ValidationError, match="between 1 and 3600"):
-            EnrichmentConfig(api_timeout=3601)
+def test_enrichment_config_max_concurrent_browsers_read_from_environment() -> None:
+    with patch.dict("os.environ", {"ENRICHMENT_MAX_CONCURRENT_BROWSERS": "2"}):
+        assert EnrichmentConfig().max_concurrent_browsers == 2
 
 
-class TestValidateBatchSize:
-    """validate_batch_size rejects out-of-range values."""
-
-    def test_valid_minimum(self):
-        assert EnrichmentConfig(batch_size=1).batch_size == 1
-
-    def test_valid_maximum(self):
-        assert EnrichmentConfig(batch_size=100).batch_size == 100
-
-    def test_too_low_raises(self):
-        with pytest.raises(ValidationError, match="between 1 and 100"):
-            EnrichmentConfig(batch_size=0)
-
-    def test_too_high_raises(self):
-        with pytest.raises(ValidationError, match="between 1 and 100"):
-            EnrichmentConfig(batch_size=101)
+def test_enrichment_config_max_concurrent_browsers_below_one_raises_validation_error() -> (
+    None
+):
+    with pytest.raises(ValidationError, match="max_concurrent_browsers"):
+        EnrichmentConfig(max_concurrent_browsers=0)
 
 
-class TestValidateCacheTtl:
-    """validate_cache_ttl rejects negative values."""
-
-    def test_zero_valid(self):
-        assert EnrichmentConfig(cache_ttl=0).cache_ttl == 0
-
-    def test_positive_valid(self):
-        assert EnrichmentConfig(cache_ttl=3600).cache_ttl == 3600
-
-    def test_negative_raises(self):
-        with pytest.raises(ValidationError, match="non-negative"):
-            EnrichmentConfig(cache_ttl=-1)
+@pytest.mark.parametrize("api_timeout", [1, 3600])
+def test_enrichment_config_api_timeout_at_limit_is_accepted(api_timeout: int) -> None:
+    assert EnrichmentConfig(api_timeout=api_timeout).api_timeout == api_timeout
 
 
-class TestLogConfiguration:
-    """log_configuration emits structured log lines without raising."""
+@pytest.mark.parametrize("api_timeout", [0, 3601])
+def test_enrichment_config_api_timeout_out_of_range_raises_validation_error(
+    api_timeout: int,
+) -> None:
+    with pytest.raises(ValidationError, match="between 1 and 3600"):
+        EnrichmentConfig(api_timeout=api_timeout)
 
-    def test_log_configuration_does_not_raise(self, caplog):
-        import logging
 
-        config = EnrichmentConfig()
-        with caplog.at_level(logging.INFO, logger="enrichment.pipeline.config"):
-            config.log_configuration()
+@pytest.mark.parametrize("batch_size", [1, 100])
+def test_enrichment_config_batch_size_at_limit_is_accepted(batch_size: int) -> None:
+    assert EnrichmentConfig(batch_size=batch_size).batch_size == batch_size
 
-        assert any("API Timeout" in r.message for r in caplog.records)
-        assert any("Max Concurrent APIs" in r.message for r in caplog.records)
-        assert any("Batch Size" in r.message for r in caplog.records)
-        assert any("Caching" in r.message for r in caplog.records)
-        assert any("Graceful Degradation" in r.message for r in caplog.records)
 
-    def test_log_configuration_reflects_caching_disabled(self, caplog):
-        import logging
+@pytest.mark.parametrize("batch_size", [0, 101])
+def test_enrichment_config_batch_size_out_of_range_raises_validation_error(
+    batch_size: int,
+) -> None:
+    with pytest.raises(ValidationError, match="between 1 and 100"):
+        EnrichmentConfig(batch_size=batch_size)
 
-        config = EnrichmentConfig(enable_caching=False)
-        with caplog.at_level(logging.INFO, logger="enrichment.pipeline.config"):
-            config.log_configuration()
 
-        assert any("Disabled" in r.message for r in caplog.records)
+@pytest.mark.parametrize("cache_ttl", [0, 3600])
+def test_enrichment_config_cache_ttl_zero_or_positive_is_accepted(
+    cache_ttl: int,
+) -> None:
+    assert EnrichmentConfig(cache_ttl=cache_ttl).cache_ttl == cache_ttl
+
+
+def test_enrichment_config_negative_cache_ttl_raises_validation_error() -> None:
+    with pytest.raises(ValidationError, match="non-negative"):
+        EnrichmentConfig(cache_ttl=-1)
+
+
+def test_log_configuration_logs_each_setting(caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level(logging.INFO, logger="enrichment.pipeline.config"):
+        EnrichmentConfig().log_configuration()
+
+    for label in (
+        "API Timeout",
+        "Max Concurrent Browsers: 4",
+        "Batch Size",
+        "Caching",
+        "Graceful Degradation",
+    ):
+        assert label in caplog.text
+
+
+def test_log_configuration_caching_disabled_logs_disabled(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level(logging.INFO, logger="enrichment.pipeline.config"):
+        EnrichmentConfig(enable_caching=False).log_configuration()
+
+    assert "Caching: Disabled" in caplog.text

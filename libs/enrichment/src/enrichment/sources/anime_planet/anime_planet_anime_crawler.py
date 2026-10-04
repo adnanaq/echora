@@ -26,6 +26,7 @@ from enrichment.sources.anime_planet.anime_planet_models import (
     AnimePlanetRelatedEntry,
 )
 from enrichment.sources.anime_planet.animeplanet_mapper import anime_from_animeplanet
+from enrichment.sources.base.browser import browser_session
 from enrichment.sources.base.framework import (
     BaseCrawler,
     FileRepository,
@@ -493,21 +494,15 @@ async def _fetch_anime_html(url: str) -> str | None:
     Returns:
         Rendered page HTML, or None on navigation failure.
     """
-    import zendriver as zd
-
-    browser = await zd.start(headless=True)
-    try:
-        page = await browser.get(url)
-        await page.wait_for(selector="section.entryBar", timeout=20)
-        return await page.get_content()
-    except Exception as exc:
-        logger.warning(f"navigation failed for {url}: {exc}")
-        return None
-    finally:
+    async with browser_session(headless=True) as session:
+        browser = session.browser
         try:
-            await browser.stop()
+            page = await browser.get(url)
+            await page.wait_for(selector="section.entryBar", timeout=20)
+            return await page.get_content()
         except Exception as exc:
-            logger.debug(f"browser stop failed: {exc}")
+            logger.warning(f"navigation failed for {url}: {exc}")
+            return None
 
 
 @cached_result(
