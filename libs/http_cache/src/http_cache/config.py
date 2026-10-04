@@ -58,6 +58,13 @@ class CacheConfig(BaseSettings):
     ttl_animeschedule: int = Field(
         default=86400, description="AnimSchedule cache TTL - 24 hours"
     )
+    # A Cloudflare clearance was still honoured after 214 minutes on AniDB; a
+    # rejected one costs only a challenge, after which it is replaced.
+    cloudflare_clearance_max_ttl: int = Field(
+        default=86400,
+        gt=0,
+        description="Longest a stored Cloudflare clearance is kept - 24 hours",
+    )
 
     # Cache behavior configuration
     force_cache: bool = Field(

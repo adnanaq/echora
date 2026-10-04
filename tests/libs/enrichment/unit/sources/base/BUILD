@@ -18,5 +18,12 @@ python_tests(
                 "//libs/enrichment/src/enrichment/sources/mal",
             ],
         },
+        # Reads the saved AniDB interstitial and Anime-Planet pages.
+        "test_cloudflare_challenge.py": {
+            "dependencies": [
+                "//tests/libs/enrichment/unit/sources/anidb:fixtures",
+                "//tests/libs/enrichment/unit/sources/anime_planet:fixtures",
+            ],
+        },
     },
 )
