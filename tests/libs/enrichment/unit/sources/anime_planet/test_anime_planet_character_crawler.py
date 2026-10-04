@@ -6,9 +6,13 @@ Edge-case tests use synthetic inline HTML snippets.
 
 import re
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import ANY, AsyncMock, call, create_autospec, patch
 
 import pytest
+import zendriver
+from enrichment.sources.anime_planet import (
+    anime_planet_character_crawler as crawler_module,
+)
 from enrichment.sources.anime_planet.anime_planet_character_crawler import (
     _XPATHS,
     _build_character_from_raw,
@@ -37,6 +41,7 @@ from enrichment.sources.anime_planet.anime_planet_character_models import (
 from enrichment.sources.anime_planet.animeplanet_mapper import (
     character_from_animeplanet,
 )
+from enrichment.sources.base.cloudflare_challenge import CloudflareChallengeError
 from enrichment.sources.base.framework import NullRepository
 
 pytestmark = pytest.mark.asyncio
@@ -448,28 +453,79 @@ def test_build_character_no_image(
 # =============================================================================
 
 
-async def test_fetch_page_html_success() -> None:
-    page = AsyncMock()
-    page.wait_for = AsyncMock()
-    page.get_content = AsyncMock(return_value="<html>luffy</html>")
-    browser = AsyncMock()
-    browser.get = AsyncMock(return_value=page)
+def _started_browser(html: str) -> zendriver.Browser:
+    browser = create_autospec(zendriver.Browser, instance=True)
+    browser.main_tab = create_autospec(zendriver.Tab, instance=True)
+    tab = create_autospec(zendriver.Tab, instance=True)
+    tab.get_content.return_value = html
+    tab.query_selector.return_value = create_autospec(zendriver.Element, instance=True)
+    tab.evaluate.return_value = "complete"
+    browser.get.return_value = tab
+    return browser
 
-    result = await _fetch_page_html(browser, _LUFFY_URL)
+
+async def test_fetch_page_html_returns_page_content() -> None:
+    result = await _fetch_page_html(_started_browser("<html>luffy</html>"), _LUFFY_URL)
 
     assert result == "<html>luffy</html>"
-    page.wait_for.assert_awaited_once()
 
 
-async def test_fetch_page_html_navigation_failure() -> None:
-    page = AsyncMock()
-    page.wait_for = AsyncMock(side_effect=Exception("timeout"))
-    browser = AsyncMock()
-    browser.get = AsyncMock(return_value=page)
+async def test_fetch_page_html_navigation_fails_returns_none() -> None:
+    browser = _started_browser("")
+    browser.get.side_effect = RuntimeError("nav failed")
 
-    result = await _fetch_page_html(browser, _LUFFY_URL)
+    assert await _fetch_page_html(browser, _LUFFY_URL) is None
 
-    assert result is None
+
+async def test_fetch_page_html_challenge_not_cleared_raises() -> None:
+    browser = _started_browser("")
+    with (
+        patch.object(
+            crawler_module,
+            "wait_for_page",
+            autospec=True,
+            side_effect=CloudflareChallengeError("Anime-Planet", _LUFFY_URL),
+        ),
+        pytest.raises(CloudflareChallengeError),
+    ):
+        await _fetch_page_html(browser, _LUFFY_URL)
+
+
+async def test_fetch_animeplanet_characters_challenge_not_cleared_stops_batch_and_caches_nothing_for_it(
+    caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    zoro_url = "https://www.anime-planet.com/characters/roronoa-zoro"
+    nami_url = "https://www.anime-planet.com/characters/nami"
+    monkeypatch.setattr(crawler_module, "_INTER_REQUEST_DELAY", 0)
+
+    with (
+        patch.object(
+            _fetch_character_data,
+            "cache_batch_get",
+            autospec=True,
+            return_value=([None, None, None], [0, 1, 2]),
+        ),
+        patch.object(
+            _fetch_character_data, "cache_batch_set", autospec=True
+        ) as cache_set,
+        patch.object(
+            crawler_module,
+            "_fetch_page_html",
+            autospec=True,
+            side_effect=[
+                _MINIMAL_HTML,
+                CloudflareChallengeError("Anime-Planet", zoro_url),
+            ],
+        ) as fetch_page,
+        patch("zendriver.start", autospec=True, return_value=_started_browser("")),
+    ):
+        result = await fetch_animeplanet_characters([_LUFFY_URL, zoro_url, nami_url])
+
+    assert result[0] is not None
+    assert result[1:] == [None, None]
+    assert fetch_page.await_count == 2
+    assert cache_set.await_args_list == [call([_LUFFY_URL], [ANY])]
+    assert f"Anime-Planet: stopping the character batch at {zoro_url}" in caplog.text
 
 
 # =============================================================================

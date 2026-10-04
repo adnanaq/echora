@@ -11,6 +11,7 @@ anime_planet_character_crawler.
 import logging
 from typing import Any, cast
 
+from enrichment.sources.anime_planet.anime_planet_anime_crawler import ANIME_PLANET_SITE
 from enrichment.sources.base.browser import browser_session
 from enrichment.sources.base.page_readiness import wait_for_page
 from http_cache.config import get_cache_config
@@ -71,7 +72,12 @@ async def _fetch_refs_html(url: str) -> str | None:
         browser = session.browser
         try:
             page = await browser.get(url)
-            await wait_for_page(page, "a.name[href*='/characters/']", url)
+            await wait_for_page(
+                page,
+                "a.name[href*='/characters/']",
+                url,
+                cloudflare_site=ANIME_PLANET_SITE,
+            )
             return await page.get_content()
         except Exception as exc:
             logger.warning(f"navigation failed for {url}: {exc}")

@@ -31,14 +31,6 @@ class EnrichmentConfig(BaseSettings):
             "providers (MAL, AniSearch, Anime-Planet, AniDB) run side by side"
         ),
     )
-    block_unused_resources: bool = Field(
-        default=True,
-        description=(
-            "Fail the browsers' image, font, media and stylesheet requests. The "
-            "crawlers read only the HTML, so extracted data is unchanged; turn off "
-            "if a site starts treating blocked resources differently"
-        ),
-    )
     retry_attempts: int = Field(
         default=3, description="Number of retry attempts for failed API calls"
     )
@@ -204,9 +196,6 @@ class EnrichmentConfig(BaseSettings):
         logger.info("Enrichment Pipeline Configuration:")
         logger.info(f"  API Timeout: {self.api_timeout}s")
         logger.info(f"  Max Concurrent Browsers: {self.max_concurrent_browsers}")
-        logger.info(
-            f"  Block Unused Resources: {'Enabled' if self.block_unused_resources else 'Disabled'}"
-        )
         logger.info(f"  Batch Size: {self.batch_size}")
         logger.info(f"  Caching: {'Enabled' if self.enable_caching else 'Disabled'}")
         logger.info(

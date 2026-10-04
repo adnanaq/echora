@@ -8,6 +8,7 @@ import zendriver
 from enrichment.sources.base import page_readiness
 from enrichment.sources.base.page_readiness import (
     PAGE_ELEMENT_TIMEOUT_SECONDS,
+    PageElementTimeoutError,
     wait_for_page,
 )
 
@@ -90,6 +91,38 @@ async def test_wait_for_page_default_element_deadline_is_thirty_seconds() -> Non
 
     tab.wait_for.assert_awaited_once_with(selector="#htitle", timeout=30.0)
     assert PAGE_ELEMENT_TIMEOUT_SECONDS == 30.0
+
+
+async def test_wait_for_page_cloudflare_site_element_missing_raises_page_element_timeout_error() -> (
+    None
+):
+    tab = create_autospec(zendriver.Tab, instance=True)
+    tab.get_content.return_value = "<html><body>Not found</body></html>"
+    tab.query_selector.return_value = None
+
+    with pytest.raises(PageElementTimeoutError, match="#htitle"):
+        async with asyncio.timeout(2):
+            await wait_for_page(
+                tab,
+                "#htitle",
+                _URL,
+                element_timeout=0.1,
+                cloudflare_site="Anime-Planet",
+            )
+
+
+async def test_wait_for_page_cloudflare_site_element_present_waits_for_document() -> (
+    None
+):
+    tab = create_autospec(zendriver.Tab, instance=True)
+    tab.get_content.return_value = "<html><body><h1>One Piece</h1></body></html>"
+    tab.query_selector.return_value = create_autospec(zendriver.Element, instance=True)
+    tab.evaluate.return_value = "complete"
+
+    await wait_for_page(tab, "h1", _URL, cloudflare_site="Anime-Planet")
+
+    tab.wait_for.assert_not_awaited()
+    tab.evaluate.assert_awaited_with("document.readyState")
 
 
 def test_crawler_sources_sleep_only_for_politeness_delay() -> None:

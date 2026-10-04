@@ -192,6 +192,10 @@ services:
       - OTEL_ENABLE_AIOHTTP_CLIENT_INSTRUMENTATION=true
       - CACHE_ENABLED=true
       - REDIS_URL=redis://redis:6379/0
+    # init reaps the Chrome and Xvfb processes the crawlers leave; Chrome needs
+    # more shared memory than Docker's 64 MB default.
+    init: true
+    shm_size: 1gb
     volumes:
       - ../data:/app/data:ro
       - ../assets/seed_data:/app/assets/seed_data

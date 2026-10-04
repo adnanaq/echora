@@ -13,8 +13,8 @@ Every crawler opens its browser through `browser_session()`, which:
   was killed before its `finally` blocks ran.
 * stops what the crawlers never read: Chrome's background downloads, images,
   fonts, media and stylesheets, and every host other than the one a session
-  names. `configure_browser_pool(block_unused_resources=False)` turns the
-  resource and host blocking off.
+  names. A session opened with `block_unused_resources=False` loads
+  everything instead.
 """
 
 from __future__ import annotations
@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Any
 
 import zendriver
+from enrichment.sources.base.cloudflare_clearance import load_clearance
 from zendriver import cdp
 
 logger = logging.getLogger(__name__)
@@ -66,7 +67,6 @@ BACKGROUND_DOWNLOAD_SWITCHES = (
 )
 
 _max_browsers: int | None = None
-_block_unused_resources = True
 _slots_by_loop: weakref.WeakKeyDictionary[
     asyncio.AbstractEventLoop, asyncio.Semaphore
 ] = weakref.WeakKeyDictionary()
@@ -87,11 +87,17 @@ class BrowserSession:
         headless: Whether Chrome runs without a window.
         allowed_site: The one website the browser may connect to, or ``None``
             for any website; see `browser_session()`.
+        clearance_site: The site whose stored Cloudflare clearance the browser
+            starts with, or ``None``; see `browser_session()`.
+        block_unused_resources: Whether the browser skips what the crawlers
+            never read; see `browser_session()`.
         browser: The running browser; replaced by ``restart()``.
     """
 
     headless: bool
     allowed_site: str | None
+    clearance_site: str | None
+    block_unused_resources: bool
     browser: zendriver.Browser
 
     async def restart(self) -> zendriver.Browser:
@@ -101,13 +107,16 @@ class BrowserSession:
         restart never lets another session start in between.
         """
         await close_browser(self.browser)
-        self.browser = await _start_browser(self.headless, self.allowed_site)
+        self.browser = await _start_browser(
+            self.headless,
+            allowed_site=self.allowed_site,
+            clearance_site=self.clearance_site,
+            block_unused_resources=self.block_unused_resources,
+        )
         return self.browser
 
 
-def configure_browser_pool(
-    max_browsers: int, *, block_unused_resources: bool = True
-) -> None:
+def configure_browser_pool(max_browsers: int) -> None:
     """Limit how many browsers can be open at once in this process.
 
     Call once at startup. Calling again with the same limit does nothing;
@@ -115,15 +124,11 @@ def configure_browser_pool(
 
     Args:
         max_browsers: Most browsers open at the same time.
-        block_unused_resources: Make every browser started afterwards fail its
-            image, font, media and stylesheet requests, and keep each session
-            to its ``allowed_site``. Off lets every browser load everything.
 
     Raises:
         BrowserPoolSizeError: If ``max_browsers`` is below 1.
     """
-    global _max_browsers, _block_unused_resources
-    _block_unused_resources = block_unused_resources
+    global _max_browsers
     if max_browsers < 1:
         raise BrowserPoolSizeError(max_browsers)
     if max_browsers != _max_browsers:
@@ -133,7 +138,11 @@ def configure_browser_pool(
 
 @asynccontextmanager
 async def browser_session(
-    *, headless: bool, allowed_site: str | None = None
+    *,
+    headless: bool,
+    allowed_site: str | None = None,
+    clearance_site: str | None = None,
+    block_unused_resources: bool = True,
 ) -> AsyncIterator[BrowserSession]:
     """Open a browser for the length of the block and always close it.
 
@@ -151,9 +160,18 @@ async def browser_session(
             unknown. ``None`` (the default) lets the browser reach any website.
             It is fixed for the browser's whole life, so a session with it must
             only visit that site, and it applies only while
-            ``configure_browser_pool()`` has resource blocking on. Never set it
+            ``block_unused_resources`` is on. Never set it
             for Anime-Planet or AniDB: their Cloudflare check is served from
             ``challenges.cloudflare.com``, which would then fail too.
+        clearance_site: A site behind Cloudflare, such as ``"anidb.net"``. The
+            browser starts with that site's stored clearance, if one matches its
+            User-Agent, so it is not challenged; see ``cloudflare_clearance``.
+            A browser started by ``restart()`` gets it too.
+        block_unused_resources: Fail the browser's image, font, media and
+            stylesheet requests before they are sent, and apply
+            ``allowed_site``. On by default: on every page type crawled the
+            extracted data was the same with it. Pass ``False`` to load
+            everything, for one crawler at a time.
 
     Yields:
         The session; its ``browser`` is replaced by ``restart()``.
@@ -161,7 +179,16 @@ async def browser_session(
     slots = _browser_slots()
     async with slots if slots is not None else nullcontext():
         session = BrowserSession(
-            headless, allowed_site, await _start_browser(headless, allowed_site)
+            headless,
+            allowed_site,
+            clearance_site,
+            block_unused_resources,
+            await _start_browser(
+                headless,
+                allowed_site=allowed_site,
+                clearance_site=clearance_site,
+                block_unused_resources=block_unused_resources,
+            ),
         )
         try:
             yield session
@@ -261,9 +288,15 @@ def _browser_slots() -> asyncio.Semaphore | None:
     return slots
 
 
-async def _start_browser(headless: bool, allowed_site: str | None) -> zendriver.Browser:
+async def _start_browser(
+    headless: bool,
+    *,
+    allowed_site: str | None,
+    clearance_site: str | None,
+    block_unused_resources: bool,
+) -> zendriver.Browser:
     switches = list(BACKGROUND_DOWNLOAD_SWITCHES)
-    if allowed_site and _block_unused_resources:
+    if allowed_site and block_unused_resources:
         switches.append(
             f"--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE {allowed_site}, "
             f"EXCLUDE *.{allowed_site}"
@@ -271,13 +304,15 @@ async def _start_browser(headless: bool, allowed_site: str | None) -> zendriver.
     browser = await zendriver.start(headless=headless, browser_args=switches)
     try:
         _write_profile_owner(browser)
-        if _block_unused_resources:
+        if block_unused_resources:
             if browser.main_tab is None:
                 logger.warning(
                     "browser started without a tab; resources are not blocked"
                 )
             else:
                 await install_static_resource_blocking(browser.main_tab)
+        if clearance_site:
+            await load_clearance(browser, clearance_site)
     except BaseException:
         await close_browser(browser)
         raise

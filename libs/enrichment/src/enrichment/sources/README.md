@@ -1,6 +1,6 @@
 # Enrichment Sources
 
-> Part of the `enrichment` library — see [`libs/enrichment/README.md`](../../../../README.md) for the full library overview.
+> Part of the `enrichment` library — see [the enrichment README](../README.md) for the full library overview.
 
 Per-source packages for fetching and normalising anime data. Each package
 owns its models, mappers, crawlers/API clients, and a `*Helper` entry point
@@ -12,6 +12,13 @@ that implements `BaseEnrichmentHelper`.
 sources/
 ├── base/                      # Shared infrastructure
 │   ├── base_helper.py         # BaseEnrichmentHelper ABC + normalize_enrichment_payload
+│   ├── browser.py             # browser_session(): start, limit, block, close and reap browsers
+│   ├── page_readiness.py      # wait_for_page(): wait for an element, then the page's HTML
+│   ├── cloudflare_challenge.py  # Wait out a Cloudflare challenge, solve it only if it stays
+│   ├── cloudflare_clearance.py  # Store and reuse a site's cf_clearance cookie (Redis)
+│   ├── ad_annotations.py      # Undo what Google's in-text ads insert into page content
+│   ├── companies.py           # Canonical company list from per-role provider lists
+│   ├── external_links.py      # Canonical ExternalLink entries from provider links
 │   ├── exceptions.py          # ServiceNotFoundError, ServiceBlockedError, …
 │   ├── utils.py               # sanitize_output_path, etc.
 │   └── framework/             # Template-method crawler framework
@@ -114,9 +121,9 @@ uv run python -m enrichment.sources.mal.mal_episode_crawler \
 
 **CLI — helper (all data types):**
 ```bash
-uv run python -m enrichment.sources.mal.mal_helper anime https://myanimelist.net/anime/21/One_Piece
-uv run python -m enrichment.sources.mal.mal_helper episodes https://myanimelist.net/anime/21/One_Piece <count>
-uv run python -m enrichment.sources.mal.mal_helper characters https://myanimelist.net/anime/21/One_Piece
+uv run python -m enrichment.sources.mal.mal_helper anime https://myanimelist.net/anime/21/One_Piece mal_anime.json
+uv run python -m enrichment.sources.mal.mal_helper episodes https://myanimelist.net/anime/21/One_Piece <count> mal_episodes.json
+uv run python -m enrichment.sources.mal.mal_helper characters https://myanimelist.net/anime/21/One_Piece mal_characters.json
 ```
 
 ---
@@ -133,11 +140,9 @@ REST API via aiohttp with Redis HTTP cache.
 
 **Expected `ids` key:** `kitsu_url` — full URL or slug URL (e.g. `https://kitsu.app/anime/one-piece`)
 
-**CLI:**
+**CLI** (anime, episodes and characters in one call):
 ```bash
-uv run python -m enrichment.sources.kitsu.kitsu_helper anime https://kitsu.app/anime/one-piece
-uv run python -m enrichment.sources.kitsu.kitsu_helper episodes https://kitsu.app/anime/one-piece
-uv run python -m enrichment.sources.kitsu.kitsu_helper characters https://kitsu.app/anime/one-piece
+uv run python -m enrichment.sources.kitsu.kitsu_helper https://kitsu.app/anime/one-piece --output kitsu_anime.json
 ```
 
 ---
@@ -155,10 +160,10 @@ GraphQL API via aiohttp with Redis HTTP cache.
 
 **Expected `ids` key:** `anilist_url` — full URL (e.g. `https://anilist.co/anime/21`)
 
-**CLI:**
+**CLI** (by AniList URL or MAL ID; `--output` is a directory):
 ```bash
-uv run python -m enrichment.sources.anilist.anilist_helper anime https://anilist.co/anime/21
-uv run python -m enrichment.sources.anilist.anilist_helper characters https://anilist.co/anime/21
+uv run python -m enrichment.sources.anilist.anilist_helper --url https://anilist.co/anime/21 --output out/
+uv run python -m enrichment.sources.anilist.anilist_helper --mal-id 21 --output out/
 ```
 
 ---
@@ -173,7 +178,7 @@ Browser scraping via zendriver (CDP) + lxml XPath.
 | `anisearch_anime_crawler.py` | `fetch_anisearch_anime(url, output_path)` |
 | `anisearch_episode_crawler.py` | `fetch_anisearch_episodes(url, output_path)` |
 | `anisearch_character_refs_crawler.py` | Character list page → URL list |
-| `anisearch_character_crawler.py` | `fetch_anisearch_characters(urls, output_path)` |
+| `anisearch_character_crawler.py` | `fetch_anisearch_characters(refs, output_path)` — refs from the character list page |
 | `anisearch_mapper.py` | Raw XPath dicts → canonical dicts |
 | `anisearch_anime_models.py` | Pydantic source models |
 
@@ -183,14 +188,14 @@ Note: both `https://anisearch.com/` and `https://www.anisearch.com/` are accepte
 
 **CLI (via episode crawler):**
 ```bash
-uv run python -m enrichment.sources.anisearch.anisearch_episode_crawler https://www.anisearch.com/anime/2227,one-piece
+uv run python -m enrichment.sources.anisearch.anisearch_episode_crawler https://www.anisearch.com/anime/2227,one-piece --output anisearch_episodes.jsonl
 ```
 
 ---
 
 ### Anime-Planet (`sources/anime_planet/`)
 
-Browser scraping via zendriver (CDP) + lxml XPath. Cloudflare-protected — rate-limit recovery via passive probe loop.
+Browser scraping via zendriver (CDP) + lxml XPath. Behind Cloudflare, which normally only runs an invisible check. A challenge shown instead of a page is waited out and solved only if it stays (`base/cloudflare_challenge.py`); a character batch stops at a challenge that does not clear.
 
 | Module | Purpose |
 |---|---|
@@ -206,24 +211,36 @@ Browser scraping via zendriver (CDP) + lxml XPath. Cloudflare-protected — rate
 
 **CLI:**
 ```bash
-uv run python -m enrichment.sources.anime_planet.anime_planet_helper anime https://www.anime-planet.com/anime/one-piece
-uv run python -m enrichment.sources.anime_planet.anime_planet_helper characters https://www.anime-planet.com/anime/one-piece
+uv run python -m enrichment.sources.anime_planet.anime_planet_helper anime https://www.anime-planet.com/anime/one-piece --output ap_anime.jsonl
+uv run python -m enrichment.sources.anime_planet.anime_planet_helper characters https://www.anime-planet.com/characters/monkey-d-luffy --output ap_characters.jsonl
+uv run python -m enrichment.sources.anime_planet.anime_planet_helper all https://www.anime-planet.com/anime/one-piece
 ```
 
 ---
 
 ### AniDB (`sources/anidb/`)
 
-XML API via aiohttp with strict rate limiting (2 req/s, 1 req burst).
+XML API via aiohttp with adaptive rate limiting: at least 2 s between requests, backing off up to 10 s after errors (`ENRICHMENT_ANIDB_MIN_REQUEST_INTERVAL` / `ENRICHMENT_ANIDB_MAX_REQUEST_INTERVAL`).
+
+Character pages are behind Cloudflare. Its "Just a moment..." page clears by itself in about 2 s in a headed browser (not headless), so it is waited out and solved only if it stays (`base/cloudflare_challenge.py`). The `cf_clearance` cookie a browser earns is stored in Redis per User-Agent and given to the next AniDB browser, which then skips the challenge (`base/cloudflare_clearance.py`, kept up to `CLOUDFLARE_CLEARANCE_MAX_TTL`). AniDB's own AntiLeech page still gets its "Please Unban Me" flow.
 
 | Module | Purpose |
 |---|---|
 | `anidb_helper.py` | `AniDBHelper` — anime, episodes, and characters via XML API |
 | `anidb_character_crawler.py` | `fetch_anidb_characters(char_ids)` / `fetch_anidb_character(char_id)` — character web pages via zendriver + lxml XPath |
+| `anidb_xml_parser.py` | AniDB XML → source models (stateless, no I/O) |
 | `anidb_mapper.py` | XML + page responses → canonical dicts |
 | `anidb_models.py` | Pydantic source models |
 
-**Expected `ids` key:** `anidb_id` — numeric AniDB ID
+**Expected `ids` key:** `anidb_url` — full URL (e.g. `https://anidb.net/anime/69`)
+
+**CLI:**
+```bash
+uv run python -m enrichment.sources.anidb.anidb_helper anime https://anidb.net/anime/69 anidb_anime.json
+uv run python -m enrichment.sources.anidb.anidb_helper episodes https://anidb.net/anime/69 anidb_episodes.json
+uv run python -m enrichment.sources.anidb.anidb_helper characters https://anidb.net/anime/69 anidb_characters.jsonl
+uv run python -m enrichment.sources.anidb.anidb_helper all https://anidb.net/anime/69 output_dir/
+```
 
 ---
 
@@ -245,7 +262,8 @@ REST API via aiohttp. Lookup is title-search-based (no persistent anime ID).
 
 The `ApiFetcher` in `enrichment/pipeline/api_fetcher.py` instantiates each
 helper and calls `fetch_all(ids, offline_data, temp_dir)`. The `ids` dict is
-built by `IdExtractor` from the offline anime record.
+built by `PlatformIDExtractor.extract_all_ids()` from the offline anime record's
+source URLs.
 
 ```python
 from enrichment.sources.mal.mal_helper import MalHelper
@@ -256,11 +274,5 @@ result = await helper.fetch_all(
     offline_data={...},
     temp_dir="/tmp/One_agent1",
 )
-# result = {"anime": {...}, "episodes": [...], "characters": [...]}
+# result = {"anime": {...}, "episodes": [...], "characters": [...], "extras": {...}}
 ```
-
----
-
-## Legacy
-
-All crawlers have been migrated to the `sources/` framework. The `crawlers/` directory is no longer used.

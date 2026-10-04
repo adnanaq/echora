@@ -31,6 +31,13 @@ from typing import Any, cast
 from enrichment.sources.anidb.anidb_mapper import character_from_anidb
 from enrichment.sources.anidb.anidb_models import AniDBCharacter, AniDBCharacterPage
 from enrichment.sources.base.browser import BrowserSession, browser_session
+from enrichment.sources.base.cloudflare_challenge import (
+    CloudflareChallengeError,
+    PageRead,
+    is_cloudflare_challenge,
+    wait_through_challenge,
+)
+from enrichment.sources.base.cloudflare_clearance import save_clearance
 from enrichment.sources.base.utils import sanitize_output_path
 from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
@@ -40,12 +47,10 @@ logger = logging.getLogger(__name__)
 _TTL_ANIDB = get_cache_config().ttl_anidb
 
 _BASE_URL = "https://anidb.net/character"
-_CF_MARKERS = (
-    "Just a moment",
-    "cf-browser-verification",
-    "cf-challenge",
-    "Attention Required",
-)
+_SITE = "AniDB"
+_CLEARANCE_SITE = "anidb.net"
+_CHARACTER_SELECTOR = "#tab_1_pane"
+_PAGE_TIMEOUT_SECONDS = 15.0
 # AniDB's antileech block page is identified by its <title>, which is present
 # from the initial HTML — unlike the embedded CF Turnstile and the "Please Unban
 # Me" button, which are injected asynchronously and are absent from an early
@@ -183,17 +188,13 @@ def _extract_from_html(html: str) -> AniDBCharacterPage | None:
 # ---------------------------------------------------------------------------
 
 
-def _is_cf_blocked(html: str) -> bool:
-    return any(m in html for m in _CF_MARKERS)
-
-
 def _is_antileech(html: str) -> bool:
     return _ANTILEECH_TITLE in html
 
 
 def _is_blocked(html: str) -> bool:
     """True if the page is any kind of block: CF interstitial or AniDB antileech."""
-    return _is_cf_blocked(html) or _is_antileech(html)
+    return is_cloudflare_challenge(html) or _is_antileech(html)
 
 
 def _has_character_data(html: str) -> bool:
@@ -203,14 +204,15 @@ def _has_character_data(html: str) -> bool:
     return "tab_1_pane" in html
 
 
-async def _solve_cf(page: Any) -> bool:
-    """Clear a CF interstitial or AniDB antileech block on the current page.
+async def _solve_antileech(page: Any) -> bool:
+    """Clear AniDB's AntiLeech block on the current page.
 
-    verify_cf solves the Turnstile checkbox and only returns once its token is
-    set; it raises when there is no clickable checkbox — which is the antileech
-    case, where the Turnstile auto-passes. Either way we then sleep briefly to
-    let the token settle, click the 'Please Unban Me' button if present, and wait
-    for the page to reload. Returns True once the page is no longer blocked.
+    Cloudflare interstitials are waited out by ``wait_through_challenge``; this
+    runs only for the AntiLeech page, which needs its button. AntiLeech was not
+    seen while this flow was reviewed, so its steps are kept as they were:
+    verify_cf (which raises when the Turnstile auto-passes and has no checkbox),
+    a short wait for the token, the 'Please Unban Me' button if present, and a
+    wait for the reload. Returns True once the page is no longer blocked.
     """
     from zendriver.core.cloudflare import verify_cf
 
@@ -252,40 +254,36 @@ async def _solve_cf(page: Any) -> bool:
 # ---------------------------------------------------------------------------
 
 
-async def _fetch_page_html(browser: Any, url: str) -> tuple[str | None, bool, Any]:
-    """Navigate to url and return (html, crashed, page) once the page settles.
+async def _fetch_page_html(browser: Any, url: str) -> tuple[PageRead | None, Any]:
+    """Navigate to url and return what the page held once it settled, and the tab.
 
-    Polls until the page resolves into a recognizable state — real character
-    content (tab_1_pane) or a block page (CF interstitial / antileech) — rather
-    than using a fixed wait. This avoids capturing a half-rendered shell, which
-    previously caused the antileech page to be misread as a deleted character.
-    Returns the last snapshot on timeout, or ``None`` for html when no snapshot
-    was ever read — every ``get_content`` raised, which is a transport failure,
-    not a page that happens to be empty. Returning ``""`` there made the caller
-    fall through to "deleted/invalid", the exact misdiagnosis this polling loop
-    exists to prevent.
+    Polls until the page shows real character content (``#tab_1_pane``) or
+    AniDB's AntiLeech page, waiting out a Cloudflare interstitial on the way;
+    see ``wait_through_challenge``. A read whose ``html`` is ``None`` means every
+    ``get_content`` raised, a transport failure rather than a page that happens
+    to be empty; a read that is not ``ready`` holds the last snapshot, which the
+    caller treats as a deleted or invalid character.
 
-    ``crashed`` is reported separately rather than inferred from a null html:
-    a crash needs a browser restart, an unreadable page does not, and the
-    caller cannot tell those apart from the html alone.
+    Returns ``(None, None)`` when navigating crashed the browser: a crash needs
+    a browser restart, an unreadable page does not.
+
+    Raises:
+        CloudflareChallengeError: If a Cloudflare challenge does not clear.
     """
     try:
         page = await browser.get(url)
-        html: str | None = None
-        deadline = time.monotonic() + 15
-        while time.monotonic() < deadline:
-            await asyncio.sleep(1)
-            try:
-                html = await page.get_content()
-            except Exception:  # noqa: S112
-                continue
-            if _has_character_data(html) or _is_blocked(html):
-                break
     except (RuntimeError, StopIteration) as exc:
         logger.warning(f"browser crash on {url}: {exc}")
-        return None, True, None
-    else:
-        return html, False, page
+        return None, None
+    read = await wait_through_challenge(
+        page,
+        url,
+        site=_SITE,
+        selector=_CHARACTER_SELECTOR,
+        stop_on=_is_antileech,
+        timeout=_PAGE_TIMEOUT_SECONDS,
+    )
+    return read, page
 
 
 # ---------------------------------------------------------------------------
@@ -352,28 +350,30 @@ async def fetch_anidb_characters(
                 # Cache miss — launch browser lazily on first miss
                 if session is None:
                     session = await browser_stack.enter_async_context(
-                        browser_session(headless=False)
+                        browser_session(headless=False, clearance_site=_CLEARANCE_SITE)
                     )
 
                 url = f"{_BASE_URL}/{char_id}"
-                html, crashed, current_page = await _fetch_page_html(
-                    session.browser, url
-                )
-
-                if crashed:
-                    logger.warning(f"browser crashed — restarting for char {char_id}")
-                    await session.restart()
-                    await asyncio.sleep(2)
-                    html, crashed, current_page = await _fetch_page_html(
-                        session.browser, url
-                    )
-                    if crashed:
-                        logger.error(
-                            f"browser crashed again on char {char_id} — skipping"
+                try:
+                    read, current_page = await _fetch_page_html(session.browser, url)
+                    if read is None:
+                        logger.warning(
+                            f"browser crashed — restarting for char {char_id}"
                         )
-                        yield char_id, None
-                        continue
+                        await session.restart()
+                        await asyncio.sleep(2)
+                        read, current_page = await _fetch_page_html(
+                            session.browser, url
+                        )
+                except CloudflareChallengeError:
+                    yield char_id, None
+                    continue
+                if read is None:
+                    logger.error(f"browser crashed again on char {char_id} — skipping")
+                    yield char_id, None
+                    continue
 
+                html = read.html
                 if html is None:
                     logger.warning(
                         f"could not read page for char {char_id} — skipping "
@@ -382,10 +382,10 @@ async def fetch_anidb_characters(
                     yield char_id, None
                     continue
 
-                if _is_blocked(html):
-                    logger.info(f"block on char {char_id} — solving")
-                    if not await _solve_cf(current_page):
-                        logger.error(f"block did not clear for char {char_id}")
+                if _is_antileech(html):
+                    logger.info(f"antileech on char {char_id} — solving")
+                    if not await _solve_antileech(current_page):
+                        logger.error(f"antileech did not clear for char {char_id}")
                         yield char_id, None
                         continue
                     await current_page
@@ -401,6 +401,8 @@ async def fetch_anidb_characters(
                     )
                     yield char_id, None
                 else:
+                    if read.challenged:
+                        await save_clearance(session.browser, _CLEARANCE_SITE)
                     page = _extract_from_html(html)
                     if page is not None:
                         succeeded += 1

@@ -36,7 +36,7 @@ echora/
 │   │       ├── pipeline/              # Multi-stage enrichment pipeline
 │   │       ├── similarity/            # Character similarity (CCIP)
 │   │       ├── sources/               # External source integrations
-│   │       │   ├── base/              # Base helper + crawler framework
+│   │       │   ├── base/              # Browser sessions, page waiting, Cloudflare, helper framework
 │   │       │   ├── anidb/
 │   │       │   ├── anilist/
 │   │       │   ├── anime_planet/
@@ -180,6 +180,13 @@ Pants resolves its own interpreter from `PATH`, independently of the venv. If
 uv python install 3.14   # creates ~/.local/bin/python3.14
 ```
 
+The enrichment pipeline's MAL, AniSearch, Anime-Planet and AniDB sources drive a
+real Chrome through zendriver, so running them needs Chrome or Chromium
+installed. AniSearch and AniDB open a visible window (AniDB's Cloudflare check
+does not clear in a headless browser), so they also need a display: a desktop
+session, or Xvfb. Both Docker images (`apps/enrichment_service/Dockerfile.dev`
+and `Dockerfile.prd`) install Chromium and start Xvfb, so Path A needs neither.
+
 ---
 
 ### 3. Verify
@@ -270,8 +277,8 @@ This project supports both UV and Pants for development:
 # Run all tests
 ./pants test ::
 
-# Run tests for a specific library
-./pants test libs/qdrant_db::
+# Run tests for a specific library (tests live under tests/, mirroring libs/)
+./pants test tests/libs/qdrant_db::
 
 # Run a specific test file
 ./pants test tests/libs/qdrant_db/unit/test_qdrant_client.py
@@ -316,7 +323,7 @@ uv run ty check scripts/ libs/ apps/
 ./pants run scripts/reindex_anime_database.py
 
 # Update vectors
-./pants run scripts/update_vectors.py -- --vectors title_vector
+./pants run scripts/update_vectors.py -- --vectors text_vector
 
 # View script help
 ./pants run scripts/update_vectors.py -- --help
@@ -442,6 +449,10 @@ IMAGE_EMBEDDING_MODEL=ViT-L-14/laion2b_s32b_b82k
 
 # Model Cache
 MODEL_CACHE_DIR=./cache
+
+# Enrichment crawlers
+ENRICHMENT_MAX_CONCURRENT_BROWSERS=4
+CLOUDFLARE_CLEARANCE_MAX_TTL=86400
 ```
 
 ## Dependency Management
@@ -504,7 +515,8 @@ When more than one of these signals is active in a single query, results are fus
 - **Language**: Python 3.14
 - **RPC Framework**: gRPC (`grpc.aio`)
 - **Vector Database**: Qdrant with HNSW indexing
-- **HTTP Cache**: Redis (RFC 9111-compliant via Hishel, used by enrichment pipeline)
+- **Cache**: Redis, used by the enrichment pipeline for the HTTP cache (RFC 9111 via Hishel), crawler results and stored Cloudflare clearances
+- **Browser Automation**: zendriver (Chrome over CDP) for the enrichment crawlers
 - **Text Embeddings**: BGE-M3 (1024-dim, multilingual)
 - **Image Embeddings**: OpenCLIP ViT-L/14 (768-dim)
 - **Package Manager**: UV
@@ -516,7 +528,7 @@ When more than one of these signals is active in a single query, results are fus
 
 1. Install dependencies: `uv sync`
 2. Make changes in appropriate library or application code
-3. Add tests: `libs/*/tests/` or `tests/`
+3. Add tests under `tests/`, mirroring the source layout (e.g. `tests/libs/qdrant_db/`)
 4. Run tests: `./pants test ::`
 5. Format code: `./pants fmt ::`
 6. Submit PR

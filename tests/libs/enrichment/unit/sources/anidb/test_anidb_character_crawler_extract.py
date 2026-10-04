@@ -1,6 +1,6 @@
 """Unit tests for anidb_character_crawler.py — pure / sync functions.
 
-Covers: _extract_from_html, _is_cf_blocked, _has_character_data.
+Covers: _extract_from_html, _is_blocked, _has_character_data.
 """
 
 from unittest.mock import patch
@@ -9,7 +9,7 @@ import pytest
 from enrichment.sources.anidb.anidb_character_crawler import (
     _extract_from_html,
     _has_character_data,
-    _is_cf_blocked,
+    _is_blocked,
 )
 
 # ---------------------------------------------------------------------------
@@ -164,20 +164,26 @@ def test_extract_lxml_parse_error_returns_none() -> None:
 
 
 # =============================================================================
-# _is_cf_blocked
+# _is_blocked
 # =============================================================================
 
 
 @pytest.mark.parametrize(
     "marker",
-    ["Just a moment", "cf-browser-verification", "cf-challenge", "Attention Required"],
+    [
+        "Just a moment",
+        "cf-browser-verification",
+        "cf-challenge",
+        "Attention Required",
+        "<title>AniDB AntiLeech",
+    ],
 )
-def test_is_cf_blocked_true_for_each_marker(marker: str) -> None:
-    assert _is_cf_blocked(f"<html><body>{marker}</body></html>") is True
+def test_is_blocked_each_block_marker_returns_true(marker: str) -> None:
+    assert _is_blocked(f"<html><body>{marker}</body></html>") is True
 
 
-def test_is_cf_blocked_false_for_clean_html() -> None:
-    assert _is_cf_blocked("<html><body>Normal page</body></html>") is False
+def test_is_blocked_clean_html_returns_false() -> None:
+    assert _is_blocked("<html><body>Normal page</body></html>") is False
 
 
 # =============================================================================
