@@ -184,9 +184,8 @@ The enrichment pipeline's MAL, AniSearch, Anime-Planet and AniDB sources drive a
 real Chrome through zendriver, so running them needs Chrome or Chromium
 installed. AniSearch and AniDB open a visible window (AniDB's Cloudflare check
 does not clear in a headless browser), so they also need a display: a desktop
-session, or Xvfb as in `apps/enrichment_service/Dockerfile.prd`. The dev image
-(`Dockerfile.dev`) installs no Chrome, so those four sources fail inside it; the
-API sources still run.
+session, or Xvfb. Both Docker images (`apps/enrichment_service/Dockerfile.dev`
+and `Dockerfile.prd`) install Chromium and start Xvfb, so Path A needs neither.
 
 ---
 
