@@ -1,8 +1,10 @@
 import asyncio
 import functools
 import http.server
+import itertools
 import os
 import re
+import shutil
 import statistics
 import subprocess
 import sys
@@ -67,10 +69,15 @@ def stand_in_processes() -> Iterator[list[subprocess.Popen[bytes]]]:
         process.wait()
 
 
-def _start_stand_in(processes: list, profile: Path) -> subprocess.Popen[bytes]:
+def _start_stand_in(
+    processes: list, profile: Path, *, ignore_terminate: bool = False
+) -> subprocess.Popen[bytes]:
     title = f"chrome --type=renderer --user-data-dir={profile} --lang=en"
+    script = 'exec -a "$0" sleep 300'
+    if ignore_terminate:
+        script = f"trap '' TERM; {script}"
     process = subprocess.Popen(  # noqa: S603  (fixed test arguments)
-        ["/bin/bash", "-c", 'exec -a "$0" sleep 300', title]
+        ["/bin/bash", "-c", script, title]
     )
     processes.append(process)
     deadline = time.monotonic() + 5
@@ -242,6 +249,71 @@ async def test_close_browser_stop_raises_returns_without_error() -> None:
     await close_browser(browser)
 
     browser.stop.assert_awaited_once_with()
+
+
+async def test_close_browser_child_ignores_terminate_keeps_event_loop_running(
+    tmp_path: Path, stand_in_processes: list, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(browser_module, "_EXIT_DEADLINE_SECONDS", 0.3)
+    profile = _profile(tmp_path, "crashed")
+    child = _start_stand_in(stand_in_processes, profile, ignore_terminate=True)
+    exited = subprocess.Popen([sys.executable, "-c", "pass"])
+    exited.wait()
+    browser = create_autospec(zendriver.Browser, instance=True)
+    browser._process = exited
+    browser.config = create_autospec(zendriver.Config, instance=True)
+    browser.config.user_data_dir = str(profile)
+    tick_times: list[float] = []
+
+    async def record_ticks() -> None:
+        while True:
+            tick_times.append(time.monotonic())
+            await asyncio.sleep(0.01)
+
+    ticking = asyncio.create_task(record_ticks())
+    await close_browser(browser)
+    tick_times.append(time.monotonic())
+    ticking.cancel()
+
+    assert child.wait(timeout=5) == -9
+    assert (
+        max(later - earlier for earlier, later in itertools.pairwise(tick_times)) < 0.1
+    )
+
+
+async def test_browser_session_start_time_unreadable_writes_no_owner_file(
+    tmp_path: Path,
+) -> None:
+    profile = _profile(tmp_path, "unreadable")
+    browser = create_autospec(zendriver.Browser, instance=True)
+    browser.main_tab = create_autospec(zendriver.Tab, instance=True)
+    browser.config = create_autospec(zendriver.Config, instance=True)
+    browser.config.user_data_dir = str(profile)
+
+    with (
+        patch("zendriver.start", autospec=True, return_value=browser),
+        patch.object(
+            browser_module, "_process_start_ticks", autospec=True, return_value=None
+        ),
+    ):
+        async with browser_session(headless=True):
+            assert not (profile / OWNER_FILE_NAME).exists()
+
+
+def test_reap_orphans_profile_removed_during_scan_returns_without_error(
+    tmp_path: Path,
+) -> None:
+    profile = _profile(tmp_path, "removed")
+    real_is_dir = Path.is_dir
+
+    def removed_after_check(path: Path) -> bool:
+        found = real_is_dir(path)
+        if path == profile:
+            shutil.rmtree(path)
+        return found
+
+    with patch.object(Path, "is_dir", autospec=True, side_effect=removed_after_check):
+        assert reap_orphans(tmp_path) == 0
 
 
 def test_reap_orphans_dead_owner_stops_its_processes_and_removes_profile(
