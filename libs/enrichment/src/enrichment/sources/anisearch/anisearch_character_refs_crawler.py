@@ -10,8 +10,7 @@ Each dict contains {"url": str, "role": str}. All other character data
 import logging
 from typing import cast
 
-from enrichment.sources.base.browser import browser_session
-from enrichment.sources.base.page_readiness import wait_for_page
+from enrichment.sources.anisearch.anisearch_http import fetch_anisearch_page
 from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
 
@@ -114,22 +113,16 @@ def _normalize_characters_page_url(anime_identifier: str) -> str:
 async def _fetch_anisearch_character_refs_data(
     characters_url: str,
 ) -> list[dict[str, str]] | None:
-    """Fetch /anime/{id},{slug}/characters and extract character refs. Cached by URL."""
-    async with browser_session(headless=False) as session:
-        browser = session.browser
-        try:
-            page = await browser.get(characters_url)
-            await wait_for_page(page, "#content", characters_url)
-            html_text = await page.get_content()
-        except Exception:
-            logger.exception(f"navigation failed for {characters_url}")
-            return None
+    """Fetch /anime/{id},{slug}/characters and extract character refs. Cached by URL.
 
-    if not html_text:
+    The whole cast comes with the page's HTML (1,677 characters for One Piece).
+    """
+    page = await fetch_anisearch_page(characters_url)
+    if page is None or not page.html:
         logger.error(f"No HTML from characters page {characters_url}")
         return None
 
-    raw = _extract_refs_from_html(html_text)
+    raw = _extract_refs_from_html(page.html)
     if raw is None:
         logger.error(f"Failed to parse characters page {characters_url}")
         return None

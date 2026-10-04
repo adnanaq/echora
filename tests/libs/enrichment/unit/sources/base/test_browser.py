@@ -473,7 +473,7 @@ def test_crawler_sources_keep_each_site_headless_setting() -> None:
             re.findall(r"browser_session\(headless=(True|False)\b", path.read_text())
         )
 
-    assert sessions["anisearch"] == ["False"] * 8
+    assert sessions.get("anisearch", []) == []
     assert sessions["anidb"] == ["False"]
     assert sessions["mal"] == ["True"] * 7
     assert sessions["anime_planet"] == ["True"] * 4

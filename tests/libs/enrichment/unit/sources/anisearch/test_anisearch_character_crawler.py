@@ -8,10 +8,10 @@ No network calls are made.
 """
 
 import json
-from unittest.mock import AsyncMock, create_autospec
+from unittest.mock import AsyncMock, patch
 
 import pytest
-import zendriver
+from enrichment.sources.anisearch import anisearch_character_crawler as crawler_module
 from enrichment.sources.anisearch.anisearch_character_crawler import (
     _ANISEARCH_BASE_URL,
     _XPATHS,
@@ -24,7 +24,6 @@ from enrichment.sources.anisearch.anisearch_character_crawler import (
     _extract_voice_actors,
     _fetch_anisearch_character_data,
     _fetch_character_ography_data,
-    _fetch_ography,
     _fetch_page_html,
     _parse_favorites,
     _post_process_character,
@@ -32,7 +31,9 @@ from enrichment.sources.anisearch.anisearch_character_crawler import (
     fetch_anisearch_characters,
 )
 from enrichment.sources.anisearch.anisearch_mapper import character_from_anisearch
+from enrichment.sources.base.exceptions import ServiceBlockedError
 from enrichment.sources.base.framework import NullRepository
+from enrichment.sources.base.polite_http import FetchedPage
 
 pytestmark = pytest.mark.asyncio
 
@@ -338,33 +339,63 @@ def test_extract_character_from_html_empty_body_returns_partial() -> None:
 # =============================================================================
 
 
-async def test_fetch_page_html_navigation_fails_returns_none() -> None:
-    browser = create_autospec(zendriver.Browser, instance=True)
-    browser.get.side_effect = RuntimeError("nav failed")
+class FakeAniSearch:
+    def __init__(self, pages: dict[str, str | None]) -> None:
+        self.pages = pages
+        self.requested: list[str] = []
 
-    assert await _fetch_page_html(browser, _LUFFY_URL, "#htitle") is None
+    async def fetch(self, url: str) -> FetchedPage | None:
+        self.requested.append(url)
+        html = self.pages.get(url)
+        return None if html is None else FetchedPage(url=url, html=html)
+
+
+@pytest.fixture
+def luffy_site(
+    luffy_char_html: str, luffy_anime_ography_html: str, luffy_manga_ography_html: str
+) -> FakeAniSearch:
+    return FakeAniSearch(
+        {
+            _LUFFY_URL: luffy_char_html,
+            f"{_LUFFY_URL}/anime": luffy_anime_ography_html,
+            f"{_LUFFY_URL}/manga": luffy_manga_ography_html,
+        }
+    )
+
+
+def _serve(site: FakeAniSearch):
+    return patch.object(
+        crawler_module, "fetch_anisearch_page", autospec=True, side_effect=site.fetch
+    )
+
+
+async def test_fetch_page_html_page_returned_returns_html(
+    luffy_site: FakeAniSearch,
+) -> None:
+    with _serve(luffy_site):
+        assert await _fetch_page_html(_LUFFY_URL) == luffy_site.pages[_LUFFY_URL]
+
+
+async def test_fetch_page_html_page_unreadable_returns_none() -> None:
+    with _serve(FakeAniSearch({})):
+        assert await _fetch_page_html(_LUFFY_URL) is None
+
+
+async def test_fetch_page_html_blocked_raises_service_blocked_error() -> None:
+    with (
+        patch.object(
+            crawler_module,
+            "fetch_anisearch_page",
+            autospec=True,
+            side_effect=ServiceBlockedError("HTTP 423", service="anisearch"),
+        ),
+        pytest.raises(ServiceBlockedError),
+    ):
+        await _fetch_page_html(_LUFFY_URL)
 
 
 def _still_arriving(html: str) -> str:
     return html[: html.index('id="htitle"') + 400]
-
-
-class StillLoadingTab(zendriver.Tab):
-    def __init__(self, html: str, loading_reads: int) -> None:
-        self.html = html
-        self.loading_reads = loading_reads
-
-    async def wait_for(self, selector: str | None = None, **_: object) -> None:
-        return None
-
-    async def evaluate(self, expression: str, **_: object) -> str:
-        if self.loading_reads:
-            self.loading_reads -= 1
-            return "loading"
-        return "interactive"
-
-    async def get_content(self, **_: object) -> str:
-        return _still_arriving(self.html) if self.loading_reads else self.html
 
 
 def test_extract_character_from_html_mid_load_page_loses_late_fields(
@@ -379,144 +410,77 @@ def test_extract_character_from_html_mid_load_page_loses_late_fields(
     assert complete["screenshot_images"] and not partial["screenshot_images"]
 
 
-async def test_fetch_page_html_document_still_loading_returns_finished_page(
-    luffy_char_html: str,
+# =============================================================================
+# _fetch_anisearch_character_data
+# =============================================================================
+
+
+@pytest.mark.usefixtures("cache_off")
+async def test_fetch_anisearch_character_data_page_unreadable_returns_none() -> None:
+    with _serve(FakeAniSearch({})):
+        assert await _fetch_anisearch_character_data(_LUFFY_URL) is None
+
+
+@pytest.mark.usefixtures("cache_off")
+async def test_fetch_anisearch_character_data_extraction_fails_returns_none(
+    luffy_site: FakeAniSearch,
 ) -> None:
-    browser = create_autospec(zendriver.Browser, instance=True)
-    browser.get.return_value = StillLoadingTab(luffy_char_html, loading_reads=3)
-
-    html = await _fetch_page_html(browser, _LUFFY_URL, "#htitle")
-
-    assert html == luffy_char_html
-
-
-# =============================================================================
-# _fetch_anisearch_character_data (async, mocked)
-# =============================================================================
-
-
-async def test_fetch_character_data_fetch_error_returns_none(mocker) -> None:
-    mocker.patch(
-        "http_cache.result_cache.get_cache_config",
-        return_value=mocker.MagicMock(cache_enabled=False),
-    )
-    browser_mock = mocker.AsyncMock()
-    browser_mock.stop.side_effect = Exception("stop failed")
-    mocker.patch("zendriver.start", new_callable=AsyncMock, return_value=browser_mock)
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._fetch_page_html",
-        new_callable=AsyncMock,
-        return_value=None,
-    )
-    assert await _fetch_anisearch_character_data(_LUFFY_URL) is None
+    with (
+        _serve(luffy_site),
+        patch.object(
+            crawler_module,
+            "_extract_character_from_html",
+            autospec=True,
+            return_value=None,
+        ),
+    ):
+        assert await _fetch_anisearch_character_data(_LUFFY_URL) is None
 
 
-async def test_fetch_character_data_extraction_fails_returns_none(mocker) -> None:
-    mocker.patch(
-        "http_cache.result_cache.get_cache_config",
-        return_value=mocker.MagicMock(cache_enabled=False),
-    )
-    mocker.patch(
-        "zendriver.start", new_callable=AsyncMock, return_value=mocker.AsyncMock()
-    )
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._fetch_page_html",
-        new_callable=AsyncMock,
-        return_value="<html></html>",
-    )
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._extract_character_from_html",
-        return_value=None,
-    )
-    assert await _fetch_anisearch_character_data(_LUFFY_URL) is None
+@pytest.mark.usefixtures("cache_off")
+async def test_fetch_anisearch_character_data_real_page_returns_processed_fields(
+    luffy_site: FakeAniSearch,
+) -> None:
+    with _serve(luffy_site):
+        result = await _fetch_anisearch_character_data(_LUFFY_URL)
 
-
-async def test_fetch_character_data_real_fixture(mocker, luffy_char_html) -> None:
-    mocker.patch(
-        "http_cache.result_cache.get_cache_config",
-        return_value=mocker.MagicMock(cache_enabled=False),
-    )
-    mocker.patch(
-        "zendriver.start",
-        new_callable=AsyncMock,
-        return_value=mocker.AsyncMock(),
-    )
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._fetch_page_html",
-        new_callable=AsyncMock,
-        return_value=luffy_char_html,
-    )
-    result = await _fetch_anisearch_character_data(_LUFFY_URL)
     assert result is not None
     assert result["name"] == "Monkey D. Luffy"
-    assert result["favorites"] == 682  # post-processed to int
-    # Voice actors and attributes are parsed up front, so the cached dict does
-    # not carry the page itself.
+    assert result["favorites"] == 682
     assert "_html" not in result
     assert len(result["voice_actors"]) == 12
     assert result["attributes"]["hair-color"] == "Black"
 
 
 # =============================================================================
-# _fetch_character_ography_data (async, mocked)
+# _fetch_character_ography_data
 # =============================================================================
 
 
-async def test_fetch_ography_data_fetch_error_returns_none(mocker) -> None:
-    mocker.patch(
-        "http_cache.result_cache.get_cache_config",
-        return_value=mocker.MagicMock(cache_enabled=False),
-    )
-    browser_mock = mocker.AsyncMock()
-    browser_mock.stop.side_effect = Exception("stop failed")
-    mocker.patch("zendriver.start", new_callable=AsyncMock, return_value=browser_mock)
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._fetch_page_html",
-        new_callable=AsyncMock,
-        return_value=None,
-    )
-    assert await _fetch_character_ography_data(f"{_LUFFY_URL}/anime") is None
+@pytest.mark.usefixtures("cache_off")
+async def test_fetch_character_ography_data_page_unreadable_returns_none() -> None:
+    with _serve(FakeAniSearch({})):
+        assert await _fetch_character_ography_data(f"{_LUFFY_URL}/anime") is None
 
 
-async def test_fetch_ography_data_empty_html_returns_empty_list(mocker) -> None:
-    mocker.patch(
-        "http_cache.result_cache.get_cache_config",
-        return_value=mocker.MagicMock(cache_enabled=False),
-    )
-    mocker.patch(
-        "zendriver.start",
-        new_callable=AsyncMock,
-        return_value=mocker.AsyncMock(),
-    )
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._fetch_page_html",
-        new_callable=AsyncMock,
-        return_value="<html><body></body></html>",
-    )
-    assert await _fetch_character_ography_data(f"{_LUFFY_URL}/anime") == []
+@pytest.mark.usefixtures("cache_off")
+async def test_fetch_character_ography_data_page_without_list_returns_empty_list() -> (
+    None
+):
+    with _serve(FakeAniSearch({f"{_LUFFY_URL}/anime": "<html><body></body></html>"})):
+        assert await _fetch_character_ography_data(f"{_LUFFY_URL}/anime") == []
 
 
-async def test_fetch_ography_data_valid_returns_list(
-    mocker, luffy_anime_ography_html
+@pytest.mark.usefixtures("cache_off")
+async def test_fetch_character_ography_data_real_page_returns_absolute_urls(
+    luffy_site: FakeAniSearch,
 ) -> None:
-    mocker.patch(
-        "http_cache.result_cache.get_cache_config",
-        return_value=mocker.MagicMock(cache_enabled=False),
-    )
-    mocker.patch(
-        "zendriver.start",
-        new_callable=AsyncMock,
-        return_value=mocker.AsyncMock(),
-    )
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._fetch_page_html",
-        new_callable=AsyncMock,
-        return_value=luffy_anime_ography_html,
-    )
-    result = await _fetch_character_ography_data(f"{_LUFFY_URL}/anime")
+    with _serve(luffy_site):
+        result = await _fetch_character_ography_data(f"{_LUFFY_URL}/anime")
+
     assert result is not None
     assert len(result) == 49
-    assert all(e["url"].startswith("https://") for e in result)
+    assert all(entry["url"].startswith("https://") for entry in result)
 
 
 # =============================================================================
@@ -557,53 +521,37 @@ def test_extract_ography_from_html_multiple_entries(luffy_manga_ography_html) ->
 # =============================================================================
 
 
-async def test_crawler_post_process_fetches_both_ography_pages(mocker) -> None:
-    ography_entry = [
-        {"url": "https://www.anisearch.com/anime/2227,one-piece", "title": "One Piece"}
-    ]
-    mock_ography = AsyncMock(return_value=ography_entry)
-    # Both sub-pages cached, so _fetch_ographies must not start a browser.
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._any_ography_missing",
-        new_callable=AsyncMock,
-        return_value=False,
+@pytest.mark.usefixtures("cache_off")
+async def test_crawler_post_process_raw_data_adds_both_appearance_lists(
+    luffy_site: FakeAniSearch,
+) -> None:
+    with _serve(luffy_site):
+        result = await AniSearchCharacterCrawler(
+            NullRepository()
+        ).post_process_raw_data({"name": "Luffy"}, _LUFFY_URL)
+
+    assert result["name"] == "Luffy"
+    assert result["_anime_ography"] == _extract_ography_from_html(
+        luffy_site.pages[f"{_LUFFY_URL}/anime"]
     )
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._fetch_ography",
-        mock_ography,
+    assert result["_manga_ography"] == _extract_ography_from_html(
+        luffy_site.pages[f"{_LUFFY_URL}/manga"]
     )
-    crawler = AniSearchCharacterCrawler(NullRepository())
-    result = await crawler.post_process_raw_data({"_html": ""}, _LUFFY_URL)
-    assert "_anime_ography" in result
-    assert "_manga_ography" in result
-    assert result["_anime_ography"] == ography_entry
-    assert result["_manga_ography"] == ography_entry
-    assert mock_ography.call_count == 2
 
 
-async def test_crawler_post_process_ography_none_on_failure(mocker) -> None:
-    # Both sub-pages cached, so _fetch_ographies must not start a browser.
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._any_ography_missing",
-        new_callable=AsyncMock,
-        return_value=False,
-    )
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._fetch_ography",
-        new_callable=AsyncMock,
-        return_value=None,
-    )
-    crawler = AniSearchCharacterCrawler(NullRepository())
-    result = await crawler.post_process_raw_data(
-        {"_html": "", "name": "Luffy"}, _LUFFY_URL
-    )
+@pytest.mark.usefixtures("cache_off")
+async def test_crawler_post_process_raw_data_lists_unreadable_sets_none() -> None:
+    with _serve(FakeAniSearch({})):
+        result = await AniSearchCharacterCrawler(
+            NullRepository()
+        ).post_process_raw_data({"name": "Luffy"}, _LUFFY_URL)
+
     assert result["_anime_ography"] is None
     assert result["_manga_ography"] is None
-    assert result["name"] == "Luffy"
 
 
 # =============================================================================
-# fetch_anisearch_character (top-level, mocked)
+# fetch_anisearch_character
 # =============================================================================
 
 
@@ -621,33 +569,21 @@ async def test_fetch_anisearch_character_none_data_returns_none(mocker) -> None:
     assert await fetch_anisearch_character(_LUFFY_URL) is None
 
 
-async def test_fetch_anisearch_character_returns_canonical_dict(
-    mocker, luffy_char_processed
+@pytest.mark.usefixtures("cache_off")
+async def test_fetch_anisearch_character_real_pages_returns_canonical_dict(
+    luffy_site: FakeAniSearch,
 ) -> None:
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._fetch_anisearch_character_data",
-        new_callable=AsyncMock,
-        return_value=luffy_char_processed,
-    )
-    # Both sub-pages cached, so _fetch_ographies must not start a browser.
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._any_ography_missing",
-        new_callable=AsyncMock,
-        return_value=False,
-    )
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._fetch_ography",
-        new_callable=AsyncMock,
-        return_value=None,
-    )
-    result = await fetch_anisearch_character(_LUFFY_URL)
+    with _serve(luffy_site):
+        result = await fetch_anisearch_character(_LUFFY_URL)
+
     assert result is not None
     assert result["name"] == "Monkey D. Luffy"
     assert result["sources"] == [_LUFFY_URL]
+    assert len(result["animeography"]) == 49
 
 
 # =============================================================================
-# fetch_anisearch_characters (batch, mocked)
+# fetch_anisearch_characters
 # =============================================================================
 
 
@@ -655,265 +591,104 @@ async def test_fetch_anisearch_characters_empty_refs_returns_empty() -> None:
     assert await fetch_anisearch_characters([]) == []
 
 
-async def test_fetch_anisearch_characters_all_cached_no_crawl(
-    mocker, luffy_char_processed
+@pytest.mark.usefixtures("cache_off")
+async def test_fetch_anisearch_characters_cached_detail_fetches_only_appearance_lists(
+    luffy_site: FakeAniSearch, luffy_char_processed: dict
 ) -> None:
-    refs = [{"url": _LUFFY_URL, "role": "Main Character"}]
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._fetch_anisearch_character_data.cache_batch_get",
-        new_callable=AsyncMock,
-        return_value=([luffy_char_processed], []),
-    )
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._fetch_character_ography_data.cache_batch_get",
-        new_callable=AsyncMock,
-        return_value=([None], []),  # all cached, no misses → no browser init
-    )
-    # Both sub-pages cached, so _fetch_ographies must not start a browser.
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._any_ography_missing",
-        new_callable=AsyncMock,
-        return_value=False,
-    )
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._fetch_ography",
-        new_callable=AsyncMock,
-        side_effect=[None, None],
-    )
-    results = await fetch_anisearch_characters(refs)
-    assert len(results) == 1
+    with (
+        _serve(luffy_site),
+        patch.object(
+            crawler_module._fetch_anisearch_character_data,
+            "cache_batch_get",
+            autospec=True,
+            return_value=([luffy_char_processed], []),
+        ),
+    ):
+        results = await fetch_anisearch_characters(
+            [{"url": _LUFFY_URL, "role": "Main Character"}]
+        )
+
     assert results[0] is not None
     assert results[0]["name"] == "Monkey D. Luffy"
+    assert luffy_site.requested == [f"{_LUFFY_URL}/anime", f"{_LUFFY_URL}/manga"]
 
 
-async def test_fetch_characters_cached_detail_ography_miss_starts_browser(
-    mocker, luffy_char_processed
+@pytest.mark.usefixtures("cache_off")
+async def test_fetch_anisearch_characters_uncached_fetches_detail_and_lists(
+    luffy_site: FakeAniSearch,
 ) -> None:
-    refs = [{"url": _LUFFY_URL, "role": "Main Character"}]
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._fetch_anisearch_character_data.cache_batch_get",
-        new_callable=AsyncMock,
-        return_value=([luffy_char_processed], []),
-    )
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._fetch_character_ography_data.cache_batch_get",
-        new_callable=AsyncMock,
-        return_value=([None], [0]),
-    )
-    browser_mock = mocker.AsyncMock()
-    mocker.patch("zendriver.start", new_callable=AsyncMock, return_value=browser_mock)
-    # Both sub-pages cached, so _fetch_ographies must not start a browser.
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._any_ography_missing",
-        new_callable=AsyncMock,
-        return_value=False,
-    )
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._fetch_ography",
-        new_callable=AsyncMock,
-        side_effect=[None, None],
-    )
-    results = await fetch_anisearch_characters(refs)
-    assert len(results) == 1
+    with _serve(luffy_site):
+        results = await fetch_anisearch_characters(
+            [{"url": _LUFFY_URL, "role": "Main Character"}]
+        )
+
     assert results[0] is not None
     assert results[0]["name"] == "Monkey D. Luffy"
-
-
-async def test_fetch_anisearch_characters_writes_output_path(
-    mocker, luffy_char_processed, tmp_path
-) -> None:
-    refs = [{"url": _LUFFY_URL, "role": "Main Character"}]
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._fetch_anisearch_character_data.cache_batch_get",
-        new_callable=AsyncMock,
-        return_value=([luffy_char_processed], []),
-    )
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._fetch_character_ography_data.cache_batch_get",
-        new_callable=AsyncMock,
-        return_value=([None], []),  # all cached, no misses → no browser init
-    )
-    # Both sub-pages cached, so _fetch_ographies must not start a browser.
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._any_ography_missing",
-        new_callable=AsyncMock,
-        return_value=False,
-    )
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._fetch_ography",
-        new_callable=AsyncMock,
-        side_effect=[None, None],
-    )
-    out = str(tmp_path / "chars.jsonl")
-    await fetch_anisearch_characters(refs, output_path=out)
-    lines = (tmp_path / "chars.jsonl").read_text().splitlines()
-    assert len(lines) == 1
-    assert json.loads(lines[0])["name"] == "Monkey D. Luffy"
-
-
-async def test_fetch_anisearch_characters_uncached_crawl_succeeds(
-    mocker, luffy_char_html
-) -> None:
-    refs = [{"url": _LUFFY_URL, "role": "Main Character"}]
-    html = luffy_char_html
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._fetch_anisearch_character_data.cache_batch_get",
-        new_callable=AsyncMock,
-        return_value=([None], [0]),
-    )
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._fetch_anisearch_character_data.cache_batch_set",
-        new_callable=AsyncMock,
-    )
-    browser_mock = mocker.AsyncMock()
-    browser_mock.stop.side_effect = Exception("stop failed")
-    mocker.patch("zendriver.start", new_callable=AsyncMock, return_value=browser_mock)
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._fetch_page_html",
-        new_callable=AsyncMock,
-        return_value=html,
-    )
-    # Both sub-pages cached, so _fetch_ographies must not start a browser.
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._any_ography_missing",
-        new_callable=AsyncMock,
-        return_value=False,
-    )
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._fetch_ography",
-        new_callable=AsyncMock,
-        side_effect=[None, None],
-    )
-    results = await fetch_anisearch_characters(refs)
-    assert len(results) == 1
-    assert results[0] is not None
-    assert results[0]["name"] == "Monkey D. Luffy"
-
-
-async def test_uncached_crawl_fetch_error_stays_none(mocker) -> None:
-    # _fetch_page_html returns None → cache written as None, character stays None
-    refs = [{"url": _LUFFY_URL, "role": "Main Character"}]
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._fetch_anisearch_character_data.cache_batch_get",
-        new_callable=AsyncMock,
-        return_value=([None], [0]),
-    )
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._fetch_anisearch_character_data.cache_batch_set",
-        new_callable=AsyncMock,
-    )
-    mocker.patch(
-        "zendriver.start",
-        new_callable=AsyncMock,
-        return_value=mocker.AsyncMock(),
-    )
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._fetch_page_html",
-        new_callable=AsyncMock,
-        return_value=None,
-    )
-    results = await fetch_anisearch_characters(refs)
-    assert results == [None]
-
-
-async def test_uncached_crawl_unparseable_html_stays_none(mocker) -> None:
-    # empty HTML → _extract_character_from_html returns None → character stays None
-    refs = [{"url": _LUFFY_URL, "role": "Main Character"}]
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._fetch_anisearch_character_data.cache_batch_get",
-        new_callable=AsyncMock,
-        return_value=([None], [0]),
-    )
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._fetch_anisearch_character_data.cache_batch_set",
-        new_callable=AsyncMock,
-    )
-    mocker.patch(
-        "zendriver.start",
-        new_callable=AsyncMock,
-        return_value=mocker.AsyncMock(),
-    )
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._fetch_page_html",
-        new_callable=AsyncMock,
-        return_value="",
-    )
-    # Both sub-pages cached, so _fetch_ographies must not start a browser.
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._any_ography_missing",
-        new_callable=AsyncMock,
-        return_value=False,
-    )
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._fetch_ography",
-        new_callable=AsyncMock,
-        side_effect=[None, None],
-    )
-    results = await fetch_anisearch_characters(refs)
-    assert results == [None]
-
-
-# =============================================================================
-# _fetch_ography
-# =============================================================================
-
-
-async def test_fetch_ography_no_browser_delegates_to_cached_fn(mocker) -> None:
-    # When browser=None, misses are fetched via _fetch_character_ography_data.
-    # Use a single mock object so cache_batch_get and __call__ share the same reference.
-    url = f"{_LUFFY_URL}/anime"
-    ography_entry = [
-        {"url": "https://www.anisearch.com/anime/2227,one-piece", "title": "One Piece"}
+    assert len(results[0]["animeography"]) == 49
+    assert luffy_site.requested == [
+        _LUFFY_URL,
+        f"{_LUFFY_URL}/anime",
+        f"{_LUFFY_URL}/manga",
     ]
-    mock_fn = AsyncMock(return_value=ography_entry)
-    mock_fn.cache_batch_get = AsyncMock(return_value=([None], [0]))
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._fetch_character_ography_data",
-        mock_fn,
-    )
-    result = await _fetch_ography(url, browser=None)
-    assert result is not None
-    assert result[0]["title"] == "One Piece"
 
 
-async def test_fetch_ography_with_browser_uses_settling_fetch(
-    mocker, luffy_anime_ography_html
+@pytest.mark.usefixtures("cache_off")
+async def test_fetch_anisearch_characters_output_path_writes_each_character(
+    luffy_site: FakeAniSearch, tmp_path
 ) -> None:
-    # When browser is provided, misses are navigated via _fetch_page_html
-    url = f"{_LUFFY_URL}/anime"
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._fetch_character_ography_data.cache_batch_get",
-        new_callable=AsyncMock,
-        return_value=([None], [0]),
-    )
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._fetch_character_ography_data.cache_batch_set",
-        new_callable=AsyncMock,
-    )
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._fetch_page_html",
-        new_callable=AsyncMock,
-        return_value=luffy_anime_ography_html,
-    )
-    mock_browser = mocker.AsyncMock()
-    result = await _fetch_ography(url, browser=mock_browser)
-    assert result is not None
-    assert len(result) == 49
-    assert all(e["url"].startswith("https://") for e in result)
+    output = tmp_path / "chars.jsonl"
+    with _serve(luffy_site):
+        await fetch_anisearch_characters(
+            [{"url": _LUFFY_URL, "role": "Main Character"}], output_path=str(output)
+        )
+
+    lines = output.read_text().splitlines()
+    assert [json.loads(line)["name"] for line in lines] == ["Monkey D. Luffy"]
 
 
-async def test_fetch_ography_cached_returns_directly(mocker) -> None:
-    url = f"{_LUFFY_URL}/anime"
-    cached = [
-        {"url": "https://www.anisearch.com/anime/2227,one-piece", "title": "One Piece"}
+@pytest.mark.usefixtures("cache_off")
+@pytest.mark.parametrize("detail_html", [None, ""])
+async def test_fetch_anisearch_characters_detail_unusable_stays_none_without_lists(
+    detail_html: str | None,
+) -> None:
+    site = FakeAniSearch({_LUFFY_URL: detail_html})
+    with _serve(site):
+        results = await fetch_anisearch_characters(
+            [{"url": _LUFFY_URL, "role": "Main Character"}]
+        )
+
+    assert results == [None]
+    assert site.requested == [_LUFFY_URL]
+
+
+@pytest.mark.usefixtures("cache_off")
+async def test_fetch_anisearch_characters_blocked_mid_batch_raises_after_writing_earlier(
+    luffy_site: FakeAniSearch, tmp_path
+) -> None:
+    zoro_url = "https://www.anisearch.com/character/4853,roronoa-zoro"
+
+    async def block_on_zoro(url: str) -> FetchedPage | None:
+        if url.startswith(zoro_url):
+            raise ServiceBlockedError("HTTP 423", service="anisearch")
+        return await luffy_site.fetch(url)
+
+    output = tmp_path / "chars.jsonl"
+    with (
+        patch.object(
+            crawler_module,
+            "fetch_anisearch_page",
+            autospec=True,
+            side_effect=block_on_zoro,
+        ),
+        pytest.raises(ServiceBlockedError),
+    ):
+        await fetch_anisearch_characters(
+            [{"url": _LUFFY_URL}, {"url": zoro_url}], output_path=str(output)
+        )
+
+    assert [json.loads(line)["name"] for line in output.read_text().splitlines()] == [
+        "Monkey D. Luffy"
     ]
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._fetch_character_ography_data.cache_batch_get",
-        new_callable=AsyncMock,
-        return_value=([cached], []),
-    )
-    result = await _fetch_ography(url, browser=None)
-    assert result == cached
 
 
 # =============================================================================

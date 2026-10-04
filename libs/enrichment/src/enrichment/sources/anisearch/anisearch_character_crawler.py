@@ -1,4 +1,4 @@
-"""AniSearch Character Detail Crawler — zendriver + lxml XPath.
+"""AniSearch Character Detail Crawler — plain HTTP + lxml XPath.
 
 Two public functions:
     fetch_anisearch_character(url)   — single character detail page
@@ -9,14 +9,12 @@ extracted via lxml XPath on the raw page HTML. Voice actors (multi-language,
 per-li language block) are extracted via regex on the full page HTML alongside
 XPath fields.
 
-A single persistent Chrome session is reused across all navigations in a batch
-to avoid repeated browser startup overhead and to maintain session state.
+Every page is fetched over plain HTTP through ``anisearch_http``, which spaces
+AniSearch requests out and stops them all at the first block.
 """
 
-import asyncio
 import logging
 import re
-from contextlib import AsyncExitStack
 from typing import Any, cast
 
 from enrichment.sources.anisearch.anisearch_anime_models import (
@@ -24,15 +22,14 @@ from enrichment.sources.anisearch.anisearch_anime_models import (
     AniSearchCharacterAnimeRole,
     AniSearchVoiceActorRef,
 )
+from enrichment.sources.anisearch.anisearch_http import fetch_anisearch_page
 from enrichment.sources.anisearch.anisearch_mapper import character_from_anisearch
-from enrichment.sources.base.browser import browser_session
 from enrichment.sources.base.framework import (
     BaseCrawler,
     FileRepository,
     IRepository,
     NullRepository,
 )
-from enrichment.sources.base.page_readiness import wait_for_page
 from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
 
@@ -42,7 +39,6 @@ _CACHE_CONFIG = get_cache_config()
 TTL_ANISEARCH = _CACHE_CONFIG.ttl_anisearch
 
 _ANISEARCH_BASE_URL = "https://www.anisearch.com"
-_INTER_REQUEST_DELAY = 3.0  # seconds between browser navigations
 
 _CHARACTER_BATCH_SIZE = 20
 
@@ -218,33 +214,28 @@ def _extract_ography_from_html(html: str) -> list[dict[str, Any]] | None:
 
 
 # ---------------------------------------------------------------------------
-# Browser navigation helper
+# Page fetch helper
 # ---------------------------------------------------------------------------
 
 
-async def _fetch_page_html(browser: Any, url: str, wait_selector: str) -> str | None:
-    """Navigate to url with an existing browser session and return page HTML.
+async def _fetch_page_html(url: str) -> str | None:
+    """Fetch an AniSearch character page over plain HTTP and return its HTML.
 
-    The page is read once its HTML has fully arrived, not when ``wait_selector``
-    first appears: ``#htitle`` sits near the top of a character page, and
-    reading at that moment lost the favorites count, traits and both image
-    galleries. List pages lost rows the same way, until the document finished.
+    The whole page arrives with its HTML: the favorites count, traits, image
+    galleries and every appearance-list row are in it, with nothing for a
+    script to add.
 
     Args:
-        browser: An already-started browser session.
-        url: Page to navigate to.
-        wait_selector: CSS selector of an element only the expected page has.
+        url: Page to fetch.
 
     Returns:
-        Page HTML, or ``None`` on navigation failure.
+        Page HTML, or ``None`` when the page could not be read.
+
+    Raises:
+        ServiceBlockedError: If AniSearch blocked this request or an earlier one.
     """
-    try:
-        page = await browser.get(url)
-        await wait_for_page(page, wait_selector, url)
-        return await page.get_content()
-    except Exception as exc:
-        logger.warning(f"navigation failed for {url}: {exc}")
-        return None
+    page = await fetch_anisearch_page(url)
+    return page.html if page else None
 
 
 # ---------------------------------------------------------------------------
@@ -421,27 +412,17 @@ def _build_character_from_raw(
 @cached_result(
     ttl=TTL_ANISEARCH,
     key_prefix="anisearch_character_detail",
-    dependencies=[
-        _extract_character_from_html,
-        _fetch_page_html,
-        wait_for_page,
-    ],
+    dependencies=[_extract_character_from_html, _fetch_page_html],
 )
 async def _fetch_anisearch_character_data(url: str) -> dict[str, Any] | None:
-    """Fetch a character detail page and extract raw fields. Cached by URL.
-
-    Opens a temporary browser session — for high-volume use prefer the batch
-    path in fetch_anisearch_characters which reuses a single session.
-    """
-    async with browser_session(headless=False) as session:
-        browser = session.browser
-        html = await _fetch_page_html(browser, url, "#htitle")
-        if not html:
-            return None
-        raw = _extract_character_from_html(html)
-        if raw is None:
-            return None
-        return _post_process_character(raw)
+    """Fetch a character detail page and extract raw fields. Cached by URL."""
+    html = await _fetch_page_html(url)
+    if not html:
+        return None
+    raw = _extract_character_from_html(html)
+    if raw is None:
+        return None
+    return _post_process_character(raw)
 
 
 @cached_result(
@@ -450,71 +431,11 @@ async def _fetch_anisearch_character_data(url: str) -> dict[str, Any] | None:
     dependencies=[_extract_ography_from_html],
 )
 async def _fetch_character_ography_data(url: str) -> list[dict[str, Any]] | None:
-    """Fetch a single /anime or /manga ography sub-page. Cached by URL.
-
-    Opens a temporary browser session — for high-volume use prefer the batch
-    path which reuses a single session.
-    """
-    async with browser_session(headless=False) as session:
-        browser = session.browser
-        html = await _fetch_page_html(browser, url, "#content")
-        if not html:
-            return None
-        return _extract_ography_from_html(html)
-
-
-# ---------------------------------------------------------------------------
-# Ography batch helper
-# ---------------------------------------------------------------------------
-
-
-async def _any_ography_missing(*urls: str) -> bool:
-    """Report whether any ography sub-page still needs fetching.
-
-    Kept separate so callers can decide up front whether a browser is worth
-    starting at all: on a full cache hit none is needed.
-
-    Args:
-        urls: Ography sub-page URLs to check.
-
-    Returns:
-        ``True`` when at least one URL is absent from the cache.
-    """
-    for url in urls:
-        _, missing = await _fetch_character_ography_data.cache_batch_get(  # type: ignore[attr-defined]
-            [url]
-        )
-        if missing:
-            return True
-    return False
-
-
-async def _fetch_ography(
-    url: str,
-    browser: Any = None,
-) -> list[dict[str, Any]] | None:
-    """Fetch a single ography sub-page with cache check.
-
-    Returns cached value if available. On a miss, navigates with browser if
-    provided, otherwise opens a temporary session via _fetch_character_ography_data.
-    """
-    (
-        cached_values,
-        missing_indices,
-    ) = await _fetch_character_ography_data.cache_batch_get(  # type: ignore[attr-defined]
-        [url]
-    )
-    if not missing_indices:
-        return cached_values[0]
-
-    if browser is None:
-        return await _fetch_character_ography_data(url)
-
-    html = await _fetch_page_html(browser, url, "#content")
-    await asyncio.sleep(_INTER_REQUEST_DELAY)
-    result = _extract_ography_from_html(html) if html else None
-    await _fetch_character_ography_data.cache_batch_set([url], [result])  # type: ignore[attr-defined]
-    return result
+    """Fetch a single /anime or /manga ography sub-page. Cached by URL."""
+    html = await _fetch_page_html(url)
+    if not html:
+        return None
+    return _extract_ography_from_html(html)
 
 
 # ---------------------------------------------------------------------------
@@ -548,44 +469,11 @@ class AniSearchCharacterCrawler(BaseCrawler[AniSearchCharacter, dict[str, Any]])
     async def post_process_raw_data(
         self, raw_data: dict[str, Any], url: str
     ) -> dict[str, Any]:
-        # One session for both sub-pages, mirroring the batch path. Fetching
-        # them concurrently opened a headful Chrome each, on top of the session
-        # fetch_raw_data had already used and closed.
-        anime_ography, manga_ography = await self._fetch_ographies(url)
         return {
             **raw_data,
-            "_anime_ography": anime_ography,
-            "_manga_ography": manga_ography,
+            "_anime_ography": await _fetch_character_ography_data(f"{url}/anime"),
+            "_manga_ography": await _fetch_character_ography_data(f"{url}/manga"),
         }
-
-    @staticmethod
-    async def _fetch_ographies(
-        url: str,
-    ) -> tuple[list[dict[str, Any]] | None, list[dict[str, Any]] | None]:
-        """Fetch both ography sub-pages over a single browser session.
-
-        Completeness comes from reading each page once its HTML has arrived
-        (see ``_fetch_page_html``), not from the session: a cold one returns the
-        full list. One session still covers both pages, since fetching them
-        concurrently opened a headful Chrome each.
-
-        Args:
-            url: Character detail page URL.
-
-        Returns:
-            Tuple of the anime and manga ography lists, either of which may be
-            ``None`` when that sub-page could not be fetched.
-        """
-        anime_url, manga_url = f"{url}/anime", f"{url}/manga"
-        if not await _any_ography_missing(anime_url, manga_url):
-            return await _fetch_ography(anime_url), await _fetch_ography(manga_url)
-
-        async with browser_session(headless=False) as session:
-            browser = session.browser
-            return (
-                await _fetch_ography(anime_url, browser),
-                await _fetch_ography(manga_url, browser),
-            )
 
     def build_source_model(
         self, processed_raw: dict[str, Any], url: str
@@ -635,9 +523,11 @@ async def fetch_anisearch_characters(
 ) -> list[dict[str, Any] | None]:
     """Batch-fetch character detail pages (+ ography sub-pages) for all refs.
 
-    Uses a single persistent Chrome session for all browser navigations.
-    Cache hits skip browser navigation entirely. Each character is written
-    to output_path as soon as it is resolved.
+    Detail pages are looked up in the cache in one round trip; misses and the
+    ography sub-pages are fetched over plain HTTP, spaced out by
+    ``anisearch_http``. Each character is written to output_path as soon as it
+    is resolved. A block from AniSearch ends the batch: characters resolved
+    before it are already cached and written.
 
     Args:
         refs: List of {"url": str, "role": str} dicts from fetch_anisearch_character_refs().
@@ -646,6 +536,9 @@ async def fetch_anisearch_characters(
 
     Returns:
         List aligned to refs — None for any failed fetch.
+
+    Raises:
+        ServiceBlockedError: If AniSearch blocks a request during the batch.
     """
     if not refs:
         return []
@@ -655,7 +548,6 @@ async def fetch_anisearch_characters(
     repo = FileRepository(output_path) if output_path else NullRepository()
     characters: list[dict[str, Any] | None] = [None] * len(urls)
 
-    # ── Batch cache lookup ────────────────────────────────────────────────
     (
         cached_values,
         missing_indices,
@@ -663,77 +555,33 @@ async def fetch_anisearch_characters(
         urls
     )
     missing_set = set(missing_indices)
-
-    browser: Any = None
     succeeded = 0
 
-    async with AsyncExitStack() as browser_stack:
-        for i, url in enumerate(urls):
-            role = refs[i].get("role")
-            # Absent from refs cached before anime_url was carried through.
-            anime_url = refs[i].get("anime_url")
+    for i, url in enumerate(urls):
+        if i not in missing_set:
+            raw = cached_values[i]
+        else:
+            html = await _fetch_page_html(url)
+            extracted = _extract_character_from_html(html) if html else None
+            raw = _post_process_character(extracted) if extracted else None
+            await _fetch_anisearch_character_data.cache_batch_set([url], [raw])  # type: ignore[attr-defined]
+        if raw is None:
+            continue
 
-            # ── Detail page ───────────────────────────────────────────────
-            if i not in missing_set:
-                raw = cached_values[i]
-            else:
-                if browser is None:
-                    browser = (
-                        await browser_stack.enter_async_context(
-                            browser_session(headless=False)
-                        )
-                    ).browser
-                html = await _fetch_page_html(browser, url, "#htitle")
-                if html is None:
-                    await _fetch_anisearch_character_data.cache_batch_set(  # type: ignore[attr-defined]
-                        [url], [None]
-                    )
-                    await asyncio.sleep(_INTER_REQUEST_DELAY)
-                    continue
-                extracted = _extract_character_from_html(html)
-                raw = _post_process_character(extracted) if extracted else None
-                await _fetch_anisearch_character_data.cache_batch_set(  # type: ignore[attr-defined]
-                    [url], [raw]
-                )
-                await asyncio.sleep(_INTER_REQUEST_DELAY)
-
-            if raw is None:
-                continue
-
-            # ── Ography sub-pages (sequential — shared browser, one tab) ────
-            # If the detail page was a cache hit (browser=None), check ography cache
-            # upfront so we can init one shared browser rather than letting
-            # _batch_fetch_ography open a short-lived session per miss.
-            if browser is None:
-                _, anime_missing = await _fetch_character_ography_data.cache_batch_get(  # type: ignore[attr-defined]
-                    [f"{url}/anime"]
-                )
-                _, manga_missing = await _fetch_character_ography_data.cache_batch_get(  # type: ignore[attr-defined]
-                    [f"{url}/manga"]
-                )
-                if anime_missing or manga_missing:
-                    browser = (
-                        await browser_stack.enter_async_context(
-                            browser_session(headless=False)
-                        )
-                    ).browser
-            anime_ography = await _fetch_ography(f"{url}/anime", browser)
-            manga_ography = await _fetch_ography(f"{url}/manga", browser)
-
-            # ── Build and save ────────────────────────────────────────────
-            canonical = character_from_anisearch(
-                _build_character_from_raw(
-                    raw,
-                    url,
-                    role=role,
-                    anime_url=anime_url,
-                    anime_ography=anime_ography,
-                    manga_ography=manga_ography,
-                )
+        canonical = character_from_anisearch(
+            _build_character_from_raw(
+                raw,
+                url,
+                role=refs[i].get("role"),
+                # Absent from refs cached before anime_url was carried through.
+                anime_url=refs[i].get("anime_url"),
+                anime_ography=await _fetch_character_ography_data(f"{url}/anime"),
+                manga_ography=await _fetch_character_ography_data(f"{url}/manga"),
             )
-            characters[i] = canonical
-            repo.save(canonical)
-            succeeded += 1
+        )
+        characters[i] = canonical
+        repo.save(canonical)
+        succeeded += 1
 
     logger.info(
         f"anisearch character fetch: {succeeded}/{len(urls)} succeeded, {len(urls) - len(missing_set)} cache hits"
