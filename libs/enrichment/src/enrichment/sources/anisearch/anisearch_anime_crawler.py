@@ -17,6 +17,7 @@ from enrichment.sources.anisearch.anisearch_anime_models import (
     AniSearchStatistics,
 )
 from enrichment.sources.anisearch.anisearch_mapper import anime_from_anisearch
+from enrichment.sources.base.browser import browser_session
 from enrichment.sources.base.framework import (
     BaseCrawler,
     FileRepository,
@@ -399,11 +400,9 @@ async def _fetch_anisearch_anime_data(canonical_path: str) -> dict[str, Any] | N
 
     Returns a JSON-serializable dict of primitives ready for _build_anime_from_raw.
     """
-    import zendriver as zd
-
     base_url = f"{BASE_ANIME_URL}{canonical_path}"
-    browser = await zd.start(headless=False)
-    try:
+    async with browser_session(headless=False) as session:
+        browser = session.browser
         try:
             main_page = await browser.get(base_url)
             await main_page.wait_for(selector="#htitle", timeout=10)
@@ -433,12 +432,6 @@ async def _fetch_anisearch_anime_data(canonical_path: str) -> dict[str, Any] | N
             browser, rels_url, wait_selector="#relations_anime"
         )
         rels_raw = _extract_relations_from_html(rels_html) if rels_html else None
-
-    finally:
-        try:
-            await browser.stop()
-        except Exception as exc:
-            logger.debug(f"browser stop failed: {exc}")
 
     data = _post_process_main(main_raw)
     data["anime_relations"], data["manga_relations"] = _parse_relations(rels_raw)

@@ -8,4 +8,15 @@ python_tests(
         "//:reqs0#pytest-asyncio",
         "//:reqs0#pytest-mock",
     ],
+    overrides={
+        # Reads every crawler's source to check how it opens browsers.
+        "test_browser.py": {
+            "dependencies": [
+                "//libs/enrichment/src/enrichment/sources/anidb",
+                "//libs/enrichment/src/enrichment/sources/anime_planet",
+                "//libs/enrichment/src/enrichment/sources/anisearch",
+                "//libs/enrichment/src/enrichment/sources/mal",
+            ],
+        },
+    },
 )

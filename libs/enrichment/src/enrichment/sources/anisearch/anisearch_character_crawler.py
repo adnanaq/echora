@@ -17,6 +17,7 @@ import asyncio
 import logging
 import re
 from collections.abc import Callable
+from contextlib import AsyncExitStack
 from typing import Any, cast
 
 from enrichment.sources.anisearch.anisearch_anime_models import (
@@ -25,6 +26,7 @@ from enrichment.sources.anisearch.anisearch_anime_models import (
     AniSearchVoiceActorRef,
 )
 from enrichment.sources.anisearch.anisearch_mapper import character_from_anisearch
+from enrichment.sources.base.browser import browser_session
 from enrichment.sources.base.framework import (
     BaseCrawler,
     FileRepository,
@@ -492,10 +494,8 @@ async def _fetch_anisearch_character_data(url: str) -> dict[str, Any] | None:
     Opens a temporary browser session — for high-volume use prefer the batch
     path in fetch_anisearch_characters which reuses a single session.
     """
-    import zendriver as zd
-
-    browser = await zd.start(headless=False)
-    try:
+    async with browser_session(headless=False) as session:
+        browser = session.browser
         html = await _fetch_page_html(browser, url, wait_selector="#htitle")
         if not html:
             return None
@@ -503,11 +503,6 @@ async def _fetch_anisearch_character_data(url: str) -> dict[str, Any] | None:
         if raw is None:
             return None
         return _post_process_character(raw)
-    finally:
-        try:
-            await browser.stop()
-        except Exception:  # noqa: S110
-            pass
 
 
 @cached_result(
@@ -521,10 +516,8 @@ async def _fetch_character_ography_data(url: str) -> list[dict[str, Any]] | None
     Opens a temporary browser session — for high-volume use prefer the batch
     path which reuses a single session.
     """
-    import zendriver as zd
-
-    browser = await zd.start(headless=False)
-    try:
+    async with browser_session(headless=False) as session:
+        browser = session.browser
         html = await _fetch_page_html(
             browser,
             url,
@@ -534,11 +527,6 @@ async def _fetch_character_ography_data(url: str) -> list[dict[str, Any]] | None
         if not html:
             return None
         return _extract_ography_from_html(html)
-    finally:
-        try:
-            await browser.stop()
-        except Exception:  # noqa: S110
-            pass
 
 
 # ---------------------------------------------------------------------------
@@ -656,23 +644,16 @@ class AniSearchCharacterCrawler(BaseCrawler[AniSearchCharacter, dict[str, Any]])
             Tuple of the anime and manga ography lists, either of which may be
             ``None`` when that sub-page could not be fetched.
         """
-        import zendriver as zd
-
         anime_url, manga_url = f"{url}/anime", f"{url}/manga"
         if not await _any_ography_missing(anime_url, manga_url):
             return await _fetch_ography(anime_url), await _fetch_ography(manga_url)
 
-        browser = await zd.start(headless=False)
-        try:
+        async with browser_session(headless=False) as session:
+            browser = session.browser
             return (
                 await _fetch_ography(anime_url, browser),
                 await _fetch_ography(manga_url, browser),
             )
-        finally:
-            try:
-                await browser.stop()
-            except Exception as exc:
-                logger.debug(f"browser stop failed: {exc}")
 
     def build_source_model(
         self, processed_raw: dict[str, Any], url: str
@@ -751,12 +732,10 @@ async def fetch_anisearch_characters(
     )
     missing_set = set(missing_indices)
 
-    import zendriver as zd
-
     browser: Any = None
     succeeded = 0
 
-    try:
+    async with AsyncExitStack() as browser_stack:
         for i, url in enumerate(urls):
             role = refs[i].get("role")
             # Absent from refs cached before anime_url was carried through.
@@ -767,7 +746,11 @@ async def fetch_anisearch_characters(
                 raw = cached_values[i]
             else:
                 if browser is None:
-                    browser = await zd.start(headless=False)
+                    browser = (
+                        await browser_stack.enter_async_context(
+                            browser_session(headless=False)
+                        )
+                    ).browser
                 html = await _fetch_page_html(browser, url, wait_selector="#htitle")
                 if html is None:
                     await _fetch_anisearch_character_data.cache_batch_set(  # type: ignore[attr-defined]
@@ -797,7 +780,11 @@ async def fetch_anisearch_characters(
                     [f"{url}/manga"]
                 )
                 if anime_missing or manga_missing:
-                    browser = await zd.start(headless=False)
+                    browser = (
+                        await browser_stack.enter_async_context(
+                            browser_session(headless=False)
+                        )
+                    ).browser
             anime_ography = await _fetch_ography(f"{url}/anime", browser)
             manga_ography = await _fetch_ography(f"{url}/manga", browser)
 
@@ -815,13 +802,6 @@ async def fetch_anisearch_characters(
             characters[i] = canonical
             repo.save(canonical)
             succeeded += 1
-
-    finally:
-        if browser is not None:
-            try:
-                await browser.stop()
-            except Exception:  # noqa: S110
-                pass
 
     logger.info(
         f"anisearch character fetch: {succeeded}/{len(urls)} succeeded, {len(urls) - len(missing_set)} cache hits"

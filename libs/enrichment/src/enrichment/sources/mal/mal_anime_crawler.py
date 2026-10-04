@@ -17,6 +17,7 @@ import re
 import sys
 from typing import Any, cast
 
+from enrichment.sources.base.browser import browser_session
 from enrichment.sources.base.framework import (
     BaseCrawler,
     FileRepository,
@@ -749,10 +750,8 @@ async def _fetch_mal_anime_data(url: str) -> dict[str, Any] | None:
         Raw extraction dict with ``_url`` and ``_picture_urls`` keys populated,
         or None if navigation or extraction fails.
     """
-    import zendriver as zd
-
-    browser = await zd.start(headless=True)
-    try:
+    async with browser_session(headless=True) as session:
+        browser = session.browser
         try:
             main_page = await browser.get(url)
             await main_page.wait_for(selector="h1.title-name", timeout=10)
@@ -783,12 +782,6 @@ async def _fetch_mal_anime_data(url: str) -> dict[str, Any] | None:
         pics_url = f"{canonical_url}/pics"
         pics_html = await _fetch_pics_html(browser, pics_url)
         picture_urls = _extract_pics_from_html(pics_html) if pics_html else []
-
-    finally:
-        try:
-            await browser.stop()
-        except Exception as exc:
-            logger.debug(f"browser stop failed: {exc}")
 
     raw["_picture_urls"] = picture_urls
     raw["_url"] = canonical_url

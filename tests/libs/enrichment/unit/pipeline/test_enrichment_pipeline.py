@@ -1,33 +1,29 @@
-"""
-Tests for EnrichmentPipeline.
-"""
-
 import asyncio
 import json
+import logging
 import os
-from unittest.mock import AsyncMock, MagicMock, patch
+import tempfile
+from collections.abc import Iterator
+from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from enrichment.pipeline.config import EnrichmentConfig
 from enrichment.pipeline.enrichment_pipeline import EnrichmentPipeline
+from enrichment.sources.base import browser as browser_module
+from enrichment.sources.base.browser import OWNER_FILE_NAME
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-
-@pytest.fixture
-def config():
-    return EnrichmentConfig()
+IDS = {"mal_url": "https://myanimelist.net/anime/21"}
+API_DATA = {"mal": {"title": "One Piece"}}
 
 
 @pytest.fixture
-def pipeline(config):
-    return EnrichmentPipeline(config)
+def pipeline(tmp_path: Path) -> EnrichmentPipeline:
+    return EnrichmentPipeline(EnrichmentConfig(temp_dir=str(tmp_path / "temp")))
 
 
 @pytest.fixture
-def sample_anime():
+def sample_anime() -> dict[str, object]:
     return {
         "title": "One Piece",
         "sources": ["https://myanimelist.net/anime/21"],
@@ -35,416 +31,383 @@ def sample_anime():
     }
 
 
-# ---------------------------------------------------------------------------
-# __init__
-# ---------------------------------------------------------------------------
-
-
-class TestInit:
-    def test_uses_default_config_when_none_given(self):
-        p = EnrichmentPipeline()
-        assert isinstance(p.config, EnrichmentConfig)
-
-    def test_uses_provided_config(self, config):
-        p = EnrichmentPipeline(config)
-        assert p.config is config
-
-    def test_timing_breakdown_starts_empty(self, pipeline):
-        assert pipeline.timing_breakdown == {}
-
-    def test_verbose_logging_calls_log_configuration(self):
-        config = EnrichmentConfig(verbose_logging=True)
-        with patch.object(EnrichmentConfig, "log_configuration") as mock_log:
-            EnrichmentPipeline(config)
-        mock_log.assert_called_once()
-
-    def test_no_verbose_logging_skips_log_configuration(self):
-        config = EnrichmentConfig(verbose_logging=False)
-        with patch.object(EnrichmentConfig, "log_configuration") as mock_log:
-            EnrichmentPipeline(config)
-        mock_log.assert_not_called()
-
-
-# ---------------------------------------------------------------------------
-# _find_next_agent_id
-# ---------------------------------------------------------------------------
-
-
-class TestFindNextAgentId:
-    def test_returns_1_when_temp_dir_missing(self, pipeline):
-        with patch("os.listdir", side_effect=FileNotFoundError):
-            assert pipeline._find_next_agent_id() == 1
-
-    def test_returns_1_on_unexpected_error(self, pipeline):
-        with patch("os.listdir", side_effect=RuntimeError("disk error")):
-            assert pipeline._find_next_agent_id() == 1
-
-    def test_returns_1_when_no_agent_dirs(self, pipeline):
-        with patch("os.listdir", return_value=["unrelated_folder", "file.txt"]):
-            assert pipeline._find_next_agent_id() == 1
-
-    def test_fills_gap_in_ids(self, pipeline):
-        # agent1 and agent3 exist → gap at 2
-        with patch("os.listdir", return_value=["One_agent1", "Three_agent3"]):
-            assert pipeline._find_next_agent_id() == 2
-
-    def test_returns_next_sequential_when_no_gap(self, pipeline):
-        with patch("os.listdir", return_value=["One_agent1", "Two_agent2"]):
-            assert pipeline._find_next_agent_id() == 3
-
-    def test_single_existing_id_returns_next(self, pipeline):
-        with patch("os.listdir", return_value=["One_agent1"]):
-            assert pipeline._find_next_agent_id() == 2
-
-
-# ---------------------------------------------------------------------------
-# _create_temp_dir
-# ---------------------------------------------------------------------------
-
-
-class TestCreateTempDir:
-    def test_creates_dir_with_correct_name(self, pipeline):
-        with patch("os.listdir", return_value=[]):
-            with patch("os.makedirs") as mock_makedirs:
-                path = pipeline._create_temp_dir("One Piece")
-
-        assert "One_agent" in path
-        assert mock_makedirs.call_count == 2
-        mock_makedirs.assert_any_call(pipeline.config.temp_dir, exist_ok=True)
-
-    def test_sanitizes_special_characters(self, pipeline):
-        with patch("os.listdir", return_value=[]):
-            with patch("os.makedirs"):
-                path = pipeline._create_temp_dir("Sword Art!!! Online")
-
-        assert "SwordArt" in path or "Sword" in path
-
-    def test_empty_title_uses_unknown(self, pipeline):
-        with patch("os.listdir", return_value=[]):
-            with patch("os.makedirs"):
-                path = pipeline._create_temp_dir("")
-
-        assert "unknown_agent" in path
-
-    def test_returns_full_path_under_temp_dir(self, pipeline):
-        with patch("os.listdir", return_value=[]):
-            with patch("os.makedirs"):
-                path = pipeline._create_temp_dir("Naruto")
-
-        assert path.startswith(pipeline.config.temp_dir)
-
-    def test_repeated_calls_get_different_paths(self, pipeline):
-        # First scan returns empty → agent1; second scan returns agent1 dir → agent2
-        with patch("os.listdir", side_effect=[[], ["Naruto_agent1"]]):
-            with patch("os.makedirs"):
-                first = pipeline._create_temp_dir("Naruto")
-                second = pipeline._create_temp_dir("Naruto")
-
-        assert first != second
-
-
-# ---------------------------------------------------------------------------
-# enrich_anime
-# ---------------------------------------------------------------------------
-
-
-class TestEnrichAnime:
-    @pytest.mark.asyncio
-    async def test_success_returns_full_result(self, pipeline, sample_anime, tmp_path):
-        pipeline.config = EnrichmentConfig(temp_dir=str(tmp_path))
-
-        mock_ids = {"mal_url": "https://myanimelist.net/anime/21"}
-        mock_api_data = {"mal": {"title": "One Piece"}}
-
-        pipeline.id_extractor.extract_all_ids = MagicMock(return_value=mock_ids)
-        pipeline.id_extractor.validate_ids = MagicMock(return_value=mock_ids)
-        pipeline.api_fetcher.fetch_all_data = AsyncMock(return_value=mock_api_data)
-
-        result = await pipeline.enrich_anime(sample_anime, agent_dir="One_agent1")
-
-        assert result["offline_data"] is sample_anime
-        assert result["extracted_ids"] == mock_ids
-        assert result["api_data"] == mock_api_data
-        assert result["enrichment_metadata"]["method"] == "programmatic"
-        assert "total_time" in result["enrichment_metadata"]
-        assert "temp_directory" in result["enrichment_metadata"]
-
-    @pytest.mark.asyncio
-    async def test_saves_current_anime_json(self, pipeline, sample_anime, tmp_path):
-        pipeline.config = EnrichmentConfig(temp_dir=str(tmp_path))
-
-        pipeline.id_extractor.extract_all_ids = MagicMock(return_value={})
-        pipeline.id_extractor.validate_ids = MagicMock(return_value={})
-        pipeline.api_fetcher.fetch_all_data = AsyncMock(return_value={})
-
-        await pipeline.enrich_anime(sample_anime, agent_dir="One_agent1")
-
-        saved_path = tmp_path / "One_agent1" / "current_anime.json"
-        assert saved_path.exists()
-        with open(saved_path) as f:
-            saved = json.load(f)
-        assert saved["title"] == "One Piece"
-
-    @pytest.mark.asyncio
-    async def test_auto_generates_agent_dir_when_none(
-        self, pipeline, sample_anime, tmp_path
+@pytest.fixture
+def stubbed_sources(pipeline: EnrichmentPipeline) -> Iterator[None]:
+    with (
+        patch.object(
+            pipeline.id_extractor, "extract_all_ids", autospec=True, return_value=IDS
+        ),
+        patch.object(
+            pipeline.id_extractor, "validate_ids", autospec=True, return_value=IDS
+        ),
+        patch.object(
+            pipeline.api_fetcher, "fetch_all_data", autospec=True, return_value=API_DATA
+        ),
     ):
-        pipeline.config = EnrichmentConfig(temp_dir=str(tmp_path))
-
-        pipeline.id_extractor.extract_all_ids = MagicMock(return_value={})
-        pipeline.id_extractor.validate_ids = MagicMock(return_value={})
-        pipeline.api_fetcher.fetch_all_data = AsyncMock(return_value={})
-
-        result = await pipeline.enrich_anime(sample_anime)
-
-        temp_dir = result["enrichment_metadata"]["temp_directory"]
-        assert os.path.isdir(temp_dir)
-        assert "_agent" in temp_dir
-
-    @pytest.mark.asyncio
-    async def test_timing_breakdown_recorded(self, pipeline, sample_anime, tmp_path):
-        pipeline.config = EnrichmentConfig(temp_dir=str(tmp_path))
-
-        pipeline.id_extractor.extract_all_ids = MagicMock(return_value={})
-        pipeline.id_extractor.validate_ids = MagicMock(return_value={})
-        pipeline.api_fetcher.fetch_all_data = AsyncMock(return_value={})
-
-        await pipeline.enrich_anime(sample_anime, agent_dir="One_agent1")
-
-        assert "id_extraction" in pipeline.timing_breakdown
-        assert "api_fetching" in pipeline.timing_breakdown
-
-    @pytest.mark.asyncio
-    async def test_exception_returns_partial_when_skip_enabled(
-        self, pipeline, sample_anime, tmp_path
-    ):
-        pipeline.config = EnrichmentConfig(
-            skip_failed_apis=True, temp_dir=str(tmp_path)
-        )
-
-        pipeline.id_extractor.extract_all_ids = MagicMock(
-            side_effect=RuntimeError("ID extraction failed")
-        )
-
-        result = await pipeline.enrich_anime(sample_anime, agent_dir="One_agent1")
-
-        assert result["partial_data"] is True
-        assert "ID extraction failed" in result["error"]
-        assert result["offline_data"] is sample_anime
-
-    @pytest.mark.asyncio
-    async def test_exception_raises_when_skip_disabled(
-        self, pipeline, sample_anime, tmp_path
-    ):
-        pipeline.config = EnrichmentConfig(
-            skip_failed_apis=False, temp_dir=str(tmp_path)
-        )
-
-        pipeline.id_extractor.extract_all_ids = MagicMock(
-            side_effect=RuntimeError("hard failure")
-        )
-
-        with pytest.raises(RuntimeError, match="hard failure"):
-            await pipeline.enrich_anime(sample_anime, agent_dir="One_agent1")
-
-    @pytest.mark.asyncio
-    async def test_only_services_forwarded_to_fetcher(
-        self, pipeline, sample_anime, tmp_path
-    ):
-        pipeline.config = EnrichmentConfig(temp_dir=str(tmp_path))
-
-        pipeline.id_extractor.extract_all_ids = MagicMock(return_value={})
-        pipeline.id_extractor.validate_ids = MagicMock(return_value={})
-        pipeline.api_fetcher.fetch_all_data = AsyncMock(return_value={})
-
-        await pipeline.enrich_anime(
-            sample_anime, agent_dir="One_agent1", only_services=["kitsu"]
-        )
-
-        pipeline.api_fetcher.fetch_all_data.assert_awaited_once()
-        call_kwargs = pipeline.api_fetcher.fetch_all_data.call_args
-        assert call_kwargs[0][3] is None  # skip_services
-        assert call_kwargs[0][4] == ["kitsu"]  # only_services
-
-    @pytest.mark.asyncio
-    async def test_skip_services_forwarded_to_fetcher(
-        self, pipeline, sample_anime, tmp_path
-    ):
-        pipeline.config = EnrichmentConfig(temp_dir=str(tmp_path))
-
-        pipeline.id_extractor.extract_all_ids = MagicMock(return_value={})
-        pipeline.id_extractor.validate_ids = MagicMock(return_value={})
-        pipeline.api_fetcher.fetch_all_data = AsyncMock(return_value={})
-
-        await pipeline.enrich_anime(
-            sample_anime, agent_dir="One_agent1", skip_services=["anidb"]
-        )
-
-        call_kwargs = pipeline.api_fetcher.fetch_all_data.call_args
-        assert call_kwargs[0][3] == ["anidb"]  # skip_services
-        assert call_kwargs[0][4] is None  # only_services
-
-    @pytest.mark.asyncio
-    async def test_fetch_characters_false_forwarded_to_fetcher(
-        self, pipeline, sample_anime, tmp_path
-    ):
-        pipeline.config = EnrichmentConfig(temp_dir=str(tmp_path))
-        pipeline.id_extractor.extract_all_ids = MagicMock(return_value={})
-        pipeline.id_extractor.validate_ids = MagicMock(return_value={})
-        pipeline.api_fetcher.fetch_all_data = AsyncMock(return_value={})
-
-        await pipeline.enrich_anime(
-            sample_anime, agent_dir="One_agent1", fetch_characters=False
-        )
-
-        call_kwargs = pipeline.api_fetcher.fetch_all_data.call_args
-        assert call_kwargs.kwargs["fetch_characters"] is False
-        assert call_kwargs.kwargs["fetch_episodes"] is True
-
-    @pytest.mark.asyncio
-    async def test_fetch_episodes_false_forwarded_to_fetcher(
-        self, pipeline, sample_anime, tmp_path
-    ):
-        pipeline.config = EnrichmentConfig(temp_dir=str(tmp_path))
-        pipeline.id_extractor.extract_all_ids = MagicMock(return_value={})
-        pipeline.id_extractor.validate_ids = MagicMock(return_value={})
-        pipeline.api_fetcher.fetch_all_data = AsyncMock(return_value={})
-
-        await pipeline.enrich_anime(
-            sample_anime, agent_dir="One_agent1", fetch_episodes=False
-        )
-
-        call_kwargs = pipeline.api_fetcher.fetch_all_data.call_args
-        assert call_kwargs.kwargs["fetch_characters"] is True
-        assert call_kwargs.kwargs["fetch_episodes"] is False
+        yield
 
 
-# ---------------------------------------------------------------------------
-# enrich_batch
-# ---------------------------------------------------------------------------
+@pytest.fixture
+def unlimited_browser_pool() -> Iterator[None]:
+    yield
+    browser_module._max_browsers = None
+    browser_module._slots_by_loop.clear()
 
 
-class TestEnrichBatch:
-    @pytest.mark.asyncio
-    async def test_returns_successful_results(self, pipeline, tmp_path):
-        pipeline.config = EnrichmentConfig(temp_dir=str(tmp_path))
-        anime_list = [{"title": "A"}, {"title": "B"}]
+def _agent_dirs(pipeline: EnrichmentPipeline, *names: str) -> None:
+    for name in names:
+        (Path(pipeline.config.temp_dir) / name).mkdir(parents=True)
 
-        async def fake_enrich(anime, **kwargs):
-            return {"offline_data": anime, "api_data": {}}
 
-        with patch.object(pipeline, "enrich_anime", side_effect=fake_enrich):
-            results = await pipeline.enrich_batch(anime_list)
+def test_enrichment_pipeline_no_config_uses_default_config() -> None:
+    assert isinstance(EnrichmentPipeline().config, EnrichmentConfig)
 
-        assert len(results) == 2
 
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize(
-        "failure",
-        [RuntimeError("failed"), asyncio.CancelledError()],
-        ids=["error", "cancelled"],
+def test_enrichment_pipeline_given_config_keeps_it() -> None:
+    config = EnrichmentConfig()
+
+    assert EnrichmentPipeline(config).config is config
+
+
+def test_enrichment_pipeline_starts_with_empty_timing_breakdown(
+    pipeline: EnrichmentPipeline,
+) -> None:
+    assert pipeline.timing_breakdown == {}
+
+
+@pytest.mark.parametrize("verbose", [True, False])
+def test_enrichment_pipeline_verbose_logging_logs_configuration_only_when_on(
+    caplog: pytest.LogCaptureFixture, verbose: bool
+) -> None:
+    with caplog.at_level(logging.INFO, logger="enrichment.pipeline.config"):
+        EnrichmentPipeline(EnrichmentConfig(verbose_logging=verbose))
+
+    assert ("Enrichment Pipeline Configuration" in caplog.text) is verbose
+
+
+def test_find_next_agent_id_missing_temp_dir_returns_one(
+    pipeline: EnrichmentPipeline,
+) -> None:
+    assert pipeline._find_next_agent_id() == 1
+
+
+def test_find_next_agent_id_unexpected_error_returns_one(
+    pipeline: EnrichmentPipeline,
+) -> None:
+    with patch("os.listdir", autospec=True, side_effect=RuntimeError("disk error")):
+        assert pipeline._find_next_agent_id() == 1
+
+
+def test_find_next_agent_id_no_agent_dirs_returns_one(
+    pipeline: EnrichmentPipeline,
+) -> None:
+    _agent_dirs(pipeline, "unrelated_folder")
+
+    assert pipeline._find_next_agent_id() == 1
+
+
+@pytest.mark.parametrize(
+    ("existing", "expected"),
+    [
+        (("One_agent1", "Three_agent3"), 2),
+        (("One_agent1", "Two_agent2"), 3),
+        (("One_agent1",), 2),
+    ],
+    ids=["gap", "no_gap", "single"],
+)
+def test_find_next_agent_id_existing_dirs_returns_lowest_free_id(
+    pipeline: EnrichmentPipeline, existing: tuple[str, ...], expected: int
+) -> None:
+    _agent_dirs(pipeline, *existing)
+
+    assert pipeline._find_next_agent_id() == expected
+
+
+def test_create_temp_dir_creates_first_word_agent_dir_under_temp_dir(
+    pipeline: EnrichmentPipeline,
+) -> None:
+    path = pipeline._create_temp_dir("One Piece")
+
+    assert path == os.path.join(pipeline.config.temp_dir, "One_agent1")
+    assert os.path.isdir(path)
+
+
+def test_create_temp_dir_special_characters_are_removed(
+    pipeline: EnrichmentPipeline,
+) -> None:
+    path = pipeline._create_temp_dir("Sword!!! Art Online")
+
+    assert os.path.basename(path) == "Sword_agent1"
+
+
+def test_create_temp_dir_empty_title_uses_unknown(pipeline: EnrichmentPipeline) -> None:
+    assert os.path.basename(pipeline._create_temp_dir("")) == "unknown_agent1"
+
+
+def test_create_temp_dir_repeated_calls_return_different_paths(
+    pipeline: EnrichmentPipeline,
+) -> None:
+    first = pipeline._create_temp_dir("Naruto")
+    second = pipeline._create_temp_dir("Naruto")
+
+    assert (os.path.basename(first), os.path.basename(second)) == (
+        "Naruto_agent1",
+        "Naruto_agent2",
     )
-    async def test_drops_failed_entries(self, pipeline, tmp_path, failure):
-        pipeline.config = EnrichmentConfig(temp_dir=str(tmp_path))
-        anime_list = [{"title": "Good"}, {"title": "Bad"}]
-
-        call_count = 0
-
-        async def fake_enrich(anime, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            if anime["title"] == "Bad":
-                raise failure
-            return {"offline_data": anime}
-
-        with patch.object(pipeline, "enrich_anime", side_effect=fake_enrich):
-            results = await pipeline.enrich_batch(anime_list)
-
-        assert len(results) == 1
-        assert results[0]["offline_data"]["title"] == "Good"
-
-    @pytest.mark.asyncio
-    async def test_enrich_batch_forwards_entity_flags(self, pipeline, tmp_path):
-        pipeline.config = EnrichmentConfig(temp_dir=str(tmp_path))
-        anime_list = [{"title": "A"}]
-        captured: list[dict] = []
-
-        async def fake_enrich(anime, **kwargs):
-            captured.append(kwargs)
-            return {"offline_data": anime}
-
-        with patch.object(pipeline, "enrich_anime", side_effect=fake_enrich):
-            await pipeline.enrich_batch(
-                anime_list, fetch_characters=False, fetch_episodes=False
-            )
-
-        assert captured[0]["fetch_characters"] is False
-        assert captured[0]["fetch_episodes"] is False
-
-    @pytest.mark.asyncio
-    async def test_respects_batch_size_semaphore(self, pipeline, tmp_path):
-        """Semaphore is created with config.batch_size — doesn't deadlock on small batch."""
-        pipeline.config = EnrichmentConfig(batch_size=2, temp_dir=str(tmp_path))
-        anime_list = [{"title": f"Anime{i}"} for i in range(5)]
-
-        async def fake_enrich(anime, **kwargs):
-            return {"offline_data": anime}
-
-        with patch.object(pipeline, "enrich_anime", side_effect=fake_enrich):
-            results = await pipeline.enrich_batch(anime_list)
-
-        assert len(results) == 5
 
 
-# ---------------------------------------------------------------------------
-# get_performance_report
-# ---------------------------------------------------------------------------
+@pytest.mark.usefixtures("stubbed_sources")
+async def test_enrich_anime_returns_offline_ids_and_api_data(
+    pipeline: EnrichmentPipeline, sample_anime: dict[str, object]
+) -> None:
+    result = await pipeline.enrich_anime(sample_anime, agent_dir="One_agent1")
+
+    assert result["offline_data"] is sample_anime
+    assert result["extracted_ids"] == IDS
+    assert result["api_data"] == API_DATA
+    assert result["enrichment_metadata"]["method"] == "programmatic"
+    assert "total_time" in result["enrichment_metadata"]
+    assert "temp_directory" in result["enrichment_metadata"]
 
 
-class TestGetPerformanceReport:
-    def test_report_contains_config_values(self, pipeline):
-        report = pipeline.get_performance_report()
-        assert "Max Concurrent APIs" in report or "Total APIs configured" in report
-        assert str(pipeline.config.max_concurrent_apis) in report
+@pytest.mark.usefixtures("stubbed_sources")
+async def test_enrich_anime_saves_current_anime_json(
+    pipeline: EnrichmentPipeline, sample_anime: dict[str, object]
+) -> None:
+    await pipeline.enrich_anime(sample_anime, agent_dir="One_agent1")
 
-    def test_report_includes_timing_when_present(self, pipeline):
-        pipeline.timing_breakdown = {"id_extraction": 0.05, "api_fetching": 2.3}
-        report = pipeline.get_performance_report()
-        assert "id_extraction" in report
-        assert "api_fetching" in report
-
-    def test_report_includes_api_timings_when_present(self, pipeline):
-        pipeline.api_fetcher.api_timings = {"kitsu": 1.2, "mal": 0.8}
-        report = pipeline.get_performance_report()
-        assert "kitsu" in report
-        assert "mal" in report
-
-    def test_report_without_timing_does_not_raise(self, pipeline):
-        pipeline.timing_breakdown = {}
-        pipeline.api_fetcher.api_timings = {}
-        report = pipeline.get_performance_report()
-        assert isinstance(report, str)
+    saved = Path(pipeline.config.temp_dir) / "One_agent1" / "current_anime.json"
+    assert json.loads(saved.read_text())["title"] == "One Piece"
 
 
-# ---------------------------------------------------------------------------
-# Context manager protocol
-# ---------------------------------------------------------------------------
+@pytest.mark.usefixtures("stubbed_sources")
+async def test_enrich_anime_no_agent_dir_creates_agent_dir(
+    pipeline: EnrichmentPipeline, sample_anime: dict[str, object]
+) -> None:
+    result = await pipeline.enrich_anime(sample_anime)
+
+    temp_dir = result["enrichment_metadata"]["temp_directory"]
+    assert os.path.isdir(temp_dir)
+    assert os.path.basename(temp_dir) == "One_agent1"
 
 
-class TestContextManager:
-    @pytest.mark.asyncio
-    async def test_aenter_returns_self(self, pipeline):
-        result = await pipeline.__aenter__()
-        assert result is pipeline
+@pytest.mark.usefixtures("stubbed_sources")
+async def test_enrich_anime_records_timing_breakdown(
+    pipeline: EnrichmentPipeline, sample_anime: dict[str, object]
+) -> None:
+    await pipeline.enrich_anime(sample_anime, agent_dir="One_agent1")
 
-    @pytest.mark.asyncio
-    async def test_aexit_delegates_to_api_fetcher(self, pipeline):
-        pipeline.api_fetcher.__aexit__ = AsyncMock(return_value=False)
+    assert {"id_extraction", "api_fetching"} <= pipeline.timing_breakdown.keys()
+
+
+async def test_enrich_anime_failure_with_skip_enabled_returns_partial_result(
+    pipeline: EnrichmentPipeline, sample_anime: dict[str, object]
+) -> None:
+    with patch.object(
+        pipeline.id_extractor,
+        "extract_all_ids",
+        autospec=True,
+        side_effect=RuntimeError("ID extraction failed"),
+    ):
+        result = await pipeline.enrich_anime(sample_anime, agent_dir="One_agent1")
+
+    assert result["partial_data"] is True
+    assert "ID extraction failed" in result["error"]
+    assert result["offline_data"] is sample_anime
+
+
+async def test_enrich_anime_failure_with_skip_disabled_raises(
+    tmp_path: Path, sample_anime: dict[str, object]
+) -> None:
+    pipeline = EnrichmentPipeline(
+        EnrichmentConfig(skip_failed_apis=False, temp_dir=str(tmp_path))
+    )
+
+    with (
+        patch.object(
+            pipeline.id_extractor,
+            "extract_all_ids",
+            autospec=True,
+            side_effect=RuntimeError("hard failure"),
+        ),
+        pytest.raises(RuntimeError, match="hard failure"),
+    ):
+        await pipeline.enrich_anime(sample_anime, agent_dir="One_agent1")
+
+
+@pytest.mark.usefixtures("stubbed_sources")
+@pytest.mark.parametrize(
+    ("options", "skip", "only"),
+    [
+        ({"only_services": ["kitsu"]}, None, ["kitsu"]),
+        ({"skip_services": ["anidb"]}, ["anidb"], None),
+    ],
+    ids=["only", "skip"],
+)
+async def test_enrich_anime_service_selection_forwarded_to_fetcher(
+    pipeline: EnrichmentPipeline,
+    sample_anime: dict[str, object],
+    options: dict[str, list[str]],
+    skip: list[str] | None,
+    only: list[str] | None,
+) -> None:
+    await pipeline.enrich_anime(sample_anime, agent_dir="One_agent1", **options)
+
+    arguments = pipeline.api_fetcher.fetch_all_data.call_args.args
+    assert (arguments[3], arguments[4]) == (skip, only)
+
+
+@pytest.mark.usefixtures("stubbed_sources")
+@pytest.mark.parametrize(
+    ("options", "characters", "episodes"),
+    [
+        ({"fetch_characters": False}, False, True),
+        ({"fetch_episodes": False}, True, False),
+    ],
+    ids=["no_characters", "no_episodes"],
+)
+async def test_enrich_anime_entity_flags_forwarded_to_fetcher(
+    pipeline: EnrichmentPipeline,
+    sample_anime: dict[str, object],
+    options: dict[str, bool],
+    characters: bool,
+    episodes: bool,
+) -> None:
+    await pipeline.enrich_anime(sample_anime, agent_dir="One_agent1", **options)
+
+    keywords = pipeline.api_fetcher.fetch_all_data.call_args.kwargs
+    assert (keywords["fetch_characters"], keywords["fetch_episodes"]) == (
+        characters,
+        episodes,
+    )
+
+
+async def test_enrich_batch_returns_result_per_anime(
+    pipeline: EnrichmentPipeline,
+) -> None:
+    async def enrich(anime: dict, **_: object) -> dict:
+        return {"offline_data": anime}
+
+    with patch.object(pipeline, "enrich_anime", autospec=True, side_effect=enrich):
+        results = await pipeline.enrich_batch([{"title": "A"}, {"title": "B"}])
+
+    assert [result["offline_data"]["title"] for result in results] == ["A", "B"]
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [RuntimeError("failed"), asyncio.CancelledError()],
+    ids=["error", "cancelled"],
+)
+async def test_enrich_batch_failed_entry_is_dropped(
+    pipeline: EnrichmentPipeline, failure: BaseException
+) -> None:
+    async def enrich(anime: dict, **_: object) -> dict:
+        if anime["title"] == "Bad":
+            raise failure
+        return {"offline_data": anime}
+
+    with patch.object(pipeline, "enrich_anime", autospec=True, side_effect=enrich):
+        results = await pipeline.enrich_batch([{"title": "Good"}, {"title": "Bad"}])
+
+    assert [result["offline_data"]["title"] for result in results] == ["Good"]
+
+
+async def test_enrich_batch_entity_flags_forwarded_to_each_anime(
+    pipeline: EnrichmentPipeline,
+) -> None:
+    received: list[dict] = []
+
+    async def enrich(anime: dict, **options: object) -> dict:
+        received.append(options)
+        return {"offline_data": anime}
+
+    with patch.object(pipeline, "enrich_anime", autospec=True, side_effect=enrich):
+        await pipeline.enrich_batch(
+            [{"title": "A"}], fetch_characters=False, fetch_episodes=False
+        )
+
+    assert (received[0]["fetch_characters"], received[0]["fetch_episodes"]) == (
+        False,
+        False,
+    )
+
+
+async def test_enrich_batch_more_anime_than_batch_size_returns_every_result(
+    tmp_path: Path,
+) -> None:
+    pipeline = EnrichmentPipeline(
+        EnrichmentConfig(batch_size=2, temp_dir=str(tmp_path))
+    )
+
+    async def enrich(anime: dict, **_: object) -> dict:
+        return {"offline_data": anime}
+
+    with patch.object(pipeline, "enrich_anime", autospec=True, side_effect=enrich):
+        results = await pipeline.enrich_batch(
+            [{"title": f"Anime{i}"} for i in range(5)]
+        )
+
+    assert len(results) == 5
+
+
+def test_get_performance_report_includes_browser_limit(
+    pipeline: EnrichmentPipeline,
+) -> None:
+    assert "Max concurrent browsers: 4" in pipeline.get_performance_report()
+
+
+def test_get_performance_report_includes_timings_when_present(
+    pipeline: EnrichmentPipeline,
+) -> None:
+    pipeline.timing_breakdown = {"id_extraction": 0.05, "api_fetching": 2.3}
+    pipeline.api_fetcher.api_timings = {"kitsu": 1.2, "mal": 0.8}
+
+    report = pipeline.get_performance_report()
+
+    assert all(
+        name in report for name in ("id_extraction", "api_fetching", "kitsu", "mal")
+    )
+
+
+def test_get_performance_report_without_timings_returns_header_only(
+    pipeline: EnrichmentPipeline,
+) -> None:
+    pipeline.timing_breakdown = {}
+    pipeline.api_fetcher.api_timings = {}
+
+    report = pipeline.get_performance_report()
+
+    assert "Timing Breakdown" not in report
+    assert "API Response Times" not in report
+
+
+@pytest.mark.usefixtures("unlimited_browser_pool")
+async def test_enrichment_pipeline_enter_sets_browser_limit_and_removes_abandoned_profile(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    abandoned = tmp_path / "uc_abandoned"
+    abandoned.mkdir()
+    (abandoned / OWNER_FILE_NAME).write_text("999999999 1")
+    pipeline = EnrichmentPipeline(
+        EnrichmentConfig(max_concurrent_browsers=3, temp_dir=str(tmp_path / "temp"))
+    )
+
+    async with pipeline as entered:
+        assert entered is pipeline
+
+    assert browser_module._max_browsers == 3
+    assert not abandoned.exists()
+
+
+async def test_enrichment_pipeline_exit_closes_api_fetcher_and_propagates_errors(
+    pipeline: EnrichmentPipeline,
+) -> None:
+    with patch.object(
+        pipeline.api_fetcher, "__aexit__", autospec=True, return_value=False
+    ) as fetcher_exit:
         result = await pipeline.__aexit__(None, None, None)
-        pipeline.api_fetcher.__aexit__.assert_awaited_once_with(None, None, None)
-        assert result is False
 
-    @pytest.mark.asyncio
-    async def test_async_with_block(self, pipeline):
-        async with pipeline as p:
-            assert p is pipeline
+    assert result is False
+    fetcher_exit.assert_awaited_once_with(None, None, None)
