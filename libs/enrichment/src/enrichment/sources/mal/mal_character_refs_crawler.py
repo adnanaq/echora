@@ -13,6 +13,7 @@ import logging
 from typing import Any, cast
 
 from enrichment.sources.base.browser import browser_session
+from enrichment.sources.mal.mal_base import MAL_DOMAIN
 from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
 from lxml import etree
@@ -59,7 +60,7 @@ def _extract_character_urls(html: str) -> list[str]:
 
 
 async def _fetch_characters_page_html(url: str) -> str | None:
-    async with browser_session(headless=True) as session:
+    async with browser_session(headless=True, allowed_site=MAL_DOMAIN) as session:
         browser = session.browser
         try:
             page = await browser.get(url)

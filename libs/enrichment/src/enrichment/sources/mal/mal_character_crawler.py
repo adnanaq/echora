@@ -24,6 +24,7 @@ from enrichment.sources.base.framework import (
     NullRepository,
 )
 from enrichment.sources.mal.mal_base import (
+    MAL_DOMAIN,
     parse_number,
     parse_sidebar_field,
 )
@@ -458,7 +459,7 @@ async def _fetch_mal_character_data(url: str) -> tuple[dict[str, Any], str] | No
     Returns:
         Tuple of (raw extraction dict, canonical URL), or None on failure.
     """
-    async with browser_session(headless=True) as session:
+    async with browser_session(headless=True, allowed_site=MAL_DOMAIN) as session:
         browser = session.browser
         result = await _fetch_character_html(browser, url)
 
@@ -612,7 +613,7 @@ async def fetch_mal_characters(
 
     missing_indices = sorted(set(missing_indices))
 
-    async with browser_session(headless=True) as session:
+    async with browser_session(headless=True, allowed_site=MAL_DOMAIN) as session:
         browser = session.browser
         for i, idx in enumerate(missing_indices):
             url = urls[idx]

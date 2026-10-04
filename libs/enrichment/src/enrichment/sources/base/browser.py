@@ -11,6 +11,10 @@ Every crawler opens its browser through `browser_session()`, which:
 * writes the owning process into the browser's temporary profile, so
   `reap_orphans()` can stop Chromes and delete profiles left behind by a run that
   was killed before its `finally` blocks ran.
+* stops what the crawlers never read: Chrome's background downloads, images,
+  fonts, media and stylesheets, and every host other than the one a session
+  names. `configure_browser_pool(block_unused_resources=False)` turns the
+  resource and host blocking off.
 """
 
 from __future__ import annotations
@@ -47,8 +51,22 @@ _PROC = Path("/proc")
 # Chrome rewrites its process title, so /proc/<pid>/cmdline holds the switches
 # as one space-separated string rather than one argument each.
 _PROFILE_ARGUMENT = re.compile(rb"--user-data-dir=(\S+)")
+STATIC_RESOURCE_TYPES = (
+    cdp.network.ResourceType.IMAGE,
+    cdp.network.ResourceType.FONT,
+    cdp.network.ResourceType.MEDIA,
+    cdp.network.ResourceType.STYLESHEET,
+)
+
+# zendriver 0.17 dropped these from its defaults; without them a fresh profile
+# downloads about 6.8 MB in its first minute instead of 1.2 MB.
+BACKGROUND_DOWNLOAD_SWITCHES = (
+    "--disable-background-networking",
+    "--disable-component-update",
+)
 
 _max_browsers: int | None = None
+_block_unused_resources = True
 _slots_by_loop: weakref.WeakKeyDictionary[
     asyncio.AbstractEventLoop, asyncio.Semaphore
 ] = weakref.WeakKeyDictionary()
@@ -63,9 +81,17 @@ class BrowserPoolSizeError(ValueError):
 
 @dataclass
 class BrowserSession:
-    """An open browser and the settings it was started with."""
+    """An open browser and the settings it was started with.
+
+    Attributes:
+        headless: Whether Chrome runs without a window.
+        allowed_site: The one website the browser may connect to, or ``None``
+            for any website; see `browser_session()`.
+        browser: The running browser; replaced by ``restart()``.
+    """
 
     headless: bool
+    allowed_site: str | None
     browser: zendriver.Browser
 
     async def restart(self) -> zendriver.Browser:
@@ -75,20 +101,29 @@ class BrowserSession:
         restart never lets another session start in between.
         """
         await close_browser(self.browser)
-        self.browser = await _start_browser(self.headless)
+        self.browser = await _start_browser(self.headless, self.allowed_site)
         return self.browser
 
 
-def configure_browser_pool(max_browsers: int) -> None:
+def configure_browser_pool(
+    max_browsers: int, *, block_unused_resources: bool = True
+) -> None:
     """Limit how many browsers can be open at once in this process.
 
     Call once at startup. Calling again with the same limit does nothing;
     a different limit applies to sessions opened after the call.
 
+    Args:
+        max_browsers: Most browsers open at the same time.
+        block_unused_resources: Make every browser started afterwards fail its
+            image, font, media and stylesheet requests, and keep each session
+            to its ``allowed_site``. Off lets every browser load everything.
+
     Raises:
         BrowserPoolSizeError: If ``max_browsers`` is below 1.
     """
-    global _max_browsers
+    global _max_browsers, _block_unused_resources
+    _block_unused_resources = block_unused_resources
     if max_browsers < 1:
         raise BrowserPoolSizeError(max_browsers)
     if max_browsers != _max_browsers:
@@ -97,7 +132,9 @@ def configure_browser_pool(max_browsers: int) -> None:
 
 
 @asynccontextmanager
-async def browser_session(*, headless: bool) -> AsyncIterator[BrowserSession]:
+async def browser_session(
+    *, headless: bool, allowed_site: str | None = None
+) -> AsyncIterator[BrowserSession]:
     """Open a browser for the length of the block and always close it.
 
     Waits for a free slot before Chrome is started, so a waiting session holds
@@ -106,13 +143,26 @@ async def browser_session(*, headless: bool) -> AsyncIterator[BrowserSession]:
     Args:
         headless: Start Chrome without a window. AniSearch and AniDB pages need
             a window, so their crawlers pass ``False``.
+        allowed_site: The one website this browser may connect to, such as
+            ``"myanimelist.net"``. Requests to that site and its subdomains
+            (``cdn.myanimelist.net``) work as usual; requests to any other
+            website, such as the ad and tracking servers a page pulls in, fail
+            before they are sent, because Chrome treats every other name as
+            unknown. ``None`` (the default) lets the browser reach any website.
+            It is fixed for the browser's whole life, so a session with it must
+            only visit that site, and it applies only while
+            ``configure_browser_pool()`` has resource blocking on. Never set it
+            for Anime-Planet or AniDB: their Cloudflare check is served from
+            ``challenges.cloudflare.com``, which would then fail too.
 
     Yields:
         The session; its ``browser`` is replaced by ``restart()``.
     """
     slots = _browser_slots()
     async with slots if slots is not None else nullcontext():
-        session = BrowserSession(headless, await _start_browser(headless))
+        session = BrowserSession(
+            headless, allowed_site, await _start_browser(headless, allowed_site)
+        )
         try:
             yield session
         finally:
@@ -139,6 +189,25 @@ async def close_browser(browser: Any) -> None:
         await browser.stop()
     except Exception as error:
         logger.debug(f"browser stop failed: {error}")
+
+
+async def install_static_resource_blocking(tab: zendriver.Tab) -> None:
+    """Fail every image, font, media and stylesheet request the tab makes.
+
+    Only requests of those types are paused, so the document, scripts, XHR and
+    fetch requests never wait on Python. Fetch is enabled with its patterns
+    before the handler is attached: zendriver then treats the domain as enabled
+    by hand and never sends a bare ``Fetch.enable``, which would pause every
+    request, the document included.
+    """
+    patterns = [
+        cdp.fetch.RequestPattern(
+            resource_type=resource_type, request_stage=cdp.fetch.RequestStage.REQUEST
+        )
+        for resource_type in STATIC_RESOURCE_TYPES
+    ]
+    await tab.send(cdp.fetch.enable(patterns=patterns))
+    tab.add_handler(cdp.fetch.RequestPaused, _fail_static_request)
 
 
 def reap_orphans(temp_dir: Path | None = None) -> int:
@@ -171,6 +240,17 @@ def reap_orphans(temp_dir: Path | None = None) -> int:
     return reaped
 
 
+async def _fail_static_request(event: cdp.fetch.RequestPaused, connection: Any) -> None:
+    try:
+        await connection.send(
+            cdp.fetch.fail_request(
+                event.request_id, cdp.network.ErrorReason.BLOCKED_BY_CLIENT
+            )
+        )
+    except Exception as error:
+        logger.debug(f"could not block {event.request.url}: {error}")
+
+
 def _browser_slots() -> asyncio.Semaphore | None:
     if _max_browsers is None:
         return None
@@ -181,9 +261,26 @@ def _browser_slots() -> asyncio.Semaphore | None:
     return slots
 
 
-async def _start_browser(headless: bool) -> zendriver.Browser:
-    browser = await zendriver.start(headless=headless)
-    _write_profile_owner(browser)
+async def _start_browser(headless: bool, allowed_site: str | None) -> zendriver.Browser:
+    switches = list(BACKGROUND_DOWNLOAD_SWITCHES)
+    if allowed_site and _block_unused_resources:
+        switches.append(
+            f"--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE {allowed_site}, "
+            f"EXCLUDE *.{allowed_site}"
+        )
+    browser = await zendriver.start(headless=headless, browser_args=switches)
+    try:
+        _write_profile_owner(browser)
+        if _block_unused_resources:
+            if browser.main_tab is None:
+                logger.warning(
+                    "browser started without a tab; resources are not blocked"
+                )
+            else:
+                await install_static_resource_blocking(browser.main_tab)
+    except BaseException:
+        await close_browser(browser)
+        raise
     return browser
 
 

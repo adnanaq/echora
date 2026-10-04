@@ -25,6 +25,7 @@ from enrichment.sources.base.framework import (
 )
 from enrichment.sources.mal.mal_base import (
     MAL_BASE_URL,
+    MAL_DOMAIN,
     parse_aired_string,
     parse_broadcast_string,
     parse_duration_seconds,
@@ -750,7 +751,7 @@ async def _fetch_mal_anime_data(url: str) -> dict[str, Any] | None:
         Raw extraction dict with ``_url`` and ``_picture_urls`` keys populated,
         or None if navigation or extraction fails.
     """
-    async with browser_session(headless=True) as session:
+    async with browser_session(headless=True, allowed_site=MAL_DOMAIN) as session:
         browser = session.browser
         try:
             main_page = await browser.get(url)

@@ -13,6 +13,7 @@ import re
 from typing import Any, cast
 
 from enrichment.sources.base.browser import browser_session
+from enrichment.sources.mal.mal_base import MAL_DOMAIN
 from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
 from lxml import etree
@@ -60,7 +61,7 @@ async def _fetch_episode_count_html(url: str) -> str | None:
     Returns:
         Rendered page HTML, or None on failure.
     """
-    async with browser_session(headless=True) as session:
+    async with browser_session(headless=True, allowed_site=MAL_DOMAIN) as session:
         browser = session.browser
         try:
             page = await browser.get(url)

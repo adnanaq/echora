@@ -15,6 +15,7 @@ from pydantic import ValidationError
         ("skip_failed_apis", True),
         ("verbose_logging", False),
         ("max_concurrent_browsers", 4),
+        ("block_unused_resources", True),
     ],
 )
 def test_enrichment_config_returns_documented_default(
@@ -26,6 +27,11 @@ def test_enrichment_config_returns_documented_default(
 def test_enrichment_config_max_concurrent_browsers_read_from_environment() -> None:
     with patch.dict("os.environ", {"ENRICHMENT_MAX_CONCURRENT_BROWSERS": "2"}):
         assert EnrichmentConfig().max_concurrent_browsers == 2
+
+
+def test_enrichment_config_block_unused_resources_read_from_environment() -> None:
+    with patch.dict("os.environ", {"ENRICHMENT_BLOCK_UNUSED_RESOURCES": "false"}):
+        assert EnrichmentConfig().block_unused_resources is False
 
 
 def test_enrichment_config_max_concurrent_browsers_below_one_raises_validation_error() -> (
@@ -80,6 +86,7 @@ def test_log_configuration_logs_each_setting(caplog: pytest.LogCaptureFixture) -
     for label in (
         "API Timeout",
         "Max Concurrent Browsers: 4",
+        "Block Unused Resources: Enabled",
         "Batch Size",
         "Caching",
         "Graceful Degradation",
