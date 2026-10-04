@@ -8,7 +8,7 @@ Edge-case branches use field overrides on top of the real fixture dict.
 No network calls are made.
 """
 
-from collections.abc import Awaitable, Callable, Iterator
+from collections.abc import Awaitable, Callable
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -30,7 +30,6 @@ from enrichment.sources.anisearch.anisearch_anime_crawler import (
 from enrichment.sources.base.exceptions import ServiceBlockedError
 from enrichment.sources.base.framework import NullRepository
 from enrichment.sources.base.polite_http import FetchedPage
-from http_cache.config import CacheConfig
 
 _URL = "https://www.anisearch.com/anime/2227,one-piece"
 
@@ -617,16 +616,6 @@ def test_build_source_model_falls_back_to_input_url(one_piece_processed) -> None
 # =============================================================================
 # _fetch_anisearch_anime_data
 # =============================================================================
-
-
-@pytest.fixture
-def cache_off() -> Iterator[None]:
-    with patch(
-        "http_cache.result_cache.get_cache_config",
-        autospec=True,
-        return_value=CacheConfig(cache_enabled=False),
-    ):
-        yield
 
 
 def _site(
