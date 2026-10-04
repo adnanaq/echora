@@ -30,6 +30,7 @@ from enrichment.sources.base.framework import (
     FileRepository,
     NullRepository,
 )
+from enrichment.sources.base.page_readiness import wait_for_page
 from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
 from lxml import etree
@@ -369,7 +370,7 @@ async def _fetch_page_html(browser: Any, url: str) -> str | None:
     """
     try:
         page = await browser.get(url)
-        await page.wait_for(selector="h1[itemprop='name']", timeout=20)
+        await wait_for_page(page, "h1[itemprop='name']", url)
         return await page.get_content()
     except Exception as exc:
         logger.warning(f"navigation failed for {url}: {exc}")

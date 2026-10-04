@@ -7,9 +7,10 @@ via the mal_character_extracted session fixture.
 Edge-case tests use synthetic HTML to isolate specific parsing branches.
 """
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, create_autospec
 
 import pytest
+import zendriver
 from enrichment.sources.mal.mal_character_crawler import (
     _XPATHS,
     MalCharacterCrawler,
@@ -490,21 +491,19 @@ def test_mal_character_crawler_normalize_identifier() -> None:
 
 
 @pytest.mark.asyncio
-async def test_fetch_character_html_success(mal_character_html) -> None:
-    page_mock = AsyncMock()
-    page_mock.get_content = AsyncMock(return_value=mal_character_html)
-    page_mock.wait_for = AsyncMock()
-    page_mock.scroll_down = AsyncMock()
-    page_mock.url = _LUFFY_URL
-    browser_mock = AsyncMock()
-    browser_mock.get = AsyncMock(return_value=page_mock)
+async def test_fetch_character_html_returns_page_and_canonical_url(
+    mal_character_html,
+) -> None:
+    browser = create_autospec(zendriver.Browser, instance=True)
+    tab = create_autospec(zendriver.Tab, instance=True)
+    tab.evaluate.return_value = "complete"
+    tab.get_content.return_value = mal_character_html
+    tab.url = _LUFFY_URL
+    browser.get.return_value = tab
 
-    result = await _fetch_character_html(browser_mock, _LUFFY_URL)
-    assert result is not None
-    html, url = result
-    assert url == _LUFFY_URL
-    assert len(html) > 1000
-    page_mock.scroll_down.assert_awaited_once()
+    result = await _fetch_character_html(browser, _LUFFY_URL)
+
+    assert result == (mal_character_html, _LUFFY_URL)
 
 
 @pytest.mark.asyncio

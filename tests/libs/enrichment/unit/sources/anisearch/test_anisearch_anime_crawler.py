@@ -8,12 +8,13 @@ Edge-case branches use field overrides on top of the real fixture dict.
 No network calls are made.
 """
 
-import pytest
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, create_autospec
 
+import pytest
+import zendriver
 from enrichment.sources.anisearch.anisearch_anime_crawler import (
-    BASE_ANIME_URL,
     _XPATHS,
+    BASE_ANIME_URL,
     AniSearchAnimeCrawler,
     _build_anime_from_raw,
     _extract_anime_from_html,
@@ -741,43 +742,23 @@ async def test_fetch_anisearch_anime_sources_uses_canonical_url(
 # =============================================================================
 
 
-@pytest.mark.asyncio
-async def test_fetch_page_html_with_wait_selector(mocker) -> None:
-    page_mock = mocker.AsyncMock()
-    page_mock.wait_for = AsyncMock()
-    page_mock.get_content = AsyncMock(return_value="<html></html>")
-    browser_mock = mocker.AsyncMock()
-    browser_mock.get = AsyncMock(return_value=page_mock)
+async def test_fetch_page_html_returns_page_content() -> None:
+    browser = create_autospec(zendriver.Browser, instance=True)
+    tab = create_autospec(zendriver.Tab, instance=True)
+    tab.evaluate.return_value = "complete"
+    tab.get_content.return_value = "<html></html>"
+    browser.get.return_value = tab
 
-    result = await _fetch_page_html(
-        browser_mock, "https://example.com", wait_selector="#content"
-    )
-    assert result == "<html></html>"
-    page_mock.wait_for.assert_awaited_once_with(selector="#content", timeout=10)
+    result = await _fetch_page_html(browser, _URL, "#relations_anime")
 
-
-@pytest.mark.asyncio
-async def test_fetch_page_html_without_wait_selector(mocker) -> None:
-    page_mock = mocker.AsyncMock()
-    page_mock.get_content = AsyncMock(return_value="<html></html>")
-    browser_mock = mocker.AsyncMock()
-    browser_mock.get = AsyncMock(return_value=page_mock)
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_anime_crawler.asyncio.sleep",
-        new_callable=AsyncMock,
-    )
-
-    result = await _fetch_page_html(browser_mock, "https://example.com")
     assert result == "<html></html>"
 
 
-@pytest.mark.asyncio
-async def test_fetch_page_html_exception_returns_none(mocker) -> None:
-    browser_mock = mocker.AsyncMock()
-    browser_mock.get = AsyncMock(side_effect=Exception("nav failed"))
+async def test_fetch_page_html_navigation_fails_returns_none() -> None:
+    browser = create_autospec(zendriver.Browser, instance=True)
+    browser.get.side_effect = RuntimeError("nav failed")
 
-    result = await _fetch_page_html(browser_mock, "https://example.com")
-    assert result is None
+    assert await _fetch_page_html(browser, _URL, "#relations_anime") is None
 
 
 # =============================================================================

@@ -16,7 +16,6 @@ to avoid repeated browser startup overhead and to maintain session state.
 import asyncio
 import logging
 import re
-from collections.abc import Callable
 from contextlib import AsyncExitStack
 from typing import Any, cast
 
@@ -33,6 +32,7 @@ from enrichment.sources.base.framework import (
     IRepository,
     NullRepository,
 )
+from enrichment.sources.base.page_readiness import wait_for_page
 from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
 
@@ -44,12 +44,7 @@ TTL_ANISEARCH = _CACHE_CONFIG.ttl_anisearch
 _ANISEARCH_BASE_URL = "https://www.anisearch.com"
 _INTER_REQUEST_DELAY = 3.0  # seconds between browser navigations
 
-# Rows can stream in after the container renders; poll at 1s until the count
-# repeats, capped so a permanently empty list cannot hang the fetch.
-_ROW_SETTLE_POLLS = 15
 _CHARACTER_BATCH_SIZE = 20
-_DOCUMENT_PARSE_TIMEOUT_SECONDS = 10.0
-_DOCUMENT_PARSE_POLL_SECONDS = 0.05
 
 # ---------------------------------------------------------------------------
 # XPath selectors — direct lxml XPath, anchored on structural attributes
@@ -227,85 +222,29 @@ def _extract_ography_from_html(html: str) -> list[dict[str, Any]] | None:
 # ---------------------------------------------------------------------------
 
 
-async def _wait_until_document_parsed(
-    page: Any, url: str, timeout: float = _DOCUMENT_PARSE_TIMEOUT_SECONDS
-) -> None:
-    """Wait until the browser has read the whole HTML document.
-
-    ``#htitle`` sits near the top of a character page, so it appears while the
-    rest of the HTML is still arriving. Reading the page at that moment lost
-    the favorites count, traits and both image galleries: measured on
-    2026-09-25 over eight characters, six lost fields (Luffy 49 of 94, Zoro 52
-    of 96), and the two that did not had nothing late to lose. Those fields
-    arrive with the document itself, not by a later request, so once
-    ``document.readyState`` leaves ``"loading"`` the page matched one read 8
-    seconds later on all eight, about 0.1 s after the name appeared.
-
-    Args:
-        page: The tab being read.
-        url: The page's URL, for the log line if it never finishes.
-        timeout: Seconds to wait before reading whatever has arrived.
-    """
-    loop = asyncio.get_running_loop()
-    deadline = loop.time() + timeout
-    while await page.evaluate("document.readyState") == "loading":
-        if loop.time() >= deadline:
-            logger.warning(
-                f"document still loading after {timeout}s, reading anyway: {url}"
-            )
-            return
-        await asyncio.sleep(_DOCUMENT_PARSE_POLL_SECONDS)
-
-
-async def _fetch_page_html(
-    browser: Any,
-    url: str,
-    wait_selector: str | None = None,
-    row_extractor: Callable[[str], list[Any] | None] | None = None,
-) -> str | None:
+async def _fetch_page_html(browser: Any, url: str, wait_selector: str) -> str | None:
     """Navigate to url with an existing browser session and return page HTML.
 
-    The page is only read once its HTML document has fully arrived, whatever
-    ``wait_selector`` finds first; see ``_wait_until_document_parsed``.
+    The page is read once its HTML has fully arrived, not when ``wait_selector``
+    first appears: ``#htitle`` sits near the top of a character page, and
+    reading at that moment lost the favorites count, traits and both image
+    galleries. List pages lost rows the same way, until the document finished.
 
     Args:
         browser: An already-started browser session.
         url: Page to navigate to.
-        wait_selector: CSS selector to wait for (up to 10s). Without one the
-            call falls back to a fixed 2s sleep.
-        row_extractor: Parses the page's list rows. When given, the page is
-            re-read until the number of rows it finds stops growing. A selector
-            only proves the container exists; a list whose rows stream in
-            afterwards is read half-built without this — the ography pages
-            returned 35 of 51 entries, losing the character's own parent anime.
+        wait_selector: CSS selector of an element only the expected page has.
 
     Returns:
         Page HTML, or ``None`` on navigation failure.
     """
     try:
         page = await browser.get(url)
-        if wait_selector:
-            await page.wait_for(selector=wait_selector, timeout=10)
-        else:
-            await asyncio.sleep(2)
-        await _wait_until_document_parsed(page, url)
-        if row_extractor is None:
-            return await page.get_content()
-
-        html: str | None = None
-        previous = -1
-        for _ in range(_ROW_SETTLE_POLLS):
-            await asyncio.sleep(1)
-            html = await page.get_content()
-            current = len(row_extractor(html) or [])
-            if current and current == previous:
-                break
-            previous = current
+        await wait_for_page(page, wait_selector, url)
+        return await page.get_content()
     except Exception as exc:
         logger.warning(f"navigation failed for {url}: {exc}")
         return None
-    else:
-        return html
 
 
 # ---------------------------------------------------------------------------
@@ -485,7 +424,7 @@ def _build_character_from_raw(
     dependencies=[
         _extract_character_from_html,
         _fetch_page_html,
-        _wait_until_document_parsed,
+        wait_for_page,
     ],
 )
 async def _fetch_anisearch_character_data(url: str) -> dict[str, Any] | None:
@@ -496,7 +435,7 @@ async def _fetch_anisearch_character_data(url: str) -> dict[str, Any] | None:
     """
     async with browser_session(headless=False) as session:
         browser = session.browser
-        html = await _fetch_page_html(browser, url, wait_selector="#htitle")
+        html = await _fetch_page_html(browser, url, "#htitle")
         if not html:
             return None
         raw = _extract_character_from_html(html)
@@ -518,12 +457,7 @@ async def _fetch_character_ography_data(url: str) -> list[dict[str, Any]] | None
     """
     async with browser_session(headless=False) as session:
         browser = session.browser
-        html = await _fetch_page_html(
-            browser,
-            url,
-            wait_selector="#content",
-            row_extractor=_extract_ography_from_html,
-        )
+        html = await _fetch_page_html(browser, url, "#content")
         if not html:
             return None
         return _extract_ography_from_html(html)
@@ -576,9 +510,7 @@ async def _fetch_ography(
     if browser is None:
         return await _fetch_character_ography_data(url)
 
-    html = await _fetch_page_html(
-        browser, url, wait_selector="#content", row_extractor=_extract_ography_from_html
-    )
+    html = await _fetch_page_html(browser, url, "#content")
     await asyncio.sleep(_INTER_REQUEST_DELAY)
     result = _extract_ography_from_html(html) if html else None
     await _fetch_character_ography_data.cache_batch_set([url], [result])  # type: ignore[attr-defined]
@@ -632,10 +564,10 @@ class AniSearchCharacterCrawler(BaseCrawler[AniSearchCharacter, dict[str, Any]])
     ) -> tuple[list[dict[str, Any]] | None, list[dict[str, Any]] | None]:
         """Fetch both ography sub-pages over a single browser session.
 
-        Completeness comes from waiting for the rows to settle (see
-        ``_fetch_page_html``'s settle argument), not from the session: a cold one returns
-        the full list once the wait is correct. One session still covers both
-        pages, since fetching them concurrently opened a headful Chrome each.
+        Completeness comes from reading each page once its HTML has arrived
+        (see ``_fetch_page_html``), not from the session: a cold one returns the
+        full list. One session still covers both pages, since fetching them
+        concurrently opened a headful Chrome each.
 
         Args:
             url: Character detail page URL.
@@ -751,7 +683,7 @@ async def fetch_anisearch_characters(
                             browser_session(headless=False)
                         )
                     ).browser
-                html = await _fetch_page_html(browser, url, wait_selector="#htitle")
+                html = await _fetch_page_html(browser, url, "#htitle")
                 if html is None:
                     await _fetch_anisearch_character_data.cache_batch_set(  # type: ignore[attr-defined]
                         [url], [None]
