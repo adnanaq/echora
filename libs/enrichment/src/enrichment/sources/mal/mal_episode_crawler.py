@@ -24,6 +24,7 @@ from enrichment.sources.base.framework import (
     NullRepository,
 )
 from enrichment.sources.mal.mal_base import (
+    MAL_DOMAIN,
     parse_duration_seconds,
     parse_iso_date,
 )
@@ -329,7 +330,7 @@ async def _fetch_episode_html(browser: Any, url: str) -> tuple[str, str] | None:
 )
 async def _fetch_mal_episode_data(url: str) -> dict[str, Any] | None:
     """Fetch a MAL episode page by full URL and extract data. Cached by URL."""
-    async with browser_session(headless=True) as session:
+    async with browser_session(headless=True, allowed_site=MAL_DOMAIN) as session:
         browser = session.browser
         result = await _fetch_episode_html(browser, url)
 
@@ -480,7 +481,7 @@ async def fetch_mal_episodes(
 
     missing_indices = sorted(set(missing_indices))
 
-    async with browser_session(headless=True) as session:
+    async with browser_session(headless=True, allowed_site=MAL_DOMAIN) as session:
         browser = session.browser
         for i, idx in enumerate(missing_indices):
             url = urls[idx]

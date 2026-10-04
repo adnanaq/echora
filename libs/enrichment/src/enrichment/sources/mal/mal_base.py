@@ -24,7 +24,8 @@ from pydantic import BaseModel
 logger = logging.getLogger(__name__)
 
 # MAL base URL
-MAL_BASE_URL = "https://myanimelist.net"
+MAL_DOMAIN = "myanimelist.net"
+MAL_BASE_URL = f"https://{MAL_DOMAIN}"
 
 
 # =============================================================================
