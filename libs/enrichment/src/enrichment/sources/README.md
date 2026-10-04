@@ -19,6 +19,7 @@ sources/
 │   ├── ad_annotations.py      # Undo what Google's in-text ads insert into page content
 │   ├── companies.py           # Canonical company list from per-role provider lists
 │   ├── external_links.py      # Canonical ExternalLink entries from provider links
+│   ├── polite_http.py         # Plain-HTTP fetching, spaced out, stopping at the first block
 │   ├── exceptions.py          # ServiceNotFoundError, ServiceBlockedError, …
 │   ├── utils.py               # sanitize_output_path, etc.
 │   └── framework/             # Template-method crawler framework
@@ -29,7 +30,7 @@ sources/
 ├── mal/                       # MyAnimeList (browser scraping via zendriver + lxml)
 ├── kitsu/                     # Kitsu (REST API via aiohttp)
 ├── anilist/                   # AniList (GraphQL API via aiohttp)
-├── anisearch/                 # AniSearch (browser scraping via zendriver + lxml)
+├── anisearch/                 # AniSearch (plain HTTP + lxml)
 ├── anime_planet/              # Anime-Planet (browser scraping via zendriver + lxml)
 ├── anidb/                     # AniDB (XML API via aiohttp + zendriver for characters)
 └── animeschedule/             # AnimSchedule (REST API via aiohttp)
@@ -170,7 +171,11 @@ uv run python -m enrichment.sources.anilist.anilist_helper --mal-id 21 --output 
 
 ### AniSearch (`sources/anisearch/`)
 
-Browser scraping via zendriver (CDP) + lxml XPath.
+Plain HTTP + lxml XPath, no browser: AniSearch is not behind Cloudflare and every
+page arrives complete in its HTML. `anisearch_http.py` sends Chrome's own headers,
+keeps requests at least 3 s apart across the process and stops all AniSearch
+traffic at the first block, because AniSearch bans clients by User-Agent and then
+refuses every connection from that IP.
 
 | Module | Purpose |
 |---|---|
@@ -179,6 +184,7 @@ Browser scraping via zendriver (CDP) + lxml XPath.
 | `anisearch_episode_crawler.py` | `fetch_anisearch_episodes(url, output_path)` |
 | `anisearch_character_refs_crawler.py` | Character list page → URL list |
 | `anisearch_character_crawler.py` | `fetch_anisearch_characters(refs, output_path)` — refs from the character list page |
+| `anisearch_http.py` | `fetch_anisearch_page(url)` — the one way crawlers fetch AniSearch |
 | `anisearch_mapper.py` | Raw XPath dicts → canonical dicts |
 | `anisearch_anime_models.py` | Pydantic source models |
 

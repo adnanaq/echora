@@ -38,9 +38,10 @@ FROM python:3.14-slim AS app
 
 ARG TARGETARCH
 
-# chromium and xvfb: the MAL, AniSearch, anime-planet and AniDB crawlers drive
-# a real browser through zendriver, and AniSearch and AniDB open a visible
-# window, so the browser needs a virtual screen.
+# chromium and xvfb: the MAL, anime-planet and AniDB crawlers drive a real
+# browser through zendriver, and AniDB opens a visible window (its Cloudflare
+# check does not clear headless), so the browser needs a virtual screen.
+# AniSearch is fetched over plain HTTP and needs neither.
 RUN apt-get update && apt-get install -y --no-install-recommends curl chromium xvfb \
     && rm -rf /var/lib/apt/lists/* \
     && set -eux; \
