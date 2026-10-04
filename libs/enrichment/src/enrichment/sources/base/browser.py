@@ -269,12 +269,18 @@ async def _start_browser(headless: bool, allowed_site: str | None) -> zendriver.
             f"EXCLUDE *.{allowed_site}"
         )
     browser = await zendriver.start(headless=headless, browser_args=switches)
-    if _block_unused_resources:
-        if browser.main_tab is None:
-            logger.warning("browser started without a tab; resources are not blocked")
-        else:
-            await install_static_resource_blocking(browser.main_tab)
-    _write_profile_owner(browser)
+    try:
+        _write_profile_owner(browser)
+        if _block_unused_resources:
+            if browser.main_tab is None:
+                logger.warning(
+                    "browser started without a tab; resources are not blocked"
+                )
+            else:
+                await install_static_resource_blocking(browser.main_tab)
+    except BaseException:
+        await close_browser(browser)
+        raise
     return browser
 
 
