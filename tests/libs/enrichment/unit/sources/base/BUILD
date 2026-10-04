@@ -9,8 +9,8 @@ python_tests(
         "//:reqs0#pytest-mock",
     ],
     overrides={
-        # Reads every crawler's source to check how it opens browsers.
-        "test_browser.py": {
+        # Read every crawler's source to check how it opens browsers and waits.
+        ("test_browser.py", "test_page_readiness.py"): {
             "dependencies": [
                 "//libs/enrichment/src/enrichment/sources/anidb",
                 "//libs/enrichment/src/enrichment/sources/anime_planet",
