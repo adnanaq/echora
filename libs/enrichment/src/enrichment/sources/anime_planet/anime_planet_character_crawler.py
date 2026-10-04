@@ -14,6 +14,7 @@ import re
 from html import unescape
 from typing import Any, cast
 
+from enrichment.sources.anime_planet.anime_planet_anime_crawler import ANIME_PLANET_SITE
 from enrichment.sources.anime_planet.anime_planet_character_models import (
     AnimePlanetCharacter,
     AnimePlanetCharacterAnimeRole,
@@ -25,6 +26,7 @@ from enrichment.sources.anime_planet.animeplanet_mapper import (
 )
 from enrichment.sources.base.ad_annotations import remove_ad_annotations
 from enrichment.sources.base.browser import browser_session
+from enrichment.sources.base.cloudflare_challenge import CloudflareChallengeError
 from enrichment.sources.base.framework import (
     BaseCrawler,
     FileRepository,
@@ -367,11 +369,19 @@ async def _fetch_page_html(browser: Any, url: str) -> str | None:
 
     Returns:
         Rendered page HTML, or None on navigation failure.
+
+    Raises:
+        CloudflareChallengeError: If a Cloudflare challenge does not clear, so a
+            batch can stop instead of waiting it out on every remaining page.
     """
     try:
         page = await browser.get(url)
-        await wait_for_page(page, "h1[itemprop='name']", url)
+        await wait_for_page(
+            page, "h1[itemprop='name']", url, cloudflare_site=ANIME_PLANET_SITE
+        )
         return await page.get_content()
+    except CloudflareChallengeError:
+        raise
     except Exception as exc:
         logger.warning(f"navigation failed for {url}: {exc}")
         return None
@@ -400,7 +410,10 @@ async def _fetch_character_data(url: str) -> dict[str, Any] | None:
     """
     async with browser_session(headless=True) as session:
         browser = session.browser
-        html = await _fetch_page_html(browser, url)
+        try:
+            html = await _fetch_page_html(browser, url)
+        except CloudflareChallengeError:
+            return None
         if not html:
             logger.error(f"No HTML for character {url}")
             return None
@@ -500,7 +513,14 @@ async def fetch_animeplanet_characters(
             if i > 0:
                 await asyncio.sleep(_INTER_REQUEST_DELAY)
             out_index = missing_indices[i]
-            html = await _fetch_page_html(browser, url)
+            try:
+                html = await _fetch_page_html(browser, url)
+            except CloudflareChallengeError:
+                logger.warning(
+                    f"{ANIME_PLANET_SITE}: stopping the character batch at {url}; "
+                    f"{len(missing_urls) - i} page(s) left unfetched"
+                )
+                break
             raw = _extract_character_from_html(html) if html else None
             if raw:
                 canonical = character_from_animeplanet(

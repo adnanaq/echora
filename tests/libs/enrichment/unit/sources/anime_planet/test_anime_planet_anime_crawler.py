@@ -6,9 +6,10 @@ Edge-case tests use synthetic inline HTML or dict overrides.
 
 import json
 from typing import Any, cast
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, create_autospec, patch
 
 import pytest
+import zendriver
 from common.models.anime import AnimeSeason
 from common.utils.datetime_utils import determine_anime_season
 from enrichment.sources.anime_planet.anime_planet_anime_crawler import (
@@ -558,35 +559,33 @@ def test_build_anime_from_raw_field_overrides(ap_anime_extracted: dict) -> None:
 # =============================================================================
 
 
-async def test_fetch_html_success() -> None:
-    page_mock = AsyncMock()
-    page_mock.wait_for = AsyncMock()
-    page_mock.get_content = AsyncMock(return_value="<html>content</html>")
-    browser_mock = AsyncMock()
-    browser_mock.get = AsyncMock(return_value=page_mock)
-    browser_mock.stop = AsyncMock()
+def _started_browser(html: str) -> zendriver.Browser:
+    browser = create_autospec(zendriver.Browser, instance=True)
+    browser.main_tab = create_autospec(zendriver.Tab, instance=True)
+    tab = create_autospec(zendriver.Tab, instance=True)
+    tab.get_content.return_value = html
+    tab.query_selector.return_value = create_autospec(zendriver.Element, instance=True)
+    tab.evaluate.return_value = "complete"
+    browser.get.return_value = tab
+    return browser
 
-    import zendriver as zd
 
-    with pytest.MonkeyPatch.context() as mp:
-        mp.setattr(zd, "start", AsyncMock(return_value=browser_mock))
+async def test_fetch_anime_html_returns_page_content() -> None:
+    with patch(
+        "zendriver.start",
+        autospec=True,
+        return_value=_started_browser("<html>content</html>"),
+    ):
         result = await _fetch_anime_html(_ONE_PIECE_URL)
 
     assert result == "<html>content</html>"
-    page_mock.wait_for.assert_awaited_once()
 
 
-async def test_fetch_html_navigation_failure_returns_none() -> None:
-    page_mock = AsyncMock()
-    page_mock.wait_for = AsyncMock(side_effect=Exception("timeout"))
-    browser_mock = AsyncMock()
-    browser_mock.get = AsyncMock(return_value=page_mock)
-    browser_mock.stop = AsyncMock()
+async def test_fetch_anime_html_navigation_fails_returns_none() -> None:
+    browser = _started_browser("")
+    browser.get.side_effect = RuntimeError("nav failed")
 
-    import zendriver as zd
-
-    with pytest.MonkeyPatch.context() as mp:
-        mp.setattr(zd, "start", AsyncMock(return_value=browser_mock))
+    with patch("zendriver.start", autospec=True, return_value=browser):
         result = await _fetch_anime_html(_ONE_PIECE_URL)
 
     assert result is None

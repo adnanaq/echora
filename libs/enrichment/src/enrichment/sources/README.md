@@ -190,7 +190,7 @@ uv run python -m enrichment.sources.anisearch.anisearch_episode_crawler https://
 
 ### Anime-Planet (`sources/anime_planet/`)
 
-Browser scraping via zendriver (CDP) + lxml XPath. Cloudflare-protected — rate-limit recovery via passive probe loop.
+Browser scraping via zendriver (CDP) + lxml XPath. Behind Cloudflare, which normally only runs an invisible check. A challenge shown instead of a page is waited out and solved only if it stays (`base/cloudflare_challenge.py`); a character batch stops at a challenge that does not clear.
 
 | Module | Purpose |
 |---|---|
@@ -215,6 +215,8 @@ uv run python -m enrichment.sources.anime_planet.anime_planet_helper characters 
 ### AniDB (`sources/anidb/`)
 
 XML API via aiohttp with strict rate limiting (2 req/s, 1 req burst).
+
+Character pages are behind Cloudflare. Its "Just a moment..." page clears by itself in about 2 s in a headed browser (not headless), so it is waited out and solved only if it stays (`base/cloudflare_challenge.py`). The `cf_clearance` cookie a browser earns is stored in Redis per User-Agent and given to the next AniDB browser, which then skips the challenge (`base/cloudflare_clearance.py`, kept up to `CLOUDFLARE_CLEARANCE_MAX_TTL`). AniDB's own AntiLeech page still gets its "Please Unban Me" flow.
 
 | Module | Purpose |
 |---|---|

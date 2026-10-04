@@ -5,9 +5,10 @@ Fixture tests use a real HTML page captured from:
 containing 25 character refs.
 """
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, create_autospec, patch
 
 import pytest
+import zendriver
 from enrichment.sources.anime_planet.anime_planet_character_refs_crawler import (
     _XPATHS,
     _extract_refs_from_html,
@@ -75,35 +76,33 @@ def test_extract_ignores_anchors_without_href() -> None:
 # =============================================================================
 
 
-async def test_fetch_refs_html_success(ap_char_refs_html: str) -> None:
-    page = AsyncMock()
-    page.wait_for = AsyncMock()
-    page.get_content = AsyncMock(return_value=ap_char_refs_html)
-    browser = AsyncMock()
-    browser.get = AsyncMock(return_value=page)
-    browser.stop = AsyncMock()
+def _started_browser(html: str) -> zendriver.Browser:
+    browser = create_autospec(zendriver.Browser, instance=True)
+    browser.main_tab = create_autospec(zendriver.Tab, instance=True)
+    tab = create_autospec(zendriver.Tab, instance=True)
+    tab.get_content.return_value = html
+    tab.query_selector.return_value = create_autospec(zendriver.Element, instance=True)
+    tab.evaluate.return_value = "complete"
+    browser.get.return_value = tab
+    return browser
 
-    with pytest.MonkeyPatch.context() as mp:
-        import zendriver as zd
 
-        mp.setattr(zd, "start", AsyncMock(return_value=browser))
+async def test_fetch_refs_html_returns_page_content(ap_char_refs_html: str) -> None:
+    with patch(
+        "zendriver.start",
+        autospec=True,
+        return_value=_started_browser(ap_char_refs_html),
+    ):
         result = await _fetch_refs_html(_DANDADAN_URL)
 
     assert result == ap_char_refs_html
-    page.wait_for.assert_awaited_once()
 
 
-async def test_fetch_refs_html_navigation_failure() -> None:
-    page = AsyncMock()
-    page.wait_for = AsyncMock(side_effect=Exception("timeout"))
-    browser = AsyncMock()
-    browser.get = AsyncMock(return_value=page)
-    browser.stop = AsyncMock()
+async def test_fetch_refs_html_navigation_fails_returns_none() -> None:
+    browser = _started_browser("")
+    browser.get.side_effect = RuntimeError("nav failed")
 
-    with pytest.MonkeyPatch.context() as mp:
-        import zendriver as zd
-
-        mp.setattr(zd, "start", AsyncMock(return_value=browser))
+    with patch("zendriver.start", autospec=True, return_value=browser):
         result = await _fetch_refs_html(_DANDADAN_URL)
 
     assert result is None

@@ -2,7 +2,8 @@
 
 Extracts metadata and relations using lxml XPath on raw page HTML.
 Results are cached in Redis. Two sequential page fetches per anime
-(main + /relations?show=overall) — sequential to avoid Cloudflare bot detection.
+(main + /relations?show=overall), one after the other with a delay between
+them, to stay polite to AniSearch.
 """
 
 import asyncio
@@ -390,8 +391,8 @@ def _parse_relations(
 async def _fetch_anisearch_anime_data(canonical_path: str) -> dict[str, Any] | None:
     """Fetch and extract raw anime data for a given AniSearch anime path.
 
-    Two sequential page fetches (main, relations) with a single persistent
-    browser session to avoid Cloudflare bot detection. Cached by canonical path;
+    Two sequential page fetches (main, relations) in one browser session, with
+    a delay between them to stay polite to AniSearch. Cached by canonical path;
     cache is automatically invalidated when any extraction function changes.
 
     Returns a JSON-serializable dict of primitives ready for _build_anime_from_raw.

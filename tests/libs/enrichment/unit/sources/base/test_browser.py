@@ -12,7 +12,7 @@ import threading
 import time
 from collections.abc import Iterator
 from pathlib import Path
-from unittest.mock import create_autospec, patch
+from unittest.mock import call, create_autospec, patch
 
 import pytest
 import zendriver
@@ -249,6 +249,31 @@ async def test_browser_session_blocking_setup_fails_closes_browser_and_releases_
 
     started_browsers[0].stop.assert_awaited_once_with()
     assert len(started_browsers) == 2
+
+
+async def test_browser_session_clearance_site_loads_clearance_on_start_and_restart(
+    started_browsers: list[zendriver.Browser],
+) -> None:
+    with patch.object(browser_module, "load_clearance", autospec=True) as load:
+        async with browser_session(
+            headless=False, clearance_site="anidb.net"
+        ) as session:
+            await session.restart()
+
+    assert load.await_args_list == [
+        call(started_browsers[0], "anidb.net"),
+        call(started_browsers[1], "anidb.net"),
+    ]
+
+
+async def test_browser_session_without_clearance_site_loads_no_clearance(
+    started_browsers: list[zendriver.Browser],
+) -> None:
+    with patch.object(browser_module, "load_clearance", autospec=True) as load:
+        async with browser_session(headless=True):
+            pass
+
+    load.assert_not_awaited()
 
 
 async def test_browser_session_restart_closes_old_browser_and_keeps_slot(

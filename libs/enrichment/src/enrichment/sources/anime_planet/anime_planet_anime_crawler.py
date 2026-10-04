@@ -43,6 +43,7 @@ _CACHE_CONFIG = get_cache_config()
 TTL_ANIME_PLANET = _CACHE_CONFIG.ttl_anime_planet
 
 BASE_ANIME_URL = "https://www.anime-planet.com/anime/"
+ANIME_PLANET_SITE = "Anime-Planet"
 
 _SEASON_SLUG_RE = re.compile(r"/seasons/([^/?#]+)")
 _RANK_RE = re.compile(r"#(\d+)")
@@ -499,7 +500,9 @@ async def _fetch_anime_html(url: str) -> str | None:
         browser = session.browser
         try:
             page = await browser.get(url)
-            await wait_for_page(page, "section.entryBar", url)
+            await wait_for_page(
+                page, "section.entryBar", url, cloudflare_site=ANIME_PLANET_SITE
+            )
             return await page.get_content()
         except Exception as exc:
             logger.warning(f"navigation failed for {url}: {exc}")

@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Any
 
 import zendriver
+from enrichment.sources.base.cloudflare_clearance import load_clearance
 from zendriver import cdp
 
 logger = logging.getLogger(__name__)
@@ -87,11 +88,14 @@ class BrowserSession:
         headless: Whether Chrome runs without a window.
         allowed_site: The one website the browser may connect to, or ``None``
             for any website; see `browser_session()`.
+        clearance_site: The site whose stored Cloudflare clearance the browser
+            starts with, or ``None``; see `browser_session()`.
         browser: The running browser; replaced by ``restart()``.
     """
 
     headless: bool
     allowed_site: str | None
+    clearance_site: str | None
     browser: zendriver.Browser
 
     async def restart(self) -> zendriver.Browser:
@@ -101,7 +105,9 @@ class BrowserSession:
         restart never lets another session start in between.
         """
         await close_browser(self.browser)
-        self.browser = await _start_browser(self.headless, self.allowed_site)
+        self.browser = await _start_browser(
+            self.headless, self.allowed_site, self.clearance_site
+        )
         return self.browser
 
 
@@ -133,7 +139,10 @@ def configure_browser_pool(
 
 @asynccontextmanager
 async def browser_session(
-    *, headless: bool, allowed_site: str | None = None
+    *,
+    headless: bool,
+    allowed_site: str | None = None,
+    clearance_site: str | None = None,
 ) -> AsyncIterator[BrowserSession]:
     """Open a browser for the length of the block and always close it.
 
@@ -154,6 +163,10 @@ async def browser_session(
             ``configure_browser_pool()`` has resource blocking on. Never set it
             for Anime-Planet or AniDB: their Cloudflare check is served from
             ``challenges.cloudflare.com``, which would then fail too.
+        clearance_site: A site behind Cloudflare, such as ``"anidb.net"``. The
+            browser starts with that site's stored clearance, if one matches its
+            User-Agent, so it is not challenged; see ``cloudflare_clearance``.
+            A browser started by ``restart()`` gets it too.
 
     Yields:
         The session; its ``browser`` is replaced by ``restart()``.
@@ -161,7 +174,10 @@ async def browser_session(
     slots = _browser_slots()
     async with slots if slots is not None else nullcontext():
         session = BrowserSession(
-            headless, allowed_site, await _start_browser(headless, allowed_site)
+            headless,
+            allowed_site,
+            clearance_site,
+            await _start_browser(headless, allowed_site, clearance_site),
         )
         try:
             yield session
@@ -261,7 +277,9 @@ def _browser_slots() -> asyncio.Semaphore | None:
     return slots
 
 
-async def _start_browser(headless: bool, allowed_site: str | None) -> zendriver.Browser:
+async def _start_browser(
+    headless: bool, allowed_site: str | None, clearance_site: str | None
+) -> zendriver.Browser:
     switches = list(BACKGROUND_DOWNLOAD_SWITCHES)
     if allowed_site and _block_unused_resources:
         switches.append(
@@ -278,6 +296,8 @@ async def _start_browser(headless: bool, allowed_site: str | None) -> zendriver.
                 )
             else:
                 await install_static_resource_blocking(browser.main_tab)
+        if clearance_site:
+            await load_clearance(browser, clearance_site)
     except BaseException:
         await close_browser(browser)
         raise
