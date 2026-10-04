@@ -340,10 +340,7 @@ class EnrichmentPipeline:
         Returns:
             EnrichmentPipeline: The pipeline instance.
         """
-        configure_browser_pool(
-            self.config.max_concurrent_browsers,
-            block_unused_resources=self.config.block_unused_resources,
-        )
+        configure_browser_pool(self.config.max_concurrent_browsers)
         await asyncio.to_thread(reap_orphans)
         return self
 

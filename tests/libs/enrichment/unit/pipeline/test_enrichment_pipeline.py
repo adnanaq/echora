@@ -49,10 +49,8 @@ def stubbed_sources(pipeline: EnrichmentPipeline) -> Iterator[None]:
 
 @pytest.fixture
 def unlimited_browser_pool() -> Iterator[None]:
-    blocking = browser_module._block_unused_resources
     yield
     browser_module._max_browsers = None
-    browser_module._block_unused_resources = blocking
     browser_module._slots_by_loop.clear()
 
 
@@ -385,7 +383,7 @@ def test_get_performance_report_without_timings_returns_header_only(
 
 
 @pytest.mark.usefixtures("unlimited_browser_pool")
-async def test_enrichment_pipeline_enter_applies_browser_settings_and_removes_abandoned_profile(
+async def test_enrichment_pipeline_enter_applies_browser_limit_and_removes_abandoned_profile(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
@@ -395,7 +393,6 @@ async def test_enrichment_pipeline_enter_applies_browser_settings_and_removes_ab
     pipeline = EnrichmentPipeline(
         EnrichmentConfig(
             max_concurrent_browsers=3,
-            block_unused_resources=False,
             temp_dir=str(tmp_path / "temp"),
         )
     )
@@ -404,7 +401,6 @@ async def test_enrichment_pipeline_enter_applies_browser_settings_and_removes_ab
         assert entered is pipeline
 
     assert browser_module._max_browsers == 3
-    assert browser_module._block_unused_resources is False
     assert not abandoned.exists()
 
 

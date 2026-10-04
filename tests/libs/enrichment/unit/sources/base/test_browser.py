@@ -36,12 +36,10 @@ SOURCES_DIR = Path(browser_module.__file__).resolve().parents[1]
 
 @pytest.fixture(autouse=True)
 def unlimited_pool() -> Iterator[None]:
-    blocking = browser_module._block_unused_resources
     browser_module._max_browsers = None
     browser_module._slots_by_loop.clear()
     yield
     browser_module._max_browsers = None
-    browser_module._block_unused_resources = blocking
     browser_module._slots_by_loop.clear()
 
 
@@ -185,8 +183,6 @@ async def test_browser_session_starts_chrome_with_headless_setting_and_backgroun
 async def test_browser_session_allowed_site_resolves_only_that_domain_and_subdomains(
     started_browsers: list[zendriver.Browser],
 ) -> None:
-    configure_browser_pool(4, block_unused_resources=True)
-
     async with browser_session(headless=True, allowed_site="myanimelist.net"):
         pass
 
@@ -201,9 +197,9 @@ async def test_browser_session_allowed_site_resolves_only_that_domain_and_subdom
 async def test_browser_session_blocking_off_ignores_allowed_site(
     started_browsers: list[zendriver.Browser],
 ) -> None:
-    configure_browser_pool(4, block_unused_resources=False)
-
-    async with browser_session(headless=True, allowed_site="myanimelist.net"):
+    async with browser_session(
+        headless=True, allowed_site="myanimelist.net", block_unused_resources=False
+    ):
         pass
 
     assert zendriver.start.call_args.kwargs["browser_args"] == list(
@@ -211,11 +207,38 @@ async def test_browser_session_blocking_off_ignores_allowed_site(
     )
 
 
+async def test_browser_session_blocking_off_one_session_leaves_others_blocking(
+    started_browsers: list[zendriver.Browser],
+) -> None:
+    with patch.object(
+        browser_module, "install_static_resource_blocking", autospec=True
+    ) as install_blocking:
+        async with browser_session(headless=True, block_unused_resources=False):
+            pass
+        async with browser_session(headless=True):
+            pass
+
+    install_blocking.assert_awaited_once_with(started_browsers[1].main_tab)
+
+
+async def test_browser_session_restart_keeps_blocking_off(
+    started_browsers: list[zendriver.Browser],
+) -> None:
+    with patch.object(
+        browser_module, "install_static_resource_blocking", autospec=True
+    ) as install_blocking:
+        async with browser_session(
+            headless=True, block_unused_resources=False
+        ) as session:
+            await session.restart()
+
+    assert len(started_browsers) == 2
+    install_blocking.assert_not_awaited()
+
+
 async def test_browser_session_restart_keeps_allowed_site(
     started_browsers: list[zendriver.Browser],
 ) -> None:
-    configure_browser_pool(4, block_unused_resources=True)
-
     async with browser_session(
         headless=True, allowed_site="myanimelist.net"
     ) as session:
@@ -638,7 +661,9 @@ def local_site(tmp_path: Path) -> Iterator[str]:
     thread.join()
 
 
-async def _load_site(url: str) -> tuple[dict[str, str], dict[str, object]]:
+async def _load_site(
+    url: str, *, block_unused_resources: bool = True
+) -> tuple[dict[str, str], dict[str, object]]:
     kinds: dict[str, str] = {}
     outcomes: dict[str, str] = {}
 
@@ -651,7 +676,9 @@ async def _load_site(url: str) -> tuple[dict[str, str], dict[str, object]]:
     async def failed(event: cdp.network.LoadingFailed) -> None:
         outcomes[event.request_id] = event.error_text
 
-    async with browser_session(headless=True) as session:
+    async with browser_session(
+        headless=True, block_unused_resources=block_unused_resources
+    ) as session:
         tab = session.browser.main_tab
         tab.add_handler(cdp.network.RequestWillBeSent, requested)
         tab.add_handler(cdp.network.LoadingFinished, loaded)
@@ -702,9 +729,7 @@ async def test_browser_session_default_fails_static_requests_and_loads_documents
 async def test_browser_session_blocking_off_loads_every_request(
     local_site: str,
 ) -> None:
-    configure_browser_pool(4, block_unused_resources=False)
-
-    outcomes, page_state = await _load_site(local_site)
+    outcomes, page_state = await _load_site(local_site, block_unused_resources=False)
 
     assert set(outcomes.values()) == {"loaded"}
     assert {"Image", "Font", "Stylesheet", "Document", "Script", "XHR", "Fetch"} <= (

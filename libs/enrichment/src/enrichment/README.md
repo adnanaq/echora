@@ -179,7 +179,9 @@ Browsers never download what the crawlers do not read:
   Cloudflare check is served from `challenges.cloudflare.com`, another website.
 * Chrome's background downloads are switched off on every browser.
 
-`ENRICHMENT_BLOCK_UNUSED_RESOURCES=false` turns the resource and host blocking off.
+A crawler that needs everything loaded passes
+`browser_session(..., block_unused_resources=False)`; that turns the resource and
+host blocking off for its own sessions only.
 
 Key behaviours:
 - **WAF/Cloudflare bypass**: CDP-controlled Chrome passes browser-integrity checks natively
