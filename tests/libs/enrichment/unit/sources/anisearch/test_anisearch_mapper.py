@@ -91,9 +91,21 @@ def test_anime_from_anisearch_undated_takes_anisearch_status() -> None:
     )
 
 
-def test_anime_from_anisearch_dated_keeps_status_from_dates() -> None:
+def test_anime_from_anisearch_stated_status_wins_over_dates() -> None:
     mapped = anime_from_anisearch(
-        AniSearchAnime(start_date="1999-10-20", status="Completed")
+        AniSearchAnime(start_date="1994-04-28", status="Completed")
+    )
+    assert mapped["status"] == "FINISHED"
+
+
+def test_anime_from_anisearch_without_stated_status_derives_status_from_dates() -> None:
+    mapped = anime_from_anisearch(AniSearchAnime(start_date="1999-10-20"))
+    assert mapped["status"] == "ONGOING"
+
+
+def test_anime_from_anisearch_unrecognised_status_derives_status_from_dates() -> None:
+    mapped = anime_from_anisearch(
+        AniSearchAnime(start_date="1999-10-20", status="Something New")
     )
     assert mapped["status"] == "ONGOING"
 

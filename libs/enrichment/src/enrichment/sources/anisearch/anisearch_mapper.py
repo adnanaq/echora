@@ -179,10 +179,11 @@ def anime_from_anisearch(anime: AniSearchAnime) -> dict[str, Any]:
         if anime.source_material
         else None
     )
-    status = determine_anime_status(anime.start_date, anime.end_date)
-    # A year or month alone gives the date rule nothing; AniSearch states its own.
-    if status is AnimeStatus.UNKNOWN and anime.status:
-        status = AnimeStatus(anime.status)
+    # AniSearch states its own status; the date rule only covers a missing one
+    # (it calls a finished work with no end date ONGOING).
+    status = AnimeStatus(anime.status or "")
+    if status is AnimeStatus.UNKNOWN:
+        status = determine_anime_status(anime.start_date, anime.end_date)
     year = (
         determine_anime_year(anime.start_date) if anime.start_date else anime.start_year
     )
