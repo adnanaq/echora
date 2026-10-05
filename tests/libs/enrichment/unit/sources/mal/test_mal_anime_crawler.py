@@ -205,6 +205,33 @@ def test_build_prefers_canonical_url_over_requested_url() -> None:
     assert anime.source == "https://myanimelist.net/anime/21/One_Piece"
 
 
+def test_build_anime_from_raw_without_premiered_takes_year_from_aired() -> None:
+    anime = _build({"aired_raw": "Mar 5, 2027"})
+    assert (anime.year, anime.aired_from, anime.month) == (2027, "2027-03-05", None)
+
+
+def test_build_anime_from_raw_closed_range_sets_both_dates() -> None:
+    anime = _build({"aired_raw": "Oct 20, 1999 to Nov 5, 2000"})
+    assert (anime.aired_from, anime.aired_to) == ("1999-10-20", "2000-11-05")
+
+
+def test_build_anime_from_raw_with_premiered_keeps_premiered_year() -> None:
+    anime = _build({"aired_raw": "Dec 27, 2026 to ?", "premiered_raw": "Winter 2027"})
+    assert (anime.year, anime.season) == (2027, "winter")
+
+
+def test_build_anime_from_raw_month_and_year_aired_sets_year_and_month_without_date() -> (
+    None
+):
+    anime = _build({"aired_raw": "Oct 1977"})
+    assert (anime.year, anime.month, anime.aired_from) == (1977, "October", None)
+
+
+def test_build_anime_from_raw_year_only_aired_sets_year_without_date_or_month() -> None:
+    anime = _build({"aired_raw": "1988"})
+    assert (anime.year, anime.month, anime.aired_from) == (1988, None, None)
+
+
 def test_build_falls_back_to_requested_url_without_canonical() -> None:
     anime = _build_anime_from_raw(
         {}, url="https://myanimelist.net/anime/21", picture_urls=[]

@@ -27,6 +27,7 @@ from enrichment.sources.anime_planet.anime_planet_anime_crawler import (
     _parse_rank,
     _parse_related_entry_element,
     _parse_season,
+    _parse_start_year,
     fetch_animeplanet_anime,
 )
 from enrichment.sources.anime_planet.anime_planet_models import (
@@ -269,6 +270,28 @@ def test_parse_season(season_url: str | None, expected: str | None) -> None:
 )
 def test_parse_rank(rank_text: str | None, expected: int | None) -> None:
     assert _parse_rank(rank_text) == expected
+
+
+def test_extract_anime_from_html_fixture_reads_year_text(
+    ap_anime_extracted: dict,
+) -> None:
+    assert _parse_start_year(ap_anime_extracted["year_text"]) == 1999
+
+
+@pytest.mark.parametrize(
+    ("year_text", "expected"),
+    [
+        (" 2002 ", 2002),
+        (" 1999 - ? ", 1999),
+        ("2019 - 2021", 2019),
+        (None, None),
+        ("", None),
+    ],
+)
+def test_parse_start_year_returns_first_year(
+    year_text: str | None, expected: int | None
+) -> None:
+    assert _parse_start_year(year_text) == expected
 
 
 @pytest.mark.parametrize(

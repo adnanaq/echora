@@ -23,6 +23,7 @@ from common.models.anime import (
     Anime,
     AnimeImages,
     AnimeRelationType,
+    AnimeStatus,
     AnimeType,
     Broadcast,
     Character,
@@ -179,7 +180,12 @@ def anime_from_anisearch(anime: AniSearchAnime) -> dict[str, Any]:
         else None
     )
     status = determine_anime_status(anime.start_date, anime.end_date)
-    year = determine_anime_year(anime.start_date) if anime.start_date else None
+    # A year or month alone gives the date rule nothing; AniSearch states its own.
+    if status is AnimeStatus.UNKNOWN and anime.status:
+        status = AnimeStatus(anime.status)
+    year = (
+        determine_anime_year(anime.start_date) if anime.start_date else anime.start_year
+    )
     season = determine_anime_season(anime.start_date) if anime.start_date else None
 
     # ── Aired dates ───────────────────────────────────────────────────────
@@ -248,6 +254,7 @@ def anime_from_anisearch(anime: AniSearchAnime) -> dict[str, Any]:
         source_material=source_material,
         status=status,
         year=year,
+        month=anime.start_month,
         season=season,
         synopsis=anime.synopsis,
         genres=anime.genres,

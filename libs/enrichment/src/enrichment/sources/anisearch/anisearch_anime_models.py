@@ -35,9 +35,12 @@ class AniSearchAnime(BaseModel):
     type: str | None = None  # raw: "TV-Series", "Movie", "OVA", etc.
     source_material: str | None = None  # raw: "Manga", "Light Novel", etc.
 
-    # ── Dates (DD.MM.YYYY — datetime_utils handles this format natively) ──
-    start_date: str | None = None
-    end_date: str | None = None
+    # ── Dates (ISO YYYY-MM-DD, only when AniSearch states the day) ─────────
+    start_date: str | None = None  # only a full date
+    end_date: str | None = None  # only a full date
+    start_year: int | None = None  # stated even when the start has no day
+    start_month: str | None = None  # month name, only when the start has no day
+    status: str | None = None  # raw: "Upcoming", "On Hold", "Completed", etc.
 
     # ── Content ───────────────────────────────────────────────────────────
     synopsis: str | None = None

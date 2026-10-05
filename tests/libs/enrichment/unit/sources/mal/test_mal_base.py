@@ -6,7 +6,6 @@ from enrichment.sources.mal.mal_base import (
     diff_model_lists,
     diff_models,
     normalize_mal_anime_url,
-    parse_aired_string,
     parse_duration_seconds,
     parse_episode_ranges,
     parse_number,
@@ -86,42 +85,6 @@ def test_parse_score(raw: str | None, expected: float | None) -> None:
 )
 def test_parse_duration_seconds(raw: str | None, expected: int | None) -> None:
     assert parse_duration_seconds(raw) == expected
-
-
-# =============================================================================
-# parse_aired_string
-# =============================================================================
-
-
-def test_parse_aired_string_range() -> None:
-    from_d, to_d = parse_aired_string("Oct 20, 1999 to ?")
-    assert from_d == "1999-10-20"
-    assert to_d is None
-
-
-def test_parse_aired_string_closed_range() -> None:
-    from_d, to_d = parse_aired_string("Oct 20, 1999 to Nov 5, 2000")
-    assert from_d == "1999-10-20"
-    assert to_d == "2000-11-05"
-
-
-def test_parse_aired_string_single_date() -> None:
-    from_d, to_d = parse_aired_string("Apr 5, 2003")
-    assert from_d == "2003-04-05"
-    assert to_d is None
-
-
-def test_parse_aired_string_none() -> None:
-    from_d, to_d = parse_aired_string(None)
-    assert from_d is None
-    assert to_d is None
-
-
-def test_parse_aired_string_year_only() -> None:
-    """Upcoming anime with no specific date — year only, e.g. '2026 to ?'."""
-    from_d, to_d = parse_aired_string("2026 to ?")
-    assert from_d == "2026-01-01"
-    assert to_d is None
 
 
 # =============================================================================

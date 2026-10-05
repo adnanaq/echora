@@ -24,10 +24,15 @@ from enrichment.sources.base.framework import (
     NullRepository,
 )
 from enrichment.sources.base.page_readiness import wait_for_page
+from enrichment.sources.base.utils import (
+    month_name,
+    parse_iso_date,
+    parse_partial_date,
+    split_date_range,
+)
 from enrichment.sources.mal.mal_base import (
     MAL_BASE_URL,
     MAL_DOMAIN,
-    parse_aired_string,
     parse_broadcast_string,
     parse_duration_seconds,
     parse_episode_ranges,
@@ -559,11 +564,17 @@ def _build_anime_from_raw(
     duration_raw = raw.get("duration_raw")
     duration = parse_duration_seconds(duration_raw) if duration_raw else None
 
-    aired_raw = raw.get("aired_raw")
-    aired_from, aired_to = parse_aired_string(aired_raw)
+    aired_start, aired_end = split_date_range(raw.get("aired_raw"))
+    aired_from, aired_to = parse_iso_date(aired_start), parse_iso_date(aired_end)
+    aired_year, aired_month = parse_partial_date(aired_start)
 
     premiered_raw = raw.get("premiered_raw")
     season, year = parse_premiered(premiered_raw)
+    # Movies, specials and announcements have no "Premiered"; "Aired" still states the year.
+    if year is None:
+        year = aired_year
+    # A stated month only when "Aired" gives no day; otherwise the date itself carries it.
+    month = month_name(aired_month) if aired_from is None else None
 
     broadcast_raw = raw.get("broadcast_raw")
     broadcast_day, broadcast_time, broadcast_timezone = parse_broadcast_string(
@@ -668,6 +679,7 @@ def _build_anime_from_raw(
         season=season,
         aired_from=aired_from,
         aired_to=aired_to,
+        month=month,
         broadcast_day=broadcast_day,
         broadcast_time=broadcast_time,
         broadcast_timezone=broadcast_timezone,

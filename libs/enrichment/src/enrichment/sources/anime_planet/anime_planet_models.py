@@ -71,6 +71,7 @@ class AnimePlanetAnime(BaseModel):
     # ── From XPath (parsed by crawler) ───────────────────────────────────
     type_raw: str | None = None  # "TV\n  (1156+ eps)" raw entryBar span text
     season: str | None = None  # season name e.g. "fall" — parsed from seasons slug
+    start_year: int | None = None  # first year in the entry bar, e.g. "1999 - ?" → 1999
     rank: int | None = None  # parsed from "Rank #157" → 157
     studios: list[AnimePlanetStudio] = []
     alt_title: str | None = None  # cleaned h2.aka text e.g. "ワンピース"

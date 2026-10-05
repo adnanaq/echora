@@ -315,21 +315,21 @@ def test_post_process_status_strips_label(one_piece_main_raw) -> None:
 
 def test_post_process_date_range_open_end(one_piece_main_raw) -> None:
     data = _post_process_main(one_piece_main_raw)
-    assert data["start_date"] == "20.10.1999"
+    assert data["start_date"] == "1999-10-20"
     assert data["end_date"] is None
 
 
 def test_post_process_date_range_closed(one_piece_main_raw) -> None:
     raw = {**one_piece_main_raw, "published": "Published: 20.10.1999 - 31.03.2002"}
     data = _post_process_main(raw)
-    assert data["start_date"] == "20.10.1999"
-    assert data["end_date"] == "31.03.2002"
+    assert data["start_date"] == "1999-10-20"
+    assert data["end_date"] == "2002-03-31"
 
 
 def test_post_process_date_single(one_piece_main_raw) -> None:
     raw = {**one_piece_main_raw, "published": "Published: 05.04.2003"}
     data = _post_process_main(raw)
-    assert data["start_date"] == "05.04.2003"
+    assert data["start_date"] == "2003-04-05"
     assert data["end_date"] is None
 
 
@@ -338,6 +338,31 @@ def test_post_process_date_missing(one_piece_main_raw) -> None:
     data = _post_process_main(raw)
     assert data["start_date"] is None
     assert data["end_date"] is None
+
+
+@pytest.mark.parametrize(
+    ("published", "expected"),
+    [
+        ("Published: 11.2008 ‑ ?", (None, None, 2008, "November")),
+        ("Published: 01.2027 ‑ ?", (None, None, 2027, "January")),
+        ("Published: 2027 ‑ ?", (None, None, 2027, None)),
+        ("Published: 1983", (None, None, 1983, None)),
+        ("Published: ?", (None, None, None, None)),
+        ("Published: 20.10.1999 ‑ ?", ("1999-10-20", None, 1999, None)),
+        ("Published: 20.10.1999‑31.03.2002", ("1999-10-20", "2002-03-31", 1999, None)),
+        ("Published: 05.2001 ‑ 31.03.2002", (None, "2002-03-31", 2001, "May")),
+    ],
+)
+def test_post_process_main_published_date_keeps_only_stated_precision(
+    one_piece_main_raw, published: str, expected: tuple
+) -> None:
+    data = _post_process_main({**one_piece_main_raw, "published": published})
+    assert (
+        data["start_date"],
+        data["end_date"],
+        data["start_year"],
+        data["start_month"],
+    ) == expected
 
 
 def test_post_process_broadcast_parsed(one_piece_main_raw) -> None:

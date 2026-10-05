@@ -57,6 +57,47 @@ def test_aired_none_omits_key() -> None:
     assert "aired" not in episode_from_anisearch(_ep(aired=None))
 
 
+def test_anime_from_anisearch_full_start_date_sets_year_season_and_date() -> None:
+    mapped = anime_from_anisearch(
+        AniSearchAnime(start_date="1999-10-20", start_year=1999)
+    )
+    assert (mapped["year"], mapped["season"], mapped["aired_dates"]["aired_from"]) == (
+        1999,
+        "FALL",
+        "1999-10-19T15:00:00Z",
+    )
+    assert "month" not in mapped
+
+
+def test_anime_from_anisearch_year_only_start_sets_year_without_season_month_or_date() -> (
+    None
+):
+    mapped = anime_from_anisearch(AniSearchAnime(start_year=2027, status="Upcoming"))
+    assert mapped["year"] == 2027
+    assert not {"season", "month", "aired_dates"} & mapped.keys()
+
+
+def test_anime_from_anisearch_month_and_year_start_sets_year_and_month() -> None:
+    mapped = anime_from_anisearch(
+        AniSearchAnime(start_year=2008, start_month="November")
+    )
+    assert (mapped["year"], mapped["month"]) == (2008, "November")
+    assert "aired_dates" not in mapped
+
+
+def test_anime_from_anisearch_undated_takes_anisearch_status() -> None:
+    assert (
+        anime_from_anisearch(AniSearchAnime(status="Upcoming"))["status"] == "UPCOMING"
+    )
+
+
+def test_anime_from_anisearch_dated_keeps_status_from_dates() -> None:
+    mapped = anime_from_anisearch(
+        AniSearchAnime(start_date="1999-10-20", status="Completed")
+    )
+    assert mapped["status"] == "ONGOING"
+
+
 def test_title_romaji_and_japanese_passed_through() -> None:
     result = episode_from_anisearch(_ep())
     assert result["title_romaji"] == "Ore wa Luffy! Kaizoku Ou ni naru Otoko da!"

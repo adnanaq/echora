@@ -200,6 +200,7 @@ def anime_from_mal(anime: MalAnime) -> dict[str, Any]:
         background=background,
         duration=duration,
         episode_count=episode_count,
+        month=anime.month,
         rating=rating,
         season=season,
         source_material=source_material,

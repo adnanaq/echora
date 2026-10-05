@@ -145,6 +145,17 @@ def test_anime_from_mal_field_names_valid() -> None:
         assert key in valid_fields, f"Mapper output key '{key}' not in Anime model"
 
 
+def test_anime_from_mal_month_passed_through() -> None:
+    anime = _make_sample_anime().model_copy(
+        update={"aired_from": None, "month": "October"}
+    )
+    assert anime_from_mal(anime)["month"] == "October"
+
+
+def test_anime_from_mal_without_month_omits_month() -> None:
+    assert "month" not in anime_from_mal(_make_sample_anime())
+
+
 def test_anime_from_mal_sources() -> None:
     sample = _make_sample_anime()
     result = anime_from_mal(sample)
