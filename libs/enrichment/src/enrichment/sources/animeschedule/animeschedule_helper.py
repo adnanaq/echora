@@ -160,12 +160,14 @@ class AnimescheduleHelper(BaseEnrichmentHelper):
         """
         logger.info(f"Fetching AnimSchedule data for: {search_term}")
 
-        search_url = f"https://animeschedule.net/api/v3/anime?q={search_term}"
-        logger.debug(f"AnimSchedule search URL: {search_url}")
+        search_url = "https://animeschedule.net/api/v3/anime"
+        logger.debug(f"AnimSchedule search URL: {search_url}, q={search_term}")
 
         try:
             async with _cache_manager.get_aiohttp_session("animeschedule") as session:
-                async with session.get(search_url) as response:
+                async with session.get(
+                    search_url, params={"q": search_term}
+                ) as response:
                     response.raise_for_status()
                     search_results = await response.json()
         except aiohttp.ClientError as e:

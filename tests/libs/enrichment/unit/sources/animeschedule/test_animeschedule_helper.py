@@ -2,9 +2,12 @@
 
 import json
 import tempfile
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, create_autospec, patch
 
+import aiohttp
 import pytest
+import yarl
+from http_cache.aiohttp_adapter import CachedAiohttpSession
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -477,3 +480,21 @@ async def test_main_missing_argument_exits_2():
         with pytest.raises(SystemExit) as exc:
             await main()
         assert exc.value.code == 2
+
+
+async def test_search_title_with_query_characters_sends_whole_title():
+    from enrichment.sources.animeschedule import animeschedule_helper
+
+    session = create_autospec(CachedAiohttpSession, instance=True)
+    response = create_autospec(aiohttp.ClientResponse, instance=True)
+    response.json.return_value = {"anime": []}
+    session.get.return_value.__aenter__.return_value = response
+    with patch.object(
+        animeschedule_helper._cache_manager, "get_aiohttp_session", autospec=True
+    ) as get_session:
+        get_session.return_value.__aenter__.return_value = session
+        await animeschedule_helper.AnimescheduleHelper()._search("009-1: R&B")
+
+    request = session.get.call_args
+    sent_url = yarl.URL(request.args[0]).update_query(request.kwargs.get("params", {}))
+    assert dict(sent_url.query) == {"q": "009-1: R&B"}
