@@ -1,5 +1,5 @@
-"""Unit tests for anidb_mapper.py — anime_from_anidb, episode_from_anidb, character_from_anidb."""
-
+import pytest
+from common.models.anime import Anime
 from enrichment.sources.anidb.anidb_mapper import (
     anime_from_anidb,
     character_from_anidb,
@@ -18,877 +18,664 @@ from enrichment.sources.anidb.anidb_models import (
     AniDBSeiyuu,
 )
 
-_CDN_BASE = "https://cdn-eu.anidb.net/images/main"
-_ANIDB_URL = "https://anidb.net/anime/69"
+CDN_BASE = "https://cdn-eu.anidb.net/images/main"
+ANIDB_URL = "https://anidb.net/anime/69"
 
 
-# =============================================================================
-# HELPERS
-# =============================================================================
+def _anime(**fields) -> AniDBAnime:
+    return AniDBAnime(id=69, **fields)
 
 
-def _anime(**kwargs) -> AniDBAnime:
-    """Minimal AniDBAnime factory with controlled fields."""
-    return AniDBAnime(id=69, **kwargs)
+def _map(**fields) -> dict:
+    return anime_from_anidb(_anime(**fields), anidb_url=ANIDB_URL)
 
 
-def _company_roles(result) -> dict[str, list[str]]:
-    return {c["name"]: c["roles"] for c in result.get("companies") or []}
+def _links(result: dict) -> dict[str, str]:
+    return {link["platform"]: link["source"] for link in result["external_sources"]}
 
 
-def test_anime_from_anidb_companies_by_creator_type() -> None:
-    result = anime_from_anidb(
-        _anime(
-            creators=[
-                AniDBCreator(name="Toei Animation", role="Animation Work"),
-                AniDBCreator(name="Fuji TV", role="Work"),
-                AniDBCreator(name="Toei Animation", role="Work"),
-                AniDBCreator(name="Oda Eiichirou", role="Original Work"),
-                AniDBCreator(name="Tanaka Kouhei", role="Music"),
-                AniDBCreator(name="Shinkai Makoto", role="Animation Production"),
-                AniDBCreator(name="Tezuka Osamu", role="Original Plan"),
-            ]
-        ),
-        anidb_url=_ANIDB_URL,
+def _resources(*resources: AniDBExternalResource) -> dict:
+    return _map(resources=list(resources))
+
+
+def _company_roles(result: dict) -> dict[str, list[str]]:
+    return {
+        company["name"]: company["roles"] for company in result.get("companies") or []
+    }
+
+
+def test_anime_from_anidb_animation_work_and_work_creators_become_companies() -> None:
+    result = _map(
+        creators=[
+            AniDBCreator(id=412, name="Toei Animation", role="Animation Work"),
+            AniDBCreator(name="Fuji TV", role="Work"),
+            AniDBCreator(name="Toei Animation", role="Work"),
+            AniDBCreator(name="", role="Work"),
+            AniDBCreator(name="Oda Eiichirou", role="Original Work"),
+            AniDBCreator(name="Tanaka Kouhei", role="Music"),
+            AniDBCreator(name="Shinkai Makoto", role="Animation Production"),
+            AniDBCreator(name="Tezuka Osamu", role="Original Plan"),
+        ]
     )
     assert _company_roles(result) == {
         "Toei Animation": ["STUDIO", "PRODUCER"],
         "Fuji TV": ["PRODUCER"],
     }
+    toei = next(c for c in result["companies"] if c["name"] == "Toei Animation")
+    assert "https://anidb.net/creator/412" in toei["sources"]
     assert not {"studios", "producers", "licensors"} & result.keys()
 
 
-def test_anime_from_anidb_no_creators_yields_no_companies() -> None:
-    result = anime_from_anidb(_anime(), anidb_url=_ANIDB_URL)
-    assert _company_roles(result) == {}
+def test_anime_from_anidb_without_creators_gives_no_companies() -> None:
+    assert _company_roles(_map()) == {}
 
 
-def _links(result) -> dict[str, str]:
-    """external_sources as platform -> source, for single-link assertions."""
-    return {e["platform"]: e["source"] for e in result["external_sources"]}
+def test_anime_from_anidb_main_title_wins_over_english_title() -> None:
+    assert _map(title="One Piece", title_english="OP EN")["title"] == "One Piece"
 
 
-# =============================================================================
-# anime_from_anidb — scalars
-# =============================================================================
+def test_anime_from_anidb_without_main_title_takes_english_title() -> None:
+    assert _map(title=None, title_english="One Piece EN")["title"] == "One Piece EN"
 
 
-def test_anime_from_anidb_title_from_main() -> None:
-    result = anime_from_anidb(
-        _anime(title="One Piece", title_english="OP EN"), anidb_url=_ANIDB_URL
+def test_anime_from_anidb_without_any_title_gives_empty_title() -> None:
+    assert _map(title=None, title_english=None)["title"] == ""
+
+
+def test_anime_from_anidb_scalar_fields_mapped() -> None:
+    result = _map(
+        title_english="One Piece EN",
+        title_japanese="ワンピース",
+        description="Pirates.",
+        episode_count=1100,
+        synonyms=["OP"],
     )
-    assert result["title"] == "One Piece"
-
-
-def test_anime_from_anidb_title_fallback_to_english() -> None:
-    result = anime_from_anidb(
-        _anime(title=None, title_english="One Piece EN"), anidb_url=_ANIDB_URL
+    assert (result["title_english"], result["title_japanese"]) == (
+        "One Piece EN",
+        "ワンピース",
     )
-    assert result["title"] == "One Piece EN"
-
-
-def test_anime_from_anidb_title_empty_when_nothing_available() -> None:
-    result = anime_from_anidb(
-        _anime(title=None, title_english=None), anidb_url=_ANIDB_URL
+    assert (result["synopsis"], result["episode_count"], result["synonyms"]) == (
+        "Pirates.",
+        1100,
+        ["OP"],
     )
-    assert result["title"] == ""
 
 
-def test_anime_from_anidb_type_tv_series() -> None:
-    result = anime_from_anidb(_anime(type="TV Series"), anidb_url=_ANIDB_URL)
-    assert result["type"] == "TV"
+@pytest.mark.parametrize(
+    ("raw_type", "expected"),
+    [("TV Series", "TV"), ("Movie", "MOVIE"), (None, "UNKNOWN")],
+)
+def test_anime_from_anidb_type_gives_anime_type(
+    raw_type: str | None, expected: str
+) -> None:
+    assert _map(type=raw_type)["type"] == expected
 
 
-def test_anime_from_anidb_type_movie() -> None:
-    result = anime_from_anidb(_anime(type="Movie"), anidb_url=_ANIDB_URL)
-    assert result["type"] == "MOVIE"
+def test_anime_from_anidb_seed_url_becomes_only_source() -> None:
+    assert _map()["sources"] == [ANIDB_URL]
 
 
-def test_anime_from_anidb_type_unknown_for_missing() -> None:
-    result = anime_from_anidb(_anime(type=None), anidb_url=_ANIDB_URL)
-    assert result["type"] == "UNKNOWN"
+def test_anime_from_anidb_restricted_anime_marked_nsfw() -> None:
+    assert _map(restricted=True)["nsfw"] is True
 
 
-def test_anime_from_anidb_sources_contains_anidb_url() -> None:
-    result = anime_from_anidb(_anime(), anidb_url=_ANIDB_URL)
-    assert result["sources"] == [_ANIDB_URL]
+def test_anime_from_anidb_unrestricted_anime_omits_nsfw() -> None:
+    assert "nsfw" not in _map(restricted=False)
 
 
-def test_anime_from_anidb_nsfw_true_when_restricted() -> None:
-    result = anime_from_anidb(_anime(restricted=True), anidb_url=_ANIDB_URL)
-    assert result["nsfw"] is True
+def test_anime_from_anidb_picture_becomes_cdn_cover() -> None:
+    assert _map(picture="anime.jpg")["images"]["covers"] == [f"{CDN_BASE}/anime.jpg"]
 
 
-def test_anime_from_anidb_nsfw_absent_when_not_restricted() -> None:
-    """restricted=False → nsfw=None → excluded by model_dump(exclude_none=True)."""
-    result = anime_from_anidb(_anime(restricted=False), anidb_url=_ANIDB_URL)
-    assert "nsfw" not in result
+def test_anime_from_anidb_without_picture_gives_no_covers() -> None:
+    assert _map(picture=None)["images"]["covers"] == []
 
 
-# =============================================================================
-# anime_from_anidb — images
-# =============================================================================
-
-
-def test_anime_from_anidb_images_cover_cdn_prefixed() -> None:
-    result = anime_from_anidb(_anime(picture="anime.jpg"), anidb_url=_ANIDB_URL)
-    assert result["images"]["covers"] == [f"{_CDN_BASE}/anime.jpg"]
-
-
-def test_anime_from_anidb_images_empty_when_no_picture() -> None:
-    result = anime_from_anidb(_anime(picture=None), anidb_url=_ANIDB_URL)
-    assert result["images"]["covers"] == []
-
-
-# =============================================================================
-# anime_from_anidb — tags / categories
-# =============================================================================
-
-
-def test_anime_from_anidb_categories_appended_to_tags() -> None:
-    result = anime_from_anidb(
-        _anime(categories=[AniDBCategory(name="Action", hentai=False)]),
-        anidb_url=_ANIDB_URL,
+def test_anime_from_anidb_non_hentai_categories_added_to_tags_once() -> None:
+    result = _map(
+        tags=["Action"],
+        categories=[
+            AniDBCategory(name="Action", hentai=False),
+            AniDBCategory(name="Pirates", hentai=False),
+            AniDBCategory(name="Ecchi", hentai=True),
+        ],
     )
-    assert "Action" in result["tags"]
+    assert result["tags"] == ["Action", "Pirates"]
 
 
-def test_anime_from_anidb_hentai_categories_excluded_from_tags() -> None:
-    result = anime_from_anidb(
-        _anime(categories=[AniDBCategory(name="Ecchi", hentai=True)]),
-        anidb_url=_ANIDB_URL,
-    )
-    assert "Ecchi" not in result["tags"]
-
-
-def test_anime_from_anidb_tags_deduplicated() -> None:
-    """Category name already in tags list is not appended twice."""
-    result = anime_from_anidb(
-        _anime(
-            tags=["Action"],
-            categories=[AniDBCategory(name="Action", hentai=False)],
-        ),
-        anidb_url=_ANIDB_URL,
-    )
-    assert result["tags"].count("Action") == 1
-
-
-# =============================================================================
-# anime_from_anidb — titles (title_others → canonical titles)
-# =============================================================================
-
-
-def test_anime_from_anidb_title_others_mapped_to_titles() -> None:
-    result = anime_from_anidb(
-        _anime(title_others={"de": "Wan Piisu", "ko": "원피스"}),
-        anidb_url=_ANIDB_URL,
-    )
+def test_anime_from_anidb_other_language_titles_become_titles() -> None:
+    result = _map(title_others={"de": "Wan Piisu", "ko": "원피스"})
     assert result["titles"] == {"de": "Wan Piisu", "ko": "원피스"}
 
 
-# =============================================================================
-# anime_from_anidb — statistics
-# =============================================================================
+def test_anime_from_anidb_permanent_rating_gives_score_and_votes() -> None:
+    result = _map(ratings=AniDBRatings(permanent=8.33, permanent_count=9547))
+    assert result["statistics"]["anidb"] == {"score": 8.33, "scored_by": 9547}
 
 
-def test_anime_from_anidb_statistics_built_from_ratings() -> None:
-    result = anime_from_anidb(
-        _anime(ratings=AniDBRatings(permanent=8.33, permanent_count=9547)),
-        anidb_url=_ANIDB_URL,
+def test_anime_from_anidb_permanent_rating_without_votes_gives_score_only() -> None:
+    result = _map(ratings=AniDBRatings(permanent=8.33, permanent_count=0))
+    assert result["statistics"]["anidb"] == {"score": 8.33}
+
+
+@pytest.mark.parametrize("ratings", [None, AniDBRatings(permanent=None)])
+def test_anime_from_anidb_without_permanent_rating_gives_empty_statistics(
+    ratings: AniDBRatings | None,
+) -> None:
+    assert _map(ratings=ratings)["statistics"] == {}
+
+
+def test_anime_from_anidb_start_and_end_dates_give_utc_aired_dates_year_and_season() -> (
+    None
+):
+    result = _map(start_date="1999-10-20", end_date="2030-06-01")
+    assert result["aired_dates"] == {
+        "aired_from": "1999-10-19T15:00:00Z",
+        "aired_to": "2030-05-31T15:00:00Z",
+    }
+    assert (result["year"], result["season"], result["status"]) == (
+        1999,
+        "FALL",
+        "ONGOING",
     )
-    assert "statistics" in result
-    assert result["statistics"]["anidb"]["score"] == 8.33
-    assert result["statistics"]["anidb"]["scored_by"] == 9547
 
 
-def test_anime_from_anidb_statistics_empty_when_no_ratings() -> None:
-    """statistics field is always present but empty dict when no ratings exist."""
-    result = anime_from_anidb(_anime(ratings=None), anidb_url=_ANIDB_URL)
-    assert result["statistics"] == {}
+def test_anime_from_anidb_month_only_start_gives_year_and_season_without_date() -> None:
+    result = _map(start_date="1977-10")
+    assert (result["year"], result["season"]) == (1977, "FALL")
+    assert not result.get("aired_dates")
 
 
-def test_anime_from_anidb_statistics_empty_when_permanent_none() -> None:
-    result = anime_from_anidb(
-        _anime(ratings=AniDBRatings(permanent=None)),
-        anidb_url=_ANIDB_URL,
-    )
-    assert result["statistics"] == {}
-
-
-# =============================================================================
-# anime_from_anidb — aired dates
-# =============================================================================
-
-
-def test_anime_from_anidb_aired_dates_built_from_dates() -> None:
-    result = anime_from_anidb(
-        _anime(start_date="1999-10-20", end_date="2030-06-01"),
-        anidb_url=_ANIDB_URL,
-    )
-    assert "aired_dates" in result
-    assert result["aired_dates"]["aired_from"] is not None
-    assert result["aired_dates"]["aired_to"] is not None
-
-
-def test_anime_from_anidb_no_aired_dates_when_no_dates() -> None:
-    result = anime_from_anidb(
-        _anime(start_date=None, end_date=None), anidb_url=_ANIDB_URL
-    )
+def test_anime_from_anidb_without_dates_gives_no_aired_dates_and_unknown_status() -> (
+    None
+):
+    result = _map(start_date=None, end_date=None)
     assert "aired_dates" not in result
+    assert result["status"] == "UNKNOWN"
 
 
 def test_anime_from_anidb_unknown_date_placeholder_gives_no_date_year_or_season() -> (
     None
 ):
-    result = anime_from_anidb(
-        _anime(type="Movie", start_date="1970-01-01"), anidb_url=_ANIDB_URL
-    )
+    result = _map(type="Movie", start_date="1970-01-01")
     assert not {"aired_dates", "year", "season"} & result.keys()
     assert result["status"] == "UNKNOWN"
 
 
-# =============================================================================
-# anime_from_anidb — related anime
-# =============================================================================
+def test_anime_from_anidb_related_anime_grouped_by_relation_with_anidb_links() -> None:
+    result = _map(
+        related_anime=[
+            AniDBRelatedAnime(
+                id=522, title="One Piece Movie 1", relation_type="Side Story"
+            ),
+            AniDBRelatedAnime(
+                id=523, title="One Piece Movie 2", relation_type="Side Story"
+            ),
+            AniDBRelatedAnime(id=9999, relation_type="Sequel"),
+        ]
+    )
+    related = result["related_anime"]
+    assert [entry["title"] for entry in related["SIDE_STORY"]] == [
+        "One Piece Movie 1",
+        "One Piece Movie 2",
+    ]
+    assert related["SIDE_STORY"][0]["sources"] == ["https://anidb.net/anime/522"]
+    assert related["SEQUEL"][0]["title"] == ""
+    assert related["SEQUEL"][0]["type"] == "UNKNOWN"
 
 
-def test_anime_from_anidb_related_anime_grouped_by_type() -> None:
-    result = anime_from_anidb(
-        _anime(
-            related_anime=[
-                AniDBRelatedAnime(
-                    id=522, title="One Piece Movie 1", relation_type="Side Story"
-                ),
-                AniDBRelatedAnime(id=9999, title="Season 2", relation_type="Sequel"),
-            ]
+def test_anime_from_anidb_url_field_becomes_japanese_official_site() -> None:
+    result = _map(url="http://onepiece.toei-anim.co.jp")
+    assert result["external_sources"] == [
+        {
+            "platform": "official_site",
+            "source": "http://onepiece.toei-anim.co.jp",
+            "language": "Japanese",
+        }
+    ]
+
+
+def test_anime_from_anidb_url_field_without_host_gives_no_link() -> None:
+    assert _map(url="not a link")["external_sources"] == []
+
+
+@pytest.mark.parametrize(
+    ("resource_type", "identifier", "platform", "expected"),
+    [
+        ("2", "21", "myanimelist", "https://myanimelist.net/anime/21"),
+        (
+            "1",
+            "149",
+            "anime_news_network",
+            "https://www.animenewsnetwork.com/encyclopedia/anime.php?id=149",
         ),
-        anidb_url=_ANIDB_URL,
-    )
-    assert "SIDE_STORY" in result["related_anime"]
-    assert "SEQUEL" in result["related_anime"]
-    assert result["related_anime"]["SIDE_STORY"][0]["title"] == "One Piece Movie 1"
-
-
-def test_anime_from_anidb_related_anime_source_url_built_from_id() -> None:
-    result = anime_from_anidb(
-        _anime(related_anime=[AniDBRelatedAnime(id=522, relation_type="Side Story")]),
-        anidb_url=_ANIDB_URL,
-    )
-    sources = result["related_anime"]["SIDE_STORY"][0]["sources"]
-    assert "https://anidb.net/anime/522" in sources
-
-
-# =============================================================================
-# anime_from_anidb — external sources
-# =============================================================================
-
-
-def test_anime_from_anidb_url_field_to_official_website() -> None:
-    result = anime_from_anidb(
-        _anime(url="http://onepiece.toei-anim.co.jp"), anidb_url=_ANIDB_URL
-    )
-    assert _links(result)["official_site"] == "http://onepiece.toei-anim.co.jp"
-
-
-def test_anime_from_anidb_mal_resource_mapped() -> None:
-    result = anime_from_anidb(
-        _anime(resources=[AniDBExternalResource(type="2", identifiers=["21"])]),
-        anidb_url=_ANIDB_URL,
-    )
-    assert _links(result)["myanimelist"] == "https://myanimelist.net/anime/21"
-
-
-def test_anime_from_anidb_ann_resource_mapped() -> None:
-    result = anime_from_anidb(
-        _anime(resources=[AniDBExternalResource(type="1", identifiers=["149"])]),
-        anidb_url=_ANIDB_URL,
-    )
-    assert "anime_news_network" in _links(result)
-    assert "149" in _links(result)["anime_news_network"]
-
-
-def test_anime_from_anidb_type_45_is_funimation_not_hulu() -> None:
-    """Type 45 is Funimation.
-
-    It was mapped to Hulu, which turned the real identifier ``one-piece/`` into
-    a fabricated ``hulu.com/series/one-piece/``. AniDB's own page for aid 69
-    renders this identifier as ``funimation.com/shows/one-piece/``.
-    """
-    result = anime_from_anidb(
-        _anime(
-            resources=[AniDBExternalResource(type="45", identifiers=["one-piece/"])]
+        ("9", "162790", "allcinema", "https://www.allcinema.net/cinema/162790"),
+        ("10", "3270", "anison", "http://anison.info/data/program/3270.html"),
+        (
+            "28",
+            "GRMG8ZQZR",
+            "crunchyroll",
+            "https://www.crunchyroll.com/series/GRMG8ZQZR",
         ),
-        anidb_url=_ANIDB_URL,
+        ("43", "tt0388629", "imdb", "https://www.imdb.com/title/tt0388629"),
+    ],
+)
+def test_anime_from_anidb_single_identifier_resource_gives_platform_link(
+    resource_type: str, identifier: str, platform: str, expected: str
+) -> None:
+    result = _resources(
+        AniDBExternalResource(type=resource_type, identifiers=[identifier])
     )
-    assert "hulu" not in _links(result)
-    assert _links(result)["funimation"] == "https://www.funimation.com/shows/one-piece/"
+    assert _links(result)[platform] == expected
 
 
-def test_anime_from_anidb_allcinema_and_anison_resources_mapped() -> None:
-    """Types 9 and 10 were absent from the map, so both were dropped silently."""
-    result = anime_from_anidb(
-        _anime(
-            resources=[
-                AniDBExternalResource(type="9", identifiers=["162790"]),
-                AniDBExternalResource(type="10", identifiers=["3270"]),
-            ]
-        ),
-        anidb_url=_ANIDB_URL,
-    )
-    assert _links(result)["allcinema"] == "https://www.allcinema.net/cinema/162790"
-    assert _links(result)["anison"] == "http://anison.info/data/program/3270.html"
+def test_anime_from_anidb_type_45_resource_gives_funimation_link_not_hulu() -> None:
+    result = _resources(AniDBExternalResource(type="45", identifiers=["one-piece/"]))
+    assert _links(result) == {
+        "funimation": "https://www.funimation.com/shows/one-piece/"
+    }
 
 
-def test_anime_from_anidb_syoboi_url_has_time_suffix() -> None:
-    """Syoboi links need the /time suffix and https, as AniDB itself renders them."""
-    result = anime_from_anidb(
-        _anime(resources=[AniDBExternalResource(type="8", identifiers=["350"])]),
-        anidb_url=_ANIDB_URL,
-    )
+def test_anime_from_anidb_syoboi_resource_gives_https_time_page() -> None:
+    result = _resources(AniDBExternalResource(type="8", identifiers=["350"]))
     assert _links(result)["syoboi"] == "https://cal.syoboi.jp/tid/350/time"
 
 
-def test_anime_from_anidb_vndb_joins_its_two_identifiers() -> None:
-    """VNDB splits the entry across two identifiers: the number and the letter.
-
-    ["7721", "v"] means https://vndb.org/v7721. Treated as a single-identifier
-    resource it looks ambiguous and would be dropped entirely.
-    """
-    result = anime_from_anidb(
-        _anime(resources=[AniDBExternalResource(type="14", identifiers=["7721", "v"])]),
-        anidb_url=_ANIDB_URL,
-    )
+def test_anime_from_anidb_vndb_resource_joins_number_and_entry_letter() -> None:
+    result = _resources(AniDBExternalResource(type="14", identifiers=["7721", "v"]))
     assert _links(result)["vndb"] == "https://vndb.org/v7721"
 
 
-def test_anime_from_anidb_url_bearing_resources_pass_through() -> None:
-    """Types 5, 34 and 35 carry a full url rather than an identifier."""
-    result = anime_from_anidb(
-        _anime(
-            resources=[
-                AniDBExternalResource(type="5", urls=["https://gkids.com/"]),
-                AniDBExternalResource(type="34", urls=["https://wetv.vip/en/play/x"]),
-                AniDBExternalResource(type="35", urls=["http://blog.naver.com/fh"]),
-            ]
-        ),
-        anidb_url=_ANIDB_URL,
+def test_anime_from_anidb_vndb_resource_with_one_identifier_gives_no_link() -> None:
+    result = _resources(AniDBExternalResource(type="14", identifiers=["7721"]))
+    assert result["external_sources"] == []
+
+
+def test_anime_from_anidb_tmdb_resource_joins_media_type_and_number() -> None:
+    result = _resources(AniDBExternalResource(type="44", identifiers=["37854", "tv"]))
+    assert _links(result)["themoviedb"] == "https://www.themoviedb.org/tv/37854"
+
+
+def test_anime_from_anidb_tmdb_resource_with_one_identifier_gives_no_link() -> None:
+    result = _resources(AniDBExternalResource(type="44", identifiers=["37854"]))
+    assert "themoviedb" not in _links(result)
+
+
+def test_anime_from_anidb_baidu_resource_drops_query_string() -> None:
+    result = _resources(
+        AniDBExternalResource(type="33", identifiers=["海贼王?fromModule=lemma"])
     )
-    # gkids and the naver blog are both the work's own pages, so both land under
-    # official_site; the list keeps both where a mapping could hold only one.
-    assert [(e["platform"], e["source"]) for e in result["external_sources"]] == [
+    assert [link["source"] for link in result["external_sources"]] == [
+        "https://baike.baidu.com/item/海贼王"
+    ]
+
+
+def test_anime_from_anidb_baidu_resource_without_identifier_gives_no_link() -> None:
+    assert _resources(AniDBExternalResource(type="33"))["external_sources"] == []
+
+
+def test_anime_from_anidb_full_address_resources_kept_in_order() -> None:
+    result = _resources(
+        AniDBExternalResource(type="5", urls=["https://gkids.com/"]),
+        AniDBExternalResource(type="34", urls=["https://wetv.vip/en/play/x"]),
+        AniDBExternalResource(type="35", urls=["http://blog.naver.com/fh"]),
+    )
+    assert [
+        (link["platform"], link["source"]) for link in result["external_sources"]
+    ] == [
         ("official_site", "https://gkids.com/"),
         ("wetv", "https://wetv.vip/en/play/x"),
         ("official_site", "http://blog.naver.com/fh"),
     ]
 
 
-def test_anime_from_anidb_unverifiable_resources_emit_nothing() -> None:
-    """Types 15 and 31 are deliberately unmapped.
+def test_anime_from_anidb_official_site_resource_reads_address_with_language() -> None:
+    result = _resources(
+        AniDBExternalResource(type="4", urls=["http://resource-site.jp"])
+    )
+    assert result["external_sources"] == [
+        {
+            "platform": "official_site",
+            "source": "http://resource-site.jp",
+            "language": "Japanese",
+        }
+    ]
 
-    Marumegane (15) is a parked domain, and the Media Arts Database (31) moved
-    hosts, so its stored path no longer resolves to a record. Emitting a guessed
-    url is worse than emitting none - that is how type 45 produced Hulu links
-    for Funimation identifiers.
-    """
-    result = anime_from_anidb(
-        _anime(
-            resources=[
-                AniDBExternalResource(type="15", identifiers=["1996/akaboku"]),
-                AniDBExternalResource(type="31", identifiers=["12519"]),
-            ]
-        ),
-        anidb_url=_ANIDB_URL,
+
+def test_anime_from_anidb_parked_or_moved_resource_types_give_no_link() -> None:
+    result = _resources(
+        AniDBExternalResource(type="15", identifiers=["1996/akaboku"]),
+        AniDBExternalResource(type="31", identifiers=["12519"]),
     )
     assert result["external_sources"] == []
 
 
-def test_anime_from_anidb_ambiguous_resource_is_skipped() -> None:
-    """AniDB lists every platform entry for a work; none is marked as the right one.
+def test_anime_from_anidb_unmapped_resource_type_gives_no_link() -> None:
+    result = _resources(AniDBExternalResource(type="999", identifiers=["abc"]))
+    assert result["external_sources"] == []
 
-    Taking the first linked One Piece to MAL 62593, a 2025 special. Lowest-id was
-    right in only 7 of 8 sampled ambiguous cases, so no link is emitted at all.
-    """
-    result = anime_from_anidb(
-        _anime(
-            resources=[
-                AniDBExternalResource(type="2", identifiers=["62593", "60022", "21"])
-            ]
-        ),
-        anidb_url=_ANIDB_URL,
+
+def test_anime_from_anidb_resource_with_several_identifiers_skipped_as_ambiguous() -> (
+    None
+):
+    result = _resources(
+        AniDBExternalResource(type="2", identifiers=["62593", "60022", "21"]),
+        AniDBExternalResource(type="1", identifiers=["836", "3709"]),
     )
-    assert "myanimelist" not in _links(result)
+    assert result["external_sources"] == []
 
 
-def test_anime_from_anidb_single_candidate_resource_is_kept() -> None:
-    """Single-candidate resources were correct in 174 of 174 sampled, so they stay."""
-    result = anime_from_anidb(
-        _anime(
-            resources=[
-                AniDBExternalResource(type="43", identifiers=["tt0388629"]),
-                AniDBExternalResource(type="1", identifiers=["836", "3709"]),
-            ]
-        ),
-        anidb_url=_ANIDB_URL,
-    )
-    assert _links(result)["imdb"] == "https://www.imdb.com/title/tt0388629"
-    assert "anime_news_network" not in _links(result)
+def test_anime_from_anidb_resource_without_identifier_or_address_gives_no_link() -> (
+    None
+):
+    assert _resources(AniDBExternalResource(type="2"))["external_sources"] == []
 
 
-def test_anime_from_anidb_type4_resource_uses_url_directly() -> None:
-    """Type 4 (official website in resources) reads from urls list, not identifiers."""
-    result = anime_from_anidb(
-        _anime(
-            resources=[
-                AniDBExternalResource(type="4", urls=["http://resource-site.jp"])
-            ]
-        ),
-        anidb_url=_ANIDB_URL,
-    )
-    assert _links(result)["official_site"] == "http://resource-site.jp"
+def test_anime_from_anidb_output_keys_are_anime_fields() -> None:
+    result = _map(title="One Piece", type="TV Series")
+    assert set(result) <= set(Anime.model_fields)
 
 
-def test_anime_from_anidb_unknown_resource_type_skipped() -> None:
-    result = anime_from_anidb(
-        _anime(resources=[AniDBExternalResource(type="999", identifiers=["abc"])]),
-        anidb_url=_ANIDB_URL,
-    )
-    assert "external_sources" not in result or len(result["external_sources"]) == 0
-
-
-def test_anime_from_anidb_crunchyroll_resource_mapped() -> None:
-    result = anime_from_anidb(
-        _anime(resources=[AniDBExternalResource(type="28", identifiers=["GRMG8ZQZR"])]),
-        anidb_url=_ANIDB_URL,
-    )
-    assert (
-        _links(result)["crunchyroll"] == "https://www.crunchyroll.com/series/GRMG8ZQZR"
-    )
-
-
-def test_anime_from_anidb_tmdb_resource_mapped() -> None:
-    result = anime_from_anidb(
-        _anime(
-            resources=[AniDBExternalResource(type="44", identifiers=["37854", "tv"])]
-        ),
-        anidb_url=_ANIDB_URL,
-    )
-    assert _links(result)["themoviedb"] == "https://www.themoviedb.org/tv/37854"
-
-
-def test_anime_from_anidb_tmdb_single_identifier_skipped() -> None:
-    """TMDB requires both id and media type — single identifier must be skipped."""
-    result = anime_from_anidb(
-        _anime(resources=[AniDBExternalResource(type="44", identifiers=["37854"])]),
-        anidb_url=_ANIDB_URL,
-    )
-    assert "themoviedb" not in _links(result)
-
-
-def test_anime_from_anidb_onepiece_has_crunchyroll_and_tmdb(
+def test_anime_from_anidb_one_piece_xml_maps_title_type_year_season_and_source(
     onepiece_anime: AniDBAnime,
 ) -> None:
-    result = anime_from_anidb(onepiece_anime, anidb_url=_ANIDB_URL)
-    assert (
-        _links(result)["crunchyroll"] == "https://www.crunchyroll.com/series/GRMG8ZQZR"
+    result = anime_from_anidb(onepiece_anime, anidb_url=ANIDB_URL)
+    assert (result["title"], result["type"], result["year"], result["season"]) == (
+        "One Piece",
+        "TV",
+        1999,
+        "FALL",
     )
-    assert _links(result)["themoviedb"] == "https://www.themoviedb.org/tv/37854"
+    assert result["sources"] == [ANIDB_URL]
 
 
-# =============================================================================
-# anime_from_anidb — field validity
-# =============================================================================
-
-
-def test_anime_from_anidb_field_names_valid() -> None:
-    """All output keys must be valid Anime model field names."""
-    from common.models.anime import Anime
-
-    result = anime_from_anidb(
-        _anime(title="One Piece", type="TV Series"), anidb_url=_ANIDB_URL
-    )
-    valid_fields = set(Anime.model_fields.keys())
-    for key in result:
-        assert key in valid_fields, f"Mapper output key '{key}' not in Anime model"
-
-
-# =============================================================================
-# anime_from_anidb — real-fixture smoke tests
-# =============================================================================
-
-
-def test_anime_from_anidb_onepiece_title(onepiece_anime) -> None:
-    result = anime_from_anidb(onepiece_anime, anidb_url=_ANIDB_URL)
-    assert result["title"] == "One Piece"
-
-
-def test_anime_from_anidb_onepiece_type(onepiece_anime) -> None:
-    result = anime_from_anidb(onepiece_anime, anidb_url=_ANIDB_URL)
-    assert result["type"] == "TV"
-
-
-def test_anime_from_anidb_onepiece_year(onepiece_anime) -> None:
-    result = anime_from_anidb(onepiece_anime, anidb_url=_ANIDB_URL)
-    assert result["year"] == 1999
-
-
-def test_anime_from_anidb_onepiece_season(onepiece_anime) -> None:
-    result = anime_from_anidb(onepiece_anime, anidb_url=_ANIDB_URL)
-    assert result["season"] == "FALL"
-
-
-def test_anime_from_anidb_onepiece_sources(onepiece_anime) -> None:
-    result = anime_from_anidb(onepiece_anime, anidb_url=_ANIDB_URL)
-    assert result["sources"] == [_ANIDB_URL]
-
-
-def test_anime_from_anidb_onepiece_injected_end_date(onepiece_anime) -> None:
-    """Injected fake end date 2030-06-01 survives through the mapper."""
-    result = anime_from_anidb(onepiece_anime, anidb_url=_ANIDB_URL)
-    aired_to = result.get("aired_dates", {}).get("aired_to")
-    assert aired_to is not None
-    assert "2030" in str(aired_to)
-
-
-def test_anime_from_anidb_onepiece_statistics_present(onepiece_anime) -> None:
-    result = anime_from_anidb(onepiece_anime, anidb_url=_ANIDB_URL)
-    assert "statistics" in result
+def test_anime_from_anidb_one_piece_xml_keeps_end_date_and_score(
+    onepiece_anime: AniDBAnime,
+) -> None:
+    result = anime_from_anidb(onepiece_anime, anidb_url=ANIDB_URL)
+    assert result["aired_dates"]["aired_to"].startswith("2030")
     assert result["statistics"]["anidb"]["score"] > 0
 
 
-# =============================================================================
-# episode_from_anidb — scalar mapping
-# =============================================================================
+def test_anime_from_anidb_one_piece_xml_gives_crunchyroll_and_tmdb_links(
+    onepiece_anime: AniDBAnime,
+) -> None:
+    links = _links(anime_from_anidb(onepiece_anime, anidb_url=ANIDB_URL))
+    assert links["crunchyroll"] == "https://www.crunchyroll.com/series/GRMG8ZQZR"
+    assert links["themoviedb"] == "https://www.themoviedb.org/tv/37854"
 
 
-def test_episode_from_anidb_regular_maps_fields() -> None:
-    ep = AniDBEpisode(
+def test_episode_from_anidb_regular_episode_maps_number_title_and_duration() -> None:
+    episode = AniDBEpisode(
         id=1001,
         episode_number=1,
         episode_type=1,
         length=24,
         airdate="1999-10-20",
-        titles={"en": "Romance Dawn", "romaji": "Romance Dawn"},
+        summary="Luffy sets sail.",
+        titles={"en": "Romance Dawn", "romaji": "Romance Dawn", "ja": "ロマンス"},
     )
-    result = episode_from_anidb(ep)
-    assert result is not None
-    assert result["episode_number"] == 1
-    assert result["title"] == "Romance Dawn"
-    assert result["duration"] == 1440  # 24 min × 60 s
-
-
-def test_episode_from_anidb_non_regular_returns_none() -> None:
-    ep = AniDBEpisode(episode_type=2, episode_number=1)
-    assert episode_from_anidb(ep) is None
-
-
-def test_episode_from_anidb_string_episode_number_returns_none() -> None:
-    ep = AniDBEpisode(episode_type=1, episode_number="S1")
-    assert episode_from_anidb(ep) is None
-
-
-def test_episode_from_anidb_none_episode_type_returns_none() -> None:
-    ep = AniDBEpisode(episode_type=None, episode_number=1)
-    assert episode_from_anidb(ep) is None
-
-
-# =============================================================================
-# episode_from_anidb — title fallback chain
-# =============================================================================
-
-
-def test_episode_from_anidb_title_en_preferred() -> None:
-    ep = AniDBEpisode(
-        episode_type=1,
-        episode_number=1,
-        titles={"en": "English Title", "romaji": "Romaji Title"},
+    result = episode_from_anidb(episode)
+    assert (result["episode_number"], result["title"], result["duration"]) == (
+        1,
+        "Romance Dawn",
+        1440,
     )
-    assert episode_from_anidb(ep)["title"] == "English Title"
-
-
-def test_episode_from_anidb_title_fallback_romaji() -> None:
-    ep = AniDBEpisode(
-        episode_type=1, episode_number=1, titles={"romaji": "Romaji Title"}
+    assert (result["title_romaji"], result["title_japanese"]) == (
+        "Romance Dawn",
+        "ロマンス",
     )
-    assert episode_from_anidb(ep)["title"] == "Romaji Title"
-
-
-def test_episode_from_anidb_title_empty_when_no_titles() -> None:
-    ep = AniDBEpisode(episode_type=1, episode_number=1, titles={})
-    assert episode_from_anidb(ep)["title"] == ""
-
-
-# =============================================================================
-# episode_from_anidb — duration + sources
-# =============================================================================
-
-
-def test_episode_from_anidb_duration_minutes_to_seconds() -> None:
-    ep = AniDBEpisode(episode_type=1, episode_number=1, length=24)
-    assert episode_from_anidb(ep)["duration"] == 1440
-
-
-def test_episode_from_anidb_no_duration_when_zero_length() -> None:
-    ep = AniDBEpisode(episode_type=1, episode_number=1, length=0)
-    assert "duration" not in episode_from_anidb(ep)
-
-
-def test_episode_from_anidb_source_url_built_from_id() -> None:
-    ep = AniDBEpisode(id=1001, episode_type=1, episode_number=1)
-    assert episode_from_anidb(ep)["sources"] == ["https://anidb.net/episode/1001"]
-
-
-def test_episode_from_anidb_no_source_when_no_id() -> None:
-    ep = AniDBEpisode(id=None, episode_type=1, episode_number=1)
-    assert episode_from_anidb(ep)["sources"] == []
-
-
-def test_episode_from_anidb_anime_id_injected() -> None:
-    ep = AniDBEpisode(id=1001, episode_type=1, episode_number=1)
-    result = episode_from_anidb(ep, anime_id="uuid-abc-123")
-    assert result["anime_id"] == "uuid-abc-123"
-
-
-# =============================================================================
-# episode_from_anidb — titles dict + streaming
-# =============================================================================
-
-
-def test_episode_from_anidb_japanese_title_extracted() -> None:
-    ep = AniDBEpisode(
-        episode_type=1,
-        episode_number=1,
-        titles={"en": "Title", "ja": "タイトル"},
+    assert (result["synopsis"], result["filler"], result["recap"]) == (
+        "Luffy sets sail.",
+        False,
+        False,
     )
-    result = episode_from_anidb(ep)
-    assert result["title_japanese"] == "タイトル"
 
 
-def test_episode_from_anidb_extra_lang_in_titles_dict() -> None:
-    """Non-standard lang codes (de, fr, etc.) go into episode.titles dict."""
-    ep = AniDBEpisode(
-        episode_type=1,
-        episode_number=1,
-        titles={"en": "Title", "de": "Titel"},
+@pytest.mark.parametrize(
+    ("episode_type", "episode_number"),
+    [(2, 1), (1, "S1"), (None, 1)],
+)
+def test_episode_from_anidb_non_regular_episode_returns_none(
+    episode_type: int | None, episode_number: int | str
+) -> None:
+    episode = AniDBEpisode(episode_type=episode_type, episode_number=episode_number)
+    assert episode_from_anidb(episode) is None
+
+
+def test_episode_from_anidb_english_title_wins_over_romaji() -> None:
+    episode = AniDBEpisode(
+        episode_type=1, episode_number=1, titles={"en": "English", "romaji": "Romaji"}
     )
-    result = episode_from_anidb(ep)
-    assert result.get("titles", {}).get("de") == "Titel"
-    assert "en" not in result.get("titles", {})
+    assert episode_from_anidb(episode)["title"] == "English"
 
 
-def test_episode_from_anidb_streaming_passed_through() -> None:
-    ep = AniDBEpisode(
+def test_episode_from_anidb_without_english_title_takes_romaji() -> None:
+    episode = AniDBEpisode(
+        episode_type=1, episode_number=1, titles={"romaji": "Romaji"}
+    )
+    assert episode_from_anidb(episode)["title"] == "Romaji"
+
+
+def test_episode_from_anidb_without_titles_gives_empty_title() -> None:
+    episode = AniDBEpisode(episode_type=1, episode_number=1, titles={})
+    assert episode_from_anidb(episode)["title"] == ""
+
+
+def test_episode_from_anidb_zero_length_omits_duration() -> None:
+    episode = AniDBEpisode(episode_type=1, episode_number=1, length=0)
+    assert "duration" not in episode_from_anidb(episode)
+
+
+def test_episode_from_anidb_episode_id_becomes_anidb_link() -> None:
+    episode = AniDBEpisode(id=1001, episode_type=1, episode_number=1)
+    assert episode_from_anidb(episode)["sources"] == ["https://anidb.net/episode/1001"]
+
+
+def test_episode_from_anidb_without_episode_id_gives_no_sources() -> None:
+    episode = AniDBEpisode(id=None, episode_type=1, episode_number=1)
+    assert episode_from_anidb(episode)["sources"] == []
+
+
+def test_episode_from_anidb_anime_id_added_when_given() -> None:
+    episode = AniDBEpisode(id=1001, episode_type=1, episode_number=1)
+    assert episode_from_anidb(episode, anime_id="uuid-abc-123")["anime_id"] == (
+        "uuid-abc-123"
+    )
+
+
+def test_episode_from_anidb_other_language_titles_go_to_titles() -> None:
+    episode = AniDBEpisode(
+        episode_type=1, episode_number=1, titles={"en": "Title", "de": "Titel"}
+    )
+    assert episode_from_anidb(episode)["titles"] == {"de": "Titel"}
+
+
+def test_episode_from_anidb_streaming_links_kept() -> None:
+    episode = AniDBEpisode(
         episode_type=1,
         episode_number=1,
         streaming={"crunchyroll": "https://crunchyroll.com/watch/G6NQ5DWZ6"},
     )
-    result = episode_from_anidb(ep)
-    assert (
-        result["streaming"]["crunchyroll"] == "https://crunchyroll.com/watch/G6NQ5DWZ6"
-    )
+    assert episode_from_anidb(episode)["streaming"] == {
+        "crunchyroll": "https://crunchyroll.com/watch/G6NQ5DWZ6"
+    }
 
 
-# =============================================================================
-# episode_from_anidb — real-fixture smoke tests
-# =============================================================================
-
-
-def test_episode_from_anidb_onepiece_first_episode(onepiece_anime) -> None:
-    """Episode 1 of real One Piece fixture maps without errors."""
-    ep1 = next(
-        (
-            e
-            for e in onepiece_anime.episodes
-            if e.episode_type == 1 and e.episode_number == 1
-        ),
-        None,
-    )
-    assert ep1 is not None
-    result = episode_from_anidb(ep1)
-    assert result is not None
-    assert result["episode_number"] == 1
-    assert result["duration"] is not None
-
-
-def test_episode_from_anidb_onepiece_regular_episode_count(onepiece_anime) -> None:
-    """All regular (type 1, integer-numbered) One Piece episodes map successfully."""
+def test_episode_from_anidb_one_piece_xml_maps_every_regular_episode(
+    onepiece_anime: AniDBAnime,
+) -> None:
     regular = [
-        ep for e in onepiece_anime.episodes if (ep := episode_from_anidb(e)) is not None
+        mapped
+        for episode in onepiece_anime.episodes
+        if (mapped := episode_from_anidb(episode)) is not None
     ]
     assert len(regular) > 1000
-    assert all(isinstance(ep["episode_number"], int) for ep in regular)
+    first = next(mapped for mapped in regular if mapped["episode_number"] == 1)
+    assert first["duration"] > 0
 
 
-# =============================================================================
-# character_from_anidb — minimal + scalars
-# =============================================================================
-
-
-def test_character_from_anidb_minimal() -> None:
+def test_character_from_anidb_name_only_gives_name_and_empty_lists() -> None:
     result = character_from_anidb(AniDBCharacter(name="Luffy"))
     assert result["name"] == "Luffy"
+    assert (result["sources"], result["images"], result["roles"]) == ([], [], [])
+    assert result["voice_actors"] == []
 
 
-def test_character_from_anidb_source_url_from_id() -> None:
+def test_character_from_anidb_without_name_gives_empty_name() -> None:
+    assert character_from_anidb(AniDBCharacter())["name"] == ""
+
+
+def test_character_from_anidb_character_id_becomes_anidb_link() -> None:
     result = character_from_anidb(AniDBCharacter(id=40, name="Luffy"))
     assert result["sources"] == ["https://anidb.net/character/40"]
 
 
-def test_character_from_anidb_sources_empty_when_no_id() -> None:
-    """sources field is always present; empty list when no character id exists."""
-    result = character_from_anidb(AniDBCharacter(name="Unknown"))
-    assert result["sources"] == []
-
-
-def test_character_from_anidb_image_cdn_prefixed() -> None:
-    result = character_from_anidb(AniDBCharacter(name="Luffy", picture="luffy.jpg"))
-    assert f"{_CDN_BASE}/luffy.jpg" in result["images"]
-
-
-def test_character_from_anidb_images_empty_when_no_picture() -> None:
-    """images field is always present; empty list when no picture exists."""
-    result = character_from_anidb(AniDBCharacter(name="Luffy"))
-    assert result["images"] == []
-
-
-# =============================================================================
-# character_from_anidb — role mapping
-# =============================================================================
-
-
-def test_character_from_anidb_role_main_mapped() -> None:
+def test_character_from_anidb_description_and_picture_mapped() -> None:
     result = character_from_anidb(
-        AniDBCharacter(name="Luffy", type="main character in")
+        AniDBCharacter(name="Luffy", description="Captain.", picture="luffy.jpg")
     )
-    assert "MAIN" in result["roles"]
+    assert result["description"] == "Captain."
+    assert result["images"] == [f"{CDN_BASE}/luffy.jpg"]
 
 
-def test_character_from_anidb_role_supporting_mapped() -> None:
-    # AniDB uses "secondary cast in" for supporting characters
-    result = character_from_anidb(AniDBCharacter(name="Nami", type="secondary cast in"))
-    assert "SUPPORTING" in result["roles"]
+@pytest.mark.parametrize(
+    ("character_type", "expected"),
+    [("main character in", "MAIN"), ("secondary cast in", "SUPPORTING")],
+)
+def test_character_from_anidb_cast_type_gives_role(
+    character_type: str, expected: str
+) -> None:
+    result = character_from_anidb(AniDBCharacter(name="Nami", type=character_type))
+    assert result["roles"] == [expected]
 
 
-def test_character_from_anidb_roles_empty_when_no_type() -> None:
-    """roles field is always present; empty list when type is None (mapper skips nil type)."""
-    result = character_from_anidb(AniDBCharacter(name="Nami", type=None))
-    assert result["roles"] == []
+def test_character_from_anidb_xml_gender_kept_without_page() -> None:
+    character = AniDBCharacter(id=474, name="Luffy", gender="male")
+    assert character_from_anidb(character)["attributes"] == {"gender": "male"}
 
 
-# =============================================================================
-# character_from_anidb — voice actors
-# =============================================================================
-
-
-def test_character_from_anidb_with_seiyuu() -> None:
-    char = AniDBCharacter(
-        id=40,
-        name="Luffy",
-        seiyuu=[AniDBSeiyuu(id=95, name="Mayumi Tanaka", picture="95.jpg")],
-    )
-    result = character_from_anidb(char)
-    assert len(result["voice_actors"]) == 1
-    va = result["voice_actors"][0]
-    assert va["name"] == "Mayumi Tanaka"
-    assert va["image"] == f"{_CDN_BASE}/95.jpg"
-    assert va["sources"] == ["https://anidb.net/creator/95"]
-
-
-def test_character_from_anidb_multiple_seiyuu() -> None:
-    char = AniDBCharacter(
+def test_character_from_anidb_seiyuu_become_voice_actors_with_links_and_images() -> (
+    None
+):
+    character = AniDBCharacter(
         id=40,
         name="Luffy",
         seiyuu=[
-            AniDBSeiyuu(id=95, name="Mayumi Tanaka"),
-            AniDBSeiyuu(id=200, name="Colleen Clinkenbeard"),
+            AniDBSeiyuu(id=95, name="Mayumi Tanaka", picture="95.jpg"),
+            AniDBSeiyuu(name="Unlinked Actor"),
+            AniDBSeiyuu(),
         ],
     )
-    result = character_from_anidb(char)
-    assert len(result["voice_actors"]) == 2
+    actors = character_from_anidb(character)["voice_actors"]
+    assert [(actor["name"], actor["sources"]) for actor in actors] == [
+        ("Mayumi Tanaka", ["https://anidb.net/creator/95"]),
+        ("Unlinked Actor", []),
+        ("", []),
+    ]
+    assert actors[0]["image"] == f"{CDN_BASE}/95.jpg"
+    assert "image" not in actors[1]
 
 
-def test_character_from_anidb_seiyuu_no_source_when_no_id() -> None:
-    char = AniDBCharacter(name="Luffy", seiyuu=[AniDBSeiyuu(name="Unknown VA")])
-    va = character_from_anidb(char)["voice_actors"][0]
-    assert va["sources"] == []
-    assert "image" not in va
-
-
-def test_character_from_anidb_voice_actors_empty_when_no_seiyuu() -> None:
-    """voice_actors field is always present; empty list when character has no seiyuu."""
-    result = character_from_anidb(AniDBCharacter(id=40, name="Luffy"))
-    assert result["voice_actors"] == []
-
-
-# =============================================================================
-# character_from_anidb — page data enrichment
-# =============================================================================
-
-
-def test_character_from_anidb_page_data_name_kanji_mapped() -> None:
-    page = AniDBCharacterPage(name_kanji="モンキー・D・ルフィ")
+def test_character_from_anidb_page_names_and_description_mapped() -> None:
+    page = AniDBCharacterPage(
+        name_kanji="モンキー・D・ルフィ",
+        description="From the page.",
+        nicknames=["Straw Hat"],
+        official_names=["Monkey D. Luffy"],
+    )
     result = character_from_anidb(AniDBCharacter(id=40, name="Luffy"), page_data=page)
     assert result["name_native"] == "モンキー・D・ルフィ"
+    assert result["description"] == "From the page."
+    assert (result["nicknames"], result["name_variations"]) == (
+        ["Straw Hat"],
+        ["Monkey D. Luffy"],
+    )
 
 
-def test_character_from_anidb_page_data_nicknames_mapped() -> None:
-    page = AniDBCharacterPage(nicknames=["Straw Hat", "Mugiwara"])
-    result = character_from_anidb(AniDBCharacter(id=40, name="Luffy"), page_data=page)
-    assert result["nicknames"] == ["Straw Hat", "Mugiwara"]
+def test_character_from_anidb_xml_description_wins_over_page_description() -> None:
+    page = AniDBCharacterPage(description="From the page.")
+    result = character_from_anidb(
+        AniDBCharacter(id=40, name="Luffy", description="From the XML."),
+        page_data=page,
+    )
+    assert result["description"] == "From the XML."
 
 
-def test_character_from_anidb_page_data_traits_merged() -> None:
+def test_character_from_anidb_page_trait_groups_joined_into_traits() -> None:
     page = AniDBCharacterPage(
         abilities=["Gomu Gomu"],
         looks=["Scar under left eye"],
         personality=["Cheerful"],
-        role=[],
-        supernatural_abilities=[],
+        role=["Captain"],
+        supernatural_abilities=["Haki"],
     )
     result = character_from_anidb(AniDBCharacter(id=40, name="Luffy"), page_data=page)
-    assert "Gomu Gomu" in result["traits"]
-    assert "Scar under left eye" in result["traits"]
-    assert "Cheerful" in result["traits"]
+    assert result["traits"] == [
+        "Gomu Gomu",
+        "Scar under left eye",
+        "Cheerful",
+        "Captain",
+        "Haki",
+    ]
 
 
-def test_character_from_anidb_page_data_none_no_enrichment() -> None:
-    """With no page_data, enriched fields are absent or at their empty defaults."""
-    result = character_from_anidb(AniDBCharacter(id=40, name="Luffy"), page_data=None)
-    # name_native is str | None — excluded by exclude_none=True when not set
-    assert "name_native" not in result
-    # list fields default to [] — always present, just empty
-    assert result["nicknames"] == []
-    assert result["traits"] == []
-
-
-# =============================================================================
-# character_from_anidb — real-fixture smoke tests
-# =============================================================================
-
-
-def test_character_from_anidb_onepiece_main_character(onepiece_anime) -> None:
-    """First main character from real One Piece fixture maps with voice actors."""
-    main_char = next(
-        (
-            c
-            for c in onepiece_anime.characters
-            if c.type == "main character in" and c.seiyuu
-        ),
-        None,
+def test_character_from_anidb_page_appearances_give_animeography_and_roles() -> None:
+    page = AniDBCharacterPage(
+        animeography=[
+            {
+                "title": "One Piece Film: Red",
+                "role": "main character in",
+                "url": "https://anidb.net/anime/16537",
+            },
+            {"title": "Cameo Special", "role": "appears in"},
+            {"title": "", "role": "main character in"},
+            {"title": "Strong World", "role": "secondary cast in"},
+        ]
     )
-    assert main_char is not None
-    result = character_from_anidb(main_char)
-    assert result["name"] is not None
-    assert "MAIN" in result["roles"]
-    assert len(result["voice_actors"]) > 0
+    result = character_from_anidb(
+        AniDBCharacter(id=40, name="Luffy", type="secondary cast in"), page_data=page
+    )
+    assert [(entry["title"], entry["role"]) for entry in result["animeography"]] == [
+        ("One Piece Film: Red", "MAIN"),
+        ("Cameo Special", "BACKGROUND"),
+        ("Strong World", "SUPPORTING"),
+    ]
+    assert result["animeography"][0]["sources"] == ["https://anidb.net/anime/16537"]
+    assert result["roles"] == ["SUPPORTING", "MAIN", "BACKGROUND"]
 
 
-def test_character_from_anidb_keeps_xml_gender_without_page() -> None:
-    """A CF or antileech block leaves page_data None; the XML gender must survive."""
-    char = AniDBCharacter(id=474, name="Luffy", gender="male", type="main character in")
-    assert character_from_anidb(char)["attributes"] == {"gender": "male"}
+def test_character_from_anidb_page_appearances_without_known_roles_leave_roles_empty() -> (
+    None
+):
+    page = AniDBCharacterPage(animeography=[{"title": "One Piece"}])
+    result = character_from_anidb(AniDBCharacter(id=40, name="Luffy"), page_data=page)
+    assert result["animeography"][0]["role"] == "UNKNOWN"
+    assert result["roles"] == []
 
 
-def test_character_from_anidb_page_gender_overrides_xml() -> None:
-    char = AniDBCharacter(id=474, name="Luffy", gender="male", type="main character in")
+def test_character_from_anidb_page_gender_wins_over_xml_gender() -> None:
+    character = AniDBCharacter(id=474, name="Luffy", gender="male")
     page = AniDBCharacterPage(name_main="Luffy", gender="female")
-    assert character_from_anidb(char, page)["attributes"] == {"gender": "female"}
+    assert character_from_anidb(character, page)["attributes"] == {"gender": "female"}
+
+
+def test_character_from_anidb_empty_page_adds_nothing() -> None:
+    result = character_from_anidb(
+        AniDBCharacter(id=40, name="Luffy"), page_data=AniDBCharacterPage()
+    )
+    assert "name_native" not in result
+    assert (result["nicknames"], result["traits"]) == ([], [])
+
+
+def test_character_from_anidb_one_piece_xml_main_character_has_role_and_voice_actors(
+    onepiece_anime: AniDBAnime,
+) -> None:
+    main_character = next(
+        character
+        for character in onepiece_anime.characters
+        if character.type == "main character in" and character.seiyuu
+    )
+    result = character_from_anidb(main_character)
+    assert "MAIN" in result["roles"]
+    assert result["voice_actors"]

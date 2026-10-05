@@ -1,4 +1,4 @@
-"""Unit tests for enrichment.sources.base.utils — shared crawler utilities."""
+from pathlib import Path
 
 import pytest
 from enrichment.sources.base.utils import (
@@ -6,77 +6,75 @@ from enrichment.sources.base.utils import (
     parse_broadcast_string,
     parse_iso_date,
     parse_partial_date,
+    sanitize_output_path,
     split_date_range,
 )
 
-# =============================================================================
-# parse_broadcast_string
-# =============================================================================
+
+def test_sanitize_output_path_absolute_path_returns_resolved_path(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "nested" / ".." / "out.json"
+    assert sanitize_output_path(str(target)) == str(tmp_path / "out.json")
 
 
-def test_parse_broadcast_string_mal_format() -> None:
-    day, time, tz = parse_broadcast_string("Sundays at 23:15 (JST)")
-    assert day == "Sundays"
-    assert time == "23:15"
-    assert tz == "JST"
+def test_sanitize_output_path_relative_path_inside_working_directory_returns_absolute_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    assert sanitize_output_path("data/out.json") == str(
+        tmp_path.resolve() / "data" / "out.json"
+    )
 
 
-def test_parse_broadcast_string_anisearch_format() -> None:
-    day, time, tz = parse_broadcast_string("Sunday 23:15 (JST)")
-    assert day == "Sunday"
-    assert time == "23:15"
-    assert tz == "JST"
-
-
-def test_parse_broadcast_string_unknown() -> None:
-    day, time, tz = parse_broadcast_string("Unknown")
-    assert day is None
-    assert time is None
-    assert tz is None
-
-
-def test_parse_broadcast_string_none() -> None:
-    day, time, tz = parse_broadcast_string(None)
-    assert day is None
-    assert time is None
-    assert tz is None
-
-
-def test_parse_broadcast_string_no_match() -> None:
-    day, time, tz = parse_broadcast_string("Irregular schedule")
-    assert day is None
-    assert time is None
-    assert tz is None
-
-
-# =============================================================================
-# parse_iso_date
-# =============================================================================
+def test_sanitize_output_path_relative_path_outside_working_directory_raises_value_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(ValueError, match="escapes working directory"):
+        sanitize_output_path("../out.json")
 
 
 @pytest.mark.parametrize(
-    "raw, expected",
+    ("raw", "expected"),
+    [
+        ("Sundays at 23:15 (JST)", ("Sundays", "23:15", "JST")),
+        ("Sunday 23:15 (JST)", ("Sunday", "23:15", "JST")),
+    ],
+)
+def test_parse_broadcast_string_day_time_and_zone_returns_all_three(
+    raw: str, expected: tuple[str, str, str]
+) -> None:
+    assert parse_broadcast_string(raw) == expected
+
+
+@pytest.mark.parametrize("raw", ["Unknown", None, "Irregular schedule"])
+def test_parse_broadcast_string_without_schedule_returns_nothing(
+    raw: str | None,
+) -> None:
+    assert parse_broadcast_string(raw) == (None, None, None)
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
     [
         ("Oct 20, 1999", "1999-10-20"),
         ("Apr 5, 2003", "2003-04-05"),
         ("Jan 1, 2000", "2000-01-01"),
-        ("?", None),
-        ("N/A", None),
-        (None, None),
-        ("", None),
-        ("1999-10-20", "1999-10-20"),  # Already ISO
+        ("1999-10-20", "1999-10-20"),
         ("20.10.1999", "1999-10-20"),
-        ("20. Oct 1999", "1999-10-20"),  # AniSearch episode format
+        ("20. Oct 1999", "1999-10-20"),
         ("5. Apr 2003", "2003-04-05"),
         ("1. Jan 2000", "2000-01-01"),
     ],
 )
-def test_parse_iso_date(raw: str | None, expected: str | None) -> None:
+def test_parse_iso_date_full_date_returns_iso_date(raw: str, expected: str) -> None:
     assert parse_iso_date(raw) == expected
 
 
-def test_parse_iso_date_unrecognized_returns_none() -> None:
-    assert parse_iso_date("Some Random String") is None
+@pytest.mark.parametrize("raw", ["?", "N/A", None, "", "Some Random String"])
+def test_parse_iso_date_without_date_returns_none(raw: str | None) -> None:
+    assert parse_iso_date(raw) is None
 
 
 @pytest.mark.parametrize("raw", ["2026", "2026 to ?"])
@@ -116,7 +114,9 @@ def test_parse_partial_date_year_only_returns_year_without_month(raw: str) -> No
     assert parse_partial_date(raw) == (1988, None)
 
 
-@pytest.mark.parametrize("raw", ["?", "Not available", "", None, "13.2008", "Foo 2008"])
+@pytest.mark.parametrize(
+    "raw", ["?", "Not available", "", None, "13.2008", "2026-13", "Foo 2008"]
+)
 def test_parse_partial_date_without_year_or_valid_month_returns_nothing(
     raw: str | None,
 ) -> None:
@@ -131,6 +131,7 @@ def test_parse_partial_date_without_year_or_valid_month_returns_nothing(
         ("20.10.1999 ‑ ?", ("20.10.1999", "?")),
         ("20.10.1999‑31.03.2002", ("20.10.1999", "31.03.2002")),
         ("2019 – 2021", ("2019", "2021")),
+        ("2027‑2028", ("2027", "2028")),
         (" 1999 - ? ", ("1999", "?")),
     ],
 )

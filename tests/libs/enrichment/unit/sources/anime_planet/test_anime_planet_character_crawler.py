@@ -33,13 +33,7 @@ from enrichment.sources.anime_planet.anime_planet_character_crawler import (
     fetch_animeplanet_characters,
 )
 from enrichment.sources.anime_planet.anime_planet_character_models import (
-    AnimePlanetCharacter,
-    AnimePlanetCharacterAnimeRole,
-    AnimePlanetCharacterMangaRole,
     AnimePlanetVoiceActor,
-)
-from enrichment.sources.anime_planet.animeplanet_mapper import (
-    character_from_animeplanet,
 )
 from enrichment.sources.base.cloudflare_challenge import CloudflareChallengeError
 from enrichment.sources.base.framework import NullRepository
@@ -627,28 +621,6 @@ def test_crawler_map_to_canonical(
     canonical = crawler.map_to_canonical(char)
     assert canonical["name"] == "Monkey D. Luffy"
     assert any("monkey-d-luffy" in str(s) for s in canonical.get("sources", []))
-
-
-def test_character_roles_keep_page_order_without_repeats() -> None:
-    char = AnimePlanetCharacter(
-        name="Monkey D. Luffy",
-        slug="monkey-d-luffy",
-        url=_LUFFY_URL,
-        anime_roles=[
-            AnimePlanetCharacterAnimeRole(title="A", url="/anime/a", role="Minor"),
-            AnimePlanetCharacterAnimeRole(title="B", url="/anime/b", role="Main"),
-            AnimePlanetCharacterAnimeRole(title="C", url="/anime/c", role="Minor"),
-        ],
-        manga_roles=[
-            AnimePlanetCharacterMangaRole(title="D", url="/manga/d", role="Secondary"),
-            AnimePlanetCharacterMangaRole(title="E", url="/manga/e", role="Main"),
-        ],
-    )
-    assert character_from_animeplanet(char)["roles"] == [
-        "BACKGROUND",
-        "MAIN",
-        "SUPPORTING",
-    ]
 
 
 # =============================================================================

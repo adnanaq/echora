@@ -1,151 +1,110 @@
-"""Unit tests for animeschedule_helper.py — 100% coverage including edge cases."""
-
 import json
-import tempfile
-from unittest.mock import AsyncMock, MagicMock, create_autospec, patch
+import sys
+from pathlib import Path
+from unittest.mock import create_autospec, patch
 
 import aiohttp
 import pytest
 import yarl
+from enrichment.sources.animeschedule import animeschedule_helper
+from enrichment.sources.animeschedule.animeschedule_helper import (
+    AnimescheduleHelper,
+    _match_by_sources,
+    main,
+)
+from enrichment.sources.base.exceptions import ServiceNetworkError, ServiceParseError
 from http_cache.aiohttp_adapter import CachedAiohttpSession
 
-# ── Fixtures ──────────────────────────────────────────────────────────────────
-
-MINIMAL_RAW = {"id": "abc1", "title": "Test Anime", "route": "test-anime"}
-
-MAPPED_RESULT = {
-    "title": "Test Anime",
-    "sources": ["https://animeschedule.net/anime/test-anime"],
+SEARCH_URL = "https://animeschedule.net/api/v3/anime"
+MAL_URL = "https://myanimelist.net/anime/21"
+ONE_PIECE_RESULT = {
+    "id": "abc1",
+    "title": "One Piece",
+    "route": "one-piece",
+    "websites": {"mal": "myanimelist.net/anime/21"},
+}
+OTHER_RESULT = {
+    "id": "abc2",
+    "title": "One Piece Film",
+    "route": "one-piece-film",
+    "websites": {"mal": "myanimelist.net/anime/99"},
 }
 
 
-def _ok_response(payload: dict) -> AsyncMock:
-    r = AsyncMock()
-    r.raise_for_status = MagicMock()
-    r.json = AsyncMock(return_value=payload)
-    return r
+@pytest.fixture
+def search_session():
+    session = create_autospec(CachedAiohttpSession, instance=True)
+    response = create_autospec(aiohttp.ClientResponse, instance=True)
+    session.get.return_value.__aenter__.return_value = response
+    with patch.object(
+        animeschedule_helper._cache_manager, "get_aiohttp_session", autospec=True
+    ) as get_session:
+        get_session.return_value.__aenter__.return_value = session
+        yield session
 
 
-def _make_session(response: MagicMock) -> AsyncMock:
-    """Build an aiohttp-style async session mock (inner: session.get -> response)."""
-    cm = MagicMock()
-    cm.__aenter__ = AsyncMock(return_value=response)
-    cm.__aexit__ = AsyncMock(return_value=None)
-    session = AsyncMock()
-    session.get = MagicMock(return_value=cm)
-    return session
+def _answer(session: CachedAiohttpSession, payload: dict | None) -> None:
+    session.get.return_value.__aenter__.return_value.json.return_value = payload
 
 
-def _make_cache_cm(session: AsyncMock) -> AsyncMock:
-    """Wrap a session in an async CM for get_aiohttp_session (outer: async with ... as session)."""
-    cm = AsyncMock()
-    cm.__aenter__ = AsyncMock(return_value=session)
-    cm.__aexit__ = AsyncMock(return_value=None)
-    return cm
+def _response(session: CachedAiohttpSession) -> aiohttp.ClientResponse:
+    return session.get.return_value.__aenter__.return_value
 
 
-# ── _match_by_sources ─────────────────────────────────────────────────────────
-
-
-def test_match_by_sources_empty_candidates():
-    from enrichment.sources.animeschedule.animeschedule_helper import _match_by_sources
-
-    assert _match_by_sources([], ["https://myanimelist.net/anime/21"]) is None
-
-
-def test_match_by_sources_no_match():
-    from enrichment.sources.animeschedule.animeschedule_helper import _match_by_sources
-
-    candidates = [{"websites": {"mal": "myanimelist.net/anime/99"}}]
-    assert _match_by_sources(candidates, ["https://myanimelist.net/anime/21"]) is None
-
-
-def test_match_by_sources_match_mal():
-    from enrichment.sources.animeschedule.animeschedule_helper import _match_by_sources
-
-    candidate = {"id": "1", "websites": {"mal": "myanimelist.net/anime/21"}}
-    result = _match_by_sources([candidate], ["https://myanimelist.net/anime/21"])
-    assert result is candidate
-
-
-def test_match_by_sources_match_anilist():
-    from enrichment.sources.animeschedule.animeschedule_helper import _match_by_sources
-
-    candidate = {"id": "1", "websites": {"aniList": "anilist.co/anime/21"}}
-    result = _match_by_sources([candidate], ["https://anilist.co/anime/21"])
-    assert result is candidate
-
-
-def test_match_by_sources_match_kitsu():
-    from enrichment.sources.animeschedule.animeschedule_helper import _match_by_sources
-
-    candidate = {"id": "1", "websites": {"kitsu": "kitsu.io/anime/one-piece"}}
-    result = _match_by_sources([candidate], ["https://kitsu.io/anime/one-piece"])
-    assert result is candidate
-
-
-def test_match_by_sources_match_animeplanet():
-    from enrichment.sources.animeschedule.animeschedule_helper import _match_by_sources
-
-    candidate = {
-        "id": "1",
-        "websites": {"animePlanet": "anime-planet.com/anime/one-piece"},
-    }
-    result = _match_by_sources(
-        [candidate], ["https://anime-planet.com/anime/one-piece"]
+def _not_found_error() -> aiohttp.ClientResponseError:
+    url = yarl.URL(SEARCH_URL)
+    request = aiohttp.RequestInfo(url=url, method="GET", headers={}, real_url=url)
+    return aiohttp.ClientResponseError(
+        request_info=request, history=(), status=404, message="Not Found"
     )
-    assert result is candidate
 
 
-def test_match_by_sources_match_anidb():
-    from enrichment.sources.animeschedule.animeschedule_helper import _match_by_sources
-
-    candidate = {"id": "1", "websites": {"anidb": "anidb.net/anime/69"}}
-    result = _match_by_sources([candidate], ["https://anidb.net/anime/69"])
-    assert result is candidate
+def test_match_by_sources_without_candidates_returns_none() -> None:
+    assert _match_by_sources([], [MAL_URL]) is None
 
 
-def test_match_by_sources_http_scheme_stripped():
-    from enrichment.sources.animeschedule.animeschedule_helper import _match_by_sources
-
-    candidate = {"id": "1", "websites": {"mal": "myanimelist.net/anime/21"}}
-    result = _match_by_sources([candidate], ["http://myanimelist.net/anime/21"])
-    assert result is candidate
+def test_match_by_sources_candidate_on_other_page_returns_none() -> None:
+    assert _match_by_sources([OTHER_RESULT], [MAL_URL]) is None
 
 
-def test_match_by_sources_our_source_prefix_of_partial():
-    """Our source is ID-only; AS partial has trailing slug."""
-    from enrichment.sources.animeschedule.animeschedule_helper import _match_by_sources
+@pytest.mark.parametrize(
+    ("websites", "source"),
+    [
+        ({"mal": "myanimelist.net/anime/21"}, "https://myanimelist.net/anime/21"),
+        ({"aniList": "anilist.co/anime/21"}, "https://anilist.co/anime/21"),
+        ({"kitsu": "kitsu.io/anime/one-piece"}, "https://kitsu.io/anime/one-piece"),
+        (
+            {"animePlanet": "anime-planet.com/anime/one-piece"},
+            "https://anime-planet.com/anime/one-piece",
+        ),
+        ({"anidb": "anidb.net/anime/69"}, "https://anidb.net/anime/69"),
+        ({"mal": "myanimelist.net/anime/21"}, "http://myanimelist.net/anime/21"),
+    ],
+)
+def test_match_by_sources_provider_link_matches_returns_candidate(
+    websites: dict, source: str
+) -> None:
+    candidate = {"id": "1", "websites": websites}
+    assert _match_by_sources([candidate], [source]) is candidate
 
+
+def test_match_by_sources_candidate_link_with_title_matches_bare_source() -> None:
     candidate = {"id": "1", "websites": {"mal": "myanimelist.net/anime/21/One_Piece"}}
-    result = _match_by_sources([candidate], ["https://myanimelist.net/anime/21"])
-    assert result is candidate
+    assert _match_by_sources([candidate], [MAL_URL]) is candidate
 
 
-def test_match_by_sources_partial_prefix_of_our_source():
-    """AS partial is shorter; our source has the full slug."""
-    from enrichment.sources.animeschedule.animeschedule_helper import _match_by_sources
-
+def test_match_by_sources_bare_candidate_link_matches_source_with_title() -> None:
     candidate = {"id": "1", "websites": {"mal": "myanimelist.net/anime/21"}}
-    result = _match_by_sources(
-        [candidate], ["https://myanimelist.net/anime/21/One_Piece"]
+    assert _match_by_sources([candidate], [f"{MAL_URL}/One_Piece"]) is candidate
+
+
+def test_match_by_sources_several_candidates_returns_first_match() -> None:
+    assert _match_by_sources([OTHER_RESULT, ONE_PIECE_RESULT], [MAL_URL]) is (
+        ONE_PIECE_RESULT
     )
-    assert result is candidate
 
 
-def test_match_by_sources_picks_first_matching_candidate():
-    from enrichment.sources.animeschedule.animeschedule_helper import _match_by_sources
-
-    c1 = {"id": "1", "websites": {"mal": "myanimelist.net/anime/99"}}
-    c2 = {"id": "2", "websites": {"mal": "myanimelist.net/anime/21"}}
-    result = _match_by_sources([c1, c2], ["https://myanimelist.net/anime/21"])
-    assert result is c2
-
-
-def test_match_by_sources_ignores_official_and_streams_keys():
-    """official and streams are not cross-source keys and must not be checked."""
-    from enrichment.sources.animeschedule.animeschedule_helper import _match_by_sources
-
+def test_match_by_sources_official_and_stream_links_not_compared() -> None:
     candidate = {
         "id": "1",
         "websites": {
@@ -153,348 +112,179 @@ def test_match_by_sources_ignores_official_and_streams_keys():
             "streams": [{"platform": "mal", "url": "myanimelist.net/anime/21"}],
         },
     }
-    assert _match_by_sources([candidate], ["https://myanimelist.net/anime/21"]) is None
+    assert _match_by_sources([candidate], [MAL_URL]) is None
 
 
-def test_match_by_sources_skips_non_string_website_values():
-    from enrichment.sources.animeschedule.animeschedule_helper import _match_by_sources
-
-    candidate = {"id": "1", "websites": {"mal": None, "aniList": 12345}}
-    assert _match_by_sources([candidate], ["https://myanimelist.net/anime/21"]) is None
+@pytest.mark.parametrize("websites", [{"mal": None, "aniList": 12345}, {"mal": ""}])
+def test_match_by_sources_empty_or_non_text_links_skipped(websites: dict) -> None:
+    assert _match_by_sources([{"id": "1", "websites": websites}], [MAL_URL]) is None
 
 
-def test_match_by_sources_skips_empty_string_website_values():
-    from enrichment.sources.animeschedule.animeschedule_helper import _match_by_sources
-
-    candidate = {"id": "1", "websites": {"mal": ""}}
-    assert _match_by_sources([candidate], ["https://myanimelist.net/anime/21"]) is None
-
-
-def test_match_by_sources_empty_sources_list():
-    """Empty sources set means nothing can match — all candidates skipped."""
-    from enrichment.sources.animeschedule.animeschedule_helper import _match_by_sources
-
-    candidate = {"id": "1", "websites": {"mal": "myanimelist.net/anime/21"}}
-    assert _match_by_sources([candidate], []) is None
+@pytest.mark.parametrize("sources", [[], ["", ""]])
+def test_match_by_sources_without_usable_sources_returns_none(
+    sources: list[str],
+) -> None:
+    assert _match_by_sources([ONE_PIECE_RESULT], sources) is None
 
 
-def test_match_by_sources_filters_empty_source_strings():
-    """Empty strings in sources list are ignored during normalization."""
-    from enrichment.sources.animeschedule.animeschedule_helper import _match_by_sources
+async def test_search_without_sources_returns_first_result_mapped(
+    search_session,
+) -> None:
+    _answer(search_session, {"anime": [ONE_PIECE_RESULT, OTHER_RESULT]})
 
-    candidate = {"id": "1", "websites": {"mal": "myanimelist.net/anime/21"}}
-    # only empty strings — normalized set is empty, nothing matches
-    assert _match_by_sources([candidate], ["", ""]) is None
+    result = await AnimescheduleHelper()._search("One Piece")
+
+    assert result["title"] == "One Piece"
+    assert "https://animeschedule.net/anime/one-piece" in result["sources"]
 
 
-# ── AnimescheduleHelper._search ───────────────────────────────────────────────
+async def test_search_with_sources_returns_matching_result(search_session) -> None:
+    _answer(search_session, {"anime": [OTHER_RESULT, ONE_PIECE_RESULT]})
+
+    result = await AnimescheduleHelper()._search("One Piece", sources=[MAL_URL])
+
+    assert result["title"] == "One Piece"
 
 
-@pytest.mark.asyncio
-@patch(
-    "enrichment.sources.animeschedule.animeschedule_helper.anime_from_animeschedule",
-    return_value=MAPPED_RESULT,
-)
-@patch("enrichment.sources.animeschedule.animeschedule_helper._cache_manager")
-async def test_fetch_success_no_sources(mock_cache, mock_mapper):
-    from enrichment.sources.animeschedule.animeschedule_helper import (
-        AnimescheduleHelper,
+async def test_search_with_sources_and_no_matching_result_returns_none(
+    search_session,
+) -> None:
+    _answer(search_session, {"anime": [OTHER_RESULT]})
+
+    assert await AnimescheduleHelper()._search("One Piece", sources=[MAL_URL]) is None
+
+
+@pytest.mark.parametrize("payload", [{"anime": []}, None])
+async def test_search_without_results_returns_none(
+    search_session, payload: dict | None
+) -> None:
+    _answer(search_session, payload)
+
+    assert await AnimescheduleHelper()._search("One Piece") is None
+
+
+async def test_search_output_path_appends_mapped_result(
+    search_session, tmp_path: Path
+) -> None:
+    _answer(search_session, {"anime": [ONE_PIECE_RESULT]})
+    output = tmp_path / "animeschedule.jsonl"
+
+    result = await AnimescheduleHelper()._search("One Piece", output_path=str(output))
+
+    assert [json.loads(line) for line in output.read_text().splitlines()] == [result]
+
+
+async def test_search_title_with_query_characters_sends_whole_title(
+    search_session,
+) -> None:
+    _answer(search_session, {"anime": []})
+
+    await AnimescheduleHelper()._search("009-1: R&B")
+
+    request = search_session.get.call_args
+    sent_url = yarl.URL(request.args[0]).update_query(request.kwargs.get("params", {}))
+    assert (str(sent_url.with_query(None)), dict(sent_url.query)) == (
+        SEARCH_URL,
+        {"q": "009-1: R&B"},
     )
 
-    session = _make_session(_ok_response({"anime": [MINIMAL_RAW]}))
-    mock_cache.get_aiohttp_session.return_value = _make_cache_cm(session)
 
-    result = await AnimescheduleHelper()._search("Test Anime")
-
-    assert result == MAPPED_RESULT
-
-
-@pytest.mark.asyncio
-@patch(
-    "enrichment.sources.animeschedule.animeschedule_helper.anime_from_animeschedule",
-    return_value=MAPPED_RESULT,
-)
-@patch("enrichment.sources.animeschedule.animeschedule_helper._cache_manager")
-async def test_fetch_success_with_matching_sources(mock_cache, mock_mapper):
-    from enrichment.sources.animeschedule.animeschedule_helper import (
-        AnimescheduleHelper,
+async def test_search_connection_error_raises_service_network_error(
+    search_session,
+) -> None:
+    search_session.get.return_value.__aenter__.side_effect = aiohttp.ClientError(
+        "connection refused"
     )
-
-    raw = {**MINIMAL_RAW, "websites": {"mal": "myanimelist.net/anime/21"}}
-    session = _make_session(_ok_response({"anime": [raw]}))
-    mock_cache.get_aiohttp_session.return_value = _make_cache_cm(session)
-
-    result = await AnimescheduleHelper()._search(
-        "Test Anime", sources=["https://myanimelist.net/anime/21"]
-    )
-
-    assert result == MAPPED_RESULT
-
-
-@pytest.mark.asyncio
-@patch("enrichment.sources.animeschedule.animeschedule_helper._cache_manager")
-async def test_fetch_sources_provided_no_match_returns_none(mock_cache):
-    from enrichment.sources.animeschedule.animeschedule_helper import (
-        AnimescheduleHelper,
-    )
-
-    raw = {**MINIMAL_RAW, "websites": {"mal": "myanimelist.net/anime/99"}}
-    session = _make_session(_ok_response({"anime": [raw]}))
-    mock_cache.get_aiohttp_session.return_value = _make_cache_cm(session)
-
-    result = await AnimescheduleHelper()._search(
-        "Test Anime", sources=["https://myanimelist.net/anime/21"]
-    )
-
-    assert result is None
-
-
-@pytest.mark.asyncio
-@patch("enrichment.sources.animeschedule.animeschedule_helper._cache_manager")
-async def test_fetch_empty_anime_list_returns_none(mock_cache):
-    from enrichment.sources.animeschedule.animeschedule_helper import (
-        AnimescheduleHelper,
-    )
-
-    session = _make_session(_ok_response({"anime": []}))
-    mock_cache.get_aiohttp_session.return_value = _make_cache_cm(session)
-
-    assert await AnimescheduleHelper()._search("Test Anime") is None
-
-
-@pytest.mark.asyncio
-@patch("enrichment.sources.animeschedule.animeschedule_helper._cache_manager")
-async def test_fetch_null_response_returns_none(mock_cache):
-    from enrichment.sources.animeschedule.animeschedule_helper import (
-        AnimescheduleHelper,
-    )
-
-    session = _make_session(_ok_response(None))
-    mock_cache.get_aiohttp_session.return_value = _make_cache_cm(session)
-
-    assert await AnimescheduleHelper()._search("Test Anime") is None
-
-
-@pytest.mark.asyncio
-@patch(
-    "enrichment.sources.animeschedule.animeschedule_helper.anime_from_animeschedule",
-    return_value=MAPPED_RESULT,
-)
-@patch("enrichment.sources.animeschedule.animeschedule_helper._cache_manager")
-async def test_fetch_writes_jsonl_output(mock_cache, mock_mapper):
-    from enrichment.sources.animeschedule.animeschedule_helper import (
-        AnimescheduleHelper,
-    )
-
-    session = _make_session(_ok_response({"anime": [MINIMAL_RAW]}))
-    mock_cache.get_aiohttp_session.return_value = _make_cache_cm(session)
-
-    with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as tmp:
-        tmp_path = tmp.name
-
-    await AnimescheduleHelper()._search("Test Anime", output_path=tmp_path)
-
-    with open(tmp_path, encoding="utf-8") as f:
-        lines = f.readlines()
-
-    assert len(lines) == 1
-    assert json.loads(lines[0]) == MAPPED_RESULT
-
-
-@pytest.mark.asyncio
-@patch("enrichment.sources.animeschedule.animeschedule_helper._cache_manager")
-async def test_fetch_client_error_raises_service_network_error(mock_cache):
-    import aiohttp
-    from enrichment.sources.animeschedule.animeschedule_helper import (
-        AnimescheduleHelper,
-    )
-    from enrichment.sources.base.exceptions import ServiceNetworkError
-
-    cm = MagicMock()
-    cm.__aenter__ = AsyncMock(side_effect=aiohttp.ClientError("conn error"))
-    cm.__aexit__ = AsyncMock(return_value=None)
-    session = AsyncMock()
-    session.get = MagicMock(return_value=cm)
-    mock_cache.get_aiohttp_session.return_value = _make_cache_cm(session)
 
     with pytest.raises(ServiceNetworkError):
-        await AnimescheduleHelper()._search("Test Anime")
+        await AnimescheduleHelper()._search("One Piece")
 
 
-@pytest.mark.asyncio
-@patch("enrichment.sources.animeschedule.animeschedule_helper._cache_manager")
-async def test_fetch_json_decode_error_raises_service_parse_error(mock_cache):
-    import json as _json
+async def test_search_error_status_raises_service_network_error(
+    search_session,
+) -> None:
+    _response(search_session).raise_for_status.side_effect = _not_found_error()
 
-    from enrichment.sources.animeschedule.animeschedule_helper import (
-        AnimescheduleHelper,
-    )
-    from enrichment.sources.base.exceptions import ServiceParseError
+    with pytest.raises(ServiceNetworkError):
+        await AnimescheduleHelper()._search("One Piece")
 
-    r = AsyncMock()
-    r.raise_for_status = MagicMock()
-    r.json = AsyncMock(side_effect=_json.JSONDecodeError("bad", "", 0))
-    session = _make_session(r)
-    mock_cache.get_aiohttp_session.return_value = _make_cache_cm(session)
+
+async def test_search_invalid_json_raises_service_parse_error(search_session) -> None:
+    _response(search_session).json.side_effect = json.JSONDecodeError("bad", "", 0)
 
     with pytest.raises(ServiceParseError):
-        await AnimescheduleHelper()._search("Test Anime")
+        await AnimescheduleHelper()._search("One Piece")
 
 
-@pytest.mark.asyncio
-@patch("enrichment.sources.animeschedule.animeschedule_helper._cache_manager")
-async def test_fetch_http_error_raises_service_network_error(mock_cache):
-    import aiohttp
-    from enrichment.sources.animeschedule.animeschedule_helper import (
-        AnimescheduleHelper,
-    )
-    from enrichment.sources.base.exceptions import ServiceNetworkError
+async def test_fetch_all_title_and_sources_return_matching_anime_payload(
+    search_session, tmp_path: Path
+) -> None:
+    _answer(search_session, {"anime": [OTHER_RESULT, ONE_PIECE_RESULT]})
 
-    r = AsyncMock()
-    r.raise_for_status = MagicMock(
-        side_effect=aiohttp.ClientResponseError(
-            request_info=MagicMock(), history=(), status=404, message="Not Found"
-        )
-    )
-    session = _make_session(r)
-    mock_cache.get_aiohttp_session.return_value = _make_cache_cm(session)
-
-    with pytest.raises(ServiceNetworkError):
-        await AnimescheduleHelper()._search("Test Anime")
-
-
-# ── AnimescheduleHelper.fetch_all ────────────────────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_helper_fetch_all_delegates_to_search():
-    """AnimescheduleHelper.fetch_all extracts title/sources and calls _search."""
-    from enrichment.sources.animeschedule.animeschedule_helper import (
-        AnimescheduleHelper,
+    result = await AnimescheduleHelper().fetch_all(
+        {}, {"title": "One Piece", "sources": [MAL_URL]}, temp_dir=str(tmp_path)
     )
 
-    offline_data = {
-        "title": "One Piece",
-        "sources": ["https://myanimelist.net/anime/21"],
-    }
+    assert result["anime"]["title"] == "One Piece"
+    assert (result["episodes"], result["characters"], result["extras"]) == ([], [], {})
+    saved = (tmp_path / "animeschedule.jsonl").read_text().splitlines()
+    assert [json.loads(line)["title"] for line in saved] == ["One Piece"]
+
+
+async def test_fetch_all_without_title_returns_none(search_session) -> None:
+    assert await AnimescheduleHelper().fetch_all({}, {}) is None
+    search_session.get.assert_not_called()
+
+
+async def test_main_found_title_writes_default_output_and_returns_zero(
+    search_session, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _answer(search_session, {"anime": [ONE_PIECE_RESULT]})
+    monkeypatch.chdir(tmp_path)
+
+    with patch.object(sys, "argv", ["script.py", "One Piece"]):
+        assert await main() == 0
+
+    assert (tmp_path / "animeschedule.jsonl").exists()
+
+
+async def test_main_found_title_writes_chosen_output_and_returns_zero(
+    search_session, tmp_path: Path
+) -> None:
+    _answer(search_session, {"anime": [ONE_PIECE_RESULT]})
+    output = tmp_path / "out.jsonl"
+
+    with patch.object(sys, "argv", ["script.py", "One Piece", "--output", str(output)]):
+        assert await main() == 0
+
+    assert json.loads(output.read_text())["title"] == "One Piece"
+
+
+async def test_main_without_result_returns_one(search_session, tmp_path: Path) -> None:
+    _answer(search_session, {"anime": []})
 
     with patch.object(
-        AnimescheduleHelper, "_search", new_callable=AsyncMock
-    ) as mock_search:
-        mock_search.return_value = MAPPED_RESULT
-        with tempfile.TemporaryDirectory() as tmp:
-            result = await AnimescheduleHelper().fetch_all(
-                {}, offline_data, temp_dir=tmp
-            )
-
-    assert result == {
-        "anime": MAPPED_RESULT,
-        "episodes": [],
-        "characters": [],
-        "extras": {},
-    }
-    mock_search.assert_awaited_once_with(
-        "One Piece",
-        sources=["https://myanimelist.net/anime/21"],
-        output_path=mock_search.call_args.kwargs["output_path"],
-    )
-
-
-@pytest.mark.asyncio
-async def test_helper_fetch_all_returns_none_when_title_missing():
-    """AnimescheduleHelper.fetch_all returns None immediately when offline_data has no title."""
-    from enrichment.sources.animeschedule.animeschedule_helper import (
-        AnimescheduleHelper,
-    )
-
-    result = await AnimescheduleHelper().fetch_all({}, {})
-    assert result is None
-
-
-# ── main() ────────────────────────────────────────────────────────────────────
-
-
-@pytest.mark.asyncio
-@patch(
-    "enrichment.sources.animeschedule.animeschedule_helper.AnimescheduleHelper._search",
-    new_callable=AsyncMock,
-)
-async def test_main_success_default_output(mock_search):
-    from enrichment.sources.animeschedule.animeschedule_helper import main
-
-    mock_search.return_value = MAPPED_RESULT
-    with patch("sys.argv", ["script.py", "Test Anime"]):
-        assert await main() == 0
-
-    mock_search.assert_awaited_once_with(
-        "Test Anime", output_path="animeschedule.jsonl"
-    )
-
-
-@pytest.mark.asyncio
-@patch(
-    "enrichment.sources.animeschedule.animeschedule_helper.AnimescheduleHelper._search",
-    new_callable=AsyncMock,
-)
-async def test_main_success_custom_output(mock_search):
-    from enrichment.sources.animeschedule.animeschedule_helper import main
-
-    mock_search.return_value = MAPPED_RESULT
-    with patch("sys.argv", ["script.py", "Test Anime", "--output", "custom/out.jsonl"]):
-        assert await main() == 0
-
-    mock_search.assert_awaited_once_with("Test Anime", output_path="custom/out.jsonl")
-
-
-@pytest.mark.asyncio
-@patch(
-    "enrichment.sources.animeschedule.animeschedule_helper.AnimescheduleHelper._search",
-    new_callable=AsyncMock,
-)
-async def test_main_no_result_returns_1(mock_search):
-    from enrichment.sources.animeschedule.animeschedule_helper import main
-
-    mock_search.return_value = None
-    with patch("sys.argv", ["script.py", "nonexistent"]):
+        sys, "argv", ["script.py", "Nothing", "--output", str(tmp_path / "out.jsonl")]
+    ):
         assert await main() == 1
 
 
-@pytest.mark.asyncio
-@patch(
-    "enrichment.sources.animeschedule.animeschedule_helper.AnimescheduleHelper._search",
-    new_callable=AsyncMock,
-)
-async def test_main_exception_returns_1(mock_search):
-    from enrichment.sources.animeschedule.animeschedule_helper import main
+async def test_main_search_error_returns_one(search_session, tmp_path: Path) -> None:
+    search_session.get.return_value.__aenter__.side_effect = aiohttp.ClientError(
+        "connection refused"
+    )
 
-    mock_search.side_effect = RuntimeError("boom")
-    with patch("sys.argv", ["script.py", "Test Anime"]):
+    with patch.object(
+        sys, "argv", ["script.py", "One Piece", "--output", str(tmp_path / "out.jsonl")]
+    ):
         assert await main() == 1
 
 
-@pytest.mark.asyncio
-async def test_main_missing_argument_exits_2():
-    from enrichment.sources.animeschedule.animeschedule_helper import main
+async def test_main_without_title_argument_exits_with_usage_error() -> None:
+    with (
+        patch.object(sys, "argv", ["script.py"]),
+        pytest.raises(SystemExit) as exit_info,
+    ):
+        await main()
 
-    with patch("sys.argv", ["script.py"]):
-        with pytest.raises(SystemExit) as exc:
-            await main()
-        assert exc.value.code == 2
-
-
-async def test_search_title_with_query_characters_sends_whole_title():
-    from enrichment.sources.animeschedule import animeschedule_helper
-
-    session = create_autospec(CachedAiohttpSession, instance=True)
-    response = create_autospec(aiohttp.ClientResponse, instance=True)
-    response.json.return_value = {"anime": []}
-    session.get.return_value.__aenter__.return_value = response
-    with patch.object(
-        animeschedule_helper._cache_manager, "get_aiohttp_session", autospec=True
-    ) as get_session:
-        get_session.return_value.__aenter__.return_value = session
-        await animeschedule_helper.AnimescheduleHelper()._search("009-1: R&B")
-
-    request = session.get.call_args
-    sent_url = yarl.URL(request.args[0]).update_query(request.kwargs.get("params", {}))
-    assert dict(sent_url.query) == {"q": "009-1: R&B"}
+    assert exit_info.value.code == 2

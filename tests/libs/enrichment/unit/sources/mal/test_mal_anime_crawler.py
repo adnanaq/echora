@@ -462,6 +462,19 @@ def test_build_anime_from_raw_background_section_gives_background_text() -> None
     assert anime.background is not None and "Grand Line" in anime.background
 
 
+def test_build_anime_from_raw_rank_without_number_gives_none(
+    mal_anime_extracted,
+) -> None:
+    assert _build({**mal_anime_extracted, "rank_html": "N/A"}).rank is None
+
+
+def test_build_anime_from_raw_background_without_heading_gives_none(
+    mal_anime_extracted,
+) -> None:
+    raw = {**mal_anime_extracted, "background_raw": "<td>Unrelated text.</td>"}
+    assert _build(raw).background is None
+
+
 def test_build_anime_from_raw_placeholder_background_gives_none(
     mal_anime_extracted,
 ) -> None:
@@ -629,6 +642,32 @@ def test_parse_all_related_entries_table_relation_type_gives_entry_type() -> Non
     assert _parse_all_related_entries(raw)[0].entry_type == "TV"
 
 
+def test_parse_all_related_entries_tile_relation_without_bracketed_type_gives_no_type() -> (
+    None
+):
+    raw = {
+        "related_tile_entries": [
+            {"relation_raw": "Sequel\nTV", "title": "Next", "source": "/anime/22"}
+        ],
+        "related_table_entries": [],
+    }
+    assert _parse_all_related_entries(raw)[0].entry_type is None
+
+
+@pytest.mark.parametrize("relation", ["Sequel", "Sequel\nTV"])
+def test_parse_all_related_entries_table_without_bracketed_type_gives_no_type(
+    relation: str,
+) -> None:
+    links_html = (
+        '<ul><li><a href="https://myanimelist.net/anime/22/S">Sequel</a></li></ul>'
+    )
+    raw = {
+        "related_tile_entries": [],
+        "related_table_entries": [{"relation": relation, "links_html": links_html}],
+    }
+    assert _parse_all_related_entries(raw)[0].entry_type is None
+
+
 def test_parse_all_related_entries_missing_title_or_source_skipped() -> None:
     raw = {
         "related_tile_entries": [
@@ -694,6 +733,22 @@ async def test_fetch_mal_anime_data_empty_content_returns_none(
     browser.get.return_value.get_content.return_value = ""
     with open_browser(browser):
         assert await _fetch_mal_anime_data(ONE_PIECE_URL) is None
+
+
+async def test_fetch_mal_anime_data_unreadable_content_logs_extraction_failure(
+    open_browser, mal_anime_html, caplog
+) -> None:
+    browser = create_autospec(zendriver.Browser, instance=True)
+    browser.get.return_value = _tab_showing(mal_anime_html, ONE_PIECE_URL)
+    browser.get.return_value.get_content.return_value = "   "
+    with open_browser(browser), caplog.at_level(logging.WARNING):
+        result = await _fetch_mal_anime_data(ONE_PIECE_URL)
+
+    assert result is None
+    assert (
+        f"Failed to extract data from MAL anime page: {ONE_PIECE_URL}"
+        in caplog.messages
+    )
 
 
 async def test_fetch_mal_anime_data_gallery_failure_returns_data_without_pictures(
