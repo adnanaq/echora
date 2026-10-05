@@ -263,6 +263,16 @@ class AniListHelper(BaseEnrichmentHelper):
         status
         season
         seasonYear
+        startDate {
+          year
+          month
+          day
+        }
+        endDate {
+          year
+          month
+          day
+        }
         countryOfOrigin
         isAdult
         coverImage {

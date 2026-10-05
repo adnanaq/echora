@@ -125,6 +125,47 @@ def test_fuzzy_date_no_year() -> None:
 # =============================================================================
 
 
+def test_anime_from_anilist_full_start_date_sets_aired_dates_without_month() -> None:
+    result = anime_from_anilist(
+        _make_anime(
+            startDate={"year": 1999, "month": 10, "day": 20},
+            endDate={"year": 2000, "month": 3, "day": 26},
+        )
+    )
+    assert result["aired_dates"] == {
+        "aired_from": "1999-10-19T15:00:00Z",
+        "aired_to": "2000-03-25T15:00:00Z",
+    }
+    assert "month" not in result
+
+
+def test_anime_from_anilist_month_without_day_sets_month_without_aired_dates() -> None:
+    result = anime_from_anilist(
+        _make_anime(startDate={"year": 1977, "month": 10, "day": None})
+    )
+    assert result["month"] == "October"
+    assert "aired_dates" not in result
+
+
+def test_anime_from_anilist_without_season_year_takes_year_from_start_date() -> None:
+    result = anime_from_anilist(
+        _make_anime(
+            seasonYear=None,
+            season=None,
+            startDate={"year": 2027, "month": None, "day": None},
+        )
+    )
+    assert result["year"] == 2027
+    assert not {"month", "aired_dates", "season"} & result.keys()
+
+
+def test_anime_from_anilist_season_year_wins_over_start_date_year() -> None:
+    result = anime_from_anilist(
+        _make_anime(seasonYear=2027, startDate={"year": 2026, "month": 12, "day": 27})
+    )
+    assert result["year"] == 2027
+
+
 def test_anime_title() -> None:
     result = anime_from_anilist(_make_anime())
     assert result["title"] == "ONE PIECE"

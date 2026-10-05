@@ -1957,3 +1957,9 @@ class TestAniListFetchAllEntityFlags:
         )
 
         assert result is not None
+
+
+def test_get_media_query_fields_requests_start_and_end_dates() -> None:
+    fields = " ".join(AniListHelper()._get_media_query_fields().split())
+    assert "startDate { year month day }" in fields
+    assert "endDate { year month day }" in fields
