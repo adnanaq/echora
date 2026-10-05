@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
 import pytest
+from enrichment.sources.kitsu.kitsu_helper import KitsuHelper
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -1120,3 +1121,45 @@ async def test_fetch_all_skips_characters_when_fetch_characters_false():
     assert result is not None
     assert result["characters"] == []
     mock_chars.assert_not_awaited()
+
+
+async def test_fetch_mappings_returns_every_mapping_as_stated() -> None:
+    items = [
+        {
+            "id": "1",
+            "type": "mappings",
+            "attributes": {"externalSite": "myanimelist/anime", "externalId": "210"},
+        },
+        {
+            "id": "2",
+            "type": "mappings",
+            "attributes": {"externalSite": "anidb", "externalId": "193"},
+        },
+        {
+            "id": "3",
+            "type": "mappings",
+            "attributes": {"externalSite": "aozora", "externalId": "5a3e0b"},
+        },
+        {
+            "id": "4",
+            "type": "mappings",
+            "attributes": {"externalSite": "thetvdb/series", "externalId": "78463"},
+        },
+    ]
+    with patch.object(
+        KitsuHelper, "_fetch_all_pages", autospec=True, return_value=items
+    ):
+        mappings = await KitsuHelper().fetch_mappings(186)
+    assert [
+        (m.attributes.external_site, m.attributes.external_id) for m in mappings
+    ] == [
+        ("myanimelist/anime", "210"),
+        ("anidb", "193"),
+        ("aozora", "5a3e0b"),
+        ("thetvdb/series", "78463"),
+    ]
+
+
+async def test_fetch_mappings_without_mappings_returns_empty_list() -> None:
+    with patch.object(KitsuHelper, "_fetch_all_pages", autospec=True, return_value=[]):
+        assert await KitsuHelper().fetch_mappings(51111) == []

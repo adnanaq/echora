@@ -119,6 +119,20 @@ class KitsuGenre(BaseModel):
     attributes: KitsuGenreAttributes = Field(default_factory=KitsuGenreAttributes)
 
 
+class KitsuMappingAttributes(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
+
+    external_site: str | None = Field(None, alias="externalSite")  # e.g. "anidb"
+    external_id: str | None = Field(None, alias="externalId")
+
+
+class KitsuMapping(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
+
+    id: str
+    attributes: KitsuMappingAttributes = Field(default_factory=KitsuMappingAttributes)
+
+
 class KitsuCategoryAttributes(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="allow")
 

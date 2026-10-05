@@ -33,6 +33,7 @@ from .kitsu_models import (
     KitsuCharacterVoice,
     KitsuEpisode,
     KitsuGenre,
+    KitsuMapping,
     KitsuMediaCharacter,
     KitsuPerson,
     KitsuProduction,
@@ -584,6 +585,28 @@ class KitsuHelper(BaseEnrichmentHelper):
         repo = FileRepository(output_path) if output_path else NullRepository()
         repo.save(result)
         return result
+
+    async def fetch_mappings(
+        self, anime_id: int, *, session: Any | None = None
+    ) -> list[KitsuMapping]:
+        """Return every mapping Kitsu holds for an anime, as Kitsu states it.
+
+        Enrichment does not call this: every fetcher already receives its own
+        page from the seed. The mappings are evidence for deciding which
+        provider pages describe the same work; turning a site name into a page
+        link is left to the caller.
+
+        Args:
+            anime_id: Kitsu integer anime identifier.
+            session: Optional aiohttp session to reuse.
+
+        Returns:
+            One mapping per Kitsu mapping resource, in Kitsu's order.
+        """
+        items = await self._fetch_all_pages(
+            f"/anime/{anime_id}/mappings", session=session
+        )
+        return [KitsuMapping.model_validate(item) for item in items]
 
     async def fetch_episodes(
         self,
