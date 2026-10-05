@@ -1,15 +1,5 @@
-"""Unit tests for anisearch_anime_crawler.py — schema structure and post-processing helpers.
-
-Tests validate XPath extraction using real HTML fixtures captured from:
-- https://www.anisearch.com/anime/2227,one-piece (2026-06-09)
-- https://www.anisearch.com/anime/2227,one-piece/relations?show=overall (2026-06-09)
-
-Edge-case branches use field overrides on top of the real fixture dict.
-No network calls are made.
-"""
-
 from collections.abc import Awaitable, Callable
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 from enrichment.sources.anisearch import anisearch_anime_crawler as crawler_module
@@ -34,11 +24,6 @@ from enrichment.sources.base.polite_http import FetchedPage
 _URL = "https://www.anisearch.com/anime/2227,one-piece"
 
 
-# =============================================================================
-# Processed fixture — chains real raw data through _post_process_main
-# =============================================================================
-
-
 @pytest.fixture(scope="session")
 def one_piece_processed(one_piece_main_raw, one_piece_relations_raw):
     data = _post_process_main(one_piece_main_raw)
@@ -46,11 +31,6 @@ def one_piece_processed(one_piece_main_raw, one_piece_relations_raw):
     data["anime_relations"] = anime_rels
     data["manga_relations"] = manga_rels
     return data
-
-
-# =============================================================================
-# _XPATHS dict
-# =============================================================================
 
 
 def test_xpaths_has_required_main_keys() -> None:
@@ -111,59 +91,66 @@ def test_xpaths_relations_target_correct_sections() -> None:
     assert "tbody" in _XPATHS["anime_relation_rows"]
 
 
-# =============================================================================
-# _extract_anime_from_html — real HTML fixture
-# =============================================================================
-
-
-def test_extract_anime_from_html_title_fields(one_piece_main_html) -> None:
+def test_extract_anime_from_html_one_piece_page_reads_titles(
+    one_piece_main_html,
+) -> None:
     raw = _extract_anime_from_html(one_piece_main_html)
     assert raw is not None
     assert raw["title_ja"] == "One Piece"
     assert raw["title_alt"] == "ワンピース"
 
 
-def test_extract_anime_from_html_cover_image(one_piece_main_html) -> None:
+def test_extract_anime_from_html_one_piece_page_reads_cover_address(
+    one_piece_main_html,
+) -> None:
     raw = _extract_anime_from_html(one_piece_main_html)
     assert raw is not None
     assert raw["cover_image"] is not None
     assert raw["cover_image"].startswith("https://")
 
 
-def test_extract_anime_from_html_type_contains_tv_series(one_piece_main_html) -> None:
+def test_extract_anime_from_html_one_piece_page_reads_type(one_piece_main_html) -> None:
     raw = _extract_anime_from_html(one_piece_main_html)
     assert raw is not None
     assert "TV-Series" in (raw["type"] or "")
 
 
-def test_extract_anime_from_html_genres_list(one_piece_main_html) -> None:
+def test_extract_anime_from_html_one_piece_page_reads_genres(
+    one_piece_main_html,
+) -> None:
     raw = _extract_anime_from_html(one_piece_main_html)
     assert raw is not None
     assert len(raw["genres"]) > 0
     assert all(isinstance(g["name"], str) for g in raw["genres"])
 
 
-def test_extract_anime_from_html_tags_list(one_piece_main_html) -> None:
+def test_extract_anime_from_html_one_piece_page_reads_tags(one_piece_main_html) -> None:
     raw = _extract_anime_from_html(one_piece_main_html)
     assert raw is not None
     assert len(raw["tags"]) > 0
 
 
-def test_extract_anime_from_html_websites_list(one_piece_main_html) -> None:
+def test_extract_anime_from_html_one_piece_page_reads_websites(
+    one_piece_main_html,
+) -> None:
     raw = _extract_anime_from_html(one_piece_main_html)
     assert raw is not None
     assert len(raw["websites"]) > 0
     assert all(w["url"] for w in raw["websites"])
 
 
-def test_extract_anime_from_html_studio(one_piece_main_html) -> None:
+def test_extract_anime_from_html_one_piece_page_reads_studio(
+    one_piece_main_html,
+) -> None:
     raw = _extract_anime_from_html(one_piece_main_html)
     assert raw is not None
     assert raw["studio"] == "Toei Animation Co., Ltd."
     assert "toei-animation" in (raw["studio_url"] or "")
 
 
-def test_extract_anime_from_html_rating_score(one_piece_main_html) -> None:
+def test_extract_anime_from_html_one_piece_page_reads_rating_and_votes(
+    one_piece_main_html,
+) -> None:
     raw = _extract_anime_from_html(one_piece_main_html)
     assert raw is not None
     assert raw["rating_score"] is not None
@@ -175,31 +162,30 @@ def test_extract_anime_from_html_empty_returns_none() -> None:
     assert _extract_anime_from_html("") is None
 
 
-def test_extract_anime_from_html_unparseable_returns_none() -> None:
-    assert (
-        _extract_anime_from_html("<not valid xml at all >>>") is not None
-    )  # lxml is lenient
-    assert _extract_anime_from_html("") is None
+def test_extract_anime_from_html_malformed_page_returns_empty_fields() -> None:
+    raw = _extract_anime_from_html("<not valid xml at all >>>")
+    assert (raw["title_ja"], raw["genres"], raw["websites"]) == (None, [], [])
 
 
-# =============================================================================
-# _extract_relations_from_html — real HTML fixture
-# =============================================================================
-
-
-def test_extract_relations_from_html_anime_count(one_piece_relations_html) -> None:
+def test_extract_relations_from_html_one_piece_page_reads_every_anime_relation(
+    one_piece_relations_html,
+) -> None:
     raw = _extract_relations_from_html(one_piece_relations_html)
     assert raw is not None
     assert len(raw["anime_relations"]) == 79
 
 
-def test_extract_relations_from_html_manga_count(one_piece_relations_html) -> None:
+def test_extract_relations_from_html_one_piece_page_reads_every_manga_relation(
+    one_piece_relations_html,
+) -> None:
     raw = _extract_relations_from_html(one_piece_relations_html)
     assert raw is not None
     assert len(raw["manga_relations"]) == 2
 
 
-def test_extract_relations_from_html_entry_fields(one_piece_relations_html) -> None:
+def test_extract_relations_from_html_one_piece_page_reads_relation_fields(
+    one_piece_relations_html,
+) -> None:
     raw = _extract_relations_from_html(one_piece_relations_html)
     assert raw is not None
     entry = raw["anime_relations"][0]
@@ -209,7 +195,7 @@ def test_extract_relations_from_html_entry_fields(one_piece_relations_html) -> N
     assert entry["details"] is not None
 
 
-def test_extract_relations_from_html_manga_original_work(
+def test_extract_relations_from_html_one_piece_page_lists_original_manga(
     one_piece_relations_html,
 ) -> None:
     raw = _extract_relations_from_html(one_piece_relations_html)
@@ -218,7 +204,7 @@ def test_extract_relations_from_html_manga_original_work(
     assert "One Piece" in titles
 
 
-def test_extract_relations_from_html_image_has_tooltip(
+def test_extract_relations_from_html_one_piece_page_keeps_image_tooltips(
     one_piece_relations_html,
 ) -> None:
     raw = _extract_relations_from_html(one_piece_relations_html)
@@ -232,35 +218,25 @@ def test_extract_relations_from_html_empty_returns_none() -> None:
     assert _extract_relations_from_html("") is None
 
 
-# =============================================================================
-# _extract_path_from_url
-# =============================================================================
-
-
-def test_extract_path_valid() -> None:
+def test_extract_path_from_url_anime_address_returns_path() -> None:
     assert _extract_path_from_url(_URL) == "2227,one-piece"
 
 
-def test_extract_path_trailing_slash_stripped() -> None:
+def test_extract_path_from_url_trailing_slash_removed() -> None:
     assert _extract_path_from_url(_URL + "/") == "2227,one-piece"
 
 
-def test_extract_path_wrong_base_raises() -> None:
+def test_extract_path_from_url_other_site_raises_value_error() -> None:
     with pytest.raises(ValueError, match="URL must start with"):
         _extract_path_from_url("https://myanimelist.net/anime/21")
 
 
-def test_extract_path_empty_path_raises() -> None:
+def test_extract_path_from_url_without_anime_path_raises_value_error() -> None:
     with pytest.raises(ValueError, match="does not contain anime path"):
         _extract_path_from_url(BASE_ANIME_URL)
 
 
-# =============================================================================
-# _process_relation_tooltips
-# =============================================================================
-
-
-def test_process_relation_tooltips_extracts_img_src() -> None:
+def test_process_relation_tooltips_image_tag_becomes_address() -> None:
     rel = {
         "image": '<img src="https://cdn.anisearch.com/images/anime/cover/2/2227.webp" />'
     }
@@ -268,30 +244,34 @@ def test_process_relation_tooltips_extracts_img_src() -> None:
     assert rel["image"] == "https://cdn.anisearch.com/images/anime/cover/2/2227.webp"
 
 
-def test_process_relation_tooltips_html_escaped_decoded() -> None:
+def test_process_relation_tooltips_escaped_image_tag_becomes_address() -> None:
     escaped = "&lt;img src=&quot;https://cdn.anisearch.com/cover.webp&quot;&gt;"
     rel = {"image": escaped}
     _process_relation_tooltips([rel])
     assert rel["image"] == "https://cdn.anisearch.com/cover.webp"
 
 
-def test_process_relation_tooltips_no_image_key_unchanged() -> None:
+def test_process_relation_tooltips_without_image_leaves_relation_unchanged() -> None:
     rel = {"title": "Test"}
     _process_relation_tooltips([rel])
     assert rel == {"title": "Test"}
 
 
-def test_process_relation_tooltips_no_img_match_unchanged() -> None:
+def test_process_relation_tooltips_text_without_image_tag_left_unchanged() -> None:
     rel = {"image": "no img tag here"}
     _process_relation_tooltips([rel])
     assert rel["image"] == "no img tag here"
 
 
-def test_process_relation_tooltips_empty_list() -> None:
-    _process_relation_tooltips([])
+def test_process_relation_tooltips_empty_list_stays_empty() -> None:
+    relations: list[dict] = []
+    _process_relation_tooltips(relations)
+    assert relations == []
 
 
-def test_process_relation_tooltips_real_data(one_piece_relations_raw) -> None:
+def test_process_relation_tooltips_one_piece_page_gives_image_addresses(
+    one_piece_relations_raw,
+) -> None:
     rels = list(one_piece_relations_raw["anime_relations"])
     _process_relation_tooltips(rels)
     for rel in rels:
@@ -300,40 +280,39 @@ def test_process_relation_tooltips_real_data(one_piece_relations_raw) -> None:
             assert rel["image"].startswith("https://")
 
 
-# =============================================================================
-# _post_process_main — real fixture for baseline, overrides for edge cases
-# =============================================================================
-
-
-def test_post_process_type_strips_label_and_comma_suffix(one_piece_main_raw) -> None:
+def test_post_process_main_type_label_and_details_removed(one_piece_main_raw) -> None:
     assert _post_process_main(one_piece_main_raw)["type"] == "TV-Series"
 
 
-def test_post_process_status_strips_label(one_piece_main_raw) -> None:
+def test_post_process_main_status_label_removed(one_piece_main_raw) -> None:
     assert _post_process_main(one_piece_main_raw)["status"] == "Ongoing"
 
 
-def test_post_process_date_range_open_end(one_piece_main_raw) -> None:
+def test_post_process_main_open_range_gives_start_date_only(one_piece_main_raw) -> None:
     data = _post_process_main(one_piece_main_raw)
     assert data["start_date"] == "1999-10-20"
     assert data["end_date"] is None
 
 
-def test_post_process_date_range_closed(one_piece_main_raw) -> None:
+def test_post_process_main_closed_range_gives_both_dates(one_piece_main_raw) -> None:
     raw = {**one_piece_main_raw, "published": "Published: 20.10.1999 - 31.03.2002"}
     data = _post_process_main(raw)
     assert data["start_date"] == "1999-10-20"
     assert data["end_date"] == "2002-03-31"
 
 
-def test_post_process_date_single(one_piece_main_raw) -> None:
+def test_post_process_main_single_date_gives_start_date_only(
+    one_piece_main_raw,
+) -> None:
     raw = {**one_piece_main_raw, "published": "Published: 05.04.2003"}
     data = _post_process_main(raw)
     assert data["start_date"] == "2003-04-05"
     assert data["end_date"] is None
 
 
-def test_post_process_date_missing(one_piece_main_raw) -> None:
+def test_post_process_main_without_published_date_gives_no_dates(
+    one_piece_main_raw,
+) -> None:
     raw = {**one_piece_main_raw, "published": None}
     data = _post_process_main(raw)
     assert data["start_date"] is None
@@ -365,14 +344,18 @@ def test_post_process_main_published_date_keeps_only_stated_precision(
     ) == expected
 
 
-def test_post_process_broadcast_parsed(one_piece_main_raw) -> None:
+def test_post_process_main_broadcast_gives_day_time_and_zone(
+    one_piece_main_raw,
+) -> None:
     data = _post_process_main(one_piece_main_raw)
     assert data["broadcast_day"] == "Sunday"
     assert data["broadcast_time"] == "23:15"
     assert data["broadcast_timezone"] == "JST"
 
 
-def test_post_process_broadcast_missing(one_piece_main_raw) -> None:
+def test_post_process_main_without_broadcast_gives_no_broadcast_parts(
+    one_piece_main_raw,
+) -> None:
     raw = {**one_piece_main_raw, "broadcast_raw": None}
     data = _post_process_main(raw)
     assert data["broadcast_day"] is None
@@ -380,7 +363,9 @@ def test_post_process_broadcast_missing(one_piece_main_raw) -> None:
     assert data["broadcast_timezone"] is None
 
 
-def test_post_process_studio_url_without_leading_slash(one_piece_main_raw) -> None:
+def test_post_process_main_relative_studio_path_gives_full_address(
+    one_piece_main_raw,
+) -> None:
     data = _post_process_main(one_piece_main_raw)
     assert (
         data["studio_url"]
@@ -388,7 +373,9 @@ def test_post_process_studio_url_without_leading_slash(one_piece_main_raw) -> No
     )
 
 
-def test_post_process_studio_url_with_leading_slash(one_piece_main_raw) -> None:
+def test_post_process_main_studio_path_with_leading_slash_gives_full_address(
+    one_piece_main_raw,
+) -> None:
     raw = {**one_piece_main_raw, "studio_url": "/company/412,toei-animation-co-ltd"}
     data = _post_process_main(raw)
     assert (
@@ -397,49 +384,53 @@ def test_post_process_studio_url_with_leading_slash(one_piece_main_raw) -> None:
     )
 
 
-def test_post_process_studio_url_empty(one_piece_main_raw) -> None:
+def test_post_process_main_without_studio_path_gives_no_studio_address(
+    one_piece_main_raw,
+) -> None:
     raw = {**one_piece_main_raw, "studio_url": None}
     assert _post_process_main(raw)["studio_url"] is None
 
 
-def test_post_process_source_material_strips_label(one_piece_main_raw) -> None:
+def test_post_process_main_source_material_label_removed(one_piece_main_raw) -> None:
     assert _post_process_main(one_piece_main_raw)["source_material"] == "Manga"
 
 
-def test_post_process_synonyms_split_on_comma(one_piece_main_raw) -> None:
+def test_post_process_main_synonyms_split_on_commas(one_piece_main_raw) -> None:
     assert _post_process_main(one_piece_main_raw)["synonyms"] == ["OP", "OneP"]
 
 
-def test_post_process_synonyms_missing(one_piece_main_raw) -> None:
+def test_post_process_main_without_synonyms_gives_empty_list(
+    one_piece_main_raw,
+) -> None:
     raw = {**one_piece_main_raw, "synonyms": None}
     assert _post_process_main(raw)["synonyms"] == []
 
 
-def test_post_process_genres_flattened(one_piece_main_raw) -> None:
+def test_post_process_main_genres_become_names(one_piece_main_raw) -> None:
     data = _post_process_main(one_piece_main_raw)
     assert "Action" in data["genres"]
     assert "Fighting-Shounen" in data["genres"]
     assert all(isinstance(g, str) for g in data["genres"])
 
 
-def test_post_process_tags_flattened(one_piece_main_raw) -> None:
+def test_post_process_main_tags_become_names(one_piece_main_raw) -> None:
     data = _post_process_main(one_piece_main_raw)
     assert "Pirate" in data["tags"]
     assert all(isinstance(t, str) for t in data["tags"])
 
 
-def test_post_process_genres_empty_name_skipped(one_piece_main_raw) -> None:
+def test_post_process_main_genre_without_name_skipped(one_piece_main_raw) -> None:
     raw = {**one_piece_main_raw, "genres": [{"name": ""}, {"name": "Action"}]}
     assert _post_process_main(raw)["genres"] == ["Action"]
 
 
-def test_post_process_websites_populated(one_piece_main_raw) -> None:
+def test_post_process_main_websites_kept(one_piece_main_raw) -> None:
     data = _post_process_main(one_piece_main_raw)
     assert len(data["websites"]) == len(one_piece_main_raw["websites"])
     assert all(w["url"] for w in data["websites"])
 
 
-def test_post_process_websites_empty_url_skipped(one_piece_main_raw) -> None:
+def test_post_process_main_website_without_address_skipped(one_piece_main_raw) -> None:
     raw = {
         **one_piece_main_raw,
         "websites": [
@@ -452,18 +443,20 @@ def test_post_process_websites_empty_url_skipped(one_piece_main_raw) -> None:
     assert data["websites"][0]["name"] == "Official"
 
 
-def test_post_process_score_extracted(one_piece_main_raw) -> None:
+def test_post_process_main_rating_gives_score_and_votes(one_piece_main_raw) -> None:
     data = _post_process_main(one_piece_main_raw)
     assert data["statistics"]["score"] == pytest.approx(4.18)
     assert data["statistics"]["scored_by"] == 7902
 
 
-def test_post_process_zero_votes_omits_scored_by(one_piece_main_raw) -> None:
+def test_post_process_main_zero_votes_omits_votes(one_piece_main_raw) -> None:
     raw = {**one_piece_main_raw, "rating_votes": 0}
     assert "scored_by" not in _post_process_main(raw)["statistics"]
 
 
-def test_post_process_unrated_omits_score(one_piece_main_raw) -> None:
+def test_post_process_main_unrated_anime_omits_score_and_votes(
+    one_piece_main_raw,
+) -> None:
     raw = {
         **one_piece_main_raw,
         "rating_score": "Calculated Value0.00 = 0%",
@@ -474,15 +467,15 @@ def test_post_process_unrated_omits_score(one_piece_main_raw) -> None:
     assert "scored_by" not in stats
 
 
-def test_post_process_rank_extracted(one_piece_main_raw) -> None:
+def test_post_process_main_toplist_rank_gives_rank(one_piece_main_raw) -> None:
     assert _post_process_main(one_piece_main_raw)["statistics"]["rank"] == 125
 
 
-def test_post_process_trending_extracted(one_piece_main_raw) -> None:
+def test_post_process_main_trending_rank_gives_trending(one_piece_main_raw) -> None:
     assert _post_process_main(one_piece_main_raw)["statistics"]["trending"] == 26
 
 
-def test_post_process_stats_all_missing_returns_none(one_piece_main_raw) -> None:
+def test_post_process_main_without_statistics_gives_none(one_piece_main_raw) -> None:
     raw = {
         **one_piece_main_raw,
         "rating_score": None,
@@ -493,76 +486,78 @@ def test_post_process_stats_all_missing_returns_none(one_piece_main_raw) -> None
     assert _post_process_main(raw)["statistics"] is None
 
 
-def test_post_process_score_missing_rank_still_populated(one_piece_main_raw) -> None:
+def test_post_process_main_without_score_keeps_rank(one_piece_main_raw) -> None:
     raw = {**one_piece_main_raw, "rating_score": None}
     stats = _post_process_main(raw)["statistics"]
     assert "score" not in stats
     assert stats["rank"] == 125
 
 
-def test_post_process_description_stripped(one_piece_main_raw) -> None:
+def test_post_process_main_description_trimmed(one_piece_main_raw) -> None:
     raw = {**one_piece_main_raw, "description": "  some synopsis  "}
     assert _post_process_main(raw)["description"] == "some synopsis"
 
 
-# =============================================================================
-# _parse_relations
-# =============================================================================
-
-
-def test_parse_relations_none_raw_returns_empty() -> None:
+def test_parse_relations_without_relations_page_returns_empty_lists() -> None:
     assert _parse_relations(None) == ([], [])
 
 
-def test_parse_relations_empty_lists() -> None:
+def test_parse_relations_empty_relation_lists_return_empty_lists() -> None:
     assert _parse_relations({"anime_relations": [], "manga_relations": []}) == ([], [])
 
 
-def test_parse_relations_missing_keys_returns_empty() -> None:
+def test_parse_relations_missing_relation_keys_return_empty_lists() -> None:
     assert _parse_relations({}) == ([], [])
 
 
-def test_parse_relations_real_data_anime_count(one_piece_relations_raw) -> None:
+def test_parse_relations_one_piece_page_keeps_every_anime_relation(
+    one_piece_relations_raw,
+) -> None:
     anime, _ = _parse_relations(one_piece_relations_raw)
     assert len(anime) == len(one_piece_relations_raw["anime_relations"])
 
 
-def test_parse_relations_real_data_manga_count(one_piece_relations_raw) -> None:
+def test_parse_relations_one_piece_page_keeps_every_manga_relation(
+    one_piece_relations_raw,
+) -> None:
     _, manga = _parse_relations(one_piece_relations_raw)
     assert len(manga) == len(one_piece_relations_raw["manga_relations"])
 
 
-def test_parse_relations_images_urls_after_processing(one_piece_relations_raw) -> None:
+def test_parse_relations_one_piece_page_gives_image_addresses(
+    one_piece_relations_raw,
+) -> None:
     anime, manga = _parse_relations(one_piece_relations_raw)
     for rel in anime + manga:
         if rel.get("image"):
             assert rel["image"].startswith("https://")
 
 
-def test_parse_relations_manga_original_work(one_piece_relations_raw) -> None:
+def test_parse_relations_one_piece_page_lists_original_manga(
+    one_piece_relations_raw,
+) -> None:
     _, manga = _parse_relations(one_piece_relations_raw)
     titles = [r["title"] for r in manga]
     assert "One Piece" in titles
 
 
-# =============================================================================
-# _build_anime_from_raw — uses fully processed real data
-# =============================================================================
-
-
-def test_build_anime_title_fields(one_piece_processed) -> None:
+def test_build_anime_from_raw_one_piece_page_maps_titles(one_piece_processed) -> None:
     anime = _build_anime_from_raw(one_piece_processed, _URL)
     assert anime.title == "One Piece"
     assert anime.title_japanese == "ワンピース"
 
 
-def test_build_anime_synonyms(one_piece_processed) -> None:
+def test_build_anime_from_raw_one_piece_page_keeps_synonyms(
+    one_piece_processed,
+) -> None:
     anime = _build_anime_from_raw(one_piece_processed, _URL)
     assert "OP" in anime.synonyms
     assert "OneP" in anime.synonyms
 
 
-def test_build_anime_statistics(one_piece_processed) -> None:
+def test_build_anime_from_raw_one_piece_page_gives_statistics(
+    one_piece_processed,
+) -> None:
     anime = _build_anime_from_raw(one_piece_processed, _URL)
     assert anime.statistics is not None
     assert anime.statistics.score == pytest.approx(4.18)
@@ -571,12 +566,14 @@ def test_build_anime_statistics(one_piece_processed) -> None:
     assert anime.statistics.trending == 26
 
 
-def test_build_anime_no_statistics(one_piece_processed) -> None:
+def test_build_anime_from_raw_without_statistics_gives_none(
+    one_piece_processed,
+) -> None:
     raw = {**one_piece_processed, "statistics": None}
     assert _build_anime_from_raw(raw, _URL).statistics is None
 
 
-def test_build_anime_relations_count(
+def test_build_anime_from_raw_one_piece_page_keeps_every_relation(
     one_piece_processed, one_piece_relations_raw
 ) -> None:
     anime = _build_anime_from_raw(one_piece_processed, _URL)
@@ -584,47 +581,48 @@ def test_build_anime_relations_count(
     assert len(anime.manga_relations) == len(one_piece_relations_raw["manga_relations"])
 
 
-def test_build_anime_url_injected(one_piece_processed) -> None:
+def test_build_anime_from_raw_sets_page_address(one_piece_processed) -> None:
     assert _build_anime_from_raw(one_piece_processed, _URL).url == _URL
 
 
-def test_build_anime_broadcast_fields(one_piece_processed) -> None:
+def test_build_anime_from_raw_one_piece_page_keeps_broadcast(
+    one_piece_processed,
+) -> None:
     anime = _build_anime_from_raw(one_piece_processed, _URL)
     assert anime.broadcast_day == "Sunday"
     assert anime.broadcast_time == "23:15"
     assert anime.broadcast_timezone == "JST"
 
 
-def test_build_anime_studio(one_piece_processed) -> None:
+def test_build_anime_from_raw_one_piece_page_keeps_studio(one_piece_processed) -> None:
     anime = _build_anime_from_raw(one_piece_processed, _URL)
     assert anime.studio == "Toei Animation Co., Ltd."
     assert "toei-animation" in (anime.studio_url or "")
 
 
-def test_build_anime_empty_relations(one_piece_processed) -> None:
+def test_build_anime_from_raw_without_relations_gives_empty_lists(
+    one_piece_processed,
+) -> None:
     raw = {**one_piece_processed, "anime_relations": [], "manga_relations": []}
     anime = _build_anime_from_raw(raw, _URL)
     assert anime.anime_relations == []
     assert anime.manga_relations == []
 
 
-# =============================================================================
-# AniSearchAnimeCrawler
-# =============================================================================
-
-
-def test_normalize_identifier_valid_url_passthrough() -> None:
+def test_normalize_identifier_anime_address_returned_unchanged() -> None:
     crawler = AniSearchAnimeCrawler(NullRepository())
     assert crawler.normalize_identifier(_URL) == _URL
 
 
-def test_normalize_identifier_wrong_base_raises() -> None:
+def test_normalize_identifier_other_site_raises_value_error() -> None:
     crawler = AniSearchAnimeCrawler(NullRepository())
     with pytest.raises(ValueError, match="Not an AniSearch anime URL"):
         crawler.normalize_identifier("https://myanimelist.net/anime/21")
 
 
-def test_build_source_model_uses_canonical_url_from_raw(one_piece_processed) -> None:
+def test_build_source_model_canonical_address_wins_over_requested_address(
+    one_piece_processed,
+) -> None:
     crawler = AniSearchAnimeCrawler(NullRepository())
     canonical = "https://www.anisearch.com/anime/2227,one-piece"
     raw = {**one_piece_processed, "_canonical_url": canonical}
@@ -632,15 +630,12 @@ def test_build_source_model_uses_canonical_url_from_raw(one_piece_processed) -> 
     assert model.url == canonical
 
 
-def test_build_source_model_falls_back_to_input_url(one_piece_processed) -> None:
+def test_build_source_model_without_canonical_address_keeps_requested_address(
+    one_piece_processed,
+) -> None:
     crawler = AniSearchAnimeCrawler(NullRepository())
     model = crawler.build_source_model(one_piece_processed, _URL)
     assert model.url == _URL
-
-
-# =============================================================================
-# _fetch_anisearch_anime_data
-# =============================================================================
 
 
 def _site(
@@ -725,48 +720,29 @@ async def test_fetch_anisearch_anime_data_blocked_raises_service_blocked_error()
         await _fetch_anisearch_anime_data("2227,one-piece")
 
 
-# =============================================================================
-# fetch_anisearch_anime — top-level entry point
-# =============================================================================
+@pytest.mark.usefixtures("cache_off")
+async def test_fetch_anisearch_anime_unreadable_page_returns_none() -> None:
+    with patch.object(
+        crawler_module, "fetch_anisearch_page", autospec=True, side_effect=_site({})
+    ):
+        assert await fetch_anisearch_anime(_URL) is None
 
 
-@pytest.mark.asyncio
-async def test_fetch_anisearch_anime_returns_none_when_no_data(mocker) -> None:
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_anime_crawler._fetch_anisearch_anime_data",
-        new_callable=AsyncMock,
-        return_value=None,
-    )
-    assert await fetch_anisearch_anime(_URL) is None
-
-
-@pytest.mark.asyncio
-async def test_fetch_anisearch_anime_returns_canonical_dict(
-    mocker, one_piece_processed
+@pytest.mark.usefixtures("cache_off")
+async def test_fetch_anisearch_anime_bare_address_returns_canonical_anime_with_page_source(
+    one_piece_main_html: str, one_piece_relations_html: str
 ) -> None:
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_anime_crawler._fetch_anisearch_anime_data",
-        new_callable=AsyncMock,
-        return_value=one_piece_processed,
-    )
-    result = await fetch_anisearch_anime(_URL)
-    assert result is not None
+    pages = {
+        f"{BASE_ANIME_URL}2227": one_piece_main_html,
+        f"{_URL}/relations?show=overall": one_piece_relations_html,
+    }
+    with patch.object(
+        crawler_module, "fetch_anisearch_page", autospec=True, side_effect=_site(pages)
+    ):
+        result = await fetch_anisearch_anime(f"{BASE_ANIME_URL}2227")
+
     assert result["title"] == "One Piece"
-
-
-@pytest.mark.asyncio
-async def test_fetch_anisearch_anime_sources_uses_canonical_url(
-    mocker, one_piece_processed
-) -> None:
-    canonical = "https://www.anisearch.com/anime/2227,one-piece"
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_anime_crawler._fetch_anisearch_anime_data",
-        new_callable=AsyncMock,
-        return_value={**one_piece_processed, "_canonical_url": canonical},
-    )
-    result = await fetch_anisearch_anime("https://www.anisearch.com/anime/2227")
-    assert result is not None
-    assert result["sources"] == [canonical]
+    assert result["sources"] == [_URL]
 
 
 def test_get_extraction_schema_returns_xpaths() -> None:
