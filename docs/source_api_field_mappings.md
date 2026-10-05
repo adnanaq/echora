@@ -1,6 +1,6 @@
 # Source API Field Mappings — Verified Values
 
-**Last updated**: 2026-03-30
+**Last updated**: 2026-10-04
 **Method**: Live API calls + schema introspection against diverse anime
 
 | Source       | Verification method                                                                                           |
@@ -98,8 +98,30 @@
 **Kitsu**: 5 values. `tba` (392 entries) = no confirmed date. `unreleased` (77) = confirmed but not yet out. `upcoming` (46) = imminent. No cancelled/hiatus.
 **AnimSchedule**: 4 values (Title Case). `Delayed` = temporarily paused (has `delayedFrom`, `delayedUntil`, `delayedTimetable` fields). Maps to `ONGOING` since show is not finished.
 **AniDB**: No explicit status field. Status derived programmatically from `start_date`/`end_date` via `determine_anime_status()` in `datetime_utils.py`. Logic: start in future → UPCOMING; start in past + no end → ONGOING; end date set → FINISHED; neither → UNKNOWN.
-**AnimePlanet**: No explicit status field — same as AniDB. Status derived from `start_date`/`end_date` scraped from JSON-LD `startDate` and page date display. Uses same `determine_anime_status()` utility. Stored value `"AIRING"` in One Piece data was computed, not scraped.
-**AniSearch**: 4 values. `"On Hold"` maps to `ONGOING` — used for anime on production hiatus (e.g. One Piece on AniSearch). `"Completed"` (not `"Finished"`). No Cancelled or Unknown status values observed.
+**AnimePlanet**: No explicit status field — same as AniDB. Status derived from `start_date`/`end_date` scraped from JSON-LD `startDate`/`endDate`. Uses same `determine_anime_status()` utility. Stored value `"AIRING"` in One Piece data was computed, not scraped.
+**AniSearch**: 4 values. `"On Hold"` maps to `ONGOING` — used for anime on production hiatus (e.g. One Piece on AniSearch). `"Completed"` (not `"Finished"`). No Cancelled or Unknown status values observed. Status is derived from `start_date`/`end_date` like AniDB; AniSearch's own value is used only when the dates give `UNKNOWN` (a start with no day, or no start at all).
+
+---
+
+## Dates
+
+`aired_dates` holds only real dates: a source value becomes `aired_from`/`aired_to` only when it states the day. A month and year sets `year` and `month`; a year alone sets `year`. Nothing is made up (no 1 January for a lone year). Shared helpers in `sources/base/utils.py` read every form below: `split_date_range`, `parse_iso_date` (full dates only), `parse_partial_date` (year and month at any precision), `month_name`.
+
+| Source       | Field read                                           | Forms seen                                                                                       | Becomes                                                                                     |
+| ------------ | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| MAL          | "Aired" (sidebar)                                    | `Oct 20, 1999 to ?`, `Oct 20, 1999 to Nov 5, 2000`, `Apr 5, 2003`, `Oct 1977`, `1988`, `2026 to ?`, `Not available` | full date → `aired_dates`; `Oct 1977` → `year` + `month`; `1988` → `year`                   |
+| MAL          | "Premiered" (sidebar, TV only)                       | `Fall 1999`                                                                                      | `season` + `year`; when missing, `year` comes from "Aired"                                   |
+| AniList      | `startDate`, `endDate` (`{year, month, day}`, any part may be null); `season`, `seasonYear` | `{1999, 10, 20}`, `{1977, 10, 6}`, `{2027, null, null}`                                           | full date → `aired_dates`; year and month only → `month`; `year` from `seasonYear`, else `startDate.year` |
+| Kitsu        | `startDate`, `endDate`                               | `1999-10-20`, or null                                                                            | `aired_dates`                                                                               |
+| AniDB        | XML `startdate`, `enddate`                           | `1999-10-20`, `1977-10`                                                                          | full date → `aired_dates`; `1977-10` → `year` + `season`, no date                           |
+| AnimePlanet  | JSON-LD `startDate`, `endDate`                       | `2020-04-05`, or absent when the page has no full date                                           | `aired_dates`                                                                               |
+| AnimePlanet  | entry bar `span.iconYear`; season link               | ` 2002 `, ` 1999 - ? `; `/anime/seasons/fall-1999`                                               | `year` when JSON-LD has no `startDate`; `season` from the link                              |
+| AniSearch    | "Published" (information section)                    | `20.10.1999`, `11.2008`, `2027`, `?`, as a range: `20.10.1999 ‑ ?`, `2027 ‑ ?`, `20.10.1999‑31.03.2002` | full date → `aired_dates` + `season`; `11.2008` → `year` + `month`; `2027` → `year`        |
+| AnimSchedule | `premier`, `month`                                   | not checked in this session                                                                      | `aired_dates.aired_from`, `month`                                                           |
+
+**Range separators**: MAL `" to "`; AniSearch an en dash or non-breaking hyphen (`‑`), spaced or not; AnimePlanet `" - "`.
+**Measured on 2026-10-04**: 11 of 247 MAL pages gave a year alone in "Aired" and 39 a month and year; 81 of 168 AnimePlanet pages had no JSON-LD `startDate`; AniList `startDate` had a full date for 328 of 453 anime.
+**`month`** is the English month name (`"October"`). In the merge, a provider that states `month` beats the month read from the merged `aired_from`, so MAL, AniList and AniSearch state it only when they have no full date; otherwise MAL would override AnimSchedule's month.
 
 ---
 
