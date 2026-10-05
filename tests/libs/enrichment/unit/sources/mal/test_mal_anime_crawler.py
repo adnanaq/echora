@@ -1,12 +1,9 @@
 import logging
 import sys
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
 from unittest.mock import create_autospec, patch
 
 import pytest
 import zendriver
-from enrichment.sources.base.browser import BrowserSession
 from enrichment.sources.base.framework import NullRepository
 from enrichment.sources.mal import mal_anime_crawler
 from enrichment.sources.mal.mal_anime_crawler import (
@@ -24,51 +21,10 @@ from enrichment.sources.mal.mal_anime_crawler import (
     fetch_mal_anime,
     main,
 )
-from http_cache import result_cache
-from http_cache.config import CacheConfig
-from lxml import html as lxml_html
 
 ONE_PIECE_URL = "https://myanimelist.net/anime/21"
 ONE_PIECE_CANONICAL_URL = "https://myanimelist.net/anime/21/One_Piece"
 DELETED_URL = "https://myanimelist.net/anime/60661"
-
-
-def _page_has(page_html: str, selector: str) -> bool:
-    if not page_html:
-        return False
-    document = lxml_html.fromstring(page_html)
-    for part in selector.split(","):
-        tag, css_class = part.strip().split(".")
-        class_test = (
-            f"contains(concat(' ', normalize-space(@class), ' '), ' {css_class} ')"
-        )
-        if document.xpath(f"//{tag}[{class_test}]"):
-            return True
-    return False
-
-
-def _tab_showing(page_html: str, url: str) -> zendriver.Tab:
-    tab = create_autospec(zendriver.Tab, instance=True)
-
-    def wait_for(selector=None, text=None, timeout=10):
-        if not _page_has(page_html, selector):
-            raise TimeoutError(f"{selector} not on page")
-
-    tab.wait_for.side_effect = wait_for
-    tab.evaluate.return_value = "complete"
-    tab.get_content.return_value = page_html
-    tab.url = url
-    return tab
-
-
-def _browser_serving(pages: dict[str, str]) -> zendriver.Browser:
-    browser = create_autospec(zendriver.Browser, instance=True)
-
-    def get(url="about:blank", new_tab=False, new_window=False):
-        return _tab_showing(pages.get(url, ""), url)
-
-    browser.get.side_effect = get
-    return browser
 
 
 def _one_piece_site(main_html: str, gallery_html: str) -> dict[str, str]:
@@ -80,30 +36,9 @@ def _one_piece_site(main_html: str, gallery_html: str) -> dict[str, str]:
 
 
 @pytest.fixture
-def open_browser():
-    def install(browser: zendriver.Browser):
-        @asynccontextmanager
-        async def browser_session(**settings) -> AsyncIterator[BrowserSession]:
-            yield BrowserSession(
-                headless=settings["headless"],
-                allowed_site=settings.get("allowed_site"),
-                clearance_site=None,
-                block_unused_resources=True,
-                browser=browser,
-            )
-
-        return patch.object(mal_anime_crawler, "browser_session", browser_session)
-
-    with (
-        patch.object(
-            result_cache,
-            "get_cache_config",
-            autospec=True,
-            return_value=CacheConfig(cache_enabled=False),
-        ),
-        patch.object(mal_anime_crawler, "_INTER_REQUEST_DELAY", 0),
-    ):
-        yield install
+def mal_browser(open_browser):
+    with patch.object(mal_anime_crawler, "_INTER_REQUEST_DELAY", 0):
+        yield lambda browser: open_browser(mal_anime_crawler, browser)
 
 
 def _build(raw: dict, picture_urls: list[str] | None = None):
@@ -246,8 +181,10 @@ def test_extract_pics_from_html_one_piece_gallery_reads_every_image(
     )
 
 
-async def test_fetch_pics_html_returns_page_content(mal_anime_pics_html) -> None:
-    browser = _browser_serving({f"{ONE_PIECE_CANONICAL_URL}/pics": mal_anime_pics_html})
+async def test_fetch_pics_html_returns_page_content(
+    browser_serving, mal_anime_pics_html
+) -> None:
+    browser = browser_serving({f"{ONE_PIECE_CANONICAL_URL}/pics": mal_anime_pics_html})
 
     result = await _fetch_pics_html(browser, f"{ONE_PIECE_CANONICAL_URL}/pics")
 
@@ -688,10 +625,10 @@ def test_parse_all_related_entries_one_piece_page_reads_related_works(
 
 
 async def test_fetch_mal_anime_data_bare_url_returns_page_data_and_gallery_pictures(
-    open_browser, mal_anime_html, mal_anime_pics_html
+    mal_browser, browser_serving, mal_anime_html, mal_anime_pics_html
 ) -> None:
-    browser = _browser_serving(_one_piece_site(mal_anime_html, mal_anime_pics_html))
-    with open_browser(browser):
+    browser = browser_serving(_one_piece_site(mal_anime_html, mal_anime_pics_html))
+    with mal_browser(browser):
         result = await _fetch_mal_anime_data(ONE_PIECE_URL)
 
     assert result is not None
@@ -701,10 +638,10 @@ async def test_fetch_mal_anime_data_bare_url_returns_page_data_and_gallery_pictu
 
 
 async def test_fetch_mal_anime_data_deleted_page_logs_not_found_and_returns_none(
-    open_browser, mal_anime_not_found_html, caplog
+    mal_browser, browser_serving, mal_anime_not_found_html, caplog
 ) -> None:
-    browser = _browser_serving({DELETED_URL: mal_anime_not_found_html})
-    with open_browser(browser), caplog.at_level(logging.WARNING):
+    browser = browser_serving({DELETED_URL: mal_anime_not_found_html})
+    with mal_browser(browser), caplog.at_level(logging.WARNING):
         result = await _fetch_mal_anime_data(DELETED_URL)
 
     assert result is None
@@ -712,10 +649,10 @@ async def test_fetch_mal_anime_data_deleted_page_logs_not_found_and_returns_none
 
 
 async def test_fetch_mal_anime_data_page_without_title_logs_navigation_failure(
-    open_browser, caplog
+    mal_browser, browser_serving, caplog
 ) -> None:
-    browser = _browser_serving({ONE_PIECE_URL: "<html><body></body></html>"})
-    with open_browser(browser), caplog.at_level(logging.WARNING):
+    browser = browser_serving({ONE_PIECE_URL: "<html><body></body></html>"})
+    with mal_browser(browser), caplog.at_level(logging.WARNING):
         result = await _fetch_mal_anime_data(ONE_PIECE_URL)
 
     assert result is None
@@ -726,22 +663,22 @@ async def test_fetch_mal_anime_data_page_without_title_logs_navigation_failure(
 
 
 async def test_fetch_mal_anime_data_empty_content_returns_none(
-    open_browser, mal_anime_html
+    mal_browser, tab_showing, mal_anime_html
 ) -> None:
     browser = create_autospec(zendriver.Browser, instance=True)
-    browser.get.return_value = _tab_showing(mal_anime_html, ONE_PIECE_URL)
+    browser.get.return_value = tab_showing(mal_anime_html, ONE_PIECE_URL)
     browser.get.return_value.get_content.return_value = ""
-    with open_browser(browser):
+    with mal_browser(browser):
         assert await _fetch_mal_anime_data(ONE_PIECE_URL) is None
 
 
 async def test_fetch_mal_anime_data_unreadable_content_logs_extraction_failure(
-    open_browser, mal_anime_html, caplog
+    mal_browser, tab_showing, mal_anime_html, caplog
 ) -> None:
     browser = create_autospec(zendriver.Browser, instance=True)
-    browser.get.return_value = _tab_showing(mal_anime_html, ONE_PIECE_URL)
+    browser.get.return_value = tab_showing(mal_anime_html, ONE_PIECE_URL)
     browser.get.return_value.get_content.return_value = "   "
-    with open_browser(browser), caplog.at_level(logging.WARNING):
+    with mal_browser(browser), caplog.at_level(logging.WARNING):
         result = await _fetch_mal_anime_data(ONE_PIECE_URL)
 
     assert result is None
@@ -752,12 +689,12 @@ async def test_fetch_mal_anime_data_unreadable_content_logs_extraction_failure(
 
 
 async def test_fetch_mal_anime_data_gallery_failure_returns_data_without_pictures(
-    open_browser, mal_anime_html
+    mal_browser, browser_serving, mal_anime_html
 ) -> None:
-    browser = _browser_serving(
+    browser = browser_serving(
         _one_piece_site(mal_anime_html, "<html><body></body></html>")
     )
-    with open_browser(browser):
+    with mal_browser(browser):
         result = await _fetch_mal_anime_data(ONE_PIECE_URL)
 
     assert result is not None and result["title"] == "One Piece"
@@ -778,10 +715,10 @@ def test_normalize_identifier_path_gives_full_url() -> None:
 
 
 async def test_fetch_raw_data_one_piece_page_returns_page_data(
-    open_browser, mal_anime_html, mal_anime_pics_html
+    mal_browser, browser_serving, mal_anime_html, mal_anime_pics_html
 ) -> None:
-    browser = _browser_serving(_one_piece_site(mal_anime_html, mal_anime_pics_html))
-    with open_browser(browser):
+    browser = browser_serving(_one_piece_site(mal_anime_html, mal_anime_pics_html))
+    with mal_browser(browser):
         raw = await MalAnimeCrawler(NullRepository()).fetch_raw_data(ONE_PIECE_URL)
 
     assert raw is not None and raw["title"] == "One Piece"
@@ -805,20 +742,20 @@ def test_map_to_canonical_one_piece_page_gives_canonical_title(
 
 
 async def test_fetch_mal_anime_one_piece_page_returns_canonical_anime(
-    open_browser, mal_anime_html, mal_anime_pics_html
+    mal_browser, browser_serving, mal_anime_html, mal_anime_pics_html
 ) -> None:
-    browser = _browser_serving(_one_piece_site(mal_anime_html, mal_anime_pics_html))
-    with open_browser(browser):
+    browser = browser_serving(_one_piece_site(mal_anime_html, mal_anime_pics_html))
+    with mal_browser(browser):
         anime = await fetch_mal_anime(ONE_PIECE_URL)
 
     assert anime is not None and anime["title"] == "One Piece"
 
 
 async def test_fetch_mal_anime_deleted_page_returns_none(
-    open_browser, mal_anime_not_found_html
+    mal_browser, browser_serving, mal_anime_not_found_html
 ) -> None:
-    browser = _browser_serving({DELETED_URL: mal_anime_not_found_html})
-    with open_browser(browser):
+    browser = browser_serving({DELETED_URL: mal_anime_not_found_html})
+    with mal_browser(browser):
         assert await fetch_mal_anime(DELETED_URL) is None
 
 
