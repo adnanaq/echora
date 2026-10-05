@@ -46,6 +46,8 @@ from enrichment.sources.base.companies import companies_from_roles
 from enrichment.sources.base.external_links import external_link
 
 _CDN_BASE = "https://cdn-eu.anidb.net/images/main"
+# AniDB sends this as the start date of works whose date it does not know yet.
+_UNKNOWN_DATE = "1970-01-01"
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +106,11 @@ _RESOURCE_LANGUAGE: dict[str, str] = {
 }
 
 
+def _known_date(value: str | None) -> str | None:
+    """Return the date, or None for AniDB's unknown-date placeholder."""
+    return None if value == _UNKNOWN_DATE else value
+
+
 def anime_from_anidb(anime: AniDBAnime, *, anidb_url: str) -> dict[str, Any]:
     """Normalize an AniDBAnime into canonical Anime field values.
 
@@ -125,9 +132,11 @@ def anime_from_anidb(anime: AniDBAnime, *, anidb_url: str) -> dict[str, Any]:
     nsfw = anime.restricted or None
 
     anime_type = AnimeType(anime.type or "")
-    status = determine_anime_status(anime.start_date, anime.end_date)
-    season = determine_anime_season(anime.start_date)
-    year = determine_anime_year(anime.start_date)
+    start_date = _known_date(anime.start_date)
+    end_date = _known_date(anime.end_date)
+    status = determine_anime_status(start_date, end_date)
+    season = determine_anime_season(start_date)
+    year = determine_anime_year(start_date)
 
     # ── Arrays ───────────────────────────────────────────────────────────────
     sources = [anidb_url]
@@ -141,10 +150,10 @@ def anime_from_anidb(anime: AniDBAnime, *, anidb_url: str) -> dict[str, Any]:
 
     # ── Objects / Dicts ──────────────────────────────────────────────────────
     aired_dates = None
-    if anime.start_date or anime.end_date:
+    if start_date or end_date:
         aired_dates = AiredDates(
-            aired_from=normalize_to_utc(anime.start_date),
-            aired_to=normalize_to_utc(anime.end_date),
+            aired_from=normalize_to_utc(start_date),
+            aired_to=normalize_to_utc(end_date),
         )
 
     images = AnimeImages(

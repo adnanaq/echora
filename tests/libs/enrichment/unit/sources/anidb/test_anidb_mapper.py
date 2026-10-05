@@ -237,6 +237,16 @@ def test_anime_from_anidb_no_aired_dates_when_no_dates() -> None:
     assert "aired_dates" not in result
 
 
+def test_anime_from_anidb_unknown_date_placeholder_gives_no_date_year_or_season() -> (
+    None
+):
+    result = anime_from_anidb(
+        _anime(type="Movie", start_date="1970-01-01"), anidb_url=_ANIDB_URL
+    )
+    assert not {"aired_dates", "year", "season"} & result.keys()
+    assert result["status"] == "UNKNOWN"
+
+
 # =============================================================================
 # anime_from_anidb — related anime
 # =============================================================================
