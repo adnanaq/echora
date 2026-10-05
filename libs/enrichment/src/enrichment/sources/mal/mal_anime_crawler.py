@@ -61,6 +61,7 @@ TTL_MAL = _CACHE_CONFIG.ttl_mal
 _TITLE_SELECTOR = "h1.title-name"
 # MAL answers a deleted or unknown anime id with this page and HTTP 404.
 _NOT_FOUND_SELECTOR = "div.error404"
+_NOT_FOUND_MARKER = 'class="error404"'
 
 _INTER_REQUEST_DELAY = 3.0
 
@@ -131,13 +132,6 @@ _XPATHS: dict[str, str] = {
 # ---------------------------------------------------------------------------
 # lxml extraction
 # ---------------------------------------------------------------------------
-
-
-def _is_not_found_page(html_text: str) -> bool:
-    """Return True for MAL's 404 page, which has no anime to read."""
-    from lxml import html
-
-    return bool(html.fromstring(html_text).xpath("//div[@class='error404']"))
 
 
 def _extract_anime_from_html(html_text: str) -> dict[str, Any] | None:
@@ -762,7 +756,7 @@ async def _fetch_mal_anime_data(url: str) -> dict[str, Any] | None:
             logger.warning(f"No HTML from MAL anime page: {url}")
             return None
 
-        if _is_not_found_page(main_html):
+        if _NOT_FOUND_MARKER in main_html:
             logger.warning(f"MAL anime page not found: {url}")
             return None
 

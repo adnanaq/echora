@@ -154,7 +154,9 @@ def parse_partial_date(raw: str | None) -> tuple[int | None, int | None]:
     iso = re.match(r"^(\d{4})(?:-(\d{2}))?(?:-\d{2})?$", text)
     if iso:
         month = int(iso.group(2)) if iso.group(2) else None
-        return int(iso.group(1)), month if month and 1 <= month <= 12 else None
+        if month is not None and not 1 <= month <= 12:
+            return None, None
+        return int(iso.group(1)), month
     return None, None
 
 
