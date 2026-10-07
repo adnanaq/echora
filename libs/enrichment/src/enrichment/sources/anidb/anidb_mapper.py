@@ -149,13 +149,13 @@ def anime_from_anidb(anime: AniDBAnime, *, anidb_url: str) -> dict[str, Any]:
             tags.append(cat.name)
 
     # ── Objects / Dicts ──────────────────────────────────────────────────────
-    aired_dates = None
-    if start_date or end_date:
-        aired_dates = AiredDates(
-            aired_from=normalize_to_utc(start_date),
-            aired_to=normalize_to_utc(end_date),
-        )
-
+    aired_from = normalize_to_utc(start_date)
+    aired_to = normalize_to_utc(end_date)
+    aired_dates = (
+        AiredDates(aired_from = aired_from,aired_to=aired_to)
+        if aired_from or aired_to
+        else None
+    )
     images = AnimeImages(
         covers=[f"{_CDN_BASE}/{anime.picture}"] if anime.picture else []
     )

@@ -183,7 +183,7 @@ def test_anime_from_anidb_start_and_end_dates_give_utc_aired_dates_year_and_seas
 def test_anime_from_anidb_month_only_start_gives_year_and_season_without_date() -> None:
     result = _map(start_date="1977-10")
     assert (result["year"], result["season"]) == (1977, "FALL")
-    assert not result.get("aired_dates")
+    assert "aired_dates" not in result
 
 
 def test_anime_from_anidb_without_dates_gives_no_aired_dates_and_unknown_status() -> (

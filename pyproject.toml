@@ -51,7 +51,7 @@ dependencies = [
     "opentelemetry-instrumentation-grpc==0.66b0",
     "opentelemetry-instrumentation-aiohttp-client==0.66b0",
     "structlog>=26.1.0",
-    "zendriver>=0.16.0",
+    "zendriver>=0.17.0",
 ]
 
 [project.optional-dependencies]

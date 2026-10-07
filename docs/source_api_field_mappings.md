@@ -5,7 +5,7 @@
 
 | Source       | Verification method                                                                                           |
 | ------------ | ------------------------------------------------------------------------------------------------------------- |
-| MAL          | MAL's own page strings, as the MAL crawlers read them (One Piece, AoT, Fate, Bleach, DB Kai, etc.)          |
+| MAL          | MAL's own page strings, as the MAL crawlers read them (One Piece, AoT, Fate, Bleach, DB Kai, etc.)            |
 | AniList      | GraphQL `__type` introspection + live queries (One Piece, AoT, Fate, Railgun, NGE, etc.)                      |
 | Kitsu        | REST API calls + [server source](https://github.com/hummingbird-me/kitsu-server) (One Piece, AoT, Fate, etc.) |
 | AnimSchedule | REST API v3 calls + filter queries (One Piece, AoT, Fate/kaleid, Cyberpunk, Isekai Quartet, etc.)             |
@@ -17,7 +17,7 @@
 
 ## Relation Types
 
-| Canonical             | MAL               | AniList       | Kitsu                 | AnimSchedule   | AniDB                        | AnimePlanet                              | AniSearch                                                     | Verified with                                         |
+| Canonical             | MAL                     | AniList       | Kitsu                 | AnimSchedule   | AniDB                        | AnimePlanet                              | AniSearch                                                     | Verified with                                         |
 | --------------------- | ----------------------- | ------------- | --------------------- | -------------- | ---------------------------- | ---------------------------------------- | ------------------------------------------------------------- | ----------------------------------------------------- |
 | `SEQUEL`              | `"Sequel"`              | `SEQUEL`      | `sequel`              | `sequels`      | `"Sequel"`                   | subtype `"Sequel"`                       | `"Sequel"`                                                    | AoT S2, FSN UBW, Bleach TYBW                          |
 | `PREQUEL`             | `"Prequel"`             | `PREQUEL`     | `prequel`             | `prequels`     | `"Prequel"`                  | subtype `"Prequel"`                      | `"Prequel"`                                                   | AoT S2, FSN UBW, Steins;Gate 0, DBZ                   |
@@ -49,7 +49,7 @@
 
 ## Anime Type / Format
 
-| Canonical    | MAL      | AniList    | Kitsu (`subtype`) | AnimSchedule (`mediaTypes`)                        | AniDB           | AnimePlanet     | AniSearch       | Verified with                                      |
+| Canonical    | MAL            | AniList    | Kitsu (`subtype`) | AnimSchedule (`mediaTypes`)                        | AniDB           | AnimePlanet     | AniSearch       | Verified with                                      |
 | ------------ | -------------- | ---------- | ----------------- | -------------------------------------------------- | --------------- | --------------- | --------------- | -------------------------------------------------- |
 | `TV`         | `"TV"`         | `TV`       | `"TV"`            | `"TV"` (route: `tv`)                               | `"TV Series"`   | `"TV"`          | `"TV-Series"`   | One Piece, AoT, NGE, HxH, Kanon                    |
 | `TV_SHORT`   | —              | `TV_SHORT` | —                 | `"TV Short"` (route: `tv-short`)                   | —               | —               | —               | AniList: Saiki Kusuo; AS: Isekai Quartet           |
@@ -81,7 +81,7 @@
 
 ## Status
 
-| Canonical   | MAL            | AniList            | Kitsu          | AnimSchedule | AniDB                            | AnimePlanet            | AniSearch     | Verified with                              |
+| Canonical   | MAL                  | AniList            | Kitsu          | AnimSchedule | AniDB                            | AnimePlanet            | AniSearch     | Verified with                              |
 | ----------- | -------------------- | ------------------ | -------------- | ------------ | -------------------------------- | ---------------------- | ------------- | ------------------------------------------ |
 | `ONGOING`   | `"Currently Airing"` | `RELEASING`        | `"current"`    | `"Ongoing"`  | _(derived: start < now, no end)_ | _(derived from dates)_ | `"Ongoing"`   | One Piece, Omae Gotoki                     |
 | `FINISHED`  | `"Finished Airing"`  | `FINISHED`         | `"finished"`   | `"Finished"` | _(derived: end date set)_        | _(derived from dates)_ | `"Completed"` | AoT, NGE, Cowboy Bebop, Steins;Gate        |
@@ -99,7 +99,7 @@
 **AnimSchedule**: 4 values (Title Case). `Delayed` = temporarily paused (has `delayedFrom`, `delayedUntil`, `delayedTimetable` fields). Maps to `ONGOING` since show is not finished.
 **AniDB**: No explicit status field. Status derived programmatically from `start_date`/`end_date` via `determine_anime_status()` in `datetime_utils.py`. Logic: start in future → UPCOMING; start in past + no end → ONGOING; end date set → FINISHED; neither → UNKNOWN.
 **AnimePlanet**: No explicit status field — same as AniDB. Status derived from `start_date`/`end_date` scraped from JSON-LD `startDate`/`endDate`. Uses same `determine_anime_status()` utility. Stored value `"AIRING"` in One Piece data was computed, not scraped.
-**AniSearch**: 4 values. `"On Hold"` maps to `ONGOING` — used for anime on production hiatus (e.g. One Piece on AniSearch). `"Completed"` (not `"Finished"`). No Cancelled or Unknown status values observed. Status is derived from `start_date`/`end_date` like AniDB; AniSearch's own value is used only when the dates give `UNKNOWN` (a start with no day, or no start at all).
+**AniSearch**: 4 values. `"On Hold"` maps to `ONGOING` — used for anime on production hiatus (e.g. One Piece on AniSearch). `"Completed"` (not `"Finished"`). No Cancelled or Unknown status values observed. AniSearch's own status is used when it maps to a known value; only a missing or unrecognised status falls back to `determine_anime_status()` on `start_date`/`end_date` (the date rule calls a finished work with no end date `ONGOING`).
 
 ---
 
@@ -107,17 +107,17 @@
 
 `aired_dates` holds only real dates: a source value becomes `aired_from`/`aired_to` only when it states the day. A month and year sets `year` and `month`; a year alone sets `year`. Nothing is made up (no 1 January for a lone year). Shared helpers in `sources/base/utils.py` read every form below: `split_date_range`, `parse_iso_date` (full dates only), `parse_partial_date` (year and month at any precision), `month_name`.
 
-| Source       | Field read                                           | Forms seen                                                                                       | Becomes                                                                                     |
-| ------------ | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
-| MAL          | "Aired" (sidebar)                                    | `Oct 20, 1999 to ?`, `Oct 20, 1999 to Nov 5, 2000`, `Apr 5, 2003`, `Oct 1977`, `1988`, `2026 to ?`, `Not available` | full date → `aired_dates`; `Oct 1977` → `year` + `month`; `1988` → `year`                   |
-| MAL          | "Premiered" (sidebar, TV only)                       | `Fall 1999`                                                                                      | `season` + `year`; when missing, `year` comes from "Aired"                                   |
-| AniList      | `startDate`, `endDate` (`{year, month, day}`, any part may be null); `season`, `seasonYear` | `{1999, 10, 20}`, `{1977, 10, 6}`, `{2027, null, null}`                                           | full date → `aired_dates`; year and month only → `month`; `year` from `seasonYear`, else `startDate.year` |
-| Kitsu        | `startDate`, `endDate`                               | `1999-10-20`, or null; `2002-01-01` for a work MAL and AniList date only as `2002`               | `aired_dates`; a 1 January date for a year-only work cannot be told apart from a real date, so it is kept |
-| AniDB        | XML `startdate`, `enddate`                           | `1999-10-20`, `1977-10`, `1970-01-01` for an upcoming work with no known date                    | full date → `aired_dates`; `1977-10` → `year` + `season`, no date; `1970-01-01` → nothing  |
-| AnimePlanet  | JSON-LD `startDate`, `endDate`                       | `2020-04-05`, or absent when the page has no full date                                           | `aired_dates`                                                                               |
-| AnimePlanet  | entry bar `span.iconYear`; season link               | ` 2002 `, ` 1999 - ? `; `/anime/seasons/fall-1999`                                               | `year` when JSON-LD has no `startDate`; `season` from the link                              |
-| AniSearch    | "Published" (information section)                    | `20.10.1999`, `11.2008`, `2027`, `?`, as a range: `20.10.1999 ‑ ?`, `2027 ‑ ?`, `20.10.1999‑31.03.2002` | full date → `aired_dates` + `season`; `11.2008` → `year` + `month`; `2027` → `year`        |
-| AnimSchedule | `premier`, `month`                                   | full dates; `2002-01-01` for the same year-only work as Kitsu                                    | `aired_dates.aired_from`, `month`; 1 January dates kept, as for Kitsu                      |
+| Source       | Field read                                                                                  | Forms seen                                                                                                          | Becomes                                                                                                   |
+| ------------ | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| MAL          | "Aired" (sidebar)                                                                           | `Oct 20, 1999 to ?`, `Oct 20, 1999 to Nov 5, 2000`, `Apr 5, 2003`, `Oct 1977`, `1988`, `2026 to ?`, `Not available` | full date → `aired_dates`; `Oct 1977` → `year` + `month`; `1988` → `year`                                 |
+| MAL          | "Premiered" (sidebar, TV only)                                                              | `Fall 1999`                                                                                                         | `season` + `year`; when missing, `year` comes from "Aired"                                                |
+| AniList      | `startDate`, `endDate` (`{year, month, day}`, any part may be null); `season`, `seasonYear` | `{1999, 10, 20}`, `{1977, 10, 6}`, `{2027, null, null}`                                                             | full date → `aired_dates`; year and month only → `month`; `year` from `seasonYear`, else `startDate.year` |
+| Kitsu        | `startDate`, `endDate`                                                                      | `1999-10-20`, or null; `2002-01-01` for a work MAL and AniList date only as `2002`                                  | `aired_dates`; a 1 January date for a year-only work cannot be told apart from a real date, so it is kept |
+| AniDB        | XML `startdate`, `enddate`                                                                  | `1999-10-20`, `1977-10`, `1970-01-01` for an upcoming work with no known date                                       | full date → `aired_dates`; `1977-10` → `year` + `season`, no date; `1970-01-01` → nothing                 |
+| AnimePlanet  | JSON-LD `startDate`, `endDate`                                                              | `2020-04-05`, or absent when the page has no full date                                                              | `aired_dates`                                                                                             |
+| AnimePlanet  | entry bar `span.iconYear`; season link                                                      | `2002`, `1999 - ?`; `/anime/seasons/fall-1999`                                                                      | `year` when JSON-LD has no `startDate`; `season` from the link                                            |
+| AniSearch    | "Published" (information section)                                                           | `20.10.1999`, `11.2008`, `2027`, `?`, as a range: `20.10.1999 ‑ ?`, `2027 ‑ ?`, `20.10.1999‑31.03.2002`             | full date → `aired_dates` + `season`; `11.2008` → `year` + `month`; `2027` → `year`                       |
+| AnimSchedule | `premier`, `month`                                                                          | full dates; `2002-01-01` for the same year-only work as Kitsu                                                       | `aired_dates.aired_from`, `month`; 1 January dates kept, as for Kitsu                                     |
 
 **Range separators**: MAL `" to "`; AniSearch an en dash or non-breaking hyphen (`‑`), spaced or not; AnimePlanet `" - "`.
 **Measured on 2026-10-04**: 11 of 247 MAL pages gave a year alone in "Aired" and 39 a month and year; 81 of 168 AnimePlanet pages had no JSON-LD `startDate`; AniList `startDate` had a full date for 328 of 453 anime.
@@ -129,35 +129,35 @@
 
 Kitsu and AnimePlanet have **no dedicated source material field**. Kitsu confirmed from [Anime model source](https://github.com/hummingbird-me/kitsu-server/blob/the-future/app/models/anime.rb). AnimePlanet encodes source material as **genre tags** (e.g., `"Based on a Manga"`, `"Original Work"`) rather than a structured field. **AniDB** also has no dedicated field — source material is encoded as **tags** under parent tag `original work` (t2609), extracted by matching tag names from the flat tags list.
 
-| Canonical        | MAL        | AniList                         | AnimSchedule (`sources`) | AniDB (tag name)                                                    | AnimePlanet (genre tag)                               | AniSearch (`adapted`) | Verified with                                     |
-| ---------------- | ---------------- | ------------------------------- | ------------------------ | ------------------------------------------------------------------- | ----------------------------------------------------- | --------------------- | ------------------------------------------------- |
-| `MANGA`          | `"Manga"`        | `MANGA`                         | `"Manga"`                | `"manga"` (t2798)                                       | `"Based on a Manga"`, `"Based on a Webtoon"`          | `"Manga"`             | One Piece, Bocchi the Rock, AoT, Dandadan         |
-| `KOMA_4`         | `"4-koma manga"` | —                               | `"4-koma Manga"`         | —                                                       | `"Based on a 4-koma Manga"`                           | —                     | Azumanga Daioh, Lucky Star, K-On!                 |
-| `DOUJINSHI`      | `"Doujinshi"`    | `DOUJINSHI` _(schema)_          | —                        | —                                                       | `"Based on a Doujinshi"`                              | —                     | Imaizumin (48755) — Adaptation (Doujinshi)        |
-| `ONE_SHOT`       | `"One-shot"`     | `ONE_SHOT` _(manga format)_     | —                        | —                                                       | —                                                     | —                     | One Piece: Strong World Episode 0 (8740)          |
-| `MANHWA`         | `"Manhwa"`       | —                               | —                        | `"manhwa"` (t5010)                                      | —                                                     | —                     | Solo Leveling (52299) — Adaptation (Manhwa)       |
-| `MANHUA`         | `"Manhua"`       | —                               | —                        | `"manhua"` (t6493)                                      | —                                                     | —                     | —                                                 |
-| `WEB_MANGA`      | `"Web manga"`    | —                               | `"Web Manga"` (412)      | —                                                       | —                                                     | —                     | One Punch Man (30276)                             |
-| `LIGHT_NOVEL`    | `"Light novel"`  | `LIGHT_NOVEL`                   | `"Light Novel"`          | —                                                       | `"Based on a Light Novel"`                            | `"Light Novel"`       | SAO (11757), SAO on AniSearch                     |
-| `NOVEL`          | `"Novel"`        | `NOVEL` _(schema)_              | `"Novel"` (517)          | `"novel"` (t2799) — covers LN + prose                   | `"Based on a Novel"`                                  | —                     | Hyouka, Shinsekai Yori, Paprika                   |
-| `WEB_NOVEL`      | `"Web novel"`    | `WEB_NOVEL` _(schema)_          | `"Web Novel"` (431)      | —                                                       | `"Based on a Web Novel"`                              | —                     | Quanzhi Gaoshou                                   |
-| `VISUAL_NOVEL`   | `"Visual novel"` | `VISUAL_NOVEL`                  | `"Visual Novel"` (383)   | —                                                       | `"Based on a Visual Novel"`                           | `"Visual Novel"`      | Umineko, Steins;Gate                              |
-| `GAME`           | `"Game"`         | `VIDEO_GAME`                    | `"Video Game"` (1003)    | `"game"` (t2800)                                        | `"Based on a Video Game"`, `"Based on a Mobile Game"` | `"Video Game"`        | Pokemon, Cyberpunk, Shadowverse, Genshin          |
-| `GAME`           | —                | `GAME` _(schema)_               | —                        | —                                                       | —                                                     | —                     | AniList v3 — entries show `OTHER`                 |
-| `CARD_GAME`      | `"Card game"`    | —                               | `"Card Game"` (76)       | —                                                       | `"Based on a Card Game"`                              | —                     | Shadowverse, Manaria Friends                      |
-| `ORIGINAL`       | `"Original"`     | `ORIGINAL`                      | `"Original"` (7326)      | `"new"` (t2797)                                         | `"Original Work"`                                     | `"Original Work"`     | Cowboy Bebop, Suzume, Shelter                     |
-| `MIXED_MEDIA`    | `"Mixed media"`  | `MULTIMEDIA_PROJECT` _(schema)_ | —                        | —                                                       | —                                                     | —                     | BanG Dream (33573)                                |
-| `MUSIC`          | `"Music"`        | —                               | `"Music"` (138)          | —                                                       | —                                                     | —                     | Heroine Tarumono, Mekakucity Actors               |
-| `RADIO`          | `"Radio"`        | —                               | —                        | `"radio programme"` (t6453)                             | —                                                     | —                     | Suzakinishi (30826) — MAL only, 0 in AnimSchedule |
-| `BOOK`           | `"Book"`         | —                               | `"Book"` (113)           | —                                                       | —                                                     | —                     | Hi no Ame (5929)                                  |
-| `PICTURE_BOOK`   | `"Picture book"` | `PICTURE_BOOK` _(schema)_       | `"Picture Book"` (161)   | `"picture book"` (t7469)                                | `"Based on a Picture Book"`                           | —                     | Anpanman (60431)                                  |
-| `COMIC`          | —                | `COMIC`                         | —                        | `"western comics"` (t3430)                              | —                                                     | —                     | AniList: western comics (DC, Marvel, etc.)        |
-| `LIVE_ACTION`    | —                | `LIVE_ACTION`                   | —                        | `"live-action film"` (t2796), `"television programme"` (t6446) | —                                               | —                     | AniList: based on live-action film/drama          |
-| `ILLUSTRATION`   | —                | —                               | —                        | `"cg collection"` (t7252)                               | —                                                     | —                     | AniDB: illustrated CG work with story/dialogue    |
-| `WESTERN_MEDIA`  | —                | —                               | —                        | `"western animated cartoon"` (t3714), `"american derived"` (t4424) | —                                               | —                     | Powerpuff Girls Z, Batman Ninja, Star Wars: Visions |
-| `OTHER`          | `"Other"`        | `OTHER`                         | `"Other"` (885)          | —                                                       | `"Based on a Doujinshi"`, `"Based on a Play"`         | `"Other"`             | various, Trouble Chocolate                        |
-| `UNKNOWN`        | `"Unknown"`      | —                               | —                        | —                                                       | —                                                     | —                     | Gushu Xin Shuo (44651) — MAL only                 |
-| `OTHER`          | —                | `ANIME`                         | —                        | —                                                       | —                                                     | —                     | AniList: anime adapted from existing anime        |
+| Canonical       | MAL              | AniList                         | AnimSchedule (`sources`) | AniDB (tag name)                                                   | AnimePlanet (genre tag)                               | AniSearch (`adapted`) | Verified with                                       |
+| --------------- | ---------------- | ------------------------------- | ------------------------ | ------------------------------------------------------------------ | ----------------------------------------------------- | --------------------- | --------------------------------------------------- |
+| `MANGA`         | `"Manga"`        | `MANGA`                         | `"Manga"`                | `"manga"` (t2798)                                                  | `"Based on a Manga"`, `"Based on a Webtoon"`          | `"Manga"`             | One Piece, Bocchi the Rock, AoT, Dandadan           |
+| `KOMA_4`        | `"4-koma manga"` | —                               | `"4-koma Manga"`         | —                                                                  | `"Based on a 4-koma Manga"`                           | —                     | Azumanga Daioh, Lucky Star, K-On!                   |
+| `DOUJINSHI`     | `"Doujinshi"`    | `DOUJINSHI` _(schema)_          | —                        | —                                                                  | `"Based on a Doujinshi"`                              | —                     | Imaizumin (48755) — Adaptation (Doujinshi)          |
+| `ONE_SHOT`      | `"One-shot"`     | `ONE_SHOT` _(manga format)_     | —                        | —                                                                  | —                                                     | —                     | One Piece: Strong World Episode 0 (8740)            |
+| `MANHWA`        | `"Manhwa"`       | —                               | —                        | `"manhwa"` (t5010)                                                 | —                                                     | —                     | Solo Leveling (52299) — Adaptation (Manhwa)         |
+| `MANHUA`        | `"Manhua"`       | —                               | —                        | `"manhua"` (t6493)                                                 | —                                                     | —                     | —                                                   |
+| `WEB_MANGA`     | `"Web manga"`    | —                               | `"Web Manga"` (412)      | —                                                                  | —                                                     | —                     | One Punch Man (30276)                               |
+| `LIGHT_NOVEL`   | `"Light novel"`  | `LIGHT_NOVEL`                   | `"Light Novel"`          | —                                                                  | `"Based on a Light Novel"`                            | `"Light Novel"`       | SAO (11757), SAO on AniSearch                       |
+| `NOVEL`         | `"Novel"`        | `NOVEL` _(schema)_              | `"Novel"` (517)          | `"novel"` (t2799) — covers LN + prose                              | `"Based on a Novel"`                                  | —                     | Hyouka, Shinsekai Yori, Paprika                     |
+| `WEB_NOVEL`     | `"Web novel"`    | `WEB_NOVEL` _(schema)_          | `"Web Novel"` (431)      | —                                                                  | `"Based on a Web Novel"`                              | —                     | Quanzhi Gaoshou                                     |
+| `VISUAL_NOVEL`  | `"Visual novel"` | `VISUAL_NOVEL`                  | `"Visual Novel"` (383)   | —                                                                  | `"Based on a Visual Novel"`                           | `"Visual Novel"`      | Umineko, Steins;Gate                                |
+| `GAME`          | `"Game"`         | `VIDEO_GAME`                    | `"Video Game"` (1003)    | `"game"` (t2800)                                                   | `"Based on a Video Game"`, `"Based on a Mobile Game"` | `"Video Game"`        | Pokemon, Cyberpunk, Shadowverse, Genshin            |
+| `GAME`          | —                | `GAME` _(schema)_               | —                        | —                                                                  | —                                                     | —                     | AniList v3 — entries show `OTHER`                   |
+| `CARD_GAME`     | `"Card game"`    | —                               | `"Card Game"` (76)       | —                                                                  | `"Based on a Card Game"`                              | —                     | Shadowverse, Manaria Friends                        |
+| `ORIGINAL`      | `"Original"`     | `ORIGINAL`                      | `"Original"` (7326)      | `"new"` (t2797)                                                    | `"Original Work"`                                     | `"Original Work"`     | Cowboy Bebop, Suzume, Shelter                       |
+| `MIXED_MEDIA`   | `"Mixed media"`  | `MULTIMEDIA_PROJECT` _(schema)_ | —                        | —                                                                  | —                                                     | —                     | BanG Dream (33573)                                  |
+| `MUSIC`         | `"Music"`        | —                               | `"Music"` (138)          | —                                                                  | —                                                     | —                     | Heroine Tarumono, Mekakucity Actors                 |
+| `RADIO`         | `"Radio"`        | —                               | —                        | `"radio programme"` (t6453)                                        | —                                                     | —                     | Suzakinishi (30826) — MAL only, 0 in AnimSchedule   |
+| `BOOK`          | `"Book"`         | —                               | `"Book"` (113)           | —                                                                  | —                                                     | —                     | Hi no Ame (5929)                                    |
+| `PICTURE_BOOK`  | `"Picture book"` | `PICTURE_BOOK` _(schema)_       | `"Picture Book"` (161)   | `"picture book"` (t7469)                                           | `"Based on a Picture Book"`                           | —                     | Anpanman (60431)                                    |
+| `COMIC`         | —                | `COMIC`                         | —                        | `"western comics"` (t3430)                                         | —                                                     | —                     | AniList: western comics (DC, Marvel, etc.)          |
+| `LIVE_ACTION`   | —                | `LIVE_ACTION`                   | —                        | `"live-action film"` (t2796), `"television programme"` (t6446)     | —                                                     | —                     | AniList: based on live-action film/drama            |
+| `ILLUSTRATION`  | —                | —                               | —                        | `"cg collection"` (t7252)                                          | —                                                     | —                     | AniDB: illustrated CG work with story/dialogue      |
+| `WESTERN_MEDIA` | —                | —                               | —                        | `"western animated cartoon"` (t3714), `"american derived"` (t4424) | —                                                     | —                     | Powerpuff Girls Z, Batman Ninja, Star Wars: Visions |
+| `OTHER`         | `"Other"`        | `OTHER`                         | `"Other"` (885)          | —                                                                  | `"Based on a Doujinshi"`, `"Based on a Play"`         | `"Other"`             | various, Trouble Chocolate                          |
+| `UNKNOWN`       | `"Unknown"`      | —                               | —                        | —                                                                  | —                                                     | —                     | Gushu Xin Shuo (44651) — MAL only                   |
+| `OTHER`         | —                | `ANIME`                         | —                        | —                                                                  | —                                                     | —                     | AniList: anime adapted from existing anime          |
 
 **MAL**: 18 active (all verified via live API). `"Manhwa"` and `"Doujinshi"` appear as media types in Related Entries (e.g. `Adaptation (Manhwa)`), not always as the `source` sidebar field. `"One-shot"` and `"4-koma manga"` appear in both.
 **AniList**: 9 active (ORIGINAL, MANGA, LIGHT_NOVEL, VISUAL_NOVEL, VIDEO_GAME, OTHER, ANIME, LIVE_ACTION, COMIC). `DOUJINSHI` and `ONE_SHOT` are in schema but stored as `OTHER` in practice; here mapped to their own canonical types as they appear in related entries. `ANIME` (anime adapted from existing anime) maps to `OTHER`. `LIVE_ACTION` and `COMIC` have their own canonical enum values.
@@ -171,7 +171,7 @@ Kitsu and AnimePlanet have **no dedicated source material field**. Kitsu confirm
 
 ## Rating / Age Rating
 
-| Canonical   | MAL                          | Kitsu (`ageRating`) | AniDB                                        | AnimePlanet                 | AniSearch                | Verified with               |
+| Canonical   | MAL                                | Kitsu (`ageRating`) | AniDB                                        | AnimePlanet                 | AniSearch                | Verified with               |
 | ----------- | ---------------------------------- | ------------------- | -------------------------------------------- | --------------------------- | ------------------------ | --------------------------- |
 | `G`         | `"G - All Ages"`                   | `"G"` (6,727)       | —                                            | —                           | —                        | On Your Mark (1047)         |
 | `PG`        | `"PG - Children"`                  | `"PG"` (10,394)     | —                                            | —                           | —                        | Pokemon (527), One Piece    |
@@ -201,15 +201,15 @@ the same word (`science fiction` and `Sci-Fi`, `Superpowers` and `Super Power`).
 No code fetches them: `merge_categories` in `metadata_rules.py` files each word
 by what the providers called it, not by a vocabulary.
 
-| Source | Endpoint | Calls | Size | Notes |
-| :----- | :------- | ----: | ---: | :---- |
-| AniList | GraphQL `{ GenreCollection }` | 1 | 19 | Fixed genre list |
-| AniList | GraphQL `{ MediaTagCollection { name category isAdult } }` | 1 | 428 | Carries the category (`Theme-*`, `Cast-*`, `Setting-*`, `Technical`, `Demographic`) that the mapper routes on, plus `isAdult` for `content_warnings` |
-| AniDB | `httpapi?request=taglist` | **1** | **1,723** | The largest vocabulary of the seven. Carries `id`, `parentid` and `isverified`, so the tag hierarchy comes free. Not listed with the other request types — `request=tag` answers `<error code="320">` |
-| Kitsu | `api/edge/categories` | paginated | 218 | `meta.count` gives the total |
-| Anime-Planet | `/anime/tags` | 20 pages | 675 | 35 per page, fixed server-side — `per_page`, `limit` and `size` are all ignored. Cloudflare rejects curl with `403`; needs a browser |
-| AniSearch | `/anime/genre` | 1 | 20 main + 26 subsidiary | Plain HTTP. `main` and `subsidiary` are separate link classes on one page. No tag index found |
-| AnimeSchedule | `/genres` | 1 | 30 | Plain HTTP page; the v3 API has no `/genres` endpoint (`404`) |
+| Source        | Endpoint                                                   |     Calls |                    Size | Notes                                                                                                                                                                                                 |
+| :------------ | :--------------------------------------------------------- | --------: | ----------------------: | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AniList       | GraphQL `{ GenreCollection }`                              |         1 |                      19 | Fixed genre list                                                                                                                                                                                      |
+| AniList       | GraphQL `{ MediaTagCollection { name category isAdult } }` |         1 |                     428 | Carries the category (`Theme-*`, `Cast-*`, `Setting-*`, `Technical`, `Demographic`) that the mapper routes on, plus `isAdult` for `content_warnings`                                                  |
+| AniDB         | `httpapi?request=taglist`                                  |     **1** |               **1,723** | The largest vocabulary of the seven. Carries `id`, `parentid` and `isverified`, so the tag hierarchy comes free. Not listed with the other request types — `request=tag` answers `<error code="320">` |
+| Kitsu         | `api/edge/categories`                                      | paginated |                     218 | `meta.count` gives the total                                                                                                                                                                          |
+| Anime-Planet  | `/anime/tags`                                              |  20 pages |                     675 | 35 per page, fixed server-side — `per_page`, `limit` and `size` are all ignored. Cloudflare rejects curl with `403`; needs a browser                                                                  |
+| AniSearch     | `/anime/genre`                                             |         1 | 20 main + 26 subsidiary | Plain HTTP. `main` and `subsidiary` are separate link classes on one page. No tag index found                                                                                                         |
+| AnimeSchedule | `/genres`                                                  |         1 |                      30 | Plain HTTP page; the v3 API has no `/genres` endpoint (`404`)                                                                                                                                         |
 
 **Prefer the API over the browser.** AniDB's `taglist` replaces roughly 97 browser
 page-fetches at 30 tags each, and needs no Cloudflare handling at all. It was
@@ -235,27 +235,27 @@ user-agent. MAL, AniList and Kitsu are APIs and need no browser.
 Where each source publishes studios, producers and licensors, and the URL it
 gives for a company. Verified live on 2026-09-24 over 684 anime.
 
-| Source | Where | Roles | Company URL |
-| :----- | :---- | :---- | :---------- |
-| MAL | anime page | studio, producer, licensor | `myanimelist.net/anime/producer/{id}/{Name}` |
-| AniList | GraphQL `studios { edges { node { isAnimationStudio } } }` | studio, producer | `anilist.co/studio/{id}` |
-| Kitsu | `api/edge/anime/{id}/anime-productions?include=producer` | studio, producer, licensor | `api/edge/producers/{id}` |
-| AniDB | `httpapi?request=anime`, the `<creators>` block | studio, producer | `anidb.net/creator/{id}` |
-| Anime-Planet | anime page, `entryBar` studio anchors | studio | `anime-planet.com/anime/studios/{slug}` |
-| AniSearch | anime page, single studio field | studio | `anisearch.com/company/{id},{slug}` |
-| AnimeSchedule | `api/v3/anime/{route}` | studio | `animeschedule.net/studios/{route}` |
+| Source        | Where                                                      | Roles                      | Company URL                                  |
+| :------------ | :--------------------------------------------------------- | :------------------------- | :------------------------------------------- |
+| MAL           | anime page                                                 | studio, producer, licensor | `myanimelist.net/anime/producer/{id}/{Name}` |
+| AniList       | GraphQL `studios { edges { node { isAnimationStudio } } }` | studio, producer           | `anilist.co/studio/{id}`                     |
+| Kitsu         | `api/edge/anime/{id}/anime-productions?include=producer`   | studio, producer, licensor | `api/edge/producers/{id}`                    |
+| AniDB         | `httpapi?request=anime`, the `<creators>` block            | studio, producer           | `anidb.net/creator/{id}`                     |
+| Anime-Planet  | anime page, `entryBar` studio anchors                      | studio                     | `anime-planet.com/anime/studios/{slug}`      |
+| AniSearch     | anime page, single studio field                            | studio                     | `anisearch.com/company/{id},{slug}`          |
+| AnimeSchedule | `api/v3/anime/{route}`                                     | studio                     | `animeschedule.net/studios/{route}`          |
 
 Coverage over the same 684 anime:
 
-| Source | studios | producers | licensors | anime covered |
-| :----- | ------: | --------: | --------: | ------------: |
-| MAL | 659 | 1,100 | 276 | 665 |
-| AniList | 628 | 933 | 0 | 611 |
-| Anime-Planet | 624 | 0 | 0 | 578 |
-| AniSearch | 560 | 0 | 0 | 560 |
-| AnimeSchedule | 556 | 0 | 0 | 493 |
-| Kitsu | 356 | 1,222 | 140 | 495 |
-| AniDB | 168 | 155 | 0 | 230 |
+| Source        | studios | producers | licensors | anime covered |
+| :------------ | ------: | --------: | --------: | ------------: |
+| MAL           |     659 |     1,100 |       276 |           665 |
+| AniList       |     628 |       933 |         0 |           611 |
+| Anime-Planet  |     624 |         0 |         0 |           578 |
+| AniSearch     |     560 |         0 |         0 |           560 |
+| AnimeSchedule |     556 |         0 |         0 |           493 |
+| Kitsu         |     356 |     1,222 |       140 |           495 |
+| AniDB         |     168 |       155 |         0 |           230 |
 
 Per-source notes, each of which cost something to find:
 
