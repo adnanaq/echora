@@ -1,4 +1,7 @@
+from unittest.mock import patch
+
 import pytest
+from enrichment.sources.anisearch import anisearch_episode_crawler
 from enrichment.sources.anisearch.anisearch_episode_crawler import (
     fetch_anisearch_episodes,
 )
@@ -18,7 +21,13 @@ async def test_fetch_anisearch_episodes_second_call_served_from_redis(
 
     first = await fetch_anisearch_episodes(ANIME_URL)
     keys = await redis_client.keys("result_cache:anisearch_episodes:*")
-    second = await fetch_anisearch_episodes(ANIME_URL)
+    with patch.object(
+        anisearch_episode_crawler,
+        "fetch_anisearch_page",
+        autospec=True,
+        side_effect=AssertionError("second call reached AniSearch"),
+    ):
+        second = await fetch_anisearch_episodes(ANIME_URL)
 
     assert first
     assert second == first
