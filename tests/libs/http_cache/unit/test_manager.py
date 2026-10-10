@@ -113,6 +113,7 @@ async def test_get_aiohttp_session_enabled_returns_cached_session_with_service_t
     assert isinstance(session, CachedAiohttpSession)
     assert isinstance(session.storage, AsyncRedisStorage)
     assert session.storage._default_ttl == 7200
+    assert session.default_ttl == 7200
     assert session.storage._key_prefix == "hishel_cache"
     assert (
         session.storage._client.connection_pool.connection_kwargs["decode_responses"]

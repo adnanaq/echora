@@ -136,6 +136,19 @@ async def test_get_aiohttp_session_response_over_10_mb_returned_but_not_cached(
     assert hits["/large"] == 2
 
 
+async def test_get_aiohttp_session_forced_cache_header_carries_service_ttl(
+    cache: HTTPCacheManager, server: tuple[str, Counter[str]]
+) -> None:
+    base, _ = server
+    session = cache.get_aiohttp_session("kitsu")
+    assert isinstance(session, CachedAiohttpSession)
+
+    async with session, session.get(f"{base}/json?id=header") as response:
+        cache_control = response.headers.get("Cache-Control")
+
+    assert cache_control == "public, max-age=2"
+
+
 async def test_get_aiohttp_session_expires_after_service_ttl_from_fetch(
     cache: HTTPCacheManager, server: tuple[str, Counter[str]]
 ) -> None:

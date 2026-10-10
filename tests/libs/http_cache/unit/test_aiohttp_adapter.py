@@ -460,15 +460,13 @@ class TestRequestSenderForceCacheBehaviour:
         assert "max-age=1200" in cc
 
     @pytest.mark.asyncio
-    async def test_force_cache_falls_back_to_storage_default_ttl(
+    async def test_force_cache_without_request_ttl_uses_session_default_ttl(
         self, storage: AsyncMock
     ) -> None:
-        """force_cache=True falls back to storage.default_ttl when no metadata TTL."""
         mock_session = AsyncMock()
         mock_session.headers = {}
-        storage.default_ttl = 7200.0
         cached = CachedAiohttpSession(
-            storage=storage, session=mock_session, force_cache=True
+            storage=storage, session=mock_session, force_cache=True, default_ttl=7200
         )
         mock_session.request = AsyncMock(
             return_value=_make_origin_resp(cache_control="no-cache")
@@ -491,14 +489,40 @@ class TestRequestSenderForceCacheBehaviour:
         assert "max-age=7200" in cc
 
     @pytest.mark.asyncio
+    async def test_force_cache_zero_default_ttl_writes_max_age_zero(
+        self, storage: AsyncMock
+    ) -> None:
+        session = AsyncMock()
+        session.headers = {}
+        session.request = AsyncMock(
+            return_value=_make_origin_resp(cache_control="no-cache")
+        )
+        cached = CachedAiohttpSession(
+            storage=storage, session=session, force_cache=True, default_ttl=0
+        )
+
+        async def body_stream():
+            yield b"{}"
+
+        await cached._proxy.handle_request(
+            Request(
+                method="GET",
+                url="https://example.com/api",
+                headers=Headers({}),
+                stream=body_stream(),
+            )
+        )
+
+        _req, stored_response, _key = storage.create_entry.call_args.args
+        assert stored_response.headers.get("Cache-Control") == "public, max-age=0"
+
+    @pytest.mark.asyncio
     async def test_force_cache_falls_back_to_default_86400(
         self, storage: AsyncMock
     ) -> None:
         """force_cache=True uses 86400s when no TTL available anywhere."""
         mock_session = AsyncMock()
         mock_session.headers = {}
-        # storage has no default_ttl attribute
-        del storage.default_ttl
         cached = CachedAiohttpSession(
             storage=storage, session=mock_session, force_cache=True
         )

@@ -151,14 +151,14 @@ class HTTPCacheManager:
         client = self._client_for_loop(decode_responses=False)
         if client is None:
             return aiohttp.ClientSession(**session_kwargs)
-        storage = AsyncRedisStorage(
-            client=client, ttl=self.cache.ttl_for(service), key_prefix="hishel_cache"
-        )
+        ttl = self.cache.ttl_for(service)
+        storage = AsyncRedisStorage(client=client, ttl=ttl, key_prefix="hishel_cache")
         return CachedAiohttpSession(
             storage=storage,
             policy=self.policy,
             force_cache=self.cache.force_cache,
             always_revalidate=self.cache.always_revalidate,
+            default_ttl=ttl,
             **session_kwargs,
         )
 

@@ -353,6 +353,7 @@ class CachedAiohttpSession:
         force_cache: bool = False,
         always_revalidate: bool = False,
         session: aiohttp.ClientSession | None = None,
+        default_ttl: int | None = None,
         **session_kwargs: Any,
     ) -> None:
         """Initialize cached aiohttp session with Hishel integration.
@@ -380,6 +381,8 @@ class CachedAiohttpSession:
                 requests, forcing revalidation with server.
             session: Existing aiohttp.ClientSession to wrap. If None, creates new
                 session with session_kwargs.
+            default_ttl: Seconds written into the forced ``Cache-Control`` when a
+                request sets no ``hishel_ttl``; 86400 when None.
             **session_kwargs: Additional arguments forwarded to aiohttp.ClientSession
                 constructor (e.g., timeout, headers, connector).
 
@@ -398,6 +401,7 @@ class CachedAiohttpSession:
             policy = FilterPolicy()
         self.policy = policy
         self.force_cache = force_cache
+        self.default_ttl = default_ttl
         self.always_revalidate = always_revalidate
         self.session = session or aiohttp.ClientSession(**session_kwargs)
         # Snapshot default headers so per-request calls can merge them.
@@ -505,12 +509,7 @@ class CachedAiohttpSession:
                         if isinstance(ttl_meta, int | float):
                             ttl = int(ttl_meta)
                     if ttl is None:
-                        # Fall back to storage default TTL when available.
-                        storage_ttl = getattr(self.storage, "default_ttl", None)
-                        if isinstance(storage_ttl, int | float):
-                            ttl = int(storage_ttl)
-                    if ttl is None:
-                        ttl = 86400
+                        ttl = 86400 if self.default_ttl is None else self.default_ttl
 
                     # Replace/define Cache-Control. Also strip legacy/contradictory headers.
                     res_headers["Cache-Control"] = f"public, max-age={ttl}"
