@@ -916,6 +916,10 @@ A link is excluded when another field already owns it, decided **by platform as 
 
 A claimed link is **moved, not discarded**. `merge_streaming_sources` reads from `external_sources` as well as its own field, so AniDB's Crunchyroll, Amazon and Funimation links — at URLs no other provider reports — land in `streaming_sources` instead of vanishing. Excluding them from the residual without collecting them elsewhere lost three links outright on One Piece, Funimation entirely.
 
+A link's `platform` is its domain name (`www.imdb.com` → `imdb`, `cal.syoboi.jp` → `syoboi`, `toei-anim.co.jp` → `toei_anim`), read with `tldextract`'s bundled suffix list so naming never goes online. Only sites whose domain is not the name used for them are listed in `external_links.py` — `baike.baidu.com` → `baidu_baike`, `bgm.tv` → `bangumi`, `primevideo.com` → `prime_video` and a few more. A link is `official_site` only when the provider says so: MAL and AniList label it "Official Site", AnimeSchedule files it as `official`, and AniDB gives it as its own resource type. Kitsu and AniDB give most links as a site and an identifier rather than an address; `page_link` builds the address from one shared list of each site's page format.
+
+A provider page is **dropped, not moved**. MAL lists AniDB among its resources, AniDB links MAL, and Kitsu's mappings link MAL, AniList and AniDB. `sources` is built only from each provider's own `sources` and the seed, so a provider page found among external links never enters it, and the merge does not check whether that provider is already present. Each provider's own record keeps these links as evidence for work matching. Aggregator pages — TheTVDB, Trakt, ANN, IMDb, Syoboi — are owned by no other field and stay here.
+
 On a collision the richer entry wins — MAL states a `label`, AniDB a `language`, and neither should erase the other.
 
 ### Why `list[ExternalLink]` rather than a mapping

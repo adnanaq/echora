@@ -33,6 +33,7 @@ from enrichment.sources.base.framework import (
     NullRepository,
 )
 from enrichment.sources.base.page_readiness import wait_for_page
+from enrichment.sources.base.utils import parse_partial_date, split_date_range
 from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
 from lxml import etree
@@ -53,6 +54,7 @@ _AKA_PREFIX = "alt title:"
 _XPATHS: dict[str, str] = {
     "type_raw": "//section[contains(@class,'entryBar')]//span[@class='type']",
     "season_url": "//section[contains(@class,'entryBar')]//a[contains(@href,'/anime/seasons/')]/@href",
+    "year_text": "//section[contains(@class,'entryBar')]//span[contains(@class,'iconYear')]",
     "rank_text": "//section[contains(@class,'entryBar')]//div[contains(.,'Rank #')]",
     "studios": "//section[contains(@class,'entryBar')]//a[contains(@href,'/studios/')]",
     "aka": "//h2[contains(@class,'aka')]",
@@ -84,6 +86,12 @@ def _parse_season(season_url: str | None) -> str | None:
     if not match:
         return None
     return match.group(1).split("-")[0].lower()
+
+
+def _parse_start_year(year_text: str | None) -> int | None:
+    """Parse the first year from the entry bar's year text, e.g. ' 1999 - ? ' → 1999."""
+    year, _ = parse_partial_date(split_date_range(year_text)[0])
+    return year
 
 
 def _parse_rank(rank_text: str | None) -> int | None:
@@ -435,6 +443,7 @@ def _extract_anime_from_html(html: str) -> dict[str, Any] | None:
         "aggregate_rating": json_ld.get("aggregateRating"),
         "type_raw": _t("type_raw"),
         "season_url": _a("season_url"),
+        "year_text": _t("year_text"),
         "rank_text": _t("rank_text"),
         "aka": _t("aka"),
         "cover": _a("cover"),
@@ -472,6 +481,7 @@ def _build_anime_from_raw(raw: dict[str, Any]) -> AnimePlanetAnime:
         aggregate_rating=_parse_aggregate_rating(raw.get("aggregate_rating")),
         type_raw=raw.get("type_raw"),
         season=_parse_season(raw.get("season_url")),
+        start_year=_parse_start_year(raw.get("year_text")),
         rank=_parse_rank(raw.get("rank_text")),
         alt_title=_parse_alt_title(raw.get("aka")),
         cover=raw.get("cover"),

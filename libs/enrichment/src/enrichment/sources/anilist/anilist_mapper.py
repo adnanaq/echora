@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from common.models.anime import (
+    AiredDates,
     Anime,
     AnimeImages,
     AnimeRelationType,
@@ -33,6 +34,7 @@ from common.models.anime import (
     TrailerEntry,
     VoiceActor,
 )
+from common.utils.datetime_utils import normalize_to_utc
 from enrichment.sources.anilist.anilist_anime_models import (
     AniListAnime,
     AniListRelationEdge,
@@ -43,6 +45,7 @@ from enrichment.sources.anilist.anilist_character_models import (
 )
 from enrichment.sources.base.companies import companies_from_roles
 from enrichment.sources.base.external_links import external_link
+from enrichment.sources.base.utils import month_name
 from enrichment.utils.text_utils import normalize_score
 
 # AniList relation types that represent the anime being the SOURCE of a relation
@@ -148,8 +151,19 @@ def anime_from_anilist(anime: AniListAnime) -> dict[str, Any]:
     episode_count = anime.episodes or 0
     duration = (anime.duration * 60) if anime.duration else None  # minutes → seconds
     nsfw = anime.is_adult
-    year = anime.season_year
+    start, end = anime.start_date, anime.end_date
+    year = anime.season_year or (start.year if start else None)
     season = AnimeSeason(anime.season) if anime.season else None
+    # normalize_to_utc reads only full dates, so "1977-10" or "2027" give no date;
+    # a month without a day is stated as the month instead.
+    aired_from = normalize_to_utc(_fuzzy_date_str(start))
+    aired_to = normalize_to_utc(_fuzzy_date_str(end))
+    aired_dates = (
+        AiredDates(aired_from=aired_from, aired_to=aired_to)
+        if aired_from or aired_to
+        else None
+    )
+    month = month_name(start.month) if start and start.month and not start.day else None
     country_of_origin = anime.country_of_origin
 
     # ── Sources ───────────────────────────────────────────────────────────────
@@ -268,7 +282,9 @@ def anime_from_anilist(anime: AniListAnime) -> dict[str, Any]:
         nsfw=nsfw,
         country_of_origin=country_of_origin,
         year=year,
+        month=month,
         season=season,
+        aired_dates=aired_dates,
         sources=sources,
         genres=genres,
         synonyms=synonyms,

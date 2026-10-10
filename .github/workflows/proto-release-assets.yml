@@ -20,7 +20,7 @@ jobs:
     steps:
       - name: Resolve tag name
         run: |
-          set -euo pipefail
+          set -euxo pipefail
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             TAG_NAME="${{ inputs.tag_name }}"
           else
@@ -48,7 +48,7 @@ jobs:
 
       - name: Validate proto source set
         run: |
-          set -euo pipefail
+          set -euxo pipefail
           if ! find protos -type f -name '*.proto' | grep -q .; then
             echo "No .proto files found under protos/"
             exit 1
@@ -56,13 +56,12 @@ jobs:
 
       - name: Package proto artifacts
         run: |
-          set -euo pipefail
+          set -euxo pipefail
 
           ARTIFACTS_ROOT="dist/proto-artifacts"
           PYTHON_ARTIFACT_ROOT="${ARTIFACTS_ROOT}/python"
           RUST_ARTIFACT_ROOT="${ARTIFACTS_ROOT}/rust"
-          mkdir -p "${PYTHON_ARTIFACT_ROOT}" "${RUST_ARTIFACT_ROOT}/generated"
-          mkdir -p "${PYTHON_ARTIFACT_ROOT}/generated"
+          mkdir -p "${PYTHON_ARTIFACT_ROOT}/generared" "${RUST_ARTIFACT_ROOT}/generated"
 
           mapfile -t PROTO_FILES < <(find protos -type f -name '*.proto' | sort)
 

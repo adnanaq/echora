@@ -22,6 +22,7 @@ from enrichment.sources.kitsu.kitsu_models import (
     KitsuEpisode,
     KitsuEpisodeAttributes,
     KitsuImage,
+    KitsuMapping,
     KitsuMediaCharacter,
     KitsuMediaCharacterAttributes,
     KitsuPerson,
@@ -60,9 +61,104 @@ def _make_anime(**overrides) -> KitsuAnime:
         abbreviatedTitles=["OP"],
     )
     companies = overrides.pop("companies", [])
+    mappings = overrides.pop("mappings", [])
     for key, val in overrides.items():
         setattr(attrs, key, val)
-    return KitsuAnime(id="12", attributes=attrs, companies=companies)
+    return KitsuAnime(id="12", attributes=attrs, companies=companies, mappings=mappings)
+
+
+def _mapping(site: str, external_id: str) -> KitsuMapping:
+    return KitsuMapping.model_validate(
+        {"id": site, "attributes": {"externalSite": site, "externalId": external_id}}
+    )
+
+
+@pytest.mark.parametrize(
+    ("site", "external_id", "platform", "address"),
+    [
+        ("myanimelist/anime", "21", "myanimelist", "https://myanimelist.net/anime/21"),
+        ("anilist/anime", "21", "anilist", "https://anilist.co/anime/21"),
+        ("anilist/manga", "30013", "anilist", "https://anilist.co/manga/30013"),
+        ("anidb", "69", "anidb", "https://anidb.net/anime/69"),
+        (
+            "animenewsnetwork",
+            "836",
+            "anime_news_network",
+            "https://www.animenewsnetwork.com/encyclopedia/anime.php?id=836",
+        ),
+        (
+            "thetvdb/series",
+            "81797",
+            "thetvdb",
+            "https://thetvdb.com/dereferrer/series/81797",
+        ),
+        (
+            "thetvdb/season",
+            "482226",
+            "thetvdb",
+            "https://thetvdb.com/dereferrer/season/482226",
+        ),
+        ("trakt", "37696", "trakt", "https://trakt.tv/shows/37696"),
+    ],
+)
+def test_anime_from_kitsu_mapping_with_known_site_becomes_external_link(
+    site: str, external_id: str, platform: str, address: str
+) -> None:
+    result = anime_from_kitsu(_make_anime(mappings=[_mapping(site, external_id)]))
+    assert result["external_sources"] == [{"platform": platform, "source": address}]
+
+
+def test_anime_from_kitsu_thetvdb_series_and_season_number_links_series() -> None:
+    result = anime_from_kitsu(_make_anime(mappings=[_mapping("thetvdb", "79099/3")]))
+    assert [link["source"] for link in result["external_sources"]] == [
+        "https://thetvdb.com/dereferrer/series/79099"
+    ]
+
+
+def test_anime_from_kitsu_mappings_to_same_address_give_one_link() -> None:
+    result = anime_from_kitsu(
+        _make_anime(
+            mappings=[
+                _mapping("thetvdb/series", "79099"),
+                _mapping("thetvdb", "79099/3"),
+                _mapping("thetvdb/season", "482226"),
+            ]
+        )
+    )
+    assert [link["source"] for link in result["external_sources"]] == [
+        "https://thetvdb.com/dereferrer/series/79099",
+        "https://thetvdb.com/dereferrer/season/482226",
+    ]
+
+
+@pytest.mark.parametrize(
+    "mapping",
+    [
+        _mapping("aozora", "a70pbqlcBK"),
+        _mapping("hulu", "50024059"),
+        _mapping("some-new-site", "1"),
+        _mapping("anidb", ""),
+    ],
+    ids=["aozora", "hulu", "unknown_site", "empty_id"],
+)
+def test_anime_from_kitsu_mapping_without_linkable_page_skipped(
+    mapping: KitsuMapping,
+) -> None:
+    result = anime_from_kitsu(_make_anime(mappings=[mapping]))
+    assert result["external_sources"] == []
+
+
+def test_anime_from_kitsu_trakt_mapping_on_movie_links_series_show_page() -> None:
+    result = anime_from_kitsu(
+        _make_anime(subtype="movie", mappings=[_mapping("trakt", "24724")])
+    )
+    assert result["external_sources"] == [
+        {"platform": "trakt", "source": "https://trakt.tv/shows/24724"}
+    ]
+
+
+def test_anime_from_kitsu_without_mappings_gives_no_external_links() -> None:
+    assert anime_from_kitsu(_make_anime())["external_sources"] == []
 
 
 def test_companies_split_by_role() -> None:

@@ -21,6 +21,7 @@ from common.models.anime import (
     CharacterRole,
     CompanyEntry,
     Episode,
+    ExternalLink,
     Ography,
     Statistics,
     TrailerEntry,
@@ -32,9 +33,11 @@ from common.utils.datetime_utils import (
     normalize_to_utc,
 )
 from enrichment.sources.base.companies import companies_from_roles
+from enrichment.sources.base.external_links import page_link
 from enrichment.sources.kitsu.kitsu_models import (
     KitsuAnime,
     KitsuEpisode,
+    KitsuMapping,
     KitsuMediaCharacter,
 )
 from enrichment.utils.text_utils import normalize_score
@@ -233,6 +236,7 @@ def anime_from_kitsu(anime: KitsuAnime) -> dict[str, Any]:
         themes=anime.themes,
         synonyms=attrs.abbreviatedTitles,
         sources=[f"https://kitsu.io/anime/{attrs.slug}"] if attrs.slug else [],
+        external_sources=_external_sources_from_mappings(anime.mappings),
         images=images,
         statistics=statistics,
         broadcast=broadcast,
@@ -245,6 +249,39 @@ def anime_from_kitsu(anime: KitsuAnime) -> dict[str, Any]:
         ),
     )
     return result.model_dump(mode="json", exclude_none=True)
+
+
+def _external_sources_from_mappings(mappings: list[KitsuMapping]) -> list[ExternalLink]:
+    """Turn Kitsu's mappings into links to this anime's page on each site.
+
+    Args:
+        mappings: The mappings Kitsu holds for the anime.
+
+    Returns:
+        One link per distinct address, in Kitsu's order.
+
+    Examples:
+        >>> def mapping(site, external_id):
+        ...     attributes = {"externalSite": site, "externalId": external_id}
+        ...     return KitsuMapping.model_validate({"id": site, "attributes": attributes})
+        >>> links = _external_sources_from_mappings(
+        ...     [mapping("myanimelist/anime", "21"), mapping("thetvdb", "79099/3")]
+        ... )
+        >>> [(link.platform, link.source) for link in links]
+        [('myanimelist', 'https://myanimelist.net/anime/21'), ('thetvdb', 'https://thetvdb.com/dereferrer/series/79099')]
+    """
+    links: dict[str, ExternalLink] = {}
+    for mapping in mappings:
+        platform, _, kind = (mapping.attributes.external_site or "").partition("/")
+        external_id = mapping.attributes.external_id or ""
+        if (platform, kind) == ("thetvdb", ""):
+            # The id is "series/season number"; only the series has an address.
+            external_id, kind = external_id.partition("/")[0], "series"
+        if (
+            link := page_link(platform, external_id, kind=kind)
+        ) and link.source not in links:
+            links[link.source] = link
+    return list(links.values())
 
 
 def character_from_kitsu(char: KitsuMediaCharacter) -> dict[str, Any]:

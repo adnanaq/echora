@@ -6,6 +6,7 @@ constructed either from the camelCase API response or from snake_case aliases.
 
 from typing import Any
 
+from enrichment.sources.anilist.anilist_character_models import AniListFuzzyDate
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
@@ -144,6 +145,8 @@ class AniListAnime(BaseModel):
     status: str | None = None
     season: str | None = None
     season_year: int | None = Field(None, alias="seasonYear")
+    start_date: AniListFuzzyDate | None = Field(None, alias="startDate")
+    end_date: AniListFuzzyDate | None = Field(None, alias="endDate")
     country_of_origin: str | None = Field(None, alias="countryOfOrigin")
     is_adult: bool = Field(False, alias="isAdult")
     cover_image: AniListCoverImage | None = Field(None, alias="coverImage")

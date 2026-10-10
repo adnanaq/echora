@@ -23,7 +23,13 @@ from enrichment.sources.base.framework import (
     FileRepository,
     NullRepository,
 )
-from enrichment.sources.base.utils import parse_broadcast_string, parse_iso_date
+from enrichment.sources.base.utils import (
+    month_name,
+    parse_broadcast_string,
+    parse_iso_date,
+    parse_partial_date,
+    split_date_range,
+)
 from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
 
@@ -36,8 +42,6 @@ BASE_ANIME_URL = "https://www.anisearch.com/anime/"
 _ANISEARCH_BASE_URL = "https://www.anisearch.com"
 
 _LABEL_RE = re.compile(r"^\s*[^:]+:\s*")
-_DATE_RANGE_RE = re.compile(r"(\d{2}\.\d{2}\.\d{4})\s*[-–‑]\s*(\d{2}\.\d{2}\.\d{4})")
-_SINGLE_DATE_RE = re.compile(r"(\d{2}\.\d{2}\.\d{4})")
 _VOTES_RE = re.compile(r"(\d[\d,]*)\s+members? have rated it")
 _SCORE_RE = re.compile(r"(\d+\.\d+)")
 _RANK_RE = re.compile(r"#(\d+)")
@@ -255,6 +259,32 @@ def _process_relation_tooltips(relations: list[dict[str, Any]]) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _parse_published(published: str) -> dict[str, Any]:
+    """Read AniSearch's published value at whatever precision it states.
+
+    AniSearch writes a full date ("20.10.1999"), a month and year ("11.2008"),
+    a year ("2027") or "?", optionally as a range ("2027 ‑ ?"). Only a full
+    date becomes ``start_date``/``end_date``; a partial start keeps its year
+    and month so nothing is made up.
+
+    Args:
+        published: The published value with its label removed.
+
+    Returns:
+        ``start_date``, ``end_date``, ``start_year`` and ``start_month`` (an
+        English month name, set only when the start has no day).
+    """
+    start_raw, end_raw = split_date_range(published)
+    start_date = parse_iso_date(start_raw)
+    start_year, start_month = parse_partial_date(start_raw)
+    return {
+        "start_date": start_date,
+        "end_date": parse_iso_date(end_raw),
+        "start_year": start_year,
+        "start_month": None if start_date else month_name(start_month),
+    }
+
+
 def _post_process_main(raw: dict[str, Any]) -> dict[str, Any]:
     """Clean raw XPath extraction dict into model-ready field values."""
     data: dict[str, Any] = {}
@@ -268,21 +298,7 @@ def _post_process_main(raw: dict[str, Any]) -> dict[str, Any]:
 
     data["status"] = _LABEL_RE.sub("", raw.get("status") or "").strip() or None
 
-    published = _LABEL_RE.sub("", raw.get("published") or "").strip()
-    m_range = _DATE_RANGE_RE.search(published)
-    if m_range:
-        data["start_date"] = m_range.group(1)
-        data["end_date"] = m_range.group(2)
-    else:
-        m_single = _SINGLE_DATE_RE.search(published)
-        if m_single:
-            data["start_date"] = m_single.group(1)
-        else:
-            year_match = re.search(r"\b(\d{4})\b", published)
-            data["start_date"] = (
-                parse_iso_date(year_match.group(1)) if year_match else None
-            )
-        data["end_date"] = None
+    data.update(_parse_published(_LABEL_RE.sub("", raw.get("published") or "")))
 
     data["studio"] = (raw.get("studio") or "").strip() or None
     broadcast_raw = _LABEL_RE.sub("", raw.get("broadcast_raw") or "").strip()
@@ -368,7 +384,16 @@ def _parse_relations(
 @cached_result(
     ttl=TTL_ANISEARCH,
     key_prefix="anisearch_anime",
-    dependencies=[_extract_anime_from_html, _extract_relations_from_html],
+    dependencies=[
+        _extract_anime_from_html,
+        _extract_relations_from_html,
+        _post_process_main,
+        _parse_published,
+        split_date_range,
+        parse_iso_date,
+        parse_partial_date,
+        month_name,
+    ],
 )
 async def _fetch_anisearch_anime_data(canonical_path: str) -> dict[str, Any] | None:
     """Fetch and extract raw anime data for a given AniSearch anime path.
@@ -444,6 +469,9 @@ def _build_anime_from_raw(raw: dict[str, Any], url: str) -> AniSearchAnime:
         source_material=raw.get("source_material"),
         start_date=raw.get("start_date"),
         end_date=raw.get("end_date"),
+        start_year=raw.get("start_year"),
+        start_month=raw.get("start_month"),
+        status=raw.get("status"),
         synopsis=raw.get("description"),
         genres=raw.get("genres", []),
         tags=raw.get("tags", []),

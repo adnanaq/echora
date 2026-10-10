@@ -77,7 +77,10 @@ def anime_from_animeplanet(anime: AnimePlanetAnime) -> dict[str, Any]:
     if season is None and anime.start_date:
         season = determine_anime_season(anime.start_date)
 
-    year = determine_anime_year(anime.start_date) if anime.start_date else None
+    # The page data carries startDate only for a full date; the entry bar still shows the year.
+    year = (
+        determine_anime_year(anime.start_date) if anime.start_date else anime.start_year
+    )
     status = determine_anime_status(anime.start_date, anime.end_date)
 
     # ── Aired dates ───────────────────────────────────────────────────────

@@ -99,6 +99,7 @@ class MalAnime(BaseModel):
     season: str | None = None  # Raw: "fall", "spring", etc. (lowercased)
     aired_from: str | None = None  # ISO date string parsed from "Oct 20, 1999 to ?"
     aired_to: str | None = None  # ISO date string; None if ongoing
+    month: str | None = None  # Premiere month name, set only when "Aired" gives no day
     broadcast_day: str | None = None  # "Sundays"
     broadcast_time: str | None = None  # "23:15"
     broadcast_timezone: str | None = None  # "JST"

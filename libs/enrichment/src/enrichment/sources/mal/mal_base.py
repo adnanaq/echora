@@ -181,34 +181,6 @@ def parse_duration_seconds(raw: str | None) -> int | None:
     return total if total > 0 else None
 
 
-def parse_aired_string(aired_raw: str | None) -> tuple[str | None, str | None]:
-    """Parse a MAL aired date range string into (from_date, to_date) ISO strings.
-
-    Handles:
-        "Oct 20, 1999 to ?"           → ("1999-10-20", None)
-        "Oct 20, 1999 to Nov 5, 2000" → ("1999-10-20", "2000-11-05")
-        "Apr 5, 2003"                 → ("2003-04-05", None)  (movie / single date)
-
-    Args:
-        aired_raw: Raw aired string from MAL sidebar.
-
-    Returns:
-        Tuple of (ISO from_date, ISO to_date), either may be None.
-    """
-    if not aired_raw:
-        return None, None
-
-    if " to " in aired_raw:
-        parts = aired_raw.split(" to ", 1)
-        from_date = parse_iso_date(parts[0].strip())
-        to_date = parse_iso_date(parts[1].strip())
-    else:
-        from_date = parse_iso_date(aired_raw.strip())
-        to_date = None
-
-    return from_date, to_date
-
-
 def parse_premiered(premiered_raw: str | None) -> tuple[str | None, int | None]:
     """Parse a MAL 'Premiered' value into (season, year).
 
