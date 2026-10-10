@@ -22,12 +22,15 @@ docker compose -f docker/docker-compose.dev.yml up -d qdrant
 
 ### Changing Dependencies
 
-Dependencies live in `pyproject.toml` and are locked twice: `uv.lock` for uv and the Docker images, and `3rdparty/python/default.lock` for Pants, which runs the tests. After any change to `pyproject.toml`, regenerate both so they hold the same versions:
+Dependencies live in `pyproject.toml` and are locked twice: `uv.lock` for uv and the Docker images, and `3rdparty/python/default.lock` for Pants, which runs the tests. `uv.lock` decides the versions: it is exported to `3rdparty/python/constraints.txt`, and Pants locks exactly those (`resolves_to_constraints_file` in `pants.toml`). After any change to `pyproject.toml`, run all three in order:
 
 ```bash
 uv lock
+uv export --frozen --no-hashes --all-extras --no-emit-project --format requirements-txt -o 3rdparty/python/constraints.txt
 ./pants generate-lockfiles
 ```
+
+To upgrade a package, upgrade it in uv (`uv lock --upgrade-package <name>`) and run the last two commands; Pants never picks newer versions on its own.
 
 ### Docker Development (Recommended)
 
