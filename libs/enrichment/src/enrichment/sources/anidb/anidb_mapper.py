@@ -41,9 +41,15 @@ from enrichment.sources.anidb.anidb_models import (
     AniDBCharacter,
     AniDBCharacterPage,
     AniDBEpisode,
+    AniDBExternalResource,
 )
 from enrichment.sources.base.companies import companies_from_roles
-from enrichment.sources.base.external_links import external_link
+from enrichment.sources.base.external_links import (
+    OFFICIAL_SITE,
+    PageKind,
+    external_link,
+    page_link,
+)
 
 _CDN_BASE = "https://cdn-eu.anidb.net/images/main"
 # AniDB sends this as the start date of works whose date it does not know yet.
@@ -51,59 +57,50 @@ _UNKNOWN_DATE = "1970-01-01"
 
 logger = logging.getLogger(__name__)
 
-# External resource type → (canonical key, url template).
-# {} is replaced with the resource's single identifier, or its first url.
-# Types not listed are silently skipped; see docs/anidb_type_mappings.md for
-# the full type list, including the ones deliberately left out here.
-_RESOURCE_MAP: dict[str, tuple[str, str]] = {
-    "1": (
-        "anime_news_network",
-        "https://www.animenewsnetwork.com/encyclopedia/anime.php?id={}",
-    ),
-    "2": ("myanimelist", "https://myanimelist.net/anime/{}"),
-    # Types 4, 5, 34 and 35 supply a full url, not an identifier. Type 4 is the
-    # Japanese official site and shares this key with the anime-level <url>, so
-    # the same address collapses into one entry instead of two.
-    "4": ("official_website", "{}"),
-    "5": ("official_website_en", "{}"),
-    "6": ("wikipedia_en", "https://en.wikipedia.org/wiki/{}"),
-    "7": ("wikipedia_jp", "https://ja.wikipedia.org/wiki/{}"),
-    "8": ("syoboi", "https://cal.syoboi.jp/tid/{}/time"),
-    "9": ("allcinema", "https://www.allcinema.net/cinema/{}"),
-    "10": ("anison", "http://anison.info/data/program/{}.html"),
-    "11": ("lain", "http://lain.gr.jp/{}"),
-    # Type 14 (VNDB) is handled ahead of this table: two identifiers.
-    "16": ("animemorial", "http://www.animemorial.net/ja/{}-a"),
-    "17": ("tv_animation_museum", "http://home-aki.la.coocan.jp/anime-list/{}.htm"),
-    "19": ("wikipedia_ko", "https://ko.wikipedia.org/wiki/{}"),
-    "20": ("wikipedia_zh", "https://zh.wikipedia.org/wiki/{}"),
-    "22": ("facebook", "https://www.facebook.com/{}"),
-    "23": ("twitter", "https://twitter.com/{}"),
-    "26": ("youtube", "https://www.youtube.com/{}"),
-    "28": ("crunchyroll", "https://www.crunchyroll.com/series/{}"),
-    "32": ("amazon", "https://www.amazon.com/dp/{}"),
-    "34": ("official_stream", "{}"),
-    "35": ("official_blog", "{}"),
-    "38": ("bangumi", "https://bgm.tv/subject/{}"),
-    "39": ("douban", "https://movie.douban.com/subject/{}"),
-    "41": ("netflix", "https://www.netflix.com/title/{}"),
-    "42": ("hidive", "https://www.hidive.com/{}"),
-    "43": ("imdb", "https://www.imdb.com/title/{}"),
-    # Type 44 (TMDB) and type 33 (Baidu Baike) are handled ahead of this table:
-    # both need more than a single-identifier substitution.
-    "45": ("funimation", "https://www.funimation.com/shows/{}"),
-    "46": ("qq_video", "https://v.qq.com/detail/{}"),
-    "47": ("bilibili", "https://www.bilibili.com/{}"),
-    "48": ("prime_video", "https://www.primevideo.com/detail/{}"),
+# External resource type → the platform and page kind its identifier names; the
+# page address itself comes from `page_link`. Types not listed are skipped; see
+# docs/anidb_type_mappings.md for the full list, including the ones left out.
+_RESOURCE_PAGES: dict[str, PageKind] = {
+    "1": ("anime_news_network", None),
+    "2": ("myanimelist", "anime"),
+    "6": ("wikipedia", "en"),
+    "7": ("wikipedia", "ja"),
+    "8": ("syoboi", None),
+    "9": ("allcinema", None),
+    "10": ("anison", None),
+    "11": ("lain", None),
+    "16": ("animemorial", None),
+    "17": ("tv_animation_museum", None),
+    "19": ("wikipedia", "ko"),
+    "20": ("wikipedia", "zh"),
+    "22": ("facebook", None),
+    "23": ("twitter", None),
+    "26": ("youtube", None),
+    "28": ("crunchyroll", None),
+    "32": ("amazon", None),
+    "38": ("bangumi", None),
+    "39": ("douban", None),
+    "41": ("netflix", None),
+    "42": ("hidive", None),
+    "43": ("imdb", None),
+    "45": ("funimation", None),
+    "46": ("qq_video", None),
+    "47": ("bilibili", None),
+    "48": ("prime_video", None),
 }
 
-
-# Types whose language the host cannot reveal: both official sites share the
-# work's own domain.
-_RESOURCE_LANGUAGE: dict[str, str] = {
+# Types that supply a full url rather than an identifier, with the language of
+# the page where the host cannot reveal it. Type 4 is the Japanese official
+# site, as the anime-level <url> is, so the same address collapses into one.
+_RESOURCE_URL_TYPES: dict[str, str | None] = {
     "4": "Japanese",
     "5": "English",
+    "34": None,
+    "35": None,
 }
+
+# Url types that are the work's own site: both official sites and its blog.
+_OFFICIAL_RESOURCE_TYPES = frozenset({"4", "5", "35"})
 
 
 def _known_date(value: str | None) -> str | None:
@@ -152,7 +149,7 @@ def anime_from_anidb(anime: AniDBAnime, *, anidb_url: str) -> dict[str, Any]:
     aired_from = normalize_to_utc(start_date)
     aired_to = normalize_to_utc(end_date)
     aired_dates = (
-        AiredDates(aired_from = aired_from,aired_to=aired_to)
+        AiredDates(aired_from=aired_from, aired_to=aired_to)
         if aired_from or aired_to
         else None
     )
@@ -163,56 +160,7 @@ def anime_from_anidb(anime: AniDBAnime, *, anidb_url: str) -> dict[str, Any]:
     # Official titles in other languages (BCP 47) → canonical Anime.titles
     titles: dict[str, str] = dict(anime.title_others)
 
-    # External sources from <resources>
-    external_sources: list[ExternalLink] = []
-
-    def _add(url: str, language: str | None = None) -> None:
-        link = external_link(url, language=language)
-        if link:
-            external_sources.append(link)
-
-    if anime.url:
-        _add(anime.url, language=_RESOURCE_LANGUAGE.get("4"))
-    for resource in anime.resources:
-        if resource.type == "33":
-            # Baidu Baike identifier may have ?fromModule=... query string — strip it
-            if resource.identifiers:
-                slug = resource.identifiers[0].split("?")[0]
-                _add(f"https://baike.baidu.com/item/{slug}")
-            continue
-        if resource.type == "14":
-            # VNDB supplies the numeric id and the entry letter separately,
-            # e.g. ["7721", "v"] for https://vndb.org/v7721.
-            if len(resource.identifiers) >= 2:
-                vn_id, vn_prefix = resource.identifiers[0], resource.identifiers[1]
-                _add(f"https://vndb.org/{vn_prefix}{vn_id}")
-            continue
-        if resource.type == "44":
-            # TMDB has two identifiers: numeric id + media type ("tv" or "movie")
-            if len(resource.identifiers) >= 2:
-                tmdb_id, tmdb_type = resource.identifiers[0], resource.identifiers[1]
-                _add(f"https://www.themoviedb.org/{tmdb_type}/{tmdb_id}")
-            continue
-        mapping = _RESOURCE_MAP.get(resource.type)
-        if mapping is None:
-            continue
-        key, template = mapping
-        language = _RESOURCE_LANGUAGE.get(resource.type)
-        if resource.urls:
-            # Several urls are all this work's own official pages, so the
-            # first is incomplete rather than wrong.
-            _add(template.format(resource.urls[0]), language)
-        elif len(resource.identifiers) == 1:
-            _add(template.format(resource.identifiers[0]), language)
-        elif resource.identifiers:
-            # Each identifier is a separate entry on that platform, and nothing
-            # marks which one is this work: taking the first linked One Piece to
-            # MAL 62593, a 2025 special. Lowest-id was right in only 7 of 8
-            # ambiguous cases, so skip rather than guess.
-            logger.debug(
-                f"Skipping ambiguous {key} resource for AniDB {anidb_url}: "
-                f"{len(resource.identifiers)} candidates"
-            )
+    external_sources = _external_sources(anime.url, anime.resources, anidb_url)
 
     # Statistics from <ratings>
     statistics: dict[str, Statistics] = {}
@@ -283,6 +231,76 @@ def anime_from_anidb(anime: AniDBAnime, *, anidb_url: str) -> dict[str, Any]:
     )
 
     return result.model_dump(mode="json", exclude_none=True)
+
+
+def _external_sources(
+    official_site: str | None,
+    resources: list[AniDBExternalResource],
+    anidb_url: str,
+) -> list[ExternalLink]:
+    """Build links from the anime's <url> and its <resources>.
+
+    Args:
+        official_site: The anime's <url>, its Japanese official site.
+        resources: The anime's <resources> entries.
+        anidb_url: The AniDB page, for the log line about skipped resources.
+
+    Returns:
+        One link per usable resource, in AniDB's order.
+
+    Examples:
+        >>> links = _external_sources(
+        ...     "http://www.toei-anim.co.jp/tv/onep/",
+        ...     [
+        ...         AniDBExternalResource(type="2", identifiers=["21"]),
+        ...         AniDBExternalResource(type="44", identifiers=["37854", "tv"]),
+        ...     ],
+        ...     "https://anidb.net/anime/69",
+        ... )
+        >>> [(link.platform, link.source) for link in links]
+        [('official_site', 'http://www.toei-anim.co.jp/tv/onep/'), ('myanimelist', 'https://myanimelist.net/anime/21'), ('themoviedb', 'https://www.themoviedb.org/tv/37854')]
+    """
+    links = [external_link(official_site, language="Japanese", platform=OFFICIAL_SITE)]
+    for resource in resources:
+        identifiers = resource.identifiers
+        match resource.type:
+            case resource_type if resource_type in _RESOURCE_URL_TYPES:
+                links.append(
+                    external_link(
+                        resource.urls[0] if resource.urls else None,
+                        language=_RESOURCE_URL_TYPES[resource_type],
+                        platform=(
+                            OFFICIAL_SITE
+                            if resource_type in _OFFICIAL_RESOURCE_TYPES
+                            else None
+                        ),
+                    )
+                )
+            case "14" if len(identifiers) >= 2:
+                # VNDB gives the number and the entry letter apart: ["7721", "v"].
+                links.append(page_link("vndb", f"{identifiers[1]}{identifiers[0]}"))
+            case "44" if len(identifiers) >= 2:
+                # TMDB gives the number and the media type: ["37854", "tv"].
+                links.append(
+                    page_link("themoviedb", identifiers[0], kind=identifiers[1])
+                )
+            case "33" if identifiers:
+                # Baidu Baike ids can carry a "?fromModule=..." tail.
+                links.append(page_link("baidu_baike", identifiers[0].split("?")[0]))
+            case resource_type if page := _RESOURCE_PAGES.get(resource_type):
+                if len(identifiers) == 1:
+                    platform, kind = page
+                    links.append(page_link(platform, identifiers[0], kind=kind))
+                elif identifiers:
+                    # Each identifier is a separate entry on that platform, and
+                    # nothing marks which one is this work: taking the first
+                    # linked One Piece to MAL 62593, a 2025 special. Lowest-id
+                    # was right in only 7 of 8 ambiguous cases, so skip.
+                    logger.debug(
+                        f"Skipping ambiguous {page[0]} resource for AniDB "
+                        f"{anidb_url}: {len(identifiers)} candidates"
+                    )
+    return [link for link in links if link]
 
 
 def episode_from_anidb(
