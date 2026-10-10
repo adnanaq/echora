@@ -1,9 +1,11 @@
 """Embedding model configuration."""
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import Field, field_validator
+
+from .env_settings import EnvSettings
 
 
-class EmbeddingConfig(BaseModel):
+class EmbeddingConfig(EnvSettings):
     """Configuration for text and image embedding models."""
 
     # Text Embedding

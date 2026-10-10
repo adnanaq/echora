@@ -1,9 +1,11 @@
 """Qdrant database configuration model."""
 
-from pydantic import BaseModel, Field, ValidationInfo, field_validator, model_validator
+from pydantic import Field, ValidationInfo, field_validator, model_validator
+
+from .env_settings import EnvSettings
 
 
-class QdrantConfig(BaseModel):
+class QdrantConfig(EnvSettings):
     """Configuration for Qdrant vector database connection and optimization."""
 
     # Connection
