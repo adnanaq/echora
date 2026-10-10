@@ -1,13 +1,12 @@
 import asyncio
 import logging
-from unittest.mock import create_autospec, patch
+from unittest.mock import NonCallableMagicMock, create_autospec, patch
 
 import aiohttp
 import pytest
 from common.config import CacheConfig, RedisConfig
-from hishel import FilterPolicy, Response
+from hishel import AsyncRedisStorage, FilterPolicy, Response
 from http_cache.aiohttp_adapter import CachedAiohttpSession
-from http_cache.async_redis_storage import AsyncRedisStorage
 from http_cache.manager import (
     _MAX_ERROR_BODY_BYTES,
     HTTPCacheManager,
@@ -22,7 +21,7 @@ def _response(status: int) -> Response:
     return Response(status_code=status)
 
 
-def _old_loop() -> asyncio.AbstractEventLoop:
+def _old_loop() -> NonCallableMagicMock:
     return create_autospec(asyncio.AbstractEventLoop, instance=True)
 
 
@@ -113,10 +112,10 @@ async def test_get_aiohttp_session_enabled_returns_cached_session_with_service_t
 
     assert isinstance(session, CachedAiohttpSession)
     assert isinstance(session.storage, AsyncRedisStorage)
-    assert session.storage.default_ttl == 7200.0
-    assert session.storage.key_prefix == "hishel_cache"
+    assert session.storage._default_ttl == 7200
+    assert session.storage._key_prefix == "hishel_cache"
     assert (
-        session.storage.client.connection_pool.connection_kwargs["decode_responses"]
+        session.storage._client.connection_pool.connection_kwargs["decode_responses"]
         is False
     )
     assert session.policy is manager.policy
@@ -132,7 +131,8 @@ async def test_get_aiohttp_session_unknown_service_uses_default_ttl() -> None:
     session = manager.get_aiohttp_session("unknown")
 
     assert isinstance(session, CachedAiohttpSession)
-    assert session.storage.default_ttl == 86400.0
+    assert isinstance(session.storage, AsyncRedisStorage)
+    assert session.storage._default_ttl == 86400
     await session.close()
     await manager.close()
 
@@ -148,7 +148,8 @@ async def test_get_result_client_enabled_returns_text_client_separate_from_respo
     assert isinstance(result_client, Redis)
     assert result_client.connection_pool.connection_kwargs["decode_responses"] is True
     assert isinstance(session, CachedAiohttpSession)
-    assert session.storage.client is not result_client
+    assert isinstance(session.storage, AsyncRedisStorage)
+    assert session.storage._client is not result_client
     assert manager.get_result_client() is result_client
     await session.close()
     await manager.close()

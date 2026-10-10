@@ -3,7 +3,6 @@ Unit tests for http_cache.aiohttp_adapter.
 
 Focus:
 - _CachedResponse interface (status, headers, body, from_cache, raise_for_status)
-- ReusableBodyStream async iteration
 - Request shaping: header merging, X-Hishel-* stripping, params encoding
 - _extract_hishel_metadata_and_strip_headers: TTL, refresh, spec-ignore, body-key
 - _parse_hishel_bool: truthy/falsy/invalid strings
@@ -17,10 +16,11 @@ Focus:
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, create_autospec, patch
 
+import aiohttp
 import pytest
-from hishel import Request, Response
+from hishel import Headers, Request, Response
 from http_cache.aiohttp_adapter import CachedAiohttpSession, _CachedResponse
 from multidict import CIMultiDictProxy  # pants: no-infer-dep
 from yarl import URL  # pants: no-infer-dep
@@ -125,14 +125,14 @@ class TestCachedResponse:
 class TestCachedAiohttpSessionRequestBuilding:
     @pytest.mark.asyncio
     async def test_merges_session_default_headers_and_strips_x_hishel(
-        self, mock_storage: AsyncMock
+        self, storage: AsyncMock
     ) -> None:
         """Session default headers are forwarded; X-Hishel-* headers are moved
         to request metadata and removed from the outgoing headers."""
         mock_session = AsyncMock()
         mock_session.headers = {"X-Hishel-Body-Key": "true", "User-Agent": "ua"}
 
-        cached = CachedAiohttpSession(storage=mock_storage, session=mock_session)
+        cached = CachedAiohttpSession(storage=storage, session=mock_session)
 
         def handle(req: Request) -> Response:
             assert req.headers.get("User-Agent") == "ua"
@@ -158,11 +158,11 @@ class TestCachedAiohttpSessionRequestBuilding:
         assert resp.from_cache is False
 
     @pytest.mark.asyncio
-    async def test_includes_params_in_url(self, mock_storage: AsyncMock) -> None:
+    async def test_includes_params_in_url(self, storage: AsyncMock) -> None:
         """Query params are encoded into the URL so they become part of the cache key."""
         mock_session = AsyncMock()
         mock_session.headers = {}
-        cached = CachedAiohttpSession(storage=mock_storage, session=mock_session)
+        cached = CachedAiohttpSession(storage=storage, session=mock_session)
 
         def handle(req: Request) -> Response:
             assert str(req.url) == "https://example.com/api?q=one+piece&page=2"
@@ -186,12 +186,12 @@ class TestCachedAiohttpSessionRequestBuilding:
 
     @pytest.mark.asyncio
     async def test_does_not_forward_x_hishel_headers_upstream(
-        self, mock_storage: AsyncMock
+        self, storage: AsyncMock
     ) -> None:
         """X-Hishel-* control headers must not be sent to the origin server."""
         mock_session = AsyncMock()
         mock_session.headers = {}
-        cached = CachedAiohttpSession(storage=mock_storage, session=mock_session)
+        cached = CachedAiohttpSession(storage=storage, session=mock_session)
         mock_session.request = AsyncMock(
             return_value=_make_origin_resp(cache_control="no-store")
         )
@@ -202,7 +202,9 @@ class TestCachedAiohttpSessionRequestBuilding:
         req = Request(
             method="POST",
             url="https://example.com/graphql",
-            headers={"X-Hishel-Body-Key": "true", "Content-Type": "application/json"},
+            headers=Headers(
+                {"X-Hishel-Body-Key": "true", "Content-Type": "application/json"}
+            ),
             stream=body_stream(),
             metadata={"hishel_body_key": True},
         )
@@ -210,8 +212,10 @@ class TestCachedAiohttpSessionRequestBuilding:
         assert hishel_resp.status_code == 200
 
         _, call_kwargs = mock_session.request.call_args
-        assert call_kwargs["headers"]["Content-Type"] == "application/json"
-        assert "X-Hishel-Body-Key" not in call_kwargs["headers"]
+        assert call_kwargs["headers"]["content-type"] == "application/json"
+        assert not any(
+            name.lower().startswith("x-hishel-") for name in call_kwargs["headers"]
+        )
 
     @pytest.mark.parametrize(
         ("directive", "expected_status", "origin_called"),
@@ -225,7 +229,7 @@ class TestCachedAiohttpSessionRequestBuilding:
     )
     async def test_only_if_cached_fails_instead_of_calling_origin(
         self,
-        mock_storage: AsyncMock,
+        storage: AsyncMock,
         directive: str | None,
         expected_status: int,
         origin_called: bool,
@@ -233,7 +237,7 @@ class TestCachedAiohttpSessionRequestBuilding:
         """RFC 9111 5.2.1.7 — reaching the sender means the cache missed."""
         mock_session = AsyncMock()
         mock_session.headers = {}
-        cached = CachedAiohttpSession(storage=mock_storage, session=mock_session)
+        cached = CachedAiohttpSession(storage=storage, session=mock_session)
         mock_session.request = AsyncMock(return_value=_make_origin_resp())
 
         async def body_stream():
@@ -242,7 +246,7 @@ class TestCachedAiohttpSessionRequestBuilding:
         req = Request(
             method="GET",
             url="https://example.com/thing",
-            headers={"Cache-Control": directive} if directive else {},
+            headers=Headers({"Cache-Control": directive} if directive else {}),
             stream=body_stream(),
         )
         hishel_resp = await cached._proxy.handle_request(req)
@@ -251,31 +255,31 @@ class TestCachedAiohttpSessionRequestBuilding:
         assert mock_session.request.called is origin_called
 
     def test_session_headers_type_error_falls_back_to_empty(
-        self, mock_storage: AsyncMock
+        self, storage: AsyncMock
     ) -> None:
         """If session.headers raises TypeError (e.g. AsyncMock), defaults to {}."""
         mock_session = AsyncMock()
         mock_session.headers = MagicMock(side_effect=TypeError("not iterable"))
-        cached = CachedAiohttpSession(storage=mock_storage, session=mock_session)
+        cached = CachedAiohttpSession(storage=storage, session=mock_session)
         assert cached._session_default_headers == {}
 
     @pytest.mark.asyncio
-    async def test_data_str_body_encoded_as_utf8(self, mock_storage: AsyncMock) -> None:
+    async def test_data_str_body_encoded_as_utf8(self, storage: AsyncMock) -> None:
         """data=str is encoded to bytes for the cache key."""
         mock_session = AsyncMock()
         mock_session.headers = {}
-        cached = CachedAiohttpSession(storage=mock_storage, session=mock_session)
+        cached = CachedAiohttpSession(storage=storage, session=mock_session)
         mock_session.request = AsyncMock(return_value=_make_origin_resp(b'{"ok":true}'))
 
         async with cached.post("https://example.com/api", data="hello") as resp:
             assert resp.status == 200
 
     @pytest.mark.asyncio
-    async def test_data_bytes_body_used_directly(self, mock_storage: AsyncMock) -> None:
+    async def test_data_bytes_body_used_directly(self, storage: AsyncMock) -> None:
         """data=bytes is used directly as the body."""
         mock_session = AsyncMock()
         mock_session.headers = {}
-        cached = CachedAiohttpSession(storage=mock_storage, session=mock_session)
+        cached = CachedAiohttpSession(storage=storage, session=mock_session)
         mock_session.request = AsyncMock(return_value=_make_origin_resp(b'{"ok":true}'))
 
         async with cached.post("https://example.com/api", data=b"raw") as resp:
@@ -292,7 +296,7 @@ class TestCachedAiohttpSessionRequestBuilding:
     )
     async def test_unsupported_body_bypasses_cache(
         self,
-        mock_storage: AsyncMock,
+        storage: AsyncMock,
         directive: str | None,
         expected_status: int,
         origin_called: bool,
@@ -300,7 +304,7 @@ class TestCachedAiohttpSessionRequestBuilding:
         """data=FormData (unsupported type) bypasses the cache, never only-if-cached."""
         mock_session = AsyncMock()
         mock_session.headers = {}
-        cached = CachedAiohttpSession(storage=mock_storage, session=mock_session)
+        cached = CachedAiohttpSession(storage=storage, session=mock_session)
 
         mock_cm = AsyncMock()
         mock_cm.__aenter__ = AsyncMock(return_value=_make_origin_resp(b"direct"))
@@ -316,7 +320,7 @@ class TestCachedAiohttpSessionRequestBuilding:
             assert resp.status == expected_status
         assert mock_session.request.called is origin_called
         # Cache must not have been written
-        mock_storage.create_entry.assert_not_called()
+        storage.create_entry.assert_not_called()
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -329,7 +333,7 @@ class TestCachedAiohttpSessionRequestBuilding:
     )
     async def test_always_revalidate_injects_no_cache(
         self,
-        mock_storage: AsyncMock,
+        storage: AsyncMock,
         caller_directive: str | None,
         sent_directive: str,
     ) -> None:
@@ -337,7 +341,7 @@ class TestCachedAiohttpSessionRequestBuilding:
         mock_session = AsyncMock()
         mock_session.headers = {}
         cached = CachedAiohttpSession(
-            storage=mock_storage, session=mock_session, always_revalidate=True
+            storage=storage, session=mock_session, always_revalidate=True
         )
 
         captured: list[Request] = []
@@ -426,13 +430,13 @@ class TestParseHishelBool:
 class TestRequestSenderForceCacheBehaviour:
     @pytest.mark.asyncio
     async def test_force_cache_writes_max_age_from_metadata_ttl(
-        self, mock_storage: AsyncMock
+        self, storage: AsyncMock
     ) -> None:
         """force_cache=True uses hishel_ttl from request metadata when present."""
         mock_session = AsyncMock()
         mock_session.headers = {}
         cached = CachedAiohttpSession(
-            storage=mock_storage, session=mock_session, force_cache=True
+            storage=storage, session=mock_session, force_cache=True
         )
         mock_session.request = AsyncMock(
             return_value=_make_origin_resp(cache_control="no-cache")
@@ -444,27 +448,27 @@ class TestRequestSenderForceCacheBehaviour:
         req = Request(
             method="GET",
             url="https://example.com/api",
-            headers={},
+            headers=Headers({}),
             stream=body_stream(),
             metadata={"hishel_ttl": 1200},
         )
         hishel_resp = await cached._proxy.handle_request(req)
         assert hishel_resp.status_code == 200
 
-        _req, stored_response, _key = mock_storage.create_entry.call_args.args
+        _req, stored_response, _key = storage.create_entry.call_args.args
         cc = stored_response.headers.get("Cache-Control") or ""
         assert "max-age=1200" in cc
 
     @pytest.mark.asyncio
     async def test_force_cache_falls_back_to_storage_default_ttl(
-        self, mock_storage: AsyncMock
+        self, storage: AsyncMock
     ) -> None:
         """force_cache=True falls back to storage.default_ttl when no metadata TTL."""
         mock_session = AsyncMock()
         mock_session.headers = {}
-        mock_storage.default_ttl = 7200.0
+        storage.default_ttl = 7200.0
         cached = CachedAiohttpSession(
-            storage=mock_storage, session=mock_session, force_cache=True
+            storage=storage, session=mock_session, force_cache=True
         )
         mock_session.request = AsyncMock(
             return_value=_make_origin_resp(cache_control="no-cache")
@@ -476,27 +480,27 @@ class TestRequestSenderForceCacheBehaviour:
         req = Request(
             method="GET",
             url="https://example.com/api",
-            headers={},
+            headers=Headers({}),
             stream=body_stream(),
             metadata={},
         )
         await cached._proxy.handle_request(req)
 
-        _req, stored_response, _key = mock_storage.create_entry.call_args.args
+        _req, stored_response, _key = storage.create_entry.call_args.args
         cc = stored_response.headers.get("Cache-Control") or ""
         assert "max-age=7200" in cc
 
     @pytest.mark.asyncio
     async def test_force_cache_falls_back_to_default_86400(
-        self, mock_storage: AsyncMock
+        self, storage: AsyncMock
     ) -> None:
         """force_cache=True uses 86400s when no TTL available anywhere."""
         mock_session = AsyncMock()
         mock_session.headers = {}
         # storage has no default_ttl attribute
-        del mock_storage.default_ttl
+        del storage.default_ttl
         cached = CachedAiohttpSession(
-            storage=mock_storage, session=mock_session, force_cache=True
+            storage=storage, session=mock_session, force_cache=True
         )
         mock_session.request = AsyncMock(
             return_value=_make_origin_resp(cache_control="no-cache")
@@ -508,25 +512,25 @@ class TestRequestSenderForceCacheBehaviour:
         req = Request(
             method="GET",
             url="https://example.com/api",
-            headers={},
+            headers=Headers({}),
             stream=body_stream(),
             metadata={},
         )
         await cached._proxy.handle_request(req)
 
-        _req, stored_response, _key = mock_storage.create_entry.call_args.args
+        _req, stored_response, _key = storage.create_entry.call_args.args
         cc = stored_response.headers.get("Cache-Control") or ""
         assert "max-age=86400" in cc
 
     @pytest.mark.asyncio
     async def test_force_cache_error_response_gets_no_store(
-        self, mock_storage: AsyncMock
+        self, storage: AsyncMock
     ) -> None:
         """4xx/5xx responses must get Cache-Control: no-store even with force_cache."""
         mock_session = AsyncMock()
         mock_session.headers = {}
         cached = CachedAiohttpSession(
-            storage=mock_storage, session=mock_session, force_cache=True
+            storage=storage, session=mock_session, force_cache=True
         )
         mock_session.request = AsyncMock(
             return_value=_make_origin_resp(
@@ -540,25 +544,25 @@ class TestRequestSenderForceCacheBehaviour:
         req = Request(
             method="GET",
             url="https://example.com/api",
-            headers={},
+            headers=Headers({}),
             stream=body_stream(),
             metadata={},
         )
         hishel_resp = await cached._proxy.handle_request(req)
         assert hishel_resp.status_code == 429
 
-        _req, stored_response, _key = mock_storage.create_entry.call_args.args
+        _req, stored_response, _key = storage.create_entry.call_args.args
         cc = stored_response.headers.get("Cache-Control") or ""
         assert "no-store" in cc
 
     @pytest.mark.asyncio
     async def test_request_sender_uses_getall_for_multi_value_headers(
-        self, mock_storage: AsyncMock
+        self, storage: AsyncMock
     ) -> None:
         """When response.headers has getall(), multi-values are joined with ', '."""
         mock_session = AsyncMock()
         mock_session.headers = {}
-        cached = CachedAiohttpSession(storage=mock_storage, session=mock_session)
+        cached = CachedAiohttpSession(storage=storage, session=mock_session)
 
         origin_resp = MagicMock()
         origin_resp.status = 200
@@ -576,14 +580,14 @@ class TestRequestSenderForceCacheBehaviour:
         req = Request(
             method="GET",
             url="https://example.com/api",
-            headers={},
+            headers=Headers({}),
             stream=body_stream(),
             metadata={},
         )
         hishel_resp = await cached._proxy.handle_request(req)
         assert hishel_resp.status_code == 200
 
-        _req, stored_response, _key = mock_storage.create_entry.call_args.args
+        _req, stored_response, _key = storage.create_entry.call_args.args
         assert stored_response.headers.get("X-Custom") == "val1, val2"
 
 
@@ -594,26 +598,26 @@ class TestRequestSenderForceCacheBehaviour:
 
 class TestCachedAiohttpSessionLifecycle:
     @pytest.mark.asyncio
-    async def test_close_closes_session_and_storage(
-        self, mock_storage: AsyncMock
+    async def test_close_closes_session_and_leaves_storage_open(
+        self, storage: AsyncMock
     ) -> None:
         mock_session = AsyncMock()
         mock_session.headers = {}
-        cached = CachedAiohttpSession(storage=mock_storage, session=mock_session)
+        cached = CachedAiohttpSession(storage=storage, session=mock_session)
         await cached.close()
         mock_session.close.assert_called_once()
-        mock_storage.close.assert_called_once()
+        storage.close.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_async_context_manager(self, mock_storage: AsyncMock) -> None:
+    async def test_async_context_manager(self, storage: AsyncMock) -> None:
         mock_session = AsyncMock()
         mock_session.headers = {}
         async with CachedAiohttpSession(
-            storage=mock_storage, session=mock_session
+            storage=storage, session=mock_session
         ) as cached:
             assert isinstance(cached, CachedAiohttpSession)
         mock_session.close.assert_called_once()
-        mock_storage.close.assert_called_once()
+        storage.close.assert_not_called()
 
 
 # =============================================================================
@@ -631,12 +635,12 @@ class TestCachedAiohttpSessionCacheKeyIsolation:
 
     @pytest.mark.asyncio
     async def test_get_requests_to_different_urls_use_different_keys(
-        self, mock_storage: AsyncMock
+        self, storage: AsyncMock
     ) -> None:
         """Two distinct GET URLs must be stored under different cache keys."""
         mock_session = AsyncMock()
         mock_session.headers = {}
-        cached = CachedAiohttpSession(storage=mock_storage, session=mock_session)
+        cached = CachedAiohttpSession(storage=storage, session=mock_session)
 
         mock_session.request = AsyncMock(
             side_effect=[
@@ -650,24 +654,24 @@ class TestCachedAiohttpSessionCacheKeyIsolation:
         async with cached.get("https://example.com/api/b") as resp_b:
             await resp_b.read()
 
-        assert mock_storage.create_entry.call_count == 2, (
+        assert storage.create_entry.call_count == 2, (
             "Both URLs must be stored as separate cache entries"
         )
-        key_a = mock_storage.create_entry.call_args_list[0].args[2]
-        key_b = mock_storage.create_entry.call_args_list[1].args[2]
+        key_a = storage.create_entry.call_args_list[0].args[2]
+        key_b = storage.create_entry.call_args_list[1].args[2]
         assert key_a != key_b, (
             f"Different URLs must produce different cache keys, got same: {key_a!r}"
         )
 
     @pytest.mark.asyncio
     async def test_post_requests_with_different_bodies_use_different_keys(
-        self, mock_storage: AsyncMock
+        self, storage: AsyncMock
     ) -> None:
         """Different GraphQL query bodies sent to the same POST URL must produce
         separate cache entries via the per-request X-Hishel-Body-Key header."""
         mock_session = AsyncMock()
         mock_session.headers = {"X-Hishel-Body-Key": "true"}
-        cached = CachedAiohttpSession(storage=mock_storage, session=mock_session)
+        cached = CachedAiohttpSession(storage=storage, session=mock_session)
 
         mock_session.request = AsyncMock(
             side_effect=[
@@ -682,96 +686,43 @@ class TestCachedAiohttpSessionCacheKeyIsolation:
         async with cached.post(url, json={"query": "{ anime(id: 2) { title } }"}) as _:
             pass
 
-        assert mock_storage.create_entry.call_count == 2, (
+        assert storage.create_entry.call_count == 2, (
             "Different POST bodies to same URL must be stored as separate entries"
         )
-        key_1 = mock_storage.create_entry.call_args_list[0].args[2]
-        key_2 = mock_storage.create_entry.call_args_list[1].args[2]
+        key_1 = storage.create_entry.call_args_list[0].args[2]
+        key_2 = storage.create_entry.call_args_list[1].args[2]
         assert key_1 != key_2, "Different POST bodies must produce different cache keys"
 
 
-# =============================================================================
-# Test Class: ReusableBodyStream — __anext__ no-op stub
-# =============================================================================
+def test_cached_aiohttp_session_unreadable_session_headers_uses_no_default_headers(
+    storage: AsyncMock,
+) -> None:
+    session = create_autospec(aiohttp.ClientSession, instance=True)
+    session.headers = 42
+
+    cached = CachedAiohttpSession(storage=storage, session=session)
+
+    assert cached._session_default_headers == {}
 
 
-class TestReusableBodyStream:
-    @pytest.mark.asyncio
-    async def test_anext_raises_stop_async_iteration(self) -> None:
-        """__anext__ is a protocol stub — calling it directly raises StopAsyncIteration."""
-        from http_cache.aiohttp_adapter import ReusableBodyStream
+async def test_cached_aiohttp_session_headers_none_sends_session_default_headers(
+    storage: AsyncMock,
+) -> None:
+    session = create_autospec(aiohttp.ClientSession, instance=True)
+    session.headers = {"User-Agent": "ua"}
+    cached = CachedAiohttpSession(storage=storage, session=session)
 
-        stream = ReusableBodyStream(b"hello")
-        with pytest.raises(StopAsyncIteration):
-            await stream.__anext__()
+    async def body():
+        yield b"{}"
 
-    @pytest.mark.asyncio
-    async def test_aiter_yields_body_on_each_iteration(self) -> None:
-        """__aiter__ returns a fresh generator each time — stream can be read twice."""
-        from http_cache.aiohttp_adapter import ReusableBodyStream
+    with patch.object(
+        cached._proxy,
+        "handle_request",
+        autospec=True,
+        return_value=Response(status_code=200, stream=body()),
+    ) as handle_request:
+        response = await cached._request("GET", "https://example.com/a", headers=None)
 
-        stream = ReusableBodyStream(b"hello")
-        chunks_1 = [chunk async for chunk in stream]
-        chunks_2 = [chunk async for chunk in stream]
-        assert chunks_1 == [b"hello"]
-        assert chunks_2 == [b"hello"]
-
-
-# =============================================================================
-# Remaining coverage: text() encoding, headers TypeError, sync stream path
-# =============================================================================
-
-
-class TestCachedResponseTextEncoding:
-    @pytest.mark.asyncio
-    async def test_text_with_custom_encoding(self) -> None:
-        """text(encoding=...) decodes body with the specified codec."""
-        body = "héllo".encode("latin-1")
-        resp = _CachedResponse(
-            status=200,
-            headers={},
-            body=body,
-            url="https://example.com/",
-            method="GET",
-            request_headers={},
-        )
-        assert await resp.text(encoding="latin-1") == "héllo"
-
-
-class TestSessionHeadersAttributeErrorFallback:
-    def test_attribute_error_in_session_headers_falls_back_to_empty(
-        self, mock_storage: AsyncMock
-    ) -> None:
-        """dict(session.headers) raising AttributeError defaults to {}."""
-        mock_session = MagicMock()
-        # Make dict() on the headers object raise AttributeError
-        bad_headers = MagicMock()
-        bad_headers.keys = MagicMock(side_effect=AttributeError("no keys"))
-        mock_session.headers = bad_headers
-        cached = CachedAiohttpSession(storage=mock_storage, session=mock_session)
-        assert cached._session_default_headers == {}
-
-
-class TestSyncStreamFallback:
-    @pytest.mark.asyncio
-    async def test_sync_iterable_stream_consumed(self, mock_storage: AsyncMock) -> None:
-        """When hishel_response.stream has no __aiter__, fall back to list()."""
-        mock_session = AsyncMock()
-        mock_session.headers = {}
-        cached = CachedAiohttpSession(storage=mock_storage, session=mock_session)
-
-        # iter() produces a sync iterator — no __aiter__ attribute
-        sync_stream = iter([b"chunk1", b"chunk2"])
-        assert not hasattr(sync_stream, "__aiter__")
-
-        hishel_resp = MagicMock()
-        hishel_resp.status_code = 200
-        hishel_resp.headers = {}
-        hishel_resp.stream = sync_stream
-        hishel_resp.metadata = {"hishel_from_cache": False}
-
-        cached._proxy.handle_request = AsyncMock(return_value=hishel_resp)
-
-        resp = await cached._request("GET", "https://example.com/api")
-        assert resp.status == 200
-        assert resp._body == b"chunk1chunk2"
+    [sent] = handle_request.call_args.args
+    assert sent.headers.get("User-Agent") == "ua"
+    assert response.status == 200

@@ -156,6 +156,10 @@ class _CachedFunction[**P, R]:
     as typed methods so callers do not need dynamic attribute access.
     """
 
+    # Set by functools.update_wrapper in __init__.
+    __name__: str
+    __wrapped__: Callable[P, Awaitable[R]]
+
     def __init__(
         self,
         func: Callable[P, Awaitable[R]],
