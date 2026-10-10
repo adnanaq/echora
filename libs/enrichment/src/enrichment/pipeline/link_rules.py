@@ -19,8 +19,8 @@ from typing import Any
 
 from common.utils.id_generation import generate_deterministic_id
 
-from enrichment.pipeline.same_work import canonical_url_key
 from enrichment.pipeline.metadata_rules import Ranked, providers_supplying
+from enrichment.pipeline.same_work import canonical_url_key
 from enrichment.sources.base.external_links import (
     canonical_platform,
     normalize_link_url,
