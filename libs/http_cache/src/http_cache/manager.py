@@ -10,12 +10,11 @@ from typing import Any
 import aiohttp
 from common.config import CacheConfig, RedisConfig
 from common.redis_client import create_redis_client
-from hishel import BaseFilter, FilterPolicy
+from hishel import AsyncRedisStorage, BaseFilter, FilterPolicy
 from hishel import Response as HishelResponse
 from redis.asyncio import Redis
 
 from .aiohttp_adapter import CachedAiohttpSession
-from .async_redis_storage import AsyncRedisStorage
 from .utils import _mask_url_credentials
 
 logger = logging.getLogger(__name__)
@@ -152,17 +151,14 @@ class HTTPCacheManager:
         client = self._client_for_loop(decode_responses=False)
         if client is None:
             return aiohttp.ClientSession(**session_kwargs)
-        storage = AsyncRedisStorage(
-            client=client,
-            default_ttl=float(self.cache.ttl_for(service)),
-            refresh_ttl_on_access=True,
-            key_prefix="hishel_cache",
-        )
+        ttl = self.cache.ttl_for(service)
+        storage = AsyncRedisStorage(client=client, ttl=ttl, key_prefix="hishel_cache")
         return CachedAiohttpSession(
             storage=storage,
             policy=self.policy,
             force_cache=self.cache.force_cache,
             always_revalidate=self.cache.always_revalidate,
+            default_ttl=ttl,
             **session_kwargs,
         )
 

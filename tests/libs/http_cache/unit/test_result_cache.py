@@ -2,7 +2,7 @@ import hashlib
 import json
 from collections.abc import Iterator
 from contextlib import AbstractContextManager
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 from unittest.mock import patch
 
@@ -18,9 +18,18 @@ from http_cache.result_cache import (
 from redis.asyncio import Redis
 from redis.asyncio.client import Pipeline
 from redis.exceptions import RedisError
+from redis.typing import EncodableT, ExpiryT, KeysT, KeyT
 
 MAX_KEY_LENGTH = 200
 HEX_DIGITS = set("0123456789abcdef")
+
+
+def _text(value: EncodableT | KeyT) -> str:
+    return value.decode() if isinstance(value, bytes) else str(value)
+
+
+def _seconds(time: ExpiryT) -> int:
+    return int(time.total_seconds()) if isinstance(time, timedelta) else time
 
 
 class InMemoryPipeline(Pipeline):
@@ -28,17 +37,17 @@ class InMemoryPipeline(Pipeline):
         self.store = store
         self.queued: list[tuple[str, int, str]] = []
 
-    def __del__(self) -> None:
+    def __del__(self, _warn: Any = None, _grl: Any = None) -> None:
         return None
 
     async def __aenter__(self) -> InMemoryPipeline:
         return self
 
-    async def __aexit__(self, *exc_info: object) -> None:
+    async def __aexit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> None:
         return None
 
-    def setex(self, name: str, time: int, value: str) -> InMemoryPipeline:
-        self.queued.append((name, time, value))
+    def setex(self, name: KeyT, time: ExpiryT, value: EncodableT) -> InMemoryPipeline:
+        self.queued.append((_text(name), _seconds(time), _text(value)))
         return self
 
     async def execute(self, raise_on_error: bool = True) -> list[bool]:
@@ -55,23 +64,24 @@ class InMemoryRedis(Redis):
         self.reads: list[str] = []
         self.failing = failing
 
-    def __del__(self) -> None:
+    def __del__(self, _warn: Any = None, _grl: Any = None) -> None:
         return None
 
-    async def get(self, name: str) -> str | None:
+    async def get(self, name: KeyT) -> str | None:
         self._fail_if("get")
-        self.reads.append(name)
-        return self.values.get(name)
+        self.reads.append(_text(name))
+        return self.values.get(_text(name))
 
-    async def mget(self, keys: list[str], *args: str) -> list[str | None]:
+    async def mget(self, keys: KeysT, *args: EncodableT) -> list[bytes | str | None]:
         self._fail_if("mget")
-        self.reads.extend(keys)
-        return [self.values.get(key) for key in keys]
+        names = [_text(key) for key in ([keys] if isinstance(keys, str) else keys)]
+        self.reads.extend(names)
+        return [self.values.get(name) for name in names]
 
-    async def setex(self, name: str, time: int, value: str) -> bool:
+    async def setex(self, name: KeyT, time: ExpiryT, value: EncodableT) -> bool:
         self._fail_if("setex")
-        self.values[name] = value
-        self.ttls[name] = time
+        self.values[_text(name)] = _text(value)
+        self.ttls[_text(name)] = _seconds(time)
         return True
 
     def pipeline(
@@ -86,7 +96,7 @@ class InMemoryRedis(Redis):
 
 
 class EmptyMgetRedis(InMemoryRedis):
-    async def mget(self, keys: list[str], *args: str) -> list[str | None]:
+    async def mget(self, keys: KeysT, *args: EncodableT) -> list[bytes | str | None]:
         return []
 
 

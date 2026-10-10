@@ -52,12 +52,12 @@ flowchart TB
 
 - **HTTPCacheManager**: Hands out cached aiohttp sessions and owns both Redis clients; the app creates one with `configure_cache` and code reads it with `get_cache()`
 - **CachedAiohttpSession**: Async context manager wrapping aiohttp.ClientSession with caching
-- **AsyncRedisStorage**: Hishel storage backend for Redis (production)
+- **AsyncRedisStorage**: hishel's own Redis storage, built by the manager for each session with the source's TTL
 - **@cached_result**: Decorator for caching function results (used by crawlers)
 
 **Storage Strategy**:
 
-- HTTP-level caching: `hishel_cache:*` keys (managed by Hishel via AsyncRedisStorage)
+- HTTP-level caching: `hishel_cache:*` keys, written by hishel's `AsyncRedisStorage`: `entry:<id>`, `idx:<cache key>`, `stream:<id>` and `stream_done:<id>`
 - Result-level caching: `result_cache:*` keys (managed by @cached_result decorator)
 - Both use the same Redis server with different key prefixes for isolation
 
@@ -240,10 +240,12 @@ The cache manager is designed for **async concurrency** within Python's asyncio 
 - Multiple instances can share same Redis storage backend
 - Not safe for sharing across threads or event loops
 
-**AsyncRedisStorage:**
-- Connection pooling enables concurrent async operations
-- Multiple agents can safely access shared cache
-- Redis atomic operations prevent race conditions across processes
+**AsyncRedisStorage (hishel):**
+- Writes an entry and its index in one Redis transaction
+- Serves a response only once its body is stored completely; a body cut off mid-stream is dropped
+- Keeps each response for the source's TTL from when it was fetched; a cache hit does not extend it
+- Does not cache response bodies over 10 MB; they are still returned to the caller
+- A removed entry leaves the index at once and Redis frees its keys 180 s later
 
 **@cached_result Decorator:**
 - Safe for concurrent async function calls
