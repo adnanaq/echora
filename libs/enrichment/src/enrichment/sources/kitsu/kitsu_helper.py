@@ -422,6 +422,32 @@ class KitsuHelper(BaseEnrichmentHelper):
             )
         return list(credited.values())
 
+    async def get_anime_mappings(
+        self, anime_id: int, *, session: Any | None = None
+    ) -> list[KitsuMapping]:
+        """Fetch every mapping Kitsu holds for an anime, as Kitsu states it.
+
+        A mapping names another site and this anime's id there, such as
+        ``myanimelist/anime`` 21; the mapper turns the ones with a known address
+        into external links.
+
+        Args:
+            anime_id: Kitsu integer anime ID.
+            session: Optional aiohttp session to reuse.
+
+        Returns:
+            One mapping per Kitsu mapping resource, in Kitsu's order.
+
+        Examples:
+            For One Piece (Kitsu 12) Kitsu holds, among others,
+            ``myanimelist/anime`` 21, ``anidb`` 69, ``thetvdb/series`` 81797
+            and ``trakt`` 37696.
+        """
+        items = await self._fetch_all_pages(
+            f"/anime/{anime_id}/mappings", session=session
+        )
+        return [KitsuMapping.model_validate(item) for item in items]
+
     async def get_anime_characters(
         self, anime_id: int, *, session: Any | None = None
     ) -> list[KitsuMediaCharacter]:
@@ -540,11 +566,18 @@ class KitsuHelper(BaseEnrichmentHelper):
             if session is None
             else nullcontext(session)
         ) as active_session:  # type: ignore[attr-defined]
-            anime_raw, genre_raw, category_raw, production_raw = await asyncio.gather(
+            (
+                anime_raw,
+                genre_raw,
+                category_raw,
+                production_raw,
+                mapping_raw,
+            ) = await asyncio.gather(
                 self.get_anime_by_id(anime_id, session=active_session),
                 self.get_anime_genres(anime_id, session=active_session),
                 self.get_anime_categories(anime_id, session=active_session),
                 self.get_anime_productions(anime_id, session=active_session),
+                self.get_anime_mappings(anime_id, session=active_session),
                 return_exceptions=True,
             )
 
@@ -579,34 +612,14 @@ class KitsuHelper(BaseEnrichmentHelper):
         anime_model.genres = genres
         anime_model.themes = themes
         anime_model.companies = companies
+        if isinstance(mapping_raw, list):
+            anime_model.mappings = mapping_raw
         result = anime_from_kitsu(anime_model)
         logger.info(f"Kitsu anime fetched: {result.get('title', anime_id)}")
 
         repo = FileRepository(output_path) if output_path else NullRepository()
         repo.save(result)
         return result
-
-    async def fetch_mappings(
-        self, anime_id: int, *, session: Any | None = None
-    ) -> list[KitsuMapping]:
-        """Return every mapping Kitsu holds for an anime, as Kitsu states it.
-
-        Enrichment does not call this: every fetcher already receives its own
-        page from the seed. The mappings are evidence for deciding which
-        provider pages describe the same work; turning a site name into a page
-        link is left to the caller.
-
-        Args:
-            anime_id: Kitsu integer anime identifier.
-            session: Optional aiohttp session to reuse.
-
-        Returns:
-            One mapping per Kitsu mapping resource, in Kitsu's order.
-        """
-        items = await self._fetch_all_pages(
-            f"/anime/{anime_id}/mappings", session=session
-        )
-        return [KitsuMapping.model_validate(item) for item in items]
 
     async def fetch_episodes(
         self,

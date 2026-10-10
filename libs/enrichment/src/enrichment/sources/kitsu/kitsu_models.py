@@ -88,6 +88,8 @@ class KitsuAnime(BaseModel):
     themes: list[ThemeEntry] = Field(default_factory=list)
     # Populated by the helper after fetching /anime-productions
     companies: list[KitsuProduction] = Field(default_factory=list)
+    # Populated by the helper after fetching /mappings
+    mappings: list[KitsuMapping] = Field(default_factory=list)
 
 
 class KitsuProduction(BaseModel):

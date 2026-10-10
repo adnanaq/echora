@@ -122,6 +122,19 @@ def _one_piece_routes(routes: dict[str, Any]) -> None:
         [{"id": "t1", "attributes": {"title": "Pirates", "description": "At sea"}}]
     )
     routes["/anime/12/anime-productions"] = Collection([])
+    routes["/anime/12/mappings"] = Collection(
+        [
+            {
+                "id": "m1",
+                "attributes": {"externalSite": "myanimelist/anime", "externalId": "21"},
+            },
+            {
+                "id": "m2",
+                "attributes": {"externalSite": "trakt", "externalId": "37696"},
+            },
+            {"id": "m3", "attributes": {"externalSite": "aozora", "externalId": "x1"}},
+        ]
+    )
     routes["/anime/12/episodes"] = Collection(
         [{"id": "e1", "attributes": {"number": 1, "canonicalTitle": "Ep 1"}}]
     )
@@ -371,7 +384,7 @@ async def test_get_character_animeography_sets_media_and_media_type(kitsu_api) -
     ]
 
 
-async def test_fetch_anime_maps_anime_with_genres_themes_and_companies(
+async def test_fetch_anime_maps_anime_with_genres_themes_companies_and_links(
     kitsu_api, tmp_path: Path
 ) -> None:
     _one_piece_routes(kitsu_api.routes)
@@ -402,6 +415,12 @@ async def test_fetch_anime_maps_anime_with_genres_themes_and_companies(
         ("Pirates", "At sea")
     ]
     assert [company["name"] for company in anime["companies"]] == ["Toei Animation"]
+    assert [
+        (link["platform"], link["source"]) for link in anime["external_sources"]
+    ] == [
+        ("myanimelist", "https://myanimelist.net/anime/21"),
+        ("trakt", "https://trakt.tv/shows/37696"),
+    ]
     assert [json.loads(line) for line in output.read_text().splitlines()] == [anime]
 
 
@@ -425,14 +444,16 @@ async def test_fetch_anime_cancelled_detail_requests_give_anime_without_those_de
         "/anime/12/genres",
         "/anime/12/categories",
         "/anime/12/anime-productions",
+        "/anime/12/mappings",
     ):
         kitsu_api.routes[path] = asyncio.CancelledError()
     anime = await KitsuHelper().fetch_anime(12)
     assert anime["title"] == "One Piece"
     assert (anime["genres"], anime["themes"], anime["companies"]) == ([], [], [])
+    assert anime["external_sources"] == []
 
 
-async def test_fetch_mappings_returns_every_mapping_as_stated(kitsu_api) -> None:
+async def test_get_anime_mappings_returns_every_mapping_as_stated(kitsu_api) -> None:
     kitsu_api.routes["/anime/186/mappings"] = Collection(
         [
             {
@@ -453,7 +474,7 @@ async def test_fetch_mappings_returns_every_mapping_as_stated(kitsu_api) -> None
             },
         ]
     )
-    mappings = await KitsuHelper().fetch_mappings(186)
+    mappings = await KitsuHelper().get_anime_mappings(186)
     assert [
         (mapping.attributes.external_site, mapping.attributes.external_id)
         for mapping in mappings
@@ -465,9 +486,11 @@ async def test_fetch_mappings_returns_every_mapping_as_stated(kitsu_api) -> None
     ]
 
 
-async def test_fetch_mappings_without_mappings_returns_empty_list(kitsu_api) -> None:
+async def test_get_anime_mappings_without_mappings_returns_empty_list(
+    kitsu_api,
+) -> None:
     kitsu_api.routes["/anime/51111/mappings"] = Collection([])
-    assert await KitsuHelper().fetch_mappings(51111) == []
+    assert await KitsuHelper().get_anime_mappings(51111) == []
 
 
 async def test_fetch_episodes_maps_every_episode_and_saves_each(

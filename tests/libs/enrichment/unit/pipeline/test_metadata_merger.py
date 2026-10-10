@@ -523,6 +523,36 @@ def test_external_sources_drop_links_another_field_owns() -> None:
     ]
 
 
+def test_merge_provider_records_kitsu_mapping_links_keep_aggregators_and_drop_provider_pages() -> (
+    None
+):
+    merged = merge_provider_records(
+        {
+            "kitsu": {
+                "sources": ["https://kitsu.io/anime/one-piece"],
+                "external_sources": [
+                    {
+                        "platform": "myanimelist",
+                        "source": "https://myanimelist.net/anime/99",
+                    },
+                    {"platform": "anilist", "source": "https://anilist.co/anime/21"},
+                    {"platform": "anidb", "source": "https://anidb.net/anime/69"},
+                    {
+                        "platform": "thetvdb",
+                        "source": "https://thetvdb.com/dereferrer/series/81797",
+                    },
+                    {"platform": "trakt", "source": "https://trakt.tv/shows/37696"},
+                ],
+            }
+        }
+    )
+    assert merged["sources"] == ["https://kitsu.io/anime/one-piece"]
+    assert [link["platform"] for link in merged["external_sources"]] == [
+        "thetvdb",
+        "trakt",
+    ]
+
+
 def test_external_sources_fold_one_page_published_two_ways() -> None:
     merged = merge_provider_records(
         {
