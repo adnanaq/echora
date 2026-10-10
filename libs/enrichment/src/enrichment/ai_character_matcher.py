@@ -29,13 +29,12 @@ from enum import Enum
 import jellyfish
 
 # Core libraries for fuzzy matching
+from common.config import EmbeddingConfig
 from rapidfuzz import fuzz
 from sentence_transformers import SentenceTransformer
 
 # Vision processing for character image similarity
 try:
-    from common.config.embedding_config import EmbeddingConfig
-    from common.config.settings import Settings
     from vector_processing.embedding_models.factory import EmbeddingModelFactory
     from vector_processing.processors.anime_field_mapper import AnimeFieldMapper
     from vector_processing.processors.vision_processor import VisionProcessor
@@ -47,8 +46,6 @@ try:
 except ImportError:
     VisionProcessor = None
     CCIP = None
-    EmbeddingConfig = None
-    Settings = None
     AnimeFieldMapper = None
     EmbeddingModelFactory = None
     ImageDownloader = None
@@ -403,11 +400,17 @@ class CharacterNamePreprocessor:
 class EnsembleFuzzyMatcher:
     """Multi-algorithm fuzzy matching with ensemble scoring (enhanced)"""
 
-    def __init__(self, model_name: str = "BAAI/bge-m3", enable_visual: bool = True):
+    def __init__(
+        self,
+        embedding_config: EmbeddingConfig,
+        model_name: str = "BAAI/bge-m3",
+        enable_visual: bool = True,
+    ):
         """
         Initialize the ensemble fuzzy matcher with optional multilingual embedding and vision processors.
 
         Parameters:
+            embedding_config (EmbeddingConfig): Vision model and model cache settings.
             model_name (str): Name or path of the text embedding model to load.
             enable_visual (bool): If True, attempts to initialize a vision processor for image-based similarity.
 
@@ -433,15 +436,12 @@ class EnsembleFuzzyMatcher:
         if self.enable_visual:
             try:
                 if (
-                    Settings is not None
-                    and EmbeddingConfig is not None
-                    and VisionProcessor is not None
+                    VisionProcessor is not None
                     and EmbeddingModelFactory is not None
                     and ImageDownloader is not None
                     and AnimeFieldMapper is not None
                     and CCIP is not None
                 ):
-                    embedding_config = Settings().embedding
                     vision_model = EmbeddingModelFactory.create_vision_model(
                         embedding_config
                     )
@@ -914,10 +914,16 @@ class MatchValidationClassifier:
 class AICharacterMatcher:
     """Main AI-powered character matching system"""
 
-    def __init__(self) -> None:
+    def __init__(self, embedding_config: EmbeddingConfig) -> None:
+        """Set up the matcher.
+
+        Args:
+            embedding_config: Vision model and model cache settings, usually
+                ``settings.embedding``.
+        """
         self.language_detector = LanguageDetector()
         self.preprocessor = CharacterNamePreprocessor()
-        self.fuzzy_matcher = EnsembleFuzzyMatcher()
+        self.fuzzy_matcher = EnsembleFuzzyMatcher(embedding_config)
         self.validator = MatchValidationClassifier()
 
         logger.info("AI Character Matcher initialized")
@@ -1465,19 +1471,20 @@ async def process_characters_with_ai_matching(
     anilist_chars: list[dict[str, Any]],
     anidb_chars: list[dict[str, Any]],
     anime_planet_chars: list[dict[str, Any]] | None = None,
-    matcher: AICharacterMatcher | None = None,
+    *,
+    matcher: AICharacterMatcher,
 ) -> dict[str, list[dict[str, Any]]]:
     """
     Process and integrate character data from multiple sources using AI-powered matching.
 
-    This function runs the ensemble matcher over MAL, AniList, AniDB, and optionally AnimePlanet character lists, consolidates enriched metadata into the Stage 5 JSON schema, and returns a dictionary with a single "characters" key containing the processed character records. If a reusable AICharacterMatcher instance is supplied it will be reused; otherwise a new matcher is created.
+    This function runs the ensemble matcher over MAL, AniList, AniDB, and optionally AnimePlanet character lists, consolidates enriched metadata into the Stage 5 JSON schema, and returns a dictionary with a single "characters" key containing the processed character records. The matcher is passed in so its models load once and serve many calls.
 
     Parameters:
         mal_chars (List[Dict[str, Any]]): Character entries from MAL (primary source).
         anilist_chars (List[Dict[str, Any]]): Character entries from AniList.
         anidb_chars (List[Dict[str, Any]]): Character entries from AniDB.
         anime_planet_chars (Optional[List[Dict[str, Any]]]): Character entries from AnimePlanet; may be omitted.
-        matcher (Optional[AICharacterMatcher]): An existing AICharacterMatcher to reuse; a new one is created when omitted.
+        matcher (AICharacterMatcher): The matcher to run; built once by the caller so its models load once.
 
     Returns:
         Dict[str, List[Dict[str, Any]]]: A dictionary with a "characters" list where each entry is a dict containing the integrated fields:
@@ -1486,10 +1493,6 @@ async def process_characters_with_ai_matching(
             - character_pages
             - _match_scores (internal per-source match scoring; may be an empty dict)
     """
-
-    # Reuse matcher if provided, otherwise create new instance
-    if matcher is None:
-        matcher = AICharacterMatcher()
 
     # Process all characters with AI matching
     processed_chars = await matcher.match_characters(
@@ -1572,7 +1575,10 @@ if __name__ == "__main__":  # pragma: no cover
             anidb_chars = [{"name": "Spike Spiegel", "id": 118}]
 
             result = await process_characters_with_ai_matching(
-                mal_chars, anilist_chars, anidb_chars
+                mal_chars,
+                anilist_chars,
+                anidb_chars,
+                matcher=AICharacterMatcher(EmbeddingConfig()),
             )
 
             print(json.dumps(result, indent=2, ensure_ascii=False))

@@ -11,88 +11,19 @@ automatically invalidating old cache entries.
 
 from __future__ import annotations
 
-import asyncio
 import functools
 import hashlib
 import inspect
 import json
 import logging
 from collections.abc import Awaitable, Callable
-from typing import Any, Generic, ParamSpec, TypeVar, cast
+from typing import Any, cast
 
-from redis.asyncio import Redis
+from common.config import CacheConfig
+from common.config.cache_config import DEFAULT_TTL
 from redis.exceptions import RedisError
 
-from .config import get_cache_config
-from .exceptions import RedisInitializationError
-from .utils import _mask_url_credentials
-
-P = ParamSpec("P")
-R = TypeVar("R")
-
-
-# --- Singleton Redis Client for @cached_result ---
-
-_redis_lock = asyncio.Lock()
-_redis_client: Redis | None = None
-
-
-async def get_result_cache_redis_client() -> Redis:
-    """Return the singleton async Redis client used for result-level caching.
-
-    Initializes the client on first call; subsequent calls return the same
-    instance. Guarded by an async lock so concurrent callers cannot race
-    with client closure.
-
-    Returns:
-        The initialized singleton Redis client.
-
-    Raises:
-        RedisInitializationError: If the client cannot be created.
-    """
-    global _redis_client
-    async with _redis_lock:
-        # Hold lock until return to ensure atomic check-and-return
-        # Prevents race: close() can't set to None while we hold the lock
-        if _redis_client is None:
-            config = get_cache_config()
-            redis_url = config.redis_url or "redis://localhost:6379/0"
-            logging.info(
-                f"Initializing singleton Redis client for result cache: {_mask_url_credentials(redis_url)} "
-                f"(max_connections={config.redis_max_connections})"
-            )
-            # Configure connection pool for multi-agent concurrency and reliability
-            _redis_client = Redis.from_url(
-                redis_url,
-                decode_responses=True,
-                max_connections=config.redis_max_connections,
-                socket_keepalive=config.redis_socket_keepalive,
-                socket_connect_timeout=config.redis_socket_connect_timeout,
-                socket_timeout=config.redis_socket_timeout,
-                retry_on_timeout=config.redis_retry_on_timeout,
-                health_check_interval=config.redis_health_check_interval,
-            )
-        # After initialization, client must be non-None
-        if _redis_client is None:
-            raise RedisInitializationError()
-        return _redis_client
-
-
-async def close_result_cache_redis_client() -> None:
-    """Close the singleton Redis client used for result caching.
-
-    Acquires the global lock, closes the client asynchronously, and clears
-    the singleton reference. Safe to call when no client is initialized (no-op).
-    """
-    global _redis_client
-    async with _redis_lock:
-        if _redis_client:
-            logging.info("Closing singleton Redis client for result cache.")
-            await _redis_client.aclose()
-            _redis_client = None
-
-
-# --- End Singleton ---
+from .setup import get_cache
 
 
 def _compute_schema_hash(
@@ -130,7 +61,7 @@ def _compute_schema_hash(
 
 
 def _generate_cache_key(
-    prefix: str, schema_hash: str, *args: Any, **kwargs: Any
+    max_key_length: int, prefix: str, schema_hash: str, *args: Any, **kwargs: Any
 ) -> str:
     """Create a stable Redis cache key for a function call.
 
@@ -140,6 +71,7 @@ def _generate_cache_key(
     configured max length it is replaced with a SHA-256 hash.
 
     Args:
+        max_key_length: Longest key kept as is; longer keys are hashed.
         prefix: Cache key prefix, typically the function name.
         schema_hash: Short hash representing the function's source/schema.
         *args: Positional arguments to include in the key.
@@ -150,10 +82,6 @@ def _generate_cache_key(
         or ``result_cache:{prefix}:{schema_hash}:{sha256_hex}`` when the key
         exceeds the configured max length.
     """
-    # Get max key length from config
-    config = get_cache_config()
-    max_key_length = config.max_cache_key_length
-
     # Serialize arguments to create stable key
     key_parts = [prefix, schema_hash]  # Include schema hash
 
@@ -221,7 +149,7 @@ def _normalize_batch_args(
     return normalized, kwargs_list
 
 
-class _CachedFunction(Generic[P, R]):
+class _CachedFunction[**P, R]:
     """Async callable produced by ``@cached_result`` with batch cache helpers.
 
     Wraps the original function and exposes ``cache_batch_get`` / ``cache_batch_set``
@@ -233,6 +161,7 @@ class _CachedFunction(Generic[P, R]):
         func: Callable[P, Awaitable[R]],
         schema_hash: str,
         prefix: str,
+        service: str | None,
         ttl: int | None,
     ) -> None:
         """Initialise the cached wrapper.
@@ -241,12 +170,14 @@ class _CachedFunction(Generic[P, R]):
             func: The async function being wrapped.
             schema_hash: Pre-computed source hash for cache-key generation.
             prefix: Cache-key prefix (function name or custom override).
-            ttl: Time-to-live in seconds; None defaults to 86400 (24 h).
+            service: Source whose configured lifetime applies, such as ``"mal"``.
+            ttl: Lifetime in seconds that overrides the source's.
         """
         self._func = func
         self._func_name: str = getattr(func, "__name__", repr(func))
         self._schema_hash = schema_hash
         self._prefix = prefix
+        self._service = service
         self._ttl = ttl
         functools.update_wrapper(self, func)
 
@@ -262,17 +193,14 @@ class _CachedFunction(Generic[P, R]):
         Returns:
             The cached or freshly computed result of the wrapped function.
         """
-        config = get_cache_config()
-
-        if not config.cache_enabled or config.storage_type != "redis":
+        cache = get_cache()
+        redis_client = cache.get_result_client()
+        if redis_client is None:
             return await self._func(*args, **kwargs)
 
-        cache_key = _generate_cache_key(
-            self._prefix, self._schema_hash, *args, **kwargs
-        )
+        cache_key = self._cache_key(cache.cache, args, kwargs)
 
         try:
-            redis_client = await get_result_cache_redis_client()
             cached_data = await redis_client.get(cache_key)
         except RedisError as e:
             logging.warning(f"Cache read error in {self._func_name}: {e}")
@@ -295,8 +223,7 @@ class _CachedFunction(Generic[P, R]):
         try:
             # Best-effort write; failures must not re-invoke the function
             serialized = json.dumps(result, ensure_ascii=False)
-            cache_ttl = self._ttl if self._ttl is not None else 86400
-            await redis_client.setex(cache_key, cache_ttl, serialized)
+            await redis_client.setex(cache_key, self._ttl_for(cache.cache), serialized)
         except (RedisError, TypeError) as e:
             # RedisError: Redis connection/operation failures
             # TypeError: JSON serialization fails for non-serializable objects
@@ -325,25 +252,26 @@ class _CachedFunction(Generic[P, R]):
             return [], []
 
         normalized_args, kwargs_list = _normalize_batch_args(args_list, kwargs_list)
+        all_missing = [None] * len(normalized_args), list(range(len(normalized_args)))
 
-        config = get_cache_config()
-        if not config.cache_enabled or config.storage_type != "redis":
-            return [None] * len(normalized_args), list(range(len(normalized_args)))
+        cache = get_cache()
+        redis_client = cache.get_result_client()
+        if redis_client is None:
+            return all_missing
 
         keys = [
-            _generate_cache_key(self._prefix, self._schema_hash, *args, **kw)
+            self._cache_key(cache.cache, args, kw)
             for args, kw in zip(normalized_args, kwargs_list, strict=False)
         ]
 
         try:
-            redis_client = await get_result_cache_redis_client()
             cached_list = await redis_client.mget(keys)
         except RedisError as e:
             logging.warning(f"Cache batch read error in {self._func_name}: {e}")
-            return [None] * len(normalized_args), list(range(len(normalized_args)))
+            return all_missing
 
         if not cached_list:
-            return [None] * len(normalized_args), list(range(len(normalized_args)))
+            return all_missing
 
         results: list[R | None] = []
         missing: list[int] = []
@@ -391,14 +319,14 @@ class _CachedFunction(Generic[P, R]):
         if len(values) != len(normalized_args):
             raise ValueError("values length must match args_list length")
 
-        config = get_cache_config()
-        if not config.cache_enabled or config.storage_type != "redis":
+        cache = get_cache()
+        redis_client = cache.get_result_client()
+        if redis_client is None:
             return
 
-        cache_ttl = self._ttl if self._ttl is not None else 86400
+        cache_ttl = self._ttl_for(cache.cache)
 
         try:
-            redis_client = await get_result_cache_redis_client()
             async with redis_client.pipeline(transaction=False) as pipe:
                 for args, kw, value in zip(
                     normalized_args, kwargs_list, values, strict=False
@@ -406,9 +334,7 @@ class _CachedFunction(Generic[P, R]):
                     if value is None:
                         continue
                     try:
-                        cache_key = _generate_cache_key(
-                            self._prefix, self._schema_hash, *args, **kw
-                        )
+                        cache_key = self._cache_key(cache.cache, args, kw)
                         serialized = json.dumps(value, ensure_ascii=False)
                         pipe.setex(cache_key, cache_ttl, serialized)
                     except TypeError as e:
@@ -417,11 +343,31 @@ class _CachedFunction(Generic[P, R]):
         except RedisError as e:
             logging.warning(f"Cache batch write error in {self._func_name}: {e}")
 
+    def _cache_key(
+        self, config: CacheConfig, args: tuple[Any, ...], kwargs: dict[str, Any]
+    ) -> str:
+        """Build the Redis key for one call of the wrapped function."""
+        return _generate_cache_key(
+            config.max_cache_key_length,
+            self._prefix,
+            self._schema_hash,
+            *args,
+            **kwargs,
+        )
 
-def cached_result(
-    ttl: int | None = None,
+    def _ttl_for(self, config: CacheConfig) -> int:
+        """Return the lifetime in seconds for results written now."""
+        if self._ttl is not None:
+            return self._ttl
+        return config.ttl_for(self._service) if self._service else DEFAULT_TTL
+
+
+def cached_result[**P, R](
+    service: str | None = None,
+    *,
     key_prefix: str | None = None,
     dependencies: list[Callable[..., Any]] | None = None,
+    ttl: int | None = None,
 ) -> Callable[[Callable[P, Awaitable[R]]], _CachedFunction[P, R]]:
     """Decorator to cache async function results in Redis with automatic schema invalidation.
 
@@ -430,20 +376,25 @@ def cached_result(
     invalidates stale entries. The decorated function also gains ``cache_batch_get``
     and ``cache_batch_set`` helpers for bulk cache operations.
 
-    Example:
-        @cached_result(ttl=86400, key_prefix="animeplanet_anime")
-        async def fetch_anime(slug: str) -> dict[str, Any] | None:
-            ...  # expensive crawler operation
+    Whether to cache and for how long are read from ``get_cache()`` on each
+    call, so the decorator works at import before the app configures the cache.
 
     Args:
-        ttl: Time-to-live in seconds. Defaults to 86400 (24 h), independent of
-            CacheConfig — result caching serves a different purpose than HTTP caching.
+        service: Source whose lifetime from ``CacheConfig`` applies, such as
+            ``"mal"`` for ``ttl_mal``. Without one, results are kept for
+            ``DEFAULT_TTL``.
         key_prefix: Cache key prefix. Defaults to the decorated function's name.
         dependencies: Additional callables whose source is included in the schema
             hash. Any change to a listed callable invalidates the cache.
+        ttl: Lifetime in seconds that overrides the source's.
 
     Returns:
         A decorator that wraps the async function with Redis caching.
+
+    Examples:
+        >>> @cached_result("anime_planet", key_prefix="animeplanet_anime")
+        ... async def fetch_anime(slug: str) -> dict[str, Any] | None:
+        ...     ...
     """
 
     def decorator(func: Callable[P, Awaitable[R]]) -> _CachedFunction[P, R]:
@@ -459,6 +410,6 @@ def cached_result(
         # Schema hash computed once at decoration time; changes when source changes.
         schema_hash = _compute_schema_hash(func, dependencies)
         prefix = key_prefix or getattr(func, "__name__", repr(func))
-        return _CachedFunction(func, schema_hash, prefix, ttl)
+        return _CachedFunction(func, schema_hash, prefix, service, ttl)
 
     return decorator

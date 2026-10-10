@@ -130,18 +130,10 @@ async def test_fetch_refs_html_browser_stop_swallowed(ap_char_refs_html: str) ->
 # =============================================================================
 
 
-def _disable_cache(mocker):
-    mocker.patch(
-        "http_cache.result_cache.get_cache_config",
-        return_value=mocker.MagicMock(cache_enabled=False),
-    )
-
-
 _PATCH_FETCH_HTML = "enrichment.sources.anime_planet.anime_planet_character_refs_crawler._fetch_refs_html"
 
 
 async def test_fetch_refs_data_success(mocker, ap_char_refs_html: str) -> None:
-    _disable_cache(mocker)
     mocker.patch(_PATCH_FETCH_HTML, new=AsyncMock(return_value=ap_char_refs_html))
 
     result = await _fetch_refs_data(_DANDADAN_URL)
@@ -152,14 +144,12 @@ async def test_fetch_refs_data_success(mocker, ap_char_refs_html: str) -> None:
 
 
 async def test_fetch_refs_data_no_html_returns_none(mocker) -> None:
-    _disable_cache(mocker)
     mocker.patch(_PATCH_FETCH_HTML, new=AsyncMock(return_value=None))
 
     assert await _fetch_refs_data(_DANDADAN_URL) is None
 
 
 async def test_fetch_refs_data_empty_page_returns_none(mocker) -> None:
-    _disable_cache(mocker)
     mocker.patch(
         _PATCH_FETCH_HTML,
         new=AsyncMock(return_value="<html><body></body></html>"),

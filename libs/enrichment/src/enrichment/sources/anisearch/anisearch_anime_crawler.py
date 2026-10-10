@@ -30,13 +30,10 @@ from enrichment.sources.base.utils import (
     parse_partial_date,
     split_date_range,
 )
-from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
 
 logger = logging.getLogger(__name__)
 
-_CACHE_CONFIG = get_cache_config()
-TTL_ANISEARCH = _CACHE_CONFIG.ttl_anisearch
 
 BASE_ANIME_URL = "https://www.anisearch.com/anime/"
 _ANISEARCH_BASE_URL = "https://www.anisearch.com"
@@ -382,7 +379,7 @@ def _parse_relations(
 
 
 @cached_result(
-    ttl=TTL_ANISEARCH,
+    service="anisearch",
     key_prefix="anisearch_anime",
     dependencies=[
         _extract_anime_from_html,

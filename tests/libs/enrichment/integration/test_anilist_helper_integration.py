@@ -1,264 +1,122 @@
-"""
-Integration tests for AniListHelper to verify caching and real API calls.
-
-These tests make real API calls to AniList GraphQL API to validate:
-- Caching functionality with Redis
-- Event loop management
-- Rate limiting with cache optimization
-- Pagination
-"""
-
-import logging
+import time
+from collections.abc import AsyncIterator, Iterator
 
 import pytest
 import pytest_asyncio
 import redis
+from common.config import CacheConfig, RedisConfig
 from enrichment.sources.anilist.anilist_helper import AniListHelper
+from http_cache import close_cache, configure_cache
 
 from tests.conftest import TEST_REDIS_URL
 
-# Mark all tests in this module as integration tests
-# Use redis_client fixture for setup/teardown side effects
-pytestmark = [pytest.mark.integration, pytest.mark.usefixtures("redis_client")]
+pytestmark = pytest.mark.integration
 
 
 @pytest.fixture(scope="module")
-def redis_client():
-    """Provides a Redis client for the test module, skipping tests if Redis is unavailable."""
+def redis_client() -> Iterator[redis.Redis]:
+    client = redis.Redis.from_url(TEST_REDIS_URL, decode_responses=True)
     try:
-        r = redis.Redis.from_url(TEST_REDIS_URL, decode_responses=True)
-        r.ping()
-        # flushdb, not flushall: flushall wipes every database on the server,
-        # including the developer's own cache in db 0.
-        r.flushdb()
-        yield r
-        r.flushdb()
+        client.ping()
     except redis.exceptions.ConnectionError:
         pytest.skip(f"Redis is not available on {TEST_REDIS_URL}")
+    client.flushdb()
+    yield client
+    client.flushdb()
 
 
 @pytest_asyncio.fixture
-async def clean_helper():
-    """Provide a fresh helper instance with event-loop-safe session management."""
-    import asyncio
-    import logging
-
-    logger = logging.getLogger(__name__)
-    logger.info(f"[clean_helper] SETUP - Event loop: {id(asyncio.get_running_loop())}")
-
-    helper = AniListHelper()
-
-    yield helper
-
-    logger.info("[clean_helper] TEARDOWN - Closing helper")
-    # Close helper session
-    await helper.close()
+async def helper(redis_client: redis.Redis) -> AsyncIterator[AniListHelper]:
+    cache = configure_cache(
+        CacheConfig(cache_enabled=True), RedisConfig(redis_url=TEST_REDIS_URL)
+    )
+    anilist = AniListHelper(cache)
+    yield anilist
+    await anilist.close()
+    await close_cache()
 
 
-@pytest.mark.asyncio
-async def test_anilist_fetch_anime_caching(clean_helper):
-    """
-    Integration test to verify that AniList API calls are cached.
-    Tests fetching anime data with cache hit detection.
-    """
-    import time
+async def test_fetch_anime_second_call_served_from_redis(
+    helper: AniListHelper, redis_client: redis.Redis
+) -> None:
+    redis_client.flushdb()
 
-    helper = clean_helper
+    first = await helper.fetch_anime(21)
+    stored = redis_client.keys("hishel_cache:*")
+    second = await helper.fetch_anime(21)
 
-    # First call (should be a cache miss)
-    start_time_1 = time.monotonic()
-    result_1 = await helper.fetch_anime(21)  # One Piece
-    end_time_1 = time.monotonic()
-    duration_1 = end_time_1 - start_time_1
-
-    assert result_1 is not None
-    assert result_1["id"] == 21
-    assert "title" in result_1
-
-    # Second call (should be a cache hit)
-    start_time_2 = time.monotonic()
-    result_2 = await helper.fetch_anime(21)
-    end_time_2 = time.monotonic()
-    duration_2 = end_time_2 - start_time_2
-
-    assert result_2 is not None
-    assert result_2 == result_1
-
-    print(f"First call (cache miss): {duration_1:.4f}s")
-    print(f"Second call (cache hit): {duration_2:.4f}s")
-
-    # Cache hit should be significantly faster
-    if duration_1 > 0.1:
-        assert duration_2 < duration_1 / 3
+    assert first is not None
+    assert first["id"] == 21
+    assert "title" in first
+    assert stored
+    assert second == first
+    assert redis_client.keys("hishel_cache:*") == stored
 
 
-@pytest.mark.asyncio
-async def test_anilist_pagination_caching(clean_helper):
-    """
-    Test that paginated requests are cached properly.
-    Verifies cache hit detection optimizes rate limiting.
-    """
-    helper = clean_helper
+async def test_fetch_characters_second_fetch_served_without_page_waits(
+    helper: AniListHelper,
+) -> None:
+    first = await helper.fetch_characters(21)
 
-    # Fetch characters (paginated)
-    characters_1 = await helper.fetch_characters(21)  # One Piece has many characters
+    start = time.monotonic()
+    second = await helper.fetch_characters(21)
+    duration = time.monotonic() - start
 
-    assert len(characters_1) > 0
-    print(f"First fetch: {len(characters_1)} characters")
-
-    # Fetch again (should hit cache for all pages)
-    import time
-
-    start_time = time.monotonic()
-    characters_2 = await helper.fetch_characters(21)
-    end_time = time.monotonic()
-    duration = end_time - start_time
-
-    assert characters_2 == characters_1
-    print(f"Second fetch (cached): {duration:.4f}s")
-
-    # Cache hit should be very fast (no 0.5s sleep between pages)
+    assert first
+    assert second == first
     assert duration < 1.0
 
 
-@pytest.mark.asyncio
-async def test_anilist_full_data_fetch(clean_helper):
-    """
-    Test fetching full anime data including characters, staff, and episodes.
-    """
-    helper = clean_helper
+async def test_fetch_anime_small_anime_returns_details(helper: AniListHelper) -> None:
+    anime = await helper.fetch_anime(1535)
 
-    # Fetch complete data
-    anime_data = await helper.fetch_anime(1535)  # Death Note (smaller dataset)
-
-    assert anime_data is not None
-    assert anime_data["id"] == 1535
-    assert "title" in anime_data
-
-    # Should have populated details
-    if "characters" in anime_data:
-        assert "edges" in anime_data["characters"]
-        print(f"Characters fetched: {len(anime_data['characters']['edges'])}")
-
-    if "staff" in anime_data:
-        assert "edges" in anime_data["staff"]
-        print(f"Staff fetched: {len(anime_data['staff']['edges'])}")
+    assert anime is not None
+    assert anime["id"] == 1535
+    assert "title" in anime
 
 
-@pytest.mark.asyncio
-async def test_anilist_not_found(clean_helper):
-    """
-    Test handling of non-existent anime ID.
-    """
-    helper = clean_helper
-
-    result = await helper.fetch_anime(999999999)
-
-    # Should return None for non-existent ID
-    assert result is None
+async def test_fetch_anime_unknown_id_returns_none(helper: AniListHelper) -> None:
+    assert await helper.fetch_anime(999999999) is None
 
 
-@pytest.mark.asyncio
-async def test_anilist_multiple_anime(clean_helper):
-    """
-    Test fetching multiple different anime to verify caching per ID.
-    """
-    helper = clean_helper
+async def test_fetch_anime_different_ids_cached_separately(
+    helper: AniListHelper,
+) -> None:
+    cowboy_bebop = await helper.fetch_anime(1)
+    naruto = await helper.fetch_anime(20)
 
-    # Fetch different anime
-    anime1 = await helper.fetch_anime(1)  # Cowboy Bebop
-    anime2 = await helper.fetch_anime(20)  # Naruto
-
-    assert anime1 is not None
-    assert anime2 is not None
-    assert anime1["id"] == 1
-    assert anime2["id"] == 20
-    assert anime1 != anime2
-
-    # Fetch again (should hit cache)
-    anime1_cached = await helper.fetch_anime(1)
-    anime2_cached = await helper.fetch_anime(20)
-
-    assert anime1_cached == anime1
-    assert anime2_cached == anime2
+    assert cowboy_bebop is not None
+    assert naruto is not None
+    assert (cowboy_bebop["id"], naruto["id"]) == (1, 20)
+    assert await helper.fetch_anime(1) == cowboy_bebop
+    assert await helper.fetch_anime(20) == naruto
 
 
-@pytest.mark.asyncio
-async def test_anilist_event_loop_safety():
-    """
-    Test that helper works correctly across multiple test functions with different event loops.
-    This test creates its own helper to verify event loop recreation.
-    """
-    import asyncio
+async def test_fetch_anime_new_event_loop_returns_anime(helper: AniListHelper) -> None:
+    anime = await helper.fetch_anime(30)
 
-    logger = logging.getLogger(__name__)
-    logger.info(f"Event loop safety test - loop: {id(asyncio.get_running_loop())}")
-
-    helper = AniListHelper()
-
-    try:
-        result = await helper.fetch_anime(30)  # Neon Genesis Evangelion
-
-        assert result is not None
-        assert result["id"] == 30
-    finally:
-        await helper.close()
+    assert anime is not None
+    assert anime["id"] == 30
 
 
-@pytest.mark.asyncio
-async def test_anilist_unicode_handling(clean_helper):
-    """
-    Test handling of Unicode in anime titles (Japanese characters).
-    """
-    helper = clean_helper
+async def test_fetch_anime_native_title_keeps_japanese_characters(
+    helper: AniListHelper,
+) -> None:
+    anime = await helper.fetch_anime(21)
 
-    # Fetch anime with Japanese title
-    result = await helper.fetch_anime(21)  # One Piece
-
-    assert result is not None
-    assert "title" in result
-
-    # Should have native title with Japanese characters
-    if "native" in result["title"]:
-        assert len(result["title"]["native"]) > 0
-        print(f"Native title: {result['title']['native']}")
+    assert anime is not None
+    assert anime["title"]["native"]
 
 
-@pytest.mark.asyncio
-async def test_anilist_empty_results(clean_helper):
-    """
-    Verify fetch_anime handles anime records with minimal or missing nested data.
+async def test_fetch_anime_sparse_record_returns_none_or_record_with_id(
+    helper: AniListHelper,
+) -> None:
+    anime = await helper.fetch_anime(100000)
 
-    If a result is returned it must include an "id"; the call must not raise unhandled exceptions when characters, staff, or episodes are absent.
-    """
-    helper = clean_helper
-
-    # Some anime might have minimal data
-    # Test graceful handling
-    try:
-        result = await helper.fetch_anime(100000)  # Unlikely to have full data
-
-        # Should handle gracefully (either None or partial data)
-        if result:
-            assert "id" in result
-    except Exception as e:
-        # Should not raise unhandled exceptions
-        pytest.fail(f"Should handle missing data gracefully: {e}")
+    assert anime is None or "id" in anime
 
 
-@pytest.mark.asyncio
-async def test_anilist_rate_limit_headers(clean_helper):
-    """
-    Test that rate limit headers are tracked correctly.
-    """
-    helper = clean_helper
-
-    initial_rate_limit = helper.rate_limit_remaining
-
-    # Make a request
+async def test_fetch_anime_tracks_rate_limit_remaining(helper: AniListHelper) -> None:
     await helper.fetch_anime(1)
 
-    # Rate limit should be tracked (either updated from headers or unchanged)
     assert helper.rate_limit_remaining >= 0
-    print(f"Initial rate limit: {initial_rate_limit}")
-    print(f"After request: {helper.rate_limit_remaining}")

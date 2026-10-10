@@ -13,6 +13,7 @@ from enrichment.sources.animeschedule.animeschedule_helper import (
     main,
 )
 from enrichment.sources.base.exceptions import ServiceNetworkError, ServiceParseError
+from http_cache import get_cache
 from http_cache.aiohttp_adapter import CachedAiohttpSession
 
 SEARCH_URL = "https://animeschedule.net/api/v3/anime"
@@ -36,9 +37,15 @@ def search_session():
     session = create_autospec(CachedAiohttpSession, instance=True)
     response = create_autospec(aiohttp.ClientResponse, instance=True)
     session.get.return_value.__aenter__.return_value = response
-    with patch.object(
-        animeschedule_helper._cache_manager, "get_aiohttp_session", autospec=True
-    ) as get_session:
+    with (
+        patch.object(get_cache(), "get_aiohttp_session", autospec=True) as get_session,
+        patch.object(
+            animeschedule_helper,
+            "configure_cache",
+            autospec=True,
+            return_value=get_cache(),
+        ),
+    ):
         get_session.return_value.__aenter__.return_value = session
         yield session
 
@@ -132,7 +139,7 @@ async def test_search_without_sources_returns_first_result_mapped(
 ) -> None:
     _answer(search_session, {"anime": [ONE_PIECE_RESULT, OTHER_RESULT]})
 
-    result = await AnimescheduleHelper()._search("One Piece")
+    result = await AnimescheduleHelper(get_cache())._search("One Piece")
 
     assert result["title"] == "One Piece"
     assert "https://animeschedule.net/anime/one-piece" in result["sources"]
@@ -141,7 +148,9 @@ async def test_search_without_sources_returns_first_result_mapped(
 async def test_search_with_sources_returns_matching_result(search_session) -> None:
     _answer(search_session, {"anime": [OTHER_RESULT, ONE_PIECE_RESULT]})
 
-    result = await AnimescheduleHelper()._search("One Piece", sources=[MAL_URL])
+    result = await AnimescheduleHelper(get_cache())._search(
+        "One Piece", sources=[MAL_URL]
+    )
 
     assert result["title"] == "One Piece"
 
@@ -151,7 +160,10 @@ async def test_search_with_sources_and_no_matching_result_returns_none(
 ) -> None:
     _answer(search_session, {"anime": [OTHER_RESULT]})
 
-    assert await AnimescheduleHelper()._search("One Piece", sources=[MAL_URL]) is None
+    assert (
+        await AnimescheduleHelper(get_cache())._search("One Piece", sources=[MAL_URL])
+        is None
+    )
 
 
 @pytest.mark.parametrize("payload", [{"anime": []}, None])
@@ -160,7 +172,7 @@ async def test_search_without_results_returns_none(
 ) -> None:
     _answer(search_session, payload)
 
-    assert await AnimescheduleHelper()._search("One Piece") is None
+    assert await AnimescheduleHelper(get_cache())._search("One Piece") is None
 
 
 async def test_search_output_path_appends_mapped_result(
@@ -169,7 +181,9 @@ async def test_search_output_path_appends_mapped_result(
     _answer(search_session, {"anime": [ONE_PIECE_RESULT]})
     output = tmp_path / "animeschedule.jsonl"
 
-    result = await AnimescheduleHelper()._search("One Piece", output_path=str(output))
+    result = await AnimescheduleHelper(get_cache())._search(
+        "One Piece", output_path=str(output)
+    )
 
     assert [json.loads(line) for line in output.read_text().splitlines()] == [result]
 
@@ -179,7 +193,7 @@ async def test_search_title_with_query_characters_sends_whole_title(
 ) -> None:
     _answer(search_session, {"anime": []})
 
-    await AnimescheduleHelper()._search("009-1: R&B")
+    await AnimescheduleHelper(get_cache())._search("009-1: R&B")
 
     request = search_session.get.call_args
     sent_url = yarl.URL(request.args[0]).update_query(request.kwargs.get("params", {}))
@@ -197,7 +211,7 @@ async def test_search_connection_error_raises_service_network_error(
     )
 
     with pytest.raises(ServiceNetworkError):
-        await AnimescheduleHelper()._search("One Piece")
+        await AnimescheduleHelper(get_cache())._search("One Piece")
 
 
 async def test_search_error_status_raises_service_network_error(
@@ -206,14 +220,14 @@ async def test_search_error_status_raises_service_network_error(
     _response(search_session).raise_for_status.side_effect = _not_found_error()
 
     with pytest.raises(ServiceNetworkError):
-        await AnimescheduleHelper()._search("One Piece")
+        await AnimescheduleHelper(get_cache())._search("One Piece")
 
 
 async def test_search_invalid_json_raises_service_parse_error(search_session) -> None:
     _response(search_session).json.side_effect = json.JSONDecodeError("bad", "", 0)
 
     with pytest.raises(ServiceParseError):
-        await AnimescheduleHelper()._search("One Piece")
+        await AnimescheduleHelper(get_cache())._search("One Piece")
 
 
 async def test_fetch_all_title_and_sources_return_matching_anime_payload(
@@ -221,7 +235,7 @@ async def test_fetch_all_title_and_sources_return_matching_anime_payload(
 ) -> None:
     _answer(search_session, {"anime": [OTHER_RESULT, ONE_PIECE_RESULT]})
 
-    result = await AnimescheduleHelper().fetch_all(
+    result = await AnimescheduleHelper(get_cache()).fetch_all(
         {}, {"title": "One Piece", "sources": [MAL_URL]}, temp_dir=str(tmp_path)
     )
 
@@ -232,7 +246,7 @@ async def test_fetch_all_title_and_sources_return_matching_anime_payload(
 
 
 async def test_fetch_all_without_title_returns_none(search_session) -> None:
-    assert await AnimescheduleHelper().fetch_all({}, {}) is None
+    assert await AnimescheduleHelper(get_cache()).fetch_all({}, {}) is None
     search_session.get.assert_not_called()
 
 

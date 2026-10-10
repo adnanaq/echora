@@ -712,7 +712,7 @@ Store the `C` and `m` used, with the date and sample size, alongside the setting
 | Model | `libs/common/src/common/models/anime.py::ScoreCalculations` |
 | Proto | `protos/shared_proto/v1/anime.proto::ScoreCalculations` |
 | Calculation | `libs/enrichment/.../pipeline/metadata_rules.py::merge_score` |
-| `C` and `m` settings | `libs/enrichment/.../pipeline/config.py` |
+| `C` and `m` settings | `libs/common/.../config/enrichment_config.py` |
 | Payload index | `libs/common/src/common/config/qdrant_config.py` |
 
 The model and the proto must change in the same commit. The contract checker

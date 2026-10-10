@@ -188,12 +188,28 @@ async def build_record(
 
 async def build_records(limit: int | None) -> None:
     """Build records for every cached anime and write them as JSON lines."""
+    from common.config import CacheConfig, EnrichmentConfig, RedisConfig
     from enrichment.pipeline.api_fetcher import ApiFetcher
     from enrichment.sources.anidb.anidb_helper import AniDBHelper
+    from http_cache import close_cache, configure_cache
 
+    # The same local Redis that cached_offline_entries reads.
+    cache = configure_cache(
+        CacheConfig(cache_enabled=True),
+        RedisConfig(redis_url="redis://localhost:6379/0"),
+    )
+    config = EnrichmentConfig()
     blocked_hosts: list[str] = []
-    with cache_only_patches(blocked_hosts):
-        await write_records(limit, ApiFetcher(), AniDBHelper(), blocked_hosts)
+    try:
+        with cache_only_patches(blocked_hosts):
+            await write_records(
+                limit,
+                ApiFetcher(config, cache),
+                AniDBHelper(config, cache),
+                blocked_hosts,
+            )
+    finally:
+        await close_cache()
 
 
 async def write_records(

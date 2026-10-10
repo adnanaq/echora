@@ -5,25 +5,8 @@ class CacheError(Exception):
     """Base exception for cache-related errors."""
 
 
-class StorageConfigurationError(CacheError):
-    """Raised when cache storage is misconfigured."""
-
-    def __init__(self, storage_type: str | None = None):
-        if storage_type:
-            super().__init__(f"Unknown storage type: {storage_type}")
-        else:
-            super().__init__("Storage configuration error")
-
-
 class CacheStorageError(CacheError):
     """Raised when cache storage operations fail."""
-
-
-class RedisInitializationError(CacheStorageError):
-    """Raised when Redis client initialization fails."""
-
-    def __init__(self):
-        super().__init__("Failed to initialize Redis client for result cache")
 
 
 class InvalidTTLError(CacheError, ValueError):

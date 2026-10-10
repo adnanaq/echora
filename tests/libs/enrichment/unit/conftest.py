@@ -6,8 +6,6 @@ from unittest.mock import create_autospec, patch
 import pytest
 import zendriver
 from enrichment.sources.base.browser import BrowserSession
-from http_cache import result_cache
-from http_cache.config import CacheConfig
 from lxml import html as lxml_html
 
 
@@ -81,10 +79,4 @@ def open_browser():
 
         return patch.object(module, "browser_session", browser_session)
 
-    with patch.object(
-        result_cache,
-        "get_cache_config",
-        autospec=True,
-        return_value=CacheConfig(cache_enabled=False),
-    ):
-        yield install
+    return install

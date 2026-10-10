@@ -519,13 +519,6 @@ async def test_fetch_character_html_navigation_failure() -> None:
 # =============================================================================
 
 
-def _disable_cache(mocker):
-    mocker.patch(
-        "http_cache.result_cache.get_cache_config",
-        return_value=mocker.MagicMock(cache_enabled=False),
-    )
-
-
 def _mock_browser(mocker):
     browser_mock = AsyncMock()
     browser_mock.stop = AsyncMock()
@@ -535,7 +528,6 @@ def _mock_browser(mocker):
 
 @pytest.mark.asyncio
 async def test_fetch_mal_character_data_navigation_failure(mocker) -> None:
-    _disable_cache(mocker)
     _mock_browser(mocker)
     mocker.patch(
         "enrichment.sources.mal.mal_character_crawler._fetch_character_html",
@@ -547,7 +539,6 @@ async def test_fetch_mal_character_data_navigation_failure(mocker) -> None:
 
 @pytest.mark.asyncio
 async def test_fetch_mal_character_data_extraction_failure(mocker) -> None:
-    _disable_cache(mocker)
     _mock_browser(mocker)
     mocker.patch(
         "enrichment.sources.mal.mal_character_crawler._fetch_character_html",
@@ -559,7 +550,6 @@ async def test_fetch_mal_character_data_extraction_failure(mocker) -> None:
 
 @pytest.mark.asyncio
 async def test_fetch_mal_character_data_success(mocker, mal_character_html) -> None:
-    _disable_cache(mocker)
     _mock_browser(mocker)
     mocker.patch(
         "enrichment.sources.mal.mal_character_crawler._fetch_character_html",
@@ -815,7 +805,6 @@ Age: 17<br>
 async def test_fetch_mal_character_data_browser_stop_exception(
     mocker, mal_character_html
 ) -> None:
-    _disable_cache(mocker)
     browser_mock = AsyncMock()
     browser_mock.stop = AsyncMock(side_effect=Exception("stop failed"))
     mocker.patch("zendriver.start", new_callable=AsyncMock, return_value=browser_mock)

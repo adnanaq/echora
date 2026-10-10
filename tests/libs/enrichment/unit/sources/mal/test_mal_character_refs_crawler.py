@@ -192,15 +192,7 @@ async def test_fetch_page_html_browser_stop_exception(mal_char_refs_html) -> Non
 # =============================================================================
 
 
-def _disable_cache(mocker):
-    mocker.patch(
-        "http_cache.result_cache.get_cache_config",
-        return_value=mocker.MagicMock(cache_enabled=False),
-    )
-
-
 async def test_fetch_data_success(mocker, mal_char_refs_html) -> None:
-    _disable_cache(mocker)
     mocker.patch(
         "enrichment.sources.mal.mal_character_refs_crawler._fetch_characters_page_html",
         new_callable=AsyncMock,
@@ -211,7 +203,6 @@ async def test_fetch_data_success(mocker, mal_char_refs_html) -> None:
 
 
 async def test_fetch_data_navigation_failure_returns_none(mocker) -> None:
-    _disable_cache(mocker)
     mocker.patch(
         "enrichment.sources.mal.mal_character_refs_crawler._fetch_characters_page_html",
         new_callable=AsyncMock,
@@ -221,7 +212,6 @@ async def test_fetch_data_navigation_failure_returns_none(mocker) -> None:
 
 
 async def test_fetch_data_empty_html_returns_none(mocker) -> None:
-    _disable_cache(mocker)
     mocker.patch(
         "enrichment.sources.mal.mal_character_refs_crawler._fetch_characters_page_html",
         new_callable=AsyncMock,
@@ -231,7 +221,6 @@ async def test_fetch_data_empty_html_returns_none(mocker) -> None:
 
 
 async def test_fetch_data_no_tables_returns_none(mocker) -> None:
-    _disable_cache(mocker)
     mocker.patch(
         "enrichment.sources.mal.mal_character_refs_crawler._fetch_characters_page_html",
         new_callable=AsyncMock,

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import functools
 import os
+import sys
 from collections.abc import AsyncGenerator, Generator
 from typing import TYPE_CHECKING
 from unittest.mock import patch
@@ -35,18 +36,19 @@ BaseSettings.__pydantic_init_subclass__ = classmethod(_ignore_local_env_file)
 
 # Pants runs each test file in its own pytest process against one Redis server.
 # Integration tests clear the cache to measure hit/miss behaviour, so a shared
-# database means one file wipes the cache another is mid-way through filling —
-# and db 0 is the developer's own cache. Give every process its own database
-# (1-14, never 0) before any module reads REDIS_URL to build its cache client.
+# database means one file wipes the cache another is mid-way through filling.
+# Databases 0-15 belong to the services (enrichment 0, vector 1), so every test
+# process gets its own database from 16-30 before any module reads REDIS_URL
+# to build its cache client. The dev Redis runs with 32 databases for this.
 #
 # A database is claimed, not derived from the process id: two ids that differ
 # by the number of databases would otherwise land on the same one. Claims live
-# in db 15, which no test writes to, so a test clearing its own database never
+# in db 31, which no test writes to, so a test clearing its own database never
 # drops another process's claim. A claim expires on its own if the process dies
 # before releasing it.
 _REDIS_SERVER = "redis://localhost:6379"
-_CLAIMS_DB = 15
-_TEST_DBS = range(1, _CLAIMS_DB)
+_CLAIMS_DB = 31
+_TEST_DBS = range(16, _CLAIMS_DB)
 _CLAIM_SECONDS = 2 * 60 * 60
 
 
@@ -127,14 +129,26 @@ class CacheMissRedis(Redis):
         return True
 
 
+@pytest.fixture(autouse=True)
+def unconfigured_cache() -> Generator[None]:
+    yield
+    if (cache_setup := sys.modules.get("http_cache.setup")) is not None:
+        cache_setup._manager = None
+
+
 @pytest.fixture
 def redis_cache_miss() -> Generator[CacheMissRedis]:
-    with patch(
-        "http_cache.result_cache.get_result_cache_redis_client",
-        autospec=True,
-        return_value=CacheMissRedis(),
-    ) as get_redis_client:
-        yield get_redis_client.return_value
+    from common.config import CacheConfig, RedisConfig
+    from http_cache import configure_cache
+
+    redis_client = CacheMissRedis()
+    cache = configure_cache(
+        CacheConfig(cache_enabled=True), RedisConfig(redis_url=TEST_REDIS_URL)
+    )
+    with patch.object(
+        cache, "get_result_client", autospec=True, return_value=redis_client
+    ):
+        yield redis_client
 
 
 @pytest.fixture(scope="session")

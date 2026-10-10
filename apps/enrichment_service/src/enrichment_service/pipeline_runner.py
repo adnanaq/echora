@@ -7,7 +7,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from common.config import EnrichmentConfig
 from enrichment.pipeline.enrichment_pipeline import EnrichmentPipeline
+from http_cache import HTTPCacheManager
 
 
 def _require_data_list(database: dict[str, Any]) -> list[dict[str, Any]]:
@@ -138,6 +140,8 @@ def _artifact_payload(
 
 async def run_pipeline_and_write_artifact(
     *,
+    config: EnrichmentConfig,
+    cache: HTTPCacheManager,
     file_path: str | Path,
     index: int | None,
     title: str | None,
@@ -151,6 +155,8 @@ async def run_pipeline_and_write_artifact(
     """Run enrichment for one anime entry and persist an artifact.
 
     Args:
+        config: How the pipeline runs.
+        cache: The configured cache, passed to the API helpers.
         file_path: Source database JSON file path.
         index: Optional index selector for source entry.
         title: Optional title selector for source entry.
@@ -182,7 +188,7 @@ async def run_pipeline_and_write_artifact(
     else:
         anime_data = get_anime_by_title(database, title or "")
 
-    async with EnrichmentPipeline() as pipeline:
+    async with EnrichmentPipeline(config, cache) as pipeline:
         result = await pipeline.enrich_anime(
             anime_data,
             agent_dir=agent_dir,

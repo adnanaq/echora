@@ -30,13 +30,10 @@ from enrichment.sources.base.framework import (
     IRepository,
     NullRepository,
 )
-from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
 
 logger = logging.getLogger(__name__)
 
-_CACHE_CONFIG = get_cache_config()
-TTL_ANISEARCH = _CACHE_CONFIG.ttl_anisearch
 
 _ANISEARCH_BASE_URL = "https://www.anisearch.com"
 
@@ -410,7 +407,7 @@ def _build_character_from_raw(
 
 
 @cached_result(
-    ttl=TTL_ANISEARCH,
+    service="anisearch",
     key_prefix="anisearch_character_detail",
     dependencies=[_extract_character_from_html, _fetch_page_html],
 )
@@ -426,7 +423,7 @@ async def _fetch_anisearch_character_data(url: str) -> dict[str, Any] | None:
 
 
 @cached_result(
-    ttl=TTL_ANISEARCH,
+    service="anisearch",
     key_prefix="anisearch_character_ography",
     dependencies=[_extract_ography_from_html],
 )

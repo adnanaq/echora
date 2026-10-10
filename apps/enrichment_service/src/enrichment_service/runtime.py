@@ -2,14 +2,15 @@
 
 This module defines the runtime container and startup factory used by
 enrichment_service. It resolves configurable defaults for pipeline input and
-artifact output locations.
+artifact output locations, and configures the cache the pipeline uses.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from common.config import Settings
+from common.config import EnrichmentConfig, Settings
+from http_cache import HTTPCacheManager, configure_cache
 
 
 @dataclass(slots=True)
@@ -18,6 +19,8 @@ class EnrichmentRuntime:
 
     default_file_path: str
     output_dir: str
+    enrichment: EnrichmentConfig
+    cache: HTTPCacheManager
 
 
 async def build_runtime(settings: Settings) -> EnrichmentRuntime:
@@ -32,4 +35,6 @@ async def build_runtime(settings: Settings) -> EnrichmentRuntime:
     return EnrichmentRuntime(
         default_file_path=settings.service.enrichment_default_file_path,
         output_dir=settings.service.enrichment_output_dir,
+        enrichment=settings.enrichment,
+        cache=configure_cache(settings.cache, settings.redis),
     )

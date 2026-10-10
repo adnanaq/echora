@@ -17,9 +17,11 @@ logging.basicConfig(
     format="%(asctime)s [%(name)s] %(levelname)s %(message)s",
 )
 
+from common.config import get_settings
 from enrichment.pipeline.enrichment_pipeline import (
     EnrichmentPipeline,
 )
+from http_cache import close_cache, configure_cache
 
 
 def load_database(file_path: str) -> dict[str, Any]:
@@ -187,26 +189,31 @@ Available services: mal, anilist, kitsu, anidb, anime_planet, anisearch, animesc
     print(f"Status: {anime_entry.get('status', 'Unknown')}")
     print(f"{'=' * 60}\n")
 
-    async with EnrichmentPipeline() as pipeline:
-        # Run enrichment with optional service filtering and agent directory
-        result = await pipeline.enrich_anime(
-            anime_entry,
-            agent_dir=args.agent,
-            skip_services=args.skip,
-            only_services=args.only,
-            fetch_characters=not args.no_characters,
-            fetch_episodes=not args.no_episodes,
-        )
+    settings = get_settings()
+    cache = configure_cache(settings.cache, settings.redis)
+    try:
+        async with EnrichmentPipeline(settings.enrichment, cache) as pipeline:
+            # Run enrichment with optional service filtering and agent directory
+            result = await pipeline.enrich_anime(
+                anime_entry,
+                agent_dir=args.agent,
+                skip_services=args.skip,
+                only_services=args.only,
+                fetch_characters=not args.no_characters,
+                fetch_episodes=not args.no_episodes,
+            )
+    finally:
+        await close_cache()
 
-        # Show results
-        print(f"\n{'=' * 60}")
-        print("API Results:")
-        for api_name, data in result["api_data"].items():
-            status = "✓" if data else "✗"
-            print(f"  {api_name}: {status}")
+    # Show results
+    print(f"\n{'=' * 60}")
+    print("API Results:")
+    for api_name, data in result["api_data"].items():
+        status = "✓" if data else "✗"
+        print(f"  {api_name}: {status}")
 
-        print(f"\nTime: {result['enrichment_metadata']['total_time']:.2f}s")
-        print(f"{'=' * 60}")
+    print(f"\nTime: {result['enrichment_metadata']['total_time']:.2f}s")
+    print(f"{'=' * 60}")
 
 
 if __name__ == "__main__":

@@ -379,10 +379,6 @@ async def test_fetch_episode_html(mal_episode_html) -> None:
 
 
 async def test_fetch_data_success(mocker, mal_episode_html) -> None:
-    mocker.patch(
-        "http_cache.result_cache.get_cache_config",
-        return_value=mocker.MagicMock(cache_enabled=False),
-    )
     page_mock = AsyncMock()
     page_mock.wait_for = AsyncMock()
     page_mock.get_content = AsyncMock(return_value=mal_episode_html)
@@ -401,10 +397,6 @@ async def test_fetch_data_success(mocker, mal_episode_html) -> None:
 
 
 async def test_fetch_data_failures_return_none(mocker) -> None:
-    mocker.patch(
-        "http_cache.result_cache.get_cache_config",
-        return_value=mocker.MagicMock(cache_enabled=False),
-    )
     browser_mock = AsyncMock()
     browser_mock.stop = AsyncMock()
 

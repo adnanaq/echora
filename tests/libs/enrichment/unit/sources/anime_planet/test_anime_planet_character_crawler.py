@@ -528,10 +528,6 @@ async def test_fetch_animeplanet_characters_challenge_not_cleared_stops_batch_an
 
 
 async def test_fetch_character_data_success(mocker: Any) -> None:
-    mocker.patch(
-        "http_cache.result_cache.get_cache_config",
-        return_value=mocker.MagicMock(cache_enabled=False),
-    )
     mocker.patch(_PATCH_FETCH_PAGE, new=AsyncMock(return_value=_MINIMAL_HTML))
     import zendriver as zd
 
@@ -544,10 +540,6 @@ async def test_fetch_character_data_success(mocker: Any) -> None:
 
 
 async def test_fetch_character_data_no_html(mocker: Any) -> None:
-    mocker.patch(
-        "http_cache.result_cache.get_cache_config",
-        return_value=mocker.MagicMock(cache_enabled=False),
-    )
     mocker.patch(_PATCH_FETCH_PAGE, new=AsyncMock(return_value=None))
     import zendriver as zd
 
@@ -557,10 +549,6 @@ async def test_fetch_character_data_no_html(mocker: Any) -> None:
 
 
 async def test_fetch_character_data_browser_stop_swallowed(mocker: Any) -> None:
-    mocker.patch(
-        "http_cache.result_cache.get_cache_config",
-        return_value=mocker.MagicMock(cache_enabled=False),
-    )
     mocker.patch(_PATCH_FETCH_PAGE, new=AsyncMock(return_value=_MINIMAL_HTML))
     browser = AsyncMock()
     browser.stop = AsyncMock(side_effect=Exception("stop failed"))

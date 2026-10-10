@@ -1,8 +1,10 @@
 # Compose reads .env from this file's folder (docker/), not the repo root, so
-# pass the root .env explicitly. It must set QDRANT_API_KEY, REDIS_PASSWORD
-# and REDIS_URL; REDIS_URL is the address of the redis service below (port
-# 6379, database 0) carrying the same password, so use letters and digits only
-# for it (for example `openssl rand -hex 32`).
+# pass the root .env explicitly. It must set QDRANT_API_KEY, REDIS_PASSWORD,
+# REDIS_URL and VECTOR_REDIS_URL. Both URLs are the address of the redis
+# service below (port 6379) carrying the same password: REDIS_URL with
+# database 0 for enrichment, VECTOR_REDIS_URL with database 1 for the vector
+# service. Use letters and digits only for the password (for example
+# `openssl rand -hex 32`).
 #
 #   docker compose --env-file .env -f docker/docker-compose.prd.yml up -d
 name: echora
@@ -153,10 +155,8 @@ services:
       - MAX_SEARCH_LIMIT=100
       - MAX_BATCH_SIZE=500
 
-      # CACHE_ENABLED controls HTTP response caching (disabled for vector service).
-      # REDIS_URL is used separately for the embedding vector cache — always active when set.
-      - CACHE_ENABLED=false
-      - REDIS_URL=${REDIS_URL:?set REDIS_URL in .env}
+      # Database 1 is the vector service's; enrichment uses 0.
+      - REDIS_URL=${VECTOR_REDIS_URL:?set VECTOR_REDIS_URL in .env}
 
       # Off until a production collector exists: with it on and no collector,
       # every export fails and retries, and telemetry costs throughput.

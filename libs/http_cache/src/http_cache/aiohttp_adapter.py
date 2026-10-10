@@ -24,16 +24,16 @@ Architecture:
 Examples:
     Basic usage with GET request::
 
-        from http_cache.instance import http_cache_manager
+        from http_cache import get_cache
 
-        session = http_cache_manager.get_aiohttp_session("mal")
+        session = get_cache().get_aiohttp_session("mal")
         async with session.get("https://myanimelist.net/anime/21") as response:
             data = await response.json()
             print(response.from_cache)  # False on first request, True on second
 
     GraphQL POST request with body-aware caching::
 
-        session = http_cache_manager.get_aiohttp_session("anilist")
+        session = get_cache().get_aiohttp_session("anilist")
         query = "query ($id: Int!) { Media(id: $id) { title { romaji } } }"
 
         # First request - cache miss
@@ -343,7 +343,7 @@ class CachedAiohttpSession:
     Examples:
         Basic usage::
 
-            storage = AsyncRedisStorage(redis_client)
+            storage = AsyncRedisStorage(client=redis_client)
             session = CachedAiohttpSession(storage=storage)
 
             async with session.get("https://api.example.com/data") as response:

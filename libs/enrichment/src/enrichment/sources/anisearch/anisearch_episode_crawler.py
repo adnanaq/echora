@@ -30,13 +30,10 @@ from enrichment.sources.base.framework import (
     NullRepository,
 )
 from enrichment.sources.base.utils import parse_iso_date, sanitize_output_path
-from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
 
 logger = logging.getLogger(__name__)
 
-_CACHE_CONFIG = get_cache_config()
-TTL_ANISEARCH = _CACHE_CONFIG.ttl_anisearch
 
 _ANISEARCH_BASE_URL = "https://www.anisearch.com/anime/"
 
@@ -194,7 +191,7 @@ def _parse_episode_row(raw: dict[str, Any]) -> dict[str, Any] | None:
 
 
 @cached_result(
-    ttl=TTL_ANISEARCH,
+    service="anisearch",
     key_prefix="anisearch_episodes",
     dependencies=[_extract_episodes_from_html],
 )

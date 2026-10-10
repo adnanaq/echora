@@ -15,6 +15,7 @@ import grpc
 from common.config import get_settings
 from enrichment_proto.v1 import enrichment_service_pb2_grpc
 from grpc_health.v1 import health, health_pb2, health_pb2_grpc
+from http_cache import close_cache
 from observability import setup_telemetry
 
 from .routes import EnrichmentRoutes
@@ -133,6 +134,7 @@ async def serve() -> None:
     finally:
         logger.info("Shutting down enrichment_service gRPC server")
         await server.stop(grace=5)
+        await close_cache()
         from observability import stop_logging
 
         stop_logging()

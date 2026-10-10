@@ -132,10 +132,6 @@ async def test_fetch_html_browser_stop_exception_swallowed() -> None:
 
 async def test_fetch_data_success(mocker) -> None:
     mocker.patch(
-        "http_cache.result_cache.get_cache_config",
-        return_value=mocker.MagicMock(cache_enabled=False),
-    )
-    mocker.patch(
         "enrichment.sources.mal.mal_episode_count_crawler._fetch_episode_count_html",
         new=AsyncMock(return_value=_HTML_ONGOING),
     )
@@ -151,10 +147,6 @@ async def test_fetch_data_success(mocker) -> None:
     ],
 )
 async def test_fetch_data_returns_none_on_failure(html: str | None, mocker) -> None:
-    mocker.patch(
-        "http_cache.result_cache.get_cache_config",
-        return_value=mocker.MagicMock(cache_enabled=False),
-    )
     mocker.patch(
         "enrichment.sources.mal.mal_episode_count_crawler._fetch_episode_count_html",
         new=AsyncMock(return_value=html),

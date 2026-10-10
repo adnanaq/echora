@@ -34,14 +34,11 @@ from enrichment.sources.base.framework import (
 )
 from enrichment.sources.base.page_readiness import wait_for_page
 from enrichment.sources.base.utils import parse_partial_date, split_date_range
-from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
 from lxml import etree
 
 logger = logging.getLogger(__name__)
 
-_CACHE_CONFIG = get_cache_config()
-TTL_ANIME_PLANET = _CACHE_CONFIG.ttl_anime_planet
 
 BASE_ANIME_URL = "https://www.anime-planet.com/anime/"
 ANIME_PLANET_SITE = "Anime-Planet"
@@ -520,7 +517,7 @@ async def _fetch_anime_html(url: str) -> str | None:
 
 
 @cached_result(
-    ttl=TTL_ANIME_PLANET,
+    service="anime_planet",
     key_prefix="animeplanet_anime",
     dependencies=[_extract_anime_from_html],
 )

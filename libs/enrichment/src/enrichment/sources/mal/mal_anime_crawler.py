@@ -50,13 +50,10 @@ from enrichment.sources.mal.mal_models import (
     MalThemeSong,
     MalTrailer,
 )
-from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
 
 logger = logging.getLogger(__name__)
 
-_CACHE_CONFIG = get_cache_config()
-TTL_MAL = _CACHE_CONFIG.ttl_mal
 
 _TITLE_SELECTOR = "h1.title-name"
 # MAL answers a deleted or unknown anime id with this page and HTTP 404.
@@ -721,7 +718,7 @@ def _build_anime_from_raw(
 
 
 @cached_result(
-    ttl=TTL_MAL,
+    service="mal",
     key_prefix="mal_anime_scraped",
     dependencies=[_extract_anime_from_html, _extract_pics_from_html],
 )

@@ -39,12 +39,10 @@ from enrichment.sources.base.cloudflare_challenge import (
 )
 from enrichment.sources.base.cloudflare_clearance import save_clearance
 from enrichment.sources.base.utils import sanitize_output_path
-from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
 
 logger = logging.getLogger(__name__)
 
-_TTL_ANIDB = get_cache_config().ttl_anidb
 
 _BASE_URL = "https://anidb.net/character"
 _SITE = "AniDB"
@@ -294,7 +292,7 @@ async def _fetch_page_html(browser: Any, url: str) -> tuple[PageRead | None, Any
 
 
 @cached_result(
-    ttl=_TTL_ANIDB,
+    service="anidb",
     key_prefix="anidb_character",
     dependencies=[_extract_from_html],
 )

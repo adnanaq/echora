@@ -16,8 +16,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from common.config import CacheConfig, RedisConfig
 from enrichment.sources.anisearch import anisearch_http
-from http_cache.config import CacheConfig
+from http_cache import configure_cache
 
 _FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -117,10 +118,5 @@ def no_real_anisearch_requests() -> Iterator[None]:
 
 
 @pytest.fixture
-def cache_off() -> Iterator[None]:
-    with patch(
-        "http_cache.result_cache.get_cache_config",
-        autospec=True,
-        return_value=CacheConfig(cache_enabled=False),
-    ):
-        yield
+def cache_off() -> None:
+    configure_cache(CacheConfig(cache_enabled=False), RedisConfig())

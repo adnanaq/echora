@@ -11,7 +11,6 @@ aiohttp-based API helpers (AniList, Kitsu, AniDB).
 
 from __future__ import annotations
 
-import logging
 import time
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -53,8 +52,7 @@ class AsyncRedisStorage(AsyncBaseStorage):
     def __init__(
         self,
         *,
-        client: Redis | None = None,
-        redis_url: str = "redis://localhost:6379/0",
+        client: Redis,
         default_ttl: float | None = None,
         refresh_ttl_on_access: bool = True,
         key_prefix: str = "hishel_cache",
@@ -63,38 +61,18 @@ class AsyncRedisStorage(AsyncBaseStorage):
         Initialize async Redis storage.
 
         Args:
-            client: Existing async Redis client (optional)
-            redis_url: Redis connection URL (used if client not provided)
+            client: Async Redis client with ``decode_responses=False``. The
+                caller owns it and closes it.
             default_ttl: Default TTL in seconds for cache entries
             refresh_ttl_on_access: Whether to refresh TTL on cache hits
             key_prefix: Prefix for all Redis keys (default: "hishel_cache")
         """
-        self._owns_client = client is None
-        if client:
-            self.client = client
-        else:
-            # Import here to avoid circular dependency
-            from .config import get_cache_config
-
-            config = get_cache_config()
-            # Configure connection pool for multi-agent concurrency and reliability
-            self.client = Redis.from_url(
-                redis_url,
-                decode_responses=False,
-                max_connections=config.redis_max_connections,
-                socket_keepalive=config.redis_socket_keepalive,
-                socket_connect_timeout=config.redis_socket_connect_timeout,
-                socket_timeout=config.redis_socket_timeout,
-                retry_on_timeout=config.redis_retry_on_timeout,
-                health_check_interval=config.redis_health_check_interval,
-            )
+        self.client = client
         if default_ttl is not None and default_ttl < 0:
             raise InvalidTTLError(ttl_value=default_ttl, field_name="default_ttl")
         self.default_ttl = default_ttl
         self.refresh_ttl_on_access = refresh_ttl_on_access
         self.key_prefix = key_prefix
-
-        # Note: Connection test done lazily on first use
 
     def _make_key(self, key_type: str, identifier: str) -> str:
         """
@@ -430,21 +408,6 @@ class AsyncRedisStorage(AsyncBaseStorage):
                 b"deleted_at": str(deleted_entry.meta.deleted_at).encode("utf-8"),
             },
         )
-
-    async def close(self) -> None:
-        """
-        Close the Redis client when this storage instance owns it.
-
-        If this storage created/owns the Redis client, attempts to asynchronously close it; on failure a warning is logged.
-        """
-        if not self._owns_client:
-            return
-        try:
-            await self.client.aclose()
-        except Exception as e:
-            # Intentionally broad: best-effort cleanup during shutdown
-            # Log and continue rather than propagating errors during teardown
-            logging.warning(f"Error closing Redis client: {e}")
 
     async def _save_stream(
         self, stream: AsyncIterator[bytes], entry_id: uuid.UUID, ttl: float | None

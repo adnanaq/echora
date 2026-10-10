@@ -36,14 +36,11 @@ from enrichment.sources.mal.mal_models import (
     EpisodeVARef,
     MalEpisode,
 )
-from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
 from lxml import etree
 
 logger = logging.getLogger(__name__)
 
-_CACHE_CONFIG = get_cache_config()
-TTL_MAL = _CACHE_CONFIG.ttl_mal
 
 _INTER_REQUEST_DELAY = 1.5
 
@@ -325,7 +322,7 @@ async def _fetch_episode_html(browser: Any, url: str) -> tuple[str, str] | None:
 
 
 @cached_result(
-    ttl=TTL_MAL,
+    service="mal",
     key_prefix="mal_episode_detail",
     dependencies=[_extract_episode_from_html],
 )

@@ -4,7 +4,7 @@ HTTP Cache - Redis-backed HTTP caching library.
 Generic caching infrastructure for HTTP requests and function results.
 Provides RFC 9111 compliant HTTP caching via Hishel and custom result caching.
 
-This is a standalone library with no dependencies on other internal libs.
+Takes its configuration from common; the app sets it up with configure_cache.
 """
 
 python_distribution(

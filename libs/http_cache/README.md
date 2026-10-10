@@ -24,8 +24,8 @@ A Redis-backed caching library providing HTTP-level and result-level caching for
 
 ```mermaid
 flowchart TB
-    subgraph CacheManager["HTTPCacheManager (Singleton)"]
-        Config["CacheConfig<br/>(from env vars)"]
+    subgraph CacheManager["HTTPCacheManager (set by configure_cache)"]
+        Config["CacheConfig + RedisConfig<br/>(from Settings)"]
         RedisStorage["AsyncRedisStorage<br/>(Redis Backend)"]
         Session["CachedAiohttpSession<br/>(Async Context Manager)"]
     end
@@ -50,7 +50,7 @@ flowchart TB
 
 **Key Components**:
 
-- **HTTPCacheManager**: Singleton that manages cached aiohttp sessions
+- **HTTPCacheManager**: Hands out cached aiohttp sessions and owns both Redis clients; the app creates one with `configure_cache` and code reads it with `get_cache()`
 - **CachedAiohttpSession**: Async context manager wrapping aiohttp.ClientSession with caching
 - **AsyncRedisStorage**: Hishel storage backend for Redis (production)
 - **@cached_result**: Decorator for caching function results (used by crawlers)
@@ -63,199 +63,122 @@ flowchart TB
 
 ## Configuration
 
-### Environment Variables
+The cache takes two configs from `common.config`, both part of `Settings`:
 
-The library uses Pydantic BaseSettings for configuration, supporting both environment variables and `.env` files.
+- `CacheConfig` (`settings.cache`): what is cached and for how long.
+- `RedisConfig` (`settings.redis`): where Redis is and how to size its connection pools. The vector service's embedding cache uses the same config.
 
-**Core Configuration:**
+Like every `Settings` sub-config, each field is read from the environment variable of the same name in upper case, then from `.env`, then falls back to its default.
 
-```bash
-# Enable/disable caching (default: true)
-CACHE_ENABLED=true
-
-# Redis connection URL (default: redis://localhost:6379/0)
-REDIS_URL=redis://localhost:6379/0
-
-# Override RFC 9111 cache headers (default: true)
-# When true, forces caching even if API returns no-cache headers
-FORCE_CACHE=true
-
-# Always revalidate cached responses (default: false)
-ALWAYS_REVALIDATE=false
-
-# Max cache key length before hashing (default: 200)
-MAX_CACHE_KEY_LENGTH=200
-```
-
-**Redis Connection Pool Configuration:**
+**`CacheConfig`:**
 
 ```bash
-# Maximum Redis connections (default: 100)
-# Tuned for multi-agent concurrency (20 agents × 10 concurrent ops)
-REDIS_MAX_CONNECTIONS=100
+CACHE_ENABLED=true          # cache provider responses and crawl results
+FORCE_CACHE=true            # cache even when the API sends no-cache headers
+ALWAYS_REVALIDATE=false     # ask the server on every cache hit
+MAX_CACHE_KEY_LENGTH=200    # longer result-cache keys are hashed
 
-# Enable TCP keepalive (default: true)
-REDIS_SOCKET_KEEPALIVE=true
-
-# Connection timeout in seconds (default: 5)
-REDIS_SOCKET_CONNECT_TIMEOUT=5
-
-# Socket read/write timeout in seconds (default: 10)
-REDIS_SOCKET_TIMEOUT=10
-
-# Retry operations on timeout (default: true)
-REDIS_RETRY_ON_TIMEOUT=true
-
-# Health check interval in seconds (default: 30, 0=disabled)
-REDIS_HEALTH_CHECK_INTERVAL=30
-```
-
-**Service-Specific TTLs (all default to 86400 seconds / 24 hours):**
-
-```bash
-TTL_MAL=86400
-TTL_ANILIST=86400
-TTL_ANIDB=86400
-TTL_KITSU=86400
-TTL_ANIME_PLANET=86400
-TTL_ANISEARCH=86400
+# How long each source's responses and crawl results are kept, in seconds
+TTL_MAL=604800
+TTL_ANILIST=604800
+TTL_ANIDB=604800
+TTL_KITSU=604800
+TTL_ANIME_PLANET=604800
+TTL_ANISEARCH=604800
 TTL_ANIMESCHEDULE=86400
+
+CLOUDFLARE_CLEARANCE_MAX_TTL=86400
 ```
 
-### .env File Support
-
-Create a `.env` file in your working directory for local development:
+**`RedisConfig`:**
 
 ```bash
-# .env
-CACHE_ENABLED=false
-REDIS_URL=redis://prod-redis:6379/2
-FORCE_CACHE=false
-TTL_MAL=3600
-TTL_ANILIST=7200
+REDIS_URL=redis://localhost:6379/0   # the default; database 0 is enrichment's, 1 the vector service's
+REDIS_MAX_CONNECTIONS=100
+REDIS_SOCKET_KEEPALIVE=true
+REDIS_SOCKET_CONNECT_TIMEOUT=5
+REDIS_SOCKET_TIMEOUT=10
+REDIS_RETRY_ON_TIMEOUT=true
+REDIS_HEALTH_CHECK_INTERVAL=30       # 0 = never
 ```
 
-### Programmatic Configuration (Optional)
+Caching is on by default. It turns off when `CACHE_ENABLED` is false or the app passes a `RedisConfig` without `redis_url`; with caching enabled and no `redis_url`, the cache logs one warning and everything runs uncached.
+
+Redis databases 0-15 belong to the services (enrichment 0, vector 1). Tests use 16-31 on the dev Redis, which runs with `--databases 32`.
+
+### Setting Up the Cache
+
+An app configures the cache once at startup and closes it on shutdown:
 
 ```python
-from http_cache.config import CacheConfig
+from common.config import get_settings
+from http_cache import close_cache, configure_cache
 
-config = CacheConfig(
-    cache_enabled=False,
-    redis_url="redis://custom:6379/1",
-    ttl_mal=3600,
-    force_cache=False,
-)
+settings = get_settings()
+cache = configure_cache(settings.cache, settings.redis)
+try:
+    ...  # pass `cache` to objects that take it, such as EnrichmentPipeline
+finally:
+    await close_cache()
 ```
 
-### Configuration Precedence
-
-**Priority order (highest to lowest):**
-1. Programmatic `CacheConfig()` constructor arguments
-2. Environment variables
-3. `.env` file values
-4. Field defaults
-
-For service-specific configurations in the enrichment pipeline, see [enrichment/README.md](../enrichment/README.md).
+Objects that make HTTP requests take the manager in their constructor. Code that runs inside the app without one, such as `@cached_result` functions, looks it up with `get_cache()` when it runs. Without `configure_cache`, `get_cache()` returns a manager with caching off, so tests and plain library use run uncached.
 
 ## Context Manager Protocol
 
-All caching classes implement async context manager protocol for automatic resource cleanup.
-
 ### CachedAiohttpSession (Context Manager)
 
-The `CachedAiohttpSession` returned by `http_cache_manager.get_aiohttp_session()` is an async context manager:
+The `CachedAiohttpSession` returned by `get_aiohttp_session()` is an async context manager:
 
 ```python
-from http_cache.instance import http_cache_manager
-
-# Recommended: Use as context manager (automatic cleanup)
-async with http_cache_manager.get_aiohttp_session("mal") as session:
-    async with session.get("https://api.example.com/data") as response:
-        data = await response.json()
-# Session and storage automatically closed
-
-# Alternative: Manual cleanup (if context manager not feasible)
-session = http_cache_manager.get_aiohttp_session("mal")
-try:
-    async with session.get("https://api.example.com/data") as response:
-        data = await response.json()
-finally:
-    await session.close()  # Must call close() manually
-```
-
-**Important**: The `CachedAiohttpSession.__aexit__` method:
-
-- Closes the underlying `aiohttp.ClientSession`
-- Closes the `AsyncRedisStorage` (if owned by the session)
-- Ensures no resource leaks
-
-### Usage Patterns
-
-For detailed usage patterns in the enrichment pipeline (session ownership, event loop management, etc.), see [enrichment/README.md - Helper Implementation Patterns](../enrichment/README.md#helper-implementation-patterns).
-
-**Basic usage example:**
-
-```python
-from http_cache.instance import http_cache_manager
-
-# Context manager pattern (recommended)
-async with http_cache_manager.get_aiohttp_session("my_service") as session:
+async with cache.get_aiohttp_session("mal") as session:
     async with session.get("https://api.example.com/data") as response:
         data = await response.json()
 ```
 
-### Cleanup Methods
+Closing the session closes the underlying `aiohttp.ClientSession`. The Redis clients belong to the manager and stay open for the next session.
 
-**CachedAiohttpSession.close()**:
+For usage patterns in the enrichment pipeline (session ownership, event loop management), see [enrichment/README.md - Helper Implementation Patterns](../enrichment/README.md#helper-implementation-patterns).
 
-```python
-await session.close()  # Closes session + storage
-```
+### Cleanup
 
-**HTTPCacheManager.close_async()**:
-
-```python
-from http_cache.instance import http_cache_manager
-await http_cache_manager.close_async()  # Close async Redis client
-```
-
-**Result Cache Cleanup**:
-
-```python
-from http_cache.result_cache import close_result_cache_redis_client
-await close_result_cache_redis_client()  # Close singleton Redis client
-```
-
-**Note**: Cleanup methods are rarely needed due to context manager patterns, but available for manual resource management.
+`close_cache()` closes the manager's two Redis clients: one for HTTP responses and one for crawl results. Call it once when the app shuts down. A later request opens new clients.
 
 ## API Reference
 
+### Setup (`http_cache`)
+
+- `configure_cache(cache: CacheConfig, redis: RedisConfig) -> HTTPCacheManager`: sets the manager every `get_cache()` call returns.
+- `get_cache() -> HTTPCacheManager`: the configured manager, or one with caching off.
+- `close_cache() -> None`: closes the configured manager's Redis clients.
+
 ### HTTPCacheManager
 
-**Singleton instance:** `http_cache_manager` from `http_cache.instance`
+- `get_aiohttp_session(service: str, **kwargs)`: a `CachedAiohttpSession` that keeps responses for the source's TTL, or a plain `aiohttp.ClientSession` when caching is off. Accepts the usual `aiohttp.ClientSession` arguments.
+- `get_result_client() -> Redis | None`: the Redis client for crawl results, or None when caching is off.
+- `enabled`: whether caching is on.
+- `close() -> None`: closes both Redis clients.
 
-**Methods:**
-- `get_aiohttp_session(service_name: str, **kwargs) -> CachedAiohttpSession`
-  - Returns cached aiohttp session for the specified service
-  - Accepts standard aiohttp.ClientSession kwargs (timeout, headers, etc.)
-- `close_async() -> None`
-  - Closes async Redis connections (rarely needed due to context managers)
+Each Redis client belongs to the event loop it was created on, so both are created again when called from a different loop.
 
 ### @cached_result Decorator
 
 **Location:** `http_cache.result_cache`
 
-**Signature:**
 ```python
-@cached_result(ttl=86400, key_prefix="my_prefix")
-async def my_function(arg1: str, arg2: int) -> dict[str, Any]:
-    # Function implementation
-    pass
+from http_cache.result_cache import cached_result
+
+@cached_result(service="mal", key_prefix="mal_anime")
+async def fetch_anime(url: str) -> dict[str, Any] | None:
+    ...
 ```
 
-- `ttl`: Cache TTL in seconds (default: `86400` — 24 hours)
-- `key_prefix`: Cache key prefix (default: the decorated function's name)
+- `service`: source whose TTL applies, such as `"mal"` for `TTL_MAL`. Without one, results are kept for 24 hours.
+- `key_prefix`: cache key prefix (default: the decorated function's name).
+- `dependencies`: other functions whose source is part of the schema hash.
+- `ttl`: a lifetime in seconds that overrides the source's.
+
+Whether to cache and the TTL are read from `get_cache()` on every call, so the decorator can run at import, before the app configures the cache.
 
 **Features:**
 - Automatic cache key generation from function name + schema hash + arguments
@@ -264,16 +187,6 @@ async def my_function(arg1: str, arg2: int) -> dict[str, Any]:
 - Multi-process safe via Redis atomic operations
 - `None` return values are never cached (intentional design choice)
 - Supports complex argument types via JSON serialization with repr() fallback
-
-**Example:**
-```python
-from http_cache.result_cache import cached_result
-
-@cached_result(ttl=3600, key_prefix="api_results")
-async def fetch_external_data(item_id: str) -> dict:
-    # Expensive operation (API call, web scraping, etc.)
-    return {"id": item_id, "data": "..."}
-```
 
 ## How It Works
 
@@ -296,7 +209,7 @@ async def fetch_external_data(item_id: str) -> dict:
 
 ### Cache Management Features
 
-- **TTL enforcement:** Configurable per service for HTTP caching; 24h default for result caching
+- **TTL enforcement:** Configurable per source, for HTTP responses and crawl results alike
 - **Schema versioning:** Automatic cache invalidation when function implementation changes
 - **Graceful degradation:** Falls back to uncached execution on Redis failures (connection errors, timeouts)
 - **Multi-process safe:** Redis atomic operations prevent race conditions
@@ -442,9 +355,9 @@ docker exec -it echora-dev-redis redis-cli
 
 **Solutions:**
 
-1. Verify `CACHE_ENABLED=true` in environment or `.env` file
+1. Verify `CACHE_ENABLED` is not false and `REDIS_URL` points at the running Redis
 2. Check Redis is running: `docker compose ps redis`
-3. Validate `REDIS_URL=redis://localhost:6379/0` in environment
+3. Check the app calls `configure_cache` at startup; without it the cache is off
 4. Check application logs for cache-related warnings
 
 ### Redis Connection Failed
@@ -476,12 +389,12 @@ echo $REDIS_URL  # Should be: redis://host:port/db
 
 ```python
 # CORRECT: Context manager pattern
-async with http_cache_manager.get_aiohttp_session("my_service") as session:
+async with cache.get_aiohttp_session("my_service") as session:
     async with session.get(url) as response:
         data = await response.json()
 
 # CORRECT: Manual cleanup
-session = http_cache_manager.get_aiohttp_session("my_service")
+session = cache.get_aiohttp_session("my_service")
 try:
     async with session.get(url) as response:
         data = await response.json()

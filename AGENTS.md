@@ -176,7 +176,7 @@ echora/
 │
 ├── libs/                          # Shared libraries (business logic)
 │   ├── common/                    # Shared configuration & models
-│   │   ├── config/                # Settings (Qdrant, Embedding, Service)
+│   │   ├── config/                # Settings and every sub-config
 │   │   └── models/                # AnimeRecord data model
 │   ├── vector_processing/         # Embedding generation
 │   │   ├── processors/            # Text/Image processors
@@ -195,7 +195,7 @@ echora/
 ### Key Components
 
 - **gRPC Service** (`apps/vector_service/`) - Search and admin gRPC endpoints
-- **Configuration** (`libs/common/config/`) - Pydantic BaseSettings (Qdrant, Embedding, Service configs)
+- **Configuration** (`libs/common/config/`) - One `Settings` with a sub-config per concern (Qdrant, embedding, service, observability, Redis, cache, enrichment)
 - **Vector Processing** (`libs/vector_processing/`) - BGE-M3 text (1024-dim) + OpenCLIP image (768-dim) embeddings
 - **Qdrant Client** (`libs/qdrant_db/`) - Vector DB operations with quantization & multi-vector support
 - **HTTP Cache** (`libs/http_cache/`) - RFC 9111 compliant caching with Redis backend
@@ -390,6 +390,14 @@ The service supports multiple embedding providers through configuration:
 - `LOG_LEVEL`: Logging level (default: INFO)
 
 ## Code Conventions
+
+### Configuration
+
+- Every config is a sub-config of `Settings` in `libs/common/src/common/config/`, extending `EnvSettings`. Each field is read from the environment variable of the same name in upper case, then `.env`, then its default; values passed in code win over both.
+- Only apps and scripts call `get_settings()`. Libraries get config passed in: constructors take the sub-config they need (`QdrantClient(settings.qdrant)`, `EnrichmentPipeline(settings.enrichment, cache)`).
+- Redis clients come from `common.redis_client.create_redis_client(settings.redis)`. `REDIS_URL` defaults to `redis://localhost:6379/0`. Databases 0-15 belong to the services (enrichment 0, vector 1); tests use 16-31 on the dev Redis, which runs with `--databases 32`.
+- The HTTP and result cache is set up once with `http_cache.configure_cache(settings.cache, settings.redis)` and closed with `close_cache()`. Code without a cache passed in, such as `@cached_result` crawler functions, calls `get_cache()` when it runs, never at import.
+- No library reads environment variables or builds config at import.
 
 ### Class Member Ordering
 

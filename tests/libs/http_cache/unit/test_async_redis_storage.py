@@ -30,46 +30,12 @@ from http_cache.async_redis_storage import AsyncRedisStorage
 class TestAsyncRedisStorageInit:
     """Test initialization and client ownership patterns."""
 
-    @patch("http_cache.async_redis_storage.Redis")
-    def test_init_without_client_creates_new_client(
-        self, mock_redis_class: MagicMock
-    ) -> None:
-        """Test initialization without client creates new Redis client."""
-        mock_client = AsyncMock()
-        mock_redis_class.from_url.return_value = mock_client
-
-        storage = AsyncRedisStorage(
-            redis_url="redis://localhost:6379/1",
-            default_ttl=7200.0,
-            refresh_ttl_on_access=False,
-            key_prefix="custom_prefix",
-        )
-
-        # Should create client and own it with connection pool config
-        assert storage._owns_client is True
-        mock_redis_class.from_url.assert_called_once_with(
-            "redis://localhost:6379/1",
-            decode_responses=False,
-            max_connections=100,
-            socket_keepalive=True,
-            socket_connect_timeout=5,
-            socket_timeout=10,
-            retry_on_timeout=True,
-            health_check_interval=30,
-        )
-        assert storage.client == mock_client
-        assert storage.default_ttl == 7200.0
-        assert storage.refresh_ttl_on_access is False
-        assert storage.key_prefix == "custom_prefix"
-
     def test_init_with_client_does_not_own_client(
         self, mock_redis_client: AsyncMock
     ) -> None:
         """Test initialization with provided client does not own it."""
         storage = AsyncRedisStorage(client=mock_redis_client, default_ttl=1800.0)
 
-        # Should not own the client
-        assert storage._owns_client is False
         assert storage.client == mock_redis_client
         assert storage.default_ttl == 1800.0
         assert storage.refresh_ttl_on_access is True  # default
@@ -82,28 +48,6 @@ class TestAsyncRedisStorageInit:
         assert storage.default_ttl is None
         assert storage.refresh_ttl_on_access is True
         assert storage.key_prefix == "hishel_cache"
-
-    @patch("http_cache.async_redis_storage.Redis")
-    def test_init_without_client_uses_default_url(
-        self, mock_redis_class: MagicMock
-    ) -> None:
-        """Test initialization without client uses default Redis URL."""
-        mock_client = AsyncMock()
-        mock_redis_class.from_url.return_value = mock_client
-
-        storage = AsyncRedisStorage()
-
-        mock_redis_class.from_url.assert_called_once_with(
-            "redis://localhost:6379/0",
-            decode_responses=False,
-            max_connections=100,
-            socket_keepalive=True,
-            socket_connect_timeout=5,
-            socket_timeout=10,
-            retry_on_timeout=True,
-            health_check_interval=30,
-        )
-        assert storage._owns_client is True
 
     def test_init_with_negative_default_ttl_raises_error(
         self, mock_redis_client: AsyncMock
@@ -1786,20 +1730,6 @@ class TestClose:
     """Test connection closing."""
 
     @pytest.mark.asyncio
-    async def test_close_closes_owned_client(
-        self, mock_redis_client: AsyncMock
-    ) -> None:
-        """Test close() closes Redis client when storage owns it."""
-        with patch("http_cache.async_redis_storage.Redis") as mock_redis_class:
-            mock_redis_class.from_url.return_value = mock_redis_client
-
-            storage = AsyncRedisStorage()  # Creates own client
-
-            await storage.close()
-
-            mock_redis_client.aclose.assert_called_once()
-
-    @pytest.mark.asyncio
     async def test_close_does_not_close_external_client(
         self, mock_redis_client: AsyncMock
     ) -> None:
@@ -1809,17 +1739,3 @@ class TestClose:
         await storage.close()
 
         mock_redis_client.aclose.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_close_handles_exception_gracefully(self) -> None:
-        """Test close() handles exceptions during close gracefully."""
-        mock_client = AsyncMock()
-        mock_client.aclose.side_effect = Exception("Close failed")
-
-        with patch("http_cache.async_redis_storage.Redis") as mock_redis_class:
-            mock_redis_class.from_url.return_value = mock_client
-
-            storage = AsyncRedisStorage()
-
-            # Should not raise exception
-            await storage.close()

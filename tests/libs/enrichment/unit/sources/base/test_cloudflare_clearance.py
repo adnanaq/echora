@@ -2,12 +2,14 @@ import hashlib
 import json
 import time
 from collections.abc import Iterator
+from contextlib import AbstractContextManager
 from unittest.mock import create_autospec, patch
 
 import pytest
 import zendriver
-from enrichment.sources.base import cloudflare_clearance
+from common.config import CacheConfig, RedisConfig
 from enrichment.sources.base.cloudflare_clearance import load_clearance, save_clearance
+from http_cache import configure_cache
 from redis.asyncio import Redis
 from zendriver import cdp
 from zendriver.core.browser import CookieJar
@@ -44,6 +46,19 @@ class FailingRedis(InMemoryRedis):
         self, name: str, value: str, ex: int | None = None, **_: object
     ) -> bool:
         raise ConnectionError(f"cannot store {value}")
+
+
+class UnreachableRedis(InMemoryRedis):
+    async def get(self, name: str) -> str | None:
+        raise ConnectionError("refused")
+
+
+def _cache_serving(store: Redis) -> AbstractContextManager[object]:
+    cache = configure_cache(
+        CacheConfig(cache_enabled=True),
+        RedisConfig(redis_url="redis://localhost:6379/15"),
+    )
+    return patch.object(cache, "get_result_client", autospec=True, return_value=store)
 
 
 def _cookie(name: str, domain: str, expires_in: float = 3600) -> cdp.network.Cookie:
@@ -84,12 +99,7 @@ def _browser(user_agent: str, cookies: list[cdp.network.Cookie]) -> zendriver.Br
 @pytest.fixture
 def redis() -> Iterator[InMemoryRedis]:
     store = InMemoryRedis()
-    with patch.object(
-        cloudflare_clearance,
-        "get_result_cache_redis_client",
-        autospec=True,
-        return_value=store,
-    ):
+    with _cache_serving(store):
         yield store
 
 
@@ -129,6 +139,25 @@ async def test_save_clearance_long_lived_cookie_kept_for_max_ttl(
     await save_clearance(browser, "anidb.net")
 
     assert list(redis.expiry.values()) == [86400]
+
+
+async def test_save_clearance_expired_cookie_stores_nothing(
+    redis: InMemoryRedis,
+) -> None:
+    browser = _browser(HEADED_AGENT, [_cookie("cf_clearance", ".anidb.net", -60)])
+
+    assert not await save_clearance(browser, "anidb.net")
+    assert redis.values == {}
+
+
+async def test_load_clearance_browser_without_connection_returns_false(
+    redis: InMemoryRedis,
+) -> None:
+    browser = _browser(HEADED_AGENT, [])
+    browser.connection = None
+
+    assert not await load_clearance(browser, "anidb.net")
+    browser.cookies.set_all.assert_not_awaited()
 
 
 async def test_save_clearance_without_clearance_cookie_stores_nothing(
@@ -171,13 +200,22 @@ async def test_load_clearance_different_user_agent_gives_nothing(
 
 
 async def test_load_clearance_redis_unavailable_returns_false() -> None:
-    with patch.object(
-        cloudflare_clearance,
-        "get_result_cache_redis_client",
-        autospec=True,
-        side_effect=ConnectionError("refused"),
-    ):
+    with _cache_serving(UnreachableRedis()):
         assert not await load_clearance(_browser(HEADED_AGENT, []), "anidb.net")
+
+
+async def test_save_clearance_caching_off_stores_nothing() -> None:
+    browser = _browser(HEADED_AGENT, [_cookie("cf_clearance", ".anidb.net")])
+
+    assert not await save_clearance(browser, "anidb.net")
+    browser.cookies.get_all.assert_not_awaited()
+
+
+async def test_load_clearance_caching_off_gives_nothing() -> None:
+    browser = _browser(HEADED_AGENT, [])
+
+    assert not await load_clearance(browser, "anidb.net")
+    browser.cookies.set_all.assert_not_awaited()
 
 
 async def test_save_clearance_value_never_logged(
@@ -187,12 +225,7 @@ async def test_save_clearance_value_never_logged(
     browser = _browser(HEADED_AGENT, [_cookie("cf_clearance", ".anidb.net")])
 
     for store in (InMemoryRedis(), FailingRedis()):
-        with patch.object(
-            cloudflare_clearance,
-            "get_result_cache_redis_client",
-            autospec=True,
-            return_value=store,
-        ):
+        with _cache_serving(store):
             await save_clearance(browser, "anidb.net")
             await load_clearance(_browser(HEADED_AGENT, []), "anidb.net")
 

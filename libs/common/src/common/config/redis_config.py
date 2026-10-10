@@ -8,12 +8,15 @@ from .env_settings import EnvSettings
 class RedisConfig(EnvSettings):
     """How to reach Redis and size its connection pool.
 
-    Without ``redis_url`` nothing uses Redis: the vector service skips its
-    embedding cache and enrichment runs without its HTTP and result caches.
+    Databases 0-15 belong to the services: enrichment uses 0 and the vector
+    service 1. Tests use 16-31 on the dev Redis. Setting ``redis_url`` to None
+    turns Redis off: the vector service skips its embedding cache and
+    enrichment runs without its HTTP and result caches.
     """
 
     redis_url: str | None = Field(
-        default=None, description="Redis connection URL (e.g. redis://localhost:6379/0)"
+        default="redis://localhost:6379/0",
+        description="Redis connection URL; database 0 is enrichment's, 1 the vector service's",
     )
     redis_max_connections: int = Field(
         default=100,

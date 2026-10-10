@@ -10,7 +10,7 @@ source URLs from offline data.
 Usage:
     # Programmatic usage via class
     from enrichment.sources.animeschedule.animeschedule_helper import AnimescheduleHelper
-    helper = AnimescheduleHelper()
+    helper = AnimescheduleHelper(cache)
     data = await helper.fetch_all(ids, offline_data)
 
     # CLI usage
@@ -27,6 +27,7 @@ import sys
 from typing import Any
 
 import aiohttp
+from common.config import CacheConfig, RedisConfig
 from common.utils.jsonl_utils import append_jsonl
 from enrichment.sources.animeschedule.animeschedule_mapper import (
     anime_from_animeschedule,
@@ -37,7 +38,7 @@ from enrichment.sources.base.base_helper import (
     normalize_enrichment_payload,
 )
 from enrichment.sources.base.exceptions import ServiceNetworkError, ServiceParseError
-from http_cache.instance import http_cache_manager as _cache_manager
+from http_cache import HTTPCacheManager, configure_cache
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +89,14 @@ class AnimescheduleHelper(BaseEnrichmentHelper):
     source URL from ``offline_data["sources"]`` appears in the AnimSchedule
     response's ``websites`` dict. This is intentional — ``ids`` is unused.
     """
+
+    def __init__(self, cache: HTTPCacheManager) -> None:
+        """Initialize AnimSchedule helper.
+
+        Args:
+            cache: Supplies the HTTP sessions, cached when caching is on.
+        """
+        self._cache = cache
 
     async def fetch_all(
         self,
@@ -164,7 +173,7 @@ class AnimescheduleHelper(BaseEnrichmentHelper):
         logger.debug(f"AnimSchedule search URL: {search_url}, q={search_term}")
 
         try:
-            async with _cache_manager.get_aiohttp_session("animeschedule") as session:
+            async with self._cache.get_aiohttp_session("animeschedule") as session:
                 async with session.get(
                     search_url, params={"q": search_term}
                 ) as response:
@@ -218,7 +227,7 @@ async def main() -> int:
     )
     args = parser.parse_args()
 
-    helper = AnimescheduleHelper()
+    helper = AnimescheduleHelper(configure_cache(CacheConfig(), RedisConfig()))
     try:
         result = await helper._search(args.search_term, output_path=args.output)
     except Exception:

@@ -15,14 +15,11 @@ from typing import Any, cast
 from enrichment.sources.base.browser import browser_session
 from enrichment.sources.base.page_readiness import wait_for_page
 from enrichment.sources.mal.mal_base import MAL_DOMAIN
-from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
 from lxml import etree
 
 logger = logging.getLogger(__name__)
 
-_CACHE_CONFIG = get_cache_config()
-TTL_MAL = _CACHE_CONFIG.ttl_mal
 
 _EPISODE_COUNT_XPATH = (
     "//h2[@class='h2_overwrite'][text()='Episodes']/following-sibling::span[1]"
@@ -74,7 +71,7 @@ async def _fetch_episode_count_html(url: str) -> str | None:
 
 
 @cached_result(
-    ttl=TTL_MAL,
+    service="mal",
     key_prefix="mal_episode_count",
     dependencies=[_extract_episode_count],
 )

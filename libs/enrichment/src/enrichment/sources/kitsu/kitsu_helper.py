@@ -10,6 +10,7 @@ from types import TracebackType
 from typing import Any, cast
 
 import aiohttp
+from common.config import CacheConfig, RedisConfig
 from common.models.anime import ThemeEntry
 from common.utils.retry import retry_with_backoff
 from enrichment.sources.base.base_helper import (
@@ -18,7 +19,7 @@ from enrichment.sources.base.base_helper import (
 )
 from enrichment.sources.base.exceptions import ServiceNotFoundError
 from enrichment.sources.base.framework.repository import FileRepository, NullRepository
-from http_cache.instance import http_cache_manager as _cache_manager
+from http_cache import HTTPCacheManager, configure_cache
 
 from .kitsu_mapper import (
     anime_from_kitsu,
@@ -49,9 +50,14 @@ _CHARACTER_CONCURRENCY = 5
 class KitsuHelper(BaseEnrichmentHelper):
     """Helper for Kitsu data fetching in AI enrichment pipeline."""
 
-    def __init__(self) -> None:
-        """Initialize Kitsu helper."""
+    def __init__(self, cache: HTTPCacheManager) -> None:
+        """Initialize Kitsu helper.
+
+        Args:
+            cache: Supplies the HTTP sessions, cached when caching is on.
+        """
         self.base_url = "https://kitsu.io/api/edge"
+        self._cache = cache
 
     async def fetch_all(
         self,
@@ -109,7 +115,7 @@ class KitsuHelper(BaseEnrichmentHelper):
                 os.path.join(temp_dir, "kitsu_characters.jsonl") if temp_dir else None
             )
 
-            async with _cache_manager.get_aiohttp_session(
+            async with self._cache.get_aiohttp_session(
                 "kitsu", timeout=aiohttp.ClientTimeout(total=30)
             ) as session:
                 # Fetch anime first so we can extract the slug for episode URLs.
@@ -201,7 +207,7 @@ class KitsuHelper(BaseEnrichmentHelper):
             ctx = (
                 nullcontext(session)
                 if session is not None
-                else _cache_manager.get_aiohttp_session(
+                else self._cache.get_aiohttp_session(
                     "kitsu", timeout=aiohttp.ClientTimeout(total=30)
                 )
             )
@@ -560,7 +566,7 @@ class KitsuHelper(BaseEnrichmentHelper):
         """
         logger.info(f"Fetching Kitsu anime for: {anime_id}")
         async with (
-            _cache_manager.get_aiohttp_session(
+            self._cache.get_aiohttp_session(
                 "kitsu", timeout=aiohttp.ClientTimeout(total=30)
             )
             if session is None
@@ -763,7 +769,7 @@ async def main() -> int:
     except SystemExit:
         return 1
 
-    helper = KitsuHelper()
+    helper = KitsuHelper(configure_cache(CacheConfig(), RedisConfig()))
     try:
         data = await helper.fetch_all({"kitsu_url": args.url}, {})
     except Exception:

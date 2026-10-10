@@ -10,12 +10,14 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from common.config import EnrichmentConfig
 from enrichment.sources.anidb.anidb_helper import (
     AniDBHelper,
     _state,
     reset_client_state,
 )
 from enrichment.sources.base.exceptions import ServiceBlockedError
+from http_cache import get_cache
 
 
 @pytest.fixture(autouse=True)
@@ -56,7 +58,7 @@ def helper():
     """AniDBHelper with deterministic env config and rate-limiting disabled."""
     with patch("enrichment.sources.anidb.anidb_helper.os.getenv") as mock_getenv:
         mock_getenv.side_effect = lambda key, default=None: default
-        h = AniDBHelper()
+        h = AniDBHelper(EnrichmentConfig(), get_cache())
         with patch.object(h, "_adaptive_rate_limit", new_callable=AsyncMock):
             yield h
 
@@ -82,7 +84,10 @@ def mock_session():
 
 
 def test_helper_initialization() -> None:
-    h = AniDBHelper(client_name="animeenrichment", client_version="1.0")
+    h = AniDBHelper(
+        EnrichmentConfig(anidb_client="animeenrichment", anidb_clientver="1.0"),
+        get_cache(),
+    )
     assert h.client_name == "animeenrichment"
     assert h.client_version == "1.0"
     assert h._ban_remaining() == 0
@@ -122,7 +127,7 @@ async def test_ban_outlives_the_helper_that_hit_it(helper) -> None:
     # discarded before the next anime and a banned client keeps calling.
     helper._record_ban()
 
-    later = AniDBHelper()
+    later = AniDBHelper(EnrichmentConfig(), get_cache())
     with (
         patch.object(later, "_ensure_session_health", new_callable=AsyncMock),
         patch.object(
@@ -336,9 +341,9 @@ async def test_session_management(helper, mock_session) -> None:
 
 
 @pytest.mark.asyncio
-@patch("enrichment.sources.anidb.anidb_helper._cache_manager.get_aiohttp_session")
 @patch("enrichment.sources.anidb.anidb_helper.time.time")
-async def test_ensure_session_health(mock_time, mock_get_session, helper) -> None:
+async def test_ensure_session_health(mock_time, helper) -> None:
+    mock_get_session = patch.object(helper._cache, "get_aiohttp_session").start()
     helper._ensure_session_health = AniDBHelper._ensure_session_health.__get__(helper)
     mock_session = AsyncMock()
     mock_get_session.return_value = mock_session
@@ -356,6 +361,7 @@ async def test_ensure_session_health(mock_time, mock_get_session, helper) -> Non
     await helper._ensure_session_health()
     old_close.assert_called_once()
     mock_get_session.assert_called_once()
+    patch.stopall()
 
 
 # =============================================================================
@@ -402,7 +408,7 @@ async def test_context_manager_protocol(mock_getenv) -> None:
     mock_getenv.side_effect = lambda key, default=None: default
     mock_session = AsyncMock()
     mock_session.close = AsyncMock()
-    async with AniDBHelper() as ctx_helper:
+    async with AniDBHelper(EnrichmentConfig(), get_cache()) as ctx_helper:
         ctx_helper.session = mock_session
         assert isinstance(ctx_helper, AniDBHelper)
     mock_session.close.assert_awaited_once()
@@ -915,7 +921,7 @@ async def test_minimum_gap_holds_between_anime() -> None:
         patch("enrichment.sources.anidb.anidb_helper.asyncio.sleep", fake_sleep),
     ):
         for aid in range(3):
-            helper = AniDBHelper()
+            helper = AniDBHelper(EnrichmentConfig(), get_cache())
             with (
                 patch.object(helper, "_make_single_request", transport),
                 patch.object(helper, "_ensure_session_health", new_callable=AsyncMock),
@@ -923,7 +929,10 @@ async def test_minimum_gap_holds_between_anime() -> None:
                 await helper._make_request({"aid": aid})
 
     gaps = [b - a for a, b in zip(sent, sent[1:])]
-    assert all(gap >= AniDBHelper().min_request_interval for gap in gaps), gaps
+    assert all(
+        gap >= AniDBHelper(EnrichmentConfig(), get_cache()).min_request_interval
+        for gap in gaps
+    ), gaps
 
 
 @pytest.mark.asyncio
@@ -942,7 +951,7 @@ async def test_concurrent_anime_queue_behind_one_lock() -> None:
         return "<anime/>"
 
     async def one(aid: int) -> None:
-        helper = AniDBHelper()
+        helper = AniDBHelper(EnrichmentConfig(), get_cache())
         with (
             patch.object(helper, "_make_single_request", transport),
             patch.object(helper, "_ensure_session_health", new_callable=AsyncMock),
@@ -956,7 +965,7 @@ async def test_concurrent_anime_queue_behind_one_lock() -> None:
 
 @pytest.mark.asyncio
 async def test_failure_backoff_carries_into_the_next_anime() -> None:
-    helper = AniDBHelper()
+    helper = AniDBHelper(EnrichmentConfig(), get_cache())
     with (
         patch.object(
             helper, "_make_single_request", new_callable=AsyncMock, return_value=None
