@@ -9,7 +9,8 @@ import re
 from datetime import date
 from pathlib import Path
 
-_DATE_RANGE_SEPARATOR_RE = re.compile(r"\s+to\s+|\s*[–‑]\s*|\s+-\s+")
+_DATE_RANGE_SEPARATOR = re.compile(r"\s+to\s+|\s*[–‑]\s*|\s+-\s+")
+_WHITESPACE = re.compile(r"\s+")
 # English month names, fixed rather than read from the process locale: provider
 # pages are in English whatever locale the service runs in.
 _MONTH_NAMES = (
@@ -36,8 +37,18 @@ _DAY_MONTH_YEAR = re.compile(r"^(\d{1,2})\. ([A-Za-z]{3})[a-z]*\.? (\d{4})$")
 _ISO_DATE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})$")
 # "20.10.1999"
 _DOTTED_DATE = re.compile(r"^(\d{1,2})\.(\d{1,2})\.(\d{4})$")
-_BROADCAST_WITH_AT_RE = re.compile(r"(\w+)\s+at\s+(\d{1,2}:\d{2})\s+\((\w+)\)")
-_BROADCAST_WITHOUT_AT_RE = re.compile(r"(\w+)\s+(\d{1,2}:\d{2})\s*\((\w+)\)")
+# A named month with its year, the day optional: "Oct 20, 1999", "Oct 1999", "20. Oct 1999"
+_NAMED_MONTH_YEAR = re.compile(
+    r"^(?:\d{1,2}\. )?([A-Za-z]{3})[a-z]*\.?(?: \d{1,2},)? (\d{4})$"
+)
+# A month and year in dots, the day optional: "20.10.1999", "10.1999"
+_DOTTED_MONTH_YEAR = re.compile(r"^(?:\d{1,2}\.)?(\d{1,2})\.(\d{4})$")
+# An ISO year, the month and day optional: "1999-10-20", "1999-10", "1999"
+_ISO_YEAR_MONTH = re.compile(r"^(\d{4})(?:-(\d{2}))?(?:-\d{2})?$")
+# "Sundays at 23:15 (JST)" (MAL)
+_BROADCAST_WITH_AT = re.compile(r"(\w+)\s+at\s+(\d{1,2}:\d{2})\s+\((\w+)\)")
+# "Sunday 23:15 (JST)" (AniSearch)
+_BROADCAST_WITHOUT_AT = re.compile(r"(\w+)\s+(\d{1,2}:\d{2})\s*\((\w+)\)")
 
 
 def sanitize_output_path(output_path: str) -> str:
@@ -53,11 +64,11 @@ def sanitize_output_path(output_path: str) -> str:
     Raises:
         ValueError: If relative path escapes working directory
     """
-    p = Path(output_path)
-    abs_path = p.resolve()
+    path = Path(output_path)
+    abs_path = path.resolve()
 
     # Absolute paths are allowed as-is
-    if p.is_absolute():
+    if path.is_absolute():
         return str(abs_path)
 
     # Relative paths must remain within CWD after resolution
@@ -120,7 +131,7 @@ def parse_iso_date(raw: str | None) -> str | None:
     """
     if not raw:
         return None
-    text = re.sub(r"\s+", " ", raw.strip())
+    text = _single_spaced(raw)
     if match := _MONTH_DAY_YEAR.match(text):
         month_text, day, year = match.groups()
         return _iso_date(int(year), _MONTH_NUMBERS.get(month_text.lower()), int(day))
@@ -134,6 +145,15 @@ def parse_iso_date(raw: str | None) -> str | None:
         day, month, year = match.groups()
         return _iso_date(int(year), int(month), int(day))
     return None
+
+
+def _single_spaced(raw: str) -> str:
+    """Strip the text and turn each run of whitespace into one space.
+
+    >>> _single_spaced("  Oct\\n 20,  1999 ")
+    'Oct 20, 1999'
+    """
+    return _WHITESPACE.sub(" ", raw.strip())
 
 
 def _iso_date(year: int, month: int | None, day: int) -> str | None:
@@ -182,7 +202,7 @@ def split_date_range(raw: str | None) -> tuple[str, str]:
         >>> split_date_range(None)
         ('', '')
     """
-    parts = _DATE_RANGE_SEPARATOR_RE.split((raw or "").strip(), maxsplit=1)
+    parts = _DATE_RANGE_SEPARATOR.split((raw or "").strip(), maxsplit=1)
     return parts[0].strip(), parts[1].strip() if len(parts) > 1 else ""
 
 
@@ -220,6 +240,12 @@ def parse_partial_date(raw: str | None) -> tuple[int | None, int | None]:
         >>> parse_partial_date("1999-10")
         (1999, 10)
 
+        The day is not checked, so a day that does not exist still gives its
+        month; ``parse_iso_date`` is the one that rejects it:
+
+        >>> parse_partial_date("2026-02-31")
+        (2026, 2)
+
         A month that does not exist, or no date at all:
 
         >>> parse_partial_date("1999-13")
@@ -229,17 +255,14 @@ def parse_partial_date(raw: str | None) -> tuple[int | None, int | None]:
     """
     if not raw:
         return None, None
-    text = re.sub(r"\s+", " ", raw.strip())
-    named = re.match(
-        r"^(?:\d{1,2}\. )?([A-Za-z]{3})[a-z]*\.?(?: \d{1,2},)? (\d{4})$", text
-    )
+    text = _single_spaced(raw)
+    named = _NAMED_MONTH_YEAR.match(text)
     if named and named.group(1).lower() in _MONTH_NUMBERS:
         return int(named.group(2)), _MONTH_NUMBERS[named.group(1).lower()]
-    dotted = re.match(r"^(?:\d{1,2}\.)?(\d{1,2})\.(\d{4})$", text)
+    dotted = _DOTTED_MONTH_YEAR.match(text)
     if dotted and 1 <= int(dotted.group(1)) <= 12:
         return int(dotted.group(2)), int(dotted.group(1))
-    iso = re.match(r"^(\d{4})(?:-(\d{2}))?(?:-\d{2})?$", text)
-    if iso:
+    if iso := _ISO_YEAR_MONTH.match(text):
         month = int(iso.group(2)) if iso.group(2) else None
         if month is not None and not 1 <= month <= 12:
             return None, None
@@ -297,8 +320,7 @@ def parse_broadcast_string(
     """
     if not broadcast_raw or broadcast_raw.strip().lower() in ("unknown", "n/a", ""):
         return None, None, None
-    s = broadcast_raw.strip()
-    m = _BROADCAST_WITH_AT_RE.match(s) or _BROADCAST_WITHOUT_AT_RE.match(s)
-    if m:
-        return m.group(1), m.group(2), m.group(3)
+    text = broadcast_raw.strip()
+    if match := _BROADCAST_WITH_AT.match(text) or _BROADCAST_WITHOUT_AT.match(text):
+        return match.group(1), match.group(2), match.group(3)
     return None, None, None
