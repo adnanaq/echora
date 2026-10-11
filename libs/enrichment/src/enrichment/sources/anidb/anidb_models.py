@@ -27,7 +27,7 @@ def _whole_number_or_none(value: object) -> object:
     """
     value = strip_text_or_none(value)
     if isinstance(value, str):
-        return int(value) if value.isdigit() else None
+        return int(value) if value.isdecimal() else None
     return value
 
 
@@ -138,7 +138,7 @@ class AniDBEpisode(BaseModel):
         if (
             self.episode_type == 1
             and isinstance(self.episode_number, str)
-            and self.episode_number.isdigit()
+            and self.episode_number.isdecimal()
         ):
             self.episode_number = int(self.episode_number)
         return self

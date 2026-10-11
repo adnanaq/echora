@@ -238,7 +238,15 @@ def test_character_page_extra_forbidden() -> None:
 
 @pytest.mark.parametrize(
     ("raw", "expected"),
-    [("12", 12), (" 12 ", 12), ("abc", None), ("-3", None), ("", None), (None, None)],
+    [
+        ("12", 12),
+        (" 12 ", 12),
+        ("abc", None),
+        ("-3", None),
+        ("\u00b2", None),
+        ("", None),
+        (None, None),
+    ],
 )
 def test_seiyuu_id_text_parses_to_number_or_none(
     raw: str | None, expected: int | None
@@ -307,6 +315,7 @@ def test_anime_episode_count_text_parses_to_count_or_zero(
     [
         ("1", "12", 12),
         ("1", "12a", "12a"),
+        ("1", "\u00b2", "\u00b2"),
         ("2", "S1", "S1"),
         ("2", "3", "3"),
         (None, "S1", "S1"),
