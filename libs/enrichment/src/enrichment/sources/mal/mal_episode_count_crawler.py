@@ -73,7 +73,6 @@ async def _fetch_episode_count_html(url: str) -> str | None:
 @cached_result(
     service="mal",
     key_prefix="mal_episode_count",
-    dependencies=[_extract_episode_count],
 )
 async def _fetch_episode_count_data(url: str) -> str | None:
     """Fetch the episode list page and return the episode counter span text.

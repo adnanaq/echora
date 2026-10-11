@@ -105,7 +105,6 @@ def _normalize_characters_page_url(anime_identifier: str) -> str:
 @cached_result(
     service="anisearch",
     key_prefix="anisearch_character_refs",
-    dependencies=[_extract_refs_from_html],
 )
 async def _fetch_anisearch_character_refs_data(
     characters_url: str,

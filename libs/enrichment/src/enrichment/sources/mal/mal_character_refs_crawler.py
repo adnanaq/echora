@@ -71,7 +71,6 @@ async def _fetch_characters_page_html(url: str) -> str | None:
 @cached_result(
     service="mal",
     key_prefix="mal_character_ids",
-    dependencies=[_extract_character_urls],
 )
 async def _fetch_mal_characters_data(url: str) -> list[str] | None:
     """Fetch /anime/{id}/characters and extract character URLs. Cached by url."""

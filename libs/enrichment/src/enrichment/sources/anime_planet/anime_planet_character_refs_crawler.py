@@ -84,7 +84,6 @@ async def _fetch_refs_html(url: str) -> str | None:
 @cached_result(
     service="anime_planet",
     key_prefix="animeplanet_character_refs",
-    dependencies=[_extract_refs_from_html],
 )
 async def _fetch_refs_data(url: str) -> list[dict[str, str]] | None:
     """Fetch /anime/{slug}/characters and extract character hrefs. Cached by url."""

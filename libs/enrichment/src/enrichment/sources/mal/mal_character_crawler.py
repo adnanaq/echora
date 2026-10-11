@@ -444,7 +444,6 @@ async def _fetch_character_html(browser: Any, url: str) -> tuple[str, str] | Non
 @cached_result(
     service="mal",
     key_prefix="mal_character_detail",
-    dependencies=[_extract_character_from_html],
 )
 async def _fetch_mal_character_data(url: str) -> tuple[dict[str, Any], str] | None:
     """Fetch a MAL character detail page via zendriver. Cached by URL.

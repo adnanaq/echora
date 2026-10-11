@@ -406,7 +406,6 @@ async def _fetch_anime_html(url: str) -> str | None:
 @cached_result(
     service="anime_planet",
     key_prefix="animeplanet_anime",
-    dependencies=[_extract_anime_from_html],
 )
 async def _fetch_animeplanet_anime_data(
     canonical_slug: str,

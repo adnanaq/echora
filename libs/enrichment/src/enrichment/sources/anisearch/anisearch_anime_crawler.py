@@ -256,7 +256,6 @@ def _parse_relations(
 @cached_result(
     service="anisearch",
     key_prefix="anisearch_anime",
-    dependencies=[_extract_anime_from_html, _extract_relations_from_html],
 )
 async def _fetch_anisearch_anime_data(canonical_path: str) -> dict[str, Any] | None:
     """Fetch and extract raw anime data for a given AniSearch anime path.

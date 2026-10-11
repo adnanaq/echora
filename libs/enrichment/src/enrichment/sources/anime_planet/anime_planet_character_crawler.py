@@ -377,7 +377,6 @@ async def _fetch_page_html(browser: Any, url: str) -> str | None:
 @cached_result(
     service="anime_planet",
     key_prefix="animeplanet_character_detail",
-    dependencies=[_extract_character_from_html, remove_ad_annotations],
 )
 async def _fetch_character_data(url: str) -> dict[str, Any] | None:
     """Fetch a character detail page and extract raw fields. Cached by url.

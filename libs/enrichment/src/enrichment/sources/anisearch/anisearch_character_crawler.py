@@ -409,7 +409,7 @@ def _build_character_from_raw(
 @cached_result(
     service="anisearch",
     key_prefix="anisearch_character_detail",
-    dependencies=[_extract_character_from_html, _fetch_page_html],
+    dependencies=[_fetch_page_html],
 )
 async def _fetch_anisearch_character_data(url: str) -> dict[str, Any] | None:
     """Fetch a character detail page and extract raw fields. Cached by URL."""
@@ -425,7 +425,6 @@ async def _fetch_anisearch_character_data(url: str) -> dict[str, Any] | None:
 @cached_result(
     service="anisearch",
     key_prefix="anisearch_character_ography",
-    dependencies=[_extract_ography_from_html],
 )
 async def _fetch_character_ography_data(url: str) -> list[dict[str, Any]] | None:
     """Fetch a single /anime or /manga ography sub-page. Cached by URL."""

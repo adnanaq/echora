@@ -199,7 +199,6 @@ def _parse_episode_row(raw: dict[str, Any]) -> dict[str, Any] | None:
 @cached_result(
     service="anisearch",
     key_prefix="anisearch_episodes",
-    dependencies=[_extract_episodes_from_html],
 )
 async def _fetch_anisearch_episode_data(url: str) -> dict[str, Any] | None:
     """Fetch the /episodes page and return the raw body dict. Cached by URL.

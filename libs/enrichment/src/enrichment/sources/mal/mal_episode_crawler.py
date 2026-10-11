@@ -324,7 +324,6 @@ async def _fetch_episode_html(browser: Any, url: str) -> tuple[str, str] | None:
 @cached_result(
     service="mal",
     key_prefix="mal_episode_detail",
-    dependencies=[_extract_episode_from_html],
 )
 async def _fetch_mal_episode_data(url: str) -> dict[str, Any] | None:
     """Fetch a MAL episode page by full URL and extract data. Cached by URL."""
