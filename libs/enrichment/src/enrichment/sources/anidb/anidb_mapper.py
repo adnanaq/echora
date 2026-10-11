@@ -104,7 +104,13 @@ _OFFICIAL_RESOURCE_TYPES = frozenset({"4", "5", "35"})
 
 
 def _known_date(value: str | None) -> str | None:
-    """Return the date, or None for AniDB's unknown-date placeholder."""
+    """Return the date, or None for AniDB's unknown-date placeholder.
+
+    >>> _known_date("1999-10-20")
+    '1999-10-20'
+    >>> print(_known_date("1970-01-01"))
+    None
+    """
     return None if value == _UNKNOWN_DATE else value
 
 

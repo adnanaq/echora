@@ -270,6 +270,21 @@ def _parse_published(published: str) -> dict[str, Any]:
     Returns:
         ``start_date``, ``end_date``, ``start_year`` and ``start_month`` (an
         English month name, set only when the start has no day).
+
+    Examples:
+        A full date, with an open or a closed end:
+
+        >>> _parse_published("20.10.1999 \u2011 ?")
+        {'start_date': '1999-10-20', 'end_date': None, 'start_year': 1999, 'start_month': None}
+        >>> _parse_published("20.10.1999 \u2011 05.11.2000")
+        {'start_date': '1999-10-20', 'end_date': '2000-11-05', 'start_year': 1999, 'start_month': None}
+
+        A month and year, or a year alone, fills only what it states:
+
+        >>> _parse_published("11.2008")
+        {'start_date': None, 'end_date': None, 'start_year': 2008, 'start_month': 'November'}
+        >>> _parse_published("2027 \u2011 ?")
+        {'start_date': None, 'end_date': None, 'start_year': 2027, 'start_month': None}
     """
     start_raw, end_raw = split_date_range(published)
     start_date = parse_iso_date(start_raw)

@@ -117,7 +117,13 @@ def _clean(val: str | None) -> str | None:
 
 
 def _parse_runtime_seconds(raw: str | None) -> int | None:
-    """Parse "24 min" → 1440 seconds."""
+    """Parse an AniSearch episode runtime to seconds.
+
+    >>> _parse_runtime_seconds("24 min")
+    1440
+    >>> print(_parse_runtime_seconds("?"))
+    None
+    """
     if not raw:
         return None
     m = re.search(r"(\d+)\s*min", raw, re.IGNORECASE)

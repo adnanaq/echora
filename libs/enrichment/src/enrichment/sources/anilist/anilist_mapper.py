@@ -60,7 +60,23 @@ def _best_cover(cover_image) -> str | None:  # type: ignore[no-untyped-def]
 
 
 def _fuzzy_date_str(d: AniListFuzzyDate | None) -> str | None:
-    """Format a FuzzyDate as YYYY-MM-DD, YYYY-MM, or YYYY depending on available parts."""
+    """Format a FuzzyDate as YYYY-MM-DD, YYYY-MM, or YYYY depending on available parts.
+
+    >>> from enrichment.sources.anilist.anilist_character_models import (
+    ...     AniListFuzzyDate,
+    ... )
+    >>> _fuzzy_date_str(AniListFuzzyDate(year=1999, month=10, day=20))
+    '1999-10-20'
+    >>> _fuzzy_date_str(AniListFuzzyDate(year=1999, month=10))
+    '1999-10'
+    >>> _fuzzy_date_str(AniListFuzzyDate(year=1999))
+    '1999'
+
+    A date without its year gives None:
+
+    >>> print(_fuzzy_date_str(AniListFuzzyDate(month=10, day=20)))
+    None
+    """
     if not d or d.year is None:
         return None
     if d.month and d.day:

@@ -57,6 +57,9 @@ def determine_anime_status(
         >>> # Unknown (no dates)
         >>> determine_anime_status(None, None, current)
         <AnimeStatus.UNKNOWN: 'UNKNOWN'>
+        >>> # Unknown (start date not readable)
+        >>> determine_anime_status("not a date", None, current)
+        <AnimeStatus.UNKNOWN: 'UNKNOWN'>
     """
     # Use current UTC time if not provided
     if current_date is None:
@@ -115,6 +118,36 @@ def normalize_to_utc(
 
     Returns:
         A UTC-aware datetime object, or None if input is invalid.
+
+    Examples:
+        A date alone, or a time of exactly midnight, is midnight in Japan,
+        which is 15:00 UTC the day before:
+
+        >>> normalize_to_utc("2024-04-01")
+        datetime.datetime(2024, 3, 31, 15, 0, tzinfo=datetime.timezone.utc)
+        >>> normalize_to_utc("2024-04-01T00:00:00Z")
+        datetime.datetime(2024, 3, 31, 15, 0, tzinfo=datetime.timezone.utc)
+        >>> normalize_to_utc("01.04.2024")
+        datetime.datetime(2024, 3, 31, 15, 0, tzinfo=datetime.timezone.utc)
+
+        Any other time keeps its stated offset:
+
+        >>> normalize_to_utc("2024-04-01T15:30:00Z")
+        datetime.datetime(2024, 4, 1, 15, 30, tzinfo=datetime.timezone.utc)
+        >>> normalize_to_utc("2024-04-01T23:30:00+09:00")
+        datetime.datetime(2024, 4, 1, 14, 30, tzinfo=datetime.timezone.utc)
+
+        A Unix timestamp is read as UTC, and a naive datetime is taken as UTC:
+
+        >>> normalize_to_utc(1711897200)
+        datetime.datetime(2024, 3, 31, 15, 0, tzinfo=datetime.timezone.utc)
+        >>> normalize_to_utc(datetime(2024, 4, 1, 12, 0))
+        datetime.datetime(2024, 4, 1, 12, 0, tzinfo=datetime.timezone.utc)
+
+        Text it cannot read gives None:
+
+        >>> print(normalize_to_utc("Apr 1, 2024"))
+        None
     """
     if date_input is None:
         return None
@@ -152,6 +185,12 @@ def to_japan_time(moment: datetime) -> datetime:
 
     Returns:
         The same moment in Japan time.
+
+    Examples:
+        >>> to_japan_time(datetime(2024, 3, 31, 15, 0, tzinfo=UTC))
+        datetime.datetime(2024, 4, 1, 0, 0, tzinfo=datetime.timezone(datetime.timedelta(seconds=32400), 'JST'))
+        >>> to_japan_time(datetime(2024, 3, 31, 15, 0)).date()
+        datetime.date(2024, 4, 1)
     """
     if moment.tzinfo is None:
         moment = moment.replace(tzinfo=UTC)
@@ -176,6 +215,18 @@ def _parse_date(date_str: str) -> datetime:
 
     Raises:
         ValueError: If the date format is unsupported or invalid.
+
+    Examples:
+        >>> _parse_date("2024-04-01")
+        datetime.datetime(2024, 3, 31, 15, 0, tzinfo=datetime.timezone.utc)
+        >>> _parse_date("01.04.2024")
+        datetime.datetime(2024, 3, 31, 15, 0, tzinfo=datetime.timezone.utc)
+        >>> _parse_date("2024-04-01T15:30:00Z")
+        datetime.datetime(2024, 4, 1, 15, 30, tzinfo=datetime.timezone.utc)
+        >>> _parse_date("Apr 1, 2024")
+        Traceback (most recent call last):
+        ...
+        ValueError: Invalid isoformat string: 'Apr 1, 2024'
     """
     # 1. Normalize AniSearch format: DD.MM.YYYY -> YYYY-MM-DD
     if "." in date_str and len(date_str) == 10:
@@ -235,9 +286,20 @@ def determine_anime_season(date_str: str | None) -> AnimeSeason | None:
         <AnimeSeason.FALL: 'FALL'>
         >>> determine_anime_season("2024-12-25")
         <AnimeSeason.WINTER: 'WINTER'>
-        >>> determine_anime_season(None)
+        >>> determine_anime_season("01.12.2024")
+        <AnimeSeason.WINTER: 'WINTER'>
+
+        The month is read as written, before any shift to UTC, so 1 December
+        in Japan stays WINTER although it is 30 November in UTC:
+
+        >>> determine_anime_season("2024-12-01T00:00:00+09:00")
+        <AnimeSeason.WINTER: 'WINTER'>
+
+        A year alone, or text it cannot read, gives None:
+
+        >>> print(determine_anime_season("2024"))
         None
-        >>> determine_anime_season("invalid")
+        >>> print(determine_anime_season("invalid"))
         None
     """
     if not date_str:
@@ -281,6 +343,24 @@ def determine_anime_year(date_str: str | None) -> int | None:
 
     Returns:
         The release year as an integer or None.
+
+    Examples:
+        The year is read as written, before any shift to UTC, so 1 January
+        in Japan stays 2024 although it is 31 December 2023 in UTC:
+
+        >>> determine_anime_year("2024-01-01")
+        2024
+        >>> determine_anime_year("2024-01-01T00:00:00+09:00")
+        2024
+        >>> determine_anime_year("01.01.2024")
+        2024
+
+        A year alone, or text it cannot read, gives None:
+
+        >>> print(determine_anime_year("2024"))
+        None
+        >>> print(determine_anime_year("Oct 20, 1999"))
+        None
     """
     if not date_str:
         return None

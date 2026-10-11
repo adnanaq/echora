@@ -54,7 +54,15 @@ _HTML_TAG_RE = re.compile(r"<[^>]+>")
 
 
 def _is_zero_date(s: str | None) -> bool:
-    """Return True if the date string is the AnimSchedule zero-date sentinel."""
+    """Return True if the date string is the AnimSchedule zero-date sentinel.
+
+    >>> _is_zero_date("0001-01-01T00:00:00Z")
+    True
+    >>> _is_zero_date("")
+    True
+    >>> _is_zero_date("2024-04-01T00:00:00Z")
+    False
+    """
     return not s or s.startswith(_ZERO_DATE)
 
 

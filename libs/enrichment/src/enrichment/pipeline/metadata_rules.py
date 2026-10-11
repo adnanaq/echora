@@ -423,6 +423,20 @@ def merge_month(ranked: Ranked, aired_dates: dict[str, Any] | None) -> str | Non
 
     Returns:
         The English month name, or ``None`` when nothing states one.
+
+    Examples:
+        A provider that names the month wins:
+
+        >>> merge_month([("animeschedule", {"month": "April"})], None)
+        'April'
+
+        Otherwise the month comes from the premiere date in Japan time, so
+        15:00 UTC on 31 March is April:
+
+        >>> merge_month([("mal", {})], {"aired_from": "2024-03-31T15:00:00+00:00"})
+        'April'
+        >>> print(merge_month([("mal", {})], None))
+        None
     """
     stated = providers_supplying(ranked, "month")
     if stated:

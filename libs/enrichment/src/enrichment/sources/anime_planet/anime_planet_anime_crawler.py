@@ -76,7 +76,13 @@ def _tc(el: Any) -> str:
 
 
 def _parse_season(season_url: str | None) -> str | None:
-    """Extract season name from AP season href e.g. '/anime/seasons/fall-1999' → 'fall'."""
+    """Extract the season name from an Anime-Planet season link.
+
+    >>> _parse_season("/anime/seasons/fall-1999")
+    'fall'
+    >>> print(_parse_season("/anime/top-anime"))
+    None
+    """
     if not season_url:
         return None
     match = _SEASON_SLUG_RE.search(season_url)
@@ -86,7 +92,15 @@ def _parse_season(season_url: str | None) -> str | None:
 
 
 def _parse_start_year(year_text: str | None) -> int | None:
-    """Parse the first year from the entry bar's year text, e.g. ' 1999 - ? ' → 1999."""
+    """Parse the first year from the entry bar's year text.
+
+    >>> _parse_start_year(" 1999 - ? ")
+    1999
+    >>> _parse_start_year("2024")
+    2024
+    >>> print(_parse_start_year("?"))
+    None
+    """
     year, _ = parse_partial_date(split_date_range(year_text)[0])
     return year
 
