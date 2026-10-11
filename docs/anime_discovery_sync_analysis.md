@@ -8,7 +8,7 @@ This document outlines the verified strategies for detecting new anime entries a
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **MyAnimeList (MAL)** | Jikan API Search (ID Desc) | `mal_id` | **Yes** | High | **Instant** (on submission) |
 | **AniList** | GraphQL Page Query (ID Desc) | `id` | **Yes** | High | **Fast** (~1-6 hours) |
-| **AnimeSchedule** | API Search (Title/Query) | `slug` | **Yes** | Medium | **Fast** (~12-24 hours) |
+| **AnimeSchedule** | API lookup by MAL/AniList/AniDB ID (`mal-ids`, `anilist-ids`, `anidb-ids`); title search as fallback | `slug` | **Yes** | Medium | **Fast** (~12-24 hours) |
 | **AniDB** | Daily XML Data Dump | `aid` | **Yes** | High | **Moderate** (Daily) |
 | **Kitsu** | JSON:API Filter (ID Desc) | `id` | **Yes** | High | **Slow** (3-7+ days) |
 | **Anime-Planet** | HTML Scraping (Recent Sort) | `slug` | No | Medium | **Fast** (~12 hours) |

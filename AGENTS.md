@@ -399,6 +399,14 @@ The service supports multiple embedding providers through configuration:
 - The HTTP and result cache is set up once with `http_cache.configure_cache(settings.cache, settings.redis)` and closed with `close_cache()`. Code without a cache passed in, such as `@cached_result` crawler functions, calls `get_cache()` when it runs, never at import.
 - No library reads environment variables or builds config at import.
 
+### Field Validation
+
+- A field's value is checked and converted in the Pydantic model that holds it, not in the code around it. Crawlers and parsers pass on the text they extracted; the provider model turns it into the field value; mappers copy model fields into the canonical model.
+- Conversions more than one provider needs are `Annotated` types in `enrichment/sources/base/field_types.py` (`StrippedText`, `PlainText`, `NumberFromText`). A conversion one provider needs is a validator in that provider's model.
+- Canonical models (`common/models/anime.py`) reject keys they do not define (`StrictFieldsModel`) and bound their numbers (counts `NonNegativeInt`, ranks `PositiveInt`, scores 0-10).
+- Canonical enums list the values providers send in `provider_value_map()`. A provider word with no mapping becomes the fallback value (`UNKNOWN` or `OTHER`) and logs a warning, so add new provider words there.
+- Settings follow the same rule: `QdrantConfig` types its fixed choices as `Literal` and its per-priority settings as models, so code reads them without defaults or checks.
+
 ### Class Member Ordering
 
 Order class members top to bottom as follows:
