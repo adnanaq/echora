@@ -16,6 +16,7 @@ import logging
 import re
 import sys
 from typing import Any, cast
+from urllib.parse import urlsplit, urlunsplit
 
 from enrichment.sources.base.browser import browser_session
 from enrichment.sources.base.framework import (
@@ -27,13 +28,7 @@ from enrichment.sources.base.page_readiness import wait_for_page
 from enrichment.sources.mal.mal_base import (
     MAL_BASE_URL,
     MAL_DOMAIN,
-    parse_aired_string,
-    parse_broadcast_string,
-    parse_duration_seconds,
     parse_episode_ranges,
-    parse_number,
-    parse_premiered,
-    parse_score,
 )
 from enrichment.sources.mal.mal_mapper import anime_from_mal
 from enrichment.sources.mal.mal_models import (
@@ -45,13 +40,21 @@ from enrichment.sources.mal.mal_models import (
     MalThemeSong,
     MalTrailer,
 )
-from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
 
 logger = logging.getLogger(__name__)
 
-_CACHE_CONFIG = get_cache_config()
-TTL_MAL = _CACHE_CONFIG.ttl_mal
+
+_TITLE_SELECTOR = "h1.title-name"
+# The box holding a gallery's "Pictures" heading and "Add a picture" link. Every
+# gallery page has it, with pictures or without; the main anime page does not,
+# though it has picSurround boxes of its own.
+_GALLERY_SELECTOR = "div.border_solid"
+# MAL answers a deleted or unknown anime id with this page and HTTP 404.
+_NOT_FOUND_SELECTOR = "div.error404"
+# MAL's not-found page carries a div with the error404 class; matched among any
+# other classes and with either quote, as the wait's div.error404 selector is.
+_NOT_FOUND_MARKER = re.compile(r"""class=["'][^"']*\berror404\b""")
 
 _INTER_REQUEST_DELAY = 3.0
 
@@ -296,7 +299,6 @@ def _extract_anime_from_html(html_text: str) -> dict[str, Any] | None:
         "ending_themes_raw": _theme_rows("ending_theme_rows"),
         "trailer_embed_url": trailer_embed_url,
         "trailer_title": _text("trailer_title"),
-        "picture_urls_raw": [],
     }
 
 
@@ -338,7 +340,8 @@ async def _fetch_pics_html(browser: Any, url: str) -> str | None:
     """Fetch a MAL /pics page and return its HTML.
 
     The gallery images load only when scrolled into view, but the picture links
-    read from the page come with its HTML, so no scrolling is needed.
+    read from the page come with its HTML, so no scrolling is needed. A gallery
+    without pictures is returned like any other.
 
     Args:
         browser: Active zendriver browser instance.
@@ -349,7 +352,7 @@ async def _fetch_pics_html(browser: Any, url: str) -> str | None:
     """
     try:
         page = await browser.get(url)
-        await wait_for_page(page, "div.picSurround", url)
+        await wait_for_page(page, _GALLERY_SELECTOR, url)
         return await page.get_content()
     except Exception as exc:
         logger.warning(f"navigation failed for {url}: {exc}")
@@ -372,6 +375,19 @@ def _parse_trailer(raw: dict[str, Any]) -> MalTrailer | None:
         title=raw.get("trailer_title"),
         thumbnail=f"https://img.youtube.com/vi/{vid}/maxresdefault.jpg",
     )
+
+
+def _clean_page_url(page_url: str) -> str:
+    """Return a MAL page address without a trailing slash, query or fragment.
+
+    The gallery lives at this address plus ``/pics``, and it is the anime's
+    source address when the page has no canonical link.
+
+    >>> _clean_page_url("https://myanimelist.net/anime/21/One_Piece/?q=1#top")
+    'https://myanimelist.net/anime/21/One_Piece'
+    """
+    parts = urlsplit(page_url)
+    return urlunsplit((parts.scheme, parts.netloc, parts.path.rstrip("/"), "", ""))
 
 
 def _normalize_mal_url(path: str) -> str:
@@ -537,54 +553,6 @@ def _build_anime_from_raw(
     Returns:
         Populated MalAnime Pydantic model ready for mapping to canonical form.
     """
-    title = (raw.get("title") or raw.get("title_og") or "").strip()
-    title_english = raw.get("title_english")
-    title_japanese = raw.get("title_japanese")
-    synonyms_str = raw.get("synonyms_raw")
-    synonyms = [s.strip() for s in synonyms_str.split(",")] if synonyms_str else []
-
-    anime_type = raw.get("type")
-    status = raw.get("status")
-    source_material = raw.get("source_material")
-    rating = raw.get("rating")
-
-    ep_count_raw = raw.get("episodes")
-    episode_count: int | None = None
-    if ep_count_raw and ep_count_raw.lower() not in ("unknown", "?", "n/a"):
-        try:
-            episode_count = int(ep_count_raw.replace(",", ""))
-        except ValueError:
-            episode_count = None
-
-    duration_raw = raw.get("duration_raw")
-    duration = parse_duration_seconds(duration_raw) if duration_raw else None
-
-    aired_raw = raw.get("aired_raw")
-    aired_from, aired_to = parse_aired_string(aired_raw)
-
-    premiered_raw = raw.get("premiered_raw")
-    season, year = parse_premiered(premiered_raw)
-
-    broadcast_raw = raw.get("broadcast_raw")
-    broadcast_day, broadcast_time, broadcast_timezone = parse_broadcast_string(
-        broadcast_raw
-    )
-
-    score = parse_score(raw.get("score"))
-
-    scored_by = parse_number(raw.get("scored_by"))
-
-    rank_html = raw.get("rank_html")
-    rank: int | None = None
-    if rank_html:
-        rank_match = re.search(r"#(\d+)", rank_html)
-        if rank_match:
-            rank = int(rank_match.group(1))
-
-    popularity = parse_number(raw.get("popularity"))
-    members = parse_number(raw.get("members"))
-    favorites = parse_number(raw.get("favorites"))
-
     genres = [g["name"] for g in raw.get("genres", [])]
     themes = [t["name"] for t in raw.get("themes", [])]
     demographics = [d["name"] for d in raw.get("demographics", [])]
@@ -647,54 +615,50 @@ def _build_anime_from_raw(
             r'id="background".*?</h2>(.*?)(?:<div|<!--|$)', bg_html, re.DOTALL
         )
         if bg_match:
-            bg_text = re.sub(r"<[^>]+>", "", bg_match.group(1)).strip()
-            if bg_text and "no background information" not in bg_text.lower():
-                background = bg_text
+            background = re.sub(r"<[^>]+>", "", bg_match.group(1))
 
     related_entries = _parse_all_related_entries(raw)
 
     canonical = raw.get("canonical_url")
-    return MalAnime(
-        source=canonical if canonical and "/anime/" in canonical else url,
-        title=title,
-        title_english=title_english,
-        title_japanese=title_japanese,
-        synonyms=synonyms,
-        type=anime_type,
-        status=status,
-        source_material=source_material,
-        rating=rating,
-        year=year,
-        season=season,
-        aired_from=aired_from,
-        aired_to=aired_to,
-        broadcast_day=broadcast_day,
-        broadcast_time=broadcast_time,
-        broadcast_timezone=broadcast_timezone,
-        episode_count=episode_count,
-        duration=duration,
-        score=score,
-        scored_by=scored_by,
-        rank=rank,
-        popularity=popularity,
-        members=members,
-        favorites=favorites,
-        synopsis=raw.get("synopsis"),
-        background=background,
-        genres=genres,
-        themes=themes,
-        demographics=demographics,
-        producers=producers,
-        licensors=licensors,
-        studios=studios,
-        related_entries=related_entries,
-        images=images,
-        picture_urls=picture_urls,
-        trailer=_parse_trailer(raw),
-        opening_themes=opening_themes,
-        ending_themes=ending_themes,
-        external_sources=external_sources,
-        streaming=streaming,
+    return MalAnime.model_validate(
+        {
+            "source": canonical if canonical and "/anime/" in canonical else url,
+            "title": raw.get("title") or raw.get("title_og") or "",
+            "title_english": raw.get("title_english"),
+            "title_japanese": raw.get("title_japanese"),
+            "synonyms": raw.get("synonyms_raw"),
+            "type": raw.get("type"),
+            "status": raw.get("status"),
+            "source_material": raw.get("source_material"),
+            "rating": raw.get("rating"),
+            "aired": raw.get("aired_raw"),
+            "premiered": raw.get("premiered_raw"),
+            "broadcast": raw.get("broadcast_raw"),
+            "episode_count": raw.get("episodes"),
+            "duration": raw.get("duration_raw"),
+            "score": raw.get("score"),
+            "scored_by": raw.get("scored_by"),
+            "rank": raw.get("rank_html"),
+            "popularity": raw.get("popularity"),
+            "members": raw.get("members"),
+            "favorites": raw.get("favorites"),
+            "synopsis": raw.get("synopsis"),
+            "background": background,
+            "genres": genres,
+            "themes": themes,
+            "demographics": demographics,
+            "producers": producers,
+            "licensors": licensors,
+            "studios": studios,
+            "related_entries": related_entries,
+            "images": images,
+            "picture_urls": picture_urls,
+            "trailer": _parse_trailer(raw),
+            "opening_themes": opening_themes,
+            "ending_themes": ending_themes,
+            "external_sources": external_sources,
+            "streaming": streaming,
+        }
     )
 
 
@@ -704,9 +668,9 @@ def _build_anime_from_raw(
 
 
 @cached_result(
-    ttl=TTL_MAL,
+    service="mal",
     key_prefix="mal_anime_scraped",
-    dependencies=[_extract_anime_from_html, _extract_pics_from_html],
+    dependencies=[_fetch_pics_html],
 )
 async def _fetch_mal_anime_data(url: str) -> dict[str, Any] | None:
     """Fetch and extract a MAL anime detail page via zendriver. Result is cached by URL.
@@ -726,7 +690,9 @@ async def _fetch_mal_anime_data(url: str) -> dict[str, Any] | None:
         browser = session.browser
         try:
             main_page = await browser.get(url)
-            await wait_for_page(main_page, "h1.title-name", url)
+            await wait_for_page(
+                main_page, f"{_TITLE_SELECTOR}, {_NOT_FOUND_SELECTOR}", url
+            )
             final_url = main_page.url
             main_html = await main_page.get_content()
         except Exception as exc:
@@ -737,12 +703,16 @@ async def _fetch_mal_anime_data(url: str) -> dict[str, Any] | None:
             logger.warning(f"No HTML from MAL anime page: {url}")
             return None
 
+        if _NOT_FOUND_MARKER.search(main_html):
+            logger.warning(f"MAL anime page not found: {url}")
+            return None
+
         raw = _extract_anime_from_html(main_html)
         if raw is None:
             logger.warning(f"Failed to extract data from MAL anime page: {url}")
             return None
 
-        canonical_url = final_url or url
+        canonical_url = _clean_page_url(raw.get("canonical_url") or final_url or url)
         await asyncio.sleep(_INTER_REQUEST_DELAY)
 
         pics_url = f"{canonical_url}/pics"

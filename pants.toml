@@ -21,6 +21,9 @@ interpreter_constraints = ["CPython==3.14.*"]
 # Tests run from the lockfile at 3rdparty/python/default.lock, generated from
 # pyproject.toml with `pants generate-lockfiles`. Regenerate it when dependencies change.
 enable_resolves = true
+# Pin every version to uv.lock, exported with `uv export` (see AGENTS.md), so
+# the tests and the Docker images install the same packages.
+resolves_to_constraints_file = { "python-default" = "3rdparty/python/constraints.txt" }
 # Lock exactly what installs on this platform; everything runs on Linux x86_64.
 resolves_to_lock_style = { "python-default" = "strict" }
 

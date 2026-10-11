@@ -1,236 +1,141 @@
-"""Unit tests for the pipeline route path-containment and agent_dir guards."""
-
-from __future__ import annotations
-
+from collections.abc import Iterator
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
+from common.config import EnrichmentConfig
 from enrichment_proto.v1 import enrichment_service_pb2
+from enrichment_service.routes import pipeline as pipeline_route
 from enrichment_service.routes.pipeline import run_pipeline
 from enrichment_service.runtime import EnrichmentRuntime
+from http_cache import get_cache
+
+Request = enrichment_service_pb2.RunPipelineRequest
 
 
-def _make_runtime(tmp_path: Path) -> EnrichmentRuntime:
+@pytest.fixture
+def runtime(tmp_path: Path) -> EnrichmentRuntime:
     default_db = tmp_path / "db" / "anime.json"
-    default_db.parent.mkdir(parents=True, exist_ok=True)
+    default_db.parent.mkdir(parents=True)
     default_db.write_text("{}", encoding="utf-8")
     return EnrichmentRuntime(
         default_file_path=str(default_db),
         output_dir=str(tmp_path / "out"),
+        enrichment=EnrichmentConfig(),
+        cache=get_cache(),
     )
 
 
-@pytest.mark.asyncio
-async def test_run_pipeline_rejects_path_traversal(tmp_path: Path) -> None:
-    runtime = _make_runtime(tmp_path)
-    request = enrichment_service_pb2.RunPipelineRequest(
-        file_path="../../../etc/passwd",
-        title="Cowboy Bebop",
-    )
-
-    response = await run_pipeline(runtime, request, context=None)
-
-    assert response.success is False
-    assert response.error.code == "INVALID_FILE_PATH"
-    assert response.error.retryable is False
+@pytest.fixture
+def runner(tmp_path: Path) -> Iterator[object]:
+    with patch.object(
+        pipeline_route,
+        "run_pipeline_and_write_artifact",
+        autospec=True,
+        return_value=(str(tmp_path / "out" / "result.json"), {}, {}),
+    ) as run:
+        yield run
 
 
-@pytest.mark.asyncio
-async def test_run_pipeline_rejects_absolute_escape_path(tmp_path: Path) -> None:
-    runtime = _make_runtime(tmp_path)
-    request = enrichment_service_pb2.RunPipelineRequest(
-        file_path="/etc/passwd",
-        title="Cowboy Bebop",
-    )
-
-    response = await run_pipeline(runtime, request, context=None)
-
-    assert response.success is False
-    assert response.error.code == "INVALID_FILE_PATH"
-    assert response.error.retryable is False
-
-
-@pytest.mark.asyncio
-async def test_run_pipeline_allows_sibling_file_in_allowed_dir(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("file_path", ["../../../etc/passwd", "/etc/passwd"])
+async def test_run_pipeline_file_outside_allowed_dir_returns_invalid_file_path(
+    runtime: EnrichmentRuntime, file_path: str
 ) -> None:
-    runtime = _make_runtime(tmp_path)
+    response = await run_pipeline(
+        runtime, Request(file_path=file_path, title="Cowboy Bebop"), context=None
+    )
+
+    assert response.success is False
+    assert response.error.code == "INVALID_FILE_PATH"
+    assert response.error.retryable is False
+
+
+async def test_run_pipeline_sibling_file_in_allowed_dir_succeeds(
+    runtime: EnrichmentRuntime, runner: object
+) -> None:
     sibling = Path(runtime.default_file_path).parent / "other.json"
     sibling.write_text("{}", encoding="utf-8")
 
-    request = enrichment_service_pb2.RunPipelineRequest(
-        file_path=str(sibling),
-        title="Cowboy Bebop",
+    response = await run_pipeline(
+        runtime, Request(file_path=str(sibling), title="Cowboy Bebop"), context=None
     )
-
-    with patch(
-        "enrichment_service.routes.pipeline.run_pipeline_and_write_artifact",
-        new_callable=AsyncMock,
-        return_value=(str(tmp_path / "out" / "result.json"), {}, {}),
-    ):
-        response = await run_pipeline(runtime, request, context=None)
 
     assert response.success is True
     assert not response.HasField("error")
 
 
-@pytest.mark.asyncio
-async def test_run_pipeline_rejects_agent_dir_with_path_traversal(
-    tmp_path: Path,
+@pytest.mark.parametrize("agent_dir", ["../../../etc", "/etc/evil"])
+async def test_run_pipeline_unsafe_agent_dir_returns_invalid_agent_dir(
+    runtime: EnrichmentRuntime, agent_dir: str
 ) -> None:
-    runtime = _make_runtime(tmp_path)
-    request = enrichment_service_pb2.RunPipelineRequest(
-        title="Cowboy Bebop",
-        agent_dir="../../../etc",
+    response = await run_pipeline(
+        runtime, Request(title="Cowboy Bebop", agent_dir=agent_dir), context=None
     )
-
-    response = await run_pipeline(runtime, request, context=None)
 
     assert response.success is False
     assert response.error.code == "INVALID_AGENT_DIR"
     assert response.error.retryable is False
 
 
-@pytest.mark.asyncio
-async def test_run_pipeline_rejects_agent_dir_with_absolute_path(
-    tmp_path: Path,
+async def test_run_pipeline_safe_agent_dir_succeeds(
+    runtime: EnrichmentRuntime, runner: object
 ) -> None:
-    runtime = _make_runtime(tmp_path)
-    request = enrichment_service_pb2.RunPipelineRequest(
-        title="Cowboy Bebop",
-        agent_dir="/tmp/evil",
+    response = await run_pipeline(
+        runtime, Request(title="Cowboy Bebop", agent_dir="Cowboy_agent1"), context=None
     )
-
-    response = await run_pipeline(runtime, request, context=None)
-
-    assert response.success is False
-    assert response.error.code == "INVALID_AGENT_DIR"
-    assert response.error.retryable is False
-
-
-@pytest.mark.asyncio
-async def test_run_pipeline_accepts_safe_agent_dir(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    runtime = _make_runtime(tmp_path)
-    request = enrichment_service_pb2.RunPipelineRequest(
-        title="Cowboy Bebop",
-        agent_dir="Cowboy_agent1",
-    )
-
-    with patch(
-        "enrichment_service.routes.pipeline.run_pipeline_and_write_artifact",
-        new_callable=AsyncMock,
-        return_value=(str(tmp_path / "out" / "result.json"), {}, {}),
-    ):
-        response = await run_pipeline(runtime, request, context=None)
 
     assert response.success is True
     assert not response.HasField("error")
 
 
-@pytest.mark.asyncio
-async def test_run_pipeline_treats_negative_index_as_unset(
-    tmp_path: Path,
+async def test_run_pipeline_passes_runtime_config_and_cache_to_runner(
+    runtime: EnrichmentRuntime, runner
 ) -> None:
-    """index=-1 is treated as unset (None) rather than forwarded to the pipeline."""
-    runtime = _make_runtime(tmp_path)
-    request = enrichment_service_pb2.RunPipelineRequest(
-        title="Cowboy Bebop",
-        index=-1,
+    await run_pipeline(runtime, Request(title="Cowboy Bebop"), context=None)
+
+    assert runner.call_args.kwargs["config"] is runtime.enrichment
+    assert runner.call_args.kwargs["cache"] is runtime.cache
+
+
+async def test_run_pipeline_negative_index_passed_as_none(
+    runtime: EnrichmentRuntime, runner
+) -> None:
+    response = await run_pipeline(
+        runtime, Request(title="Cowboy Bebop", index=-1), context=None
     )
 
-    with patch(
-        "enrichment_service.routes.pipeline.run_pipeline_and_write_artifact",
-        new_callable=AsyncMock,
-        return_value=(str(tmp_path / "out" / "result.json"), {}, {}),
-    ) as mock_runner:
-        response = await run_pipeline(runtime, request, context=None)
-
     assert response.success is True
-    assert mock_runner.call_args.kwargs["index"] is None
+    assert runner.call_args.kwargs["index"] is None
 
 
-@pytest.mark.asyncio
-async def test_run_pipeline_returns_error_on_pipeline_exception(
-    tmp_path: Path,
+async def test_run_pipeline_runner_error_returns_run_pipeline_failed(
+    runtime: EnrichmentRuntime, runner
 ) -> None:
-    """Pipeline failure is caught and returned as a structured error response."""
-    runtime = _make_runtime(tmp_path)
-    request = enrichment_service_pb2.RunPipelineRequest(title="Cowboy Bebop")
+    runner.side_effect = RuntimeError("pipeline exploded")
 
-    with patch(
-        "enrichment_service.routes.pipeline.run_pipeline_and_write_artifact",
-        new_callable=AsyncMock,
-        side_effect=RuntimeError("pipeline exploded"),
-    ):
-        response = await run_pipeline(runtime, request, context=None)
+    response = await run_pipeline(runtime, Request(title="Cowboy Bebop"), context=None)
 
     assert response.success is False
     assert response.error.code == "RUN_PIPELINE_FAILED"
     assert "pipeline exploded" in response.error.message
 
 
-@pytest.mark.asyncio
-async def test_skip_characters_true_maps_to_fetch_characters_false(
-    tmp_path: Path,
+@pytest.mark.parametrize(
+    ("skips", "fetch_characters", "fetch_episodes"),
+    [
+        ({}, True, True),
+        ({"skip_characters": True}, False, True),
+        ({"skip_episodes": True}, True, False),
+    ],
+)
+async def test_run_pipeline_skip_flags_set_fetch_flags(
+    runtime: EnrichmentRuntime,
+    runner,
+    skips: dict[str, bool],
+    fetch_characters: bool,
+    fetch_episodes: bool,
 ) -> None:
-    runtime = _make_runtime(tmp_path)
-    request = enrichment_service_pb2.RunPipelineRequest(
-        title="Cowboy Bebop",
-        skip_characters=True,
-    )
+    await run_pipeline(runtime, Request(title="Cowboy Bebop", **skips), context=None)
 
-    with patch(
-        "enrichment_service.routes.pipeline.run_pipeline_and_write_artifact",
-        new_callable=AsyncMock,
-        return_value=(str(tmp_path / "out" / "result.json"), {}, {}),
-    ) as mock_runner:
-        await run_pipeline(runtime, request, context=None)
-
-    call_kwargs = mock_runner.call_args.kwargs
-    assert call_kwargs["fetch_characters"] is False
-    assert call_kwargs["fetch_episodes"] is True
-
-
-@pytest.mark.asyncio
-async def test_skip_episodes_true_maps_to_fetch_episodes_false(
-    tmp_path: Path,
-) -> None:
-    runtime = _make_runtime(tmp_path)
-    request = enrichment_service_pb2.RunPipelineRequest(
-        title="Cowboy Bebop",
-        skip_episodes=True,
-    )
-
-    with patch(
-        "enrichment_service.routes.pipeline.run_pipeline_and_write_artifact",
-        new_callable=AsyncMock,
-        return_value=(str(tmp_path / "out" / "result.json"), {}, {}),
-    ) as mock_runner:
-        await run_pipeline(runtime, request, context=None)
-
-    call_kwargs = mock_runner.call_args.kwargs
-    assert call_kwargs["fetch_characters"] is True
-    assert call_kwargs["fetch_episodes"] is False
-
-
-@pytest.mark.asyncio
-async def test_default_flags_fetch_all(
-    tmp_path: Path,
-) -> None:
-    """When skip_characters and skip_episodes are not set, both fetch flags are True."""
-    runtime = _make_runtime(tmp_path)
-    request = enrichment_service_pb2.RunPipelineRequest(title="Cowboy Bebop")
-
-    with patch(
-        "enrichment_service.routes.pipeline.run_pipeline_and_write_artifact",
-        new_callable=AsyncMock,
-        return_value=(str(tmp_path / "out" / "result.json"), {}, {}),
-    ) as mock_runner:
-        await run_pipeline(runtime, request, context=None)
-
-    call_kwargs = mock_runner.call_args.kwargs
-    assert call_kwargs["fetch_characters"] is True
-    assert call_kwargs["fetch_episodes"] is True
+    assert runner.call_args.kwargs["fetch_characters"] is fetch_characters
+    assert runner.call_args.kwargs["fetch_episodes"] is fetch_episodes

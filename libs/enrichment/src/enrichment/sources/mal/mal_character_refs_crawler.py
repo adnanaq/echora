@@ -14,14 +14,11 @@ from typing import Any, cast
 from enrichment.sources.base.browser import browser_session
 from enrichment.sources.base.page_readiness import wait_for_page
 from enrichment.sources.mal.mal_base import MAL_DOMAIN
-from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
 from lxml import etree
 
 logger = logging.getLogger(__name__)
 
-_CACHE_CONFIG = get_cache_config()
-TTL_MAL = _CACHE_CONFIG.ttl_mal
 
 _CHARACTER_TABLE_XPATH = "//table[contains(@class,'js-anime-character-table')]"
 _CHARACTER_LINK_IN_TABLE_XPATH = ".//td[1]//a[contains(@href,'/character/')]/@href"
@@ -72,9 +69,8 @@ async def _fetch_characters_page_html(url: str) -> str | None:
 
 
 @cached_result(
-    ttl=TTL_MAL,
+    service="mal",
     key_prefix="mal_character_ids",
-    dependencies=[_extract_character_urls],
 )
 async def _fetch_mal_characters_data(url: str) -> list[str] | None:
     """Fetch /anime/{id}/characters and extract character URLs. Cached by url."""

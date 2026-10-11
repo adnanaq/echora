@@ -4,6 +4,7 @@ python_sources(
     name="conftest",
     sources=["conftest.py", "__init__.py"],
     dependencies=[
+        "//libs/enrichment/src/enrichment",
         "//libs/http_cache/src/http_cache",
         "//:reqs0#pytest-asyncio",
     ],

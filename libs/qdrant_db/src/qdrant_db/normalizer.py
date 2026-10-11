@@ -4,30 +4,16 @@ Stateless except for the config values injected at construction.
 No I/O, no async.
 """
 
-import math
 from typing import Any, TypeGuard, cast
 
+import pydantic
 from qdrant_client.models import SparseVector
 
-from qdrant_db.contracts import SparseVectorData
+from qdrant_db.contracts import DenseVector, MultiVector, SparseVectorData
 from qdrant_db.errors import ValidationError
 
-
-def is_float_vector(vector: Any) -> TypeGuard[list[float]]:
-    """Check whether a value is a non-empty list.
-
-    Args:
-        vector: Value to validate.
-
-    Returns:
-        ``True`` when ``vector`` is a ``list`` containing at least one
-        element, otherwise ``False``.
-    """
-    # Intentionally omits per-element isinstance checks (e.g. all float/int).
-    # Benchmarked at ~400x overhead per call on 1024-dim vectors (~25ms per 500-item batch).
-    # Invalid element types are caught upstream by ty static analysis and by Qdrant server-side.
-    # Revisit only if vectors start arriving from untrusted external sources.
-    return isinstance(vector, list) and len(vector) > 0
+_DENSE_VECTOR = pydantic.TypeAdapter(DenseVector)
+_MULTI_VECTOR = pydantic.TypeAdapter(MultiVector)
 
 
 def is_sparse_payload(vector: Any) -> TypeGuard[dict[str, list[int] | list[float]]]:
@@ -83,15 +69,9 @@ class VectorNormalizer:
         """
         if isinstance(vector_data, SparseVectorData):
             return vector_data
-
-        if not is_sparse_payload(vector_data):
-            raise ValidationError(
-                f"Sparse vector {vector_name} must be an object with indices and values lists"
-            )
-
         try:
             return SparseVectorData.model_validate(vector_data)
-        except Exception as error:
+        except pydantic.ValidationError as error:
             raise ValidationError(
                 f"Invalid sparse vector payload for {vector_name}"
             ) from error
@@ -126,70 +106,38 @@ class VectorNormalizer:
         self._validate_dense_dimension(vector_name, vector_data)
         return cast(list[float] | list[list[float]], vector_data)
 
-    def validate_payload_update(self, payload: dict[str, Any]) -> None:
-        """Validate payload update dictionary.
-
-        Args:
-            payload: Payload patch or replacement payload.
-
-        Raises:
-            ValidationError: If payload is not a non-empty dict.
-        """
-        if not isinstance(payload, dict):
-            raise ValidationError("Payload must be a dictionary")
-        if not payload:
-            raise ValidationError("Payload must not be empty")
-
     def _validate_dense_dimension(self, vector_name: str, vector_data: Any) -> None:
         """Check a dense or multivector payload against the configured size.
+
+        The payload must match its contract type, ``DenseVector`` or, for a
+        name configured as a multivector, ``MultiVector``; each row must then
+        have the configured dimension. qdrant-client rejects the rest with its
+        own error, and Qdrant rejects NaN or an empty multivector only once the
+        write is sent.
 
         Args:
             vector_name: Named vector field.
             vector_data: Dense list, or list of dense lists for a multivector.
 
         Raises:
-            ValidationError: If the payload is not a list, any row has a size
-                other than the configured dimension, or any element is not a
-                finite number. qdrant-client rejects the rest with its own
-                error, and Qdrant rejects NaN only after the write is retried.
+            ValidationError: If the payload does not match its contract type,
+                or a row has a size other than the configured dimension.
         """
-        if not isinstance(vector_data, list):
-            raise ValidationError(f"Vector {vector_name} must be a list of floats")
-
+        is_multivector = vector_name in self._multivector_vectors
+        contract = _MULTI_VECTOR if is_multivector else _DENSE_VECTOR
+        try:
+            contract.validate_python(vector_data)
+        except pydantic.ValidationError as error:
+            shape = (
+                "a non-empty list of rows of finite numbers"
+                if is_multivector
+                else "a list of finite numbers"
+            )
+            raise ValidationError(f"Vector {vector_name} must be {shape}") from error
         expected = self._vector_names[vector_name]
-        rows = (
-            vector_data if vector_name in self._multivector_vectors else [vector_data]
-        )
-        for row in rows:
-            if not isinstance(row, list):
-                raise ValidationError(f"Vector {vector_name} must be a list of floats")
+        for row in vector_data if is_multivector else [vector_data]:
             if len(row) != expected:
                 raise ValidationError(
                     f"Vector {vector_name} dimension mismatch: "
                     f"expected {expected}, got {len(row)}"
                 )
-            if not all(_is_finite_number(value) for value in row):
-                raise ValidationError(
-                    f"Vector {vector_name} must contain only finite numbers"
-                )
-
-
-def _is_finite_number(value: Any) -> bool:
-    """Tell whether a vector element is a real, finite number.
-
-    ``bool`` is excluded although Python treats it as an ``int``: ``True`` in a
-    vector is a caller's mistake, not the value 1.
-
-    Args:
-        value: One element of a dense vector.
-
-    Returns:
-        True for a finite ``int`` or ``float``.
-    """
-    if not isinstance(value, int | float) or isinstance(value, bool):
-        return False
-    try:
-        return math.isfinite(value)
-    except OverflowError:
-        # An int beyond float range cannot become a vector element either.
-        return False

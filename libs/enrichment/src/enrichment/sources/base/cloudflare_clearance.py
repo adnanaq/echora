@@ -7,7 +7,8 @@ no challenge, against 1.9 s through the interstitial. A different User-Agent
 makes the challenge unsolvable, so clearances are keyed by site and User-Agent.
 
 The cookie is stored in Redis as JSON, never as a pickle (zendriver's
-``CookieJar.save`` pickles), and its value is never logged.
+``CookieJar.save`` pickles), and its value is never logged. Clearances are kept
+only while caching is on, since they share the cache's Redis.
 """
 
 import hashlib
@@ -16,8 +17,7 @@ import logging
 import time
 
 import zendriver
-from http_cache.config import get_cache_config
-from http_cache.result_cache import get_result_cache_redis_client
+from http_cache import get_cache
 from zendriver import cdp
 
 logger = logging.getLogger(__name__)
@@ -57,10 +57,11 @@ async def load_clearance(browser: zendriver.Browser, site: str) -> bool:
     Returns:
         Whether a stored clearance was given to the browser.
     """
+    redis_client = get_cache().get_result_client()
+    if redis_client is None:
+        return False
     try:
-        stored = await (await get_result_cache_redis_client()).get(
-            await _clearance_key(browser, site)
-        )
+        stored = await redis_client.get(await _clearance_key(browser, site))
         if stored is None:
             return False
         await browser.cookies.set_all(
@@ -89,6 +90,10 @@ async def save_clearance(browser: zendriver.Browser, site: str) -> bool:
     Returns:
         Whether a clearance was stored.
     """
+    cache = get_cache()
+    redis_client = cache.get_result_client()
+    if redis_client is None:
+        return False
     try:
         cookie = next(
             (
@@ -101,7 +106,7 @@ async def save_clearance(browser: zendriver.Browser, site: str) -> bool:
         )
         if cookie is None:
             return False
-        ttl = get_cache_config().cloudflare_clearance_max_ttl
+        ttl = cache.cache.cloudflare_clearance_max_ttl
         if cookie.expires is not None and not cookie.session:
             ttl = min(ttl, int(cookie.expires - time.time()))
         if ttl <= 0:
@@ -112,7 +117,7 @@ async def save_clearance(browser: zendriver.Browser, site: str) -> bool:
             for field in _STORED_FIELDS
             if field in cookie_json
         }
-        await (await get_result_cache_redis_client()).set(
+        await redis_client.set(
             await _clearance_key(browser, site), json.dumps(stored), ex=ttl
         )
     except Exception as error:

@@ -17,6 +17,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from common.config import get_settings
 from enrichment.ai_character_matcher import (
     AICharacterMatcher,
     process_characters_with_ai_matching,
@@ -408,7 +409,7 @@ async def process_stage5_ai_characters(
 
         # Create matcher ONCE before loop (loads models once)
         logger.info("Initializing AI character matcher (loading models)...")
-        matcher = AICharacterMatcher()
+        matcher = AICharacterMatcher(get_settings().embedding)
         logger.info("Matcher initialized, models loaded")
 
         matched_count = 0

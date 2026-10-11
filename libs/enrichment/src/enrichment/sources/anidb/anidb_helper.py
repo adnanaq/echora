@@ -26,9 +26,10 @@ import os
 import re
 import sys
 import time
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import aiohttp
+from common.config import CacheConfig, EnrichmentConfig, RedisConfig
 from common.utils.jsonl_utils import append_jsonl
 from enrichment.sources.anidb.anidb_character_crawler import fetch_anidb_characters
 from enrichment.sources.anidb.anidb_mapper import (
@@ -44,10 +45,7 @@ from enrichment.sources.base.base_helper import (
 )
 from enrichment.sources.base.exceptions import ServiceBlockedError, ServiceNetworkError
 from enrichment.sources.base.utils import sanitize_output_path
-from http_cache.instance import http_cache_manager as _cache_manager
-
-if TYPE_CHECKING:
-    from enrichment.pipeline.config import EnrichmentConfig
+from http_cache import HTTPCacheManager, configure_cache
 
 logger = logging.getLogger(__name__)
 
@@ -119,32 +117,18 @@ class AniDBHelper(BaseEnrichmentHelper):
     ``anidb_mapper``.
     """
 
-    def __init__(
-        self,
-        client_name: str | None = None,
-        client_version: str | None = None,
-        config: EnrichmentConfig | None = None,
-    ) -> None:
+    def __init__(self, config: EnrichmentConfig, cache: HTTPCacheManager) -> None:
         """Initialise the AniDB helper with client metadata and resilience config.
 
         Args:
-            client_name: Client identifier sent to AniDB. Defaults to the
-                configured ``ANIDB_CLIENT``.
-            client_version: Client version sent to AniDB. Defaults to the
-                configured ``ANIDB_CLIENTVER``.
-            config: Enrichment settings to read credentials and rate limits
-                from. Defaults to a freshly loaded ``EnrichmentConfig``.
+            config: The registered client name and version, and the rate
+                limits and back-off to apply.
+            cache: Supplies the HTTP session, cached when caching is on.
         """
-        # Imported here, not at module scope: enrichment.pipeline's __init__
-        # eagerly imports api_fetcher, which imports this module, so a
-        # top-level import would close a cycle.
-        from enrichment.pipeline.config import EnrichmentConfig
-
-        config = config or EnrichmentConfig()
-
+        self._cache = cache
         self.base_url = "http://api.anidb.net:9001/httpapi"
-        self.client_name = client_name or config.anidb_client
-        self.client_version = client_version or config.anidb_clientver
+        self.client_name = config.anidb_client
+        self.client_version = config.anidb_clientver
         self.protocol_version = config.anidb_protover
 
         self.session = None
@@ -445,7 +429,7 @@ class AniDBHelper(BaseEnrichmentHelper):
                 keepalive_timeout=60,
                 enable_cleanup_closed=True,
             )
-            self.session = _cache_manager.get_aiohttp_session(
+            self.session = self._cache.get_aiohttp_session(
                 "anidb",
                 timeout=aiohttp.ClientTimeout(total=60, connect=30),
                 headers=headers,
@@ -700,7 +684,9 @@ async def main() -> int:  # pragma: no cover
     )
 
     args = parser.parse_args()
-    helper = AniDBHelper()
+    helper = AniDBHelper(
+        EnrichmentConfig(), configure_cache(CacheConfig(), RedisConfig())
+    )
 
     try:
         anime_dict, anime_model = await helper._fetch_anime(args.anidb_url)

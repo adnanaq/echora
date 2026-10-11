@@ -1,8 +1,8 @@
 """Typed contracts for strict Qdrant client request/response flows."""
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, Strict, model_validator
 from vector_db_interface.types import SearchHit as SearchHit
 
 DedupPolicy = Literal["last-wins", "fail"]
@@ -10,6 +10,13 @@ PayloadUpdateMode = Literal["merge", "overwrite"]
 FusionMethod = Literal["rrf", "dbsf"]
 FilterOperator = Literal["eq", "ne", "in", "not_in", "range"]
 FilterClause = Literal["must", "must_not", "should"]
+
+# One vector element: an int or a float that is finite. Strict, so True and
+# "0.1" are rejected rather than read as 1.0 and 0.1.
+VectorElement = Annotated[float, Strict(), Field(allow_inf_nan=False)]
+DenseVector = Annotated[list[VectorElement], Strict(), Field(min_length=1)]
+# Several dense vectors under one name, such as one per image; at least one.
+MultiVector = Annotated[list[DenseVector], Strict(), Field(min_length=1)]
 
 
 def _is_scalar_filter_value(value: Any) -> bool:
@@ -212,10 +219,10 @@ class SearchRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    text_embedding: list[float] | None = None
-    image_embedding: list[float] | None = None
+    text_embedding: DenseVector | None = None
+    image_embedding: DenseVector | None = None
     sparse_embedding: SparseVectorData | None = None
-    expanded_text_embeddings: list[list[float]] | None = Field(
+    expanded_text_embeddings: list[DenseVector] | None = Field(
         default=None,
         description=(
             "Additional text embedding variants for query expansion. "
@@ -251,13 +258,14 @@ class SearchRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_embeddings(self) -> SearchRequest:
-        """Validate embedding requirements and element types.
+        """Check which embeddings a request must carry together.
 
         Returns:
             The validated request model.
 
         Raises:
-            ValueError: If embeddings are missing, empty, or non-numeric.
+            ValueError: If no embedding is given, or expanded text embeddings
+                come without a text embedding.
         """
         if (
             self.text_embedding is None
@@ -267,23 +275,10 @@ class SearchRequest(BaseModel):
             raise ValueError(
                 "At least one of text_embedding, image_embedding, or sparse_embedding is required"
             )
-
-        for name, vector in (
-            ("text_embedding", self.text_embedding),
-            ("image_embedding", self.image_embedding),
-        ):
-            if vector is not None and len(vector) == 0:
-                raise ValueError(f"{name} must not be empty")
-
-        if self.expanded_text_embeddings is not None:
-            if self.text_embedding is None:
-                raise ValueError(
-                    "expanded_text_embeddings requires text_embedding to be set"
-                )
-            for i, expansion in enumerate(self.expanded_text_embeddings):
-                if len(expansion) == 0:
-                    raise ValueError(f"expanded_text_embeddings[{i}] must not be empty")
-
+        if self.expanded_text_embeddings is not None and self.text_embedding is None:
+            raise ValueError(
+                "expanded_text_embeddings requires text_embedding to be set"
+            )
         return self
 
 
@@ -294,23 +289,7 @@ class BatchVectorUpdateItem(BaseModel):
 
     point_id: str = Field(min_length=1)
     vector_name: str = Field(min_length=1)
-    vector_data: list[float] | list[list[float]] | SparseVectorData
-
-    @model_validator(mode="after")
-    def validate_vector_data(self) -> BatchVectorUpdateItem:
-        """Validate vector payload shape.
-
-        Returns:
-            The validated update item.
-
-        Raises:
-            ValueError: If vector payload is empty or not list-like.
-        """
-        if isinstance(self.vector_data, SparseVectorData):
-            return self
-        if not isinstance(self.vector_data, list) or len(self.vector_data) == 0:
-            raise ValueError("vector_data must be a non-empty list")
-        return self
+    vector_data: DenseVector | MultiVector | SparseVectorData
 
 
 class BatchPayloadUpdateItem(BaseModel):
@@ -325,7 +304,7 @@ class BatchPayloadUpdateItem(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     point_id: str = Field(min_length=1)
-    payload: dict[str, Any]
+    payload: dict[str, Any] = Field(min_length=1)
     key: str | None = None
 
 

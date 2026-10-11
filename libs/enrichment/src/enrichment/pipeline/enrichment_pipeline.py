@@ -14,12 +14,13 @@ import time
 from types import TracebackType
 from typing import Any
 
+from common.config import CacheConfig, EnrichmentConfig, RedisConfig
+from http_cache import HTTPCacheManager, configure_cache
 from opentelemetry import trace as otel_trace
 
 from enrichment.sources.base.browser import configure_browser_pool, reap_orphans
 
 from .api_fetcher import ApiFetcher
-from .config import EnrichmentConfig
 from .id_extractor import PlatformIDExtractor
 
 logger = logging.getLogger(__name__)
@@ -34,28 +35,26 @@ class EnrichmentPipeline:
     Implements Steps 1-3 of enrichment process programmatically.
     """
 
-    def __init__(self, config: EnrichmentConfig | None = None):
-        """
-        Create a EnrichmentPipeline configured for enrichment runs.
+    def __init__(self, config: EnrichmentConfig, cache: HTTPCacheManager):
+        """Create a pipeline for enrichment runs.
 
-        Initializes internal components used by the pipeline (ID extractor, parallel API fetcher)
-        and a timing breakdown store. When `config` is omitted, a default EnrichmentConfig is used;
-        if `config.verbose_logging` is true the configuration will be logged.
+        Logs the configuration when ``enrichment_verbose_logging`` is on.
 
-        Parameters:
-            config (Optional[EnrichmentConfig]): Pipeline configuration; defaults to a new EnrichmentConfig().
+        Args:
+            config: How the pipeline runs, usually ``settings.enrichment``.
+            cache: The configured cache, passed to the API helpers.
         """
-        self.config = config or EnrichmentConfig()
+        self.config = config
 
         # Initialize components
         self.id_extractor = PlatformIDExtractor()
-        self.api_fetcher = ApiFetcher(config)
+        self.api_fetcher = ApiFetcher(config, cache)
 
         # Performance tracking — stores timing from the most recent enrich_anime call
         self.timing_breakdown: dict[str, float] = {}
 
         # Log configuration if verbose
-        if self.config.verbose_logging:
+        if self.config.enrichment_verbose_logging:
             self.config.log_configuration()
 
     async def enrich_anime(
@@ -118,7 +117,7 @@ class EnrichmentPipeline:
             # Create or use specified temp directory for this anime
             if agent_dir:
                 # Use provided agent directory
-                temp_dir = os.path.join(self.config.temp_dir, agent_dir)
+                temp_dir = os.path.join(self.config.enrichment_temp_dir, agent_dir)
                 os.makedirs(temp_dir, exist_ok=True)
                 logger.info(f"Using specified agent directory: {temp_dir}")
             else:
@@ -170,7 +169,7 @@ class EnrichmentPipeline:
 
         except Exception as e:
             logger.exception(f"Enrichment failed for {anime_title}")
-            if self.config.skip_failed_apis:
+            if self.config.enrichment_skip_failed_apis:
                 # Return partial data on failure (graceful degradation)
                 return {
                     "offline_data": offline_data,
@@ -206,7 +205,7 @@ class EnrichmentPipeline:
         logger.info(f"Starting batch enrichment for {len(anime_list)} anime")
 
         # Create semaphore to limit concurrent processing
-        semaphore = asyncio.Semaphore(self.config.batch_size)
+        semaphore = asyncio.Semaphore(self.config.enrichment_batch_size)
 
         async def enrich_with_limit(anime: dict) -> dict[str, Any]:
             async with semaphore:
@@ -247,7 +246,7 @@ class EnrichmentPipeline:
         existing_ids: list[int] = []
 
         try:
-            for item in os.listdir(self.config.temp_dir):
+            for item in os.listdir(self.config.enrichment_temp_dir):
                 m = _AGENT_ID_RE.search(item)
                 if m:
                     existing_ids.append(int(m.group(1)))
@@ -293,9 +292,11 @@ class EnrichmentPipeline:
         first_word = anime_title.split()[0] if anime_title else "unknown"
         clean_word = "".join(c for c in first_word if c.isalnum() or c in "-_")
 
-        os.makedirs(self.config.temp_dir, exist_ok=True)
+        os.makedirs(self.config.enrichment_temp_dir, exist_ok=True)
         agent_id = self._find_next_agent_id()
-        temp_dir = os.path.join(self.config.temp_dir, f"{clean_word}_agent{agent_id}")
+        temp_dir = os.path.join(
+            self.config.enrichment_temp_dir, f"{clean_word}_agent{agent_id}"
+        )
         os.makedirs(temp_dir, exist_ok=True)
 
         logger.info(f"Created temp directory: {temp_dir}")
@@ -313,9 +314,9 @@ class EnrichmentPipeline:
         """
         report = ["Performance Report:"]
         report.append(
-            f"  Max concurrent browsers: {self.config.max_concurrent_browsers}"
+            f"  Max concurrent browsers: {self.config.enrichment_max_concurrent_browsers}"
         )
-        report.append(f"  Batch size: {self.config.batch_size}")
+        report.append(f"  Batch size: {self.config.enrichment_batch_size}")
 
         if self.timing_breakdown:
             report.append("\nTiming Breakdown:")
@@ -340,7 +341,7 @@ class EnrichmentPipeline:
         Returns:
             EnrichmentPipeline: The pipeline instance.
         """
-        configure_browser_pool(self.config.max_concurrent_browsers)
+        configure_browser_pool(self.config.enrichment_max_concurrent_browsers)
         await asyncio.to_thread(reap_orphans)
         return self
 
@@ -385,7 +386,8 @@ async def main() -> int:  # pragma: no cover
         "status": "Currently Airing",
     }
 
-    async with EnrichmentPipeline() as pipeline:
+    cache = configure_cache(CacheConfig(), RedisConfig())
+    async with EnrichmentPipeline(EnrichmentConfig(), cache) as pipeline:
         # Run enrichment
         result = await pipeline.enrich_anime(sample_anime)
 

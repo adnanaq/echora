@@ -7,9 +7,12 @@ Reduces API fetching from 30-60s sequential to 5-10s parallel.
 import asyncio
 import logging
 import time
+from collections.abc import Callable
 from types import TracebackType
 from typing import Any, ClassVar
 
+from common.config import EnrichmentConfig
+from http_cache import HTTPCacheManager
 from opentelemetry import metrics as otel_metrics
 from opentelemetry import trace as otel_trace
 
@@ -18,11 +21,12 @@ from enrichment.sources.anilist.anilist_helper import AniListHelper
 from enrichment.sources.anime_planet.anime_planet_helper import AnimePlanetHelper
 from enrichment.sources.animeschedule.animeschedule_helper import AnimescheduleHelper
 from enrichment.sources.anisearch.anisearch_helper import AniSearchHelper
-from enrichment.sources.base.base_helper import normalize_enrichment_payload
+from enrichment.sources.base.base_helper import (
+    BaseEnrichmentHelper,
+    normalize_enrichment_payload,
+)
 from enrichment.sources.kitsu.kitsu_helper import KitsuHelper
 from enrichment.sources.mal.mal_helper import MalHelper
-
-from .config import EnrichmentConfig
 
 logger = logging.getLogger(__name__)
 
@@ -39,30 +43,45 @@ _api_requests = _meter.create_counter(
 )
 
 
+# Builds one source's helper from the pipeline's config and cache.
+type HelperFactory = Callable[
+    [EnrichmentConfig, HTTPCacheManager], BaseEnrichmentHelper
+]
+
+
 class ApiFetcher:
     """Fetch data from all anime APIs in parallel.
 
     Implements graceful degradation — continues with partial data if individual APIs fail.
     """
 
-    _REGISTRY: ClassVar[dict[str, type]] = {
-        "anilist": AniListHelper,
-        "kitsu": KitsuHelper,
+    _REGISTRY: ClassVar[dict[str, HelperFactory]] = {
+        "anilist": lambda config, cache: AniListHelper(cache),
+        "kitsu": lambda config, cache: KitsuHelper(cache),
         "anidb": AniDBHelper,
-        "anime_planet": AnimePlanetHelper,
-        "anisearch": AniSearchHelper,
-        "animeschedule": AnimescheduleHelper,
-        "mal": MalHelper,
+        "anime_planet": lambda config, cache: AnimePlanetHelper(),
+        "anisearch": lambda config, cache: AniSearchHelper(),
+        "animeschedule": lambda config, cache: AnimescheduleHelper(cache),
+        "mal": lambda config, cache: MalHelper(),
     }
 
     def __init__(
         self,
-        config: EnrichmentConfig | None = None,
+        config: EnrichmentConfig,
+        cache: HTTPCacheManager,
         *,
-        helper_factories: dict[str, type] | None = None,
+        helper_factories: dict[str, HelperFactory] | None = None,
     ):
-        """Initialize the parallel API fetcher."""
-        self.config = config or EnrichmentConfig()
+        """Initialize the parallel API fetcher.
+
+        Args:
+            config: Passed to helpers that need it, such as AniDB's credentials.
+            cache: Passed to helpers that make HTTP requests.
+            helper_factories: Service name to helper factory, replacing the
+                built-in registry.
+        """
+        self.config = config
+        self.cache = cache
         self._factories = helper_factories or self._REGISTRY
 
         # Track API performance
@@ -89,8 +108,8 @@ class ApiFetcher:
     ) -> dict[str, Any]:
         """Create a fresh helper instance per service for a single fetch run."""
         return {
-            name: cls()
-            for name, cls in self._factories.items()
+            name: build(self.config, self.cache)
+            for name, build in self._factories.items()
             if self._should_include(name, only_services, skip_services)
         }
 

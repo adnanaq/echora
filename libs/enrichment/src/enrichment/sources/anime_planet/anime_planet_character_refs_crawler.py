@@ -14,14 +14,11 @@ from typing import Any, cast
 from enrichment.sources.anime_planet.anime_planet_anime_crawler import ANIME_PLANET_SITE
 from enrichment.sources.base.browser import browser_session
 from enrichment.sources.base.page_readiness import wait_for_page
-from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
 from lxml import etree
 
 logger = logging.getLogger(__name__)
 
-_CACHE_CONFIG = get_cache_config()
-TTL_ANIME_PLANET = _CACHE_CONFIG.ttl_anime_planet
 
 BASE_URL = "https://www.anime-planet.com"
 
@@ -85,9 +82,8 @@ async def _fetch_refs_html(url: str) -> str | None:
 
 
 @cached_result(
-    ttl=TTL_ANIME_PLANET,
+    service="anime_planet",
     key_prefix="animeplanet_character_refs",
-    dependencies=[_extract_refs_from_html],
 )
 async def _fetch_refs_data(url: str) -> list[dict[str, str]] | None:
     """Fetch /anime/{slug}/characters and extract character hrefs. Cached by url."""

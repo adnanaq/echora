@@ -1,9 +1,11 @@
 """Service-level configuration."""
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
+
+from .env_settings import EnvSettings
 
 
-class ServiceConfig(BaseModel):
+class ServiceConfig(EnvSettings):
     """Configuration for service API and runtime settings."""
 
     # Host & Port

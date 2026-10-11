@@ -78,6 +78,8 @@ async def run_pipeline(
         _pipeline_start = time.perf_counter()
         try:
             output_path, result, _payload = await run_pipeline_and_write_artifact(
+                config=runtime.enrichment,
+                cache=runtime.cache,
                 file_path=file_path,
                 index=index,
                 title=request.title or None,

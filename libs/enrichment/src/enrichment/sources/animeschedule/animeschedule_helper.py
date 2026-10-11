@@ -3,14 +3,15 @@
 AnimSchedule Data Helper
 Fetches anime data from AnimSchedule API (async version).
 
-AnimSchedule has no persistent per-anime ID, so lookups are title-search-based:
-the helper searches by title and cross-validates the result against existing
-source URLs from offline data.
+AnimSchedule has no ID of its own that other sites link to, but it filters its
+anime list by MyAnimeList, AniList and AniDB IDs, so the helper looks the anime
+up by the IDs in its source URLs. Only when none of them finds it does it search
+by title, keeping the result only if it links back to one of those sources.
 
 Usage:
     # Programmatic usage via class
     from enrichment.sources.animeschedule.animeschedule_helper import AnimescheduleHelper
-    helper = AnimescheduleHelper()
+    helper = AnimescheduleHelper(cache)
     data = await helper.fetch_all(ids, offline_data)
 
     # CLI usage
@@ -23,10 +24,12 @@ import asyncio
 import json
 import logging
 import os
+import re
 import sys
 from typing import Any
 
 import aiohttp
+from common.config import CacheConfig, RedisConfig
 from common.utils.jsonl_utils import append_jsonl
 from enrichment.sources.animeschedule.animeschedule_mapper import (
     anime_from_animeschedule,
@@ -37,19 +40,60 @@ from enrichment.sources.base.base_helper import (
     normalize_enrichment_payload,
 )
 from enrichment.sources.base.exceptions import ServiceNetworkError, ServiceParseError
-from http_cache.instance import http_cache_manager as _cache_manager
+from http_cache import HTTPCacheManager, configure_cache
 
 logger = logging.getLogger(__name__)
 
+_ANIME_LIST_URL = "https://animeschedule.net/api/v3/anime"
+
 # AnimSchedule website keys that carry cross-source URLs (partial, no scheme)
 _CROSS_SOURCE_KEYS = ("mal", "aniList", "kitsu", "animePlanet", "anidb")
+
+# ID filters of AnimSchedule's anime list, by the source URL they take the ID
+# from. Tried in order: AnimSchedule does not link every anime to all three.
+_ID_FILTERS = (
+    ("mal_url", "mal-ids"),
+    ("anilist_url", "anilist-ids"),
+    ("anidb_url", "anidb-ids"),
+)
+_ANIME_ID = re.compile(r"/anime/(\d+)")
+
+# AnimSchedule answers 404 when no anime has the ID and 500 when a title search
+# finds nothing; any other error is a real failure.
+_ID_NOT_FOUND_STATUSES = frozenset({404})
+_TITLE_NOT_FOUND_STATUSES = frozenset({500})
+
+
+def _page_address(url: str) -> str:
+    """Return a URL without its scheme or trailing slash, as AnimSchedule stores links.
+
+    >>> _page_address("https://anilist.co/anime/154587/Sousou-no-Frieren/")
+    'anilist.co/anime/154587/Sousou-no-Frieren'
+    """
+    return url.removeprefix("https://").removeprefix("http://").rstrip("/")
+
+
+def _same_page(link: str, source: str) -> bool:
+    """Report whether two page addresses name the same anime.
+
+    Either side may carry a title after the ID, so one may extend the other,
+    but only at a ``/``: anime 2 is not anime 21.
+
+    >>> _same_page("myanimelist.net/anime/21/One_Piece", "myanimelist.net/anime/21")
+    True
+    >>> _same_page("myanimelist.net/anime/2", "myanimelist.net/anime/21")
+    False
+    """
+    return (
+        link == source or link.startswith(f"{source}/") or source.startswith(f"{link}/")
+    )
 
 
 def _match_by_sources(candidates: list[dict], sources: list[str]) -> dict | None:
     """Return the first candidate whose websites dict contains any of the given sources.
 
-    AnimSchedule stores partial URLs (no scheme), e.g. ``"myanimelist.net/anime/21"``.
-    We normalize our sources the same way by stripping the scheme before comparing.
+    AnimSchedule stores links without the scheme, e.g. ``"myanimelist.net/anime/21"``,
+    so both sides are compared through ``_page_address``.
 
     Args:
         candidates: Raw anime dicts from the AnimSchedule search response.
@@ -58,36 +102,28 @@ def _match_by_sources(candidates: list[dict], sources: list[str]) -> dict | None
     Returns:
         The first matching candidate dict, or None if no match is found.
     """
-    normalized = {
-        s.removeprefix("https://").removeprefix("http://") for s in sources if s
-    }
-
+    addresses = {_page_address(source) for source in sources if source}
     for candidate in candidates:
         websites = candidate.get("websites", {})
         for key in _CROSS_SOURCE_KEYS:
-            partial = websites.get(key)
-            if not isinstance(partial, str) or not partial:
-                continue
-            # Support both ID-only ("myanimelist.net/anime/21") and full slug
-            # ("myanimelist.net/anime/21/One_Piece") on either side — match if
-            # either string is a prefix of the other.
-            if any(
-                partial.startswith(src) or src.startswith(partial) for src in normalized
-            ):
-                return candidate
-
+            link = websites.get(key)
+            if isinstance(link, str) and link:
+                link_address = _page_address(link)
+                if any(_same_page(link_address, address) for address in addresses):
+                    return candidate
     return None
 
 
 class AnimescheduleHelper(BaseEnrichmentHelper):
-    """Fetch AnimSchedule data for an anime by title search.
+    """Fetch AnimSchedule data for an anime by its provider IDs, or its title."""
 
-    AnimSchedule has no persistent per-anime ID, so this helper uses a
-    different lookup strategy than other enrichment helpers: it searches by
-    ``offline_data["title"]`` and validates the result by checking whether any
-    source URL from ``offline_data["sources"]`` appears in the AnimSchedule
-    response's ``websites`` dict. This is intentional — ``ids`` is unused.
-    """
+    def __init__(self, cache: HTTPCacheManager) -> None:
+        """Initialize AnimSchedule helper.
+
+        Args:
+            cache: Supplies the HTTP sessions, cached when caching is on.
+        """
+        self._cache = cache
 
     async def fetch_all(
         self,
@@ -100,101 +136,134 @@ class AnimescheduleHelper(BaseEnrichmentHelper):
     ) -> dict[str, Any] | None:
         """Fetch and map AnimSchedule data for an anime.
 
-        Lookup strategy: searches by ``offline_data["title"]``, then cross-validates
-        each search result against ``offline_data["sources"]`` by checking whether any
-        known source URL appears in the result's ``websites`` dict. Returns the first
-        match. Falls back to the first result when no sources are provided.
-
-        Note: ``ids`` is intentionally unused — AnimSchedule has no platform ID system.
-        Note: ``fetch_characters`` and ``fetch_episodes`` are unused — AnimSchedule is
-            an anime-only source (no characters or episodes endpoint).
+        Looks the anime up by the MyAnimeList, AniList and AniDB IDs in ``ids``;
+        when none finds it, searches by ``offline_data["title"]``.
 
         Args:
-            ids: Unused. AnimSchedule is title-search-based with no platform ID.
-            offline_data: The original offline anime metadata. Must contain ``"title"``.
+            ids: Source URLs by provider (``mal_url``, ``anilist_url``,
+                ``anidb_url``).
+            offline_data: The offline anime entry; its ``title`` and
+                ``sources`` are used for the title search.
             temp_dir: Optional directory for intermediate JSONL storage.
             fetch_characters: Accepted for interface compliance; AnimSchedule is anime-only.
             fetch_episodes: Accepted for interface compliance; AnimSchedule is anime-only.
 
         Returns:
-            Canonical anime dict, or None if no match is found or title is missing.
+            Canonical anime payload, or None when AnimSchedule has no such anime.
         """
-        search_term = offline_data.get("title", "")
-        if not search_term:
-            logger.warning(
-                "AnimescheduleHelper.fetch_all: offline_data missing 'title' — cannot search AnimSchedule"
-            )
+        raw_data = await self._find_by_ids(ids) or await self._find_by_title(
+            offline_data.get("title", ""), offline_data.get("sources", [])
+        )
+        if raw_data is None:
             return None
-
         output_path = (
             os.path.join(temp_dir, "animeschedule.jsonl") if temp_dir else None
         )
-        sources: list[str] = offline_data.get("sources", [])
+        return normalize_enrichment_payload(self._map(raw_data, output_path))
 
-        result = await self._search(
-            search_term, sources=sources or None, output_path=output_path
-        )
-        return normalize_enrichment_payload(result)
-
-    async def _search(
-        self,
-        search_term: str,
-        sources: list[str] | None = None,
-        output_path: str | None = None,
+    async def fetch_by_title(
+        self, title: str, output_path: str | None = None
     ) -> dict[str, Any] | None:
-        """Search AnimSchedule by title and return a canonical mapped dict.
-
-        When ``sources`` is provided, all search results are checked against the
-        cross-source URLs in each result's ``websites`` dict (mal, aniList, kitsu,
-        animePlanet, anidb). The first result whose website links match any of the
-        provided sources is returned. Falls back to the first result when no sources
-        are given.
+        """Search by title and map the first result.
 
         Args:
-            search_term: Anime title to search for.
-            sources: Canonical source URLs to validate the result against.
-            output_path: If provided, write the canonical mapped dict as JSONL to this path.
+            title: Anime title to search for.
+            output_path: JSONL file to append the mapped anime to.
 
         Returns:
-            Canonical anime dict if a match is found, None otherwise.
+            Canonical anime fields, or None when the search finds nothing.
         """
-        logger.info(f"Fetching AnimSchedule data for: {search_term}")
+        raw_data = await self._find_by_title(title, [])
+        return None if raw_data is None else self._map(raw_data, output_path)
 
-        search_url = f"https://animeschedule.net/api/v3/anime?q={search_term}"
-        logger.debug(f"AnimSchedule search URL: {search_url}")
+    async def _find_by_ids(self, ids: dict[str, str]) -> dict | None:
+        """Return the anime AnimSchedule lists under the first ID that finds one.
 
+        A result counts only when it links back to the source URL its ID came
+        from.
+
+        Args:
+            ids: Source URLs by provider.
+
+        Returns:
+            The raw anime, or None when no ID finds one.
+        """
+        for url_key, id_filter in _ID_FILTERS:
+            source_url = ids.get(url_key) or ""
+            if match := _ANIME_ID.search(source_url):
+                candidates = await self._query(
+                    {id_filter: match.group(1)}, _ID_NOT_FOUND_STATUSES
+                )
+                if found := _match_by_sources(candidates, [source_url]):
+                    return found
+        return None
+
+    async def _find_by_title(self, title: str, sources: list[str]) -> dict | None:
+        """Search by title and return the result that links to one of ``sources``.
+
+        Args:
+            title: Anime title to search for.
+            sources: Source URLs the result must link to; when empty, the
+                first result is returned.
+
+        Returns:
+            The raw anime, or None when nothing matches.
+        """
+        if not title:
+            return None
+        candidates = await self._query({"q": title}, _TITLE_NOT_FOUND_STATUSES)
+        raw_data = (
+            _match_by_sources(candidates, sources)
+            if sources
+            else next(iter(candidates), None)
+        )
+        if raw_data is None:
+            logger.warning(f"AnimSchedule has no anime matching: {title}")
+        return raw_data
+
+    async def _query(
+        self, params: dict[str, str], not_found_statuses: frozenset[int]
+    ) -> list[dict]:
+        """Query AnimSchedule's anime list.
+
+        Args:
+            params: Filter or search parameters.
+            not_found_statuses: Statuses that mean no anime matched.
+
+        Returns:
+            The anime found; empty when there is no match.
+
+        Raises:
+            ServiceNetworkError: If the request fails.
+            ServiceParseError: If the response is not JSON.
+        """
         try:
-            async with _cache_manager.get_aiohttp_session("animeschedule") as session:
-                async with session.get(search_url) as response:
+            async with self._cache.get_aiohttp_session("animeschedule") as session:
+                async with session.get(_ANIME_LIST_URL, params=params) as response:
+                    if response.status in not_found_statuses:
+                        return []
                     response.raise_for_status()
-                    search_results = await response.json()
+                    found = await response.json()
         except aiohttp.ClientError as e:
             raise ServiceNetworkError(service="animeschedule", cause=e) from e
         except json.JSONDecodeError as e:
             raise ServiceParseError(service="animeschedule", cause=e) from e
+        return (found or {}).get("anime", [])
 
-        candidates: list[dict] = (search_results or {}).get("anime", [])
-        if not candidates:
-            logger.warning(f"AnimSchedule returned no results for: {search_term}")
-            return None
+    def _map(self, raw_data: dict, output_path: str | None) -> dict[str, Any]:
+        """Validate and map a raw anime, appending it to ``output_path`` when given.
 
-        if sources:
-            raw_data = _match_by_sources(candidates, sources)
-            if raw_data is None:
-                logger.warning(
-                    f"No AnimSchedule result matched sources for: {search_term}"
-                )
-                return None
-        else:
-            raw_data = candidates[0]
+        Args:
+            raw_data: Raw anime from AnimSchedule.
+            output_path: JSONL file to append the mapped anime to.
 
-        anime = AnimScheduleAnime.model_validate(raw_data)
-        result = anime_from_animeschedule(anime)
-
+        Returns:
+            Canonical anime fields.
+        """
+        result = anime_from_animeschedule(AnimScheduleAnime.model_validate(raw_data))
         if output_path:
             append_jsonl(output_path, result)
-
-        logger.info(f"AnimSchedule data fetched: {search_term}")
+        logger.info(f"AnimSchedule data fetched: {result.get('title')}")
         return result
 
 
@@ -216,14 +285,13 @@ async def main() -> int:
     )
     args = parser.parse_args()
 
-    helper = AnimescheduleHelper()
+    helper = AnimescheduleHelper(configure_cache(CacheConfig(), RedisConfig()))
     try:
-        result = await helper._search(args.search_term, output_path=args.output)
+        result = await helper.fetch_by_title(args.search_term, args.output)
     except Exception:
         logger.exception("Error fetching AnimSchedule data")
         return 1
-    else:
-        return 0 if result else 1
+    return 0 if result else 1
 
 
 if __name__ == "__main__":  # pragma: no cover

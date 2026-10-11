@@ -33,14 +33,11 @@ from enrichment.sources.base.framework import (
     NullRepository,
 )
 from enrichment.sources.base.page_readiness import wait_for_page
-from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
 from lxml import etree
 
 logger = logging.getLogger(__name__)
 
-_CACHE_CONFIG = get_cache_config()
-TTL_ANIME_PLANET = _CACHE_CONFIG.ttl_anime_planet
 
 BASE_URL = "https://www.anime-planet.com"
 
@@ -126,21 +123,6 @@ _FLAG_LANG_MAP: dict[str, str] = {
 
 def _strip_tags(html: str) -> str:
     return unescape(re.sub(r"<[^>]+>", "", html)).strip()
-
-
-def _parse_rank(raw: str | None) -> int | None:
-    if not raw:
-        return None
-    m = re.search(r"\d+", raw)
-    return int(m.group()) if m else None
-
-
-def _parse_loved_count(raw: str | None) -> int | None:
-    """Parse love count from text like '36,485 users' → 36485."""
-    if not raw:
-        return None
-    m = re.search(r"[\d,]+", raw)
-    return int(m.group().replace(",", "")) if m else None
 
 
 def _extract_entry_bar(body_html: str) -> dict[str, str | None]:
@@ -336,10 +318,10 @@ def _build_character_from_raw(raw: dict[str, Any], url: str) -> AnimePlanetChara
         name=(raw.get("name") or "").strip(),
         slug=slug,
         url=url,
-        image=raw.get("image") or None,
-        loved_rank=_parse_rank(raw.get("loved_rank")),
-        hated_rank=_parse_rank(raw.get("hated_rank")),
-        loved_count=_parse_loved_count(raw.get("loved_count")),
+        image=raw.get("image"),
+        loved_rank=raw.get("loved_rank"),
+        hated_rank=raw.get("hated_rank"),
+        loved_count=raw.get("loved_count"),
         gender=raw.get("gender"),
         hair_color=raw.get("hair_color"),
         description=raw.get("description"),
@@ -393,9 +375,8 @@ async def _fetch_page_html(browser: Any, url: str) -> str | None:
 
 
 @cached_result(
-    ttl=TTL_ANIME_PLANET,
+    service="anime_planet",
     key_prefix="animeplanet_character_detail",
-    dependencies=[_extract_character_from_html, remove_ad_annotations],
 )
 async def _fetch_character_data(url: str) -> dict[str, Any] | None:
     """Fetch a character detail page and extract raw fields. Cached by url.

@@ -1,9 +1,11 @@
 """Observability configuration."""
 
-from pydantic import BaseModel, Field
+from pydantic import Field
+
+from .env_settings import EnvSettings
 
 
-class ObservabilityConfig(BaseModel):
+class ObservabilityConfig(EnvSettings):
     """Configuration for telemetry signals and instrumentation toggles."""
 
     otel_enabled: bool = Field(

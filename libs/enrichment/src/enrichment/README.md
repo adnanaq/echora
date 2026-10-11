@@ -14,7 +14,6 @@ libs/enrichment/src/enrichment/
 │   ├── enrichment_pipeline.py   # EnrichmentPipeline — main entry point
 │   ├── api_fetcher.py           # ApiFetcher — parallel fan-out across all sources
 │   ├── id_extractor.py          # PlatformIDExtractor — source URLs → ids dict
-│   ├── config.py                # EnrichmentConfig (Pydantic BaseSettings)
 │   ├── metadata_merger.py       # Merges the seven provider records into one Anime
 │   ├── metadata_rules.py        # Per-field rules for that merge
 │   ├── link_rules.py            # Merge rules for links, images and media
@@ -53,11 +52,17 @@ Top-level orchestrator. Enter it with `async with`, then call `enrich_anime()` f
 one anime (or `enrich_batch()` for several).
 
 ```python
+from common.config import get_settings
 from enrichment.pipeline.enrichment_pipeline import EnrichmentPipeline
-from enrichment.pipeline.config import EnrichmentConfig
+from http_cache import close_cache, configure_cache
 
-async with EnrichmentPipeline(EnrichmentConfig()) as pipeline:
-    result = await pipeline.enrich_anime(offline_data, agent_dir="One_agent1")
+settings = get_settings()
+cache = configure_cache(settings.cache, settings.redis)
+try:
+    async with EnrichmentPipeline(settings.enrichment, cache) as pipeline:
+        result = await pipeline.enrich_anime(offline_data, agent_dir="One_agent1")
+finally:
+    await close_cache()
 ```
 
 Entering the pipeline sets the process-wide browser limit and removes browsers
@@ -75,12 +80,14 @@ then:
 ### `ApiFetcher`
 
 Runs all source helpers concurrently with `asyncio.gather`. Each helper is
-independent — a failure in one source does not abort others.
+independent — a failure in one source does not abort others. Helpers that make
+HTTP requests (AniList, Kitsu, AnimeSchedule, AniDB) get the cache, and AniDB
+also gets the config for its credentials and rate limits.
 
 ```python
 from enrichment.pipeline.api_fetcher import ApiFetcher
 
-async with ApiFetcher() as fetcher:
+async with ApiFetcher(settings.enrichment, cache) as fetcher:
     results = await fetcher.fetch_all_data(ids, offline_data, temp_dir)
 ```
 
@@ -99,8 +106,9 @@ ids = PlatformIDExtractor().extract_all_ids(offline_data)
 
 ### `EnrichmentConfig`
 
-Pydantic `BaseSettings` — reads from environment or `.env`, with the
-`ENRICHMENT_` prefix. Common settings:
+`common.config.EnrichmentConfig`, available as `settings.enrichment`. Each field
+is read from the environment variable of the same name in upper case, or from
+`.env`. Common settings:
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -108,7 +116,7 @@ Pydantic `BaseSettings` — reads from environment or `.env`, with the
 | `ENRICHMENT_MAX_CONCURRENT_BROWSERS` | `4` | Most Chrome browsers open at once in the process |
 | `ENRICHMENT_SKIP_FAILED_APIS` | `true` | Return partial results when a source fails |
 | `ENRICHMENT_VERBOSE_LOGGING` | `false` | Log the configuration and extra timings |
-| `ENRICHMENT_ANIDB_MIN_REQUEST_INTERVAL` | `2.0` | Seconds between AniDB API requests (backs off up to `ENRICHMENT_ANIDB_MAX_REQUEST_INTERVAL`, 10.0) |
+| `ANIDB_MIN_REQUEST_INTERVAL` | `2.0` | Seconds between AniDB API requests (backs off up to `ANIDB_MAX_REQUEST_INTERVAL`, 10.0) |
 
 ---
 
@@ -176,7 +184,7 @@ async with browser_session(headless=True) as session:
 ```
 
 `browser_session()` closes the browser in tens of milliseconds, holds a slot from
-the process-wide limit `EnrichmentConfig.max_concurrent_browsers`
+the process-wide limit `EnrichmentConfig.enrichment_max_concurrent_browsers`
 (`ENRICHMENT_MAX_CONCURRENT_BROWSERS`, default 4) while it is open, and marks the
 browser's profile so a later run can clean up after a killed one. AniDB passes
 `headless=False`; a batch that hits a browser crash calls `session.restart()`,

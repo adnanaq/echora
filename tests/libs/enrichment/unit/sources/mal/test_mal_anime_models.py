@@ -171,3 +171,118 @@ def test_mal_scraped_anime_external_and_streaming_links() -> None:
     assert anime.external_sources[0].name == "Official Site"
     assert len(anime.streaming) == 1
     assert anime.streaming[0].name == "Crunchyroll"
+
+
+def _scraped(**fields: object) -> MalAnime:
+    return MalAnime.model_validate(
+        {"source": "https://myanimelist.net/anime/21", "title": "One Piece", **fields}
+    )
+
+
+def test_mal_anime_title_is_stripped() -> None:
+    assert _scraped(title="  One Piece ").title == "One Piece"
+
+
+def test_mal_anime_synonyms_text_split_on_commas() -> None:
+    assert _scraped(synonyms="OP, Wan Pisu").synonyms == ["OP", "Wan Pisu"]
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [("1,155", 1155), ("12", 12), ("Unknown", None), ("?", None), (None, None)],
+)
+def test_mal_anime_episode_count_text_parses_to_number(
+    raw: str | None, expected: int | None
+) -> None:
+    assert _scraped(episode_count=raw).episode_count == expected
+
+
+def test_mal_anime_duration_text_parses_to_seconds() -> None:
+    assert _scraped(duration="1 hr. 30 min.").duration == 5400
+
+
+@pytest.mark.parametrize(("raw", "expected"), [("8.73", 8.73), ("N/A", None)])
+def test_mal_anime_score_text_parses_to_number(
+    raw: str, expected: float | None
+) -> None:
+    assert _scraped(score=raw).score == expected
+
+
+def test_mal_anime_counts_in_millions_parse_to_numbers() -> None:
+    anime = _scraped(
+        scored_by="1,234,567",
+        members="2,644,378",
+        favorites="256,728",
+        popularity="#17",
+    )
+
+    assert (anime.scored_by, anime.members, anime.favorites, anime.popularity) == (
+        1234567,
+        2644378,
+        256728,
+        17,
+    )
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ('<div data-id="info2"><span>Ranked:</span> #4536<sup>2</sup></div>', 4536),
+        ("Ranked: #1,234", 1234),
+        ('<div data-id="info2"><span>Ranked:</span> N/A</div>', None),
+    ],
+)
+def test_mal_anime_rank_html_parses_to_rank(raw: str, expected: int | None) -> None:
+    assert _scraped(rank=raw).rank == expected
+
+
+def test_mal_anime_broadcast_text_parses_to_day_time_and_zone() -> None:
+    anime = _scraped(broadcast="Sundays at 23:15 (JST)")
+
+    assert (anime.broadcast_day, anime.broadcast_time, anime.broadcast_timezone) == (
+        "Sundays",
+        "23:15",
+        "JST",
+    )
+
+
+def test_mal_anime_aired_and_premiered_give_dates_season_and_year() -> None:
+    anime = _scraped(aired="Oct 20, 1999 to ?", premiered="Fall 1999")
+
+    assert (
+        anime.aired_from,
+        anime.aired_to,
+        anime.season,
+        anime.year,
+        anime.month,
+    ) == (
+        "1999-10-20",
+        None,
+        "fall",
+        1999,
+        None,
+    )
+
+
+def test_mal_anime_aired_without_day_gives_month_and_year() -> None:
+    anime = _scraped(aired="Apr 2026 to ?", premiered=None)
+
+    assert (anime.aired_from, anime.year, anime.month, anime.season) == (
+        None,
+        2026,
+        "April",
+        None,
+    )
+
+
+def test_mal_anime_zero_rank_and_popularity_mean_not_ranked() -> None:
+    anime = _scraped(
+        rank="<span>Ranked:</span> #0", popularity="#0", members="0", favorites="0"
+    )
+
+    assert (anime.rank, anime.popularity, anime.members, anime.favorites) == (
+        None,
+        None,
+        0,
+        0,
+    )

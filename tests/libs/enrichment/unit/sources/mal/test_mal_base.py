@@ -1,12 +1,9 @@
-"""Unit tests for mal_base.py — sidebar parsers, number utils, model diffing."""
-
 import pytest
 from enrichment.sources.mal.mal_base import (
     _get_entity_id,
     diff_model_lists,
     diff_models,
     normalize_mal_anime_url,
-    parse_aired_string,
     parse_duration_seconds,
     parse_episode_ranges,
     parse_number,
@@ -14,180 +11,11 @@ from enrichment.sources.mal.mal_base import (
     parse_score,
     parse_sidebar_field,
 )
-from enrichment.sources.mal.mal_models import (
-    MalAnime,
-    MalCharacter,
-    MalEpisode,
-)
+from enrichment.sources.mal.mal_models import MalAnime, MalCharacter, MalEpisode
 from pydantic import BaseModel
 
-# =============================================================================
-# parse_number
-# =============================================================================
-
-
-@pytest.mark.parametrize(
-    "raw, expected",
-    [
-        ("2,644,378", 2644378),
-        ("#17", 17),
-        ("#54", 54),
-        ("123", 123),
-        ("N/A", None),
-        (None, None),
-        ("", None),
-        ("?", None),
-    ],
-)
-def test_parse_number(raw: str | None, expected: int | None) -> None:
-    assert parse_number(raw) == expected
-
-
-# =============================================================================
-# parse_score
-# =============================================================================
-
-
-@pytest.mark.parametrize(
-    "raw, expected",
-    [
-        ("8.73", 8.73),
-        ("10", 10.0),
-        (" 6.06 ", 6.06),
-        # MAL renders the same ratingValue span as "N/A" below the vote
-        # threshold; an unguarded float() there discards the whole record.
-        ("N/A", None),
-        (None, None),
-        ("", None),
-        ("   ", None),
-    ],
-)
-def test_parse_score(raw: str | None, expected: float | None) -> None:
-    assert parse_score(raw) == expected
-
-
-# =============================================================================
-# parse_duration_seconds
-# =============================================================================
-
-
-@pytest.mark.parametrize(
-    "raw, expected",
-    [
-        ("24 min.", 1440),
-        ("1 hr. 30 min.", 5400),
-        ("00:24:37", 1477),
-        ("2 min.", 120),
-        ("1 hr.", 3600),
-        (None, None),
-        ("", None),
-        ("Unknown", None),
-    ],
-)
-def test_parse_duration_seconds(raw: str | None, expected: int | None) -> None:
-    assert parse_duration_seconds(raw) == expected
-
-
-# =============================================================================
-# parse_aired_string
-# =============================================================================
-
-
-def test_parse_aired_string_range() -> None:
-    from_d, to_d = parse_aired_string("Oct 20, 1999 to ?")
-    assert from_d == "1999-10-20"
-    assert to_d is None
-
-
-def test_parse_aired_string_closed_range() -> None:
-    from_d, to_d = parse_aired_string("Oct 20, 1999 to Nov 5, 2000")
-    assert from_d == "1999-10-20"
-    assert to_d == "2000-11-05"
-
-
-def test_parse_aired_string_single_date() -> None:
-    from_d, to_d = parse_aired_string("Apr 5, 2003")
-    assert from_d == "2003-04-05"
-    assert to_d is None
-
-
-def test_parse_aired_string_none() -> None:
-    from_d, to_d = parse_aired_string(None)
-    assert from_d is None
-    assert to_d is None
-
-
-def test_parse_aired_string_year_only() -> None:
-    """Upcoming anime with no specific date — year only, e.g. '2026 to ?'."""
-    from_d, to_d = parse_aired_string("2026 to ?")
-    assert from_d == "2026-01-01"
-    assert to_d is None
-
-
-# =============================================================================
-# parse_premiered
-# =============================================================================
-
-
-@pytest.mark.parametrize(
-    "raw, expected_season, expected_year",
-    [
-        ("Fall 1999", "fall", 1999),
-        ("Spring 2024", "spring", 2024),
-        ("WINTER 2020", "winter", 2020),
-        (None, None, None),
-        ("", None, None),
-    ],
-)
-def test_parse_premiered(
-    raw: str | None, expected_season: str | None, expected_year: int | None
-) -> None:
-    season, year = parse_premiered(raw)
-    assert season == expected_season
-    assert year == expected_year
-
-
-# =============================================================================
-# normalize_mal_anime_url
-# =============================================================================
-
-
-def test_normalize_mal_anime_url_slugless_no_slug() -> None:
-    url, has_slug = normalize_mal_anime_url("https://myanimelist.net/anime/21")
-    assert url == "https://myanimelist.net/anime/21"
-    assert has_slug is False
-
-
-def test_normalize_mal_anime_url_slugged_has_slug() -> None:
-    url, has_slug = normalize_mal_anime_url(
-        "https://myanimelist.net/anime/21/One_Piece"
-    )
-    assert url == "https://myanimelist.net/anime/21/One_Piece"
-    assert has_slug is True
-
-
-def test_normalize_mal_anime_url_passes_through_unchanged() -> None:
-    original = "https://myanimelist.net/anime/57334/Dandadan"
-    url, _ = normalize_mal_anime_url(original)
-    assert url == original
-
-
-def test_normalize_mal_anime_url_wrong_base_raises() -> None:
-    with pytest.raises(ValueError):
-        normalize_mal_anime_url("https://example.com/anime/21")
-
-
-def test_normalize_mal_anime_url_non_anime_path_raises() -> None:
-    with pytest.raises(ValueError):
-        normalize_mal_anime_url("https://myanimelist.net/character/40")
-
-
-# =============================================================================
-# parse_sidebar_field
-# =============================================================================
-
-
-_SAMPLE_SIDEBAR = """
+ONE_PIECE_URL = "https://myanimelist.net/anime/21"
+SIDEBAR = """
 <div>
     <span class="dark_text">Episodes:</span>
     1122
@@ -205,177 +33,199 @@ _SAMPLE_SIDEBAR = """
 """
 
 
-def test_parse_sidebar_field_episodes() -> None:
-    result = parse_sidebar_field(_SAMPLE_SIDEBAR, "Episodes")
-    assert result == "1122"
+class _ModelWithoutId(BaseModel):
+    pass
 
 
-def test_parse_sidebar_field_status() -> None:
-    result = parse_sidebar_field(_SAMPLE_SIDEBAR, "Status")
-    assert result == "Currently Airing"
+def _anime(score: float = 8.7) -> MalAnime:
+    return MalAnime(source=ONE_PIECE_URL, title="One Piece", score=score)
 
 
-def test_parse_sidebar_field_ranked() -> None:
-    result = parse_sidebar_field(_SAMPLE_SIDEBAR, "Ranked")
-    assert result == "#54"
-
-
-def test_parse_sidebar_field_missing() -> None:
-    result = parse_sidebar_field(_SAMPLE_SIDEBAR, "Nonexistent")
-    assert result is None
-
-
-# =============================================================================
-# parse_episode_ranges
-# =============================================================================
+def _character(number: int, name: str) -> MalCharacter:
+    return MalCharacter(source=f"https://myanimelist.net/character/{number}", name=name)
 
 
 @pytest.mark.parametrize(
-    "raw, expected",
+    ("raw", "expected"),
+    [("2,644,378", 2644378), ("#17", 17), ("#54", 54), ("123", 123)],
+)
+def test_parse_number_number_text_gives_integer(raw: str, expected: int) -> None:
+    assert parse_number(raw) == expected
+
+
+@pytest.mark.parametrize("raw", ["N/A", None, "", "?"])
+def test_parse_number_without_number_returns_none(raw: str | None) -> None:
+    assert parse_number(raw) is None
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"), [("8.73", 8.73), ("10", 10.0), (" 6.06 ", 6.06)]
+)
+def test_parse_score_score_text_gives_float(raw: str, expected: float) -> None:
+    assert parse_score(raw) == expected
+
+
+@pytest.mark.parametrize("raw", ["N/A", None, "", "   "])
+def test_parse_score_below_vote_threshold_or_missing_returns_none(
+    raw: str | None,
+) -> None:
+    assert parse_score(raw) is None
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("24 min.", 1440),
+        ("1 hr. 30 min.", 5400),
+        ("00:24:37", 1477),
+        ("2 min.", 120),
+        ("1 hr.", 3600),
+    ],
+)
+def test_parse_duration_seconds_duration_text_gives_seconds(
+    raw: str, expected: int
+) -> None:
+    assert parse_duration_seconds(raw) == expected
+
+
+@pytest.mark.parametrize("raw", [None, "", "Unknown"])
+def test_parse_duration_seconds_without_duration_returns_none(
+    raw: str | None,
+) -> None:
+    assert parse_duration_seconds(raw) is None
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("Fall 1999", ("fall", 1999)),
+        ("Spring 2024", ("spring", 2024)),
+        ("WINTER 2020", ("winter", 2020)),
+    ],
+)
+def test_parse_premiered_season_and_year_give_lowercase_season_and_year(
+    raw: str, expected: tuple[str, int]
+) -> None:
+    assert parse_premiered(raw) == expected
+
+
+@pytest.mark.parametrize("raw", [None, "", "Not a season string"])
+def test_parse_premiered_without_season_returns_nothing(raw: str | None) -> None:
+    assert parse_premiered(raw) == (None, None)
+
+
+def test_normalize_mal_anime_url_bare_address_reports_no_title() -> None:
+    assert normalize_mal_anime_url(ONE_PIECE_URL) == (ONE_PIECE_URL, False)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://myanimelist.net/anime/21/One_Piece",
+        "https://myanimelist.net/anime/57334/Dandadan",
+    ],
+)
+def test_normalize_mal_anime_url_address_with_title_returned_unchanged(
+    url: str,
+) -> None:
+    assert normalize_mal_anime_url(url) == (url, True)
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["https://example.com/anime/21", "https://myanimelist.net/character/40"],
+)
+def test_normalize_mal_anime_url_non_mal_anime_address_raises_value_error(
+    url: str,
+) -> None:
+    with pytest.raises(ValueError):
+        normalize_mal_anime_url(url)
+
+
+@pytest.mark.parametrize(
+    ("label", "expected"),
+    [("Episodes", "1122"), ("Status", "Currently Airing"), ("Ranked", "#54")],
+)
+def test_parse_sidebar_field_label_present_returns_its_value(
+    label: str, expected: str
+) -> None:
+    assert parse_sidebar_field(SIDEBAR, label) == expected
+
+
+def test_parse_sidebar_field_label_absent_returns_none() -> None:
+    assert parse_sidebar_field(SIDEBAR, "Nonexistent") is None
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
     [
         ("1-26", [(1, 26)]),
         ("492", [(492, 492)]),
         ("1139-", [(1139, None)]),
         ("1-30, 492, 1139-", [(1, 30), (492, 492), (1139, None)]),
-        (None, []),
-        ("", []),
         ("(eps 1-13)", [(1, 13)]),
     ],
 )
-def test_parse_episode_ranges(raw: str | None, expected: list[dict]) -> None:
+def test_parse_episode_ranges_range_text_gives_start_and_end(
+    raw: str, expected: list[tuple[int, int | None]]
+) -> None:
     assert parse_episode_ranges(raw) == expected
 
 
-# =============================================================================
-# diff_models
-# =============================================================================
+@pytest.mark.parametrize("raw", [None, "", "1 2-3", "1 2", "-5"])
+def test_parse_episode_ranges_unreadable_parts_skipped(raw: str | None) -> None:
+    assert parse_episode_ranges(raw) == []
 
 
-def _make_anime(score: float = 8.7, title: str = "One Piece") -> MalAnime:
-    return MalAnime(
-        source="https://myanimelist.net/anime/21",
-        title=title,
-        score=score,
-    )
-
-
-def test_diff_models_no_changes() -> None:
-    old = _make_anime()
-    new = _make_anime()
-    diff = diff_models(old, new, "anime")
+def test_diff_models_same_values_report_no_changes() -> None:
+    diff = diff_models(_anime(), _anime(), "anime")
     assert not diff.has_changes
     assert diff.changes == []
 
 
-def test_diff_models_changed_field() -> None:
-    old = _make_anime(score=8.7)
-    new = _make_anime(score=8.8)
-    diff = diff_models(old, new, "anime")
+def test_diff_models_changed_field_reported_with_old_and_new_values() -> None:
+    diff = diff_models(_anime(score=8.7), _anime(score=8.8), "anime")
     assert diff.has_changes
-    assert len(diff.changes) == 1
-    assert diff.changes[0].field == "score"
-    assert diff.changes[0].old_value == 8.7
-    assert diff.changes[0].new_value == 8.8
+    assert [
+        (change.field, change.old_value, change.new_value) for change in diff.changes
+    ] == [("score", 8.7, 8.8)]
+    assert diff.entity_id == ONE_PIECE_URL
 
 
-def test_diff_models_new_entity() -> None:
-    new = _make_anime()
-    diff = diff_models(None, new, "anime")
-    assert diff.is_new
-    assert diff.has_changes
+def test_diff_models_without_old_model_reports_new_entity() -> None:
+    diff = diff_models(None, _anime(), "anime")
+    assert (diff.is_new, diff.has_changes, diff.entity_id) == (
+        True,
+        True,
+        ONE_PIECE_URL,
+    )
 
 
-def test_diff_models_entity_id_correct_for_anime() -> None:
-    """diff_models uses url as entity_id for MalAnime (anime_id field removed)."""
-    old = _make_anime(score=8.7)
-    new = _make_anime(score=8.8)
-    diff = diff_models(old, new, "anime")
-    assert diff.entity_id == "https://myanimelist.net/anime/21"
-
-
-def test_diff_models_entity_id_correct_for_new_anime() -> None:
-    """entity_id is the URL even for new (old=None) anime diffs."""
-    new = _make_anime()
-    diff = diff_models(None, new, "anime")
-    assert diff.entity_id == "https://myanimelist.net/anime/21"
-
-
-# =============================================================================
-# diff_model_lists
-# =============================================================================
-
-
-def test_diff_model_lists_added_and_removed() -> None:
-    from enrichment.sources.mal.mal_models import MalCharacter
-
-    old_chars = [
-        MalCharacter(source="https://myanimelist.net/character/40/Luffy", name="Luffy"),
-        MalCharacter(source="https://myanimelist.net/character/41/Zoro", name="Zoro"),
-    ]
-    new_chars = [
-        MalCharacter(source="https://myanimelist.net/character/40/Luffy", name="Luffy"),
-        MalCharacter(source="https://myanimelist.net/character/42/Nami", name="Nami"),
-    ]
-    list_diff = diff_model_lists(old_chars, new_chars, "character")
-    assert "https://myanimelist.net/character/42/Nami" in list_diff.added
-    assert "https://myanimelist.net/character/41/Zoro" in list_diff.removed
-    assert not list_diff.updated  # Luffy unchanged
-
-
-def test_diff_model_lists_updated_when_field_changes() -> None:
-    old = [MalCharacter(source="https://myanimelist.net/character/40", name="Luffy")]
-    new = [
-        MalCharacter(
-            source="https://myanimelist.net/character/40", name="Luffy Updated"
-        )
-    ]
+def test_diff_model_lists_reports_added_and_removed_entities() -> None:
+    old = [_character(40, "Luffy"), _character(41, "Zoro")]
+    new = [_character(40, "Luffy"), _character(42, "Nami")]
     list_diff = diff_model_lists(old, new, "character")
+    assert list_diff.added == ["https://myanimelist.net/character/42"]
+    assert list_diff.removed == ["https://myanimelist.net/character/41"]
+    assert not list_diff.updated
+
+
+def test_diff_model_lists_changed_entity_reported_as_updated() -> None:
+    list_diff = diff_model_lists(
+        [_character(40, "Luffy")], [_character(40, "Luffy Updated")], "character"
+    )
     assert len(list_diff.updated) == 1
     assert list_diff.updated[0].has_changes
 
 
-# =============================================================================
-# parse_premiered — unrecognized string → (None, None)
-# =============================================================================
-
-
-def test_parse_premiered_unrecognized_returns_none_none() -> None:
-    season, year = parse_premiered("Not a season string")
-    assert season is None
-    assert year is None
-
-
-# =============================================================================
-# parse_episode_ranges — ValueError branches (lines 518-519, 524-525)
-# =============================================================================
-
-
-def test_parse_episode_ranges_bad_range_skipped() -> None:
-    """Space inside number part triggers ValueError on int() → entry skipped."""
-    assert parse_episode_ranges("1 2-3") == []
-
-
-def test_parse_episode_ranges_bad_standalone_skipped() -> None:
-    """Space inside standalone number triggers ValueError on int() → entry skipped."""
-    assert parse_episode_ranges("1 2") == []
-
-
-# =============================================================================
-# _get_entity_id (lines 578, 582)
-# =============================================================================
-
-
-def test_get_entity_id_returns_episode_number_as_int() -> None:
-    ep = MalEpisode(
-        source="https://myanimelist.net/anime/21/One_Piece/episode/1",
+def test_get_entity_id_episode_returns_episode_number() -> None:
+    episode = MalEpisode(
+        source=f"{ONE_PIECE_URL}/One_Piece/episode/1",
         episode_number=1,
         title="Romance Dawn",
     )
-    assert _get_entity_id(ep) == 1
+    assert _get_entity_id(episode) == 1
 
 
-def test_get_entity_id_returns_zero_for_bare_model() -> None:
-    class _Bare(BaseModel):
-        pass
-
-    assert _get_entity_id(_Bare()) == 0
+def test_get_entity_id_model_without_id_returns_zero() -> None:
+    assert _get_entity_id(_ModelWithoutId()) == 0

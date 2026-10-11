@@ -35,13 +35,10 @@ from enrichment.sources.mal.mal_models import (
     MalOgraphyEntry,
     MalVoiceActorRef,
 )
-from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
 
 logger = logging.getLogger(__name__)
 
-_CACHE_CONFIG = get_cache_config()
-TTL_MAL = _CACHE_CONFIG.ttl_mal
 
 _INTER_REQUEST_DELAY = 3.0
 
@@ -445,9 +442,8 @@ async def _fetch_character_html(browser: Any, url: str) -> tuple[str, str] | Non
 
 
 @cached_result(
-    ttl=TTL_MAL,
+    service="mal",
     key_prefix="mal_character_detail",
-    dependencies=[_extract_character_from_html],
 )
 async def _fetch_mal_character_data(url: str) -> tuple[dict[str, Any], str] | None:
     """Fetch a MAL character detail page via zendriver. Cached by URL.

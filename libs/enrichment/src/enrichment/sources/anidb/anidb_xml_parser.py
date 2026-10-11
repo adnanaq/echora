@@ -68,25 +68,27 @@ def parse_anime_xml(xml_content: str) -> AniDBAnime:
             f"Missing or invalid 'id' attribute on <anime>: {anime_id_raw!r}"
         )
 
-    return AniDBAnime(
-        id=int(anime_id_raw),
-        restricted=root.get("restricted", "false").lower() == "true",
-        type=_text(root, "type"),
-        episode_count=_int(root, "episodecount"),
-        start_date=_text(root, "startdate"),
-        end_date=_text(root, "enddate"),
-        description=_text(root, "description"),
-        picture=_text(root, "picture"),
-        url=_text(root, "url"),
-        **_parse_titles(root),
-        categories=_parse_categories(root),
-        characters=_parse_characters(root),
-        creators=_parse_creators(root),
-        episodes=_parse_episodes(root),
-        related_anime=_parse_related_anime(root),
-        resources=_parse_resources(root),
-        tags=_parse_tags(root),
-        ratings=_parse_ratings(root),
+    return AniDBAnime.model_validate(
+        {
+            "id": int(anime_id_raw),
+            "restricted": root.get("restricted", "false").lower() == "true",
+            "type": _text(root, "type"),
+            "episode_count": _text(root, "episodecount"),
+            "start_date": _text(root, "startdate"),
+            "end_date": _text(root, "enddate"),
+            "description": _text(root, "description"),
+            "picture": _text(root, "picture"),
+            "url": _text(root, "url"),
+            **_parse_titles(root),
+            "categories": _parse_categories(root),
+            "characters": _parse_characters(root),
+            "creators": _parse_creators(root),
+            "episodes": _parse_episodes(root),
+            "related_anime": _parse_related_anime(root),
+            "resources": _parse_resources(root),
+            "tags": _parse_tags(root),
+            "ratings": _parse_ratings(root),
+        }
     )
 
 
@@ -177,11 +179,13 @@ def _parse_categories(root: Element) -> list[AniDBCategory]:
         if name_elem is None or not name_elem.text:
             continue
         result.append(
-            AniDBCategory(
-                id=category.get("id"),
-                name=name_elem.text,
-                weight=_safe_count(category.get("weight")),
-                hentai=category.get("hentai", "false").lower() == "true",
+            AniDBCategory.model_validate(
+                {
+                    "id": category.get("id"),
+                    "name": name_elem.text,
+                    "weight": category.get("weight"),
+                    "hentai": category.get("hentai", "false").lower() == "true",
+                }
             )
         )
     return result
@@ -208,7 +212,7 @@ def _parse_characters(root: Element) -> list[AniDBCharacter]:
         character_type_elem = character.find("charactertype")
         seiyuu_list = [
             AniDBSeiyuu(
-                id=_safe_int(seiyuu_elem.get("id")),
+                id=seiyuu_elem.get("id"),
                 name=seiyuu_elem.text,
                 picture=seiyuu_elem.get("picture"),
             )
@@ -216,24 +220,26 @@ def _parse_characters(root: Element) -> list[AniDBCharacter]:
         ]
         rating, rating_votes = _rating_pair(character.find("rating"))
         result.append(
-            AniDBCharacter(
-                id=_safe_int(character.get("id")),
-                type=character.get("type"),
-                name=_text(character, "name"),
-                gender=_text(character, "gender"),
-                character_type=character_type_elem.text
-                if character_type_elem is not None
-                else None,
-                character_type_id=(
-                    _safe_int(character_type_elem.get("id"))
+            AniDBCharacter.model_validate(
+                {
+                    "id": character.get("id"),
+                    "type": character.get("type"),
+                    "name": _text(character, "name"),
+                    "gender": _text(character, "gender"),
+                    "character_type": character_type_elem.text
                     if character_type_elem is not None
-                    else None
-                ),
-                description=_text(character, "description"),
-                picture=_text(character, "picture"),
-                rating=rating,
-                rating_votes=rating_votes,
-                seiyuu=seiyuu_list,
+                    else None,
+                    "character_type_id": (
+                        character_type_elem.get("id")
+                        if character_type_elem is not None
+                        else None
+                    ),
+                    "description": _text(character, "description"),
+                    "picture": _text(character, "picture"),
+                    "rating": rating,
+                    "rating_votes": rating_votes,
+                    "seiyuu": seiyuu_list,
+                }
             )
         )
     return result
@@ -257,7 +263,7 @@ def _parse_creators(root: Element) -> list[AniDBCreator]:
 
     return [
         AniDBCreator(
-            id=_safe_int(creator.get("id")),
+            id=creator.get("id"),
             name=creator.text,
             role=creator.get("type"),
         )
@@ -267,10 +273,6 @@ def _parse_creators(root: Element) -> list[AniDBCreator]:
 
 def _parse_episodes(root: Element) -> list[AniDBEpisode]:
     """Extract episodes from the ``<episodes>`` element.
-
-    Episode number parsing depends on ``episode_type``:
-        - Type 1 (regular) → integer episode number
-        - All others        → raw string (e.g. "S1", "C3", "T1")
 
     Streaming links are extracted from per-episode ``<resources>`` (type 28 =
     Crunchyroll, episode-level identifier used to build watch URLs).
@@ -290,19 +292,6 @@ def _parse_episodes(root: Element) -> list[AniDBEpisode]:
     for episode in episodes_elem.findall("episode"):
         epno_elem = episode.find("epno")
         length_elem = episode.find("length")
-
-        episode_type: int | None = None
-        episode_number: int | str | None = None
-        if epno_elem is not None:
-            episode_type = _safe_int(epno_elem.get("type"))
-            if epno_elem.text:
-                if episode_type == 1:
-                    try:
-                        episode_number = int(epno_elem.text)
-                    except ValueError:
-                        episode_number = epno_elem.text
-                else:
-                    episode_number = epno_elem.text
 
         titles: dict[str, str] = {}
         for title_elem in episode.findall("title"):
@@ -325,23 +314,21 @@ def _parse_episodes(root: Element) -> list[AniDBEpisode]:
 
         rating, rating_votes = _rating_pair(episode.find("rating"))
         result.append(
-            AniDBEpisode(
-                id=_safe_int(episode.get("id")),
-                episode_number=episode_number,
-                episode_type=episode_type,
-                length=(
-                    int(length_elem.text)
-                    if length_elem is not None
-                    and length_elem.text
-                    and length_elem.text.isdigit()
-                    else None
-                ),
-                airdate=_text(episode, "airdate"),
-                rating=rating,
-                rating_votes=rating_votes,
-                summary=_text(episode, "summary"),
-                titles=titles,
-                streaming=streaming,
+            AniDBEpisode.model_validate(
+                {
+                    "id": episode.get("id"),
+                    "episode_number": epno_elem.text if epno_elem is not None else None,
+                    "episode_type": epno_elem.get("type")
+                    if epno_elem is not None
+                    else None,
+                    "length": length_elem.text if length_elem is not None else None,
+                    "airdate": _text(episode, "airdate"),
+                    "rating": rating,
+                    "rating_votes": rating_votes,
+                    "summary": _text(episode, "summary"),
+                    "titles": titles,
+                    "streaming": streaming,
+                }
             )
         )
     return result
@@ -460,23 +447,25 @@ def _parse_ratings(root: Element) -> AniDBRatings | None:
     if ratings_elem is None:
         return None
 
-    def _rating_value(tag: str) -> tuple[float | None, int]:
+    def _rating_value(tag: str) -> tuple[str | None, str | None]:
         elem = ratings_elem.find(tag)
         if elem is None:
-            return None, 0
-        return _safe_float(elem.text), _safe_count(elem.get("count"))
+            return None, None
+        return elem.text, elem.get("count")
 
     permanent, permanent_count = _rating_value("permanent")
     temporary, temporary_count = _rating_value("temporary")
     review, review_count = _rating_value("review")
 
-    return AniDBRatings(
-        permanent=permanent,
-        permanent_count=permanent_count,
-        temporary=temporary,
-        temporary_count=temporary_count,
-        review=review,
-        review_count=review_count,
+    return AniDBRatings.model_validate(
+        {
+            "permanent": permanent,
+            "permanent_count": permanent_count,
+            "temporary": temporary,
+            "temporary_count": temporary_count,
+            "review": review,
+            "review_count": review_count,
+        }
     )
 
 
@@ -499,64 +488,8 @@ def _text(elem: Element, tag: str) -> str | None:
     return child.text if child is not None else None
 
 
-def _int(elem: Element, tag: str, default: int = 0) -> int:
-    """Return the integer text content of a direct child element.
-
-    Args:
-        elem: Parent XML element to search within.
-        tag: Tag name of the child element to find.
-        default: Value to return if the child is absent or non-numeric.
-
-    Returns:
-        Parsed integer value, or ``default`` if not found or not parseable.
-    """
-    child = elem.find(tag)
-    if child is not None and child.text and child.text.isdigit():
-        return int(child.text)
-    return default
-
-
-def _safe_int(value: str | None) -> int | None:
-    """Parse a string attribute value to int, or None if absent or non-numeric."""
-    return int(value) if value and value.isdigit() else None
-
-
-def _safe_count(value: str | None, default: int = 0) -> int:
-    """Parse a count attribute, falling back rather than raising.
-
-    Args:
-        value: Raw attribute text.
-        default: Value to use when the attribute is absent or non-numeric.
-
-    Returns:
-        The parsed count, or ``default``.
-    """
-    parsed = _safe_int(value)
-    return default if parsed is None else parsed
-
-
-def _safe_float(value: str | None) -> float | None:
-    """Parse element text to float, or None if absent or non-numeric.
-
-    AniDB documents are thousands of lines; one malformed rating must not abort
-    the whole parse and discard the anime, its episodes and its characters.
-
-    Args:
-        value: Raw element text.
-
-    Returns:
-        The parsed value, or ``None``.
-    """
-    if not value or not value.strip():
-        return None
-    try:
-        return float(value.strip())
-    except ValueError:
-        return None
-
-
-def _rating_pair(elem: Element | None) -> tuple[float | None, int]:
-    """Extract score and vote count from a ``<rating votes="N">score</rating>`` element."""
+def _rating_pair(elem: Element | None) -> tuple[str | None, str | None]:
+    """Extract score and vote count text from ``<rating votes="N">score</rating>``."""
     if elem is None:
-        return None, 0
-    return _safe_float(elem.text), _safe_count(elem.get("votes"))
+        return None, None
+    return elem.text, elem.get("votes")

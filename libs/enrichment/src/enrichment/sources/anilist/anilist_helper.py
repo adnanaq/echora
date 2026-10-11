@@ -14,6 +14,7 @@ import sys
 from typing import Any
 
 import aiohttp
+from common.config import CacheConfig, RedisConfig
 from common.utils.retry import retry_with_backoff
 from enrichment.sources.base.base_helper import (
     BaseEnrichmentHelper,
@@ -26,7 +27,8 @@ from enrichment.sources.base.exceptions import (
     ServiceRateLimitedError,
 )
 from enrichment.sources.base.framework.repository import FileRepository, NullRepository
-from http_cache.instance import http_cache_manager
+from http_cache import HTTPCacheManager, configure_cache
+from http_cache.aiohttp_adapter import CachedAiohttpSession
 
 from .anilist_anime_models import AniListAnime
 from .anilist_character_models import AniListCharacterEdge
@@ -54,10 +56,15 @@ def _extract_anilist_id(url: str) -> int:
 class AniListHelper(BaseEnrichmentHelper):
     """Helper for AniList data fetching in AI enrichment pipeline."""
 
-    def __init__(self) -> None:
-        """Initialize AniList helper."""
+    def __init__(self, cache: HTTPCacheManager) -> None:
+        """Initialize AniList helper.
+
+        Args:
+            cache: Supplies the HTTP session, cached when caching is on.
+        """
         self.base_url = "https://graphql.anilist.co"
-        self.session: aiohttp.ClientSession | None = None
+        self._cache = cache
+        self.session: aiohttp.ClientSession | CachedAiohttpSession | None = None
         self.rate_limit_remaining = 90
 
     async def fetch_all(
@@ -105,7 +112,7 @@ class AniListHelper(BaseEnrichmentHelper):
     async def _ensure_session(self) -> None:
         """Lazily create the aiohttp session on first use."""
         if self.session is None:
-            self.session = http_cache_manager.get_aiohttp_session(
+            self.session = self._cache.get_aiohttp_session(
                 "anilist",
                 timeout=aiohttp.ClientTimeout(total=None),
             )
@@ -263,6 +270,16 @@ class AniListHelper(BaseEnrichmentHelper):
         status
         season
         seasonYear
+        startDate {
+          year
+          month
+          day
+        }
+        endDate {
+          year
+          month
+          day
+        }
         countryOfOrigin
         isAdult
         coverImage {
@@ -586,7 +603,7 @@ async def main() -> int:
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO)
-    helper = AniListHelper()
+    helper = AniListHelper(configure_cache(CacheConfig(), RedisConfig()))
     ids = {"anilist_url": args.url}
     try:
         if args.url:

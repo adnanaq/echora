@@ -830,7 +830,7 @@ env:
   OTEL_ENABLED: "true"
   OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector.monitoring.svc.cluster.local:4317"
   CACHE_ENABLED: "true"
-  REDIS_URL: "redis://redis:6379/0"
+  REDIS_URL: "redis://redis:6379/1"
 
 resources:
   requests:
@@ -1220,7 +1220,7 @@ env:
   ENVIRONMENT: "development"
   QDRANT_URL: "http://qdrant.infra.svc.cluster.local:6333"
   OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector.monitoring.svc.cluster.local:4317"
-  REDIS_URL: "redis://redis.infra.svc.cluster.local:6379/0"
+  REDIS_URL: "redis://redis.infra.svc.cluster.local:6379/1"
 ```
 
 ### Enrichment Service (`apps/enrichment_service/`)
@@ -1229,10 +1229,10 @@ env:
 
 | Area | Status | Detail |
 |------|--------|--------|
-| Configuration | Ready | Env-var driven, has `CacheConfig` in `libs/http_cache/` with full Redis settings |
+| Configuration | Ready | Env-var driven through the shared `Settings`; Redis connection settings in `RedisConfig` |
 | gRPC health | Ready | Standard `HealthServicer` in `main.py` |
 | Graceful shutdown | Ready | SIGTERM handler, 5s grace period |
-| HTTP cache (Hishel) | Ready | `CacheConfig` in `libs/http_cache/config.py`: `CACHE_ENABLED`, `REDIS_URL`, `FORCE_CACHE`, per-service TTLs |
+| HTTP cache (Hishel) | Ready | `CacheConfig` in `libs/common/.../config/cache_config.py`: `CACHE_ENABLED`, `FORCE_CACHE`, per-service TTLs; configured at startup and closed on shutdown |
 | Inter-service calls | N/A | Only calls external sources (MyAnimeList, AniList, Kitsu, etc.) — no internal gRPC yet |
 | NATS integration | N/A | Not integrated yet — will be needed when ingestion pipeline publishes events |
 | File system | Needs PVC | Reads `/app/data` (anime-offline-database.json), writes `/app/assets/seed_data` |
@@ -1483,14 +1483,14 @@ Cache invalidation options:
 
 #### Current State in Codebase
 
-- `REDIS_URL=redis://redis:6379/0` set in docker-compose for vector service — consumed by `RedisConfig`
-- `libs/common/config/redis_config.py` — standalone `RedisConfig(BaseModel)`, decoupled from Hishel
+- `REDIS_URL=redis://redis:6379/1` set in docker-compose for the vector service (database 1; enrichment uses 0) — consumed by `RedisConfig`
+- `libs/common/config/redis_config.py` — `RedisConfig`, the one Redis connection config both services use
 - `libs/vector_processing/cache.py` — `EmbeddingCache` class (async Redis, fail-open, MGET/MSET)
-- `apps/vector_service/runtime.py` — creates `EmbeddingCache` from `settings.redis.redis_url` if set,
-  injects into `TextProcessor` and `VisionProcessor` via constructor DI
+- `apps/vector_service/runtime.py` — creates `EmbeddingCache` with `create_redis_client(settings.redis)`
+  when `REDIS_URL` is set, injects into `TextProcessor` and `VisionProcessor` via constructor DI
 - `apps/vector_service/main.py` — closes embedding cache on shutdown
-- `libs/http_cache/config.py` still owns Hishel-specific Redis config via `CacheConfig(BaseSettings)` —
-  separate concern from embedding cache
+- Both services build their Redis clients from the same `RedisConfig`; compose can give each
+  service its own `REDIS_URL`
 
 #### Tools & Libraries
 

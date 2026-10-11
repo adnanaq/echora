@@ -3,8 +3,6 @@
 import pytest
 from common.models.anime import ThemeEntry
 from enrichment.sources.kitsu.kitsu_mapper import (
-    _strip_html,
-    _strip_preamble,
     anime_from_kitsu,
     character_from_kitsu,
     episode_from_kitsu,
@@ -22,6 +20,7 @@ from enrichment.sources.kitsu.kitsu_models import (
     KitsuEpisode,
     KitsuEpisodeAttributes,
     KitsuImage,
+    KitsuMapping,
     KitsuMediaCharacter,
     KitsuMediaCharacterAttributes,
     KitsuPerson,
@@ -60,9 +59,104 @@ def _make_anime(**overrides) -> KitsuAnime:
         abbreviatedTitles=["OP"],
     )
     companies = overrides.pop("companies", [])
+    mappings = overrides.pop("mappings", [])
     for key, val in overrides.items():
         setattr(attrs, key, val)
-    return KitsuAnime(id="12", attributes=attrs, companies=companies)
+    return KitsuAnime(id="12", attributes=attrs, companies=companies, mappings=mappings)
+
+
+def _mapping(site: str, external_id: str) -> KitsuMapping:
+    return KitsuMapping.model_validate(
+        {"id": site, "attributes": {"externalSite": site, "externalId": external_id}}
+    )
+
+
+@pytest.mark.parametrize(
+    ("site", "external_id", "platform", "address"),
+    [
+        ("myanimelist/anime", "21", "myanimelist", "https://myanimelist.net/anime/21"),
+        ("anilist/anime", "21", "anilist", "https://anilist.co/anime/21"),
+        ("anilist/manga", "30013", "anilist", "https://anilist.co/manga/30013"),
+        ("anidb", "69", "anidb", "https://anidb.net/anime/69"),
+        (
+            "animenewsnetwork",
+            "836",
+            "anime_news_network",
+            "https://www.animenewsnetwork.com/encyclopedia/anime.php?id=836",
+        ),
+        (
+            "thetvdb/series",
+            "81797",
+            "thetvdb",
+            "https://thetvdb.com/dereferrer/series/81797",
+        ),
+        (
+            "thetvdb/season",
+            "482226",
+            "thetvdb",
+            "https://thetvdb.com/dereferrer/season/482226",
+        ),
+        ("trakt", "37696", "trakt", "https://trakt.tv/shows/37696"),
+    ],
+)
+def test_anime_from_kitsu_mapping_with_known_site_becomes_external_link(
+    site: str, external_id: str, platform: str, address: str
+) -> None:
+    result = anime_from_kitsu(_make_anime(mappings=[_mapping(site, external_id)]))
+    assert result["external_sources"] == [{"platform": platform, "source": address}]
+
+
+def test_anime_from_kitsu_thetvdb_series_and_season_number_links_series() -> None:
+    result = anime_from_kitsu(_make_anime(mappings=[_mapping("thetvdb", "79099/3")]))
+    assert [link["source"] for link in result["external_sources"]] == [
+        "https://thetvdb.com/dereferrer/series/79099"
+    ]
+
+
+def test_anime_from_kitsu_mappings_to_same_address_give_one_link() -> None:
+    result = anime_from_kitsu(
+        _make_anime(
+            mappings=[
+                _mapping("thetvdb/series", "79099"),
+                _mapping("thetvdb", "79099/3"),
+                _mapping("thetvdb/season", "482226"),
+            ]
+        )
+    )
+    assert [link["source"] for link in result["external_sources"]] == [
+        "https://thetvdb.com/dereferrer/series/79099",
+        "https://thetvdb.com/dereferrer/season/482226",
+    ]
+
+
+@pytest.mark.parametrize(
+    "mapping",
+    [
+        _mapping("aozora", "a70pbqlcBK"),
+        _mapping("hulu", "50024059"),
+        _mapping("some-new-site", "1"),
+        _mapping("anidb", ""),
+    ],
+    ids=["aozora", "hulu", "unknown_site", "empty_id"],
+)
+def test_anime_from_kitsu_mapping_without_linkable_page_skipped(
+    mapping: KitsuMapping,
+) -> None:
+    result = anime_from_kitsu(_make_anime(mappings=[mapping]))
+    assert result["external_sources"] == []
+
+
+def test_anime_from_kitsu_trakt_mapping_on_movie_links_series_show_page() -> None:
+    result = anime_from_kitsu(
+        _make_anime(subtype="movie", mappings=[_mapping("trakt", "24724")])
+    )
+    assert result["external_sources"] == [
+        {"platform": "trakt", "source": "https://trakt.tv/shows/24724"}
+    ]
+
+
+def test_anime_from_kitsu_without_mappings_gives_no_external_links() -> None:
+    assert anime_from_kitsu(_make_anime())["external_sources"] == []
 
 
 def test_companies_split_by_role() -> None:
@@ -398,135 +492,6 @@ def test_episode_from_kitsu_fallback_title():
     assert result["sources"] == []  # no slug → no valid URL
 
 
-# =============================================================================
-# _strip_html
-# =============================================================================
-
-
-def test_strip_html_removes_tags_and_decodes_entities():
-    assert _strip_html("<p>Luffy &amp; Zoro</p>") == "Luffy & Zoro"
-
-
-def test_strip_html_recovers_cp1252_mojibake():
-    """UTF-8 bytes misread as cp1252 (e.g. Japanese katakana) are restored."""
-    # ã‚¢ = cp1252 bytes E3 82 A2, which decode as UTF-8 to ア
-    mojibake = "Aisa (\u00e3\u201a\u00a2\u00e3\u201a\u00a4\u00e3\u201a\u00b5) is a Shandian girl."
-    result = _strip_html(mojibake)
-    assert result == "Aisa (アイサ) is a Shandian girl."
-
-
-def test_strip_html_keeps_text_that_cannot_be_recovered():
-    """Text with characters outside cp1252 range (e.g. real CJK) is returned unchanged."""
-    real_japanese = "カイドウ is one of the Yonko."
-    assert _strip_html(real_japanese) == real_japanese
-
-
-def test_strip_html_none_returns_none():
-    assert _strip_html(None) is None
-
-
-def test_strip_html_empty_returns_none():
-    assert _strip_html("") is None
-
-
-# =============================================================================
-# _strip_preamble
-# =============================================================================
-
-
-def test_strip_preamble_no_preamble_returns_unchanged():
-    """Plain narrative without a key-value block is returned as-is."""
-    desc = "A dwarf who is no stranger to dungeons. He's also a great cook."
-    assert _strip_preamble(desc) == desc
-
-
-def test_strip_preamble_simple_preamble():
-    """Single-chunk preamble separated from narrative by double-space (Luffy/Franky pattern)."""
-    desc = (
-        "Name: Monkey D. Luffy Age: 17 Birthdate: May 5 Height: 172 cm"
-        "  Luffy is the captain of the Straw Hat Pirates."
-    )
-    assert _strip_preamble(desc) == "Luffy is the captain of the Straw Hat Pirates."
-
-
-def test_strip_preamble_internal_double_space_in_preamble():
-    """Preamble with internal double-spaces (Nami/Zoro pattern).
-
-    Some preambles contain double-spaces mid-block (e.g. after a zodiac sign):
-        "Age: 18 Birthdate: July 3, Cancer  Height: 169 cm  <narrative>"
-    The algorithm must skip ALL key-value chunks, not just the first.
-    """
-    desc = (
-        "Age: 18; 20 Birthdate: July 3, Cancer"
-        "  Height: 169 cm Affiliation: Straw Hat Pirates Position: Navigator"
-        "   She is the navigator of the Straw Hat Pirates."
-    )
-    assert _strip_preamble(desc) == "She is the navigator of the Straw Hat Pirates."
-
-
-def test_strip_preamble_value_continuation_with_embedded_prose():
-    """Double-space between key and value puts prose in same chunk (Robin pattern).
-
-    "Bounty:  130,000,000 (previously: 79,000,000) Robin is the seventh member"
-    The value chunk starts with a digit, but prose begins after ")".
-    """
-    desc = (
-        "Age: 28 Birthdate: February 6, Aquarius Height: 188 cm"
-        "  Sizes: 99-59-89 Affiliation: Straw Hat Pirates Bounty:"
-        "  130,000,000 (previously: 79,000,000) Robin is the seventh member."
-    )
-    assert _strip_preamble(desc) == "Robin is the seventh member."
-
-
-def test_strip_preamble_preamble_only_returns_none():
-    """Preamble with no narrative after the separator returns None."""
-    desc = "Age: 15 Birthday: November 3 Height: 163 cm  "
-    assert _strip_preamble(desc) is None
-
-
-def test_strip_preamble_none_input():
-    assert _strip_preamble(None) is None
-
-
-def test_strip_preamble_empty_string():
-    assert _strip_preamble("") is None
-
-
-def test_strip_preamble_preserves_full_narrative():
-    """Narrative after stripping preamble is complete, not truncated mid-sentence."""
-    narrative = (
-        "Zoro was the first crew member to be recruited by Luffy. "
-        "Zoro is a skilled swordsman who fights with santoryu."
-    )
-    desc = (
-        "Name: Roronoa Zoro Age: 19 Birthdate: November 11, Scorpio"
-        "  Height: 178 cm Affiliation: Straw Hat Pirates"
-        "  " + narrative
-    )
-    assert _strip_preamble(desc) == narrative
-
-
-def test_strip_preamble_trailing_spaces_produce_no_empty_chunks():
-    """Trailing double-space after preamble (no narrative) must not crash on empty chunks."""
-    # re.split on "Age: 18  " yields ["Age: 18", ""] — the empty string must be skipped
-    assert _strip_preamble("Age: 18  ") is None
-
-
-def test_strip_preamble_narrative_with_internal_double_spaces():
-    """Narrative split into multiple chunks by its own double-spaces is joined correctly.
-
-    The `in_narrative` branch (line 102) collects all subsequent chunks after the
-    first narrative chunk is found, so multi-chunk narratives are complete.
-    """
-    desc = (
-        "Age: 19 Height: 178 cm"
-        "  First sentence of narrative.  Second sentence after double space."
-    )
-    result = _strip_preamble(desc)
-    # Double-spaces within narrative split into parts that are joined with single space
-    assert result == "First sentence of narrative. Second sentence after double space."
-
-
 def test_character_description_strips_preamble():
     """character_from_kitsu strips preamble from description before storing."""
     preamble_desc = (
@@ -556,3 +521,50 @@ def test_episode_from_kitsu_with_slug():
     )
     result = episode_from_kitsu(ep, anime_slug="DAN-DA-DAN")
     assert result["sources"] == ["https://kitsu.app/anime/DAN-DA-DAN/episodes/11"]
+
+
+def _validated_anime(**attributes: object) -> KitsuAnime:
+    return KitsuAnime.model_validate(
+        {
+            "id": "12",
+            "attributes": {
+                "slug": "one-piece",
+                "canonicalTitle": "One Piece",
+                **attributes,
+            },
+        }
+    )
+
+
+def test_anime_from_kitsu_zero_average_rating_gives_zero_score() -> None:
+    result = anime_from_kitsu(_validated_anime(averageRating="0.00"))
+
+    assert result["statistics"]["kitsu"]["score"] == 0.0
+
+
+def test_anime_from_kitsu_empty_titles_left_out() -> None:
+    result = anime_from_kitsu(_validated_anime(titles={"en": "", "ja_jp": " "}))
+
+    assert "title_english" not in result
+    assert "title_japanese" not in result
+
+
+def test_anime_from_kitsu_empty_abbreviated_title_left_out() -> None:
+    result = anime_from_kitsu(_validated_anime(abbreviatedTitles=["OP", ""]))
+
+    assert result["synonyms"] == ["OP"]
+
+
+def test_episode_from_kitsu_empty_synopsis_html_uses_description() -> None:
+    episode = KitsuEpisode.model_validate(
+        {
+            "id": "1",
+            "attributes": {
+                "number": 1,
+                "synopsis": "<p></p>",
+                "description": "Luffy sets sail.",
+            },
+        }
+    )
+
+    assert episode_from_kitsu(episode)["synopsis"] == "Luffy sets sail."

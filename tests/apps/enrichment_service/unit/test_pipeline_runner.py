@@ -1,13 +1,64 @@
-from __future__ import annotations
-
 import json
+from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
+from unittest.mock import patch
 
 import pytest
+from common.config import EnrichmentConfig
+from enrichment.pipeline.enrichment_pipeline import EnrichmentPipeline
 from enrichment_service import pipeline_runner
+from http_cache import HTTPCacheManager, get_cache
 
 
-def test_get_anime_by_title_uses_only_primary_title() -> None:
+class EchoPipeline(EnrichmentPipeline):
+    built: list[EchoPipeline] = []
+
+    def __init__(self, config: EnrichmentConfig, cache: HTTPCacheManager) -> None:
+        self.config = config
+        self.cache = cache
+        EchoPipeline.built.append(self)
+
+    async def __aenter__(self) -> EchoPipeline:
+        return self
+
+    async def __aexit__(self, *exc_info: object) -> bool:
+        return False
+
+    async def enrich_anime(
+        self, offline_data: dict[str, Any], **kwargs: Any
+    ) -> dict[str, Any]:
+        return {"anime": offline_data["title"], "kwargs": kwargs}
+
+
+@pytest.fixture
+def echo_pipeline() -> Iterator[list[EchoPipeline]]:
+    EchoPipeline.built = []
+    with patch.object(pipeline_runner, "EnrichmentPipeline", EchoPipeline):
+        yield EchoPipeline.built
+
+
+@pytest.fixture
+def database(tmp_path: Path) -> Path:
+    path = tmp_path / "anime.json"
+    path.write_text(json.dumps({"data": [{"title": "Cowboy Bebop"}]}), "utf-8")
+    return path
+
+
+async def _run(database: Path, output_dir: Path, **selectors: Any) -> tuple:
+    return await pipeline_runner.run_pipeline_and_write_artifact(
+        config=selectors.pop("config", EnrichmentConfig()),
+        cache=selectors.pop("cache", get_cache()),
+        file_path=database,
+        agent_dir=None,
+        skip_services=None,
+        only_services=None,
+        output_dir=output_dir,
+        **{"index": None, "title": None, **selectors},
+    )
+
+
+def test_get_anime_by_title_english_title_only_raises_value_error() -> None:
     database = {
         "data": [
             {
@@ -25,165 +76,109 @@ def test_get_anime_by_title_uses_only_primary_title() -> None:
         pipeline_runner.get_anime_by_title(database, "Naruto Hurricane Chronicles")
 
 
-def test_get_anime_by_index_requires_data_key() -> None:
+def test_get_anime_by_index_missing_data_key_raises_value_error() -> None:
     with pytest.raises(
         ValueError, match="Database payload missing required 'data' key"
     ):
         pipeline_runner.get_anime_by_index({}, 0)
+
+
+def test_get_anime_by_index_data_not_list_raises_type_error() -> None:
     with pytest.raises(TypeError, match="Database payload 'data' must be a list"):
         pipeline_runner.get_anime_by_index({"data": "not_a_list"}, 0)
 
 
-def test_get_anime_by_index_raises_when_out_of_range() -> None:
+def test_get_anime_by_index_out_of_range_raises_value_error() -> None:
     with pytest.raises(ValueError, match="Index 5 out of range"):
         pipeline_runner.get_anime_by_index({"data": [{"title": "A"}]}, 5)
 
 
-def test_get_anime_by_title_returns_single_exact_match() -> None:
-    db = {"data": [{"title": "Cowboy Bebop"}, {"title": "Trigun"}]}
-    result = pipeline_runner.get_anime_by_title(db, "Cowboy Bebop")
-    assert result["title"] == "Cowboy Bebop"
+def test_get_anime_by_title_single_exact_match_returns_it() -> None:
+    database = {"data": [{"title": "Cowboy Bebop"}, {"title": "Trigun"}]}
+
+    assert pipeline_runner.get_anime_by_title(database, "Cowboy Bebop") == {
+        "title": "Cowboy Bebop"
+    }
 
 
-def test_get_anime_by_title_raises_on_multiple_exact_matches() -> None:
-    db = {"data": [{"title": "Cowboy Bebop"}, {"title": "Cowboy Bebop"}]}
+def test_get_anime_by_title_multiple_exact_matches_raises_value_error() -> None:
+    database = {"data": [{"title": "Cowboy Bebop"}, {"title": "Cowboy Bebop"}]}
+
     with pytest.raises(ValueError, match="Multiple exact matches"):
-        pipeline_runner.get_anime_by_title(db, "Cowboy Bebop")
+        pipeline_runner.get_anime_by_title(database, "Cowboy Bebop")
 
 
-def test_get_anime_by_title_returns_single_partial_match() -> None:
-    db = {"data": [{"title": "Cowboy Bebop"}, {"title": "Trigun"}]}
-    result = pipeline_runner.get_anime_by_title(db, "cowboy")
-    assert result["title"] == "Cowboy Bebop"
+def test_get_anime_by_title_single_partial_match_returns_it() -> None:
+    database = {"data": [{"title": "Cowboy Bebop"}, {"title": "Trigun"}]}
+
+    assert pipeline_runner.get_anime_by_title(database, "cowboy") == {
+        "title": "Cowboy Bebop"
+    }
 
 
-def test_get_anime_by_title_raises_on_multiple_partial_matches() -> None:
-    db = {"data": [{"title": "Cowboy Bebop"}, {"title": "Cowboy Funk"}]}
+def test_get_anime_by_title_multiple_partial_matches_raises_value_error() -> None:
+    database = {"data": [{"title": "Cowboy Bebop"}, {"title": "Cowboy Funk"}]}
+
     with pytest.raises(ValueError, match="Multiple matches"):
-        pipeline_runner.get_anime_by_title(db, "cowboy")
+        pipeline_runner.get_anime_by_title(database, "cowboy")
 
 
-def test_get_anime_by_title_requires_data_key() -> None:
+def test_get_anime_by_title_missing_data_key_raises_value_error() -> None:
     with pytest.raises(
         ValueError, match="Database payload missing required 'data' key"
     ):
         pipeline_runner.get_anime_by_title({}, "Naruto")
 
 
-def test_artifact_name_falls_back_to_unknown_slug() -> None:
+def test_artifact_name_title_without_letters_uses_unknown_slug() -> None:
     filename = pipeline_runner._artifact_name("!!!")
+
     assert filename.startswith("unknown_")
     assert filename.endswith(".json")
 
 
-@pytest.mark.asyncio
-async def test_run_pipeline_and_write_artifact_returns_full_payload(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+async def test_run_pipeline_and_write_artifact_index_selector_writes_full_payload(
+    tmp_path: Path, database: Path, echo_pipeline: list[EchoPipeline]
 ) -> None:
-    input_path = tmp_path / "anime.json"
-    input_path.write_text(
-        json.dumps({"data": [{"title": "Cowboy Bebop"}]}),
-        encoding="utf-8",
-    )
-
-    class _FakePipeline:
-        async def __aenter__(self) -> _FakePipeline:
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb) -> bool:
-            return False
-
-        async def enrich_anime(self, anime_data, **kwargs):
-            return {"anime": anime_data["title"], "kwargs": kwargs}
-
-    monkeypatch.setattr(pipeline_runner, "EnrichmentPipeline", _FakePipeline)
-
-    (
-        output_path,
-        result,
-        payload,
-    ) = await pipeline_runner.run_pipeline_and_write_artifact(
-        file_path=input_path,
-        index=0,
-        title=None,
-        agent_dir=None,
-        skip_services=None,
-        only_services=None,
-        output_dir=tmp_path / "out",
-    )
+    output_path, result, payload = await _run(database, tmp_path / "out", index=0)
 
     assert result["anime"] == "Cowboy Bebop"
     assert payload["schema_version"] == "1.0"
     assert payload["data"] == result
-    assert Path(output_path).exists()
     assert Path(output_path).parent == tmp_path / "out"
+    assert json.loads(Path(output_path).read_text("utf-8")) == payload
 
 
-@pytest.mark.asyncio
-async def test_run_pipeline_and_write_artifact_with_title_selector(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+async def test_run_pipeline_and_write_artifact_builds_pipeline_with_given_config_and_cache(
+    tmp_path: Path, database: Path, echo_pipeline: list[EchoPipeline]
 ) -> None:
-    input_path = tmp_path / "anime.json"
-    input_path.write_text(
-        json.dumps({"data": [{"title": "Cowboy Bebop"}]}), encoding="utf-8"
-    )
+    config = EnrichmentConfig()
+    cache = get_cache()
 
-    class _FakePipeline:
-        async def __aenter__(self) -> _FakePipeline:
-            return self
+    await _run(database, tmp_path / "out", index=0, config=config, cache=cache)
 
-        async def __aexit__(self, exc_type, exc, tb) -> bool:
-            return False
+    assert len(echo_pipeline) == 1
+    assert echo_pipeline[0].config is config
+    assert echo_pipeline[0].cache is cache
 
-        async def enrich_anime(self, anime_data, **kwargs):
-            return {"anime": anime_data["title"]}
 
-    monkeypatch.setattr(pipeline_runner, "EnrichmentPipeline", _FakePipeline)
-
-    _, result, _ = await pipeline_runner.run_pipeline_and_write_artifact(
-        file_path=input_path,
-        index=None,
-        title="Cowboy Bebop",
-        agent_dir=None,
-        skip_services=None,
-        only_services=None,
-        output_dir=tmp_path / "out",
-    )
+async def test_run_pipeline_and_write_artifact_title_selector_enriches_match(
+    tmp_path: Path, database: Path, echo_pipeline: list[EchoPipeline]
+) -> None:
+    _, result, _ = await _run(database, tmp_path / "out", title="Cowboy Bebop")
 
     assert result["anime"] == "Cowboy Bebop"
 
 
-@pytest.mark.asyncio
-async def test_run_pipeline_forwards_fetch_flags(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+async def test_run_pipeline_and_write_artifact_fetch_flags_forwarded_and_recorded(
+    tmp_path: Path, database: Path, echo_pipeline: list[EchoPipeline]
 ) -> None:
-    input_path = tmp_path / "anime.json"
-    input_path.write_text(
-        json.dumps({"data": [{"title": "Cowboy Bebop"}]}), encoding="utf-8"
-    )
-
-    class _FakePipeline:
-        async def __aenter__(self) -> _FakePipeline:
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb) -> bool:
-            return False
-
-        async def enrich_anime(self, anime_data, **kwargs):
-            return {"anime": anime_data["title"], "kwargs": kwargs}
-
-    monkeypatch.setattr(pipeline_runner, "EnrichmentPipeline", _FakePipeline)
-
-    _, result, payload = await pipeline_runner.run_pipeline_and_write_artifact(
-        file_path=input_path,
+    _, result, payload = await _run(
+        database,
+        tmp_path / "out",
         index=0,
-        title=None,
-        agent_dir=None,
-        skip_services=None,
-        only_services=None,
         fetch_characters=False,
         fetch_episodes=False,
-        output_dir=tmp_path / "out",
     )
 
     assert result["kwargs"]["fetch_characters"] is False
@@ -192,45 +187,15 @@ async def test_run_pipeline_forwards_fetch_flags(
     assert payload["source_inputs"]["fetch_episodes"] is False
 
 
-@pytest.mark.asyncio
-async def test_artifact_rejects_conflicting_selectors(
-    tmp_path: Path,
+async def test_run_pipeline_and_write_artifact_both_selectors_raises_value_error(
+    tmp_path: Path, database: Path
 ) -> None:
-    input_path = tmp_path / "anime.json"
-    input_path.write_text(
-        json.dumps({"data": [{"title": "Cowboy Bebop"}]}),
-        encoding="utf-8",
-    )
-
     with pytest.raises(ValueError, match="Provide either index or title, not both"):
-        await pipeline_runner.run_pipeline_and_write_artifact(
-            file_path=input_path,
-            index=0,
-            title="Cowboy Bebop",
-            agent_dir=None,
-            skip_services=None,
-            only_services=None,
-            output_dir=tmp_path / "out",
-        )
+        await _run(database, tmp_path / "out", index=0, title="Cowboy Bebop")
 
 
-@pytest.mark.asyncio
-async def test_artifact_rejects_missing_selectors(
-    tmp_path: Path,
+async def test_run_pipeline_and_write_artifact_no_selector_raises_value_error(
+    tmp_path: Path, database: Path
 ) -> None:
-    input_path = tmp_path / "anime.json"
-    input_path.write_text(
-        json.dumps({"data": [{"title": "Cowboy Bebop"}]}),
-        encoding="utf-8",
-    )
-
     with pytest.raises(ValueError, match="Either index or title must be provided"):
-        await pipeline_runner.run_pipeline_and_write_artifact(
-            file_path=input_path,
-            index=None,
-            title=None,
-            agent_dir=None,
-            skip_services=None,
-            only_services=None,
-            output_dir=tmp_path / "out",
-        )
+        await _run(database, tmp_path / "out")

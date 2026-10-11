@@ -1,8 +1,5 @@
-"""Unit tests for mal_episode_count_crawler.py — episode counter span parsing."""
-
-from unittest.mock import AsyncMock, patch
-
 import pytest
+from enrichment.sources.mal import mal_episode_count_crawler
 from enrichment.sources.mal.mal_episode_count_crawler import (
     _EPISODE_COUNT_XPATH,
     _extract_episode_count,
@@ -15,186 +12,99 @@ pytestmark = pytest.mark.asyncio
 
 ANIME_URL = "https://myanimelist.net/anime/21/One_Piece"
 EPISODE_LIST_URL = f"{ANIME_URL}/episode"
+_PAGE_WITHOUT_COUNTER = (
+    "<html><body><h2 class='h2_overwrite'>Episodes</h2></body></html>"
+)
 
-_PATCH = "enrichment.sources.mal.mal_episode_count_crawler._fetch_episode_count_data"
 
-_HTML_ONGOING = """<html><body>
+def _episode_list_page(counter: str) -> str:
+    return f"""<html><body>
   <h2 class="h2_overwrite">Episodes</h2>
-  <span class="di-ib pl4 fw-n fs10">(1,155/Unknown)</span>
+  <span class="di-ib pl4 fw-n fs10">{counter}</span>
 </body></html>"""
 
-_HTML_FINISHED = """<html><body>
-  <h2 class="h2_overwrite">Episodes</h2>
-  <span class="di-ib pl4 fw-n fs10">(26/26)</span>
-</body></html>"""
+
+@pytest.fixture
+def episode_list_browser(open_browser, browser_serving):
+    def serve(html: str):
+        return open_browser(
+            mal_episode_count_crawler, browser_serving({EPISODE_LIST_URL: html})
+        )
+
+    return serve
 
 
-# =============================================================================
-# _EPISODE_COUNT_XPATH invariant
-# =============================================================================
-
-
-def test_xpath_targets_episodes_heading() -> None:
+def test_episode_count_xpath_targets_counter_after_episodes_heading() -> None:
     assert "h2_overwrite" in _EPISODE_COUNT_XPATH
     assert "Episodes" in _EPISODE_COUNT_XPATH
     assert "following-sibling::span" in _EPISODE_COUNT_XPATH
 
 
-# =============================================================================
-# _extract_episode_count
-# =============================================================================
-
-
-@pytest.mark.parametrize(
-    "html, expected",
-    [
-        (_HTML_ONGOING, "(1,155/Unknown)"),
-        (_HTML_FINISHED, "(26/26)"),
-    ],
-)
-def test_extract_parses_counter(html: str, expected: str) -> None:
-    assert _extract_episode_count(html) == expected
-
-
-def test_extract_empty_html_returns_none() -> None:
-    assert _extract_episode_count("") is None
-
-
-def test_extract_missing_span_returns_none() -> None:
-    assert (
-        _extract_episode_count(
-            "<html><body><h2 class='h2_overwrite'>Episodes</h2></body></html>"
-        )
-        is None
-    )
-
-
-# =============================================================================
-# _fetch_episode_count_html
-# =============================================================================
-
-
-async def test_fetch_html_success() -> None:
-    page_mock = AsyncMock()
-    page_mock.wait_for = AsyncMock()
-    page_mock.get_content = AsyncMock(return_value=_HTML_ONGOING)
-    browser_mock = AsyncMock()
-    browser_mock.get = AsyncMock(return_value=page_mock)
-    browser_mock.stop = AsyncMock()
-
-    with pytest.MonkeyPatch.context() as mp:
-        import zendriver as zd
-
-        mp.setattr(zd, "start", AsyncMock(return_value=browser_mock))
-        result = await _fetch_episode_count_html(EPISODE_LIST_URL)
-
-    assert result == _HTML_ONGOING
-    page_mock.wait_for.assert_awaited_once()
-
-
-async def test_fetch_html_navigation_failure_returns_none() -> None:
-    page_mock = AsyncMock()
-    page_mock.wait_for = AsyncMock(side_effect=Exception("timeout"))
-    browser_mock = AsyncMock()
-    browser_mock.get = AsyncMock(return_value=page_mock)
-    browser_mock.stop = AsyncMock()
-
-    with pytest.MonkeyPatch.context() as mp:
-        import zendriver as zd
-
-        mp.setattr(zd, "start", AsyncMock(return_value=browser_mock))
-        result = await _fetch_episode_count_html(EPISODE_LIST_URL)
-
-    assert result is None
-
-
-async def test_fetch_html_browser_stop_exception_swallowed() -> None:
-    page_mock = AsyncMock()
-    page_mock.wait_for = AsyncMock()
-    page_mock.get_content = AsyncMock(return_value=_HTML_FINISHED)
-    browser_mock = AsyncMock()
-    browser_mock.get = AsyncMock(return_value=page_mock)
-    browser_mock.stop = AsyncMock(side_effect=Exception("stop failed"))
-
-    with pytest.MonkeyPatch.context() as mp:
-        import zendriver as zd
-
-        mp.setattr(zd, "start", AsyncMock(return_value=browser_mock))
-        result = await _fetch_episode_count_html(EPISODE_LIST_URL)
-
-    assert result == _HTML_FINISHED
-
-
-# =============================================================================
-# _fetch_episode_count_data
-# =============================================================================
-
-
-async def test_fetch_data_success(mocker) -> None:
-    mocker.patch(
-        "http_cache.result_cache.get_cache_config",
-        return_value=mocker.MagicMock(cache_enabled=False),
-    )
-    mocker.patch(
-        "enrichment.sources.mal.mal_episode_count_crawler._fetch_episode_count_html",
-        new=AsyncMock(return_value=_HTML_ONGOING),
-    )
-    result = await _fetch_episode_count_data(EPISODE_LIST_URL)
-    assert result == "(1,155/Unknown)"
+@pytest.mark.parametrize("counter", ["(1,155/Unknown)", "(26/26)"])
+def test_extract_episode_count_episode_list_page_returns_counter(counter: str) -> None:
+    assert _extract_episode_count(_episode_list_page(counter)) == counter
 
 
 @pytest.mark.parametrize(
     "html",
     [
-        None,
-        "<html><body><p>no heading</p></body></html>",
+        "",
+        _PAGE_WITHOUT_COUNTER,
+        '<?xml version="1.0" encoding="utf-8"?><html><body><p>x</p></body></html>',
     ],
 )
-async def test_fetch_data_returns_none_on_failure(html: str | None, mocker) -> None:
-    mocker.patch(
-        "http_cache.result_cache.get_cache_config",
-        return_value=mocker.MagicMock(cache_enabled=False),
-    )
-    mocker.patch(
-        "enrichment.sources.mal.mal_episode_count_crawler._fetch_episode_count_html",
-        new=AsyncMock(return_value=html),
-    )
-    assert await _fetch_episode_count_data(EPISODE_LIST_URL) is None
+def test_extract_episode_count_page_without_counter_returns_none(html: str) -> None:
+    assert _extract_episode_count(html) is None
 
 
-# =============================================================================
-# fetch_mal_episode_count
-# =============================================================================
+async def test_fetch_episode_count_html_episode_list_page_returns_content(
+    episode_list_browser,
+) -> None:
+    html = _episode_list_page("(1,155/Unknown)")
+
+    with episode_list_browser(html):
+        assert await _fetch_episode_count_html(EPISODE_LIST_URL) == html
+
+
+async def test_fetch_episode_count_html_page_without_heading_returns_none(
+    episode_list_browser,
+) -> None:
+    with episode_list_browser("<html><body><p>no heading</p></body></html>"):
+        assert await _fetch_episode_count_html(EPISODE_LIST_URL) is None
+
+
+async def test_fetch_episode_count_data_episode_list_page_returns_counter(
+    episode_list_browser,
+) -> None:
+    with episode_list_browser(_episode_list_page("(1,155/Unknown)")):
+        assert await _fetch_episode_count_data(EPISODE_LIST_URL) == "(1,155/Unknown)"
 
 
 @pytest.mark.parametrize(
-    "counter, expected",
-    [
-        ("(12/12)", 12),
-        ("(1,155/Unknown)", 1155),
-    ],
+    "html", ["<html><body><p>no heading</p></body></html>", _PAGE_WITHOUT_COUNTER]
 )
-async def test_parse_count_from_counter(counter: str, expected: int) -> None:
-    with patch(_PATCH, new=AsyncMock(return_value=counter)):
+async def test_fetch_episode_count_data_unreadable_page_returns_none(
+    episode_list_browser, html: str
+) -> None:
+    with episode_list_browser(html):
+        assert await _fetch_episode_count_data(EPISODE_LIST_URL) is None
+
+
+@pytest.mark.parametrize(
+    ("counter", "expected"), [("(12/12)", 12), ("(1,155/Unknown)", 1155)]
+)
+async def test_fetch_mal_episode_count_episode_list_counter_returns_aired_count(
+    episode_list_browser, counter: str, expected: int
+) -> None:
+    with episode_list_browser(_episode_list_page(counter)):
         assert await fetch_mal_episode_count(ANIME_URL) == expected
 
 
-@pytest.mark.parametrize("counter", [None, ""])
-async def test_returns_zero_on_no_counter(counter: str | None) -> None:
-    with patch(_PATCH, new=AsyncMock(return_value=counter)):
+@pytest.mark.parametrize(
+    "html", [_PAGE_WITHOUT_COUNTER, _episode_list_page("(?/Unknown)")]
+)
+async def test_fetch_mal_episode_count_without_readable_counter_returns_zero(
+    episode_list_browser, html: str
+) -> None:
+    with episode_list_browser(html):
         assert await fetch_mal_episode_count(ANIME_URL) == 0
-
-
-async def test_fetches_episode_list_url() -> None:
-    mock_fetch = AsyncMock(return_value="(12/12)")
-    with patch(_PATCH, new=mock_fetch):
-        await fetch_mal_episode_count(ANIME_URL)
-        mock_fetch.assert_awaited_once_with(EPISODE_LIST_URL)
-
-
-def test_extract_episode_count_with_encoding_declaration_degrades() -> None:
-    """lxml rejects a str carrying an encoding declaration; do not let it escape."""
-    doc = '<?xml version="1.0" encoding="utf-8"?>'
-    doc += "<html><body><p>x</p></body></html>"
-    result = _extract_episode_count(doc)
-    assert result is None

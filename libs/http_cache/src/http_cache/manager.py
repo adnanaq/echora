@@ -1,9 +1,4 @@
-"""
-HTTP Cache Manager for enrichment pipeline.
-
-Provides cached HTTP sessions for aiohttp (async) clients.
-Supports Redis storage backend for multi-agent caching.
-"""
+"""Cached HTTP sessions and the Redis clients behind every cache."""
 
 from __future__ import annotations
 
@@ -13,12 +8,13 @@ import re
 from typing import Any
 
 import aiohttp
-from hishel import BaseFilter, FilterPolicy
+from common.config import CacheConfig, RedisConfig
+from common.redis_client import create_redis_client
+from hishel import AsyncRedisStorage, BaseFilter, FilterPolicy
 from hishel import Response as HishelResponse
-from redis.asyncio import Redis as AsyncRedis
+from redis.asyncio import Redis
 
-from .config import CacheConfig
-from .exceptions import StorageConfigurationError
+from .aiohttp_adapter import CachedAiohttpSession
 from .utils import _mask_url_credentials
 
 logger = logging.getLogger(__name__)
@@ -51,7 +47,6 @@ class NeverCacheErrorsFilter(BaseFilter[HishelResponse]):
 
     Examples:
         >>> policy = FilterPolicy(response_filters=[NeverCacheErrorsFilter()])
-        >>> manager = HTTPCacheManager(policy=policy)
     """
 
     def needs_body(self) -> bool:
@@ -91,236 +86,164 @@ class NeverCacheErrorsFilter(BaseFilter[HishelResponse]):
 
 
 class HTTPCacheManager:
-    """Manages HTTP cache for enrichment pipeline with Redis backend."""
+    """Hands out cached HTTP sessions and owns the Redis clients behind them.
 
-    def __init__(self, config: CacheConfig):
-        """
-        Initialize the HTTPCacheManager with the provided cache configuration.
+    Two clients share one Redis server: one for HTTP responses, stored as raw
+    bytes, and one for crawl results, stored as JSON text. A client belongs to
+    the event loop it was created on, so both are created again when called
+    from a different loop.
 
-        Parameters:
-            config (CacheConfig): Configuration that controls whether caching is enabled and specifies storage backend and Redis-related settings. If `config.cache_enabled` is true, storage backend initialization is attempted.
+    Caching is off when ``cache.cache_enabled`` is false or no ``redis_url`` is
+    configured; sessions are then plain ``aiohttp.ClientSession`` objects.
+    """
+
+    def __init__(self, cache: CacheConfig, redis: RedisConfig) -> None:
+        """Set up the manager; Redis is not contacted until the first request.
+
+        Args:
+            cache: What to cache and for how long.
+            redis: Where Redis is and how to size its connection pools.
         """
-        self.config = config
-        self._async_redis_client: AsyncRedis | None = None
-        self._redis_event_loop: Any | None = None
+        self.cache = cache
+        self.redis = redis
         # Body-key caching is opted in per-request via X-Hishel-Body-Key header (GraphQL/POST).
         # Enabling use_body_key globally causes all GET requests (no body) to hash to
         # SHA256(b"") — the same key — collapsing every URL into one cache slot.
         self.policy = FilterPolicy(response_filters=[NeverCacheErrorsFilter()])
+        self._event_loop: asyncio.AbstractEventLoop | None = None
+        self._response_client: Redis | None = None
+        self._result_client: Redis | None = None
 
-        if self.config.cache_enabled:
-            self._init_storage()
+        if cache.cache_enabled and not redis.redis_url:
+            logger.warning(
+                "Caching is enabled but REDIS_URL is not set; running uncached"
+            )
+        elif self.enabled and redis.redis_url:
+            logger.info(f"Caching on Redis at {_mask_url_credentials(redis.redis_url)}")
 
-    async def close_async(self) -> None:
-        """
-        Close and cleanup the asynchronous Redis client used for HTTP caching.
-
-        If an async Redis client exists, attempts to close it and logs any exception raised during closure.
-        Afterward, clears internal references to the Redis client and its associated event loop.
-        """
-        if self._async_redis_client:
-            try:
-                await self._async_redis_client.aclose()
-            except Exception as e:
-                logger.warning(f"Error closing async Redis client: {e}")
-            finally:
-                self._async_redis_client = None
-                self._redis_event_loop = None
+    @property
+    def enabled(self) -> bool:
+        """Whether responses and crawl results are cached."""
+        return self.cache.cache_enabled and bool(self.redis.redis_url)
 
     def get_aiohttp_session(
         self, service: str, **session_kwargs: Any
-    ) -> Any:  # Returns aiohttp.ClientSession or CachedAiohttpSession
-        """Get an aiohttp session for the specified service with caching support.
-
-        When Redis caching is enabled and available, returns a CachedAiohttpSession
-        with body-aware caching (critical for GraphQL/POST requests). Different
-        request bodies produce separate cache entries. Falls back to standard
-        aiohttp.ClientSession if caching is disabled or unavailable.
+    ) -> aiohttp.ClientSession | CachedAiohttpSession:
+        """Return an HTTP session for a source, cached when caching is on.
 
         Args:
-            service: Service name used to determine cache TTL (e.g., "anilist", "mal").
-            **session_kwargs: Additional arguments forwarded to session constructor
-                (e.g., timeout, headers, connector).
+            service: The source, which sets how long responses are kept, such
+                as ``"anilist"``.
+            **session_kwargs: Passed to the session, such as ``timeout`` or
+                ``headers``.
 
         Returns:
-            CachedAiohttpSession with Redis backend if caching enabled, otherwise
-            plain aiohttp.ClientSession.
+            A ``CachedAiohttpSession`` on Redis, or a plain
+            ``aiohttp.ClientSession`` when caching is off or no event loop
+            is running.
 
         Examples:
-            >>> manager = HTTPCacheManager(config)
-            >>> session = manager.get_aiohttp_session("anilist")
-            >>> async with session.post(url, json=payload) as response:
-            ...     data = await response.json()
+            >>> manager = HTTPCacheManager(cache_config, redis_config)
+            >>> async with manager.get_aiohttp_session("anilist") as session:
+            ...     async with session.post(url, json=payload) as response:
+            ...         data = await response.json()
         """
-        if not self.config.cache_enabled or self.config.storage_type != "redis":
+        client = self._client_for_loop(decode_responses=False)
+        if client is None:
             return aiohttp.ClientSession(**session_kwargs)
-
-        # Get or create Redis client for current event loop
-        redis_client = self._get_or_create_redis_client()
-        if not redis_client:
-            return aiohttp.ClientSession(**session_kwargs)
-
-        # Create async Redis storage for aiohttp caching
-        try:
-            from http_cache.aiohttp_adapter import CachedAiohttpSession
-            from http_cache.async_redis_storage import AsyncRedisStorage
-
-            # Get service-specific TTL
-            ttl = self._get_service_ttl(service)
-
-            # Create async storage from event-loop-specific client
-            async_storage = AsyncRedisStorage(
-                client=redis_client,
-                default_ttl=float(ttl),
-                refresh_ttl_on_access=True,
-                key_prefix="hishel_cache",
-            )
-
-            # Return cached session
-            logger.debug(
-                f"Async Redis cache session created for {service} (TTL: {ttl}s, event loop: {id(self._redis_event_loop)})"
-            )
-            return CachedAiohttpSession(
-                storage=async_storage,
-                policy=self.policy,
-                force_cache=self.config.force_cache,
-                always_revalidate=self.config.always_revalidate,
-                **session_kwargs,
-            )
-
-        except ImportError as e:
-            logger.warning(f"Async caching dependencies missing: {e}")
-            return aiohttp.ClientSession(**session_kwargs)
-        except Exception as e:
-            logger.warning(f"Failed to initialize async cache: {e}")
-            return aiohttp.ClientSession(**session_kwargs)
-
-    def get_stats(self) -> dict[str, Any]:
-        """Get summary of cache manager's current configuration and status.
-
-        Returns:
-            Dictionary with cache configuration. If caching disabled, returns
-            {"cache_enabled": False}. If enabled, includes:
-            - "cache_enabled": True
-            - "storage_type": Backend type (e.g., "redis")
-            - "redis_url": Redis connection URL (may be None)
-        """
-        if not self.config.cache_enabled:
-            return {"cache_enabled": False}
-
-        return {
-            "cache_enabled": True,
-            "storage_type": self.config.storage_type,
-            "redis_url": _mask_url_credentials(self.config.redis_url)
-            if self.config.redis_url
-            else None,
-        }
-
-    def _init_storage(self) -> None:
-        """
-        Selects and initializes the configured cache storage backend.
-
-        If `storage_type` is "redis", initializes Redis storage; otherwise raises an error.
-
-        Raises:
-            StorageConfigurationError: If `config.storage_type` is not a recognized backend.
-        """
-        if self.config.storage_type == "redis":
-            self._init_redis_storage()
-        else:
-            raise StorageConfigurationError(self.config.storage_type)
-
-    def _init_redis_storage(self) -> None:
-        """
-        Validate Redis configuration and record the resulting status in logs.
-
-        Checks that `redis_url` is present in the configured settings and logs an info message when valid. On validation failure logs a warning indicating Redis-based HTTP caching will not be used; the function does not re-raise exceptions.
-        """
-        # Validate configuration before logging
-        if not self.config.redis_url:
-            # Configuration error - log warning instead of failing
-            logger.warning(
-                "Redis configuration failed: redis_url required for Redis storage. "
-                "Async (aiohttp) requests will not be cached on Redis."
-            )
-            return
-
-        # Configuration valid - log success
-        logger.info(
-            f"Redis cache configured for aiohttp sessions: {_mask_url_credentials(self.config.redis_url)}"
+        ttl = self.cache.ttl_for(service)
+        storage = AsyncRedisStorage(client=client, ttl=ttl, key_prefix="hishel_cache")
+        return CachedAiohttpSession(
+            storage=storage,
+            policy=self.policy,
+            force_cache=self.cache.force_cache,
+            always_revalidate=self.cache.always_revalidate,
+            default_ttl=ttl,
+            **session_kwargs,
         )
 
-    def _get_or_create_redis_client(self) -> AsyncRedis | None:
-        """Obtain an AsyncRedis client bound to the current event loop.
-
-        Creates a new client if necessary or reuses existing client for current loop.
-        This ensures each asyncio event loop has its own Redis connection, which is
-        critical for multi-agent concurrent processing.
+    def get_result_client(self) -> Redis | None:
+        """Return the Redis client for crawl results, which stores JSON text.
 
         Returns:
-            AsyncRedis client bound to current event loop, or None if no event loop
-            is running or Redis URL is not configured.
+            The client, or None when caching is off or no event loop is running.
         """
-        try:
-            current_loop = asyncio.get_running_loop()
-        except RuntimeError:
-            # No event loop running
-            return None
+        return self._client_for_loop(decode_responses=True)
 
-        # Check if we need to create a new client for this event loop
-        if self._async_redis_client is None or self._redis_event_loop != current_loop:
-            # Close old client if it exists
-            if self._async_redis_client is not None:
-                old_client = self._async_redis_client
-                old_loop = self._redis_event_loop
-                try:
-                    if old_loop and old_loop.is_running():
-                        asyncio.run_coroutine_threadsafe(old_client.aclose(), old_loop)
-                    else:
-                        cleanup_task = current_loop.create_task(old_client.aclose())
-                        cleanup_task.add_done_callback(
-                            lambda t: logger.debug(
-                                "Old Redis client cleanup completed: "
-                                f"{t.exception() if t.exception() else 'success'}"
-                            )
-                        )
-                except Exception as close_error:
-                    logger.debug(
-                        f"Failed to close previous Redis client: {close_error}"
-                    )
+    def get_stats(self) -> dict[str, Any]:
+        """Describe whether caching is on and where it stores entries.
 
-            # Create new client for current event loop
-            if not self.config.redis_url:
-                return None
+        Returns:
+            ``{"cache_enabled": False}`` when caching is off, otherwise
+            ``cache_enabled``, ``storage_type`` and ``redis_url`` with its
+            password masked.
+        """
+        if not self.enabled or not self.redis.redis_url:
+            return {"cache_enabled": False}
+        return {
+            "cache_enabled": True,
+            "storage_type": self.cache.storage_type,
+            "redis_url": _mask_url_credentials(self.redis.redis_url),
+        }
 
-            # Configure connection pool for multi-agent concurrency and reliability
-            self._async_redis_client = AsyncRedis.from_url(
-                self.config.redis_url,
-                decode_responses=False,
-                max_connections=self.config.redis_max_connections,
-                socket_keepalive=self.config.redis_socket_keepalive,
-                socket_connect_timeout=self.config.redis_socket_connect_timeout,
-                socket_timeout=self.config.redis_socket_timeout,
-                retry_on_timeout=self.config.redis_retry_on_timeout,
-                health_check_interval=self.config.redis_health_check_interval,
-            )
-            self._redis_event_loop = current_loop
-            logger.debug(
-                f"Created new AsyncRedis client for event loop {id(current_loop)} "
-                f"(max_connections={self.config.redis_max_connections})"
-            )
+    async def close(self) -> None:
+        """Close both Redis clients; later requests create new ones."""
+        clients = [self._response_client, self._result_client]
+        self._event_loop = self._response_client = self._result_client = None
+        for client in clients:
+            if client is None:
+                continue
+            try:
+                await client.aclose()
+            except Exception as error:
+                # Best effort: a failed close must not stop the app shutting down.
+                logger.warning(f"Error closing Redis client: {error}")
 
-        return self._async_redis_client
-
-    def _get_service_ttl(self, service: str) -> int:
-        """Retrieve cache TTL in seconds for the specified service.
+    def _client_for_loop(self, *, decode_responses: bool) -> Redis | None:
+        """Return a client bound to the running event loop, creating it if needed.
 
         Args:
-            service: Service name (e.g., "anilist", "mal", "kitsu").
+            decode_responses: True for the result client, False for the
+                response client.
 
         Returns:
-            TTL in seconds for the service, defaults to 86400 (24 hours) if not
-            configured via CacheConfig.ttl_{service}.
+            The client, or None when caching is off or no event loop is running.
         """
-        ttl_attr = f"ttl_{service}"
-        return getattr(self.config, ttl_attr, 86400)  # Default 24 hours
+        if not self.enabled:
+            return None
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return None
+        if self._event_loop is not loop:
+            self._release_clients()
+            self._event_loop = loop
+        if decode_responses:
+            if self._result_client is None:
+                self._result_client = create_redis_client(
+                    self.redis, decode_responses=True
+                )
+            return self._result_client
+        if self._response_client is None:
+            self._response_client = create_redis_client(self.redis)
+        return self._response_client
+
+    def _release_clients(self) -> None:
+        """Drop the clients of a previous event loop.
+
+        A client can only be closed on its own loop. When that loop still runs
+        in another thread the close is sent there; a finished loop already
+        dropped its connections.
+        """
+        old_loop = self._event_loop
+        for client in (self._response_client, self._result_client):
+            if client is None or old_loop is None or not old_loop.is_running():
+                continue
+            close = client.aclose()
+            try:
+                asyncio.run_coroutine_threadsafe(close, old_loop)
+            except RuntimeError as error:
+                # The loop stopped after the check; its connections went with it.
+                close.close()
+                logger.debug(f"Could not close previous Redis client: {error}")
+        self._response_client = self._result_client = None

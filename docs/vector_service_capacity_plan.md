@@ -608,7 +608,6 @@ Found along the way, not changed:
   quantization setting; the per-vector settings quantize `text_vector` and
   `image_vector` (int8) whatever it says, so `anime_database` is quantized
   with the flag `false`
-- `hnsw_config` in `QdrantConfig` has an `ef` per priority that nothing reads
 - qdrant-client's `query_batch_points` deep-copies every request
   (`_resolve_query_batch_request`), with no option to skip it: ~0.06 ms per
   search, too small to work around

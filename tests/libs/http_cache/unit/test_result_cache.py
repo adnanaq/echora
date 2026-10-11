@@ -1,1783 +1,1081 @@
-"""
-Comprehensive tests for src/cache_manager/result_cache.py
-
-Tests cover:
-- _compute_schema_hash() with regular functions, lambdas, built-ins
-- _generate_cache_key() with various argument combinations
-- cached_result() decorator with cache hits/misses
-- Schema hash invalidation when function code changes
-- Redis connection handling and error cases
-- TTL configuration
-- Cache key stability and uniqueness
-- Error handling and fallback behavior
-"""
-
+import functools
 import hashlib
 import json
-from datetime import datetime
+import re
+import types
+from collections.abc import Iterator
+from contextlib import AbstractContextManager
+from datetime import datetime, timedelta
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
+from common.config import CacheConfig, RedisConfig
+from http_cache import configure_cache
 from http_cache.result_cache import (
     _compute_schema_hash,
     _generate_cache_key,
     _normalize_batch_args,
+    _stable_repr,
     cached_result,
 )
+from redis.asyncio import Redis
+from redis.asyncio.client import Pipeline
 from redis.exceptions import RedisError
+from redis.typing import EncodableT, ExpiryT, KeysT, KeyT
 
+MAX_KEY_LENGTH = 200
+HEX_DIGITS = set("0123456789abcdef")
 
-class TestComputeSchemaHash:
-    """Test _compute_schema_hash() function."""
+_SELECTORS = {"title": "//h1"}
+_DELAY = 1.0
 
-    def test_regular_function_hash(self) -> None:
-        """Test schema hash computation for regular function."""
 
-        def test_func() -> str:
-            """
-            Return a constant string used for testing.
+def _read_selector() -> str:
+    return _SELECTORS["title"]
 
-            Returns:
-                result (str): The string "test".
-            """
-            return "test"
 
-        hash1 = _compute_schema_hash(test_func)
+def _read_selector_in_nested_function() -> str:
+    def read() -> str:
+        return _SELECTORS["title"]
 
-        # Should be 16-character hex string (64 bits for collision resistance)
-        assert len(hash1) == 16
-        assert all(c in "0123456789abcdef" for c in hash1)
+    return read()
 
-    def test_same_function_same_hash(self) -> None:
-        """Test that same function produces same hash."""
 
-        def test_func() -> str:
-            """
-            Return a constant string used for testing.
+def _wait() -> float:
+    return _DELAY
 
-            Returns:
-                result (str): The string "test".
-            """
-            return "test"
 
-        hash1 = _compute_schema_hash(test_func)
-        hash2 = _compute_schema_hash(test_func)
+def _strip_title(text: str) -> str:
+    return text.strip()
 
-        assert hash1 == hash2
 
-    def test_different_functions_different_hash(self) -> None:
-        """Test that different functions produce different hashes."""
+def _lower_title(text: str) -> str:
+    return text.lower()
 
-        def func1() -> str:
-            """
-            Return the fixed string "func1".
 
-            Returns:
-                str: The literal string "func1".
-            """
-            return "func1"
+_title_cleaner = _strip_title
 
-        def func2() -> str:
-            """
-            Return the literal string 'func2'.
 
-            Returns:
-                result (str): The literal string "func2".
-            """
-            return "func2"
+def _clean_title(text: str) -> str:
+    return _title_cleaner(text)
 
-        hash1 = _compute_schema_hash(func1)
-        hash2 = _compute_schema_hash(func2)
 
-        assert hash1 != hash2
+def _extract_title(html: str) -> str:
+    return _clean_title(html)
 
-    def test_function_code_change_changes_hash(self) -> None:
-        """Test that changing function code changes hash."""
 
-        def func_v1() -> str:
-            """
-            Return a fixed identifier for this function implementation version.
+def _passed_through(func: Any) -> Any:
+    @functools.wraps(func)
+    def call(*args: Any, **kwargs: Any) -> Any:
+        return func(*args, **kwargs)
 
-            Returns:
-                str: The literal string "version 1" identifying this version.
-            """
-            return "version 1"
+    return call
 
-        hash1 = _compute_schema_hash(func_v1)
 
-        def func_v2() -> str:
-            """
-            Return a literal indicating the function's version.
+_decorated_cleaner = _passed_through(_clean_title)
 
-            Returns:
-                version (str): The string "version 2".
-            """
-            return "version 2"
 
-        hash2 = _compute_schema_hash(func_v2)
+def _clean_with_decorated_helper(text: str) -> str:
+    return _decorated_cleaner(text)
 
-        # Different code = different hash
-        assert hash1 != hash2
 
-    def test_lambda_function_uses_name_fallback(self) -> None:
-        """Test that lambda functions use name-based hash fallback."""
-        # Lambda source code can't be retrieved, so uses function name
-        lambda_func = lambda x: x + 1  # noqa: E731
+async def _fetch_page(url: str) -> str:
+    return url
 
-        hash_result = _compute_schema_hash(lambda_func)
 
-        # Should still be 16-character hex string
-        assert len(hash_result) == 16
-        assert all(c in "0123456789abcdef" for c in hash_result)
+async def _fetch_other_page(url: str) -> str:
+    return url.upper()
 
-    def test_builtin_function_uses_name_fallback(self) -> None:
-        """Test that built-in functions use name-based hash fallback."""
-        # Built-in functions don't have source code
-        hash_result = _compute_schema_hash(len)
 
-        # Should compute hash from function name "len" (16 characters)
-        expected_hash = hashlib.sha256(b"len").hexdigest()[:16]
-        assert hash_result == expected_hash
+_page_fetcher = _fetch_page
 
-    def test_function_with_multiline_code(self) -> None:
-        """Test hash computation for functions with multiline code."""
 
-        def complex_func(x: int, y: int) -> int:
-            """
-            Compute the sum of x and y, doubling the result when the sum is greater than 10.
+async def _read_fetched_page(url: str) -> str:
+    return await _page_fetcher(url)
 
-            Returns:
-                The sum of x and y; if the sum is greater than 10, returns that sum multiplied by 2.
-            """
-            result = x + y
-            if result > 10:
-                return result * 2
-            return result
 
-        hash_result = _compute_schema_hash(complex_func)
+_library_function = json.dumps
 
-        assert len(hash_result) == 16
-        assert all(c in "0123456789abcdef" for c in hash_result)
 
-    def test_function_with_decorators(self) -> None:
-        """Test hash computation for decorated functions."""
+def _call_library(value: object) -> str:
+    return _library_function(value)
 
-        def decorator(func):  # type: ignore
-            """
-            Create a simple decorator that forwards calls to the decorated function.
 
-            Returns:
-                A wrapper function that calls the original `func` with the same positional and
-                keyword arguments and returns its result.
-            """
+def _trim_front(text: str) -> str:
+    return _trim_back(text[1:]) if text else text
 
-            def wrapper(*args, **kwargs):  # type: ignore
-                return func(*args, **kwargs)
 
-            return wrapper
+def _trim_back(text: str) -> str:
+    return _trim_front(text[:-1]) if text else text
 
-        @decorator
-        def decorated_func() -> str:
-            """
-            Provide the constant string "decorated".
 
-            Returns:
-                str: The string "decorated".
-            """
-            return "decorated"
+def _with_module_data(func: Any, **data: object) -> Any:
+    return types.FunctionType(
+        func.__code__, {**func.__globals__, **data}, func.__name__
+    )
 
-        hash_result = _compute_schema_hash(decorated_func)
 
-        # Should hash the wrapper function's source
-        assert len(hash_result) == 16
+def _text(value: EncodableT | KeyT) -> str:
+    return value.decode() if isinstance(value, bytes) else str(value)
 
 
-class TestGenerateCacheKey:
-    """Test _generate_cache_key() function."""
+def _seconds(time: ExpiryT) -> int:
+    return int(time.total_seconds()) if isinstance(time, timedelta) else time
 
-    def test_basic_cache_key(self) -> None:
-        """Test basic cache key generation with prefix and schema hash."""
-        key = _generate_cache_key("test_func", "abc12345")
 
-        assert key == "result_cache:test_func:abc12345"
+class InMemoryPipeline(Pipeline):
+    def __init__(self, store: InMemoryRedis) -> None:
+        self.store = store
+        self.queued: list[tuple[str, int, str]] = []
 
-    def test_cache_key_with_single_arg(self) -> None:
-        """Test cache key with single string argument."""
-        key = _generate_cache_key("test_func", "abc12345", "arg1")
+    def __del__(self, _warn: Any = None, _grl: Any = None) -> None:
+        return None
 
-        assert key == "result_cache:test_func:abc12345:arg1"
+    async def __aenter__(self) -> InMemoryPipeline:
+        return self
 
-    def test_cache_key_with_multiple_args(self) -> None:
-        """Test cache key with multiple arguments."""
-        key = _generate_cache_key("test_func", "abc12345", "arg1", "arg2", "arg3")
+    async def __aexit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> None:
+        return None
 
-        assert key == "result_cache:test_func:abc12345:arg1:arg2:arg3"
+    def setex(self, name: KeyT, time: ExpiryT, value: EncodableT) -> InMemoryPipeline:
+        self.queued.append((_text(name), _seconds(time), _text(value)))
+        return self
 
-    def test_cache_key_with_int_arg(self) -> None:
-        """Test cache key with integer argument."""
-        key = _generate_cache_key("test_func", "abc12345", 42)
+    async def execute(self, raise_on_error: bool = True) -> list[bool]:
+        for name, time, value in self.queued:
+            self.store.values[name] = value
+            self.store.ttls[name] = time
+        return [True] * len(self.queued)
 
-        assert key == "result_cache:test_func:abc12345:42"
 
-    def test_cache_key_with_float_arg(self) -> None:
-        """Test cache key with float argument."""
-        key = _generate_cache_key("test_func", "abc12345", 3.14)
+class InMemoryRedis(Redis):
+    def __init__(self, failing: frozenset[str] = frozenset()) -> None:
+        self.values: dict[str, str] = {}
+        self.ttls: dict[str, int] = {}
+        self.reads: list[str] = []
+        self.failing = failing
 
-        assert key == "result_cache:test_func:abc12345:3.14"
+    def __del__(self, _warn: Any = None, _grl: Any = None) -> None:
+        return None
 
-    def test_cache_key_with_bool_arg(self) -> None:
-        """Test cache key with boolean argument."""
-        key1 = _generate_cache_key("test_func", "abc12345", True)
-        key2 = _generate_cache_key("test_func", "abc12345", False)
+    async def get(self, name: KeyT) -> str | None:
+        self._fail_if("get")
+        self.reads.append(_text(name))
+        return self.values.get(_text(name))
 
-        assert key1 == "result_cache:test_func:abc12345:True"
-        assert key2 == "result_cache:test_func:abc12345:False"
+    async def mget(self, keys: KeysT, *args: EncodableT) -> list[bytes | str | None]:
+        self._fail_if("mget")
+        names = [_text(key) for key in ([keys] if isinstance(keys, str) else keys)]
+        self.reads.extend(names)
+        return [self.values.get(name) for name in names]
 
-    def test_cache_key_with_dict_arg(self) -> None:
-        """Test cache key with dictionary argument (JSON serialized)."""
-        key = _generate_cache_key("test_func", "abc12345", {"key": "value"})
+    async def setex(self, name: KeyT, time: ExpiryT, value: EncodableT) -> bool:
+        self._fail_if("setex")
+        self.values[_text(name)] = _text(value)
+        self.ttls[_text(name)] = _seconds(time)
+        return True
 
-        assert "result_cache:test_func:abc12345:" in key
-        assert '{"key": "value"}' in key or '{"key":"value"}' in key
+    def pipeline(
+        self, transaction: bool = True, shard_hint: str | None = None
+    ) -> InMemoryPipeline:
+        self._fail_if("pipeline")
+        return InMemoryPipeline(self)
 
-    def test_cache_key_with_list_arg(self) -> None:
-        """Test cache key with list argument (JSON serialized)."""
-        key = _generate_cache_key("test_func", "abc12345", [1, 2, 3])
+    def _fail_if(self, command: str) -> None:
+        if command in self.failing:
+            raise RedisError(f"{command} failed")
 
-        assert "result_cache:test_func:abc12345:" in key
-        assert "[1, 2, 3]" in key or "[1,2,3]" in key
 
-    def test_cache_key_with_kwargs(self) -> None:
-        """Test cache key with keyword arguments."""
-        key = _generate_cache_key(
-            "test_func", "abc12345", param1="value1", param2="value2"
-        )
+class EmptyMgetRedis(InMemoryRedis):
+    async def mget(self, keys: KeysT, *args: EncodableT) -> list[bytes | str | None]:
+        return []
 
-        # Kwargs should be sorted alphabetically
-        assert "param1=value1" in key
-        assert "param2=value2" in key
 
-    def test_cache_key_with_none_kwarg(self) -> None:
-        """Test cache key with None value in kwargs."""
-        key = _generate_cache_key("test_func", "abc12345", optional=None)
+def _serve(store: Redis, **cache_fields: Any) -> AbstractContextManager[object]:
+    cache = configure_cache(
+        CacheConfig(cache_enabled=True, **cache_fields),
+        RedisConfig(redis_url="redis://localhost:6379/15"),
+    )
+    return patch.object(cache, "get_result_client", autospec=True, return_value=store)
 
-        assert "optional=None" in key
 
-    def test_cache_key_kwargs_sorted(self) -> None:
-        """Test that kwargs are sorted for stability."""
-        key1 = _generate_cache_key(
-            "test_func", "abc12345", z="last", a="first", m="middle"
-        )
-        key2 = _generate_cache_key(
-            "test_func", "abc12345", a="first", m="middle", z="last"
-        )
+@pytest.fixture
+def redis_store() -> Iterator[InMemoryRedis]:
+    store = InMemoryRedis()
+    with _serve(store):
+        yield store
 
-        # Keys should be identical regardless of kwargs order
-        assert key1 == key2
 
-    def test_cache_key_with_complex_dict_sorted(self) -> None:
-        """Test that dict keys are sorted in JSON serialization."""
-        key = _generate_cache_key("test_func", "abc12345", {"z": 1, "a": 2, "m": 3})
+def _key(prefix: str, schema_hash: str, *args: Any, **kwargs: Any) -> str:
+    return _generate_cache_key(MAX_KEY_LENGTH, prefix, schema_hash, *args, **kwargs)
 
-        # JSON should have sorted keys
-        assert json.dumps({"z": 1, "a": 2, "m": 3}, sort_keys=True) in key
 
-    def test_cache_key_long_key_hashed(self) -> None:
-        """Test that very long cache keys are hashed instead of including full argument."""
-        from http_cache.config import get_cache_config
+def _is_hash(value: str) -> bool:
+    return len(value) == 16 and set(value) <= HEX_DIGITS
 
-        # Create a key longer than 200 characters
-        long_arg = "x" * 200
 
-        key = _generate_cache_key("test_func", "abc12345", long_arg)
+def test_compute_schema_hash_regular_function_returns_16_hex_characters() -> None:
+    def fetch() -> str:
+        return "test"
 
-        # Should contain prefix and schema hash
-        assert "result_cache:test_func:abc12345:" in key
-        # Should NOT contain the full long argument (proves it was hashed)
-        assert long_arg not in key
-        # Should respect configured max cache key length
-        assert len(key) <= get_cache_config().max_cache_key_length
+    assert _is_hash(_compute_schema_hash(fetch))
 
-    def test_cache_key_stability_same_inputs(self) -> None:
-        """Test that same inputs always produce same cache key."""
-        key1 = _generate_cache_key("func", "hash123", "arg1", 42, param="value")
-        key2 = _generate_cache_key("func", "hash123", "arg1", 42, param="value")
 
-        assert key1 == key2
+def test_compute_schema_hash_same_function_returns_same_hash() -> None:
+    def fetch() -> str:
+        return "test"
 
-    def test_cache_key_different_for_different_schema_hash(self) -> None:
-        """Test that different schema hashes produce different cache keys."""
-        key1 = _generate_cache_key("func", "hash111", "arg1")
-        key2 = _generate_cache_key("func", "hash222", "arg1")
+    assert _compute_schema_hash(fetch) == _compute_schema_hash(fetch)
 
-        assert key1 != key2
-        assert "hash111" in key1
-        assert "hash222" in key2
 
-    def test_cache_key_with_complex_kwarg_dict(self) -> None:
-        """Test cache key with complex dictionary in kwargs (JSON serialized)."""
-        key = _generate_cache_key(
-            "test_func",
-            "abc12345",
-            options={"nested": {"key": "value"}, "list": [1, 2]},
-        )
+def test_compute_schema_hash_different_functions_return_different_hashes() -> None:
+    def first() -> str:
+        return "first"
 
-        # Should contain JSON-serialized dict
-        assert "result_cache:test_func:abc12345:" in key
-        assert "options=" in key
+    def second() -> str:
+        return "second"
 
-    def test_cache_key_with_complex_kwarg_list(self) -> None:
-        """Test cache key with complex list in kwargs (JSON serialized)."""
-        key = _generate_cache_key("test_func", "abc12345", items=[{"id": 1}, {"id": 2}])
+    assert _compute_schema_hash(first) != _compute_schema_hash(second)
 
-        # Should contain JSON-serialized list
-        assert "result_cache:test_func:abc12345:" in key
-        assert "items=" in key
 
-    def test_cache_key_with_non_json_serializable_arg(self) -> None:
-        """Test cache key with non-JSON-serializable argument falls back to repr()."""
-        # datetime is not JSON-serializable by default
-        dt = datetime(2025, 1, 20, 12, 30, 45)
+def test_compute_schema_hash_changed_body_returns_different_hash() -> None:
+    def fetch_v1() -> str:
+        return "version 1"
 
-        key = _generate_cache_key("test_func", "abc12345", dt)
+    def fetch_v2() -> str:
+        return "version 2"
 
-        # Should contain repr() representation instead of crashing
-        assert "result_cache:test_func:abc12345:" in key
-        assert "2025" in key  # repr of datetime contains the year
+    assert _compute_schema_hash(fetch_v1) != _compute_schema_hash(fetch_v2)
 
-    def test_cache_key_with_non_json_serializable_kwarg(self) -> None:
-        """Test cache key with non-JSON-serializable kwarg falls back to repr()."""
-        dt = datetime(2025, 1, 20, 12, 30, 45)
 
-        key = _generate_cache_key("test_func", "abc12345", timestamp=dt)
+def test_compute_schema_hash_lambda_returns_16_hex_characters() -> None:
+    increment = lambda number: number + 1  # noqa: E731
 
-        # Should contain repr() representation instead of crashing
-        assert "result_cache:test_func:abc12345:" in key
-        assert "timestamp=" in key
-        assert "2025" in key
+    assert _is_hash(_compute_schema_hash(increment))
 
-    def test_cache_key_with_custom_class_arg(self) -> None:
-        """Test cache key with custom class instance falls back to repr()."""
 
-        class CustomObject:
-            def __init__(self, value: str):
-                """
-                Initialize the instance with a string value.
+def test_compute_schema_hash_builtin_hashes_its_name() -> None:
+    assert _compute_schema_hash(len) == hashlib.sha256(b"len").hexdigest()[:16]
 
-                Parameters:
-                    value (str): The string assigned to the instance's `value` attribute.
-                """
-                self.value = value
 
-            def __repr__(self) -> str:
-                """
-                Return the canonical string representation of the CustomObject for debugging.
+def test_compute_schema_hash_multiline_function_returns_16_hex_characters() -> None:
+    def add(first: int, second: int) -> int:
+        total = first + second
+        if total > 10:
+            return total * 2
+        return total
 
-                Returns:
-                    repr_str (str): A string in the form "CustomObject(value=...)" where the contained value is represented using its own `repr`.
-                """
-                return f"CustomObject(value={self.value!r})"
+    assert _is_hash(_compute_schema_hash(add))
 
-        obj = CustomObject("test123")
-        key = _generate_cache_key("test_func", "abc12345", obj)
 
-        # Should contain repr() representation
-        assert "result_cache:test_func:abc12345:" in key
-        assert "CustomObject" in key or "test123" in key
+def test_compute_schema_hash_decorated_function_returns_16_hex_characters() -> None:
+    def forward(func):  # type: ignore[no-untyped-def]
+        def wrapper(*args, **kwargs):  # type: ignore[no-untyped-def]
+            return func(*args, **kwargs)
 
+        return wrapper
 
-class TestCachedResultDecorator:
-    """Test cached_result() decorator."""
+    @forward
+    def decorated() -> str:
+        return "decorated"
 
-    @pytest.mark.asyncio
-    async def test_decorator_basic_usage(self) -> None:
-        """Test basic decorator usage with cache miss and hit."""
+    assert _is_hash(_compute_schema_hash(decorated))
 
-        call_count = 0
 
-        @cached_result(ttl=60, key_prefix="test")
-        async def fetch_data(item_id: str) -> dict[str, Any]:
-            """Fetch test data and increment call counter."""
+def test_compute_schema_hash_none_dependencies_matches_no_dependencies() -> None:
+    def fetch() -> str:
+        return "main"
 
-            nonlocal call_count
+    assert _compute_schema_hash(fetch) == _compute_schema_hash(fetch, None)
 
-            call_count += 1
 
-            return {"id": item_id, "data": "test_data"}
+def test_compute_schema_hash_empty_dependencies_matches_no_dependencies() -> None:
+    def fetch() -> str:
+        return "main"
 
-        with patch(
-            "http_cache.result_cache.get_result_cache_redis_client"
-        ) as mock_get_client:
-            mock_redis = AsyncMock()
+    assert _compute_schema_hash(fetch) == _compute_schema_hash(fetch, [])
 
-            mock_get_client.return_value = mock_redis
 
-            # Ensure _redis_client is None initially to cover lines 36-43
+def test_compute_schema_hash_added_dependency_returns_different_hash() -> None:
+    def parse() -> str:
+        return "dep_v1"
 
-            from http_cache import result_cache
+    def fetch() -> str:
+        return parse()
 
-            result_cache._redis_client = None
+    assert _compute_schema_hash(fetch) != _compute_schema_hash(fetch, [parse])
 
-            # First call - cache miss
 
-            mock_redis.get.return_value = None
+def test_compute_schema_hash_changed_dependency_returns_different_hash() -> None:
+    def fetch() -> str:
+        return "main"
 
-            result1 = await fetch_data("item1")
+    def parse_v1() -> str:
+        return "schema_v1"
 
-            assert result1 == {"id": "item1", "data": "test_data"}
+    def parse_v2() -> str:
+        return "schema_v2"
 
-            assert call_count == 1
+    assert _compute_schema_hash(fetch, [parse_v1]) != _compute_schema_hash(
+        fetch, [parse_v2]
+    )
 
-            assert mock_redis.setex.called
 
-            # Second call - cache hit
+def test_compute_schema_hash_each_dependency_changes_hash() -> None:
+    def fetch() -> str:
+        return "main"
 
-            mock_redis.get.return_value = json.dumps(
-                {"id": "item1", "data": "test_data"}
-            )
+    def parse_a() -> str:
+        return "a"
 
-            result2 = await fetch_data("item1")
+    def parse_b() -> str:
+        return "b"
 
-            assert result2 == {"id": "item1", "data": "test_data"}
+    hashes = {
+        _compute_schema_hash(fetch, [parse_a]),
+        _compute_schema_hash(fetch, [parse_b]),
+        _compute_schema_hash(fetch, [parse_a, parse_b]),
+    }
 
-            assert call_count == 1  # Function not called again
+    assert len(hashes) == 3
 
-    @pytest.mark.asyncio
-    async def test_close_result_cache_redis_client(self) -> None:
-        """Test close_result_cache_redis_client function."""
 
-        from http_cache.result_cache import close_result_cache_redis_client
-        from redis.asyncio import Redis
+def test_compute_schema_hash_same_dependencies_return_same_hash() -> None:
+    def parse() -> str:
+        return "stable_dep"
 
-        mock_redis = AsyncMock(spec=Redis)
+    def fetch() -> str:
+        return parse()
 
-        mock_redis.aclose = AsyncMock()
+    assert _compute_schema_hash(fetch, [parse]) == _compute_schema_hash(fetch, [parse])
 
-        with patch("http_cache.result_cache._redis_client", new=mock_redis):
-            await close_result_cache_redis_client()
 
-            mock_redis.aclose.assert_awaited_once()
+def test_compute_schema_hash_builtin_dependency_returns_16_hex_characters() -> None:
+    def fetch() -> int:
+        return len([])
 
-    @pytest.mark.asyncio
-    async def test_close_result_cache_redis_client_no_client(self) -> None:
-        """Test close_result_cache_redis_client when no client is set."""
+    assert _is_hash(_compute_schema_hash(fetch, [len]))
 
-        from http_cache.result_cache import close_result_cache_redis_client
 
-        with patch("http_cache.result_cache._redis_client", new=None):
-            # Should not raise an error
+def test_compute_schema_hash_lambda_dependency_returns_16_hex_characters() -> None:
+    double = lambda number: number * 2  # noqa: E731
 
-            await close_result_cache_redis_client()
+    def fetch(number: int) -> int:
+        return double(number)
 
-    @pytest.mark.asyncio
-    async def test_decorator_cache_disabled(self) -> None:
-        """Test decorator when caching is disabled."""
-        call_count = 0
+    assert _is_hash(_compute_schema_hash(fetch, [double]))
 
-        @cached_result(ttl=60, key_prefix="test")
-        async def fetch_data(item_id: str) -> dict[str, Any]:
-            """
-            Fetch test data for the given item identifier.
 
-            Parameters:
-                item_id (str): Identifier of the item to fetch.
+def test_compute_schema_hash_dependency_without_source_still_changes_hash() -> None:
+    def parse() -> str:
+        return "good"
 
-            Returns:
-                dict: A dictionary with "id" set to the provided identifier and "data" containing a test payload.
-            """
-            nonlocal call_count
-            call_count += 1
-            return {"id": item_id, "data": "test"}
+    assert _compute_schema_hash(parse, [parse]) != _compute_schema_hash(
+        parse, [parse, len]
+    )
 
-        # Mock get_cache_config to return disabled config
-        with patch("http_cache.result_cache.get_cache_config") as mock_config:
-            mock_config.return_value = MagicMock(enabled=False)
 
-            result1 = await fetch_data("item1")
-            result2 = await fetch_data("item1")
+def test_generate_cache_key_without_arguments_returns_prefix_and_hash() -> None:
+    assert _key("fetch", "abc12345") == "result_cache:fetch:abc12345"
 
-            # Function should be called both times (no caching)
-            assert call_count == 2
-            assert result1 == result2
 
-    @pytest.mark.asyncio
-    async def test_decorator_with_default_ttl(self) -> None:
-        """
-        Verifies the cached_result decorator applies the default TTL when no `ttl` is specified.
+@pytest.mark.parametrize(
+    ("args", "suffix"),
+    [
+        (("arg1",), "arg1"),
+        (("arg1", "arg2", "arg3"), "arg1:arg2:arg3"),
+        ((42,), "42"),
+        ((3.14,), "3.14"),
+        ((True,), "True"),
+        ((False,), "False"),
+        (({"key": "value"},), '{"key": "value"}'),
+        (([1, 2, 3],), "[1, 2, 3]"),
+        (({"z": 1, "a": 2, "m": 3},), '{"a": 2, "m": 3, "z": 1}'),
+    ],
+)
+def test_generate_cache_key_positional_arguments_appended_in_order(
+    args: tuple[Any, ...], suffix: str
+) -> None:
+    assert _key("fetch", "abc12345", *args) == f"result_cache:fetch:abc12345:{suffix}"
 
-        Patches the Redis client to simulate a cache miss and asserts that the decorator calls `setex` with the default TTL of 86400 seconds (24 hours).
-        """
 
-        @cached_result(key_prefix="test")
-        async def fetch_data(item_id: str) -> dict[str, str]:
-            """
-            Return a mapping containing the provided item identifier under the "id" key.
+@pytest.mark.parametrize(
+    ("kwargs", "suffix"),
+    [
+        ({"param1": "value1", "param2": "value2"}, "param1=value1:param2=value2"),
+        ({"optional": None}, "optional=None"),
+        ({"items": [{"id": 1}, {"id": 2}]}, 'items=[{"id": 1}, {"id": 2}]'),
+        (
+            {"options": {"nested": {"key": "value"}, "list": [1, 2]}},
+            'options={"list": [1, 2], "nested": {"key": "value"}}',
+        ),
+    ],
+)
+def test_generate_cache_key_keyword_arguments_appended_as_name_value(
+    kwargs: dict[str, Any], suffix: str
+) -> None:
+    assert (
+        _key("fetch", "abc12345", **kwargs) == f"result_cache:fetch:abc12345:{suffix}"
+    )
 
-            Returns:
-                dict: A dictionary with a single entry `"id": item_id`.
-            """
-            return {"id": item_id}
 
-        with patch(
-            "http_cache.result_cache.get_result_cache_redis_client"
-        ) as mock_get_client:
-            mock_redis = AsyncMock()
-            mock_get_client.return_value = mock_redis
-            mock_redis.get.return_value = None
+def test_generate_cache_key_keyword_order_returns_same_key() -> None:
+    assert _key("fetch", "abc12345", z="last", a="first", m="middle") == _key(
+        "fetch", "abc12345", a="first", m="middle", z="last"
+    )
 
-            await fetch_data("item1")
 
-            # Should use default 24h TTL (86400 seconds)
-            mock_redis.setex.assert_called_once()
-            call_args = mock_redis.setex.call_args
-            # Access TTL more resiliently - check kwargs first, fall back to positional
-            ttl = (
-                call_args.kwargs.get("time") if call_args.kwargs else call_args.args[1]
-            )
-            assert ttl == 86400  # Default TTL
+def test_generate_cache_key_same_inputs_return_same_key() -> None:
+    assert _key("fetch", "hash123", "arg1", 42, param="value") == _key(
+        "fetch", "hash123", "arg1", 42, param="value"
+    )
 
-    @pytest.mark.asyncio
-    async def test_decorator_with_custom_ttl(self) -> None:
-        """Test decorator with custom TTL."""
 
-        @cached_result(ttl=3600, key_prefix="test")
-        async def fetch_data(item_id: str) -> dict[str, str]:
-            """
-            Return a mapping containing the provided item identifier under the "id" key.
+def test_generate_cache_key_different_schema_hash_returns_different_key() -> None:
+    first = _key("fetch", "hash111", "arg1")
+    second = _key("fetch", "hash222", "arg1")
 
-            Returns:
-                dict: A dictionary with a single entry `"id": item_id`.
-            """
-            return {"id": item_id}
+    assert first == "result_cache:fetch:hash111:arg1"
+    assert second == "result_cache:fetch:hash222:arg1"
 
-        with patch(
-            "http_cache.result_cache.get_result_cache_redis_client"
-        ) as mock_get_client:
-            mock_redis = AsyncMock()
-            mock_get_client.return_value = mock_redis
-            mock_redis.get.return_value = None
 
-            await fetch_data("item1")
+def test_generate_cache_key_longer_than_limit_hashes_arguments() -> None:
+    long_arg = "x" * MAX_KEY_LENGTH
+    full_key = f"fetch:abc12345:{long_arg}"
 
-            # Should use custom TTL
-            mock_redis.setex.assert_called_once()
-            call_args = mock_redis.setex.call_args
-            # Access TTL more resiliently - check kwargs first, fall back to positional
-            ttl = (
-                call_args.kwargs.get("time") if call_args.kwargs else call_args.args[1]
-            )
-            assert ttl == 3600
+    key = _key("fetch", "abc12345", long_arg)
 
-    @pytest.mark.asyncio
-    async def test_decorator_uses_function_name_as_default_prefix(self) -> None:
-        """Test that decorator uses function name as default key prefix."""
+    assert key == (
+        f"result_cache:fetch:abc12345:{hashlib.sha256(full_key.encode()).hexdigest()}"
+    )
 
-        @cached_result(ttl=60)
-        async def my_custom_function(item_id: str) -> dict[str, str]:
-            """
-            Create a minimal mapping containing the provided item identifier.
 
-            Returns:
-                dict: A dictionary with the key "id" whose value is the given `item_id`.
-            """
-            return {"id": item_id}
+def test_generate_cache_key_custom_limit_keeps_key_within_it() -> None:
+    long_arg = "x" * 300
 
-        with patch(
-            "http_cache.result_cache.get_result_cache_redis_client"
-        ) as mock_get_client:
-            mock_redis = AsyncMock()
-            mock_get_client.return_value = mock_redis
-            mock_redis.get.return_value = None
+    assert long_arg in _generate_cache_key(500, "fetch", "abc12345", long_arg)
+    assert long_arg not in _generate_cache_key(100, "fetch", "abc12345", long_arg)
 
-            await my_custom_function("item1")
 
-            # Check that function name is used in cache key
-            cache_key = mock_redis.get.call_args[0][0]
-            assert "my_custom_function" in cache_key
+def test_generate_cache_key_datetime_argument_uses_repr() -> None:
+    moment = datetime(2025, 1, 20, 12, 30, 45)
 
-    @pytest.mark.asyncio
-    async def test_decorator_returns_none_not_cached(self) -> None:
-        """Test that None results are not cached."""
-        call_count = 0
+    assert _key("fetch", "abc12345", moment) == (
+        f"result_cache:fetch:abc12345:{moment!r}"
+    )
 
-        @cached_result(ttl=60, key_prefix="test")
-        async def fetch_data(item_id: str) -> dict[str, str] | None:  # noqa: ARG001
-            """
-            Simulates fetching data for the given item while incrementing a call counter.
 
-            Increments the enclosing scope's `call_count` nonlocal variable to record an invocation and always returns None.
+def test_generate_cache_key_datetime_keyword_uses_repr() -> None:
+    moment = datetime(2025, 1, 20, 12, 30, 45)
 
-            Returns:
-                None
-            """
-            nonlocal call_count
-            call_count += 1
-            return None
+    assert _key("fetch", "abc12345", timestamp=moment) == (
+        f"result_cache:fetch:abc12345:timestamp={moment!r}"
+    )
 
-        with patch(
-            "http_cache.result_cache.get_result_cache_redis_client"
-        ) as mock_get_client:
-            mock_redis = AsyncMock()
-            mock_get_client.return_value = mock_redis
-            mock_redis.get.return_value = None
 
-            result1 = await fetch_data("item1")
-            result2 = await fetch_data("item1")
+def test_generate_cache_key_custom_object_argument_uses_repr() -> None:
+    class Item:
+        def __repr__(self) -> str:
+            return "Item(value='test123')"
 
-            assert result1 is None
-            assert result2 is None
-            assert call_count == 2  # Called both times
-            assert not mock_redis.setex.called  # Not cached
+    assert _key("fetch", "abc12345", Item()) == (
+        "result_cache:fetch:abc12345:Item(value='test123')"
+    )
 
-    @pytest.mark.asyncio
-    async def test_decorator_redis_connection_error(self) -> None:
-        """Test decorator behavior when Redis connection fails."""
-        call_count = 0
 
-        @cached_result(ttl=60, key_prefix="test")
-        async def fetch_data(item_id: str) -> dict[str, str]:
-            """
-            Fetches mock data for a given item identifier and records the invocation.
+def test_normalize_batch_args_bare_values_wrapped_in_tuples() -> None:
+    assert _normalize_batch_args(["a", "b"], None) == ([("a",), ("b",)], [{}, {}])
 
-            Parameters:
-                item_id (str): The identifier of the item to fetch.
 
-            Returns:
-                dict: A mapping with keys `"id"` set to the provided `item_id` and `"data"` set to the string `"test"`.
-            """
-            nonlocal call_count
-            call_count += 1
-            return {"id": item_id, "data": "test"}
+def test_normalize_batch_args_tuples_kept() -> None:
+    normalized, _ = _normalize_batch_args([("a", 1), ("b", 2)], None)
 
-        with patch(
-            "http_cache.result_cache.get_result_cache_redis_client"
-        ) as mock_get_client:
-            # Simulate Redis connection error
-            mock_get_client.side_effect = RedisError("Connection failed")
+    assert normalized == [("a", 1), ("b", 2)]
 
-            # Should fall back to executing function without caching
-            result = await fetch_data("item1")
 
-            assert result == {"id": "item1", "data": "test"}
-            assert call_count == 1
+def test_normalize_batch_args_given_kwargs_list_returned_unchanged() -> None:
+    kwargs_list = [{"x": 1}, {"x": 2}]
 
-    @pytest.mark.asyncio
-    async def test_decorator_redis_get_error(self) -> None:
-        """Test decorator behavior when Redis get() fails."""
-        call_count = 0
+    _, returned = _normalize_batch_args(["a", "b"], kwargs_list)
 
-        @cached_result(ttl=60, key_prefix="test")
-        async def fetch_data(item_id: str) -> dict[str, str]:
-            """
-            Fetches mock data for a given item identifier and records the invocation.
+    assert returned is kwargs_list
 
-            Parameters:
-                item_id (str): The identifier of the item to fetch.
 
-            Returns:
-                dict: A mapping with keys `"id"` set to the provided `item_id` and `"data"` set to the string `"test"`.
-            """
-            nonlocal call_count
-            call_count += 1
-            return {"id": item_id, "data": "test"}
+def test_normalize_batch_args_kwargs_list_length_mismatch_raises_value_error() -> None:
+    with pytest.raises(ValueError, match="kwargs_list length"):
+        _normalize_batch_args(["a", "b"], [{}])
 
-        with patch(
-            "http_cache.result_cache.get_result_cache_redis_client"
-        ) as mock_get_client:
-            mock_redis = AsyncMock()
-            mock_get_client.return_value = mock_redis
-            mock_redis.get.side_effect = RedisError("Redis get failed")
 
-            # Should fall back to executing function
-            result = await fetch_data("item1")
+async def test_cached_result_second_call_returns_cached_value_without_calling(
+    redis_store: InMemoryRedis,
+) -> None:
+    calls: list[str] = []
 
-            assert result == {"id": "item1", "data": "test"}
-            assert call_count == 1
+    @cached_result(key_prefix="test")
+    async def fetch(item_id: str) -> dict[str, Any]:
+        calls.append(item_id)
+        return {"id": item_id, "data": "test_data"}
 
-    @pytest.mark.asyncio
-    async def test_decorator_redis_set_error(self) -> None:
-        """Test decorator behavior when Redis setex() fails.
+    first = await fetch("item1")
+    second = await fetch("item1")
 
-        CRITICAL: Function should be called exactly ONCE even if cache write fails.
-        Cache write errors should NOT trigger re-execution of expensive operations.
-        """
-        call_count = 0
+    assert first == second == {"id": "item1", "data": "test_data"}
+    assert calls == ["item1"]
+    assert list(redis_store.values) == [
+        _key("test", _compute_schema_hash(fetch.__wrapped__), "item1")
+    ]
 
-        @cached_result(ttl=60, key_prefix="test")
-        async def fetch_data(item_id: str) -> dict[str, str]:
-            """
-            Fetches mock data for a given item identifier and records the invocation.
 
-            Parameters:
-                item_id (str): The identifier of the item to fetch.
+async def test_cached_result_caching_off_calls_function_every_time() -> None:
+    calls: list[str] = []
 
-            Returns:
-                dict: A mapping with keys `"id"` set to the provided `item_id` and `"data"` set to the string `"test"`.
-            """
-            nonlocal call_count
-            call_count += 1
-            return {"id": item_id, "data": "test"}
+    @cached_result(key_prefix="test")
+    async def fetch(item_id: str) -> dict[str, str]:
+        calls.append(item_id)
+        return {"id": item_id}
 
-        with patch(
-            "http_cache.result_cache.get_result_cache_redis_client"
-        ) as mock_get_client:
-            mock_redis = AsyncMock()
-            mock_get_client.return_value = mock_redis
-            mock_redis.get.return_value = None
-            mock_redis.setex.side_effect = RedisError("Redis setex failed")
+    assert await fetch("item1") == await fetch("item1")
+    assert calls == ["item1", "item1"]
 
-            # Should still return result even if caching fails
-            result = await fetch_data("item1")
 
-            assert result == {"id": "item1", "data": "test"}
-            # FIXED: Should be called only ONCE (in try block)
-            # Cache write failure should NOT cause re-execution
-            assert call_count == 1, (
-                f"Function called {call_count} times. "
-                f"Expected 1 call even with cache write error."
-            )
-
-    @pytest.mark.asyncio
-    async def test_decorator_json_dumps_error(self) -> None:
-        """Test decorator behavior when json.dumps() fails.
-
-        CRITICAL: Function should be called exactly ONCE even if serialization fails.
-        Serialization errors should NOT trigger re-execution of expensive operations.
-        """
-        call_count = 0
-
-        @cached_result(ttl=60, key_prefix="test")
-        async def fetch_data(item_id: str) -> dict[str, str]:
-            """
-            Fetches mock data for a given item identifier and records the invocation.
-
-            Parameters:
-                item_id (str): The identifier of the item to fetch.
-
-            Returns:
-                dict: A mapping with keys `"id"` set to the provided `item_id` and `"data"` set to the string `"test"`.
-            """
-            nonlocal call_count
-            call_count += 1
-            return {"id": item_id, "data": "test"}
-
-        with (
-            patch(
-                "http_cache.result_cache.get_result_cache_redis_client"
-            ) as mock_get_client,
-            patch("http_cache.result_cache.json.dumps") as mock_dumps,
-        ):
-            mock_redis = AsyncMock()
-            mock_get_client.return_value = mock_redis
-            mock_redis.get.return_value = None
-
-            # Simulate json.dumps failure (e.g., non-serializable object)
-            mock_dumps.side_effect = TypeError("Object is not JSON serializable")
-
-            # Should still return result even if serialization fails
-            result = await fetch_data("item1")
-
-            assert result == {"id": "item1", "data": "test"}
-            # FIXED: Should be called only ONCE (in try block)
-            # Serialization failure should NOT cause re-execution
-            assert call_count == 1, (
-                f"Function called {call_count} times. "
-                f"Expected 1 call even with json.dumps error."
-            )
-
-    @pytest.mark.asyncio
-    async def test_decorator_corrupted_cache_data(self) -> None:
-        """Test decorator behavior when cached data is corrupted (invalid JSON).
-
-        CRITICAL: Corrupted cache should be treated as cache miss, not crash.
-        Function should be called once and return correct result.
-        """
-        call_count = 0
-
-        @cached_result(ttl=60, key_prefix="test")
-        async def fetch_data(item_id: str) -> dict[str, str]:
-            """
-            Fetches mock data for a given item identifier and records the invocation.
-
-            Parameters:
-                item_id (str): The identifier of the item to fetch.
-
-            Returns:
-                dict: A mapping with keys `"id"` set to the provided `item_id` and `"data"` set to the string `"test"`.
-            """
-            nonlocal call_count
-            call_count += 1
-            return {"id": item_id, "data": "test"}
-
-        with patch(
-            "http_cache.result_cache.get_result_cache_redis_client"
-        ) as mock_get_client:
-            mock_redis = AsyncMock()
-            mock_get_client.return_value = mock_redis
-
-            # Return corrupted/invalid JSON from cache
-            mock_redis.get.return_value = "{invalid json data"
-
-            # Should treat as cache miss and execute function
-            result = await fetch_data("item1")
-
-            assert result == {"id": "item1", "data": "test"}
-            # Should call function once (cache miss due to corruption)
-            assert call_count == 1, (
-                f"Function called {call_count} times. "
-                f"Expected 1 call when cache data is corrupted."
-            )
-
-    @pytest.mark.asyncio
-    async def test_decorator_different_args_different_cache_entries(self) -> None:
-        """Test that different arguments create different cache entries."""
-        call_count = 0
-
-        @cached_result(ttl=60, key_prefix="test")
-        async def fetch_data(item_id: str) -> dict[str, str]:
-            """
-            Return a simple data record for the given item identifier.
-
-            Parameters:
-                item_id (str): Identifier of the item.
-
-            Returns:
-                Dict[str, str]: A dictionary containing 'id' set to the provided `item_id` and 'data' set to "data_{item_id}".
-            """
-            nonlocal call_count
-            call_count += 1
-            return {"id": item_id, "data": f"data_{item_id}"}
-
-        with patch(
-            "http_cache.result_cache.get_result_cache_redis_client"
-        ) as mock_get_client:
-            mock_redis = AsyncMock()
-            mock_get_client.return_value = mock_redis
-            mock_redis.get.return_value = None
-
-            result1 = await fetch_data("item1")
-            result2 = await fetch_data("item2")
-
-            assert result1["id"] == "item1"
-            assert result2["id"] == "item2"
-            assert call_count == 2  # Both called (different cache keys)
-
-    @pytest.mark.asyncio
-    async def test_decorator_schema_hash_included_in_key(self) -> None:
-        """Test that schema hash is included in cache key."""
-
-        @cached_result(ttl=60, key_prefix="test")
-        async def fetch_data(item_id: str) -> dict[str, str]:
-            """
-            Return a mapping containing the provided item identifier under the "id" key.
-
-            Returns:
-                dict: A dictionary with a single entry `"id": item_id`.
-            """
-            return {"id": item_id}
-
-        with patch(
-            "http_cache.result_cache.get_result_cache_redis_client"
-        ) as mock_get_client:
-            mock_redis = AsyncMock()
-            mock_get_client.return_value = mock_redis
-            mock_redis.get.return_value = None
-
-            await fetch_data("item1")
-
-            # Get the cache key used
-            cache_key = mock_redis.get.call_args[0][0]
-
-            # Cache key should have format: result_cache:prefix:schema_hash:args
-            parts = cache_key.split(":")
-            assert parts[0] == "result_cache"
-            assert parts[1] == "test"  # prefix
-            assert (
-                len(parts[2]) == 16
-            )  # schema hash (16 characters for collision resistance)
-            assert parts[3] == "item1"  # argument
-
-    @pytest.mark.asyncio
-    async def test_decorator_preserves_function_metadata(self) -> None:
-        """Test that decorator preserves function name and docstring."""
-
-        @cached_result(ttl=60, key_prefix="test")
-        async def my_function(item_id: str) -> dict[str, str]:
-            """My function docstring."""
-            return {"id": item_id}
-
-        # functools.wraps should preserve metadata
-        assert my_function.__name__ == "my_function"
-        assert my_function.__doc__ == "My function docstring."
-
-    @pytest.mark.asyncio
-    async def test_decorator_with_complex_return_type(self) -> None:
-        """Test decorator with complex nested return types."""
-
-        @cached_result(ttl=60, key_prefix="test")
-        async def fetch_complex_data(item_id: str) -> dict[str, Any]:
-            """
-            Return a structured dictionary representing complex data for the given item ID.
-
-            Parameters:
-                item_id (str): Identifier of the item to fetch.
-
-            Returns:
-                data (dict): Dictionary with keys:
-                    - "id" (str): the provided item_id
-                    - "nested" (dict): contains "key" (str) and "list" (list of ints)
-                    - "array" (list): list of strings
-                    - "number" (int): integer value
-                    - "float" (float): floating-point value
-                    - "bool" (bool): boolean value
-                    - "null" (None): null value
-            """
-            return {
-                "id": item_id,
-                "nested": {"key": "value", "list": [1, 2, 3]},
-                "array": ["a", "b", "c"],
-                "number": 42,
-                "float": 3.14,
-                "bool": True,
-                "null": None,
-            }
-
-        with patch(
-            "http_cache.result_cache.get_result_cache_redis_client"
-        ) as mock_get_client:
-            mock_redis = AsyncMock()
-            mock_get_client.return_value = mock_redis
-
-            # Cache miss - store complex data
-            mock_redis.get.return_value = None
-            result1 = await fetch_complex_data("item1")
-
-            # Verify complex data serialized
-            assert mock_redis.setex.called
-            call_args = mock_redis.setex.call_args
-            # Access payload more resiliently - check kwargs first, fall back to positional
-            stored_data = (
-                call_args.kwargs.get("value") if call_args.kwargs else call_args.args[2]
-            )
-            parsed = json.loads(stored_data)
-            assert parsed["nested"]["list"] == [1, 2, 3]
-
-            # Cache hit - retrieve complex data
-            mock_redis.get.return_value = stored_data
-            result2 = await fetch_complex_data("item1")
-
-            assert result1 == result2
-            assert result2["nested"]["key"] == "value"
-
-
-class TestNormalizeBatchArgs:
-    """Test _normalize_batch_args helper."""
-
-    def test_bare_values_wrapped_in_tuples(self) -> None:
-        normalized, kw = _normalize_batch_args(["a", "b"], None)
-        assert normalized == [("a",), ("b",)]
-        assert kw == [{}, {}]
-
-    def test_tuples_passed_through(self) -> None:
-        normalized, kw = _normalize_batch_args([("a", 1), ("b", 2)], None)
-        assert normalized == [("a", 1), ("b", 2)]
-
-    def test_provided_kwargs_list_returned_as_is(self) -> None:
-        kw_in = [{"x": 1}, {"x": 2}]
-        _, kw_out = _normalize_batch_args(["a", "b"], kw_in)
-        assert kw_out is kw_in
-
-    def test_mismatched_kwargs_list_raises(self) -> None:
-        with pytest.raises(ValueError, match="kwargs_list length"):
-            _normalize_batch_args(["a", "b"], [{}])
-
-
-class TestCachedResultBatchHelper:
-    """Test batch cache helper attached to cached_result wrappers."""
-
-    @pytest.mark.asyncio
-    async def test_batch_helper_uses_mget_and_returns_missing(self) -> None:
-        """Batch helper should MGET and return cached values with missing indices."""
-
-        @cached_result(ttl=60, key_prefix="test_batch")
-        async def fetch_data(item_id: str) -> dict[str, str]:
-            return {"id": item_id}
-
-        assert hasattr(fetch_data, "cache_batch_get")
-
-        with patch(
-            "http_cache.result_cache.get_result_cache_redis_client"
-        ) as mock_get_client:
-            mock_redis = AsyncMock()
-            mock_get_client.return_value = mock_redis
-            mock_redis.mget.return_value = [
-                json.dumps({"id": "item1"}),
-                None,
-                "{bad json",
-            ]
-
-            args_list = [("item1",), ("item2",), ("item3",)]
-            cached, missing = await fetch_data.cache_batch_get(args_list)  # type: ignore[attr-defined]
-
-            # Ensure keys are generated consistently with the decorator
-            schema_hash = _compute_schema_hash(fetch_data.__wrapped__)  # type: ignore[attr-defined]
-            expected_keys = [
-                _generate_cache_key("test_batch", schema_hash, "item1"),
-                _generate_cache_key("test_batch", schema_hash, "item2"),
-                _generate_cache_key("test_batch", schema_hash, "item3"),
-            ]
-            mock_redis.mget.assert_called_once_with(expected_keys)
-
-            assert cached == [{"id": "item1"}, None, None]
-            assert missing == [1, 2]
-
-    @pytest.mark.asyncio
-    async def test_batch_helper_cache_disabled_returns_all_missing(self) -> None:
-        """When caching is disabled, batch helper should skip Redis and mark all missing."""
-
-        @cached_result(ttl=60, key_prefix="test_batch")
-        async def fetch_data(item_id: str) -> dict[str, str]:
-            return {"id": item_id}
-
-        with patch("http_cache.result_cache.get_cache_config") as mock_config:
-            mock_config.return_value = MagicMock(
-                cache_enabled=False, storage_type="redis"
-            )
-
-            args_list = [("item1",), ("item2",)]
-            cached, missing = await fetch_data.cache_batch_get(args_list)  # type: ignore[attr-defined]
-
-            assert cached == [None, None]
-            assert missing == [0, 1]
-
-    @pytest.mark.asyncio
-    async def test_batch_helper_writes_values_with_ttl(self) -> None:
-        """Batch helper should write non-None values via pipeline and skip None."""
-
-        @cached_result(ttl=123, key_prefix="test_batch")
-        async def fetch_data(item_id: str) -> dict[str, str]:
-            return {"id": item_id}
-
-        with patch(
-            "http_cache.result_cache.get_result_cache_redis_client"
-        ) as mock_get_client:
-            mock_pipe = MagicMock()
-            mock_pipe.setex = MagicMock()
-            mock_pipe.execute = AsyncMock()
-            mock_pipe.__aenter__ = AsyncMock(return_value=mock_pipe)
-            mock_pipe.__aexit__ = AsyncMock(return_value=None)
-
-            mock_redis = AsyncMock()
-            mock_redis.pipeline = MagicMock(return_value=mock_pipe)
-            mock_get_client.return_value = mock_redis
-
-            args_list = [("item1",), ("item2",), ("item3",)]
-            values = [{"id": "item1"}, None, {"id": "item3"}]
-
-            await fetch_data.cache_batch_set(args_list, values)  # type: ignore[attr-defined]
-
-            # None value skipped — only 2 setex calls queued on the pipeline
-            assert mock_pipe.setex.call_count == 2
-            mock_pipe.execute.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_batch_get_empty_args_returns_empty(self) -> None:
-        @cached_result(ttl=60, key_prefix="test_batch")
-        async def fetch_data(item_id: str) -> dict[str, str]:
-            return {"id": item_id}
-
-        result = await fetch_data.cache_batch_get([])  # type: ignore[attr-defined]
-        assert result == ([], [])
-
-    @pytest.mark.asyncio
-    async def test_batch_get_redis_error_returns_all_missing(self) -> None:
-        @cached_result(ttl=60, key_prefix="test_batch")
-        async def fetch_data(item_id: str) -> dict[str, str]:
-            return {"id": item_id}
-
-        with patch(
-            "http_cache.result_cache.get_result_cache_redis_client"
-        ) as mock_get_client:
-            mock_redis = AsyncMock()
-            mock_redis.mget.side_effect = RedisError("connection failed")
-            mock_get_client.return_value = mock_redis
-
-            cached, missing = await fetch_data.cache_batch_get([("a",), ("b",)])  # type: ignore[attr-defined]
-            assert cached == [None, None]
-            assert missing == [0, 1]
-
-    @pytest.mark.asyncio
-    async def test_batch_get_empty_redis_result_returns_all_missing(self) -> None:
-        @cached_result(ttl=60, key_prefix="test_batch")
-        async def fetch_data(item_id: str) -> dict[str, str]:
-            return {"id": item_id}
-
-        with patch(
-            "http_cache.result_cache.get_result_cache_redis_client"
-        ) as mock_get_client:
-            mock_redis = AsyncMock()
-            mock_redis.mget.return_value = []
-            mock_get_client.return_value = mock_redis
-
-            cached, missing = await fetch_data.cache_batch_get([("a",), ("b",)])  # type: ignore[attr-defined]
-            assert cached == [None, None]
-            assert missing == [0, 1]
-
-    @pytest.mark.asyncio
-    async def test_batch_set_empty_args_noop(self) -> None:
-        @cached_result(ttl=60, key_prefix="test_batch")
-        async def fetch_data(item_id: str) -> dict[str, str]:
-            return {"id": item_id}
-
-        with patch(
-            "http_cache.result_cache.get_result_cache_redis_client"
-        ) as mock_get_client:
-            await fetch_data.cache_batch_set([], [])  # type: ignore[attr-defined]
-            mock_get_client.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_batch_set_values_length_mismatch_raises(self) -> None:
-        @cached_result(ttl=60, key_prefix="test_batch")
-        async def fetch_data(item_id: str) -> dict[str, str]:
-            return {"id": item_id}
-
-        with pytest.raises(ValueError, match="values length"):
-            await fetch_data.cache_batch_set([("a",), ("b",)], [{"id": "a"}])  # type: ignore[attr-defined]
-
-    @pytest.mark.asyncio
-    async def test_batch_set_cache_disabled_noop(self) -> None:
-        @cached_result(ttl=60, key_prefix="test_batch")
-        async def fetch_data(item_id: str) -> dict[str, str]:
-            return {"id": item_id}
-
-        with patch("http_cache.result_cache.get_cache_config") as mock_config:
-            mock_config.return_value = MagicMock(
-                cache_enabled=False, storage_type="redis"
-            )
-            with patch(
-                "http_cache.result_cache.get_result_cache_redis_client"
-            ) as mock_get_client:
-                await fetch_data.cache_batch_set([("a",)], [{"id": "a"}])  # type: ignore[attr-defined]
-                mock_get_client.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_batch_set_type_error_on_serialization_skipped(self) -> None:
-        @cached_result(ttl=60, key_prefix="test_batch")
-        async def fetch_data(item_id: str) -> dict[str, str]:
-            return {"id": item_id}
-
-        with patch(
-            "http_cache.result_cache.get_result_cache_redis_client"
-        ) as mock_get_client:
-            mock_pipe = MagicMock()
-            mock_pipe.setex = MagicMock()
-            mock_pipe.execute = AsyncMock()
-            mock_pipe.__aenter__ = AsyncMock(return_value=mock_pipe)
-            mock_pipe.__aexit__ = AsyncMock(return_value=None)
-            mock_redis = AsyncMock()
-            mock_redis.pipeline = MagicMock(return_value=mock_pipe)
-            mock_get_client.return_value = mock_redis
-
-            with patch(
-                "http_cache.result_cache.json.dumps",
-                side_effect=TypeError("not serializable"),
-            ):
-                # Should not raise — TypeError is swallowed
-                await fetch_data.cache_batch_set([("a",)], [{"id": "a"}])  # type: ignore[attr-defined]
-            mock_pipe.setex.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_batch_set_redis_error_on_pipeline_swallowed(self) -> None:
-        @cached_result(ttl=60, key_prefix="test_batch")
-        async def fetch_data(item_id: str) -> dict[str, str]:
-            return {"id": item_id}
-
-        with patch(
-            "http_cache.result_cache.get_result_cache_redis_client"
-        ) as mock_get_client:
-            mock_redis = AsyncMock()
-            mock_redis.pipeline = MagicMock(side_effect=RedisError("pipeline failed"))
-            mock_get_client.return_value = mock_redis
-
-            # Should not raise — RedisError is swallowed
-            await fetch_data.cache_batch_set([("a",)], [{"id": "a"}])  # type: ignore[attr-defined]
-
-
-class TestSchemaHashInvalidation:
-    """Test schema hash invalidation behavior."""
-
-    @pytest.mark.asyncio
-    async def test_function_modification_changes_cache_key(self) -> None:
-        """Test that modifying function code changes cache key."""
-
-        # Version 1 of function
-        @cached_result(ttl=60, key_prefix="versioned_func")
-        async def fetch_data_v1(item_id: str) -> dict[str, str]:
-            """
-            Return a simple data dictionary for the given item identifier indicating version 1.
-
-            Parameters:
-                item_id (str): Identifier of the item to fetch.
-
-            Returns:
-                Dict[str, str]: Dictionary with 'id' set to the provided identifier and 'version' set to "1".
-            """
-            return {"id": item_id, "version": "1"}
-
-        # Version 2 of function (different code)
-        @cached_result(ttl=60, key_prefix="versioned_func")
-        async def fetch_data_v2(item_id: str) -> dict[str, str]:
-            """
-            Builds a versioned data payload for the given item identifier.
-
-            Returns:
-                dict: A mapping containing 'id' (the provided item_id), 'version' set to "2", and 'new_field' set to "data".
-            """
-            return {"id": item_id, "version": "2", "new_field": "data"}
-
-        with patch(
-            "http_cache.result_cache.get_result_cache_redis_client"
-        ) as mock_get_client:
-            mock_redis = AsyncMock()
-            mock_get_client.return_value = mock_redis
-            mock_redis.get.return_value = None
-
-            # Call both versions
-            await fetch_data_v1("item1")
-            key_v1 = mock_redis.get.call_args_list[0][0][0]
-
-            await fetch_data_v2("item1")
-            key_v2 = mock_redis.get.call_args_list[1][0][0]
-
-            # Cache keys should be different (different schema hashes)
-            assert key_v1 != key_v2
-
-
-class TestGetResultCacheRedisClient:
-    """Test get_result_cache_redis_client function."""
-
-    @pytest.mark.asyncio
-    async def test_initialization_and_singleton(self) -> None:
-        """Test that the Redis client is initialized and is a singleton."""
-        from http_cache.config import CacheConfig
-        from http_cache.result_cache import get_result_cache_redis_client
-        from redis.asyncio import Redis
-
-        with (
-            patch("http_cache.result_cache.get_cache_config") as mock_get_config,
-            patch("http_cache.result_cache.Redis.from_url") as mock_redis_from_url,
-            patch("http_cache.result_cache.logging") as mock_logging,
-        ):
-            mock_config_instance = MagicMock(spec=CacheConfig)
-            mock_config_instance.redis_url = "redis://test-host:6379/1"
-            mock_config_instance.redis_max_connections = 100
-            mock_config_instance.redis_socket_keepalive = True
-            mock_config_instance.redis_socket_connect_timeout = 5
-            mock_config_instance.redis_socket_timeout = 10
-            mock_config_instance.redis_retry_on_timeout = True
-            mock_config_instance.redis_health_check_interval = 30
-            mock_get_config.return_value = mock_config_instance
-
-            mock_redis_client_instance = AsyncMock(spec=Redis)
-            mock_redis_from_url.return_value = mock_redis_client_instance
-
-            # First call - should initialize client
-            client1 = await get_result_cache_redis_client()
-
-            mock_get_config.assert_called_once()
-            mock_redis_from_url.assert_called_once_with(
-                "redis://test-host:6379/1",
-                decode_responses=True,
-                max_connections=100,
-                socket_keepalive=True,
-                socket_connect_timeout=5,
-                socket_timeout=10,
-                retry_on_timeout=True,
-                health_check_interval=30,
-            )
-            # Check log message contains the URL and connection pool info
-            assert mock_logging.info.call_count == 1
-            log_call_args = mock_logging.info.call_args[0][0]
-            assert "redis://test-host:6379/1" in log_call_args
-            assert "max_connections=100" in log_call_args
-            assert client1 is mock_redis_client_instance
-            from http_cache.result_cache import _redis_client
-
-            assert _redis_client is client1
-
-            # Second call - should return existing client (singleton)
-            mock_get_config.reset_mock()
-            mock_redis_from_url.reset_mock()
-            mock_logging.info.reset_mock()
-
-            client2 = await get_result_cache_redis_client()
-
-            mock_get_config.assert_not_called()
-            mock_redis_from_url.assert_not_called()
-            mock_logging.info.assert_not_called()
-            assert client2 is client1
-
-    @pytest.mark.asyncio
-    async def test_concurrent_initialization_uses_lock(self) -> None:
-        """Test that singleton initialization uses asyncio.Lock for thread safety.
-
-        This test verifies the implementation uses proper async synchronization
-        (asyncio.Lock with double-checked locking pattern) to prevent race conditions
-        when multiple coroutines call get_result_cache_redis_client() concurrently.
-
-        Expected behavior with Lock:
-        - Only ONE coroutine acquires lock and initializes client
-        - Others wait for lock, then see client is already initialized (double-check)
-        - Result: Exactly one Redis.from_url() call, one client instance
-        """
-        import asyncio
-
-        from http_cache.config import CacheConfig
-        from http_cache.result_cache import get_result_cache_redis_client
-        from redis.asyncio import Redis
-
-        call_count = 0
-
-        def counting_from_url(*_args, **_kwargs):
-            """
-            Count Redis.from_url calls to verify singleton behavior.
-
-            Increments the enclosing `call_count` counter each time it is invoked and returns
-            an AsyncMock that acts like a Redis client.
-
-            Returns:
-                AsyncMock: An AsyncMock instance with the Redis spec that simulates a Redis client.
-            """
-            nonlocal call_count
-            call_count += 1
-            return AsyncMock(spec=Redis)
-
-        with (
-            patch("http_cache.result_cache.get_cache_config") as mock_get_config,
-            patch(
-                "http_cache.result_cache.Redis.from_url", side_effect=counting_from_url
-            ),
-        ):
-            mock_config_instance = MagicMock(spec=CacheConfig)
-            mock_config_instance.redis_url = "redis://test-host:6379/1"
-            mock_config_instance.redis_max_connections = 100
-            mock_config_instance.redis_socket_keepalive = True
-            mock_config_instance.redis_socket_connect_timeout = 5
-            mock_config_instance.redis_socket_timeout = 10
-            mock_config_instance.redis_retry_on_timeout = True
-            mock_config_instance.redis_health_check_interval = 30
-            mock_get_config.return_value = mock_config_instance
-
-            # Simulate concurrent access from multiple coroutines
-            # With proper Lock: Only first coroutine initializes, rest wait and reuse
-            results = await asyncio.gather(
-                *[get_result_cache_redis_client() for _ in range(10)]
-            )
-
-            # REQUIREMENT: Exactly ONE initialization regardless of concurrency
-            # This is guaranteed by async.Lock + double-checked locking
-            assert call_count == 1, (
-                f"Singleton initialization failed: Redis.from_url called {call_count} times "
-                f"(expected 1). Implementation must use asyncio.Lock."
-            )
-
-            # All results must be identical instance
-            unique_count = len(set(id(r) for r in results))
-            assert unique_count == 1, f"Expected 1 unique instance, got {unique_count}"
-
-    @pytest.mark.asyncio
-    async def test_no_race_condition_with_concurrent_close(self) -> None:
-        """Test that get_result_cache_redis_client never returns None during concurrent close.
-
-        Race condition scenario:
-        1. Coroutine A checks if client is None (passes, client exists)
-        2. Coroutine B closes client, sets to None
-        3. Coroutine A returns _redis_client (now None!)
-
-        This test verifies the fix: holding lock until return prevents this race.
-        """
-        import asyncio
-
-        from http_cache.config import CacheConfig
-        from http_cache.result_cache import (
-            close_result_cache_redis_client,
-            get_result_cache_redis_client,
-        )
-        from redis.asyncio import Redis
-
-        with (
-            patch("http_cache.result_cache.get_cache_config") as mock_get_config,
-            patch("http_cache.result_cache.Redis.from_url") as mock_from_url,
-        ):
-            mock_config_instance = MagicMock(spec=CacheConfig)
-            mock_config_instance.redis_url = "redis://localhost:6379/0"
-            mock_config_instance.redis_max_connections = 100
-            mock_config_instance.redis_socket_keepalive = True
-            mock_config_instance.redis_socket_connect_timeout = 5
-            mock_config_instance.redis_socket_timeout = 10
-            mock_config_instance.redis_retry_on_timeout = True
-            mock_config_instance.redis_health_check_interval = 30
-            mock_get_config.return_value = mock_config_instance
-
-            # Create mock clients
-            mock_client_1 = AsyncMock(spec=Redis)
-            mock_client_2 = AsyncMock(spec=Redis)
-            mock_from_url.side_effect = [mock_client_1, mock_client_2]
-
-            # Initialize client first
-            initial_client = await get_result_cache_redis_client()
-            assert initial_client is not None
-            assert initial_client == mock_client_1
-
-            # Track results from concurrent operations
-            get_results = []
-            none_returned = False
-
-            # Use events for coordination instead of sleep-based timing
-            getter_started = asyncio.Event()
-            closer_can_start = asyncio.Event()
-
-            async def concurrent_getter():
-                """Try to get client multiple times during close."""
-                nonlocal none_returned
-                getter_started.set()  # Signal that getter has started
-                await closer_can_start.wait()  # Wait for signal to ensure overlap
-                for _ in range(10):
-                    client = await get_result_cache_redis_client()
-                    get_results.append(client)
-                    if client is None:
-                        none_returned = True
-                    await asyncio.sleep(0.001)  # Small sleep to yield control
-
-            async def concurrent_closer():
-                """
-                Waits for getter to start, then closes the global Redis result cache client.
-
-                Used in tests to simulate closing the cache client while concurrent get operations are in progress.
-                """
-                await getter_started.wait()  # Wait for getter to start
-                closer_can_start.set()  # Signal getter can proceed
-                await asyncio.sleep(
-                    0.001
-                )  # Brief delay to ensure getter is mid-execution
-                await close_result_cache_redis_client()
-
-            # Run concurrently to trigger potential race
-            await asyncio.gather(concurrent_getter(), concurrent_closer())
-
-            # CRITICAL: After fix, should NEVER return None
-            assert not none_returned, (
-                "Race condition detected: get_result_cache_redis_client() "
-                "returned None during concurrent close operation"
-            )
-
-            # All results must be valid Redis clients (not None)
-            for i, result in enumerate(get_results):
-                assert result is not None, (
-                    f"Result at index {i} was None - race condition exists"
-                )
-
-    @pytest.mark.asyncio
-    async def test_redis_initialization_returns_none_raises(self) -> None:
-        """RedisInitializationError raised when from_url somehow returns None."""
-        from http_cache.exceptions import RedisInitializationError
-        from http_cache.result_cache import (
-            close_result_cache_redis_client,
-            get_result_cache_redis_client,
-        )
-
-        await close_result_cache_redis_client()
-
-        with (
-            patch("http_cache.result_cache.get_cache_config") as mock_config,
-            patch("http_cache.result_cache.Redis.from_url", return_value=None),
-        ):
-            mock_config.return_value = MagicMock(
-                redis_url="redis://localhost:6379/0",
-                redis_max_connections=10,
-                redis_socket_keepalive=True,
-                redis_socket_connect_timeout=5,
-                redis_socket_timeout=10,
-                redis_retry_on_timeout=True,
-                redis_health_check_interval=30,
-            )
-            with pytest.raises(RedisInitializationError):
-                await get_result_cache_redis_client()
-
-        await close_result_cache_redis_client()
-
-
-class TestMaxCacheKeyLength:
-    """Test max_cache_key_length configuration parameter."""
-
-    def test_default_max_cache_key_length(self) -> None:
-        """Test that default max_cache_key_length is 200."""
-        from http_cache.config import get_cache_config
-
-        config = get_cache_config()
-        assert config.max_cache_key_length == 200
-
-    def test_custom_max_cache_key_length_via_config(self) -> None:
-        """Test that custom max_cache_key_length can be set via config."""
-        from http_cache.config import CacheConfig
-
-        config = CacheConfig(max_cache_key_length=500)
-        assert config.max_cache_key_length == 500
-
-
-class TestComputeSchemaHashWithDependencies:
-    """Test _compute_schema_hash() with the dependencies parameter."""
-
-    def test_none_dependencies_same_as_no_dependencies(self) -> None:
-        """dependencies=None must be backward-compatible: produces the same hash."""
-
-        def main_func() -> str:
-            return "main"
-
-        assert _compute_schema_hash(main_func) == _compute_schema_hash(main_func, None)
-
-    def test_empty_list_dependencies_same_as_no_dependencies(self) -> None:
-        """An empty list of dependencies produces the same hash as no dependencies."""
-
-        def main_func() -> str:
-            return "main"
-
-        assert _compute_schema_hash(main_func) == _compute_schema_hash(main_func, [])
-
-    def test_dependency_changes_hash(self) -> None:
-        """Adding a dependency changes the hash vs no dependency."""
-
-        def dep() -> str:
-            return "dep_v1"
-
-        def main_func() -> str:
-            return dep()
-
-        hash_without = _compute_schema_hash(main_func)
-        hash_with = _compute_schema_hash(main_func, [dep])
-
-        assert hash_without != hash_with
-
-    def test_dependency_change_changes_hash(self) -> None:
-        """When a dependency's implementation changes, the hash changes."""
-
-        def main_func() -> str:
-            return "main"
-
-        def dep_v1() -> str:
-            return "schema_v1"
-
-        def dep_v2() -> str:
-            return "schema_v2"
-
-        hash_v1 = _compute_schema_hash(main_func, [dep_v1])
-        hash_v2 = _compute_schema_hash(main_func, [dep_v2])
-
-        assert hash_v1 != hash_v2
-
-    def test_multiple_dependencies_all_contribute(self) -> None:
-        """Each dependency in the list contributes independently to the hash."""
-
-        def main_func() -> str:
-            return "main"
-
-        def dep_a() -> str:
-            return "a"
-
-        def dep_b() -> str:
-            return "b"
-
-        hash_a_only = _compute_schema_hash(main_func, [dep_a])
-        hash_b_only = _compute_schema_hash(main_func, [dep_b])
-        hash_both = _compute_schema_hash(main_func, [dep_a, dep_b])
-
-        # Each combination produces a distinct hash
-        assert hash_a_only != hash_b_only
-        assert hash_a_only != hash_both
-        assert hash_b_only != hash_both
-
-    def test_hash_stable(self) -> None:
-        """Same function + same dependencies always produce the same hash."""
-
-        def dep() -> str:
-            return "stable_dep"
-
-        def main_func() -> str:
-            return dep()
-
-        assert _compute_schema_hash(main_func, [dep]) == _compute_schema_hash(
-            main_func, [dep]
-        )
-
-    def test_builtin_dependency_falls_back_to_name(self) -> None:
-        """A builtin dependency (no source) falls back to its __name__."""
-
-        # len has no inspectable source code
-        def main_func() -> int:
-            return len([])
-
-        # Should not raise; result must still be a valid 16-char hex hash
-        result = _compute_schema_hash(main_func, [len])
-        assert len(result) == 16
-        assert all(c in "0123456789abcdef" for c in result)
-
-    def test_lambda_dependency_falls_back_to_name(self) -> None:
-        """A lambda dependency (no retrievable source) falls back to its __name__."""
-        transform = lambda x: x * 2  # noqa: E731
-
-        def main_func(x: int) -> int:
-            return transform(x)
-
-        result = _compute_schema_hash(main_func, [transform])
-        assert len(result) == 16
-        assert all(c in "0123456789abcdef" for c in result)
-
-    def test_one_unretrievable_dep_does_not_break_others(self) -> None:
-        """If one dependency source cannot be retrieved, others still contribute."""
-
-        def good_dep() -> str:
-            return "good"
-
-        # Combine a good dep with a builtin (no source)
-        hash_good_only = _compute_schema_hash(good_dep, [good_dep])
-        hash_with_builtin = _compute_schema_hash(good_dep, [good_dep, len])
-
-        # The builtin adds its name, so the hash must differ from good_dep alone
-        assert hash_good_only != hash_with_builtin
-
-    def test_result_16_char_hex(self) -> None:
-        """Result with dependencies is still a 16-character hex string."""
-
-        def dep() -> None:
-            pass
-
-        def main_func() -> None:
-            pass
-
-        result = _compute_schema_hash(main_func, [dep])
-        assert len(result) == 16
-        assert all(c in "0123456789abcdef" for c in result)
-
-
-class TestCachedResultWithDependencies:
-    """Test that cached_result() forwards dependencies to _compute_schema_hash."""
-
-    @pytest.mark.asyncio
-    async def test_dependencies_affect_cache_key(self) -> None:
-        """Functions decorated with different dependencies get different cache keys."""
-
-        def helper_v1() -> str:
-            return "xpath_v1"
-
-        def helper_v2() -> str:
-            return "xpath_v2"
-
-        @cached_result(ttl=60, key_prefix="test_dep", dependencies=[helper_v1])
-        async def fetch_with_v1(item_id: str) -> dict[str, str]:
-            return {"id": item_id}
-
-        @cached_result(ttl=60, key_prefix="test_dep", dependencies=[helper_v2])
-        async def fetch_with_v2(item_id: str) -> dict[str, str]:
-            return {"id": item_id}
-
-        with patch(
-            "http_cache.result_cache.get_result_cache_redis_client"
-        ) as mock_get_client:
-            mock_redis = AsyncMock()
-            mock_get_client.return_value = mock_redis
-            mock_redis.get.return_value = None
-
-            await fetch_with_v1("item1")
-            key_v1 = mock_redis.get.call_args_list[0][0][0]
-
-            await fetch_with_v2("item1")
-            key_v2 = mock_redis.get.call_args_list[1][0][0]
-
-            # Different dependency source → different schema hash → different cache key
-            assert key_v1 != key_v2
-
-    @pytest.mark.asyncio
-    async def test_no_dependencies_backward_compatible(self) -> None:
-        """Existing callers without dependencies= still work as before."""
-
-        @cached_result(ttl=60, key_prefix="test_no_dep")
-        async def fetch_data(item_id: str) -> dict[str, str]:
-            return {"id": item_id}
-
-        with patch(
-            "http_cache.result_cache.get_result_cache_redis_client"
-        ) as mock_get_client:
-            mock_redis = AsyncMock()
-            mock_get_client.return_value = mock_redis
-            mock_redis.get.return_value = None
-
-            result = await fetch_data("item1")
-            assert result == {"id": "item1"}
-            mock_redis.get.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_dependency_change_invalidates_cache_key(self) -> None:
-        """Simulates a schema upgrade: after changing a dependency the key changes,
-        so stale cache entries are never returned."""
-
-        def schema_v1() -> list[str]:
-            return ["//div[@class='title']"]
-
-        def schema_v2() -> list[str]:
-            return ["//h1[@class='title']"]  # XPath updated
-
-        @cached_result(ttl=3600, key_prefix="page_data", dependencies=[schema_v1])
-        async def fetch_page_v1(url: str) -> dict[str, str]:
-            return {"url": url, "schema": "v1"}
-
-        @cached_result(ttl=3600, key_prefix="page_data", dependencies=[schema_v2])
-        async def fetch_page_v2(url: str) -> dict[str, str]:
-            return {"url": url, "schema": "v2"}
-
-        with patch(
-            "http_cache.result_cache.get_result_cache_redis_client"
-        ) as mock_get_client:
-            mock_redis = AsyncMock()
-            mock_get_client.return_value = mock_redis
-            mock_redis.get.return_value = None
-
-            await fetch_page_v1("https://example.com")
-            key_before = mock_redis.get.call_args_list[0][0][0]
-
-            await fetch_page_v2("https://example.com")
-            key_after = mock_redis.get.call_args_list[1][0][0]
-
-            assert key_before != key_after, (
-                "Cache key must change when a dependency changes to prevent stale reads"
-            )
-
-    @pytest.mark.asyncio
-    async def test_same_function_and_dependencies_produce_stable_cache_key(
-        self,
-    ) -> None:
-        """The same decorated function + same args always produces the same cache key
-        across multiple calls (the schema hash is computed once at decoration time)."""
-
-        def shared_helper() -> str:
-            return "parse_title"
-
-        @cached_result(ttl=60, key_prefix="stable", dependencies=[shared_helper])
-        async def fetch_data(item_id: str) -> dict[str, str]:
-            return {"id": item_id}
-
-        with patch(
-            "http_cache.result_cache.get_result_cache_redis_client"
-        ) as mock_get_client:
-            mock_redis = AsyncMock()
-            mock_get_client.return_value = mock_redis
-            mock_redis.get.return_value = None
-
-            await fetch_data("item1")
-            key_call1 = mock_redis.get.call_args_list[0][0][0]
-
-            await fetch_data("item1")
-            key_call2 = mock_redis.get.call_args_list[1][0][0]
-
-            # Identical args + identical decorated function → identical cache key
-            assert key_call1 == key_call2
+async def test_cached_result_without_service_or_ttl_keeps_result_one_day(
+    redis_store: InMemoryRedis,
+) -> None:
+    @cached_result(key_prefix="test")
+    async def fetch(item_id: str) -> dict[str, str]:
+        return {"id": item_id}
+
+    await fetch("item1")
+
+    assert list(redis_store.ttls.values()) == [86400]
+
+
+async def test_cached_result_ttl_given_keeps_result_that_long(
+    redis_store: InMemoryRedis,
+) -> None:
+    @cached_result(service="mal", key_prefix="test", ttl=3600)
+    async def fetch(item_id: str) -> dict[str, str]:
+        return {"id": item_id}
+
+    await fetch("item1")
+
+    assert list(redis_store.ttls.values()) == [3600]
+
+
+@pytest.mark.parametrize(
+    ("service", "expected"),
+    [("mal", 604800), ("animeschedule", 86400), ("unknown", 86400)],
+)
+async def test_cached_result_service_keeps_result_for_service_ttl(
+    redis_store: InMemoryRedis, service: str, expected: int
+) -> None:
+    @cached_result(service=service, key_prefix="test")
+    async def fetch(item_id: str) -> dict[str, str]:
+        return {"id": item_id}
+
+    await fetch("item1")
+
+    assert list(redis_store.ttls.values()) == [expected]
+
+
+async def test_cached_result_service_ttl_read_from_configured_cache() -> None:
+    store = InMemoryRedis()
+
+    @cached_result(service="mal", key_prefix="test")
+    async def fetch(item_id: str) -> dict[str, str]:
+        return {"id": item_id}
+
+    with _serve(store, ttl_mal=120):
+        await fetch("item1")
+
+    assert list(store.ttls.values()) == [120]
+
+
+async def test_cached_result_configured_key_limit_hashes_long_arguments() -> None:
+    store = InMemoryRedis()
+
+    @cached_result(key_prefix="test")
+    async def fetch(item_id: str) -> dict[str, str]:
+        return {"id": item_id}
+
+    with _serve(store, max_cache_key_length=40):
+        await fetch("item-" * 10)
+
+    assert "item-" not in next(iter(store.values))
+
+
+async def test_cached_result_without_key_prefix_uses_function_name(
+    redis_store: InMemoryRedis,
+) -> None:
+    @cached_result()
+    async def my_custom_function(item_id: str) -> dict[str, str]:
+        return {"id": item_id}
+
+    await my_custom_function("item1")
+
+    assert redis_store.reads[0].startswith("result_cache:my_custom_function:")
+
+
+async def test_cached_result_none_result_not_stored(
+    redis_store: InMemoryRedis,
+) -> None:
+    calls: list[str] = []
+
+    @cached_result(key_prefix="test")
+    async def fetch(item_id: str) -> dict[str, str] | None:
+        calls.append(item_id)
+        return None
+
+    assert await fetch("item1") is None
+    assert await fetch("item1") is None
+    assert calls == ["item1", "item1"]
+    assert redis_store.values == {}
+
+
+async def test_cached_result_read_error_calls_function() -> None:
+    calls: list[str] = []
+
+    @cached_result(key_prefix="test")
+    async def fetch(item_id: str) -> dict[str, str]:
+        calls.append(item_id)
+        return {"id": item_id, "data": "test"}
+
+    with _serve(InMemoryRedis(failing=frozenset({"get"}))):
+        result = await fetch("item1")
+
+    assert result == {"id": "item1", "data": "test"}
+    assert calls == ["item1"]
+
+
+async def test_cached_result_write_error_returns_result_after_one_call() -> None:
+    calls: list[str] = []
+
+    @cached_result(key_prefix="test")
+    async def fetch(item_id: str) -> dict[str, str]:
+        calls.append(item_id)
+        return {"id": item_id, "data": "test"}
+
+    with _serve(InMemoryRedis(failing=frozenset({"setex"}))):
+        result = await fetch("item1")
+
+    assert result == {"id": "item1", "data": "test"}
+    assert calls == ["item1"]
+
+
+async def test_cached_result_unserializable_result_returned_after_one_call(
+    redis_store: InMemoryRedis,
+) -> None:
+    calls: list[str] = []
+    moment = datetime(2025, 1, 20)
+
+    @cached_result(key_prefix="test")
+    async def fetch(item_id: str) -> dict[str, Any]:
+        calls.append(item_id)
+        return {"id": item_id, "at": moment}
+
+    result = await fetch("item1")
+
+    assert result == {"id": "item1", "at": moment}
+    assert calls == ["item1"]
+    assert redis_store.values == {}
+
+
+async def test_cached_result_corrupted_entry_calls_function_and_replaces_it(
+    redis_store: InMemoryRedis,
+) -> None:
+    calls: list[str] = []
+
+    @cached_result(key_prefix="test")
+    async def fetch(item_id: str) -> dict[str, str]:
+        calls.append(item_id)
+        return {"id": item_id, "data": "test"}
+
+    key = _key("test", _compute_schema_hash(fetch.__wrapped__), "item1")
+    redis_store.values[key] = "{invalid json data"
+
+    assert await fetch("item1") == {"id": "item1", "data": "test"}
+    assert calls == ["item1"]
+    assert json.loads(redis_store.values[key]) == {"id": "item1", "data": "test"}
+
+
+async def test_cached_result_different_arguments_stored_separately(
+    redis_store: InMemoryRedis,
+) -> None:
+    calls: list[str] = []
+
+    @cached_result(key_prefix="test")
+    async def fetch(item_id: str) -> dict[str, str]:
+        calls.append(item_id)
+        return {"id": item_id, "data": f"data_{item_id}"}
+
+    assert (await fetch("item1"))["id"] == "item1"
+    assert (await fetch("item2"))["id"] == "item2"
+    assert calls == ["item1", "item2"]
+    assert len(redis_store.values) == 2
+
+
+async def test_cached_result_key_holds_prefix_schema_hash_and_argument(
+    redis_store: InMemoryRedis,
+) -> None:
+    @cached_result(key_prefix="test")
+    async def fetch(item_id: str) -> dict[str, str]:
+        return {"id": item_id}
+
+    await fetch("item1")
+
+    namespace, prefix, schema_hash, argument = redis_store.reads[0].split(":")
+    assert (namespace, prefix, argument) == ("result_cache", "test", "item1")
+    assert _is_hash(schema_hash)
+
+
+def test_cached_result_keeps_function_name_and_docstring() -> None:
+    @cached_result(key_prefix="test")
+    async def my_function(item_id: str) -> dict[str, str]:
+        """My function docstring."""
+        return {"id": item_id}
+
+    assert my_function.__name__ == "my_function"
+    assert my_function.__doc__ == "My function docstring."
+
+
+async def test_cached_result_nested_result_returned_unchanged_from_cache(
+    redis_store: InMemoryRedis,
+) -> None:
+    payload = {
+        "nested": {"key": "value", "list": [1, 2, 3]},
+        "array": ["a", "b", "c"],
+        "number": 42,
+        "float": 3.14,
+        "bool": True,
+        "null": None,
+    }
+
+    @cached_result(key_prefix="test")
+    async def fetch(item_id: str) -> dict[str, Any]:
+        return {"id": item_id, **payload}
+
+    first = await fetch("item1")
+    second = await fetch("item1")
+
+    assert first == second == {"id": "item1", **payload}
+    assert json.loads(next(iter(redis_store.values.values())))["nested"]["list"] == [
+        1,
+        2,
+        3,
+    ]
+
+
+async def test_cached_result_changed_function_uses_different_key(
+    redis_store: InMemoryRedis,
+) -> None:
+    @cached_result(key_prefix="versioned_func")
+    async def fetch_v1(item_id: str) -> dict[str, str]:
+        return {"id": item_id, "version": "1"}
+
+    @cached_result(key_prefix="versioned_func")
+    async def fetch_v2(item_id: str) -> dict[str, str]:
+        return {"id": item_id, "version": "2", "new_field": "data"}
+
+    await fetch_v1("item1")
+    await fetch_v2("item1")
+
+    assert redis_store.reads[0] != redis_store.reads[1]
+
+
+async def test_cached_result_changed_dependency_uses_different_key(
+    redis_store: InMemoryRedis,
+) -> None:
+    def schema_v1() -> list[str]:
+        return ["//div[@class='title']"]
+
+    def schema_v2() -> list[str]:
+        return ["//h1[@class='title']"]
+
+    @cached_result(key_prefix="page_data", dependencies=[schema_v1])
+    async def fetch_v1(url: str) -> dict[str, str]:
+        return {"url": url}
+
+    @cached_result(key_prefix="page_data", dependencies=[schema_v2])
+    async def fetch_v2(url: str) -> dict[str, str]:
+        return {"url": url}
+
+    await fetch_v1("https://example.com")
+    await fetch_v2("https://example.com")
+
+    assert redis_store.reads[0] != redis_store.reads[1]
+
+
+async def test_cached_result_same_dependencies_use_same_key_every_call(
+    redis_store: InMemoryRedis,
+) -> None:
+    def parse_title() -> str:
+        return "parse_title"
+
+    @cached_result(key_prefix="stable", dependencies=[parse_title])
+    async def fetch(item_id: str) -> dict[str, str]:
+        return {"id": item_id}
+
+    await fetch("item1")
+    await fetch("item1")
+
+    assert redis_store.reads[0] == redis_store.reads[1]
+
+
+async def test_cache_batch_get_returns_cached_values_and_missing_positions(
+    redis_store: InMemoryRedis,
+) -> None:
+    @cached_result(key_prefix="test_batch")
+    async def fetch(item_id: str) -> dict[str, str]:
+        return {"id": item_id}
+
+    schema_hash = _compute_schema_hash(fetch.__wrapped__)
+    keys = [
+        _key("test_batch", schema_hash, item) for item in ("item1", "item2", "item3")
+    ]
+    redis_store.values[keys[0]] = json.dumps({"id": "item1"})
+    redis_store.values[keys[2]] = "{bad json"
+
+    cached, missing = await fetch.cache_batch_get([("item1",), ("item2",), ("item3",)])
+
+    assert cached == [{"id": "item1"}, None, None]
+    assert missing == [1, 2]
+    assert redis_store.reads == keys
+
+
+async def test_cache_batch_get_keyword_arguments_match_single_call_keys(
+    redis_store: InMemoryRedis,
+) -> None:
+    @cached_result(key_prefix="test_batch")
+    async def fetch(item_id: str, *, page: int) -> dict[str, Any]:
+        return {"id": item_id, "page": page}
+
+    await fetch("item1", page=2)
+
+    cached, missing = await fetch.cache_batch_get(["item1"], [{"page": 2}])
+
+    assert cached == [{"id": "item1", "page": 2}]
+    assert missing == []
+
+
+async def test_cache_batch_get_caching_off_returns_every_position_missing() -> None:
+    @cached_result(key_prefix="test_batch")
+    async def fetch(item_id: str) -> dict[str, str]:
+        return {"id": item_id}
+
+    assert await fetch.cache_batch_get([("item1",), ("item2",)]) == (
+        [None, None],
+        [0, 1],
+    )
+
+
+async def test_cache_batch_get_empty_arguments_returns_empty_lists() -> None:
+    @cached_result(key_prefix="test_batch")
+    async def fetch(item_id: str) -> dict[str, str]:
+        return {"id": item_id}
+
+    assert await fetch.cache_batch_get([]) == ([], [])
+
+
+async def test_cache_batch_get_read_error_returns_every_position_missing() -> None:
+    @cached_result(key_prefix="test_batch")
+    async def fetch(item_id: str) -> dict[str, str]:
+        return {"id": item_id}
+
+    with _serve(InMemoryRedis(failing=frozenset({"mget"}))):
+        result = await fetch.cache_batch_get([("a",), ("b",)])
+
+    assert result == ([None, None], [0, 1])
+
+
+async def test_cache_batch_get_empty_reply_returns_every_position_missing() -> None:
+    @cached_result(key_prefix="test_batch")
+    async def fetch(item_id: str) -> dict[str, str]:
+        return {"id": item_id}
+
+    with _serve(EmptyMgetRedis()):
+        result = await fetch.cache_batch_get([("a",), ("b",)])
+
+    assert result == ([None, None], [0, 1])
+
+
+async def test_cache_batch_set_stores_values_with_ttl_and_skips_none(
+    redis_store: InMemoryRedis,
+) -> None:
+    @cached_result(key_prefix="test_batch", ttl=123)
+    async def fetch(item_id: str) -> dict[str, str]:
+        return {"id": item_id}
+
+    await fetch.cache_batch_set(
+        [("item1",), ("item2",), ("item3",)],
+        [{"id": "item1"}, None, {"id": "item3"}],
+    )
+
+    schema_hash = _compute_schema_hash(fetch.__wrapped__)
+    assert redis_store.ttls == {
+        _key("test_batch", schema_hash, "item1"): 123,
+        _key("test_batch", schema_hash, "item3"): 123,
+    }
+    assert await fetch.cache_batch_get(["item1", "item3"]) == (
+        [{"id": "item1"}, {"id": "item3"}],
+        [],
+    )
+
+
+async def test_cache_batch_set_service_stores_values_for_service_ttl(
+    redis_store: InMemoryRedis,
+) -> None:
+    @cached_result(service="anisearch", key_prefix="test_batch")
+    async def fetch(item_id: str) -> dict[str, str]:
+        return {"id": item_id}
+
+    await fetch.cache_batch_set(["item1"], [{"id": "item1"}])
+
+    assert list(redis_store.ttls.values()) == [604800]
+
+
+async def test_cache_batch_set_empty_arguments_stores_nothing(
+    redis_store: InMemoryRedis,
+) -> None:
+    @cached_result(key_prefix="test_batch")
+    async def fetch(item_id: str) -> dict[str, str]:
+        return {"id": item_id}
+
+    await fetch.cache_batch_set([], [])
+
+    assert redis_store.values == {}
+
+
+async def test_cache_batch_set_values_length_mismatch_raises_value_error() -> None:
+    @cached_result(key_prefix="test_batch")
+    async def fetch(item_id: str) -> dict[str, str]:
+        return {"id": item_id}
+
+    with pytest.raises(ValueError, match="values length"):
+        await fetch.cache_batch_set([("a",), ("b",)], [{"id": "a"}])
+
+
+async def test_cache_batch_set_caching_off_stores_nothing() -> None:
+    @cached_result(key_prefix="test_batch")
+    async def fetch(item_id: str) -> dict[str, str]:
+        return {"id": item_id}
+
+    await fetch.cache_batch_set([("a",)], [{"id": "a"}])
+
+    assert await fetch.cache_batch_get([("a",)]) == ([None], [0])
+
+
+async def test_cache_batch_set_unserializable_value_skipped_others_stored(
+    redis_store: InMemoryRedis,
+) -> None:
+    @cached_result(key_prefix="test_batch")
+    async def fetch(item_id: str) -> dict[str, Any]:
+        return {"id": item_id}
+
+    await fetch.cache_batch_set(
+        ["a", "b"], [{"id": "a", "at": datetime(2025, 1, 20)}, {"id": "b"}]
+    )
+
+    assert await fetch.cache_batch_get(["a", "b"]) == ([None, {"id": "b"}], [0])
+
+
+async def test_cache_batch_set_pipeline_error_raises_nothing() -> None:
+    store = InMemoryRedis(failing=frozenset({"pipeline"}))
+
+    @cached_result(key_prefix="test_batch")
+    async def fetch(item_id: str) -> dict[str, str]:
+        return {"id": item_id}
+
+    with _serve(store):
+        await fetch.cache_batch_set([("a",)], [{"id": "a"}])
+
+    assert store.values == {}
+
+
+@pytest.mark.parametrize("func", [_read_selector, _read_selector_in_nested_function])
+def test_compute_schema_hash_changed_module_data_returns_different_hash(
+    func: Any,
+) -> None:
+    changed = _with_module_data(func, _SELECTORS={"title": "//h2"})
+
+    assert _compute_schema_hash(func) != _compute_schema_hash(changed)
+
+
+def test_compute_schema_hash_changed_module_data_in_dependency_returns_different_hash() -> (
+    None
+):
+    def fetch() -> str:
+        return "fetched"
+
+    changed = _with_module_data(_read_selector, _SELECTORS={"title": "//h2"})
+
+    assert _compute_schema_hash(fetch, [_read_selector]) != _compute_schema_hash(
+        fetch, [changed]
+    )
+
+
+def test_compute_schema_hash_changed_number_constant_returns_same_hash() -> None:
+    assert _compute_schema_hash(_wait) == _compute_schema_hash(
+        _with_module_data(_wait, _DELAY=2.0)
+    )
+
+
+def test_compute_schema_hash_changed_helper_returns_different_hash() -> None:
+    changed = _with_module_data(_clean_title, _title_cleaner=_lower_title)
+
+    assert _compute_schema_hash(_clean_title) != _compute_schema_hash(changed)
+
+
+def test_compute_schema_hash_changed_helper_of_helper_returns_different_hash() -> None:
+    changed = _with_module_data(
+        _extract_title,
+        _clean_title=_with_module_data(_clean_title, _title_cleaner=_lower_title),
+    )
+
+    assert _compute_schema_hash(_extract_title) != _compute_schema_hash(changed)
+
+
+def test_compute_schema_hash_changed_helper_of_decorated_helper_returns_different_hash() -> (
+    None
+):
+    changed = _with_module_data(
+        _clean_with_decorated_helper,
+        _decorated_cleaner=_passed_through(
+            _with_module_data(_clean_title, _title_cleaner=_lower_title)
+        ),
+    )
+
+    assert _compute_schema_hash(_clean_with_decorated_helper) != _compute_schema_hash(
+        changed
+    )
+
+
+def test_compute_schema_hash_changed_async_helper_returns_same_hash() -> None:
+    changed = _with_module_data(_read_fetched_page, _page_fetcher=_fetch_other_page)
+
+    assert _compute_schema_hash(_read_fetched_page) == _compute_schema_hash(changed)
+
+
+def test_compute_schema_hash_changed_function_from_other_package_returns_same_hash() -> (
+    None
+):
+    changed = _with_module_data(_call_library, _library_function=json.loads)
+
+    assert _compute_schema_hash(_call_library) == _compute_schema_hash(changed)
+
+
+def test_compute_schema_hash_helpers_calling_each_other_returns_hash() -> None:
+    assert _is_hash(_compute_schema_hash(_trim_front))
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (frozenset({"b", "a"}), "['a', 'b']"),
+        ({"z": {"b", "a"}}, "{'z': ['a', 'b']}"),
+        (("x", {"b", "a"}), "('x', ['a', 'b'])"),
+        (re.compile(r"\d+"), "re.compile('\\\\d+')"),
+    ],
+)
+def test_stable_repr_sets_are_sorted(value: object, expected: str) -> None:
+    assert _stable_repr(value) == expected

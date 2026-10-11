@@ -1,24 +1,20 @@
-"""Vector Service Configuration Settings."""
+"""Settings for every service, built once per process by ``get_settings``."""
 
-import json
-import logging
-import os
-import types
-import typing
 from enum import StrEnum
 from functools import lru_cache
+from itertools import combinations
 from typing import Any
 
-from pydantic import Field, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, field_validator
 
+from .cache_config import CacheConfig
 from .embedding_config import EmbeddingConfig
+from .enrichment_config import EnrichmentConfig
+from .env_settings import EnvSettings
 from .observability_config import ObservabilityConfig
 from .qdrant_config import QdrantConfig
 from .redis_config import RedisConfig
 from .service_config import ServiceConfig
-
-logger = logging.getLogger(__name__)
 
 
 class Environment(StrEnum):
@@ -29,308 +25,92 @@ class Environment(StrEnum):
     PRODUCTION = "production"
 
 
-def get_environment() -> Environment:
-    """Detect environment from ENVIRONMENT variable.
+class Settings(EnvSettings):
+    """All configuration, one sub-config per concern.
 
-    Returns:
-        Environment: Detected environment based on ENVIRONMENT.
-
-    Raises:
-        ValueError: If ENVIRONMENT is not set or contains an invalid value.
+    Every sub-config reads its own environment variables, so ``QDRANT_URL``
+    sets ``settings.qdrant.qdrant_url``.
     """
-    env_str = os.getenv("ENVIRONMENT")
-    if not env_str:
-        raise ValueError(  # noqa: TRY003
-            "ENVIRONMENT environment variable must be set to one of: "
-            "development, staging, production"
-        )
 
-    env_str = env_str.lower()
-
-    match env_str:
-        case "production":
-            return Environment.PRODUCTION
-        case "staging":
-            return Environment.STAGING
-        case "development":
-            return Environment.DEVELOPMENT
-        case _:
-            raise ValueError(  # noqa: TRY003
-                f"Invalid ENVIRONMENT value '{env_str}'. "
-                "Must be one of: development, staging, production"
-            )
-
-
-# Field name -> sub-config key mapping
-_QDRANT_FIELDS = frozenset(QdrantConfig.model_fields.keys())
-_EMBEDDING_FIELDS = frozenset(EmbeddingConfig.model_fields.keys())
-_SERVICE_FIELDS = frozenset(ServiceConfig.model_fields.keys())
-_OBSERVABILITY_FIELDS = frozenset(ObservabilityConfig.model_fields.keys())
-_REDIS_FIELDS = frozenset(RedisConfig.model_fields.keys())
-
-# Ensure no field name collisions between sub-configs
-# Note: Using assert for import-time structural invariants (acceptable despite -O stripping)
-assert not (_QDRANT_FIELDS & _EMBEDDING_FIELDS), (  # noqa: S101
-    f"Field overlap Qdrant/Embedding: {_QDRANT_FIELDS & _EMBEDDING_FIELDS}"
-)
-assert not (_QDRANT_FIELDS & _SERVICE_FIELDS), (  # noqa: S101
-    f"Field overlap Qdrant/Service: {_QDRANT_FIELDS & _SERVICE_FIELDS}"
-)
-assert not (_EMBEDDING_FIELDS & _SERVICE_FIELDS), (  # noqa: S101
-    f"Field overlap Embedding/Service: {_EMBEDDING_FIELDS & _SERVICE_FIELDS}"
-)
-assert not (_QDRANT_FIELDS & _OBSERVABILITY_FIELDS), (  # noqa: S101
-    f"Field overlap Qdrant/Observability: {_QDRANT_FIELDS & _OBSERVABILITY_FIELDS}"
-)
-assert not (_EMBEDDING_FIELDS & _OBSERVABILITY_FIELDS), (  # noqa: S101
-    f"Field overlap Embedding/Observability: "
-    f"{_EMBEDDING_FIELDS & _OBSERVABILITY_FIELDS}"
-)
-assert not (_SERVICE_FIELDS & _OBSERVABILITY_FIELDS), (  # noqa: S101
-    f"Field overlap Service/Observability: {_SERVICE_FIELDS & _OBSERVABILITY_FIELDS}"
-)
-assert not (_REDIS_FIELDS & _QDRANT_FIELDS), (  # noqa: S101
-    f"Field overlap Redis/Qdrant: {_REDIS_FIELDS & _QDRANT_FIELDS}"
-)
-assert not (_REDIS_FIELDS & _EMBEDDING_FIELDS), (  # noqa: S101
-    f"Field overlap Redis/Embedding: {_REDIS_FIELDS & _EMBEDDING_FIELDS}"
-)
-assert not (_REDIS_FIELDS & _SERVICE_FIELDS), (  # noqa: S101
-    f"Field overlap Redis/Service: {_REDIS_FIELDS & _SERVICE_FIELDS}"
-)
-assert not (_REDIS_FIELDS & _OBSERVABILITY_FIELDS), (  # noqa: S101
-    f"Field overlap Redis/Observability: {_REDIS_FIELDS & _OBSERVABILITY_FIELDS}"
-)
-
-
-def _is_complex_type(annotation: Any) -> bool:
-    """Check if a type annotation represents a list or dict (including generics).
-
-    Uses typing introspection instead of string matching for robustness.
-    Handles Union types (e.g., list[str] | None).
-    """
-    origin = typing.get_origin(annotation)
-    if origin in (list, dict):
-        return True
-    # Handle Union types (e.g., list[str] | None)
-    if origin is typing.Union or isinstance(annotation, types.UnionType):
-        for arg in typing.get_args(annotation):
-            if _is_complex_type(arg):
-                return True
-    return False
-
-
-# Fields that expect complex types (list/dict) and need JSON parsing from env vars
-_JSON_FIELDS: frozenset[str] = frozenset(
-    field_name
-    for config_cls in (
-        QdrantConfig,
-        EmbeddingConfig,
-        ServiceConfig,
-        ObservabilityConfig,
-        RedisConfig,
-    )
-    for field_name, field_info in config_cls.model_fields.items()
-    if field_info.annotation is not None and _is_complex_type(field_info.annotation)
-)
-
-
-def _maybe_parse_json(field_name: str, value: Any) -> Any:
-    """Parse JSON strings for fields that expect complex types (list/dict)."""
-    if field_name in _JSON_FIELDS and isinstance(value, str):
-        try:
-            return json.loads(value)
-        except (json.JSONDecodeError, ValueError) as e:
-            logger.warning(
-                f"Failed to parse JSON for field '{field_name}': {e}. "
-                f"Value will be passed as-is: {value[:100]}{'...' if len(value) > 100 else ''}"
-            )
-            return value
-    return value
-
-
-class Settings(BaseSettings):
-    """Vector service settings with validation and type safety."""
-
-    model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore"
-    )
-
-    # Top-level fields
     environment: Environment = Field(
-        default_factory=get_environment,
-        description="Application environment (development/staging/production)",
+        description="Application environment (development/staging/production)"
     )
     debug: bool = Field(default=True, description="Enable debug mode")
 
-    # Composed sub-configs
     qdrant: QdrantConfig = Field(default_factory=QdrantConfig)
     embedding: EmbeddingConfig = Field(default_factory=EmbeddingConfig)
     service: ServiceConfig = Field(default_factory=ServiceConfig)
     observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
     redis: RedisConfig = Field(default_factory=RedisConfig)
+    cache: CacheConfig = Field(default_factory=CacheConfig)
+    enrichment: EnrichmentConfig = Field(default_factory=EnrichmentConfig)
 
-    @model_validator(mode="before")
+    @field_validator("environment", mode="before")
     @classmethod
-    def distribute_env_vars(cls, data: dict[str, Any]) -> dict[str, Any]:
-        """Route flat env vars into nested sub-config groups.
-
-        BaseSettings only loads env vars for fields defined directly on Settings.
-        Since sub-config fields (e.g. log_level, qdrant_url) now live on BaseModel
-        sub-configs, we must explicitly read them from the environment and inject
-        them into the appropriate nested dict.
-
-        Precedence: real env var > .env file value > default.
-        For fields with complex types (list/dict), JSON string values are parsed.
-        """
-        if not isinstance(data, dict):
-            return data
-
-        # Normalize environment value to lowercase for case-insensitive enum matching
-        env_val = data.get("environment")
-        if isinstance(env_val, str):
-            data["environment"] = env_val.lower()
-
-        qdrant_data: dict[str, Any] = {}
-        embedding_data: dict[str, Any] = {}
-        service_data: dict[str, Any] = {}
-        observability_data: dict[str, Any] = {}
-        redis_data: dict[str, Any] = {}
-
-        # Collect sub-config fields from data (may come from .env file via BaseSettings)
-        keys_to_remove: list[str] = []
-        for key, value in data.items():
-            lower_key = key.lower() if isinstance(key, str) else key
-            if lower_key in _QDRANT_FIELDS:
-                qdrant_data[lower_key] = _maybe_parse_json(lower_key, value)
-                keys_to_remove.append(key)
-            elif lower_key in _EMBEDDING_FIELDS:
-                embedding_data[lower_key] = _maybe_parse_json(lower_key, value)
-                keys_to_remove.append(key)
-            elif lower_key in _SERVICE_FIELDS:
-                service_data[lower_key] = _maybe_parse_json(lower_key, value)
-                keys_to_remove.append(key)
-            elif lower_key in _OBSERVABILITY_FIELDS:
-                observability_data[lower_key] = _maybe_parse_json(lower_key, value)
-                keys_to_remove.append(key)
-            elif lower_key in _REDIS_FIELDS:
-                redis_data[lower_key] = _maybe_parse_json(lower_key, value)
-                keys_to_remove.append(key)
-
-        for key in keys_to_remove:
-            data.pop(key, None)
-
-        # Override with real env vars (take precedence over .env file values)
-        for fields, target_data in [
-            (_QDRANT_FIELDS, qdrant_data),
-            (_EMBEDDING_FIELDS, embedding_data),
-            (_SERVICE_FIELDS, service_data),
-            (_OBSERVABILITY_FIELDS, observability_data),
-            (_REDIS_FIELDS, redis_data),
-        ]:
-            for field_name in fields:
-                env_val = os.environ.get(field_name.upper())
-                if env_val is not None:
-                    target_data[field_name] = _maybe_parse_json(field_name, env_val)
-
-        # Merge into existing nested dicts (if any) or create new ones
-        for config_key, config_data in [
-            ("qdrant", qdrant_data),
-            ("embedding", embedding_data),
-            ("service", service_data),
-            ("observability", observability_data),
-            ("redis", redis_data),
-        ]:
-            if config_data:
-                existing = data.get(config_key, {})
-                if isinstance(existing, dict):
-                    existing.update(config_data)
-                    data[config_key] = existing
-                elif hasattr(existing, "model_dump"):
-                    # Preserve fields from pre-built Pydantic models
-                    merged = existing.model_dump()
-                    merged.update(config_data)
-                    data[config_key] = merged
-                else:
-                    data[config_key] = config_data
-
-        return data
+    def lowercase_environment(cls, value: Any) -> Any:
+        """Accept ``ENVIRONMENT`` in any case, such as ``PRODUCTION``."""
+        return value.lower() if isinstance(value, str) else value
 
     def model_post_init(self, __context: Any) -> None:
         """Apply environment-specific overrides after initialization."""
         self.apply_environment_settings()
 
     def apply_environment_settings(self) -> None:
-        """Apply environment-specific settings with smart defaults.
+        """Apply the defaults of each environment.
 
-        DEVELOPMENT:
-            - Sets debug=True, log_level=DEBUG as defaults
-            - Respects user-provided values (from env vars, .env, or constructor)
-
-        STAGING:
-            - Sets debug=True, log_level=INFO, wal=True as defaults
-            - Respects user-provided values (from env vars, .env, or constructor)
-
-        PRODUCTION (ENFORCED):
-            - ALWAYS enforces debug=False, log_level=WARNING
-            - ALWAYS enforces wal=True, model_warm_up=True
-            - Security: Cannot be bypassed by user configuration
+        Development and staging only change values nobody set, whether in an
+        environment variable, ``.env`` or code. Production always enforces
+        debug off, WARNING logs, the Qdrant write-ahead log and model warm-up.
         """
-        if self.environment == Environment.DEVELOPMENT:
-            # Apply defaults only if user didn't explicitly provide values via env vars
-            # Note: This checks os.environ (not .env file or constructor args)
-            # to avoid overriding explicit user values that happen to match defaults
-            if "DEBUG" not in os.environ:
-                self.debug = True
-            if "LOG_LEVEL" not in os.environ:
-                self.service.log_level = "DEBUG"
-
-        elif self.environment == Environment.STAGING:
-            # Apply defaults only if user didn't explicitly provide values via env vars
-            # Note: This checks os.environ (not .env file or constructor args)
-            # to avoid overriding explicit user values that happen to match defaults
-            if "DEBUG" not in os.environ:
-                self.debug = True
-            if "LOG_LEVEL" not in os.environ:
-                self.service.log_level = "INFO"
-            if "QDRANT_ENABLE_WAL" not in os.environ:
+        match self.environment:
+            case Environment.DEVELOPMENT:
+                self._default_unless_set(debug=True, log_level="DEBUG")
+            case Environment.STAGING:
+                self._default_unless_set(
+                    debug=True, log_level="INFO", qdrant_enable_wal=True
+                )
+            case Environment.PRODUCTION:
+                self.debug = False
+                self.service.log_level = "WARNING"
                 self.qdrant.qdrant_enable_wal = True
+                self.embedding.model_warm_up = True
 
-        elif self.environment == Environment.PRODUCTION:
-            # ENFORCED - cannot be bypassed (security feature)
-            # NOTE: Direct attribute assignment bypasses Pydantic validators.
-            # This is intentional for production enforcement. All values here are
-            # pre-validated to be correct and safe.
-            self.debug = False
-            self.service.log_level = "WARNING"
-            self.qdrant.qdrant_enable_wal = True
-            self.embedding.model_warm_up = True
+    def _default_unless_set(
+        self,
+        *,
+        debug: bool,
+        log_level: str,
+        qdrant_enable_wal: bool | None = None,
+    ) -> None:
+        """Set each given value on fields that were not set explicitly."""
+        if "debug" not in self.model_fields_set:
+            self.debug = debug
+        if "log_level" not in self.service.model_fields_set:
+            self.service.log_level = log_level
+        if (
+            qdrant_enable_wal is not None
+            and "qdrant_enable_wal" not in self.qdrant.model_fields_set
+        ):
+            self.qdrant.qdrant_enable_wal = qdrant_enable_wal
 
 
-# Ensure sub-config fields don't collide with Settings' own fields
-_SETTINGS_FIELDS = frozenset(Settings.model_fields.keys()) - {
-    "qdrant",
-    "embedding",
-    "service",
-    "observability",
-    "redis",
-}
+# The fields each class reads from the environment: Settings' own fields and
+# every sub-config's.
+_ENV_FIELDS: dict[str, set[str]] = {"Settings": set()}
+for _name, _field in Settings.model_fields.items():
+    _annotation = _field.annotation
+    if isinstance(_annotation, type) and issubclass(_annotation, EnvSettings):
+        _ENV_FIELDS[_name] = set(_annotation.model_fields)
+    else:
+        _ENV_FIELDS["Settings"].add(_name)
+
+# One environment variable must feed exactly one field.
 # Note: Using assert for import-time structural invariants (acceptable despite -O stripping)
-assert not (_QDRANT_FIELDS & _SETTINGS_FIELDS), (  # noqa: S101
-    f"Field overlap Qdrant/Settings: {_QDRANT_FIELDS & _SETTINGS_FIELDS}"
-)
-assert not (_EMBEDDING_FIELDS & _SETTINGS_FIELDS), (  # noqa: S101
-    f"Field overlap Embedding/Settings: {_EMBEDDING_FIELDS & _SETTINGS_FIELDS}"
-)
-assert not (_SERVICE_FIELDS & _SETTINGS_FIELDS), (  # noqa: S101
-    f"Field overlap Service/Settings: {_SERVICE_FIELDS & _SETTINGS_FIELDS}"
-)
-assert not (_OBSERVABILITY_FIELDS & _SETTINGS_FIELDS), (  # noqa: S101
-    f"Field overlap Observability/Settings: {_OBSERVABILITY_FIELDS & _SETTINGS_FIELDS}"
-)
-assert not (_REDIS_FIELDS & _SETTINGS_FIELDS), (  # noqa: S101
-    f"Field overlap Redis/Settings: {_REDIS_FIELDS & _SETTINGS_FIELDS}"
-)
+for (_first, _first_fields), (_second, _second_fields) in combinations(
+    _ENV_FIELDS.items(), 2
+):
+    _overlap = _first_fields & _second_fields
+    assert not _overlap, f"Field overlap {_first}/{_second}: {sorted(_overlap)}"  # noqa: S101
 
 
 @lru_cache

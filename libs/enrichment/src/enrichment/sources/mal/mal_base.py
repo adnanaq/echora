@@ -151,17 +151,29 @@ def parse_score(s: str | None) -> float | None:
 def parse_duration_seconds(raw: str | None) -> int | None:
     """Parse a MAL duration string to seconds.
 
-    Handles:
-        "24 min."       → 1440
-        "1 hr. 30 min." → 5400
-        "00:24:37"      → 1477 (HH:MM:SS format from episode pages)
-        "2 min."        → 120
-
     Args:
         raw: Raw duration string from MAL.
 
     Returns:
         Duration in seconds, or None if parsing fails.
+
+    Examples:
+        Anime pages write hours and minutes:
+
+        >>> parse_duration_seconds("24 min. per ep.")
+        1440
+        >>> parse_duration_seconds("1 hr. 30 min.")
+        5400
+        >>> parse_duration_seconds("2 hr.")
+        7200
+
+        Episode pages write HH:MM:SS:
+
+        >>> parse_duration_seconds("00:24:37")
+        1477
+
+        >>> print(parse_duration_seconds("Unknown"))
+        None
     """
     if not raw:
         return None
@@ -181,47 +193,21 @@ def parse_duration_seconds(raw: str | None) -> int | None:
     return total if total > 0 else None
 
 
-def parse_aired_string(aired_raw: str | None) -> tuple[str | None, str | None]:
-    """Parse a MAL aired date range string into (from_date, to_date) ISO strings.
-
-    Handles:
-        "Oct 20, 1999 to ?"           → ("1999-10-20", None)
-        "Oct 20, 1999 to Nov 5, 2000" → ("1999-10-20", "2000-11-05")
-        "Apr 5, 2003"                 → ("2003-04-05", None)  (movie / single date)
-
-    Args:
-        aired_raw: Raw aired string from MAL sidebar.
-
-    Returns:
-        Tuple of (ISO from_date, ISO to_date), either may be None.
-    """
-    if not aired_raw:
-        return None, None
-
-    if " to " in aired_raw:
-        parts = aired_raw.split(" to ", 1)
-        from_date = parse_iso_date(parts[0].strip())
-        to_date = parse_iso_date(parts[1].strip())
-    else:
-        from_date = parse_iso_date(aired_raw.strip())
-        to_date = None
-
-    return from_date, to_date
-
-
 def parse_premiered(premiered_raw: str | None) -> tuple[str | None, int | None]:
     """Parse a MAL 'Premiered' value into (season, year).
-
-    Handles:
-        "Fall 1999"   → ("fall", 1999)
-        "Spring 2024" → ("spring", 2024)
-        None          → (None, None)
 
     Args:
         premiered_raw: Raw premiered string from MAL sidebar link text.
 
     Returns:
-        Tuple of (lowercased season string, year int), either may be None.
+        Tuple of (lowercased season string, year int); both are None unless
+        the season and year are both present.
+
+    Examples:
+        >>> parse_premiered("Fall 1999")
+        ('fall', 1999)
+        >>> parse_premiered("?")
+        (None, None)
     """
     if not premiered_raw:
         return None, None

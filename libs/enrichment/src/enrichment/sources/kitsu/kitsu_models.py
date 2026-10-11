@@ -4,8 +4,93 @@ All models use extra="allow" so unknown API fields are preserved without crashin
 Fields use camelCase to match the Kitsu API attribute names directly.
 """
 
+import re
+from typing import Annotated
+
 from common.models.anime import ThemeEntry
-from pydantic import BaseModel, ConfigDict, Field
+from enrichment.sources.base.field_types import (
+    PlainText,
+    StrippedText,
+    strip_text_or_none,
+)
+from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field
+
+_PREAMBLE_START = re.compile(r"^[A-Za-z][A-Za-z /]+:\s*")
+# A line break in the raw description: HTML <br> or paragraph tags, or a newline.
+_LINE_BREAK = re.compile(r"\s*(?:<br\s*/?>|</?p\b[^>]*>|\n)\s*", re.IGNORECASE)
+_VALUE_CONTINUATION = re.compile(r"^[\d(]")
+# Prose start embedded in a value-continuation chunk: after ")" or a digit, a Capital word
+_PROSE_IN_VALUE = re.compile(r"[)\d]\s+([A-Z][a-z])")
+
+
+def _without_empty_texts(values: list[str]) -> list[str]:
+    """Strip each text and leave out the empty ones."""
+    return [text.strip() for text in values if text.strip()]
+
+
+def _strip_preamble(value: object) -> object:
+    """Discard the run-on metadata preamble that precedes the narrative text.
+
+    Kitsu character descriptions sometimes start with a flat key-value block:
+        "Name: Luffy Age: 17; 19 Birthdate: May 5, Taurus Height: 172 cm  Luffy is …"
+
+    It runs on the raw description, before HTML is turned into text, because
+    line breaks (``<br>``, paragraphs, newlines) separate the preamble from the
+    narrative just as double spaces do, and turning HTML into text merges them.
+
+    Complication: some preambles contain internal double-spaces (e.g. after a
+    zodiac sign) that create multiple key-value chunks when split. The algorithm
+    therefore splits on *all* double-space runs and skips chunks that still look
+    like preamble data, collecting only the first non-preamble chunk onward as
+    narrative.
+
+    An additional edge case: "Key:  value" (double-space between key and value)
+    may place numeric value text and narrative in the same chunk. In that case
+    the regex looks for a capitalized prose word following ")" or a digit.
+
+    Returns ``None`` when the description is preamble-only with no narrative,
+    and a description without a preamble unchanged.
+
+    >>> _strip_preamble("Age: 17; 19 Birthday: May 5  Luffy is the captain.")
+    'Luffy is the captain.'
+    >>> _strip_preamble("Age: 17<br><br>Luffy is the <i>captain</i>.")
+    'Luffy is the <i>captain</i>.'
+    >>> print(_strip_preamble("Debut: Chapter 673; Episode 599"))
+    None
+    """
+    if not isinstance(value, str):
+        return value
+    text = _LINE_BREAK.sub("  ", value).strip()
+    if not _PREAMBLE_START.match(text):
+        return value
+
+    parts = re.split(r"  +", text)
+    narrative_parts: list[str] = []
+    in_narrative = False
+
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+        if in_narrative:
+            narrative_parts.append(part)
+        elif _PREAMBLE_START.match(part):
+            continue  # still in preamble key-value block
+        elif _VALUE_CONTINUATION.match(part):
+            # Value continuation after "Key:  value" split — search for prose start
+            m = _PROSE_IN_VALUE.search(part)
+            if m:
+                narrative_parts.append(part[m.start(1) :])
+                in_narrative = True
+        else:
+            narrative_parts.append(part)
+            in_narrative = True
+
+    return " ".join(narrative_parts).strip() or None
+
+
+TextList = Annotated[list[str], AfterValidator(_without_empty_texts)]
+CharacterDescription = Annotated[PlainText, BeforeValidator(_strip_preamble)]
 
 
 class KitsuImage(BaseModel):
@@ -21,25 +106,26 @@ class KitsuImage(BaseModel):
 class KitsuTitles(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="allow")
 
-    en: str | None = None  # English title
-    en_jp: str | None = None  # Romanized title
-    en_us: str | None = None  # US English — present on episodes, not anime
-    ja_jp: str | None = None  # Japanese title
+    en: StrippedText = None  # English title
+    en_jp: StrippedText = None  # Romanized title
+    en_us: StrippedText = None  # US English — present on episodes, not anime
+    ja_jp: StrippedText = None  # Japanese title
 
 
 class KitsuAnimeAttributes(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     slug: str | None = None
-    synopsis: str | None = None
-    canonicalTitle: str | None = None
+    synopsis: PlainText = None
+    canonicalTitle: StrippedText = None
     titles: KitsuTitles = Field(default_factory=KitsuTitles)
-    abbreviatedTitles: list[str] = Field(default_factory=list)
-    averageRating: str | None = None  # "78.34" — string from API
+    abbreviatedTitles: TextList = Field(default_factory=list)
+    # Sent as text, e.g. "78.34" on a 0-100 scale.
+    averageRating: Annotated[float | None, BeforeValidator(strip_text_or_none)] = None
     userCount: int | None = None
     favoritesCount: int | None = None
-    # Rating histogram, keys "2".."20", counts as strings. See `scored_by`.
-    ratingFrequencies: dict[str, str] = Field(default_factory=dict)
+    # Rating histogram, keys "2".."20", counts sent as text. See `scored_by`.
+    ratingFrequencies: dict[str, int] = Field(default_factory=dict)
     startDate: str | None = None  # "1999-10-20"
     endDate: str | None = None
     popularityRank: int | None = None
@@ -74,7 +160,7 @@ class KitsuAnimeAttributes(BaseModel):
         """
         if not self.ratingFrequencies:
             return None
-        return sum(int(count) for count in self.ratingFrequencies.values())
+        return sum(self.ratingFrequencies.values())
 
 
 class KitsuAnime(BaseModel):
@@ -88,6 +174,8 @@ class KitsuAnime(BaseModel):
     themes: list[ThemeEntry] = Field(default_factory=list)
     # Populated by the helper after fetching /anime-productions
     companies: list[KitsuProduction] = Field(default_factory=list)
+    # Populated by the helper after fetching /mappings
+    mappings: list[KitsuMapping] = Field(default_factory=list)
 
 
 class KitsuProduction(BaseModel):
@@ -119,6 +207,20 @@ class KitsuGenre(BaseModel):
     attributes: KitsuGenreAttributes = Field(default_factory=KitsuGenreAttributes)
 
 
+class KitsuMappingAttributes(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
+
+    external_site: str | None = Field(None, alias="externalSite")  # e.g. "anidb"
+    external_id: str | None = Field(None, alias="externalId")
+
+
+class KitsuMapping(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
+
+    id: str
+    attributes: KitsuMappingAttributes = Field(default_factory=KitsuMappingAttributes)
+
+
 class KitsuCategoryAttributes(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="allow")
 
@@ -148,9 +250,9 @@ class KitsuCharacterAttributes(BaseModel):
     name: str | None = None
     names: KitsuCharacterNames = Field(default_factory=KitsuCharacterNames)
     canonicalName: str | None = None
-    otherNames: list[str] = Field(default_factory=list)
+    otherNames: TextList = Field(default_factory=list)
     malId: int | None = None
-    description: str | None = None  # may contain HTML
+    description: CharacterDescription = None
     image: KitsuImage | None = None
 
 
@@ -188,7 +290,7 @@ class KitsuPersonAttributes(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     name: str | None = None
-    description: str | None = None
+    description: PlainText = None
     image: KitsuImage | None = None
 
 
@@ -239,10 +341,10 @@ class KitsuAnimeographyEntry(BaseModel):
 class KitsuEpisodeAttributes(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="allow")
 
-    canonicalTitle: str | None = None
+    canonicalTitle: StrippedText = None
     titles: KitsuTitles = Field(default_factory=KitsuTitles)
-    synopsis: str | None = None
-    description: str | None = None
+    synopsis: PlainText = None
+    description: PlainText = None
     number: int | None = None
     seasonNumber: int | None = None
     airdate: str | None = None  # "1999-10-20"

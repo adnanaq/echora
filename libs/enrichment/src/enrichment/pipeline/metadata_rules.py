@@ -26,6 +26,7 @@ from datetime import datetime
 from statistics import mean, median
 from typing import Any
 
+from common.models.anime import Statistics
 from common.utils.datetime_utils import to_japan_time
 
 from enrichment.pipeline.relationship_merger import is_signal
@@ -423,6 +424,20 @@ def merge_month(ranked: Ranked, aired_dates: dict[str, Any] | None) -> str | Non
 
     Returns:
         The English month name, or ``None`` when nothing states one.
+
+    Examples:
+        A provider that names the month wins:
+
+        >>> merge_month([("animeschedule", {"month": "April"})], None)
+        'April'
+
+        Otherwise the month comes from the premiere date in Japan time, so
+        15:00 UTC on 31 March is April:
+
+        >>> merge_month([("mal", {})], {"aired_from": "2024-03-31T15:00:00+00:00"})
+        'April'
+        >>> print(merge_month([("mal", {})], None))
+        None
     """
     stated = providers_supplying(ranked, "month")
     if stated:
@@ -473,22 +488,15 @@ def merge_score(
         ``mean``, ``median`` and, when any provider reported a vote count,
         ``weighted``. ``None`` when no provider scored the work.
     """
-    scores = [
-        float(block["score"])
-        for block in statistics.values()
-        if isinstance(block.get("score"), (int, float))
-    ]
+    blocks = [Statistics.model_validate(block) for block in statistics.values()]
+    scores = [block.score for block in blocks if block.score is not None]
     if not scores:
         return None
 
     average = mean(scores)
     merged = {"mean": round(average, 2), "median": round(median(scores), 2)}
 
-    votes = sum(
-        int(block["scored_by"])
-        for block in statistics.values()
-        if isinstance(block.get("scored_by"), int)
-    )
+    votes = sum(block.scored_by for block in blocks if block.scored_by is not None)
     if votes:
         weighted = (votes * average + baseline_votes * baseline_score) / (
             votes + baseline_votes

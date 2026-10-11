@@ -16,6 +16,7 @@ from unittest.mock import call, create_autospec, patch
 
 import pytest
 import zendriver
+from common.config import EnrichmentConfig
 from enrichment.pipeline.enrichment_pipeline import EnrichmentPipeline
 from enrichment.sources.base import browser as browser_module
 from enrichment.sources.base.browser import (
@@ -28,6 +29,7 @@ from enrichment.sources.base.browser import (
     configure_browser_pool,
     reap_orphans,
 )
+from http_cache import get_cache
 from zendriver import cdp
 from zendriver.core.config import find_executable
 
@@ -617,7 +619,7 @@ async def test_browser_session_chrome_killed_closes_without_error(
 async def test_browser_session_inside_enrichment_pipeline_leaves_no_browser_after_exit(
     local_page: str,
 ) -> None:
-    async with EnrichmentPipeline():
+    async with EnrichmentPipeline(EnrichmentConfig(), get_cache()):
         async with browser_session(headless=True) as session:
             await session.browser.get(local_page)
             tree = _process_tree(session.browser._process_pid)

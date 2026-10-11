@@ -51,7 +51,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from enrichment.pipeline.config import EnrichmentConfig
+from common.config import EnrichmentConfig
+
 from enrichment.pipeline.link_rules import (
     merge_external_sources,
     merge_images,
@@ -86,6 +87,10 @@ from enrichment.pipeline.relationship_merger import (
 from enrichment.sources.base.external_links import normalize_link_url
 
 logger = logging.getLogger(__name__)
+
+# Code defaults, read without environment variables: a library merge must not
+# pick up settings the caller never passed.
+_DEFAULT_CONFIG = EnrichmentConfig.model_construct()
 
 # Fields where every provider that supplies a value reports the same one, so the
 # only question is who answers first. Disagreement here is worth a log line.
@@ -200,6 +205,7 @@ def _union_values(ranked: Ranked, field: str) -> list[Any]:
 def merge_provider_records(
     records: dict[str, dict[str, Any]],
     offline_data: dict[str, Any] | None = None,
+    config: EnrichmentConfig | None = None,
 ) -> dict[str, Any]:
     """Merge per-provider anime records already in memory into one record.
 
@@ -207,6 +213,8 @@ def merge_provider_records(
         records: Mapping of provider name to that provider's canonical record.
         offline_data: The work's offline database entry. Contributes its
             ``sources`` only; every other field is the providers' to report.
+        config: Supplies the weighted score baseline. Defaults to the
+            values in code.
 
     Returns:
         A canonical ``Anime``-shaped dict, relations included.
@@ -289,7 +297,7 @@ def merge_provider_records(
     statistics = merge_statistics(ranked)
     if statistics:
         merged["statistics"] = statistics
-        config = EnrichmentConfig()
+        config = config or _DEFAULT_CONFIG
         score = merge_score(
             statistics,
             baseline_score=config.weighted_score_baseline,
@@ -304,15 +312,19 @@ def merge_provider_records(
 
 
 def merge_agent_metadata(
-    agent_dir: Path, offline_data: dict[str, Any] | None = None
+    agent_dir: Path,
+    offline_data: dict[str, Any] | None = None,
+    config: EnrichmentConfig | None = None,
 ) -> dict[str, Any]:
     """Merge the per-provider files in one agent directory into one record.
 
     Args:
         agent_dir: Directory holding the per-provider ``*.jsonl`` files.
         offline_data: The work's offline database entry, when one is known.
+        config: Supplies the weighted score baseline. Defaults to the
+            values in code.
 
     Returns:
         A canonical ``Anime``-shaped dict, relations included.
     """
-    return merge_provider_records(load_agent_providers(agent_dir), offline_data)
+    return merge_provider_records(load_agent_providers(agent_dir), offline_data, config)

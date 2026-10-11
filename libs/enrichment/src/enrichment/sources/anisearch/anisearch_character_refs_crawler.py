@@ -11,13 +11,10 @@ import logging
 from typing import cast
 
 from enrichment.sources.anisearch.anisearch_http import fetch_anisearch_page
-from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
 
 logger = logging.getLogger(__name__)
 
-_CACHE_CONFIG = get_cache_config()
-TTL_ANISEARCH = _CACHE_CONFIG.ttl_anisearch
 
 BASE_ANIME_URL = "https://www.anisearch.com/anime/"
 _ANISEARCH_BASE_URL = "https://www.anisearch.com"
@@ -106,9 +103,8 @@ def _normalize_characters_page_url(anime_identifier: str) -> str:
 
 
 @cached_result(
-    ttl=TTL_ANISEARCH,
+    service="anisearch",
     key_prefix="anisearch_character_refs",
-    dependencies=[_extract_refs_from_html],
 )
 async def _fetch_anisearch_character_refs_data(
     characters_url: str,

@@ -5,8 +5,6 @@ Pure value normalization functions. No I/O, no side effects.
 Maps validated Kitsu models to canonical Anime / Character / Episode field dicts.
 """
 
-import html
-import re
 from typing import Any
 
 from common.models.anime import (
@@ -21,6 +19,7 @@ from common.models.anime import (
     CharacterRole,
     CompanyEntry,
     Episode,
+    ExternalLink,
     Ography,
     Statistics,
     TrailerEntry,
@@ -32,9 +31,11 @@ from common.utils.datetime_utils import (
     normalize_to_utc,
 )
 from enrichment.sources.base.companies import companies_from_roles
+from enrichment.sources.base.external_links import page_link
 from enrichment.sources.kitsu.kitsu_models import (
     KitsuAnime,
     KitsuEpisode,
+    KitsuMapping,
     KitsuMediaCharacter,
 )
 from enrichment.utils.text_utils import normalize_score
@@ -60,74 +61,6 @@ _LOCALE_TO_LANGUAGE: dict[str, str] = {
     "hu": "Hungarian",
     "ar": "Arabic",
 }
-
-
-_PREAMBLE_START_RE = re.compile(r"^[A-Za-z][A-Za-z /]+:\s*")
-_VALUE_CONT_RE = re.compile(r"^[\d(]")
-# Prose start embedded in a value-continuation chunk: after ")" or a digit, a Capital word
-_PROSE_IN_VALUE_RE = re.compile(r"[)\d]\s+([A-Z][a-z])")
-
-
-def _strip_preamble(text: str | None) -> str | None:
-    """Discard the run-on metadata preamble that precedes the narrative text.
-
-    Kitsu character descriptions sometimes start with a flat key-value block:
-        "Name: Luffy Age: 17; 19 Birthdate: May 5, Taurus Height: 172 cm  Luffy is …"
-
-    Complication: some preambles contain internal double-spaces (e.g. after a
-    zodiac sign) that create multiple key-value chunks when split. The algorithm
-    therefore splits on *all* double-space runs and skips chunks that still look
-    like preamble data, collecting only the first non-preamble chunk onward as
-    narrative.
-
-    An additional edge case: "Key:  value" (double-space between key and value)
-    may place numeric value text and narrative in the same chunk. In that case
-    the regex looks for a capitalized prose word following ")" or a digit.
-
-    Returns ``None`` when the description is preamble-only with no narrative.
-    """
-    if not text:
-        return None
-    text = text.strip()
-    if not _PREAMBLE_START_RE.match(text):
-        return text or None
-
-    parts = re.split(r"  +", text)
-    narrative_parts: list[str] = []
-    in_narrative = False
-
-    for part in parts:
-        part = part.strip()
-        if not part:
-            continue
-        if in_narrative:
-            narrative_parts.append(part)
-        elif _PREAMBLE_START_RE.match(part):
-            continue  # still in preamble key-value block
-        elif _VALUE_CONT_RE.match(part):
-            # Value continuation after "Key:  value" split — search for prose start
-            m = _PROSE_IN_VALUE_RE.search(part)
-            if m:
-                narrative_parts.append(part[m.start(1) :])
-                in_narrative = True
-        else:
-            narrative_parts.append(part)
-            in_narrative = True
-
-    return " ".join(narrative_parts).strip() or None
-
-
-def _strip_html(text: str | None) -> str | None:
-    """Strip HTML tags, decode HTML entities, and repair cp1252-as-UTF-8 mojibake."""
-    if not text:
-        return None
-    text = re.sub(r"<[^>]+>", "", text)
-    text = html.unescape(text).strip()
-    try:
-        text = text.encode("cp1252").decode("utf-8")
-    except UnicodeEncodeError, UnicodeDecodeError:
-        pass
-    return text or None
 
 
 def anime_from_kitsu(anime: KitsuAnime) -> dict[str, Any]:
@@ -160,7 +93,9 @@ def anime_from_kitsu(anime: KitsuAnime) -> dict[str, Any]:
     )
 
     kitsu_score = (
-        normalize_score(float(attrs.averageRating)) if attrs.averageRating else None
+        normalize_score(attrs.averageRating)
+        if attrs.averageRating is not None
+        else None
     )
     statistics: dict[str, Statistics] = {
         "kitsu": Statistics(
@@ -191,9 +126,9 @@ def anime_from_kitsu(anime: KitsuAnime) -> dict[str, Any]:
 
     # ageRating alone collapses PG-13 into PG and R+ into R; the guide carries
     # the distinction, so prefer it and fall back to the code.
-    rating = AnimeRating(attrs.ageRatingGuide or "")
+    rating = AnimeRating(attrs.ageRatingGuide)
     if rating is AnimeRating.UNKNOWN:
-        rating = AnimeRating(attrs.ageRating or "")
+        rating = AnimeRating(attrs.ageRating)
 
     by_role: dict[str, list[CompanyEntry]] = {
         "studio": [],
@@ -220,9 +155,9 @@ def anime_from_kitsu(anime: KitsuAnime) -> dict[str, Any]:
         title=title,
         title_english=titles.en,
         title_japanese=titles.ja_jp,
-        synopsis=_strip_html(attrs.synopsis),
-        type=AnimeType(attrs.subtype or ""),
-        status=AnimeStatus(attrs.status or ""),
+        synopsis=attrs.synopsis,
+        type=AnimeType(attrs.subtype),
+        status=AnimeStatus(attrs.status),
         episode_count=attrs.episodeCount or 0,
         duration=attrs.episodeLength * 60 if attrs.episodeLength else None,
         year=year,
@@ -233,6 +168,7 @@ def anime_from_kitsu(anime: KitsuAnime) -> dict[str, Any]:
         themes=anime.themes,
         synonyms=attrs.abbreviatedTitles,
         sources=[f"https://kitsu.io/anime/{attrs.slug}"] if attrs.slug else [],
+        external_sources=_external_sources_from_mappings(anime.mappings),
         images=images,
         statistics=statistics,
         broadcast=broadcast,
@@ -245,6 +181,39 @@ def anime_from_kitsu(anime: KitsuAnime) -> dict[str, Any]:
         ),
     )
     return result.model_dump(mode="json", exclude_none=True)
+
+
+def _external_sources_from_mappings(mappings: list[KitsuMapping]) -> list[ExternalLink]:
+    """Turn Kitsu's mappings into links to this anime's page on each site.
+
+    Args:
+        mappings: The mappings Kitsu holds for the anime.
+
+    Returns:
+        One link per distinct address, in Kitsu's order.
+
+    Examples:
+        >>> def mapping(site, external_id):
+        ...     attributes = {"externalSite": site, "externalId": external_id}
+        ...     return KitsuMapping.model_validate({"id": site, "attributes": attributes})
+        >>> links = _external_sources_from_mappings(
+        ...     [mapping("myanimelist/anime", "21"), mapping("thetvdb", "79099/3")]
+        ... )
+        >>> [(link.platform, link.source) for link in links]
+        [('myanimelist', 'https://myanimelist.net/anime/21'), ('thetvdb', 'https://thetvdb.com/dereferrer/series/79099')]
+    """
+    links: dict[str, ExternalLink] = {}
+    for mapping in mappings:
+        platform, _, kind = (mapping.attributes.external_site or "").partition("/")
+        external_id = mapping.attributes.external_id or ""
+        if (platform, kind) == ("thetvdb", ""):
+            # The id is "series/season number"; only the series has an address.
+            external_id, kind = external_id.partition("/")[0], "series"
+        if (
+            link := page_link(platform, external_id, kind=kind)
+        ) and link.source not in links:
+            links[link.source] = link
+    return list(links.values())
 
 
 def character_from_kitsu(char: KitsuMediaCharacter) -> dict[str, Any]:
@@ -287,7 +256,7 @@ def character_from_kitsu(char: KitsuMediaCharacter) -> dict[str, Any]:
                 name=p_attrs.name or "Unknown",
                 language=_LOCALE_TO_LANGUAGE.get(locale, locale) or None,
                 image=p_attrs.image.original if p_attrs.image else None,
-                biography=_strip_html(p_attrs.description),
+                biography=p_attrs.description,
                 sources=[f"https://kitsu.app/people/{person.id}"],
             )
         )
@@ -299,7 +268,7 @@ def character_from_kitsu(char: KitsuMediaCharacter) -> dict[str, Any]:
         if not media:
             continue
         m_attrs = media.attributes
-        role = CharacterRole(entry.attributes.role or "")
+        role = CharacterRole(entry.attributes.role)
         ography = Ography(
             title=m_attrs.canonicalTitle or "Unknown",
             role=role,
@@ -318,9 +287,9 @@ def character_from_kitsu(char: KitsuMediaCharacter) -> dict[str, Any]:
         name=attrs.canonicalName or attrs.name or "Unknown",
         name_native=names.ja_jp,
         name_variations=attrs.otherNames,
-        description=_strip_preamble(_strip_html(attrs.description)),
+        description=attrs.description,
         images=[attrs.image.original] if attrs.image and attrs.image.original else [],
-        roles=[CharacterRole(char.attributes.role or "")],
+        roles=[CharacterRole(char.attributes.role)],
         sources=sources,
         voice_actors=voice_actors,
         animeography=anime_entries,
@@ -364,7 +333,7 @@ def episode_from_kitsu(
         title_romaji=titles.en_jp,
         episode_number=attrs.number or 0,
         season_number=attrs.seasonNumber,
-        synopsis=_strip_html(attrs.synopsis or attrs.description),
+        synopsis=attrs.synopsis or attrs.description,
         aired=normalize_to_utc(attrs.airdate),
         duration=attrs.length * 60 if attrs.length else None,
         images=(

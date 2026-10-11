@@ -30,7 +30,6 @@ from enrichment.sources.anisearch.anisearch_character_crawler import (
     fetch_anisearch_character,
     fetch_anisearch_characters,
 )
-from enrichment.sources.anisearch.anisearch_mapper import character_from_anisearch
 from enrichment.sources.base.exceptions import ServiceBlockedError
 from enrichment.sources.base.framework import NullRepository
 from enrichment.sources.base.polite_http import FetchedPage
@@ -726,32 +725,3 @@ def test_crawler_map_to_canonical(luffy_char_processed) -> None:
     result = crawler.map_to_canonical(char)
     assert result["name"] == "Monkey D. Luffy"
     assert result["sources"] == [_LUFFY_URL]
-
-
-# =============================================================================
-# character_from_anisearch (mapper)
-# =============================================================================
-
-
-def test_character_from_anisearch_happy_path(luffy_char_processed) -> None:
-    char = _build_character_from_raw(luffy_char_processed, _LUFFY_URL)
-    result = character_from_anisearch(char)
-    assert result["name"] == "Monkey D. Luffy"
-    assert result["sources"] == [_LUFFY_URL]
-    assert result.get("name_native") == "モンキー・D・ルフィ"
-    assert result.get("images") and char.image in result["images"]
-    assert result.get("traits") and all(isinstance(t, str) for t in result["traits"])
-    names = [v["name"] for v in result.get("voice_actors", [])]
-    assert any("TANAKA" in n or "Tanaka" in n for n in names)
-    assert "description" not in result
-    assert result.get("attributes", {}).get("gender") == "Male"
-
-
-def test_character_from_anisearch_role_in_roles(luffy_char_processed) -> None:
-    char = _build_character_from_raw(
-        luffy_char_processed,
-        _LUFFY_URL,
-        role="Main Character",
-    )
-    result = character_from_anisearch(char)
-    assert result["roles"] == ["MAIN"]

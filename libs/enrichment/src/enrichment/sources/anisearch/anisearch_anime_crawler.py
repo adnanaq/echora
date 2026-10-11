@@ -13,8 +13,6 @@ from typing import Any, cast
 
 from enrichment.sources.anisearch.anisearch_anime_models import (
     AniSearchAnime,
-    AniSearchRelatedEntry,
-    AniSearchStatistics,
 )
 from enrichment.sources.anisearch.anisearch_http import fetch_anisearch_page
 from enrichment.sources.anisearch.anisearch_mapper import anime_from_anisearch
@@ -23,24 +21,15 @@ from enrichment.sources.base.framework import (
     FileRepository,
     NullRepository,
 )
-from enrichment.sources.base.utils import parse_broadcast_string, parse_iso_date
-from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
 
 logger = logging.getLogger(__name__)
 
-_CACHE_CONFIG = get_cache_config()
-TTL_ANISEARCH = _CACHE_CONFIG.ttl_anisearch
 
 BASE_ANIME_URL = "https://www.anisearch.com/anime/"
 _ANISEARCH_BASE_URL = "https://www.anisearch.com"
 
-_LABEL_RE = re.compile(r"^\s*[^:]+:\s*")
-_DATE_RANGE_RE = re.compile(r"(\d{2}\.\d{2}\.\d{4})\s*[-–‑]\s*(\d{2}\.\d{2}\.\d{4})")
-_SINGLE_DATE_RE = re.compile(r"(\d{2}\.\d{2}\.\d{4})")
 _VOTES_RE = re.compile(r"(\d[\d,]*)\s+members? have rated it")
-_SCORE_RE = re.compile(r"(\d+\.\d+)")
-_RANK_RE = re.compile(r"#(\d+)")
 _IMG_SRC_RE = re.compile(r'<img src="([^"]+)"')
 
 # ---------------------------------------------------------------------------
@@ -81,8 +70,9 @@ _XPATHS: dict[str, str] = {
 def _extract_anime_from_html(html_text: str) -> dict[str, Any] | None:
     """Parse an AniSearch anime main page into the raw field dict.
 
-    Returns a dict with the same keys that _post_process_main expects.
-    Returns None if the HTML cannot be parsed.
+    Values are the page text as found, labels included ("Type: TV-Series");
+    ``AniSearchAnime`` turns them into field values. Returns None if the HTML
+    cannot be parsed.
     """
     from lxml import etree
 
@@ -115,19 +105,10 @@ def _extract_anime_from_html(html_text: str) -> dict[str, Any] | None:
         ]
         return sum(counts) if counts else None
 
-    genre_els = cast(list[Any], tree.xpath(_XPATHS["genres"]))
-    genres = [
-        {"name": "".join(el.itertext()).strip()}
-        for el in genre_els
-        if "".join(el.itertext()).strip()
-    ]
-
-    tag_els = cast(list[Any], tree.xpath(_XPATHS["tags"]))
-    tags = [
-        {"name": "".join(el.itertext()).strip()}
-        for el in tag_els
-        if "".join(el.itertext()).strip()
-    ]
+    def _names(key: str) -> list[str]:
+        elements = cast(list[Any], tree.xpath(_XPATHS[key]))
+        names = ("".join(el.itertext()).strip() for el in elements)
+        return [name for name in names if name]
 
     website_els = cast(list[Any], tree.xpath(_XPATHS["websites"]))
     websites = [
@@ -152,8 +133,8 @@ def _extract_anime_from_html(html_text: str) -> dict[str, Any] | None:
         "source_material": _text("source_material"),
         "synonyms": _text("synonyms"),
         "description": _text("description"),
-        "genres": genres,
-        "tags": tags,
+        "genres": _names("genres"),
+        "tags": _names("tags"),
         "rating_score": _text("rating_score"),
         "rank_toplist": _text("rank_toplist"),
         "rank_trending": _text("rank_trending"),
@@ -251,101 +232,8 @@ def _process_relation_tooltips(relations: list[dict[str, Any]]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Post-processing helpers (unchanged — pure dict transforms)
+# Relations
 # ---------------------------------------------------------------------------
-
-
-def _post_process_main(raw: dict[str, Any]) -> dict[str, Any]:
-    """Clean raw XPath extraction dict into model-ready field values."""
-    data: dict[str, Any] = {}
-
-    data["cover_image"] = raw.get("cover_image") or None
-    data["title_alt"] = (raw.get("title_alt") or "").strip() or None
-    data["title_ja"] = (raw.get("title_ja") or "").strip() or None
-
-    type_raw = _LABEL_RE.sub("", raw.get("type") or "").strip()
-    data["type"] = type_raw.split(",")[0].strip() or None
-
-    data["status"] = _LABEL_RE.sub("", raw.get("status") or "").strip() or None
-
-    published = _LABEL_RE.sub("", raw.get("published") or "").strip()
-    m_range = _DATE_RANGE_RE.search(published)
-    if m_range:
-        data["start_date"] = m_range.group(1)
-        data["end_date"] = m_range.group(2)
-    else:
-        m_single = _SINGLE_DATE_RE.search(published)
-        if m_single:
-            data["start_date"] = m_single.group(1)
-        else:
-            year_match = re.search(r"\b(\d{4})\b", published)
-            data["start_date"] = (
-                parse_iso_date(year_match.group(1)) if year_match else None
-            )
-        data["end_date"] = None
-
-    data["studio"] = (raw.get("studio") or "").strip() or None
-    broadcast_raw = _LABEL_RE.sub("", raw.get("broadcast_raw") or "").strip()
-    day, time, tz = parse_broadcast_string(broadcast_raw)
-    data["broadcast_day"] = day
-    data["broadcast_time"] = time
-    data["broadcast_timezone"] = tz
-
-    studio_url = (raw.get("studio_url") or "").strip()
-    data["studio_url"] = (
-        f"https://www.anisearch.com{studio_url}"
-        if studio_url.startswith("/")
-        else f"https://www.anisearch.com/{studio_url}"
-        if studio_url
-        else None
-    )
-
-    data["source_material"] = (
-        _LABEL_RE.sub("", raw.get("source_material") or "").strip() or None
-    )
-
-    syn_clean = _LABEL_RE.sub("", raw.get("synonyms") or "").strip()
-    data["synonyms"] = [s.strip() for s in syn_clean.split(",") if s.strip()]
-
-    data["description"] = (raw.get("description") or "").strip() or None
-
-    data["genres"] = [
-        item["name"] for item in raw.get("genres", []) if item.get("name")
-    ]
-    data["tags"] = [item["name"] for item in raw.get("tags", []) if item.get("name")]
-
-    data["websites"] = [
-        {"name": w.get("name", ""), "url": w.get("url", "")}
-        for w in raw.get("websites", [])
-        if w.get("url")
-    ]
-
-    score: float | None = None
-    m_score = _SCORE_RE.search(raw.get("rating_score") or "")
-    if m_score and float(m_score.group(1)) > 0:
-        score = float(m_score.group(1))
-
-    def _parse_rank(text: str | None) -> int | None:
-        if not text:
-            return None
-        m = _RANK_RE.search(text.replace(".", ""))
-        return int(m.group(1)) if m else None
-
-    stats: dict[str, Any] = {}
-    if score is not None:
-        stats["score"] = score
-    votes = raw.get("rating_votes")
-    if isinstance(votes, int) and votes > 0:
-        stats["scored_by"] = votes
-    rank = _parse_rank(raw.get("rank_toplist"))
-    if rank is not None:
-        stats["rank"] = rank
-    trending = _parse_rank(raw.get("rank_trending"))
-    if trending is not None:
-        stats["trending"] = trending
-    data["statistics"] = stats or None
-
-    return data
 
 
 def _parse_relations(
@@ -366,9 +254,8 @@ def _parse_relations(
 
 
 @cached_result(
-    ttl=TTL_ANISEARCH,
+    service="anisearch",
     key_prefix="anisearch_anime",
-    dependencies=[_extract_anime_from_html, _extract_relations_from_html],
 )
 async def _fetch_anisearch_anime_data(canonical_path: str) -> dict[str, Any] | None:
     """Fetch and extract raw anime data for a given AniSearch anime path.
@@ -377,7 +264,7 @@ async def _fetch_anisearch_anime_data(canonical_path: str) -> dict[str, Any] | N
     ``anisearch_http``. Cached by canonical path;
     cache is automatically invalidated when any extraction function changes.
 
-    Returns a JSON-serializable dict of primitives ready for _build_anime_from_raw.
+    Returns the page text as a JSON-serializable dict for _build_anime_from_raw.
     """
     base_url = f"{BASE_ANIME_URL}{canonical_path}"
     main_page = await fetch_anisearch_page(base_url)
@@ -396,7 +283,7 @@ async def _fetch_anisearch_anime_data(canonical_path: str) -> dict[str, Any] | N
     )
     rels_raw = _extract_relations_from_html(rels_page.html) if rels_page else None
 
-    data = _post_process_main(main_raw)
+    data = dict(main_raw)
     data["anime_relations"], data["manga_relations"] = _parse_relations(rels_raw)
     if final_url != base_url:
         data["_canonical_url"] = final_url
@@ -409,55 +296,34 @@ async def _fetch_anisearch_anime_data(canonical_path: str) -> dict[str, Any] | N
 
 
 def _build_anime_from_raw(raw: dict[str, Any], url: str) -> AniSearchAnime:
-    """Construct AniSearchAnime source model from a cached raw data dict."""
-    stats_data = raw.get("statistics")
-    statistics = AniSearchStatistics(**stats_data) if stats_data else None
-
-    anime_relations = [
-        AniSearchRelatedEntry(
-            relation_type=r.get("relation_type"),
-            title=r.get("title"),
-            url=r.get("url"),
-            details=r.get("details"),
-            rating=r.get("rating"),
-            image=r.get("image"),
-        )
-        for r in raw.get("anime_relations", [])
-    ]
-    manga_relations = [
-        AniSearchRelatedEntry(
-            relation_type=r.get("relation_type"),
-            title=r.get("title"),
-            url=r.get("url"),
-            details=r.get("details"),
-            rating=r.get("rating"),
-            image=r.get("image"),
-        )
-        for r in raw.get("manga_relations", [])
-    ]
-
-    return AniSearchAnime(
-        title=raw.get("title_ja"),
-        title_japanese=raw.get("title_alt"),
-        synonyms=raw.get("synonyms", []),
-        type=raw.get("type"),
-        source_material=raw.get("source_material"),
-        start_date=raw.get("start_date"),
-        end_date=raw.get("end_date"),
-        synopsis=raw.get("description"),
-        genres=raw.get("genres", []),
-        tags=raw.get("tags", []),
-        broadcast_day=raw.get("broadcast_day"),
-        broadcast_time=raw.get("broadcast_time"),
-        broadcast_timezone=raw.get("broadcast_timezone"),
-        studio=raw.get("studio"),
-        studio_url=raw.get("studio_url"),
-        websites=raw.get("websites", []),
-        statistics=statistics,
-        cover_image=raw.get("cover_image"),
-        anime_relations=anime_relations,
-        manga_relations=manga_relations,
-        url=url,
+    """Construct the AniSearchAnime source model from the cached page text."""
+    return AniSearchAnime.model_validate(
+        {
+            "title": raw.get("title_ja"),
+            "title_japanese": raw.get("title_alt"),
+            "synonyms": raw.get("synonyms"),
+            "type": raw.get("type"),
+            "source_material": raw.get("source_material"),
+            "published": raw.get("published"),
+            "status": raw.get("status"),
+            "synopsis": raw.get("description"),
+            "genres": raw.get("genres", []),
+            "tags": raw.get("tags", []),
+            "broadcast": raw.get("broadcast_raw"),
+            "studio": raw.get("studio"),
+            "studio_url": raw.get("studio_url"),
+            "websites": raw.get("websites", []),
+            "statistics": {
+                "score": raw.get("rating_score"),
+                "scored_by": raw.get("rating_votes"),
+                "rank": raw.get("rank_toplist"),
+                "trending": raw.get("rank_trending"),
+            },
+            "cover_image": raw.get("cover_image"),
+            "anime_relations": raw.get("anime_relations", []),
+            "manga_relations": raw.get("manga_relations", []),
+            "url": url,
+        }
     )
 
 

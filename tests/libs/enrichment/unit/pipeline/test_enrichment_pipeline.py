@@ -8,10 +8,11 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from enrichment.pipeline.config import EnrichmentConfig
+from common.config import EnrichmentConfig
 from enrichment.pipeline.enrichment_pipeline import EnrichmentPipeline
 from enrichment.sources.base import browser as browser_module
 from enrichment.sources.base.browser import OWNER_FILE_NAME
+from http_cache import get_cache
 
 IDS = {"mal_url": "https://myanimelist.net/anime/21"}
 API_DATA = {"mal": {"title": "One Piece"}}
@@ -19,7 +20,9 @@ API_DATA = {"mal": {"title": "One Piece"}}
 
 @pytest.fixture
 def pipeline(tmp_path: Path) -> EnrichmentPipeline:
-    return EnrichmentPipeline(EnrichmentConfig(temp_dir=str(tmp_path / "temp")))
+    return EnrichmentPipeline(
+        EnrichmentConfig(enrichment_temp_dir=str(tmp_path / "temp")), get_cache()
+    )
 
 
 @pytest.fixture
@@ -56,17 +59,23 @@ def unlimited_browser_pool() -> Iterator[None]:
 
 def _agent_dirs(pipeline: EnrichmentPipeline, *names: str) -> None:
     for name in names:
-        (Path(pipeline.config.temp_dir) / name).mkdir(parents=True)
-
-
-def test_enrichment_pipeline_no_config_uses_default_config() -> None:
-    assert isinstance(EnrichmentPipeline().config, EnrichmentConfig)
+        (Path(pipeline.config.enrichment_temp_dir) / name).mkdir(parents=True)
 
 
 def test_enrichment_pipeline_given_config_keeps_it() -> None:
     config = EnrichmentConfig()
 
-    assert EnrichmentPipeline(config).config is config
+    assert EnrichmentPipeline(config, get_cache()).config is config
+
+
+def test_enrichment_pipeline_api_fetcher_gets_same_config_and_cache() -> None:
+    config = EnrichmentConfig()
+    cache = get_cache()
+
+    fetcher = EnrichmentPipeline(config, cache).api_fetcher
+
+    assert fetcher.config is config
+    assert fetcher.cache is cache
 
 
 def test_enrichment_pipeline_starts_with_empty_timing_breakdown(
@@ -79,10 +88,12 @@ def test_enrichment_pipeline_starts_with_empty_timing_breakdown(
 def test_enrichment_pipeline_verbose_logging_logs_configuration_only_when_on(
     caplog: pytest.LogCaptureFixture, verbose: bool
 ) -> None:
-    with caplog.at_level(logging.INFO, logger="enrichment.pipeline.config"):
-        EnrichmentPipeline(EnrichmentConfig(verbose_logging=verbose))
+    with caplog.at_level(logging.INFO, logger="common.config.enrichment_config"):
+        EnrichmentPipeline(
+            EnrichmentConfig(enrichment_verbose_logging=verbose), get_cache()
+        )
 
-    assert ("Enrichment Pipeline Configuration" in caplog.text) is verbose
+    assert ("Enrichment pipeline:" in caplog.text) is verbose
 
 
 def test_find_next_agent_id_missing_temp_dir_returns_one(
@@ -128,7 +139,7 @@ def test_create_temp_dir_creates_first_word_agent_dir_under_temp_dir(
 ) -> None:
     path = pipeline._create_temp_dir("One Piece")
 
-    assert path == os.path.join(pipeline.config.temp_dir, "One_agent1")
+    assert path == os.path.join(pipeline.config.enrichment_temp_dir, "One_agent1")
     assert os.path.isdir(path)
 
 
@@ -176,7 +187,9 @@ async def test_enrich_anime_saves_current_anime_json(
 ) -> None:
     await pipeline.enrich_anime(sample_anime, agent_dir="One_agent1")
 
-    saved = Path(pipeline.config.temp_dir) / "One_agent1" / "current_anime.json"
+    saved = (
+        Path(pipeline.config.enrichment_temp_dir) / "One_agent1" / "current_anime.json"
+    )
     assert json.loads(saved.read_text())["title"] == "One Piece"
 
 
@@ -220,7 +233,10 @@ async def test_enrich_anime_failure_with_skip_disabled_raises(
     tmp_path: Path, sample_anime: dict[str, object]
 ) -> None:
     pipeline = EnrichmentPipeline(
-        EnrichmentConfig(skip_failed_apis=False, temp_dir=str(tmp_path))
+        EnrichmentConfig(
+            enrichment_skip_failed_apis=False, enrichment_temp_dir=str(tmp_path)
+        ),
+        get_cache(),
     )
 
     with (
@@ -337,7 +353,8 @@ async def test_enrich_batch_more_anime_than_batch_size_returns_every_result(
     tmp_path: Path,
 ) -> None:
     pipeline = EnrichmentPipeline(
-        EnrichmentConfig(batch_size=2, temp_dir=str(tmp_path))
+        EnrichmentConfig(enrichment_batch_size=2, enrichment_temp_dir=str(tmp_path)),
+        get_cache(),
     )
 
     async def enrich(anime: dict, **_: object) -> dict:
@@ -392,9 +409,10 @@ async def test_enrichment_pipeline_enter_applies_browser_limit_and_removes_aband
     (abandoned / OWNER_FILE_NAME).write_text("999999999 1")
     pipeline = EnrichmentPipeline(
         EnrichmentConfig(
-            max_concurrent_browsers=3,
-            temp_dir=str(tmp_path / "temp"),
-        )
+            enrichment_max_concurrent_browsers=3,
+            enrichment_temp_dir=str(tmp_path / "temp"),
+        ),
+        get_cache(),
     )
 
     async with pipeline as entered:

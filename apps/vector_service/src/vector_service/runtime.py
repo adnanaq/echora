@@ -14,6 +14,7 @@ import time
 from dataclasses import dataclass
 
 from common.config import QdrantConfig, Settings
+from common.redis_client import create_redis_client
 from qdrant_client import AsyncQdrantClient
 from qdrant_db import QdrantClient
 from qdrant_db.errors import ConfigurationError
@@ -172,18 +173,10 @@ async def build_runtime(settings: Settings) -> VectorRuntime:
     try:
         async_qdrant_client = _create_qdrant_client(settings.qdrant)
 
-        # Build optional embedding cache from Redis config
-        if settings.redis.redis_url:
-            from redis.asyncio import Redis
-
-            redis_client = Redis.from_url(
-                settings.redis.redis_url,
-                max_connections=settings.redis.redis_max_connections,
-                socket_connect_timeout=settings.redis.redis_socket_connect_timeout,
-                socket_timeout=settings.redis.redis_socket_timeout,
-            )
+        redis_client = create_redis_client(settings.redis)
+        if redis_client is not None:
             embedding_cache = EmbeddingCache(redis_client)
-            logger.info(f"Embedding cache enabled (Redis: {settings.redis.redis_url})")
+            logger.info("Embedding cache enabled")
         else:
             logger.info("Embedding cache disabled (no REDIS_URL configured)")
 
