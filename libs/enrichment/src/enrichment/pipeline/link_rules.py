@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from common.models.anime import StreamingEntry
 from common.utils.id_generation import generate_deterministic_id
 
 from enrichment.pipeline.metadata_rules import Ranked, providers_supplying
@@ -131,6 +132,7 @@ def merge_streaming_sources(ranked: Ranked) -> list[dict[str, Any]]:
     AniDB files Crunchyroll, Amazon and Funimation there, at urls no other
     provider reports, so leaving them to the residual field and excluding them
     from it - which is what ownership by platform does - loses them outright.
+    Only the fields a streaming entry has are copied from such a link.
 
     Args:
         ranked: Provider records in priority order.
@@ -147,7 +149,12 @@ def merge_streaming_sources(ranked: Ranked) -> list[dict[str, Any]]:
                 if field == "external_sources" and platform not in _STREAMING_PLATFORMS:
                     continue
                 key = (platform, normalize_link_url(source) if source else "")
-                merged.setdefault(key, {**entry, "platform": platform})
+                streaming_fields = {
+                    name: value
+                    for name, value in entry.items()
+                    if name in StreamingEntry.model_fields
+                }
+                merged.setdefault(key, {**streaming_fields, "platform": platform})
     return list(merged.values())
 
 
