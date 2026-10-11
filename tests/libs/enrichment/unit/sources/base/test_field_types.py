@@ -58,6 +58,10 @@ def test_html_to_plain_text_cp1252_mojibake_is_repaired() -> None:
     assert html_to_plain_text("PokÃ©mon") == "Pokémon"
 
 
+def test_html_to_plain_text_correct_accents_are_kept() -> None:
+    assert html_to_plain_text("Pokémon, café, naïve") == "Pokémon, café, naïve"
+
+
 def test_html_to_plain_text_real_japanese_is_kept() -> None:
     assert html_to_plain_text("ワンピース") == "ワンピース"
 
@@ -87,6 +91,15 @@ def test_number_from_display_text_reads_number(
     raw: str | int | None, expected: int | None
 ) -> None:
     assert _ProviderFields(rank=raw).rank == expected
+
+
+@pytest.mark.parametrize(
+    "raw", ["8.5", "Score 7.25", "1.5 users", "1.234,56", "1,0055"]
+)
+def test_number_from_display_text_decimal_or_misgrouped_number_returns_none(
+    raw: str,
+) -> None:
+    assert number_from_display_text(raw) is None
 
 
 def test_number_from_display_text_non_string_returns_unchanged() -> None:

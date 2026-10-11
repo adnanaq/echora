@@ -37,7 +37,9 @@ _LINE_TAGS = (
 # Stands in for a line or block tag while the text is read out of the parsed HTML.
 _LINE_TAG_MARK = "\ue000"  # a Unicode private-use character
 _LINE_TAG_MARKS = re.compile(f"{_LINE_TAG_MARK}+")
-_DIGITS = re.compile(r"\d+")
+# A whole number, its thousands grouped by "," or "."; digits that are part of
+# a decimal ("8.5") do not match.
+_WHOLE_NUMBER = re.compile(r"(?<![\d.,])(\d{1,3}(?:[.,]\d{3})+|\d+)(?![.,]?\d)")
 
 
 def strip_text_or_none(value: object) -> object:
@@ -75,6 +77,10 @@ def html_to_plain_text(value: object) -> object:
     entities; text that was UTF-8 read as cp1252 (``"Ã©"`` for ``"é"``) is then
     repaired. Line breaks and spacing inside the text are kept.
 
+    The repair applies only when the whole text reads back as UTF-8, so
+    correctly written accents are kept. Text that really means ``"Ã©"`` would
+    be changed too; no provider text checked so far does.
+
     >>> html_to_plain_text("<p>Luffy &amp; Zoro</p>")
     'Luffy & Zoro'
     >>> html_to_plain_text("worse.<br><br>(Source: ANN)")
@@ -83,6 +89,10 @@ def html_to_plain_text(value: object) -> object:
     'season of Log Horizon.'
     >>> html_to_plain_text("<br>") is None
     True
+    >>> html_to_plain_text("PokÃ©mon")
+    'Pokémon'
+    >>> html_to_plain_text("Pokémon")
+    'Pokémon'
     """
     if not isinstance(value, str) or not value.strip():
         return strip_text_or_none(value)
@@ -102,8 +112,9 @@ def html_to_plain_text(value: object) -> object:
 def number_from_display_text(value: object) -> object:
     """Read a count or rank from display text such as ``"Rank #1,005"``.
 
-    Thousands separators are dropped first: anime-planet writes ``1,005`` and
-    AniSearch ``1.005``. Text without a number becomes None.
+    Anime-Planet groups thousands with ``,`` and AniSearch with ``.``. A
+    decimal is not a count, so text whose only number is a decimal becomes
+    None, as does text without a number.
 
     >>> number_from_display_text("Rank #1,005")
     1005
@@ -113,13 +124,15 @@ def number_from_display_text(value: object) -> object:
     1234567
     >>> number_from_display_text("Rank") is None
     True
+    >>> number_from_display_text("8.5") is None
+    True
     >>> number_from_display_text(7)
     7
     """
     if not isinstance(value, str):
         return value
-    match = _DIGITS.search(value.replace(",", "").replace(".", ""))
-    return int(match.group()) if match else None
+    match = _WHOLE_NUMBER.search(value)
+    return int(re.sub(r"[.,]", "", match.group(1))) if match else None
 
 
 StrippedText = Annotated[str | None, BeforeValidator(strip_text_or_none)]
