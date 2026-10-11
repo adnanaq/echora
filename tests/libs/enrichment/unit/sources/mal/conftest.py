@@ -36,6 +36,11 @@ def mal_anime_pics_html() -> str:
 
 
 @pytest.fixture(scope="session")
+def mal_anime_empty_pics_html() -> str:
+    return (_FIXTURES / "mal_anime_pics_empty.html").read_text(encoding="utf-8")
+
+
+@pytest.fixture(scope="session")
 def mal_anime_not_found_html() -> str:
     return (_FIXTURES / "mal_anime_60661_not_found.html").read_text(encoding="utf-8")
 

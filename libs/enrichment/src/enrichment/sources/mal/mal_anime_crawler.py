@@ -46,6 +46,10 @@ logger = logging.getLogger(__name__)
 
 
 _TITLE_SELECTOR = "h1.title-name"
+# The box holding a gallery's "Pictures" heading and "Add a picture" link. Every
+# gallery page has it, with pictures or without; the main anime page does not,
+# though it has picSurround boxes of its own.
+_GALLERY_SELECTOR = "div.border_solid"
 # MAL answers a deleted or unknown anime id with this page and HTTP 404.
 _NOT_FOUND_SELECTOR = "div.error404"
 # MAL's not-found page carries a div with the error404 class; matched among any
@@ -336,7 +340,8 @@ async def _fetch_pics_html(browser: Any, url: str) -> str | None:
     """Fetch a MAL /pics page and return its HTML.
 
     The gallery images load only when scrolled into view, but the picture links
-    read from the page come with its HTML, so no scrolling is needed.
+    read from the page come with its HTML, so no scrolling is needed. A gallery
+    without pictures is returned like any other.
 
     Args:
         browser: Active zendriver browser instance.
@@ -347,7 +352,7 @@ async def _fetch_pics_html(browser: Any, url: str) -> str | None:
     """
     try:
         page = await browser.get(url)
-        await wait_for_page(page, "div.picSurround", url)
+        await wait_for_page(page, _GALLERY_SELECTOR, url)
         return await page.get_content()
     except Exception as exc:
         logger.warning(f"navigation failed for {url}: {exc}")
@@ -665,7 +670,7 @@ def _build_anime_from_raw(
 @cached_result(
     service="mal",
     key_prefix="mal_anime_scraped",
-    dependencies=[_extract_anime_from_html, _fetch_pics_html, _extract_pics_from_html],
+    dependencies=[_fetch_pics_html],
 )
 async def _fetch_mal_anime_data(url: str) -> dict[str, Any] | None:
     """Fetch and extract a MAL anime detail page via zendriver. Result is cached by URL.

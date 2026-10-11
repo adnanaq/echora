@@ -192,6 +192,28 @@ async def test_fetch_pics_html_returns_page_content(
     assert result == mal_anime_pics_html
 
 
+async def test_fetch_pics_html_empty_gallery_returns_page_without_warning(
+    browser_serving, mal_anime_empty_pics_html, caplog
+) -> None:
+    gallery_url = "https://myanimelist.net/anime/55571/Macross_Shinsaku_Animation/pics"
+    browser = browser_serving({gallery_url: mal_anime_empty_pics_html})
+
+    with caplog.at_level(logging.WARNING):
+        result = await _fetch_pics_html(browser, gallery_url)
+
+    assert result == mal_anime_empty_pics_html
+    assert _extract_pics_from_html(result) == []
+    assert caplog.messages == []
+
+
+async def test_fetch_pics_html_main_page_at_gallery_address_returns_none(
+    browser_serving, mal_anime_html
+) -> None:
+    browser = browser_serving({f"{ONE_PIECE_CANONICAL_URL}/pics": mal_anime_html})
+
+    assert await _fetch_pics_html(browser, f"{ONE_PIECE_CANONICAL_URL}/pics") is None
+
+
 async def test_fetch_pics_html_navigation_error_returns_none() -> None:
     browser = create_autospec(zendriver.Browser, instance=True)
     browser.get.side_effect = ConnectionError("navigation failed")
