@@ -1,3 +1,4 @@
+import locale
 from pathlib import Path
 
 import pytest
@@ -161,3 +162,46 @@ def test_month_name_number_returns_english_name() -> None:
 
 def test_month_name_none_returns_none() -> None:
     assert month_name(None) is None
+
+
+@pytest.fixture
+def german_month_names():
+    previous = locale.setlocale(locale.LC_TIME)
+    try:
+        locale.setlocale(locale.LC_TIME, "de_DE.UTF-8")
+    except locale.Error:
+        pytest.skip("de_DE.UTF-8 locale not installed")
+    yield
+    locale.setlocale(locale.LC_TIME, previous)
+
+
+@pytest.mark.parametrize("raw", ["2026-13-45", "2026-02-31", "2026-00-10"])
+def test_parse_iso_date_impossible_iso_date_returns_none(raw: str) -> None:
+    assert parse_iso_date(raw) is None
+
+
+@pytest.mark.parametrize(
+    "raw", ["Sept 5, 2020", "Sep. 5, 2020", "September 5, 2020", "5. Sept 2020"]
+)
+def test_parse_iso_date_long_or_dotted_month_name_returns_iso_date(raw: str) -> None:
+    assert parse_iso_date(raw) == "2020-09-05"
+
+
+@pytest.mark.usefixtures("german_month_names")
+def test_parse_iso_date_german_locale_reads_english_month_name() -> None:
+    assert parse_iso_date("Oct 20, 1999") == "1999-10-20"
+
+
+@pytest.mark.usefixtures("german_month_names")
+def test_parse_partial_date_german_locale_reads_english_month_name() -> None:
+    assert parse_partial_date("Oct 1977") == (1977, 10)
+
+
+@pytest.mark.usefixtures("german_month_names")
+def test_month_name_german_locale_returns_english_name() -> None:
+    assert month_name(10) == "October"
+
+
+@pytest.mark.parametrize("month", [0, 13, -1])
+def test_month_name_out_of_range_returns_none(month: int) -> None:
+    assert month_name(month) is None
