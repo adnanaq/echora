@@ -10,6 +10,7 @@ from common.models.anime import (
     AnimeStatus,
     AnimeType,
     Character,
+    CharacterRole,
     Episode,
 )
 from vector_db_interface import VectorDocument
@@ -83,7 +84,7 @@ def sample_record():
             Character(
                 id="char_01ARZ3NDEKTSV4RRFFQ69G5FA1",
                 name="Test Char",
-                role="Main",
+                roles=[CharacterRole.MAIN],
                 anime_ids=["01ARZ3NDEKTSV4RRFFQ69G5FAV"],
                 images=["https://example.com/char.jpg"],
             )
@@ -113,7 +114,7 @@ def sample_record_no_images():
             Character(
                 id="char_01ARZ3NDEKTSV4RRFFQ69G5FA1",
                 name="Test Char",
-                role="Main",
+                roles=[CharacterRole.MAIN],
                 anime_ids=["01ARZ3NDEKTSV4RRFFQ69G5FAV"],
             )
         ],
@@ -229,7 +230,7 @@ async def test_process_anime_vectors_missing_char_id(
             sources=["https://myanimelist.net/anime/1"],
         ),
         characters=[
-            Character(name="No ID Char", role="Main")  # Missing ID
+            Character(name="No ID Char", roles=[CharacterRole.MAIN])  # Missing ID
         ],
     )
 
@@ -424,7 +425,7 @@ async def test_empty_anime_ids_adds_current_anime(
             Character(
                 id=char_id,
                 name="Test Character",
-                role="Main",
+                roles=[CharacterRole.MAIN],
                 anime_ids=[],  # Empty list
             )
         ],
@@ -464,7 +465,7 @@ async def test_missing_anime_ids_initialized_with_current(
             Character(
                 id=char_id,
                 name="Test Character",
-                role="Main",
+                roles=[CharacterRole.MAIN],
                 # anime_ids omitted - uses default_factory=list
             )
         ],
@@ -504,7 +505,7 @@ async def test_existing_anime_ids_merges_new_anime(
             Character(
                 id=char_id,
                 name="Shared Character",
-                role="Main",
+                roles=[CharacterRole.MAIN],
                 anime_ids=[existing_anime_id],  # Already appeared in another anime
             )
         ],
@@ -544,7 +545,7 @@ async def test_character_anime_ids_prevents_duplicates(
             Character(
                 id=char_id,
                 name="Test Character",
-                role="Main",
+                roles=[CharacterRole.MAIN],
                 anime_ids=[anime_id],  # Already contains current anime_id
             )
         ],
@@ -585,7 +586,7 @@ async def test_anime_ids_preserves_order_and_adds_new(
             Character(
                 id=char_id,
                 name="Multi-Anime Character",
-                role="Main",
+                roles=[CharacterRole.MAIN],
                 anime_ids=existing_ids.copy(),  # Character appeared in 2 anime already
             )
         ],

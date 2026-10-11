@@ -40,6 +40,7 @@ class AnimeType(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     ANIME_TYPE_TV_SPECIAL: _ClassVar[AnimeType]
     ANIME_TYPE_TV_SHORT: _ClassVar[AnimeType]
     ANIME_TYPE_CM: _ClassVar[AnimeType]
+    ANIME_TYPE_OTHER: _ClassVar[AnimeType]
 
 class SourceMaterialType(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = ()
@@ -69,6 +70,8 @@ class SourceMaterialType(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     SOURCE_MATERIAL_TYPE_LIVE_ACTION: _ClassVar[SourceMaterialType]
     SOURCE_MATERIAL_TYPE_ILLUSTRATION: _ClassVar[SourceMaterialType]
     SOURCE_MATERIAL_TYPE_WESTERN_MEDIA: _ClassVar[SourceMaterialType]
+    SOURCE_MATERIAL_TYPE_WEBTOON: _ClassVar[SourceMaterialType]
+    SOURCE_MATERIAL_TYPE_FAIRY_TALE: _ClassVar[SourceMaterialType]
 
 class AnimeRating(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = ()
@@ -130,6 +133,11 @@ class SourceMaterialRelationType(int, metaclass=_enum_type_wrapper.EnumTypeWrapp
     SOURCE_MATERIAL_RELATION_TYPE_SPIN_OFF: _ClassVar[SourceMaterialRelationType]
     SOURCE_MATERIAL_RELATION_TYPE_ALTERNATIVE: _ClassVar[SourceMaterialRelationType]
     SOURCE_MATERIAL_RELATION_TYPE_OTHER: _ClassVar[SourceMaterialRelationType]
+    SOURCE_MATERIAL_RELATION_TYPE_CHARACTER: _ClassVar[SourceMaterialRelationType]
+    SOURCE_MATERIAL_RELATION_TYPE_SEQUEL: _ClassVar[SourceMaterialRelationType]
+    SOURCE_MATERIAL_RELATION_TYPE_PREQUEL: _ClassVar[SourceMaterialRelationType]
+    SOURCE_MATERIAL_RELATION_TYPE_PARENT_STORY: _ClassVar[SourceMaterialRelationType]
+    SOURCE_MATERIAL_RELATION_TYPE_SIDE_STORY: _ClassVar[SourceMaterialRelationType]
 ANIME_STATUS_UNSPECIFIED: AnimeStatus
 ANIME_STATUS_FINISHED: AnimeStatus
 ANIME_STATUS_UPCOMING: AnimeStatus
@@ -152,6 +160,7 @@ ANIME_TYPE_PV: AnimeType
 ANIME_TYPE_TV_SPECIAL: AnimeType
 ANIME_TYPE_TV_SHORT: AnimeType
 ANIME_TYPE_CM: AnimeType
+ANIME_TYPE_OTHER: AnimeType
 SOURCE_MATERIAL_TYPE_UNSPECIFIED: SourceMaterialType
 SOURCE_MATERIAL_TYPE_ORIGINAL: SourceMaterialType
 SOURCE_MATERIAL_TYPE_MANGA: SourceMaterialType
@@ -178,6 +187,8 @@ SOURCE_MATERIAL_TYPE_COMIC: SourceMaterialType
 SOURCE_MATERIAL_TYPE_LIVE_ACTION: SourceMaterialType
 SOURCE_MATERIAL_TYPE_ILLUSTRATION: SourceMaterialType
 SOURCE_MATERIAL_TYPE_WESTERN_MEDIA: SourceMaterialType
+SOURCE_MATERIAL_TYPE_WEBTOON: SourceMaterialType
+SOURCE_MATERIAL_TYPE_FAIRY_TALE: SourceMaterialType
 ANIME_RATING_UNSPECIFIED: AnimeRating
 ANIME_RATING_G: AnimeRating
 ANIME_RATING_PG: AnimeRating
@@ -221,6 +232,11 @@ SOURCE_MATERIAL_RELATION_TYPE_SOURCE: SourceMaterialRelationType
 SOURCE_MATERIAL_RELATION_TYPE_SPIN_OFF: SourceMaterialRelationType
 SOURCE_MATERIAL_RELATION_TYPE_ALTERNATIVE: SourceMaterialRelationType
 SOURCE_MATERIAL_RELATION_TYPE_OTHER: SourceMaterialRelationType
+SOURCE_MATERIAL_RELATION_TYPE_CHARACTER: SourceMaterialRelationType
+SOURCE_MATERIAL_RELATION_TYPE_SEQUEL: SourceMaterialRelationType
+SOURCE_MATERIAL_RELATION_TYPE_PREQUEL: SourceMaterialRelationType
+SOURCE_MATERIAL_RELATION_TYPE_PARENT_STORY: SourceMaterialRelationType
+SOURCE_MATERIAL_RELATION_TYPE_SIDE_STORY: SourceMaterialRelationType
 
 class TrailerEntry(_message.Message):
     __slots__ = ("source", "title", "thumbnail")
