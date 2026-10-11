@@ -113,6 +113,21 @@ def _published_dates(published: object) -> dict[str, Any]:
     a year ("2027") or "?", optionally as a range ("2027 ‑ ?"). Only a full
     date becomes ``start_date``/``end_date``; a partial start keeps its year
     and month so nothing is made up.
+
+    Examples:
+        A full date, with an open or a closed end:
+
+        >>> _published_dates("Published: 20.10.1999 \u2011 ?")
+        {'start_date': '1999-10-20', 'end_date': None, 'start_year': 1999, 'start_month': None}
+        >>> _published_dates("Published: 20.10.1999 \u2011 05.11.2000")
+        {'start_date': '1999-10-20', 'end_date': '2000-11-05', 'start_year': 1999, 'start_month': None}
+
+        A month and year, or a year alone, fills only what it states:
+
+        >>> _published_dates("Published: 11.2008")
+        {'start_date': None, 'end_date': None, 'start_year': 2008, 'start_month': 'November'}
+        >>> _published_dates("Published: 2027 \u2011 ?")
+        {'start_date': None, 'end_date': None, 'start_year': 2027, 'start_month': None}
     """
     text = _without_label(published)
     start_raw, end_raw = split_date_range(text if isinstance(text, str) else "")
@@ -127,7 +142,13 @@ def _published_dates(published: object) -> dict[str, Any]:
 
 
 def _broadcast_parts(broadcast: object) -> dict[str, str | None]:
-    """Read day, time and timezone from "Broadcast: Sunday, 23:15 (JST)"."""
+    """Read day, time and timezone from AniSearch's broadcast value.
+
+    >>> _broadcast_parts("Broadcast: Sunday 23:15 (JST)")
+    {'broadcast_day': 'Sunday', 'broadcast_time': '23:15', 'broadcast_timezone': 'JST'}
+    >>> _broadcast_parts("Broadcast: ?")
+    {'broadcast_day': None, 'broadcast_time': None, 'broadcast_timezone': None}
+    """
     text = _without_label(broadcast)
     day, time, timezone = parse_broadcast_string(text if isinstance(text, str) else "")
     return {

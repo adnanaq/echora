@@ -78,6 +78,20 @@ def _aired_and_premiered(aired: object, premiered: object) -> dict[str, Any]:
     "Premiered" ("Fall 1999") gives the season and year. Movies, specials and
     announcements have no "Premiered"; "Aired" still states the year. A month
     is kept only when "Aired" gives no day, since a full date carries it.
+
+    Examples:
+        A TV series gives both values. A full date leaves ``month`` empty; the
+        merge reads it from ``aired_from``:
+
+        >>> _aired_and_premiered("Apr 5, 2009 to Jul 4, 2010", "Spring 2009")
+        {'aired_from': '2009-04-05', 'aired_to': '2010-07-04', 'season': 'spring', 'year': 2009, 'month': None}
+
+        An announced title without a day keeps its year and month:
+
+        >>> _aired_and_premiered("Jul 2025", None)
+        {'aired_from': None, 'aired_to': None, 'season': None, 'year': 2025, 'month': 'July'}
+        >>> _aired_and_premiered("Not available", None)
+        {'aired_from': None, 'aired_to': None, 'season': None, 'year': None, 'month': None}
     """
     aired_text = aired if isinstance(aired, str) else None
     aired_start, aired_end = split_date_range(aired_text)
