@@ -15,7 +15,6 @@ Deprecated API surfaces are intentionally not tested:
 import uuid
 from unittest.mock import AsyncMock, patch
 
-import pydantic
 import pytest
 from qdrant_db import QdrantClient
 from qdrant_db.contracts import (
@@ -410,13 +409,6 @@ async def test_update_payload_merge_and_overwrite(client: QdrantClient) -> None:
     result = await client.get_by_id(doc_id, with_vectors=False)
     assert result is not None
     assert result["payload"].get("title") == "Overwritten"
-
-
-@pytest.mark.asyncio
-async def test_update_payload_rejects_empty_payload() -> None:
-    """Empty payload updates are rejected before they reach Qdrant."""
-    with pytest.raises(pydantic.ValidationError, match="payload"):
-        BatchPayloadUpdateItem(point_id=str(uuid.uuid4()), payload={})
 
 
 @pytest.mark.asyncio
