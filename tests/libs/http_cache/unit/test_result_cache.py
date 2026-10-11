@@ -1,3 +1,4 @@
+import functools
 import hashlib
 import json
 import re
@@ -43,6 +44,70 @@ def _read_selector_in_nested_function() -> str:
 
 def _wait() -> float:
     return _DELAY
+
+
+def _strip_title(text: str) -> str:
+    return text.strip()
+
+
+def _lower_title(text: str) -> str:
+    return text.lower()
+
+
+_title_cleaner = _strip_title
+
+
+def _clean_title(text: str) -> str:
+    return _title_cleaner(text)
+
+
+def _extract_title(html: str) -> str:
+    return _clean_title(html)
+
+
+def _passed_through(func: Any) -> Any:
+    @functools.wraps(func)
+    def call(*args: Any, **kwargs: Any) -> Any:
+        return func(*args, **kwargs)
+
+    return call
+
+
+_decorated_cleaner = _passed_through(_clean_title)
+
+
+def _clean_with_decorated_helper(text: str) -> str:
+    return _decorated_cleaner(text)
+
+
+async def _fetch_page(url: str) -> str:
+    return url
+
+
+async def _fetch_other_page(url: str) -> str:
+    return url.upper()
+
+
+_page_fetcher = _fetch_page
+
+
+async def _read_fetched_page(url: str) -> str:
+    return await _page_fetcher(url)
+
+
+_library_function = json.dumps
+
+
+def _call_library(value: object) -> str:
+    return _library_function(value)
+
+
+def _trim_front(text: str) -> str:
+    return _trim_back(text[1:]) if text else text
+
+
+def _trim_back(text: str) -> str:
+    return _trim_front(text[:-1]) if text else text
 
 
 def _with_module_data(func: Any, **data: object) -> Any:
@@ -953,6 +1018,54 @@ def test_compute_schema_hash_changed_number_constant_returns_same_hash() -> None
     assert _compute_schema_hash(_wait) == _compute_schema_hash(
         _with_module_data(_wait, _DELAY=2.0)
     )
+
+
+def test_compute_schema_hash_changed_helper_returns_different_hash() -> None:
+    changed = _with_module_data(_clean_title, _title_cleaner=_lower_title)
+
+    assert _compute_schema_hash(_clean_title) != _compute_schema_hash(changed)
+
+
+def test_compute_schema_hash_changed_helper_of_helper_returns_different_hash() -> None:
+    changed = _with_module_data(
+        _extract_title,
+        _clean_title=_with_module_data(_clean_title, _title_cleaner=_lower_title),
+    )
+
+    assert _compute_schema_hash(_extract_title) != _compute_schema_hash(changed)
+
+
+def test_compute_schema_hash_changed_helper_of_decorated_helper_returns_different_hash() -> (
+    None
+):
+    changed = _with_module_data(
+        _clean_with_decorated_helper,
+        _decorated_cleaner=_passed_through(
+            _with_module_data(_clean_title, _title_cleaner=_lower_title)
+        ),
+    )
+
+    assert _compute_schema_hash(_clean_with_decorated_helper) != _compute_schema_hash(
+        changed
+    )
+
+
+def test_compute_schema_hash_changed_async_helper_returns_same_hash() -> None:
+    changed = _with_module_data(_read_fetched_page, _page_fetcher=_fetch_other_page)
+
+    assert _compute_schema_hash(_read_fetched_page) == _compute_schema_hash(changed)
+
+
+def test_compute_schema_hash_changed_function_from_other_package_returns_same_hash() -> (
+    None
+):
+    changed = _with_module_data(_call_library, _library_function=json.loads)
+
+    assert _compute_schema_hash(_call_library) == _compute_schema_hash(changed)
+
+
+def test_compute_schema_hash_helpers_calling_each_other_returns_hash() -> None:
+    assert _is_hash(_compute_schema_hash(_trim_front))
 
 
 @pytest.mark.parametrize(

@@ -4,9 +4,12 @@ Result-level caching for crawler functions.
 Since crawlers use browser automation (zendriver/Playwright) rather than HTTP libraries,
 we cache the final extracted results instead of HTTP responses.
 
-Schema hashing: Cache keys include a hash of the function's source code and of
-the module-level data it reads (selector tables, patterns). When either changes,
-the hash changes, automatically invalidating old cache entries.
+Schema hashing: Cache keys include a hash of the source code and the
+module-level data (selector tables, patterns) of the function and of every
+plain function of its package it reaches, directly or through other helpers.
+When any of them changes, the hash changes, invalidating old cache entries.
+Async functions do the fetching and are left out; pass one in
+``dependencies`` when a change to it should invalidate the cache.
 """
 
 from __future__ import annotations
@@ -57,25 +60,67 @@ def _stable_repr(value: object) -> str:
     return repr(value)
 
 
-def _module_data_read_by(func: Callable[..., Any]) -> str:
-    """Return the module-level data a function reads, nested functions included.
-
-    ``inspect.getsource`` sees only the function body, so a selector kept in a
-    module constant would otherwise change without changing the cache key.
-    """
+def _global_names_used_by(func: Callable[..., Any]) -> set[str]:
+    """Return the global names a function uses, nested functions included."""
     code = getattr(func, "__code__", None)
-    module_globals = getattr(func, "__globals__", {})
-    if code is None:
-        return ""
+    codes = [code] if code is not None else []
     names: set[str] = set()
-    codes = [code]
     while codes:
         current = codes.pop()
         names.update(current.co_names)
         codes.extend(c for c in current.co_consts if isinstance(c, types.CodeType))
-    return "".join(
+    return names
+
+
+def _package_of(func: Callable[..., Any]) -> str:
+    return (getattr(func, "__module__", None) or "").partition(".")[0]
+
+
+def _helpers_reached_by(func: Callable[..., Any]) -> list[types.FunctionType]:
+    """Return the plain functions of ``func``'s package it reaches, at any depth.
+
+    These are the helpers that turn a fetched page into the cached result.
+    Async functions (fetching) and functions of other packages are left out.
+    """
+    package = _package_of(func)
+    reached: dict[types.FunctionType, None] = {}
+    pending = [func]
+    while pending:
+        current = pending.pop()
+        module_globals = getattr(current, "__globals__", {})
+        for name in _global_names_used_by(current):
+            value = module_globals.get(name)
+            target = inspect.unwrap(value) if callable(value) else value
+            if (
+                isinstance(target, types.FunctionType)
+                and target is not func
+                and target not in reached
+                and _package_of(target) == package
+                and not inspect.iscoroutinefunction(target)
+                and not inspect.isasyncgenfunction(target)
+            ):
+                reached[target] = None
+                pending.append(target)
+    return sorted(
+        reached, key=lambda helper: f"{helper.__module__}.{helper.__qualname__}"
+    )
+
+
+def _source_and_data(func: Callable[..., Any]) -> str:
+    """Return a function's source and the module-level data it reads.
+
+    ``inspect.getsource`` sees only the function body, so a selector kept in a
+    module constant would otherwise change without changing the cache key.
+    A callable without source (built-in, C extension) gives its name.
+    """
+    try:
+        source = inspect.getsource(func)
+    except OSError, TypeError:
+        return getattr(func, "__name__", repr(func))
+    module_globals = getattr(func, "__globals__", {})
+    return source + "".join(
         f"{name}={_stable_repr(module_globals[name])}"
-        for name in sorted(names)
+        for name in sorted(_global_names_used_by(func))
         if isinstance(module_globals.get(name), _HASHED_DATA_TYPES)
     )
 
@@ -83,36 +128,30 @@ def _module_data_read_by(func: Callable[..., Any]) -> str:
 def _compute_schema_hash(
     func: Callable[..., Any], dependencies: list[Callable[..., Any]] | None = None
 ) -> str:
-    """Compute a 16-character hex hash of a function's source code and data.
+    """Compute a 16-character hex hash of a function's code and data.
 
-    When the function's implementation, or the module-level data it reads,
-    changes, the hash changes, automatically invalidating cached results. If
-    ``dependencies`` are provided, their source and data are appended before
-    hashing so changes to any helper also invalidate the cache.
-    For callables whose source cannot be retrieved (built-ins, C extensions,
-    lambdas), ``__name__`` is used as a stable fallback.
+    Covers ``func``, the ``dependencies``, and every plain function of their
+    package they reach (``_helpers_reached_by``), each with the module-level
+    data it reads. A change to any of them changes the hash, invalidating
+    cached results.
 
     Args:
         func: Function to hash.
-        dependencies: Callables whose source should also be included in the hash.
+        dependencies: Further callables to cover, such as an async fetch
+            helper whose change should invalidate the cache.
 
     Returns:
         A 16-character hexadecimal hash string (64-bit SHA-256 prefix).
     """
-    try:
-        source = inspect.getsource(func) + _module_data_read_by(func)
-        if dependencies:
-            for dep in dependencies:
-                try:
-                    source += inspect.getsource(dep) + _module_data_read_by(dep)
-                except OSError, TypeError:
-                    source += getattr(dep, "__name__", repr(dep))
-        return hashlib.sha256(source.encode()).hexdigest()[:16]
-    except OSError, TypeError:
-        # If we can't get source (built-in, lambda, etc.), use function name
-        return hashlib.sha256(
-            getattr(func, "__name__", repr(func)).encode()
-        ).hexdigest()[:16]
+    covered = [func, *(dependencies or [])]
+    helpers = {
+        helper: None
+        for start in covered
+        for helper in _helpers_reached_by(start)
+        if helper not in covered
+    }
+    source = "".join(_source_and_data(part) for part in [*covered, *helpers])
+    return hashlib.sha256(source.encode()).hexdigest()[:16]
 
 
 def _generate_cache_key(
@@ -443,8 +482,9 @@ def cached_result[**P, R](
             ``"mal"`` for ``ttl_mal``. Without one, results are kept for
             ``DEFAULT_TTL``.
         key_prefix: Cache key prefix. Defaults to the decorated function's name.
-        dependencies: Additional callables whose source is included in the schema
-            hash. Any change to a listed callable invalidates the cache.
+        dependencies: Further callables to cover in the schema hash. Plain
+            functions the decorated one reaches are covered already; list an
+            async helper whose change should invalidate the cache.
         ttl: Lifetime in seconds that overrides the source's.
 
     Returns:

@@ -175,7 +175,7 @@ async def fetch_anime(url: str) -> dict[str, Any] | None:
 
 - `service`: source whose TTL applies, such as `"mal"` for `TTL_MAL`. Without one, results are kept for 24 hours.
 - `key_prefix`: cache key prefix (default: the decorated function's name).
-- `dependencies`: other functions whose source is part of the schema hash.
+- `dependencies`: further functions to cover in the schema hash. The hash already covers the decorated function and every plain (non-async) function of its package it reaches, directly or through other helpers, with the module-level data each reads. List an async helper here only when a change to it should invalidate cached results.
 - `ttl`: a lifetime in seconds that overrides the source's.
 
 Whether to cache and the TTL are read from `get_cache()` on every call, so the decorator can run at import, before the app configures the cache.
