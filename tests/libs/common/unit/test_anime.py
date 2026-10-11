@@ -310,7 +310,7 @@ def test_provider_value_maps_to_member_without_warning(
         (None, None),
     ],
 )
-def test_anime_type_from_provider_value_unmapped_value_returns_none(
+def test_anime_type_from_provider_value_returns_member_or_none_without_warning(
     provider_value: str | None,
     expected: AnimeType | None,
     caplog: pytest.LogCaptureFixture,
