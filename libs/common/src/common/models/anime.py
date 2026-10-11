@@ -313,6 +313,7 @@ class SourceMaterialType(ProviderMappedEnum):
     WEB_NOVEL = "WEB NOVEL"
     WEBTOON = "WEBTOON"  # Vertical-scroll web comics (AniSearch, AnimePlanet)
     FAIRY_TALE = "FAIRY TALE"  # Fairy and folk tales (AniSearch, AnimePlanet)
+    SHORT_STORY = "SHORT STORY"  # Short prose fiction (AniSearch)
     COMIC = "COMIC"  # Western comics (DC, Marvel, etc.)
     LIVE_ACTION = "LIVE ACTION"  # Based on live-action film/drama
     ILLUSTRATION = "ILLUSTRATION"  # AniDB: CG collection (illustrated story)
@@ -368,6 +369,7 @@ class SourceMaterialType(ProviderMappedEnum):
             "play": cls.OTHER,
             "web toon": cls.WEBTOON,
             "fairy tale": cls.FAIRY_TALE,  # AniSearch, AnimePlanet
+            "short story": cls.SHORT_STORY,  # AniSearch
             "mixed media": cls.MIXED_MEDIA,
             "mixed_media": cls.MIXED_MEDIA,
             "multimedia_project": cls.MIXED_MEDIA,  # AniList schema

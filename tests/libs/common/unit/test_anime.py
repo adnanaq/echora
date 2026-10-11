@@ -360,6 +360,7 @@ def test_anime_type_from_provider_value_returns_member_or_none_without_warning(
         ),
         (SourceMaterialType, "Webtoon", SourceMaterialType.WEBTOON),
         (SourceMaterialType, "Fairy Tale", SourceMaterialType.FAIRY_TALE),
+        (SourceMaterialType, "Short Story", SourceMaterialType.SHORT_STORY),
         (SourceMaterialType, "Otome Game", SourceMaterialType.VISUAL_NOVEL),
         (SourceMaterialType, "Eroge", SourceMaterialType.VISUAL_NOVEL),
         (SourceMaterialType, "Religious Text", SourceMaterialType.BOOK),

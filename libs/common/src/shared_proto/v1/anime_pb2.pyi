@@ -72,6 +72,7 @@ class SourceMaterialType(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     SOURCE_MATERIAL_TYPE_WESTERN_MEDIA: _ClassVar[SourceMaterialType]
     SOURCE_MATERIAL_TYPE_WEBTOON: _ClassVar[SourceMaterialType]
     SOURCE_MATERIAL_TYPE_FAIRY_TALE: _ClassVar[SourceMaterialType]
+    SOURCE_MATERIAL_TYPE_SHORT_STORY: _ClassVar[SourceMaterialType]
 
 class AnimeRating(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = ()
@@ -189,6 +190,7 @@ SOURCE_MATERIAL_TYPE_ILLUSTRATION: SourceMaterialType
 SOURCE_MATERIAL_TYPE_WESTERN_MEDIA: SourceMaterialType
 SOURCE_MATERIAL_TYPE_WEBTOON: SourceMaterialType
 SOURCE_MATERIAL_TYPE_FAIRY_TALE: SourceMaterialType
+SOURCE_MATERIAL_TYPE_SHORT_STORY: SourceMaterialType
 ANIME_RATING_UNSPECIFIED: AnimeRating
 ANIME_RATING_G: AnimeRating
 ANIME_RATING_PG: AnimeRating
