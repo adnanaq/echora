@@ -1,8 +1,56 @@
 """Qdrant database configuration model."""
 
-from pydantic import Field, ValidationInfo, field_validator, model_validator
+from typing import Annotated, Literal, get_args
+
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    NonNegativeInt,
+    PositiveInt,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 
 from .env_settings import EnvSettings
+
+
+def _lower(value: object) -> object:
+    """Lower-case text, so a choice set as "COSINE" reads as "cosine"."""
+    return value.lower() if isinstance(value, str) else value
+
+
+DistanceMetric = Annotated[Literal["cosine", "euclid", "dot"], BeforeValidator(_lower)]
+QuantizationType = Annotated[
+    Literal["binary", "scalar", "product"], BeforeValidator(_lower)
+]
+SparseModifier = Annotated[Literal["none", "idf"], BeforeValidator(_lower)]
+Priority = Literal["high", "medium", "low"]
+
+
+class HnswSettings(BaseModel):
+    """HNSW index settings for the vectors of one priority."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ef_construct: PositiveInt = Field(
+        description="Neighbours considered while building"
+    )
+    m: NonNegativeInt = Field(description="Edges per node; 0 disables the graph")
+
+
+class QuantizationSettings(BaseModel):
+    """Quantization settings for the vectors of one priority."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["scalar", "binary"] = Field(description="Quantization kind")
+    scalar_type: Literal["int8"] = Field(
+        default="int8", description="Scalar quantization element type"
+    )
+    always_ram: bool = Field(default=False, description="Keep quantized vectors in RAM")
 
 
 class QdrantConfig(EnvSettings):
@@ -18,16 +66,17 @@ class QdrantConfig(EnvSettings):
     qdrant_collection_name: str = Field(
         default="anime_database", description="Qdrant collection name"
     )
-    qdrant_distance_metric: str = Field(
+    qdrant_distance_metric: DistanceMetric = Field(
         default="cosine", description="Distance metric for similarity"
     )
 
     # Vector Architecture & Dimensions
-    vector_names: dict[str, int] = Field(
+    vector_names: dict[str, PositiveInt] = Field(
         default={
             "text_vector": 1024,
             "image_vector": 768,
         },
+        min_length=1,
         description="Unified semantic architecture (BGE-M3 text: 1024-dim, OpenCLIP images: 768-dim)",
     )
     primary_text_vector_name: str = Field(
@@ -50,7 +99,7 @@ class QdrantConfig(EnvSettings):
         default="text_sparse_vector",
         description="Primary sparse vector used for sparse and hybrid text search",
     )
-    sparse_vector_modifier: str = Field(
+    sparse_vector_modifier: SparseModifier = Field(
         default="idf",
         description="Sparse vector modifier: none or idf",
     )
@@ -140,7 +189,7 @@ class QdrantConfig(EnvSettings):
         le=64,
         description="query_batch_points calls that may run at the same time",
     )
-    vector_priorities: dict[str, list[str]] = Field(
+    vector_priorities: dict[Priority, list[str]] = Field(
         default={
             "high": [
                 "text_vector",
@@ -149,24 +198,27 @@ class QdrantConfig(EnvSettings):
             "medium": [],
             "low": [],
         },
-        description="Vector priority classification for performance optimization",
+        description=(
+            "Vector priority classification for performance optimization; "
+            "a vector listed under no priority is treated as medium"
+        ),
     )
 
     # Quantization
     qdrant_enable_quantization: bool = Field(
         default=False, description="Enable quantization for performance"
     )
-    qdrant_quantization_type: str = Field(
+    qdrant_quantization_type: QuantizationType = Field(
         default="scalar", description="Quantization type: binary, scalar, product"
     )
     qdrant_quantization_always_ram: bool | None = Field(
         default=None, description="Keep quantized vectors in RAM"
     )
-    quantization_config: dict[str, dict[str, object]] = Field(
+    quantization_config: dict[Priority, QuantizationSettings] = Field(
         default={
-            "high": {"type": "scalar", "scalar_type": "int8", "always_ram": True},
-            "medium": {"type": "scalar", "scalar_type": "int8", "always_ram": False},
-            "low": {"type": "binary", "always_ram": False},
+            "high": QuantizationSettings(type="scalar", always_ram=True),
+            "medium": QuantizationSettings(type="scalar", always_ram=False),
+            "low": QuantizationSettings(type="binary", always_ram=False),
         },
         description="Quantization configuration per vector priority for memory optimization",
     )
@@ -179,11 +231,11 @@ class QdrantConfig(EnvSettings):
     qdrant_hnsw_max_indexing_threads: int | None = Field(
         default=None, description="Maximum indexing threads"
     )
-    hnsw_config: dict[str, dict[str, int]] = Field(
+    hnsw_config: dict[Priority, HnswSettings] = Field(
         default={
-            "high": {"ef_construct": 256, "m": 64, "ef": 128},
-            "medium": {"ef_construct": 200, "m": 48, "ef": 64},
-            "low": {"ef_construct": 128, "m": 32, "ef": 32},
+            "high": HnswSettings(ef_construct=256, m=64),
+            "medium": HnswSettings(ef_construct=200, m=48),
+            "low": HnswSettings(ef_construct=128, m=32),
         },
         description="Anime-optimized HNSW parameters per vector priority for similarity matching",
     )
@@ -292,35 +344,6 @@ class QdrantConfig(EnvSettings):
         description="Payload fields with their types for optimized indexing (excludes operational metadata)",
     )
 
-    @field_validator("qdrant_distance_metric")
-    @classmethod
-    def validate_distance_metric(cls, v: str) -> str:
-        """Validate distance metric."""
-        valid_metrics = ["cosine", "euclid", "dot"]
-        if v.lower() not in valid_metrics:
-            raise ValueError(f"Distance metric must be one of: {valid_metrics}")
-        return v.lower()
-
-    @field_validator("qdrant_quantization_type")
-    @classmethod
-    def validate_quantization_type(cls, v: str) -> str:
-        """Validate quantization type."""
-        valid_types = ["binary", "scalar", "product"]
-        if v.lower() not in valid_types:
-            raise ValueError(f"Quantization type must be one of: {valid_types}")
-        return v.lower()
-
-    @field_validator("sparse_vector_modifier")
-    @classmethod
-    def validate_sparse_vector_modifier(cls, v: str) -> str:
-        """Validate sparse vector modifier."""
-        valid_modifiers = ["none", "idf"]
-        if v.lower() not in valid_modifiers:
-            raise ValueError(
-                f"Sparse vector modifier must be one of: {valid_modifiers}"
-            )
-        return v.lower()
-
     @field_validator("multivector_vectors")
     @classmethod
     def validate_multivector_vectors(
@@ -355,4 +378,30 @@ class QdrantConfig(EnvSettings):
             raise ValueError(  # noqa: TRY003
                 "primary_sparse_vector_name must be a key in sparse_vector_names"
             )
+        return self
+
+    @model_validator(mode="after")
+    def validate_priorities(self) -> QdrantConfig:
+        """Check priority vectors exist and every priority has index settings."""
+        unknown = [
+            name
+            for names in self.vector_priorities.values()
+            for name in names
+            if name not in self.vector_names
+        ]
+        if unknown:
+            raise ValueError(  # noqa: TRY003
+                f"Unknown vectors in vector_priorities: {unknown}. "
+                f"Valid vectors: {list(self.vector_names)}"
+            )
+        for field_name in ("hnsw_config", "quantization_config"):
+            missing = [
+                priority
+                for priority in get_args(Priority)
+                if priority not in getattr(self, field_name)
+            ]
+            if missing:
+                raise ValueError(  # noqa: TRY003
+                    f"{field_name} has no settings for priorities: {missing}"
+                )
         return self

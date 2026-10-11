@@ -5,7 +5,7 @@ import logging
 from common.config import QdrantConfig
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.http.exceptions import UnexpectedResponse
-from qdrant_client.models import Distance, PayloadSchemaType
+from qdrant_client.models import PayloadSchemaType
 
 from qdrant_db.collection.schema_builder import (
     _DISTANCE_MAPPING,
@@ -14,7 +14,6 @@ from qdrant_db.collection.schema_builder import (
     build_sparse_vector_config,
     build_vector_config,
     build_wal_config,
-    validate_vector_config,
 )
 from qdrant_db.errors import CollectionCompatibilityError
 from qdrant_db.tracing import qdrant_span
@@ -51,7 +50,6 @@ class QdrantCollectionManager:
         """
         if not await self.collection_exists():
             vectors_config = build_vector_config(self._config)
-            validate_vector_config(self._config, vectors_config)
             try:
                 with qdrant_span("create_collection", self._collection_name):
                     await self._async_client.create_collection(
@@ -174,9 +172,7 @@ class QdrantCollectionManager:
                 "Collection uses single-vector layout but config expects named vectors"
             )
 
-        expected_distance = _DISTANCE_MAPPING.get(
-            self._config.qdrant_distance_metric, Distance.COSINE
-        )
+        expected_distance = _DISTANCE_MAPPING[self._config.qdrant_distance_metric]
         expected_multivectors = set(self._config.multivector_vectors)
 
         for vector_name, expected_dim in self._config.vector_names.items():
