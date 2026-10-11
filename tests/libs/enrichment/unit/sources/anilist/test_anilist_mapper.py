@@ -1,3 +1,5 @@
+import logging
+
 import pytest
 from enrichment.sources.anilist.anilist_anime_models import AniListAnime
 from enrichment.sources.anilist.anilist_character_models import (
@@ -644,6 +646,50 @@ def test_anime_from_anilist_source_material_without_score_or_status_omits_them()
     assert not {"score", "status"} & entry.keys()
 
 
+@pytest.mark.parametrize("node_format", ["MANGA", "NOVEL", "ONE_SHOT"])
+def test_anime_from_anilist_manga_format_relation_logs_no_warning(
+    node_format: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.WARNING):
+        result = anime_from_anilist(
+            _anime(
+                **_relation(
+                    {"id": 202, "format": node_format, "title": {"romaji": "OP"}},
+                    "SOURCE",
+                )
+            )
+        )
+
+    assert result["related_source_material"]["SOURCE"][0]["sources"] == [
+        "https://anilist.co/manga/202"
+    ]
+    assert caplog.text == ""
+
+
+def test_anime_from_anilist_character_relation_to_manga_keeps_character_type() -> None:
+    result = anime_from_anilist(
+        _anime(
+            **_relation(
+                {"id": 204, "format": "MANGA", "title": {"romaji": "OP"}}, "CHARACTER"
+            )
+        )
+    )
+
+    assert list(result["related_source_material"]) == ["CHARACTER"]
+
+
+def test_anime_from_anilist_relation_without_format_becomes_related_source_material() -> (
+    None
+):
+    result = anime_from_anilist(
+        _anime(
+            **_relation({"id": 203, "format": None, "title": {"romaji": "OP"}}, "OTHER")
+        )
+    )
+
+    assert result["related_source_material"]["OTHER"][0]["type"] == "UNKNOWN"
+
+
 def test_character_from_anilist_names_mapped() -> None:
     result = character_from_anilist(_character_edge())
     assert (result["name"], result["name_native"], result["name_variations"]) == (
@@ -816,3 +862,23 @@ def test_character_from_anilist_voice_actors_in_several_languages_all_kept() -> 
         (actor["name"], actor["language"])
         for actor in character_from_anilist(edge)["voice_actors"]
     ] == [("Mayumi Tanaka", "Japanese"), ("Sonny Strait", "English")]
+
+
+def test_anime_from_anilist_description_html_removed_from_synopsis() -> None:
+    result = anime_from_anilist(
+        _anime(description="Luffy sets sail.<br><br>\n(Source: Crunchyroll)")
+    )
+
+    assert result["synopsis"] == "Luffy sets sail.\n(Source: Crunchyroll)"
+
+
+def test_anime_from_anilist_empty_english_title_left_out() -> None:
+    result = anime_from_anilist(_anime(title={"romaji": "ONE PIECE", "english": ""}))
+
+    assert "title_english" not in result
+
+
+def test_anime_from_anilist_missing_format_and_status_give_unknown() -> None:
+    result = anime_from_anilist(_anime(format=None, status=None))
+
+    assert (result["type"], result["status"]) == ("UNKNOWN", "UNKNOWN")

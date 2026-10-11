@@ -5,6 +5,7 @@ canonical names here.  The mapper (animeplanet_mapper.py) handles all
 translation to the canonical Character model.
 """
 
+from enrichment.sources.base.field_types import NumberFromText, StrippedText
 from pydantic import BaseModel, Field
 
 
@@ -42,12 +43,12 @@ class AnimePlanetCharacter(BaseModel):
     url: str  # full: https://www.anime-planet.com/characters/{slug}
 
     # From detail page
-    image: str | None = None
+    image: StrippedText = None
     gender: str | None = None
     hair_color: str | None = None
-    loved_rank: int | None = None
-    hated_rank: int | None = None
-    loved_count: int | None = None  # absolute count, e.g. 36485
+    loved_rank: NumberFromText = None  # "#1,081" → 1081
+    hated_rank: NumberFromText = None
+    loved_count: NumberFromText = None  # "36,485 users" → 36485
     description: str | None = None
     tags: list[str] = Field(default_factory=list)
     alt_names: list[str] = Field(default_factory=list)  # from h2.aka

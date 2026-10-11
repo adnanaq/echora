@@ -27,12 +27,11 @@ from enrichment.sources.anime_planet.anime_planet_character_crawler import (
     _extract_vas_from_cell,
     _fetch_character_data,
     _fetch_page_html,
-    _parse_loved_count,
-    _parse_rank,
     fetch_animeplanet_character,
     fetch_animeplanet_characters,
 )
 from enrichment.sources.anime_planet.anime_planet_character_models import (
+    AnimePlanetCharacter,
     AnimePlanetVoiceActor,
 )
 from enrichment.sources.base.cloudflare_challenge import CloudflareChallengeError
@@ -74,41 +73,45 @@ def test_xpaths_cover_required_fields() -> None:
     assert "entryBar" in _XPATHS["hated_rank"]
 
 
-# =============================================================================
-# _parse_rank
-# =============================================================================
+def _character(**fields: str | None) -> AnimePlanetCharacter:
+    return AnimePlanetCharacter.model_validate(
+        {"name": "Luffy", "slug": "luffy", "url": _LUFFY_URL, **fields}
+    )
 
 
 @pytest.mark.parametrize(
-    "raw, expected",
+    ("raw", "expected"),
     [
         (None, None),
         ("", None),
         ("no-number", None),
         ("#12", 12),
         ("Rank 42", 42),
+        ("#1,081", 1081),
+        ("#1,234,567", 1234567),
     ],
 )
-def test_parse_rank(raw: str | None, expected: int | None) -> None:
-    assert _parse_rank(raw) == expected
-
-
-# =============================================================================
-# _parse_loved_count
-# =============================================================================
+def test_anime_planet_character_rank_text_gives_whole_number(
+    raw: str | None, expected: int | None
+) -> None:
+    character = _character(loved_rank=raw, hated_rank=raw)
+    assert (character.loved_rank, character.hated_rank) == (expected, expected)
 
 
 @pytest.mark.parametrize(
-    "raw, expected",
+    ("raw", "expected"),
     [
         (None, None),
         ("", None),
         ("37,007 users", 37007),
         ("1000", 1000),
+        ("1,234,567 users", 1234567),
     ],
 )
-def test_parse_loved_count(raw: str | None, expected: int | None) -> None:
-    assert _parse_loved_count(raw) == expected
+def test_anime_planet_character_loved_count_text_gives_whole_number(
+    raw: str | None, expected: int | None
+) -> None:
+    assert _character(loved_count=raw).loved_count == expected
 
 
 # =============================================================================

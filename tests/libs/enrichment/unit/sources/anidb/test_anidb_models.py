@@ -234,3 +234,97 @@ def test_character_page_extra_forbidden() -> None:
 
     with pytest.raises(Exception):
         AniDBCharacterPage(name_main="Luffy", unknown_field="extra")
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [("12", 12), (" 12 ", 12), ("abc", None), ("-3", None), ("", None), (None, None)],
+)
+def test_seiyuu_id_text_parses_to_number_or_none(
+    raw: str | None, expected: int | None
+) -> None:
+    assert AniDBSeiyuu.model_validate({"id": raw}).id == expected
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [("1234567", 1234567), ("7", 7), ("abc", 0), ("", 0), (None, 0)],
+)
+def test_ratings_count_text_parses_to_count_or_zero(
+    raw: str | None, expected: int
+) -> None:
+    assert (
+        AniDBRatings.model_validate({"permanent_count": raw}).permanent_count
+        == expected
+    )
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [("8.43", 8.43), (" 7.1 ", 7.1), ("n/a", None), ("", None), (None, None)],
+)
+def test_ratings_score_text_parses_to_decimal_or_none(
+    raw: str | None, expected: float | None
+) -> None:
+    assert AniDBRatings.model_validate({"permanent": raw}).permanent == expected
+
+
+def test_character_rating_votes_text_parses_to_count() -> None:
+    character = AniDBCharacter.model_validate(
+        {"rating": "9.12", "rating_votes": "2500000"}
+    )
+
+    assert (character.rating, character.rating_votes) == (9.12, 2500000)
+
+
+@pytest.mark.parametrize("field", ["start_date", "end_date"])
+def test_anime_unknown_date_placeholder_becomes_none(field: str) -> None:
+    assert (
+        getattr(AniDBAnime.model_validate({"id": 1, field: "1970-01-01"}), field)
+        is None
+    )
+
+
+def test_anime_real_date_is_kept() -> None:
+    assert (
+        AniDBAnime.model_validate({"id": 1, "start_date": "1999-10-20"}).start_date
+        == "1999-10-20"
+    )
+
+
+@pytest.mark.parametrize(("raw", "expected"), [("1155", 1155), ("abc", 0), (None, 0)])
+def test_anime_episode_count_text_parses_to_count_or_zero(
+    raw: str | None, expected: int
+) -> None:
+    assert (
+        AniDBAnime.model_validate({"id": 1, "episode_count": raw}).episode_count
+        == expected
+    )
+
+
+@pytest.mark.parametrize(
+    ("episode_type", "number", "expected"),
+    [
+        ("1", "12", 12),
+        ("1", "12a", "12a"),
+        ("2", "S1", "S1"),
+        ("2", "3", "3"),
+        (None, "S1", "S1"),
+        ("1", None, None),
+    ],
+)
+def test_episode_number_regular_episode_parses_to_int(
+    episode_type: str | None, number: str | None, expected: int | str | None
+) -> None:
+    episode = AniDBEpisode.model_validate(
+        {"episode_type": episode_type, "episode_number": number}
+    )
+
+    assert episode.episode_number == expected
+
+
+@pytest.mark.parametrize(("raw", "expected"), [("24", 24), ("abc", None), ("", None)])
+def test_episode_length_text_parses_to_minutes_or_none(
+    raw: str, expected: int | None
+) -> None:
+    assert AniDBEpisode.model_validate({"length": raw}).length == expected

@@ -104,9 +104,10 @@ def _split_relations(
         rel_type_str = edge.relation_type
         title = (node.title.romaji if node.title else None) or ""
 
-        # Discriminate by whether the format resolves to a known anime media type
-        resolved_anime_type = AnimeType(node_format)
-        if resolved_anime_type != AnimeType.UNKNOWN:
+        # An anime format (TV, MOVIE, OVA, ...) maps to an anime type; MANGA,
+        # NOVEL and ONE_SHOT do not, and are source material.
+        resolved_anime_type = AnimeType.from_provider_value(node_format)
+        if resolved_anime_type not in (None, AnimeType.UNKNOWN):
             # It's a media format (TV, MOVIE, OVA, etc.) → related_anime
             anime_rel_type = AnimeRelationType(rel_type_str)
             cover = _best_cover(node.cover_image)
@@ -115,7 +116,7 @@ def _split_relations(
                     title=title,
                     type=resolved_anime_type,
                     sources=[f"https://anilist.co/anime/{node.id}"],
-                    status=AnimeStatus(node.status or "") if node.status else None,
+                    status=AnimeStatus(node.status) if node.status else None,
                     year=node.season_year,
                     score=normalize_score(node.average_score)
                     if node.average_score
@@ -134,7 +135,7 @@ def _split_relations(
                     title=title,
                     type=mat_type,
                     sources=[f"https://anilist.co/manga/{node.id}"],
-                    status=AnimeStatus(node.status or "") if node.status else None,
+                    status=AnimeStatus(node.status) if node.status else None,
                     score=normalize_score(node.average_score)
                     if node.average_score
                     else None,
@@ -158,12 +159,12 @@ def anime_from_anilist(anime: AniListAnime) -> dict[str, Any]:
     """
     # ── Scalars ──────────────────────────────────────────────────────────────
     title = (anime.title.romaji if anime.title else None) or ""
-    title_english = (anime.title.english if anime.title else None) or None
-    title_japanese = (anime.title.native if anime.title else None) or None
+    title_english = anime.title.english if anime.title else None
+    title_japanese = anime.title.native if anime.title else None
     synopsis = anime.description
-    anime_type = AnimeType(anime.format or "")
-    source_material = SourceMaterialType(anime.source or "") if anime.source else None
-    status = AnimeStatus(anime.status or "")
+    anime_type = AnimeType(anime.format)
+    source_material = SourceMaterialType(anime.source) if anime.source else None
+    status = AnimeStatus(anime.status)
     episode_count = anime.episodes or 0
     duration = (anime.duration * 60) if anime.duration else None  # minutes → seconds
     nsfw = anime.is_adult
@@ -338,7 +339,7 @@ def character_from_anilist(edge: AniListCharacterEdge) -> dict[str, Any]:
     name_data = node.name
 
     name = (name_data.full if name_data else None) or ""
-    name_native = (name_data.native if name_data else None) or None
+    name_native = name_data.native if name_data else None
     name_variations = list(name_data.alternative if name_data else [])
     nicknames = list(name_data.alternative_spoiler if name_data else [])
 
@@ -361,7 +362,7 @@ def character_from_anilist(edge: AniListCharacterEdge) -> dict[str, Any]:
     if birth_date:
         attributes["date_of_birth"] = birth_date
 
-    roles: list[CharacterRole] = [CharacterRole(edge.role or "")]
+    roles: list[CharacterRole] = [CharacterRole(edge.role)]
 
     # All voice actors across all languages via voiceActorRoles
     voice_actors: list[VoiceActor] = []
@@ -376,7 +377,7 @@ def character_from_anilist(edge: AniListCharacterEdge) -> dict[str, Any]:
         voice_actors.append(
             VoiceActor(
                 name=va_name,
-                native_name=(va.name.native if va.name else None) or None,
+                native_name=va.name.native if va.name else None,
                 language=va.language_v2,
                 image=va_image,
                 sources=[va.site_url or f"https://anilist.co/staff/{va.id}"],

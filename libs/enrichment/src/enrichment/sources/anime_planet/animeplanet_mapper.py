@@ -3,13 +3,14 @@
 Pure value normalization — no I/O, no side effects.
 
 Receives validated AnimePlanetAnime / AnimePlanetCharacter source models and
-returns canonical Anime / Character dicts.  The crawler is responsible for all
-raw-string parsing; the mapper only lifts primitives into canonical types.
+returns canonical Anime / Character dicts. The source models turn the page
+text into field values; the mapper only lifts them into canonical types.
 
 Key AP-specific details:
 - Ratings: AP uses 0–5 scale → multiply × 2 for canonical 0–10
-- Season: crawler parses slug → plain string; mapper lifts to AnimeSeason enum
-- Type:   JSON-LD @type ("TVSeries" → TV, "Movie" → MOVIE) — coarse but reliable
+- Season: the model reads it from the seasons link; mapper lifts to AnimeSeason
+- Type: the entry bar's type ("OVA", "Web", "Music Video")
+- Source material: the "Based on a ..." / "Original Work" tag
 - Related anime subtype mapping documented in docs/source_api_field_mappings.md
 - Manga entries with subtype "Original Manga" → related_source_material (ADAPTATION)
 - All other manga entries → related_source_material (OTHER)
@@ -69,8 +70,10 @@ def anime_from_animeplanet(anime: AnimePlanetAnime) -> dict[str, Any]:
         Dict of canonical field name → normalized value (exclude_none applied).
     """
     # ── Scalars ───────────────────────────────────────────────────────────
-    # schema_type is the JSON-LD @type value ("TVSeries", "Movie", etc.)
-    anime_type = AnimeType(anime.schema_type or "")
+    anime_type = AnimeType(anime.type)
+    source_material = (
+        SourceMaterialType(anime.source_material) if anime.source_material else None
+    )
 
     # Season: crawler supplies a parsed name ("fall"); fall back to start_date derivation
     season: AnimeSeason | None = AnimeSeason(anime.season) if anime.season else None
@@ -138,7 +141,7 @@ def anime_from_animeplanet(anime: AnimePlanetAnime) -> dict[str, Any]:
         related_anime[rel_type].append(
             RelatedAnime(
                 title=entry.title,
-                type=AnimeType(entry.type or ""),
+                type=AnimeType(entry.type),
                 sources=[full_url],
                 episode_count=entry.episode_count,
             )
@@ -163,7 +166,7 @@ def anime_from_animeplanet(anime: AnimePlanetAnime) -> dict[str, Any]:
             else f"https://www.anime-planet.com{entry.url}"
         )
 
-        src_type = SourceMaterialType(entry.type or "")
+        src_type = SourceMaterialType(entry.type)
 
         related_source_material[rel_type].append(
             RelatedSourceMaterial(
@@ -190,6 +193,7 @@ def anime_from_animeplanet(anime: AnimePlanetAnime) -> dict[str, Any]:
             studios=studios,
         ),
         tags=tags,
+        source_material=source_material,
         images=images,
         aired_dates=aired_dates,
         related_anime=related_anime,
