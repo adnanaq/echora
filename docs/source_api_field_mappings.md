@@ -65,6 +65,7 @@ A related manga, novel or other work is filed under `related_source_material`, k
 
 **AniSearch** manga relations over 300 cached pages: `Original Work` 161, `?` 28, `Same origin` 12, `Adaptation: Spin-off` 3, `Adaptation` 3. `Same origin` is another adaptation of the same original, e.g. the manga of the novel an anime adapts.
 **AniList** files a relation to a manga under the anime relation's own type, so `SEQUEL`, `PREQUEL`, `PARENT`, `SIDE_STORY` and `CHARACTER` appear on manga edges too.
+
 ---
 
 ## Anime Type / Format
