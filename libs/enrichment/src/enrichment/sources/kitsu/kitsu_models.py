@@ -16,6 +16,8 @@ from enrichment.sources.base.field_types import (
 from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field
 
 _PREAMBLE_START = re.compile(r"^[A-Za-z][A-Za-z /]+:\s*")
+# A line break in the raw description: HTML <br> or paragraph tags, or a newline.
+_LINE_BREAK = re.compile(r"\s*(?:<br\s*/?>|</?p\b[^>]*>|\n)\s*", re.IGNORECASE)
 _VALUE_CONTINUATION = re.compile(r"^[\d(]")
 # Prose start embedded in a value-continuation chunk: after ")" or a digit, a Capital word
 _PROSE_IN_VALUE = re.compile(r"[)\d]\s+([A-Z][a-z])")
@@ -26,11 +28,15 @@ def _without_empty_texts(values: list[str]) -> list[str]:
     return [text.strip() for text in values if text.strip()]
 
 
-def _strip_preamble(text: str | None) -> str | None:
+def _strip_preamble(value: object) -> object:
     """Discard the run-on metadata preamble that precedes the narrative text.
 
     Kitsu character descriptions sometimes start with a flat key-value block:
         "Name: Luffy Age: 17; 19 Birthdate: May 5, Taurus Height: 172 cm  Luffy is …"
+
+    It runs on the raw description, before HTML is turned into text, because
+    line breaks (``<br>``, paragraphs, newlines) separate the preamble from the
+    narrative just as double spaces do, and turning HTML into text merges them.
 
     Complication: some preambles contain internal double-spaces (e.g. after a
     zodiac sign) that create multiple key-value chunks when split. The algorithm
@@ -42,13 +48,21 @@ def _strip_preamble(text: str | None) -> str | None:
     may place numeric value text and narrative in the same chunk. In that case
     the regex looks for a capitalized prose word following ")" or a digit.
 
-    Returns ``None`` when the description is preamble-only with no narrative.
+    Returns ``None`` when the description is preamble-only with no narrative,
+    and a description without a preamble unchanged.
+
+    >>> _strip_preamble("Age: 17; 19 Birthday: May 5  Luffy is the captain.")
+    'Luffy is the captain.'
+    >>> _strip_preamble("Age: 17<br><br>Luffy is the <i>captain</i>.")
+    'Luffy is the <i>captain</i>.'
+    >>> print(_strip_preamble("Debut: Chapter 673; Episode 599"))
+    None
     """
-    if not text:
-        return None
-    text = text.strip()
+    if not isinstance(value, str):
+        return value
+    text = _LINE_BREAK.sub("  ", value).strip()
     if not _PREAMBLE_START.match(text):
-        return text or None
+        return value
 
     parts = re.split(r"  +", text)
     narrative_parts: list[str] = []
@@ -76,7 +90,7 @@ def _strip_preamble(text: str | None) -> str | None:
 
 
 TextList = Annotated[list[str], AfterValidator(_without_empty_texts)]
-CharacterDescription = Annotated[PlainText, AfterValidator(_strip_preamble)]
+CharacterDescription = Annotated[PlainText, BeforeValidator(_strip_preamble)]
 
 
 class KitsuImage(BaseModel):

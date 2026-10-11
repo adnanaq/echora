@@ -147,8 +147,30 @@ def test_strip_preamble_none_returns_none():
     assert _strip_preamble(None) is None
 
 
-def test_strip_preamble_empty_text_returns_none():
-    assert _strip_preamble("") is None
+def test_kitsu_character_attributes_empty_description_becomes_none() -> None:
+    assert (
+        KitsuCharacterAttributes.model_validate({"description": ""}).description is None
+    )
+
+
+@pytest.mark.parametrize(
+    "description",
+    [
+        "Age: 17<br><br>Luffy is the captain.",
+        "Age: 17<br/>Height: 174 cm<br/><br/>Luffy is the captain.",
+        "<p>Age: 17</p><p>Luffy is the captain.</p>",
+        "Age: 17\n\nLuffy is the captain.",
+    ],
+)
+def test_kitsu_character_attributes_preamble_ended_by_line_break_keeps_narrative(
+    description: str,
+) -> None:
+    assert (
+        KitsuCharacterAttributes.model_validate(
+            {"description": description}
+        ).description
+        == "Luffy is the captain."
+    )
 
 
 def test_strip_preamble_long_preamble_returns_full_narrative():
