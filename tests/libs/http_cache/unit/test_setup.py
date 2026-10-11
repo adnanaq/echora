@@ -42,6 +42,19 @@ def test_configure_cache_returns_manager_get_cache_returns() -> None:
     assert get_cache() is cache
 
 
+def test_get_cache_before_configure_cache_later_calls_return_configured_manager() -> (
+    None
+):
+    unconfigured = get_cache()
+
+    configured = configure_cache(
+        CacheConfig(cache_enabled=True), RedisConfig(redis_url=REDIS_URL)
+    )
+
+    assert unconfigured.enabled is False
+    assert get_cache() is configured
+
+
 def test_configure_cache_again_replaces_earlier_manager() -> None:
     first = configure_cache(CacheConfig(), RedisConfig(redis_url=REDIS_URL))
 

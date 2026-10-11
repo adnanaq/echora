@@ -4,9 +4,9 @@ Result-level caching for crawler functions.
 Since crawlers use browser automation (zendriver/Playwright) rather than HTTP libraries,
 we cache the final extracted results instead of HTTP responses.
 
-Schema hashing: Cache keys include a hash of the function's source code.
-When code changes (CSS selectors, extraction logic, etc.), the hash changes,
-automatically invalidating old cache entries.
+Schema hashing: Cache keys include a hash of the function's source code and of
+the module-level data it reads (selector tables, patterns). When either changes,
+the hash changes, automatically invalidating old cache entries.
 """
 
 from __future__ import annotations
@@ -16,6 +16,8 @@ import hashlib
 import inspect
 import json
 import logging
+import re
+import types
 from collections.abc import Awaitable, Callable
 from typing import Any, cast
 
@@ -25,15 +27,68 @@ from redis.exceptions import RedisError
 
 from .setup import get_cache
 
+# Module-level values that shape what a crawler extracts: selector tables,
+# patterns, base addresses. Numbers are left out, so changing a delay or a
+# timeout does not invalidate cached results.
+_HASHED_DATA_TYPES = (str, bytes, tuple, list, dict, set, frozenset, re.Pattern)
+
+
+def _stable_repr(value: object) -> str:
+    """Return ``repr(value)`` with sets written in sorted order.
+
+    Set order follows string hashing, which Python randomises per process, so
+    a plain ``repr`` would give a different cache key on every run.
+
+    >>> _stable_repr({"tags": frozenset({"b", "a"})})
+    "{'tags': ['a', 'b']}"
+    """
+    if isinstance(value, set | frozenset):
+        return f"[{', '.join(sorted(_stable_repr(item) for item in value))}]"
+    if isinstance(value, dict):
+        items = ", ".join(
+            f"{_stable_repr(k)}: {_stable_repr(v)}" for k, v in value.items()
+        )
+        return f"{{{items}}}"
+    if isinstance(value, list):
+        return f"[{', '.join(_stable_repr(item) for item in value)}]"
+    if isinstance(value, tuple):
+        inner = ", ".join(_stable_repr(item) for item in value)
+        return f"({inner},)" if len(value) == 1 else f"({inner})"
+    return repr(value)
+
+
+def _module_data_read_by(func: Callable[..., Any]) -> str:
+    """Return the module-level data a function reads, nested functions included.
+
+    ``inspect.getsource`` sees only the function body, so a selector kept in a
+    module constant would otherwise change without changing the cache key.
+    """
+    code = getattr(func, "__code__", None)
+    module_globals = getattr(func, "__globals__", {})
+    if code is None:
+        return ""
+    names: set[str] = set()
+    codes = [code]
+    while codes:
+        current = codes.pop()
+        names.update(current.co_names)
+        codes.extend(c for c in current.co_consts if isinstance(c, types.CodeType))
+    return "".join(
+        f"{name}={_stable_repr(module_globals[name])}"
+        for name in sorted(names)
+        if isinstance(module_globals.get(name), _HASHED_DATA_TYPES)
+    )
+
 
 def _compute_schema_hash(
     func: Callable[..., Any], dependencies: list[Callable[..., Any]] | None = None
 ) -> str:
-    """Compute a 16-character hex hash of a function's source code.
+    """Compute a 16-character hex hash of a function's source code and data.
 
-    When the function's implementation changes, the hash changes, automatically
-    invalidating cached results. If ``dependencies`` are provided, their source
-    is appended before hashing so changes to any helper also invalidate the cache.
+    When the function's implementation, or the module-level data it reads,
+    changes, the hash changes, automatically invalidating cached results. If
+    ``dependencies`` are provided, their source and data are appended before
+    hashing so changes to any helper also invalidate the cache.
     For callables whose source cannot be retrieved (built-ins, C extensions,
     lambdas), ``__name__`` is used as a stable fallback.
 
@@ -45,11 +100,11 @@ def _compute_schema_hash(
         A 16-character hexadecimal hash string (64-bit SHA-256 prefix).
     """
     try:
-        source = inspect.getsource(func)
+        source = inspect.getsource(func) + _module_data_read_by(func)
         if dependencies:
             for dep in dependencies:
                 try:
-                    source += inspect.getsource(dep)
+                    source += inspect.getsource(dep) + _module_data_read_by(dep)
                 except OSError, TypeError:
                     source += getattr(dep, "__name__", repr(dep))
         return hashlib.sha256(source.encode()).hexdigest()[:16]

@@ -1,5 +1,7 @@
 import hashlib
 import json
+import re
+import types
 from collections.abc import Iterator
 from contextlib import AbstractContextManager
 from datetime import datetime, timedelta
@@ -13,6 +15,7 @@ from http_cache.result_cache import (
     _compute_schema_hash,
     _generate_cache_key,
     _normalize_batch_args,
+    _stable_repr,
     cached_result,
 )
 from redis.asyncio import Redis
@@ -22,6 +25,30 @@ from redis.typing import EncodableT, ExpiryT, KeysT, KeyT
 
 MAX_KEY_LENGTH = 200
 HEX_DIGITS = set("0123456789abcdef")
+
+_SELECTORS = {"title": "//h1"}
+_DELAY = 1.0
+
+
+def _read_selector() -> str:
+    return _SELECTORS["title"]
+
+
+def _read_selector_in_nested_function() -> str:
+    def read() -> str:
+        return _SELECTORS["title"]
+
+    return read()
+
+
+def _wait() -> float:
+    return _DELAY
+
+
+def _with_module_data(func: Any, **data: object) -> Any:
+    return types.FunctionType(
+        func.__code__, {**func.__globals__, **data}, func.__name__
+    )
 
 
 def _text(value: EncodableT | KeyT) -> str:
@@ -898,3 +925,44 @@ async def test_cache_batch_set_pipeline_error_raises_nothing() -> None:
         await fetch.cache_batch_set([("a",)], [{"id": "a"}])
 
     assert store.values == {}
+
+
+@pytest.mark.parametrize("func", [_read_selector, _read_selector_in_nested_function])
+def test_compute_schema_hash_changed_module_data_returns_different_hash(
+    func: Any,
+) -> None:
+    changed = _with_module_data(func, _SELECTORS={"title": "//h2"})
+
+    assert _compute_schema_hash(func) != _compute_schema_hash(changed)
+
+
+def test_compute_schema_hash_changed_module_data_in_dependency_returns_different_hash() -> (
+    None
+):
+    def fetch() -> str:
+        return "fetched"
+
+    changed = _with_module_data(_read_selector, _SELECTORS={"title": "//h2"})
+
+    assert _compute_schema_hash(fetch, [_read_selector]) != _compute_schema_hash(
+        fetch, [changed]
+    )
+
+
+def test_compute_schema_hash_changed_number_constant_returns_same_hash() -> None:
+    assert _compute_schema_hash(_wait) == _compute_schema_hash(
+        _with_module_data(_wait, _DELAY=2.0)
+    )
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (frozenset({"b", "a"}), "['a', 'b']"),
+        ({"z": {"b", "a"}}, "{'z': ['a', 'b']}"),
+        (("x", {"b", "a"}), "('x', ['a', 'b'])"),
+        (re.compile(r"\d+"), "re.compile('\\\\d+')"),
+    ],
+)
+def test_stable_repr_sets_are_sorted(value: object, expected: str) -> None:
+    assert _stable_repr(value) == expected
