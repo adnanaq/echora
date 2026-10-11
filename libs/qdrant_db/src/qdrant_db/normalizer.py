@@ -9,10 +9,11 @@ from typing import Any, TypeGuard, cast
 import pydantic
 from qdrant_client.models import SparseVector
 
-from qdrant_db.contracts import DenseVector, SparseVectorData
+from qdrant_db.contracts import DenseVector, MultiVector, SparseVectorData
 from qdrant_db.errors import ValidationError
 
-_DENSE_ROW = pydantic.TypeAdapter(DenseVector)
+_DENSE_VECTOR = pydantic.TypeAdapter(DenseVector)
+_MULTI_VECTOR = pydantic.TypeAdapter(MultiVector)
 
 
 def is_sparse_payload(vector: Any) -> TypeGuard[dict[str, list[int] | list[float]]]:
@@ -108,32 +109,33 @@ class VectorNormalizer:
     def _validate_dense_dimension(self, vector_name: str, vector_data: Any) -> None:
         """Check a dense or multivector payload against the configured size.
 
-        Each row must be a list of finite numbers (``DenseVector``) with the
-        configured dimension. qdrant-client rejects the rest with its own
-        error, and Qdrant rejects NaN only after the write is retried.
+        The payload must match its contract type, ``DenseVector`` or, for a
+        name configured as a multivector, ``MultiVector``; each row must then
+        have the configured dimension. qdrant-client rejects the rest with its
+        own error, and Qdrant rejects NaN or an empty multivector only once the
+        write is sent.
 
         Args:
             vector_name: Named vector field.
             vector_data: Dense list, or list of dense lists for a multivector.
 
         Raises:
-            ValidationError: If a row is not a list of finite numbers or has a
-                size other than the configured dimension.
+            ValidationError: If the payload does not match its contract type,
+                or a row has a size other than the configured dimension.
         """
-        expected = self._vector_names[vector_name]
         is_multivector = vector_name in self._multivector_vectors
-        rows = (
-            vector_data
-            if is_multivector and isinstance(vector_data, list)
-            else [vector_data]
-        )
-        for row in rows:
-            try:
-                _DENSE_ROW.validate_python(row)
-            except pydantic.ValidationError as error:
-                raise ValidationError(
-                    f"Vector {vector_name} must be a list of finite numbers"
-                ) from error
+        contract = _MULTI_VECTOR if is_multivector else _DENSE_VECTOR
+        try:
+            contract.validate_python(vector_data)
+        except pydantic.ValidationError as error:
+            shape = (
+                "a non-empty list of rows of finite numbers"
+                if is_multivector
+                else "a list of finite numbers"
+            )
+            raise ValidationError(f"Vector {vector_name} must be {shape}") from error
+        expected = self._vector_names[vector_name]
+        for row in vector_data if is_multivector else [vector_data]:
             if len(row) != expected:
                 raise ValidationError(
                     f"Vector {vector_name} dimension mismatch: "

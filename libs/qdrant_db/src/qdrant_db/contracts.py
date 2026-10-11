@@ -15,6 +15,8 @@ FilterClause = Literal["must", "must_not", "should"]
 # "0.1" are rejected rather than read as 1.0 and 0.1.
 VectorElement = Annotated[float, Strict(), Field(allow_inf_nan=False)]
 DenseVector = Annotated[list[VectorElement], Strict(), Field(min_length=1)]
+# Several dense vectors under one name, such as one per image; at least one.
+MultiVector = Annotated[list[DenseVector], Strict(), Field(min_length=1)]
 
 
 def _is_scalar_filter_value(value: Any) -> bool:
@@ -287,11 +289,7 @@ class BatchVectorUpdateItem(BaseModel):
 
     point_id: str = Field(min_length=1)
     vector_name: str = Field(min_length=1)
-    vector_data: (
-        DenseVector
-        | Annotated[list[DenseVector], Strict(), Field(min_length=1)]
-        | SparseVectorData
-    )
+    vector_data: DenseVector | MultiVector | SparseVectorData
 
 
 class BatchPayloadUpdateItem(BaseModel):

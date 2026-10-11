@@ -121,8 +121,10 @@ def test_normalize_dense_vector_passthrough(vector_name: str, vec: list) -> None
         ("text_vector", [float("nan"), 0.2, 0.3, 0.4], "finite numbers"),
         ("text_vector", [float("-inf"), 0.2, 0.3, 0.4], "finite numbers"),
         ("text_vector", [10**400, 0.2, 0.3, 0.4], "finite numbers"),
-        ("image_vector", [[0.1, 0.2, 0.3], "row"], "must be a list of finite numbers"),
-        ("image_vector", [[0.1, 0.2, 0.3], [0.1, None, 0.3]], "finite numbers"),
+        ("image_vector", [[0.1, 0.2, 0.3], "row"], "rows of finite numbers"),
+        ("image_vector", [[0.1, 0.2, 0.3], [0.1, None, 0.3]], "rows of finite numbers"),
+        ("image_vector", [], "non-empty list of rows"),
+        ("image_vector", [0.1, 0.2, 0.3], "rows of finite numbers"),
     ],
 )
 def test_invalid_dense_payload_raises(
