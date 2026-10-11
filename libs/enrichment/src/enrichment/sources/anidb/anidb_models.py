@@ -5,7 +5,77 @@ Field names mirror canonical model fields wherever possible so the mapper
 XML tag names are used where no canonical equivalent exists.
 """
 
-from pydantic import BaseModel, ConfigDict
+from typing import Annotated, Self
+
+from enrichment.sources.base.field_types import strip_text_or_none
+from pydantic import BaseModel, BeforeValidator, ConfigDict, model_validator
+
+# AniDB's placeholder for a date it does not know.
+_UNKNOWN_DATE = "1970-01-01"
+
+
+def _whole_number_or_none(value: object) -> object:
+    """Read AniDB text as a whole number; text that is not one becomes None.
+
+    AniDB documents are thousands of lines; one malformed value must not
+    abort the parse and discard the anime, its episodes and its characters.
+
+    >>> _whole_number_or_none(" 12 ")
+    12
+    >>> _whole_number_or_none("12a") is None
+    True
+    """
+    value = strip_text_or_none(value)
+    if isinstance(value, str):
+        return int(value) if value.isdecimal() else None
+    return value
+
+
+def _count_or_zero(value: object) -> object:
+    """Read an AniDB count; a missing or malformed count is 0.
+
+    >>> _count_or_zero("2500000")
+    2500000
+    >>> _count_or_zero(None)
+    0
+    """
+    number = _whole_number_or_none(value)
+    return 0 if number is None else number
+
+
+def _decimal_or_none(value: object) -> object:
+    """Read AniDB text as a decimal number; text that is not one becomes None.
+
+    >>> _decimal_or_none("8.43")
+    8.43
+    >>> _decimal_or_none("n/a") is None
+    True
+    """
+    value = strip_text_or_none(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return value
+
+
+def _known_date(value: object) -> object:
+    """Turn AniDB's unknown-date placeholder ("1970-01-01") into None.
+
+    >>> _known_date("1970-01-01") is None
+    True
+    >>> _known_date("1999-10-20")
+    '1999-10-20'
+    """
+    value = strip_text_or_none(value)
+    return None if value == _UNKNOWN_DATE else value
+
+
+WholeNumber = Annotated[int | None, BeforeValidator(_whole_number_or_none)]
+Count = Annotated[int, BeforeValidator(_count_or_zero)]
+Decimal = Annotated[float | None, BeforeValidator(_decimal_or_none)]
+KnownDate = Annotated[str | None, BeforeValidator(_known_date)]
 
 # =============================================================================
 # SUPPORTING MODELS
@@ -15,7 +85,7 @@ from pydantic import BaseModel, ConfigDict
 class AniDBSeiyuu(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    id: int | None = None
+    id: WholeNumber = None
     name: str | None = None
     picture: str | None = (
         None  # raw filename (e.g. "299023.jpg") — mapper adds CDN prefix
@@ -25,18 +95,18 @@ class AniDBSeiyuu(BaseModel):
 class AniDBCharacter(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    id: int | None = None
+    id: WholeNumber = None
     type: str | None = (
         None  # raw attr: "main character in", "secondary cast in", "appears in"
     )
     name: str | None = None  # from <name> element
     gender: str | None = None
     character_type: str | None = None  # from <charactertype> text
-    character_type_id: int | None = None
+    character_type_id: WholeNumber = None
     description: str | None = None
     picture: str | None = None  # raw filename — mapper adds CDN prefix
-    rating: float | None = None
-    rating_votes: int = 0
+    rating: Decimal = None
+    rating_votes: Count = 0
     seiyuu: list[
         AniDBSeiyuu
     ] = []  # findall("seiyuu") — XML allows multiple per character
@@ -45,24 +115,39 @@ class AniDBCharacter(BaseModel):
 class AniDBEpisode(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    id: int | None = None
+    id: WholeNumber = None
     episode_number: int | str | None = (
         None  # int for type=1 regular, str for specials (S1, C1, etc.)
     )
-    episode_type: int | None = None  # 1=Regular 2=Special 3=Credit 4=Trailer 5=Parody
-    length: int | None = None  # minutes — mapper converts to seconds
+    episode_type: WholeNumber = None  # 1=Regular 2=Special 3=Credit 4=Trailer 5=Parody
+    length: WholeNumber = None  # minutes — mapper converts to seconds
     airdate: str | None = None  # YYYY-MM-DD (matches XML tag name)
-    rating: float | None = None
-    rating_votes: int = 0
+    rating: Decimal = None
+    rating_votes: Count = 0
     summary: str | None = None  # matches XML tag name
     titles: dict[str, str] = {}  # {lang_code: title} — "x-jat" normalized to "romaji"
     streaming: dict[str, str] = {}  # {platform: url}
+
+    @model_validator(mode="after")
+    def _regular_episode_number_as_int(self) -> Self:
+        """Store a regular episode's number (type 1) as an int.
+
+        Other episode types keep their text (``S1``, ``C3``), as does a regular
+        episode whose number is not a whole number.
+        """
+        if (
+            self.episode_type == 1
+            and isinstance(self.episode_number, str)
+            and self.episode_number.isdecimal()
+        ):
+            self.episode_number = int(self.episode_number)
+        return self
 
 
 class AniDBCreator(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    id: int | None = None
+    id: WholeNumber = None
     name: str | None = None
     role: str | None = (
         None  # from type attr: "Direction", "Original Work", "Music", etc.
@@ -82,19 +167,19 @@ class AniDBCategory(BaseModel):
 
     id: str | None = None
     name: str
-    weight: int = 0
+    weight: Count = 0
     hentai: bool = False
 
 
 class AniDBRatings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    permanent: float | None = None
-    permanent_count: int = 0
-    temporary: float | None = None
-    temporary_count: int = 0
-    review: float | None = None
-    review_count: int = 0
+    permanent: Decimal = None
+    permanent_count: Count = 0
+    temporary: Decimal = None
+    temporary_count: Count = 0
+    review: Decimal = None
+    review_count: Count = 0
 
 
 class AniDBExternalResource(BaseModel):
@@ -119,9 +204,9 @@ class AniDBAnime(BaseModel):
 
     # Scalar elements (names match XML tags or canonical fields)
     type: str | None = None  # <type> text — mapper normalizes to AnimeType
-    episode_count: int = 0  # <episodecount> — avoids collision with episodes list
-    start_date: str | None = None  # <startdate> YYYY-MM-DD
-    end_date: str | None = None  # <enddate> YYYY-MM-DD
+    episode_count: Count = 0  # <episodecount> — avoids collision with episodes list
+    start_date: KnownDate = None  # <startdate> YYYY-MM-DD
+    end_date: KnownDate = None  # <enddate> YYYY-MM-DD
     description: str | None = None  # <description> — mapper renames to synopsis
     picture: str | None = None  # <picture> filename only — mapper adds CDN prefix
     url: str | None = None  # <url> official website

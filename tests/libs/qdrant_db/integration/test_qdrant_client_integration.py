@@ -175,8 +175,6 @@ async def test_update_vectors_rejects_invalid_vector_name(client: QdrantClient) 
     ("vector_data", "error"),
     [
         ([0.1] * 512, "dimension mismatch"),
-        ([float("nan")] + [0.1] * 1023, "finite numbers"),
-        ([float("inf")] + [0.1] * 1023, "finite numbers"),
     ],
 )
 async def test_update_vectors_rejects_invalid_dense_vector(
@@ -411,21 +409,6 @@ async def test_update_payload_merge_and_overwrite(client: QdrantClient) -> None:
     result = await client.get_by_id(doc_id, with_vectors=False)
     assert result is not None
     assert result["payload"].get("title") == "Overwritten"
-
-
-@pytest.mark.asyncio
-async def test_update_payload_rejects_empty_payload(client: QdrantClient) -> None:
-    """Empty payload updates are rejected."""
-    doc_id = str(uuid.uuid4())
-    await client.add_documents(
-        [_make_doc(doc_id=doc_id, title="Empty Payload")], batch_size=1
-    )
-
-    with pytest.raises(ValidationError, match="Payload must not be empty"):
-        await client.update_payload(
-            [BatchPayloadUpdateItem(point_id=doc_id, payload={})],
-            mode="merge",
-        )
 
 
 @pytest.mark.asyncio

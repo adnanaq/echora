@@ -62,8 +62,6 @@ def anime_from_mal(anime: MalAnime) -> dict[str, Any]:
     """
     # ── Scalars ──────────────────────────────────────────────────────────
     background = anime.background
-    if background and "no background information" in background.lower():
-        background = None
 
     duration = anime.duration
     episode_count = anime.episode_count or 0
@@ -72,12 +70,12 @@ def anime_from_mal(anime: MalAnime) -> dict[str, Any]:
     source_material = (
         SourceMaterialType(anime.source_material) if anime.source_material else None
     )
-    status = AnimeStatus(anime.status or "")
+    status = AnimeStatus(anime.status)
     synopsis = anime.synopsis
     title = anime.title
     title_english = anime.title_english
     title_japanese = anime.title_japanese
-    anime_type = AnimeType(anime.type or "")
+    anime_type = AnimeType(anime.type)
     year = anime.year
 
     # ── Arrays ───────────────────────────────────────────────────────────
@@ -139,7 +137,7 @@ def anime_from_mal(anime: MalAnime) -> dict[str, Any]:
             related_anime[rel_type].append(
                 RelatedAnime(
                     title=entry.title,
-                    type=AnimeType(entry.entry_type or ""),
+                    type=AnimeType(entry.entry_type),
                     sources=[entry.source],
                 )
             )
@@ -150,7 +148,7 @@ def anime_from_mal(anime: MalAnime) -> dict[str, Any]:
             related_source_material[rel_type].append(
                 RelatedSourceMaterial(
                     title=entry.title,
-                    type=SourceMaterialType(entry.entry_type or ""),
+                    type=SourceMaterialType(entry.entry_type),
                     sources=[entry.source],
                 )
             )

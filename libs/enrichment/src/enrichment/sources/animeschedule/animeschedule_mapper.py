@@ -4,15 +4,12 @@ Pure value normalization. No I/O, no side effects.
 
 AnimSchedule returns clean structured JSON, so mapping is straightforward.
 Key quirks handled here:
-- Zero-date sentinel "0001-01-01T00:00:00Z" means "not set"
 - ``websites`` values are partial URLs (no https:// scheme)
 - ``stats.averageScore`` is 0–100 → normalize to 0–10
-- ``season.season`` may be "" for year-only entries
 - ``relations`` values are slugs; slug is used as fallback title until
   MAL/AniList fill in the real title during consolidation
 """
 
-import re
 from typing import Any
 
 from common.models.anime import (
@@ -40,40 +37,19 @@ from enrichment.utils.text_utils import normalize_score
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
-_ZERO_DATE = "0001-01-01"
 _IMAGE_CDN = "https://img.animeschedule.net/production/assets/public/img/"
 _BASE_URL = "https://animeschedule.net/anime/"
 
 # AnimSchedule website keys that map to cross-source source URLs
 _WEBSITE_KEYS = ("mal", "aniList", "kitsu", "animePlanet", "anidb")
 
-_HTML_TAG_RE = re.compile(r"<[^>]+>")
-
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
-
-
-def _is_zero_date(s: str | None) -> bool:
-    """Return True if the date string is the AnimSchedule zero-date sentinel.
-
-    >>> _is_zero_date("0001-01-01T00:00:00Z")
-    True
-    >>> _is_zero_date("")
-    True
-    >>> _is_zero_date("2024-04-01T00:00:00Z")
-    False
-    """
-    return not s or s.startswith(_ZERO_DATE)
 
 
 def _full_url(partial: str) -> str:
     """Prepend https:// to a partial URL if no scheme is present."""
     return partial if partial.startswith("http") else f"https://{partial}"
-
-
-def _strip_html(html: str) -> str:
-    """Strip HTML tags and normalize whitespace."""
-    return _HTML_TAG_RE.sub(" ", html).replace("\r", "").strip()
 
 
 # ── Public mapper ────────────────────────────────────────────────────────────
@@ -92,7 +68,7 @@ def anime_from_animeschedule(anime: AnimScheduleAnime) -> dict[str, Any]:
     title = anime.title
     title_japanese = anime.names.native if anime.names else None
     synonyms = anime.names.synonyms if anime.names else []
-    status = AnimeStatus(anime.status or "")
+    status = AnimeStatus(anime.status)
     year = anime.year
     episode_count = anime.episodes or 0
     duration = anime.length_min * 60 if anime.length_min else None
@@ -104,11 +80,7 @@ def anime_from_animeschedule(anime: AnimScheduleAnime) -> dict[str, Any]:
     if anime.sources:
         source_material = SourceMaterialType(anime.sources[0]["name"])
 
-    anime_type = AnimeType(anime.media_types[0]["name"] if anime.media_types else "")
-
-    synopsis: str | None = None
-    if anime.description:
-        synopsis = _strip_html(anime.description) or None
+    anime_type = AnimeType(anime.media_types[0]["name"] if anime.media_types else None)
 
     # ── Sources list (own URL + cross-source links) ───────────────────────
     sources: list[str] = [f"{_BASE_URL}{anime.route}"]
@@ -158,34 +130,32 @@ def anime_from_animeschedule(anime: AnimScheduleAnime) -> dict[str, Any]:
 
     # ── Aired dates ───────────────────────────────────────────────────────
     aired_dates: AiredDates | None = None
-    if not _is_zero_date(anime.premier):
+    if anime.premier:
         aired_dates = AiredDates(aired_from=normalize_to_utc(anime.premier))
 
     # ── Broadcast ────────────────────────────────────────────────────────
     broadcast_fields: dict[str, Any] = {}
-    if not _is_zero_date(anime.jpn_time):
+    if anime.jpn_time:
         broadcast_fields["jp_time"] = anime.jpn_time
-    if not _is_zero_date(anime.sub_time):
+    if anime.sub_time:
         broadcast_fields["sub_time"] = anime.sub_time
-    if not _is_zero_date(anime.dub_time):
+    if anime.dub_time:
         broadcast_fields["dub_time"] = anime.dub_time
-    if not _is_zero_date(anime.premier):
+    if anime.premier:
         broadcast_fields["premiere_jp"] = normalize_to_utc(anime.premier)
-    if not _is_zero_date(anime.sub_premier):
+    if anime.sub_premier:
         broadcast_fields["premiere_sub"] = normalize_to_utc(anime.sub_premier)
-    if not _is_zero_date(anime.dub_premier):
+    if anime.dub_premier:
         broadcast_fields["premiere_dub"] = normalize_to_utc(anime.dub_premier)
     broadcast = Broadcast(**broadcast_fields) if broadcast_fields else None
 
     # ── Hiatus ───────────────────────────────────────────────────────────
     hiatus: AnimeHiatus | None = None
-    if not _is_zero_date(anime.delayed_from):
+    if anime.delayed_from:
         hiatus = AnimeHiatus(
-            reason=anime.delayd_reason,
+            reason=anime.delayed_reason,
             hiatus_from=anime.delayed_from,
-            hiatus_until=anime.delayed_until
-            if not _is_zero_date(anime.delayed_until)
-            else None,
+            hiatus_until=anime.delayed_until,
         )
 
     # ── Streaming ────────────────────────────────────────────────────────
@@ -226,7 +196,7 @@ def anime_from_animeschedule(anime: AnimScheduleAnime) -> dict[str, Any]:
         episode_count=episode_count,
         duration=duration,
         source_material=source_material,
-        synopsis=synopsis,
+        synopsis=anime.description,
         synonyms=synonyms,
         genres=genres,
         companies=companies_from_roles(

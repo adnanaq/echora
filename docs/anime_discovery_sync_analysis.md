@@ -8,7 +8,7 @@ This document outlines the verified strategies for detecting new anime entries a
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **MyAnimeList (MAL)** | Jikan API Search (ID Desc) | `mal_id` | **Yes** | High | **Instant** (on submission) |
 | **AniList** | GraphQL Page Query (ID Desc) | `id` | **Yes** | High | **Fast** (~1-6 hours) |
-| **AnimeSchedule** | API Search (Title/Query) | `slug` | **Yes** | Medium | **Fast** (~12-24 hours) |
+| **AnimeSchedule** | API list sorted by creation date (`st=createdAt`) | `slug` | **Yes** | Medium | **Fast** (~12-24 hours) |
 | **AniDB** | Daily XML Data Dump | `aid` | **Yes** | High | **Moderate** (Daily) |
 | **Kitsu** | JSON:API Filter (ID Desc) | `id` | **Yes** | High | **Slow** (3-7+ days) |
 | **Anime-Planet** | HTML Scraping (Recent Sort) | `slug` | No | Medium | **Fast** (~12 hours) |
@@ -33,8 +33,9 @@ This document outlines the verified strategies for detecting new anime entries a
     *   **Search Method:** If `idMal` search fails, Title + Format + Year is 95% accurate for new entries.
 
 ### AnimeSchedule (Official API v3)
-*   **Strategy:** Use the anime search collection sorted by ID descending.
-*   **Endpoint:** `GET https://animeschedule.net/api/v3/anime?sort=-id`
+*   **Strategy:** List anime sorted by the date AnimeSchedule added them, newest first. Its IDs are random strings (`urTI`), so they cannot be sorted by age, and the API ignores `sort=-id`.
+*   **Endpoint:** `GET https://animeschedule.net/api/v3/anime?st=createdAt`
+*   **Matching:** A known anime is found by its MAL, AniList or AniDB ID (`mal-ids`, `anilist-ids`, `anidb-ids`); an unknown ID returns 404. Title search (`q`) is the fallback and returns 500 when nothing matches.
 *   **Important Findings:**
     *   **Title Logic:** Often prioritizes English titles. If Romaji search fails, try the primary English title from MAL.
     *   **Slugs:** In basic search results, `slug` might return `null` while `title` is present. A secondary fetch to the specific ID is needed to resolve the permanent URL.

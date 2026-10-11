@@ -8,6 +8,7 @@ import logging
 from typing import Any
 
 from common.config import QdrantConfig
+from common.config.qdrant_config import Priority
 from qdrant_client.models import (
     BinaryQuantization,
     BinaryQuantizationConfig,
@@ -28,8 +29,6 @@ from qdrant_client.models import (
     WalConfigDiff,
 )
 
-from qdrant_db.errors import ConfigurationError
-
 logger = logging.getLogger(__name__)
 
 _DISTANCE_MAPPING = {
@@ -39,7 +38,7 @@ _DISTANCE_MAPPING = {
 }
 
 
-def get_vector_priority(config: QdrantConfig, vector_name: str) -> str:
+def get_vector_priority(config: QdrantConfig, vector_name: str) -> Priority:
     """Resolve priority bucket for a vector name.
 
     Args:
@@ -47,15 +46,15 @@ def get_vector_priority(config: QdrantConfig, vector_name: str) -> str:
         vector_name: Vector name configured for the collection.
 
     Returns:
-        Priority label used by HNSW/quantization lookup.
+        The priority listing the vector; "medium" when none does.
     """
     for priority, vectors in config.vector_priorities.items():
         if vector_name in vectors:
-            return str(priority)
+            return priority
     return "medium"
 
 
-def get_hnsw_config(config: QdrantConfig, priority: str) -> HnswConfigDiff:
+def get_hnsw_config(config: QdrantConfig, priority: Priority) -> HnswConfigDiff:
     """Build HNSW configuration for a priority class.
 
     Args:
@@ -65,16 +64,13 @@ def get_hnsw_config(config: QdrantConfig, priority: str) -> HnswConfigDiff:
     Returns:
         Configured HNSW diff model.
     """
-    hnsw_cfg = config.hnsw_config.get(priority, {})
-    return HnswConfigDiff(
-        ef_construct=hnsw_cfg.get("ef_construct", 200),
-        m=hnsw_cfg.get("m", 48),
-    )
+    settings = config.hnsw_config[priority]
+    return HnswConfigDiff(ef_construct=settings.ef_construct, m=settings.m)
 
 
 def get_per_vector_quantization_config(
-    config: QdrantConfig, priority: str
-) -> QuantizationConfig | None:
+    config: QdrantConfig, priority: Priority
+) -> QuantizationConfig:
     """Build per-vector quantization config for a priority class.
 
     Args:
@@ -82,23 +78,18 @@ def get_per_vector_quantization_config(
         priority: Priority bucket key.
 
     Returns:
-        Quantization config model when configured; otherwise ``None``.
+        The scalar or binary quantization the priority is configured with.
     """
-    quant_cfg = config.quantization_config.get(priority, {})
-    if quant_cfg.get("type") == "scalar":
+    settings = config.quantization_config[priority]
+    if settings.type == "scalar":
         return ScalarQuantization(
             scalar=ScalarQuantizationConfig(
-                type=ScalarType.INT8,
-                always_ram=bool(quant_cfg.get("always_ram", False)),
+                type=ScalarType.INT8, always_ram=settings.always_ram
             )
         )
-    if quant_cfg.get("type") == "binary":
-        return BinaryQuantization(
-            binary=BinaryQuantizationConfig(
-                always_ram=bool(quant_cfg.get("always_ram", False))
-            )
-        )
-    return None
+    return BinaryQuantization(
+        binary=BinaryQuantizationConfig(always_ram=settings.always_ram)
+    )
 
 
 def build_vector_config(config: QdrantConfig) -> dict[str, VectorParams]:
@@ -110,7 +101,7 @@ def build_vector_config(config: QdrantConfig) -> dict[str, VectorParams]:
     Returns:
         Mapping of vector name to :class:`VectorParams`.
     """
-    distance = _DISTANCE_MAPPING.get(config.qdrant_distance_metric, Distance.COSINE)
+    distance = _DISTANCE_MAPPING[config.qdrant_distance_metric]
     multivector_names = set(config.multivector_vectors)
 
     vector_params: dict[str, VectorParams] = {}
@@ -192,14 +183,11 @@ def build_quantization_config(
                     always_ram=always_ram,
                 )
             )
-        if quantization_type == "product":
-            from qdrant_client.models import CompressionRatio, ProductQuantizationConfig
+        from qdrant_client.models import CompressionRatio, ProductQuantizationConfig
 
-            return ProductQuantization(
-                product=ProductQuantizationConfig(compression=CompressionRatio.X16)
-            )
-        else:
-            return None  # pragma: no cover
+        return ProductQuantization(
+            product=ProductQuantizationConfig(compression=CompressionRatio.X16)
+        )
     except Exception:
         logger.exception("Failed to create quantization config")
         return None
@@ -244,36 +232,3 @@ def build_wal_config(config: QdrantConfig) -> WalConfigDiff | None:
     except Exception:
         logger.exception("Failed to create WAL config")
         return None
-
-
-def validate_vector_config(
-    config: QdrantConfig, vectors_config: dict[str, VectorParams]
-) -> None:
-    """Validate generated vector configuration before collection creation.
-
-    Args:
-        config: Qdrant runtime settings.
-        vectors_config: Generated mapping of vector names to params.
-
-    Raises:
-        ConfigurationError: If config is empty, has mismatched count, or
-            contains unexpected dimensions.
-    """
-    if not vectors_config:
-        raise ConfigurationError("Vector configuration is empty")
-
-    if len(vectors_config) != len(config.vector_names):
-        raise ConfigurationError(
-            "Vector count mismatch between generated config and settings"
-        )
-
-    for vector_name, vector_params in vectors_config.items():
-        expected_dim = config.vector_names.get(vector_name)
-        if expected_dim is None:
-            raise ConfigurationError(
-                f"Vector {vector_name} is not present in configured vector_names"
-            )
-        if vector_params.size != expected_dim:
-            raise ConfigurationError(
-                f"Vector {vector_name} size mismatch: expected {expected_dim}, got {vector_params.size}"
-            )

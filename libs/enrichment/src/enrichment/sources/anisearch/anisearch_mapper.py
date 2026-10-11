@@ -12,7 +12,8 @@ Key AniSearch-specific details:
 - statistics.trending is not in the canonical Statistics model — dropped.
 - genres (main/subsidiary) and tags are already split by the crawler.
 - studio is a single string; mapped to studios=[CompanyEntry(name=...)].
-- relation type/details parsing: "TV-Series, 12 (2025)" → type="TV-Series".
+- a relation's type comes from its details ("TV-Series, 12 (2025)" →
+  "TV-Series"), read by ``AniSearchRelatedEntry.media_type``.
 """
 
 import re
@@ -55,22 +56,9 @@ from enrichment.sources.base.external_links import external_link
 from enrichment.utils.text_utils import normalize_score
 
 _ANISEARCH_BASE_URL = "https://www.anisearch.com/"
-_DETAILS_TYPE_RE = re.compile(r"^([^,]+)")
 _ANISEARCH_ANIME_ID_RE = re.compile(
     r"^https?://(?:www\.)?anisearch\.com/anime/(\d+)", re.IGNORECASE
 )
-
-
-def _type_from_details(details: str | None) -> str:
-    """Extract the type token from an AniSearch details string.
-
-    e.g. "TV-Series, 12 (2025)" → "TV-Series"
-         "Manga, 40 (2005)"     → "Manga"
-    """
-    if not details:
-        return ""
-    m = _DETAILS_TYPE_RE.match(details.strip())
-    return m.group(1).strip() if m else ""
 
 
 def _full_url(path: str | None) -> str | None:
@@ -126,14 +114,14 @@ def _build_related_anime(
     for entry in entries:
         if not entry.title:
             continue
-        rel_type = AnimeRelationType(entry.relation_type or "")
+        rel_type = AnimeRelationType(entry.relation_type)
         if rel_type not in related:
             related[rel_type] = []
         url = _full_url(entry.url)
         related[rel_type].append(
             RelatedAnime(
                 title=entry.title,
-                type=AnimeType(_type_from_details(entry.details)),
+                type=AnimeType(entry.media_type),
                 sources=[url] if url else [],
                 images=[entry.image] if entry.image else [],
             )
@@ -148,14 +136,14 @@ def _build_related_source_material(
     for entry in entries:
         if not entry.title:
             continue
-        rel_type = SourceMaterialRelationType(entry.relation_type or "")
+        rel_type = SourceMaterialRelationType(entry.relation_type)
         if rel_type not in related:
             related[rel_type] = []
         url = _full_url(entry.url)
         related[rel_type].append(
             RelatedSourceMaterial(
                 title=entry.title,
-                type=SourceMaterialType(_type_from_details(entry.details)),
+                type=SourceMaterialType(entry.media_type),
                 sources=[url] if url else [],
                 images=[entry.image] if entry.image else [],
             )
@@ -173,15 +161,13 @@ def anime_from_anisearch(anime: AniSearchAnime) -> dict[str, Any]:
         Dict of canonical field name → normalized value (exclude_none applied).
     """
     # ── Scalars ───────────────────────────────────────────────────────────
-    anime_type = AnimeType(anime.type or "")
+    anime_type = AnimeType(anime.type)
     source_material = (
-        SourceMaterialType(anime.source_material or "")
-        if anime.source_material
-        else None
+        SourceMaterialType(anime.source_material) if anime.source_material else None
     )
     # AniSearch states its own status; the date rule only covers a missing one
     # (it calls a finished work with no end date ONGOING).
-    status = AnimeStatus(anime.status or "")
+    status = AnimeStatus(anime.status)
     if status is AnimeStatus.UNKNOWN:
         status = determine_anime_status(anime.start_date, anime.end_date)
     year = (

@@ -13,10 +13,10 @@ from enrichment.sources.anisearch.anisearch_anime_crawler import (
     _extract_relations_from_html,
     _fetch_anisearch_anime_data,
     _parse_relations,
-    _post_process_main,
     _process_relation_tooltips,
     fetch_anisearch_anime,
 )
+from enrichment.sources.anisearch.anisearch_anime_models import AniSearchAnime
 from enrichment.sources.base.exceptions import ServiceBlockedError
 from enrichment.sources.base.framework import NullRepository
 from enrichment.sources.base.polite_http import FetchedPage
@@ -26,11 +26,12 @@ _URL = "https://www.anisearch.com/anime/2227,one-piece"
 
 @pytest.fixture(scope="session")
 def one_piece_processed(one_piece_main_raw, one_piece_relations_raw):
-    data = _post_process_main(one_piece_main_raw)
     anime_rels, manga_rels = _parse_relations(one_piece_relations_raw)
-    data["anime_relations"] = anime_rels
-    data["manga_relations"] = manga_rels
-    return data
+    return {
+        **one_piece_main_raw,
+        "anime_relations": anime_rels,
+        "manga_relations": manga_rels,
+    }
 
 
 def test_xpaths_has_required_main_keys() -> None:
@@ -121,7 +122,7 @@ def test_extract_anime_from_html_one_piece_page_reads_genres(
     raw = _extract_anime_from_html(one_piece_main_html)
     assert raw is not None
     assert len(raw["genres"]) > 0
-    assert all(isinstance(g["name"], str) for g in raw["genres"])
+    assert all(isinstance(genre, str) for genre in raw["genres"])
 
 
 def test_extract_anime_from_html_one_piece_page_reads_tags(one_piece_main_html) -> None:
@@ -280,43 +281,51 @@ def test_process_relation_tooltips_one_piece_page_gives_image_addresses(
             assert rel["image"].startswith("https://")
 
 
-def test_post_process_main_type_label_and_details_removed(one_piece_main_raw) -> None:
-    assert _post_process_main(one_piece_main_raw)["type"] == "TV-Series"
+def _anime_from_page(raw: dict) -> AniSearchAnime:
+    return _build_anime_from_raw(raw, _URL)
 
 
-def test_post_process_main_status_label_removed(one_piece_main_raw) -> None:
-    assert _post_process_main(one_piece_main_raw)["status"] == "Ongoing"
+def test_build_anime_from_raw_type_label_and_details_removed(
+    one_piece_main_raw,
+) -> None:
+    assert _anime_from_page(one_piece_main_raw).type == "TV-Series"
 
 
-def test_post_process_main_open_range_gives_start_date_only(one_piece_main_raw) -> None:
-    data = _post_process_main(one_piece_main_raw)
-    assert data["start_date"] == "1999-10-20"
-    assert data["end_date"] is None
+def test_build_anime_from_raw_status_label_removed(one_piece_main_raw) -> None:
+    assert _anime_from_page(one_piece_main_raw).status == "Ongoing"
 
 
-def test_post_process_main_closed_range_gives_both_dates(one_piece_main_raw) -> None:
+def test_build_anime_from_raw_open_range_gives_start_date_only(
+    one_piece_main_raw,
+) -> None:
+    anime = _anime_from_page(one_piece_main_raw)
+    assert anime.start_date == "1999-10-20"
+    assert anime.end_date is None
+
+
+def test_build_anime_from_raw_closed_range_gives_both_dates(one_piece_main_raw) -> None:
     raw = {**one_piece_main_raw, "published": "Published: 20.10.1999 - 31.03.2002"}
-    data = _post_process_main(raw)
-    assert data["start_date"] == "1999-10-20"
-    assert data["end_date"] == "2002-03-31"
+    anime = _anime_from_page(raw)
+    assert anime.start_date == "1999-10-20"
+    assert anime.end_date == "2002-03-31"
 
 
-def test_post_process_main_single_date_gives_start_date_only(
+def test_build_anime_from_raw_single_date_gives_start_date_only(
     one_piece_main_raw,
 ) -> None:
     raw = {**one_piece_main_raw, "published": "Published: 05.04.2003"}
-    data = _post_process_main(raw)
-    assert data["start_date"] == "2003-04-05"
-    assert data["end_date"] is None
+    anime = _anime_from_page(raw)
+    assert anime.start_date == "2003-04-05"
+    assert anime.end_date is None
 
 
-def test_post_process_main_without_published_date_gives_no_dates(
+def test_build_anime_from_raw_without_published_date_gives_no_dates(
     one_piece_main_raw,
 ) -> None:
     raw = {**one_piece_main_raw, "published": None}
-    data = _post_process_main(raw)
-    assert data["start_date"] is None
-    assert data["end_date"] is None
+    anime = _anime_from_page(raw)
+    assert anime.start_date is None
+    assert anime.end_date is None
 
 
 @pytest.mark.parametrize(
@@ -332,129 +341,127 @@ def test_post_process_main_without_published_date_gives_no_dates(
         ("Published: 05.2001 ‑ 31.03.2002", (None, "2002-03-31", 2001, "May")),
     ],
 )
-def test_post_process_main_published_date_keeps_only_stated_precision(
+def test_build_anime_from_raw_published_date_keeps_only_stated_precision(
     one_piece_main_raw, published: str, expected: tuple
 ) -> None:
-    data = _post_process_main({**one_piece_main_raw, "published": published})
+    anime = _anime_from_page({**one_piece_main_raw, "published": published})
     assert (
-        data["start_date"],
-        data["end_date"],
-        data["start_year"],
-        data["start_month"],
+        anime.start_date,
+        anime.end_date,
+        anime.start_year,
+        anime.start_month,
     ) == expected
 
 
-def test_post_process_main_broadcast_gives_day_time_and_zone(
+def test_build_anime_from_raw_broadcast_gives_day_time_and_zone(
     one_piece_main_raw,
 ) -> None:
-    data = _post_process_main(one_piece_main_raw)
-    assert data["broadcast_day"] == "Sunday"
-    assert data["broadcast_time"] == "23:15"
-    assert data["broadcast_timezone"] == "JST"
+    anime = _anime_from_page(one_piece_main_raw)
+    assert (anime.broadcast_day, anime.broadcast_time, anime.broadcast_timezone) == (
+        "Sunday",
+        "23:15",
+        "JST",
+    )
 
 
-def test_post_process_main_without_broadcast_gives_no_broadcast_parts(
+def test_build_anime_from_raw_without_broadcast_gives_no_broadcast_parts(
     one_piece_main_raw,
 ) -> None:
-    raw = {**one_piece_main_raw, "broadcast_raw": None}
-    data = _post_process_main(raw)
-    assert data["broadcast_day"] is None
-    assert data["broadcast_time"] is None
-    assert data["broadcast_timezone"] is None
+    anime = _anime_from_page({**one_piece_main_raw, "broadcast_raw": None})
+    assert (anime.broadcast_day, anime.broadcast_time, anime.broadcast_timezone) == (
+        None,
+        None,
+        None,
+    )
 
 
-def test_post_process_main_relative_studio_path_gives_full_address(
+def test_build_anime_from_raw_relative_studio_path_gives_full_address(
     one_piece_main_raw,
 ) -> None:
-    data = _post_process_main(one_piece_main_raw)
+    anime = _anime_from_page(one_piece_main_raw)
     assert (
-        data["studio_url"]
+        anime.studio_url
         == "https://www.anisearch.com/company/412,toei-animation-co-ltd"
     )
 
 
-def test_post_process_main_studio_path_with_leading_slash_gives_full_address(
+def test_build_anime_from_raw_studio_path_with_leading_slash_gives_full_address(
     one_piece_main_raw,
 ) -> None:
     raw = {**one_piece_main_raw, "studio_url": "/company/412,toei-animation-co-ltd"}
-    data = _post_process_main(raw)
+    anime = _anime_from_page(raw)
     assert (
-        data["studio_url"]
+        anime.studio_url
         == "https://www.anisearch.com/company/412,toei-animation-co-ltd"
     )
 
 
-def test_post_process_main_without_studio_path_gives_no_studio_address(
+def test_build_anime_from_raw_without_studio_path_gives_no_studio_address(
     one_piece_main_raw,
 ) -> None:
-    raw = {**one_piece_main_raw, "studio_url": None}
-    assert _post_process_main(raw)["studio_url"] is None
+    assert (
+        _anime_from_page({**one_piece_main_raw, "studio_url": None}).studio_url is None
+    )
 
 
-def test_post_process_main_source_material_label_removed(one_piece_main_raw) -> None:
-    assert _post_process_main(one_piece_main_raw)["source_material"] == "Manga"
+def test_build_anime_from_raw_source_material_label_removed(one_piece_main_raw) -> None:
+    assert _anime_from_page(one_piece_main_raw).source_material == "Manga"
 
 
-def test_post_process_main_synonyms_split_on_commas(one_piece_main_raw) -> None:
-    assert _post_process_main(one_piece_main_raw)["synonyms"] == ["OP", "OneP"]
+def test_build_anime_from_raw_synonyms_split_on_commas(one_piece_main_raw) -> None:
+    assert _anime_from_page(one_piece_main_raw).synonyms == ["OP", "OneP"]
 
 
-def test_post_process_main_without_synonyms_gives_empty_list(
+def test_build_anime_from_raw_synonym_with_colon_kept_whole(one_piece_main_raw) -> None:
+    raw = {**one_piece_main_raw, "synonyms": "Synonyms: Re:Zero, OP"}
+    assert _anime_from_page(raw).synonyms == ["Re:Zero", "OP"]
+
+
+def test_build_anime_from_raw_without_synonyms_gives_empty_list(
     one_piece_main_raw,
 ) -> None:
-    raw = {**one_piece_main_raw, "synonyms": None}
-    assert _post_process_main(raw)["synonyms"] == []
+    assert _anime_from_page({**one_piece_main_raw, "synonyms": None}).synonyms == []
 
 
-def test_post_process_main_genres_become_names(one_piece_main_raw) -> None:
-    data = _post_process_main(one_piece_main_raw)
-    assert "Action" in data["genres"]
-    assert "Fighting-Shounen" in data["genres"]
-    assert all(isinstance(g, str) for g in data["genres"])
+def test_extract_anime_from_html_one_piece_page_gives_genre_names(
+    one_piece_main_html,
+) -> None:
+    raw = _extract_anime_from_html(one_piece_main_html)
+    assert raw is not None
+    assert "Action" in raw["genres"]
+    assert "Fighting-Shounen" in raw["genres"]
+    assert all(isinstance(genre, str) for genre in raw["genres"])
 
 
-def test_post_process_main_tags_become_names(one_piece_main_raw) -> None:
-    data = _post_process_main(one_piece_main_raw)
-    assert "Pirate" in data["tags"]
-    assert all(isinstance(t, str) for t in data["tags"])
+def test_extract_anime_from_html_one_piece_page_gives_tag_names(
+    one_piece_main_html,
+) -> None:
+    raw = _extract_anime_from_html(one_piece_main_html)
+    assert raw is not None
+    assert "Pirate" in raw["tags"]
+    assert all(isinstance(tag, str) for tag in raw["tags"])
 
 
-def test_post_process_main_genre_without_name_skipped(one_piece_main_raw) -> None:
-    raw = {**one_piece_main_raw, "genres": [{"name": ""}, {"name": "Action"}]}
-    assert _post_process_main(raw)["genres"] == ["Action"]
+def test_build_anime_from_raw_websites_kept(one_piece_main_raw) -> None:
+    anime = _anime_from_page(one_piece_main_raw)
+    assert len(anime.websites) == len(one_piece_main_raw["websites"])
+    assert all(website["url"] for website in anime.websites)
 
 
-def test_post_process_main_websites_kept(one_piece_main_raw) -> None:
-    data = _post_process_main(one_piece_main_raw)
-    assert len(data["websites"]) == len(one_piece_main_raw["websites"])
-    assert all(w["url"] for w in data["websites"])
+def test_build_anime_from_raw_rating_gives_score_and_votes(one_piece_main_raw) -> None:
+    statistics = _anime_from_page(one_piece_main_raw).statistics
+    assert statistics is not None
+    assert statistics.score == pytest.approx(4.18)
+    assert statistics.scored_by == 7902
 
 
-def test_post_process_main_website_without_address_skipped(one_piece_main_raw) -> None:
-    raw = {
-        **one_piece_main_raw,
-        "websites": [
-            {"name": "Empty", "url": ""},
-            {"name": "Official", "url": "https://one-piece.com"},
-        ],
-    }
-    data = _post_process_main(raw)
-    assert len(data["websites"]) == 1
-    assert data["websites"][0]["name"] == "Official"
+def test_build_anime_from_raw_zero_votes_omits_votes(one_piece_main_raw) -> None:
+    statistics = _anime_from_page({**one_piece_main_raw, "rating_votes": 0}).statistics
+    assert statistics is not None
+    assert statistics.scored_by is None
 
 
-def test_post_process_main_rating_gives_score_and_votes(one_piece_main_raw) -> None:
-    data = _post_process_main(one_piece_main_raw)
-    assert data["statistics"]["score"] == pytest.approx(4.18)
-    assert data["statistics"]["scored_by"] == 7902
-
-
-def test_post_process_main_zero_votes_omits_votes(one_piece_main_raw) -> None:
-    raw = {**one_piece_main_raw, "rating_votes": 0}
-    assert "scored_by" not in _post_process_main(raw)["statistics"]
-
-
-def test_post_process_main_unrated_anime_omits_score_and_votes(
+def test_build_anime_from_raw_unrated_anime_omits_score_and_votes(
     one_piece_main_raw,
 ) -> None:
     raw = {
@@ -462,20 +469,42 @@ def test_post_process_main_unrated_anime_omits_score_and_votes(
         "rating_score": "Calculated Value0.00 = 0%",
         "rating_votes": 0,
     }
-    stats = _post_process_main(raw)["statistics"]
-    assert "score" not in stats
-    assert "scored_by" not in stats
+    statistics = _anime_from_page(raw).statistics
+    assert statistics is not None
+    assert (statistics.score, statistics.scored_by) == (None, None)
 
 
-def test_post_process_main_toplist_rank_gives_rank(one_piece_main_raw) -> None:
-    assert _post_process_main(one_piece_main_raw)["statistics"]["rank"] == 125
+def test_build_anime_from_raw_toplist_rank_gives_rank(one_piece_main_raw) -> None:
+    statistics = _anime_from_page(one_piece_main_raw).statistics
+    assert statistics is not None
+    assert statistics.rank == 125
 
 
-def test_post_process_main_trending_rank_gives_trending(one_piece_main_raw) -> None:
-    assert _post_process_main(one_piece_main_raw)["statistics"]["trending"] == 26
+def test_build_anime_from_raw_rank_in_thousands_gives_whole_rank(
+    one_piece_main_raw,
+) -> None:
+    statistics = _anime_from_page(
+        {**one_piece_main_raw, "rank_toplist": "#12.829"}
+    ).statistics
+    assert statistics is not None
+    assert statistics.rank == 12829
 
 
-def test_post_process_main_without_statistics_gives_none(one_piece_main_raw) -> None:
+def test_build_anime_from_raw_votes_in_millions_kept(one_piece_main_raw) -> None:
+    statistics = _anime_from_page(
+        {**one_piece_main_raw, "rating_votes": 1234567}
+    ).statistics
+    assert statistics is not None
+    assert statistics.scored_by == 1234567
+
+
+def test_build_anime_from_raw_trending_rank_gives_trending(one_piece_main_raw) -> None:
+    statistics = _anime_from_page(one_piece_main_raw).statistics
+    assert statistics is not None
+    assert statistics.trending == 26
+
+
+def test_build_anime_from_raw_without_statistics_gives_none(one_piece_main_raw) -> None:
     raw = {
         **one_piece_main_raw,
         "rating_score": None,
@@ -483,19 +512,21 @@ def test_post_process_main_without_statistics_gives_none(one_piece_main_raw) -> 
         "rank_toplist": None,
         "rank_trending": None,
     }
-    assert _post_process_main(raw)["statistics"] is None
+    assert _anime_from_page(raw).statistics is None
 
 
-def test_post_process_main_without_score_keeps_rank(one_piece_main_raw) -> None:
-    raw = {**one_piece_main_raw, "rating_score": None}
-    stats = _post_process_main(raw)["statistics"]
-    assert "score" not in stats
-    assert stats["rank"] == 125
+def test_build_anime_from_raw_without_score_keeps_rank(one_piece_main_raw) -> None:
+    statistics = _anime_from_page(
+        {**one_piece_main_raw, "rating_score": None}
+    ).statistics
+    assert statistics is not None
+    assert statistics.score is None
+    assert statistics.rank == 125
 
 
-def test_post_process_main_description_trimmed(one_piece_main_raw) -> None:
+def test_build_anime_from_raw_description_trimmed(one_piece_main_raw) -> None:
     raw = {**one_piece_main_raw, "description": "  some synopsis  "}
-    assert _post_process_main(raw)["description"] == "some synopsis"
+    assert _anime_from_page(raw).synopsis == "some synopsis"
 
 
 def test_parse_relations_without_relations_page_returns_empty_lists() -> None:
@@ -564,13 +595,6 @@ def test_build_anime_from_raw_one_piece_page_gives_statistics(
     assert anime.statistics.scored_by == 7902
     assert anime.statistics.rank == 125
     assert anime.statistics.trending == 26
-
-
-def test_build_anime_from_raw_without_statistics_gives_none(
-    one_piece_processed,
-) -> None:
-    raw = {**one_piece_processed, "statistics": None}
-    assert _build_anime_from_raw(raw, _URL).statistics is None
 
 
 def test_build_anime_from_raw_one_piece_page_keeps_every_relation(
@@ -649,7 +673,7 @@ def _site(
 
 
 @pytest.mark.usefixtures("cache_off")
-async def test_fetch_anisearch_anime_data_real_pages_returns_processed_data(
+async def test_fetch_anisearch_anime_data_real_pages_returns_page_text(
     one_piece_main_html: str, one_piece_relations_html: str
 ) -> None:
     pages = {
@@ -663,9 +687,8 @@ async def test_fetch_anisearch_anime_data_real_pages_returns_processed_data(
 
     assert result is not None
     assert result["title_ja"] == "One Piece"
-    assert result["type"] == "TV-Series"
-    assert result["broadcast_day"] == "Sunday"
-    assert result["statistics"]["score"] == pytest.approx(4.18)
+    assert result["type"].startswith("Type: TV-Series")
+    assert result["rank_toplist"] == "#125"
     assert len(result["anime_relations"]) == 79
     assert len(result["manga_relations"]) == 2
     assert result["_canonical_url"] == _URL

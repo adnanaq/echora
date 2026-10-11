@@ -25,21 +25,10 @@ from enrichment.sources.base.framework import (
     NullRepository,
 )
 from enrichment.sources.base.page_readiness import wait_for_page
-from enrichment.sources.base.utils import (
-    month_name,
-    parse_iso_date,
-    parse_partial_date,
-    split_date_range,
-)
 from enrichment.sources.mal.mal_base import (
     MAL_BASE_URL,
     MAL_DOMAIN,
-    parse_broadcast_string,
-    parse_duration_seconds,
     parse_episode_ranges,
-    parse_number,
-    parse_premiered,
-    parse_score,
 )
 from enrichment.sources.mal.mal_mapper import anime_from_mal
 from enrichment.sources.mal.mal_models import (
@@ -306,7 +295,6 @@ def _extract_anime_from_html(html_text: str) -> dict[str, Any] | None:
         "ending_themes_raw": _theme_rows("ending_theme_rows"),
         "trailer_embed_url": trailer_embed_url,
         "trailer_title": _text("trailer_title"),
-        "picture_urls_raw": [],
     }
 
 
@@ -560,60 +548,6 @@ def _build_anime_from_raw(
     Returns:
         Populated MalAnime Pydantic model ready for mapping to canonical form.
     """
-    title = (raw.get("title") or raw.get("title_og") or "").strip()
-    title_english = raw.get("title_english")
-    title_japanese = raw.get("title_japanese")
-    synonyms_str = raw.get("synonyms_raw")
-    synonyms = [s.strip() for s in synonyms_str.split(",")] if synonyms_str else []
-
-    anime_type = raw.get("type")
-    status = raw.get("status")
-    source_material = raw.get("source_material")
-    rating = raw.get("rating")
-
-    ep_count_raw = raw.get("episodes")
-    episode_count: int | None = None
-    if ep_count_raw and ep_count_raw.lower() not in ("unknown", "?", "n/a"):
-        try:
-            episode_count = int(ep_count_raw.replace(",", ""))
-        except ValueError:
-            episode_count = None
-
-    duration_raw = raw.get("duration_raw")
-    duration = parse_duration_seconds(duration_raw) if duration_raw else None
-
-    aired_start, aired_end = split_date_range(raw.get("aired_raw"))
-    aired_from, aired_to = parse_iso_date(aired_start), parse_iso_date(aired_end)
-    aired_year, aired_month = parse_partial_date(aired_start)
-
-    premiered_raw = raw.get("premiered_raw")
-    season, year = parse_premiered(premiered_raw)
-    # Movies, specials and announcements have no "Premiered"; "Aired" still states the year.
-    if year is None:
-        year = aired_year
-    # A stated month only when "Aired" gives no day; otherwise the date itself carries it.
-    month = month_name(aired_month) if aired_from is None else None
-
-    broadcast_raw = raw.get("broadcast_raw")
-    broadcast_day, broadcast_time, broadcast_timezone = parse_broadcast_string(
-        broadcast_raw
-    )
-
-    score = parse_score(raw.get("score"))
-
-    scored_by = parse_number(raw.get("scored_by"))
-
-    rank_html = raw.get("rank_html")
-    rank: int | None = None
-    if rank_html:
-        rank_match = re.search(r"#(\d+)", rank_html)
-        if rank_match:
-            rank = int(rank_match.group(1))
-
-    popularity = parse_number(raw.get("popularity"))
-    members = parse_number(raw.get("members"))
-    favorites = parse_number(raw.get("favorites"))
-
     genres = [g["name"] for g in raw.get("genres", [])]
     themes = [t["name"] for t in raw.get("themes", [])]
     demographics = [d["name"] for d in raw.get("demographics", [])]
@@ -676,55 +610,50 @@ def _build_anime_from_raw(
             r'id="background".*?</h2>(.*?)(?:<div|<!--|$)', bg_html, re.DOTALL
         )
         if bg_match:
-            bg_text = re.sub(r"<[^>]+>", "", bg_match.group(1)).strip()
-            if bg_text and "no background information" not in bg_text.lower():
-                background = bg_text
+            background = re.sub(r"<[^>]+>", "", bg_match.group(1))
 
     related_entries = _parse_all_related_entries(raw)
 
     canonical = raw.get("canonical_url")
-    return MalAnime(
-        source=canonical if canonical and "/anime/" in canonical else url,
-        title=title,
-        title_english=title_english,
-        title_japanese=title_japanese,
-        synonyms=synonyms,
-        type=anime_type,
-        status=status,
-        source_material=source_material,
-        rating=rating,
-        year=year,
-        season=season,
-        aired_from=aired_from,
-        aired_to=aired_to,
-        month=month,
-        broadcast_day=broadcast_day,
-        broadcast_time=broadcast_time,
-        broadcast_timezone=broadcast_timezone,
-        episode_count=episode_count,
-        duration=duration,
-        score=score,
-        scored_by=scored_by,
-        rank=rank,
-        popularity=popularity,
-        members=members,
-        favorites=favorites,
-        synopsis=raw.get("synopsis"),
-        background=background,
-        genres=genres,
-        themes=themes,
-        demographics=demographics,
-        producers=producers,
-        licensors=licensors,
-        studios=studios,
-        related_entries=related_entries,
-        images=images,
-        picture_urls=picture_urls,
-        trailer=_parse_trailer(raw),
-        opening_themes=opening_themes,
-        ending_themes=ending_themes,
-        external_sources=external_sources,
-        streaming=streaming,
+    return MalAnime.model_validate(
+        {
+            "source": canonical if canonical and "/anime/" in canonical else url,
+            "title": raw.get("title") or raw.get("title_og") or "",
+            "title_english": raw.get("title_english"),
+            "title_japanese": raw.get("title_japanese"),
+            "synonyms": raw.get("synonyms_raw"),
+            "type": raw.get("type"),
+            "status": raw.get("status"),
+            "source_material": raw.get("source_material"),
+            "rating": raw.get("rating"),
+            "aired": raw.get("aired_raw"),
+            "premiered": raw.get("premiered_raw"),
+            "broadcast": raw.get("broadcast_raw"),
+            "episode_count": raw.get("episodes"),
+            "duration": raw.get("duration_raw"),
+            "score": raw.get("score"),
+            "scored_by": raw.get("scored_by"),
+            "rank": raw.get("rank_html"),
+            "popularity": raw.get("popularity"),
+            "members": raw.get("members"),
+            "favorites": raw.get("favorites"),
+            "synopsis": raw.get("synopsis"),
+            "background": background,
+            "genres": genres,
+            "themes": themes,
+            "demographics": demographics,
+            "producers": producers,
+            "licensors": licensors,
+            "studios": studios,
+            "related_entries": related_entries,
+            "images": images,
+            "picture_urls": picture_urls,
+            "trailer": _parse_trailer(raw),
+            "opening_themes": opening_themes,
+            "ending_themes": ending_themes,
+            "external_sources": external_sources,
+            "streaming": streaming,
+        }
     )
 
 

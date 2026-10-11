@@ -7,15 +7,16 @@ constructed either from the camelCase API response or from snake_case aliases.
 from typing import Any
 
 from enrichment.sources.anilist.anilist_character_models import AniListFuzzyDate
+from enrichment.sources.base.field_types import PlainText, StrippedText
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class AniListTitle(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="allow")
 
-    romaji: str | None = None
-    english: str | None = None
-    native: str | None = None
+    romaji: StrippedText = None
+    english: StrippedText = None
+    native: StrippedText = None
     user_preferred: str | None = Field(None, alias="userPreferred")
 
 
@@ -137,7 +138,7 @@ class AniListAnime(BaseModel):
     id: int
     id_mal: int | None = Field(None, alias="idMal")
     title: AniListTitle | None = None
-    description: str | None = None
+    description: PlainText = None
     source: str | None = None
     format: str | None = None
     episodes: int | None = None

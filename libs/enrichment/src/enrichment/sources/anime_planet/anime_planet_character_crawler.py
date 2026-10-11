@@ -125,21 +125,6 @@ def _strip_tags(html: str) -> str:
     return unescape(re.sub(r"<[^>]+>", "", html)).strip()
 
 
-def _parse_rank(raw: str | None) -> int | None:
-    if not raw:
-        return None
-    m = re.search(r"\d+", raw)
-    return int(m.group()) if m else None
-
-
-def _parse_loved_count(raw: str | None) -> int | None:
-    """Parse love count from text like '36,485 users' → 36485."""
-    if not raw:
-        return None
-    m = re.search(r"[\d,]+", raw)
-    return int(m.group().replace(",", "")) if m else None
-
-
 def _extract_entry_bar(body_html: str) -> dict[str, str | None]:
     """Extract gender and hair_color from the entryBar section HTML."""
     result: dict[str, str | None] = {"gender": None, "hair_color": None}
@@ -333,10 +318,10 @@ def _build_character_from_raw(raw: dict[str, Any], url: str) -> AnimePlanetChara
         name=(raw.get("name") or "").strip(),
         slug=slug,
         url=url,
-        image=raw.get("image") or None,
-        loved_rank=_parse_rank(raw.get("loved_rank")),
-        hated_rank=_parse_rank(raw.get("hated_rank")),
-        loved_count=_parse_loved_count(raw.get("loved_count")),
+        image=raw.get("image"),
+        loved_rank=raw.get("loved_rank"),
+        hated_rank=raw.get("hated_rank"),
+        loved_count=raw.get("loved_count"),
         gender=raw.get("gender"),
         hair_color=raw.get("hair_color"),
         description=raw.get("description"),

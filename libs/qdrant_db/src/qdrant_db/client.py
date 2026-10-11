@@ -11,6 +11,7 @@ from typing import Any, Protocol, cast
 
 from common.config import QdrantConfig
 from common.utils.request_batcher import RequestBatcher
+from pydantic import PositiveInt, SkipValidation, validate_call
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.http.models import QueryResponse
 from qdrant_client.models import (
@@ -277,10 +278,11 @@ class QdrantClient(VectorDBClient):
                 scroll_filter=build_filter(scroll_filter) if scroll_filter else None,
             )
 
+    @validate_call
     async def add_documents(
         self,
-        documents: list[VectorDocument],
-        batch_size: int = 100,
+        documents: SkipValidation[list[VectorDocument]],
+        batch_size: PositiveInt = 100,
         max_retries: int = 3,
         retry_delay: float = 1.0,
     ) -> BatchOperationResult:
@@ -301,12 +303,10 @@ class QdrantClient(VectorDBClient):
             Batch operation summary.
 
         Raises:
-            ValidationError: If ``batch_size`` is invalid.
+            pydantic.ValidationError: If ``batch_size`` is not a whole number
+                of at least 1.
             PermanentQdrantError: If any batch fails after all retries.
         """
-        if batch_size <= 0:
-            raise ValidationError("batch_size must be >= 1")
-
         if not documents:
             return BatchOperationResult(total=0, successful=0, failed=0)
 
@@ -437,6 +437,7 @@ class QdrantClient(VectorDBClient):
             duplicates_removed=duplicates_removed,
         )
 
+    @validate_call
     async def update_payload(  # ty: ignore[invalid-method-override]
         self,
         updates: list[BatchPayloadUpdateItem],
@@ -458,18 +459,13 @@ class QdrantClient(VectorDBClient):
             Batch operation summary.
 
         Raises:
-            ValidationError: If mode or payload inputs are invalid.
+            pydantic.ValidationError: If ``mode`` or ``dedup_policy`` is not
+                one of its allowed values.
             DuplicateUpdateError: If duplicates exist under ``fail`` policy.
             PermanentQdrantError: If Qdrant batch update fails.
         """
-        if mode not in {"merge", "overwrite"}:
-            raise ValidationError("mode must be merge or overwrite")
-
         if not updates:
             return BatchOperationResult(total=0, successful=0, failed=0)
-
-        for update in updates:
-            self._normalizer.validate_payload_update(update.payload)
 
         try:
             deduplicated_updates, duplicates_removed = deduplicate_items(

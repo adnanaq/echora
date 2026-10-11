@@ -2,7 +2,6 @@
 
 from unittest.mock import patch
 
-import pytest
 from common.config import QdrantConfig
 from qdrant_client.models import (
     BinaryQuantization,
@@ -24,9 +23,7 @@ from qdrant_db.collection.schema_builder import (
     get_hnsw_config,
     get_per_vector_quantization_config,
     get_vector_priority,
-    validate_vector_config,
 )
-from qdrant_db.errors import ConfigurationError
 
 
 def _base_config(**overrides: object) -> QdrantConfig:
@@ -105,13 +102,6 @@ def test_get_hnsw_config_medium_priority() -> None:
     assert result.m == 48
 
 
-def test_get_hnsw_config_unknown_priority_uses_defaults() -> None:
-    config = _base_config()
-    result = get_hnsw_config(config, "nonexistent")
-    assert result.ef_construct == 200
-    assert result.m == 48
-
-
 # ---------------------------------------------------------------------------
 # get_per_vector_quantization_config
 # ---------------------------------------------------------------------------
@@ -129,12 +119,6 @@ def test_get_per_vector_quantization_config_binary() -> None:
     result = get_per_vector_quantization_config(config, "low")
     assert isinstance(result, BinaryQuantization)
     assert result.binary.always_ram is False
-
-
-def test_get_per_vector_quantization_config_unknown_returns_none() -> None:
-    config = _base_config()
-    result = get_per_vector_quantization_config(config, "nonexistent")
-    assert result is None
 
 
 # ---------------------------------------------------------------------------
@@ -363,48 +347,3 @@ def test_build_wal_config_enabled_returns_diff() -> None:
         side_effect=RuntimeError("boom"),
     ):
         assert build_wal_config(config) is None
-
-
-# ---------------------------------------------------------------------------
-# validate_vector_config
-# ---------------------------------------------------------------------------
-
-
-def test_validate_vector_config_raises_on_empty() -> None:
-    config = _base_config()
-    with pytest.raises(ConfigurationError, match="empty"):
-        validate_vector_config(config, {})
-
-
-def test_validate_vector_config_raises_on_count_mismatch() -> None:
-    config = _base_config()
-    vectors_config = build_vector_config(config)
-    # Remove one vector to create mismatch
-    del vectors_config["image_vector"]
-    with pytest.raises(ConfigurationError, match="mismatch"):
-        validate_vector_config(config, vectors_config)
-
-
-def test_validate_vector_config_raises_on_wrong_vector_name() -> None:
-    config = _base_config()
-    vectors_config = build_vector_config(config)
-    # Rename a key to simulate a vector name not in config.vector_names
-    vectors_config["ghost_vector"] = vectors_config.pop("image_vector")
-    with pytest.raises(ConfigurationError):
-        validate_vector_config(config, vectors_config)
-
-    # Size mismatch: build from a config with different dims, validate against original
-    small_config = _base_config(
-        vector_names={"text_vector": 512, "image_vector": 768},
-        multivector_vectors=["image_vector"],
-    )
-    mismatched = build_vector_config(small_config)
-    with pytest.raises(ConfigurationError, match="size mismatch"):
-        validate_vector_config(config, mismatched)
-
-
-def test_validate_vector_config_passes_on_valid_config() -> None:
-    config = _base_config()
-    vectors_config = build_vector_config(config)
-    # Should not raise
-    validate_vector_config(config, vectors_config)

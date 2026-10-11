@@ -116,13 +116,50 @@ def test_anime_from_animeplanet_description_and_alt_title_become_synopsis_and_ja
 
 
 @pytest.mark.parametrize(
-    ("schema_type", "expected"),
-    [("TVSeries", "TV"), ("Movie", "MOVIE"), (None, "UNKNOWN")],
+    ("type_raw", "expected"),
+    [
+        ("TV\n  \n  (12 eps)", "TV"),
+        ("Web\n  \n  (1 ep x 2 min)", "ONA"),
+        ("Music Video\n  \n  (1 ep)", "MUSIC"),
+        ("OVA", "OVA"),
+        ("TV Special\n  (1 ep)", "TV SPECIAL"),
+        ("DVD Special", "SPECIAL"),
+        ("Other", "OTHER"),
+    ],
 )
-def test_anime_from_animeplanet_schema_type_gives_anime_type(
-    schema_type: str | None, expected: str
+def test_anime_from_animeplanet_entry_bar_type_gives_anime_type(
+    type_raw: str, expected: str
 ) -> None:
-    assert anime_from_animeplanet(_anime(schema_type=schema_type))["type"] == expected
+    mapped = anime_from_animeplanet(_anime(type=type_raw))
+    assert mapped["type"] == expected
+
+
+def test_anime_from_animeplanet_without_entry_bar_type_gives_unknown() -> None:
+    assert anime_from_animeplanet(_anime())["type"] == "UNKNOWN"
+
+
+@pytest.mark.parametrize(
+    ("tags", "expected"),
+    [
+        (["Action", "Based on a Manga"], "MANGA"),
+        (["Original Work", "Comedy"], "ORIGINAL"),
+        (["Based on a 4-Koma Manga", "Based on a Manga"], "4-KOMA"),
+        (["Based on an Otome Game", "Based on a Visual Novel"], "VISUAL NOVEL"),
+        (["Based on a Mobile Game"], "GAME"),
+        (["Based on a Webtoon"], "WEBTOON"),
+        (["Based on a Play"], "OTHER"),
+        (["Based on a Fairy Tale"], "FAIRY TALE"),
+        (["Based on an Otome Game"], "VISUAL NOVEL"),
+    ],
+)
+def test_anime_from_animeplanet_source_tag_gives_source_material(
+    tags: list[str], expected: str
+) -> None:
+    assert anime_from_animeplanet(_anime(tags=tags))["source_material"] == expected
+
+
+def test_anime_from_animeplanet_without_source_tag_omits_source_material() -> None:
+    assert "source_material" not in anime_from_animeplanet(_anime(tags=["Action"]))
 
 
 def test_anime_from_animeplanet_stated_season_wins_over_start_date() -> None:

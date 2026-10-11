@@ -52,8 +52,6 @@ from enrichment.sources.base.external_links import (
 )
 
 _CDN_BASE = "https://cdn-eu.anidb.net/images/main"
-# AniDB sends this as the start date of works whose date it does not know yet.
-_UNKNOWN_DATE = "1970-01-01"
 
 logger = logging.getLogger(__name__)
 
@@ -103,17 +101,6 @@ _RESOURCE_URL_TYPES: dict[str, str | None] = {
 _OFFICIAL_RESOURCE_TYPES = frozenset({"4", "5", "35"})
 
 
-def _known_date(value: str | None) -> str | None:
-    """Return the date, or None for AniDB's unknown-date placeholder.
-
-    >>> _known_date("1999-10-20")
-    '1999-10-20'
-    >>> print(_known_date("1970-01-01"))
-    None
-    """
-    return None if value == _UNKNOWN_DATE else value
-
-
 def anime_from_anidb(anime: AniDBAnime, *, anidb_url: str) -> dict[str, Any]:
     """Normalize an AniDBAnime into canonical Anime field values.
 
@@ -134,9 +121,9 @@ def anime_from_anidb(anime: AniDBAnime, *, anidb_url: str) -> dict[str, Any]:
     title_japanese = anime.title_japanese
     nsfw = anime.restricted or None
 
-    anime_type = AnimeType(anime.type or "")
-    start_date = _known_date(anime.start_date)
-    end_date = _known_date(anime.end_date)
+    anime_type = AnimeType(anime.type)
+    start_date = anime.start_date
+    end_date = anime.end_date
     status = determine_anime_status(start_date, end_date)
     season = determine_anime_season(start_date)
     year = determine_anime_year(start_date)
@@ -334,8 +321,8 @@ def episode_from_anidb(
 
     # Title fallback: english → romaji → empty string
     title = ep.titles.get("en") or ep.titles.get("romaji") or ""
-    title_japanese = ep.titles.get("ja") or None
-    title_romaji = ep.titles.get("romaji") or None
+    title_japanese = ep.titles.get("ja")
+    title_romaji = ep.titles.get("romaji")
 
     # Remaining non-standard lang codes → Episode.titles
     skip = {"en", "ja", "romaji"}

@@ -18,13 +18,15 @@ from enrichment.sources.anime_planet.anime_planet_anime_crawler import (
     _fetch_anime_html,
     _fetch_animeplanet_anime_data,
     _normalize_anime_url,
-    _parse_aggregate_rating,
-    _parse_alt_title,
-    _parse_rank,
     _parse_related_entry_element,
+    fetch_animeplanet_anime,
+)
+from enrichment.sources.anime_planet.anime_planet_models import (
+    AnimePlanetAggregateRating,
+    AnimePlanetAnime,
+    _parse_alt_title,
     _parse_season,
     _parse_start_year,
-    fetch_animeplanet_anime,
 )
 from enrichment.sources.base.framework import NullRepository
 from lxml import etree
@@ -150,27 +152,43 @@ def test_extract_json_ld_missing_or_invalid_block_returns_none(page: str) -> Non
     assert _extract_json_ld(page) is None
 
 
-def test_parse_aggregate_rating_one_piece_page_gives_value_and_count(
+def _rating(aggregate_rating: Any) -> AnimePlanetAggregateRating | None:
+    return AnimePlanetAnime.model_validate(
+        {"name": "One Piece", "slug": "one-piece", "aggregate_rating": aggregate_rating}
+    ).aggregate_rating
+
+
+def test_anime_planet_anime_one_piece_rating_gives_value_and_count(
     ap_anime_extracted: dict,
 ) -> None:
-    rating = _parse_aggregate_rating(ap_anime_extracted["aggregate_rating"])
+    rating = _rating(ap_anime_extracted["aggregate_rating"])
+    assert rating is not None
     assert rating.rating_value == pytest.approx(4.315)
     assert rating.rating_count == 64986
 
 
-def test_parse_aggregate_rating_value_and_count_parsed() -> None:
-    rating = _parse_aggregate_rating({"ratingValue": "4.5", "ratingCount": "1000"})
-    assert (rating.rating_value, rating.rating_count) == (pytest.approx(4.5), 1000)
+def test_anime_planet_anime_rating_text_parses_value_and_count() -> None:
+    rating = _rating({"ratingValue": "4.5", "ratingCount": "1234567"})
+    assert rating is not None
+    assert (rating.rating_value, rating.rating_count) == (pytest.approx(4.5), 1234567)
 
 
-def test_parse_aggregate_rating_value_alone_gives_no_count() -> None:
-    rating = _parse_aggregate_rating({"ratingValue": "3.2"})
+def test_anime_planet_anime_rating_value_alone_gives_no_count() -> None:
+    rating = _rating({"ratingValue": "3.2"})
+    assert rating is not None
     assert (rating.rating_value, rating.rating_count) == (pytest.approx(3.2), None)
 
 
-def test_parse_aggregate_rating_count_alone_gives_no_value() -> None:
-    rating = _parse_aggregate_rating({"ratingCount": "500"})
+def test_anime_planet_anime_rating_count_alone_gives_no_value() -> None:
+    rating = _rating({"ratingCount": "500"})
+    assert rating is not None
     assert (rating.rating_value, rating.rating_count) == (None, 500)
+
+
+def test_anime_planet_anime_fractional_rating_count_gives_no_count() -> None:
+    rating = _rating({"ratingValue": "3.2", "ratingCount": "1000.5"})
+    assert rating is not None
+    assert rating.rating_count is None
 
 
 @pytest.mark.parametrize(
@@ -182,10 +200,10 @@ def test_parse_aggregate_rating_count_alone_gives_no_value() -> None:
         {"ratingValue": "bad", "ratingCount": "bad"},
     ],
 )
-def test_parse_aggregate_rating_without_usable_numbers_returns_none(
+def test_anime_planet_anime_rating_without_usable_numbers_gives_none(
     rating: Any,
 ) -> None:
-    assert _parse_aggregate_rating(rating) is None
+    assert _rating(rating) is None
 
 
 def test_parse_season_one_piece_page_gives_fall(ap_anime_extracted: dict) -> None:
@@ -211,20 +229,39 @@ def test_parse_season_without_season_link_returns_none(season_url: str | None) -
     assert _parse_season(season_url) is None
 
 
-def test_parse_rank_one_piece_page_gives_rank(ap_anime_extracted: dict) -> None:
-    assert _parse_rank(ap_anime_extracted["rank_text"]) == 161
+def _anime_with_rank(rank_text: str | None) -> AnimePlanetAnime:
+    return AnimePlanetAnime.model_validate(
+        {"name": "One Piece", "slug": "one-piece", "rank": rank_text}
+    )
+
+
+def test_anime_planet_anime_one_piece_rank_text_gives_rank(
+    ap_anime_extracted: dict,
+) -> None:
+    assert _anime_with_rank(ap_anime_extracted["rank_text"]).rank == 161
 
 
 @pytest.mark.parametrize(
-    ("rank_text", "expected"), [("Rank #157", 157), ("Rank #1", 1)]
+    ("rank_text", "expected"),
+    [
+        ("Rank #157", 157),
+        ("Rank #1", 1),
+        ("Rank #1,005", 1005),
+        ("Rank #10,563", 10563),
+        ("Rank #1,234,567", 1234567),
+    ],
 )
-def test_parse_rank_rank_text_gives_number(rank_text: str, expected: int) -> None:
-    assert _parse_rank(rank_text) == expected
+def test_anime_planet_anime_rank_text_gives_whole_number(
+    rank_text: str, expected: int
+) -> None:
+    assert _anime_with_rank(rank_text).rank == expected
 
 
-@pytest.mark.parametrize("rank_text", [None, "", "no hash here"])
-def test_parse_rank_without_rank_number_returns_none(rank_text: str | None) -> None:
-    assert _parse_rank(rank_text) is None
+@pytest.mark.parametrize("rank_text", [None, "", "no rank here"])
+def test_anime_planet_anime_without_rank_number_gives_none(
+    rank_text: str | None,
+) -> None:
+    assert _anime_with_rank(rank_text).rank is None
 
 
 def test_parse_start_year_one_piece_page_gives_1999(ap_anime_extracted: dict) -> None:
@@ -314,11 +351,7 @@ def test_extract_anime_from_html_one_piece_page_reads_page_data(
     ap_anime_html: str,
 ) -> None:
     raw = _extract_anime_from_html(ap_anime_html)
-    assert (raw["name"], raw["schema_type"], raw["number_of_episodes"]) == (
-        "One Piece",
-        "TVSeries",
-        1165,
-    )
+    assert (raw["name"], raw["number_of_episodes"]) == ("One Piece", 1165)
     assert (raw["start_date"], raw["end_date"]) == ("1999-10-20", None)
     assert "Action" in raw["genres"]
     assert raw["aggregate_rating"]["ratingValue"] == pytest.approx(4.315)

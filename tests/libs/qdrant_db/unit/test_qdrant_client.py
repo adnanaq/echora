@@ -4,6 +4,7 @@ import asyncio
 from typing import cast
 from unittest.mock import AsyncMock, create_autospec, patch
 
+import pydantic
 import pytest
 import pytest_asyncio
 from common.config import get_settings
@@ -36,7 +37,7 @@ from qdrant_db.contracts import (
     SearchRequest,
     SparseVectorData,
 )
-from qdrant_db.errors import DuplicateUpdateError, PermanentQdrantError, ValidationError
+from qdrant_db.errors import DuplicateUpdateError, PermanentQdrantError
 from vector_db_interface import VectorDocument
 
 
@@ -271,6 +272,17 @@ async def test_update_payload_merge_uses_set_payload_operation(
 
 
 @pytest.mark.asyncio
+async def test_update_payload_unknown_mode_raises_validation_error(
+    qdrant_client: QdrantClient,
+) -> None:
+    with pytest.raises(pydantic.ValidationError, match="mode"):
+        await qdrant_client.update_payload(
+            updates=[BatchPayloadUpdateItem(point_id="p1", payload={"title": "A"})],
+            mode="replace",  # ty: ignore[invalid-argument-type]
+        )
+
+
+@pytest.mark.asyncio
 async def test_update_payload_overwrite_uses_overwrite_operation(
     qdrant_client: QdrantClient,
 ) -> None:
@@ -375,7 +387,7 @@ async def test_search_telemetry_raises_still_returns_hits(
 async def test_add_documents_batch_size_zero_raises_validation_error(
     qdrant_client: QdrantClient,
 ) -> None:
-    with pytest.raises(ValidationError, match="batch_size must be >= 1"):
+    with pytest.raises(pydantic.ValidationError, match="batch_size"):
         await qdrant_client.add_documents(
             documents=[
                 VectorDocument(

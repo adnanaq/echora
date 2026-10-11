@@ -20,7 +20,6 @@ import re
 from typing import Any, cast
 
 from enrichment.sources.anime_planet.anime_planet_models import (
-    AnimePlanetAggregateRating,
     AnimePlanetAnime,
     AnimePlanetMangaEntry,
     AnimePlanetRelatedEntry,
@@ -33,7 +32,6 @@ from enrichment.sources.base.framework import (
     NullRepository,
 )
 from enrichment.sources.base.page_readiness import wait_for_page
-from enrichment.sources.base.utils import parse_partial_date, split_date_range
 from http_cache.result_cache import cached_result
 from lxml import etree
 
@@ -73,54 +71,6 @@ _REL_VOLCH_XPATH = ".//li[.//i[contains(@class,'fa-book-open')]]//span[contains(
 def _tc(el: Any) -> str:
     """Return all text content of an lxml element, stripped."""
     return "".join(el.itertext()).strip()
-
-
-def _parse_season(season_url: str | None) -> str | None:
-    """Extract the season name from an Anime-Planet season link.
-
-    >>> _parse_season("/anime/seasons/fall-1999")
-    'fall'
-    >>> print(_parse_season("/anime/top-anime"))
-    None
-    """
-    if not season_url:
-        return None
-    match = _SEASON_SLUG_RE.search(season_url)
-    if not match:
-        return None
-    return match.group(1).split("-")[0].lower()
-
-
-def _parse_start_year(year_text: str | None) -> int | None:
-    """Parse the first year from the entry bar's year text.
-
-    >>> _parse_start_year(" 1999 - ? ")
-    1999
-    >>> _parse_start_year("2024")
-    2024
-    >>> print(_parse_start_year("?"))
-    None
-    """
-    year, _ = parse_partial_date(split_date_range(year_text)[0])
-    return year
-
-
-def _parse_rank(rank_text: str | None) -> int | None:
-    """Parse rank integer from text like 'Rank #157' → 157."""
-    if not rank_text:
-        return None
-    match = _RANK_RE.search(rank_text)
-    return int(match.group(1)) if match else None
-
-
-def _parse_alt_title(aka: str | None) -> str | None:
-    """Strip 'Alt title: ' prefix from h2.aka text and return the bare title."""
-    if not aka:
-        return None
-    text = aka.strip()
-    if text.lower().startswith(_AKA_PREFIX):
-        text = text[len(_AKA_PREFIX) :].strip()
-    return text or None
 
 
 def _normalize_anime_url(anime_identifier: str) -> str:
@@ -246,8 +196,8 @@ def _build_related_anime_entries(
 ) -> list[AnimePlanetRelatedEntry]:
     """Build AnimePlanetRelatedEntry models from raw relation dicts.
 
-    Parses the fa-tv metadata span (e.g. "OVA: 1 ep", "Movie", "TV Special: 9 ep")
-    into separate type and episode_count fields.
+    Entries without an anime address are skipped; the model reads type and
+    episode count from the fa-tv span.
 
     Args:
         raw: List of dicts produced by ``_parse_related_entry_element``.
@@ -258,32 +208,15 @@ def _build_related_anime_entries(
     entries = []
     for item in raw:
         url_val = (item.get("url") or "").strip()
-        title = (item.get("title") or "").strip()
         if not url_val:
             continue
         slug_match = re.search(r"/anime/([^/?#]+)", url_val)
         if not slug_match:
             continue
 
-        raw_type = (item.get("type") or "").strip()
-        if ":" in raw_type:
-            type_part, ep_part = raw_type.split(":", 1)
-            type_clean: str | None = type_part.strip() or None
-            ep_match = re.search(r"(\d+)", ep_part)
-            episode_count: int | None = int(ep_match.group(1)) if ep_match else None
-        else:
-            type_clean = raw_type or None
-            episode_count = None
-
         entries.append(
-            AnimePlanetRelatedEntry(
-                url=url_val,
-                slug=slug_match.group(1),
-                title=title,
-                relation_subtype=item.get("relation_subtype") or None,
-                type=type_clean,
-                episode_count=episode_count,
-                image=item.get("image") or None,
+            AnimePlanetRelatedEntry.model_validate(
+                {**item, "url": url_val, "slug": slug_match.group(1)}
             )
         )
     return entries
@@ -294,12 +227,8 @@ def _build_related_manga_entries(
 ) -> list[AnimePlanetMangaEntry]:
     """Build AnimePlanetMangaEntry models from raw relation dicts.
 
-    Parses the fa-book-open metadata span into type, volumes, and chapters:
-      - "One Shot"           → type="One Shot", chapters=1
-      - "Vol: 114 - Ch: 179" → volumes=114, chapters=179
-      - "Vol: 1"             → volumes=1
-      - "Ch: 19"             → chapters=19
-      - ""  / "- ?"          → all None (date bleed-through guard)
+    Entries without a manga address are skipped; the model reads type, volumes
+    and chapters from the fa-book-open span.
 
     Args:
         raw: List of dicts produced by ``_parse_related_entry_element``.
@@ -310,72 +239,18 @@ def _build_related_manga_entries(
     entries = []
     for item in raw:
         url_val = (item.get("url") or "").strip()
-        title = (item.get("title") or "").strip()
         if not url_val:
             continue
         slug_match = re.search(r"/manga/([^/?#]+)", url_val)
         if not slug_match:
             continue
 
-        vol_ch = (item.get("vol_ch") or "").strip()
-        manga_type: str | None = None
-        volumes: int | None = None
-        chapters: int | None = None
-
-        if vol_ch.lower() == "one shot":
-            manga_type = "One Shot"
-            chapters = 1
-        elif vol_ch:
-            vol_match = re.search(r"Vol:\s*(\d+)", vol_ch, re.IGNORECASE)
-            ch_match = re.search(r"Ch:\s*(\d+)", vol_ch, re.IGNORECASE)
-            volumes = int(vol_match.group(1)) if vol_match else None
-            chapters = int(ch_match.group(1)) if ch_match else None
-
         entries.append(
-            AnimePlanetMangaEntry(
-                url=url_val,
-                slug=slug_match.group(1),
-                title=title,
-                relation_subtype=item.get("relation_subtype") or None,
-                type=manga_type,
-                volumes=volumes,
-                chapters=chapters,
-                image=item.get("image") or None,
+            AnimePlanetMangaEntry.model_validate(
+                {**item, "url": url_val, "slug": slug_match.group(1)}
             )
         )
     return entries
-
-
-def _parse_aggregate_rating(
-    ar: dict[str, Any] | None,
-) -> AnimePlanetAggregateRating | None:
-    """Parse a JSON-LD aggregateRating dict into an AnimePlanetAggregateRating model.
-
-    Args:
-        ar: Raw ``aggregateRating`` dict from JSON-LD, or None.
-
-    Returns:
-        Parsed model, or None if both rating fields are absent or invalid.
-    """
-    if not ar:
-        return None
-    rating_value: float | None = None
-    rating_count: int | None = None
-    if ar.get("ratingValue") is not None:
-        try:
-            rating_value = float(ar["ratingValue"])
-        except ValueError, TypeError:
-            pass
-    if ar.get("ratingCount") is not None:
-        try:
-            rating_count = int(ar["ratingCount"])
-        except ValueError, TypeError:
-            pass
-    if rating_value is None and rating_count is None:
-        return None
-    return AnimePlanetAggregateRating(
-        rating_value=rating_value, rating_count=rating_count
-    )
 
 
 def _extract_anime_from_html(html: str) -> dict[str, Any] | None:
@@ -444,7 +319,6 @@ def _extract_anime_from_html(html: str) -> dict[str, Any] | None:
 
     return {
         "name": json_ld["name"],
-        "schema_type": json_ld.get("@type"),
         "description": json_ld.get("description"),
         "url": json_ld.get("url"),
         "start_date": json_ld.get("startDate"),
@@ -482,19 +356,18 @@ def _build_anime_from_raw(raw: dict[str, Any]) -> AnimePlanetAnime:
     """
     return AnimePlanetAnime(
         name=raw["name"],
-        schema_type=raw.get("schema_type"),
         description=raw.get("description"),
         url=raw.get("url"),
         start_date=raw.get("start_date"),
         end_date=raw.get("end_date"),
         number_of_episodes=raw.get("number_of_episodes"),
         genres=raw.get("genres", []),
-        aggregate_rating=_parse_aggregate_rating(raw.get("aggregate_rating")),
-        type_raw=raw.get("type_raw"),
-        season=_parse_season(raw.get("season_url")),
-        start_year=_parse_start_year(raw.get("year_text")),
-        rank=_parse_rank(raw.get("rank_text")),
-        alt_title=_parse_alt_title(raw.get("aka")),
+        aggregate_rating=raw.get("aggregate_rating"),
+        type=raw.get("type_raw"),
+        season=raw.get("season_url"),
+        start_year=raw.get("year_text"),
+        rank=raw.get("rank_text"),
+        alt_title=raw.get("aka"),
         cover=raw.get("cover"),
         studios=raw.get("studios", []),
         tags=raw.get("tags", []),

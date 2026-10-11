@@ -651,6 +651,32 @@ def test_streaming_link_filed_as_external_is_moved_not_dropped() -> None:
     assert "external_sources" not in merged
 
 
+def test_merge_provider_records_external_streaming_link_keeps_only_streaming_fields() -> (
+    None
+):
+    merged = merge_provider_records(
+        {
+            "anidb": _record(
+                external_sources=[
+                    {
+                        "platform": "crunchyroll",
+                        "source": "https://crunchyroll.com/series/one-piece",
+                        "label": "Crunchyroll",
+                        "language": "en",
+                    }
+                ]
+            )
+        }
+    )
+
+    assert merged["streaming_sources"] == [
+        {
+            "platform": "crunchyroll",
+            "source": "https://crunchyroll.com/series/one-piece",
+        }
+    ]
+
+
 def test_nsfw_takes_any_provider_flag_over_priority() -> None:
     # AniList outranks Kitsu, so priority would mark a work Kitsu flags as
     # adult "safe". The two errors are not equally bad.
