@@ -58,6 +58,11 @@ def _response(session: CachedAiohttpSession) -> aiohttp.ClientResponse:
     return session.get.return_value.__aenter__.return_value
 
 
+def _raise_for(status: int) -> None:
+    if status >= 400:
+        raise _error_status(status)
+
+
 def _error_status(status: int) -> aiohttp.ClientResponseError:
     url = yarl.URL(SEARCH_URL)
     request = aiohttp.RequestInfo(url=url, method="GET", headers={}, real_url=url)
@@ -103,6 +108,30 @@ def test_match_by_sources_candidate_link_with_title_matches_bare_source() -> Non
 def test_match_by_sources_bare_candidate_link_matches_source_with_title() -> None:
     candidate = {"id": "1", "websites": {"mal": "myanimelist.net/anime/21"}}
     assert _match_by_sources([candidate], [f"{MAL_URL}/One_Piece"]) is candidate
+
+
+@pytest.mark.parametrize(
+    ("link", "source"),
+    [
+        ("myanimelist.net/anime/2", MAL_URL),
+        ("myanimelist.net/anime/21", "https://myanimelist.net/anime/2"),
+        ("myanimelist.net/anime/210/Other", MAL_URL),
+    ],
+)
+def test_match_by_sources_other_id_sharing_digits_returns_none(
+    link: str, source: str
+) -> None:
+    assert _match_by_sources([{"id": "1", "websites": {"mal": link}}], [source]) is None
+
+
+def test_match_by_sources_link_with_trailing_slash_matches_source() -> None:
+    candidate = {
+        "id": "1",
+        "websites": {"aniList": "anilist.co/anime/154587/Sousou-no-Frieren/"},
+    }
+    assert _match_by_sources([candidate], ["https://anilist.co/anime/154587"]) is (
+        candidate
+    )
 
 
 def test_match_by_sources_several_candidates_returns_first_match() -> None:
@@ -174,17 +203,22 @@ async def test_fetch_all_unknown_mal_id_tries_anilist_then_anidb(
     ]
 
 
+def _answer_by_lookup(
+    session: CachedAiohttpSession, id_status: int, title_status: int
+) -> None:
+    response = _response(session)
+
+    def answer(*args: object, **kwargs: dict[str, str]) -> object:
+        response.status = title_status if "q" in kwargs["params"] else id_status
+        return session.get.return_value
+
+    session.get.side_effect = answer
+
+
 async def test_fetch_all_ids_not_found_searches_title_and_matches_sources(
     search_session,
 ) -> None:
-    response = _response(search_session)
-    response.status = 404
-
-    def answer_title_search(*args: object, **kwargs: dict[str, str]) -> object:
-        response.status = 200 if "q" in kwargs["params"] else 404
-        return search_session.get.return_value
-
-    search_session.get.side_effect = answer_title_search
+    _answer_by_lookup(search_session, id_status=404, title_status=200)
     _answer(search_session, {"anime": [OTHER_RESULT, ONE_PIECE_RESULT]})
 
     result = await AnimescheduleHelper(get_cache()).fetch_all(
@@ -196,17 +230,44 @@ async def test_fetch_all_ids_not_found_searches_title_and_matches_sources(
     assert _sent_params(search_session) == [{"mal-ids": "21"}, {"q": "One Piece"}]
 
 
-@pytest.mark.parametrize("status", [404, 500])
-async def test_fetch_all_no_match_status_returns_none(
-    search_session, status: int
+async def test_fetch_all_id_result_linking_elsewhere_searches_title(
+    search_session,
 ) -> None:
-    _response(search_session).status = status
+    _answer(search_session, {"anime": [OTHER_RESULT]})
 
     result = await AnimescheduleHelper(get_cache()).fetch_all(
         {"mal_url": MAL_URL}, {"title": "One Piece", "sources": [MAL_URL]}
     )
 
     assert result is None
+    assert _sent_params(search_session) == [{"mal-ids": "21"}, {"q": "One Piece"}]
+
+
+async def test_fetch_all_unknown_id_and_unmatched_title_returns_none(
+    search_session,
+) -> None:
+    _answer_by_lookup(search_session, id_status=404, title_status=500)
+
+    result = await AnimescheduleHelper(get_cache()).fetch_all(
+        {"mal_url": MAL_URL}, {"title": "One Piece", "sources": [MAL_URL]}
+    )
+
+    assert result is None
+
+
+@pytest.mark.parametrize(("id_status", "title_status"), [(500, 500), (404, 404)])
+async def test_fetch_all_status_outside_lookup_not_found_raises_service_network_error(
+    search_session, id_status: int, title_status: int
+) -> None:
+    _answer_by_lookup(search_session, id_status=id_status, title_status=title_status)
+    _response(search_session).raise_for_status.side_effect = lambda: _raise_for(
+        _response(search_session).status
+    )
+
+    with pytest.raises(ServiceNetworkError):
+        await AnimescheduleHelper(get_cache()).fetch_all(
+            {"mal_url": MAL_URL}, {"title": "One Piece", "sources": [MAL_URL]}
+        )
 
 
 async def test_fetch_all_without_ids_or_title_sends_nothing(search_session) -> None:
