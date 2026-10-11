@@ -106,3 +106,19 @@ def test_search_request_valid_embeddings_are_kept() -> None:
         [[0.3, 0.4]],
         [1.0, 0.5],
     )
+
+
+@pytest.mark.parametrize(
+    ("indices", "values", "message"),
+    [
+        ([1, 2], [0.5], "indices and values must have the same length"),
+        ([1, -5, 10], [0.5, 0.3, 0.2], "indices must be non-negative"),
+        ([1, 5, 1], [0.5, 0.3, 0.2], "indices must be unique"),
+        ([4294967296], [0.5], "indices must not exceed u32 maximum"),
+    ],
+)
+def test_sparse_vector_data_invalid_indices_raises_validation_error(
+    indices: list[int], values: list[float], message: str
+) -> None:
+    with pytest.raises(ValidationError, match=message):
+        SparseVectorData(indices=indices, values=values)

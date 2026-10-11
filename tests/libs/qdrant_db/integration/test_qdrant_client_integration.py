@@ -1,19 +1,5 @@
-#!/usr/bin/env python3
-"""Integration tests for strict-contract QdrantClient APIs.
-
-This suite intentionally covers only the current public API:
-- add_documents
-- update_vectors
-- update_payload
-- search(SearchRequest)
-
-Deprecated API surfaces are intentionally not tested:
-- update_single_point_vector
-- update_batch_point_vectors
-"""
-
 import uuid
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 from qdrant_db import QdrantClient
@@ -31,7 +17,6 @@ pytestmark = pytest.mark.integration
 
 
 def _one_hot(index: int, size: int) -> list[float]:
-    """Build a dense one-hot vector."""
     vector = [0.0] * size
     vector[index] = 1.0
     return vector
@@ -46,7 +31,6 @@ def _make_doc(
     sparse: SparseVectorData | None = None,
     year: int | None = None,
 ) -> VectorDocument:
-    """Create a VectorDocument for integration tests."""
     vectors: dict[
         str, list[float] | list[list[float]] | dict[str, list[int] | list[float]]
     ] = {}
@@ -75,8 +59,9 @@ def _make_doc(
 
 
 @pytest.mark.asyncio
-async def test_add_documents_success(client: QdrantClient) -> None:
-    """Insert documents and verify operation counts."""
+async def test_add_documents_two_documents_reports_both_successful(
+    client: QdrantClient,
+) -> None:
     docs = [
         _make_doc(doc_id=str(uuid.uuid4()), title="Add Doc 1"),
         _make_doc(doc_id=str(uuid.uuid4()), title="Add Doc 2"),
@@ -88,8 +73,9 @@ async def test_add_documents_success(client: QdrantClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_add_documents_empty_input(client: QdrantClient) -> None:
-    """Empty inserts return empty operation result."""
+async def test_add_documents_without_documents_reports_nothing(
+    client: QdrantClient,
+) -> None:
     result = await client.add_documents([], batch_size=10)
     assert result.total == 0
     assert result.successful == 0
@@ -97,8 +83,9 @@ async def test_add_documents_empty_input(client: QdrantClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_update_vectors_empty_input(client: QdrantClient) -> None:
-    """Empty vector updates return empty operation result."""
+async def test_update_vectors_without_updates_reports_nothing(
+    client: QdrantClient,
+) -> None:
     result = await client.update_vectors([])
     assert result.total == 0
     assert result.successful == 0
@@ -106,8 +93,9 @@ async def test_update_vectors_empty_input(client: QdrantClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_update_vectors_dense_success(client: QdrantClient) -> None:
-    """Update dense vectors through strict typed request."""
+async def test_update_vectors_dense_vector_reports_success(
+    client: QdrantClient,
+) -> None:
     doc_id = str(uuid.uuid4())
     await client.add_documents(
         [_make_doc(doc_id=doc_id, title="Dense Update")], batch_size=1
@@ -129,8 +117,9 @@ async def test_update_vectors_dense_success(client: QdrantClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_update_vectors_multivector_image_success(client: QdrantClient) -> None:
-    """Update multivector image field through strict typed request."""
+async def test_update_vectors_image_multivector_reports_success(
+    client: QdrantClient,
+) -> None:
     doc_id = str(uuid.uuid4())
     await client.add_documents(
         [_make_doc(doc_id=doc_id, title="Image Update")], batch_size=1
@@ -151,8 +140,9 @@ async def test_update_vectors_multivector_image_success(client: QdrantClient) ->
 
 
 @pytest.mark.asyncio
-async def test_update_vectors_rejects_invalid_vector_name(client: QdrantClient) -> None:
-    """Invalid vector names are rejected by validation."""
+async def test_update_vectors_unknown_vector_name_raises_validation_error(
+    client: QdrantClient,
+) -> None:
     doc_id = str(uuid.uuid4())
     await client.add_documents(
         [_make_doc(doc_id=doc_id, title="Invalid Name")], batch_size=1
@@ -177,10 +167,9 @@ async def test_update_vectors_rejects_invalid_vector_name(client: QdrantClient) 
         ([0.1] * 512, "dimension mismatch"),
     ],
 )
-async def test_update_vectors_rejects_invalid_dense_vector(
+async def test_update_vectors_wrong_dimension_raises_validation_error(
     client: QdrantClient, vector_data: list, error: str
 ) -> None:
-    """Invalid dense vectors are rejected before issuing update."""
     doc_id = str(uuid.uuid4())
     await client.add_documents(
         [_make_doc(doc_id=doc_id, title="Bad Vector")], batch_size=1
@@ -199,8 +188,9 @@ async def test_update_vectors_rejects_invalid_dense_vector(
 
 
 @pytest.mark.asyncio
-async def test_update_vectors_sparse_success(client: QdrantClient) -> None:
-    """Sparse vectors can be updated through strict typed request."""
+async def test_update_vectors_sparse_vector_reports_success(
+    client: QdrantClient,
+) -> None:
     doc_id = str(uuid.uuid4())
     sparse = SparseVectorData(indices=[1, 2, 3], values=[0.2, 0.4, 0.6])
     await client.add_documents(
@@ -222,8 +212,9 @@ async def test_update_vectors_sparse_success(client: QdrantClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_update_vectors_dedup_last_wins(client: QdrantClient) -> None:
-    """last-wins dedup removes duplicate updates for same point/vector."""
+async def test_update_vectors_last_wins_duplicate_keeps_one_update(
+    client: QdrantClient,
+) -> None:
     doc_id = str(uuid.uuid4())
     await client.add_documents([_make_doc(doc_id=doc_id, title="Dedup")], batch_size=1)
 
@@ -247,8 +238,9 @@ async def test_update_vectors_dedup_last_wins(client: QdrantClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_update_vectors_dedup_fail_raises(client: QdrantClient) -> None:
-    """fail dedup policy raises when duplicates are present."""
+async def test_update_vectors_fail_policy_duplicate_raises(
+    client: QdrantClient,
+) -> None:
     doc_id = str(uuid.uuid4())
     await client.add_documents(
         [_make_doc(doc_id=doc_id, title="Dedup Fail")], batch_size=1
@@ -273,8 +265,9 @@ async def test_update_vectors_dedup_fail_raises(client: QdrantClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_update_vectors_retries_transient_errors(client: QdrantClient) -> None:
-    """Transient failures are retried and can recover."""
+async def test_update_vectors_transient_error_retries_and_succeeds(
+    client: QdrantClient,
+) -> None:
     doc_id = str(uuid.uuid4())
     await client.add_documents(
         [_make_doc(doc_id=doc_id, title="Retry OK")], batch_size=1
@@ -291,7 +284,7 @@ async def test_update_vectors_retries_transient_errors(client: QdrantClient) -> 
         return await original_update(*args, **kwargs)
 
     with patch.object(
-        client._async_client, "update_vectors", new=AsyncMock(side_effect=flaky_update)
+        client._async_client, "update_vectors", autospec=True, side_effect=flaky_update
     ):
         result = await client.update_vectors(
             [
@@ -310,8 +303,9 @@ async def test_update_vectors_retries_transient_errors(client: QdrantClient) -> 
 
 
 @pytest.mark.asyncio
-async def test_update_vectors_no_retry_on_non_transient(client: QdrantClient) -> None:
-    """Non-transient failures should not retry and should surface as permanent."""
+async def test_update_vectors_permanent_error_raises_without_retry(
+    client: QdrantClient,
+) -> None:
     doc_id = str(uuid.uuid4())
     await client.add_documents(
         [_make_doc(doc_id=doc_id, title="No Retry")], batch_size=1
@@ -325,7 +319,7 @@ async def test_update_vectors_no_retry_on_non_transient(client: QdrantClient) ->
         raise ValueError("bad request shape")
 
     with patch.object(
-        client._async_client, "update_vectors", new=AsyncMock(side_effect=hard_fail)
+        client._async_client, "update_vectors", autospec=True, side_effect=hard_fail
     ):
         with pytest.raises(
             PermanentQdrantError, match="Failed to batch update vectors"
@@ -346,8 +340,9 @@ async def test_update_vectors_no_retry_on_non_transient(client: QdrantClient) ->
 
 
 @pytest.mark.asyncio
-async def test_update_vectors_retry_exhausted_raises(client: QdrantClient) -> None:
-    """Persistent transient failures raise permanent error after retries."""
+async def test_update_vectors_repeated_transient_error_raises_after_retries(
+    client: QdrantClient,
+) -> None:
     doc_id = str(uuid.uuid4())
     await client.add_documents(
         [_make_doc(doc_id=doc_id, title="Retry Exhausted")], batch_size=1
@@ -361,7 +356,7 @@ async def test_update_vectors_retry_exhausted_raises(client: QdrantClient) -> No
         raise ConnectionError("connection timeout")
 
     with patch.object(
-        client._async_client, "update_vectors", new=AsyncMock(side_effect=always_fail)
+        client._async_client, "update_vectors", autospec=True, side_effect=always_fail
     ):
         with pytest.raises(
             PermanentQdrantError, match="Failed to batch update vectors"
@@ -378,12 +373,13 @@ async def test_update_vectors_retry_exhausted_raises(client: QdrantClient) -> No
                 retry_delay=0.01,
             )
 
-    assert attempts == 3  # initial + 2 retries
+    assert attempts == 3
 
 
 @pytest.mark.asyncio
-async def test_update_payload_merge_and_overwrite(client: QdrantClient) -> None:
-    """Payload updates support merge and overwrite modes."""
+async def test_update_payload_overwrite_after_merge_stores_overwritten_payload(
+    client: QdrantClient,
+) -> None:
     doc_id = str(uuid.uuid4())
     await client.add_documents(
         [_make_doc(doc_id=doc_id, title="Payload Test", year=2020)], batch_size=1
@@ -412,8 +408,9 @@ async def test_update_payload_merge_and_overwrite(client: QdrantClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_search_text_only(client: QdrantClient) -> None:
-    """Dense-only search returns expected nearest point."""
+async def test_search_dense_embedding_returns_nearest_point_first(
+    client: QdrantClient,
+) -> None:
     target_id = str(uuid.uuid4())
     other_id = str(uuid.uuid4())
     docs = [
@@ -432,8 +429,7 @@ async def test_search_text_only(client: QdrantClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_sparse_vector_insertion_and_retrieval(client: QdrantClient):
-    """Test end-to-end sparse vector insertion and retrieval."""
+async def test_search_sparse_embedding_returns_added_point(client: QdrantClient):
     test_id = str(uuid.uuid4())
     sparse_vector = SparseVectorData(
         indices=[10, 25, 103, 567], values=[0.7, 0.3, 0.5, 0.2]
@@ -453,31 +449,19 @@ async def test_sparse_vector_insertion_and_retrieval(client: QdrantClient):
 
 
 @pytest.mark.asyncio
-async def test_sparse_vector_validation(client: QdrantClient):
-    """Test sparse vector contract validation behavior."""
-    test_id = str(uuid.uuid4())
-    valid_sparse = SparseVectorData(indices=[1, 5, 10], values=[0.5, 0.3, 0.2])
+async def test_add_documents_sparse_vector_reports_success(client: QdrantClient):
+    sparse = SparseVectorData(indices=[1, 5, 10], values=[0.5, 0.3, 0.2])
+
     result = await client.add_documents(
-        [_make_doc(doc_id=test_id, title="Valid Sparse", sparse=valid_sparse)],
+        [_make_doc(doc_id=str(uuid.uuid4()), title="Valid Sparse", sparse=sparse)],
         batch_size=1,
     )
-    assert result.successful == 1
 
-    with pytest.raises(
-        ValueError, match="indices and values must have the same length"
-    ):
-        SparseVectorData(indices=[1, 2], values=[0.5])
-    with pytest.raises(ValueError, match="indices must be non-negative"):
-        SparseVectorData(indices=[1, -5, 10], values=[0.5, 0.3, 0.2])
-    with pytest.raises(ValueError, match="indices must be unique"):
-        SparseVectorData(indices=[1, 5, 1], values=[0.5, 0.3, 0.2])
-    with pytest.raises(ValueError, match="indices must not exceed u32 maximum"):
-        SparseVectorData(indices=[4294967296], values=[0.5])
+    assert result.successful == 1
 
 
 @pytest.mark.asyncio
-async def test_hybrid_search_dense_sparse_fusion(client: QdrantClient):
-    """Test hybrid search with RRF fusion."""
+async def test_search_rrf_fusion_returns_at_most_limit(client: QdrantClient):
     test_docs = []
     for i in range(5):
         sparse_vec = SparseVectorData(
@@ -506,8 +490,7 @@ async def test_hybrid_search_dense_sparse_fusion(client: QdrantClient):
 
 
 @pytest.mark.asyncio
-async def test_hybrid_search_dbsf_fusion(client: QdrantClient):
-    """Test hybrid search with DBSF fusion."""
+async def test_search_dbsf_fusion_returns_points(client: QdrantClient):
     test_id = str(uuid.uuid4())
     sparse_vec = SparseVectorData(indices=[5, 10, 15], values=[0.9, 0.6, 0.4])
     await client.add_documents(
@@ -533,8 +516,7 @@ async def test_hybrid_search_dbsf_fusion(client: QdrantClient):
 
 
 @pytest.mark.asyncio
-async def test_sparse_vector_update(client: QdrantClient):
-    """Test updating sparse vectors using strict update_vectors API."""
+async def test_update_vectors_new_sparse_vector_finds_point_by_it(client: QdrantClient):
     test_id = str(uuid.uuid4())
     initial_sparse = SparseVectorData(indices=[1, 2, 3], values=[0.5, 0.5, 0.5])
     await client.add_documents(
@@ -564,8 +546,7 @@ async def test_sparse_vector_update(client: QdrantClient):
 
 
 @pytest.mark.asyncio
-async def test_sparse_only_keyword_search(client: QdrantClient):
-    """Test sparse-only retrieval behavior for keyword-style vectors."""
+async def test_search_sparse_keyword_query_returns_points(client: QdrantClient):
     docs: list[tuple[str, VectorDocument, str]] = []
     keywords_map = {
         "action": [100, 101, 102],
@@ -590,8 +571,7 @@ async def test_sparse_only_keyword_search(client: QdrantClient):
 
 
 @pytest.mark.asyncio
-async def test_sparse_vector_empty_results(client: QdrantClient):
-    """Sparse query with non-existent indices returns valid result container."""
+async def test_search_unmatched_sparse_indices_returns_list(client: QdrantClient):
     request = SearchRequest(
         sparse_embedding=SparseVectorData(
             indices=[9999, 9998, 9997], values=[1.0, 1.0, 1.0]
@@ -603,8 +583,7 @@ async def test_sparse_vector_empty_results(client: QdrantClient):
 
 
 @pytest.mark.asyncio
-async def test_collection_compatibility_with_sparse_vectors(client: QdrantClient):
-    """Collection exposes configured sparse vectors."""
+async def test_get_stats_collection_lists_sparse_vector(client: QdrantClient):
     collection_info = await client.get_stats()
     sparse_vectors = (
         collection_info.get("config", {}).get("params", {}).get("sparse_vectors")
@@ -615,8 +594,9 @@ async def test_collection_compatibility_with_sparse_vectors(client: QdrantClient
 
 
 @pytest.mark.asyncio
-async def test_sparse_vector_with_filters(client: QdrantClient):
-    """Sparse retrieval combined with payload filtering."""
+async def test_search_sparse_query_with_year_filter_returns_that_year(
+    client: QdrantClient,
+):
     docs = []
     for year in [2020, 2021, 2022]:
         sparse = SparseVectorData(indices=[50, 51, 52], values=[0.8, 0.6, 0.4])
@@ -643,8 +623,7 @@ async def test_sparse_vector_with_filters(client: QdrantClient):
 
 
 @pytest.mark.asyncio
-async def test_sparse_vector_dict_format_compatibility(client: QdrantClient):
-    """Dict-style sparse vectors are accepted and searchable."""
+async def test_add_documents_sparse_vector_as_dict_is_searchable(client: QdrantClient):
     test_id = str(uuid.uuid4())
     doc = VectorDocument(
         id=test_id,
