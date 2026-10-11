@@ -1,20 +1,16 @@
-"""Unit tests for anime_planet_character_crawler.py.
-
-Fixture-grounded tests use the monkey-d-luffy HTML fixture (2026-06-10).
-Edge-case tests use synthetic inline HTML snippets.
-"""
-
 import re
+from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
-from unittest.mock import ANY, AsyncMock, call, create_autospec, patch
+from unittest.mock import ANY, call, patch
 
 import pytest
-import zendriver
 from enrichment.sources.anime_planet import (
     anime_planet_character_crawler as crawler_module,
 )
 from enrichment.sources.anime_planet.anime_planet_character_crawler import (
     _XPATHS,
+    AnimePlanetCharacterCrawler,
     _build_character_from_raw,
     _extract_alt_names,
     _extract_anime_roles,
@@ -40,18 +36,15 @@ from enrichment.sources.base.framework import NullRepository
 pytestmark = pytest.mark.asyncio
 
 _LUFFY_URL = "https://www.anime-planet.com/characters/monkey-d-luffy"
-_PATCH_FETCH_DATA = "enrichment.sources.anime_planet.anime_planet_character_crawler._fetch_character_data"
-_PATCH_FETCH_PAGE = (
-    "enrichment.sources.anime_planet.anime_planet_character_crawler._fetch_page_html"
-)
-
-# Minimal raw dict that passes _build_character_from_raw without a full fixture.
+_ZORO_URL = "https://www.anime-planet.com/characters/roronoa-zoro"
+_NAMI_URL = "https://www.anime-planet.com/characters/nami"
 _MINIMAL_HTML = (
     "<html><body>"
     "<h1 itemprop='name'>Monkey D. Luffy</h1>"
     "<section class='entryBar'>Gender: Male</section>"
     "</body></html>"
 )
+_PAGE_WITHOUT_NAME = "<html><body><p>no name</p></body></html>"
 _MINIMAL_RAW: dict[str, Any] = {
     "name": "Monkey D. Luffy",
     "image": "https://example.com/luffy.jpg",
@@ -59,24 +52,87 @@ _MINIMAL_RAW: dict[str, Any] = {
     "hated_rank": "#106",
     "loved_count": "37,007 users",
 }
+_AD_ANNOTATED_ROLES_HEADING = (
+    '<h3><a href="#" class="google-anno" data-google-vignette="false" '
+    'data-google-interstitial="false" style="position: initial !important;">'
+    '<svg viewBox="100 -1000 840 840" width="calc(22.4px - 2px)" height="22.4px">'
+    '<path d="M168-144q-29.7 0-50.85-21.15Z"></path></svg>&nbsp;'
+    '<span class="google-anno-t" style="text-decoration: underline dotted !important;">'
+    "Anime</span></a> Roles</h3>"
+)
+_AD_SUGGESTION_CHIP = (
+    '<div class="google-anno-skip google-anno-sc" tabindex="0" role="link" '
+    'aria-label="Anime &amp; Manga" data-google-vignette="false" '
+    'data-google-interstitial="false" style="display: inline-flex !important;">'
+    '<span><span><svg viewBox="0 -960 960 960" width="16px" height="16px">'
+    '<path d="M168-144q-29.7 0-50.85-21.15Z"></path></svg></span>'
+    "<span>Anime</span></span><span>&amp; Manga</span></div>"
+)
+_DESCRIPTION_BLOCK = re.compile(
+    r'(<div[^>]+itemprop="description">.*?)(</div>)', re.DOTALL
+)
 
 
-# =============================================================================
-# _XPATHS invariant
-# =============================================================================
+@pytest.fixture
+def character_browser(open_browser):
+    with patch.object(crawler_module, "_INTER_REQUEST_DELAY", 0):
+        yield lambda browser: open_browser(crawler_module, browser)
 
 
-def test_xpaths_cover_required_fields() -> None:
-    for key in ("name", "image", "loved_rank", "hated_rank", "loved_count"):
-        assert key in _XPATHS, f"_XPATHS missing key: {key!r}"
-    assert "entryBar" in _XPATHS["loved_rank"]
-    assert "entryBar" in _XPATHS["hated_rank"]
+@pytest.fixture
+def cached():
+    def install(values: list[dict | None], missing: list[int]):
+        return patch.object(
+            _fetch_character_data,
+            "cache_batch_get",
+            autospec=True,
+            return_value=(values, missing),
+        )
+
+    return install
+
+
+@pytest.fixture
+def cache_writes() -> Iterator:
+    with patch.object(
+        _fetch_character_data, "cache_batch_set", autospec=True
+    ) as cache_batch_set:
+        yield cache_batch_set
 
 
 def _character(**fields: str | None) -> AnimePlanetCharacter:
     return AnimePlanetCharacter.model_validate(
         {"name": "Luffy", "slug": "luffy", "url": _LUFFY_URL, **fields}
     )
+
+
+def _with_ad_annotated_roles_heading(html: str) -> str:
+    return html.replace("<h3>Anime Roles</h3>", _AD_ANNOTATED_ROLES_HEADING)
+
+
+def _with_ad_suggestion_chip_in_description(html: str) -> str:
+    return _DESCRIPTION_BLOCK.sub(
+        lambda block: block.group(1) + _AD_SUGGESTION_CHIP + block.group(2),
+        html,
+        count=1,
+    )
+
+
+def _challenge_not_cleared(url: str):
+    return patch.object(
+        crawler_module,
+        "wait_for_page",
+        autospec=True,
+        side_effect=CloudflareChallengeError("Anime-Planet", url),
+    )
+
+
+def test_xpaths_character_queries_are_defined() -> None:
+    assert {"name", "image", "loved_rank", "hated_rank", "loved_count"} <= (
+        _XPATHS.keys()
+    )
+    assert "entryBar" in _XPATHS["loved_rank"]
+    assert "entryBar" in _XPATHS["hated_rank"]
 
 
 @pytest.mark.parametrize(
@@ -114,84 +170,62 @@ def test_anime_planet_character_loved_count_text_gives_whole_number(
     assert _character(loved_count=raw).loved_count == expected
 
 
-# =============================================================================
-# _extract_entry_bar
-# =============================================================================
-
-
 @pytest.mark.parametrize(
-    "html, expected_gender, expected_hair",
+    ("html", "expected"),
     [
-        ("<html><body><p>no section</p></body></html>", None, None),
+        ("<html><body><p>no section</p></body></html>", (None, None)),
         (
             '<html><body><section class="entryBar">Gender: Female</section></body></html>',
-            "Female",
-            None,
+            ("Female", None),
         ),
         (
             '<html><body><section class="entryBar">'
             "Gender: Male Hair Color: Black</section></body></html>",
-            "Male",
-            "Black",
+            ("Male", "Black"),
         ),
     ],
 )
-def test_extract_entry_bar(
-    html: str, expected_gender: str | None, expected_hair: str | None
+def test_extract_entry_bar_entry_bar_text_returns_gender_and_hair(
+    html: str, expected: tuple[str | None, str | None]
 ) -> None:
     result = _extract_entry_bar(html)
-    assert result["gender"] == expected_gender
-    assert result["hair_color"] == expected_hair
+    assert (result["gender"], result["hair_color"]) == expected
 
 
-def test_extract_entry_bar_from_fixture(ap_character_html: str) -> None:
+def test_extract_entry_bar_luffy_page_returns_gender_and_hair(
+    ap_character_html: str,
+) -> None:
     result = _extract_entry_bar(ap_character_html)
-    assert result["gender"] == "Male"
-    assert result["hair_color"] == "Black"
+    assert (result["gender"], result["hair_color"]) == ("Male", "Black")
 
 
-# =============================================================================
-# _extract_metadata
-# =============================================================================
-
-
-def test_extract_metadata_no_match() -> None:
+def test_extract_metadata_page_without_metadata_returns_empty_dict() -> None:
     assert _extract_metadata("<html><body></body></html>") == {}
 
 
-def test_extract_metadata_from_fixture(ap_character_html: str) -> None:
-    meta = _extract_metadata(ap_character_html)
-    assert "Birthday" in meta
-    assert meta["Birthday"] == "May 5"
+def test_extract_metadata_luffy_page_returns_birthday(ap_character_html: str) -> None:
+    assert _extract_metadata(ap_character_html)["Birthday"] == "May 5"
 
 
-# =============================================================================
-# _extract_alt_names
-# =============================================================================
-
-
-def test_extract_alt_names_no_match() -> None:
+def test_extract_alt_names_page_without_alt_names_returns_empty_list() -> None:
     assert _extract_alt_names("<html><body></body></html>") == []
 
 
-def test_extract_alt_names_from_fixture(ap_character_html: str) -> None:
+def test_extract_alt_names_luffy_page_returns_straw_hat(ap_character_html: str) -> None:
     assert "Straw Hat" in _extract_alt_names(ap_character_html)
 
 
-def test_extract_alt_names_multiple() -> None:
+def test_extract_alt_names_comma_list_returns_each_name() -> None:
     html = '<html><body><h2 class="aka">Aka: Name One, Name Two, Name Three</h2></body></html>'
     assert _extract_alt_names(html) == ["Name One", "Name Two", "Name Three"]
 
 
-# =============================================================================
-# _extract_description
-# =============================================================================
-
-
-def test_extract_description_from_fixture(ap_character_html: str) -> None:
-    desc = _extract_description(ap_character_html)
-    assert desc is not None
-    assert "Shanks" in desc
+def test_extract_description_luffy_page_returns_description(
+    ap_character_html: str,
+) -> None:
+    description = _extract_description(ap_character_html)
+    assert description is not None
+    assert "Shanks" in description
 
 
 @pytest.mark.parametrize(
@@ -201,20 +235,15 @@ def test_extract_description_from_fixture(ap_character_html: str) -> None:
         '<html><body><div itemprop="description">   </div></body></html>',
     ],
 )
-def test_extract_description_returns_none(html: str) -> None:
+def test_extract_description_without_text_returns_none(html: str) -> None:
     assert _extract_description(html) is None
 
 
-# =============================================================================
-# _extract_tags
-# =============================================================================
-
-
-def test_extract_tags_no_tags() -> None:
+def test_extract_tags_page_without_tags_returns_empty_list() -> None:
     assert _extract_tags("<html><body></body></html>") == []
 
 
-def test_extract_tags_with_tags() -> None:
+def test_extract_tags_tag_links_return_tag_names() -> None:
     html = (
         "<html><body>"
         '<a href="/characters/tags/hero">Hero</a>'
@@ -224,40 +253,32 @@ def test_extract_tags_with_tags() -> None:
     assert _extract_tags(html) == ["Hero", "Pirate"]
 
 
-# =============================================================================
-# _extract_vas_from_cell
-# =============================================================================
+@pytest.mark.parametrize("cell", ["", "<td>no flags here</td>"])
+def test_extract_vas_from_cell_without_flags_returns_empty_dict(cell: str) -> None:
+    assert _extract_vas_from_cell(cell) == {}
 
 
-def test_extract_vas_empty() -> None:
-    assert _extract_vas_from_cell("") == {}
-    assert _extract_vas_from_cell("<td>no flags here</td>") == {}
-
-
-def test_extract_vas_known_flags() -> None:
+def test_extract_vas_from_cell_flagged_links_return_actors_by_country() -> None:
     cell = (
         '<div class="flag flagJP"></div>'
         '<a href="/people/mayumi-tanaka">Mayumi TANAKA</a>'
         '<div class="flag flagUS"></div>'
         '<a href="/people/colleen-clinkenbeard">Colleen CLINKENBEARD</a>'
     )
+
     result = _extract_vas_from_cell(cell)
+
     assert result["jp"] == [
         AnimePlanetVoiceActor(name="Mayumi TANAKA", url="/people/mayumi-tanaka")
     ]
     assert result["us"][0].name == "Colleen CLINKENBEARD"
 
 
-# =============================================================================
-# _extract_anime_roles
-# =============================================================================
-
-
-def test_extract_anime_roles_no_section() -> None:
+def test_extract_anime_roles_page_without_section_returns_empty_list() -> None:
     assert _extract_anime_roles("<html><body></body></html>") == []
 
 
-def test_extract_anime_roles_filters_bad_rows() -> None:
+def test_extract_anime_roles_rows_without_anime_link_return_empty_list() -> None:
     html = (
         "<h3>Anime Roles</h3>"
         "<table><tbody>"
@@ -268,103 +289,71 @@ def test_extract_anime_roles_filters_bad_rows() -> None:
     assert _extract_anime_roles(html) == []
 
 
-def test_extract_anime_roles_empty_role_becomes_none() -> None:
+def test_extract_anime_roles_blank_role_returns_none_role() -> None:
     html = (
         "<h3>Anime Roles</h3>"
         "<table><tbody>"
         '<tr><td><a href="/anime/test-show">Test Show</a></td><td>   </td></tr>'
         "</tbody></table>"
     )
+
     roles = _extract_anime_roles(html)
-    assert len(roles) == 1
-    assert roles[0].role is None
-    assert roles[0].title == "Test Show"
-    assert roles[0].url == "/anime/test-show"
+
+    assert [(role.title, role.url, role.role) for role in roles] == [
+        ("Test Show", "/anime/test-show", None)
+    ]
 
 
-def test_extract_anime_roles_from_fixture(ap_character_html: str) -> None:
+def test_extract_anime_roles_luffy_page_returns_main_role_with_voice_actors(
+    ap_character_html: str,
+) -> None:
     roles = _extract_anime_roles(ap_character_html)
+
+    one_piece = next(role for role in roles if "One Piece" in role.title)
     assert len(roles) == 25
-    one_piece = next(r for r in roles if "One Piece" in r.title)
     assert one_piece.role == "Main"
     assert "jp" in one_piece.voice_actors
 
 
-_AD_ANNOTATED_ROLES_HEADING = (
-    '<h3><a href="#" class="google-anno" data-google-vignette="false" '
-    'data-google-interstitial="false" style="position: initial !important;">'
-    '<svg viewBox="100 -1000 840 840" width="calc(22.4px - 2px)" height="22.4px">'
-    '<path d="M168-144q-29.7 0-50.85-21.15Z"></path></svg>&nbsp;'
-    '<span class="google-anno-t" style="text-decoration: underline dotted !important;">'
-    "Anime</span></a> Roles</h3>"
-)
-
-
-def _with_ad_annotated_roles_heading(html: str) -> str:
-    return html.replace("<h3>Anime Roles</h3>", _AD_ANNOTATED_ROLES_HEADING)
-
-
-_AD_SUGGESTION_CHIP = (
-    '<div class="google-anno-skip google-anno-sc" tabindex="0" role="link" '
-    'aria-label="Anime &amp; Manga" data-google-vignette="false" '
-    'data-google-interstitial="false" style="display: inline-flex !important;">'
-    '<span><span><svg viewBox="0 -960 960 960" width="16px" height="16px">'
-    '<path d="M168-144q-29.7 0-50.85-21.15Z"></path></svg></span>'
-    "<span>Anime</span></span><span>&amp; Manga</span></div>"
-)
-_DESCRIPTION_BLOCK = re.compile(
-    r'(<div[^>]+itemprop="description">.*?)(</div>)', re.DOTALL
-)
-
-
-def _with_ad_suggestion_chip_in_description(html: str) -> str:
-    return _DESCRIPTION_BLOCK.sub(
-        lambda block: block.group(1) + _AD_SUGGESTION_CHIP + block.group(2),
-        html,
-        count=1,
-    )
-
-
-def test_ad_annotated_heading_hides_the_roles_section(
+def test_extract_anime_roles_ad_annotated_heading_returns_empty_list(
     each_ap_character_html: str,
 ) -> None:
     annotated = _with_ad_annotated_roles_heading(each_ap_character_html)
+
     assert annotated != each_ap_character_html
     assert _extract_anime_roles(each_ap_character_html)
     assert _extract_anime_roles(annotated) == []
 
 
-def test_ad_suggestion_chip_leaks_into_the_description(
+def test_extract_description_ad_suggestion_chip_changes_description(
     each_ap_character_html: str,
 ) -> None:
     chipped = _with_ad_suggestion_chip_in_description(each_ap_character_html)
+
     assert chipped != each_ap_character_html
     assert _extract_description(chipped) != _extract_description(each_ap_character_html)
 
 
-def test_character_extraction_is_unchanged_by_ad_markup(
+def test_extract_character_from_html_ad_markup_returns_same_character(
     each_ap_character_html: str,
 ) -> None:
     changed = _with_ad_suggestion_chip_in_description(
         _with_ad_annotated_roles_heading(each_ap_character_html)
     )
+
     extracted = _extract_character_from_html(changed)
+
     assert extracted == _extract_character_from_html(each_ap_character_html)
     assert extracted is not None
     assert extracted["anime_roles"]
     assert extracted["description"]
 
 
-# =============================================================================
-# _extract_manga_roles
-# =============================================================================
-
-
-def test_extract_manga_roles_no_section() -> None:
+def test_extract_manga_roles_page_without_section_returns_empty_list() -> None:
     assert _extract_manga_roles("<html><body></body></html>") == []
 
 
-def test_extract_manga_roles_filters_bad_rows() -> None:
+def test_extract_manga_roles_rows_without_manga_link_return_empty_list() -> None:
     html = (
         "<h3>Manga Roles</h3>"
         "<table><tbody>"
@@ -375,426 +364,263 @@ def test_extract_manga_roles_filters_bad_rows() -> None:
     assert _extract_manga_roles(html) == []
 
 
-def test_extract_manga_roles_from_fixture(ap_character_html: str) -> None:
+def test_extract_manga_roles_luffy_page_returns_main_role(
+    ap_character_html: str,
+) -> None:
     roles = _extract_manga_roles(ap_character_html)
+
+    main = next(role for role in roles if role.title == "One Piece")
     assert len(roles) == 16
-    main = next(r for r in roles if r.title == "One Piece")
-    assert main.role == "Main"
-    assert main.url == "/manga/one-piece"
+    assert (main.role, main.url) == ("Main", "/manga/one-piece")
 
 
-# =============================================================================
-# _extract_character_from_html
-# =============================================================================
-
-
-@pytest.mark.parametrize(
-    "html",
-    [
-        "",
-        "<html><body><p>no character name element</p></body></html>",
-    ],
-)
-def test_extract_returns_none_on_bad_html(html: str) -> None:
+@pytest.mark.parametrize("html", ["", _PAGE_WITHOUT_NAME])
+def test_extract_character_from_html_page_without_name_returns_none(html: str) -> None:
     assert _extract_character_from_html(html) is None
 
 
-def test_extract_from_html_fixture(ap_character_html: str) -> None:
+def test_extract_character_from_html_luffy_page_returns_every_field(
+    ap_character_html: str,
+) -> None:
     raw = _extract_character_from_html(ap_character_html)
+
     assert raw is not None
     assert raw["name"] == "Monkey D. Luffy"
-    assert raw["image"] is not None and "luffy" in raw["image"]
-    assert raw["loved_rank"] == "#12"
-    assert raw["hated_rank"] == "#106"
-    assert raw["loved_count"] == "37,007 users"
-    # Regex-derived fields are parsed up front, so the page is not retained.
+    assert "luffy" in raw["image"]
+    assert (raw["loved_rank"], raw["hated_rank"], raw["loved_count"]) == (
+        "#12",
+        "#106",
+        "37,007 users",
+    )
     assert "_html" not in raw
     assert raw["gender"] == "Male"
-    assert len(raw["anime_roles"]) == 25
-    assert len(raw["manga_roles"]) == 16
+    assert (len(raw["anime_roles"]), len(raw["manga_roles"])) == (25, 16)
 
 
-# =============================================================================
-# _build_character_from_raw
-# =============================================================================
-
-
-def test_build_character_from_raw_fixture(
-    ap_character_html: str, ap_character_extracted: dict
+def test_build_character_from_raw_luffy_page_returns_typed_character(
+    ap_character_extracted: dict,
 ) -> None:
-    char = _build_character_from_raw(ap_character_extracted, _LUFFY_URL)
-    assert char.name == "Monkey D. Luffy"
-    assert char.slug == "monkey-d-luffy"
-    assert char.url == _LUFFY_URL
-    assert char.loved_rank == 12
-    assert char.hated_rank == 106
-    assert char.loved_count == 37007
-    assert char.gender == "Male"
-    assert char.hair_color == "Black"
-    assert char.description is not None and "Shanks" in char.description
-    assert "Straw Hat" in char.alt_names
-    assert len(char.anime_roles) == 25
-    assert len(char.manga_roles) == 16
+    character = _build_character_from_raw(ap_character_extracted, _LUFFY_URL)
+
+    assert (character.name, character.slug, character.url) == (
+        "Monkey D. Luffy",
+        "monkey-d-luffy",
+        _LUFFY_URL,
+    )
+    assert (character.loved_rank, character.hated_rank, character.loved_count) == (
+        12,
+        106,
+        37007,
+    )
+    assert (character.gender, character.hair_color) == ("Male", "Black")
+    assert character.description is not None
+    assert "Shanks" in character.description
+    assert "Straw Hat" in character.alt_names
+    assert (len(character.anime_roles), len(character.manga_roles)) == (25, 16)
 
 
-def test_build_character_no_image(
-    ap_character_html: str, ap_character_extracted: dict
+def test_build_character_from_raw_without_image_returns_no_image(
+    ap_character_extracted: dict,
 ) -> None:
     raw = {**ap_character_extracted, "image": None}
-    char = _build_character_from_raw(raw, _LUFFY_URL)
-    assert char.image is None
+    assert _build_character_from_raw(raw, _LUFFY_URL).image is None
 
 
-# =============================================================================
-# _fetch_page_html
-# =============================================================================
+async def test_fetch_page_html_character_page_returns_content(browser_showing) -> None:
+    browser = browser_showing("<html>luffy</html>")
+    assert await _fetch_page_html(browser, _LUFFY_URL) == "<html>luffy</html>"
 
 
-def _started_browser(html: str) -> zendriver.Browser:
-    browser = create_autospec(zendriver.Browser, instance=True)
-    browser.main_tab = create_autospec(zendriver.Tab, instance=True)
-    tab = create_autospec(zendriver.Tab, instance=True)
-    tab.get_content.return_value = html
-    tab.query_selector.return_value = create_autospec(zendriver.Element, instance=True)
-    tab.evaluate.return_value = "complete"
-    browser.get.return_value = tab
-    return browser
+async def test_fetch_page_html_navigation_failure_returns_none(browser_showing) -> None:
+    assert await _fetch_page_html(browser_showing(None), _LUFFY_URL) is None
 
 
-async def test_fetch_page_html_returns_page_content() -> None:
-    result = await _fetch_page_html(_started_browser("<html>luffy</html>"), _LUFFY_URL)
-
-    assert result == "<html>luffy</html>"
-
-
-async def test_fetch_page_html_navigation_fails_returns_none() -> None:
-    browser = _started_browser("")
-    browser.get.side_effect = RuntimeError("nav failed")
-
-    assert await _fetch_page_html(browser, _LUFFY_URL) is None
-
-
-async def test_fetch_page_html_challenge_not_cleared_raises() -> None:
-    browser = _started_browser("")
+async def test_fetch_page_html_challenge_not_cleared_raises(browser_showing) -> None:
     with (
-        patch.object(
-            crawler_module,
-            "wait_for_page",
-            autospec=True,
-            side_effect=CloudflareChallengeError("Anime-Planet", _LUFFY_URL),
-        ),
+        _challenge_not_cleared(_LUFFY_URL),
         pytest.raises(CloudflareChallengeError),
     ):
-        await _fetch_page_html(browser, _LUFFY_URL)
+        await _fetch_page_html(browser_showing(""), _LUFFY_URL)
 
 
-async def test_fetch_animeplanet_characters_challenge_not_cleared_stops_batch_and_caches_nothing_for_it(
-    caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+async def test_fetch_character_data_character_page_returns_raw(
+    browser_showing,
+    character_browser,
 ) -> None:
-    zoro_url = "https://www.anime-planet.com/characters/roronoa-zoro"
-    nami_url = "https://www.anime-planet.com/characters/nami"
-    monkeypatch.setattr(crawler_module, "_INTER_REQUEST_DELAY", 0)
+    with character_browser(browser_showing(_MINIMAL_HTML)):
+        raw = await _fetch_character_data(_LUFFY_URL)
 
+    assert raw is not None
+    assert raw["name"] == "Monkey D. Luffy"
+
+
+async def test_fetch_character_data_navigation_failure_returns_none(
+    browser_showing,
+    character_browser,
+) -> None:
+    with character_browser(browser_showing(None)):
+        assert await _fetch_character_data(_LUFFY_URL) is None
+
+
+async def test_fetch_character_data_challenge_not_cleared_returns_none(
+    browser_showing,
+    character_browser,
+) -> None:
     with (
-        patch.object(
-            _fetch_character_data,
-            "cache_batch_get",
-            autospec=True,
-            return_value=([None, None, None], [0, 1, 2]),
-        ),
-        patch.object(
-            _fetch_character_data, "cache_batch_set", autospec=True
-        ) as cache_set,
+        character_browser(browser_showing(_MINIMAL_HTML)),
+        _challenge_not_cleared(_LUFFY_URL),
+    ):
+        assert await _fetch_character_data(_LUFFY_URL) is None
+
+
+def test_anime_planet_character_crawler_get_extraction_schema_returns_xpaths() -> None:
+    assert AnimePlanetCharacterCrawler(NullRepository()).get_extraction_schema() is (
+        _XPATHS
+    )
+
+
+def test_anime_planet_character_crawler_normalize_identifier_returns_url() -> None:
+    crawler = AnimePlanetCharacterCrawler(NullRepository())
+    assert crawler.normalize_identifier(_LUFFY_URL) == _LUFFY_URL
+
+
+def test_anime_planet_character_crawler_build_source_model_returns_character(
+    ap_character_extracted: dict,
+) -> None:
+    crawler = AnimePlanetCharacterCrawler(NullRepository())
+
+    character = crawler.build_source_model(ap_character_extracted, _LUFFY_URL)
+
+    assert (character.name, character.slug) == ("Monkey D. Luffy", "monkey-d-luffy")
+
+
+def test_anime_planet_character_crawler_map_to_canonical_returns_name_and_source(
+    ap_character_extracted: dict,
+) -> None:
+    crawler = AnimePlanetCharacterCrawler(NullRepository())
+
+    canonical = crawler.map_to_canonical(
+        _build_character_from_raw(ap_character_extracted, _LUFFY_URL)
+    )
+
+    assert canonical["name"] == "Monkey D. Luffy"
+    assert any("monkey-d-luffy" in str(source) for source in canonical["sources"])
+
+
+async def test_fetch_animeplanet_character_luffy_page_returns_canonical_character(
+    browser_showing, character_browser, ap_character_html: str
+) -> None:
+    with character_browser(browser_showing(ap_character_html)):
+        character = await fetch_animeplanet_character(_LUFFY_URL)
+
+    assert character is not None
+    assert character["name"] == "Monkey D. Luffy"
+
+
+async def test_fetch_animeplanet_character_navigation_failure_returns_none(
+    browser_showing,
+    character_browser,
+) -> None:
+    with character_browser(browser_showing(None)):
+        assert await fetch_animeplanet_character(_LUFFY_URL) is None
+
+
+async def test_fetch_animeplanet_characters_without_urls_returns_empty_list() -> None:
+    assert await fetch_animeplanet_characters([]) == []
+
+
+async def test_fetch_animeplanet_characters_all_cached_returns_without_fetching(
+    browser_showing, character_browser, cached
+) -> None:
+    with cached([_MINIMAL_RAW], []), character_browser(browser_showing(None)):
+        characters = await fetch_animeplanet_characters([_LUFFY_URL])
+
+    assert characters[0]["name"] == "Monkey D. Luffy"
+
+
+async def test_fetch_animeplanet_characters_cache_miss_fetches_and_caches_raw(
+    browser_showing, character_browser, cached, cache_writes
+) -> None:
+    with cached([None], [0]), character_browser(browser_showing(_MINIMAL_HTML)):
+        characters = await fetch_animeplanet_characters([_LUFFY_URL])
+
+    assert characters[0]["name"] == "Monkey D. Luffy"
+    [written] = cache_writes.await_args_list
+    urls, raw_values = written.args
+    assert urls == [_LUFFY_URL]
+    assert raw_values[0]["name"] == "Monkey D. Luffy"
+
+
+async def test_fetch_animeplanet_characters_cached_none_without_miss_fetches_page(
+    browser_showing, character_browser, cached, cache_writes
+) -> None:
+    with cached([None], []), character_browser(browser_showing(_MINIMAL_HTML)):
+        characters = await fetch_animeplanet_characters([_LUFFY_URL])
+
+    assert characters[0] is not None
+
+
+async def test_fetch_animeplanet_characters_several_misses_wait_between_requests(
+    browser_showing, character_browser, cached, cache_writes
+) -> None:
+    with (
+        cached([None, None], [0, 1]),
+        character_browser(browser_showing(_MINIMAL_HTML)),
+        patch.object(crawler_module.asyncio, "sleep", autospec=True) as sleep,
+    ):
+        characters = await fetch_animeplanet_characters([_LUFFY_URL, _ZORO_URL])
+
+    assert len(characters) == 2
+    assert sleep.await_args_list == [call(crawler_module._INTER_REQUEST_DELAY)]
+
+
+@pytest.mark.parametrize("html", [None, _PAGE_WITHOUT_NAME])
+async def test_fetch_animeplanet_characters_unreadable_page_returns_none(
+    character_browser, browser_showing, cached, cache_writes, html: str | None
+) -> None:
+    with cached([None], [0]), character_browser(browser_showing(html)):
+        assert await fetch_animeplanet_characters([_LUFFY_URL]) == [None]
+
+
+async def test_fetch_animeplanet_characters_challenge_not_cleared_stops_batch(
+    browser_showing,
+    character_browser,
+    cached,
+    cache_writes,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with (
+        cached([None, None, None], [0, 1, 2]),
+        character_browser(browser_showing("")),
         patch.object(
             crawler_module,
             "_fetch_page_html",
             autospec=True,
             side_effect=[
                 _MINIMAL_HTML,
-                CloudflareChallengeError("Anime-Planet", zoro_url),
+                CloudflareChallengeError("Anime-Planet", _ZORO_URL),
             ],
-        ) as fetch_page,
-        patch("zendriver.start", autospec=True, return_value=_started_browser("")),
+        ),
     ):
-        result = await fetch_animeplanet_characters([_LUFFY_URL, zoro_url, nami_url])
+        characters = await fetch_animeplanet_characters(
+            [_LUFFY_URL, _ZORO_URL, _NAMI_URL]
+        )
 
-    assert result[0] is not None
-    assert result[1:] == [None, None]
-    assert fetch_page.await_count == 2
-    assert cache_set.await_args_list == [call([_LUFFY_URL], [ANY])]
-    assert f"Anime-Planet: stopping the character batch at {zoro_url}" in caplog.text
-
-
-# =============================================================================
-# _fetch_character_data
-# =============================================================================
+    assert characters[0] is not None
+    assert characters[1:] == [None, None]
+    assert cache_writes.await_args_list == [call([_LUFFY_URL], [ANY])]
+    assert f"Anime-Planet: stopping the character batch at {_ZORO_URL}" in caplog.text
 
 
-async def test_fetch_character_data_success(mocker: Any) -> None:
-    mocker.patch(_PATCH_FETCH_PAGE, new=AsyncMock(return_value=_MINIMAL_HTML))
-    import zendriver as zd
-
-    mocker.patch.object(zd, "start", new=AsyncMock(return_value=AsyncMock()))
-
-    result = await _fetch_character_data(_LUFFY_URL)
-
-    assert result is not None
-    assert result["name"] == "Monkey D. Luffy"
-
-
-async def test_fetch_character_data_no_html(mocker: Any) -> None:
-    mocker.patch(_PATCH_FETCH_PAGE, new=AsyncMock(return_value=None))
-    import zendriver as zd
-
-    mocker.patch.object(zd, "start", new=AsyncMock(return_value=AsyncMock()))
-
-    assert await _fetch_character_data(_LUFFY_URL) is None
-
-
-async def test_fetch_character_data_browser_stop_swallowed(mocker: Any) -> None:
-    mocker.patch(_PATCH_FETCH_PAGE, new=AsyncMock(return_value=_MINIMAL_HTML))
-    browser = AsyncMock()
-    browser.stop = AsyncMock(side_effect=Exception("stop failed"))
-    import zendriver as zd
-
-    mocker.patch.object(zd, "start", new=AsyncMock(return_value=browser))
-
-    result = await _fetch_character_data(_LUFFY_URL)
-
-    assert result is not None
-
-
-# =============================================================================
-# AnimePlanetCharacterCrawler
-# =============================================================================
-
-
-def test_crawler_get_extraction_schema() -> None:
-    from enrichment.sources.anime_planet.anime_planet_character_crawler import (
-        AnimePlanetCharacterCrawler,
-    )
-
-    crawler = AnimePlanetCharacterCrawler(NullRepository())
-    assert crawler.get_extraction_schema() is _XPATHS
-
-
-def test_crawler_normalize_identifier() -> None:
-    from enrichment.sources.anime_planet.anime_planet_character_crawler import (
-        AnimePlanetCharacterCrawler,
-    )
-
-    crawler = AnimePlanetCharacterCrawler(NullRepository())
-    assert crawler.normalize_identifier(_LUFFY_URL) == _LUFFY_URL
-
-
-def test_crawler_build_source_model(
-    ap_character_html: str, ap_character_extracted: dict
+async def test_fetch_animeplanet_characters_output_path_appends_characters(
+    cached, tmp_path: Path
 ) -> None:
-    from enrichment.sources.anime_planet.anime_planet_character_crawler import (
-        AnimePlanetCharacterCrawler,
-    )
+    output = tmp_path / "chars.jsonl"
 
-    crawler = AnimePlanetCharacterCrawler(NullRepository())
-    char = crawler.build_source_model(ap_character_extracted, _LUFFY_URL)
-    assert char.name == "Monkey D. Luffy"
-    assert char.slug == "monkey-d-luffy"
+    with cached([_MINIMAL_RAW], []):
+        characters = await fetch_animeplanet_characters(
+            [_LUFFY_URL], output_path=str(output)
+        )
 
-
-def test_crawler_map_to_canonical(
-    ap_character_html: str, ap_character_extracted: dict
-) -> None:
-    from enrichment.sources.anime_planet.anime_planet_character_crawler import (
-        AnimePlanetCharacterCrawler,
-    )
-
-    crawler = AnimePlanetCharacterCrawler(NullRepository())
-    char = _build_character_from_raw(ap_character_extracted, _LUFFY_URL)
-    canonical = crawler.map_to_canonical(char)
-    assert canonical["name"] == "Monkey D. Luffy"
-    assert any("monkey-d-luffy" in str(s) for s in canonical.get("sources", []))
-
-
-# =============================================================================
-# fetch_animeplanet_character
-# =============================================================================
-
-
-@pytest.mark.usefixtures("redis_cache_miss")
-@patch(_PATCH_FETCH_PAGE)
-async def test_fetch_character_success(
-    mock_page: AsyncMock, ap_character_html: str
-) -> None:
-    mock_page.return_value = ap_character_html
-    import zendriver as zd
-
-    with pytest.MonkeyPatch.context() as mp:
-        mp.setattr(zd, "start", AsyncMock(return_value=AsyncMock()))
-        result = await fetch_animeplanet_character(_LUFFY_URL)
-
-    assert result is not None
-    assert result["name"] == "Monkey D. Luffy"
-
-
-@pytest.mark.usefixtures("redis_cache_miss")
-@patch(_PATCH_FETCH_PAGE, new_callable=AsyncMock)
-async def test_fetch_character_failure_returns_none(mock_page: AsyncMock) -> None:
-    mock_page.return_value = None
-    import zendriver as zd
-
-    with pytest.MonkeyPatch.context() as mp:
-        mp.setattr(zd, "start", AsyncMock(return_value=AsyncMock()))
-        result = await fetch_animeplanet_character(_LUFFY_URL)
-
-    assert result is None
-
-
-# =============================================================================
-# fetch_animeplanet_characters
-# =============================================================================
-
-
-async def test_fetch_characters_empty_list() -> None:
-    assert await fetch_animeplanet_characters([]) == []
-
-
-async def test_fetch_characters_all_cached(mocker: Any) -> None:
-    mocker.patch.object(
-        _fetch_character_data,
-        "cache_batch_get",
-        new=AsyncMock(return_value=([_MINIMAL_RAW], [])),
-    )
-    import zendriver as zd
-
-    start_spy = mocker.patch.object(zd, "start", new=AsyncMock())
-
-    result = await fetch_animeplanet_characters([_LUFFY_URL])
-
-    assert result[0] is not None
-    assert result[0]["name"] == "Monkey D. Luffy"
-    start_spy.assert_not_called()
-
-
-async def test_fetch_characters_all_missing_success(mocker: Any) -> None:
-    mocker.patch.object(
-        _fetch_character_data,
-        "cache_batch_get",
-        new=AsyncMock(return_value=([None], [0])),
-    )
-    cache_set = mocker.patch.object(
-        _fetch_character_data, "cache_batch_set", new=AsyncMock()
-    )
-    mocker.patch(_PATCH_FETCH_PAGE, new=AsyncMock(return_value=_MINIMAL_HTML))
-    import zendriver as zd
-
-    mocker.patch.object(zd, "start", new=AsyncMock(return_value=AsyncMock()))
-
-    result = await fetch_animeplanet_characters([_LUFFY_URL])
-
-    assert result[0] is not None
-    cache_set.assert_awaited_once()
-
-
-async def test_fetch_characters_inter_request_delay(mocker: Any) -> None:
-    zoro_url = "https://www.anime-planet.com/characters/roronoa-zoro"
-    mocker.patch.object(
-        _fetch_character_data,
-        "cache_batch_get",
-        new=AsyncMock(return_value=([None, None], [0, 1])),
-    )
-    mocker.patch.object(_fetch_character_data, "cache_batch_set", new=AsyncMock())
-    mocker.patch(_PATCH_FETCH_PAGE, new=AsyncMock(return_value=_MINIMAL_HTML))
-    sleep_mock = mocker.patch("asyncio.sleep", new=AsyncMock())
-    import zendriver as zd
-
-    mocker.patch.object(zd, "start", new=AsyncMock(return_value=AsyncMock()))
-
-    result = await fetch_animeplanet_characters([_LUFFY_URL, zoro_url])
-
-    assert len(result) == 2
-    sleep_mock.assert_awaited_once()
-
-
-async def test_fetch_characters_html_none_returns_none_at_index(mocker: Any) -> None:
-    mocker.patch.object(
-        _fetch_character_data,
-        "cache_batch_get",
-        new=AsyncMock(return_value=([None], [0])),
-    )
-    mocker.patch.object(_fetch_character_data, "cache_batch_set", new=AsyncMock())
-    mocker.patch(_PATCH_FETCH_PAGE, new=AsyncMock(return_value=None))
-    import zendriver as zd
-
-    mocker.patch.object(zd, "start", new=AsyncMock(return_value=AsyncMock()))
-
-    assert await fetch_animeplanet_characters([_LUFFY_URL]) == [None]
-
-
-async def test_fetch_characters_extract_none_returns_none_at_index(mocker: Any) -> None:
-    mocker.patch.object(
-        _fetch_character_data,
-        "cache_batch_get",
-        new=AsyncMock(return_value=([None], [0])),
-    )
-    mocker.patch.object(_fetch_character_data, "cache_batch_set", new=AsyncMock())
-    mocker.patch(
-        _PATCH_FETCH_PAGE,
-        new=AsyncMock(return_value="<html><body><p>no name</p></body></html>"),
-    )
-    import zendriver as zd
-
-    mocker.patch.object(zd, "start", new=AsyncMock(return_value=AsyncMock()))
-
-    assert await fetch_animeplanet_characters([_LUFFY_URL]) == [None]
-
-
-async def test_fetch_characters_browser_stop_swallowed(mocker: Any) -> None:
-    mocker.patch.object(
-        _fetch_character_data,
-        "cache_batch_get",
-        new=AsyncMock(return_value=([None], [0])),
-    )
-    mocker.patch.object(_fetch_character_data, "cache_batch_set", new=AsyncMock())
-    mocker.patch(_PATCH_FETCH_PAGE, new=AsyncMock(return_value=_MINIMAL_HTML))
-    browser = AsyncMock()
-    browser.stop = AsyncMock(side_effect=Exception("stop failed"))
-    import zendriver as zd
-
-    mocker.patch.object(zd, "start", new=AsyncMock(return_value=browser))
-
-    result = await fetch_animeplanet_characters([_LUFFY_URL])
-
-    assert result[0] is not None
-
-
-async def test_fetch_characters_with_output_path(mocker: Any, tmp_path: Any) -> None:
-    mocker.patch.object(
-        _fetch_character_data,
-        "cache_batch_get",
-        new=AsyncMock(return_value=([_MINIMAL_RAW], [])),
-    )
-    out = tmp_path / "chars.jsonl"
-
-    result = await fetch_animeplanet_characters([_LUFFY_URL], output_path=str(out))
-
-    assert result[0] is not None
-    assert out.exists()
-    assert "Luffy" in out.read_text()
-
-
-async def test_fetch_characters_defensive_missing_append(mocker: Any) -> None:
-    # cache_batch_get returns None cached value but empty missing_indices list —
-    # exercises the defensive `if idx not in missing_indices: append` branch.
-    mocker.patch.object(
-        _fetch_character_data,
-        "cache_batch_get",
-        new=AsyncMock(return_value=([None], [])),
-    )
-    mocker.patch.object(_fetch_character_data, "cache_batch_set", new=AsyncMock())
-    mocker.patch(_PATCH_FETCH_PAGE, new=AsyncMock(return_value=_MINIMAL_HTML))
-    import zendriver as zd
-
-    mocker.patch.object(zd, "start", new=AsyncMock(return_value=AsyncMock()))
-
-    result = await fetch_animeplanet_characters([_LUFFY_URL])
-
-    assert result[0] is not None
+    assert characters[0] is not None
+    assert "Luffy" in output.read_text()

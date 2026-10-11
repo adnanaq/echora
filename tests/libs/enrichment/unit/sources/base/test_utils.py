@@ -67,6 +67,7 @@ def test_parse_broadcast_string_without_schedule_returns_nothing(
         ("20. Oct 1999", "1999-10-20"),
         ("5. Apr 2003", "2003-04-05"),
         ("1. Jan 2000", "2000-01-01"),
+        ("Oct\u00a020,\u00a01999", "1999-10-20"),
     ],
 )
 def test_parse_iso_date_full_date_returns_iso_date(raw: str, expected: str) -> None:
@@ -102,6 +103,8 @@ def test_parse_partial_date_full_date_returns_year_and_month(raw: str) -> None:
         ("11.2008", (2008, 11)),
         ("01.2027", (2027, 1)),
         ("1977-10", (1977, 10)),
+        ("Sept 1999", (1999, 9)),
+        ("Sep. 1999", (1999, 9)),
     ],
 )
 def test_parse_partial_date_month_and_year_returns_year_and_month(
@@ -116,7 +119,18 @@ def test_parse_partial_date_year_only_returns_year_without_month(raw: str) -> No
 
 
 @pytest.mark.parametrize(
-    "raw", ["?", "Not available", "", None, "13.2008", "2026-13", "Foo 2008"]
+    "raw",
+    [
+        "?",
+        "Not available",
+        "",
+        None,
+        "13.2008",
+        "00.2008",
+        "2026-13",
+        "2026-00",
+        "Foo 2008",
+    ],
 )
 def test_parse_partial_date_without_year_or_valid_month_returns_nothing(
     raw: str | None,
@@ -134,6 +148,7 @@ def test_parse_partial_date_without_year_or_valid_month_returns_nothing(
         ("2019 – 2021", ("2019", "2021")),
         ("2027‑2028", ("2027", "2028")),
         (" 1999 - ? ", ("1999", "?")),
+        ("2027\u2011?", ("2027", "?")),
     ],
 )
 def test_split_date_range_range_returns_start_and_end(

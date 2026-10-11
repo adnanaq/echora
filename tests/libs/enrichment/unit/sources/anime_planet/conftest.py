@@ -11,9 +11,12 @@ HTML fixtures are real pages captured from live AP pages:
                           one test run per page
 """
 
+from collections.abc import Callable
 from pathlib import Path
+from unittest.mock import create_autospec
 
 import pytest
+import zendriver
 
 _FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -75,3 +78,22 @@ def ap_character_raw() -> dict:
     import json
 
     return json.loads((_FIXTURES / "ap_character_raw.json").read_text())
+
+
+@pytest.fixture
+def browser_showing() -> Callable[[str | None], zendriver.Browser]:
+    def build(html: str | None) -> zendriver.Browser:
+        browser = create_autospec(zendriver.Browser, instance=True)
+        browser.main_tab = create_autospec(zendriver.Tab, instance=True)
+        tab = create_autospec(zendriver.Tab, instance=True)
+        tab.get_content.return_value = html or ""
+        tab.query_selector.return_value = create_autospec(
+            zendriver.Element, instance=True
+        )
+        tab.evaluate.return_value = "complete"
+        browser.get.return_value = tab
+        if html is None:
+            browser.get.side_effect = RuntimeError("navigation failed")
+        return browser
+
+    return build
