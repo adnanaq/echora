@@ -10,6 +10,7 @@ from enrichment.sources.mal.mal_anime_crawler import (
     _XPATHS,
     MalAnimeCrawler,
     _build_anime_from_raw,
+    _clean_page_url,
     _extract_anime_from_html,
     _extract_pics_from_html,
     _fetch_mal_anime_data,
@@ -648,6 +649,21 @@ async def test_fetch_mal_anime_data_deleted_page_logs_not_found_and_returns_none
     assert f"MAL anime page not found: {DELETED_URL}" in caplog.messages
 
 
+@pytest.mark.parametrize(
+    "class_attribute", ['class="error404 content"', "class='error404'"]
+)
+async def test_fetch_mal_anime_data_deleted_page_other_class_markup_logs_not_found(
+    mal_browser, browser_serving, mal_anime_not_found_html, caplog, class_attribute: str
+) -> None:
+    page = mal_anime_not_found_html.replace('class="error404"', class_attribute)
+    browser = browser_serving({DELETED_URL: page})
+    with mal_browser(browser), caplog.at_level(logging.WARNING):
+        result = await _fetch_mal_anime_data(DELETED_URL)
+
+    assert result is None
+    assert f"MAL anime page not found: {DELETED_URL}" in caplog.messages
+
+
 async def test_fetch_mal_anime_data_page_without_title_logs_navigation_failure(
     mal_browser, browser_serving, caplog
 ) -> None:
@@ -782,3 +798,49 @@ async def test_main_with_data_returns_zero(tmp_path) -> None:
         ),
     ):
         assert await main() == 0
+
+
+@pytest.mark.parametrize(
+    "page_url",
+    [
+        ONE_PIECE_CANONICAL_URL,
+        f"{ONE_PIECE_CANONICAL_URL}/",
+        f"{ONE_PIECE_CANONICAL_URL}?q=one",
+        f"{ONE_PIECE_CANONICAL_URL}/#top",
+    ],
+)
+def test_clean_page_url_decorated_address_returns_bare_address(page_url: str) -> None:
+    assert _clean_page_url(page_url) == ONE_PIECE_CANONICAL_URL
+
+
+async def test_fetch_mal_anime_data_canonical_link_with_trailing_slash_reads_gallery(
+    mal_browser, browser_serving, mal_anime_html, mal_anime_pics_html
+) -> None:
+    page = mal_anime_html.replace(
+        f'<link rel="canonical" href="{ONE_PIECE_CANONICAL_URL}">',
+        f'<link rel="canonical" href="{ONE_PIECE_CANONICAL_URL}/">',
+    )
+    browser = browser_serving(_one_piece_site(page, mal_anime_pics_html))
+    with mal_browser(browser):
+        result = await _fetch_mal_anime_data(ONE_PIECE_URL)
+
+    assert result is not None
+    assert result["_picture_urls"] == _extract_pics_from_html(mal_anime_pics_html)
+
+
+async def test_fetch_mal_anime_data_page_without_canonical_link_stores_clean_address(
+    mal_browser, browser_serving, mal_anime_html, mal_anime_pics_html
+) -> None:
+    page = mal_anime_html.replace(
+        f'<link rel="canonical" href="{ONE_PIECE_CANONICAL_URL}">', ""
+    )
+    requested = f"{ONE_PIECE_CANONICAL_URL}?q=one"
+    browser = browser_serving(
+        {requested: page, f"{ONE_PIECE_CANONICAL_URL}/pics": mal_anime_pics_html}
+    )
+    with mal_browser(browser):
+        result = await _fetch_mal_anime_data(requested)
+
+    assert result is not None
+    assert result["_url"] == ONE_PIECE_CANONICAL_URL
+    assert result["_picture_urls"] == _extract_pics_from_html(mal_anime_pics_html)

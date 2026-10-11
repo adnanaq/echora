@@ -16,6 +16,7 @@ import logging
 import re
 import sys
 from typing import Any, cast
+from urllib.parse import urlsplit, urlunsplit
 
 from enrichment.sources.base.browser import browser_session
 from enrichment.sources.base.framework import (
@@ -58,7 +59,9 @@ logger = logging.getLogger(__name__)
 _TITLE_SELECTOR = "h1.title-name"
 # MAL answers a deleted or unknown anime id with this page and HTTP 404.
 _NOT_FOUND_SELECTOR = "div.error404"
-_NOT_FOUND_MARKER = 'class="error404"'
+# MAL's not-found page carries a div with the error404 class; matched among any
+# other classes and with either quote, as the wait's div.error404 selector is.
+_NOT_FOUND_MARKER = re.compile(r"""class=["'][^"']*\berror404\b""")
 
 _INTER_REQUEST_DELAY = 3.0
 
@@ -379,6 +382,19 @@ def _parse_trailer(raw: dict[str, Any]) -> MalTrailer | None:
         title=raw.get("trailer_title"),
         thumbnail=f"https://img.youtube.com/vi/{vid}/maxresdefault.jpg",
     )
+
+
+def _clean_page_url(page_url: str) -> str:
+    """Return a MAL page address without a trailing slash, query or fragment.
+
+    The gallery lives at this address plus ``/pics``, and it is the anime's
+    source address when the page has no canonical link.
+
+    >>> _clean_page_url("https://myanimelist.net/anime/21/One_Piece/?q=1#top")
+    'https://myanimelist.net/anime/21/One_Piece'
+    """
+    parts = urlsplit(page_url)
+    return urlunsplit((parts.scheme, parts.netloc, parts.path.rstrip("/"), "", ""))
 
 
 def _normalize_mal_url(path: str) -> str:
@@ -720,7 +736,7 @@ def _build_anime_from_raw(
 @cached_result(
     service="mal",
     key_prefix="mal_anime_scraped",
-    dependencies=[_extract_anime_from_html, _extract_pics_from_html],
+    dependencies=[_extract_anime_from_html, _fetch_pics_html, _extract_pics_from_html],
 )
 async def _fetch_mal_anime_data(url: str) -> dict[str, Any] | None:
     """Fetch and extract a MAL anime detail page via zendriver. Result is cached by URL.
@@ -753,7 +769,7 @@ async def _fetch_mal_anime_data(url: str) -> dict[str, Any] | None:
             logger.warning(f"No HTML from MAL anime page: {url}")
             return None
 
-        if _NOT_FOUND_MARKER in main_html:
+        if _NOT_FOUND_MARKER.search(main_html):
             logger.warning(f"MAL anime page not found: {url}")
             return None
 
@@ -762,7 +778,7 @@ async def _fetch_mal_anime_data(url: str) -> dict[str, Any] | None:
             logger.warning(f"Failed to extract data from MAL anime page: {url}")
             return None
 
-        canonical_url = raw.get("canonical_url") or final_url or url
+        canonical_url = _clean_page_url(raw.get("canonical_url") or final_url or url)
         await asyncio.sleep(_INTER_REQUEST_DELAY)
 
         pics_url = f"{canonical_url}/pics"
