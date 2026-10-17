@@ -34,15 +34,22 @@ class ProviderPage(BaseModel):
     # provider is the page's new address; on the fetched pages this is so only
     # for Anime-Planet renames.
     lands_on: str | None = None
+    # The key of the page this page was looked up through, as AnimeSchedule is
+    # found by MAL id. A link back to it is no evidence, so it is not a link.
+    found_by: str | None = None
     dead: bool = False
 
     @classmethod
-    def from_canonical_record(cls, address: str, record: dict[str, Any]) -> Self:
+    def from_canonical_record(
+        cls, address: str, record: dict[str, Any], found_by: str | None = None
+    ) -> Self:
         """Read a page's details from the canonical record fetched for it.
 
         Args:
             address: The page address that was fetched.
             record: The canonical anime record the provider's helper returned.
+            found_by: The address the provider was looked up by, when it was
+                found through another provider's page.
 
         Returns:
             The page's titles, type, year, season, links to other providers'
@@ -50,10 +57,11 @@ class ProviderPage(BaseModel):
         """
         key = provider_page_key(address)
         own_provider = provider_of_key(key)
+        found_by_key = _optional_key(found_by)
         linked = {
             provider_page_key(linked_address)
             for linked_address in _linked_addresses(record)
-        }
+        } - {found_by_key}
         renamed = sorted(
             linked_key
             for linked_key in linked - {key}
@@ -74,12 +82,23 @@ class ProviderPage(BaseModel):
                 )
             ),
             lands_on=renamed[0] if renamed else None,
+            found_by=found_by_key,
         )
 
     @classmethod
-    def dead_page(cls, address: str) -> Self:
+    def dead_page(cls, address: str, found_by: str | None = None) -> Self:
         """Record a page the provider no longer serves."""
-        return cls(key=provider_page_key(address), address=address, dead=True)
+        return cls(
+            key=provider_page_key(address),
+            address=address,
+            dead=True,
+            found_by=_optional_key(found_by),
+        )
+
+
+def _optional_key(address: str | None) -> str | None:
+    """Return the page key of an address, or None when there is no address."""
+    return provider_page_key(address) if address else None
 
 
 def _titles(record: dict[str, Any]) -> Iterator[str]:
