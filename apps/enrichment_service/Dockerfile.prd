@@ -54,9 +54,10 @@ COPY libs/common/src/              /app/libs/common/src/
 COPY libs/observability/src/       /app/libs/observability/src/
 COPY libs/http_cache/src/          /app/libs/http_cache/src/
 COPY libs/enrichment/src/          /app/libs/enrichment/src/
+COPY libs/work_matching/src/       /app/libs/work_matching/src/
 COPY apps/enrichment_service/src/  /app/apps/enrichment_service/src/
 
-ENV PYTHONPATH="/app/apps/enrichment_service/src:/app/libs/common/src:/app/libs/observability/src:/app/libs/http_cache/src:/app/libs/enrichment/src"
+ENV PYTHONPATH="/app/apps/enrichment_service/src:/app/libs/common/src:/app/libs/observability/src:/app/libs/http_cache/src:/app/libs/enrichment/src:/app/libs/work_matching/src"
 
 # /app/temp holds each run's provider files (ENRICHMENT_TEMP_DIR); it exists in
 # the image so a volume mounted there is owned by appuser. Xvfb running as

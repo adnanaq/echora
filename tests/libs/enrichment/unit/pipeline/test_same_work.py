@@ -7,30 +7,11 @@ two works merge into one, or one work ships twice.
 
 import json
 
-from enrichment.pipeline.same_work import OfflineDatabaseResolver, canonical_url_key
+from enrichment.pipeline.same_work import OfflineDatabaseResolver
 
 
 def _url(anime_id: int) -> str:
     return f"https://myanimelist.net/anime/{anime_id}"
-
-
-def test_anidb_legacy_url_resolves_to_the_same_work() -> None:
-    # MAL still links AniDB works through the old perl-bin address. Left
-    # unrecognised it resolves to nothing and reads as a separate work.
-    modern = canonical_url_key("https://anidb.net/anime/69")
-    assert (
-        canonical_url_key("https://anidb.net/perl-bin/animedb.pl?show=anime&aid=69")
-        == modern
-    )
-    assert (
-        canonical_url_key("http://anidb.net/perl-bin/animedb.pl?aid=69&show=anime")
-        == modern
-    )
-
-
-def test_anidb_legacy_non_anime_page_is_not_a_work() -> None:
-    url = "https://anidb.net/perl-bin/animedb.pl?show=character&charid=474"
-    assert canonical_url_key(url) == url
 
 
 def test_the_offline_database_places_every_url_of_one_work_together() -> None:
@@ -85,31 +66,3 @@ def test_the_offline_database_loads_from_a_file(tmp_path) -> None:
     resolver = OfflineDatabaseResolver.from_file(path)
     assert len(resolver) == 1
     assert resolver.resolve(_url(21)) is not None
-
-
-def test_canonical_url_key_ann_page_spellings_give_one_key() -> None:
-    assert {
-        canonical_url_key(url)
-        for url in (
-            "https://animenewsnetwork.com/encyclopedia/anime.php?id=836",
-            "https://www.animenewsnetwork.com/encyclopedia/anime.php?id=836",
-            "http://www.animenewsnetwork.com/encyclopedia/anime.php?id=836",
-            "https://www.animenewsnetwork.com/encyclopedia/anime.php?page=2&id=836",
-        )
-    } == {"ann:anime:836"}
-
-
-def test_canonical_url_key_ann_manga_page_gives_manga_key() -> None:
-    assert (
-        canonical_url_key(
-            "https://www.animenewsnetwork.com/encyclopedia/manga.php?id=1"
-        )
-        == "ann:manga:1"
-    )
-
-
-def test_canonical_url_key_ann_page_without_id_keeps_address() -> None:
-    url = "https://www.animenewsnetwork.com/encyclopedia/anime.php?list=A"
-    assert canonical_url_key(url) == (
-        "https://animenewsnetwork.com/encyclopedia/anime.php?list=a"
-    )

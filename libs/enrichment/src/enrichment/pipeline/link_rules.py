@@ -19,9 +19,9 @@ from typing import Any
 
 from common.models.anime import StreamingEntry
 from common.utils.id_generation import generate_deterministic_id
+from work_matching import provider_page_key
 
 from enrichment.pipeline.metadata_rules import Ranked, providers_supplying
-from enrichment.pipeline.same_work import canonical_url_key
 from enrichment.sources.base.external_links import (
     canonical_platform,
     normalize_link_url,
@@ -300,7 +300,7 @@ def merge_sources(ranked: Ranked, offline_data: dict[str, Any] | None) -> list[s
         for url in urls:
             if not url:
                 continue
-            key = canonical_url_key(url)
+            key = provider_page_key(url)
             if len(url) > len(best.get(key, "")):
                 best[key] = url
     return [url for key, url in best.items() if not _superseded_by_number(key, best)]
@@ -359,7 +359,7 @@ def merged_anime_id(sources: list[str]) -> str:
         ValueError: When ``sources`` is empty; a work with no URL has no
             identity to derive.
     """
-    keys = sorted({canonical_url_key(url) for url in sources if url})
+    keys = sorted({provider_page_key(url) for url in sources if url})
     if not keys:
         raise ValueError(f"Cannot derive an anime id from sources: {sources!r}")  # noqa: TRY003
     for provider in _ID_SEED_ORDER:

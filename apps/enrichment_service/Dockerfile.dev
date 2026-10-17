@@ -65,9 +65,10 @@ COPY libs/common/src/              /app/libs/common/src/
 COPY libs/observability/src/       /app/libs/observability/src/
 COPY libs/http_cache/src/          /app/libs/http_cache/src/
 COPY libs/enrichment/src/          /app/libs/enrichment/src/
+COPY libs/work_matching/src/       /app/libs/work_matching/src/
 COPY apps/enrichment_service/src/  /app/apps/enrichment_service/src/
 
-ENV PYTHONPATH="/app/apps/enrichment_service/src:/app/libs/common/src:/app/libs/observability/src:/app/libs/http_cache/src:/app/libs/enrichment/src"
+ENV PYTHONPATH="/app/apps/enrichment_service/src:/app/libs/common/src:/app/libs/observability/src:/app/libs/http_cache/src:/app/libs/enrichment/src:/app/libs/work_matching/src"
 
 # Xvfb running as appuser cannot create /tmp/.X11-unix itself. Chrome's own
 # sandbox cannot start as a non-root user under Docker's default seccomp
