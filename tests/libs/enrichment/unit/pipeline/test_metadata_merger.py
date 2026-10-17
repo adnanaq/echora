@@ -239,6 +239,14 @@ def test_id_ignores_slug_decoration() -> None:
     )
 
 
+def test_merged_anime_id_ann_only_work_ignores_address_spelling() -> None:
+    assert merged_anime_id(
+        ["https://animenewsnetwork.com/encyclopedia/anime.php?id=836"]
+    ) == merged_anime_id(
+        ["http://www.animenewsnetwork.com/encyclopedia/anime.php?id=836"]
+    )
+
+
 def test_id_requires_at_least_one_source() -> None:
     with pytest.raises(ValueError, match="Cannot derive an anime id"):
         merged_anime_id([])

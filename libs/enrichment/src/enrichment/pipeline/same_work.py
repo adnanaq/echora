@@ -60,6 +60,14 @@ _ID_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
         re.compile(r"^https?://(?:www\.)?anime-planet\.com/(anime|manga)/([^/?#]+)"),
         "animeplanet",
     ),
+    # ANN puts the id in the query, where its position and the scheme vary.
+    (
+        re.compile(
+            r"^https?://(?:www\.)?animenewsnetwork\.com/encyclopedia/(anime|manga)\.php\?"
+            r"(?:[^#]*&)?id=(\d+)"
+        ),
+        "ann",
+    ),
     (re.compile(r"^https?://(?:www\.)?livechart\.me/(anime)/(\d+)"), "livechart"),
     (re.compile(r"^https?://(?:www\.)?simkl\.com/(anime)/(\d+)"), "simkl"),
     (re.compile(r"^https?://(?:www\.)?animecountdown\.com/(\d+)()"), "animecountdown"),
