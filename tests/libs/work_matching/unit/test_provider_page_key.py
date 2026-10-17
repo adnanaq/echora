@@ -149,3 +149,7 @@ def test_page_id_of_key_recognised_key_gives_id() -> None:
 
 def test_page_id_of_key_unrecognised_key_gives_key() -> None:
     assert page_id_of_key("https://example.com/show") == "https://example.com/show"
+
+
+def test_page_id_of_key_id_with_colon_kept_whole() -> None:
+    assert page_id_of_key("animeplanet:anime:re:zero") == "re:zero"

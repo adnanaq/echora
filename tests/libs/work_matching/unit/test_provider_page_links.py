@@ -113,3 +113,13 @@ def test_provider_page_links_link_to_own_provider_page_ignored() -> None:
     )
     links = ProviderPageLinks([page], ["kitsu:anime:2"])
     assert links.linked_with("kitsu:anime:1") == frozenset()
+
+
+def test_provider_page_links_found_page_counts_for_lookup_page_not_given() -> None:
+    found = ProviderPage.from_canonical_record(
+        "https://animeschedule.net/anime/show",
+        {"title": "Show", "sources": ["https://anilist.co/anime/1"]},
+        found_by="https://myanimelist.net/anime/1",
+    )
+    links = ProviderPageLinks([found], ["anilist:anime:1"])
+    assert links.linked_with("mal:anime:1") == frozenset({"anilist:anime:1"})

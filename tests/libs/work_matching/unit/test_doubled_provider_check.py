@@ -375,3 +375,45 @@ def test_decide_doubled_providers_canonical_type_falls_under_one_seed_type(
         ].year_type_matches
     ]
     assert len(seed_types) == 1
+
+
+def test_decide_doubled_providers_link_to_own_provider_outside_entry_counts_as_no_link(
+    linked_page, work_entry
+) -> None:
+    entry = work_entry(
+        "https://myanimelist.net/anime/1",
+        "https://kitsu.app/anime/1",
+        "https://kitsu.app/anime/2",
+    )
+    pages = [
+        linked_page("https://kitsu.app/anime/1", "https://myanimelist.net/anime/1"),
+        ProviderPage(
+            key="kitsu:anime:2",
+            address="https://kitsu.app/anime/2",
+            links=("kitsu:anime:9",),
+        ),
+    ]
+    decision = _decisions(entry, pages)["kitsu"]
+    assert (decision.reason, decision.undecided) == (
+        Reason.UNDECIDED_PAGES,
+        ("kitsu:anime:2",),
+    )
+
+
+def test_decide_doubled_providers_multi_work_link_and_dead_page_multi_work_link_wins(
+    linked_page, work_entry
+) -> None:
+    entry = work_entry(
+        "https://myanimelist.net/anime/1",
+        "https://myanimelist.net/anime/2",
+        "https://anidb.net/anime/1",
+    )
+    pages = [
+        linked_page(
+            "https://anidb.net/anime/1",
+            "https://myanimelist.net/anime/1",
+            "https://myanimelist.net/anime/2",
+        ),
+        ProviderPage.dead_page("https://myanimelist.net/anime/2"),
+    ]
+    assert _decisions(entry, pages)["mal"].reason is Reason.MULTI_WORK_LINK

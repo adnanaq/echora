@@ -129,11 +129,14 @@ def provider_of_key(key: str) -> str | None:
 def page_id_of_key(key: str) -> str:
     """Return the id part of a page key, or the key itself when it is unrecognised.
 
+    A key is ``provider:kind:id``, and everything after the kind is the id,
+    even a slug holding a colon.
+
     Examples:
         >>> page_id_of_key("mal:anime:21")
         '21'
     """
-    return key.rpartition(":")[2] if provider_of_key(key) else key
+    return key.split(":", 2)[2] if provider_of_key(key) else key
 
 
 def has_repeated_provider(keys: Iterable[str]) -> bool:

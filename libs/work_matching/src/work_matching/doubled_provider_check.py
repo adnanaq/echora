@@ -245,15 +245,18 @@ class _EntryCheck:
         """Return a page's links naming another work.
 
         A link names another work when it points outside the entry, at a page
-        of a provider the entry has or at a page of another known work.
-        ``ProviderPageLinks`` holds the links within the entry; this reads the
-        links that leave it.
+        of a provider the entry has or at a page of another known work. A link
+        to a page of the page's own provider names nothing, as in
+        ``ProviderPageLinks``, which holds the links within the entry; this
+        reads the links that leave it.
         """
         page = self._details.get(key)
+        own_provider = provider_of_key(key)
         return frozenset(
             link
             for link in map(self._links.same_page, page.links if page else ())
             if link not in self._entry_pages
+            and provider_of_key(link) != own_provider
             and (
                 provider_of_key(link) in self._entry_providers
                 or self._known_works.find_by_page_key(link) is not None
