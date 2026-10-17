@@ -137,6 +137,16 @@ def test_extract_anime_from_html_one_piece_page_reads_trailer_background_and_rel
     assert len(raw["related_table_entries"]) >= 1
 
 
+def test_extract_anime_from_html_related_title_ending_in_brackets_keeps_whole_title(
+    mal_anime_kingdom_6th_season_html,
+) -> None:
+    raw = _extract_anime_from_html(mal_anime_kingdom_6th_season_html)
+    assert raw is not None
+    assert "Kingdom 6th Season (Zoku-hen)" in [
+        entry["title"] for entry in raw["related_tile_entries"]
+    ]
+
+
 def test_extract_anime_from_html_one_piece_page_reads_every_theme_song(
     mal_anime_html,
 ) -> None:
@@ -321,6 +331,21 @@ def test_build_anime_from_raw_one_piece_page_reads_related_entries_and_trailer(
     assert "One Piece" in related_titles
     assert any("Ganzack" in title for title in related_titles)
     assert anime.trailer is not None
+
+
+def test_build_anime_from_raw_related_title_ending_in_brackets_reads_type_from_relation(
+    mal_anime_kingdom_6th_season_html,
+) -> None:
+    raw = _extract_anime_from_html(mal_anime_kingdom_6th_season_html)
+    assert raw is not None
+    anime = _build_anime_from_raw(
+        raw, url="https://myanimelist.net/anime/61517", picture_urls=[]
+    )
+    assert [
+        (entry.relation, entry.title, entry.entry_type)
+        for entry in anime.related_entries
+        if entry.source.startswith("https://myanimelist.net/anime/63185")
+    ] == [("Sequel", "Kingdom 6th Season (Zoku-hen)", "Unknown")]
 
 
 def test_build_anime_from_raw_unknown_episode_count_gives_none(
@@ -561,21 +586,6 @@ def test_parse_all_related_entries_tile_gives_relation_title_and_type() -> None:
     assert [(entry.relation, entry.title, entry.entry_type) for entry in entries] == [
         ("Adaptation", "One Piece Manga", "Manga")
     ]
-
-
-def test_parse_all_related_entries_tile_with_stated_type_keeps_it() -> None:
-    raw = {
-        "related_tile_entries": [
-            {
-                "relation_raw": "Sequel\n(OVA)",
-                "title": "Test",
-                "entry_type": "Movie",
-                "source": "/anime/999",
-            },
-        ],
-        "related_table_entries": [],
-    }
-    assert _parse_all_related_entries(raw)[0].entry_type == "Movie"
 
 
 def test_parse_all_related_entries_table_link_type_gives_entry_type() -> None:

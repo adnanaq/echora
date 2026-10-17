@@ -215,19 +215,11 @@ def _extract_anime_from_html(html_text: str) -> dict[str, Any] | None:
         title_text = (
             "".join(title_anchors[0].itertext()).strip() if title_anchors else ""
         )
-        m = re.search(r"^(.*?)(?:\s*\([^)]+\))?\s*$", title_text)
-        entry_title = m.group(1).strip() if m else title_text
-
-        title_divs = cast(list[Any], entry.xpath(".//div[contains(@class,'title')]"))
-        div_text = "".join(title_divs[0].itertext()).strip() if title_divs else ""
-        type_m = re.search(r"\(([^)]+)\)\s*$", div_text)
-        entry_type = type_m.group(1) if type_m else None
 
         tile_entries.append(
             {
                 "relation_raw": relation_raw,
-                "title": entry_title,
-                "entry_type": entry_type,
+                "title": title_text,
                 "source": title_anchors[0].get("href") if title_anchors else None,
             }
         )
@@ -467,11 +459,8 @@ def _parse_all_related_entries(raw: dict[str, Any]) -> list[MalRelatedEntry]:
         rel_parts = [p.strip() for p in raw_rel.split("\n") if p.strip()]
         relation = rel_parts[0] if rel_parts else ""
 
-        entry_type = entry.get("entry_type")
-        if not entry_type and len(rel_parts) > 1:
-            type_match = re.search(r"\(([^)]+)\)", rel_parts[1])
-            if type_match:
-                entry_type = type_match.group(1)
+        type_match = len(rel_parts) > 1 and re.search(r"\(([^)]+)\)", rel_parts[1])
+        entry_type = type_match.group(1) if type_match else None
 
         unified_items.append(
             {
