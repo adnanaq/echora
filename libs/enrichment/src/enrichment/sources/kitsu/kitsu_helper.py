@@ -118,17 +118,16 @@ class KitsuHelper(BaseEnrichmentHelper):
             async with self._cache.get_aiohttp_session(
                 "kitsu", timeout=aiohttp.ClientTimeout(total=30)
             ) as session:
-                # Fetch anime first so we can extract the slug for episode URLs.
-                canonical_anime = await self.fetch_anime(
+                # Fetch anime first: episode pages are addressed by the anime's slug.
+                fetched = await self._fetch_anime_with_slug(
                     numeric_id, output_path=anime_path, session=session
                 )
 
-                if not canonical_anime:
+                if not fetched:
                     logger.warning(f"Kitsu returned no anime for ID {numeric_id}")
                     return None
 
-                sources = canonical_anime.get("sources", [])
-                anime_slug = sources[0].rsplit("/", 1)[-1] if sources else None
+                canonical_anime, anime_slug = fetched
 
                 async def _empty() -> list:
                     return []
@@ -564,68 +563,10 @@ class KitsuHelper(BaseEnrichmentHelper):
         Returns:
             Canonical anime dict, or ``None`` if the anime was not found.
         """
-        logger.info(f"Fetching Kitsu anime for: {anime_id}")
-        async with (
-            self._cache.get_aiohttp_session(
-                "kitsu", timeout=aiohttp.ClientTimeout(total=30)
-            )
-            if session is None
-            else nullcontext(session)
-        ) as active_session:  # type: ignore[attr-defined]
-            (
-                anime_raw,
-                genre_raw,
-                category_raw,
-                production_raw,
-                mapping_raw,
-            ) = await asyncio.gather(
-                self.get_anime_by_id(anime_id, session=active_session),
-                self.get_anime_genres(anime_id, session=active_session),
-                self.get_anime_categories(anime_id, session=active_session),
-                self.get_anime_productions(anime_id, session=active_session),
-                self.get_anime_mappings(anime_id, session=active_session),
-                return_exceptions=True,
-            )
-
-        if not anime_raw or isinstance(anime_raw, BaseException):
-            return None
-
-        genres: list[str] = []
-        if not isinstance(genre_raw, BaseException):
-            genres = [
-                name
-                for g in genre_raw
-                if (name := KitsuGenre.model_validate(g).attributes.name) is not None
-            ]
-
-        themes: list[ThemeEntry] = []
-        if not isinstance(category_raw, BaseException):
-            for c in category_raw:
-                cat = KitsuCategory.model_validate(c)
-                if cat.attributes.title:
-                    themes.append(
-                        ThemeEntry(
-                            name=cat.attributes.title,
-                            description=cat.attributes.description or None,
-                        )
-                    )
-
-        companies: list[KitsuProduction] = []
-        if isinstance(production_raw, list):
-            companies = production_raw
-
-        anime_model = KitsuAnime.model_validate(anime_raw)  # type: ignore[arg-type]
-        anime_model.genres = genres
-        anime_model.themes = themes
-        anime_model.companies = companies
-        if isinstance(mapping_raw, list):
-            anime_model.mappings = mapping_raw
-        result = anime_from_kitsu(anime_model)
-        logger.info(f"Kitsu anime fetched: {result.get('title', anime_id)}")
-
-        repo = FileRepository(output_path) if output_path else NullRepository()
-        repo.save(result)
-        return result
+        fetched = await self._fetch_anime_with_slug(
+            anime_id, output_path=output_path, session=session
+        )
+        return fetched[0] if fetched else None
 
     async def fetch_episodes(
         self,
@@ -732,6 +673,90 @@ class KitsuHelper(BaseEnrichmentHelper):
 
     async def close(self) -> None:
         """No-op — sessions are created per-request and managed by the cache manager."""
+
+    async def _fetch_anime_with_slug(
+        self,
+        anime_id: int,
+        *,
+        output_path: str | None = None,
+        session: Any | None = None,
+    ) -> tuple[dict[str, Any], str | None] | None:
+        """Fetch and map a Kitsu anime, keeping its slug for episode addresses.
+
+        The canonical record addresses the anime by number, but Kitsu serves
+        episode pages only under the anime's slug.
+
+        Args:
+            anime_id: Kitsu integer anime identifier.
+            output_path: If provided, write result as JSONL to this path.
+            session: Optional aiohttp session to reuse.
+
+        Returns:
+            The canonical anime dict and the anime's slug, or ``None`` if the
+            anime was not found.
+        """
+        logger.info(f"Fetching Kitsu anime for: {anime_id}")
+        async with (
+            self._cache.get_aiohttp_session(
+                "kitsu", timeout=aiohttp.ClientTimeout(total=30)
+            )
+            if session is None
+            else nullcontext(session)
+        ) as active_session:
+            (
+                anime_raw,
+                genre_raw,
+                category_raw,
+                production_raw,
+                mapping_raw,
+            ) = await asyncio.gather(
+                self.get_anime_by_id(anime_id, session=active_session),
+                self.get_anime_genres(anime_id, session=active_session),
+                self.get_anime_categories(anime_id, session=active_session),
+                self.get_anime_productions(anime_id, session=active_session),
+                self.get_anime_mappings(anime_id, session=active_session),
+                return_exceptions=True,
+            )
+
+        if not anime_raw or isinstance(anime_raw, BaseException):
+            return None
+
+        genres: list[str] = []
+        if not isinstance(genre_raw, BaseException):
+            genres = [
+                name
+                for g in genre_raw
+                if (name := KitsuGenre.model_validate(g).attributes.name) is not None
+            ]
+
+        themes: list[ThemeEntry] = []
+        if not isinstance(category_raw, BaseException):
+            for c in category_raw:
+                cat = KitsuCategory.model_validate(c)
+                if cat.attributes.title:
+                    themes.append(
+                        ThemeEntry(
+                            name=cat.attributes.title,
+                            description=cat.attributes.description or None,
+                        )
+                    )
+
+        companies: list[KitsuProduction] = []
+        if isinstance(production_raw, list):
+            companies = production_raw
+
+        anime_model = KitsuAnime.model_validate(anime_raw)  # type: ignore[arg-type]
+        anime_model.genres = genres
+        anime_model.themes = themes
+        anime_model.companies = companies
+        if isinstance(mapping_raw, list):
+            anime_model.mappings = mapping_raw
+        result = anime_from_kitsu(anime_model)
+        logger.info(f"Kitsu anime fetched: {result.get('title', anime_id)}")
+
+        repo = FileRepository(output_path) if output_path else NullRepository()
+        repo.save(result)
+        return result, anime_model.attributes.slug
 
     async def __aenter__(self) -> KitsuHelper:
         """Return self."""

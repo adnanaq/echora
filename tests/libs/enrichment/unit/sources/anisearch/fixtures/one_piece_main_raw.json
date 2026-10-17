@@ -1,7 +1,39 @@
 {
   "cover_image": "https://cdn.anisearch.com/images/anime/cover/2/2227_600.webp",
-  "title_alt": "ワンピース",
-  "title_ja": "One Piece",
+  "title_blocks": [
+    {
+      "language": "ja",
+      "title": "One Piece",
+      "native_titles": [
+        "ワンピース"
+      ]
+    },
+    {
+      "language": "en",
+      "title": "One Piece",
+      "native_titles": []
+    },
+    {
+      "language": "de",
+      "title": "One Piece",
+      "native_titles": []
+    },
+    {
+      "language": "es",
+      "title": "One Piece",
+      "native_titles": []
+    },
+    {
+      "language": "fr",
+      "title": "One Piece",
+      "native_titles": []
+    },
+    {
+      "language": "it",
+      "title": "One Piece",
+      "native_titles": []
+    }
+  ],
   "type": "Type: TV-Series, 1200 (~24 min, Total: ~20 d)",
   "status": "Status: Ongoing",
   "published": "Published: 20.10.1999 ‑ ?",

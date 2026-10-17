@@ -31,6 +31,11 @@ def mal_anime_html() -> str:
 
 
 @pytest.fixture(scope="session")
+def mal_anime_kingdom_6th_season_html() -> str:
+    return (_FIXTURES / "mal_anime_kingdom_6th_season.html").read_text(encoding="utf-8")
+
+
+@pytest.fixture(scope="session")
 def mal_anime_pics_html() -> str:
     return (_FIXTURES / "mal_anime_21_pics.html").read_text(encoding="utf-8")
 

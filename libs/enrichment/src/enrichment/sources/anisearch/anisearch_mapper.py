@@ -235,7 +235,9 @@ def anime_from_anisearch(anime: AniSearchAnime) -> dict[str, Any]:
 
     result = Anime(
         title=anime.title or anime.title_japanese or "",
+        title_english=anime.title_english,
         title_japanese=anime.title_japanese,
+        titles=anime.titles,
         synonyms=anime.synonyms,
         type=anime_type,
         source_material=source_material,

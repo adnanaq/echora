@@ -24,68 +24,10 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
-# Providers decorate their URLs differently from the offline database, which
-# stores the bare id: MAL appends a title slug as a path segment, AniSearch
-# appends ",slug" to the id. The id is the identity; the decoration is not.
-#
-# Every pattern is anchored and captures the id explicitly. Substring or prefix
-# comparison is not safe here - "/anime/466" is a prefix of "/anime/46633", and
-# treating those as equal silently fuses two unrelated works.
-_ID_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
-    (re.compile(r"^https?://(?:www\.)?myanimelist\.net/(anime|manga)/(\d+)"), "mal"),
-    (
-        re.compile(r"^https?://(?:www\.)?anisearch\.com/(anime|manga)/(\d+)"),
-        "anisearch",
-    ),
-    (re.compile(r"^https?://(?:www\.)?anilist\.co/(anime|manga)/(\d+)"), "anilist"),
-    (re.compile(r"^https?://(?:www\.)?anidb\.net/(anime)/(\d+)"), "anidb"),
-    # AniDB's legacy address for the same page. MAL still links works this way,
-    # and without this it resolves to nothing and reads as a separate work.
-    (
-        re.compile(
-            r"^https?://(?:www\.)?anidb\.net/perl-bin/animedb\.pl\?"
-            r"(?=[^#]*\bshow=(anime)\b)[^#]*\baid=(\d+)"
-        ),
-        "anidb",
-    ),
-    (
-        re.compile(r"^https?://(?:www\.)?kitsu\.(?:app|io)/(anime|manga)/([^/?#]+)"),
-        "kitsu",
-    ),
-    (
-        re.compile(r"^https?://(?:www\.)?anime-planet\.com/(anime|manga)/([^/?#]+)"),
-        "animeplanet",
-    ),
-    (re.compile(r"^https?://(?:www\.)?livechart\.me/(anime)/(\d+)"), "livechart"),
-    (re.compile(r"^https?://(?:www\.)?simkl\.com/(anime)/(\d+)"), "simkl"),
-    (re.compile(r"^https?://(?:www\.)?animecountdown\.com/(\d+)()"), "animecountdown"),
-)
-
-
-def canonical_url_key(url: str) -> str:
-    """Reduce a provider URL to the identity it denotes, dropping decoration.
-
-    MAL's title slug and AniSearch's ``,slug`` suffix are presentation only, so
-    ``/anime/466/One_Piece__Taose_Kaizoku_Ganzack`` and ``/anime/466`` are the
-    same work and must produce the same key.
-
-    Args:
-        url: A provider URL.
-
-    Returns:
-        A ``provider:kind:id`` key when the URL is recognised, otherwise the
-        lowercased URL with ``www.`` and any trailing slash removed.
-    """
-    for pattern, provider in _ID_PATTERNS:
-        match = pattern.match(url)
-        if match:
-            kind, identifier = match.group(1), match.group(2)
-            return f"{provider}:{kind}:{identifier.lower()}"
-    return url.lower().replace("://www.", "://").rstrip("/")
+from work_matching import provider_page_key
 
 
 @runtime_checkable
@@ -148,7 +90,7 @@ class OfflineDatabaseResolver:
             sources = entry.get("sources") or []
             work_id = self._work_id(sources)
             for url in sources:
-                self._by_url[canonical_url_key(url)] = work_id
+                self._by_url[provider_page_key(url)] = work_id
 
     def __len__(self) -> int:
         """Return how many URLs are indexed."""
@@ -169,7 +111,7 @@ class OfflineDatabaseResolver:
             An ``aod:<digest>`` identifier derived from the sorted URLs. The
             digest is for identity only, never security.
         """
-        canonical = "|".join(sorted(canonical_url_key(url) for url in sources))
+        canonical = "|".join(sorted(provider_page_key(url) for url in sources))
         return f"aod:{hashlib.blake2s(canonical.encode(), digest_size=8).hexdigest()}"
 
     @classmethod
@@ -196,4 +138,4 @@ class OfflineDatabaseResolver:
             An ``aod:<digest>`` identifier, or ``None`` if the URL is not
             indexed by this database.
         """
-        return self._by_url.get(canonical_url_key(url))
+        return self._by_url.get(provider_page_key(url))

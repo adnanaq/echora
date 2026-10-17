@@ -7,30 +7,11 @@ two works merge into one, or one work ships twice.
 
 import json
 
-from enrichment.pipeline.same_work import OfflineDatabaseResolver, canonical_url_key
+from enrichment.pipeline.same_work import OfflineDatabaseResolver
 
 
 def _url(anime_id: int) -> str:
     return f"https://myanimelist.net/anime/{anime_id}"
-
-
-def test_anidb_legacy_url_resolves_to_the_same_work() -> None:
-    # MAL still links AniDB works through the old perl-bin address. Left
-    # unrecognised it resolves to nothing and reads as a separate work.
-    modern = canonical_url_key("https://anidb.net/anime/69")
-    assert (
-        canonical_url_key("https://anidb.net/perl-bin/animedb.pl?show=anime&aid=69")
-        == modern
-    )
-    assert (
-        canonical_url_key("http://anidb.net/perl-bin/animedb.pl?aid=69&show=anime")
-        == modern
-    )
-
-
-def test_anidb_legacy_non_anime_page_is_not_a_work() -> None:
-    url = "https://anidb.net/perl-bin/animedb.pl?show=character&charid=474"
-    assert canonical_url_key(url) == url
 
 
 def test_the_offline_database_places_every_url_of_one_work_together() -> None:

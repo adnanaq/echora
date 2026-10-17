@@ -76,6 +76,7 @@ from enrichment.pipeline.metadata_rules import (
     merge_title,
     merge_title_japanese,
     provider_supplied,
+    providers_supplying,
 )
 from enrichment.pipeline.relationship_merger import (
     PROVIDER_PRIORITY,
@@ -85,6 +86,7 @@ from enrichment.pipeline.relationship_merger import (
     merge_provider_records as merge_relationships,
 )
 from enrichment.sources.base.external_links import normalize_link_url
+from enrichment.utils.text_utils import fold_for_comparison
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +113,6 @@ _FIRST_SIGNAL: tuple[str, ...] = (
 _SINGLE_SOURCE: tuple[str, ...] = (
     "background",
     "hiatus",
-    "titles",
 )
 
 
@@ -202,6 +203,31 @@ def _union_values(ranked: Ranked, field: str) -> list[Any]:
     return list(seen.values())
 
 
+def _merge_titles(ranked: Ranked) -> dict[str, str]:
+    """Join the providers' titles by language, the most trusted provider first.
+
+    The first provider's titles are kept as given. A later provider adds a
+    title only for a language not yet filled and only when the same title is
+    not already there under another code, such as ``zh`` against ``zh-Hans``.
+
+    Args:
+        ranked: Provider records in priority order.
+
+    Returns:
+        Titles keyed by language code.
+    """
+    providers = iter(providers_supplying(ranked, "titles"))
+    merged: dict[str, str] = dict(next(providers, (None, {}))[1])
+    known = {fold_for_comparison(title) for title in merged.values()}
+    for _, titles in providers:
+        for language, title in titles.items():
+            folded = fold_for_comparison(title)
+            if language not in merged and folded not in known:
+                merged[language] = title
+                known.add(folded)
+    return merged
+
+
 def merge_provider_records(
     records: dict[str, dict[str, Any]],
     offline_data: dict[str, Any] | None = None,
@@ -226,6 +252,10 @@ def merge_provider_records(
         value = _first_signal(ranked, field, warn=field in _FIRST_SIGNAL)
         if value is not None:
             merged[field] = value
+
+    titles = _merge_titles(ranked)
+    if titles:
+        merged["titles"] = titles
 
     for field in ("title", "title_english"):
         title = merge_title(ranked, field)

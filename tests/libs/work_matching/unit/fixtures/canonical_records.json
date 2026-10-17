@@ -1,0 +1,143 @@
+{
+ "https://kitsu.app/anime/12": {
+  "title": "One Piece",
+  "title_english": "One Piece",
+  "title_japanese": "ONE PIECE",
+  "titles": {},
+  "type": "TV",
+  "year": 1999,
+  "season": "FALL",
+  "sources": [
+   "https://kitsu.app/anime/12"
+  ],
+  "external_sources": [
+   {
+    "platform": "myanimelist",
+    "source": "https://myanimelist.net/anime/21"
+   },
+   {
+    "platform": "thetvdb",
+    "source": "https://thetvdb.com/dereferrer/series/81797"
+   },
+   {
+    "platform": "anidb",
+    "source": "https://anidb.net/anime/69"
+   },
+   {
+    "platform": "trakt",
+    "source": "https://trakt.tv/shows/37696"
+   },
+   {
+    "platform": "anilist",
+    "source": "https://anilist.co/anime/21"
+   }
+  ]
+ },
+ "https://myanimelist.net/anime/21": {
+  "title": "One Piece",
+  "title_english": "One Piece",
+  "title_japanese": "ONE PIECE",
+  "titles": {},
+  "type": "TV",
+  "year": 1999,
+  "season": "FALL",
+  "sources": [
+   "https://myanimelist.net/anime/21/One_Piece"
+  ],
+  "external_sources": [
+   {
+    "platform": "official_site",
+    "source": "http://www.toei-anim.co.jp/tv/onep/",
+    "label": "Official Site"
+   },
+   {
+    "platform": "twitter",
+    "source": "https://twitter.com/OnePieceAnime",
+    "label": "@OnePieceAnime"
+   },
+   {
+    "platform": "youtube",
+    "source": "https://www.youtube.com/@onepieceofficial",
+    "label": "YouTube"
+   },
+   {
+    "platform": "anidb",
+    "source": "https://anidb.net/perl-bin/animedb.pl?show=anime&aid=69",
+    "label": "AniDB"
+   },
+   {
+    "platform": "anime_news_network",
+    "source": "https://www.animenewsnetwork.com/encyclopedia/anime.php?id=836",
+    "label": "ANN"
+   },
+   {
+    "platform": "wikipedia_en",
+    "source": "https://en.wikipedia.org/wiki/One_Piece#Anime",
+    "label": "Wikipedia"
+   },
+   {
+    "platform": "wikipedia_ja",
+    "source": "https://ja.wikipedia.org/wiki/ONE_PIECE_%28%E3%82%A2%E3%83%8B%E3%83%A1%29",
+    "label": "Wikipedia"
+   },
+   {
+    "platform": "syoboi",
+    "source": "https://cal.syoboi.jp/tid/350",
+    "label": "Syoboi"
+   },
+   {
+    "platform": "bangumi",
+    "source": "https://bangumi.tv/subject/975",
+    "label": "Bangumi"
+   },
+   {
+    "platform": "baidu_baike",
+    "source": "https://baike.baidu.com/item/%E8%88%AA%E6%B5%B7%E7%8E%8B/6616881",
+    "label": "Baidu Baike"
+   },
+   {
+    "platform": "douban",
+    "source": "https://movie.douban.com/subject/1453238/",
+    "label": "Douban"
+   }
+  ]
+ },
+ "https://anime-planet.com/anime/cocoon-aru-natsu-no-shoujo-tachi-yori": {
+  "title": "Cocoon: One Summer of Girlhood",
+  "title_english": null,
+  "title_japanese": "Cocoon: Aru Natsu no Shoujo-tachi Yori",
+  "titles": {},
+  "type": "TV SPECIAL",
+  "year": 2025,
+  "season": "SPRING",
+  "sources": [
+   "https://www.anime-planet.com/anime/cocoon-one-summer-of-girlhood"
+  ],
+  "external_sources": []
+ },
+ "https://anisearch.com/anime/13751": {
+  "title": "Mo Dao Zu Shi: Qianchen Pian",
+  "title_english": "The Founder of Diabolism",
+  "title_japanese": "魔道祖師 前塵編",
+  "titles": {
+   "zh": "魔道祖师 前尘篇",
+   "x-jat": "Madou Soshi: Zenjin Hen",
+   "de": "Der Begründer des Diabolismus",
+   "es": "El fundador del satanismo",
+   "fr": "Le Fondateur du diabolisme"
+  },
+  "type": "ONA",
+  "year": 2018,
+  "season": "SUMMER",
+  "sources": [
+   "https://www.anisearch.com/anime/13751,mo-dao-zu-shi-qianchen-pian"
+  ],
+  "external_sources": [
+   {
+    "platform": "mdzs",
+    "source": "https://mdzs.jp/anime/",
+    "label": "Mdzs"
+   }
+  ]
+ }
+}

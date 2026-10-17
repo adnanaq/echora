@@ -39,8 +39,10 @@ _IMG_SRC_RE = re.compile(r'<img src="([^"]+)"')
 _XPATHS: dict[str, str] = {
     # Main page
     "cover_image": "//section[@id='information']//img[@id='details-cover']/@src",
-    "title_alt": "//section[@id='information']//div[contains(@class,'title') and @lang='ja']//div[contains(@class,'grey')]",
-    "title_ja": "//section[@id='information']//div[contains(@class,'title') and @lang='ja']//strong[contains(@class,'f16')]",
+    # One block per language, the work's original language first
+    "title_blocks": "//section[@id='information']//div[contains(@class,'title') and @lang]",
+    "title_block_main": ".//strong[contains(@class,'f16')]",
+    "title_block_native": ".//div[contains(@class,'grey')]",
     "type": "//section[@id='information']//div[contains(@class,'type')]",
     "status": "//section[@id='information']//div[contains(@class,'status')]",
     "published": "//section[@id='information']//div[contains(@class,'released')]",
@@ -84,12 +86,29 @@ def _extract_anime_from_html(html_text: str) -> dict[str, Any] | None:
     except Exception:  # pragma: no cover
         return None  # pragma: no cover
 
+    def _element_text(element: Any) -> str:
+        return re.sub(r" {2,}", " ", "".join(element.itertext())).strip()
+
     def _text(key: str) -> str | None:
         els = cast(list[Any], tree.xpath(_XPATHS[key]))
-        if not els:
-            return None
-        raw = "".join(els[0].itertext())
-        return re.sub(r" {2,}", " ", raw).strip() or None
+        return (_element_text(els[0]) or None) if els else None
+
+    def _title_blocks() -> list[dict[str, Any]]:
+        """Read each language's title block as it stands on the page."""
+        return [
+            {
+                "language": block.get("lang"),
+                "title": next(
+                    map(_element_text, block.xpath(_XPATHS["title_block_main"])),
+                    None,
+                ),
+                "native_titles": [
+                    _element_text(line)
+                    for line in block.xpath(_XPATHS["title_block_native"])
+                ],
+            }
+            for block in cast(list[Any], tree.xpath(_XPATHS["title_blocks"]))
+        ]
 
     def _attr(key: str) -> str | None:
         vals = cast(list[str], tree.xpath(_XPATHS[key]))
@@ -122,8 +141,7 @@ def _extract_anime_from_html(html_text: str) -> dict[str, Any] | None:
 
     return {
         "cover_image": _attr("cover_image"),
-        "title_alt": _text("title_alt"),
-        "title_ja": _text("title_ja"),
+        "title_blocks": _title_blocks(),
         "type": _text("type"),
         "status": _text("status"),
         "published": _text("published"),
@@ -299,8 +317,7 @@ def _build_anime_from_raw(raw: dict[str, Any], url: str) -> AniSearchAnime:
     """Construct the AniSearchAnime source model from the cached page text."""
     return AniSearchAnime.model_validate(
         {
-            "title": raw.get("title_ja"),
-            "title_japanese": raw.get("title_alt"),
+            "title_blocks": raw.get("title_blocks", []),
             "synonyms": raw.get("synonyms"),
             "type": raw.get("type"),
             "source_material": raw.get("source_material"),

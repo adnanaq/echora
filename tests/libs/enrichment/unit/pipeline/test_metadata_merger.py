@@ -125,12 +125,20 @@ def test_sources_union_the_offline_seed_and_the_providers() -> None:
     ]
 
 
-def test_numeric_url_drops_when_a_slug_names_the_same_work() -> None:
-    # Kitsu is addressable both ways and the two halves disagree on which to
-    # use, so the same anime arrives as two URLs.
+def test_merge_provider_records_kitsu_slug_beside_number_keeps_number() -> None:
     merged = merge_provider_records(
-        {"kitsu": _record(sources=["https://kitsu.io/anime/one-piece"])},
+        {
+            "kitsu": _record(sources=["https://kitsu.app/anime/12"]),
+            "animeschedule": _record(sources=["https://kitsu.io/anime/one-piece"]),
+        },
         {"sources": ["https://kitsu.app/anime/12"]},
+    )
+    assert merged["sources"] == ["https://kitsu.app/anime/12"]
+
+
+def test_merge_provider_records_kitsu_slug_alone_kept() -> None:
+    merged = merge_provider_records(
+        {"animeschedule": {"sources": ["https://kitsu.io/anime/one-piece"]}}
     )
     assert merged["sources"] == ["https://kitsu.io/anime/one-piece"]
 
@@ -236,6 +244,14 @@ def test_id_is_stable_across_differing_provider_coverage() -> None:
 def test_id_ignores_slug_decoration() -> None:
     assert merged_anime_id([_MAL_URL]) == merged_anime_id(
         ["https://myanimelist.net/anime/21"]
+    )
+
+
+def test_merged_anime_id_ann_only_work_ignores_address_spelling() -> None:
+    assert merged_anime_id(
+        ["https://animenewsnetwork.com/encyclopedia/anime.php?id=836"]
+    ) == merged_anime_id(
+        ["http://www.animenewsnetwork.com/encyclopedia/anime.php?id=836"]
     )
 
 
@@ -792,3 +808,60 @@ def test_merge_agent_metadata_reads_the_per_provider_files(tmp_path) -> None:
     merged = merge_agent_metadata(tmp_path)
     assert merged["type"] == "TV"
     assert merged["year"] == 1999
+
+
+def test_merge_provider_records_titles_keep_first_provider_titles_unchanged() -> None:
+    merged = merge_provider_records(
+        {
+            "anidb": _record(titles={"zh-Hans": "海贼王", "zh-Hant": "海贼王"}),
+            "anisearch": _record(titles={"de": "One Piece Staffel"}),
+        }
+    )
+    assert merged["titles"] == {
+        "zh-Hans": "海贼王",
+        "zh-Hant": "海贼王",
+        "de": "One Piece Staffel",
+    }
+
+
+def test_merge_provider_records_titles_language_already_present_keeps_first_provider_title() -> (
+    None
+):
+    merged = merge_provider_records(
+        {
+            "anisearch": _record(titles={"de": "Tower of God: Staffel 2"}),
+            "anidb": _record(titles={"de": "Kami no Tou"}),
+        }
+    )
+    assert merged["titles"] == {"de": "Kami no Tou"}
+
+
+def test_merge_provider_records_titles_same_text_under_other_language_dropped() -> None:
+    merged = merge_provider_records(
+        {
+            "anidb": _record(titles={"zh-Hans": "巴啦啦小魔仙之奇迹舞步"}),
+            "anisearch": _record(
+                titles={"zh": "巴啦啦小魔仙之奇迹舞步", "ko": "바라라"}
+            ),
+        }
+    )
+    assert merged["titles"] == {"zh-Hans": "巴啦啦小魔仙之奇迹舞步", "ko": "바라라"}
+
+
+def test_merge_provider_records_titles_later_provider_repeating_title_kept_once() -> (
+    None
+):
+    merged = merge_provider_records(
+        {
+            "anidb": _record(titles={"en": "One Piece"}),
+            "anisearch": _record(titles={"zh": "海贼王", "zh-Hans": "海贼王"}),
+        }
+    )
+    assert merged["titles"] == {"en": "One Piece", "zh": "海贼王"}
+
+
+def test_merge_provider_records_titles_none_supplied_leaves_titles_out() -> None:
+    merged = merge_provider_records(
+        {"mal": _record(titles={}), "anisearch": _record(titles={})}
+    )
+    assert "titles" not in merged

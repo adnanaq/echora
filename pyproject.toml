@@ -128,6 +128,7 @@ extra-paths = [
     "libs/qdrant_db/src",
     "libs/vector_db_interface/src",
     "libs/vector_processing/src",
+    "libs/work_matching/src",
     "apps/enrichment_service/src",
     "apps/vector_service/src",
     "stubs",  # Custom third-party type stubs

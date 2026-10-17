@@ -184,7 +184,8 @@ echora/
 │   ├── qdrant_db/                 # Vector database client
 │   ├── http_cache/                # HTTP caching (Hishel + Redis)
 │   ├── enrichment/                # Data enrichment pipeline
-│   └── vector_db_interface/       # Abstract DB interface
+│   ├── vector_db_interface/       # Abstract DB interface
+│   └── work_matching/             # Which provider pages belong to the same work
 │
 ├── tests/                         # Test suite (mirrors libs/)
 ├── data/                          # Data files & Qdrant storage
@@ -199,6 +200,7 @@ echora/
 - **Vector Processing** (`libs/vector_processing/`) - BGE-M3 text (1024-dim) + OpenCLIP image (768-dim) embeddings
 - **Qdrant Client** (`libs/qdrant_db/`) - Vector DB operations with quantization & multi-vector support
 - **HTTP Cache** (`libs/http_cache/`) - RFC 9111 compliant caching with Redis backend
+- **Work Matching** (`libs/work_matching/`) - Work entries, provider page keys and details, and the known-works lookup by page or by title, type and year; imports nothing from enrichment
 - **Enrichment Pipeline** (`libs/enrichment/`)
 
 - **API Helpers**: Integration with 6+ external anime APIs (AniList, Kitsu, AniDB, etc.)

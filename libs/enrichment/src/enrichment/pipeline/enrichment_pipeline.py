@@ -378,7 +378,7 @@ async def main() -> int:  # pragma: no cover
         "sources": [
             "https://myanimelist.net/anime/21/One_Piece",
             "https://anilist.co/anime/21",
-            "https://kitsu.io/anime/one-piece",
+            "https://kitsu.app/anime/12",
         ],
         "title": "One Piece",
         "episodes": 1000,

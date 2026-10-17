@@ -269,7 +269,7 @@ def test_anime_from_kitsu_full():
     assert result["genres"] == ["Action", "Adventure", "Comedy"]
     assert result["themes"][0]["name"] == "Pirate"
     assert result["synonyms"] == ["OP"]
-    assert result["sources"] == ["https://kitsu.io/anime/one-piece"]
+    assert result["sources"] == ["https://kitsu.app/anime/12"]
     assert result["images"]["posters"] == ["https://example.com/poster.jpg"]
     assert result["images"]["covers"] == ["https://example.com/cover.jpg"]
     assert result["statistics"]["kitsu"]["score"] == pytest.approx(8.34, abs=0.01)
@@ -300,6 +300,11 @@ def test_anime_from_kitsu_minimal():
     assert result["genres"] == []
     assert result["trailers"] == []  # empty list, not None
     assert "aired_dates" not in result  # no startDate → excluded
+
+
+def test_anime_from_kitsu_without_slug_gives_numeric_page() -> None:
+    anime = KitsuAnime(id="99", attributes=KitsuAnimeAttributes(canonicalTitle="Test"))
+    assert anime_from_kitsu(anime)["sources"] == ["https://kitsu.app/anime/99"]
 
 
 def test_anime_from_kitsu_r18_rating():
@@ -401,10 +406,10 @@ def test_character_from_kitsu():
     assert len(result["animeography"]) == 1
     assert result["animeography"][0]["title"] == "One Piece"
     assert result["animeography"][0]["role"] == "MAIN"
-    assert result["animeography"][0]["sources"] == ["https://kitsu.io/anime/one-piece"]
+    assert result["animeography"][0]["sources"] == ["https://kitsu.app/anime/12"]
 
     assert len(result["mangaography"]) == 1
-    assert result["mangaography"][0]["sources"] == ["https://kitsu.io/manga/one-piece"]
+    assert result["mangaography"][0]["sources"] == ["https://kitsu.app/manga/12"]
 
 
 def test_character_from_kitsu_skips_voice_without_person():

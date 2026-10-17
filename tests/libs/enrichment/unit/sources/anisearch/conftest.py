@@ -29,6 +29,16 @@ def one_piece_main_raw() -> dict:
 
 
 @pytest.fixture(scope="session")
+def balala_the_fairies_2_main_html() -> str:
+    return (_FIXTURES / "balala_the_fairies_2_main.html").read_text()
+
+
+@pytest.fixture(scope="session")
+def mo_dao_zu_shi_main_html() -> str:
+    return (_FIXTURES / "mo_dao_zu_shi_main.html").read_text()
+
+
+@pytest.fixture(scope="session")
 def one_piece_relations_raw() -> dict:
     return json.loads((_FIXTURES / "one_piece_relations_raw.json").read_text())
 
