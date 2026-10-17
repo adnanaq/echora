@@ -62,7 +62,7 @@ class Reason(StrEnum):
     ONE_LINKED = "one page is linked with the entry and the others link other works"
     SHARED_LINK = "every linked page is linked with one same page of the entry"
     LINKED_APART = "the linked pages are linked with separate pages of the entry"
-    MULTI_WORK_LINK = "a page linking several pages of one provider links these pages"
+    MULTI_WORK_LINK = "a multi-work page links these pages"
     DEAD_PAGE = "a page is no longer served"
     CONTRADICTING_LINKS = "a page is linked with the entry and links another work"
     UNDECIDED_PAGES = "a page is neither linked with the entry nor links another work"
@@ -126,8 +126,8 @@ def decide_doubled_providers(
 
     Args:
         entry: The work entry.
-        pages: Details of the entry's fetched pages, and of pages found through
-            them, such as AnimeSchedule's.
+        pages: Details of the entry's fetched pages, and of the found pages
+            whose lookup page is one of them, such as AnimeSchedule's.
         known_works: The works already known, to name the work an unrelated
             page links to.
 

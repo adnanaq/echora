@@ -4,11 +4,10 @@ A link from page A to page B ties the two together whichever page holds it, so
 a link is kept as an undirected edge. Only links between pages of the group
 count: a link to a page outside it says nothing about the group's pages.
 
-A page found through another provider's page, as AnimeSchedule is found by MAL
-id, is that provider's record of the same work. Its links count as links of the
-page it was found through, so the two stay one page here. This is followed one
-step: the page a page was found through is a page of the provider looked up by,
-never a found page itself.
+A found page, such as an AnimeSchedule page found by MAL id, is that provider's
+record of the same work as its lookup page. Its links count as links of the
+lookup page, so the two stay one page here. This is followed one step: a lookup
+page is a page of the provider looked up by, never a found page itself.
 """
 
 from collections import defaultdict
@@ -22,10 +21,10 @@ from work_matching.provider_page_key import has_repeated_provider
 class ProviderPageLinks:
     """The links between a group's provider pages, renamed and found pages folded.
 
-    A page that names two or more pages of one provider, such as an anthology
-    page covering several works, is no evidence that any of them is its work.
-    Its links are kept apart and do not count. A found page names the page it
-    was found through as well as the pages it links.
+    A multi-work page, one that names two or more pages of one provider such as
+    an anthology page covering several works, is no evidence that any of them is
+    its work. Its links are kept apart and do not count. A found page names its
+    lookup page as well as the pages it links.
     """
 
     def __init__(
@@ -40,7 +39,7 @@ class ProviderPageLinks:
         """
         pages = tuple(pages)
         self._lands_on = {page.key: page.lands_on for page in pages if page.lands_on}
-        self._found_through = {
+        self._lookup_pages = {
             page.key: self.same_page(page.found_by) for page in pages if page.found_by
         }
         group = set(map(self._node, chain(page_keys, (page.key for page in pages))))
@@ -73,7 +72,7 @@ class ProviderPageLinks:
     def _node(self, key: str) -> str:
         """Return the key a page's links are kept under.
 
-        A found page's links are kept under the page it was found through, and
-        a renamed page's under its new key.
+        A found page's links are kept under its lookup page, and a renamed
+        page's under its new key.
         """
-        return self._found_through.get(key) or self.same_page(key)
+        return self._lookup_pages.get(key) or self.same_page(key)

@@ -18,7 +18,7 @@ imports nothing from `enrichment`.
 | **Seed** | The downloaded anime-offline-database file the enrichment pipeline starts from. |
 | **Seed entry** | One row of the seed: a title, type, year, season and a list of provider pages. |
 | **Work entry** | One work as this library sees it (`WorkEntry`): title, type, year, season and its pages by key. Built from a seed entry, later also from discovery. |
-| **Known works** | All work entries, looked up by page key or by title, type and year (`KnownWorks`, backed by the seed in `KnownWorksFromSeed`). |
+| **Known works** | All work entries, looked up by page key or by title, type and year (`KnownWorks`, backed by the seed in `KnownWorksFromSeed`). The seed lookup also reports pages listed in several entries and entries without pages. |
 | **Linked** | Two pages are linked when either one lists the other among its links to other providers. Direction does not matter. |
 | **Doubled provider** | An entry listing two or more pages of one provider. It may be one page under two addresses, one work the provider lists twice, or two works mixed into one entry. Checking tells which. |
 | **Mixed entry** | An entry whose pages cover more than one work. Puu-Neko holds the pages of both "Puu-Neko" and "Puu-Neko Shougekijou". |
@@ -27,6 +27,7 @@ imports nothing from `enrichment`.
 | **Renamed page** | A page whose address moved; the old address lands on the new one. Anime-Planet renames pages. The old and new address are one page. |
 | **Found page** | A page found through another provider's page rather than listed in the seed. AnimeSchedule is looked up by MAL, AniList or AniDB id. |
 | **Lookup page** | The page a found page was found through, recorded as `ProviderPage.found_by`. |
+| **Dead page** | A page the provider no longer serves (`ProviderPage.dead`). |
 | **Multi-work page** | A page naming two or more pages of one provider, such as an anthology page linking several MAL pages. Its links prove nothing. |
 | **Review** | A decision the rules do not settle. A person (later the review agent) answers it. |
 

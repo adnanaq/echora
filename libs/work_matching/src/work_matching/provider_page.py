@@ -34,7 +34,7 @@ class ProviderPage(BaseModel):
     # provider is the page's new address; on the fetched pages this is so only
     # for Anime-Planet renames.
     lands_on: str | None = None
-    # The key of the page this page was looked up through, as AnimeSchedule is
+    # The key of the lookup page, when this is a found page: AnimeSchedule is
     # found by MAL id. A link back to it is no evidence, so it is not a link.
     found_by: str | None = None
     dead: bool = False
@@ -48,8 +48,8 @@ class ProviderPage(BaseModel):
         Args:
             address: The page address that was fetched.
             record: The canonical anime record the provider's helper returned.
-            found_by: The address the provider was looked up by, when it was
-                found through another provider's page.
+            found_by: The address of the lookup page, when the page was found
+                through another provider's page.
 
         Returns:
             The page's titles, type, year, season, links to other providers'
@@ -87,7 +87,7 @@ class ProviderPage(BaseModel):
 
     @classmethod
     def dead_page(cls, address: str, found_by: str | None = None) -> Self:
-        """Record a page the provider no longer serves."""
+        """Record a dead page: one the provider no longer serves."""
         return cls(
             key=provider_page_key(address),
             address=address,

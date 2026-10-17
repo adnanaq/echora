@@ -81,7 +81,7 @@ def test_known_works_from_seed_page_in_two_entries_reported_and_first_kept() -> 
             },
         ]
     )
-    assert works.duplicate_pages == frozenset({"mal:anime:1"})
+    assert works.pages_in_several_entries == frozenset({"mal:anime:1"})
     work = works.find_by_page(shared)
     assert work is not None
     assert work.title == "First"
@@ -106,7 +106,7 @@ def test_known_works_from_seed_from_file_counts_every_entry(
 ) -> None:
     works = KnownWorksFromSeed.from_file(seed_file)
     assert len(works) == len(seed_entries)
-    assert works.duplicate_pages == frozenset()
+    assert works.pages_in_several_entries == frozenset()
 
 
 def test_known_works_from_seed_satisfies_known_works_lookup(seed_entries) -> None:
