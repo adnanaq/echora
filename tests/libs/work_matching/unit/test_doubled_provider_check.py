@@ -417,3 +417,28 @@ def test_decide_doubled_providers_multi_work_link_and_dead_page_multi_work_link_
         ProviderPage.dead_page("https://myanimelist.net/anime/2"),
     ]
     assert _decisions(entry, pages)["mal"].reason is Reason.MULTI_WORK_LINK
+
+
+def test_decide_doubled_providers_renamed_page_only_old_address_keeps_details(
+    linked_page, work_entry
+) -> None:
+    entry = work_entry(
+        "https://myanimelist.net/anime/1",
+        "https://anime-planet.com/anime/old",
+        "https://anime-planet.com/anime/other",
+    )
+    pages = [
+        linked_page(
+            "https://anime-planet.com/anime/old",
+            "https://anime-planet.com/anime/new",
+            "https://myanimelist.net/anime/9",
+        ),
+        linked_page(
+            "https://anime-planet.com/anime/other", "https://myanimelist.net/anime/1"
+        ),
+    ]
+    decision = _decisions(entry, pages)["animeplanet"]
+    assert (decision.reason, set(decision.unrelated)) == (
+        Reason.ONE_LINKED,
+        {"animeplanet:anime:new"},
+    )

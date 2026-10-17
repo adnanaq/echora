@@ -160,14 +160,21 @@ def decide_doubled_providers(
 
 
 class _EntryCheck:
-    """The links and details of one entry's pages, shared by its decisions."""
+    """The links and details of one entry's pages, shared by its decisions.
+
+    A renamed page's details are found under its current key too, unless the
+    page was also fetched at its current address.
+    """
 
     def __init__(
         self, entry: WorkEntry, pages: Iterable[ProviderPage], known_works: KnownWorks
     ) -> None:
         self._entry = entry
-        self._details = {page.key: page for page in pages}
-        self._links = ProviderPageLinks(self._details.values(), entry.pages)
+        fetched = {page.key: page for page in pages}
+        self._links = ProviderPageLinks(fetched.values(), entry.pages)
+        self._details = {
+            self._links.same_page(key): page for key, page in fetched.items()
+        } | fetched
         self._known_works = known_works
         self._entry_pages = frozenset(map(self._links.same_page, entry.pages))
         self._entry_providers = frozenset(map(provider_of_key, self._entry_pages))
