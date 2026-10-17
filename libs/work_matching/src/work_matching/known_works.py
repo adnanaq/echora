@@ -32,4 +32,8 @@ class KnownWorks(Protocol):
             work_type: The work's type; only works of this type are returned.
             year: The work's year. A work matches when the years are equal or
                 either side has no year.
+
+        Returns:
+            The matching works, in the order the works became known. Several can match, so a caller
+            must not take the first as the answer.
         """

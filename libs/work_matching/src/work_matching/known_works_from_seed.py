@@ -16,8 +16,10 @@ class KnownWorksFromSeed:
 
     Each page should belong to one entry. A page found in more than one entry
     is a duplicate page: the first entry keeps it, and it is listed in
-    ``duplicate_pages`` so seed cleaning can report it. Feed this the cleaned
-    seed once there is one.
+    ``duplicate_pages`` so seed cleaning can report it. The seed format allows
+    an entry without pages; such an entry cannot be found and is listed in
+    ``entries_without_pages`` instead. Feed this the cleaned seed once there is
+    one.
     """
 
     def __init__(self, entries: Iterable[dict[str, Any]]) -> None:
@@ -31,8 +33,12 @@ class KnownWorksFromSeed:
             defaultdict(list)
         )
         duplicates: set[str] = set()
+        without_pages: list[str] = []
         count = 0
         for entry in entries:
+            if not entry["sources"]:
+                without_pages.append(entry["title"])
+                continue
             work = WorkEntry.from_seed_entry(entry)
             count += 1
             for key in work.pages:
@@ -41,6 +47,7 @@ class KnownWorksFromSeed:
             self._by_title[(comparable_title(work.title), work.type)].append(work)
         self._count = count
         self._duplicate_pages = frozenset(duplicates)
+        self._entries_without_pages = tuple(without_pages)
 
     def __len__(self) -> int:
         """Return how many works are known."""
@@ -50,6 +57,11 @@ class KnownWorksFromSeed:
     def duplicate_pages(self) -> frozenset[str]:
         """Keys of pages found in more than one entry."""
         return self._duplicate_pages
+
+    @property
+    def entries_without_pages(self) -> tuple[str, ...]:
+        """Titles of the seed entries left out because they have no pages."""
+        return self._entries_without_pages
 
     @classmethod
     def from_file(cls, path: str | Path) -> Self:
@@ -83,6 +95,10 @@ class KnownWorksFromSeed:
             work_type: The work's type; only works of this type are returned.
             year: The work's year. A work matches when the years are equal or
                 either side has no year.
+
+        Returns:
+            The matching works, in seed file order. Several can match, so a caller
+            must not take the first as the answer.
         """
         return [
             work

@@ -81,6 +81,20 @@ def test_known_works_from_seed_page_in_two_entries_reported_and_first_kept() -> 
     assert work.title == "First"
 
 
+def test_known_works_from_seed_entry_without_sources_skipped_and_reported() -> None:
+    works = KnownWorksFromSeed(
+        [
+            {"title": "No Pages", "type": "TV", "sources": []},
+            {
+                "title": "One Piece",
+                "type": "TV",
+                "sources": ["https://myanimelist.net/anime/21"],
+            },
+        ]
+    )
+    assert (len(works), works.entries_without_pages) == (1, ("No Pages",))
+
+
 def test_known_works_from_seed_from_file_counts_every_entry(
     seed_file, seed_entries
 ) -> None:
