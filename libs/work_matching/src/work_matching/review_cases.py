@@ -6,8 +6,10 @@ and the next run hands it back to the caller, who applies it. The rules:
 
 - Case name: a case is named by its kind and its sorted page keys, never by an
   entry's position, so the same case in a later seed release or discovery run
-  meets its kept answer.
-- Changed pages: a case whose pages changed gets a new name, so it is asked again.
+  meets its kept answer. A doubled provider's case also names its entry's
+  reference page, because its answer places pages relative to that entry.
+- Changed pages: a case whose pages changed, or whose doubled pages moved to
+  another entry, gets a new name, so it is asked again.
 - Answers: a doubled provider's answer places every page of the case (``entry``,
   ``other work`` or ``work 2``, ``work 3``…); a split work's answer is
   ``one work`` or ``separate works``. Any other answer leaves the case open.
@@ -59,6 +61,8 @@ class ReviewCase(BaseModel):
     # Each entry involved, by its reference page, with its title.
     entries: dict[str, str]
     decision: DoubledProviderDecision | SplitWorkDecision
+    # The entries' fetched pages and the pages found through them, which hold
+    # the links behind the decision.
     pages: tuple[ProviderPage, ...] = ()
 
     @property
@@ -95,14 +99,17 @@ class ReviewCase(BaseModel):
         Args:
             entry: The work entry the decision is about.
             decision: The decision ``decide_doubled_providers`` made.
-            pages: The fetched pages; the details of the case's pages are kept.
+            pages: The fetched pages; the details of the entry's pages are kept.
         """
         return cls(
-            case=_case_name("doubled provider", decision.pages),
+            case=(
+                f"{_case_name('doubled provider', decision.pages)}"
+                f" in {entry.reference_page}"
+            ),
             reason=decision.reason.name,
             entries={entry.reference_page: entry.title},
             decision=decision,
-            pages=_page_details(pages, frozenset(decision.pages)),
+            pages=_page_details(pages, frozenset(entry.pages) | set(decision.pages)),
         )
 
     @classmethod
@@ -149,7 +156,8 @@ class ReviewFile:
     A person edits lines in place, so the file is rewritten whole rather than
     appended to. Only each line's case name and answer are read back; the rest
     of a line is rebuilt by the run, so anything else written in it is not kept.
-    One process at a time writes the file.
+    One process at a time writes the file, and a person does not edit it during
+    a run: an answer saved after ``write_cases`` reads the file again is lost.
     """
 
     def __init__(self, path: str | Path) -> None:
@@ -262,6 +270,7 @@ class ReviewFile:
         except BaseException:
             temporary_path.unlink(missing_ok=True)
             raise
+        _sync_folder(self._path.parent)
 
 
 def _case_name(case_kind: str, page_keys: Iterable[str]) -> str:
@@ -272,6 +281,29 @@ def _case_name(case_kind: str, page_keys: Iterable[str]) -> str:
 def _page_details(
     pages: Iterable[ProviderPage], page_keys: frozenset[str]
 ) -> tuple[ProviderPage, ...]:
-    """Return the details of the pages with these current keys, sorted by key."""
-    pages_by_key = pages_by_current_key(pages)
-    return tuple(pages_by_key[key] for key in sorted(page_keys) if key in pages_by_key)
+    """Return the details of these pages and of pages found through them.
+
+    A page is kept when its key or its current key is one of ``page_keys``, or
+    when it was found through one of them (an AnimeSchedule page found by MAL
+    id), so a reviewer sees every link the decision read. Sorted by current key.
+    """
+    return tuple(
+        page
+        for key, page in sorted(pages_by_current_key(pages).items())
+        if {key, page.key, page.found_by} & page_keys
+    )
+
+
+def _sync_folder(folder: Path) -> None:
+    """Write a folder's entries to disk, so a rename in it survives a power cut.
+
+    Syncing the file does not make its new name durable; the folder holds the
+    name. Systems that cannot open a folder, such as Windows, are skipped.
+    """
+    if not hasattr(os, "O_DIRECTORY"):
+        return
+    folder_descriptor = os.open(folder, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(folder_descriptor)
+    finally:
+        os.close(folder_descriptor)

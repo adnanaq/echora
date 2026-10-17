@@ -262,7 +262,7 @@ the review file. A person, or later the review agent, writes the answer into the
 line; the next run hands it back.
 
 ```json
-{"case": "doubled provider: animeplanet:anime:example animeplanet:anime:example-movie",
+{"case": "doubled provider: animeplanet:anime:example animeplanet:anime:example-movie in mal:anime:3",
  "answer": {"animeplanet:anime:example": "entry", "animeplanet:anime:example-movie": "other work"},
  "reason": "UNDECIDED_PAGES", "entries": {"mal:anime:3": "Example"}, "decision": {...}, "pages": [...]}
 ```
@@ -271,12 +271,12 @@ line; the next run hands it back.
 
 | Field | Holds |
 | -- | -- |
-| `case` | The case's name: its kind and its sorted page keys. `doubled provider: ` with the provider's pages, or `split work: ` with the entries' reference pages. |
+| `case` | The case's name: its kind and its sorted page keys. `doubled provider: ` with the provider's pages and `in` the entry's reference page, since the answer places pages relative to that entry; or `split work: ` with the entries' reference pages. |
 | `answer` | `null` until answered. |
 | `reason` | The decision's reason by name, so answers can be counted per reason even after its wording changes. |
 | `entries` | Each entry involved, by its reference page, with its title. |
 | `decision` | The `DoubledProviderDecision` or `SplitWorkDecision` as the rules made it. |
-| `pages` | The details of the case's pages, as `ProviderPage` stores them. |
+| `pages` | The details of the entries' fetched pages and of the pages found through them (such as AnimeSchedule), as `ProviderPage` stores them: every link the decision read. |
 
 **Answers.** A doubled provider's answer places every page of the case:
 
@@ -294,7 +294,8 @@ misspelt word, leaves the case open and the text in place to correct.
 file in one step, so an interrupted run leaves the old file:
 
 * a case named the same as before gets its kept answer back;
-* a case whose pages changed has a new name, so it is asked again;
+* a case whose pages changed, or whose doubled pages moved to another entry, has
+  a new name, so it is asked again;
 * an answer whose case did not come up is kept as written, never applied, and
   returned, so it can be reported;
 * an unanswered case that did not come up is dropped.
@@ -304,7 +305,9 @@ answer that is not accepted, or a case answered on two lines, is logged as a
 warning. A line that is not valid JSON stops the run, with the file and line
 named, so a person's edit is never overwritten unread. Two cases with the same
 name in one run raise `DuplicateCaseError`. The file is written to disk next to
-the old one and renamed over it, keeping its permissions.
+the old one and renamed over it, keeping its permissions; the folder is then
+synced, so the rename survives a power cut. Do not edit the file
+while a run is writing it: an answer saved during the run can be lost.
 
 Applying answers is the caller's job: seed cleaning turns them into corrections.
 
