@@ -72,6 +72,11 @@ class Reason(StrEnum):
     OVERLAPPING_LINKS = "the linked pages share some pages but none linked with all"
     NONE_LINKED = "no page is linked with the entry"
 
+    @property
+    def outcome(self) -> Outcome:
+        """What a decision with this reason says about the pages."""
+        return _OUTCOME_OF_REASON[self]
+
 
 _OUTCOME_OF_REASON: dict[Reason, Outcome] = {
     Reason.SAME_PAGE: Outcome.SAME_PAGE,
@@ -123,7 +128,7 @@ class DoubledProviderDecision:
     @property
     def outcome(self) -> Outcome:
         """What the decision says about the pages; a person checks ``REVIEW``."""
-        return _outcome_of(self.reason)
+        return self.reason.outcome
 
 
 def decide_doubled_providers(
@@ -148,7 +153,7 @@ def decide_doubled_providers(
             groups[group].append(key)
     check = _EntryCheck(entry, pages, known_works)
     return [
-        check.decide(group, keys)
+        check.decide_provider(group, keys)
         for group, keys in groups.items()
         if _has_several_ids(keys)
     ]
@@ -167,15 +172,17 @@ class _EntryCheck:
         self._entry_pages = frozenset(map(self._links.same_page, entry.pages))
         self._entry_providers = frozenset(map(provider_of_key, self._entry_pages))
 
-    def decide(self, provider: str, keys: list[str]) -> DoubledProviderDecision:
+    def decide_provider(
+        self, provider: str, keys: list[str]
+    ) -> DoubledProviderDecision:
         """Decide one provider's pages."""
         pages = tuple(dict.fromkeys(map(self._links.same_page, keys)))
         if not _has_several_ids(pages):
             return DoubledProviderDecision(provider, pages, Reason.SAME_PAGE)
         linked = {key: self._links.linked_with(key) for key in pages}
         elsewhere = {key: self._links_elsewhere(key) for key in pages}
-        reason = self._reason(pages, linked, elsewhere)
-        is_review = _outcome_of(reason) is Outcome.REVIEW
+        reason = self._reason_for(pages, linked, elsewhere)
+        is_review = reason.outcome is Outcome.REVIEW
         return DoubledProviderDecision(
             provider,
             pages,
@@ -196,13 +203,17 @@ class _EntryCheck:
             season_matches=self._season_matches(pages) if is_review else (),
         )
 
-    def _reason(
+    def _reason_for(
         self,
         pages: tuple[str, ...],
         linked: Mapping[str, frozenset[str]],
         elsewhere: Mapping[str, frozenset[str]],
     ) -> Reason:
-        """Return the rule that decides the pages, checks that refuse first."""
+        """Return the rule that decides the pages, checks that refuse first.
+
+        A multi-work link or a dead page sends the pages to review before the
+        links are read, even when the page in question is the only one linked.
+        """
         if any(map(self._links.linked_by_multi_work_pages, pages)):
             return Reason.MULTI_WORK_LINK
         if any(map(self._is_dead, pages)):
@@ -235,6 +246,8 @@ class _EntryCheck:
 
         A link names another work when it points outside the entry, at a page
         of a provider the entry has or at a page of another known work.
+        ``ProviderPageLinks`` holds the links within the entry; this reads the
+        links that leave it.
         """
         page = self._details.get(key)
         return frozenset(
@@ -308,11 +321,6 @@ class _EntryCheck:
 def _seed_type(page: ProviderPage) -> WorkType | None:
     """Return the seed type a page's type falls under, or None when unknown."""
     return _SEED_TYPE.get(page.type or "")
-
-
-def _outcome_of(reason: Reason) -> Outcome:
-    """Return what a decision with this reason says about the pages."""
-    return _OUTCOME_OF_REASON[reason]
 
 
 def _has_several_ids(keys: Iterable[str]) -> bool:

@@ -1,4 +1,5 @@
 import pytest
+from common.models.anime import AnimeType
 from work_matching.doubled_provider_check import (
     DoubledProviderDecision,
     Outcome,
@@ -352,3 +353,25 @@ def test_decide_doubled_providers_provider_type_falls_under_seed_type(
         "animeplanet:anime:short",
         "animeplanet:anime:unknown",
     )
+
+
+@pytest.mark.parametrize(
+    "canonical_type",
+    [kind.value for kind in AnimeType if kind is not AnimeType.UNKNOWN],
+)
+def test_decide_doubled_providers_canonical_type_falls_under_one_seed_type(
+    linked_page, work_entry, canonical_type: str
+) -> None:
+    addresses = [
+        "https://anime-planet.com/anime/first",
+        "https://anime-planet.com/anime/second",
+    ]
+    pages = [linked_page(addresses[0]).model_copy(update={"type": canonical_type})]
+    seed_types = [
+        seed_type
+        for seed_type in ("TV", "MOVIE", "OVA", "ONA", "SPECIAL")
+        if _decisions(work_entry(*addresses, work_type=seed_type), pages)[
+            "animeplanet"
+        ].year_type_matches
+    ]
+    assert len(seed_types) == 1

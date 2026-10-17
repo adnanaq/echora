@@ -70,7 +70,7 @@ class ProviderPage(BaseModel):
         return cls(
             key=key,
             address=address,
-            titles=tuple(dict.fromkeys(_titles(record))),
+            titles=tuple(dict.fromkeys(_record_titles(record))),
             type=record.get("type"),
             year=record.get("year"),
             season=record.get("season"),
@@ -101,7 +101,7 @@ def _optional_key(address: str | None) -> str | None:
     return provider_page_key(address) if address else None
 
 
-def _titles(record: dict[str, Any]) -> Iterator[str]:
+def _record_titles(record: dict[str, Any]) -> Iterator[str]:
     """Yield a record's titles, its main title first, skipping empty ones."""
     for field in ("title", "title_english", "title_japanese"):
         if title := record.get(field):
@@ -110,7 +110,10 @@ def _titles(record: dict[str, Any]) -> Iterator[str]:
 
 
 def _linked_addresses(record: dict[str, Any]) -> Iterator[str]:
-    """Yield every page address a record lists, in ``sources`` and ``external_sources``."""
+    """Yield every page address a record lists in its two link fields.
+
+    The fields are ``sources`` and ``external_sources``.
+    """
     yield from (address for address in record.get("sources") or [] if address)
     for link in record.get("external_sources") or []:
         if address := link.get("source"):
