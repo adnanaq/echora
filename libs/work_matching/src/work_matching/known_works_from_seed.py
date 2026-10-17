@@ -8,7 +8,6 @@ from typing import Any, Self
 
 from work_matching.comparable_title import comparable_title
 from work_matching.known_works import KnownWorks
-from work_matching.provider_page_key import provider_page_key
 from work_matching.work_entry import WorkEntry, WorkType
 
 
@@ -76,14 +75,6 @@ class KnownWorksFromSeed(KnownWorks):
         """
         with Path(path).open(encoding="utf-8") as handle:
             return cls(json.load(handle)["data"])
-
-    def find_by_page(self, address: str) -> WorkEntry | None:
-        """Return the work that has this provider page, or None.
-
-        Args:
-            address: A provider page address, in any of its spellings.
-        """
-        return self.find_by_page_key(provider_page_key(address))
 
     def find_by_page_key(self, key: str) -> WorkEntry | None:
         """Return the work that has the page with this key, or None.
