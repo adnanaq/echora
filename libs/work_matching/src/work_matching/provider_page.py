@@ -97,9 +97,9 @@ class ProviderPage(BaseModel):
 
 
 def pages_by_current_key(pages: Iterable[ProviderPage]) -> dict[str, ProviderPage]:
-    """Index pages by the key each answers to now.
+    """Index pages by the current key each resolves to.
 
-    A renamed page answers to the key it lands on, unless the page was also
+    A renamed page resolves to the key it lands on, unless the page was also
     fetched at that key.
 
     Args:
@@ -108,12 +108,12 @@ def pages_by_current_key(pages: Iterable[ProviderPage]) -> dict[str, ProviderPag
     Returns:
         Each page by its current key.
     """
-    by_key: dict[str, ProviderPage] = {}
+    pages_by_key: dict[str, ProviderPage] = {}
     for page in pages:
         key = page.lands_on or page.key
-        if key not in by_key or page.key == key:
-            by_key[key] = page
-    return by_key
+        if key not in pages_by_key or page.key == key:
+            pages_by_key[key] = page
+    return pages_by_key
 
 
 def _optional_key(address: str | None) -> str | None:
