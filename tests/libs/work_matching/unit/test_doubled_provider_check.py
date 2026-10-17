@@ -172,7 +172,7 @@ def test_decide_doubled_providers_page_linking_known_work_unrelated(
     }
 
 
-def test_decide_doubled_providers_every_page_linking_elsewhere_review(
+def test_decide_doubled_providers_every_page_linking_other_work_review(
     linked_page, work_entry
 ) -> None:
     entry = work_entry(
@@ -235,7 +235,7 @@ def test_decide_doubled_providers_overlapping_links_review(
     )
 
 
-def test_decide_doubled_providers_page_linked_and_linking_elsewhere_review(
+def test_decide_doubled_providers_page_linked_and_linking_other_work_review(
     linked_page, work_entry
 ) -> None:
     entry = work_entry(

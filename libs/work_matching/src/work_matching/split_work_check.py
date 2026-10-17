@@ -69,23 +69,26 @@ def decide_split_work(
 
 
 def _is_tied_together(
-    page_sets: list[frozenset[str]], links: ProviderPageLinks
+    entry_page_keys: list[frozenset[str]], links: ProviderPageLinks
 ) -> bool:
-    """Report whether links reach every page set from the first one.
+    """Report whether links connect every candidate entry, starting from the first.
 
-    A page both entries list does not tie them: it may be a page wrongly added
-    to one of them, so only a link counts.
+    The walk moves from an entry to every entry whose pages are linked with its
+    pages, until no new entry is reached. A page both entries list does not tie
+    them: it may be a page wrongly added to one of them, so only a link counts.
 
     Args:
-        page_sets: Each entry's page keys.
-        links: The links between all the entries' pages.
+        entry_page_keys: Each candidate entry's current page keys.
+        links: The links between all the candidate entries' pages.
     """
-    reached = {0}
-    to_visit = [0]
-    while to_visit:
-        linked = frozenset().union(*map(links.linked_with, page_sets[to_visit.pop()]))
-        for index, pages in enumerate(page_sets):
-            if index not in reached and linked & pages:
-                reached.add(index)
-                to_visit.append(index)
-    return len(reached) == len(page_sets)
+    reached_entries = {0}
+    entries_to_visit = [0]
+    while entries_to_visit:
+        linked_keys = frozenset().union(
+            *map(links.linked_with, entry_page_keys[entries_to_visit.pop()])
+        )
+        for entry_index, page_keys in enumerate(entry_page_keys):
+            if entry_index not in reached_entries and linked_keys & page_keys:
+                reached_entries.add(entry_index)
+                entries_to_visit.append(entry_index)
+    return len(reached_entries) == len(entry_page_keys)

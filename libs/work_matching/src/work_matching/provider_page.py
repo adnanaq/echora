@@ -108,12 +108,12 @@ def pages_by_current_key(pages: Iterable[ProviderPage]) -> dict[str, ProviderPag
     Returns:
         Each page by its current key.
     """
-    by_key: dict[str, ProviderPage] = {}
+    pages_by_key: dict[str, ProviderPage] = {}
     for page in pages:
         key = page.lands_on or page.key
-        if key not in by_key or page.key == key:
-            by_key[key] = page
-    return by_key
+        if key not in pages_by_key or page.key == key:
+            pages_by_key[key] = page
+    return pages_by_key
 
 
 def _optional_key(address: str | None) -> str | None:
