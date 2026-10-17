@@ -1,0 +1,95 @@
+"""One provider page's details, as work matching compares them.
+
+The details come from the canonical record an enrichment helper returns for the
+page, fetched with characters and episodes switched off. Reading that record,
+rather than fetching the page a second way, lets seed cleaning and enrichment
+share one fetch and one cache.
+"""
+
+from collections.abc import Iterator
+from typing import Any, Self
+
+from pydantic import BaseModel, ConfigDict
+
+from work_matching.provider_page_key import provider_of_key, provider_page_key
+
+
+class ProviderPage(BaseModel):
+    """What one provider says about one of its pages."""
+
+    model_config = ConfigDict(frozen=True)
+
+    key: str
+    address: str
+    # Every title the provider gives, its main title first, each once.
+    titles: tuple[str, ...] = ()
+    type: str | None = None
+    year: int | None = None
+    season: str | None = None
+    # Keys of other providers' pages this page links to, sorted. Shared
+    # websites are left out: two different works can share an official site.
+    links: tuple[str, ...] = ()
+    # The key the address lands on when the provider renamed the page.
+    lands_on: str | None = None
+    dead: bool = False
+
+    @classmethod
+    def from_canonical_record(cls, address: str, record: dict[str, Any]) -> Self:
+        """Read a page's details from the canonical record fetched for it.
+
+        Args:
+            address: The page address that was fetched.
+            record: The canonical anime record the provider's helper returned.
+
+        Returns:
+            The page's titles, type, year, season, links to other providers'
+            pages, and the page it lands on when it was renamed.
+        """
+        key = provider_page_key(address)
+        own_provider = provider_of_key(key)
+        linked = {
+            provider_page_key(linked_address)
+            for linked_address in _linked_addresses(record)
+        }
+        renamed = sorted(
+            linked_key
+            for linked_key in linked - {key}
+            if own_provider and provider_of_key(linked_key) == own_provider
+        )
+        return cls(
+            key=key,
+            address=address,
+            titles=tuple(dict.fromkeys(_titles(record))),
+            type=record.get("type"),
+            year=record.get("year"),
+            season=record.get("season"),
+            links=tuple(
+                sorted(
+                    linked_key
+                    for linked_key in linked
+                    if provider_of_key(linked_key) not in (None, own_provider)
+                )
+            ),
+            lands_on=renamed[0] if renamed else None,
+        )
+
+    @classmethod
+    def dead_page(cls, address: str) -> Self:
+        """Record a page the provider no longer serves."""
+        return cls(key=provider_page_key(address), address=address, dead=True)
+
+
+def _titles(record: dict[str, Any]) -> Iterator[str]:
+    """Yield a record's titles, its main title first, skipping empty ones."""
+    for field in ("title", "title_english", "title_japanese"):
+        if title := record.get(field):
+            yield title
+    yield from (title for title in (record.get("titles") or {}).values() if title)
+
+
+def _linked_addresses(record: dict[str, Any]) -> Iterator[str]:
+    """Yield every page address a record lists, in ``sources`` and ``external_sources``."""
+    yield from (address for address in record.get("sources") or [] if address)
+    for link in record.get("external_sources") or []:
+        if address := link.get("source"):
+            yield address

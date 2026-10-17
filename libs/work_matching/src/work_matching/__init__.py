@@ -1,0 +1,24 @@
+"""Decide which provider pages belong to the same work.
+
+Seed cleaning uses this now; seed link filling and discovery will use it later.
+Terms are as in ``GLOSSARY.md``. This library imports nothing from enrichment.
+"""
+
+from work_matching.comparable_title import comparable_title
+from work_matching.known_works import KnownWorks
+from work_matching.known_works_from_seed import KnownWorksFromSeed
+from work_matching.provider_page import ProviderPage
+from work_matching.provider_page_key import provider_of_key, provider_page_key
+from work_matching.provider_page_store import ProviderPageStore
+from work_matching.work_entry import WorkEntry
+
+__all__ = [
+    "KnownWorks",
+    "KnownWorksFromSeed",
+    "ProviderPage",
+    "ProviderPageStore",
+    "WorkEntry",
+    "comparable_title",
+    "provider_of_key",
+    "provider_page_key",
+]
