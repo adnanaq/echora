@@ -63,6 +63,19 @@ _LOCALE_TO_LANGUAGE: dict[str, str] = {
 }
 
 
+def _kitsu_page(media_type: str, kitsu_id: str) -> str:
+    """Return Kitsu's numeric page address, the form the offline seed uses.
+
+    Kitsu serves an anime or manga page under its number as well as its slug,
+    so the number keeps one key per page across the seed, the mapper and the
+    work matching library.
+
+    >>> _kitsu_page("anime", "12")
+    'https://kitsu.app/anime/12'
+    """
+    return f"https://kitsu.app/{media_type}/{kitsu_id}"
+
+
 def anime_from_kitsu(anime: KitsuAnime) -> dict[str, Any]:
     """Normalize a KitsuAnime into canonical Anime field values.
 
@@ -167,7 +180,7 @@ def anime_from_kitsu(anime: KitsuAnime) -> dict[str, Any]:
         genres=anime.genres,
         themes=anime.themes,
         synonyms=attrs.abbreviatedTitles,
-        sources=[f"https://kitsu.io/anime/{attrs.slug}"] if attrs.slug else [],
+        sources=[_kitsu_page("anime", anime.id)],
         external_sources=_external_sources_from_mappings(anime.mappings),
         images=images,
         statistics=statistics,
@@ -272,11 +285,9 @@ def character_from_kitsu(char: KitsuMediaCharacter) -> dict[str, Any]:
         ography = Ography(
             title=m_attrs.canonicalTitle or "Unknown",
             role=role,
-            sources=(
-                [f"https://kitsu.io/{entry.media_type}/{m_attrs.slug}"]
-                if m_attrs.slug and entry.media_type
-                else []
-            ),
+            sources=[_kitsu_page(entry.media_type, media.id)]
+            if entry.media_type
+            else [],
         )
         if entry.media_type == "manga":
             manga_entries.append(ography)

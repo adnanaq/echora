@@ -303,36 +303,36 @@ def merge_sources(ranked: Ranked, offline_data: dict[str, Any] | None) -> list[s
             key = canonical_url_key(url)
             if len(url) > len(best.get(key, "")):
                 best[key] = url
-    return [url for key, url in best.items() if not _superseded_by_slug(key, best)]
+    return [url for key, url in best.items() if not _superseded_by_number(key, best)]
 
 
-def _superseded_by_slug(key: str, keys: dict[str, str]) -> bool:
-    """Report whether a numeric-id key duplicates a slug key for the same work.
+def _superseded_by_number(key: str, keys: dict[str, str]) -> bool:
+    """Report whether a slug key duplicates a numeric key for the same work.
 
-    Kitsu addresses one anime two ways - the providers report the slug
-    (``kitsu.io/anime/one-piece``) and the offline seed the numeric id
-    (``kitsu.app/anime/12``). Both are valid and neither string reveals the
-    other, so they survive canonicalisation as separate works.
+    Kitsu addresses one anime two ways: its number (``kitsu.app/anime/12``),
+    which the offline seed and the Kitsu mapper use, and its slug
+    (``kitsu.io/anime/one-piece``), which AnimeSchedule sometimes links.
+    Neither string reveals the other, so they survive canonicalisation as
+    separate works, and the number is kept because the seed uses it.
 
-    Only a provider that uses both forms is affected. MAL and AniList identify
-    every work numerically, so their keys never meet a slug rival and are never
-    dropped.
+    Only a provider addressed both ways is affected. MAL and AniList identify
+    every work numerically, so their keys never meet a slug rival.
 
     Args:
         key: A ``provider:kind:id`` key to judge.
         keys: Every key in the merged set.
 
     Returns:
-        ``True`` when this key is the numeric form and a slug form exists.
+        ``True`` when this key is the slug form and a numeric form exists.
     """
     provider, _, identifier = key.partition(":")
     kind = identifier.partition(":")[0]
-    if not identifier.rpartition(":")[2].isdigit():
+    if identifier.rpartition(":")[2].isdigit():
         return False
     return any(
         other != key
         and other.startswith(f"{provider}:{kind}:")
-        and not other.rpartition(":")[2].isdigit()
+        and other.rpartition(":")[2].isdigit()
         for other in keys
     )
 

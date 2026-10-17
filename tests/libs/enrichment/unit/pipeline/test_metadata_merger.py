@@ -125,12 +125,20 @@ def test_sources_union_the_offline_seed_and_the_providers() -> None:
     ]
 
 
-def test_numeric_url_drops_when_a_slug_names_the_same_work() -> None:
-    # Kitsu is addressable both ways and the two halves disagree on which to
-    # use, so the same anime arrives as two URLs.
+def test_merge_provider_records_kitsu_slug_beside_number_keeps_number() -> None:
     merged = merge_provider_records(
-        {"kitsu": _record(sources=["https://kitsu.io/anime/one-piece"])},
+        {
+            "kitsu": _record(sources=["https://kitsu.app/anime/12"]),
+            "animeschedule": _record(sources=["https://kitsu.io/anime/one-piece"]),
+        },
         {"sources": ["https://kitsu.app/anime/12"]},
+    )
+    assert merged["sources"] == ["https://kitsu.app/anime/12"]
+
+
+def test_merge_provider_records_kitsu_slug_alone_kept() -> None:
+    merged = merge_provider_records(
+        {"animeschedule": {"sources": ["https://kitsu.io/anime/one-piece"]}}
     )
     assert merged["sources"] == ["https://kitsu.io/anime/one-piece"]
 
