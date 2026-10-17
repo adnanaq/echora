@@ -260,9 +260,9 @@ class _EntryCheck:
             link
             for link in map(self._links.same_page, page.links if page else ())
             if link not in self._entry_pages
-            and provider_of_key(link) != own_provider
+            and (provider := provider_of_key(link)) != own_provider
             and (
-                provider_of_key(link) in self._entry_providers
+                provider in self._entry_providers
                 or self._known_works.find_by_page_key(link) is not None
             )
         )

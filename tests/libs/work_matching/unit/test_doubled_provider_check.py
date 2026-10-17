@@ -462,3 +462,23 @@ def test_decide_doubled_providers_music_and_special_pages_sharing_link_one_work(
     ]
     decision = _decisions(entry, pages)["kitsu"]
     assert (decision.outcome, decision.reason) == (Outcome.ONE_WORK, Reason.SHARED_LINK)
+
+
+def test_decide_doubled_providers_dead_page_and_contradicting_links_dead_page_wins(
+    linked_page, work_entry
+) -> None:
+    entry = work_entry(
+        "https://myanimelist.net/anime/1",
+        "https://anilist.co/anime/1",
+        "https://kitsu.app/anime/1",
+        "https://kitsu.app/anime/2",
+    )
+    pages = [
+        ProviderPage.dead_page("https://kitsu.app/anime/1"),
+        linked_page(
+            "https://kitsu.app/anime/2",
+            "https://anilist.co/anime/1",
+            "https://myanimelist.net/anime/9",
+        ),
+    ]
+    assert _decisions(entry, pages)["kitsu"].reason is Reason.DEAD_PAGE

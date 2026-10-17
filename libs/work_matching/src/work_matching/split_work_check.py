@@ -73,6 +73,9 @@ def _is_tied_together(
 ) -> bool:
     """Report whether links reach every page set from the first one.
 
+    A page both entries list does not tie them: it may be a page wrongly added
+    to one of them, so only a link counts.
+
     Args:
         page_sets: Each entry's page keys.
         links: The links between all the entries' pages.

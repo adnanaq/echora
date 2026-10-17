@@ -15,7 +15,8 @@ from work_matching.work_entry import WorkEntry, WorkType
 class KnownWorks(Protocol):
     """Works already known, found by provider page or by title, type and year.
 
-    A class subclassing this one inherits ``find_by_page``, built on its
+    An implementation provides ``find_by_page_key`` and ``find_by_title``. A
+    class subclassing this one inherits ``find_by_page``, built on its
     ``find_by_page_key``.
     """
 

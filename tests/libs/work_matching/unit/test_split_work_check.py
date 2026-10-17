@@ -83,3 +83,11 @@ def test_decide_split_work_fewer_than_two_entries_review(
         False,
         SplitWorkReason.TOO_FEW_ENTRIES,
     )
+
+
+def test_decide_split_work_shared_page_without_link_review(work_entry) -> None:
+    entries = [
+        work_entry("https://myanimelist.net/anime/1", "https://kitsu.app/anime/1"),
+        work_entry("https://anilist.co/anime/1", "https://kitsu.app/anime/1"),
+    ]
+    assert decide_split_work(entries, []).reason is SplitWorkReason.NOT_LINKED
