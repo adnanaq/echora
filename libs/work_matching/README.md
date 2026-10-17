@@ -39,11 +39,12 @@ imports nothing from `enrichment`.
 | `work_entry.py` | `WorkEntry`, and the type and year comparisons `is_type_matching` and `is_year_matching`. |
 | `comparable_title.py` | `comparable_title`: a title folded for comparison (case, punctuation, Latin accents, "2nd Season"). |
 | `known_works.py`, `known_works_from_seed.py` | The `KnownWorks` interface and its seed-backed lookup. |
-| `provider_page.py` | `ProviderPage`: what a provider says about one page, read from the canonical record its enrichment helper returns. |
+| `provider_page.py` | `ProviderPage`: what a provider says about one page, read from the canonical record its enrichment helper returns. `pages_by_current_key`: pages by the key each answers to now. |
 | `provider_page_store.py` | `ProviderPageStore`: fetched pages kept in a JSON Lines file, so they outlive the 7-day HTTP cache. |
 | `provider_page_links.py` | `ProviderPageLinks`: which pages of a group are linked. |
 | `doubled_provider_check.py` | `decide_doubled_providers`: the decision for each doubled provider of an entry. |
 | `split_work_check.py` | `decide_split_work`: whether separate entries are one split work. |
+| `review_cases.py` | `ReviewCase`: one decision left to a person, with its answer. `ReviewFile`: the review file, its answers kept across runs. |
 
 ## The flow
 
@@ -60,6 +61,7 @@ flowchart TD
     entries --> split[decide_split_work<br/>for candidate entries]
     pages --> split
     doubled --> decisions[Decisions: applied as they stand,<br/>or sent to review]
+    decisions --> review[(ReviewFile:<br/>review cases and kept answers)]
     split --> decisions
 ```
 
@@ -247,6 +249,52 @@ missing year agree with anything. The checks run in this order:
 Every reason but `LINKED` goes to review. A shared title alone is never enough:
 remakes, music videos and short films reuse titles.
 
+## Review cases
+
+Every decision with outcome `REVIEW` becomes a `ReviewCase`, one JSON line in
+the review file. A person, or later the review agent, writes the answer into the
+line; the next run hands it back.
+
+```json
+{"case": "doubled provider: animeplanet:anime:example animeplanet:anime:example-movie",
+ "answer": {"animeplanet:anime:example": "entry", "animeplanet:anime:example-movie": "elsewhere"},
+ "reason": "UNDECIDED_PAGES", "entries": {"mal:anime:3": "Example"}, "decision": {...}, "pages": [...]}
+```
+
+(One line in the file; wrapped here.)
+
+| Field | Holds |
+| -- | -- |
+| `case` | The case's name: its kind and its sorted page keys. `doubled provider: ` with the provider's pages, or `split work: ` with the entries' reference pages. |
+| `answer` | `null` until answered. |
+| `reason` | The decision's reason by name, so answers can be counted per reason even after its wording changes. |
+| `entries` | Each entry involved, by its reference page, with its title. |
+| `decision` | The `DoubledProviderDecision` or `SplitWorkDecision` as the rules made it. |
+| `pages` | The details of the case's pages, as `ProviderPage` stores them. |
+
+**Answers.** A doubled provider's answer places every page of the case:
+
+* `entry`: it belongs to this entry;
+* `elsewhere`: it belongs to another work;
+* `work 2`, `work 3`…: the entry is mixed, and the page belongs to its second,
+  third… work.
+
+A split work's answer is `one work` or `separate works`. `accepted_answer` gives
+the answer only when it is valid; anything else, such as a missing page or a
+misspelt word, leaves the case open and the text in place to correct.
+
+**Across runs.** `ReviewFile` reads only each line's `case` and `answer`.
+`write_cases` writes this run's cases with their kept answers, and replaces the
+file in one step, so an interrupted run leaves the old file:
+
+* a case named the same as before gets its kept answer back;
+* a case whose pages changed has a new name, so it is asked again;
+* an answer whose case did not come up is kept as written, never applied, and
+  returned, so it can be reported;
+* an unanswered case that did not come up is dropped.
+
+Applying answers is the caller's job: seed cleaning turns them into corrections.
+
 ## Use
 
 ```python
@@ -268,4 +316,19 @@ for decision in decide_doubled_providers(entry, pages, known_works):
 ```
 
 Pass the found pages too (such as the entry's AnimeSchedule pages): their links
-count for the page they were found through.
+count for their lookup page.
+
+Review decisions go to the review file, and kept answers come back:
+
+```python
+from work_matching import ReviewCase, ReviewFile
+
+review = ReviewFile("data/seed_cleaning/review.jsonl")
+cases = [
+    review.with_kept_answer(ReviewCase.from_doubled_provider(entry, decision, pages))
+    for decision in decide_doubled_providers(entry, pages, known_works)
+    if decision.outcome is Outcome.REVIEW
+]
+answered = {case.case: case.accepted_answer for case in cases if case.accepted_answer}
+unused = review.write_cases(cases)
+```
