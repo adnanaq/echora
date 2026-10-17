@@ -11,7 +11,8 @@
 Each case is named after the situation it shows (`puu_neko` for a mixed entry,
 `cocoon` for a renamed page) and holds:
 
-- `entries`: the seed entries, as in the seed file;
+- `entries`: the seed entries, with only the fields work matching reads
+  (`sources`, `title`, `type`, `animeSeason`);
 - `pages`: one `ProviderPage` per fetched page, as `ProviderPage.model_dump()`
   writes it, including found pages such as AnimeSchedule's.
 

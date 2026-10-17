@@ -12,18 +12,20 @@ _FIXTURES = Path(__file__).parent / "fixtures"
 
 @pytest.fixture(scope="session")
 def linked_page() -> Callable[..., ProviderPage]:
-    def build(address: str, *links: str, title: str = "Test") -> ProviderPage:
+    def build_linked_page(
+        address: str, *links: str, title: str = "Test"
+    ) -> ProviderPage:
         return ProviderPage.from_canonical_record(
             address,
             {"title": title, "external_sources": [{"source": link} for link in links]},
         )
 
-    return build
+    return build_linked_page
 
 
 @pytest.fixture(scope="session")
 def work_entry() -> Callable[..., WorkEntry]:
-    def build(
+    def build_work_entry(
         *addresses: str, work_type: WorkType = "TV", year: int | None = 2020
     ) -> WorkEntry:
         return WorkEntry(
@@ -33,7 +35,7 @@ def work_entry() -> Callable[..., WorkEntry]:
             pages={provider_page_key(address): address for address in addresses},
         )
 
-    return build
+    return build_work_entry
 
 
 @pytest.fixture(scope="session")

@@ -1,1471 +1,972 @@
 {
- "puu_neko": {
-  "entries": [
-   {
-    "sources": [
-     "https://anidb.net/anime/8328",
-     "https://anilist.co/anime/10459",
-     "https://anilist.co/anime/11589",
-     "https://anime-planet.com/anime/poo-neko",
-     "https://animecountdown.com/36146",
-     "https://animenewsnetwork.com/encyclopedia/anime.php?id=12559",
-     "https://anisearch.com/anime/6945",
-     "https://kitsu.app/anime/6190",
-     "https://kitsu.app/anime/6543",
-     "https://livechart.me/anime/1543",
-     "https://myanimelist.net/anime/10459",
-     "https://myanimelist.net/anime/11589",
-     "https://simkl.com/anime/36146"
+  "puu_neko": {
+    "entries": [
+      {
+        "sources": [
+          "https://anidb.net/anime/8328",
+          "https://anilist.co/anime/10459",
+          "https://anilist.co/anime/11589",
+          "https://anime-planet.com/anime/poo-neko",
+          "https://animecountdown.com/36146",
+          "https://animenewsnetwork.com/encyclopedia/anime.php?id=12559",
+          "https://anisearch.com/anime/6945",
+          "https://kitsu.app/anime/6190",
+          "https://kitsu.app/anime/6543",
+          "https://livechart.me/anime/1543",
+          "https://myanimelist.net/anime/10459",
+          "https://myanimelist.net/anime/11589",
+          "https://simkl.com/anime/36146"
+        ],
+        "title": "Puu-Neko",
+        "type": "TV",
+        "animeSeason": {
+          "season": "SPRING",
+          "year": 2011
+        }
+      }
     ],
-    "title": "Puu-Neko",
-    "type": "TV",
-    "episodes": 11,
-    "status": "FINISHED",
-    "animeSeason": {
-     "season": "SPRING",
-     "year": 2011
-    },
-    "picture": "https://cdn.myanimelist.net/images/anime/9/28722.jpg",
-    "thumbnail": "https://cdn.myanimelist.net/images/anime/9/28722t.jpg",
-    "duration": {
-     "value": 60,
-     "unit": "SECONDS"
-    },
-    "score": {
-     "arithmeticGeometricMean": 3.72529273082597,
-     "arithmeticMean": 3.7722325293753864,
-     "median": 4.3
-    },
-    "synonyms": [
-     "Poo-Neko",
-     "Poo-Neko Shougekijou",
-     "Poo-neko",
-     "Puu-Neko Shougekijou",
-     "Puu-Neko Show Time",
-     "Pū-Neko",
-     "YuruAni? Puu-Neko",
-     "Yuruani",
-     "プ~ねこ",
-     "プ〜ねこ小劇場",
-     "プ～ねこ"
-    ],
-    "studios": [
-     "dle"
-    ],
-    "producers": [
-     "dle",
-     "nippon television network"
-    ],
-    "relatedAnime": [],
-    "tags": [
-     "based on a 4-koma manga",
-     "based on a manga",
-     "cats",
-     "comedy",
-     "flash animation",
-     "japanese production",
-     "manga",
-     "multi-anime projects",
-     "seinen",
-     "short episodes",
-     "yuruani?"
+    "pages": [
+      {
+        "key": "anidb:anime:8328",
+        "address": "https://anidb.net/anime/8328",
+        "titles": [
+          "Puu-Neko",
+          "プ~ねこ"
+        ],
+        "type": "TV",
+        "year": 2011,
+        "season": "SPRING",
+        "links": [
+          "ann:anime:12559"
+        ],
+        "lands_on": null,
+        "found_by": null,
+        "dead": false
+      },
+      {
+        "key": "anilist:anime:10459",
+        "address": "https://anilist.co/anime/10459",
+        "titles": [
+          "Poo-Neko",
+          "プ～ねこ"
+        ],
+        "type": "TV SHORT",
+        "year": 2011,
+        "season": "SPRING",
+        "links": [
+          "mal:anime:10459"
+        ],
+        "lands_on": null,
+        "found_by": null,
+        "dead": false
+      },
+      {
+        "key": "anilist:anime:11589",
+        "address": "https://anilist.co/anime/11589",
+        "titles": [
+          "Poo-Neko Shougekijou",
+          "プ〜ねこ小劇場"
+        ],
+        "type": "TV SHORT",
+        "year": 2011,
+        "season": "SUMMER",
+        "links": [
+          "mal:anime:11589"
+        ],
+        "lands_on": null,
+        "found_by": null,
+        "dead": false
+      },
+      {
+        "key": "animeplanet:anime:poo-neko",
+        "address": "https://anime-planet.com/anime/poo-neko",
+        "titles": [
+          "Poo-neko",
+          "プ~ねこ"
+        ],
+        "type": "TV",
+        "year": 2011,
+        "season": "SPRING",
+        "links": [],
+        "lands_on": null,
+        "found_by": null,
+        "dead": false
+      },
+      {
+        "key": "anisearch:anime:6945",
+        "address": "https://anisearch.com/anime/6945",
+        "titles": [
+          "Puu-Neko",
+          "プ～ねこ"
+        ],
+        "type": "TV",
+        "year": 2011,
+        "season": "SPRING",
+        "links": [],
+        "lands_on": null,
+        "found_by": null,
+        "dead": false
+      },
+      {
+        "key": "https://animeschedule.net/anime/puu-neko",
+        "address": "https://animeschedule.net/anime/puu-neko",
+        "titles": [
+          "Puu-Neko",
+          "プ～ねこ"
+        ],
+        "type": "TV SHORT",
+        "year": 2011,
+        "season": "SPRING",
+        "links": [
+          "anilist:anime:10459",
+          "kitsu:anime:6190"
+        ],
+        "lands_on": null,
+        "found_by": "mal:anime:10459",
+        "dead": false
+      },
+      {
+        "key": "https://animeschedule.net/anime/puu-neko-shougekijou",
+        "address": "https://animeschedule.net/anime/puu-neko-shougekijou",
+        "titles": [
+          "Puu-Neko Shougekijou",
+          "プ〜ねこ小劇場"
+        ],
+        "type": "TV SHORT",
+        "year": 2011,
+        "season": "SUMMER",
+        "links": [
+          "anilist:anime:11589",
+          "kitsu:anime:6543"
+        ],
+        "lands_on": null,
+        "found_by": "mal:anime:11589",
+        "dead": false
+      },
+      {
+        "key": "kitsu:anime:6190",
+        "address": "https://kitsu.app/anime/6190",
+        "titles": [
+          "Puu-Neko",
+          "プ～ねこ"
+        ],
+        "type": "TV",
+        "year": 2011,
+        "season": "SPRING",
+        "links": [
+          "anilist:anime:10459",
+          "mal:anime:10459"
+        ],
+        "lands_on": null,
+        "found_by": null,
+        "dead": false
+      },
+      {
+        "key": "kitsu:anime:6543",
+        "address": "https://kitsu.app/anime/6543",
+        "titles": [
+          "Puu-Neko Shougekijou",
+          "プ〜ねこ小劇場"
+        ],
+        "type": "TV",
+        "year": 2011,
+        "season": "SUMMER",
+        "links": [
+          "anidb:anime:8328",
+          "anilist:anime:11589",
+          "mal:anime:11589"
+        ],
+        "lands_on": null,
+        "found_by": null,
+        "dead": false
+      },
+      {
+        "key": "mal:anime:10459",
+        "address": "https://myanimelist.net/anime/10459",
+        "titles": [
+          "Puu-Neko",
+          "Poo-Neko",
+          "プ～ねこ"
+        ],
+        "type": "TV",
+        "year": 2011,
+        "season": "SPRING",
+        "links": [
+          "anidb:anime:8328",
+          "ann:anime:12559"
+        ],
+        "lands_on": null,
+        "found_by": null,
+        "dead": false
+      },
+      {
+        "key": "mal:anime:11589",
+        "address": "https://myanimelist.net/anime/11589",
+        "titles": [
+          "Puu-Neko Shougekijou",
+          "プ〜ねこ小劇場"
+        ],
+        "type": "TV",
+        "year": 2011,
+        "season": "SUMMER",
+        "links": [],
+        "lands_on": null,
+        "found_by": null,
+        "dead": false
+      }
     ]
-   }
-  ],
-  "pages": [
-   {
-    "key": "anidb:anime:8328",
-    "address": "https://anidb.net/anime/8328",
-    "titles": [
-     "Puu-Neko",
-     "プ~ねこ"
+  },
+  "ao_haru_ride_ova": {
+    "entries": [
+      {
+        "sources": [
+          "https://anidb.net/anime/10626",
+          "https://anilist.co/anime/20837",
+          "https://anilist.co/anime/20900",
+          "https://anime-planet.com/anime/blue-spring-ride-page-13",
+          "https://anime-planet.com/anime/blue-spring-ride-unwritten",
+          "https://animecountdown.com/50442",
+          "https://anisearch.com/anime/9646",
+          "https://kitsu.app/anime/8488",
+          "https://livechart.me/anime/544",
+          "https://myanimelist.net/anime/24151",
+          "https://simkl.com/anime/50442"
+        ],
+        "title": "Ao Haru Ride OVA",
+        "type": "OVA",
+        "animeSeason": {
+          "season": "SUMMER",
+          "year": 2014
+        }
+      }
     ],
-    "type": "TV",
-    "year": 2011,
-    "season": "SPRING",
-    "links": [
-     "ann:anime:12559"
-    ],
-    "lands_on": null,
-    "found_by": null,
-    "dead": false
-   },
-   {
-    "key": "anilist:anime:10459",
-    "address": "https://anilist.co/anime/10459",
-    "titles": [
-     "Poo-Neko",
-     "プ～ねこ"
-    ],
-    "type": "TV SHORT",
-    "year": 2011,
-    "season": "SPRING",
-    "links": [
-     "mal:anime:10459"
-    ],
-    "lands_on": null,
-    "found_by": null,
-    "dead": false
-   },
-   {
-    "key": "anilist:anime:11589",
-    "address": "https://anilist.co/anime/11589",
-    "titles": [
-     "Poo-Neko Shougekijou",
-     "プ〜ねこ小劇場"
-    ],
-    "type": "TV SHORT",
-    "year": 2011,
-    "season": "SUMMER",
-    "links": [
-     "mal:anime:11589"
-    ],
-    "lands_on": null,
-    "found_by": null,
-    "dead": false
-   },
-   {
-    "key": "animeplanet:anime:poo-neko",
-    "address": "https://anime-planet.com/anime/poo-neko",
-    "titles": [
-     "Poo-neko",
-     "プ~ねこ"
-    ],
-    "type": "TV",
-    "year": 2011,
-    "season": "SPRING",
-    "links": [],
-    "lands_on": null,
-    "found_by": null,
-    "dead": false
-   },
-   {
-    "key": "anisearch:anime:6945",
-    "address": "https://anisearch.com/anime/6945",
-    "titles": [
-     "Puu-Neko",
-     "プ～ねこ"
-    ],
-    "type": "TV",
-    "year": 2011,
-    "season": "SPRING",
-    "links": [],
-    "lands_on": null,
-    "found_by": null,
-    "dead": false
-   },
-   {
-    "key": "https://animeschedule.net/anime/puu-neko",
-    "address": "https://animeschedule.net/anime/puu-neko",
-    "titles": [
-     "Puu-Neko",
-     "プ～ねこ"
-    ],
-    "type": "TV SHORT",
-    "year": 2011,
-    "season": "SPRING",
-    "links": [
-     "anilist:anime:10459",
-     "kitsu:anime:6190"
-    ],
-    "lands_on": null,
-    "found_by": "mal:anime:10459",
-    "dead": false
-   },
-   {
-    "key": "https://animeschedule.net/anime/puu-neko-shougekijou",
-    "address": "https://animeschedule.net/anime/puu-neko-shougekijou",
-    "titles": [
-     "Puu-Neko Shougekijou",
-     "プ〜ねこ小劇場"
-    ],
-    "type": "TV SHORT",
-    "year": 2011,
-    "season": "SUMMER",
-    "links": [
-     "anilist:anime:11589",
-     "kitsu:anime:6543"
-    ],
-    "lands_on": null,
-    "found_by": "mal:anime:11589",
-    "dead": false
-   },
-   {
-    "key": "kitsu:anime:6190",
-    "address": "https://kitsu.app/anime/6190",
-    "titles": [
-     "Puu-Neko",
-     "プ～ねこ"
-    ],
-    "type": "TV",
-    "year": 2011,
-    "season": "SPRING",
-    "links": [
-     "anilist:anime:10459",
-     "mal:anime:10459"
-    ],
-    "lands_on": null,
-    "found_by": null,
-    "dead": false
-   },
-   {
-    "key": "kitsu:anime:6543",
-    "address": "https://kitsu.app/anime/6543",
-    "titles": [
-     "Puu-Neko Shougekijou",
-     "プ〜ねこ小劇場"
-    ],
-    "type": "TV",
-    "year": 2011,
-    "season": "SUMMER",
-    "links": [
-     "anidb:anime:8328",
-     "anilist:anime:11589",
-     "mal:anime:11589"
-    ],
-    "lands_on": null,
-    "found_by": null,
-    "dead": false
-   },
-   {
-    "key": "mal:anime:10459",
-    "address": "https://myanimelist.net/anime/10459",
-    "titles": [
-     "Puu-Neko",
-     "Poo-Neko",
-     "プ～ねこ"
-    ],
-    "type": "TV",
-    "year": 2011,
-    "season": "SPRING",
-    "links": [
-     "anidb:anime:8328",
-     "ann:anime:12559"
-    ],
-    "lands_on": null,
-    "found_by": null,
-    "dead": false
-   },
-   {
-    "key": "mal:anime:11589",
-    "address": "https://myanimelist.net/anime/11589",
-    "titles": [
-     "Puu-Neko Shougekijou",
-     "プ〜ねこ小劇場"
-    ],
-    "type": "TV",
-    "year": 2011,
-    "season": "SUMMER",
-    "links": [],
-    "lands_on": null,
-    "found_by": null,
-    "dead": false
-   }
-  ]
- },
- "ao_haru_ride_ova": {
-  "entries": [
-   {
-    "sources": [
-     "https://anidb.net/anime/10626",
-     "https://anilist.co/anime/20837",
-     "https://anilist.co/anime/20900",
-     "https://anime-planet.com/anime/blue-spring-ride-page-13",
-     "https://anime-planet.com/anime/blue-spring-ride-unwritten",
-     "https://animecountdown.com/50442",
-     "https://anisearch.com/anime/9646",
-     "https://kitsu.app/anime/8488",
-     "https://livechart.me/anime/544",
-     "https://myanimelist.net/anime/24151",
-     "https://simkl.com/anime/50442"
-    ],
-    "title": "Ao Haru Ride OVA",
-    "type": "OVA",
-    "episodes": 2,
-    "status": "FINISHED",
-    "animeSeason": {
-     "season": "SUMMER",
-     "year": 2014
-    },
-    "picture": "https://cdn.myanimelist.net/images/anime/9/69517.jpg",
-    "thumbnail": "https://cdn.myanimelist.net/images/anime/9/69517t.jpg",
-    "duration": {
-     "value": 1260,
-     "unit": "SECONDS"
-    },
-    "score": {
-     "arithmeticGeometricMean": 7.551920561905366,
-     "arithmeticMean": 7.552363636363637,
-     "median": 7.57
-    },
-    "synonyms": [
-     "Ao Haru Ride Episode 13",
-     "Ao Haru Ride OAD",
-     "Ao Haru Ride PAGE.13",
-     "Ao Haru Ride Prologue",
-     "Ao Haru Ride: PAGE.13",
-     "Ao Haru Ride: Page.13",
-     "Ao Haru Ride: Unwritten",
-     "Ao Haru Ride: unwritten",
-     "Aoharaido OVA",
-     "Blue Spring Ride OAD",
-     "Blue Spring Ride OVA",
-     "Blue Spring Ride: Page.13",
-     "Blue Spring Ride: Unwritten",
-     "aoha ova",
-     "アオハライド OAD",
-     "アオハライド OVA",
-     "アオハライド PAGE.13",
-     "アオハライド unwritten"
-    ],
-    "studios": [
-     "production i.g., inc."
-    ],
-    "producers": [
-     "animatic",
-     "bs11",
-     "hakuhodo dy music & pictures",
-     "mainichi broadcasting system",
-     "movic",
-     "production i.g",
-     "shueisha",
-     "sony music entertainment",
-     "sony pcl",
-     "toho animation"
-    ],
-    "relatedAnime": [
-     "https://anidb.net/anime/10385",
-     "https://anilist.co/anime/20596",
-     "https://anime-planet.com/anime/blue-spring-ride",
-     "https://animecountdown.com/47166",
-     "https://anisearch.com/anime/9416",
-     "https://kitsu.app/anime/8246",
-     "https://livechart.me/anime/397",
-     "https://myanimelist.net/anime/21995",
-     "https://simkl.com/anime/47166"
-    ],
-    "tags": [
-     "asia",
-     "based on a manga",
-     "comedy",
-     "drama",
-     "earth",
-     "female protagonist",
-     "heart-warming",
-     "heterosexual",
-     "japan",
-     "japanese production",
-     "love polygon",
-     "love triangle",
-     "manga",
-     "middle school",
-     "place",
-     "present",
-     "primarily teen cast",
-     "romance",
-     "school",
-     "school club",
-     "school life",
-     "shoujo",
-     "slice of life",
-     "slice of life drama",
-     "time",
-     "watercolour style"
+    "pages": [
+      {
+        "key": "anidb:anime:10626",
+        "address": "https://anidb.net/anime/10626",
+        "titles": [
+          "Ao Haru Ride OAD",
+          "アオハライド OAD"
+        ],
+        "type": "OVA",
+        "year": 2014,
+        "season": "SUMMER",
+        "links": [
+          "ann:anime:15817",
+          "mal:anime:24151"
+        ],
+        "lands_on": null,
+        "found_by": null,
+        "dead": false
+      },
+      {
+        "key": "anilist:anime:20837",
+        "address": "https://anilist.co/anime/20837",
+        "titles": [
+          "Ao Haru Ride: unwritten",
+          "アオハライド unwritten"
+        ],
+        "type": "OVA",
+        "year": 2014,
+        "season": "SUMMER",
+        "links": [
+          "mal:anime:24151"
+        ],
+        "lands_on": null,
+        "found_by": null,
+        "dead": false
+      },
+      {
+        "key": "anilist:anime:20900",
+        "address": "https://anilist.co/anime/20900",
+        "titles": [
+          "Ao Haru Ride PAGE.13",
+          "アオハライド PAGE.13"
+        ],
+        "type": "OVA",
+        "year": 2014,
+        "season": "FALL",
+        "links": [
+          "mal:anime:24151"
+        ],
+        "lands_on": null,
+        "found_by": null,
+        "dead": false
+      },
+      {
+        "key": "animeplanet:anime:blue-spring-ride-page-13",
+        "address": "https://anime-planet.com/anime/blue-spring-ride-page-13",
+        "titles": [
+          "Blue Spring Ride: Page.13",
+          "Alt titles: Ao Haru Ride: Page.13, アオハライド PAGE.13"
+        ],
+        "type": "OVA",
+        "year": 2014,
+        "season": "WINTER",
+        "links": [],
+        "lands_on": null,
+        "found_by": null,
+        "dead": false
+      },
+      {
+        "key": "animeplanet:anime:blue-spring-ride-unwritten",
+        "address": "https://anime-planet.com/anime/blue-spring-ride-unwritten",
+        "titles": [
+          "Blue Spring Ride: Unwritten",
+          "Alt titles: Ao Haru Ride: Unwritten, アオハライド unwritten"
+        ],
+        "type": "OVA",
+        "year": 2014,
+        "season": "SUMMER",
+        "links": [],
+        "lands_on": null,
+        "found_by": null,
+        "dead": false
+      },
+      {
+        "key": "anisearch:anime:9646",
+        "address": "https://anisearch.com/anime/9646",
+        "titles": [
+          "Ao Haru Ride OAD",
+          "アオハライド OAD"
+        ],
+        "type": "OVA",
+        "year": 2014,
+        "season": "SUMMER",
+        "links": [],
+        "lands_on": null,
+        "found_by": null,
+        "dead": false
+      },
+      {
+        "key": "https://animeschedule.net/anime/ao-haru-ride-page-13",
+        "address": "https://animeschedule.net/anime/ao-haru-ride-page-13",
+        "titles": [
+          "Ao Haru Ride OVA",
+          "アオハライド OAD"
+        ],
+        "type": "OVA",
+        "year": 2014,
+        "season": "SUMMER",
+        "links": [
+          "anidb:anime:10626",
+          "anilist:anime:20900",
+          "animeplanet:anime:blue-spring-ride-page-13",
+          "kitsu:anime:ao-haru-ride-ova"
+        ],
+        "lands_on": null,
+        "found_by": "mal:anime:24151",
+        "dead": false
+      },
+      {
+        "key": "kitsu:anime:8488",
+        "address": "https://kitsu.app/anime/8488",
+        "titles": [
+          "Ao Haru Ride OVA",
+          "アオハライド OAD"
+        ],
+        "type": "OVA",
+        "year": 2014,
+        "season": "SUMMER",
+        "links": [
+          "anidb:anime:10626",
+          "anilist:anime:20837",
+          "mal:anime:24151"
+        ],
+        "lands_on": null,
+        "found_by": null,
+        "dead": false
+      },
+      {
+        "key": "mal:anime:24151",
+        "address": "https://myanimelist.net/anime/24151",
+        "titles": [
+          "Ao Haru Ride OVA",
+          "Blue Spring Ride OVA",
+          "アオハライド OAD"
+        ],
+        "type": "OVA",
+        "year": 2014,
+        "season": null,
+        "links": [
+          "anidb:anime:10626",
+          "ann:anime:15817"
+        ],
+        "lands_on": null,
+        "found_by": null,
+        "dead": false
+      }
     ]
-   }
-  ],
-  "pages": [
-   {
-    "key": "anidb:anime:10626",
-    "address": "https://anidb.net/anime/10626",
-    "titles": [
-     "Ao Haru Ride OAD",
-     "アオハライド OAD"
+  },
+  "cocoon": {
+    "entries": [
+      {
+        "sources": [
+          "https://anidb.net/anime/18084",
+          "https://anilist.co/anime/166527",
+          "https://anime-planet.com/anime/cocoon-aru-natsu-no-shoujo-tachi-yori",
+          "https://anime-planet.com/anime/cocoon-one-summer-of-girlhood",
+          "https://animecountdown.com/2196692",
+          "https://animenewsnetwork.com/encyclopedia/anime.php?id=28792",
+          "https://anisearch.com/anime/18492",
+          "https://kitsu.app/anime/47658",
+          "https://livechart.me/anime/12223",
+          "https://myanimelist.net/anime/55779",
+          "https://simkl.com/anime/2196692"
+        ],
+        "title": "Cocoon: Aru Natsu no Shoujo-tachi yori",
+        "type": "SPECIAL",
+        "animeSeason": {
+          "season": "WINTER",
+          "year": 2025
+        }
+      }
     ],
-    "type": "OVA",
-    "year": 2014,
-    "season": "SUMMER",
-    "links": [
-     "ann:anime:15817",
-     "mal:anime:24151"
-    ],
-    "lands_on": null,
-    "found_by": null,
-    "dead": false
-   },
-   {
-    "key": "anilist:anime:20837",
-    "address": "https://anilist.co/anime/20837",
-    "titles": [
-     "Ao Haru Ride: unwritten",
-     "アオハライド unwritten"
-    ],
-    "type": "OVA",
-    "year": 2014,
-    "season": "SUMMER",
-    "links": [
-     "mal:anime:24151"
-    ],
-    "lands_on": null,
-    "found_by": null,
-    "dead": false
-   },
-   {
-    "key": "anilist:anime:20900",
-    "address": "https://anilist.co/anime/20900",
-    "titles": [
-     "Ao Haru Ride PAGE.13",
-     "アオハライド PAGE.13"
-    ],
-    "type": "OVA",
-    "year": 2014,
-    "season": "FALL",
-    "links": [
-     "mal:anime:24151"
-    ],
-    "lands_on": null,
-    "found_by": null,
-    "dead": false
-   },
-   {
-    "key": "animeplanet:anime:blue-spring-ride-page-13",
-    "address": "https://anime-planet.com/anime/blue-spring-ride-page-13",
-    "titles": [
-     "Blue Spring Ride: Page.13",
-     "Alt titles: Ao Haru Ride: Page.13, アオハライド PAGE.13"
-    ],
-    "type": "OVA",
-    "year": 2014,
-    "season": "WINTER",
-    "links": [],
-    "lands_on": null,
-    "found_by": null,
-    "dead": false
-   },
-   {
-    "key": "animeplanet:anime:blue-spring-ride-unwritten",
-    "address": "https://anime-planet.com/anime/blue-spring-ride-unwritten",
-    "titles": [
-     "Blue Spring Ride: Unwritten",
-     "Alt titles: Ao Haru Ride: Unwritten, アオハライド unwritten"
-    ],
-    "type": "OVA",
-    "year": 2014,
-    "season": "SUMMER",
-    "links": [],
-    "lands_on": null,
-    "found_by": null,
-    "dead": false
-   },
-   {
-    "key": "anisearch:anime:9646",
-    "address": "https://anisearch.com/anime/9646",
-    "titles": [
-     "Ao Haru Ride OAD",
-     "アオハライド OAD"
-    ],
-    "type": "OVA",
-    "year": 2014,
-    "season": "SUMMER",
-    "links": [],
-    "lands_on": null,
-    "found_by": null,
-    "dead": false
-   },
-   {
-    "key": "https://animeschedule.net/anime/ao-haru-ride-page-13",
-    "address": "https://animeschedule.net/anime/ao-haru-ride-page-13",
-    "titles": [
-     "Ao Haru Ride OVA",
-     "アオハライド OAD"
-    ],
-    "type": "OVA",
-    "year": 2014,
-    "season": "SUMMER",
-    "links": [
-     "anidb:anime:10626",
-     "anilist:anime:20900",
-     "animeplanet:anime:blue-spring-ride-page-13",
-     "kitsu:anime:ao-haru-ride-ova"
-    ],
-    "lands_on": null,
-    "found_by": "mal:anime:24151",
-    "dead": false
-   },
-   {
-    "key": "kitsu:anime:8488",
-    "address": "https://kitsu.app/anime/8488",
-    "titles": [
-     "Ao Haru Ride OVA",
-     "アオハライド OAD"
-    ],
-    "type": "OVA",
-    "year": 2014,
-    "season": "SUMMER",
-    "links": [
-     "anidb:anime:10626",
-     "anilist:anime:20837",
-     "mal:anime:24151"
-    ],
-    "lands_on": null,
-    "found_by": null,
-    "dead": false
-   },
-   {
-    "key": "mal:anime:24151",
-    "address": "https://myanimelist.net/anime/24151",
-    "titles": [
-     "Ao Haru Ride OVA",
-     "Blue Spring Ride OVA",
-     "アオハライド OAD"
-    ],
-    "type": "OVA",
-    "year": 2014,
-    "season": null,
-    "links": [
-     "anidb:anime:10626",
-     "ann:anime:15817"
-    ],
-    "lands_on": null,
-    "found_by": null,
-    "dead": false
-   }
-  ]
- },
- "cocoon": {
-  "entries": [
-   {
-    "sources": [
-     "https://anidb.net/anime/18084",
-     "https://anilist.co/anime/166527",
-     "https://anime-planet.com/anime/cocoon-aru-natsu-no-shoujo-tachi-yori",
-     "https://anime-planet.com/anime/cocoon-one-summer-of-girlhood",
-     "https://animecountdown.com/2196692",
-     "https://animenewsnetwork.com/encyclopedia/anime.php?id=28792",
-     "https://anisearch.com/anime/18492",
-     "https://kitsu.app/anime/47658",
-     "https://livechart.me/anime/12223",
-     "https://myanimelist.net/anime/55779",
-     "https://simkl.com/anime/2196692"
-    ],
-    "title": "Cocoon: Aru Natsu no Shoujo-tachi yori",
-    "type": "SPECIAL",
-    "episodes": 1,
-    "status": "FINISHED",
-    "animeSeason": {
-     "season": "WINTER",
-     "year": 2025
-    },
-    "picture": "https://cdn.myanimelist.net/images/anime/1056/151350.jpg",
-    "thumbnail": "https://cdn.myanimelist.net/images/anime/1056/151350t.jpg",
-    "duration": {
-     "value": 3600,
-     "unit": "SECONDS"
-    },
-    "score": {
-     "arithmeticGeometricMean": 7.4333440202699546,
-     "arithmeticMean": 7.441168831168831,
-     "median": 7.5
-    },
-    "synonyms": [
-     "Cocoon",
-     "Cocoon: A Summer of Girlhood",
-     "Cocoon: Aru Natsu no Shoujo-tachi Yori",
-     "Cocoon: Aru Natsu no Shōjo-tachi yori",
-     "Cocoon: From the Girls of Summer",
-     "Cocoon: One Summer of Girlhood",
-     "Kokuun",
-     "cocoon",
-     "cocoon - One Summer of Girlhood",
-     "cocoon -One Summer of Girlhood-",
-     "cocoon Aru Natsu no Shōjo-tachi Yori",
-     "cocoon ~Aru Natsu no Shoujo-tachi Yori~",
-     "cocoon ~ある夏の少女たちより~",
-     "cocoon – One Summer of Girlhood",
-     "cocoon — One Summer of Girlhood —",
-     "cocoon 〜ある夏の少女たちより〜",
-     "cocoon ～ある夏の少女たちより～",
-     "cocoon: Aru Natsu no Shoujo-tachi Yori",
-     "cocoon～来自某个夏天的少女们～",
-     "コクーン"
-    ],
-    "studios": [
-     "sasayuri"
-    ],
-    "producers": [
-     "gkids",
-     "nhk enterprises"
-    ],
-    "relatedAnime": [],
-    "tags": [
-     "agriculture",
-     "asia",
-     "attempted rape",
-     "coastal",
-     "crossdressing",
-     "death",
-     "disaster",
-     "drama",
-     "earth",
-     "everybody dies",
-     "female protagonist",
-     "girls love",
-     "gore",
-     "group suicide",
-     "historical",
-     "hospital",
-     "island",
-     "japan",
-     "japanese production",
-     "josei",
-     "jungle",
-     "kids in war",
-     "lgbtq+ themes",
-     "lgbtqia+",
-     "manga",
-     "medicine",
-     "military",
-     "nurse",
-     "nurses",
-     "okinawa",
-     "past",
-     "place",
-     "primarily female cast",
-     "primarily teen cast",
-     "psychological drama",
-     "rape",
-     "rural",
-     "sexual abuse",
-     "slice of life",
-     "suicide",
-     "survival",
-     "time",
-     "tragedy",
-     "twins",
-     "war",
-     "world war 2",
-     "world war ii",
-     "world wars"
+    "pages": [
+      {
+        "key": "anidb:anime:18084",
+        "address": "https://anidb.net/anime/18084",
+        "titles": [
+          "Cocoon: Aru Natsu no Shoujo-tachi yori",
+          "cocoon ~ある夏の少女たちより~",
+          "cocoon～来自某个夏天的少女们～"
+        ],
+        "type": "TV SPECIAL",
+        "year": 2025,
+        "season": "SPRING",
+        "links": [
+          "ann:anime:28792",
+          "mal:anime:55779"
+        ],
+        "lands_on": null,
+        "found_by": null,
+        "dead": false
+      },
+      {
+        "key": "anilist:anime:166527",
+        "address": "https://anilist.co/anime/166527",
+        "titles": [
+          "cocoon: Aru Natsu no Shoujo-tachi Yori",
+          "cocoon – One Summer of Girlhood",
+          "cocoon ～ある夏の少女たちより～"
+        ],
+        "type": "SPECIAL",
+        "year": 2025,
+        "season": "SPRING",
+        "links": [
+          "mal:anime:55779"
+        ],
+        "lands_on": null,
+        "found_by": null,
+        "dead": false
+      },
+      {
+        "key": "animeplanet:anime:cocoon-aru-natsu-no-shoujo-tachi-yori",
+        "address": "https://anime-planet.com/anime/cocoon-aru-natsu-no-shoujo-tachi-yori",
+        "titles": [
+          "Cocoon: One Summer of Girlhood",
+          "Cocoon: Aru Natsu no Shoujo-tachi Yori"
+        ],
+        "type": "TV SPECIAL",
+        "year": 2025,
+        "season": "SPRING",
+        "links": [],
+        "lands_on": "animeplanet:anime:cocoon-one-summer-of-girlhood",
+        "found_by": null,
+        "dead": false
+      },
+      {
+        "key": "animeplanet:anime:cocoon-one-summer-of-girlhood",
+        "address": "https://anime-planet.com/anime/cocoon-one-summer-of-girlhood",
+        "titles": [
+          "Cocoon: One Summer of Girlhood",
+          "Cocoon: Aru Natsu no Shoujo-tachi Yori"
+        ],
+        "type": "TV SPECIAL",
+        "year": 2025,
+        "season": "SPRING",
+        "links": [],
+        "lands_on": null,
+        "found_by": null,
+        "dead": false
+      },
+      {
+        "key": "anisearch:anime:18492",
+        "address": "https://anisearch.com/anime/18492",
+        "titles": [
+          "Cocoon: Aru Natsu no Shoujo-tachi yori",
+          "Cocoon: One Summer of Girlhood",
+          "cocoon 〜ある夏の少女たちより〜"
+        ],
+        "type": "TV SPECIAL",
+        "year": 2025,
+        "season": "SPRING",
+        "links": [],
+        "lands_on": null,
+        "found_by": null,
+        "dead": false
+      },
+      {
+        "key": "https://animeschedule.net/anime/cocoon-2025",
+        "address": "https://animeschedule.net/anime/cocoon-2025",
+        "titles": [
+          "cocoon: Aru Natsu no Shoujo-tachi Yori",
+          "cocoon ～ある夏の少女たちより～"
+        ],
+        "type": "SPECIAL",
+        "year": 2025,
+        "season": "SPRING",
+        "links": [
+          "anidb:anime:18084",
+          "anilist:anime:166527",
+          "animeplanet:anime:cocoon",
+          "kitsu:anime:cocoon"
+        ],
+        "lands_on": null,
+        "found_by": "mal:anime:55779",
+        "dead": false
+      },
+      {
+        "key": "kitsu:anime:47658",
+        "address": "https://kitsu.app/anime/47658",
+        "titles": [
+          "Cocoon"
+        ],
+        "type": "SPECIAL",
+        "year": 2025,
+        "season": "SPRING",
+        "links": [
+          "anilist:anime:166527",
+          "mal:anime:55779"
+        ],
+        "lands_on": null,
+        "found_by": null,
+        "dead": false
+      },
+      {
+        "key": "mal:anime:55779",
+        "address": "https://myanimelist.net/anime/55779",
+        "titles": [
+          "Cocoon: Aru Natsu no Shoujo-tachi yori",
+          "cocoon ～ある夏の少女たちより～"
+        ],
+        "type": "TV SPECIAL",
+        "year": 2025,
+        "season": null,
+        "links": [
+          "anidb:anime:18084",
+          "ann:anime:28792"
+        ],
+        "lands_on": null,
+        "found_by": null,
+        "dead": false
+      }
     ]
-   }
-  ],
-  "pages": [
-   {
-    "key": "anidb:anime:18084",
-    "address": "https://anidb.net/anime/18084",
-    "titles": [
-     "Cocoon: Aru Natsu no Shoujo-tachi yori",
-     "cocoon ~ある夏の少女たちより~",
-     "cocoon～来自某个夏天的少女们～"
+  },
+  "genshin_sigewinne": {
+    "entries": [
+      {
+        "sources": [
+          "https://anime-planet.com/anime/genshin-impact-character-teaser-sigewinne-everyday-correspondence",
+          "https://anime-planet.com/anime/genshin-impact-character-teaser-varesa-the-legend-of-a-warrior"
+        ],
+        "title": "Genshin Impact: Character Teaser - Sigewinne: Everyday Correspondence",
+        "type": "ONA",
+        "animeSeason": {
+          "season": "UNDEFINED",
+          "year": 2024
+        }
+      }
     ],
-    "type": "TV SPECIAL",
-    "year": 2025,
-    "season": "SPRING",
-    "links": [
-     "ann:anime:28792",
-     "mal:anime:55779"
-    ],
-    "lands_on": null,
-    "found_by": null,
-    "dead": false
-   },
-   {
-    "key": "anilist:anime:166527",
-    "address": "https://anilist.co/anime/166527",
-    "titles": [
-     "cocoon: Aru Natsu no Shoujo-tachi Yori",
-     "cocoon – One Summer of Girlhood",
-     "cocoon ～ある夏の少女たちより～"
-    ],
-    "type": "SPECIAL",
-    "year": 2025,
-    "season": "SPRING",
-    "links": [
-     "mal:anime:55779"
-    ],
-    "lands_on": null,
-    "found_by": null,
-    "dead": false
-   },
-   {
-    "key": "animeplanet:anime:cocoon-aru-natsu-no-shoujo-tachi-yori",
-    "address": "https://anime-planet.com/anime/cocoon-aru-natsu-no-shoujo-tachi-yori",
-    "titles": [
-     "Cocoon: One Summer of Girlhood",
-     "Cocoon: Aru Natsu no Shoujo-tachi Yori"
-    ],
-    "type": "TV SPECIAL",
-    "year": 2025,
-    "season": "SPRING",
-    "links": [],
-    "lands_on": "animeplanet:anime:cocoon-one-summer-of-girlhood",
-    "found_by": null,
-    "dead": false
-   },
-   {
-    "key": "animeplanet:anime:cocoon-one-summer-of-girlhood",
-    "address": "https://anime-planet.com/anime/cocoon-one-summer-of-girlhood",
-    "titles": [
-     "Cocoon: One Summer of Girlhood",
-     "Cocoon: Aru Natsu no Shoujo-tachi Yori"
-    ],
-    "type": "TV SPECIAL",
-    "year": 2025,
-    "season": "SPRING",
-    "links": [],
-    "lands_on": null,
-    "found_by": null,
-    "dead": false
-   },
-   {
-    "key": "anisearch:anime:18492",
-    "address": "https://anisearch.com/anime/18492",
-    "titles": [
-     "Cocoon: Aru Natsu no Shoujo-tachi yori",
-     "Cocoon: One Summer of Girlhood",
-     "cocoon 〜ある夏の少女たちより〜"
-    ],
-    "type": "TV SPECIAL",
-    "year": 2025,
-    "season": "SPRING",
-    "links": [],
-    "lands_on": null,
-    "found_by": null,
-    "dead": false
-   },
-   {
-    "key": "https://animeschedule.net/anime/cocoon-2025",
-    "address": "https://animeschedule.net/anime/cocoon-2025",
-    "titles": [
-     "cocoon: Aru Natsu no Shoujo-tachi Yori",
-     "cocoon ～ある夏の少女たちより～"
-    ],
-    "type": "SPECIAL",
-    "year": 2025,
-    "season": "SPRING",
-    "links": [
-     "anidb:anime:18084",
-     "anilist:anime:166527",
-     "animeplanet:anime:cocoon",
-     "kitsu:anime:cocoon"
-    ],
-    "lands_on": null,
-    "found_by": "mal:anime:55779",
-    "dead": false
-   },
-   {
-    "key": "kitsu:anime:47658",
-    "address": "https://kitsu.app/anime/47658",
-    "titles": [
-     "Cocoon"
-    ],
-    "type": "SPECIAL",
-    "year": 2025,
-    "season": "SPRING",
-    "links": [
-     "anilist:anime:166527",
-     "mal:anime:55779"
-    ],
-    "lands_on": null,
-    "found_by": null,
-    "dead": false
-   },
-   {
-    "key": "mal:anime:55779",
-    "address": "https://myanimelist.net/anime/55779",
-    "titles": [
-     "Cocoon: Aru Natsu no Shoujo-tachi yori",
-     "cocoon ～ある夏の少女たちより～"
-    ],
-    "type": "TV SPECIAL",
-    "year": 2025,
-    "season": null,
-    "links": [
-     "anidb:anime:18084",
-     "ann:anime:28792"
-    ],
-    "lands_on": null,
-    "found_by": null,
-    "dead": false
-   }
-  ]
- },
- "genshin_sigewinne": {
-  "entries": [
-   {
-    "sources": [
-     "https://anime-planet.com/anime/genshin-impact-character-teaser-sigewinne-everyday-correspondence",
-     "https://anime-planet.com/anime/genshin-impact-character-teaser-varesa-the-legend-of-a-warrior"
-    ],
-    "title": "Genshin Impact: Character Teaser - Sigewinne: Everyday Correspondence",
-    "type": "ONA",
-    "episodes": 1,
-    "status": "FINISHED",
-    "animeSeason": {
-     "season": "UNDEFINED",
-     "year": 2024
-    },
-    "picture": "https://cdn.anime-planet.com/anime/primary/genshin-impact-character-teaser-sigewinne-everyday-correspondence-1.webp",
-    "thumbnail": "https://cdn.anime-planet.com/anime/primary/genshin-impact-character-teaser-sigewinne-everyday-correspondence-1-285x399.webp",
-    "duration": {
-     "value": 120,
-     "unit": "SECONDS"
-    },
-    "score": {
-     "arithmeticGeometricMean": 7.034,
-     "arithmeticMean": 7.034,
-     "median": 7.034
-    },
-    "synonyms": [
-     "Genshin Impact: Character Teaser - Varesa: The Legend of a Warrior",
-     "《原神》瓦雷莎角色PV——「勇士传说」"
-    ],
-    "studios": [],
-    "producers": [],
-    "relatedAnime": [],
-    "tags": [
-     "based on a video game",
-     "chinese animation",
-     "fantasy",
-     "promotional"
+    "pages": [
+      {
+        "key": "animeplanet:anime:genshin-impact-character-teaser-sigewinne-everyday-correspondence",
+        "address": "https://anime-planet.com/anime/genshin-impact-character-teaser-sigewinne-everyday-correspondence",
+        "titles": [
+          "Genshin Impact: Character Teaser - Sigewinne: Everyday Correspondence",
+          "《原神》瓦雷莎角色PV——「勇士传说」"
+        ],
+        "type": "ONA",
+        "year": 2024,
+        "season": "SUMMER",
+        "links": [],
+        "lands_on": null,
+        "found_by": null,
+        "dead": false
+      },
+      {
+        "key": "animeplanet:anime:genshin-impact-character-teaser-varesa-the-legend-of-a-warrior",
+        "address": "https://anime-planet.com/anime/genshin-impact-character-teaser-varesa-the-legend-of-a-warrior",
+        "titles": [
+          "Genshin Impact: Character Teaser - Varesa: The Legend of a Warrior",
+          "《原神》瓦雷莎角色PV——「勇士传说」"
+        ],
+        "type": "ONA",
+        "year": 2025,
+        "season": "SPRING",
+        "links": [],
+        "lands_on": null,
+        "found_by": null,
+        "dead": false
+      }
     ]
-   }
-  ],
-  "pages": [
-   {
-    "key": "animeplanet:anime:genshin-impact-character-teaser-sigewinne-everyday-correspondence",
-    "address": "https://anime-planet.com/anime/genshin-impact-character-teaser-sigewinne-everyday-correspondence",
-    "titles": [
-     "Genshin Impact: Character Teaser - Sigewinne: Everyday Correspondence",
-     "《原神》瓦雷莎角色PV——「勇士传说」"
+  },
+  "genshin_outfit": {
+    "entries": [
+      {
+        "sources": [
+          "https://anime-planet.com/anime/genshin-impact-outfit-teaser-teyvat-style-its-showtime",
+          "https://anime-planet.com/anime/genshin-impact-outfit-teaser-teyvat-style-out-with-the-rime-in-with-the-sunshine"
+        ],
+        "title": "Genshin Impact: Outfit Teaser - Teyvat Style: It's Showtime",
+        "type": "ONA",
+        "animeSeason": {
+          "season": "UNDEFINED",
+          "year": 2023
+        }
+      }
     ],
-    "type": "ONA",
-    "year": 2024,
-    "season": "SUMMER",
-    "links": [],
-    "lands_on": null,
-    "found_by": null,
-    "dead": false
-   },
-   {
-    "key": "animeplanet:anime:genshin-impact-character-teaser-varesa-the-legend-of-a-warrior",
-    "address": "https://anime-planet.com/anime/genshin-impact-character-teaser-varesa-the-legend-of-a-warrior",
-    "titles": [
-     "Genshin Impact: Character Teaser - Varesa: The Legend of a Warrior",
-     "《原神》瓦雷莎角色PV——「勇士传说」"
-    ],
-    "type": "ONA",
-    "year": 2025,
-    "season": "SPRING",
-    "links": [],
-    "lands_on": null,
-    "found_by": null,
-    "dead": false
-   }
-  ]
- },
- "genshin_outfit": {
-  "entries": [
-   {
-    "sources": [
-     "https://anime-planet.com/anime/genshin-impact-outfit-teaser-teyvat-style-its-showtime",
-     "https://anime-planet.com/anime/genshin-impact-outfit-teaser-teyvat-style-out-with-the-rime-in-with-the-sunshine"
-    ],
-    "title": "Genshin Impact: Outfit Teaser - Teyvat Style: It's Showtime",
-    "type": "ONA",
-    "episodes": 1,
-    "status": "FINISHED",
-    "animeSeason": {
-     "season": "UNDEFINED",
-     "year": 2023
-    },
-    "picture": "https://cdn.anime-planet.com/anime/primary/genshin-impact-outfit-teaser-teyvat-style-its-showtime-1.webp",
-    "thumbnail": "https://cdn.anime-planet.com/anime/primary/genshin-impact-outfit-teaser-teyvat-style-its-showtime-1-285x399.webp",
-    "duration": {
-     "value": 60,
-     "unit": "SECONDS"
-    },
-    "score": {
-     "arithmeticGeometricMean": 7.176,
-     "arithmeticMean": 7.176,
-     "median": 7.176
-    },
-    "synonyms": [
-     "Genshin Impact: Outfit Teaser - Teyvat Style: Out With the Rime, In With the Sunshine",
-     "《原神》提瓦特风尚·衣装PV - 融雪弄晴意"
-    ],
-    "studios": [],
-    "producers": [],
-    "relatedAnime": [],
-    "tags": [
-     "based on a video game",
-     "chinese animation",
-     "promotional"
+    "pages": [
+      {
+        "key": "animeplanet:anime:genshin-impact-outfit-teaser-teyvat-style-its-showtime",
+        "address": "https://anime-planet.com/anime/genshin-impact-outfit-teaser-teyvat-style-its-showtime",
+        "titles": [
+          "Genshin Impact: Outfit Teaser - Teyvat Style: It's Showtime",
+          "《原神》提瓦特风尚·衣装PV - 融雪弄晴意"
+        ],
+        "type": "ONA",
+        "year": 2023,
+        "season": "SUMMER",
+        "links": [],
+        "lands_on": null,
+        "found_by": null,
+        "dead": false
+      },
+      {
+        "key": "animeplanet:anime:genshin-impact-outfit-teaser-teyvat-style-out-with-the-rime-in-with-the-sunshine",
+        "address": "https://anime-planet.com/anime/genshin-impact-outfit-teaser-teyvat-style-out-with-the-rime-in-with-the-sunshine",
+        "titles": [
+          "Genshin Impact: Outfit Teaser - Teyvat Style: Out With the Rime, In With the Sunshine",
+          "《原神》提瓦特风尚·衣装PV - 融雪弄晴意"
+        ],
+        "type": "ONA",
+        "year": 2024,
+        "season": "WINTER",
+        "links": [],
+        "lands_on": null,
+        "found_by": null,
+        "dead": false
+      }
     ]
-   }
-  ],
-  "pages": [
-   {
-    "key": "animeplanet:anime:genshin-impact-outfit-teaser-teyvat-style-its-showtime",
-    "address": "https://anime-planet.com/anime/genshin-impact-outfit-teaser-teyvat-style-its-showtime",
-    "titles": [
-     "Genshin Impact: Outfit Teaser - Teyvat Style: It's Showtime",
-     "《原神》提瓦特风尚·衣装PV - 融雪弄晴意"
+  },
+  "episode_count": {
+    "entries": [
+      {
+        "sources": [
+          "https://anidb.net/anime/18579",
+          "https://anilist.co/anime/176509",
+          "https://anime-planet.com/anime/baki-dou-the-invincible-samurai",
+          "https://animecountdown.com/2420618",
+          "https://animenewsnetwork.com/encyclopedia/anime.php?id=32626",
+          "https://animenewsnetwork.com/encyclopedia/anime.php?id=38845",
+          "https://anisearch.com/anime/19175",
+          "https://kitsu.app/anime/48676",
+          "https://livechart.me/anime/12621",
+          "https://myanimelist.net/anime/58573",
+          "https://simkl.com/anime/2420618"
+        ],
+        "title": "Baki-dou",
+        "type": "ONA",
+        "animeSeason": {
+          "season": "WINTER",
+          "year": 2026
+        }
+      }
     ],
-    "type": "ONA",
-    "year": 2023,
-    "season": "SUMMER",
-    "links": [],
-    "lands_on": null,
-    "found_by": null,
-    "dead": false
-   },
-   {
-    "key": "animeplanet:anime:genshin-impact-outfit-teaser-teyvat-style-out-with-the-rime-in-with-the-sunshine",
-    "address": "https://anime-planet.com/anime/genshin-impact-outfit-teaser-teyvat-style-out-with-the-rime-in-with-the-sunshine",
-    "titles": [
-     "Genshin Impact: Outfit Teaser - Teyvat Style: Out With the Rime, In With the Sunshine",
-     "《原神》提瓦特风尚·衣装PV - 融雪弄晴意"
-    ],
-    "type": "ONA",
-    "year": 2024,
-    "season": "WINTER",
-    "links": [],
-    "lands_on": null,
-    "found_by": null,
-    "dead": false
-   }
-  ]
- },
- "episode_count": {
-  "entries": [
-   {
-    "sources": [
-     "https://anidb.net/anime/18579",
-     "https://anilist.co/anime/176509",
-     "https://anime-planet.com/anime/baki-dou-the-invincible-samurai",
-     "https://animecountdown.com/2420618",
-     "https://animenewsnetwork.com/encyclopedia/anime.php?id=32626",
-     "https://animenewsnetwork.com/encyclopedia/anime.php?id=38845",
-     "https://anisearch.com/anime/19175",
-     "https://kitsu.app/anime/48676",
-     "https://livechart.me/anime/12621",
-     "https://myanimelist.net/anime/58573",
-     "https://simkl.com/anime/2420618"
-    ],
-    "title": "Baki-dou",
-    "type": "ONA",
-    "episodes": 13,
-    "status": "FINISHED",
-    "animeSeason": {
-     "season": "WINTER",
-     "year": 2026
-    },
-    "picture": "https://cdn.myanimelist.net/images/anime/1722/155148.jpg",
-    "thumbnail": "https://cdn.myanimelist.net/images/anime/1722/155148t.jpg",
-    "duration": {
-     "value": 1440,
-     "unit": "SECONDS"
-    },
-    "score": {
-     "arithmeticGeometricMean": 7.584786686529599,
-     "arithmeticMean": 7.585281385281385,
-     "median": 7.6
-    },
-    "synonyms": [
-     "BAKI-DOU",
-     "BAKI-DOU: O Samurai Invencível",
-     "BAKI-DOU: The Invincible Samurai",
-     "Baki Season 7",
-     "Baki's Path",
-     "Baki-Dou",
-     "Baki-Dou : Le samouraï invincible",
-     "Baki-Dou: El samurái invencible",
-     "Baki-Dou: L’invincibile samurai",
-     "Baki-Dou: The Invincible Samurai",
-     "Baki-dou: The Invincible Samurai",
-     "Baki-dō",
-     "baki s7",
-     "Путь Баки: непобедимый самурай",
-     "‫‏המסע של באקי: הסמוראי הבלתי מנוצח",
-     "刃牙道"
-    ],
-    "studios": [
-     "tms entertainment co., ltd."
-    ],
-    "producers": [
-     "akita shoten",
-     "audio planning u",
-     "heiwa",
-     "live viewing japan"
-    ],
-    "relatedAnime": [
-     "https://anidb.net/anime/12258",
-     "https://anidb.net/anime/12569",
-     "https://anidb.net/anime/14772",
-     "https://anidb.net/anime/1512",
-     "https://anidb.net/anime/15737",
-     "https://anidb.net/anime/17271",
-     "https://anidb.net/anime/18557",
-     "https://anidb.net/anime/453",
-     "https://anidb.net/anime/880",
-     "https://anilist.co/anime/146646",
-     "https://anilist.co/anime/210032",
-     "https://anilist.co/anime/216117",
-     "https://anime-planet.com/anime/baki-dou-the-invincible-samurai-part-ii",
-     "https://anime-planet.com/anime/baki-son-of-ogre-2",
-     "https://animecountdown.com/1060905",
-     "https://animecountdown.com/1573449",
-     "https://animecountdown.com/1871602",
-     "https://animecountdown.com/2413562",
-     "https://animecountdown.com/36632",
-     "https://animecountdown.com/37473",
-     "https://animecountdown.com/37661",
-     "https://animecountdown.com/597359",
-     "https://animecountdown.com/638959",
-     "https://animenewsnetwork.com/encyclopedia/anime.php?id=25468",
-     "https://anisearch.com/anime/17241",
-     "https://anisearch.com/anime/21361",
-     "https://kitsu.app/anime/45984",
-     "https://kitsu.app/anime/50635",
-     "https://livechart.me/anime/10158",
-     "https://livechart.me/anime/11152",
-     "https://livechart.me/anime/12605",
-     "https://livechart.me/anime/2246",
-     "https://livechart.me/anime/2433",
-     "https://livechart.me/anime/5089",
-     "https://livechart.me/anime/6212",
-     "https://livechart.me/anime/9326",
-     "https://livechart.me/anime/9366",
-     "https://myanimelist.net/anime/51318",
-     "https://myanimelist.net/anime/63833",
-     "https://simkl.com/anime/1060905",
-     "https://simkl.com/anime/1573449",
-     "https://simkl.com/anime/1871602",
-     "https://simkl.com/anime/2413562",
-     "https://simkl.com/anime/36632",
-     "https://simkl.com/anime/37473",
-     "https://simkl.com/anime/37661",
-     "https://simkl.com/anime/597359",
-     "https://simkl.com/anime/638959"
-    ],
-    "tags": [
-     "action",
-     "based on a manga",
-     "clone",
-     "combat sports",
-     "disability",
-     "drama",
-     "gore",
-     "hand to hand combat",
-     "hero of strong character",
-     "japanese production",
-     "male protagonist",
-     "martial arts",
-     "only on netflix",
-     "police",
-     "primarily male cast",
-     "samurai",
-     "sequel",
-     "shounen",
-     "sports",
-     "swordplay",
-     "tragedy"
+    "pages": [
+      {
+        "key": "anidb:anime:18579",
+        "address": "https://anidb.net/anime/18579",
+        "titles": [
+          "Baki-dou",
+          "Baki-Dou: The Invincible Samurai",
+          "刃牙道",
+          "‫‏המסע של באקי: הסמוראי הבלתי מנוצח"
+        ],
+        "type": "ONA",
+        "year": 2026,
+        "season": "WINTER",
+        "links": [
+          "mal:anime:58573"
+        ],
+        "lands_on": null,
+        "found_by": null,
+        "dead": false
+      },
+      {
+        "key": "anilist:anime:176509",
+        "address": "https://anilist.co/anime/176509",
+        "titles": [
+          "BAKI-DOU",
+          "BAKI-DOU: The Invincible Samurai",
+          "刃牙道"
+        ],
+        "type": "ONA",
+        "year": 2026,
+        "season": "WINTER",
+        "links": [
+          "mal:anime:58573"
+        ],
+        "lands_on": null,
+        "found_by": null,
+        "dead": false
+      },
+      {
+        "key": "animeplanet:anime:baki-dou-the-invincible-samurai",
+        "address": "https://anime-planet.com/anime/baki-dou-the-invincible-samurai",
+        "titles": [
+          "BAKI-DOU: The Invincible Samurai",
+          "刃牙道"
+        ],
+        "type": "ONA",
+        "year": 2026,
+        "season": "WINTER",
+        "links": [],
+        "lands_on": null,
+        "found_by": null,
+        "dead": false
+      },
+      {
+        "key": "anisearch:anime:19175",
+        "address": "https://anisearch.com/anime/19175",
+        "titles": [
+          "Baki-dou",
+          "Baki-Dou: The Invincible Samurai",
+          "刃牙道",
+          "Baki-Dou: El samurái invencible",
+          "Baki-Dou : Le samouraï invincible",
+          "Baki-Dou: L’invincibile samurai"
+        ],
+        "type": "ONA",
+        "year": 2026,
+        "season": "WINTER",
+        "links": [],
+        "lands_on": null,
+        "found_by": null,
+        "dead": false
+      },
+      {
+        "key": "https://animeschedule.net/anime/baki-dou",
+        "address": "https://animeschedule.net/anime/baki-dou",
+        "titles": [
+          "BAKI-DOU: The Invincible Samurai",
+          "刃牙道"
+        ],
+        "type": "UNKNOWN",
+        "year": 2026,
+        "season": "WINTER",
+        "links": [
+          "anidb:anime:18579",
+          "anilist:anime:176509",
+          "animeplanet:anime:baki-dou",
+          "kitsu:anime:baki-dou"
+        ],
+        "lands_on": null,
+        "found_by": "mal:anime:58573",
+        "dead": false
+      },
+      {
+        "key": "kitsu:anime:48676",
+        "address": "https://kitsu.app/anime/48676",
+        "titles": [
+          "Baki-dou",
+          "BAKI-DOU: The Invincible Samurai",
+          "刃牙道"
+        ],
+        "type": "ONA",
+        "year": 2026,
+        "season": "WINTER",
+        "links": [
+          "anilist:anime:176509",
+          "mal:anime:58573"
+        ],
+        "lands_on": null,
+        "found_by": null,
+        "dead": false
+      },
+      {
+        "key": "mal:anime:58573",
+        "address": "https://myanimelist.net/anime/58573",
+        "titles": [
+          "Baki-dou",
+          "Baki-dou: The Invincible Samurai",
+          "刃牙道"
+        ],
+        "type": "ONA",
+        "year": 2026,
+        "season": null,
+        "links": [
+          "anidb:anime:18579",
+          "ann:anime:32626"
+        ],
+        "lands_on": null,
+        "found_by": null,
+        "dead": false
+      }
     ]
-   }
-  ],
-  "pages": [
-   {
-    "key": "anidb:anime:18579",
-    "address": "https://anidb.net/anime/18579",
-    "titles": [
-     "Baki-dou",
-     "Baki-Dou: The Invincible Samurai",
-     "刃牙道",
-     "‫‏המסע של באקי: הסמוראי הבלתי מנוצח"
+  },
+  "cue": {
+    "entries": [
+      {
+        "sources": [
+          "https://animenewsnetwork.com/encyclopedia/anime.php?id=24629"
+        ],
+        "title": "CUE!",
+        "type": "TV",
+        "animeSeason": {
+          "season": "WINTER",
+          "year": 2022
+        }
+      },
+      {
+        "sources": [
+          "https://anidb.net/anime/15827",
+          "https://anilist.co/anime/125682",
+          "https://anime-planet.com/anime/cue",
+          "https://animecountdown.com/1467793",
+          "https://anisearch.com/anime/15712",
+          "https://kitsu.app/anime/44979",
+          "https://livechart.me/anime/10202",
+          "https://myanimelist.net/anime/43735",
+          "https://simkl.com/anime/1467793"
+        ],
+        "title": "Cue!",
+        "type": "TV",
+        "animeSeason": {
+          "season": "WINTER",
+          "year": 2022
+        }
+      }
     ],
-    "type": "ONA",
-    "year": 2026,
-    "season": "WINTER",
-    "links": [
-     "mal:anime:58573"
-    ],
-    "lands_on": null,
-    "found_by": null,
-    "dead": false
-   },
-   {
-    "key": "anilist:anime:176509",
-    "address": "https://anilist.co/anime/176509",
-    "titles": [
-     "BAKI-DOU",
-     "BAKI-DOU: The Invincible Samurai",
-     "刃牙道"
-    ],
-    "type": "ONA",
-    "year": 2026,
-    "season": "WINTER",
-    "links": [
-     "mal:anime:58573"
-    ],
-    "lands_on": null,
-    "found_by": null,
-    "dead": false
-   },
-   {
-    "key": "animeplanet:anime:baki-dou-the-invincible-samurai",
-    "address": "https://anime-planet.com/anime/baki-dou-the-invincible-samurai",
-    "titles": [
-     "BAKI-DOU: The Invincible Samurai",
-     "刃牙道"
-    ],
-    "type": "ONA",
-    "year": 2026,
-    "season": "WINTER",
-    "links": [],
-    "lands_on": null,
-    "found_by": null,
-    "dead": false
-   },
-   {
-    "key": "anisearch:anime:19175",
-    "address": "https://anisearch.com/anime/19175",
-    "titles": [
-     "Baki-dou",
-     "Baki-Dou: The Invincible Samurai",
-     "刃牙道",
-     "Baki-Dou: El samurái invencible",
-     "Baki-Dou : Le samouraï invincible",
-     "Baki-Dou: L’invincibile samurai"
-    ],
-    "type": "ONA",
-    "year": 2026,
-    "season": "WINTER",
-    "links": [],
-    "lands_on": null,
-    "found_by": null,
-    "dead": false
-   },
-   {
-    "key": "https://animeschedule.net/anime/baki-dou",
-    "address": "https://animeschedule.net/anime/baki-dou",
-    "titles": [
-     "BAKI-DOU: The Invincible Samurai",
-     "刃牙道"
-    ],
-    "type": "UNKNOWN",
-    "year": 2026,
-    "season": "WINTER",
-    "links": [
-     "anidb:anime:18579",
-     "anilist:anime:176509",
-     "animeplanet:anime:baki-dou",
-     "kitsu:anime:baki-dou"
-    ],
-    "lands_on": null,
-    "found_by": "mal:anime:58573",
-    "dead": false
-   },
-   {
-    "key": "kitsu:anime:48676",
-    "address": "https://kitsu.app/anime/48676",
-    "titles": [
-     "Baki-dou",
-     "BAKI-DOU: The Invincible Samurai",
-     "刃牙道"
-    ],
-    "type": "ONA",
-    "year": 2026,
-    "season": "WINTER",
-    "links": [
-     "anilist:anime:176509",
-     "mal:anime:58573"
-    ],
-    "lands_on": null,
-    "found_by": null,
-    "dead": false
-   },
-   {
-    "key": "mal:anime:58573",
-    "address": "https://myanimelist.net/anime/58573",
-    "titles": [
-     "Baki-dou",
-     "Baki-dou: The Invincible Samurai",
-     "刃牙道"
-    ],
-    "type": "ONA",
-    "year": 2026,
-    "season": null,
-    "links": [
-     "anidb:anime:18579",
-     "ann:anime:32626"
-    ],
-    "lands_on": null,
-    "found_by": null,
-    "dead": false
-   }
-  ]
- },
- "cue": {
-  "entries": [
-   {
-    "sources": [
-     "https://animenewsnetwork.com/encyclopedia/anime.php?id=24629"
-    ],
-    "title": "CUE!",
-    "type": "TV",
-    "episodes": 0,
-    "status": "FINISHED",
-    "animeSeason": {
-     "season": "WINTER",
-     "year": 2022
-    },
-    "picture": "https://cdn.animenewsnetwork.com/thumbnails/max500x600/encyc/A24629-2067287517.1637538072.jpg",
-    "thumbnail": "https://cdn.animenewsnetwork.com/thumbnails/fit200x200/encyc/A24629-2067287517.1637538072.jpg",
-    "synonyms": [
-     "キュー！"
-    ],
-    "studios": [
-     "graphinica",
-     "yumeta company"
-    ],
-    "producers": [
-     "cue! animation project"
-    ],
-    "relatedAnime": [],
-    "tags": []
-   },
-   {
-    "sources": [
-     "https://anidb.net/anime/15827",
-     "https://anilist.co/anime/125682",
-     "https://anime-planet.com/anime/cue",
-     "https://animecountdown.com/1467793",
-     "https://anisearch.com/anime/15712",
-     "https://kitsu.app/anime/44979",
-     "https://livechart.me/anime/10202",
-     "https://myanimelist.net/anime/43735",
-     "https://simkl.com/anime/1467793"
-    ],
-    "title": "Cue!",
-    "type": "TV",
-    "episodes": 24,
-    "status": "FINISHED",
-    "animeSeason": {
-     "season": "WINTER",
-     "year": 2022
-    },
-    "picture": "https://cdn.myanimelist.net/images/anime/1039/120173.jpg",
-    "thumbnail": "https://cdn.myanimelist.net/images/anime/1039/120173t.jpg",
-    "duration": {
-     "value": 1440,
-     "unit": "SECONDS"
-    },
-    "score": {
-     "arithmeticGeometricMean": 7.09957931705926,
-     "arithmeticMean": 7.103939393939394,
-     "median": 7.051818181818181
-    },
-    "synonyms": [
-     "CUE!",
-     "Титры!",
-     "キュー!",
-     "キュー！"
-    ],
-    "studios": [
-     "graphinica, inc.",
-     "yumeta co., ltd.",
-     "yumeta company"
-    ],
-    "producers": [
-     "apdream",
-     "bit grooove promotion",
-     "liber entertainment",
-     "mainichi broadcasting system",
-     "pony canyon"
-    ],
-    "relatedAnime": [
-     "https://anilist.co/anime/148821",
-     "https://anime-planet.com/anime/cue-short-anime",
-     "https://anisearch.com/anime/15015",
-     "https://anisearch.com/anime/18057",
-     "https://myanimelist.net/anime/51684"
-    ],
-    "tags": [
-     "acting",
-     "angst",
-     "asia",
-     "based on a mobile game",
-     "battle royale",
-     "chuunibyou",
-     "colour coded",
-     "comedy",
-     "cute girls doing cute things",
-     "daily life",
-     "dancing",
-     "dialogue driven",
-     "earth",
-     "ensemble cast",
-     "entertainment industry",
-     "female protagonist",
-     "following one's dream",
-     "friendship",
-     "funny expressions",
-     "game",
-     "idol",
-     "idols",
-     "japan",
-     "japanese production",
-     "music",
-     "occupation and career",
-     "performance",
-     "place",
-     "predominantly female cast",
-     "present",
-     "primarily female cast",
-     "primarily teen cast",
-     "seiyuu",
-     "show within a show",
-     "showbiz",
-     "slapstick",
-     "slice of life",
-     "social media",
-     "storytelling",
-     "teamwork",
-     "the arts",
-     "time",
-     "tokyo",
-     "training",
-     "tropes",
-     "under one roof",
-     "video games",
-     "voice acting",
-     "walls of text",
-     "wordplay",
-     "work",
-     "working life"
+    "pages": [
+      {
+        "key": "anidb:anime:15827",
+        "address": "https://anidb.net/anime/15827",
+        "titles": [
+          "Cue!",
+          "CUE!",
+          "Титры!"
+        ],
+        "type": "TV",
+        "year": 2022,
+        "season": "WINTER",
+        "links": [
+          "ann:anime:24629",
+          "mal:anime:43735"
+        ],
+        "lands_on": null,
+        "found_by": null,
+        "dead": false
+      },
+      {
+        "key": "anilist:anime:125682",
+        "address": "https://anilist.co/anime/125682",
+        "titles": [
+          "CUE!"
+        ],
+        "type": "TV",
+        "year": 2022,
+        "season": "WINTER",
+        "links": [
+          "mal:anime:43735"
+        ],
+        "lands_on": null,
+        "found_by": null,
+        "dead": false
+      },
+      {
+        "key": "animeplanet:anime:cue",
+        "address": "https://anime-planet.com/anime/cue",
+        "titles": [
+          "Cue!"
+        ],
+        "type": "TV",
+        "year": 2022,
+        "season": "WINTER",
+        "links": [],
+        "lands_on": null,
+        "found_by": null,
+        "dead": false
+      },
+      {
+        "key": "anisearch:anime:15712",
+        "address": "https://anisearch.com/anime/15712",
+        "titles": [
+          "Cue!",
+          "キュー！"
+        ],
+        "type": "TV",
+        "year": 2022,
+        "season": "WINTER",
+        "links": [],
+        "lands_on": null,
+        "found_by": null,
+        "dead": false
+      },
+      {
+        "key": "https://animeschedule.net/anime/cue",
+        "address": "https://animeschedule.net/anime/cue",
+        "titles": [
+          "Cue!"
+        ],
+        "type": "TV",
+        "year": 2022,
+        "season": "WINTER",
+        "links": [
+          "anidb:anime:15827",
+          "anilist:anime:125682",
+          "animeplanet:anime:cue",
+          "kitsu:anime:cue"
+        ],
+        "lands_on": null,
+        "found_by": "mal:anime:43735",
+        "dead": false
+      },
+      {
+        "key": "kitsu:anime:44979",
+        "address": "https://kitsu.app/anime/44979",
+        "titles": [
+          "CUE!"
+        ],
+        "type": "TV",
+        "year": 2022,
+        "season": "WINTER",
+        "links": [
+          "anilist:anime:125682",
+          "mal:anime:43735"
+        ],
+        "lands_on": null,
+        "found_by": null,
+        "dead": false
+      },
+      {
+        "key": "mal:anime:43735",
+        "address": "https://myanimelist.net/anime/43735",
+        "titles": [
+          "Cue!",
+          "CUE!"
+        ],
+        "type": "TV",
+        "year": 2022,
+        "season": "WINTER",
+        "links": [
+          "anidb:anime:15827",
+          "ann:anime:24629"
+        ],
+        "lands_on": null,
+        "found_by": null,
+        "dead": false
+      }
     ]
-   }
-  ],
-  "pages": [
-   {
-    "key": "anidb:anime:15827",
-    "address": "https://anidb.net/anime/15827",
-    "titles": [
-     "Cue!",
-     "CUE!",
-     "Титры!"
-    ],
-    "type": "TV",
-    "year": 2022,
-    "season": "WINTER",
-    "links": [
-     "ann:anime:24629",
-     "mal:anime:43735"
-    ],
-    "lands_on": null,
-    "found_by": null,
-    "dead": false
-   },
-   {
-    "key": "anilist:anime:125682",
-    "address": "https://anilist.co/anime/125682",
-    "titles": [
-     "CUE!"
-    ],
-    "type": "TV",
-    "year": 2022,
-    "season": "WINTER",
-    "links": [
-     "mal:anime:43735"
-    ],
-    "lands_on": null,
-    "found_by": null,
-    "dead": false
-   },
-   {
-    "key": "animeplanet:anime:cue",
-    "address": "https://anime-planet.com/anime/cue",
-    "titles": [
-     "Cue!"
-    ],
-    "type": "TV",
-    "year": 2022,
-    "season": "WINTER",
-    "links": [],
-    "lands_on": null,
-    "found_by": null,
-    "dead": false
-   },
-   {
-    "key": "anisearch:anime:15712",
-    "address": "https://anisearch.com/anime/15712",
-    "titles": [
-     "Cue!",
-     "キュー！"
-    ],
-    "type": "TV",
-    "year": 2022,
-    "season": "WINTER",
-    "links": [],
-    "lands_on": null,
-    "found_by": null,
-    "dead": false
-   },
-   {
-    "key": "https://animeschedule.net/anime/cue",
-    "address": "https://animeschedule.net/anime/cue",
-    "titles": [
-     "Cue!"
-    ],
-    "type": "TV",
-    "year": 2022,
-    "season": "WINTER",
-    "links": [
-     "anidb:anime:15827",
-     "anilist:anime:125682",
-     "animeplanet:anime:cue",
-     "kitsu:anime:cue"
-    ],
-    "lands_on": null,
-    "found_by": "mal:anime:43735",
-    "dead": false
-   },
-   {
-    "key": "kitsu:anime:44979",
-    "address": "https://kitsu.app/anime/44979",
-    "titles": [
-     "CUE!"
-    ],
-    "type": "TV",
-    "year": 2022,
-    "season": "WINTER",
-    "links": [
-     "anilist:anime:125682",
-     "mal:anime:43735"
-    ],
-    "lands_on": null,
-    "found_by": null,
-    "dead": false
-   },
-   {
-    "key": "mal:anime:43735",
-    "address": "https://myanimelist.net/anime/43735",
-    "titles": [
-     "Cue!",
-     "CUE!"
-    ],
-    "type": "TV",
-    "year": 2022,
-    "season": "WINTER",
-    "links": [
-     "anidb:anime:15827",
-     "ann:anime:24629"
-    ],
-    "lands_on": null,
-    "found_by": null,
-    "dead": false
-   }
-  ]
- }
+  }
 }
