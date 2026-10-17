@@ -702,7 +702,7 @@ class KitsuHelper(BaseEnrichmentHelper):
             )
             if session is None
             else nullcontext(session)
-        ) as active_session:  # type: ignore[attr-defined]
+        ) as active_session:
             (
                 anime_raw,
                 genre_raw,

@@ -459,7 +459,9 @@ def _parse_all_related_entries(raw: dict[str, Any]) -> list[MalRelatedEntry]:
         rel_parts = [p.strip() for p in raw_rel.split("\n") if p.strip()]
         relation = rel_parts[0] if rel_parts else ""
 
-        type_match = len(rel_parts) > 1 and re.search(r"\(([^)]+)\)", rel_parts[1])
+        type_match = (
+            re.search(r"\(([^)]+)\)", rel_parts[1]) if len(rel_parts) > 1 else None
+        )
         entry_type = type_match.group(1) if type_match else None
 
         unified_items.append(
