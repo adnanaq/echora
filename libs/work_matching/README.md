@@ -293,6 +293,13 @@ file in one step, so an interrupted run leaves the old file:
   returned, so it can be reported;
 * an unanswered case that did not come up is dropped.
 
+Only `answer` is kept from a line; anything else written in it is rebuilt. An
+answer that is not accepted, or a case answered on two lines, is logged as a
+warning. A line that is not valid JSON stops the run, with the file and line
+named, so a person's edit is never overwritten unread. Two cases with the same
+name in one run raise `DuplicateCaseError`. The file is written to disk next to
+the old one and renamed over it, keeping its permissions.
+
 Applying answers is the caller's job: seed cleaning turns them into corrections.
 
 ## Use

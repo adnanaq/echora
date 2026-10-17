@@ -1,10 +1,12 @@
 import json
+from unittest.mock import patch
 
 import pytest
 from pydantic import ValidationError
+from work_matching import review_cases
 from work_matching.doubled_provider_check import decide_doubled_providers
 from work_matching.known_works_from_seed import KnownWorksFromSeed
-from work_matching.review_cases import ReviewCase, ReviewFile
+from work_matching.review_cases import DuplicateCaseError, ReviewCase, ReviewFile
 from work_matching.split_work_check import decide_split_work
 
 SIGEWINNE = "animeplanet:anime:genshin-impact-character-teaser-sigewinne-everyday-correspondence"
@@ -56,6 +58,7 @@ def test_review_case_from_split_work_names_case_by_reference_pages(split_case) -
     [
         {SIGEWINNE: "entry", VARESA: "elsewhere"},
         {SIGEWINNE: "entry", VARESA: "work 2"},
+        {SIGEWINNE: "entry", VARESA: "work 10"},
         {SIGEWINNE: "entry", VARESA: "entry"},
     ],
 )
@@ -73,6 +76,8 @@ def test_review_case_accepted_answer_placement_for_every_page_gives_answer(
         {SIGEWINNE: "entry", VARESA: "elsewhere", "mal:anime:1": "entry"},
         {SIGEWINNE: "entry", VARESA: "work 1"},
         {SIGEWINNE: "entry", VARESA: "maybe"},
+        {SIGEWINNE: "entry", VARESA: "work 01"},
+        {SIGEWINNE: 1, VARESA: ["entry"]},
         "one work",
     ],
 )
@@ -191,24 +196,95 @@ def test_review_file_write_cases_leaves_only_review_file(
     assert list(path.parent.iterdir()) == [path]
 
 
-def test_review_file_write_cases_failed_replace_leaves_no_temporary_file(
-    tmp_path, doubled_case
+def test_review_file_write_cases_failed_write_keeps_old_file(
+    tmp_path, doubled_case, split_case
 ) -> None:
     path = tmp_path / "review.jsonl"
-    review = ReviewFile(path)
-    path.mkdir()
-    with pytest.raises(IsADirectoryError):
-        review.write_cases([doubled_case])
-    assert list(tmp_path.iterdir()) == [path]
+    ReviewFile(path).write_cases([doubled_case])
+    written = path.read_text(encoding="utf-8")
+    with (
+        patch.object(review_cases.os, "fsync", autospec=True, side_effect=OSError),
+        pytest.raises(OSError),
+    ):
+        ReviewFile(path).write_cases([split_case])
+    assert (path.read_text(encoding="utf-8"), list(tmp_path.iterdir())) == (
+        written,
+        [path],
+    )
 
 
-def test_review_file_blank_line_skipped(tmp_path, doubled_case) -> None:
+def test_review_file_blank_line_answers_read_and_line_not_written(
+    tmp_path, doubled_case
+) -> None:
     path = tmp_path / "review.jsonl"
     ReviewFile(path).write_cases([doubled_case])
     _answer_in_file(path, doubled_case.case, {SIGEWINNE: "entry", VARESA: "entry"})
     path.write_text("\n" + path.read_text(encoding="utf-8") + "\n", encoding="utf-8")
-    kept = ReviewFile(path).with_kept_answer(doubled_case)
+    review = ReviewFile(path)
+    kept = review.with_kept_answer(doubled_case)
+    review.write_cases([kept])
     assert kept.accepted_answer == {SIGEWINNE: "entry", VARESA: "entry"}
+    assert "" not in path.read_text(encoding="utf-8").splitlines()
+
+
+def test_review_file_write_cases_same_case_twice_raises(tmp_path, doubled_case) -> None:
+    with pytest.raises(DuplicateCaseError):
+        ReviewFile(tmp_path / "review.jsonl").write_cases([doubled_case, doubled_case])
+
+
+def test_review_file_write_cases_answer_saved_after_opening_kept(
+    tmp_path, doubled_case
+) -> None:
+    path = tmp_path / "review.jsonl"
+    ReviewFile(path).write_cases([doubled_case])
+    review = ReviewFile(path)
+    _answer_in_file(path, doubled_case.case, {SIGEWINNE: "entry", VARESA: "entry"})
+    review.write_cases([doubled_case])
+    assert json.loads(path.read_text(encoding="utf-8"))["answer"] == {
+        SIGEWINNE: "entry",
+        VARESA: "entry",
+    }
+
+
+def test_review_file_write_cases_existing_file_keeps_mode(
+    tmp_path, doubled_case
+) -> None:
+    path = tmp_path / "review.jsonl"
+    ReviewFile(path).write_cases([doubled_case])
+    path.chmod(0o640)
+    ReviewFile(path).write_cases([doubled_case])
+    assert path.stat().st_mode & 0o777 == 0o640
+
+
+def test_review_file_write_cases_new_file_gets_default_mode(
+    tmp_path, doubled_case
+) -> None:
+    reference = tmp_path / "reference.txt"
+    reference.write_text("", encoding="utf-8")
+    path = tmp_path / "review.jsonl"
+    ReviewFile(path).write_cases([doubled_case])
+    assert path.stat().st_mode & 0o777 == reference.stat().st_mode & 0o777
+
+
+def test_review_file_write_cases_answer_not_accepted_logs_warning(
+    tmp_path, doubled_case, caplog
+) -> None:
+    path = tmp_path / "review.jsonl"
+    ReviewFile(path).write_cases([doubled_case])
+    _answer_in_file(path, doubled_case.case, {SIGEWINNE: "maybe"})
+    ReviewFile(path).write_cases([doubled_case])
+    assert doubled_case.case in caplog.text
+
+
+def test_review_file_case_answered_twice_logs_warning(
+    tmp_path, doubled_case, caplog
+) -> None:
+    path = tmp_path / "review.jsonl"
+    ReviewFile(path).write_cases([doubled_case])
+    _answer_in_file(path, doubled_case.case, {SIGEWINNE: "entry", VARESA: "entry"})
+    path.write_text(path.read_text(encoding="utf-8") * 2, encoding="utf-8")
+    ReviewFile(path)
+    assert doubled_case.case in caplog.text
 
 
 def test_review_file_broken_line_raises_naming_file_and_line(tmp_path) -> None:

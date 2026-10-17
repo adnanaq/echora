@@ -18,7 +18,7 @@ from work_matching.provider_page import ProviderPage, pages_by_current_key
 from work_matching.provider_page_key import provider_of_key, provider_page_key
 from work_matching.provider_page_links import ProviderPageLinks
 from work_matching.provider_page_store import ProviderPageStore
-from work_matching.review_cases import ReviewCase, ReviewFile
+from work_matching.review_cases import DuplicateCaseError, ReviewCase, ReviewFile
 from work_matching.split_work_check import (
     SplitWorkDecision,
     SplitWorkReason,
@@ -28,6 +28,7 @@ from work_matching.work_entry import WorkEntry
 
 __all__ = [
     "DoubledProviderDecision",
+    "DuplicateCaseError",
     "KnownWorks",
     "KnownWorksFromSeed",
     "Outcome",
