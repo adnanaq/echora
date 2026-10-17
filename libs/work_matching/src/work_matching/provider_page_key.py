@@ -5,87 +5,59 @@ AniSearch appends ``,slug``, MAL still links AniDB's old ``animedb.pl``
 address, and ANN keeps the id in the query. Two spellings of one page must give
 one key, so pages are compared by key, never by address.
 
-The patterns are a copy of those in
-``enrichment.pipeline.same_work.canonical_url_key``. They are copied rather than
-shared so this library imports nothing from enrichment, and the two must give
-the same key for every address.
+Enrichment uses the same keys to merge provider records and to derive anime ids,
+so a change to a key changes those too.
 """
 
 import re
 from functools import lru_cache
 
-# Every pattern is anchored and captures the id explicitly. Prefix comparison is
-# not safe: "/anime/466" is a prefix of "/anime/46633", two unrelated works.
-_PAGE_PATTERNS: dict[str, tuple[tuple[re.Pattern[str], str], ...]] = {
-    "myanimelist.net": (
-        (
-            re.compile(r"^https?://(?:www\.)?myanimelist\.net/(anime|manga)/(\d+)"),
-            "mal",
-        ),
-    ),
-    "anisearch.com": (
-        (
-            re.compile(r"^https?://(?:www\.)?anisearch\.com/(anime|manga)/(\d+)"),
-            "anisearch",
-        ),
-    ),
-    "anilist.co": (
-        (re.compile(r"^https?://(?:www\.)?anilist\.co/(anime|manga)/(\d+)"), "anilist"),
-    ),
+# A numeric id ends where the address does or at a character that cannot be
+# part of it, so "/anime/21extra" is not page 21.
+_NUMBER = r"(?P<id>\d+)(?!\w)"
+# A slug id runs to the next path, query or fragment separator.
+_SLUG = r"(?P<id>[^/?#]+)"
+_NUMBERED_PAGE = re.compile(rf"/(?P<kind>anime|manga)/{_NUMBER}")
+_SLUG_PAGE = re.compile(rf"/(?P<kind>anime|manga)/{_SLUG}")
+_NUMBERED_ANIME_PAGE = re.compile(rf"/(?P<kind>anime)/{_NUMBER}")
+
+# The pages each host serves, matched against the address after the host. Every
+# pattern names the id explicitly; prefix comparison is not safe, because
+# "/anime/466" is a prefix of "/anime/46633", two unrelated works. A pattern
+# without a kind names an anime page.
+_PAGE_PATTERNS: dict[str, tuple[tuple[str, re.Pattern[str]], ...]] = {
+    "myanimelist.net": (("mal", _NUMBERED_PAGE),),
+    "anisearch.com": (("anisearch", _NUMBERED_PAGE),),
+    "anilist.co": (("anilist", _NUMBERED_PAGE),),
     "anidb.net": (
-        (re.compile(r"^https?://(?:www\.)?anidb\.net/(anime)/(\d+)"), "anidb"),
+        ("anidb", _NUMBERED_ANIME_PAGE),
         # AniDB's old address for the same page, which MAL still links.
         (
-            re.compile(
-                r"^https?://(?:www\.)?anidb\.net/perl-bin/animedb\.pl\?"
-                r"(?=[^#]*\bshow=(anime)\b)[^#]*\baid=(\d+)"
-            ),
             "anidb",
-        ),
-    ),
-    "kitsu.app": (
-        (
             re.compile(
-                r"^https?://(?:www\.)?kitsu\.(?:app|io)/(anime|manga)/([^/?#]+)"
+                rf"/perl-bin/animedb\.pl\?(?=[^#]*\bshow=(?P<kind>anime)\b)[^#]*\baid={_NUMBER}"
             ),
-            "kitsu",
         ),
     ),
-    "anime-planet.com": (
-        (
-            re.compile(
-                r"^https?://(?:www\.)?anime-planet\.com/(anime|manga)/([^/?#]+)"
-            ),
-            "animeplanet",
-        ),
-    ),
-    # ANN puts the id in the query, where its position and the scheme vary.
+    "kitsu.app": (("kitsu", _SLUG_PAGE),),
+    "kitsu.io": (("kitsu", _SLUG_PAGE),),
+    "anime-planet.com": (("animeplanet", _SLUG_PAGE),),
+    # ANN puts the id in the query, where its position varies.
     "animenewsnetwork.com": (
         (
-            re.compile(
-                r"^https?://(?:www\.)?animenewsnetwork\.com/encyclopedia/(anime|manga)\.php\?"
-                r"(?:[^#]*&)?id=(\d+)"
-            ),
             "ann",
+            re.compile(
+                rf"/encyclopedia/(?P<kind>anime|manga)\.php\?(?:[^#]*&)?id={_NUMBER}"
+            ),
         ),
     ),
-    "livechart.me": (
-        (re.compile(r"^https?://(?:www\.)?livechart\.me/(anime)/(\d+)"), "livechart"),
-    ),
-    "simkl.com": (
-        (re.compile(r"^https?://(?:www\.)?simkl\.com/(anime)/(\d+)"), "simkl"),
-    ),
-    "animecountdown.com": (
-        (
-            re.compile(r"^https?://(?:www\.)?animecountdown\.com/(\d+)()"),
-            "animecountdown",
-        ),
-    ),
+    "livechart.me": (("livechart", _NUMBERED_ANIME_PAGE),),
+    "simkl.com": (("simkl", _NUMBERED_ANIME_PAGE),),
+    "animecountdown.com": (("animecountdown", re.compile(rf"/{_NUMBER}")),),
 }
-_PAGE_PATTERNS["kitsu.io"] = _PAGE_PATTERNS["kitsu.app"]
 
 PROVIDERS: frozenset[str] = frozenset(
-    provider for patterns in _PAGE_PATTERNS.values() for _, provider in patterns
+    provider for patterns in _PAGE_PATTERNS.values() for provider, _ in patterns
 )
 
 # Which page names an entry: the providers that seed merged anime ids come
@@ -113,7 +85,9 @@ def provider_page_key(address: str) -> str:
 
     Returns:
         A ``provider:kind:id`` key when the address is recognised, otherwise the
-        lowercased address with ``www.`` and any trailing slash removed.
+        address with its scheme and host in lower case, ``www.`` and any
+        trailing slash removed. The path keeps its case, since another site can
+        serve different pages at ``/Show`` and ``/show``.
 
     Examples:
         >>> provider_page_key("https://myanimelist.net/anime/21/One_Piece")
@@ -121,12 +95,17 @@ def provider_page_key(address: str) -> str:
         >>> provider_page_key("https://anidb.net/perl-bin/animedb.pl?show=anime&aid=69")
         'anidb:anime:69'
     """
-    host = address.partition("://")[2].partition("/")[0].lower().removeprefix("www.")
-    for pattern, provider in _PAGE_PATTERNS.get(host, ()):
-        if match := pattern.match(address):
-            kind, identifier = match.group(1), match.group(2)
-            return f"{provider}:{kind}:{identifier.lower()}"
-    return address.lower().replace("://www.", "://").rstrip("/")
+    scheme, separator, rest = address.partition("://")
+    host, _, path = rest.partition("/")
+    host = host.lower().removeprefix("www.")
+    if scheme.lower() in ("http", "https"):
+        for provider, pattern in _PAGE_PATTERNS.get(host, ()):
+            if match := pattern.match(f"/{path}"):
+                kind = match.groupdict().get("kind") or "anime"
+                return f"{provider}:{kind}:{match['id'].lower()}"
+    if not separator:
+        return address.rstrip("/")
+    return f"{scheme.lower()}://{host}/{path}".rstrip("/")
 
 
 def provider_of_key(key: str) -> str | None:
