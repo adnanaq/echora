@@ -83,7 +83,15 @@ class KnownWorksFromSeed(KnownWorks):
         Args:
             address: A provider page address, in any of its spellings.
         """
-        return self._by_page.get(provider_page_key(address))
+        return self.find_by_page_key(provider_page_key(address))
+
+    def find_by_page_key(self, key: str) -> WorkEntry | None:
+        """Return the work that has the page with this key, or None.
+
+        Args:
+            key: A page key, as ``provider_page_key`` gives it.
+        """
+        return self._by_page.get(key)
 
     def find_by_title(
         self, title: str, work_type: WorkType, year: int | None

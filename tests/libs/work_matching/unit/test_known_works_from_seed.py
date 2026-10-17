@@ -29,6 +29,12 @@ def test_known_works_from_seed_find_by_page_unknown_page_gives_none(
     )
 
 
+def test_known_works_from_seed_find_by_page_key_gives_work(seed_entries) -> None:
+    work = KnownWorksFromSeed(seed_entries).find_by_page_key("mal:anime:21")
+    assert work is not None
+    assert work.title == "One Piece"
+
+
 def test_known_works_from_seed_find_by_title_cosmetic_difference_finds_every_entry(
     seed_entries,
 ) -> None:

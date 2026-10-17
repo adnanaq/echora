@@ -1,6 +1,6 @@
 """The known-works lookup that matching compares provider pages against.
 
-Seed cleaning, seed link filling and discovery all ask the same two questions
+Seed cleaning, seed link filling and discovery all ask the same questions
 of the works already known. They ask them through this interface, so the works
 can come from the seed now and from enriched works later without changing them.
 """
@@ -19,6 +19,13 @@ class KnownWorks(Protocol):
 
         Args:
             address: A provider page address, in any of its spellings.
+        """
+
+    def find_by_page_key(self, key: str) -> WorkEntry | None:
+        """Return the work that has the page with this key, or None.
+
+        Args:
+            key: A page key, as ``provider_page_key`` gives it.
         """
 
     def find_by_title(
