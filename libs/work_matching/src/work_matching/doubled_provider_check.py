@@ -112,7 +112,7 @@ class DoubledProviderDecision:
 
     @property
     def outcome(self) -> Outcome:
-        """What the decision says about the pages; ``REVIEW`` means a person checks it."""
+        """What the decision says about the pages; a person checks ``REVIEW``."""
         return _OUTCOME_OF_REASON.get(self.reason, Outcome.REVIEW)
 
 
