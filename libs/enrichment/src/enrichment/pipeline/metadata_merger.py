@@ -216,14 +216,15 @@ def _merge_titles(ranked: Ranked) -> dict[str, str]:
     Returns:
         Titles keyed by language code.
     """
-    merged: dict[str, str] = {}
-    for _, titles in providers_supplying(ranked, "titles"):
-        known = {fold_for_comparison(title) for title in merged.values()}
-        merged |= {
-            language: title
-            for language, title in titles.items()
-            if language not in merged and fold_for_comparison(title) not in known
-        }
+    providers = iter(providers_supplying(ranked, "titles"))
+    merged: dict[str, str] = dict(next(providers, (None, {}))[1])
+    known = {fold_for_comparison(title) for title in merged.values()}
+    for _, titles in providers:
+        for language, title in titles.items():
+            folded = fold_for_comparison(title)
+            if language not in merged and folded not in known:
+                merged[language] = title
+                known.add(folded)
     return merged
 
 

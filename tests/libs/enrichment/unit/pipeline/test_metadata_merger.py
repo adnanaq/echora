@@ -848,6 +848,18 @@ def test_merge_provider_records_titles_same_text_under_other_language_dropped() 
     assert merged["titles"] == {"zh-Hans": "巴啦啦小魔仙之奇迹舞步", "ko": "바라라"}
 
 
+def test_merge_provider_records_titles_later_provider_repeating_title_kept_once() -> (
+    None
+):
+    merged = merge_provider_records(
+        {
+            "anidb": _record(titles={"en": "One Piece"}),
+            "anisearch": _record(titles={"zh": "海贼王", "zh-Hans": "海贼王"}),
+        }
+    )
+    assert merged["titles"] == {"en": "One Piece", "zh": "海贼王"}
+
+
 def test_merge_provider_records_titles_none_supplied_leaves_titles_out() -> None:
     merged = merge_provider_records(
         {"mal": _record(titles={}), "anisearch": _record(titles={})}
