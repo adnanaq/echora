@@ -65,6 +65,20 @@ def test_anime_from_anisearch_titles_synopsis_genres_and_tags_mapped() -> None:
     assert mapped["sources"] == [ONE_PIECE_URL]
 
 
+def test_anime_from_anisearch_english_title_and_titles_copied() -> None:
+    mapped = anime_from_anisearch(
+        AniSearchAnime(
+            title="Mo Dao Zu Shi: Qianchen Pian",
+            title_english="The Founder of Diabolism",
+            titles={"zh": "魔道祖师 前尘篇", "x-jat": "Madou Soshi: Zenjin Hen"},
+        )
+    )
+    assert (mapped["title_english"], mapped["titles"]) == (
+        "The Founder of Diabolism",
+        {"zh": "魔道祖师 前尘篇", "x-jat": "Madou Soshi: Zenjin Hen"},
+    )
+
+
 def test_anime_from_anisearch_without_title_takes_japanese_title() -> None:
     assert anime_from_anisearch(AniSearchAnime(title_japanese="ワンピース"))[
         "title"

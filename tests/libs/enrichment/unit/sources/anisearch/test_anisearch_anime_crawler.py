@@ -37,8 +37,7 @@ def one_piece_processed(one_piece_main_raw, one_piece_relations_raw):
 def test_xpaths_has_required_main_keys() -> None:
     assert {
         "cover_image",
-        "title_alt",
-        "title_ja",
+        "title_blocks",
         "type",
         "status",
         "published",
@@ -66,14 +65,9 @@ def test_xpaths_cover_image_targets_details_cover() -> None:
     assert _XPATHS["cover_image"].endswith("/@src")
 
 
-def test_xpaths_title_alt_targets_grey_ja() -> None:
-    assert "grey" in _XPATHS["title_alt"]
-    assert "ja" in _XPATHS["title_alt"]
-
-
-def test_xpaths_title_ja_targets_f16_strong() -> None:
-    assert "f16" in _XPATHS["title_ja"]
-    assert "strong" in _XPATHS["title_ja"]
+def test_xpaths_title_blocks_targets_information_titles_with_language() -> None:
+    assert "information" in _XPATHS["title_blocks"]
+    assert "@lang" in _XPATHS["title_blocks"]
 
 
 def test_xpaths_genres_anchor_on_genre_href() -> None:
@@ -92,13 +86,43 @@ def test_xpaths_relations_target_correct_sections() -> None:
     assert "tbody" in _XPATHS["anime_relation_rows"]
 
 
-def test_extract_anime_from_html_one_piece_page_reads_titles(
+def test_extract_anime_from_html_one_piece_page_reads_every_title_block(
     one_piece_main_html,
 ) -> None:
     raw = _extract_anime_from_html(one_piece_main_html)
     assert raw is not None
-    assert raw["title_ja"] == "One Piece"
-    assert raw["title_alt"] == "ワンピース"
+    assert raw["title_blocks"][0] == {
+        "language": "ja",
+        "title": "One Piece",
+        "native_titles": ["ワンピース"],
+    }
+    assert [block["language"] for block in raw["title_blocks"]] == [
+        "ja",
+        "en",
+        "de",
+        "es",
+        "fr",
+        "it",
+    ]
+
+
+def test_extract_anime_from_html_chinese_work_with_japanese_title_reads_native_lines_in_page_order(
+    mo_dao_zu_shi_main_html,
+) -> None:
+    raw = _extract_anime_from_html(mo_dao_zu_shi_main_html)
+    assert raw is not None
+    assert raw["title_blocks"][:2] == [
+        {
+            "language": "zh",
+            "title": "Mo Dao Zu Shi: Qianchen Pian",
+            "native_titles": ["魔道祖师 前尘篇"],
+        },
+        {
+            "language": "ja",
+            "title": "Madou Soshi: Zenjin Hen",
+            "native_titles": ["Madō Soshi: Zenjin Hen", "魔道祖師 前塵編"],
+        },
+    ]
 
 
 def test_extract_anime_from_html_one_piece_page_reads_cover_address(
@@ -165,7 +189,7 @@ def test_extract_anime_from_html_empty_returns_none() -> None:
 
 def test_extract_anime_from_html_malformed_page_returns_empty_fields() -> None:
     raw = _extract_anime_from_html("<not valid xml at all >>>")
-    assert (raw["title_ja"], raw["genres"], raw["websites"]) == (None, [], [])
+    assert (raw["title_blocks"], raw["genres"], raw["websites"]) == ([], [], [])
 
 
 def test_extract_relations_from_html_one_piece_page_reads_every_anime_relation(
@@ -283,6 +307,20 @@ def test_process_relation_tooltips_one_piece_page_gives_image_addresses(
 
 def _anime_from_page(raw: dict) -> AniSearchAnime:
     return _build_anime_from_raw(raw, _URL)
+
+
+def test_build_anime_from_raw_chinese_work_reads_title_fields_from_title_blocks(
+    balala_the_fairies_2_main_html,
+) -> None:
+    raw = _extract_anime_from_html(balala_the_fairies_2_main_html)
+    assert raw is not None
+    anime = _anime_from_page(raw)
+    assert (anime.title, anime.title_english, anime.title_japanese, anime.titles) == (
+        "Ba La La Xiao Mo Xian Zhi: Qiji Wubu",
+        "Balala the Fairies 2",
+        None,
+        {"zh": "巴啦啦小魔仙之奇迹舞步"},
+    )
 
 
 def test_build_anime_from_raw_type_label_and_details_removed(
@@ -574,8 +612,12 @@ def test_parse_relations_one_piece_page_lists_original_manga(
 
 def test_build_anime_from_raw_one_piece_page_maps_titles(one_piece_processed) -> None:
     anime = _build_anime_from_raw(one_piece_processed, _URL)
-    assert anime.title == "One Piece"
-    assert anime.title_japanese == "ワンピース"
+    assert (anime.title, anime.title_english, anime.title_japanese, anime.titles) == (
+        "One Piece",
+        "One Piece",
+        "ワンピース",
+        {},
+    )
 
 
 def test_build_anime_from_raw_one_piece_page_keeps_synonyms(
@@ -686,7 +728,7 @@ async def test_fetch_anisearch_anime_data_real_pages_returns_page_text(
         result = await _fetch_anisearch_anime_data("2227")
 
     assert result is not None
-    assert result["title_ja"] == "One Piece"
+    assert result["title_blocks"][0]["title"] == "One Piece"
     assert result["type"].startswith("Type: TV-Series")
     assert result["rank_toplist"] == "#125"
     assert len(result["anime_relations"]) == 79

@@ -21,6 +21,7 @@ from enrichment.sources.base.utils import (
     parse_partial_date,
     split_date_range,
 )
+from enrichment.utils.text_utils import fold_for_comparison
 from pydantic import BaseModel, BeforeValidator, ConfigDict, model_validator
 
 _ANISEARCH_BASE_URL = "https://www.anisearch.com"
@@ -29,6 +30,10 @@ _LABEL = re.compile(r"^\s*[^:]+:\s*")
 _DECIMAL = re.compile(r"(\d+\.\d+)")
 # The type at the start of a relation's details, e.g. "TV-Series" in "TV-Series, 12 (2025)".
 _DETAILS_TYPE = re.compile(r"^([^,]+)")
+# AniSearch's language codes that differ from the BCP 47 codes AniDB uses.
+_LANGUAGE_CODES = {"kr": "ko", "hk": "zh-HK"}
+# AniDB's code for Japanese written in Latin letters.
+_JAPANESE_ROMAJI = "x-jat"
 
 
 def _without_label(value: object) -> object:
@@ -161,6 +166,69 @@ def _broadcast_parts(broadcast: object) -> dict[str, str | None]:
 LabelledText = Annotated[str | None, BeforeValidator(_without_label)]
 
 
+def _standard_language_code(code: object) -> object:
+    """Replace AniSearch's own language codes with the standard ones.
+
+    >>> _standard_language_code("kr")
+    'ko'
+    >>> _standard_language_code("de")
+    'de'
+    """
+    return _LANGUAGE_CODES.get(code, code) if isinstance(code, str) else code
+
+
+class AniSearchTitleBlock(BaseModel):
+    """One language's titles from the page's title section."""
+
+    language: Annotated[str, BeforeValidator(_standard_language_code)]
+    title: StrippedText = None
+    native_titles: list[str] = []
+
+    @property
+    def native_title(self) -> str | None:
+        """The last native line: a Japanese block gives the romaji before the kanji."""
+        return self.native_titles[-1] if self.native_titles else None
+
+
+def _title_fields(raw_blocks: list[Any]) -> dict[str, Any]:
+    """Turn the page's title blocks into the title fields.
+
+    The first block is the work's own title, in its original language; its
+    native script goes into ``titles`` unless the language has a field of its
+    own. English and Japanese have their own fields, and a Japanese block that
+    is not the first is a Japanese release, whose romaji goes under ``x-jat``.
+    A title repeating one already kept is left out.
+    """
+    blocks = [AniSearchTitleBlock.model_validate(block) for block in raw_blocks]
+    if not blocks:
+        return {}
+    fields: dict[str, Any] = {"title": blocks[0].title}
+    candidates: list[tuple[str, str | None]] = []
+    for position, block in enumerate(blocks):
+        if block.language == "ja":
+            fields["title_japanese"] = block.native_title
+            if position:
+                candidates.append((_JAPANESE_ROMAJI, block.title))
+        elif block.language == "en":
+            fields["title_english"] = block.title
+        else:
+            title = block.title if position else block.native_title
+            candidates.append((block.language, title))
+    kept = {
+        fold_for_comparison(title)
+        for title in (fields["title"], fields.get("title_english"))
+        if title
+    }
+    titles: dict[str, str] = {}
+    for language, title in candidates:
+        key = fold_for_comparison(title) if title else ""
+        if title and key and key not in kept and language not in titles:
+            titles[language] = title
+            kept.add(key)
+    fields["titles"] = titles
+    return fields
+
+
 class AniSearchStatistics(BaseModel):
     score: Annotated[float | None, BeforeValidator(_rated_score)] = None
     scored_by: Annotated[int | None, BeforeValidator(_vote_count)] = None
@@ -196,8 +264,10 @@ class AniSearchAnime(BaseModel):
     """Scraped anime data from anisearch.com."""
 
     # ── Titles ────────────────────────────────────────────────────────────
-    title: StrippedText = None  # primary display title (strong.f16)
-    title_japanese: StrippedText = None  # native script (div.grey)
+    title: StrippedText = None  # the original-language title block's main line
+    title_english: StrippedText = None
+    title_japanese: StrippedText = None  # the Japanese block's native script
+    titles: dict[str, str] = {}  # other languages, keyed by BCP 47 code
     synonyms: Annotated[list[str], BeforeValidator(_synonym_list)] = []
 
     # ── Classification ────────────────────────────────────────────────────
@@ -245,8 +315,8 @@ class AniSearchAnime(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _read_published_and_broadcast(cls, data: Any) -> Any:
-        """Split the page's published and broadcast text into their fields."""
+    def _read_page_sections(cls, data: Any) -> Any:
+        """Split the page's published, broadcast and title sections into their fields."""
         if not isinstance(data, dict):
             return data
         data = dict(data)
@@ -254,6 +324,8 @@ class AniSearchAnime(BaseModel):
             data.update(_published_dates(data.pop("published")))
         if "broadcast" in data:
             data.update(_broadcast_parts(data.pop("broadcast")))
+        if "title_blocks" in data:
+            data.update(_title_fields(data.pop("title_blocks")))
         return data
 
     @model_validator(mode="after")
