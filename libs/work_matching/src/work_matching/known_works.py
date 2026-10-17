@@ -34,6 +34,6 @@ class KnownWorks(Protocol):
                 either side has no year.
 
         Returns:
-            The matching works, in the order the works became known. Several can match, so a caller
-            must not take the first as the answer.
+            The matching works, in the order the works became known. Several
+            can match, so a caller must not take the first as the answer.
         """

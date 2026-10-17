@@ -35,7 +35,8 @@ _PAGE_PATTERNS: dict[str, tuple[tuple[str, re.Pattern[str]], ...]] = {
         (
             "anidb",
             re.compile(
-                rf"/perl-bin/animedb\.pl\?(?=[^#]*\bshow=(?P<kind>anime)\b)[^#]*\baid={_NUMBER}"
+                r"/perl-bin/animedb\.pl\?(?=[^#]*\bshow=(?P<kind>anime)\b)"
+                rf"[^#]*\baid={_NUMBER}"
             ),
         ),
     ),
