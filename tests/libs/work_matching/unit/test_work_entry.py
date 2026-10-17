@@ -71,7 +71,7 @@ def test_work_entry_without_pages_rejected() -> None:
 
 @pytest.mark.parametrize(
     ("years", "expected"),
-    [((2020, None, 2020), True), ((None,), True), ((2020, 2021), False)],
+    [((2020, None, 2020), True), ((None,), True), ((), True), ((2020, 2021), False)],
 )
 def test_is_year_matching_missing_year_agrees_with_any(
     years: tuple[int | None, ...], expected: bool
@@ -84,6 +84,7 @@ def test_is_year_matching_missing_year_agrees_with_any(
     [
         (("TV", "UNKNOWN", None), True),
         (("MOVIE", "MOVIE"), True),
+        ((), True),
         (("TV", "MOVIE"), False),
     ],
 )

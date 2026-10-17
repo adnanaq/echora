@@ -442,3 +442,23 @@ def test_decide_doubled_providers_renamed_page_only_old_address_keeps_details(
         Reason.ONE_LINKED,
         {"animeplanet:anime:new"},
     )
+
+
+def test_decide_doubled_providers_music_and_special_pages_sharing_link_one_work(
+    linked_page, work_entry
+) -> None:
+    entry = work_entry(
+        "https://myanimelist.net/anime/1",
+        "https://kitsu.app/anime/1",
+        "https://kitsu.app/anime/2",
+    )
+    pages = [
+        linked_page(
+            "https://kitsu.app/anime/1", "https://myanimelist.net/anime/1"
+        ).model_copy(update={"type": "MUSIC"}),
+        linked_page(
+            "https://kitsu.app/anime/2", "https://myanimelist.net/anime/1"
+        ).model_copy(update={"type": "SPECIAL"}),
+    ]
+    decision = _decisions(entry, pages)["kitsu"]
+    assert (decision.outcome, decision.reason) == (Outcome.ONE_WORK, Reason.SHARED_LINK)

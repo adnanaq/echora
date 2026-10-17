@@ -86,6 +86,10 @@ Each page of the provider first gets one of three answers:
 | **Unrelated** | It links a page outside the entry: a page of a provider the entry already has, or a page of another known work. |
 | **Undecided** | Neither. This includes pages of providers that are not fetched (ANN, LiveChart, Simkl, AnimeCountdown) when no fetched page links them. |
 
+A dead page or a link from a multi-work page sends the whole provider to review
+before any links are read: a page that cannot be read, or a link that proves
+nothing, could change which pages belong, so none of them is decided.
+
 The checks then run in this order, and the first that applies gives the reason:
 
 ```mermaid
