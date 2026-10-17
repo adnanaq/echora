@@ -64,7 +64,7 @@ class ProviderPageLinks:
             self._add_links(page, candidate_keys)
 
     def same_page(self, key: str) -> str:
-        """Return the current key a page answers to if it was a renamed page."""
+        """Return the current key a renamed page resolves to, or the key unchanged."""
         return self._renamed_keys.get(key, key)
 
     def linked_with(self, key: str) -> frozenset[str]:

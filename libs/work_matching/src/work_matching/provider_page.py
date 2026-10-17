@@ -97,9 +97,9 @@ class ProviderPage(BaseModel):
 
 
 def pages_by_current_key(pages: Iterable[ProviderPage]) -> dict[str, ProviderPage]:
-    """Index pages by the key each answers to now.
+    """Index pages by the current key each resolves to.
 
-    A renamed page answers to the key it lands on, unless the page was also
+    A renamed page resolves to the key it lands on, unless the page was also
     fetched at that key.
 
     Args:
