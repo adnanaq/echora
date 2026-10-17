@@ -56,14 +56,16 @@ echora/
 │   ├── vector_db_interface/           # Provider-agnostic vector DB interface
 │   │   └── src/vector_db_interface/
 │   │       └── interfaces/            # ABCs: search, document, collection, monitor
-│   └── vector_processing/             # Vector embedding generation
-│       └── src/vector_processing/
-│           ├── embedding_models/      # Model backends
-│           │   ├── text/              # Text model implementations (BGE-M3, etc.)
-│           │   └── vision/            # Vision model implementations (OpenCLIP)
-│           ├── processors/            # Embedding manager, reranker processor
-│           ├── reranking/             # Cross-encoder reranking
-│           └── utils/                 # Image downloading, caching
+│   ├── vector_processing/             # Vector embedding generation
+│   │   └── src/vector_processing/
+│   │       ├── embedding_models/      # Model backends
+│   │       │   ├── text/              # Text model implementations (BGE-M3, etc.)
+│   │       │   └── vision/            # Vision model implementations (OpenCLIP)
+│   │       ├── processors/            # Embedding manager, reranker processor
+│   │       ├── reranking/             # Cross-encoder reranking
+│   │       └── utils/                 # Image downloading, caching
+│   └── work_matching/                 # Which provider pages belong to the same work
+│       └── src/work_matching/         # Work entry, page keys and details, known-works lookup
 ├── scripts/                           # Utility scripts (reindexing, validation, etc.)
 ├── tests/                             # Test suite (mirrors source structure)
 │   ├── conftest.py                    # Root fixtures (settings, clients)
@@ -77,7 +79,8 @@ echora/
 │   │   ├── observability/             # unit/
 │   │   ├── qdrant_db/                 # unit/ (collection), integration/
 │   │   ├── vector_db_interface/       # unit/, integration/
-│   │   └── vector_processing/         # unit/ (embedding_models, processors, reranking)
+│   │   ├── vector_processing/         # unit/ (embedding_models, processors, reranking)
+│   │   └── work_matching/             # unit/
 │   └── scripts/                       # Script tests
 └── data/                              # Data storage (Qdrant, anime databases)
 ```
