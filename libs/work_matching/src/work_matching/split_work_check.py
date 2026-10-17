@@ -19,6 +19,7 @@ class SplitWorkReason(StrEnum):
     """Why candidate entries are or are not one work."""
 
     LINKED = "links tie every entry together and type and year agree"
+    TOO_FEW_ENTRIES = "fewer than two entries, so there is nothing to join"
     NOT_LINKED = "links do not tie every entry together"
     TYPE_DIFFERS = "the entries' types differ"
     YEAR_DIFFERS = "the entries' years differ"
@@ -47,9 +48,12 @@ def decide_split_work(
         pages: Details of the entries' fetched pages.
 
     Returns:
-        The decision, with the first check that failed as its reason.
+        The decision, with the first check that failed as its reason: links
+        first, then type, then year.
     """
     entries = tuple(entries)
+    if len(entries) < 2:
+        return SplitWorkDecision(entries, SplitWorkReason.TOO_FEW_ENTRIES)
     links = ProviderPageLinks(
         pages, chain.from_iterable(entry.pages for entry in entries)
     )

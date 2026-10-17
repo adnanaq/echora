@@ -1,3 +1,4 @@
+import pytest
 from work_matching.split_work_check import SplitWorkReason, decide_split_work
 
 
@@ -70,3 +71,15 @@ def test_decide_split_work_unknown_type_and_missing_year_agree(
         linked_page("https://anilist.co/anime/1", "https://myanimelist.net/anime/1")
     ]
     assert decide_split_work(entries, pages).is_one_work
+
+
+@pytest.mark.parametrize("entry_count", [0, 1])
+def test_decide_split_work_fewer_than_two_entries_review(
+    work_entry, entry_count: int
+) -> None:
+    entries = [work_entry("https://myanimelist.net/anime/1")][:entry_count]
+    decision = decide_split_work(entries, [])
+    assert (decision.is_one_work, decision.reason) == (
+        False,
+        SplitWorkReason.TOO_FEW_ENTRIES,
+    )
