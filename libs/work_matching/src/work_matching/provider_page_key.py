@@ -12,6 +12,8 @@ so a change to a key changes those too.
 """
 
 import re
+from collections import Counter
+from collections.abc import Iterable
 from functools import lru_cache
 
 # A numeric id ends where the address does or at a character that cannot be
@@ -122,3 +124,15 @@ def provider_of_key(key: str) -> str | None:
     """
     provider = key.partition(":")[0]
     return provider if provider in PROVIDERS else None
+
+
+def has_repeated_provider(keys: Iterable[str]) -> bool:
+    """Report whether two or more of the page keys belong to one provider.
+
+    Examples:
+        >>> has_repeated_provider(["mal:anime:1", "kitsu:anime:1", "mal:anime:2"])
+        True
+        >>> has_repeated_provider(["mal:anime:1", "kitsu:anime:1"])
+        False
+    """
+    return any(count > 1 for count in Counter(map(provider_of_key, keys)).values())
