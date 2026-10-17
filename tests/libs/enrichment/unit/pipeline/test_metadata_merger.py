@@ -792,3 +792,48 @@ def test_merge_agent_metadata_reads_the_per_provider_files(tmp_path) -> None:
     merged = merge_agent_metadata(tmp_path)
     assert merged["type"] == "TV"
     assert merged["year"] == 1999
+
+
+def test_merge_provider_records_titles_keep_first_provider_titles_unchanged() -> None:
+    merged = merge_provider_records(
+        {
+            "anidb": _record(titles={"zh-Hans": "海贼王", "zh-Hant": "海贼王"}),
+            "anisearch": _record(titles={"de": "One Piece Staffel"}),
+        }
+    )
+    assert merged["titles"] == {
+        "zh-Hans": "海贼王",
+        "zh-Hant": "海贼王",
+        "de": "One Piece Staffel",
+    }
+
+
+def test_merge_provider_records_titles_language_already_present_keeps_first_provider_title() -> (
+    None
+):
+    merged = merge_provider_records(
+        {
+            "anisearch": _record(titles={"de": "Tower of God: Staffel 2"}),
+            "anidb": _record(titles={"de": "Kami no Tou"}),
+        }
+    )
+    assert merged["titles"] == {"de": "Kami no Tou"}
+
+
+def test_merge_provider_records_titles_same_text_under_other_language_dropped() -> None:
+    merged = merge_provider_records(
+        {
+            "anidb": _record(titles={"zh-Hans": "巴啦啦小魔仙之奇迹舞步"}),
+            "anisearch": _record(
+                titles={"zh": "巴啦啦小魔仙之奇迹舞步", "ko": "바라라"}
+            ),
+        }
+    )
+    assert merged["titles"] == {"zh-Hans": "巴啦啦小魔仙之奇迹舞步", "ko": "바라라"}
+
+
+def test_merge_provider_records_titles_none_supplied_leaves_titles_out() -> None:
+    merged = merge_provider_records(
+        {"mal": _record(titles={}), "anisearch": _record(titles={})}
+    )
+    assert "titles" not in merged
