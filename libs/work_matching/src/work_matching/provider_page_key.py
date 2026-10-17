@@ -126,8 +126,20 @@ def provider_of_key(key: str) -> str | None:
     return provider if provider in PROVIDERS else None
 
 
+def page_id_of_key(key: str) -> str:
+    """Return the id part of a page key, or the key itself when it is unrecognised.
+
+    Examples:
+        >>> page_id_of_key("mal:anime:21")
+        '21'
+    """
+    return key.rpartition(":")[2] if provider_of_key(key) else key
+
+
 def has_repeated_provider(keys: Iterable[str]) -> bool:
     """Report whether two or more of the page keys belong to one provider.
+
+    Unrecognised keys belong to no provider, so they never count.
 
     Examples:
         >>> has_repeated_provider(["mal:anime:1", "kitsu:anime:1", "mal:anime:2"])
@@ -135,4 +147,5 @@ def has_repeated_provider(keys: Iterable[str]) -> bool:
         >>> has_repeated_provider(["mal:anime:1", "kitsu:anime:1"])
         False
     """
-    return any(count > 1 for count in Counter(map(provider_of_key, keys)).values())
+    providers = Counter(filter(None, map(provider_of_key, keys)))
+    return any(count > 1 for count in providers.values())

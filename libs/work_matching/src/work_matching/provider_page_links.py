@@ -15,7 +15,7 @@ from collections.abc import Iterable
 from itertools import chain
 
 from work_matching.provider_page import ProviderPage
-from work_matching.provider_page_key import has_repeated_provider
+from work_matching.provider_page_key import has_repeated_provider, provider_of_key
 
 
 class ProviderPageLinks:
@@ -24,7 +24,9 @@ class ProviderPageLinks:
     A multi-work page, one that names two or more pages of one provider such as
     an anthology page covering several works, is no evidence that any of them is
     its work. Its links are kept apart and do not count. A found page names its
-    lookup page as well as the pages it links.
+    lookup page as well as the pages it links. A link to a page of the page's
+    own provider is no evidence either, since only another provider can confirm
+    a page.
     """
 
     def __init__(
@@ -37,25 +39,16 @@ class ProviderPageLinks:
             page_keys: Keys of further pages in the group, such as the entry's
                 pages of providers that are not fetched.
         """
-        pages = tuple(pages)
-        self._lands_on = {page.key: page.lands_on for page in pages if page.lands_on}
+        fetched = tuple(pages)
+        self._lands_on = {page.key: page.lands_on for page in fetched if page.lands_on}
         self._lookup_pages = {
-            page.key: self.same_page(page.found_by) for page in pages if page.found_by
+            page.key: self.same_page(page.found_by) for page in fetched if page.found_by
         }
-        group = set(map(self._node, chain(page_keys, (page.key for page in pages))))
+        group = set(map(self._node, chain(page_keys, (page.key for page in fetched))))
         self._linked: defaultdict[str, set[str]] = defaultdict(set)
         self._linked_by_multi_work: defaultdict[str, set[str]] = defaultdict(set)
-        for page in pages:
-            source = self._node(page.key)
-            targets = {self._node(link) for link in page.links} - {source}
-            named = targets | {source} if page.found_by else targets
-            if has_repeated_provider(named):
-                for target in targets & group:
-                    self._linked_by_multi_work[target].add(source)
-                continue
-            for target in targets & group:
-                self._linked[source].add(target)
-                self._linked[target].add(source)
+        for page in fetched:
+            self._add_links(page, group)
 
     def same_page(self, key: str) -> str:
         """Return the key a page answers to now: its new key if it was renamed."""
@@ -68,6 +61,21 @@ class ProviderPageLinks:
     def linked_by_multi_work_pages(self, key: str) -> frozenset[str]:
         """Return the pages linking a page whose links were set aside."""
         return frozenset(self._linked_by_multi_work.get(self._node(key), ()))
+
+    def _add_links(self, page: ProviderPage, group: set[str]) -> None:
+        """Record one page's links within the group, a multi-work page's apart."""
+        source = self._node(page.key)
+        targets = {self._node(link) for link in page.links} - {source}
+        named = targets | {source} if page.found_by else targets
+        if has_repeated_provider(named):
+            for target in targets & group:
+                self._linked_by_multi_work[target].add(source)
+            return
+        source_provider = provider_of_key(source)
+        for target in targets & group:
+            if provider_of_key(target) != source_provider:
+                self._linked[source].add(target)
+                self._linked[target].add(source)
 
     def _node(self, key: str) -> str:
         """Return the key a page's links are kept under.

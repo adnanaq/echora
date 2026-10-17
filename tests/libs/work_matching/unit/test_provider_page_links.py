@@ -103,3 +103,13 @@ def test_provider_page_links_found_page_with_renamed_lookup_page_counts_for_curr
         [renamed, found], ["animeplanet:anime:new", "mal:anime:1"]
     )
     assert links.linked_with("animeplanet:anime:new") == frozenset({"mal:anime:1"})
+
+
+def test_provider_page_links_link_to_own_provider_page_ignored() -> None:
+    page = ProviderPage(
+        key="kitsu:anime:1",
+        address="https://kitsu.app/anime/1",
+        links=("kitsu:anime:2",),
+    )
+    links = ProviderPageLinks([page], ["kitsu:anime:2"])
+    assert links.linked_with("kitsu:anime:1") == frozenset()
