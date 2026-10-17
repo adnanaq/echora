@@ -286,6 +286,23 @@ def test_decide_doubled_providers_simkl_and_animecountdown_decided_together(
     assert len(decisions[0].undecided) == 4
 
 
+def test_decide_doubled_providers_simkl_and_animecountdown_other_numbers_review(
+    work_entry,
+) -> None:
+    entry = work_entry("https://simkl.com/anime/1", "https://animecountdown.com/2")
+    decisions = decide_doubled_providers(entry, [], NO_OTHER_WORKS)
+    assert [(decision.provider, decision.reason) for decision in decisions] == [
+        ("simkl", Reason.UNDECIDED_PAGES)
+    ]
+
+
+def test_decide_doubled_providers_simkl_and_animecountdown_same_number_gives_nothing(
+    work_entry,
+) -> None:
+    entry = work_entry("https://simkl.com/anime/1", "https://animecountdown.com/1")
+    assert decide_doubled_providers(entry, [], NO_OTHER_WORKS) == []
+
+
 def test_decide_doubled_providers_no_doubled_provider_gives_nothing(work_entry) -> None:
     entry = work_entry("https://myanimelist.net/anime/1", "https://kitsu.app/anime/1")
     assert decide_doubled_providers(entry, [], NO_OTHER_WORKS) == []

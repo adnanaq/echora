@@ -86,3 +86,20 @@ def test_provider_page_links_found_page_naming_other_page_of_lookup_provider_set
     links = ProviderPageLinks([found], ["mal:anime:1", "mal:anime:2"])
     assert links.linked_with("mal:anime:1") == frozenset()
     assert links.linked_by_multi_work_pages("mal:anime:2") == frozenset({"mal:anime:1"})
+
+
+def test_provider_page_links_found_page_with_renamed_lookup_page_counts_for_current_key(
+    linked_page,
+) -> None:
+    renamed = linked_page(
+        "https://anime-planet.com/anime/old", "https://anime-planet.com/anime/new"
+    )
+    found = ProviderPage.from_canonical_record(
+        "https://animeschedule.net/anime/show",
+        {"title": "Show", "sources": ["https://myanimelist.net/anime/1"]},
+        found_by="https://anime-planet.com/anime/old",
+    )
+    links = ProviderPageLinks(
+        [renamed, found], ["animeplanet:anime:new", "mal:anime:1"]
+    )
+    assert links.linked_with("animeplanet:anime:new") == frozenset({"mal:anime:1"})

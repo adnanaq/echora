@@ -6,7 +6,9 @@ count: a link to a page outside it says nothing about the group's pages.
 
 A page found through another provider's page, as AnimeSchedule is found by MAL
 id, is that provider's record of the same work. Its links count as links of the
-page it was found through, so the two stay one page here.
+page it was found through, so the two stay one page here. This is followed one
+step: the page a page was found through is a page of the provider looked up by,
+never a found page itself.
 """
 
 from collections import defaultdict

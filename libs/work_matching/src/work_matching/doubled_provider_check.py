@@ -15,7 +15,7 @@ from enum import StrEnum
 from work_matching.comparable_title import comparable_title
 from work_matching.known_works import KnownWorks
 from work_matching.provider_page import ProviderPage
-from work_matching.provider_page_key import has_repeated_provider, provider_of_key
+from work_matching.provider_page_key import provider_of_key
 from work_matching.provider_page_links import ProviderPageLinks
 from work_matching.work_entry import (
     WorkEntry,
@@ -24,7 +24,9 @@ from work_matching.work_entry import (
     is_year_matching,
 )
 
-# Simkl and AnimeCountdown number a work the same, so they are decided together.
+# Simkl and AnimeCountdown number a work the same, so they are decided together,
+# under Simkl's name: a Simkl and an AnimeCountdown page with different numbers
+# are two works, just as two Simkl pages are.
 _DECIDED_WITH = {"animecountdown": "simkl"}
 
 # The seed type each provider type falls under. A provider type missing here,
@@ -94,6 +96,7 @@ class UnrelatedPage:
 class DoubledProviderDecision:
     """Which of an entry's pages from one provider belong to its work, and why."""
 
+    # The provider decided; "simkl" for Simkl and AnimeCountdown together.
     provider: str
     # The provider's pages, renamed pages folded into their current key.
     pages: tuple[str, ...]
@@ -113,7 +116,7 @@ class DoubledProviderDecision:
     @property
     def outcome(self) -> Outcome:
         """What the decision says about the pages; a person checks ``REVIEW``."""
-        return _OUTCOME_OF_REASON.get(self.reason, Outcome.REVIEW)
+        return _outcome_of(self.reason)
 
 
 def decide_doubled_providers(
@@ -140,7 +143,7 @@ def decide_doubled_providers(
     return [
         check.decide(group, keys)
         for group, keys in groups.items()
-        if has_repeated_provider(keys)
+        if _has_several_ids(keys)
     ]
 
 
@@ -160,12 +163,12 @@ class _EntryCheck:
     def decide(self, provider: str, keys: list[str]) -> DoubledProviderDecision:
         """Decide one provider's pages."""
         pages = tuple(dict.fromkeys(map(self._links.same_page, keys)))
-        if not has_repeated_provider(pages):
+        if not _has_several_ids(pages):
             return DoubledProviderDecision(provider, pages, Reason.SAME_PAGE)
         linked = {key: self._links.linked_with(key) for key in pages}
         elsewhere = {key: self._links_elsewhere(key) for key in pages}
         reason = self._reason(pages, linked, elsewhere)
-        is_review = _OUTCOME_OF_REASON.get(reason) is None
+        is_review = _outcome_of(reason) is Outcome.REVIEW
         return DoubledProviderDecision(
             provider,
             pages,
@@ -293,6 +296,20 @@ class _EntryCheck:
 def _seed_type(page: ProviderPage) -> WorkType | None:
     """Return the seed type a page's type falls under, or None when unknown."""
     return _SEED_TYPE.get(page.type or "")
+
+
+def _outcome_of(reason: Reason) -> Outcome:
+    """Return what a decision with this reason says about the pages."""
+    return _OUTCOME_OF_REASON.get(reason, Outcome.REVIEW)
+
+
+def _has_several_ids(keys: Iterable[str]) -> bool:
+    """Report whether a decision group's page keys carry more than one id.
+
+    Pages of one provider with different ids are different pages, and so are
+    pages of providers decided together, since they number a work the same.
+    """
+    return len({key.rpartition(":")[2] for key in keys}) > 1
 
 
 def _decision_group(key: str) -> str | None:
