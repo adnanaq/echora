@@ -56,7 +56,7 @@ def test_review_case_from_split_work_names_case_by_reference_pages(split_case) -
 @pytest.mark.parametrize(
     "answer",
     [
-        {SIGEWINNE: "entry", VARESA: "elsewhere"},
+        {SIGEWINNE: "entry", VARESA: "other work"},
         {SIGEWINNE: "entry", VARESA: "work 2"},
         {SIGEWINNE: "entry", VARESA: "work 10"},
         {SIGEWINNE: "entry", VARESA: "entry"},
@@ -73,7 +73,7 @@ def test_review_case_accepted_answer_placement_for_every_page_gives_answer(
     [
         None,
         {SIGEWINNE: "entry"},
-        {SIGEWINNE: "entry", VARESA: "elsewhere", "mal:anime:1": "entry"},
+        {SIGEWINNE: "entry", VARESA: "other work", "mal:anime:1": "entry"},
         {SIGEWINNE: "entry", VARESA: "work 1"},
         {SIGEWINNE: "entry", VARESA: "maybe"},
         {SIGEWINNE: "entry", VARESA: "work 01"},
@@ -121,7 +121,7 @@ def test_review_file_with_kept_answer_answer_written_in_file_comes_back(
 ) -> None:
     path = tmp_path / "review.jsonl"
     ReviewFile(path).write_cases([doubled_case])
-    answer = {SIGEWINNE: "entry", VARESA: "elsewhere"}
+    answer = {SIGEWINNE: "entry", VARESA: "other work"}
     _answer_in_file(path, doubled_case.case, answer)
     kept = ReviewFile(path).with_kept_answer(doubled_case)
     assert kept.accepted_answer == answer

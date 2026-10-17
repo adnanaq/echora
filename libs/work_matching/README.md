@@ -205,7 +205,7 @@ two Kitsu pages and two Anime-Planet pages. Another known work has `mal:9`.
 
 For Kitsu: `kitsu:3` belongs. `kitsu:4` links `mal:9`, a MAL page the entry
 does not have, so it is unrelated, and `mal:9` belongs to the known work "Other
-Example". One page belongs and the other links elsewhere: `ONE_LINKED`, **one
+Example". One page belongs and the other links another work: `ONE_LINKED`, **one
 work**. `kitsu:4` can move to "Other Example".
 
 For Anime-Planet: neither page has links either way, so both are undecided and
@@ -257,7 +257,7 @@ line; the next run hands it back.
 
 ```json
 {"case": "doubled provider: animeplanet:anime:example animeplanet:anime:example-movie",
- "answer": {"animeplanet:anime:example": "entry", "animeplanet:anime:example-movie": "elsewhere"},
+ "answer": {"animeplanet:anime:example": "entry", "animeplanet:anime:example-movie": "other work"},
  "reason": "UNDECIDED_PAGES", "entries": {"mal:anime:3": "Example"}, "decision": {...}, "pages": [...]}
 ```
 
@@ -275,7 +275,7 @@ line; the next run hands it back.
 **Answers.** A doubled provider's answer places every page of the case:
 
 * `entry`: it belongs to this entry;
-* `elsewhere`: it belongs to another work;
+* `other work`: it belongs to another work;
 * `work 2`, `work 3`…: the entry is mixed, and the page belongs to its second,
   third… work.
 
