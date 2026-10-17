@@ -12,6 +12,8 @@ so a change to a key changes those too.
 """
 
 import re
+from collections import Counter
+from collections.abc import Iterable
 from functools import lru_cache
 
 # A numeric id ends where the address does or at a character that cannot be
@@ -122,3 +124,31 @@ def provider_of_key(key: str) -> str | None:
     """
     provider = key.partition(":")[0]
     return provider if provider in PROVIDERS else None
+
+
+def page_id_of_key(key: str) -> str:
+    """Return the id part of a page key, or the key itself when it is unrecognised.
+
+    A key is ``provider:kind:id``, and everything after the kind is the id,
+    even a slug holding a colon.
+
+    Examples:
+        >>> page_id_of_key("mal:anime:21")
+        '21'
+    """
+    return key.split(":", 2)[2] if provider_of_key(key) else key
+
+
+def has_repeated_provider(keys: Iterable[str]) -> bool:
+    """Report whether two or more of the page keys belong to one provider.
+
+    Unrecognised keys belong to no provider, so they never count.
+
+    Examples:
+        >>> has_repeated_provider(["mal:anime:1", "kitsu:anime:1", "mal:anime:2"])
+        True
+        >>> has_repeated_provider(["mal:anime:1", "kitsu:anime:1"])
+        False
+    """
+    providers = Counter(filter(None, map(provider_of_key, keys)))
+    return any(count > 1 for count in providers.values())

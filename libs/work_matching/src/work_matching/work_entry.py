@@ -14,6 +14,30 @@ WorkType = Literal["TV", "MOVIE", "OVA", "ONA", "SPECIAL", "UNKNOWN"]
 Season = Literal["WINTER", "SPRING", "SUMMER", "FALL"]
 
 
+def is_year_matching(*years: int | None) -> bool:
+    """Report whether the years agree, a missing year agreeing with any.
+
+    Examples:
+        >>> is_year_matching(2020, None, 2020)
+        True
+        >>> is_year_matching(2020, 2021)
+        False
+    """
+    return len({year for year in years if year is not None}) <= 1
+
+
+def is_type_matching(*work_types: WorkType | None) -> bool:
+    """Report whether the work types agree, ``UNKNOWN`` or none agreeing with any.
+
+    Examples:
+        >>> is_type_matching("TV", "UNKNOWN", None)
+        True
+        >>> is_type_matching("TV", "MOVIE")
+        False
+    """
+    return len({kind for kind in work_types if kind not in (None, "UNKNOWN")}) <= 1
+
+
 def _known_season(value: object) -> object:
     """Read the seed's ``UNDEFINED`` season as no season.
 

@@ -1,6 +1,8 @@
 import pytest
 from work_matching.provider_page_key import (
     REFERENCE_ORDER,
+    has_repeated_provider,
+    page_id_of_key,
     provider_of_key,
     provider_page_key,
 )
@@ -116,7 +118,7 @@ def test_provider_of_key_unrecognised_key_gives_none() -> None:
     assert provider_of_key(provider_page_key("https://example.com/show")) is None
 
 
-def test_reference_order_starts_with_providers_that_name_merged_ids() -> None:
+def test_reference_order_starts_with_merged_id_providers() -> None:
     assert REFERENCE_ORDER[:6] == (
         "mal",
         "anilist",
@@ -125,3 +127,29 @@ def test_reference_order_starts_with_providers_that_name_merged_ids() -> None:
         "animeplanet",
         "anisearch",
     )
+
+
+@pytest.mark.parametrize(
+    ("keys", "expected"),
+    [
+        (["mal:anime:1", "kitsu:anime:1", "mal:anime:2"], True),
+        (["mal:anime:1", "kitsu:anime:1"], False),
+        (["https://example.com/first", "https://example.com/second"], False),
+    ],
+)
+def test_has_repeated_provider_counts_pages_of_known_providers(
+    keys: list[str], expected: bool
+) -> None:
+    assert has_repeated_provider(keys) is expected
+
+
+def test_page_id_of_key_recognised_key_gives_id() -> None:
+    assert page_id_of_key("animecountdown:anime:38636") == "38636"
+
+
+def test_page_id_of_key_unrecognised_key_gives_key() -> None:
+    assert page_id_of_key("https://example.com/show") == "https://example.com/show"
+
+
+def test_page_id_of_key_id_with_colon_kept_whole() -> None:
+    assert page_id_of_key("animeplanet:anime:re:zero") == "re:zero"

@@ -6,7 +6,7 @@ rather than fetching the page a second way, lets seed cleaning and enrichment
 share one fetch and one cache.
 """
 
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict
@@ -34,15 +34,22 @@ class ProviderPage(BaseModel):
     # provider is the page's new address; on the fetched pages this is so only
     # for Anime-Planet renames.
     lands_on: str | None = None
+    # The key of the lookup page, when this is a found page: AnimeSchedule is
+    # found by MAL id. A link back to it is no evidence, so it is not a link.
+    found_by: str | None = None
     dead: bool = False
 
     @classmethod
-    def from_canonical_record(cls, address: str, record: dict[str, Any]) -> Self:
+    def from_canonical_record(
+        cls, address: str, record: dict[str, Any], found_by: str | None = None
+    ) -> Self:
         """Read a page's details from the canonical record fetched for it.
 
         Args:
             address: The page address that was fetched.
             record: The canonical anime record the provider's helper returned.
+            found_by: The address of the lookup page, when the page was found
+                through another provider's page.
 
         Returns:
             The page's titles, type, year, season, links to other providers'
@@ -50,10 +57,11 @@ class ProviderPage(BaseModel):
         """
         key = provider_page_key(address)
         own_provider = provider_of_key(key)
+        found_by_key = _optional_key(found_by)
         linked = {
             provider_page_key(linked_address)
             for linked_address in _linked_addresses(record)
-        }
+        } - {found_by_key}
         renamed = sorted(
             linked_key
             for linked_key in linked - {key}
@@ -62,7 +70,7 @@ class ProviderPage(BaseModel):
         return cls(
             key=key,
             address=address,
-            titles=tuple(dict.fromkeys(_titles(record))),
+            titles=tuple(dict.fromkeys(_record_titles(record))),
             type=record.get("type"),
             year=record.get("year"),
             season=record.get("season"),
@@ -74,15 +82,46 @@ class ProviderPage(BaseModel):
                 )
             ),
             lands_on=renamed[0] if renamed else None,
+            found_by=found_by_key,
         )
 
     @classmethod
-    def dead_page(cls, address: str) -> Self:
-        """Record a page the provider no longer serves."""
-        return cls(key=provider_page_key(address), address=address, dead=True)
+    def dead_page(cls, address: str, found_by: str | None = None) -> Self:
+        """Record a dead page: one the provider no longer serves."""
+        return cls(
+            key=provider_page_key(address),
+            address=address,
+            dead=True,
+            found_by=_optional_key(found_by),
+        )
 
 
-def _titles(record: dict[str, Any]) -> Iterator[str]:
+def pages_by_current_key(pages: Iterable[ProviderPage]) -> dict[str, ProviderPage]:
+    """Index pages by the key each answers to now.
+
+    A renamed page answers to the key it lands on, unless the page was also
+    fetched at that key.
+
+    Args:
+        pages: Fetched pages.
+
+    Returns:
+        Each page by its current key.
+    """
+    by_key: dict[str, ProviderPage] = {}
+    for page in pages:
+        key = page.lands_on or page.key
+        if key not in by_key or page.key == key:
+            by_key[key] = page
+    return by_key
+
+
+def _optional_key(address: str | None) -> str | None:
+    """Return the page key of an address, or None when there is no address."""
+    return provider_page_key(address) if address else None
+
+
+def _record_titles(record: dict[str, Any]) -> Iterator[str]:
     """Yield a record's titles, its main title first, skipping empty ones."""
     for field in ("title", "title_english", "title_japanese"):
         if title := record.get(field):
@@ -91,7 +130,10 @@ def _titles(record: dict[str, Any]) -> Iterator[str]:
 
 
 def _linked_addresses(record: dict[str, Any]) -> Iterator[str]:
-    """Yield every page address a record lists, in ``sources`` and ``external_sources``."""
+    """Yield every page address a record lists in its two link fields.
+
+    The fields are ``sources`` and ``external_sources``.
+    """
     yield from (address for address in record.get("sources") or [] if address)
     for link in record.get("external_sources") or []:
         if address := link.get("source"):

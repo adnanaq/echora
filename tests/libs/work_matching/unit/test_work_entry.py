@@ -1,6 +1,6 @@
 import pytest
 from pydantic import ValidationError
-from work_matching.work_entry import WorkEntry
+from work_matching.work_entry import WorkEntry, is_type_matching, is_year_matching
 
 
 def _entry_titled(seed_entries: list[dict], title: str) -> dict:
@@ -67,3 +67,28 @@ def test_work_entry_unknown_type_rejected() -> None:
 def test_work_entry_without_pages_rejected() -> None:
     with pytest.raises(ValidationError):
         WorkEntry(title="Test", type="TV", pages={})
+
+
+@pytest.mark.parametrize(
+    ("years", "expected"),
+    [((2020, None, 2020), True), ((None,), True), ((), True), ((2020, 2021), False)],
+)
+def test_is_year_matching_missing_year_agrees_with_any(
+    years: tuple[int | None, ...], expected: bool
+) -> None:
+    assert is_year_matching(*years) is expected
+
+
+@pytest.mark.parametrize(
+    ("work_types", "expected"),
+    [
+        (("TV", "UNKNOWN", None), True),
+        (("MOVIE", "MOVIE"), True),
+        ((), True),
+        (("TV", "MOVIE"), False),
+    ],
+)
+def test_is_type_matching_unknown_or_missing_type_agrees_with_any(
+    work_types: tuple, expected: bool
+) -> None:
+    assert is_type_matching(*work_types) is expected

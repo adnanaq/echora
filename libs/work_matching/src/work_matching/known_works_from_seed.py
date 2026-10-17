@@ -8,16 +8,15 @@ from typing import Any, Self
 
 from work_matching.comparable_title import comparable_title
 from work_matching.known_works import KnownWorks
-from work_matching.provider_page_key import provider_page_key
 from work_matching.work_entry import WorkEntry, WorkType
 
 
 class KnownWorksFromSeed(KnownWorks):
     """Every entry of a seed file as a known work, indexed by page and by title.
 
-    Each page should belong to one entry. A page found in more than one entry
-    is a duplicate page: the first entry keeps it, and it is listed in
-    ``duplicate_pages`` so seed cleaning can report it. The seed format allows
+    Each page should belong to one entry. A page listed in more than one entry
+    is kept by the first and listed in ``pages_in_several_entries``, so seed
+    cleaning can report it. The seed format allows
     an entry without pages; such an entry cannot be found and is listed in
     ``entries_without_pages`` instead. Feed this the cleaned seed once there is
     one.
@@ -33,7 +32,7 @@ class KnownWorksFromSeed(KnownWorks):
         self._by_title: defaultdict[tuple[str, WorkType], list[WorkEntry]] = (
             defaultdict(list)
         )
-        duplicates: set[str] = set()
+        in_several_entries: set[str] = set()
         without_pages: list[str] = []
         count = 0
         for entry in entries:
@@ -44,10 +43,10 @@ class KnownWorksFromSeed(KnownWorks):
             count += 1
             for key in work.pages:
                 if self._by_page.setdefault(key, work) is not work:
-                    duplicates.add(key)
+                    in_several_entries.add(key)
             self._by_title[(comparable_title(work.title), work.type)].append(work)
         self._count = count
-        self._duplicate_pages = frozenset(duplicates)
+        self._pages_in_several_entries = frozenset(in_several_entries)
         self._entries_without_pages = tuple(without_pages)
 
     def __len__(self) -> int:
@@ -55,9 +54,9 @@ class KnownWorksFromSeed(KnownWorks):
         return self._count
 
     @property
-    def duplicate_pages(self) -> frozenset[str]:
+    def pages_in_several_entries(self) -> frozenset[str]:
         """Keys of pages found in more than one entry."""
-        return self._duplicate_pages
+        return self._pages_in_several_entries
 
     @property
     def entries_without_pages(self) -> tuple[str, ...]:
@@ -77,13 +76,13 @@ class KnownWorksFromSeed(KnownWorks):
         with Path(path).open(encoding="utf-8") as handle:
             return cls(json.load(handle)["data"])
 
-    def find_by_page(self, address: str) -> WorkEntry | None:
-        """Return the work that has this provider page, or None.
+    def find_by_page_key(self, key: str) -> WorkEntry | None:
+        """Return the work that has the page with this key, or None.
 
         Args:
-            address: A provider page address, in any of its spellings.
+            key: A page key, as ``provider_page_key`` gives it.
         """
-        return self._by_page.get(provider_page_key(address))
+        return self._by_page.get(key)
 
     def find_by_title(
         self, title: str, work_type: WorkType, year: int | None

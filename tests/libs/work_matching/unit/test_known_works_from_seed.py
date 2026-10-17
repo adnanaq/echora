@@ -29,6 +29,12 @@ def test_known_works_from_seed_find_by_page_unknown_page_gives_none(
     )
 
 
+def test_known_works_from_seed_find_by_page_key_gives_work(seed_entries) -> None:
+    work = KnownWorksFromSeed(seed_entries).find_by_page_key("mal:anime:21")
+    assert work is not None
+    assert work.title == "One Piece"
+
+
 def test_known_works_from_seed_find_by_title_cosmetic_difference_finds_every_entry(
     seed_entries,
 ) -> None:
@@ -75,7 +81,7 @@ def test_known_works_from_seed_page_in_two_entries_reported_and_first_kept() -> 
             },
         ]
     )
-    assert works.duplicate_pages == frozenset({"mal:anime:1"})
+    assert works.pages_in_several_entries == frozenset({"mal:anime:1"})
     work = works.find_by_page(shared)
     assert work is not None
     assert work.title == "First"
@@ -100,7 +106,7 @@ def test_known_works_from_seed_from_file_counts_every_entry(
 ) -> None:
     works = KnownWorksFromSeed.from_file(seed_file)
     assert len(works) == len(seed_entries)
-    assert works.duplicate_pages == frozenset()
+    assert works.pages_in_several_entries == frozenset()
 
 
 def test_known_works_from_seed_satisfies_known_works_lookup(seed_entries) -> None:
