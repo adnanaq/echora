@@ -1,4 +1,6 @@
+import pytest
 from work_matching.doubled_provider_check import (
+    DoubledProviderDecision,
     Outcome,
     Reason,
     UnrelatedPage,
@@ -306,3 +308,47 @@ def test_decide_doubled_providers_simkl_and_animecountdown_same_number_gives_not
 def test_decide_doubled_providers_no_doubled_provider_gives_nothing(work_entry) -> None:
     entry = work_entry("https://myanimelist.net/anime/1", "https://kitsu.app/anime/1")
     assert decide_doubled_providers(entry, [], NO_OTHER_WORKS) == []
+
+
+@pytest.mark.parametrize("reason", list(Reason))
+def test_doubled_provider_decision_outcome_every_reason_gives_outcome(
+    reason: Reason,
+) -> None:
+    assert DoubledProviderDecision("mal", (), reason).outcome in set(Outcome)
+
+
+def test_decide_doubled_providers_link_to_provider_entry_lacks_counts_as_no_link(
+    linked_page, work_entry
+) -> None:
+    entry = work_entry(
+        "https://myanimelist.net/anime/1",
+        "https://kitsu.app/anime/1",
+        "https://kitsu.app/anime/2",
+    )
+    pages = [
+        linked_page("https://kitsu.app/anime/1", "https://myanimelist.net/anime/1"),
+        linked_page("https://kitsu.app/anime/2", "https://anidb.net/anime/7"),
+    ]
+    decision = _decisions(entry, pages)["kitsu"]
+    assert (decision.reason, decision.undecided) == (
+        Reason.UNDECIDED_PAGES,
+        ("kitsu:anime:2",),
+    )
+
+
+def test_decide_doubled_providers_provider_type_falls_under_seed_type(
+    linked_page, work_entry
+) -> None:
+    addresses = [
+        f"https://anime-planet.com/anime/{slug}"
+        for slug in ("short", "unknown", "movie")
+    ]
+    pages = [
+        linked_page(address).model_copy(update={"type": provider_type})
+        for address, provider_type in zip(addresses, ("TV SHORT", "UNKNOWN", "MOVIE"))
+    ]
+    decision = _decisions(work_entry(*addresses), pages)["animeplanet"]
+    assert decision.year_type_matches == (
+        "animeplanet:anime:short",
+        "animeplanet:anime:unknown",
+    )

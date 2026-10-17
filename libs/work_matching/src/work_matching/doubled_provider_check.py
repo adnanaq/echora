@@ -15,7 +15,7 @@ from enum import StrEnum
 from work_matching.comparable_title import comparable_title
 from work_matching.known_works import KnownWorks
 from work_matching.provider_page import ProviderPage
-from work_matching.provider_page_key import provider_of_key
+from work_matching.provider_page_key import page_id_of_key, provider_of_key
 from work_matching.provider_page_links import ProviderPageLinks
 from work_matching.work_entry import (
     WorkEntry,
@@ -73,11 +73,18 @@ class Reason(StrEnum):
     NONE_LINKED = "no page is linked with the entry"
 
 
-_OUTCOME_OF_REASON = {
+_OUTCOME_OF_REASON: dict[Reason, Outcome] = {
     Reason.SAME_PAGE: Outcome.SAME_PAGE,
     Reason.ONE_LINKED: Outcome.ONE_WORK,
     Reason.SHARED_LINK: Outcome.ONE_WORK,
     Reason.LINKED_APART: Outcome.MIXED_ENTRY,
+    Reason.MULTI_WORK_LINK: Outcome.REVIEW,
+    Reason.DEAD_PAGE: Outcome.REVIEW,
+    Reason.CONTRADICTING_LINKS: Outcome.REVIEW,
+    Reason.UNDECIDED_PAGES: Outcome.REVIEW,
+    Reason.DETAILS_DIFFER: Outcome.REVIEW,
+    Reason.OVERLAPPING_LINKS: Outcome.REVIEW,
+    Reason.NONE_LINKED: Outcome.REVIEW,
 }
 
 
@@ -198,7 +205,7 @@ class _EntryCheck:
         """Return the rule that decides the pages, checks that refuse first."""
         if any(map(self._links.linked_by_multi_work_pages, pages)):
             return Reason.MULTI_WORK_LINK
-        if any((page := self._details.get(key)) and page.dead for key in pages):
+        if any(map(self._is_dead, pages)):
             return Reason.DEAD_PAGE
         if any(linked[key] and elsewhere[key] for key in pages):
             return Reason.CONTRADICTING_LINKS
@@ -217,6 +224,11 @@ class _EntryCheck:
         if sum(map(len, linked_sets)) == len(frozenset.union(*linked_sets)):
             return Reason.LINKED_APART
         return Reason.OVERLAPPING_LINKS
+
+    def _is_dead(self, key: str) -> bool:
+        """Report whether a page was fetched and the provider no longer serves it."""
+        page = self._details.get(key)
+        return page is not None and page.dead
 
     def _links_elsewhere(self, key: str) -> frozenset[str]:
         """Return a page's links naming another work.
@@ -300,7 +312,7 @@ def _seed_type(page: ProviderPage) -> WorkType | None:
 
 def _outcome_of(reason: Reason) -> Outcome:
     """Return what a decision with this reason says about the pages."""
-    return _OUTCOME_OF_REASON.get(reason, Outcome.REVIEW)
+    return _OUTCOME_OF_REASON[reason]
 
 
 def _has_several_ids(keys: Iterable[str]) -> bool:
@@ -309,7 +321,7 @@ def _has_several_ids(keys: Iterable[str]) -> bool:
     Pages of one provider with different ids are different pages, and so are
     pages of providers decided together, since they number a work the same.
     """
-    return len({key.rpartition(":")[2] for key in keys}) > 1
+    return len(set(map(page_id_of_key, keys))) > 1
 
 
 def _decision_group(key: str) -> str | None:

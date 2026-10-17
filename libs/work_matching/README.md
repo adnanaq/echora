@@ -149,6 +149,10 @@ provider:
 | `year_type_matches` | On review only: the pages whose year and type agree with the entry's. |
 | `season_matches` | On review only: the pages in the entry's season. |
 
+`belonging`, `unrelated` and `undecided` are filled for every reason except
+`SAME_PAGE`. On a review they show what the links say, even when a check that
+runs first, such as `DEAD_PAGE`, decided the reason.
+
 The three match fields are hints for the reviewer, never the answer: a provider
 listing one work twice gives the two pages different titles, so a title match
 can point at one page and leave out the other.
