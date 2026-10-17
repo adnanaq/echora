@@ -14,7 +14,7 @@ from work_matching.doubled_provider_check import (
 )
 from work_matching.known_works import KnownWorks
 from work_matching.known_works_from_seed import KnownWorksFromSeed
-from work_matching.provider_page import ProviderPage
+from work_matching.provider_page import ProviderPage, pages_by_current_key
 from work_matching.provider_page_key import provider_of_key, provider_page_key
 from work_matching.provider_page_links import ProviderPageLinks
 from work_matching.provider_page_store import ProviderPageStore
@@ -41,6 +41,7 @@ __all__ = [
     "comparable_title",
     "decide_doubled_providers",
     "decide_split_work",
+    "pages_by_current_key",
     "provider_of_key",
     "provider_page_key",
 ]

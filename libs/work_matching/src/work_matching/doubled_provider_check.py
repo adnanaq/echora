@@ -14,7 +14,7 @@ from enum import StrEnum
 
 from work_matching.comparable_title import comparable_title
 from work_matching.known_works import KnownWorks
-from work_matching.provider_page import ProviderPage
+from work_matching.provider_page import ProviderPage, pages_by_current_key
 from work_matching.provider_page_key import page_id_of_key, provider_of_key
 from work_matching.provider_page_links import ProviderPageLinks
 from work_matching.work_entry import (
@@ -162,19 +162,16 @@ def decide_doubled_providers(
 class _EntryCheck:
     """The links and details of one entry's pages, shared by its decisions.
 
-    A renamed page's details are found under its current key too, unless the
-    page was also fetched at its current address.
+    Page details are found by each page's current key, as renamed pages fold.
     """
 
     def __init__(
         self, entry: WorkEntry, pages: Iterable[ProviderPage], known_works: KnownWorks
     ) -> None:
         self._entry = entry
-        fetched = {page.key: page for page in pages}
-        self._links = ProviderPageLinks(fetched.values(), entry.pages)
-        self._details = {
-            self._links.same_page(key): page for key, page in fetched.items()
-        } | fetched
+        fetched = tuple(pages)
+        self._links = ProviderPageLinks(fetched, entry.pages)
+        self._details = pages_by_current_key(fetched)
         self._known_works = known_works
         self._entry_pages = frozenset(map(self._links.same_page, entry.pages))
         self._entry_providers = frozenset(map(provider_of_key, self._entry_pages))

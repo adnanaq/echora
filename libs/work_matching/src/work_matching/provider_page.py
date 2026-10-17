@@ -6,7 +6,7 @@ rather than fetching the page a second way, lets seed cleaning and enrichment
 share one fetch and one cache.
 """
 
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict
@@ -94,6 +94,26 @@ class ProviderPage(BaseModel):
             dead=True,
             found_by=_optional_key(found_by),
         )
+
+
+def pages_by_current_key(pages: Iterable[ProviderPage]) -> dict[str, ProviderPage]:
+    """Index pages by the key each answers to now.
+
+    A renamed page answers to the key it lands on, unless the page was also
+    fetched at that key.
+
+    Args:
+        pages: Fetched pages.
+
+    Returns:
+        Each page by its current key.
+    """
+    by_key: dict[str, ProviderPage] = {}
+    for page in pages:
+        key = page.lands_on or page.key
+        if key not in by_key or page.key == key:
+            by_key[key] = page
+    return by_key
 
 
 def _optional_key(address: str | None) -> str | None:
