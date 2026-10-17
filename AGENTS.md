@@ -109,10 +109,10 @@ docker compose -f docker/docker-compose.dev.yml up -d redis redisinsight
 - Focus on making your code expressive, efficient instead of adding comments unecessairly outside docstrings
 - Use relevent datastructures where needed
 - Avoid single character variable or funciton names, do not use single word funciton names.
-- Name variables, functions, constants and values after the domain entity they hold, using the terms the library's README defines: `candidate_keys`, `other_work_links`, `pages_by_provider`, not vague words such as `group`, `named`, `elsewhere` or `data`.
-- Functions and properties that answer yes or no start with `is_` (`is_one_work`), or `has_` when they check for something (`has_repeated_provider`).
+- Name variables, functions, constants and values after the domain thing they hold, using the terms the project already uses (its glossary, READMEs and models): `retry_delay_seconds`, `pages_by_provider`, `failed_requests`, not vague words such as `data`, `info`, `group`, `item`, `result` or `stuff`.
+- Functions and properties that answer yes or no start with `is_` (`is_expired`), or `has_` when they check for something (`has_errors`).
 - No articles (`a`, `an`, `the`), possessives (`its`, `their`) or hedging words in any name.
-- Module and function docstrings open with full sentences saying what the code is for. They list the outcomes or rules it applies and give the domain reason for each, rather than internal shorthand.
+- Module and function docstrings open with full sentences saying what the code is for. They list the outcomes or rules it applies and give the reason for each, rather than internal shorthand.
 
 ```bash
 # Format code
