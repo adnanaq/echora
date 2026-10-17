@@ -1,3 +1,5 @@
+import pytest
+from pydantic import ValidationError
 from work_matching.provider_page import ProviderPage
 from work_matching.provider_page_store import ProviderPageStore
 
@@ -45,3 +47,22 @@ def test_provider_page_store_creates_missing_folder(tmp_path) -> None:
     path = tmp_path / "seed_cleaning" / "pages.jsonl"
     ProviderPageStore(path).add(_page(MAL, "One Piece"))
     assert path.exists()
+
+
+def test_provider_page_store_unfinished_last_line_dropped(tmp_path) -> None:
+    path = tmp_path / "pages.jsonl"
+    page = _page(MAL, "One Piece")
+    ProviderPageStore(path).add(page)
+    with path.open("a", encoding="utf-8") as output:
+        output.write('{"key":"kitsu:an')
+    store = ProviderPageStore(path)
+    store.add(_page(KITSU, "One Piece"))
+    reopened = ProviderPageStore(path)
+    assert (len(reopened), reopened.get(page.key)) == (2, page)
+
+
+def test_provider_page_store_broken_complete_line_raises(tmp_path) -> None:
+    path = tmp_path / "pages.jsonl"
+    path.write_text('{"key":"kitsu:an\n', encoding="utf-8")
+    with pytest.raises(ValidationError):
+        ProviderPageStore(path)

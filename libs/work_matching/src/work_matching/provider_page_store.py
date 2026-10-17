@@ -5,16 +5,21 @@ discovery decide from these details later and again on every seed release, so
 the details are kept here, one page per line.
 """
 
+import logging
 from pathlib import Path
 
 from work_matching.provider_page import ProviderPage
+
+logger = logging.getLogger(__name__)
 
 
 class ProviderPageStore:
     """Provider pages by key, read from and appended to one JSON Lines file.
 
     A page fetched again is appended rather than rewritten, and the last line
-    for a page wins when the file is read.
+    for a page wins when the file is read. Every line ends with a line end, so
+    a last line without one was cut off by an interrupted write: it is dropped
+    from the file when the store opens.
     """
 
     def __init__(self, path: str | Path) -> None:
@@ -26,11 +31,7 @@ class ProviderPageStore:
         self._path = Path(path)
         self._pages: dict[str, ProviderPage] = {}
         if self._path.exists():
-            with self._path.open(encoding="utf-8") as lines:
-                for line in lines:
-                    if line.strip():
-                        page = ProviderPage.model_validate_json(line)
-                        self._pages[page.key] = page
+            self._read_pages()
 
     def __len__(self) -> int:
         """Return how many pages are kept."""
@@ -54,3 +55,19 @@ class ProviderPageStore:
         with self._path.open("a", encoding="utf-8") as output:
             output.writelines(f"{page.model_dump_json()}\n" for page in pages)
         self._pages.update((page.key, page) for page in pages)
+
+    def _read_pages(self) -> None:
+        """Read every complete line, cutting an unfinished last line off the file."""
+        complete_length = 0
+        with self._path.open("rb+") as lines:
+            for line in lines:
+                if not line.endswith(b"\n"):
+                    logger.warning(
+                        f"Dropping an unfinished last line from {self._path}"
+                    )
+                    lines.truncate(complete_length)
+                    break
+                complete_length += len(line)
+                if line.strip():
+                    page = ProviderPage.model_validate_json(line)
+                    self._pages[page.key] = page
