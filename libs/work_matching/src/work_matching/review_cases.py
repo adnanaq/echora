@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 # Where a doubled provider's page goes: to this entry, to another work, or to
 # the second, third or later work of a mixed entry.
-_PAGE_PLACEMENT_ANSWER = re.compile(r"entry|other work|work (?:[2-9]|[1-9]\d+)")
+_PAGE_PLACEMENT_ANSWER = re.compile(r"entry|other work|work (?:[2-9]|[1-9][0-9]+)")
 _SPLIT_WORK_ANSWERS = frozenset({"one work", "separate works"})
 
 

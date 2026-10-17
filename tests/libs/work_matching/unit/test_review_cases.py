@@ -77,6 +77,7 @@ def test_review_case_accepted_answer_placement_for_every_page_gives_answer(
         {SIGEWINNE: "entry", VARESA: "work 1"},
         {SIGEWINNE: "entry", VARESA: "maybe"},
         {SIGEWINNE: "entry", VARESA: "work 01"},
+        {SIGEWINNE: "entry", VARESA: "work 1٢"},
         {SIGEWINNE: 1, VARESA: ["entry"]},
         "one work",
     ],
