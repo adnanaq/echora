@@ -11,6 +11,7 @@ import logging
 from collections import defaultdict
 from typing import TYPE_CHECKING
 
+import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
 if TYPE_CHECKING:
@@ -67,7 +68,9 @@ def _is_semantically_duplicate(
     """
     if not existing_embeddings:
         return False
-    similarities = cosine_similarity([new_embedding], existing_embeddings)[0]
+    similarities = cosine_similarity(
+        np.asarray([new_embedding]), np.asarray(existing_embeddings)
+    )[0]
     return float(similarities.max()) > threshold
 
 

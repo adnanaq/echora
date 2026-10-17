@@ -690,7 +690,7 @@ class EnsembleFuzzyMatcher:
             norm2 = self._standardize_for_embedding(text2)
 
             embeddings = self.embedding_model.encode([norm1, norm2])
-            similarity = cosine_similarity([embeddings[0]], [embeddings[1]])[0][0]
+            similarity = cosine_similarity(embeddings[:1], embeddings[1:2])[0][0]
             return float(max(0.0, similarity))
         except Exception as e:
             logger.warning(f"Semantic similarity failed: {e}")
