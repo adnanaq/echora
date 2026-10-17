@@ -65,7 +65,7 @@ echora/
 │   │       ├── reranking/             # Cross-encoder reranking
 │   │       └── utils/                 # Image downloading, caching
 │   └── work_matching/                 # Which provider pages belong to the same work
-│       └── src/work_matching/         # Work entry, page keys and details, known-works lookup
+│       └── src/work_matching/         # Work entry, page keys and details, known-works lookup, matching rules
 ├── scripts/                           # Utility scripts (reindexing, validation, etc.)
 ├── tests/                             # Test suite (mirrors source structure)
 │   ├── conftest.py                    # Root fixtures (settings, clients)
