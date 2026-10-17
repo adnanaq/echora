@@ -18,11 +18,13 @@ from work_matching.work_entry import WorkEntry, is_type_matching, is_year_matchi
 class SplitWorkReason(StrEnum):
     """Why candidate entries are or are not one work."""
 
-    LINKED = "links tie every entry together and type and year agree"
-    TOO_FEW_ENTRIES = "fewer than two entries, so there is nothing to join"
-    NOT_LINKED = "links do not tie every entry together"
-    TYPE_DIFFERS = "the entries' types differ"
-    YEAR_DIFFERS = "the entries' years differ"
+    LINKED = "links connect every entry, and their types and years agree"
+    TOO_FEW_ENTRIES = "fewer than two entries were given, so there is nothing to join"
+    NOT_LINKED = "links do not connect every entry"
+    TYPE_DIFFERS = "links connect every entry, but their types differ"
+    YEAR_DIFFERS = (
+        "links connect every entry and their types agree, but their years differ"
+    )
 
 
 @dataclass(frozen=True, slots=True)

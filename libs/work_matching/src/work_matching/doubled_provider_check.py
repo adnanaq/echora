@@ -66,19 +66,34 @@ class Outcome(StrEnum):
 class Reason(StrEnum):
     """The specific rule explaining why a decision was reached."""
 
-    SAME_PAGE = "the addresses name one page"
-    ONE_LINKED = "one page is linked with the entry and the others link other works"
-    SHARED_LINK = "every linked page is linked with one same page of the entry"
-    LINKED_APART = "the linked pages are linked with separate pages of the entry"
-    MULTI_WORK_LINK = "a multi-work page links these pages"
-    DEAD_PAGE = "a page is no longer served"
-    CONTRADICTING_LINKS = "a page is linked with the entry and links another work"
-    UNDECIDED_PAGES = "a page is neither linked with the entry nor links another work"
-    DETAILS_DIFFER = (
-        "the linked pages share a linked page but their year or type differ"
+    SAME_PAGE = "the addresses are one page: an old address leads to the renamed one"
+    ONE_LINKED = (
+        "exactly one page is linked with the entry; every other page links a "
+        "different work"
     )
-    OVERLAPPING_LINKS = "the linked pages share some pages but none linked with all"
-    NONE_LINKED = "no page is linked with the entry"
+    SHARED_LINK = (
+        "the linked pages are all linked through one same page, with the same year "
+        "and type"
+    )
+    LINKED_APART = (
+        "the linked pages are linked through entirely separate pages, so each is a "
+        "separate work"
+    )
+    MULTI_WORK_LINK = "a page naming several pages of one provider links these pages"
+    DEAD_PAGE = "a page no longer exists on the provider's site"
+    CONTRADICTING_LINKS = (
+        "a page is linked with the entry and also links a different work"
+    )
+    UNDECIDED_PAGES = "a page has no link to the entry and no link to another work"
+    DETAILS_DIFFER = (
+        "the linked pages are linked through one same page, but their years or "
+        "types differ"
+    )
+    OVERLAPPING_LINKS = (
+        "the linked pages share some linked pages, but no page is linked with all "
+        "of them"
+    )
+    NONE_LINKED = "every page links a different work and none is linked with the entry"
 
     @property
     def outcome(self) -> Outcome:
