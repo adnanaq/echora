@@ -153,6 +153,74 @@ The three match fields are hints for the reviewer, never the answer: a provider
 listing one work twice gives the two pages different titles, so a title match
 can point at one page and leave out the other.
 
+### Worked examples
+
+Keys are written short: `mal:1` for `mal:anime:1`. An arrow means "lists a link
+to"; links count both ways. A page missing from a table lists no links.
+
+**1. A mixed entry.** One entry holds two MAL pages, two AniList pages and a Kitsu page.
+
+| Page | Links |
+| -- | -- |
+| `anilist:1` | → `mal:1` |
+| `anilist:2` | → `mal:2` |
+| `kitsu:1` | → `mal:1`, `anilist:1` |
+
+For MAL: no page is renamed, no multi-work or dead page, so each page gets its
+answer. `mal:1` is linked with `anilist:1` and `kitsu:1`; `mal:2` with
+`anilist:2`. Both belong. They share no linked page, and their linked pages
+never overlap, so the reason is `LINKED_APART`: a **mixed entry**. AniList comes
+out the same way.
+
+```text
+provider   reason        outcome      belonging
+mal        LINKED_APART  MIXED_ENTRY  mal:1 -> {anilist:1, kitsu:1}
+                                      mal:2 -> {anilist:2}
+anilist    LINKED_APART  MIXED_ENTRY  anilist:1 -> {kitsu:1, mal:1}
+                                      anilist:2 -> {mal:2}
+```
+
+The `belonging` sets show the two works: `mal:1`, `anilist:1` and `kitsu:1`
+are one; `mal:2` and `anilist:2` the other.
+
+**2. One provider settled, another sent to review.** The entry holds `mal:3`,
+two Kitsu pages and two Anime-Planet pages. Another known work has `mal:9`.
+
+| Page | Links | Title, type, year |
+| -- | -- | -- |
+| `kitsu:3` | → `mal:3` | |
+| `kitsu:4` | → `mal:9` | |
+| `animeplanet:example` | none | Example, TV, 2020 (as the entry) |
+| `animeplanet:example-movie` | none | Example Movie, MOVIE, 2020 |
+
+For Kitsu: `kitsu:3` belongs. `kitsu:4` links `mal:9`, a MAL page the entry
+does not have, so it is unrelated, and `mal:9` belongs to the known work "Other
+Example". One page belongs and the other links elsewhere: `ONE_LINKED`, **one
+work**. `kitsu:4` can move to "Other Example".
+
+For Anime-Planet: neither page has links either way, so both are undecided and
+the reason is `UNDECIDED_PAGES`: **review**. The match fields point the
+reviewer at `animeplanet:example`, but do not decide.
+
+```text
+provider     reason           outcome   result
+kitsu        ONE_LINKED       ONE_WORK  belonging: kitsu:3 -> {mal:3}
+                                        unrelated: kitsu:4 -> links {mal:9}, other work "Other Example"
+animeplanet  UNDECIDED_PAGES  REVIEW    undecided: animeplanet:example, animeplanet:example-movie
+                                        title_matches: animeplanet:example
+                                        year_type_matches: animeplanet:example
+```
+
+**3. Two pages linked with one same page.** The entry holds `mal:5`, `anilist:5`
+and `anilist:6`, and both AniList pages link `mal:5`.
+
+* Both pages are TV from 2020: they share a linked page and their year and type
+  agree, so the reason is `SHARED_LINK`, **one work**. AniList lists the work
+  twice, or splits what MAL files as one; both pages belong.
+* `anilist:6` is from 2021 instead: they still share `mal:5`, but the year
+  differs, so one link may be a provider's mistake. The reason is
+  `DETAILS_DIFFER`: **review**.
+
 ## Deciding a split work
 
 `decide_split_work` takes candidate entries, such as entries sharing a title,
