@@ -3,7 +3,9 @@
 Providers decorate the same page differently: MAL appends a title slug,
 AniSearch appends ``,slug``, MAL still links AniDB's old ``animedb.pl``
 address, and ANN keeps the id in the query. Two spellings of one page must give
-one key, so pages are compared by key, never by address.
+one key, so pages are compared by key, never by address. A page that has both
+a number and a slug, as on Kitsu, gets one key for each: telling them apart
+needs the provider, so the seed's number form is the one to record.
 
 Enrichment uses the same keys to merge provider records and to derive anime ids,
 so a change to a key changes those too.

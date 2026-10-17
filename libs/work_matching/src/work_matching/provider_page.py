@@ -29,7 +29,10 @@ class ProviderPage(BaseModel):
     # Keys of other providers' pages this page links to, sorted. Shared
     # websites are left out: two different works can share an official site.
     links: tuple[str, ...] = ()
-    # The key the address lands on when the provider renamed the page.
+    # The key the address lands on when the provider renamed the page. A record
+    # lists other providers' pages and its own page, so a second page of its own
+    # provider is the page's new address; on the fetched pages this is so only
+    # for Anime-Planet renames.
     lands_on: str | None = None
     dead: bool = False
 

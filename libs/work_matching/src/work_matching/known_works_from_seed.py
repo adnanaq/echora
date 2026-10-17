@@ -7,11 +7,12 @@ from pathlib import Path
 from typing import Any, Self
 
 from work_matching.comparable_title import comparable_title
+from work_matching.known_works import KnownWorks
 from work_matching.provider_page_key import provider_page_key
 from work_matching.work_entry import WorkEntry, WorkType
 
 
-class KnownWorksFromSeed:
+class KnownWorksFromSeed(KnownWorks):
     """Every entry of a seed file as a known work, indexed by page and by title.
 
     Each page should belong to one entry. A page found in more than one entry
