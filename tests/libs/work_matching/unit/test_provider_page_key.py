@@ -118,7 +118,7 @@ def test_provider_of_key_unrecognised_key_gives_none() -> None:
     assert provider_of_key(provider_page_key("https://example.com/show")) is None
 
 
-def test_reference_order_starts_with_providers_that_name_merged_ids() -> None:
+def test_reference_order_starts_with_merged_id_providers() -> None:
     assert REFERENCE_ORDER[:6] == (
         "mal",
         "anilist",

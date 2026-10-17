@@ -35,7 +35,7 @@ def test_comparable_title_different_titles_stay_different(
     assert comparable_title(first) != comparable_title(second)
 
 
-def test_comparable_title_non_latin_title_keeps_its_letters() -> None:
+def test_comparable_title_non_latin_title_keeps_letters() -> None:
     assert comparable_title("魔道祖师 前尘篇") == "魔道祖师 前尘篇"
 
 
