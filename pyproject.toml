@@ -126,6 +126,7 @@ extra-paths = [
     "libs/enrichment/src",
     "libs/http_cache/src",
     "libs/qdrant_db/src",
+    "libs/seed_cleaning/src",
     "libs/vector_db_interface/src",
     "libs/vector_processing/src",
     "libs/work_matching/src",
