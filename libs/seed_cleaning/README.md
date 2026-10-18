@@ -79,5 +79,5 @@ It writes to `data/seed_cleaning/` (git-ignored):
 
 | File | Holds |
 | -- | -- |
-| `entries_to_check.json` | The release, the doubled-provider entries with their doubled pages, and the candidate groups with their entries. Rewritten on each run. |
+| `entries_to_check.json` | The seed's `$schema` (its address names the release), the doubled-provider entries with their doubled pages, and the candidate groups with their entries. Rewritten on each run. |
 | `provider_pages.jsonl` | Every fetched page, one per line; see `ProviderPageStore`. |

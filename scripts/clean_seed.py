@@ -64,17 +64,19 @@ def parse_arguments() -> argparse.Namespace:
 
 
 def entries_to_check_document(
-    release: str,
+    seed_schema: str | None,
     doubled: list[WorkEntry],
     candidate_groups: list[SplitWorkCandidates],
 ) -> dict[str, Any]:
     """Describe the entries to check for ``entries_to_check.json``.
 
     Each entry is named by its reference page, which stays the same across seed
-    releases while its position in the file does not.
+    releases while its position in the file does not. ``seed_schema`` is the
+    seed file's ``$schema``, whose address names the release, or None when the
+    file has none.
     """
     return {
-        "release": release,
+        "seed_schema": seed_schema,
         "doubled_provider_entries": [
             {
                 "reference_page": entry.reference_page,
@@ -121,7 +123,7 @@ async def main() -> None:
 
     arguments.data_dir.mkdir(parents=True, exist_ok=True)
     entries_to_check = entries_to_check_document(
-        document.get("$schema", ""), doubled, candidate_groups
+        document.get("$schema"), doubled, candidate_groups
     )
     (arguments.data_dir / "entries_to_check.json").write_text(
         json.dumps(entries_to_check, ensure_ascii=False, indent=1) + "\n",

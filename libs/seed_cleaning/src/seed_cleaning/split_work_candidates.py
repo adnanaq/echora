@@ -91,10 +91,12 @@ def _title_groups(known_works: KnownWorksFromSeed) -> list[tuple[WorkEntry, ...]
     for position, work in enumerate(works):
         for match in known_works.find_by_title(work.title, work.type, work.year):
             if match is not work and _is_season_close(work.season, match.season):
-                _join(group_root, position, position_of[id(match)])
+                _merge_groups(group_root, position, position_of[id(match)])
     positions_by_root: dict[int, list[int]] = {}
     for position in range(len(works)):
-        positions_by_root.setdefault(_root(group_root, position), []).append(position)
+        positions_by_root.setdefault(_find_group_root(group_root, position), []).append(
+            position
+        )
     return [
         tuple(works[position] for position in positions)
         for positions in positions_by_root.values()
@@ -133,7 +135,7 @@ def _providers_of(entry: WorkEntry) -> set[str]:
     return {provider for key in entry.pages if (provider := decided_provider(key))}
 
 
-def _root(group_root: list[int], position: int) -> int:
+def _find_group_root(group_root: list[int], position: int) -> int:
     """Return the position that names the group an entry belongs to."""
     while group_root[position] != position:
         group_root[position] = group_root[group_root[position]]
@@ -141,6 +143,8 @@ def _root(group_root: list[int], position: int) -> int:
     return position
 
 
-def _join(group_root: list[int], first: int, second: int) -> None:
+def _merge_groups(group_root: list[int], first: int, second: int) -> None:
     """Put two entries, and the groups they belong to, in one group."""
-    group_root[_root(group_root, first)] = _root(group_root, second)
+    group_root[_find_group_root(group_root, first)] = _find_group_root(
+        group_root, second
+    )

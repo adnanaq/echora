@@ -28,8 +28,8 @@ def test_entries_to_check_document_names_entries_by_reference_page() -> None:
         ),
         shared_provider=None,
     )
-    document = entries_to_check_document("2026-40", [doubled], [group])
-    assert document["release"] == "2026-40"
+    document = entries_to_check_document("seed-schema-url", [doubled], [group])
+    assert document["seed_schema"] == "seed-schema-url"
     assert document["doubled_provider_entries"] == [
         {
             "reference_page": "anilist:anime:120516",

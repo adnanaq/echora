@@ -42,7 +42,7 @@ from work_matching import (
 logger = logging.getLogger(__name__)
 
 
-class _Helper(NamedTuple):
+class _EnrichmentHelper(NamedTuple):
     """An enrichment helper: its ``ApiFetcher`` service name and the id key it reads."""
 
     service: str
@@ -51,12 +51,12 @@ class _Helper(NamedTuple):
 
 # The helper for each provider that has one, by the provider's page key name.
 _HELPER_BY_PROVIDER = {
-    "mal": _Helper("mal", "mal_url"),
-    "anilist": _Helper("anilist", "anilist_url"),
-    "kitsu": _Helper("kitsu", "kitsu_url"),
-    "anidb": _Helper("anidb", "anidb_url"),
-    "animeplanet": _Helper("anime_planet", "anime_planet_url"),
-    "anisearch": _Helper("anisearch", "anisearch_url"),
+    "mal": _EnrichmentHelper("mal", "mal_url"),
+    "anilist": _EnrichmentHelper("anilist", "anilist_url"),
+    "kitsu": _EnrichmentHelper("kitsu", "kitsu_url"),
+    "anidb": _EnrichmentHelper("anidb", "anidb_url"),
+    "animeplanet": _EnrichmentHelper("anime_planet", "anime_planet_url"),
+    "anisearch": _EnrichmentHelper("anisearch", "anisearch_url"),
 }
 # The providers AnimeSchedule is looked up through, in the order tried: the
 # AnimeSchedule helper finds an anime by these ids.
@@ -146,20 +146,22 @@ class ProviderPageFetcher:
         Returns:
             A count per outcome, and the error of each failed page.
         """
+        distinct_requests = {
+            (request.service, request.address): request
+            for entry in entries
+            for request in self._requests_for(entry)
+        }
         outcomes: Counter[FetchOutcome] = Counter()
-        requests_by_service: defaultdict[str, dict[str, _PageRequest]] = defaultdict(
-            dict
-        )
-        for entry in entries:
-            for request in self._requests_for(entry):
-                if request is None:
-                    outcomes[FetchOutcome.ALREADY_STORED] += 1
-                else:
-                    requests_by_service[request.service][request.address] = request
+        requests_by_service: defaultdict[str, list[_PageRequest]] = defaultdict(list)
+        for request in distinct_requests.values():
+            if self._is_done(request):
+                outcomes[FetchOutcome.ALREADY_STORED] += 1
+            else:
+                requests_by_service[request.service].append(request)
         failed_pages: dict[str, str] = {}
         for queue_results in await asyncio.gather(
             *(
-                self._run_queue(service, requests.values())
+                self._run_queue(service, requests)
                 for service, requests in requests_by_service.items()
             )
         ):
@@ -169,40 +171,45 @@ class ProviderPageFetcher:
                     failed_pages[result.request.label] = result.error
         return FetchSummary(outcomes=dict(outcomes), failed_pages=failed_pages)
 
-    def _requests_for(self, entry: WorkEntry) -> list[_PageRequest | None]:
-        """List the requests one entry needs; None for each one already done."""
-        requests: list[_PageRequest | None] = []
-        for key, address in entry.pages.items():
-            helper = _HELPER_BY_PROVIDER.get(provider_of_key(key) or "")
-            if helper is not None:
-                requests.append(
-                    None
-                    if key in self._store
-                    else _PageRequest(
-                        helper.service, helper.id_key, address, entry.title
-                    )
-                )
+    def _requests_for(self, entry: WorkEntry) -> list[_PageRequest]:
+        """List every request one entry needs, whether done already or not."""
+        requests = [
+            _PageRequest(helper.service, helper.id_key, address, entry.title)
+            for key, address in entry.pages.items()
+            if (helper := _HELPER_BY_PROVIDER.get(provider_of_key(key) or ""))
+        ]
+        # AnimeSchedule is looked up through the first provider in the order that
+        # has pages in the entry: MAL, else AniList, else AniDB.
         for provider in _FOUND_PAGE_LOOKUP_PROVIDERS:
-            lookup_pages = {
-                key: address
+            lookup_addresses = [
+                address
                 for key, address in entry.pages.items()
                 if provider_of_key(key) == provider
-            }
-            if lookup_pages:
+            ]
+            if lookup_addresses:
                 requests.extend(
-                    None
-                    if self._store.has_page_found_by(key)
-                    else _PageRequest(
+                    _PageRequest(
                         _FOUND_PAGE_SERVICE,
                         _HELPER_BY_PROVIDER[provider].id_key,
                         address,
                         entry.title,
                         is_found_page_lookup=True,
                     )
-                    for key, address in lookup_pages.items()
+                    for address in lookup_addresses
                 )
                 break
         return requests
+
+    def _is_done(self, request: _PageRequest) -> bool:
+        """Report whether the store already holds what a request would fetch.
+
+        A page request is done when the page is stored; a lookup is done when a
+        found page was found through its lookup page.
+        """
+        key = provider_page_key(request.address)
+        if request.is_found_page_lookup:
+            return self._store.has_page_found_by(key)
+        return key in self._store
 
     async def _run_queue(
         self, service: str, requests: Iterable[_PageRequest]

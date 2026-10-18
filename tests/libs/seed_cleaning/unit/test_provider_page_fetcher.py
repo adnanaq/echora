@@ -208,3 +208,12 @@ async def test_fetch_entry_pages_animeschedule_lookup_finding_nothing_repeated(
         ids for service, ids, _ in api_fetcher.requests if service == "animeschedule"
     ]
     assert lookups == [{"mal_url": MAL}, {"mal_url": MAL}]
+
+
+async def test_fetch_entry_pages_stored_page_in_two_entries_counted_once(
+    tmp_path,
+) -> None:
+    fetcher, _ = _fetcher(tmp_path, {})
+    await fetcher.fetch_entry_pages([_one_piece(KITSU)])
+    summary = await fetcher.fetch_entry_pages([_one_piece(KITSU), _one_piece(KITSU)])
+    assert summary.outcomes == {FetchOutcome.ALREADY_STORED: 1}
