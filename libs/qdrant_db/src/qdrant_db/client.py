@@ -29,8 +29,6 @@ from qdrant_client.models import (
     SetPayloadOperation,
     SparseVector,
 )
-from vector_db_interface import SearchHit, VectorDBClient, VectorDocument
-
 from qdrant_db.collection.manager import QdrantCollectionManager
 from qdrant_db.contracts import (
     BatchOperationResult,
@@ -55,6 +53,7 @@ from qdrant_db.query_builder import (
 )
 from qdrant_db.tracing import qdrant_span
 from qdrant_db.utils import DuplicateKeyError, deduplicate_items, retry_with_backoff
+from vector_db_interface import SearchHit, VectorDBClient, VectorDocument
 
 logger = logging.getLogger(__name__)
 

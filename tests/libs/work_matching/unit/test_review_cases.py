@@ -4,9 +4,10 @@ from unittest.mock import patch
 
 import pytest
 from pydantic import ValidationError
-from work_matching import review_cases
+from work_matching import file_replacement
 from work_matching.doubled_provider_check import decide_doubled_providers
 from work_matching.known_works_from_seed import KnownWorksFromSeed
+from work_matching.page_placement import PagePlacement
 from work_matching.provider_page import ProviderPage
 from work_matching.review_cases import DuplicateCaseError, ReviewCase, ReviewFile
 from work_matching.split_work_check import decide_split_work
@@ -20,8 +21,8 @@ VARESA = (
 @pytest.fixture
 def doubled_case(matching_cases) -> ReviewCase:
     entries, pages = matching_cases["genshin_sigewinne"]
-    [decision] = decide_doubled_providers(entries[0], pages, KnownWorksFromSeed([]))
-    return ReviewCase.from_doubled_provider(entries[0], decision, pages)
+    decisions = decide_doubled_providers(entries[0], pages, KnownWorksFromSeed([]))
+    return ReviewCase.from_doubled_provider_entry(entries[0], decisions, pages)
 
 
 @pytest.fixture
@@ -34,22 +35,20 @@ def split_case(linked_page, work_entry) -> ReviewCase:
     return ReviewCase.from_split_work(decide_split_work(entries, pages), pages)
 
 
-def test_review_case_from_doubled_provider_names_case_by_pages_and_entry(
+def test_review_case_from_doubled_provider_entry_names_case_by_pages_and_entry(
     doubled_case,
 ) -> None:
-    assert (doubled_case.case, doubled_case.reason) == (
+    assert (doubled_case.case, doubled_case.reasons) == (
         f"doubled provider: {SIGEWINNE} {VARESA} in {SIGEWINNE}",
-        "UNDECIDED_PAGES",
+        ("UNDECIDED_PAGES",),
     )
-    assert doubled_case.entries == {
-        SIGEWINNE: (
-            "Genshin Impact: Character Teaser - Sigewinne: Everyday Correspondence"
-        )
-    }
+    assert doubled_case.entries[SIGEWINNE].title == (
+        "Genshin Impact: Character Teaser - Sigewinne: Everyday Correspondence"
+    )
     assert [page.key for page in doubled_case.pages] == [SIGEWINNE, VARESA]
 
 
-def test_review_case_from_doubled_provider_keeps_entry_and_found_pages(
+def test_review_case_from_doubled_provider_entry_keeps_entry_and_found_pages(
     linked_page, work_entry
 ) -> None:
     entry = work_entry(
@@ -69,14 +68,79 @@ def test_review_case_from_doubled_provider_keeps_entry_and_found_pages(
         linked_page("https://anilist.co/anime/9"),
         found,
     ]
-    [decision] = decide_doubled_providers(entry, pages, KnownWorksFromSeed([]))
-    case = ReviewCase.from_doubled_provider(entry, decision, pages)
+    decisions = decide_doubled_providers(entry, pages, KnownWorksFromSeed([]))
+    case = ReviewCase.from_doubled_provider_entry(entry, decisions, pages)
     assert [page.key for page in case.pages] == [
         "https://animeschedule.net/anime/show",
         "kitsu:anime:1",
         "kitsu:anime:2",
         "mal:anime:1",
     ]
+
+
+def test_review_case_from_doubled_provider_entry_one_case_for_every_provider(
+    matching_cases,
+) -> None:
+    entries, pages = matching_cases["ao_haru_ride_ova"]
+    decisions = decide_doubled_providers(entries[0], pages, KnownWorksFromSeed([]))
+    case = ReviewCase.from_doubled_provider_entry(entries[0], decisions, pages)
+    assert case.case == (
+        "doubled provider: anilist:anime:20837 anilist:anime:20900"
+        " animeplanet:anime:blue-spring-ride-page-13"
+        " animeplanet:anime:blue-spring-ride-unwritten in mal:anime:24151"
+    )
+    assert case.reasons == ("SHARED_LINK", "UNDECIDED_PAGES")
+
+
+def test_review_case_from_doubled_provider_entry_suggests_linked_places(
+    matching_cases,
+) -> None:
+    entries, pages = matching_cases["ao_haru_ride_ova"]
+    decisions = decide_doubled_providers(entries[0], pages, KnownWorksFromSeed([]))
+    case = ReviewCase.from_doubled_provider_entry(entries[0], decisions, pages)
+    assert case.suggested_answer["anilist:anime:20900"] == "entry"
+    assert "animeplanet:anime:blue-spring-ride-unwritten" not in case.suggested_answer
+
+
+def test_review_case_from_split_work_suggests_nothing(split_case) -> None:
+    assert split_case.suggested_answer == {}
+
+
+def test_review_case_from_doubled_provider_entry_writes_linked_pages_sorted(
+    matching_cases,
+) -> None:
+    entries, pages = matching_cases["puu_neko"]
+    decisions = decide_doubled_providers(entries[0], pages, KnownWorksFromSeed([]))
+    case = ReviewCase.from_doubled_provider_entry(entries[0], decisions, pages)
+    written_decisions = json.loads(case.model_dump_json())["decisions"]
+    assert all(
+        linked_pages == sorted(linked_pages)
+        for decision in written_decisions
+        for linked_pages in decision["belonging_pages"].values()
+    )
+
+
+def test_review_case_from_doubled_provider_entry_writes_unrelated_links_sorted(
+    linked_page, work_entry
+) -> None:
+    entry = work_entry(
+        "https://myanimelist.net/anime/1",
+        "https://kitsu.app/anime/1",
+        "https://kitsu.app/anime/2",
+    )
+    links = [f"https://myanimelist.net/anime/{number}" for number in range(10, 30)]
+    known_works = KnownWorksFromSeed(
+        [{"title": "Other", "type": "TV", "sources": links}]
+    )
+    pages = [
+        linked_page("https://kitsu.app/anime/1", "https://myanimelist.net/anime/1"),
+        linked_page("https://kitsu.app/anime/2", *links),
+    ]
+    decisions = decide_doubled_providers(entry, pages, known_works)
+    case = ReviewCase.from_doubled_provider_entry(entry, decisions, pages)
+    [decision] = json.loads(case.model_dump_json())["decisions"]
+    written_links = decision["unrelated_pages"]["kitsu:anime:2"]["links"]
+    assert written_links == sorted(written_links)
 
 
 def test_review_case_from_split_work_keeps_found_pages(linked_page, work_entry) -> None:
@@ -112,26 +176,38 @@ def test_review_case_from_split_work_keeps_renamed_page(work_entry) -> None:
 
 
 def test_review_case_from_split_work_names_case_by_reference_pages(split_case) -> None:
-    assert (split_case.case, split_case.reason) == (
+    assert (split_case.case, split_case.reasons) == (
         "split work: anilist:anime:1 mal:anime:1",
-        "NOT_LINKED",
+        ("NOT_LINKED",),
     )
     assert [page.key for page in split_case.pages] == ["mal:anime:1"]
 
 
 @pytest.mark.parametrize(
-    "answer",
+    ("answer", "placements"),
     [
-        {SIGEWINNE: "entry", VARESA: "other work"},
-        {SIGEWINNE: "entry", VARESA: "work 2"},
-        {SIGEWINNE: "entry", VARESA: "work 10"},
-        {SIGEWINNE: "entry", VARESA: "entry"},
+        (
+            {SIGEWINNE: "entry", VARESA: "other work"},
+            {SIGEWINNE: PagePlacement("entry"), VARESA: PagePlacement("other work")},
+        ),
+        (
+            {SIGEWINNE: "entry", VARESA: "work 10"},
+            {SIGEWINNE: PagePlacement("entry"), VARESA: PagePlacement("work 10")},
+        ),
+        (
+            {SIGEWINNE: "entry, main", VARESA: "entry"},
+            {
+                SIGEWINNE: PagePlacement("entry", is_main_page=True),
+                VARESA: PagePlacement("entry"),
+            },
+        ),
     ],
 )
-def test_review_case_accepted_answer_placement_for_every_page_gives_answer(
-    doubled_case, answer: dict[str, str]
+def test_review_case_accepted_answer_placement_for_every_page_gives_placements(
+    doubled_case, answer: dict[str, str], placements: dict[str, PagePlacement]
 ) -> None:
-    assert doubled_case.model_copy(update={"answer": answer}).accepted_answer == answer
+    accepted = doubled_case.model_copy(update={"answer": answer}).accepted_answer
+    assert accepted == placements
 
 
 @pytest.mark.parametrize(
@@ -139,6 +215,7 @@ def test_review_case_accepted_answer_placement_for_every_page_gives_answer(
     [
         None,
         {SIGEWINNE: "entry"},
+        {SIGEWINNE: "entry", VARESA: "entry"},
         {SIGEWINNE: "entry", VARESA: "other work", "mal:anime:1": "entry"},
         {SIGEWINNE: "entry", VARESA: "work 1"},
         {SIGEWINNE: "entry", VARESA: "maybe"},
@@ -172,7 +249,7 @@ def test_review_case_accepted_answer_split_work_takes_one_of_two_answers(
 
 def test_review_file_missing_file_keeps_no_answers(tmp_path, doubled_case) -> None:
     review = ReviewFile(tmp_path / "review.jsonl")
-    assert review.with_kept_answer(doubled_case) == doubled_case
+    assert review.attach_kept_answer(doubled_case) == doubled_case
 
 
 def test_review_file_write_cases_puts_case_and_answer_first(
@@ -181,21 +258,24 @@ def test_review_file_write_cases_puts_case_and_answer_first(
     path = tmp_path / "review.jsonl"
     ReviewFile(path).write_cases([doubled_case])
     [line] = path.read_text(encoding="utf-8").splitlines()
-    assert list(json.loads(line))[:3] == ["case", "answer", "reason"]
+    assert list(json.loads(line))[:3] == ["case", "answer", "suggested_answer"]
 
 
-def test_review_file_with_kept_answer_answer_written_in_file_comes_back(
+def test_review_file_attach_kept_answer_answer_written_in_file_comes_back(
     tmp_path, doubled_case
 ) -> None:
     path = tmp_path / "review.jsonl"
     ReviewFile(path).write_cases([doubled_case])
     answer = {SIGEWINNE: "entry", VARESA: "other work"}
     _answer_in_file(path, doubled_case.case, answer)
-    kept = ReviewFile(path).with_kept_answer(doubled_case)
-    assert kept.accepted_answer == answer
+    kept = ReviewFile(path).attach_kept_answer(doubled_case)
+    assert kept.accepted_answer == {
+        SIGEWINNE: PagePlacement("entry"),
+        VARESA: PagePlacement("other work"),
+    }
 
 
-def test_review_file_with_kept_answer_provider_gaining_page_reopens_case(
+def test_review_file_attach_kept_answer_provider_gaining_page_reopens_case(
     tmp_path, matching_cases, doubled_case
 ) -> None:
     path = tmp_path / "review.jsonl"
@@ -211,13 +291,13 @@ def test_review_file_with_kept_answer_provider_gaining_page_reopens_case(
             }
         }
     )
-    [decision] = decide_doubled_providers(entry, pages, KnownWorksFromSeed([]))
-    later_case = ReviewCase.from_doubled_provider(entry, decision, pages)
+    decisions = decide_doubled_providers(entry, pages, KnownWorksFromSeed([]))
+    later_case = ReviewCase.from_doubled_provider_entry(entry, decisions, pages)
     assert later_case.case != doubled_case.case
-    assert ReviewFile(path).with_kept_answer(later_case).answer is None
+    assert ReviewFile(path).attach_kept_answer(later_case).answer is None
 
 
-def test_review_file_with_kept_answer_doubled_pages_in_other_entry_reopens_case(
+def test_review_file_attach_kept_answer_doubled_pages_in_other_entry_reopens_case(
     tmp_path, matching_cases, doubled_case
 ) -> None:
     path = tmp_path / "review.jsonl"
@@ -230,10 +310,10 @@ def test_review_file_with_kept_answer_doubled_pages_in_other_entry_reopens_case(
             | entries[0].pages
         }
     )
-    [decision] = decide_doubled_providers(other_entry, pages, KnownWorksFromSeed([]))
-    moved_case = ReviewCase.from_doubled_provider(other_entry, decision, pages)
+    decisions = decide_doubled_providers(other_entry, pages, KnownWorksFromSeed([]))
+    moved_case = ReviewCase.from_doubled_provider_entry(other_entry, decisions, pages)
     assert moved_case.case != doubled_case.case
-    assert ReviewFile(path).with_kept_answer(moved_case).answer is None
+    assert ReviewFile(path).attach_kept_answer(moved_case).answer is None
 
 
 def test_review_file_write_cases_answer_without_case_kept_and_reported(
@@ -281,7 +361,7 @@ def test_review_file_write_cases_invalid_answer_kept_for_fixing(
     ReviewFile(path).write_cases([doubled_case])
     _answer_in_file(path, doubled_case.case, {SIGEWINNE: "maybe"})
     review = ReviewFile(path)
-    kept = review.with_kept_answer(doubled_case)
+    kept = review.attach_kept_answer(doubled_case)
     review.write_cases([kept])
     assert kept.accepted_answer is None
     assert json.loads(path.read_text())["answer"] == {SIGEWINNE: "maybe"}
@@ -303,7 +383,7 @@ def test_review_file_write_cases_failed_write_keeps_old_file(
     ReviewFile(path).write_cases([doubled_case])
     written = path.read_text(encoding="utf-8")
     with (
-        patch.object(review_cases.os, "fsync", autospec=True, side_effect=OSError),
+        patch.object(file_replacement.os, "fsync", autospec=True, side_effect=OSError),
         pytest.raises(OSError),
     ):
         ReviewFile(path).write_cases([split_case])
@@ -318,12 +398,12 @@ def test_review_file_blank_line_answers_read_and_line_not_written(
 ) -> None:
     path = tmp_path / "review.jsonl"
     ReviewFile(path).write_cases([doubled_case])
-    _answer_in_file(path, doubled_case.case, {SIGEWINNE: "entry", VARESA: "entry"})
+    _answer_in_file(path, doubled_case.case, {SIGEWINNE: "entry", VARESA: "work 2"})
     path.write_text("\n" + path.read_text(encoding="utf-8") + "\n", encoding="utf-8")
     review = ReviewFile(path)
-    kept = review.with_kept_answer(doubled_case)
+    kept = review.attach_kept_answer(doubled_case)
     review.write_cases([kept])
-    assert kept.accepted_answer == {SIGEWINNE: "entry", VARESA: "entry"}
+    assert kept.answer == {SIGEWINNE: "entry", VARESA: "work 2"}
     assert "" not in path.read_text(encoding="utf-8").splitlines()
 
 
@@ -347,7 +427,7 @@ def test_review_file_write_cases_answer_saved_after_opening_kept(
 
 
 def test_review_file_write_cases_syncs_file_and_folder(tmp_path, doubled_case) -> None:
-    with patch.object(review_cases.os, "fsync", wraps=os.fsync) as fsync:
+    with patch.object(file_replacement.os, "fsync", wraps=os.fsync) as fsync:
         ReviewFile(tmp_path / "review.jsonl").write_cases([doubled_case])
     assert fsync.call_count == 2
 
@@ -355,7 +435,7 @@ def test_review_file_write_cases_syncs_file_and_folder(tmp_path, doubled_case) -
 def test_review_file_write_cases_system_without_folder_sync_writes_file(
     tmp_path, monkeypatch, doubled_case
 ) -> None:
-    monkeypatch.delattr(review_cases.os, "O_DIRECTORY")
+    monkeypatch.delattr(file_replacement.os, "O_DIRECTORY")
     path = tmp_path / "review.jsonl"
     ReviewFile(path).write_cases([doubled_case])
     assert json.loads(path.read_text(encoding="utf-8"))["case"] == doubled_case.case

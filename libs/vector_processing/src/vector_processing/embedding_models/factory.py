@@ -1,7 +1,6 @@
 import logging
 
 from common.config import EmbeddingConfig
-
 from vector_processing.reranking import RerankerModel, SentenceTransformerReranker
 
 from .text.base import TextEmbeddingModel

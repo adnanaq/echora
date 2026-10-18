@@ -15,10 +15,9 @@ from types import TracebackType
 from typing import Any
 
 from common.config import CacheConfig, EnrichmentConfig, RedisConfig
+from enrichment.sources.base.browser import configure_browser_pool, reap_orphans
 from http_cache import HTTPCacheManager, configure_cache
 from opentelemetry import trace as otel_trace
-
-from enrichment.sources.base.browser import configure_browser_pool, reap_orphans
 
 from .api_fetcher import ApiFetcher
 from .id_extractor import PlatformIDExtractor

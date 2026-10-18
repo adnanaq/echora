@@ -18,12 +18,12 @@ from functools import lru_cache
 
 # A numeric id ends where the address does or at a character that cannot be
 # part of it, so "/anime/21extra" is not page 21.
-_NUMBER = r"(?P<id>\d+)(?!\w)"
+_NUMERIC_ID = r"(?P<id>\d+)(?!\w)"
 # A slug id runs to the next path, query or fragment separator.
-_SLUG = r"(?P<id>[^/?#]+)"
-_NUMBERED_PAGE = re.compile(rf"/(?P<kind>anime|manga)/{_NUMBER}")
-_SLUG_PAGE = re.compile(rf"/(?P<kind>anime|manga)/{_SLUG}")
-_NUMBERED_ANIME_PAGE = re.compile(rf"/(?P<kind>anime)/{_NUMBER}")
+_SLUG_ID = r"(?P<id>[^/?#]+)"
+_NUMBERED_PAGE = re.compile(rf"/(?P<kind>anime|manga)/{_NUMERIC_ID}")
+_SLUG_PAGE = re.compile(rf"/(?P<kind>anime|manga)/{_SLUG_ID}")
+_NUMBERED_ANIME_PAGE = re.compile(rf"/(?P<kind>anime)/{_NUMERIC_ID}")
 
 # The pages each host serves, matched against the address after the host. Every
 # pattern names the id explicitly; prefix comparison is not safe, because
@@ -40,7 +40,7 @@ _PAGE_PATTERNS: dict[str, tuple[tuple[str, re.Pattern[str]], ...]] = {
             "anidb",
             re.compile(
                 r"/perl-bin/animedb\.pl\?(?=[^#]*\bshow=(?P<kind>anime)\b)"
-                rf"[^#]*\baid={_NUMBER}"
+                rf"[^#]*\baid={_NUMERIC_ID}"
             ),
         ),
     ),
@@ -52,13 +52,13 @@ _PAGE_PATTERNS: dict[str, tuple[tuple[str, re.Pattern[str]], ...]] = {
         (
             "ann",
             re.compile(
-                rf"/encyclopedia/(?P<kind>anime|manga)\.php\?(?:[^#]*&)?id={_NUMBER}"
+                rf"/encyclopedia/(?P<kind>anime|manga)\.php\?(?:[^#]*&)?id={_NUMERIC_ID}"
             ),
         ),
     ),
     "livechart.me": (("livechart", _NUMBERED_ANIME_PAGE),),
     "simkl.com": (("simkl", _NUMBERED_ANIME_PAGE),),
-    "animecountdown.com": (("animecountdown", re.compile(rf"/{_NUMBER}")),),
+    "animecountdown.com": (("animecountdown", re.compile(rf"/{_NUMERIC_ID}")),),
 }
 
 PROVIDERS: frozenset[str] = frozenset(
@@ -81,8 +81,25 @@ REFERENCE_ORDER: tuple[str, ...] = (
 )
 
 
+def rank_by_provider_trust(key: str) -> int:
+    """Rank a page by how far its provider is trusted to name a work, MAL first.
+
+    Pages of providers outside ``REFERENCE_ORDER`` rank after all of them.
+
+    Examples:
+        >>> rank_by_provider_trust("mal:anime:1") < rank_by_provider_trust("ann:anime:1")
+        True
+    """
+    provider = get_page_provider(key)
+    return (
+        REFERENCE_ORDER.index(provider)
+        if provider in REFERENCE_ORDER
+        else len(REFERENCE_ORDER)
+    )
+
+
 @lru_cache(maxsize=65536)
-def provider_page_key(address: str) -> str:
+def get_page_key(address: str) -> str:
     """Return the key naming the page an address points to.
 
     Args:
@@ -95,48 +112,48 @@ def provider_page_key(address: str) -> str:
         serve different pages at ``/Show`` and ``/show``.
 
     Examples:
-        >>> provider_page_key("https://myanimelist.net/anime/21/One_Piece")
+        >>> get_page_key("https://myanimelist.net/anime/21/One_Piece")
         'mal:anime:21'
-        >>> provider_page_key("https://anidb.net/perl-bin/animedb.pl?show=anime&aid=69")
+        >>> get_page_key("https://anidb.net/perl-bin/animedb.pl?show=anime&aid=69")
         'anidb:anime:69'
     """
-    scheme, separator, rest = address.partition("://")
-    host, _, path = rest.partition("/")
+    scheme, scheme_separator, address_after_scheme = address.partition("://")
+    host, _, path = address_after_scheme.partition("/")
     host = host.lower().removeprefix("www.")
     if scheme.lower() in ("http", "https"):
         for provider, pattern in _PAGE_PATTERNS.get(host, ()):
-            if match := pattern.match(f"/{path}"):
-                kind = match.groupdict().get("kind") or "anime"
-                return f"{provider}:{kind}:{match['id'].lower()}"
-    if not separator:
+            if page_match := pattern.match(f"/{path}"):
+                page_kind = page_match.groupdict().get("kind") or "anime"
+                return f"{provider}:{page_kind}:{page_match['id'].lower()}"
+    if not scheme_separator:
         return address.rstrip("/")
     return f"{scheme.lower()}://{host}/{path}".rstrip("/")
 
 
-def provider_of_key(key: str) -> str | None:
+def get_page_provider(key: str) -> str | None:
     """Return the provider a page key belongs to, or None for an unrecognised address.
 
     Examples:
-        >>> provider_of_key("kitsu:anime:12")
+        >>> get_page_provider("kitsu:anime:12")
         'kitsu'
-        >>> provider_of_key("https://example.com/show") is None
+        >>> get_page_provider("https://example.com/show") is None
         True
     """
     provider = key.partition(":")[0]
     return provider if provider in PROVIDERS else None
 
 
-def page_id_of_key(key: str) -> str:
+def get_page_id(key: str) -> str:
     """Return the id part of a page key, or the key itself when it is unrecognised.
 
     A key is ``provider:kind:id``, and everything after the kind is the id,
     even a slug holding a colon.
 
     Examples:
-        >>> page_id_of_key("mal:anime:21")
+        >>> get_page_id("mal:anime:21")
         '21'
     """
-    return key.split(":", 2)[2] if provider_of_key(key) else key
+    return key.split(":", 2)[2] if get_page_provider(key) else key
 
 
 def has_repeated_provider(keys: Iterable[str]) -> bool:
@@ -150,5 +167,5 @@ def has_repeated_provider(keys: Iterable[str]) -> bool:
         >>> has_repeated_provider(["mal:anime:1", "kitsu:anime:1"])
         False
     """
-    providers = Counter(filter(None, map(provider_of_key, keys)))
-    return any(count > 1 for count in providers.values())
+    providers = Counter(filter(None, map(get_page_provider, keys)))
+    return any(page_count > 1 for page_count in providers.values())

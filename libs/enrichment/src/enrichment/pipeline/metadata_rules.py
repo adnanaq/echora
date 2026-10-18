@@ -28,7 +28,6 @@ from typing import Any
 
 from common.models.anime import Statistics
 from common.utils.datetime_utils import to_japan_time
-
 from enrichment.pipeline.relationship_merger import is_signal
 from enrichment.pipeline.same_company import company_keys
 from enrichment.pipeline.same_word import word_key

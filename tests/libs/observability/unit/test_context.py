@@ -21,7 +21,6 @@ def tracer(span_exporter: InMemorySpanExporter) -> trace.Tracer:
 def test_extract_trace_context_injected_headers_returns_parent_context(
     tracer: trace.Tracer,
 ) -> None:
-
     with tracer.start_as_current_span("parent") as parent_span:
         headers = inject_trace_context({})
 
@@ -57,7 +56,6 @@ def test_extract_trace_context_invalid_traceparent_returns_no_parent(
 def test_inject_context_into_nats_and_temporal_headers_active_span_adds_traceparent(
     tracer: trace.Tracer,
 ) -> None:
-
     with tracer.start_as_current_span("producer"):
         nats_headers = inject_context_into_nats_headers({})
         temporal_headers = inject_context_into_temporal_headers({})

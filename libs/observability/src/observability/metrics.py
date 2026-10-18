@@ -1,15 +1,15 @@
 """OpenTelemetry metrics configuration."""
 
 import threading
+
 from opentelemetry import metrics
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
-from opentelemetry.sdk.metrics import MeterProvider
 
 # TraceBasedExemplarFilter records a trace-ID exemplar on a histogram observation
 # only when a sampled active span exists in the current context.  This lets
 # Grafana jump directly from a P99 latency spike to the exact causal trace in
 # Tempo — without attaching exemplars to untraced, un-jumpable requests.
-from opentelemetry.sdk.metrics import TraceBasedExemplarFilter
+from opentelemetry.sdk.metrics import MeterProvider, TraceBasedExemplarFilter
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.metrics.view import ExplicitBucketHistogramAggregation, View
 from opentelemetry.sdk.resources import Resource, get_aggregated_resources

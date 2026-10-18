@@ -35,12 +35,11 @@ from sentence_transformers import SentenceTransformer
 
 # Vision processing for character image similarity
 try:
+    from enrichment.similarity.ccip import CCIP
     from vector_processing.embedding_models.factory import EmbeddingModelFactory
     from vector_processing.processors.anime_field_mapper import AnimeFieldMapper
     from vector_processing.processors.vision_processor import VisionProcessor
     from vector_processing.utils.image_downloader import ImageDownloader
-
-    from enrichment.similarity.ccip import CCIP
 
     VISION_AVAILABLE = True
 except ImportError:

@@ -23,6 +23,20 @@ _VALUE_CONTINUATION = re.compile(r"^[\d(]")
 _PROSE_IN_VALUE = re.compile(r"[)\d]\s+([A-Z][a-z])")
 
 
+def _without_null_texts(values: object) -> object:
+    """Leave out null items, and read a null list as an empty one.
+
+    Kitsu sometimes sends ``null`` inside a list of titles or names, or instead
+    of the list. Rejecting it would reject the whole record, so enrichment would
+    get nothing from Kitsu for that anime.
+    """
+    if values is None:
+        return []
+    if isinstance(values, list):
+        return [value for value in values if value is not None]
+    return values
+
+
 def _without_empty_texts(values: list[str]) -> list[str]:
     """Strip each text and leave out the empty ones."""
     return [text.strip() for text in values if text.strip()]
@@ -89,7 +103,11 @@ def _strip_preamble(value: object) -> object:
     return " ".join(narrative_parts).strip() or None
 
 
-TextList = Annotated[list[str], AfterValidator(_without_empty_texts)]
+TextList = Annotated[
+    list[str],
+    BeforeValidator(_without_null_texts),
+    AfterValidator(_without_empty_texts),
+]
 CharacterDescription = Annotated[PlainText, BeforeValidator(_strip_preamble)]
 
 

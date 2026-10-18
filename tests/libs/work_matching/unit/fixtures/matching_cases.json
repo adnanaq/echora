@@ -41,7 +41,7 @@
         ],
         "renamed_to": null,
         "found_by": [],
-        "dead": false
+        "is_dead": false
       },
       {
         "key": "anilist:anime:10459",
@@ -58,7 +58,7 @@
         ],
         "renamed_to": null,
         "found_by": [],
-        "dead": false
+        "is_dead": false
       },
       {
         "key": "anilist:anime:11589",
@@ -75,7 +75,7 @@
         ],
         "renamed_to": null,
         "found_by": [],
-        "dead": false
+        "is_dead": false
       },
       {
         "key": "animeplanet:anime:poo-neko",
@@ -90,7 +90,7 @@
         "links": [],
         "renamed_to": null,
         "found_by": [],
-        "dead": false
+        "is_dead": false
       },
       {
         "key": "anisearch:anime:6945",
@@ -105,7 +105,7 @@
         "links": [],
         "renamed_to": null,
         "found_by": [],
-        "dead": false
+        "is_dead": false
       },
       {
         "key": "https://animeschedule.net/anime/puu-neko",
@@ -125,7 +125,7 @@
         "found_by": [
           "mal:anime:10459"
         ],
-        "dead": false
+        "is_dead": false
       },
       {
         "key": "https://animeschedule.net/anime/puu-neko-shougekijou",
@@ -145,7 +145,7 @@
         "found_by": [
           "mal:anime:11589"
         ],
-        "dead": false
+        "is_dead": false
       },
       {
         "key": "kitsu:anime:6190",
@@ -163,7 +163,7 @@
         ],
         "renamed_to": null,
         "found_by": [],
-        "dead": false
+        "is_dead": false
       },
       {
         "key": "kitsu:anime:6543",
@@ -182,7 +182,7 @@
         ],
         "renamed_to": null,
         "found_by": [],
-        "dead": false
+        "is_dead": false
       },
       {
         "key": "mal:anime:10459",
@@ -201,7 +201,7 @@
         ],
         "renamed_to": null,
         "found_by": [],
-        "dead": false
+        "is_dead": false
       },
       {
         "key": "mal:anime:11589",
@@ -216,7 +216,7 @@
         "links": [],
         "renamed_to": null,
         "found_by": [],
-        "dead": false
+        "is_dead": false
       }
     ]
   },
@@ -261,7 +261,7 @@
         ],
         "renamed_to": null,
         "found_by": [],
-        "dead": false
+        "is_dead": false
       },
       {
         "key": "anilist:anime:20837",
@@ -278,7 +278,7 @@
         ],
         "renamed_to": null,
         "found_by": [],
-        "dead": false
+        "is_dead": false
       },
       {
         "key": "anilist:anime:20900",
@@ -295,7 +295,7 @@
         ],
         "renamed_to": null,
         "found_by": [],
-        "dead": false
+        "is_dead": false
       },
       {
         "key": "animeplanet:anime:blue-spring-ride-page-13",
@@ -310,7 +310,7 @@
         "links": [],
         "renamed_to": null,
         "found_by": [],
-        "dead": false
+        "is_dead": false
       },
       {
         "key": "animeplanet:anime:blue-spring-ride-unwritten",
@@ -325,7 +325,7 @@
         "links": [],
         "renamed_to": null,
         "found_by": [],
-        "dead": false
+        "is_dead": false
       },
       {
         "key": "anisearch:anime:9646",
@@ -340,7 +340,7 @@
         "links": [],
         "renamed_to": null,
         "found_by": [],
-        "dead": false
+        "is_dead": false
       },
       {
         "key": "https://animeschedule.net/anime/ao-haru-ride-page-13",
@@ -362,7 +362,7 @@
         "found_by": [
           "mal:anime:24151"
         ],
-        "dead": false
+        "is_dead": false
       },
       {
         "key": "kitsu:anime:8488",
@@ -381,7 +381,7 @@
         ],
         "renamed_to": null,
         "found_by": [],
-        "dead": false
+        "is_dead": false
       },
       {
         "key": "mal:anime:24151",
@@ -400,7 +400,7 @@
         ],
         "renamed_to": null,
         "found_by": [],
-        "dead": false
+        "is_dead": false
       }
     ]
   },
@@ -446,7 +446,7 @@
         ],
         "renamed_to": null,
         "found_by": [],
-        "dead": false
+        "is_dead": false
       },
       {
         "key": "anilist:anime:166527",
@@ -464,7 +464,7 @@
         ],
         "renamed_to": null,
         "found_by": [],
-        "dead": false
+        "is_dead": false
       },
       {
         "key": "animeplanet:anime:cocoon-aru-natsu-no-shoujo-tachi-yori",
@@ -479,7 +479,7 @@
         "links": [],
         "renamed_to": "animeplanet:anime:cocoon-one-summer-of-girlhood",
         "found_by": [],
-        "dead": false
+        "is_dead": false
       },
       {
         "key": "animeplanet:anime:cocoon-one-summer-of-girlhood",
@@ -494,7 +494,7 @@
         "links": [],
         "renamed_to": null,
         "found_by": [],
-        "dead": false
+        "is_dead": false
       },
       {
         "key": "anisearch:anime:18492",
@@ -510,7 +510,7 @@
         "links": [],
         "renamed_to": null,
         "found_by": [],
-        "dead": false
+        "is_dead": false
       },
       {
         "key": "https://animeschedule.net/anime/cocoon-2025",
@@ -532,7 +532,7 @@
         "found_by": [
           "mal:anime:55779"
         ],
-        "dead": false
+        "is_dead": false
       },
       {
         "key": "kitsu:anime:47658",
@@ -549,7 +549,7 @@
         ],
         "renamed_to": null,
         "found_by": [],
-        "dead": false
+        "is_dead": false
       },
       {
         "key": "mal:anime:55779",
@@ -567,7 +567,7 @@
         ],
         "renamed_to": null,
         "found_by": [],
-        "dead": false
+        "is_dead": false
       }
     ]
   },
@@ -600,7 +600,7 @@
         "links": [],
         "renamed_to": null,
         "found_by": [],
-        "dead": false
+        "is_dead": false
       },
       {
         "key": "animeplanet:anime:genshin-impact-character-teaser-varesa-the-legend-of-a-warrior",
@@ -615,7 +615,7 @@
         "links": [],
         "renamed_to": null,
         "found_by": [],
-        "dead": false
+        "is_dead": false
       }
     ]
   },
@@ -648,7 +648,7 @@
         "links": [],
         "renamed_to": null,
         "found_by": [],
-        "dead": false
+        "is_dead": false
       },
       {
         "key": "animeplanet:anime:genshin-impact-outfit-teaser-teyvat-style-out-with-the-rime-in-with-the-sunshine",
@@ -663,7 +663,7 @@
         "links": [],
         "renamed_to": null,
         "found_by": [],
-        "dead": false
+        "is_dead": false
       }
     ]
   },
@@ -709,7 +709,7 @@
         ],
         "renamed_to": null,
         "found_by": [],
-        "dead": false
+        "is_dead": false
       },
       {
         "key": "anilist:anime:176509",
@@ -727,7 +727,7 @@
         ],
         "renamed_to": null,
         "found_by": [],
-        "dead": false
+        "is_dead": false
       },
       {
         "key": "animeplanet:anime:baki-dou-the-invincible-samurai",
@@ -742,7 +742,7 @@
         "links": [],
         "renamed_to": null,
         "found_by": [],
-        "dead": false
+        "is_dead": false
       },
       {
         "key": "anisearch:anime:19175",
@@ -761,7 +761,7 @@
         "links": [],
         "renamed_to": null,
         "found_by": [],
-        "dead": false
+        "is_dead": false
       },
       {
         "key": "https://animeschedule.net/anime/baki-dou",
@@ -783,7 +783,7 @@
         "found_by": [
           "mal:anime:58573"
         ],
-        "dead": false
+        "is_dead": false
       },
       {
         "key": "kitsu:anime:48676",
@@ -802,7 +802,7 @@
         ],
         "renamed_to": null,
         "found_by": [],
-        "dead": false
+        "is_dead": false
       },
       {
         "key": "mal:anime:58573",
@@ -821,7 +821,7 @@
         ],
         "renamed_to": null,
         "found_by": [],
-        "dead": false
+        "is_dead": false
       }
     ]
   },
@@ -876,7 +876,7 @@
         ],
         "renamed_to": null,
         "found_by": [],
-        "dead": false
+        "is_dead": false
       },
       {
         "key": "anilist:anime:125682",
@@ -892,7 +892,7 @@
         ],
         "renamed_to": null,
         "found_by": [],
-        "dead": false
+        "is_dead": false
       },
       {
         "key": "animeplanet:anime:cue",
@@ -906,7 +906,7 @@
         "links": [],
         "renamed_to": null,
         "found_by": [],
-        "dead": false
+        "is_dead": false
       },
       {
         "key": "anisearch:anime:15712",
@@ -921,7 +921,7 @@
         "links": [],
         "renamed_to": null,
         "found_by": [],
-        "dead": false
+        "is_dead": false
       },
       {
         "key": "https://animeschedule.net/anime/cue",
@@ -942,7 +942,7 @@
         "found_by": [
           "mal:anime:43735"
         ],
-        "dead": false
+        "is_dead": false
       },
       {
         "key": "kitsu:anime:44979",
@@ -959,7 +959,7 @@
         ],
         "renamed_to": null,
         "found_by": [],
-        "dead": false
+        "is_dead": false
       },
       {
         "key": "mal:anime:43735",
@@ -977,7 +977,7 @@
         ],
         "renamed_to": null,
         "found_by": [],
-        "dead": false
+        "is_dead": false
       }
     ]
   }

@@ -96,24 +96,12 @@ docker compose -f docker/docker-compose.dev.yml up -d redis redisinsight
 ./pants test :: -- -v --tb=short
 ```
 
-### Code Quality
-
-**Code Quality Tools**:
+### Code Quality Tools
 
 - Type checking: ty
 - Formatting: ruff format
 - Import sorting: ruff
 - Linting: ruff check
-- Always use plain language instead of complex jorgans and metaphorical language
-- Do not make up the terms, instead use terms that are commonly used in the domain
-- Focus on making your code expressive and efficient
-- Write clear comments/docstrings where needed and avoid terse shorthands
-- Use relevent datastructures where needed
-- Avoid single character variable or funciton names, do not use single word funciton names.
-- Name variables, functions, constants and values after the domain thing they hold, using the terms the project already uses (its glossary, READMEs and models): `retry_delay_seconds`, `pages_by_provider`, `failed_requests`, not vague words such as `data`, `info`, `group`, `item`, `result` or `stuff`.
-- Functions and properties that answer yes or no start with `is_` (`is_expired`), or `has_` when they check for something (`has_errors`).
-- No articles (`a`, `an`, `the`), possessives (`its`, `their`) or hedging words in any name.
-- Module and function docstrings open with full sentences saying what the code is for. They list the outcomes or rules it applies and give the reason for each, rather than internal shorthand.
 
 ```bash
 # Format code
@@ -127,21 +115,34 @@ uv run ruff check --fix .
 # Type check (ty works standalone)
 uv run ty check scripts/ libs/ apps/
 
+# Type check one library
+uv run ty check libs/http_cache/
+
 # Format, lint, and check (recommended before commits)
 ./pants fmt lint check ::
 ```
 
-### Type Safety Protocol
-
 **MANDATORY**: All code must pass ty type checking before commits.
 
-```bash
-# Check all source files
-uv run ty check scripts/ libs/ apps/
+### Code Quality
 
-# Check specific library
-uv run ty check libs/http_cache/
-```
+- Always use plain language instead of complex jargon and metaphorical language
+- Do not make up the terms, instead use terms that are commonly used in the domain
+- Focus on making your code expressive and efficient
+- Write clear comments/docstrings where needed and avoid terse shorthands
+- Use relevant data structures where needed
+- Avoid single-character variable or function names, do not use single-word function names.
+- Name variables, functions, constants and values after the domain thing they hold, using the terms the project already uses (its glossary, READMEs and models): `retry_delay_seconds`, `pages_by_provider`, `failed_requests`, not vague words such as `data`, `info`, `group`, `item`, `result` or `stuff`.
+- Functions and properties that answer yes or no start with `is_` (`is_expired`), or `has_` when they check for something (`has_errors`).
+- No articles (`a`, `an`, `the`), possessives (`its`, `their`) or hedging words in any name.
+- A name says why the thing exists, what it does and how it is used, so a reader needs no other context.
+- Functions and methods do something, so their names start with a verb: `fetch_entry_pages`, `build_corrected_entries`, `read_answer_placements`, not `entry_pages` or `corrected_entries`. A method returning a stored value starts with `get_` (`get_page`), one changing it with `set_`.
+- Classes, variables, fields and constants hold something, so their names are nouns describing it: `SeedCorrection`, `failed_pages`, `REFERENCE_ORDER`.
+- A name must not claim something false. It must not name an action the code does not take (`update_user` that inserts), and it must not reuse a word the project uses for something else: a field holding a reference page key is `entry_reference_page`, not `entry`, because `entry` means a `WorkEntry`; a field holding a page key is `page_key`, not `page`, because `page` means a `ProviderPage`.
+- One word for one idea, everywhere: if one class has `is_main_page`, no other has `is_main` for the same thing; do not call the same action `add` in one place and `insert` in another.
+- Names are easy to search for and to tell apart: no single letters (loop counters included), no abbreviations that read as another word, and no names differing only by a small suffix.
+- Leave the type out of a name: `pages`, not `pages_list` or `pages_dict`; the type annotation already says it.
+- Module and function docstrings open with full sentences saying what the code is for. They list the outcomes or rules it applies and give the reason for each, rather than internal shorthand.
 
 ### Service Health Checks
 

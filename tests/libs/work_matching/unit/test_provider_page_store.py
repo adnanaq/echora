@@ -94,6 +94,21 @@ def test_provider_page_store_has_page_found_by_lookup_page_after_add(tmp_path) -
     assert not store.has_page_found_by("kitsu:anime:12")
 
 
+def test_provider_page_store_get_pages_found_by_gives_pages_after_reopening(
+    tmp_path,
+) -> None:
+    path = tmp_path / "pages.jsonl"
+    found = ProviderPage.from_canonical_record(
+        "https://animeschedule.net/anime/one-piece",
+        {"title": "One Piece"},
+        found_by=MAL,
+    )
+    ProviderPageStore(path).add_pages(found, _page(KITSU, "One Piece"))
+    reopened = ProviderPageStore(path)
+    assert reopened.get_pages_found_by("mal:anime:21") == (found,)
+    assert reopened.get_pages_found_by("kitsu:anime:12") == ()
+
+
 def test_provider_page_store_found_page_added_through_second_lookup_keeps_both(
     tmp_path,
 ) -> None:

@@ -16,7 +16,7 @@ _ORDINAL_SEASON = re.compile(r"\b(\d+)(?:st|nd|rd|th) season\b")
 
 
 @lru_cache(maxsize=65536)
-def comparable_title(title: str) -> str:
+def fold_title_for_comparison(title: str) -> str:
     """Return a title in the form titles are compared in.
 
     Args:
@@ -28,33 +28,37 @@ def comparable_title(title: str) -> str:
         "season N". Empty when the title has no letters or digits.
 
     Examples:
-        >>> comparable_title("Ranma ½")
+        >>> fold_title_for_comparison("Ranma ½")
         'ranma 1 2'
-        >>> comparable_title("Shingeki no Kyojin 2nd Season")
+        >>> fold_title_for_comparison("Shingeki no Kyojin 2nd Season")
         'shingeki no kyojin season 2'
     """
-    folded = unicodedata.normalize("NFKC", title).casefold()
-    without_accents = "".join(map(_without_accent, folded))
-    spaced = " ".join(_NOT_LETTER_OR_DIGIT.sub(" ", without_accents).split())
-    return _ORDINAL_SEASON.sub(r"season \1", spaced)
+    casefolded_title = unicodedata.normalize("NFKC", title).casefold()
+    title_without_accents = "".join(map(_remove_accent, casefolded_title))
+    title_words = " ".join(_NOT_LETTER_OR_DIGIT.sub(" ", title_without_accents).split())
+    return _ORDINAL_SEASON.sub(r"season \1", title_words)
 
 
 @lru_cache(maxsize=4096)
-def _without_accent(character: str) -> str:
+def _remove_accent(character: str) -> str:
     """Return a Latin letter without its accents; any other character unchanged.
 
     Only Latin letters lose their marks: the voiced mark of a Japanese kana
     decomposes the same way, and dropping it would turn "ガ" into "カ".
 
     Examples:
-        >>> _without_accent("é")
+        >>> _remove_accent("é")
         'e'
-        >>> _without_accent("ガ")
+        >>> _remove_accent("ガ")
         'ガ'
     """
     if character.isascii():
         return character
-    base, *marks = unicodedata.normalize("NFD", character)
-    if base.isascii() and base.isalpha() and all(map(unicodedata.combining, marks)):
-        return base
+    base_letter, *accent_marks = unicodedata.normalize("NFD", character)
+    if (
+        base_letter.isascii()
+        and base_letter.isalpha()
+        and all(map(unicodedata.combining, accent_marks))
+    ):
+        return base_letter
     return character

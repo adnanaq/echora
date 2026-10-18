@@ -13,7 +13,7 @@ from collections.abc import Sequence
 
 from networkx.utils import UnionFind
 from pydantic import BaseModel, ConfigDict
-from work_matching import KnownWorksFromSeed, WorkEntry, decided_provider
+from work_matching import KnownWorksFromSeed, WorkEntry, get_decided_provider
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,9 @@ class SplitWorkCandidates(BaseModel):
     shared_provider: str | None = None
 
 
-def split_work_candidates(known_works: KnownWorksFromSeed) -> list[SplitWorkCandidates]:
+def find_split_work_candidates(
+    known_works: KnownWorksFromSeed,
+) -> list[SplitWorkCandidates]:
     """Return every group of entries that may be one work split in several.
 
     Rules:
@@ -61,23 +63,26 @@ def split_work_candidates(known_works: KnownWorksFromSeed) -> list[SplitWorkCand
         The kept groups, ordered by their first entry's place in the seed.
     """
     candidates: list[SplitWorkCandidates] = []
-    for entries in _title_groups(known_works):
-        shared = _shared_providers(entries)
-        if len(shared) > 1:
+    for entries in _group_entries_by_title(known_works):
+        shared_providers = _find_shared_providers(entries)
+        if len(shared_providers) > 1:
             logger.warning(
-                f"Split-work group dropped, its entries share {', '.join(shared)}: "
+                f"Split-work group dropped, its entries share {', '.join(shared_providers)}: "
                 f"{', '.join(entry.title for entry in entries)}"
             )
             continue
         candidates.append(
             SplitWorkCandidates(
-                entries=entries, shared_provider=shared[0] if shared else None
+                entries=entries,
+                shared_provider=shared_providers[0] if shared_providers else None,
             )
         )
     return candidates
 
 
-def _title_groups(known_works: KnownWorksFromSeed) -> list[tuple[WorkEntry, ...]]:
+def _group_entries_by_title(
+    known_works: KnownWorksFromSeed,
+) -> list[tuple[WorkEntry, ...]]:
     """Group the entries that match by title, type, year and season.
 
     Two matching entries join their groups, so entries joined through a shared
@@ -90,13 +95,17 @@ def _title_groups(known_works: KnownWorksFromSeed) -> list[tuple[WorkEntry, ...]
     # By object, not reference page: two entries can list the same page, and
     # find_by_title returns the very entries the seed lookup holds.
     position_of = {id(work): position for position, work in enumerate(works)}
-    groups = UnionFind(range(len(works)))
+    entry_groups = UnionFind(range(len(works)))
     for position, work in enumerate(works):
-        for match in known_works.find_by_title(work.title, work.type, work.year):
-            if match is not work and _is_season_close(work.season, match.season):
-                groups.union(position, position_of[id(match)])
+        for matching_work in known_works.find_by_title(
+            work.title, work.type, work.year
+        ):
+            if matching_work is not work and _is_season_close(
+                work.season, matching_work.season
+            ):
+                entry_groups.union(position, position_of[id(matching_work)])
     positions_by_group = sorted(
-        sorted(positions) for positions in groups.to_sets() if len(positions) > 1
+        sorted(positions) for positions in entry_groups.to_sets() if len(positions) > 1
     )
     return [
         tuple(works[position] for position in positions)
@@ -104,7 +113,7 @@ def _title_groups(known_works: KnownWorksFromSeed) -> list[tuple[WorkEntry, ...]
     ]
 
 
-def _is_season_close(first: str | None, second: str | None) -> bool:
+def _is_season_close(first_season: str | None, second_season: str | None) -> bool:
     """Report whether two seasons are equal, next to each other, or one is missing.
 
     Examples:
@@ -115,21 +124,25 @@ def _is_season_close(first: str | None, second: str | None) -> bool:
         >>> _is_season_close(None, "FALL")
         True
     """
-    if first is None or second is None:
+    if first_season is None or second_season is None:
         return True
-    return abs(_SEASON_ORDER.index(first) - _SEASON_ORDER.index(second)) <= 1
+    return (
+        abs(_SEASON_ORDER.index(first_season) - _SEASON_ORDER.index(second_season)) <= 1
+    )
 
 
-def _shared_providers(entries: Sequence[WorkEntry]) -> list[str]:
+def _find_shared_providers(entries: Sequence[WorkEntry]) -> list[str]:
     """Return the providers with pages in two or more of the entries, sorted."""
-    entries_per_provider = Counter(
-        provider for entry in entries for provider in _providers_of(entry)
+    entry_count_by_provider = Counter(
+        provider for entry in entries for provider in _list_entry_providers(entry)
     )
     return sorted(
-        provider for provider, count in entries_per_provider.items() if count > 1
+        provider
+        for provider, entry_count in entry_count_by_provider.items()
+        if entry_count > 1
     )
 
 
-def _providers_of(entry: WorkEntry) -> set[str]:
+def _list_entry_providers(entry: WorkEntry) -> set[str]:
     """Return the providers an entry has pages from, Simkl and AnimeCountdown as one."""
-    return {provider for key in entry.pages if (provider := decided_provider(key))}
+    return {provider for key in entry.pages if (provider := get_decided_provider(key))}

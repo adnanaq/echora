@@ -23,7 +23,7 @@ from collections.abc import Iterable
 from itertools import chain
 
 from work_matching.provider_page import ProviderPage
-from work_matching.provider_page_key import has_repeated_provider, provider_of_key
+from work_matching.provider_page_key import get_page_provider, has_repeated_provider
 
 
 class ProviderPageLinks:
@@ -45,50 +45,52 @@ class ProviderPageLinks:
                 including pages from providers that were not fetched.
         """
         fetched_pages = tuple(pages)
-        self._renamed_keys = {
+        self._current_key_by_renamed_key = {
             page.key: page.renamed_to for page in fetched_pages if page.renamed_to
         }
-        self._lookup_pages = {
-            page.key: tuple(map(self.same_page, page.found_by))
+        self._lookup_keys_by_found_page = {
+            page.key: tuple(map(self.get_current_key, page.found_by))
             for page in fetched_pages
             if page.found_by
         }
         candidate_keys = set(
             chain.from_iterable(
                 map(
-                    self._current_keys,
+                    self._get_current_keys,
                     chain(page_keys, (page.key for page in fetched_pages)),
                 )
             )
         )
-        self._linked: defaultdict[str, set[str]] = defaultdict(set)
-        self._linked_by_multi_work: defaultdict[str, set[str]] = defaultdict(set)
+        self._linked_pages_by_key: defaultdict[str, set[str]] = defaultdict(set)
+        self._linking_multi_work_pages_by_key: defaultdict[str, set[str]] = defaultdict(
+            set
+        )
         for page in fetched_pages:
-            for source_key in self._current_keys(page.key):
+            for source_key in self._get_current_keys(page.key):
                 self._add_links(page, source_key, candidate_keys)
 
-    def same_page(self, key: str) -> str:
+    def get_current_key(self, key: str) -> str:
         """Return the current key a renamed page resolves to, or the key unchanged."""
-        return self._renamed_keys.get(key, key)
+        return self._current_key_by_renamed_key.get(key, key)
 
-    def linked_with(self, key: str) -> frozenset[str]:
+    def get_linked_pages(self, key: str) -> frozenset[str]:
         """Return candidate pages linked with a page, in either direction.
 
         A found page's key gives the pages linked with any of its lookup pages.
         """
         return frozenset(
             chain.from_iterable(
-                self._linked.get(current_key, ())
-                for current_key in self._current_keys(key)
+                self._linked_pages_by_key.get(current_key, ())
+                for current_key in self._get_current_keys(key)
             )
         )
 
-    def linked_by_multi_work_pages(self, key: str) -> frozenset[str]:
+    def get_linking_multi_work_pages(self, key: str) -> frozenset[str]:
         """Return multi-work pages that linked to this page."""
         return frozenset(
             chain.from_iterable(
-                self._linked_by_multi_work.get(current_key, ())
-                for current_key in self._current_keys(key)
+                self._linking_multi_work_pages_by_key.get(current_key, ())
+                for current_key in self._get_current_keys(key)
             )
         )
 
@@ -101,23 +103,23 @@ class ProviderPageLinks:
         lookup pages. A multi-work page's links are set apart rather than
         recorded.
         """
-        target_keys = {self.same_page(link) for link in page.links} - {source_key}
+        target_keys = {self.get_current_key(link) for link in page.links} - {source_key}
         referenced_keys = target_keys | {source_key} if page.found_by else target_keys
         if has_repeated_provider(referenced_keys):
             for target_key in target_keys & candidate_keys:
-                self._linked_by_multi_work[target_key].add(source_key)
+                self._linking_multi_work_pages_by_key[target_key].add(source_key)
             return
 
-        source_provider = provider_of_key(source_key)
+        source_provider = get_page_provider(source_key)
         for target_key in target_keys & candidate_keys:
-            if provider_of_key(target_key) != source_provider:
-                self._linked[source_key].add(target_key)
-                self._linked[target_key].add(source_key)
+            if get_page_provider(target_key) != source_provider:
+                self._linked_pages_by_key[source_key].add(target_key)
+                self._linked_pages_by_key[target_key].add(source_key)
 
-    def _current_keys(self, key: str) -> tuple[str, ...]:
+    def _get_current_keys(self, key: str) -> tuple[str, ...]:
         """Return the current keys a page key stands for.
 
         A found page stands for its lookup pages, and a renamed page resolves to
         its current key.
         """
-        return self._lookup_pages.get(key) or (self.same_page(key),)
+        return self._lookup_keys_by_found_page.get(key) or (self.get_current_key(key),)

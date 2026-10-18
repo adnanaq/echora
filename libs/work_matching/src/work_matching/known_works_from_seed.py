@@ -6,7 +6,7 @@ from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import Any, Self
 
-from work_matching.comparable_title import comparable_title
+from work_matching.comparable_title import fold_title_for_comparison
 from work_matching.known_works import KnownWorks
 from work_matching.work_entry import WorkEntry, WorkType
 
@@ -28,33 +28,35 @@ class KnownWorksFromSeed(KnownWorks):
         Args:
             entries: The ``data`` list of an anime-offline-database document.
         """
-        self._works: list[WorkEntry] = []
-        self._by_page: dict[str, WorkEntry] = {}
-        self._by_title: defaultdict[tuple[str, WorkType], list[WorkEntry]] = (
-            defaultdict(list)
-        )
-        in_several_entries: set[str] = set()
-        without_pages: list[str] = []
+        self._entries: list[WorkEntry] = []
+        self._entry_by_page_key: dict[str, WorkEntry] = {}
+        self._entries_by_title_and_type: defaultdict[
+            tuple[str, WorkType], list[WorkEntry]
+        ] = defaultdict(list)
+        pages_in_several_entries: set[str] = set()
+        entries_without_pages: list[str] = []
         for entry in entries:
             if not entry["sources"]:
-                without_pages.append(entry["title"])
+                entries_without_pages.append(entry["title"])
                 continue
             work = WorkEntry.from_seed_entry(entry)
-            self._works.append(work)
+            self._entries.append(work)
             for key in work.pages:
-                if self._by_page.setdefault(key, work) is not work:
-                    in_several_entries.add(key)
-            self._by_title[(comparable_title(work.title), work.type)].append(work)
-        self._pages_in_several_entries = frozenset(in_several_entries)
-        self._entries_without_pages = tuple(without_pages)
+                if self._entry_by_page_key.setdefault(key, work) is not work:
+                    pages_in_several_entries.add(key)
+            self._entries_by_title_and_type[
+                (fold_title_for_comparison(work.title), work.type)
+            ].append(work)
+        self._pages_in_several_entries = frozenset(pages_in_several_entries)
+        self._entries_without_pages = tuple(entries_without_pages)
 
     def __len__(self) -> int:
         """Return how many works are known."""
-        return len(self._works)
+        return len(self._entries)
 
     def __iter__(self) -> Iterator[WorkEntry]:
         """Yield every known work in seed file order, so the seed is read once."""
-        return iter(self._works)
+        return iter(self._entries)
 
     @property
     def pages_in_several_entries(self) -> frozenset[str]:
@@ -76,16 +78,16 @@ class KnownWorksFromSeed(KnownWorks):
         Returns:
             The lookup over every entry in the file.
         """
-        with Path(path).open(encoding="utf-8") as handle:
-            return cls(json.load(handle)["data"])
+        with Path(path).open(encoding="utf-8") as seed_file:
+            return cls(json.load(seed_file)["data"])
 
     def find_by_page_key(self, key: str) -> WorkEntry | None:
         """Return the work that has the page with this key, or None.
 
         Args:
-            key: A page key, as ``provider_page_key`` gives it.
+            key: A page key, as ``get_page_key`` gives it.
         """
-        return self._by_page.get(key)
+        return self._entry_by_page_key.get(key)
 
     def find_by_title(
         self, title: str, work_type: WorkType, year: int | None
@@ -105,6 +107,8 @@ class KnownWorksFromSeed(KnownWorks):
         """
         return [
             work
-            for work in self._by_title.get((comparable_title(title), work_type), ())
+            for work in self._entries_by_title_and_type.get(
+                (fold_title_for_comparison(title), work_type), ()
+            )
             if year is None or work.year is None or work.year == year
         ]

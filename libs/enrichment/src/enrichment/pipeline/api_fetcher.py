@@ -12,10 +12,6 @@ from types import TracebackType
 from typing import Any, ClassVar
 
 from common.config import EnrichmentConfig
-from http_cache import HTTPCacheManager
-from opentelemetry import metrics as otel_metrics
-from opentelemetry import trace as otel_trace
-
 from enrichment.sources.anidb.anidb_helper import AniDBHelper
 from enrichment.sources.anilist.anilist_helper import AniListHelper
 from enrichment.sources.anime_planet.anime_planet_helper import AnimePlanetHelper
@@ -27,6 +23,9 @@ from enrichment.sources.base.base_helper import (
 )
 from enrichment.sources.kitsu.kitsu_helper import KitsuHelper
 from enrichment.sources.mal.mal_helper import MalHelper
+from http_cache import HTTPCacheManager
+from opentelemetry import metrics as otel_metrics
+from opentelemetry import trace as otel_trace
 
 logger = logging.getLogger(__name__)
 

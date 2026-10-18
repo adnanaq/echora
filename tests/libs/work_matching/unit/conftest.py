@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 from work_matching.provider_page import ProviderPage
-from work_matching.provider_page_key import provider_page_key
+from work_matching.provider_page_key import get_page_key
 from work_matching.work_entry import WorkEntry, WorkType
 
 _FIXTURES = Path(__file__).parent / "fixtures"
@@ -32,7 +32,7 @@ def work_entry() -> Callable[..., WorkEntry]:
             title="Test",
             type=work_type,
             year=year,
-            pages={provider_page_key(address): address for address in addresses},
+            pages={get_page_key(address): address for address in addresses},
         )
 
     return build_work_entry

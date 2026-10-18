@@ -4,8 +4,12 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
-from clean_seed import entries_to_check_document
-from seed_cleaning import SplitWorkCandidates
+from clean_seed import build_entries_to_check_document, count_corrections
+from seed_cleaning import (
+    DoubledProviderCorrections,
+    SeedCorrection,
+    SplitWorkCandidates,
+)
 from work_matching import WorkEntry
 
 
@@ -15,7 +19,7 @@ def _entry(title: str, *addresses: str) -> WorkEntry:
     )
 
 
-def test_entries_to_check_document_names_entries_by_reference_page() -> None:
+def test_build_entries_to_check_document_names_entries_by_reference_page() -> None:
     doubled = _entry(
         "Rock Star",
         "https://anilist.co/anime/120516",
@@ -28,7 +32,7 @@ def test_entries_to_check_document_names_entries_by_reference_page() -> None:
         ),
         shared_provider=None,
     )
-    document = entries_to_check_document("seed-schema-url", [doubled], [group])
+    document = build_entries_to_check_document("seed-schema-url", [doubled], [group])
     assert document["seed_schema"] == "seed-schema-url"
     assert document["doubled_provider_entries"] == [
         {
@@ -45,3 +49,37 @@ def test_entries_to_check_document_names_entries_by_reference_page() -> None:
         "ann:anime:1",
         "mal:anime:43735",
     ]
+
+
+def _correction(page_key: str, work: str, **fields) -> SeedCorrection:
+    return SeedCorrection(
+        entry_reference_page="mal:anime:1",
+        page_key=page_key,
+        address=f"https://example.com/{page_key}",
+        work=work,
+        reason="review answer",
+        **fields,
+    )
+
+
+def test_count_corrections_counts_each_change_once() -> None:
+    doubled_provider_corrections = DoubledProviderCorrections(
+        corrections=(
+            _correction("kitsu:anime:1", "entry"),
+            _correction("kitsu:anime:2", "entry", is_main_page=True),
+            _correction("kitsu:anime:3", "entry", renamed_to="kitsu:anime:2"),
+            _correction(
+                "kitsu:anime:4", "other work", target_entry_reference_page="mal:anime:9"
+            ),
+            _correction("kitsu:anime:5", "work 2"),
+        ),
+        review_cases=(),
+    )
+    assert count_corrections(doubled_provider_corrections) == {
+        "pages kept as main page": 1,
+        "old addresses dropped": 1,
+        "pages moved to a seed entry": 1,
+        "pages moved to a new entry": 1,
+        "review cases answered": 0,
+        "review cases open": 0,
+    }

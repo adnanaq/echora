@@ -62,6 +62,24 @@ def test_kitsu_anime_attributes_empty_abbreviated_titles_dropped() -> None:
     assert attrs.abbreviatedTitles == ["OP", "Wan Piisu"]
 
 
+def test_kitsu_anime_attributes_null_abbreviated_title_dropped() -> None:
+    attrs = KitsuAnimeAttributes.model_validate({"abbreviatedTitles": ["OP", None]})
+
+    assert attrs.abbreviatedTitles == ["OP"]
+
+
+def test_kitsu_anime_attributes_null_abbreviated_titles_give_empty_list() -> None:
+    attrs = KitsuAnimeAttributes.model_validate({"abbreviatedTitles": None})
+
+    assert attrs.abbreviatedTitles == []
+
+
+def test_kitsu_character_attributes_null_other_name_dropped() -> None:
+    attrs = KitsuCharacterAttributes.model_validate({"otherNames": [None, "Luffy"]})
+
+    assert attrs.otherNames == ["Luffy"]
+
+
 def test_kitsu_anime_attributes_synopsis_html_becomes_plain_text() -> None:
     attrs = KitsuAnimeAttributes.model_validate({"synopsis": "<p>Luffy &amp; Zoro</p>"})
 

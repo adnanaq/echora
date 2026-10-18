@@ -17,7 +17,6 @@ from qdrant_client.models import (
     SearchParams,
     SparseVector,
 )
-
 from qdrant_db.contracts import (
     SearchFilterCondition,
     SearchRange,
