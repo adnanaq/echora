@@ -163,3 +163,48 @@ async def test_fetch_entry_pages_entry_with_two_mal_pages_looks_up_animeschedule
         ids for service, ids, _ in api_fetcher.requests if service == "animeschedule"
     ]
     assert lookups == [{"mal_url": MAL}, {"mal_url": other_mal}]
+
+
+class KitsuRaisingApiFetcher(ScriptedApiFetcher):
+    async def fetch_all_data(
+        self,
+        ids: dict[str, str],
+        offline_data: dict[str, Any],
+        temp_dir: str | None = None,
+        skip_services: list[str] | None = None,
+        only_services: list[str] | None = None,
+        *,
+        fetch_characters: bool = True,
+        fetch_episodes: bool = True,
+    ) -> dict[str, Any]:
+        if only_services == ["kitsu"]:
+            raise RuntimeError("store disk full")
+        return await super().fetch_all_data(
+            ids, offline_data, temp_dir, skip_services, only_services
+        )
+
+
+async def test_fetch_entry_pages_unexpected_error_fails_page_and_other_queues_finish(
+    tmp_path,
+) -> None:
+    api_fetcher = KitsuRaisingApiFetcher({("mal", MAL): {"title": "One Piece"}})
+    fetcher = ProviderPageFetcher(
+        lambda: api_fetcher,
+        ProviderPageStore(tmp_path / "pages.jsonl"),
+        seconds_between_found_page_lookups=0,
+    )
+    summary = await fetcher.fetch_entry_pages([_one_piece(MAL, KITSU)])
+    assert summary.failed_pages == {"kitsu:anime:12": "RuntimeError: store disk full"}
+    assert "mal:anime:21" in ProviderPageStore(tmp_path / "pages.jsonl")
+
+
+async def test_fetch_entry_pages_animeschedule_lookup_finding_nothing_repeated(
+    tmp_path,
+) -> None:
+    fetcher, api_fetcher = _fetcher(tmp_path, {})
+    await fetcher.fetch_entry_pages([_one_piece(MAL)])
+    await fetcher.fetch_entry_pages([_one_piece(MAL)])
+    lookups = [
+        ids for service, ids, _ in api_fetcher.requests if service == "animeschedule"
+    ]
+    assert lookups == [{"mal_url": MAL}, {"mal_url": MAL}]

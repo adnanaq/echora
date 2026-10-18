@@ -54,8 +54,10 @@ cache enrichment reads later.
   not exist. A failed fetch (a timeout, a block, a page that cannot be read) is
   not stored, so the next run tries it again. AnimeSchedule finding nothing
   stores nothing: there is no page.
-- **Reruns:** a page already stored, or an AnimeSchedule lookup already done
-  through a page, is not fetched again.
+- **Reruns:** a page already stored, or an AnimeSchedule lookup that found a
+  page, is not fetched again. A lookup that found nothing is repeated on every
+  run (about 70 on release 2026-40), so a page AnimeSchedule adds later is
+  still found.
 - **Pace:** each provider has its own queue, one page at a time, so each
   site's rate limits hold while different sites run side by side. AnimeSchedule
   lookups wait 3 s between them: requests without an app token get its stricter,

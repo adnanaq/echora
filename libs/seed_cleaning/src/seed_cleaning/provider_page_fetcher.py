@@ -13,8 +13,9 @@ Rules:
 - AnimeSchedule is not in the seed: its page is found through the entry's MAL
   pages, else AniList, else AniDB, and records that page as ``found_by``.
 - A page already in the store is not fetched again, and an AnimeSchedule
-  lookup already done through a page is not repeated, so a run picks up where
-  the last one stopped.
+  lookup that found a page is not repeated, so a run picks up where the last
+  one stopped. A lookup that found nothing is repeated on every run, so a page
+  AnimeSchedule adds later is still found.
 - A page is stored as dead only when its provider said it does not exist. A
   failed fetch is not stored, so the next run tries it again.
 - Each provider runs in its own queue, one page at a time, so each site's own
@@ -24,7 +25,7 @@ Rules:
 import asyncio
 import logging
 from collections import Counter, defaultdict
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, NamedTuple
@@ -79,9 +80,9 @@ class FetchOutcome(StrEnum):
 class FetchSummary:
     """How a fetch run went: a count per outcome, and why each failure failed."""
 
-    outcomes: dict[FetchOutcome, int]
+    outcomes: Mapping[FetchOutcome, int]
     # Each failed page by its page key, or "animeschedule via <lookup page>".
-    failed_pages: dict[str, str]
+    failed_pages: Mapping[str, str]
 
 
 @dataclass(frozen=True)
@@ -206,28 +207,46 @@ class ProviderPageFetcher:
     async def _run_queue(
         self, service: str, requests: Iterable[_PageRequest]
     ) -> list[_RequestResult]:
-        """Make one provider's requests one at a time, storing each page at once."""
+        """Make one provider's requests one at a time, storing each page at once.
+
+        An unexpected error in one request, such as a failed store write, fails
+        that request and the queue goes on, so a long run keeps the rest of its
+        work and its summary.
+        """
         api_fetcher = self._new_api_fetcher()
         results: list[_RequestResult] = []
         for position, request in enumerate(requests):
             if request.is_found_page_lookup and position:
                 await asyncio.sleep(self._seconds_between_found_page_lookups)
-            fetched = await api_fetcher.fetch_all_data(
-                {request.id_key: request.address},
-                {"title": request.title, "sources": [request.address]},
-                only_services=[service],
-                fetch_characters=False,
-                fetch_episodes=False,
-            )
-            if service in api_fetcher.api_errors:
-                error = api_fetcher.api_errors[service]
-                logger.warning(f"Page fetch failed, retried next run: {request.label}")
-                results.append(_RequestResult(FetchOutcome.FAILED, request, error))
-                continue
-            record = (fetched.get(service) or {}).get("anime")
-            outcome = self._store_page(request, record)
-            results.append(_RequestResult(outcome, request))
+            try:
+                results.append(await self._fetch_request(api_fetcher, request))
+            except Exception as error:
+                logger.exception(f"Page fetch failed unexpectedly: {request.label}")
+                results.append(
+                    _RequestResult(
+                        FetchOutcome.FAILED, request, f"{type(error).__name__}: {error}"
+                    )
+                )
         return results
+
+    async def _fetch_request(
+        self, api_fetcher: ApiFetcher, request: _PageRequest
+    ) -> _RequestResult:
+        """Make one request and store what it returned."""
+        fetched = await api_fetcher.fetch_all_data(
+            {request.id_key: request.address},
+            {"title": request.title, "sources": [request.address]},
+            only_services=[request.service],
+            fetch_characters=False,
+            fetch_episodes=False,
+        )
+        if request.service in api_fetcher.api_errors:
+            logger.warning(f"Page fetch failed, retried next run: {request.label}")
+            return _RequestResult(
+                FetchOutcome.FAILED, request, api_fetcher.api_errors[request.service]
+            )
+        record = (fetched.get(request.service) or {}).get("anime")
+        return _RequestResult(self._store_page(request, record), request)
 
     def _store_page(
         self, request: _PageRequest, record: dict[str, Any] | None
