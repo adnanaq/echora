@@ -28,6 +28,7 @@ from enrichment.sources.anime_planet.anime_planet_models import (
     _parse_season,
     _parse_start_year,
 )
+from enrichment.sources.base.exceptions import ServiceNetworkError, ServiceParseError
 from enrichment.sources.base.framework import NullRepository
 from lxml import etree
 
@@ -598,17 +599,28 @@ async def test_fetch_anime_html_page_with_entry_bar_returns_page_content(
         assert await _fetch_anime_html(DANDADAN_URL) == page
 
 
-async def test_fetch_anime_html_navigation_error_logs_and_returns_none(
-    anime_planet_browser, caplog
+async def test_fetch_anime_html_navigation_error_raises_network_error(
+    anime_planet_browser,
 ) -> None:
     browser = create_autospec(zendriver.Browser, instance=True)
     browser.get.side_effect = ConnectionError("connection refused")
-    with anime_planet_browser(browser), caplog.at_level(logging.WARNING):
-        assert await _fetch_anime_html(DANDADAN_URL) is None
-    assert any(
-        message.startswith(f"navigation failed for {DANDADAN_URL}")
-        for message in caplog.messages
+    with (
+        anime_planet_browser(browser),
+        pytest.raises(ServiceNetworkError, match="navigation failed"),
+    ):
+        await _fetch_anime_html(DANDADAN_URL)
+
+
+async def test_fetch_anime_html_redirect_to_search_returns_none(
+    anime_planet_browser, tab_showing
+) -> None:
+    browser = create_autospec(zendriver.Browser, instance=True)
+    browser.get.return_value = tab_showing(
+        '<html><body><div class="quickFilter"></div></body></html>',
+        "https://www.anime-planet.com/search.php?search_type=anime&search=dandadan",
     )
+    with anime_planet_browser(browser):
+        assert await _fetch_anime_html(DANDADAN_URL) is None
 
 
 async def test_fetch_animeplanet_anime_data_page_gives_raw_data_with_slug(
@@ -619,26 +631,37 @@ async def test_fetch_animeplanet_anime_data_page_gives_raw_data_with_slug(
     assert (raw["name"], raw["slug"]) == ("Dandadan", "dandadan")
 
 
-async def test_fetch_animeplanet_anime_data_navigation_error_returns_none(
-    anime_planet_browser, caplog
+async def test_fetch_animeplanet_anime_data_missing_page_logs_and_returns_none(
+    anime_planet_browser, tab_showing, caplog
+) -> None:
+    browser = create_autospec(zendriver.Browser, instance=True)
+    browser.get.return_value = tab_showing(
+        '<html><body><div class="quickFilter"></div></body></html>',
+        "https://www.anime-planet.com/search.php?search=dandadan",
+    )
+    with anime_planet_browser(browser), caplog.at_level(logging.WARNING):
+        assert await _fetch_animeplanet_anime_data("dandadan") is None
+    assert f"Anime-Planet anime page not found: {DANDADAN_URL}" in caplog.messages
+
+
+async def test_fetch_animeplanet_anime_data_navigation_error_raises_network_error(
+    anime_planet_browser,
 ) -> None:
     browser = create_autospec(zendriver.Browser, instance=True)
     browser.get.side_effect = ConnectionError("connection refused")
-    with anime_planet_browser(browser), caplog.at_level(logging.WARNING):
-        assert await _fetch_animeplanet_anime_data("dandadan") is None
-    assert f"Navigation returned no HTML for {DANDADAN_URL}" in caplog.messages
+    with anime_planet_browser(browser), pytest.raises(ServiceNetworkError):
+        await _fetch_animeplanet_anime_data("dandadan")
 
 
-async def test_fetch_animeplanet_anime_data_page_without_data_returns_none(
-    anime_planet_browser, browser_serving, caplog
+async def test_fetch_animeplanet_anime_data_page_without_data_raises_parse_error(
+    anime_planet_browser, browser_serving
 ) -> None:
     page = '<html><body><section class="entryBar"></section></body></html>'
     with (
         anime_planet_browser(browser_serving({DANDADAN_URL: page})),
-        caplog.at_level(logging.WARNING),
+        pytest.raises(ServiceParseError),
     ):
-        assert await _fetch_animeplanet_anime_data("dandadan") is None
-    assert f"No data extracted from {DANDADAN_URL}" in caplog.messages
+        await _fetch_animeplanet_anime_data("dandadan")
 
 
 async def test_fetch_animeplanet_anime_one_piece_page_returns_canonical_anime(
@@ -673,11 +696,14 @@ async def test_fetch_animeplanet_anime_address_without_www_fetches_www_page(
         '<html><body><section class="entryBar"></section><script type="application/ld+json">{"description":"no name"}</script></body></html>',
     ],
 )
-async def test_fetch_animeplanet_anime_unusable_page_returns_none(
+async def test_fetch_animeplanet_anime_unusable_page_raises_parse_error(
     anime_planet_browser, browser_serving, page: str
 ) -> None:
-    with anime_planet_browser(browser_serving({DANDADAN_URL: page})):
-        assert await fetch_animeplanet_anime(DANDADAN_URL) is None
+    with (
+        anime_planet_browser(browser_serving({DANDADAN_URL: page})),
+        pytest.raises(ServiceParseError),
+    ):
+        await fetch_animeplanet_anime(DANDADAN_URL)
 
 
 async def test_fetch_animeplanet_anime_season_link_wins_over_start_date(

@@ -17,7 +17,11 @@ from enrichment.sources.anisearch.anisearch_anime_crawler import (
     fetch_anisearch_anime,
 )
 from enrichment.sources.anisearch.anisearch_anime_models import AniSearchAnime
-from enrichment.sources.base.exceptions import ServiceBlockedError
+from enrichment.sources.base.exceptions import (
+    ServiceBlockedError,
+    ServiceNetworkError,
+    ServiceParseError,
+)
 from enrichment.sources.base.framework import NullRepository
 from enrichment.sources.base.polite_http import FetchedPage
 
@@ -737,7 +741,7 @@ async def test_fetch_anisearch_anime_data_real_pages_returns_page_text(
 
 
 @pytest.mark.usefixtures("cache_off")
-async def test_fetch_anisearch_anime_data_main_page_unreadable_returns_none() -> None:
+async def test_fetch_anisearch_anime_data_missing_main_page_returns_none() -> None:
     with patch.object(
         crawler_module, "fetch_anisearch_page", autospec=True, side_effect=_site({})
     ):
@@ -745,16 +749,22 @@ async def test_fetch_anisearch_anime_data_main_page_unreadable_returns_none() ->
 
 
 @pytest.mark.usefixtures("cache_off")
-async def test_fetch_anisearch_anime_data_empty_main_page_returns_none() -> None:
+async def test_fetch_anisearch_anime_data_empty_main_page_raises_parse_error() -> None:
     pages = {f"{BASE_ANIME_URL}2227,one-piece": ""}
-    with patch.object(
-        crawler_module, "fetch_anisearch_page", autospec=True, side_effect=_site(pages)
+    with (
+        patch.object(
+            crawler_module,
+            "fetch_anisearch_page",
+            autospec=True,
+            side_effect=_site(pages),
+        ),
+        pytest.raises(ServiceParseError),
     ):
-        assert await _fetch_anisearch_anime_data("2227,one-piece") is None
+        await _fetch_anisearch_anime_data("2227,one-piece")
 
 
 @pytest.mark.usefixtures("cache_off")
-async def test_fetch_anisearch_anime_data_relations_unreadable_returns_data_without_relations(
+async def test_fetch_anisearch_anime_data_missing_relations_page_returns_data_without_relations(
     one_piece_main_html: str,
 ) -> None:
     pages = {f"{BASE_ANIME_URL}2227,one-piece": one_piece_main_html}
@@ -767,6 +777,24 @@ async def test_fetch_anisearch_anime_data_relations_unreadable_returns_data_with
     assert result["anime_relations"] == []
     assert result["manga_relations"] == []
     assert "_canonical_url" not in result
+
+
+@pytest.mark.usefixtures("cache_off")
+async def test_fetch_anisearch_anime_data_relations_fetch_failure_raises_network_error(
+    one_piece_main_html: str,
+) -> None:
+    async def fetch(url: str) -> FetchedPage:
+        if url.endswith("/relations?show=overall"):
+            raise ServiceNetworkError(service="anisearch", cause="HTTP 500")
+        return FetchedPage(url=_URL, html=one_piece_main_html)
+
+    with (
+        patch.object(
+            crawler_module, "fetch_anisearch_page", autospec=True, side_effect=fetch
+        ),
+        pytest.raises(ServiceNetworkError),
+    ):
+        await _fetch_anisearch_anime_data("2227,one-piece")
 
 
 @pytest.mark.usefixtures("cache_off")
@@ -786,7 +814,7 @@ async def test_fetch_anisearch_anime_data_blocked_raises_service_blocked_error()
 
 
 @pytest.mark.usefixtures("cache_off")
-async def test_fetch_anisearch_anime_unreadable_page_returns_none() -> None:
+async def test_fetch_anisearch_anime_missing_page_returns_none() -> None:
     with patch.object(
         crawler_module, "fetch_anisearch_page", autospec=True, side_effect=_site({})
     ):

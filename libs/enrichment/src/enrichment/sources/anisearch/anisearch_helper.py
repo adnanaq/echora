@@ -47,8 +47,13 @@ class AniSearchHelper(BaseEnrichmentHelper):
             fetch_episodes: When False, skip episode fetching.
 
         Returns:
-            Anime data dict enriched with "episodes" and "characters" keys,
-            or None if the primary anime fetch fails.
+            Anime data dict enriched with "episodes" and "characters" keys, or
+            None when AniSearch has no such anime. An episode or character
+            failure leaves that list empty.
+
+        Raises:
+            ServiceNetworkError: If the anime's pages fail to load.
+            ServiceParseError: If the anime page loads but cannot be read.
         """
         url = ids.get("anisearch_url")
         if not url:
@@ -106,23 +111,23 @@ class AniSearchHelper(BaseEnrichmentHelper):
             output_path: If provided, write result as a JSONL line to this file.
 
         Returns:
-            Canonical anime dict if available, None otherwise.
+            Canonical anime dict, or None when AniSearch has no such anime.
+
+        Raises:
+            ServiceNetworkError: If the anime's pages fail to load.
+            ServiceParseError: If the anime page loads but cannot be read.
+            ServiceBlockedError: If AniSearch blocked this client.
         """
-        try:
-            logger.info(f"Fetching AniSearch anime data for {url}")
-            anime_data = await fetch_anisearch_anime(url, output_path=output_path)
-            if not anime_data:
-                logger.warning(f"Anime crawler returned no data for {url}")
-                return None
-            logger.info(
-                f"Successfully fetched anime data for {url}: "
-                f"{anime_data.get('title', anime_data.get('title_japanese', 'Unknown'))}"
-            )
-        except Exception:
-            logger.exception(f"Error fetching anime data for {url}")
+        logger.info(f"Fetching AniSearch anime data for {url}")
+        anime_data = await fetch_anisearch_anime(url, output_path=output_path)
+        if not anime_data:
+            logger.warning(f"Anime crawler returned no data for {url}")
             return None
-        else:
-            return anime_data
+        logger.info(
+            f"Successfully fetched anime data for {url}: "
+            f"{anime_data.get('title', anime_data.get('title_japanese', 'Unknown'))}"
+        )
+        return anime_data
 
     async def fetch_episodes(
         self, url: str, *, output_path: str | None = None

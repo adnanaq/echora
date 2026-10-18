@@ -18,6 +18,7 @@ import json
 import logging
 import re
 from typing import Any, cast
+from urllib.parse import urlsplit
 
 from enrichment.sources.anime_planet.anime_planet_models import (
     AnimePlanetAnime,
@@ -26,6 +27,7 @@ from enrichment.sources.anime_planet.anime_planet_models import (
 )
 from enrichment.sources.anime_planet.animeplanet_mapper import anime_from_animeplanet
 from enrichment.sources.base.browser import browser_session
+from enrichment.sources.base.exceptions import ServiceNetworkError, ServiceParseError
 from enrichment.sources.base.framework import (
     BaseCrawler,
     FileRepository,
@@ -40,6 +42,10 @@ logger = logging.getLogger(__name__)
 
 BASE_ANIME_URL = "https://www.anime-planet.com/anime/"
 ANIME_PLANET_SITE = "Anime-Planet"
+# Where Anime-Planet redirects an anime address that names no anime, and an
+# element only that search page has, so the wait for the page ends there too.
+_SEARCH_PAGE_PATH = "/search.php"
+_SEARCH_FILTER_SELECTOR = "div.quickFilter"
 
 _SEASON_SLUG_RE = re.compile(r"/seasons/([^/?#]+)")
 _RANK_RE = re.compile(r"#(\d+)")
@@ -383,24 +389,38 @@ def _build_anime_from_raw(raw: dict[str, Any]) -> AnimePlanetAnime:
 async def _fetch_anime_html(url: str) -> str | None:
     """Navigate to an Anime-Planet anime page and return its rendered HTML.
 
+    Anime-Planet answers an address with no anime by redirecting to its search
+    page. The wait ends on either the anime's entry bar or the search page's
+    quick filter, and the address the tab ends on tells a missing page apart
+    (checked live on 2026-10-17: the search page has the quick filter, the
+    One Piece, Dandadan and Cocoon anime pages do not).
+
     Args:
         url: Full Anime-Planet anime URL
             (e.g. ``https://www.anime-planet.com/anime/dandadan``).
 
     Returns:
-        Rendered page HTML, or None on navigation failure.
+        Rendered page HTML, or None when the page does not exist.
+
+    Raises:
+        ServiceNetworkError: If the page does not load.
     """
     async with browser_session(headless=True) as session:
-        browser = session.browser
         try:
-            page = await browser.get(url)
+            page = await session.browser.get(url)
             await wait_for_page(
-                page, "section.entryBar", url, cloudflare_site=ANIME_PLANET_SITE
+                page,
+                f"section.entryBar, {_SEARCH_FILTER_SELECTOR}",
+                url,
+                cloudflare_site=ANIME_PLANET_SITE,
             )
+            if urlsplit(page.url or "").path == _SEARCH_PAGE_PATH:
+                return None
             return await page.get_content()
         except Exception as exc:
-            logger.warning(f"navigation failed for {url}: {exc}")
-            return None
+            raise ServiceNetworkError(
+                service="anime_planet", cause=f"navigation failed for {url}: {exc}"
+            ) from exc
 
 
 @cached_result(
@@ -423,20 +443,23 @@ async def _fetch_animeplanet_anime_data(
         canonical_slug: Canonical anime slug (e.g. ``"one-piece"``).
 
     Returns:
-        Raw data dict, or None on failure.
+        Raw data dict, or None when the page does not exist.
+
+    Raises:
+        ServiceNetworkError: If the page does not load.
+        ServiceParseError: If the page loads but its data cannot be read.
     """
     url = f"{BASE_ANIME_URL}{canonical_slug}"
     logger.info(f"Fetching anime data: {url}")
 
     html = await _fetch_anime_html(url)
-    if not html:
-        logger.warning(f"Navigation returned no HTML for {url}")
+    if html is None:
+        logger.warning(f"Anime-Planet anime page not found: {url}")
         return None
 
     raw = _extract_anime_from_html(html)
     if not raw:
-        logger.warning(f"No data extracted from {url}")
-        return None
+        raise ServiceParseError(service="anime_planet", cause=f"no anime data in {url}")
 
     raw["slug"] = canonical_slug
     return raw

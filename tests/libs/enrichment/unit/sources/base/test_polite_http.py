@@ -6,7 +6,10 @@ import time
 from collections.abc import Iterator
 
 import pytest
-from enrichment.sources.base.exceptions import ServiceBlockedError
+from enrichment.sources.base.exceptions import (
+    ServiceBlockedError,
+    ServiceNetworkError,
+)
 from enrichment.sources.base.polite_http import FetchedPage, PoliteHttpClient
 
 BROWSER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) Chrome/153.0.0.0 Safari/537.36"
@@ -34,6 +37,7 @@ class ScriptedSite(http.server.BaseHTTPRequestHandler):
             "/locked": 423,
             "/forbidden": 403,
             "/limited": 429,
+            "/broken": 500,
         }.get(self.path, 200)
         body = f"<html><body>{self.path}</body></html>".encode()
         self.send_response(status)
@@ -137,21 +141,34 @@ async def test_fetch_connection_refused_raises_and_blocks(closed_port: int) -> N
     assert client.blocked
 
 
-async def test_fetch_connection_dropped_returns_none_without_blocking(
+async def test_fetch_connection_dropped_raises_network_error_without_blocking(
     site: str,
 ) -> None:
     client = _client()
 
-    assert await client.fetch(f"{site}/dropped") is None
+    with pytest.raises(ServiceNetworkError):
+        await client.fetch(f"{site}/dropped")
     assert not client.blocked
 
 
-async def test_fetch_no_answer_within_timeout_returns_none_without_blocking(
+async def test_fetch_no_answer_within_timeout_raises_network_error_without_blocking(
     site: str,
 ) -> None:
     client = _client(timeout=0.2)
 
-    assert await client.fetch(f"{site}/slow") is None
+    with pytest.raises(ServiceNetworkError, match="no answer within"):
+        await client.fetch(f"{site}/slow")
+    assert not client.blocked
+
+
+async def test_fetch_server_error_raises_network_error_and_keeps_fetching(
+    site: str,
+) -> None:
+    client = _client()
+
+    with pytest.raises(ServiceNetworkError, match="HTTP 500"):
+        await client.fetch(f"{site}/broken")
+    assert await client.fetch(f"{site}/page") is not None
     assert not client.blocked
 
 

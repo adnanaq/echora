@@ -54,6 +54,28 @@ class BaseEnrichmentHelper(ABC):
     ) -> dict[str, Any] | None: ...
 ```
 
+`fetch_all` returns `None` only when the provider says the anime does not
+exist, and raises on every failure: a page that will not load, a block, a
+timeout, a response it cannot read. `ApiFetcher` catches the error per
+source, so the pipeline still gets `None` for that source; seed cleaning
+needs the difference to record a page as dead only when it is gone.
+
+| Source | "Does not exist" signal |
+| -- | -- |
+| MAL | the `error404` page |
+| Anime-Planet | a redirect to `search.php` |
+| AniSearch | HTTP 404 |
+| Kitsu | HTTP 404 |
+| AniList | HTTP 404 with no `Media` |
+| AniDB | the error body `<error>Anime not found</error>` |
+| AnimSchedule | HTTP 404 for an id lookup; no title match |
+
+The anime record is complete or not returned: a failure in any of its own
+requests, such as Kitsu's genres or mappings, fails the anime, so a record is
+never kept with links or details silently missing. A failure in a part fetched
+after the anime, such as episodes or characters, leaves that part empty instead
+of failing the anime.
+
 ### `BaseCrawler[T_Source, T_Canonical]`
 
 Template-method crawler for single-URL detail pages. Subclasses implement:
@@ -62,6 +84,9 @@ Template-method crawler for single-URL detail pages. Subclasses implement:
 - `fetch_raw_data(url) -> dict | None`
 - `build_source_model(processed_raw, url) -> T_Source`
 - `map_to_canonical(source_model) -> T_Canonical`
+
+`crawl` returns `None` only when `fetch_raw_data` returns `None`, which means
+the page does not exist; an error in any step propagates.
 
 ```python
 crawler = AnimePlanetCharacterCrawler(NullRepository())

@@ -2,8 +2,13 @@
 
 All source-specific crawlers inherit from ``BaseCrawler`` and override the
 abstract steps.  The concrete ``crawl()`` method orchestrates the fixed
-lifecycle so subclasses never need to handle error logging, ``None``-guarding,
-or repository persistence themselves.
+lifecycle so subclasses never need to handle ``None``-guarding or repository
+persistence themselves.
+
+``crawl()`` returns ``None`` only when the page does not exist, which
+``fetch_raw_data`` reports by returning ``None``. A failure in any step (a
+page that would not load, a block, a layout the extraction no longer reads)
+raises, so a caller can tell a page that is gone from a fetch that failed.
 
 Lifecycle (in order):
     1. ``normalize_identifier`` — convert slug / ID / path to a canonical URL.
@@ -14,14 +19,11 @@ Lifecycle (in order):
     6. ``repository.save`` — persist if a repository was provided.
 """
 
-import logging
 from abc import ABC, abstractmethod
 from typing import Any, Generic, TypeVar
 
 from enrichment.sources.base.framework.interfaces import IRepository
 from pydantic import BaseModel
-
-logger = logging.getLogger(__name__)
 
 # Type variables for source and canonical models
 T_Source = TypeVar("T_Source", bound=BaseModel)
@@ -61,11 +63,8 @@ class BaseCrawler(Generic[T_Source, T_Canonical], ABC):  # noqa: UP046
     async def crawl(self, identifier: str) -> T_Canonical | None:
         """Execute the full crawl lifecycle for one identifier.
 
-        Orchestrates the five steps: normalise → fetch → post-process →
-        build source model → map to canonical → save.  Any unhandled
-        exception in any step is caught, logged at ``ERROR`` level, and
-        causes ``None`` to be returned so callers never need to guard against
-        exceptions from this method.
+        Orchestrates the steps: normalise → fetch → post-process →
+        build source model → map to canonical → save.
 
         Args:
             identifier: A slug, path, numeric ID, or full URL that uniquely
@@ -74,35 +73,22 @@ class BaseCrawler(Generic[T_Source, T_Canonical], ABC):  # noqa: UP046
                 canonical URL.
 
         Returns:
-            The canonical output dict, or ``None`` if any step failed.
+            The canonical output dict, or ``None`` when the page does not exist.
+
+        Raises:
+            Exception: Whatever a step raised when it failed, such as
+                ``ServiceNetworkError`` from the fetch or ``ValidationError``
+                from the source model.
         """
-        try:
-            # 1. Normalize
-            url = self.normalize_identifier(identifier)
-
-            # 2. Fetch raw data
-            raw_data = await self.fetch_raw_data(url)
-            if not raw_data:
-                return None
-
-            # 3. Post-process raw data (if needed)
-            processed_raw = await self.post_process_raw_data(raw_data, url)
-
-            # 4. Build source-specific Pydantic model
-            source_model = self.build_source_model(processed_raw, url)
-
-            # 5. Map to canonical dictionary
-            canonical = self.map_to_canonical(source_model)
-
-            # 6. Persist if repository exists
-            if self.repository:
-                self.repository.save(canonical)
-
-        except Exception:
-            logger.exception(f"Failed to crawl {identifier}")
+        url = self.normalize_identifier(identifier)
+        raw_data = await self.fetch_raw_data(url)
+        if not raw_data:
             return None
-        else:
-            return canonical
+        processed_raw = await self.post_process_raw_data(raw_data, url)
+        canonical = self.map_to_canonical(self.build_source_model(processed_raw, url))
+        if self.repository:
+            self.repository.save(canonical)
+        return canonical
 
     @abstractmethod
     def get_extraction_schema(self) -> dict[str, Any]:
@@ -130,17 +116,15 @@ class BaseCrawler(Generic[T_Source, T_Canonical], ABC):  # noqa: UP046
 
     @abstractmethod
     async def fetch_raw_data(self, url: str) -> dict[str, Any] | None:
-        """Perform actual network fetching via ``self.transport``.
-
-        Implementations typically call ``self.transport.fetch_single`` or
-        ``self.transport.fetch_batch`` and return the raw result dict.
+        """Fetch the page and extract its raw data.
 
         Args:
             url: Canonical URL produced by ``normalize_identifier``.
 
         Returns:
-            Raw extraction dict from the transport layer, or ``None`` if the
-            fetch produced no usable data.
+            Raw extraction dict, or ``None`` only when the site says the page
+            does not exist. A failed fetch or extraction raises instead, so it
+            is never mistaken for a missing page.
         """
 
     async def post_process_raw_data(

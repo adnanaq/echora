@@ -17,7 +17,7 @@ from enrichment.sources.base.base_helper import (
     BaseEnrichmentHelper,
     normalize_enrichment_payload,
 )
-from enrichment.sources.base.exceptions import ServiceNotFoundError
+from enrichment.sources.base.exceptions import ServiceNetworkError, ServiceNotFoundError
 from enrichment.sources.base.framework.repository import FileRepository, NullRepository
 from http_cache import HTTPCacheManager, configure_cache
 
@@ -78,7 +78,13 @@ class KitsuHelper(BaseEnrichmentHelper):
             fetch_episodes: When False, skip episode fetching.
 
         Returns:
-            ``{"anime": dict, "episodes": list, "characters": list}`` or ``None`` on failure.
+            ``{"anime": dict, "episodes": list, "characters": list}``, or ``None``
+            when Kitsu has no such anime. An episode or character failure leaves
+            that list empty.
+
+        Raises:
+            ServiceNetworkError: If the anime request fails.
+            aiohttp.ClientError: If resolving a slug address fails.
         """
         kitsu_url = ids.get("kitsu_url")
         if not kitsu_url:
@@ -90,13 +96,7 @@ class KitsuHelper(BaseEnrichmentHelper):
         except ValueError:
             # Slug — resolve to numeric ID first
             logger.info(f"Resolving Kitsu slug '{raw_id}' to numeric ID...")
-            try:
-                data = await self._make_request(
-                    "/anime", params={"filter[slug]": raw_id}
-                )
-            except Exception:
-                logger.warning(f"Failed to resolve Kitsu slug: {raw_id}")
-                return None
+            data = await self._make_request("/anime", params={"filter[slug]": raw_id})
             if not data.get("data"):
                 logger.warning(f"No Kitsu anime found for slug: {raw_id}")
                 return None
@@ -104,76 +104,66 @@ class KitsuHelper(BaseEnrichmentHelper):
             logger.info(f"Resolved slug '{raw_id}' to ID {numeric_id}")
 
         logger.info(f"Fetching Kitsu data for: {numeric_id}")
-        try:
-            anime_path = (
-                os.path.join(temp_dir, "kitsu_anime.jsonl") if temp_dir else None
-            )
-            episodes_path = (
-                os.path.join(temp_dir, "kitsu_episodes.jsonl") if temp_dir else None
-            )
-            characters_path = (
-                os.path.join(temp_dir, "kitsu_characters.jsonl") if temp_dir else None
-            )
+        anime_path = os.path.join(temp_dir, "kitsu_anime.jsonl") if temp_dir else None
+        episodes_path = (
+            os.path.join(temp_dir, "kitsu_episodes.jsonl") if temp_dir else None
+        )
+        characters_path = (
+            os.path.join(temp_dir, "kitsu_characters.jsonl") if temp_dir else None
+        )
 
-            async with self._cache.get_aiohttp_session(
-                "kitsu", timeout=aiohttp.ClientTimeout(total=30)
-            ) as session:
-                # Fetch anime first: episode pages are addressed by the anime's slug.
-                fetched = await self._fetch_anime_with_slug(
-                    numeric_id, output_path=anime_path, session=session
+        async with self._cache.get_aiohttp_session(
+            "kitsu", timeout=aiohttp.ClientTimeout(total=30)
+        ) as session:
+            # Fetch anime first: episode pages are addressed by the anime's slug.
+            fetched = await self._fetch_anime_with_slug(
+                numeric_id, output_path=anime_path, session=session
+            )
+            if not fetched:
+                logger.warning(f"Kitsu returned no anime for ID {numeric_id}")
+                return None
+            canonical_anime, anime_slug = fetched
+
+            async def _empty() -> list:
+                return []
+
+            canonical_episodes, canonical_characters = await asyncio.gather(
+                self.fetch_episodes(
+                    numeric_id,
+                    anime_slug=anime_slug,
+                    output_path=episodes_path,
+                    session=session,
                 )
-
-                if not fetched:
-                    logger.warning(f"Kitsu returned no anime for ID {numeric_id}")
-                    return None
-
-                canonical_anime, anime_slug = fetched
-
-                async def _empty() -> list:
-                    return []
-
-                canonical_episodes, canonical_characters = await asyncio.gather(
-                    self.fetch_episodes(
-                        numeric_id,
-                        anime_slug=anime_slug,
-                        output_path=episodes_path,
-                        session=session,
-                    )
-                    if fetch_episodes
-                    else _empty(),
-                    self.fetch_characters(
-                        numeric_id, output_path=characters_path, session=session
-                    )
-                    if fetch_characters
-                    else _empty(),
-                    return_exceptions=True,
+                if fetch_episodes
+                else _empty(),
+                self.fetch_characters(
+                    numeric_id, output_path=characters_path, session=session
                 )
-
-            if isinstance(canonical_episodes, BaseException):
-                logger.error(
-                    f"Kitsu episodes fetch failed for ID {numeric_id}: {canonical_episodes}"
-                )
-                canonical_episodes = []
-            if isinstance(canonical_characters, BaseException):
-                logger.error(
-                    f"Kitsu characters fetch failed for ID {numeric_id}: {canonical_characters}"
-                )
-                canonical_characters = []
-            logger.info(f"Kitsu episodes fetched: {len(canonical_episodes)} episodes")
-            logger.info(
-                f"Kitsu characters fetched: {len(canonical_characters)} characters"
+                if fetch_characters
+                else _empty(),
+                return_exceptions=True,
             )
-        except Exception:
-            logger.exception(f"Kitsu fetch_all failed for ID {numeric_id}")
-            return None
-        else:
-            return normalize_enrichment_payload(
-                {
-                    "anime": canonical_anime,
-                    "episodes": canonical_episodes,
-                    "characters": canonical_characters,
-                }
+
+        if isinstance(canonical_episodes, BaseException):
+            logger.error(
+                f"Kitsu episodes fetch failed for ID {numeric_id}: {canonical_episodes}"
             )
+            canonical_episodes = []
+        if isinstance(canonical_characters, BaseException):
+            logger.error(
+                f"Kitsu characters fetch failed for ID {numeric_id}: "
+                f"{canonical_characters}"
+            )
+            canonical_characters = []
+        logger.info(f"Kitsu episodes fetched: {len(canonical_episodes)} episodes")
+        logger.info(f"Kitsu characters fetched: {len(canonical_characters)} characters")
+        return normalize_enrichment_payload(
+            {
+                "anime": canonical_anime,
+                "episodes": canonical_episodes,
+                "characters": canonical_characters,
+            }
+        )
 
     async def _make_request(
         self,
@@ -251,7 +241,10 @@ class KitsuHelper(BaseEnrichmentHelper):
             session: Optional aiohttp session to reuse across page requests.
 
         Returns:
-            All resource objects from the collection, or a partial list on error.
+            All resource objects from the collection.
+
+        Raises:
+            aiohttp.ClientError: If any page fails, so a list is never cut short.
         """
         items, _ = await self._paginate(endpoint, params=params, session=session)
         return items
@@ -272,36 +265,34 @@ class KitsuHelper(BaseEnrichmentHelper):
 
         Returns:
             Tuple of (all data items, all included items) across all pages.
+
+        Raises:
+            aiohttp.ClientError: If any page fails, so a list is never cut short.
         """
         all_items: list[dict[str, Any]] = []
         all_included: list[dict[str, Any]] = []
         page = 0
         base_params = dict(params or {})
-        try:
-            while True:
-                page_params = {
-                    **base_params,
-                    "page[limit]": _PAGE_SIZE,
-                    "page[offset]": page * _PAGE_SIZE,
-                }
-                response = await self._make_request(
-                    endpoint, page_params, session=session
-                )
-                if not response or "data" not in response:
-                    break
-                items = response["data"]
-                if not items:
-                    break
-                all_items.extend(items)
-                all_included.extend(response.get("included", []))
-                count = response.get("meta", {}).get("count", 0)
-                if len(all_items) >= count or len(items) < _PAGE_SIZE:
-                    break
-                page += 1
-                if not response.get("_from_cache", False):
-                    await asyncio.sleep(_INTER_PAGE_SLEEP_S)
-        except Exception:
-            logger.exception(f"Kitsu pagination failed for {endpoint}")
+        while True:
+            page_params = {
+                **base_params,
+                "page[limit]": _PAGE_SIZE,
+                "page[offset]": page * _PAGE_SIZE,
+            }
+            response = await self._make_request(endpoint, page_params, session=session)
+            if not response or "data" not in response:
+                break
+            items = response["data"]
+            if not items:
+                break
+            all_items.extend(items)
+            all_included.extend(response.get("included", []))
+            count = response.get("meta", {}).get("count", 0)
+            if len(all_items) >= count or len(items) < _PAGE_SIZE:
+                break
+            page += 1
+            if not response.get("_from_cache", False):
+                await asyncio.sleep(_INTER_PAGE_SLEEP_S)
         return all_items, all_included
 
     async def get_anime_by_id(
@@ -314,17 +305,17 @@ class KitsuHelper(BaseEnrichmentHelper):
             session: Optional aiohttp session to reuse.
 
         Returns:
-            Raw Kitsu anime ``data`` dict, or None if not found.
+            Raw Kitsu anime ``data`` dict, or None when Kitsu answers 404.
+
+        Raises:
+            aiohttp.ClientError: If the request fails for any other reason.
         """
         try:
             response = await self._make_request(f"/anime/{anime_id}", session=session)
-            return response.get("data") if response else None
         except ServiceNotFoundError:
             logger.warning(f"Kitsu anime not found: ID {anime_id}")
             return None
-        except aiohttp.ClientError:
-            logger.exception(f"Kitsu get_anime_by_id failed for ID {anime_id}")
-            return None
+        return response.get("data") if response else None
 
     async def get_anime_episodes(
         self, anime_id: int, *, session: Any | None = None
@@ -694,6 +685,14 @@ class KitsuHelper(BaseEnrichmentHelper):
         Returns:
             The canonical anime dict and the anime's slug, or ``None`` if the
             anime was not found.
+
+        The record is complete or not made: if the anime request or any of its
+        lists (genres, categories, companies, mappings) fails, nothing is
+        returned, so a page is never kept with links or details missing.
+
+        Raises:
+            ServiceNetworkError: If any of the anime's requests fails or is
+                cancelled.
         """
         logger.info(f"Fetching Kitsu anime for: {anime_id}")
         async with (
@@ -718,39 +717,28 @@ class KitsuHelper(BaseEnrichmentHelper):
                 return_exceptions=True,
             )
 
-        if not anime_raw or isinstance(anime_raw, BaseException):
+        anime_resource = _result_or_raise(anime_raw)
+        if not anime_resource:
             return None
 
-        genres: list[str] = []
-        if not isinstance(genre_raw, BaseException):
-            genres = [
-                name
-                for g in genre_raw
-                if (name := KitsuGenre.model_validate(g).attributes.name) is not None
-            ]
-
-        themes: list[ThemeEntry] = []
-        if not isinstance(category_raw, BaseException):
-            for c in category_raw:
-                cat = KitsuCategory.model_validate(c)
-                if cat.attributes.title:
-                    themes.append(
-                        ThemeEntry(
-                            name=cat.attributes.title,
-                            description=cat.attributes.description or None,
-                        )
-                    )
-
-        companies: list[KitsuProduction] = []
-        if isinstance(production_raw, list):
-            companies = production_raw
-
-        anime_model = KitsuAnime.model_validate(anime_raw)  # type: ignore[arg-type]
-        anime_model.genres = genres
-        anime_model.themes = themes
-        anime_model.companies = companies
-        if isinstance(mapping_raw, list):
-            anime_model.mappings = mapping_raw
+        anime_model = KitsuAnime.model_validate(anime_resource)
+        anime_model.genres = [
+            name
+            for genre in _result_or_raise(genre_raw)
+            if (name := KitsuGenre.model_validate(genre).attributes.name) is not None
+        ]
+        anime_model.themes = [
+            ThemeEntry(
+                name=category.attributes.title,
+                description=category.attributes.description or None,
+            )
+            for category in map(
+                KitsuCategory.model_validate, _result_or_raise(category_raw)
+            )
+            if category.attributes.title
+        ]
+        anime_model.companies = _result_or_raise(production_raw)
+        anime_model.mappings = _result_or_raise(mapping_raw)
         result = anime_from_kitsu(anime_model)
         logger.info(f"Kitsu anime fetched: {result.get('title', anime_id)}")
 
@@ -770,6 +758,20 @@ class KitsuHelper(BaseEnrichmentHelper):
     ) -> bool:
         """Return False (exceptions not suppressed)."""
         return False
+
+
+def _result_or_raise[Result](part: Result | BaseException) -> Result:
+    """Return one part of an anime record, or raise if fetching it failed.
+
+    The anime's requests run together and their errors come back as values;
+    a failed part fails the whole record, so it is never kept incomplete.
+
+    Raises:
+        ServiceNetworkError: If the part is the error its request raised.
+    """
+    if isinstance(part, BaseException):
+        raise ServiceNetworkError(service="kitsu", cause=part) from part
+    return part
 
 
 async def main() -> int:

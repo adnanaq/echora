@@ -19,6 +19,7 @@ from typing import Any, cast
 from urllib.parse import urlsplit, urlunsplit
 
 from enrichment.sources.base.browser import browser_session
+from enrichment.sources.base.exceptions import ServiceNetworkError, ServiceParseError
 from enrichment.sources.base.framework import (
     BaseCrawler,
     FileRepository,
@@ -675,7 +676,11 @@ async def _fetch_mal_anime_data(url: str) -> dict[str, Any] | None:
 
     Returns:
         Raw extraction dict with ``_url`` and ``_picture_urls`` keys populated,
-        or None if navigation or extraction fails.
+        or None when MAL shows its "not found" page.
+
+    Raises:
+        ServiceNetworkError: If the page does not load or has no HTML.
+        ServiceParseError: If the page loads but its data cannot be read.
     """
     async with browser_session(headless=True, allowed_site=MAL_DOMAIN) as session:
         browser = session.browser
@@ -687,12 +692,12 @@ async def _fetch_mal_anime_data(url: str) -> dict[str, Any] | None:
             final_url = main_page.url
             main_html = await main_page.get_content()
         except Exception as exc:
-            logger.warning(f"navigation failed for {url}: {exc}")
-            return None
+            raise ServiceNetworkError(
+                service="mal", cause=f"navigation failed for {url}: {exc}"
+            ) from exc
 
         if not main_html:
-            logger.warning(f"No HTML from MAL anime page: {url}")
-            return None
+            raise ServiceNetworkError(service="mal", cause=f"no HTML from {url}")
 
         if _NOT_FOUND_MARKER.search(main_html):
             logger.warning(f"MAL anime page not found: {url}")
@@ -700,8 +705,7 @@ async def _fetch_mal_anime_data(url: str) -> dict[str, Any] | None:
 
         raw = _extract_anime_from_html(main_html)
         if raw is None:
-            logger.warning(f"Failed to extract data from MAL anime page: {url}")
-            return None
+            raise ServiceParseError(service="mal", cause=f"no anime data in {url}")
 
         canonical_url = _clean_page_url(raw.get("canonical_url") or final_url or url)
         await asyncio.sleep(_INTER_REQUEST_DELAY)
