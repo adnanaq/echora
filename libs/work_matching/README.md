@@ -279,7 +279,7 @@ when every decision of it is one of these:
 | Decision | Places | Why it is enough |
 | -- | -- | -- |
 | `SAME_PAGE`, the entry listing the current address | The current page `entry`; the old address is dropped. | Both addresses are one page. |
-| `ONE_LINKED`, each other page naming exactly one seed entry whose year and type agree with the page's | The linked page `entry`, the others `other work`, joining that seed entry. | Each page has exactly one place, and its own details do not contradict it. |
+| `ONE_LINKED`, each other page naming exactly one seed entry that holds no page of the same provider and whose year and type agree with the page's | The linked page `entry`, the others `other work`, joining that seed entry. | Each page has exactly one place, the move adds no doubled provider, and the page's own details do not contradict it. |
 
 Every other entry goes to review as one case:
 

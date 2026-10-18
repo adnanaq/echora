@@ -123,10 +123,18 @@ async def fetch_pages(entries: list[WorkEntry], store_path: Path) -> FetchSummar
 def count_corrections(
     doubled_provider_corrections: DoubledProviderCorrections,
 ) -> dict[str, int]:
-    """Count the corrections by what happens to each page, and the review cases.
+    """Count what the corrections change, and how many review cases are open.
 
-    Pages that stay are counted only when they are named the main page, since
-    staying is otherwise no change.
+    Each correction that changes the seed is counted once, under one of these:
+
+    - an old address dropped, because the entry also lists the page's current
+      address;
+    - a page moved to another seed entry, or to a new entry;
+    - a page that stays in its entry but is its provider's main page, so it is
+      moved to the front of the entry's pages.
+
+    A page that stays in its entry and is not the main page changes nothing,
+    so it is not counted.
     """
     counts = {
         "pages kept as main page": 0,

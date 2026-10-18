@@ -165,6 +165,24 @@ def test_place_pages_without_review_moved_page_details_must_agree_with_target(
     assert (placements is not None) is is_placed
 
 
+def test_place_pages_without_review_target_holding_same_provider_gives_none(
+    linked_page, work_entry
+) -> None:
+    known_works = KnownWorksFromSeed(
+        [
+            {
+                "title": "Other",
+                "type": "TV",
+                "sources": [OTHER_MAL, "https://kitsu.app/anime/99"],
+            }
+        ]
+    )
+    entry = work_entry(MAL, KITSU_ONE, KITSU_TWO)
+    pages = [linked_page(KITSU_ONE, MAL), linked_page(KITSU_TWO, OTHER_MAL)]
+    decisions = decide_doubled_providers(entry, pages, known_works)
+    assert place_pages_without_review(entry, decisions, pages) is None
+
+
 def test_place_pages_without_review_current_page_not_listed_gives_none(
     work_entry,
 ) -> None:

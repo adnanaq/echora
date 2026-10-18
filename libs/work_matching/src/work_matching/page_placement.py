@@ -21,8 +21,8 @@ When the rules place an entry without a person:
 - Every decision must be one of two kinds. Either the provider's addresses are
   one renamed page and the entry lists its current address, or exactly one
   page is linked with the entry and each other page moves to another seed
-  entry: its links name exactly one seed entry, and its year and type agree
-  with that entry's.
+  entry: its links name exactly one seed entry, that entry holds no page of
+  the same provider, and its year and type agree with that entry's.
 - Anything else needs a person, for these reasons. A work that keeps two pages
   of one provider needs its main page named. A mixed entry needs every page
   placed, and some of its pages are linked with neither work. A page naming two
@@ -67,6 +67,8 @@ from work_matching.provider_page import ProviderPage, index_pages_by_current_key
 from work_matching.provider_page_key import get_page_provider, rank_by_provider_trust
 from work_matching.work_entry import WorkEntry, is_type_matching, is_year_matching
 
+# These words are written in review answers and in the corrections file, so
+# changing them would make kept answers invalid.
 ENTRY_WORK = "entry"
 OTHER_WORK = "other work"
 _MAIN_PAGE_MARK = ", main"
@@ -247,7 +249,7 @@ def _is_decision_settled(
         and len(decision.belonging_pages) == 1
         and all(
             _is_move_to_seed_entry_confirmed(
-                unrelated_page, pages_by_current_key.get(key)
+                key, unrelated_page, pages_by_current_key.get(key)
             )
             for key, unrelated_page in decision.unrelated_pages.items()
         )
@@ -255,20 +257,25 @@ def _is_decision_settled(
 
 
 def _is_move_to_seed_entry_confirmed(
-    unrelated_page: UnrelatedPage, page: ProviderPage | None
+    key: str, unrelated_page: UnrelatedPage, page: ProviderPage | None
 ) -> bool:
     """Report whether a page linking another work can move to that work's entry.
 
-    The page's links must name exactly one seed entry, and the page's year and
-    type must agree with that entry's. A link to a page outside the seed most
-    often points to a page the provider has since deleted, kept in a stale
-    mapping of a duplicate page, so it does not show another work. A year or
+    The page's links must name exactly one seed entry, that entry must hold no
+    page of the same provider, and the page's year and type must agree with
+    that entry's. A link to a page outside the seed most often points to a page
+    the provider has since deleted, kept in a stale mapping of a duplicate page,
+    so it does not show another work. A page of the same provider already there
+    would make the move a new doubled provider, which needs a person. A year or
     type that disagrees with the entry the link names shows the mapping itself
     may be wrong. Details only stop a move here; they never place a page.
     """
     if len(unrelated_page.other_works) != 1:
         return False
     [other_work] = unrelated_page.other_works
+    provider = get_page_provider(key)
+    if any(get_page_provider(other_key) == provider for other_key in other_work.pages):
+        return False
     # A page links another work only through its own fetched details, so it
     # has them; without them nothing confirms the move.
     return (
