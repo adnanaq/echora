@@ -27,6 +27,7 @@ from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Any, NamedTuple
 
 from enrichment.pipeline.api_fetcher import ApiFetcher
 from work_matching import (
@@ -39,15 +40,22 @@ from work_matching import (
 
 logger = logging.getLogger(__name__)
 
-# The enrichment id key for each provider with a helper; the helper's service
-# name is the id key without "_url".
-_ID_KEY_BY_PROVIDER = {
-    "mal": "mal_url",
-    "anilist": "anilist_url",
-    "kitsu": "kitsu_url",
-    "anidb": "anidb_url",
-    "animeplanet": "anime_planet_url",
-    "anisearch": "anisearch_url",
+
+class _Helper(NamedTuple):
+    """An enrichment helper: its ``ApiFetcher`` service name and the id key it reads."""
+
+    service: str
+    id_key: str
+
+
+# The helper for each provider that has one, by the provider's page key name.
+_HELPER_BY_PROVIDER = {
+    "mal": _Helper("mal", "mal_url"),
+    "anilist": _Helper("anilist", "anilist_url"),
+    "kitsu": _Helper("kitsu", "kitsu_url"),
+    "anidb": _Helper("anidb", "anidb_url"),
+    "animeplanet": _Helper("anime_planet", "anime_planet_url"),
+    "anisearch": _Helper("anisearch", "anisearch_url"),
 }
 # The providers AnimeSchedule is looked up through, in the order tried: the
 # AnimeSchedule helper finds an anime by these ids.
@@ -91,6 +99,15 @@ class _PageRequest:
         """Name the request in the summary: its page key, or its lookup."""
         key = provider_page_key(self.address)
         return f"{self.service} via {key}" if self.is_found_page_lookup else key
+
+
+@dataclass(frozen=True)
+class _RequestResult:
+    """What one request came to, with the error when it failed."""
+
+    outcome: FetchOutcome
+    request: _PageRequest
+    error: str | None = None
 
 
 class ProviderPageFetcher:
@@ -145,23 +162,23 @@ class ProviderPageFetcher:
                 for service, requests in requests_by_service.items()
             )
         ):
-            for outcome, request, error in queue_results:
-                outcomes[outcome] += 1
-                if error is not None:
-                    failed_pages[request.label] = error
+            for result in queue_results:
+                outcomes[result.outcome] += 1
+                if result.error is not None:
+                    failed_pages[result.request.label] = result.error
         return FetchSummary(outcomes=dict(outcomes), failed_pages=failed_pages)
 
     def _requests_for(self, entry: WorkEntry) -> list[_PageRequest | None]:
         """List the requests one entry needs; None for each one already done."""
         requests: list[_PageRequest | None] = []
         for key, address in entry.pages.items():
-            id_key = _ID_KEY_BY_PROVIDER.get(provider_of_key(key) or "")
-            if id_key is not None:
+            helper = _HELPER_BY_PROVIDER.get(provider_of_key(key) or "")
+            if helper is not None:
                 requests.append(
                     None
                     if key in self._store
                     else _PageRequest(
-                        id_key.removesuffix("_url"), id_key, address, entry.title
+                        helper.service, helper.id_key, address, entry.title
                     )
                 )
         for provider in _FOUND_PAGE_LOOKUP_PROVIDERS:
@@ -176,7 +193,7 @@ class ProviderPageFetcher:
                     if self._store.has_page_found_by(key)
                     else _PageRequest(
                         _FOUND_PAGE_SERVICE,
-                        _ID_KEY_BY_PROVIDER[provider],
+                        _HELPER_BY_PROVIDER[provider].id_key,
                         address,
                         entry.title,
                         is_found_page_lookup=True,
@@ -188,10 +205,10 @@ class ProviderPageFetcher:
 
     async def _run_queue(
         self, service: str, requests: Iterable[_PageRequest]
-    ) -> list[tuple[FetchOutcome, _PageRequest, str | None]]:
+    ) -> list[_RequestResult]:
         """Make one provider's requests one at a time, storing each page at once."""
         api_fetcher = self._new_api_fetcher()
-        results: list[tuple[FetchOutcome, _PageRequest, str | None]] = []
+        results: list[_RequestResult] = []
         for position, request in enumerate(requests):
             if request.is_found_page_lookup and position:
                 await asyncio.sleep(self._seconds_between_found_page_lookups)
@@ -205,14 +222,16 @@ class ProviderPageFetcher:
             if service in api_fetcher.api_errors:
                 error = api_fetcher.api_errors[service]
                 logger.warning(f"Page fetch failed, retried next run: {request.label}")
-                results.append((FetchOutcome.FAILED, request, error))
+                results.append(_RequestResult(FetchOutcome.FAILED, request, error))
                 continue
             record = (fetched.get(service) or {}).get("anime")
             outcome = self._store_page(request, record)
-            results.append((outcome, request, None))
+            results.append(_RequestResult(outcome, request))
         return results
 
-    def _store_page(self, request: _PageRequest, record: dict | None) -> FetchOutcome:
+    def _store_page(
+        self, request: _PageRequest, record: dict[str, Any] | None
+    ) -> FetchOutcome:
         """Store what one request returned, and say what it came to."""
         if request.is_found_page_lookup:
             if not record:

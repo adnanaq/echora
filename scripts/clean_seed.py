@@ -135,7 +135,10 @@ async def main() -> None:
 
     entries_by_reference = {
         entry.reference_page: entry
-        for entry in [*doubled, *(e for g in candidate_groups for e in g.entries)]
+        for entry in [
+            *doubled,
+            *(member for group in candidate_groups for member in group.entries),
+        ]
     }
     summary = await fetch_pages(
         list(entries_by_reference.values()),
