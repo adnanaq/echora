@@ -244,6 +244,37 @@ def test_build_corrected_entries_moved_page_leaves_entry_and_joins_seed_entry(
     ]
 
 
+def test_build_corrected_entries_page_moved_into_entry_corrected_itself_joins_corrected_entry(
+    store, review_file
+) -> None:
+    works = KnownWorksFromSeed(
+        [
+            _seed_entry("Show", MAL, KITSU_ONE, KITSU_TWO),
+            _seed_entry("Show Movie", TARGET_MAL, NEW_PLANET, OLD_PLANET),
+        ]
+    )
+    store.add_pages(
+        _page(KITSU_ONE, MAL),
+        _page(KITSU_TWO, TARGET_MAL),
+        _page(OLD_PLANET, sources=[OLD_PLANET, NEW_PLANET]),
+        _page(NEW_PLANET),
+    )
+    corrections = correct_doubled_provider_entries(
+        list(works), store, works, review_file
+    ).corrections
+    corrected = build_corrected_entries(corrections, works, store)
+    [target] = [
+        corrected_entry.entry
+        for corrected_entry in corrected
+        if corrected_entry.seed_entry_reference_page == "mal:anime:9"
+    ]
+    assert list(target.pages) == [
+        "mal:anime:9",
+        "animeplanet:anime:new-name",
+        "kitsu:anime:2",
+    ]
+
+
 def test_build_corrected_entries_renamed_old_address_dropped(
     store, review_file
 ) -> None:

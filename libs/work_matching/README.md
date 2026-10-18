@@ -269,7 +269,7 @@ answers are applied the same way:
 | Place | Means | Applied as |
 | -- | -- | -- |
 | `entry` | The page belongs to this entry. | It stays. |
-| `other work` | The page belongs to a work outside this entry. | It joins the seed entry its links name when they name exactly one; otherwise it starts a new entry. |
+| `other work` | The page belongs to a work outside this entry. | It joins the seed entry its links name when they name exactly one; otherwise it starts a new entry of its own, so two `other work` pages become two entries. Give pages of one new work the same `work N` instead. |
 | `work 2`, `work 3`… | The entry is mixed, and the page belongs to its second, third… work. | Pages with the same number form one new entry. One case covers the whole entry, so a number names the same work on every page. |
 | `, main` after `entry` or `work N` | The page enrichment fetches when a work keeps two or more pages of one provider. | It is listed first, since enrichment takes the first address of each provider. |
 

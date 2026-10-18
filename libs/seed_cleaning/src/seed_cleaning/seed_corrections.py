@@ -77,7 +77,7 @@ class SeedCorrection(BaseModel):
     reason: str
 
 
-class UnknownSeedEntryError(KeyError):
+class UnknownSeedEntryError(LookupError):
     """A correction names a seed entry the known works do not hold.
 
     Corrections are made from the same seed they are applied to, so this means
