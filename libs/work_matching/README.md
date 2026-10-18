@@ -24,9 +24,9 @@ imports nothing from `enrichment`.
 | **Mixed entry** | An entry whose pages cover more than one work. Puu-Neko holds the pages of both "Puu-Neko" and "Puu-Neko Shougekijou". |
 | **Duplicate page** | A provider having more than one page for the same work, such as Kitsu's "Yume Mitsuya" and "Yume Juuya" pages for one short. |
 | **Split work** | One work spread over several seed entries, such as "CUE!" (only its ANN page) and "Cue!" (every other page). |
-| **Renamed page** | A page whose address moved; the old address lands on the new one. Anime-Planet renames pages. The old and new address are one page. |
+| **Renamed page** | A page whose address changed; the old address redirects to the new one. Anime-Planet renames pages. The old and new address are one page. |
 | **Found page** | A page found through another provider's page rather than listed in the seed. AnimeSchedule is looked up by MAL, AniList or AniDB id. |
-| **Lookup page** | The page a found page was found through, recorded as `ProviderPage.found_by`. |
+| **Lookup page** | A page a found page was found through. `ProviderPage.found_by` lists every one: a found page can be reached through pages of several entries, such as both entries of a split work. |
 | **Dead page** | A page the provider no longer serves (`ProviderPage.dead`). |
 | **Multi-work page** | A page naming two or more pages of one provider, such as an anthology page linking several MAL pages. Its links prove nothing. |
 | **Review** | A decision the rules do not settle. A person (later the review agent) answers it. |
@@ -40,9 +40,9 @@ imports nothing from `enrichment`.
 | `comparable_title.py` | `comparable_title`: a title folded for comparison (case, punctuation, Latin accents, "2nd Season"). |
 | `known_works.py`, `known_works_from_seed.py` | The `KnownWorks` interface and its seed-backed lookup. |
 | `provider_page.py` | `ProviderPage`: what a provider says about one page, read from the canonical record its enrichment helper returns. `pages_by_current_key`: pages by the current key each resolves to. |
-| `provider_page_store.py` | `ProviderPageStore`: fetched pages kept in a JSON Lines file, so they outlive the 7-day HTTP cache. |
+| `provider_page_store.py` | `ProviderPageStore`: fetched pages kept in a JSON Lines file, so they outlive the 7-day HTTP cache. `has_page_found_by` tells whether a lookup through a page, such as AnimeSchedule's, was done. |
 | `provider_page_links.py` | `ProviderPageLinks`: which pages of a group are linked. |
-| `doubled_provider_check.py` | `decide_doubled_providers`: the decision for each doubled provider of an entry. |
+| `doubled_provider_check.py` | `decide_doubled_providers`: the decision for each doubled provider of an entry. `doubled_provider_pages`: an entry's doubled providers and their pages, the rule seed cleaning lists entries by. `decided_provider`: the provider a page's decision falls under, AnimeCountdown under Simkl. |
 | `split_work_check.py` | `decide_split_work`: whether separate entries are one split work. |
 | `review_cases.py` | `ReviewCase`: one decision left to a person, with its answer. `ReviewFile`: the review file, its answers kept across runs. |
 
@@ -70,7 +70,7 @@ flowchart TD
 2. **Fetch the pages.** The caller fetches each page through the enrichment helpers, with characters and episodes off, and builds a `ProviderPage` with `ProviderPage.from_canonical_record`. AnimeSchedule is looked up through the entry's MAL page (else AniList, else AniDB) and records that page as `found_by`. Pages are kept in a `ProviderPageStore`.
 3. **Link the pages.** `ProviderPageLinks` joins the candidate pages by their links, in both directions:
    * a renamed page resolves to its current key;
-   * a found page counts as its lookup page, so AnimeSchedule's links count for the MAL page it was found by, and its link back to that page is ignored;
+   * a found page counts as each of its lookup pages, so AnimeSchedule's links count for every page it was found through, and its link back to that page is ignored;
    * a link to a page of the same provider proves nothing and is ignored;
    * the links of a multi-work page are set aside.
 4. **Decide.** `decide_doubled_providers` decides each doubled provider of an entry, and `decide_split_work` decides whether candidate entries are one work.
@@ -131,7 +131,7 @@ flowchart TD
 | `ONE_LINKED` | one work | Exactly one page belongs. Every other page links a different work. | The linked page stays. The others leave the entry, and move to the other work's entry when that work is in the seed. | Buriki no Dance: Kitsu 48612 belongs; Kitsu 51023 links MAL 64943, which is the "Buriki no Dance (2026)" entry. |
 | `SHARED_LINK` | one work | Two or more pages belong, all linked through the same page of another provider, and they have the same year and type. | All of them stay: the provider lists this one work more than once, or splits into parts what another provider keeps as one. | Ao Haru Ride OVA: AniList 20837 and 20900 both link MAL 24151, which covers both episodes. |
 | `LINKED_APART` | mixed entry | Two or more pages belong, but each through different pages of other providers, with no page in common. | Each page is a separate work, together with the pages it is linked with; the entry mixes them and is split along the links. | Puu-Neko: MAL 10459 goes with AniList 10459 and Kitsu 6190; MAL 11589 with AniList 11589 and Kitsu 6543. |
-| `MULTI_WORK_LINK` | review | A page that names two or more pages of one provider, such as an anthology, links one of these pages. Such a link does not say which work it means. | A person decides. | An AnimeSchedule page found by MAL 37135 that also links MAL 55706 (Islay). |
+| `MULTI_WORK_LINK` | review | A page that names two or more pages of one provider, such as an anthology, links one of these pages. Such a link does not say which work it means. | A person decides. | An AniDB page for an anthology that links the MAL pages of two of its parts. |
 | `DEAD_PAGE` | review | One of the pages no longer exists on the provider's site, so its links cannot be read. | A person decides. | |
 | `CONTRADICTING_LINKS` | review | One page is linked with the entry and also links a different work, so its links disagree. | A person decides. | |
 | `UNDECIDED_PAGES` | review | At least one page has no link to the entry and no link to another work, so nothing says where it belongs. | A person decides. This is the most common review: ANN, LiveChart, Simkl, AnimeCountdown and Anime-Planet pages are rarely linked. | Ao Haru Ride OVA: Anime-Planet's "Unwritten" page. |
@@ -332,7 +332,7 @@ for decision in decide_doubled_providers(entry, pages, known_works):
 ```
 
 Pass the found pages too (such as the entry's AnimeSchedule pages): their links
-count for their lookup page.
+count for their lookup pages.
 
 Review decisions go to the review file, and kept answers come back:
 

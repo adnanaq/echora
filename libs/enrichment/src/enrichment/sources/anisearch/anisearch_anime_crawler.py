@@ -16,6 +16,7 @@ from enrichment.sources.anisearch.anisearch_anime_models import (
 )
 from enrichment.sources.anisearch.anisearch_http import fetch_anisearch_page
 from enrichment.sources.anisearch.anisearch_mapper import anime_from_anisearch
+from enrichment.sources.base.exceptions import ServiceParseError
 from enrichment.sources.base.framework import (
     BaseCrawler,
     FileRepository,
@@ -282,18 +283,25 @@ async def _fetch_anisearch_anime_data(canonical_path: str) -> dict[str, Any] | N
     ``anisearch_http``. Cached by canonical path;
     cache is automatically invalidated when any extraction function changes.
 
-    Returns the page text as a JSON-serializable dict for _build_anime_from_raw.
+    Returns the page text as a JSON-serializable dict for _build_anime_from_raw,
+    or None when AniSearch answers 404: the anime does not exist. A missing
+    relations page leaves the relations empty.
+
+    Raises:
+        ServiceNetworkError: If either page fails to load.
+        ServiceParseError: If the main page loads but its data cannot be read.
     """
     base_url = f"{BASE_ANIME_URL}{canonical_path}"
     main_page = await fetch_anisearch_page(base_url)
     if main_page is None:
-        logger.warning(f"No HTML from AniSearch main page: {base_url}")
+        logger.warning(f"AniSearch anime page not found: {base_url}")
         return None
 
     main_raw = _extract_anime_from_html(main_page.html)
     if main_raw is None:
-        logger.warning(f"Failed to extract data from AniSearch main page: {base_url}")
-        return None
+        raise ServiceParseError(
+            service="anisearch", cause=f"no anime data in {base_url}"
+        )
 
     final_url = main_page.url
     rels_page = await fetch_anisearch_page(

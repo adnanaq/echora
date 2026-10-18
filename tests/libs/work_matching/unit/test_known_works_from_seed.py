@@ -111,3 +111,14 @@ def test_known_works_from_seed_from_file_counts_every_entry(
 
 def test_known_works_from_seed_satisfies_known_works_lookup(seed_entries) -> None:
     assert isinstance(KnownWorksFromSeed(seed_entries), KnownWorks)
+
+
+def test_known_works_from_seed_iteration_gives_works_with_pages_in_seed_order() -> None:
+    works = KnownWorksFromSeed(
+        [
+            {"title": "First", "type": "TV", "sources": ["https://anilist.co/anime/1"]},
+            {"title": "No Pages", "type": "TV", "sources": []},
+            {"title": "Second", "type": "TV", "sources": ["https://kitsu.app/anime/2"]},
+        ]
+    )
+    assert [work.title for work in works] == ["First", "Second"]

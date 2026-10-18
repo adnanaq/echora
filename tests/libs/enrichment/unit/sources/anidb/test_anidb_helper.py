@@ -22,7 +22,11 @@ from enrichment.sources.anidb.anidb_models import (
     AniDBCharacter,
     AniDBEpisode,
 )
-from enrichment.sources.base.exceptions import ServiceBlockedError, ServiceNetworkError
+from enrichment.sources.base.exceptions import (
+    ServiceBlockedError,
+    ServiceNetworkError,
+    ServiceParseError,
+)
 from http_cache import HTTPCacheManager
 from http_cache.aiohttp_adapter import CachedAiohttpSession
 
@@ -155,13 +159,14 @@ async def test_make_single_request_gzipped_body_returns_text(helper, response) -
 
 
 @pytest.mark.parametrize("status", [503, 404])
-async def test_make_single_request_error_status_returns_none(
+async def test_make_single_request_error_status_raises_network_error(
     helper, response, status: int
 ) -> None:
     response.status = status
     await helper._ensure_session_health()
 
-    assert await helper._make_single_request({"aid": 69}, 0) is None
+    with pytest.raises(ServiceNetworkError, match=f"HTTP {status}"):
+        await helper._make_single_request({"aid": 69}, 0)
 
 
 @pytest.mark.parametrize(
@@ -180,13 +185,24 @@ async def test_make_single_request_ban_raises_blocked_and_latches_ban(
     assert helper._ban_remaining() > 0
 
 
-async def test_make_single_request_error_body_returns_none_without_ban(
+async def test_make_single_request_anime_not_found_returns_none_without_ban(
     helper, response
 ) -> None:
-    response.read.return_value = b'<error code="330">no such anime</error>'
+    response.read.return_value = b"<error>Anime not found</error>"
     await helper._ensure_session_health()
 
     assert await helper._make_single_request({"aid": 69}, 0) is None
+    assert helper._ban_remaining() == 0
+
+
+async def test_make_single_request_other_error_body_raises_network_error_without_ban(
+    helper, response
+) -> None:
+    response.read.return_value = b"<error>busy</error>"
+    await helper._ensure_session_health()
+
+    with pytest.raises(ServiceNetworkError, match="busy"):
+        await helper._make_single_request({"aid": 69}, 0)
     assert helper._ban_remaining() == 0
 
 
@@ -197,13 +213,14 @@ async def test_make_single_request_without_session_raises_runtime_error(
         await helper._make_single_request({"aid": 69}, 0)
 
 
-async def test_make_single_request_cache_only_miss_returns_none(
+async def test_make_single_request_cache_only_miss_raises_blocked_error(
     helper, session, response
 ) -> None:
     response.status = 504
     await helper._ensure_session_health()
 
-    assert await helper._make_single_request({"aid": 69}, 0, cache_only=True) is None
+    with pytest.raises(ServiceBlockedError, match="not cached"):
+        await helper._make_single_request({"aid": 69}, 0, cache_only=True)
     assert session.get.call_args.kwargs["headers"] == {
         "Cache-Control": "only-if-cached"
     }
@@ -252,14 +269,14 @@ async def test_make_request_with_retry_expired_ban_contacts_anidb(
     assert "headers" not in session.get.call_args.kwargs
 
 
-async def test_make_request_with_retry_error_bodies_retry_without_ban(
+async def test_make_request_with_retry_anime_not_found_returns_none_without_retry(
     helper, session, response, waits
 ) -> None:
-    response.read.return_value = b'<error code="330">no such anime</error>'
+    response.read.return_value = b"<error>Anime not found</error>"
 
     assert await helper._make_request_with_retry({"aid": 123}) is None
 
-    assert session.get.call_count == helper.max_retries + 1
+    assert session.get.call_count == 1
     assert helper._ban_remaining() == 0
 
 
@@ -294,7 +311,8 @@ async def test_make_request_with_retry_failures_carry_to_next_helper(
 ) -> None:
     response.read.return_value = b"<error>busy</error>"
 
-    await helper._make_request({"aid": 1})
+    with pytest.raises(ServiceNetworkError):
+        await helper._make_request({"aid": 1})
 
     assert _state.consecutive_failures == helper.max_retries + 1
 
@@ -443,10 +461,13 @@ async def test_fetch_xml_anime_request_returns_body(helper, session) -> None:
     assert _sent_params(session)[0]["aid"] == 69
 
 
-async def test_fetch_xml_network_failure_returns_none(cache, session, waits) -> None:
+async def test_fetch_xml_network_failure_raises_network_error(
+    cache, session, waits
+) -> None:
     session.get.side_effect = aiohttp.ClientError("connection refused")
 
-    assert await _helper(cache, anidb_max_retries=0)._fetch_xml(69) is None
+    with pytest.raises(ServiceNetworkError):
+        await _helper(cache, anidb_max_retries=0)._fetch_xml(69)
 
 
 async def test_fetch_anime_anime_page_returns_canonical_and_model(helper) -> None:
@@ -464,16 +485,26 @@ async def test_fetch_anime_address_without_anime_id_returns_nothing(
     assert session.get.call_count == 0
 
 
-@pytest.mark.parametrize("body", [b"<error>busy</error>", b"<not-valid-anime-xml>"])
-async def test_fetch_anime_unusable_response_returns_nothing(
-    cache, response, waits, body: bytes
-) -> None:
-    response.read.return_value = body
+async def test_fetch_anime_anime_not_found_returns_nothing(cache, response) -> None:
+    response.read.return_value = b"<error>Anime not found</error>"
 
-    assert await _helper(cache, anidb_max_retries=0)._fetch_anime(_ANIDB_URL) == (
-        None,
-        None,
-    )
+    assert await _helper(cache)._fetch_anime(_ANIDB_URL) == (None, None)
+
+
+async def test_fetch_anime_error_body_raises_network_error(
+    cache, response, waits
+) -> None:
+    response.read.return_value = b"<error>busy</error>"
+
+    with pytest.raises(ServiceNetworkError):
+        await _helper(cache, anidb_max_retries=0)._fetch_anime(_ANIDB_URL)
+
+
+async def test_fetch_anime_unreadable_xml_raises_parse_error(cache, response) -> None:
+    response.read.return_value = b"<not-valid-anime-xml>"
+
+    with pytest.raises(ServiceParseError):
+        await _helper(cache)._fetch_anime(_ANIDB_URL)
 
 
 async def test_fetch_anime_output_path_appends_canonical_anime(
@@ -558,15 +589,21 @@ async def test_fetch_all_without_anidb_url_returns_none(helper, session) -> None
     assert session.get.call_count == 0
 
 
-async def test_fetch_all_unusable_anime_returns_none(cache, response, waits) -> None:
+async def test_fetch_all_anime_not_found_returns_none(cache, response) -> None:
+    response.read.return_value = b"<error>Anime not found</error>"
+
+    assert await _helper(cache).fetch_all({"anidb_url": _ANIDB_URL}, {}) is None
+
+
+async def test_fetch_all_anime_request_failure_raises_network_error(
+    cache, response, waits
+) -> None:
     response.read.return_value = b"<error>busy</error>"
 
-    assert (
+    with pytest.raises(ServiceNetworkError):
         await _helper(cache, anidb_max_retries=0).fetch_all(
             {"anidb_url": _ANIDB_URL}, {}
         )
-        is None
-    )
 
 
 async def test_fetch_all_one_piece_returns_anime_episodes_and_characters(

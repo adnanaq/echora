@@ -10,6 +10,11 @@ crawler from getting its IP banned:
   every later one, without being sent. Nothing is retried. AniSearch, the site
   this was written for, answers a client it dislikes with 423 and then refuses
   every connection from that IP, so a retry only makes things worse.
+
+A missing page (HTTP 404) returns ``None``, and every other failure (another
+status, a dropped connection, no answer in time) raises ``ServiceNetworkError``.
+Callers tell a page that is gone from a fetch that failed, so seed cleaning
+records a page as dead only when the site said so.
 """
 
 import asyncio
@@ -20,7 +25,10 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 import aiohttp
-from enrichment.sources.base.exceptions import ServiceBlockedError
+from enrichment.sources.base.exceptions import (
+    ServiceBlockedError,
+    ServiceNetworkError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -70,11 +78,13 @@ class PoliteHttpClient:
             url: Page to fetch.
 
         Returns:
-            The page on HTTP 200, or ``None`` for any other answer that is not a
-            block (such as 404), a dropped connection or a timeout, with a log line.
+            The page on HTTP 200, or ``None`` when the site answers 404: the page
+            does not exist.
 
         Raises:
             ServiceBlockedError: If the site blocked this request or an earlier one.
+            ServiceNetworkError: For any other status, a dropped connection, or
+                no answer within ``timeout``. The site is not marked blocked.
         """
         self._raise_if_blocked()
         await self._wait_for_request_slot()
@@ -90,20 +100,24 @@ class PoliteHttpClient:
             ):
                 if response.status in BLOCK_STATUSES:
                     self._block(f"HTTP {response.status} for {url}")
-                if response.status != 200:
-                    logger.warning(f"{self.site}: HTTP {response.status} for {url}")
+                if response.status == 404:
+                    logger.warning(f"{self.site}: HTTP 404 for {url}")
                     return None
+                if response.status != 200:
+                    raise ServiceNetworkError(
+                        service=self.site, cause=f"HTTP {response.status} for {url}"
+                    )
                 return FetchedPage(url=str(response.url), html=await response.text())
         except aiohttp.ClientError as error:
             if isinstance(error, aiohttp.ClientConnectorError) and isinstance(
                 error.os_error, ConnectionRefusedError
             ):
                 self._block(f"connection refused for {url}")
-            logger.warning(f"{self.site}: request failed for {url}: {error}")
-            return None
-        except TimeoutError:
-            logger.warning(f"{self.site}: no answer within {self.timeout}s for {url}")
-            return None
+            raise ServiceNetworkError(service=self.site, cause=error) from error
+        except TimeoutError as error:
+            raise ServiceNetworkError(
+                service=self.site, cause=f"no answer within {self.timeout}s for {url}"
+            ) from error
 
     async def _wait_for_request_slot(self) -> None:
         loop = asyncio.get_running_loop()

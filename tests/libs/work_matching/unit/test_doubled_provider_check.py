@@ -6,6 +6,8 @@ from work_matching.doubled_provider_check import (
     Reason,
     UnrelatedPage,
     decide_doubled_providers,
+    decided_provider,
+    doubled_provider_pages,
 )
 from work_matching.known_works_from_seed import KnownWorksFromSeed
 from work_matching.provider_page import ProviderPage
@@ -482,3 +484,38 @@ def test_decide_doubled_providers_dead_page_and_contradicting_links_dead_page_wi
         ),
     ]
     assert _decisions(entry, pages)["kitsu"].reason is Reason.DEAD_PAGE
+
+
+@pytest.mark.parametrize(
+    ("key", "provider"),
+    [
+        ("animecountdown:anime:5", "simkl"),
+        ("simkl:anime:5", "simkl"),
+        ("mal:anime:1", "mal"),
+        ("https://example.com/anime/1", None),
+    ],
+)
+def test_decided_provider_animecountdown_counts_as_simkl(
+    key: str, provider: str | None
+) -> None:
+    assert decided_provider(key) == provider
+
+
+def test_doubled_provider_pages_provider_with_two_ids_listed() -> None:
+    assert doubled_provider_pages(["mal:anime:1", "kitsu:anime:1", "mal:anime:2"]) == {
+        "mal": ("mal:anime:1", "mal:anime:2")
+    }
+
+
+def test_doubled_provider_pages_simkl_and_animecountdown_same_number_not_doubled() -> (
+    None
+):
+    assert doubled_provider_pages(["simkl:anime:5", "animecountdown:anime:5"]) == {}
+
+
+def test_doubled_provider_pages_simkl_and_animecountdown_other_numbers_doubled() -> (
+    None
+):
+    assert doubled_provider_pages(["simkl:anime:5", "animecountdown:anime:6"]) == {
+        "simkl": ("simkl:anime:5", "animecountdown:anime:6")
+    }

@@ -4,7 +4,9 @@ python_sources(
         "//libs/common/src/common",
         "//libs/enrichment/src/enrichment",
         "//libs/qdrant_db/src/qdrant_db",
+        "//libs/seed_cleaning/src/seed_cleaning",
         "//libs/vector_processing/src/vector_processing",
+        "//libs/work_matching/src/work_matching",
         "//:reqs0#grpcio-tools",
     ],
     overrides={

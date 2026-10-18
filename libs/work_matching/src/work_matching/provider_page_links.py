@@ -12,7 +12,8 @@ Key rules from the work matching glossary:
 - Renamed pages: When a provider renames a page, its old address resolves to
   its current key.
 - Found pages: A found page (such as AnimeSchedule found by MAL ID) is credited
-  to its lookup page; its links count as links of that lookup page.
+  to each of its lookup pages: its links count as links of every lookup page,
+  except the link back to that lookup page, which only shows how it was found.
 - Multi-work pages: A page naming multiple pages from the same provider (e.g. an
   anthology) does not prove identity for any single work. Its links are set aside.
 """
@@ -29,7 +30,7 @@ class ProviderPageLinks:
     """Undirected graph of links between candidate pages of a work or entry.
 
     Renamed pages resolve to their current key, and found pages fold into their
-    lookup page. Multi-work pages (pages referencing multiple entries of one
+    lookup pages. Multi-work pages (pages referencing multiple entries of one
     provider) and same-provider links are excluded from matching links.
     """
 
@@ -45,43 +46,62 @@ class ProviderPageLinks:
         """
         fetched_pages = tuple(pages)
         self._renamed_keys = {
-            page.key: page.lands_on for page in fetched_pages if page.lands_on
+            page.key: page.renamed_to for page in fetched_pages if page.renamed_to
         }
         self._lookup_pages = {
-            page.key: self.same_page(page.found_by)
+            page.key: tuple(map(self.same_page, page.found_by))
             for page in fetched_pages
             if page.found_by
         }
         candidate_keys = set(
-            map(
-                self._current_key,
-                chain(page_keys, (page.key for page in fetched_pages)),
+            chain.from_iterable(
+                map(
+                    self._current_keys,
+                    chain(page_keys, (page.key for page in fetched_pages)),
+                )
             )
         )
         self._linked: defaultdict[str, set[str]] = defaultdict(set)
         self._linked_by_multi_work: defaultdict[str, set[str]] = defaultdict(set)
         for page in fetched_pages:
-            self._add_links(page, candidate_keys)
+            for source_key in self._current_keys(page.key):
+                self._add_links(page, source_key, candidate_keys)
 
     def same_page(self, key: str) -> str:
         """Return the current key a renamed page resolves to, or the key unchanged."""
         return self._renamed_keys.get(key, key)
 
     def linked_with(self, key: str) -> frozenset[str]:
-        """Return candidate pages linked with a page, in either direction."""
-        return frozenset(self._linked.get(self._current_key(key), ()))
+        """Return candidate pages linked with a page, in either direction.
+
+        A found page's key gives the pages linked with any of its lookup pages.
+        """
+        return frozenset(
+            chain.from_iterable(
+                self._linked.get(current_key, ())
+                for current_key in self._current_keys(key)
+            )
+        )
 
     def linked_by_multi_work_pages(self, key: str) -> frozenset[str]:
         """Return multi-work pages that linked to this page."""
-        return frozenset(self._linked_by_multi_work.get(self._current_key(key), ()))
+        return frozenset(
+            chain.from_iterable(
+                self._linked_by_multi_work.get(current_key, ())
+                for current_key in self._current_keys(key)
+            )
+        )
 
-    def _add_links(self, page: ProviderPage, candidate_keys: set[str]) -> None:
-        """Record one page's links within the candidate keys.
+    def _add_links(
+        self, page: ProviderPage, source_key: str, candidate_keys: set[str]
+    ) -> None:
+        """Record one page's links, as links of ``source_key``, within the candidates.
 
-        A multi-work page's links are set apart rather than recorded.
+        ``source_key`` is the page's current key, or for a found page one of its
+        lookup pages. A multi-work page's links are set apart rather than
+        recorded.
         """
-        source_key = self._current_key(page.key)
-        target_keys = {self._current_key(link) for link in page.links} - {source_key}
+        target_keys = {self.same_page(link) for link in page.links} - {source_key}
         referenced_keys = target_keys | {source_key} if page.found_by else target_keys
         if has_repeated_provider(referenced_keys):
             for target_key in target_keys & candidate_keys:
@@ -94,10 +114,10 @@ class ProviderPageLinks:
                 self._linked[source_key].add(target_key)
                 self._linked[target_key].add(source_key)
 
-    def _current_key(self, key: str) -> str:
-        """Return the current canonical key for a page key.
+    def _current_keys(self, key: str) -> tuple[str, ...]:
+        """Return the current keys a page key stands for.
 
-        A found page's links are credited to its lookup page, and a renamed
-        page resolves to its current key.
+        A found page stands for its lookup pages, and a renamed page resolves to
+        its current key.
         """
-        return self._lookup_pages.get(key) or self.same_page(key)
+        return self._lookup_pages.get(key) or (self.same_page(key),)

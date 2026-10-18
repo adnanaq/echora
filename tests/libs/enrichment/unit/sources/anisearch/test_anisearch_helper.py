@@ -4,7 +4,9 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from enrichment.sources.anisearch import anisearch_helper
 from enrichment.sources.anisearch.anisearch_helper import AniSearchHelper
+from enrichment.sources.base.exceptions import ServiceNetworkError
 
 _URL_WITH_SLUG = "https://www.anisearch.com/anime/18878,dan-da-dan"
 _URL_NO_SLUG = "https://www.anisearch.com/anime/18878"
@@ -88,12 +90,17 @@ async def test_fetch_anime_returns_none(mock_fetch, helper):
     assert result is None
 
 
-@pytest.mark.asyncio
-@patch("enrichment.sources.anisearch.anisearch_helper.fetch_anisearch_anime")
-async def test_fetch_anime_exception(mock_fetch, helper):
-    mock_fetch.side_effect = Exception("Crawler error")
-    result = await helper.fetch_anime(_URL_WITH_SLUG)
-    assert result is None
+async def test_fetch_anime_page_failure_raises(helper) -> None:
+    with (
+        patch.object(
+            anisearch_helper,
+            "fetch_anisearch_anime",
+            autospec=True,
+            side_effect=ServiceNetworkError(service="anisearch", cause="HTTP 500"),
+        ),
+        pytest.raises(ServiceNetworkError),
+    ):
+        await helper.fetch_anime(_URL_WITH_SLUG)
 
 
 # ── fetch_episodes ────────────────────────────────────────────────────────────
@@ -396,12 +403,17 @@ async def test_fetch_all_character_refs_empty(
     assert result["characters"] == []
 
 
-@pytest.mark.asyncio
-@patch("enrichment.sources.anisearch.anisearch_helper.fetch_anisearch_anime")
-async def test_fetch_all_anime_exception(mock_anime, helper):
-    mock_anime.side_effect = Exception("General error")
-    result = await helper.fetch_all({"anisearch_url": _URL_WITH_SLUG}, {})
-    assert result is None
+async def test_fetch_all_anime_page_failure_raises(helper) -> None:
+    with (
+        patch.object(
+            anisearch_helper,
+            "fetch_anisearch_anime",
+            autospec=True,
+            side_effect=ServiceNetworkError(service="anisearch", cause="HTTP 500"),
+        ),
+        pytest.raises(ServiceNetworkError),
+    ):
+        await helper.fetch_all({"anisearch_url": _URL_WITH_SLUG}, {})
 
 
 @pytest.mark.asyncio

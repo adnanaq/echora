@@ -51,7 +51,7 @@ def test_provider_page_store_creates_missing_folder(tmp_path) -> None:
     assert path.exists()
 
 
-def test_provider_page_store_unfinished_last_line_left_until_next_add(tmp_path) -> None:
+def test_provider_page_store_partial_last_line_left_until_next_add(tmp_path) -> None:
     path = tmp_path / "pages.jsonl"
     page = _page(MAL, "One Piece")
     ProviderPageStore(path).add_pages(page)
@@ -79,3 +79,51 @@ def test_provider_page_store_add_pages_without_pages_creates_no_file(tmp_path) -
     path = tmp_path / "pages.jsonl"
     ProviderPageStore(path).add_pages()
     assert not path.exists()
+
+
+def test_provider_page_store_has_page_found_by_lookup_page_after_add(tmp_path) -> None:
+    store = ProviderPageStore(tmp_path / "pages.jsonl")
+    store.add_pages(
+        ProviderPage.from_canonical_record(
+            "https://animeschedule.net/anime/one-piece",
+            {"title": "One Piece"},
+            found_by=MAL,
+        )
+    )
+    assert store.has_page_found_by("mal:anime:21")
+    assert not store.has_page_found_by("kitsu:anime:12")
+
+
+def test_provider_page_store_found_page_added_through_second_lookup_keeps_both(
+    tmp_path,
+) -> None:
+    path = tmp_path / "pages.jsonl"
+    record = {"title": "Ranma", "sources": [MAL, "https://anilist.co/anime/210"]}
+    store = ProviderPageStore(path)
+    for lookup_address in (MAL, "https://anilist.co/anime/210"):
+        store.add_pages(
+            ProviderPage.from_canonical_record(
+                "https://animeschedule.net/anime/ranma", record, found_by=lookup_address
+            )
+        )
+    reopened = ProviderPageStore(path).get_page("https://animeschedule.net/anime/ranma")
+    assert reopened is not None
+    assert reopened.found_by == ("anilist:anime:210", "mal:anime:21")
+
+
+def test_provider_page_store_found_page_added_twice_in_one_call_keeps_both_lookups(
+    tmp_path,
+) -> None:
+    path = tmp_path / "pages.jsonl"
+    record = {"title": "Ranma", "sources": [MAL, "https://anilist.co/anime/210"]}
+    ProviderPageStore(path).add_pages(
+        *(
+            ProviderPage.from_canonical_record(
+                "https://animeschedule.net/anime/ranma", record, found_by=lookup_address
+            )
+            for lookup_address in (MAL, "https://anilist.co/anime/210")
+        )
+    )
+    reopened = ProviderPageStore(path).get_page("https://animeschedule.net/anime/ranma")
+    assert reopened is not None
+    assert reopened.found_by == ("anilist:anime:210", "mal:anime:21")

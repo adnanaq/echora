@@ -30,7 +30,7 @@ from enrichment.sources.anisearch.anisearch_character_crawler import (
     fetch_anisearch_character,
     fetch_anisearch_characters,
 )
-from enrichment.sources.base.exceptions import ServiceBlockedError
+from enrichment.sources.base.exceptions import ServiceBlockedError, ServiceNetworkError
 from enrichment.sources.base.framework import NullRepository
 from enrichment.sources.base.polite_http import FetchedPage
 
@@ -658,6 +658,30 @@ async def test_fetch_anisearch_characters_detail_unusable_stays_none_without_lis
 
     assert results == [None]
     assert site.requested == [_LUFFY_URL]
+
+
+@pytest.mark.usefixtures("cache_off")
+async def test_fetch_anisearch_characters_failed_page_skipped_and_batch_continues(
+    luffy_site: FakeAniSearch,
+) -> None:
+    zoro_url = "https://www.anisearch.com/character/4853,roronoa-zoro"
+
+    async def fail_on_zoro(url: str) -> FetchedPage | None:
+        if url.startswith(zoro_url):
+            raise ServiceNetworkError(service="anisearch", cause="HTTP 500")
+        return await luffy_site.fetch(url)
+
+    with patch.object(
+        crawler_module, "fetch_anisearch_page", autospec=True, side_effect=fail_on_zoro
+    ):
+        results = await fetch_anisearch_characters(
+            [{"url": zoro_url}, {"url": _LUFFY_URL}]
+        )
+
+    assert [result and result["name"] for result in results] == [
+        None,
+        "Monkey D. Luffy",
+    ]
 
 
 @pytest.mark.usefixtures("cache_off")

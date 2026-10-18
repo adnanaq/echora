@@ -37,6 +37,7 @@ dependencies = [
     "numpy>=2.5.3",
     "langdetect>=1.0.9",
     "lxml>=5.0.0",
+    "networkx>=3.7", # UnionFind for grouping seed entries that may be one work
     # "dghs-imgutils>=0.19.0",
     "defusedxml>=0.7.1",
     "grpcio==1.84.0",
@@ -126,11 +127,13 @@ extra-paths = [
     "libs/enrichment/src",
     "libs/http_cache/src",
     "libs/qdrant_db/src",
+    "libs/seed_cleaning/src",
     "libs/vector_db_interface/src",
     "libs/vector_processing/src",
     "libs/work_matching/src",
     "apps/enrichment_service/src",
     "apps/vector_service/src",
+    "scripts",  # Script tests import scripts as top-level modules
     "stubs",  # Custom third-party type stubs
 ]
 

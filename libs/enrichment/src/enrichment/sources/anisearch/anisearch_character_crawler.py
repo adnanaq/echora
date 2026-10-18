@@ -24,6 +24,7 @@ from enrichment.sources.anisearch.anisearch_anime_models import (
 )
 from enrichment.sources.anisearch.anisearch_http import fetch_anisearch_page
 from enrichment.sources.anisearch.anisearch_mapper import character_from_anisearch
+from enrichment.sources.base.exceptions import ServiceNetworkError
 from enrichment.sources.base.framework import (
     BaseCrawler,
     FileRepository,
@@ -512,6 +513,43 @@ async def fetch_anisearch_character(
     )
 
 
+async def _batch_character(
+    url: str, ref: dict[str, str], cached_raw: dict[str, Any] | None
+) -> dict[str, Any] | None:
+    """Build one character of a batch from its cached data or its fetched pages.
+
+    Args:
+        url: The character page address.
+        ref: The character's ref, holding its role and anime page.
+        cached_raw: The character's cached page data, or None when not cached.
+
+    Returns:
+        The canonical character, or None when its page is missing or unreadable.
+
+    Raises:
+        ServiceNetworkError: If one of the character's pages fails to load.
+    """
+    raw = cached_raw
+    if raw is None:
+        html = await _fetch_page_html(url)
+        extracted = _extract_character_from_html(html) if html else None
+        raw = _post_process_character(extracted) if extracted else None
+        await _fetch_anisearch_character_data.cache_batch_set([url], [raw])  # type: ignore[attr-defined]
+    if raw is None:
+        return None
+    return character_from_anisearch(
+        _build_character_from_raw(
+            raw,
+            url,
+            role=ref.get("role"),
+            # Absent from refs cached before anime_url was carried through.
+            anime_url=ref.get("anime_url"),
+            anime_ography=await _fetch_character_ography_data(f"{url}/anime"),
+            manga_ography=await _fetch_character_ography_data(f"{url}/manga"),
+        )
+    )
+
+
 async def fetch_anisearch_characters(
     refs: list[dict[str, str]],
     *,
@@ -531,7 +569,8 @@ async def fetch_anisearch_characters(
             JSONL line to this file as it completes.
 
     Returns:
-        List aligned to refs — None for any failed fetch.
+        List aligned to refs — None for a character whose page is missing,
+        unreadable or failed to load; a failure skips only that character.
 
     Raises:
         ServiceBlockedError: If AniSearch blocks a request during the batch.
@@ -553,28 +592,15 @@ async def fetch_anisearch_characters(
     missing_set = set(missing_indices)
     succeeded = 0
 
-    for i, url in enumerate(urls):
-        if i not in missing_set:
-            raw = cached_values[i]
-        else:
-            html = await _fetch_page_html(url)
-            extracted = _extract_character_from_html(html) if html else None
-            raw = _post_process_character(extracted) if extracted else None
-            await _fetch_anisearch_character_data.cache_batch_set([url], [raw])  # type: ignore[attr-defined]
-        if raw is None:
+    for i, (url, ref) in enumerate(zip(urls, refs, strict=True)):
+        cached_raw = None if i in missing_set else cached_values[i]
+        try:
+            canonical = await _batch_character(url, ref, cached_raw)
+        except ServiceNetworkError as error:
+            logger.warning(f"AniSearch character skipped, its page failed: {error}")
             continue
-
-        canonical = character_from_anisearch(
-            _build_character_from_raw(
-                raw,
-                url,
-                role=refs[i].get("role"),
-                # Absent from refs cached before anime_url was carried through.
-                anime_url=refs[i].get("anime_url"),
-                anime_ography=await _fetch_character_ography_data(f"{url}/anime"),
-                manga_ography=await _fetch_character_ography_data(f"{url}/manga"),
-            )
-        )
+        if canonical is None:
+            continue
         characters[i] = canonical
         repo.save(canonical)
         succeeded += 1

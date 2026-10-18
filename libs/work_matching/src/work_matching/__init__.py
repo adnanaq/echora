@@ -11,6 +11,8 @@ from work_matching.doubled_provider_check import (
     Reason,
     UnrelatedPage,
     decide_doubled_providers,
+    decided_provider,
+    doubled_provider_pages,
 )
 from work_matching.known_works import KnownWorks
 from work_matching.known_works_from_seed import KnownWorksFromSeed
@@ -44,7 +46,9 @@ __all__ = [
     "WorkEntry",
     "comparable_title",
     "decide_doubled_providers",
+    "decided_provider",
     "decide_split_work",
+    "doubled_provider_pages",
     "pages_by_current_key",
     "provider_of_key",
     "provider_page_key",

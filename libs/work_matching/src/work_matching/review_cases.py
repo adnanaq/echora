@@ -290,7 +290,7 @@ def _page_details(
     return tuple(
         page
         for key, page in sorted(pages_by_current_key(pages).items())
-        if {key, page.key, page.found_by} & page_keys
+        if {key, page.key, *page.found_by} & page_keys
     )
 
 

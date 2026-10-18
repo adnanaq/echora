@@ -11,7 +11,7 @@ from unittest.mock import Mock, create_autospec, patch
 import aiohttp
 import pytest
 import yarl
-from enrichment.sources.base.exceptions import ServiceNotFoundError
+from enrichment.sources.base.exceptions import ServiceNetworkError, ServiceNotFoundError
 from enrichment.sources.kitsu import kitsu_helper
 from enrichment.sources.kitsu.kitsu_helper import KitsuHelper, main
 from http_cache import get_cache
@@ -235,9 +235,7 @@ async def test_paginate_response_without_data_stops_with_nothing(kitsu_api) -> N
     assert await KitsuHelper(get_cache())._paginate("/anime/12/episodes") == ([], [])
 
 
-async def test_paginate_failed_later_page_returns_items_collected_so_far(
-    kitsu_api,
-) -> None:
+async def test_paginate_failed_later_page_raises(kitsu_api) -> None:
     first_page = [{"id": str(number)} for number in range(20)]
     kitsu_api.routes["/anime/12/episodes"] = Collection(first_page + [{"id": "20"}])
 
@@ -247,8 +245,8 @@ async def test_paginate_failed_later_page_returns_items_collected_so_far(
         return _serve(kitsu_api.routes, url, request["params"])
 
     kitsu_api.session.get.side_effect = serve_first_page_only
-    items, _ = await KitsuHelper(get_cache())._paginate("/anime/12/episodes")
-    assert items == first_page
+    with pytest.raises(aiohttp.ClientResponseError):
+        await KitsuHelper(get_cache())._paginate("/anime/12/episodes")
 
 
 async def test_get_anime_by_id_existing_anime_returns_resource(kitsu_api) -> None:
@@ -260,9 +258,10 @@ async def test_get_anime_by_id_missing_anime_returns_none(kitsu_api) -> None:
     assert await KitsuHelper(get_cache()).get_anime_by_id(99999) is None
 
 
-async def test_get_anime_by_id_server_error_returns_none(kitsu_api) -> None:
+async def test_get_anime_by_id_server_error_raises(kitsu_api) -> None:
     kitsu_api.routes["/anime/99999"] = 503
-    assert await KitsuHelper(get_cache()).get_anime_by_id(99999) is None
+    with pytest.raises(aiohttp.ClientResponseError):
+        await KitsuHelper(get_cache()).get_anime_by_id(99999)
 
 
 async def test_get_anime_episodes_returns_every_item_across_pages(kitsu_api) -> None:
@@ -434,27 +433,37 @@ async def test_fetch_anime_missing_anime_returns_none(kitsu_api) -> None:
     assert await KitsuHelper(get_cache()).fetch_anime(12) is None
 
 
-async def test_fetch_anime_cancelled_anime_request_returns_none(kitsu_api) -> None:
-    _one_piece_routes(kitsu_api.routes)
-    kitsu_api.routes["/anime/12"] = asyncio.CancelledError()
-    assert await KitsuHelper(get_cache()).fetch_anime(12) is None
-
-
-async def test_fetch_anime_cancelled_detail_requests_give_anime_without_those_details(
-    kitsu_api,
+@pytest.mark.parametrize(
+    "failure", [503, asyncio.CancelledError()], ids=["server_error", "cancelled"]
+)
+async def test_fetch_anime_failed_anime_request_raises_network_error(
+    kitsu_api, failure: int | BaseException
 ) -> None:
     _one_piece_routes(kitsu_api.routes)
-    for path in (
+    kitsu_api.routes["/anime/12"] = failure
+    with pytest.raises(ServiceNetworkError):
+        await KitsuHelper(get_cache()).fetch_anime(12)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
         "/anime/12/genres",
         "/anime/12/categories",
         "/anime/12/anime-productions",
         "/anime/12/mappings",
-    ):
-        kitsu_api.routes[path] = asyncio.CancelledError()
-    anime = await KitsuHelper(get_cache()).fetch_anime(12)
-    assert anime["title"] == "One Piece"
-    assert (anime["genres"], anime["themes"], anime["companies"]) == ([], [], [])
-    assert anime["external_sources"] == []
+    ],
+)
+@pytest.mark.parametrize(
+    "failure", [500, asyncio.CancelledError()], ids=["server_error", "cancelled"]
+)
+async def test_fetch_anime_failed_detail_request_raises_network_error(
+    kitsu_api, path: str, failure: int | BaseException
+) -> None:
+    _one_piece_routes(kitsu_api.routes)
+    kitsu_api.routes[path] = failure
+    with pytest.raises(ServiceNetworkError):
+        await KitsuHelper(get_cache()).fetch_anime(12)
 
 
 async def test_get_anime_mappings_returns_every_mapping_as_stated(kitsu_api) -> None:
@@ -646,14 +655,21 @@ async def test_fetch_all_unknown_slug_returns_none(kitsu_api) -> None:
     )
 
 
-async def test_fetch_all_slug_lookup_failure_returns_none(kitsu_api) -> None:
+async def test_fetch_all_slug_lookup_failure_raises(kitsu_api) -> None:
     kitsu_api.routes["/anime?filter[slug]=one-piece"] = 503
-    assert (
+    with pytest.raises(aiohttp.ClientResponseError):
         await KitsuHelper(get_cache()).fetch_all(
             {"kitsu_url": "https://kitsu.app/anime/one-piece"}, {}
         )
-        is None
-    )
+
+
+async def test_fetch_all_anime_request_failure_raises_network_error(kitsu_api) -> None:
+    _one_piece_routes(kitsu_api.routes)
+    kitsu_api.routes["/anime/12"] = 503
+    with pytest.raises(ServiceNetworkError):
+        await KitsuHelper(get_cache()).fetch_all(
+            {"kitsu_url": "https://kitsu.app/anime/12"}, {}
+        )
 
 
 async def test_fetch_all_without_kitsu_link_returns_none(kitsu_api) -> None:
@@ -708,14 +724,12 @@ async def test_fetch_all_failed_character_fetch_gives_empty_characters(
     assert [episode["title"] for episode in result["episodes"]] == ["Ep 1"]
 
 
-async def test_fetch_all_session_failure_returns_none(kitsu_api) -> None:
+async def test_fetch_all_session_failure_raises(kitsu_api) -> None:
     kitsu_api.get_session.side_effect = RuntimeError("session failed")
-    assert (
+    with pytest.raises(RuntimeError, match="session failed"):
         await KitsuHelper(get_cache()).fetch_all(
             {"kitsu_url": "https://kitsu.app/anime/12"}, {}
         )
-        is None
-    )
 
 
 async def test_fetch_all_episodes_and_characters_turned_off_fetches_neither(

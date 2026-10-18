@@ -17,7 +17,9 @@ from work_matching.provider_page_key import provider_of_key, provider_page_key
 class ProviderPage(BaseModel):
     """What one provider says about one of its pages."""
 
-    model_config = ConfigDict(frozen=True)
+    # Unknown keys are rejected: a stored page written under an old field name
+    # would otherwise load with that field silently empty.
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     key: str
     address: str
@@ -29,14 +31,15 @@ class ProviderPage(BaseModel):
     # Keys of other providers' pages this page links to, sorted. Shared
     # websites are left out: two different works can share an official site.
     links: tuple[str, ...] = ()
-    # The key the address lands on when the provider renamed the page. A record
-    # lists other providers' pages and its own page, so a second page of its own
-    # provider is the page's new address; on the fetched pages this is so only
-    # for Anime-Planet renames.
-    lands_on: str | None = None
-    # The key of the lookup page, when this is a found page: AnimeSchedule is
-    # found by MAL id. A link back to it is no evidence, so it is not a link.
-    found_by: str | None = None
+    # The key the address was renamed to. A record lists other providers' pages
+    # and its own page, so a second page of its own provider is the page's new
+    # address; on the fetched pages this is so only for Anime-Planet renames.
+    renamed_to: str | None = None
+    # The keys of the lookup pages this found page was found through, sorted:
+    # AnimeSchedule is found by MAL id. One found page can be reached through
+    # pages of several entries, such as both entries of a split work, so every
+    # lookup page is kept. Empty for a page the seed lists itself.
+    found_by: tuple[str, ...] = ()
     dead: bool = False
 
     @classmethod
@@ -53,15 +56,14 @@ class ProviderPage(BaseModel):
 
         Returns:
             The page's titles, type, year, season, links to other providers'
-            pages, and the page it lands on when it was renamed.
+            pages, and the key the page was renamed to, if it was renamed.
         """
         key = provider_page_key(address)
         own_provider = provider_of_key(key)
-        found_by_key = _optional_key(found_by)
         linked = {
             provider_page_key(linked_address)
             for linked_address in _linked_addresses(record)
-        } - {found_by_key}
+        }
         renamed = sorted(
             linked_key
             for linked_key in linked - {key}
@@ -81,8 +83,8 @@ class ProviderPage(BaseModel):
                     if provider_of_key(linked_key) not in (None, own_provider)
                 )
             ),
-            lands_on=renamed[0] if renamed else None,
-            found_by=found_by_key,
+            renamed_to=renamed[0] if renamed else None,
+            found_by=_lookup_keys(found_by),
         )
 
     @classmethod
@@ -92,14 +94,14 @@ class ProviderPage(BaseModel):
             key=provider_page_key(address),
             address=address,
             dead=True,
-            found_by=_optional_key(found_by),
+            found_by=_lookup_keys(found_by),
         )
 
 
 def pages_by_current_key(pages: Iterable[ProviderPage]) -> dict[str, ProviderPage]:
     """Index pages by the current key each resolves to.
 
-    A renamed page resolves to the key it lands on, unless the page was also
+    A renamed page resolves to the key it was renamed to, unless the page was also
     fetched at that key.
 
     Args:
@@ -110,15 +112,15 @@ def pages_by_current_key(pages: Iterable[ProviderPage]) -> dict[str, ProviderPag
     """
     pages_by_key: dict[str, ProviderPage] = {}
     for page in pages:
-        key = page.lands_on or page.key
+        key = page.renamed_to or page.key
         if key not in pages_by_key or page.key == key:
             pages_by_key[key] = page
     return pages_by_key
 
 
-def _optional_key(address: str | None) -> str | None:
-    """Return the page key of an address, or None when there is no address."""
-    return provider_page_key(address) if address else None
+def _lookup_keys(found_by: str | None) -> tuple[str, ...]:
+    """Return the lookup page's key as ``found_by`` holds it; empty without one."""
+    return (provider_page_key(found_by),) if found_by else ()
 
 
 def _record_titles(record: dict[str, Any]) -> Iterator[str]:

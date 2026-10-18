@@ -1,0 +1,290 @@
+{
+ "$schema": "https://raw.githubusercontent.com/cedya77/anime-offline-database/refs/tags/2026-40/schemas/anime-offline-database-minified.schema.json",
+ "data": [
+  {
+   "sources": [
+    "https://anilist.co/anime/120516",
+    "https://anilist.co/anime/120517"
+   ],
+   "title": "Boku Dake no Rock Star",
+   "type": "SPECIAL",
+   "episodes": 1,
+   "status": "FINISHED",
+   "animeSeason": {
+    "season": "UNDEFINED",
+    "year": 2014
+   }
+  },
+  {
+   "sources": [
+    "https://animenewsnetwork.com/encyclopedia/anime.php?id=24629"
+   ],
+   "title": "CUE!",
+   "type": "TV",
+   "episodes": 0,
+   "status": "FINISHED",
+   "animeSeason": {
+    "season": "WINTER",
+    "year": 2022
+   }
+  },
+  {
+   "sources": [
+    "https://anidb.net/anime/15827",
+    "https://anilist.co/anime/125682",
+    "https://anime-planet.com/anime/cue",
+    "https://animecountdown.com/1467793",
+    "https://anisearch.com/anime/15712",
+    "https://kitsu.app/anime/44979",
+    "https://livechart.me/anime/10202",
+    "https://myanimelist.net/anime/43735",
+    "https://simkl.com/anime/1467793"
+   ],
+   "title": "Cue!",
+   "type": "TV",
+   "episodes": 24,
+   "status": "FINISHED",
+   "animeSeason": {
+    "season": "WINTER",
+    "year": 2022
+   }
+  },
+  {
+   "sources": [
+    "https://anilist.co/anime/1802",
+    "https://animenewsnetwork.com/encyclopedia/anime.php?id=535",
+    "https://kitsu.app/anime/1621",
+    "https://livechart.me/anime/7825",
+    "https://myanimelist.net/anime/1802"
+   ],
+   "title": "Dirty Pair Flash",
+   "type": "OVA",
+   "episodes": 6,
+   "status": "FINISHED",
+   "animeSeason": {
+    "season": "WINTER",
+    "year": 1994
+   }
+  },
+  {
+   "sources": [
+    "https://anidb.net/anime/402",
+    "https://anime-planet.com/anime/dirty-pair-flash",
+    "https://animecountdown.com/36056",
+    "https://animenewsnetwork.com/encyclopedia/anime.php?id=261",
+    "https://anisearch.com/anime/1296",
+    "https://simkl.com/anime/36056"
+   ],
+   "title": "Dirty Pair Flash",
+   "type": "OVA",
+   "episodes": 16,
+   "status": "FINISHED",
+   "animeSeason": {
+    "season": "WINTER",
+    "year": 1994
+   }
+  },
+  {
+   "sources": [
+    "https://animenewsnetwork.com/encyclopedia/anime.php?id=40572"
+   ],
+   "title": "Gelpiyo",
+   "type": "TV",
+   "episodes": 0,
+   "status": "UPCOMING",
+   "animeSeason": {
+    "season": "FALL",
+    "year": 2026
+   }
+  },
+  {
+   "sources": [
+    "https://anidb.net/anime/19788",
+    "https://anilist.co/anime/204698",
+    "https://animecountdown.com/2975266",
+    "https://animenewsnetwork.com/encyclopedia/anime.php?id=38179",
+    "https://anisearch.com/anime/21140",
+    "https://kitsu.app/anime/50428",
+    "https://livechart.me/anime/13450",
+    "https://myanimelist.net/anime/63216",
+    "https://simkl.com/anime/2975266"
+   ],
+   "title": "Gelpiyo",
+   "type": "TV",
+   "episodes": 10,
+   "status": "FINISHED",
+   "animeSeason": {
+    "season": "WINTER",
+    "year": 2026
+   }
+  },
+  {
+   "sources": [
+    "https://anidb.net/anime/20339",
+    "https://anilist.co/anime/214703",
+    "https://animenewsnetwork.com/encyclopedia/anime.php?id=40470",
+    "https://kitsu.app/anime/50866",
+    "https://livechart.me/anime/13740",
+    "https://myanimelist.net/anime/64718"
+   ],
+   "title": "Ghost Meets Gal!",
+   "type": "TV",
+   "episodes": 1,
+   "status": "UPCOMING",
+   "animeSeason": {
+    "season": "FALL",
+    "year": 2026
+   }
+  },
+  {
+   "sources": [
+    "https://animecountdown.com/3240648",
+    "https://anisearch.com/anime/21895",
+    "https://simkl.com/anime/3240648"
+   ],
+   "title": "Ghost Meets Gal!",
+   "type": "TV",
+   "episodes": 12,
+   "status": "ONGOING",
+   "animeSeason": {
+    "season": "SUMMER",
+    "year": 2026
+   }
+  },
+  {
+   "sources": [
+    "https://anidb.net/anime/12863",
+    "https://anilist.co/anime/104545",
+    "https://anime-planet.com/anime/manga-hanasaka-jijii",
+    "https://animecountdown.com/663277",
+    "https://anisearch.com/anime/12273",
+    "https://kitsu.app/anime/10638",
+    "https://myanimelist.net/anime/30086",
+    "https://simkl.com/anime/663277"
+   ],
+   "title": "Hanasaka Jiisan",
+   "type": "MOVIE",
+   "episodes": 1,
+   "status": "FINISHED",
+   "animeSeason": {
+    "season": "SUMMER",
+    "year": 1928
+   }
+  },
+  {
+   "sources": [
+    "https://anidb.net/anime/12408",
+    "https://animecountdown.com/617099",
+    "https://simkl.com/anime/617099"
+   ],
+   "title": "Hanasaka-jiisan",
+   "type": "MOVIE",
+   "episodes": 1,
+   "status": "FINISHED",
+   "animeSeason": {
+    "season": "UNDEFINED"
+   }
+  },
+  {
+   "sources": [
+    "https://animecountdown.com/3165112",
+    "https://simkl.com/anime/3165112"
+   ],
+   "title": "Hokuto no Ken",
+   "type": "TV",
+   "episodes": 1,
+   "status": "FINISHED",
+   "animeSeason": {
+    "season": "UNDEFINED"
+   }
+  },
+  {
+   "sources": [
+    "https://anidb.net/anime/386",
+    "https://anilist.co/anime/967",
+    "https://anime-planet.com/anime/fist-of-the-north-star",
+    "https://animecountdown.com/39360",
+    "https://animenewsnetwork.com/encyclopedia/anime.php?id=204",
+    "https://anisearch.com/anime/3053",
+    "https://kitsu.app/anime/857",
+    "https://livechart.me/anime/4523",
+    "https://myanimelist.net/anime/967",
+    "https://simkl.com/anime/39360"
+   ],
+   "title": "Hokuto no Ken",
+   "type": "TV",
+   "episodes": 109,
+   "status": "FINISHED",
+   "animeSeason": {
+    "season": "FALL",
+    "year": 1984
+   }
+  },
+  {
+   "sources": [
+    "https://animenewsnetwork.com/encyclopedia/anime.php?id=40589"
+   ],
+   "title": "Liar Game",
+   "type": "TV",
+   "episodes": 0,
+   "status": "UNKNOWN",
+   "animeSeason": {
+    "season": "UNDEFINED"
+   }
+  },
+  {
+   "sources": [
+    "https://anidb.net/anime/19538",
+    "https://anilist.co/anime/197754",
+    "https://anime-planet.com/anime/liar-game",
+    "https://animecountdown.com/2865480",
+    "https://animenewsnetwork.com/encyclopedia/anime.php?id=37594",
+    "https://anisearch.com/anime/20851",
+    "https://kitsu.app/anime/50108",
+    "https://livechart.me/anime/13289",
+    "https://myanimelist.net/anime/62331",
+    "https://simkl.com/anime/2865480"
+   ],
+   "title": "Liar Game",
+   "type": "TV",
+   "episodes": 26,
+   "status": "FINISHED",
+   "animeSeason": {
+    "season": "SPRING",
+    "year": 2026
+   }
+  },
+  {
+   "sources": [
+    "https://animecountdown.com/3261502",
+    "https://simkl.com/anime/3261502"
+   ],
+   "title": "Phantom Busters",
+   "type": "TV",
+   "episodes": 1,
+   "status": "FINISHED",
+   "animeSeason": {
+    "season": "UNDEFINED"
+   }
+  },
+  {
+   "sources": [
+    "https://anidb.net/anime/20413",
+    "https://anilist.co/anime/217283",
+    "https://anime-planet.com/anime/phantom-busters",
+    "https://animenewsnetwork.com/encyclopedia/anime.php?id=40573",
+    "https://anisearch.com/anime/21993",
+    "https://livechart.me/anime/13820",
+    "https://myanimelist.net/anime/65052"
+   ],
+   "title": "Phantom Busters",
+   "type": "TV",
+   "episodes": 12,
+   "status": "UPCOMING",
+   "animeSeason": {
+    "season": "WINTER",
+    "year": 2027
+   }
+  }
+ ]
+}

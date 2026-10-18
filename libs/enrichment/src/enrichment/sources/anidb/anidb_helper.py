@@ -43,11 +43,22 @@ from enrichment.sources.base.base_helper import (
     BaseEnrichmentHelper,
     normalize_enrichment_payload,
 )
-from enrichment.sources.base.exceptions import ServiceBlockedError, ServiceNetworkError
+from enrichment.sources.base.exceptions import (
+    ServiceBlockedError,
+    ServiceNetworkError,
+    ServiceParseError,
+)
 from enrichment.sources.base.utils import sanitize_output_path
 from http_cache import HTTPCacheManager, configure_cache
 
 logger = logging.getLogger(__name__)
+
+# AniDB's HTTP API answers an anime id it does not have with the body
+# <error>Anime not found</error>.
+_ANIME_NOT_FOUND = "anime not found"
+# Why a lookup fails while banned: only cached answers can be read, and this
+# one is not cached, so whether the anime exists is unknown.
+_BANNED_NOT_CACHED = "banned and this anime is not cached"
 
 
 class _ClientState:
@@ -247,7 +258,11 @@ class AniDBHelper(BaseEnrichmentHelper):
 
         Returns:
             Tuple of (canonical anime dict, AniDBAnime model). Both elements
-            are None on fetch or parse failure.
+            are None when AniDB has no such anime or the address names none.
+
+        Raises:
+            ServiceNetworkError: If the request fails after its retries.
+            ServiceParseError: If AniDB's XML cannot be read.
         """
         match = re.search(r"/anime/(\d+)", anidb_url)
         if not match:
@@ -260,9 +275,8 @@ class AniDBHelper(BaseEnrichmentHelper):
             return None, None
         try:
             anime_model = parse_anime_xml(xml_content)
-        except ValueError:
-            logger.exception(f"XML parse failed for AniDB ID {anidb_id}")
-            return None, None
+        except ValueError as error:
+            raise ServiceParseError(service="anidb", cause=error) from error
         anime_dict = anime_from_anidb(anime_model, anidb_url=anidb_url)
         if output_path:
             append_jsonl(output_path, anime_dict)
@@ -339,14 +353,9 @@ class AniDBHelper(BaseEnrichmentHelper):
             anidb_id: AniDB numeric anime ID.
 
         Returns:
-            Raw XML string, or None on network failure.
+            Raw XML string, or None when AniDB has no such anime.
         """
-        try:
-            params = {"request": "anime", "aid": anidb_id}
-            return await self._make_request(params)
-        except Exception:
-            logger.exception(f"Failed to fetch XML for AniDB ID {anidb_id}")
-            return None
+        return await self._make_request({"request": "anime", "aid": anidb_id})
 
     # =========================================================================
     # BAN GATE
@@ -444,7 +453,7 @@ class AniDBHelper(BaseEnrichmentHelper):
             params: AniDB API query parameters.
 
         Returns:
-            Decoded response content, or None on failure.
+            Decoded response content, or None when AniDB has no such anime.
         """
         async with _state.lock():
             return await self._make_request_with_retry(params)
@@ -455,11 +464,16 @@ class AniDBHelper(BaseEnrichmentHelper):
         Args:
             params: AniDB API query parameters.
 
+        A failed attempt is retried after a growing wait; "Anime not found" is
+        an answer, not a failure, so it returns at once.
+
         Returns:
-            Decoded response content, or None if all attempts fail.
+            Decoded response content, or None when AniDB has no such anime.
 
         Raises:
             ServiceNetworkError: After all retry attempts are exhausted.
+            ServiceBlockedError: If AniDB bans this client, or a ban is active
+                and the answer is not cached.
         """
         last_exception = None
 
@@ -479,18 +493,6 @@ class AniDBHelper(BaseEnrichmentHelper):
                 await self._ensure_session_health()
 
                 result = await self._make_single_request(params, attempt)
-                if result is not None:
-                    _state.consecutive_failures = 0
-                    return result
-                else:
-                    _state.consecutive_failures += 1
-                    if attempt < self.max_retries:
-                        wait = (2**attempt) + (time.time() % 1)
-                        logger.warning(
-                            f"Request failed, retrying in {wait:.2f}s (attempt {attempt + 1})"
-                        )
-                        await asyncio.sleep(wait)
-
             except ServiceBlockedError:
                 # Retrying a ban is what deepens it, and the gate above means
                 # every later anime stops before it reaches the network.
@@ -506,10 +508,15 @@ class AniDBHelper(BaseEnrichmentHelper):
                     logger.exception(
                         f"Request failed after {self.max_retries + 1} attempts"
                     )
+            else:
+                _state.consecutive_failures = 0
+                return result
 
-        if last_exception:
-            raise ServiceNetworkError(service="anidb", cause=last_exception)
-        return None
+        if isinstance(last_exception, ServiceNetworkError):
+            raise last_exception
+        raise ServiceNetworkError(
+            service="anidb", cause=last_exception or "no request attempted"
+        )
 
     async def _make_single_request(
         self, params: dict[str, Any], attempt: int, *, cache_only: bool = False
@@ -522,23 +529,25 @@ class AniDBHelper(BaseEnrichmentHelper):
         A ban arrives two ways. HTTP 555 is the documented one. In practice
         AniDB also answers HTTP 200 with ``<error code="500">banned</error>``
         when the daily request volume is exceeded, which is the form seen in
-        the wild; both record the ban so the client stands down. Other error
-        bodies, such as ``no such anime``, are not bans and return None.
+        the wild; both record the ban so the client stands down. The body
+        ``<error>Anime not found</error>`` returns None: the anime does not
+        exist. Any other error body or status is a failed request.
 
         Args:
             params: AniDB API query parameters.
             attempt: Zero-based attempt number (used for debug logging).
             cache_only: Serve from the HTTP cache and never call AniDB. Used
                 while banned, so stored responses stay readable. A miss comes
-                back as 504 and is reported as no data.
+                back as 504.
 
         Returns:
-            Decoded XML string on success, or None on error responses.
+            Decoded XML string, or None when AniDB has no such anime.
 
         Raises:
             RuntimeError: If the session has not been initialised.
-            ServiceBlockedError: On HTTP 555, or on an HTTP 200 body reporting
-                a ban.
+            ServiceBlockedError: On HTTP 555, on an HTTP 200 body reporting a
+                ban, or on a cache miss while banned.
+            ServiceNetworkError: On any other error status or error body.
         """
         request_params = {
             **params,
@@ -557,8 +566,7 @@ class AniDBHelper(BaseEnrichmentHelper):
             self.base_url, params=request_params, **cache_only_header
         ) as response:
             if cache_only and response.status == 504:
-                logger.debug("AniDB banned and this anime is not cached")
-                return None
+                raise ServiceBlockedError(_BANNED_NOT_CACHED, service="anidb")
             if response.status == 200:
                 content = await response.read()
                 if content.startswith(b"\x1f\x8b"):
@@ -567,19 +575,19 @@ class AniDBHelper(BaseEnrichmentHelper):
                 text = self._decode_content(content)
                 if text and not text.strip().startswith("<error"):
                     return text
-                if text and "<error" in text:
-                    if "banned" in text.lower():
-                        self._record_ban()
-                        raise ServiceBlockedError(
-                            "banned — daily request volume exceeded",
-                            service="anidb",
-                        )
-                    logger.warning(f"AniDB error response: {text[:200]}")
-                return None
-
-            elif response.status == 503:
-                logger.warning("AniDB service unavailable (503)")
-                return None
+                error_text = (text or "").lower()
+                if "banned" in error_text:
+                    self._record_ban()
+                    raise ServiceBlockedError(
+                        "banned — daily request volume exceeded",
+                        service="anidb",
+                    )
+                if _ANIME_NOT_FOUND in error_text:
+                    logger.warning(f"AniDB anime not found: {params}")
+                    return None
+                raise ServiceNetworkError(
+                    service="anidb", cause=f"error response: {(text or '')[:200]}"
+                )
 
             elif response.status == 555:
                 self._record_ban()
@@ -589,8 +597,9 @@ class AniDBHelper(BaseEnrichmentHelper):
                 )
 
             else:
-                logger.warning(f"AniDB HTTP {response.status}")
-                return None
+                raise ServiceNetworkError(
+                    service="anidb", cause=f"HTTP {response.status}"
+                )
 
     def _decode_content(self, content: bytes) -> str | None:
         """Decode raw response bytes using UTF-8 with latin-1 fallback.

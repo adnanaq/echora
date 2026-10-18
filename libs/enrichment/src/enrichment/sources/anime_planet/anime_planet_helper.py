@@ -78,7 +78,12 @@ class AnimePlanetHelper(BaseEnrichmentHelper):
             fetch_episodes: Unused — Anime-Planet has no episode endpoint.
 
         Returns:
-            Dict with keys ``anime`` and ``characters``, or None when the anime fetch fails.
+            Dict with keys ``anime`` and ``characters``, or None when the anime
+            page does not exist. A character failure leaves the list empty.
+
+        Raises:
+            ServiceNetworkError: If the anime page does not load.
+            ServiceParseError: If the anime page loads but cannot be read.
         """
         del fetch_episodes  # Anime-Planet does not provide episode data
         url = ids.get("anime_planet_url")
@@ -95,41 +100,27 @@ class AnimePlanetHelper(BaseEnrichmentHelper):
         )
 
         canonical_url = _normalize_ap_url(url)
-        try:
-            anime = await fetch_animeplanet_anime(
-                canonical_url, output_path=anime_output_path
-            )
-            if not anime:
-                logger.warning(f"Crawler returned no data for '{canonical_url}'")
-                return None
-            anime_data = anime
-
-            logger.info(
-                f"Anime-Planet anime fetched: {anime_data.get('title', canonical_url)}"
-            )
-
-            characters: list[dict[str, Any]] = []
-            if fetch_characters:
-                try:
-                    anime_url = (anime_data.get("sources") or [""])[0] or canonical_url
-                    characters = await self.fetch_characters(
-                        anime_url, output_path=characters_output_path
-                    )
-                    logger.info(
-                        f"Anime-Planet characters fetched: {len(characters)} characters"
-                    )
-                except Exception as e:
-                    logger.warning(
-                        f"Failed to fetch characters for '{canonical_url}': {e}"
-                    )
-
-        except Exception:
-            logger.exception(f"Error in fetch_all for URL '{url}'")
+        anime = await fetch_animeplanet_anime(
+            canonical_url, output_path=anime_output_path
+        )
+        if not anime:
+            logger.warning(f"Crawler returned no data for '{canonical_url}'")
             return None
-        else:
-            return normalize_enrichment_payload(
-                {"anime": anime_data, "characters": characters}
-            )
+        logger.info(f"Anime-Planet anime fetched: {anime.get('title', canonical_url)}")
+
+        characters: list[dict[str, Any]] = []
+        if fetch_characters:
+            try:
+                anime_url = (anime.get("sources") or [""])[0] or canonical_url
+                characters = await self.fetch_characters(
+                    anime_url, output_path=characters_output_path
+                )
+                logger.info(
+                    f"Anime-Planet characters fetched: {len(characters)} characters"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to fetch characters for '{canonical_url}': {e}")
+        return normalize_enrichment_payload({"anime": anime, "characters": characters})
 
     async def fetch_characters(
         self,
@@ -179,20 +170,19 @@ class AnimePlanetHelper(BaseEnrichmentHelper):
                 Non-www URLs are normalized to www before the crawl.
 
         Returns:
-            Canonical anime dict, or None if no data could be retrieved.
+            Canonical anime dict, or None when the page does not exist.
+
+        Raises:
+            ServiceNetworkError: If the page does not load.
+            ServiceParseError: If the page loads but its data cannot be read.
         """
         canonical_url = _normalize_ap_url(url)
-        try:
-            anime = await fetch_animeplanet_anime(canonical_url)
-            if not anime:
-                logger.warning(f"Crawler returned no data for '{canonical_url}'")
-                return None
-            logger.info(f"Successfully fetched anime data for '{canonical_url}'")
-        except Exception:
-            logger.exception(f"Error fetching anime data for '{canonical_url}'")
+        anime = await fetch_animeplanet_anime(canonical_url)
+        if not anime:
+            logger.warning(f"Crawler returned no data for '{canonical_url}'")
             return None
-        else:
-            return anime
+        logger.info(f"Successfully fetched anime data for '{canonical_url}'")
+        return anime
 
 
 async def main() -> int:

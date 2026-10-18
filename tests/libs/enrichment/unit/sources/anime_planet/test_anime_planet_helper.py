@@ -3,6 +3,8 @@
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from enrichment.sources.anime_planet import anime_planet_helper
+from enrichment.sources.base.exceptions import ServiceNetworkError
 
 pytestmark = pytest.mark.asyncio
 
@@ -83,17 +85,17 @@ async def test_fetch_anime_returns_none_when_crawler_returns_none():
     assert result is None
 
 
-async def test_fetch_anime_returns_none_on_crawler_exception():
-    from enrichment.sources.anime_planet.anime_planet_helper import AnimePlanetHelper
-
-    helper = AnimePlanetHelper()
-    with patch(
-        "enrichment.sources.anime_planet.anime_planet_helper.fetch_animeplanet_anime",
-        new=AsyncMock(side_effect=RuntimeError("network error")),
+async def test_fetch_anime_crawler_failure_raises() -> None:
+    with (
+        patch.object(
+            anime_planet_helper,
+            "fetch_animeplanet_anime",
+            autospec=True,
+            side_effect=ServiceNetworkError(service="anime_planet", cause="timeout"),
+        ),
+        pytest.raises(ServiceNetworkError),
     ):
-        result = await helper.fetch_anime(_AP_ANIME_URL)
-
-    assert result is None
+        await anime_planet_helper.AnimePlanetHelper().fetch_anime(_AP_ANIME_URL)
 
 
 async def test_fetch_anime_returns_mapped_canonical_dict():
@@ -264,18 +266,19 @@ async def test_fetch_all_returns_none_when_anime_missing():
     assert result is None
 
 
-async def test_fetch_all_returns_none_on_anime_crawler_exception():
-    from enrichment.sources.anime_planet.anime_planet_helper import AnimePlanetHelper
-
-    with patch(
-        "enrichment.sources.anime_planet.anime_planet_helper.fetch_animeplanet_anime",
-        new=AsyncMock(side_effect=RuntimeError("crawler crashed")),
+async def test_fetch_all_anime_crawler_failure_raises() -> None:
+    with (
+        patch.object(
+            anime_planet_helper,
+            "fetch_animeplanet_anime",
+            autospec=True,
+            side_effect=ServiceNetworkError(service="anime_planet", cause="timeout"),
+        ),
+        pytest.raises(ServiceNetworkError),
     ):
-        result = await AnimePlanetHelper().fetch_all(
+        await anime_planet_helper.AnimePlanetHelper().fetch_all(
             {"anime_planet_url": _AP_ANIME_URL}, {}
         )
-
-    assert result is None
 
 
 async def test_fetch_all_survives_character_fetch_failure():

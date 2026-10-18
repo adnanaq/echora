@@ -4,6 +4,7 @@ from unittest.mock import create_autospec, patch
 
 import pytest
 import zendriver
+from enrichment.sources.base.exceptions import ServiceNetworkError, ServiceParseError
 from enrichment.sources.base.framework import NullRepository
 from enrichment.sources.mal import mal_anime_crawler
 from enrichment.sources.mal.mal_anime_crawler import (
@@ -696,44 +697,35 @@ async def test_fetch_mal_anime_data_deleted_page_other_class_markup_logs_not_fou
     assert f"MAL anime page not found: {DELETED_URL}" in caplog.messages
 
 
-async def test_fetch_mal_anime_data_page_without_title_logs_navigation_failure(
-    mal_browser, browser_serving, caplog
+async def test_fetch_mal_anime_data_page_without_title_raises_network_error(
+    mal_browser, browser_serving
 ) -> None:
     browser = browser_serving({ONE_PIECE_URL: "<html><body></body></html>"})
-    with mal_browser(browser), caplog.at_level(logging.WARNING):
-        result = await _fetch_mal_anime_data(ONE_PIECE_URL)
-
-    assert result is None
-    assert any(
-        message.startswith(f"navigation failed for {ONE_PIECE_URL}")
-        for message in caplog.messages
-    )
+    with (
+        mal_browser(browser),
+        pytest.raises(ServiceNetworkError, match="navigation failed"),
+    ):
+        await _fetch_mal_anime_data(ONE_PIECE_URL)
 
 
-async def test_fetch_mal_anime_data_empty_content_returns_none(
+async def test_fetch_mal_anime_data_empty_content_raises_network_error(
     mal_browser, tab_showing, mal_anime_html
 ) -> None:
     browser = create_autospec(zendriver.Browser, instance=True)
     browser.get.return_value = tab_showing(mal_anime_html, ONE_PIECE_URL)
     browser.get.return_value.get_content.return_value = ""
-    with mal_browser(browser):
-        assert await _fetch_mal_anime_data(ONE_PIECE_URL) is None
+    with mal_browser(browser), pytest.raises(ServiceNetworkError, match="no HTML"):
+        await _fetch_mal_anime_data(ONE_PIECE_URL)
 
 
-async def test_fetch_mal_anime_data_unreadable_content_logs_extraction_failure(
-    mal_browser, tab_showing, mal_anime_html, caplog
+async def test_fetch_mal_anime_data_unreadable_content_raises_parse_error(
+    mal_browser, tab_showing, mal_anime_html
 ) -> None:
     browser = create_autospec(zendriver.Browser, instance=True)
     browser.get.return_value = tab_showing(mal_anime_html, ONE_PIECE_URL)
     browser.get.return_value.get_content.return_value = "   "
-    with mal_browser(browser), caplog.at_level(logging.WARNING):
-        result = await _fetch_mal_anime_data(ONE_PIECE_URL)
-
-    assert result is None
-    assert (
-        f"Failed to extract data from MAL anime page: {ONE_PIECE_URL}"
-        in caplog.messages
-    )
+    with mal_browser(browser), pytest.raises(ServiceParseError):
+        await _fetch_mal_anime_data(ONE_PIECE_URL)
 
 
 async def test_fetch_mal_anime_data_gallery_failure_returns_data_without_pictures(

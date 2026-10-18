@@ -623,6 +623,16 @@ async def test_fetch_all_without_anime_or_characters_returns_none(anilist_api) -
     )
 
 
+async def test_fetch_all_anime_request_failure_raises_network_error(
+    anilist_api,
+) -> None:
+    anilist_api.queue.append(Reply(error=aiohttp.ClientConnectionError("refused")))
+    with pytest.raises(ServiceNetworkError):
+        await AniListHelper(get_cache()).fetch_all(
+            {"anilist_url": ONE_PIECE_URL}, {}, fetch_characters=False
+        )
+
+
 async def test_fetch_all_without_anilist_link_returns_none(anilist_api) -> None:
     assert await AniListHelper(get_cache()).fetch_all({}, {}) is None
     assert anilist_api.requests == []
