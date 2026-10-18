@@ -106,7 +106,8 @@ docker compose -f docker/docker-compose.dev.yml up -d redis redisinsight
 - Linting: ruff check
 - Always use plain language instead of complex jorgans and metaphorical language
 - Do not make up the terms, instead use terms that are commonly used in the domain
-- Focus on making your code expressive, efficient instead of adding comments unecessairly outside docstrings
+- Focus on making your code expressive and efficient
+- Write clear comments/docstrings where needed and avoid terse shorthands
 - Use relevent datastructures where needed
 - Avoid single character variable or funciton names, do not use single word funciton names.
 - Name variables, functions, constants and values after the domain thing they hold, using the terms the project already uses (its glossary, READMEs and models): `retry_delay_seconds`, `pages_by_provider`, `failed_requests`, not vague words such as `data`, `info`, `group`, `item`, `result` or `stuff`.
@@ -186,6 +187,7 @@ echora/
 │   │   ├── processors/            # Text/Image processors
 │   │   └── embedding_models/      # BGE-M3, OpenCLIP
 │   ├── qdrant_db/                 # Vector database client
+│   ├── seed_cleaning/             # Finds and fetches the seed entries to check
 │   ├── http_cache/                # HTTP caching (Hishel + Redis)
 │   ├── enrichment/                # Data enrichment pipeline
 │   ├── vector_db_interface/       # Abstract DB interface
@@ -205,6 +207,7 @@ echora/
 - **Qdrant Client** (`libs/qdrant_db/`) - Vector DB operations with quantization & multi-vector support
 - **HTTP Cache** (`libs/http_cache/`) - RFC 9111 compliant caching with Redis backend
 - **Work Matching** (`libs/work_matching/`) - Work entries, provider page keys and details, the known-works lookup by page or by title, type and year, the rules deciding from links which pages of a doubled provider belong to an entry and whether entries are one split work, and the review file whose answers are kept across runs; imports nothing from enrichment
+- **Seed Cleaning** (`libs/seed_cleaning/`) - Lists the seed entries that need checking (doubled providers and split-work candidates) and fetches every page of them into the provider page store through the enrichment helpers; run with `scripts/clean_seed.py`, deleted once discovery replaces the seed
 - **Enrichment Pipeline** (`libs/enrichment/`)
 
 - **API Helpers**: Integration with 6+ external anime APIs (AniList, Kitsu, AniDB, etc.)
@@ -489,4 +492,3 @@ def test_encode_text_empty_string_returns_zero_embedding(): ...
 - Tests that check spans or metrics use the `span_exporter` and `metric_reader` fixtures. Never call `trace.set_tracer_provider` or `metrics.set_meter_provider` in a test file: OpenTelemetry keeps only the first provider set in a process, so a second one makes other files' tests collect nothing when pytest runs them together.
 - Settings classes ignore `.env` during tests, so tests see code defaults plus explicitly set environment variables. Set what a test needs with `patch.dict("os.environ", ...)`, never through `.env`.
 - Tests must pass both under Pants (one process per file) and in a single `pytest` process over many files.
-
