@@ -132,6 +132,7 @@ extra-paths = [
     "libs/work_matching/src",
     "apps/enrichment_service/src",
     "apps/vector_service/src",
+    "scripts",  # Script tests import scripts as top-level modules
     "stubs",  # Custom third-party type stubs
 ]
 
