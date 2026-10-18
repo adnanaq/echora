@@ -207,9 +207,8 @@ def doubled_provider_pages(page_keys: Iterable[str]) -> dict[str, tuple[str, ...
 def decided_provider(key: str) -> str | None:
     """Return the provider whose decision a page key falls under, if any.
 
-    AnimeCountdown numbers a work the same as Simkl (on release 2026-40, all
-    14,649 entries with one list the other with the same number), so its
-    pages fall under ``simkl``.
+    AnimeCountdown numbers a work the same as Simkl: an entry listing one lists
+    the other with the same number. So its pages fall under ``simkl``.
 
     Args:
         key: A page key, as ``provider_page_key`` gives it.

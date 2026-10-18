@@ -29,13 +29,10 @@ the providers with pages in two or more of the group's entries:
 | Shared providers | Group | Why |
 | -- | -- | -- |
 | none | kept | Nothing says the entries are different works. |
-| one | kept, marked with that provider | One provider listing the entries apart does not decide: of four such groups checked, two were one work. |
+| one | kept, marked with that provider | One provider listing the entries apart does not decide: such groups are sometimes one work and sometimes not. |
 | two or more | dropped and logged | Two providers each listing the entries apart points to different works. |
 
-On release `2026-40`: 262 entries with a doubled provider (278 doubled
-providers), and 53 candidate groups, 8 of them marked. All 29 groups the old
-`find_duplicates.py` reported fall inside a group. Title, type and year only
-find candidates; the split-work rules merge a group only when links between its
+Title, type and year only find candidates; the split-work rules merge a group only when links between its
 entries' pages tie them together.
 
 ## Fetching pages
@@ -56,8 +53,7 @@ cache enrichment reads later.
   stores nothing: there is no page.
 - **Reruns:** a page already stored, or an AnimeSchedule lookup that found a
   page, is not fetched again. A lookup that found nothing is repeated on every
-  run (about 70 on release 2026-40), so a page AnimeSchedule adds later is
-  still found.
+  run, so a page AnimeSchedule adds later is still found.
 - **Pace:** each provider has its own queue, one page at a time, so each
   site's rate limits hold while different sites run side by side. AnimeSchedule
   lookups wait 3 s between them: requests without an app token get its stricter,

@@ -29,14 +29,14 @@ class SplitWorkCandidates(BaseModel):
     entries: tuple[WorkEntry, ...]
     # The one provider with pages in two or more of the entries, if any. That
     # provider lists the entries as separate pages, which alone does not decide:
-    # of four such groups checked on release 2026-40, two were one work.
+    # such groups are sometimes one work and sometimes not.
     shared_provider: str | None = None
 
 
 def split_work_candidates(known_works: KnownWorksFromSeed) -> list[SplitWorkCandidates]:
     """Return every group of entries that may be one work split in several.
 
-    Rules, each measured on seed release 2026-40:
+    Rules:
 
     - Title, type and year: two entries match when the known-works title
       lookup finds one for the other (title equal once case, punctuation,

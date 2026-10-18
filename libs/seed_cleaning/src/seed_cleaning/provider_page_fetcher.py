@@ -130,8 +130,8 @@ class ProviderPageFetcher:
             store: Where fetched pages are kept.
             seconds_between_found_page_lookups: The wait between AnimeSchedule
                 lookups. Requests without an app token get AnimeSchedule's
-                stricter, undocumented limit, and on 2026-10-17 lookups at full
-                speed got HTTP 429 within 24 lookups.
+                stricter, undocumented limit, and lookups at full speed get
+                HTTP 429.
         """
         self._new_api_fetcher = new_api_fetcher
         self._store = store

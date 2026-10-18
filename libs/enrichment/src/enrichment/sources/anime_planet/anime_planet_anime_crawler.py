@@ -391,9 +391,8 @@ async def _fetch_anime_html(url: str) -> str | None:
 
     Anime-Planet answers an address with no anime by redirecting to its search
     page. The wait ends on either the anime's entry bar or the search page's
-    quick filter, and the address the tab ends on tells a missing page apart
-    (checked live on 2026-10-17: the search page has the quick filter, the
-    One Piece, Dandadan and Cocoon anime pages do not).
+    quick filter, which anime pages do not have, and the address the tab ends
+    on tells a missing page apart.
 
     Args:
         url: Full Anime-Planet anime URL

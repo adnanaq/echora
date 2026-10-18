@@ -54,7 +54,7 @@ from http_cache import HTTPCacheManager, configure_cache
 logger = logging.getLogger(__name__)
 
 # AniDB's HTTP API answers an anime id it does not have with the body
-# <error>Anime not found</error> (checked live on 2026-10-17).
+# <error>Anime not found</error>.
 _ANIME_NOT_FOUND = "anime not found"
 # Why a lookup fails while banned: only cached answers can be read, and this
 # one is not cached, so whether the anime exists is unknown.
