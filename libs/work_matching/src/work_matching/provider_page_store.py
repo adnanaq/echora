@@ -45,6 +45,9 @@ class ProviderPageStore:
         """
         self._path = Path(path)
         self._pages: dict[str, ProviderPage] = {}
+        # Every lookup page a held found page was found through, so checking a
+        # lookup takes one set look-up rather than a scan of every page.
+        self._lookup_keys: set[str] = set()
         # Where the partial last line starts in the file, in bytes, or None
         # when the file has none. add_pages cuts the file at this point first.
         self._partial_line_offset: int | None = None
@@ -72,7 +75,7 @@ class ProviderPageStore:
         Args:
             lookup_key: The page key of the page the lookup went through.
         """
-        return any(lookup_key in page.found_by for page in self._pages.values())
+        return lookup_key in self._lookup_keys
 
     def add_pages(self, *pages: ProviderPage) -> None:
         """Add pages to the store and write them to the end of the file in one write.
@@ -85,7 +88,11 @@ class ProviderPageStore:
                 replaces the details held for it, keeping the lookup pages the
                 held page was found through.
         """
-        pages = tuple(map(self._with_held_lookup_pages, pages))
+        pages_by_key: dict[str, ProviderPage] = {}
+        for page in pages:
+            earlier = pages_by_key.get(page.key) or self._pages.get(page.key)
+            pages_by_key[page.key] = _with_lookup_pages_of(earlier, page)
+        pages = tuple(pages_by_key.values())
         if not pages:
             return
         self._path.parent.mkdir(parents=True, exist_ok=True)
@@ -96,14 +103,7 @@ class ProviderPageStore:
         with self._path.open("a", encoding="utf-8") as output:
             output.writelines(f"{page.model_dump_json()}\n" for page in pages)
         self._pages.update((page.key, page) for page in pages)
-
-    def _with_held_lookup_pages(self, page: ProviderPage) -> ProviderPage:
-        """Return the page with the lookup pages of the held page added to its own."""
-        held = self._pages.get(page.key)
-        if held is None or set(held.found_by) <= set(page.found_by):
-            return page
-        lookup_keys = tuple(sorted({*held.found_by, *page.found_by}))
-        return page.model_copy(update={"found_by": lookup_keys})
+        self._lookup_keys.update(key for page in pages for key in page.found_by)
 
     def _read_pages(self) -> None:
         """Read every complete line, and note where a partial last line starts.
@@ -143,3 +143,18 @@ class ProviderPageStore:
             error.add_note(f"{self._path}, line {line_number}")
             raise
         self._pages[page.key] = page
+        self._lookup_keys.update(page.found_by)
+
+
+def _with_lookup_pages_of(
+    earlier: ProviderPage | None, page: ProviderPage
+) -> ProviderPage:
+    """Return the page with the lookup pages of the earlier version added to its own.
+
+    The newer page's details win, but a found page keeps every lookup page it
+    was found through, whichever version recorded it.
+    """
+    if earlier is None or set(earlier.found_by) <= set(page.found_by):
+        return page
+    lookup_keys = tuple(sorted({*earlier.found_by, *page.found_by}))
+    return page.model_copy(update={"found_by": lookup_keys})

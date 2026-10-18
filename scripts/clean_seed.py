@@ -135,15 +135,10 @@ async def main() -> None:
     if arguments.no_fetch:
         return
 
-    entries_by_reference = {
-        entry.reference_page: entry
-        for entry in [
-            *doubled,
-            *(member for group in candidate_groups for member in group.entries),
-        ]
-    }
+    # Every entry is passed on: the fetcher makes each request once, so an entry
+    # sharing a page with another still gets its other pages fetched.
     summary = await fetch_pages(
-        list(entries_by_reference.values()),
+        [*doubled, *(entry for group in candidate_groups for entry in group.entries)],
         arguments.data_dir / "provider_pages.jsonl",
     )
     for outcome, count in sorted(summary.outcomes.items()):

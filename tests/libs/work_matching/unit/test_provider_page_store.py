@@ -109,3 +109,21 @@ def test_provider_page_store_found_page_added_through_second_lookup_keeps_both(
     reopened = ProviderPageStore(path).get_page("https://animeschedule.net/anime/ranma")
     assert reopened is not None
     assert reopened.found_by == ("anilist:anime:210", "mal:anime:21")
+
+
+def test_provider_page_store_found_page_added_twice_in_one_call_keeps_both_lookups(
+    tmp_path,
+) -> None:
+    path = tmp_path / "pages.jsonl"
+    record = {"title": "Ranma", "sources": [MAL, "https://anilist.co/anime/210"]}
+    ProviderPageStore(path).add_pages(
+        *(
+            ProviderPage.from_canonical_record(
+                "https://animeschedule.net/anime/ranma", record, found_by=lookup_address
+            )
+            for lookup_address in (MAL, "https://anilist.co/anime/210")
+        )
+    )
+    reopened = ProviderPageStore(path).get_page("https://animeschedule.net/anime/ranma")
+    assert reopened is not None
+    assert reopened.found_by == ("anilist:anime:210", "mal:anime:21")

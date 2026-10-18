@@ -68,7 +68,7 @@ needs the difference to record a page as dead only when it is gone.
 | Kitsu | HTTP 404 |
 | AniList | HTTP 404 with no `Media` |
 | AniDB | the error body `<error>Anime not found</error>` |
-| AnimSchedule | HTTP 404 for an id lookup; no title match |
+| AnimeSchedule | HTTP 404 for an id lookup; no title match |
 
 The anime record is complete or not returned: a failure in any of its own
 requests, such as Kitsu's genres or mappings, fails the anime, so a record is
