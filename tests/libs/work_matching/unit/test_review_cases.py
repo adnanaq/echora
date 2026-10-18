@@ -97,6 +97,20 @@ def test_review_case_from_split_work_keeps_found_pages(linked_page, work_entry) 
     ]
 
 
+def test_review_case_from_split_work_keeps_renamed_page(work_entry) -> None:
+    old_address = "https://www.anime-planet.com/anime/old"
+    entries = [work_entry(old_address), work_entry("https://myanimelist.net/anime/1")]
+    renamed = ProviderPage.from_canonical_record(
+        old_address,
+        {
+            "title": "Show",
+            "sources": [old_address, "https://www.anime-planet.com/anime/new"],
+        },
+    )
+    case = ReviewCase.from_split_work(decide_split_work(entries, [renamed]), [renamed])
+    assert [page.key for page in case.pages] == ["animeplanet:anime:old"]
+
+
 def test_review_case_from_split_work_names_case_by_reference_pages(split_case) -> None:
     assert (split_case.case, split_case.reason) == (
         "split work: anilist:anime:1 mal:anime:1",
@@ -129,6 +143,7 @@ def test_review_case_accepted_answer_placement_for_every_page_gives_answer(
         {SIGEWINNE: "entry", VARESA: "work 1"},
         {SIGEWINNE: "entry", VARESA: "maybe"},
         {SIGEWINNE: "entry", VARESA: "work 01"},
+        {SIGEWINNE: "entry", VARESA: "work 0"},
         {SIGEWINNE: "entry", VARESA: "work 1٢"},
         {SIGEWINNE: 1, VARESA: ["entry"]},
         "one work",
@@ -385,6 +400,17 @@ def test_review_file_case_answered_twice_logs_warning(
     path.write_text(path.read_text(encoding="utf-8") * 2, encoding="utf-8")
     ReviewFile(path)
     assert doubled_case.case in caplog.text
+
+
+@pytest.mark.parametrize("line", ["[1, 2]", '{"case": 5, "answer": "one work"}'])
+def test_review_file_line_not_case_object_raises_naming_file_and_line(
+    tmp_path, line: str
+) -> None:
+    path = tmp_path / "review.jsonl"
+    path.write_text(f"{line}\n", encoding="utf-8")
+    with pytest.raises(ValidationError) as raised:
+        ReviewFile(path)
+    assert raised.value.__notes__ == [f"{path}, line 1"]
 
 
 def test_review_file_broken_line_raises_naming_file_and_line(tmp_path) -> None:
