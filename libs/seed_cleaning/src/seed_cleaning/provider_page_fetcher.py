@@ -16,8 +16,10 @@ Rules:
   lookup that found a page is not repeated, so a run picks up where the last
   one stopped. A lookup that found nothing is repeated on every run, so a page
   AnimeSchedule adds later is still found.
-- A page is stored as dead only when its provider said it does not exist. A
-  failed fetch is not stored, so the next run tries it again.
+- A page is stored as dead only when its provider said it does not exist: its
+  helper answered None. A failed fetch, a service that did not run or a
+  payload without an anime record is not stored, so the next run tries it
+  again.
 - Each provider runs in its own queue, one page at a time, so each site's own
   rate limits hold while different sites run side by side.
 """
@@ -242,7 +244,13 @@ class ProviderPageFetcher:
     async def _fetch_request(
         self, api_fetcher: ApiFetcher, request: _PageRequest
     ) -> _RequestResult:
-        """Make one request and store what it returned."""
+        """Make one request and store what it returned.
+
+        Only a helper answering None means the page does not exist. A service
+        that did not run, or a payload without an anime record, is a failed
+        fetch: storing it as dead would keep a live page from ever being
+        fetched again.
+        """
         fetched = await api_fetcher.fetch_all_data(
             {request.id_key: request.address},
             {"title": request.title, "sources": [request.address]},
@@ -251,12 +259,17 @@ class ProviderPageFetcher:
             fetch_episodes=False,
         )
         if request.service in api_fetcher.api_errors:
-            logger.warning(f"Page fetch failed, retried next run: {request.label}")
-            return _RequestResult(
-                FetchOutcome.FAILED, request, api_fetcher.api_errors[request.service]
-            )
-        record = (fetched.get(request.service) or {}).get("anime")
-        return _RequestResult(self._store_page(request, record), request)
+            failure = api_fetcher.api_errors[request.service]
+        elif request.service not in fetched:
+            failure = "the service did not run"
+        elif fetched[request.service] is None:
+            return _RequestResult(self._store_page(request, None), request)
+        elif (record := fetched[request.service].get("anime")) is None:
+            failure = "the helper returned no anime record"
+        else:
+            return _RequestResult(self._store_page(request, record), request)
+        logger.warning(f"Page fetch failed, retried next run: {request.label}")
+        return _RequestResult(FetchOutcome.FAILED, request, failure)
 
     def _store_page(
         self, request: _PageRequest, record: dict[str, Any] | None

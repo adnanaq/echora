@@ -48,8 +48,9 @@ cache enrichment reads later.
   AniList, else AniDB) and records that page in `found_by`. One AnimeSchedule
   page found through pages of two entries keeps both lookup pages.
 - **Dead pages:** a page is stored as dead only when its provider said it does
-  not exist. A failed fetch (a timeout, a block, a page that cannot be read) is
-  not stored, so the next run tries it again. AnimeSchedule finding nothing
+  not exist, that is when its helper answered None. A failed fetch (a timeout,
+  a block, a page that cannot be read, a service that did not run, a payload
+  without an anime record) is not stored, so the next run tries it again. AnimeSchedule finding nothing
   stores nothing: there is no page.
 - **Reruns:** a page already stored, or an AnimeSchedule lookup that found a
   page, is not fetched again. A lookup that found nothing is repeated on every

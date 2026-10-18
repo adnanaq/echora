@@ -36,8 +36,6 @@ from work_matching import (
     doubled_provider_pages,
 )
 
-logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
-
 
 def parse_arguments() -> argparse.Namespace:
     """Read the seed file, the data folder and whether to fetch."""
@@ -148,4 +146,7 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
+    # Set here rather than at import, so importing the script, as the tests do,
+    # leaves logging as the importer set it.
+    logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
     asyncio.run(main())

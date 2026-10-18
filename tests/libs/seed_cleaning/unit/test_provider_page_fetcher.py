@@ -1,5 +1,6 @@
 from typing import Any
 
+import pytest
 from enrichment.pipeline.api_fetcher import ApiFetcher
 from seed_cleaning.provider_page_fetcher import FetchOutcome, ProviderPageFetcher
 from work_matching import ProviderPageStore, WorkEntry
@@ -10,8 +11,15 @@ LIVECHART = "https://livechart.me/anime/321"
 SCHEDULE = "https://animeschedule.net/anime/one-piece"
 
 
+class HelperPayload(dict):
+    pass
+
+
+SERVICE_NOT_RUN = object()
+
+
 class ScriptedApiFetcher(ApiFetcher):
-    def __init__(self, answers: dict[tuple[str, str], dict | Exception | None]) -> None:
+    def __init__(self, answers: dict[tuple[str, str], object]) -> None:
         self.answers = answers
         self.requests: list[tuple[str, dict[str, str], dict[str, Any]]] = []
         self.api_errors: dict[str, str] = {}
@@ -35,6 +43,10 @@ class ScriptedApiFetcher(ApiFetcher):
         if isinstance(answer, Exception):
             self.api_errors[service] = str(answer)
             return {service: None}
+        if answer is SERVICE_NOT_RUN:
+            return {}
+        if isinstance(answer, HelperPayload):
+            return {service: dict(answer)}
         return {service: None if answer is None else {"anime": answer}}
 
 
@@ -84,6 +96,20 @@ async def test_fetch_entry_pages_failed_fetch_not_stored_and_reported(
     assert "kitsu:anime:12" not in ProviderPageStore(tmp_path / "pages.jsonl")
     assert summary.outcomes == {FetchOutcome.FAILED: 1}
     assert summary.failed_pages == {"kitsu:anime:12": "HTTP 503"}
+
+
+@pytest.mark.parametrize(
+    "unexpected_answer",
+    [HelperPayload(anime=None, characters=[]), HelperPayload(), SERVICE_NOT_RUN],
+)
+async def test_fetch_entry_pages_answer_without_record_fails_and_stores_nothing(
+    tmp_path, unexpected_answer: object
+) -> None:
+    fetcher, _ = _fetcher(tmp_path, {("kitsu", KITSU): unexpected_answer})
+    summary = await fetcher.fetch_entry_pages([_one_piece(KITSU)])
+    assert "kitsu:anime:12" not in ProviderPageStore(tmp_path / "pages.jsonl")
+    assert summary.outcomes == {FetchOutcome.FAILED: 1}
+    assert list(summary.failed_pages) == ["kitsu:anime:12"]
 
 
 async def test_fetch_entry_pages_stored_page_not_fetched_again(tmp_path) -> None:
