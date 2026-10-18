@@ -236,6 +236,46 @@ def suggest_page_placements(
     }
 
 
+def find_move_target(
+    key: str, unrelated_page: UnrelatedPage, page: ProviderPage | None
+) -> WorkEntry | None:
+    """Return the seed entry a page linking another work moves to, if the move is sure.
+
+    The page's links must name exactly one seed entry, that entry must hold no
+    page of the same provider, and the page's year and type must agree with
+    that entry's. A link to a page outside the seed most often points to a page
+    the provider has since deleted, kept in a stale mapping of a duplicate page,
+    so it does not show another work. A page of the same provider already there
+    would make the move a new doubled provider, which needs a person. A year or
+    type that disagrees with the entry the link names shows the mapping itself
+    may be wrong. Details only stop a move here; they never place a page. The
+    same check picks the target for a page a review answer sends to another
+    work, so an answer cannot make a doubled provider either.
+
+    Args:
+        key: The page's current key.
+        unrelated_page: What the page's links say about other works.
+        page: The page's fetched details, if any.
+
+    Returns:
+        The seed entry to move the page to, or None when no move is sure.
+    """
+    if len(unrelated_page.other_works) != 1:
+        return None
+    [other_work] = unrelated_page.other_works
+    provider = get_page_provider(key)
+    if any(get_page_provider(other_key) == provider for other_key in other_work.pages):
+        return None
+    # A page links another work only through its own fetched details, so it
+    # has them; without them nothing confirms the move.
+    is_confirmed = (
+        page is not None
+        and is_year_matching(page.year, other_work.year)
+        and is_type_matching(get_seed_type(page), other_work.type)
+    )
+    return other_work if is_confirmed else None
+
+
 def _is_decision_settled(
     entry: WorkEntry,
     decision: DoubledProviderDecision,
@@ -248,40 +288,10 @@ def _is_decision_settled(
         decision.outcome is Outcome.ONE_WORK
         and len(decision.belonging_pages) == 1
         and all(
-            _is_move_to_seed_entry_confirmed(
-                key, unrelated_page, pages_by_current_key.get(key)
-            )
+            find_move_target(key, unrelated_page, pages_by_current_key.get(key))
+            is not None
             for key, unrelated_page in decision.unrelated_pages.items()
         )
-    )
-
-
-def _is_move_to_seed_entry_confirmed(
-    key: str, unrelated_page: UnrelatedPage, page: ProviderPage | None
-) -> bool:
-    """Report whether a page linking another work can move to that work's entry.
-
-    The page's links must name exactly one seed entry, that entry must hold no
-    page of the same provider, and the page's year and type must agree with
-    that entry's. A link to a page outside the seed most often points to a page
-    the provider has since deleted, kept in a stale mapping of a duplicate page,
-    so it does not show another work. A page of the same provider already there
-    would make the move a new doubled provider, which needs a person. A year or
-    type that disagrees with the entry the link names shows the mapping itself
-    may be wrong. Details only stop a move here; they never place a page.
-    """
-    if len(unrelated_page.other_works) != 1:
-        return False
-    [other_work] = unrelated_page.other_works
-    provider = get_page_provider(key)
-    if any(get_page_provider(other_key) == provider for other_key in other_work.pages):
-        return False
-    # A page links another work only through its own fetched details, so it
-    # has them; without them nothing confirms the move.
-    return (
-        page is not None
-        and is_year_matching(page.year, other_work.year)
-        and is_type_matching(get_seed_type(page), other_work.type)
     )
 
 

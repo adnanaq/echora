@@ -89,10 +89,12 @@ The rules:
   file always matches them and needs no clean-up.
 - **Pages without a place stay** as the seed lists them and get no correction.
 - **Moves.** An `other work` page joins the seed entry its links name when they
-  name exactly one; otherwise it starts a new entry. The rules move a page
-  only into a seed entry whose year and type agree with the page's; a new
-  entry, or any other move, comes from a review answer. Pages an answer puts
-  in the same `work N` form one new entry.
+  name exactly one; otherwise it starts a new entry. A page moves into a seed
+  entry only when that entry holds no page of the same provider and its year
+  and type agree with the page's (`find_move_target`). The rules and review
+  answers use the same check, so neither makes a new doubled provider; a page
+  an answer sends to another work without a sure target starts a new entry.
+  Pages an answer puts in the same `work N` form one new entry.
 - **Renamed pages.** The old address is dropped: the entry also lists the page
   under its current address, or the rules send the entry to review.
 - **Main page first**, because enrichment fetches the first address of each

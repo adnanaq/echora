@@ -219,6 +219,32 @@ def test_correct_doubled_provider_entries_answer_keeps_renamed_page_when_current
     ] == [("entry", None)]
 
 
+def test_correct_doubled_provider_entries_answer_other_work_into_entry_with_same_provider_starts_new_entry(
+    store, tmp_path
+) -> None:
+    works = KnownWorksFromSeed(
+        [
+            _seed_entry("Show", MAL, KITSU_ONE, KITSU_TWO),
+            _seed_entry("Show Movie", TARGET_MAL, "https://kitsu.app/anime/99"),
+        ]
+    )
+    entry = next(iter(works))
+    store.add_pages(_page(KITSU_ONE, MAL), _page(KITSU_TWO, TARGET_MAL))
+    path = tmp_path / "review.jsonl"
+    [case] = _correct(entry, store, works, ReviewFile(path)).review_cases
+    answer = {"kitsu:anime:1": "entry", "kitsu:anime:2": "other work"}
+    path.write_text(
+        case.model_copy(update={"answer": answer}).model_dump_json() + "\n",
+        encoding="utf-8",
+    )
+    corrections = _correct(entry, store, works, ReviewFile(path)).corrections
+    assert [
+        (correction.work, correction.target_entry_reference_page)
+        for correction in corrections
+        if correction.page_key == "kitsu:anime:2"
+    ] == [("other work", None)]
+
+
 def test_correct_doubled_provider_entries_page_linking_work_outside_seed_goes_to_review(
     entry, store, known_works, review_file
 ) -> None:

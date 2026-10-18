@@ -43,6 +43,7 @@ from work_matching import (
     ReviewFile,
     WorkEntry,
     find_doubled_provider_pages,
+    replace_file_lines,
 )
 
 
@@ -196,9 +197,9 @@ async def main() -> None:
     entries_to_check = build_entries_to_check_document(
         seed_document.get("$schema"), doubled_provider_entries, candidate_groups
     )
-    (arguments.data_dir / "entries_to_check.json").write_text(
-        json.dumps(entries_to_check, ensure_ascii=False, indent=1) + "\n",
-        encoding="utf-8",
+    replace_file_lines(
+        arguments.data_dir / "entries_to_check.json",
+        [json.dumps(entries_to_check, ensure_ascii=False, indent=1) + "\n"],
     )
     marked_group_count = sum(
         group.shared_provider is not None for group in candidate_groups
