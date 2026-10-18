@@ -19,13 +19,12 @@ from typing import Any
 
 from common.models.anime import StreamingEntry
 from common.utils.id_generation import generate_deterministic_id
-from work_matching import get_page_key
-
 from enrichment.pipeline.metadata_rules import Ranked, providers_supplying
 from enrichment.sources.base.external_links import (
     canonical_platform,
     normalize_link_url,
 )
+from work_matching import get_page_key
 
 logger = logging.getLogger(__name__)
 

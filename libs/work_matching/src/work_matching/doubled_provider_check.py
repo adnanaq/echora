@@ -22,7 +22,6 @@ from enum import StrEnum
 from typing import Annotated
 
 from pydantic import PlainSerializer
-
 from work_matching.comparable_title import fold_title_for_comparison
 from work_matching.known_works import KnownWorks
 from work_matching.provider_page import ProviderPage, index_pages_by_current_key

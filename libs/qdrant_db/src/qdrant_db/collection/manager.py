@@ -6,7 +6,6 @@ from common.config import QdrantConfig
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.http.exceptions import UnexpectedResponse
 from qdrant_client.models import PayloadSchemaType
-
 from qdrant_db.collection.schema_builder import (
     _DISTANCE_MAPPING,
     build_optimizers_config,

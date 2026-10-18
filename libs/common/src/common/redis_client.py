@@ -1,8 +1,7 @@
 """Build Redis clients from ``RedisConfig``, the same way in every service."""
 
-from redis.asyncio import Redis
-
 from common.config.redis_config import RedisConfig
+from redis.asyncio import Redis
 
 
 def create_redis_client(

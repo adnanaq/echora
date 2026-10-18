@@ -10,7 +10,6 @@ from collections.abc import Iterable, Iterator
 from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict
-
 from work_matching.provider_page_key import get_page_key, get_page_provider
 
 

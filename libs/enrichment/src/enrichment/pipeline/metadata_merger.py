@@ -52,7 +52,6 @@ from pathlib import Path
 from typing import Any
 
 from common.config import EnrichmentConfig
-
 from enrichment.pipeline.link_rules import (
     merge_external_sources,
     merge_images,

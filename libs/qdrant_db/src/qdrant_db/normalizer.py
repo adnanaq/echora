@@ -8,7 +8,6 @@ from typing import Any, TypeGuard, cast
 
 import pydantic
 from qdrant_client.models import SparseVector
-
 from qdrant_db.contracts import DenseVector, MultiVector, SparseVectorData
 from qdrant_db.errors import ValidationError
 

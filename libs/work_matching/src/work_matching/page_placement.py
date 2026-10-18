@@ -56,7 +56,6 @@ from dataclasses import dataclass
 
 from networkx.utils import UnionFind
 from pydantic import JsonValue
-
 from work_matching.doubled_provider_check import (
     DoubledProviderDecision,
     Outcome,

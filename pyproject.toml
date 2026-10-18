@@ -185,10 +185,18 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-# The root tests package is first-party. Ruff finds that from the folder when run
-# on the repository, but Pants runs it in a sandbox that may not show it, and
-# the two then sort `from tests...` imports differently.
+# Ruff run locally and ruff run by Pants must put imports in the same order.
+# Pants runs ruff in a sandbox that holds only the files being checked, so ruff
+# cannot always tell there which folders are this repository's own code.
+#
+# The tests folder is our own code, so it is named here.
 known-first-party = ["tests"]
+# By default ruff puts imports from the file's own library in a separate group
+# at the end. To find that library it reads the __init__.py files around the
+# file, and the sandbox does not always have them, so the order changed with
+# what was being checked. With this off, imports from the file's own library
+# are sorted together with imports from the other libraries.
+detect-same-package = false
 
 # Per-file ignores
 [tool.ruff.lint.per-file-ignores]

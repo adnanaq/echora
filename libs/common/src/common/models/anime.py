@@ -4,6 +4,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Annotated
 
+from common.models.base import ProviderMappedEnum, StrictFieldsModel
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -12,8 +13,6 @@ from pydantic import (
     NonNegativeInt,
     PositiveInt,
 )
-
-from common.models.base import ProviderMappedEnum, StrictFieldsModel
 
 ScoreOutOfTen = Annotated[float, Field(ge=0, le=10)]
 

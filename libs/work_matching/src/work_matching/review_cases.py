@@ -33,7 +33,6 @@ from pathlib import Path
 from typing import Self
 
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
-
 from work_matching.doubled_provider_check import DoubledProviderDecision
 from work_matching.file_replacement import replace_file_lines
 from work_matching.page_placement import (

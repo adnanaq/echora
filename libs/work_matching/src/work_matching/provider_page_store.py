@@ -10,7 +10,6 @@ from collections import defaultdict
 from pathlib import Path
 
 from pydantic import ValidationError
-
 from work_matching.provider_page import ProviderPage
 
 logger = logging.getLogger(__name__)

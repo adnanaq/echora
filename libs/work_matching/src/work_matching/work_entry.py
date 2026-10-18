@@ -3,7 +3,6 @@
 from typing import Annotated, Any, Literal, Self
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
-
 from work_matching.provider_page_key import (
     REFERENCE_ORDER,
     get_page_key,
