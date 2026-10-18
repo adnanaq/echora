@@ -27,7 +27,7 @@ def test_provider_page_store_add_pages_read_back_after_reopening(
     assert [reopened.get_page(page.key) for page in pages] == pages
 
 
-def test_provider_page_store_get_current_key_added_again_keeps_latest(tmp_path) -> None:
+def test_provider_page_store_same_page_added_again_keeps_latest(tmp_path) -> None:
     path = tmp_path / "pages.jsonl"
     store = ProviderPageStore(path)
     latest = _page(MAL, "One Piece")

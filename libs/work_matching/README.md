@@ -279,7 +279,7 @@ when every decision of it is one of these:
 | Decision | Places | Why it is enough |
 | -- | -- | -- |
 | `SAME_PAGE`, the entry listing the current address | The current page `entry`; the old address is dropped. | Both addresses are one page. |
-| `ONE_LINKED`, each other page naming at most one other work | The linked page `entry`, the others `other work`. | Each page has exactly one place. |
+| `ONE_LINKED`, each other page naming exactly one seed entry whose year and type agree with the page's | The linked page `entry`, the others `other work`, joining that seed entry. | Each page has exactly one place, and its own details do not contradict it. |
 
 Every other entry goes to review as one case:
 
@@ -289,6 +289,14 @@ Every other entry goes to review as one case:
   Anime-Planet, AniSearch, LiveChart or Simkl ones, are linked with neither
   work;
 * a page naming two other works has no single place;
+* a page whose links name no seed entry: the seed holds every live MAL page, so
+  such a link most often comes from a stale mapping to a page the provider has
+  deleted, kept by a duplicate page of the entry's own work (Kitsu's "Qian
+  Qiu" maps to a deleted MAL page but is the entry's "Thousand Autumns");
+* a page whose year or type disagrees with the seed entry its links name: the
+  mapping itself may be wrong (Kitsu maps unaired Ganbare! Kickers episodes
+  from 2005 to a 1987 recap OVA). Details only stop a move; they never place a
+  page;
 * a renamed page whose current address the entry does not list has no address
   to keep.
 
@@ -395,7 +403,7 @@ from work_matching import ReviewCase, ReviewFile, place_pages_without_review
 
 review = ReviewFile("data/seed_cleaning/review.jsonl")
 decisions = decide_doubled_providers(entry, pages, known_works)
-placements = place_pages_without_review(entry, decisions)
+placements = place_pages_without_review(entry, decisions, pages)
 if placements is None:
     case = review.attach_kept_answer(
         ReviewCase.from_doubled_provider_entry(entry, decisions, pages)

@@ -37,14 +37,14 @@ def one_linked(linked_page, work_entry, known_works):
         linked_page(KITSU_ONE, MAL),
         linked_page(KITSU_TWO, OTHER_MAL),
     ]
-    return entry, decide_doubled_providers(entry, pages, known_works)
+    return entry, decide_doubled_providers(entry, pages, known_works), pages
 
 
 @pytest.fixture
 def shared_link(linked_page, work_entry):
     entry = work_entry(MAL, KITSU_ONE, KITSU_TWO)
     pages = [linked_page(KITSU_ONE, MAL), linked_page(KITSU_TWO, MAL)]
-    return entry, decide_doubled_providers(entry, pages, KnownWorksFromSeed([]))
+    return entry, decide_doubled_providers(entry, pages, KnownWorksFromSeed([])), pages
 
 
 @pytest.fixture
@@ -60,21 +60,23 @@ def linked_apart(linked_page, work_entry):
         linked_page("https://anilist.co/anime/1", MAL),
         linked_page("https://anilist.co/anime/2", "https://myanimelist.net/anime/2"),
     ]
-    return entry, decide_doubled_providers(entry, pages, KnownWorksFromSeed([]))
+    return entry, decide_doubled_providers(entry, pages, KnownWorksFromSeed([])), pages
 
 
 def _matching_case(matching_cases, name: str):
     entries, pages = matching_cases[name]
-    return entries[0], decide_doubled_providers(
-        entries[0], pages, KnownWorksFromSeed([])
+    return (
+        entries[0],
+        decide_doubled_providers(entries[0], pages, KnownWorksFromSeed([])),
+        pages,
     )
 
 
 def test_place_pages_without_review_renamed_page_keeps_current_page(
     matching_cases,
 ) -> None:
-    entry, decisions = _matching_case(matching_cases, "cocoon")
-    assert place_pages_without_review(entry, decisions) == {
+    entry, decisions, pages = _matching_case(matching_cases, "cocoon")
+    assert place_pages_without_review(entry, decisions, pages) == {
         "animeplanet:anime:cocoon-one-summer-of-girlhood": ENTRY
     }
 
@@ -82,8 +84,8 @@ def test_place_pages_without_review_renamed_page_keeps_current_page(
 def test_place_pages_without_review_one_linked_page_places_other_page_elsewhere(
     one_linked,
 ) -> None:
-    entry, decisions = one_linked
-    assert place_pages_without_review(entry, decisions) == {
+    entry, decisions, pages = one_linked
+    assert place_pages_without_review(entry, decisions, pages) == {
         "kitsu:anime:1": ENTRY,
         "kitsu:anime:2": OTHER_WORK,
     }
@@ -111,7 +113,56 @@ def test_place_pages_without_review_page_linking_two_works_gives_none(
         linked_page(KITSU_TWO, OTHER_MAL, OTHER_ANILIST),
     ]
     decisions = decide_doubled_providers(entry, pages, known_works)
-    assert place_pages_without_review(entry, decisions) is None
+    assert place_pages_without_review(entry, decisions, pages) is None
+
+
+def test_place_pages_without_review_page_linking_work_outside_seed_gives_none(
+    linked_page, work_entry, known_works
+) -> None:
+    entry = work_entry(MAL, KITSU_ONE, KITSU_TWO)
+    pages = [
+        linked_page(KITSU_ONE, MAL),
+        linked_page(KITSU_TWO, "https://myanimelist.net/anime/77"),
+    ]
+    decisions = decide_doubled_providers(entry, pages, known_works)
+    assert place_pages_without_review(entry, decisions, pages) is None
+
+
+@pytest.mark.parametrize(
+    ("moved_page_details", "is_placed"),
+    [
+        ({"type": "MOVIE", "year": 2020}, False),
+        ({"type": "TV", "year": 1987}, False),
+        ({"type": "TV", "year": 2020}, True),
+        ({"type": "TV SHORT"}, True),
+    ],
+)
+def test_place_pages_without_review_moved_page_details_must_agree_with_target(
+    work_entry, moved_page_details: dict, is_placed: bool
+) -> None:
+    known_works = KnownWorksFromSeed(
+        [
+            {
+                "title": "Other",
+                "type": "TV",
+                "sources": [OTHER_MAL],
+                "animeSeason": {"year": 2020},
+            }
+        ]
+    )
+    entry = work_entry(MAL, KITSU_ONE, KITSU_TWO)
+    pages = [
+        ProviderPage.from_canonical_record(
+            KITSU_ONE, {"title": "Show", "sources": [KITSU_ONE, MAL]}
+        ),
+        ProviderPage.from_canonical_record(
+            KITSU_TWO,
+            {"title": "Other", "sources": [KITSU_TWO, OTHER_MAL]} | moved_page_details,
+        ),
+    ]
+    decisions = decide_doubled_providers(entry, pages, known_works)
+    placements = place_pages_without_review(entry, decisions, pages)
+    assert (placements is not None) is is_placed
 
 
 def test_place_pages_without_review_current_page_not_listed_gives_none(
@@ -127,13 +178,13 @@ def test_place_pages_without_review_current_page_not_listed_gives_none(
         for address in old_addresses
     ]
     decisions = decide_doubled_providers(entry, pages, KnownWorksFromSeed([]))
-    assert place_pages_without_review(entry, decisions) is None
+    assert place_pages_without_review(entry, decisions, pages) is None
 
 
 def test_list_placeable_pages_doubled_pages_first_then_other_pages(
     matching_cases,
 ) -> None:
-    entry, decisions = _matching_case(matching_cases, "cocoon")
+    entry, decisions, _ = _matching_case(matching_cases, "cocoon")
     assert list_placeable_pages(entry, decisions) == (
         "animeplanet:anime:cocoon-one-summer-of-girlhood",
         "anidb:anime:18084",
@@ -149,7 +200,7 @@ def test_list_placeable_pages_doubled_pages_first_then_other_pages(
 
 
 def test_suggest_page_placements_linked_groups_and_other_work(one_linked) -> None:
-    assert suggest_page_placements(*one_linked) == {
+    assert suggest_page_placements(*one_linked[:2]) == {
         "kitsu:anime:1": "entry",
         "kitsu:anime:2": "other work",
         "mal:anime:1": "entry",
@@ -159,7 +210,7 @@ def test_suggest_page_placements_linked_groups_and_other_work(one_linked) -> Non
 def test_suggest_page_placements_works_linked_apart_numbered_by_trust(
     linked_apart,
 ) -> None:
-    assert suggest_page_placements(*linked_apart) == {
+    assert suggest_page_placements(*linked_apart[:2]) == {
         "mal:anime:1": "entry",
         "mal:anime:2": "work 2",
         "anilist:anime:1": "entry",
@@ -170,12 +221,14 @@ def test_suggest_page_placements_works_linked_apart_numbered_by_trust(
 def test_suggest_page_placements_works_joined_through_shared_page_left_out(
     matching_cases,
 ) -> None:
-    assert suggest_page_placements(*_matching_case(matching_cases, "puu_neko")) == {}
+    assert (
+        suggest_page_placements(*_matching_case(matching_cases, "puu_neko")[:2]) == {}
+    )
 
 
 def test_suggest_page_placements_unlinked_page_left_out(matching_cases) -> None:
     suggestion = suggest_page_placements(
-        *_matching_case(matching_cases, "ao_haru_ride_ova")
+        *_matching_case(matching_cases, "ao_haru_ride_ova")[:2]
     )
     assert suggestion == {
         "anilist:anime:20837": "entry",
@@ -229,7 +282,7 @@ def test_suggest_page_placements_unlinked_page_left_out(matching_cases) -> None:
 def test_read_answer_placements_valid_answer_gives_placements(
     shared_link, answer: dict[str, str], placements: dict[str, PagePlacement]
 ) -> None:
-    assert read_answer_placements(answer, *shared_link) == placements
+    assert read_answer_placements(answer, *shared_link[:2]) == placements
 
 
 @pytest.mark.parametrize(
@@ -257,4 +310,4 @@ def test_read_answer_placements_valid_answer_gives_placements(
 def test_read_answer_placements_invalid_answer_gives_none(
     shared_link, answer: object
 ) -> None:
-    assert read_answer_placements(answer, *shared_link) is None
+    assert read_answer_placements(answer, *shared_link[:2]) is None

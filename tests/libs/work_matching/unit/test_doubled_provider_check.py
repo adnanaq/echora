@@ -266,9 +266,7 @@ def test_decide_doubled_providers_page_linked_and_linking_other_work_review(
     )
 
 
-def test_decide_doubled_providers_from_dead_address_review(
-    linked_page, work_entry
-) -> None:
+def test_decide_doubled_providers_dead_page_review(linked_page, work_entry) -> None:
     entry = work_entry(
         "https://myanimelist.net/anime/1",
         "https://myanimelist.net/anime/2",
@@ -409,7 +407,7 @@ def test_decide_doubled_providers_link_to_own_provider_outside_entry_counts_as_n
     )
 
 
-def test_decide_doubled_providers_multi_work_link_and_from_dead_address_multi_work_link_wins(
+def test_decide_doubled_providers_multi_work_link_and_dead_page_multi_work_link_wins(
     linked_page, work_entry
 ) -> None:
     entry = work_entry(
@@ -473,7 +471,7 @@ def test_decide_doubled_providers_music_and_special_pages_sharing_link_one_work(
     assert (decision.outcome, decision.reason) == (Outcome.ONE_WORK, Reason.SHARED_LINK)
 
 
-def test_decide_doubled_providers_from_dead_address_and_contradicting_links_dead_page_wins(
+def test_decide_doubled_providers_dead_page_and_contradicting_links_dead_page_wins(
     linked_page, work_entry
 ) -> None:
     entry = work_entry(

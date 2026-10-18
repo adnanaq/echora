@@ -129,7 +129,7 @@ def correct_doubled_provider_entries(
     for entry in entries:
         pages = _load_entry_pages(entry, store)
         decisions = decide_doubled_providers(entry, pages, known_works)
-        placements = place_pages_without_review(entry, decisions)
+        placements = place_pages_without_review(entry, decisions, pages)
         reason_by_page = {
             key: decision.reason.name
             for decision in decisions

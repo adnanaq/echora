@@ -72,7 +72,7 @@ def _correct(entry, store, known_works, review_file):
     return correct_doubled_provider_entries([entry], store, known_works, review_file)
 
 
-def test_correct_find_doubled_provider_entries_settled_entry_moves_page_to_seed_entry(
+def test_correct_doubled_provider_entries_settled_entry_moves_page_to_seed_entry(
     entry, store, known_works, review_file
 ) -> None:
     store.add_pages(_page(KITSU_ONE, MAL), _page(KITSU_TWO, TARGET_MAL))
@@ -97,7 +97,7 @@ def test_correct_find_doubled_provider_entries_settled_entry_moves_page_to_seed_
     )
 
 
-def test_correct_find_doubled_provider_entries_link_on_found_page_settles_entry(
+def test_correct_doubled_provider_entries_link_on_found_page_settles_entry(
     entry, store, known_works, review_file
 ) -> None:
     found = ProviderPage.from_canonical_record(
@@ -111,7 +111,7 @@ def test_correct_find_doubled_provider_entries_link_on_found_page_settles_entry(
     ]
 
 
-def test_correct_find_doubled_provider_entries_renamed_page_points_to_current_page(
+def test_correct_doubled_provider_entries_renamed_page_points_to_current_page(
     store, review_file
 ) -> None:
     works = KnownWorksFromSeed([_seed_entry("Show", MAL, NEW_PLANET, OLD_PLANET)])
@@ -128,7 +128,7 @@ def test_correct_find_doubled_provider_entries_renamed_page_points_to_current_pa
     ]
 
 
-def test_correct_find_doubled_provider_entries_duplicate_page_goes_to_review(
+def test_correct_doubled_provider_entries_duplicate_page_goes_to_review(
     entry, store, known_works, review_file
 ) -> None:
     store.add_pages(_page(KITSU_ONE, MAL), _page(KITSU_TWO, MAL))
@@ -137,7 +137,7 @@ def test_correct_find_doubled_provider_entries_duplicate_page_goes_to_review(
     assert [case.reasons for case in result.review_cases] == [("SHARED_LINK",)]
 
 
-def test_correct_find_doubled_provider_entries_accepted_answer_gives_corrections(
+def test_correct_doubled_provider_entries_accepted_answer_gives_corrections(
     entry, store, known_works, tmp_path
 ) -> None:
     store.add_pages(_page(KITSU_ONE, MAL), _page(KITSU_TWO, MAL))
@@ -158,17 +158,33 @@ def test_correct_find_doubled_provider_entries_accepted_answer_gives_corrections
     ]
 
 
-def test_correct_find_doubled_provider_entries_page_linking_unknown_work_starts_new_entry(
+def test_correct_doubled_provider_entries_page_linking_work_outside_seed_goes_to_review(
     entry, store, known_works, review_file
 ) -> None:
     store.add_pages(
         _page(KITSU_ONE, MAL), _page(KITSU_TWO, "https://myanimelist.net/anime/77")
     )
-    result = _correct(entry, store, known_works, review_file)
+    doubled_provider_corrections = _correct(entry, store, known_works, review_file)
+    assert doubled_provider_corrections.corrections == ()
     assert [
-        (correction.work, correction.target_entry_reference_page)
-        for correction in result.corrections
-    ] == [("entry", None), ("other work", None)]
+        case.suggested_answer for case in doubled_provider_corrections.review_cases
+    ] == [
+        {
+            "kitsu:anime:1": "entry",
+            "kitsu:anime:2": "other work",
+            "mal:anime:1": "entry",
+        }
+    ]
+
+
+def test_correct_doubled_provider_entries_moved_page_details_differing_go_to_review(
+    entry, store, known_works, review_file
+) -> None:
+    store.add_pages(
+        _page(KITSU_ONE, MAL), _page(KITSU_TWO, TARGET_MAL, type="OVA", year=1987)
+    )
+    review_cases = _correct(entry, store, known_works, review_file).review_cases
+    assert [case.reasons for case in review_cases] == [("ONE_LINKED",)]
 
 
 def test_build_corrected_entries_moved_page_leaves_entry_and_joins_seed_entry(

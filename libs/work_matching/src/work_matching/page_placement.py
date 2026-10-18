@@ -20,12 +20,17 @@ When the rules place an entry without a person:
 
 - Every decision must be one of two kinds. Either the provider's addresses are
   one renamed page and the entry lists its current address, or exactly one
-  page is linked with the entry and each other page names at most one other
-  work.
+  page is linked with the entry and each other page moves to another seed
+  entry: its links name exactly one seed entry, and its year and type agree
+  with that entry's.
 - Anything else needs a person, for these reasons. A work that keeps two pages
   of one provider needs its main page named. A mixed entry needs every page
   placed, and some of its pages are linked with neither work. A page naming two
-  other works has no single place to go.
+  other works has no single place to go. A page whose links name no seed entry
+  most often holds a stale mapping to a page the provider has deleted, so it is
+  a duplicate of the entry's own work rather than another work. A page whose
+  year or type disagrees with the entry its links name may hold a wrong
+  mapping. Details only stop a move; they never place a page.
 
 When a person's answer is valid:
 
@@ -46,7 +51,7 @@ How a suggested answer is made for the reviewer:
 
 import re
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
 from networkx.utils import UnionFind
@@ -55,10 +60,13 @@ from pydantic import JsonValue
 from work_matching.doubled_provider_check import (
     DoubledProviderDecision,
     Outcome,
+    UnrelatedPage,
     get_decided_provider,
+    get_seed_type,
 )
+from work_matching.provider_page import ProviderPage, index_pages_by_current_key
 from work_matching.provider_page_key import get_page_provider, rank_by_provider_trust
-from work_matching.work_entry import WorkEntry
+from work_matching.work_entry import WorkEntry, is_type_matching, is_year_matching
 
 ENTRY_WORK = "entry"
 OTHER_WORK = "other work"
@@ -86,19 +94,27 @@ class PagePlacement:
 
 
 def place_pages_without_review(
-    entry: WorkEntry, decisions: Sequence[DoubledProviderDecision]
+    entry: WorkEntry,
+    decisions: Sequence[DoubledProviderDecision],
+    pages: Iterable[ProviderPage],
 ) -> dict[str, PagePlacement] | None:
     """Place the doubled pages of an entry the rules settle without a person.
 
     Args:
         entry: The work entry.
         decisions: The entry's doubled-provider decisions.
+        pages: The fetched pages the decisions were made from, for the details
+            of a page that moves to another entry.
 
     Returns:
         Each doubled page's place, by its current page key, or None when a
         person has to place the entry's pages.
     """
-    if not all(_is_decision_settled(entry, decision) for decision in decisions):
+    pages_by_current_key = index_pages_by_current_key(pages)
+    if not all(
+        _is_decision_settled(entry, decision, pages_by_current_key)
+        for decision in decisions
+    ):
         return None
     placements: dict[str, PagePlacement] = {}
     for decision in decisions:
@@ -217,7 +233,11 @@ def suggest_page_placements(
     }
 
 
-def _is_decision_settled(entry: WorkEntry, decision: DoubledProviderDecision) -> bool:
+def _is_decision_settled(
+    entry: WorkEntry,
+    decision: DoubledProviderDecision,
+    pages_by_current_key: Mapping[str, ProviderPage],
+) -> bool:
     """Report whether the rules can place one decision's pages without a person."""
     if decision.outcome is Outcome.SAME_PAGE:
         return decision.pages[0] in entry.pages
@@ -225,8 +245,35 @@ def _is_decision_settled(entry: WorkEntry, decision: DoubledProviderDecision) ->
         decision.outcome is Outcome.ONE_WORK
         and len(decision.belonging_pages) == 1
         and all(
-            len(page.other_works) <= 1 for page in decision.unrelated_pages.values()
+            _is_move_to_seed_entry_confirmed(
+                unrelated_page, pages_by_current_key.get(key)
+            )
+            for key, unrelated_page in decision.unrelated_pages.items()
         )
+    )
+
+
+def _is_move_to_seed_entry_confirmed(
+    unrelated_page: UnrelatedPage, page: ProviderPage | None
+) -> bool:
+    """Report whether a page linking another work can move to that work's entry.
+
+    The page's links must name exactly one seed entry, and the page's year and
+    type must agree with that entry's. A link to a page outside the seed most
+    often points to a page the provider has since deleted, kept in a stale
+    mapping of a duplicate page, so it does not show another work. A year or
+    type that disagrees with the entry the link names shows the mapping itself
+    may be wrong. Details only stop a move here; they never place a page.
+    """
+    if len(unrelated_page.other_works) != 1:
+        return False
+    [other_work] = unrelated_page.other_works
+    # A page links another work only through its own fetched details, so it
+    # has them; without them nothing confirms the move.
+    return (
+        page is not None
+        and is_year_matching(page.year, other_work.year)
+        and is_type_matching(get_seed_type(page), other_work.type)
     )
 
 
