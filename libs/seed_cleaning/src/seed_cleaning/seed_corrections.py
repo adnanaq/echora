@@ -23,6 +23,7 @@ corrections, so the release itself is never edited. The rules:
   to go by, so it takes that entry's title and an unknown type.
 """
 
+import logging
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -46,6 +47,8 @@ from work_matching import (
     rank_by_provider_trust,
     replace_file_lines,
 )
+
+logger = logging.getLogger(__name__)
 
 # The reason recorded for a page placed by a review answer.
 REVIEW_ANSWER_REASON = "review answer"
@@ -266,8 +269,12 @@ def _build_entry_corrections(
 ) -> list[SeedCorrection]:
     """Turn one entry's page places into corrections, in the entry's page order.
 
-    A page listed under an old address takes the place of its current page.
-    Pages without a place stay as they are and get no correction.
+    A doubled page listed under an old address takes the place of its current
+    page, since the decisions name doubled pages by their current key; the old
+    address is then dropped. Any other page is placed by the key the entry
+    lists, as an answer names it, and keeps its address: the entry does not list
+    its current address, so dropping the old one would lose the page. Pages
+    without a place stay as they are and get no correction.
     """
     current_key_by_page = {
         page.key: page.renamed_to for page in pages if page.renamed_to
@@ -282,6 +289,9 @@ def _build_entry_corrections(
     for key, address in entry.pages.items():
         current_key = current_key_by_page.get(key, key)
         placement = placements.get(current_key)
+        if placement is None:
+            current_key = key
+            placement = placements.get(key)
         if placement is None:
             continue
         corrections.append(
@@ -357,6 +367,10 @@ def _build_new_entry(
         None,
     )
     if trusted_page is None:
+        logger.warning(
+            f"New entry has no fetched page details, so it takes the title of "
+            f"{source_seed_entry.reference_page} and an unknown type: {list(pages)}"
+        )
         return WorkEntry(title=source_seed_entry.title, type="UNKNOWN", pages=pages)
     # Validated, so the page's season goes through the entry's season check.
     return WorkEntry.model_validate(

@@ -73,7 +73,7 @@ _MAIN_PAGE_MARK = ", main"
 # A place as an answer writes it: ``entry`` or ``work N`` (N from 2), either
 # optionally marked ``, main``, or ``other work``.
 _PLACEMENT_ANSWER_TEXT = re.compile(
-    rf"(?P<work>entry|work (?:[2-9]|[1-9][0-9]+))(?P<main>{_MAIN_PAGE_MARK})?"
+    rf"(?P<work>{ENTRY_WORK}|work (?:[2-9]|[1-9][0-9]+))(?P<main>{_MAIN_PAGE_MARK})?"
     rf"|{OTHER_WORK}"
 )
 

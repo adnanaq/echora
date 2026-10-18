@@ -131,7 +131,7 @@ uv run ty check libs/http_cache/
 - Focus on making your code expressive and efficient
 - Write clear comments/docstrings where needed and avoid terse shorthands
 - Use relevant data structures where needed
-- Avoid single character variable or function names, do not use single word function names.
+- Avoid single-character variable or function names, do not use single-word function names.
 - Name variables, functions, constants and values after the domain thing they hold, using the terms the project already uses (its glossary, READMEs and models): `retry_delay_seconds`, `pages_by_provider`, `failed_requests`, not vague words such as `data`, `info`, `group`, `item`, `result` or `stuff`.
 - Functions and properties that answer yes or no start with `is_` (`is_expired`), or `has_` when they check for something (`has_errors`).
 - No articles (`a`, `an`, `the`), possessives (`its`, `their`) or hedging words in any name.

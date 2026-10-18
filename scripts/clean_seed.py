@@ -84,7 +84,7 @@ def build_entries_to_check_document(
     """
     return {
         "seed_schema": seed_schema,
-        "find_doubled_provider_entries": [
+        "doubled_provider_entries": [
             {
                 "reference_page": entry.reference_page,
                 "title": entry.title,
@@ -92,7 +92,7 @@ def build_entries_to_check_document(
             }
             for entry in doubled_provider_entries
         ],
-        "find_split_work_candidates": [
+        "split_work_candidates": [
             {
                 "shared_provider": group.shared_provider,
                 "entries": [

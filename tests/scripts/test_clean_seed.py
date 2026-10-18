@@ -34,7 +34,7 @@ def test_build_entries_to_check_document_names_entries_by_reference_page() -> No
     )
     document = build_entries_to_check_document("seed-schema-url", [doubled], [group])
     assert document["seed_schema"] == "seed-schema-url"
-    assert document["find_doubled_provider_entries"] == [
+    assert document["doubled_provider_entries"] == [
         {
             "reference_page": "anilist:anime:120516",
             "title": "Rock Star",
@@ -43,7 +43,7 @@ def test_build_entries_to_check_document_names_entries_by_reference_page() -> No
             },
         }
     ]
-    [candidates] = document["find_split_work_candidates"]
+    [candidates] = document["split_work_candidates"]
     assert candidates["shared_provider"] is None
     assert [entry["reference_page"] for entry in candidates["entries"]] == [
         "ann:anime:1",

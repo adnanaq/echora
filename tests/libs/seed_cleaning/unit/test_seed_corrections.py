@@ -158,6 +158,38 @@ def test_correct_doubled_provider_entries_accepted_answer_gives_corrections(
     ]
 
 
+def test_correct_doubled_provider_entries_answer_places_renamed_single_page_by_listed_key(
+    store, tmp_path
+) -> None:
+    works = KnownWorksFromSeed(
+        [_seed_entry("Show", MAL, KITSU_ONE, KITSU_TWO, OLD_PLANET)]
+    )
+    entry = next(iter(works))
+    store.add_pages(
+        _page(KITSU_ONE, MAL),
+        _page(KITSU_TWO, MAL),
+        _page(OLD_PLANET, sources=[OLD_PLANET, NEW_PLANET]),
+    )
+    path = tmp_path / "review.jsonl"
+    [case] = _correct(entry, store, works, ReviewFile(path)).review_cases
+    answer = {
+        "kitsu:anime:1": "entry",
+        "kitsu:anime:2": "work 2",
+        "mal:anime:1": "entry",
+        "animeplanet:anime:old-name": "work 2",
+    }
+    path.write_text(
+        case.model_copy(update={"answer": answer}).model_dump_json() + "\n",
+        encoding="utf-8",
+    )
+    corrections = _correct(entry, store, works, ReviewFile(path)).corrections
+    assert [
+        (correction.work, correction.renamed_to)
+        for correction in corrections
+        if correction.page_key == "animeplanet:anime:old-name"
+    ] == [("work 2", None)]
+
+
 def test_correct_doubled_provider_entries_page_linking_work_outside_seed_goes_to_review(
     entry, store, known_works, review_file
 ) -> None:
@@ -278,7 +310,7 @@ def test_build_corrected_entries_work_pages_become_new_entry_from_trusted_page(
 
 
 def test_build_corrected_entries_page_without_details_new_entry_takes_entry_title(
-    entry, store, known_works
+    entry, store, known_works, caplog
 ) -> None:
     ann = "https://animenewsnetwork.com/encyclopedia/anime.php?id=5"
     corrections = [
@@ -296,6 +328,7 @@ def test_build_corrected_entries_page_without_details_new_entry_takes_entry_titl
         seed_entry_reference_page=None,
         entry=WorkEntry(title="Show", type="UNKNOWN", pages={"ann:anime:5": ann}),
     )
+    assert "ann:anime:5" in caplog.text
 
 
 def test_build_corrected_entries_entry_missing_from_seed_raises(

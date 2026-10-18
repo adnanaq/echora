@@ -71,7 +71,7 @@ class FetchOutcome(StrEnum):
 
     FETCHED = "fetched"
     # The provider said the page does not exist.
-    DEAD = "is_dead"
+    DEAD = "dead"
     # AnimeSchedule has no page for the lookup page: nothing to store.
     NOT_LISTED = "not listed"
     FAILED = "failed"
