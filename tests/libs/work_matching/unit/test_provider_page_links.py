@@ -123,3 +123,29 @@ def test_provider_page_links_found_page_counts_for_lookup_page_not_given() -> No
     )
     links = ProviderPageLinks([found], ["anilist:anime:1"])
     assert links.linked_with("mal:anime:1") == frozenset({"anilist:anime:1"})
+
+
+def test_provider_page_links_found_page_through_two_lookup_pages_links_each_with_other() -> (
+    None
+):
+    found = ProviderPage.from_canonical_record(
+        "https://animeschedule.net/anime/ranma",
+        {
+            "title": "Ranma",
+            "sources": [
+                "https://myanimelist.net/anime/210",
+                "https://anilist.co/anime/210",
+                "https://anidb.net/anime/193",
+            ],
+        },
+        found_by="https://myanimelist.net/anime/210",
+    ).model_copy(update={"found_by": ("anilist:anime:210", "mal:anime:210")})
+    links = ProviderPageLinks(
+        [found], ["mal:anime:210", "anilist:anime:210", "anidb:anime:193"]
+    )
+    assert links.linked_with("mal:anime:210") == frozenset(
+        {"anilist:anime:210", "anidb:anime:193"}
+    )
+    assert links.linked_with("anilist:anime:210") == frozenset(
+        {"mal:anime:210", "anidb:anime:193"}
+    )

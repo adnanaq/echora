@@ -169,16 +169,56 @@ def decide_doubled_providers(
         One decision per provider with two or more pages in the entry, in the
         order the entry lists them.
     """
-    pages_by_provider: defaultdict[str, list[str]] = defaultdict(list)
-    for key in entry.pages:
-        if provider := _decision_provider(key):
-            pages_by_provider[provider].append(key)
     check = _EntryCheck(entry, pages, known_works)
     return [
-        check.decide_provider(provider, keys)
+        check.decide_provider(provider, list(keys))
+        for provider, keys in doubled_provider_pages(entry.pages).items()
+    ]
+
+
+def doubled_provider_pages(page_keys: Iterable[str]) -> dict[str, tuple[str, ...]]:
+    """Return the pages of each doubled provider among these page keys.
+
+    A provider is doubled when its pages carry more than one id: two pages of
+    one provider with different ids are different pages. Pages of providers
+    decided together count as one provider (see ``decided_provider``), so a
+    Simkl page and an AnimeCountdown page with the same number are one page,
+    not a doubled provider. Seed cleaning lists the entries to check with this rule,
+    so it checks exactly the pages ``decide_doubled_providers`` decides.
+
+    Args:
+        page_keys: Page keys, such as an entry's pages.
+
+    Returns:
+        Each doubled provider, by the name its decision falls under, with its
+        page keys in the order given.
+    """
+    pages_by_provider: defaultdict[str, list[str]] = defaultdict(list)
+    for key in page_keys:
+        if provider := decided_provider(key):
+            pages_by_provider[provider].append(key)
+    return {
+        provider: tuple(keys)
         for provider, keys in pages_by_provider.items()
         if _has_several_ids(keys)
-    ]
+    }
+
+
+def decided_provider(key: str) -> str | None:
+    """Return the provider whose decision a page key falls under, if any.
+
+    AnimeCountdown numbers a work the same as Simkl (on release 2026-40, all
+    14,649 entries with one list the other with the same number), so its
+    pages fall under ``simkl``.
+
+    Args:
+        key: A page key, as ``provider_page_key`` gives it.
+
+    Returns:
+        The provider name, or None when the key is not a known provider's page.
+    """
+    provider = provider_of_key(key)
+    return _DECIDED_WITH.get(provider, provider) if provider else None
 
 
 class _EntryCheck:
@@ -305,7 +345,7 @@ class _EntryCheck:
         entry_titles = {comparable_title(self._entry.title)} | {
             comparable_title(page.titles[0])
             for key in self._entry_pages
-            if _decision_provider(key) != provider
+            if decided_provider(key) != provider
             and (page := self._details.get(key))
             and page.titles
         }
@@ -361,12 +401,3 @@ def _has_several_ids(keys: Iterable[str]) -> bool:
     pages of providers decided together, since they number a work the same.
     """
     return len(set(map(page_id_of_key, keys))) > 1
-
-
-def _decision_provider(key: str) -> str | None:
-    """Return the provider whose decision a page key falls under, if any.
-
-    AnimeCountdown shares ID numbering with Simkl, so its pages fall under 'simkl'.
-    """
-    provider = provider_of_key(key)
-    return _DECIDED_WITH.get(provider, provider) if provider else None

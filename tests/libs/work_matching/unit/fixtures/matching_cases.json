@@ -39,8 +39,8 @@
         "links": [
           "ann:anime:12559"
         ],
-        "lands_on": null,
-        "found_by": null,
+        "renamed_to": null,
+        "found_by": [],
         "dead": false
       },
       {
@@ -56,8 +56,8 @@
         "links": [
           "mal:anime:10459"
         ],
-        "lands_on": null,
-        "found_by": null,
+        "renamed_to": null,
+        "found_by": [],
         "dead": false
       },
       {
@@ -73,8 +73,8 @@
         "links": [
           "mal:anime:11589"
         ],
-        "lands_on": null,
-        "found_by": null,
+        "renamed_to": null,
+        "found_by": [],
         "dead": false
       },
       {
@@ -88,8 +88,8 @@
         "year": 2011,
         "season": "SPRING",
         "links": [],
-        "lands_on": null,
-        "found_by": null,
+        "renamed_to": null,
+        "found_by": [],
         "dead": false
       },
       {
@@ -103,8 +103,8 @@
         "year": 2011,
         "season": "SPRING",
         "links": [],
-        "lands_on": null,
-        "found_by": null,
+        "renamed_to": null,
+        "found_by": [],
         "dead": false
       },
       {
@@ -121,8 +121,10 @@
           "anilist:anime:10459",
           "kitsu:anime:6190"
         ],
-        "lands_on": null,
-        "found_by": "mal:anime:10459",
+        "renamed_to": null,
+        "found_by": [
+          "mal:anime:10459"
+        ],
         "dead": false
       },
       {
@@ -139,8 +141,10 @@
           "anilist:anime:11589",
           "kitsu:anime:6543"
         ],
-        "lands_on": null,
-        "found_by": "mal:anime:11589",
+        "renamed_to": null,
+        "found_by": [
+          "mal:anime:11589"
+        ],
         "dead": false
       },
       {
@@ -157,8 +161,8 @@
           "anilist:anime:10459",
           "mal:anime:10459"
         ],
-        "lands_on": null,
-        "found_by": null,
+        "renamed_to": null,
+        "found_by": [],
         "dead": false
       },
       {
@@ -176,8 +180,8 @@
           "anilist:anime:11589",
           "mal:anime:11589"
         ],
-        "lands_on": null,
-        "found_by": null,
+        "renamed_to": null,
+        "found_by": [],
         "dead": false
       },
       {
@@ -195,8 +199,8 @@
           "anidb:anime:8328",
           "ann:anime:12559"
         ],
-        "lands_on": null,
-        "found_by": null,
+        "renamed_to": null,
+        "found_by": [],
         "dead": false
       },
       {
@@ -210,8 +214,8 @@
         "year": 2011,
         "season": "SUMMER",
         "links": [],
-        "lands_on": null,
-        "found_by": null,
+        "renamed_to": null,
+        "found_by": [],
         "dead": false
       }
     ]
@@ -255,8 +259,8 @@
           "ann:anime:15817",
           "mal:anime:24151"
         ],
-        "lands_on": null,
-        "found_by": null,
+        "renamed_to": null,
+        "found_by": [],
         "dead": false
       },
       {
@@ -272,8 +276,8 @@
         "links": [
           "mal:anime:24151"
         ],
-        "lands_on": null,
-        "found_by": null,
+        "renamed_to": null,
+        "found_by": [],
         "dead": false
       },
       {
@@ -289,8 +293,8 @@
         "links": [
           "mal:anime:24151"
         ],
-        "lands_on": null,
-        "found_by": null,
+        "renamed_to": null,
+        "found_by": [],
         "dead": false
       },
       {
@@ -304,8 +308,8 @@
         "year": 2014,
         "season": "WINTER",
         "links": [],
-        "lands_on": null,
-        "found_by": null,
+        "renamed_to": null,
+        "found_by": [],
         "dead": false
       },
       {
@@ -319,8 +323,8 @@
         "year": 2014,
         "season": "SUMMER",
         "links": [],
-        "lands_on": null,
-        "found_by": null,
+        "renamed_to": null,
+        "found_by": [],
         "dead": false
       },
       {
@@ -334,8 +338,8 @@
         "year": 2014,
         "season": "SUMMER",
         "links": [],
-        "lands_on": null,
-        "found_by": null,
+        "renamed_to": null,
+        "found_by": [],
         "dead": false
       },
       {
@@ -354,8 +358,10 @@
           "animeplanet:anime:blue-spring-ride-page-13",
           "kitsu:anime:ao-haru-ride-ova"
         ],
-        "lands_on": null,
-        "found_by": "mal:anime:24151",
+        "renamed_to": null,
+        "found_by": [
+          "mal:anime:24151"
+        ],
         "dead": false
       },
       {
@@ -373,8 +379,8 @@
           "anilist:anime:20837",
           "mal:anime:24151"
         ],
-        "lands_on": null,
-        "found_by": null,
+        "renamed_to": null,
+        "found_by": [],
         "dead": false
       },
       {
@@ -392,8 +398,8 @@
           "anidb:anime:10626",
           "ann:anime:15817"
         ],
-        "lands_on": null,
-        "found_by": null,
+        "renamed_to": null,
+        "found_by": [],
         "dead": false
       }
     ]
@@ -438,8 +444,8 @@
           "ann:anime:28792",
           "mal:anime:55779"
         ],
-        "lands_on": null,
-        "found_by": null,
+        "renamed_to": null,
+        "found_by": [],
         "dead": false
       },
       {
@@ -456,8 +462,8 @@
         "links": [
           "mal:anime:55779"
         ],
-        "lands_on": null,
-        "found_by": null,
+        "renamed_to": null,
+        "found_by": [],
         "dead": false
       },
       {
@@ -471,8 +477,8 @@
         "year": 2025,
         "season": "SPRING",
         "links": [],
-        "lands_on": "animeplanet:anime:cocoon-one-summer-of-girlhood",
-        "found_by": null,
+        "renamed_to": "animeplanet:anime:cocoon-one-summer-of-girlhood",
+        "found_by": [],
         "dead": false
       },
       {
@@ -486,8 +492,8 @@
         "year": 2025,
         "season": "SPRING",
         "links": [],
-        "lands_on": null,
-        "found_by": null,
+        "renamed_to": null,
+        "found_by": [],
         "dead": false
       },
       {
@@ -502,8 +508,8 @@
         "year": 2025,
         "season": "SPRING",
         "links": [],
-        "lands_on": null,
-        "found_by": null,
+        "renamed_to": null,
+        "found_by": [],
         "dead": false
       },
       {
@@ -522,8 +528,10 @@
           "animeplanet:anime:cocoon",
           "kitsu:anime:cocoon"
         ],
-        "lands_on": null,
-        "found_by": "mal:anime:55779",
+        "renamed_to": null,
+        "found_by": [
+          "mal:anime:55779"
+        ],
         "dead": false
       },
       {
@@ -539,8 +547,8 @@
           "anilist:anime:166527",
           "mal:anime:55779"
         ],
-        "lands_on": null,
-        "found_by": null,
+        "renamed_to": null,
+        "found_by": [],
         "dead": false
       },
       {
@@ -557,8 +565,8 @@
           "anidb:anime:18084",
           "ann:anime:28792"
         ],
-        "lands_on": null,
-        "found_by": null,
+        "renamed_to": null,
+        "found_by": [],
         "dead": false
       }
     ]
@@ -590,8 +598,8 @@
         "year": 2024,
         "season": "SUMMER",
         "links": [],
-        "lands_on": null,
-        "found_by": null,
+        "renamed_to": null,
+        "found_by": [],
         "dead": false
       },
       {
@@ -605,8 +613,8 @@
         "year": 2025,
         "season": "SPRING",
         "links": [],
-        "lands_on": null,
-        "found_by": null,
+        "renamed_to": null,
+        "found_by": [],
         "dead": false
       }
     ]
@@ -638,8 +646,8 @@
         "year": 2023,
         "season": "SUMMER",
         "links": [],
-        "lands_on": null,
-        "found_by": null,
+        "renamed_to": null,
+        "found_by": [],
         "dead": false
       },
       {
@@ -653,8 +661,8 @@
         "year": 2024,
         "season": "WINTER",
         "links": [],
-        "lands_on": null,
-        "found_by": null,
+        "renamed_to": null,
+        "found_by": [],
         "dead": false
       }
     ]
@@ -699,8 +707,8 @@
         "links": [
           "mal:anime:58573"
         ],
-        "lands_on": null,
-        "found_by": null,
+        "renamed_to": null,
+        "found_by": [],
         "dead": false
       },
       {
@@ -717,8 +725,8 @@
         "links": [
           "mal:anime:58573"
         ],
-        "lands_on": null,
-        "found_by": null,
+        "renamed_to": null,
+        "found_by": [],
         "dead": false
       },
       {
@@ -732,8 +740,8 @@
         "year": 2026,
         "season": "WINTER",
         "links": [],
-        "lands_on": null,
-        "found_by": null,
+        "renamed_to": null,
+        "found_by": [],
         "dead": false
       },
       {
@@ -751,8 +759,8 @@
         "year": 2026,
         "season": "WINTER",
         "links": [],
-        "lands_on": null,
-        "found_by": null,
+        "renamed_to": null,
+        "found_by": [],
         "dead": false
       },
       {
@@ -771,8 +779,10 @@
           "animeplanet:anime:baki-dou",
           "kitsu:anime:baki-dou"
         ],
-        "lands_on": null,
-        "found_by": "mal:anime:58573",
+        "renamed_to": null,
+        "found_by": [
+          "mal:anime:58573"
+        ],
         "dead": false
       },
       {
@@ -790,8 +800,8 @@
           "anilist:anime:176509",
           "mal:anime:58573"
         ],
-        "lands_on": null,
-        "found_by": null,
+        "renamed_to": null,
+        "found_by": [],
         "dead": false
       },
       {
@@ -809,8 +819,8 @@
           "anidb:anime:18579",
           "ann:anime:32626"
         ],
-        "lands_on": null,
-        "found_by": null,
+        "renamed_to": null,
+        "found_by": [],
         "dead": false
       }
     ]
@@ -864,8 +874,8 @@
           "ann:anime:24629",
           "mal:anime:43735"
         ],
-        "lands_on": null,
-        "found_by": null,
+        "renamed_to": null,
+        "found_by": [],
         "dead": false
       },
       {
@@ -880,8 +890,8 @@
         "links": [
           "mal:anime:43735"
         ],
-        "lands_on": null,
-        "found_by": null,
+        "renamed_to": null,
+        "found_by": [],
         "dead": false
       },
       {
@@ -894,8 +904,8 @@
         "year": 2022,
         "season": "WINTER",
         "links": [],
-        "lands_on": null,
-        "found_by": null,
+        "renamed_to": null,
+        "found_by": [],
         "dead": false
       },
       {
@@ -909,8 +919,8 @@
         "year": 2022,
         "season": "WINTER",
         "links": [],
-        "lands_on": null,
-        "found_by": null,
+        "renamed_to": null,
+        "found_by": [],
         "dead": false
       },
       {
@@ -928,8 +938,10 @@
           "animeplanet:anime:cue",
           "kitsu:anime:cue"
         ],
-        "lands_on": null,
-        "found_by": "mal:anime:43735",
+        "renamed_to": null,
+        "found_by": [
+          "mal:anime:43735"
+        ],
         "dead": false
       },
       {
@@ -945,8 +957,8 @@
           "anilist:anime:125682",
           "mal:anime:43735"
         ],
-        "lands_on": null,
-        "found_by": null,
+        "renamed_to": null,
+        "found_by": [],
         "dead": false
       },
       {
@@ -963,8 +975,8 @@
           "anidb:anime:15827",
           "ann:anime:24629"
         ],
-        "lands_on": null,
-        "found_by": null,
+        "renamed_to": null,
+        "found_by": [],
         "dead": false
       }
     ]

@@ -2,7 +2,7 @@
 
 import json
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import Any, Self
 
@@ -28,30 +28,33 @@ class KnownWorksFromSeed(KnownWorks):
         Args:
             entries: The ``data`` list of an anime-offline-database document.
         """
+        self._works: list[WorkEntry] = []
         self._by_page: dict[str, WorkEntry] = {}
         self._by_title: defaultdict[tuple[str, WorkType], list[WorkEntry]] = (
             defaultdict(list)
         )
         in_several_entries: set[str] = set()
         without_pages: list[str] = []
-        count = 0
         for entry in entries:
             if not entry["sources"]:
                 without_pages.append(entry["title"])
                 continue
             work = WorkEntry.from_seed_entry(entry)
-            count += 1
+            self._works.append(work)
             for key in work.pages:
                 if self._by_page.setdefault(key, work) is not work:
                     in_several_entries.add(key)
             self._by_title[(comparable_title(work.title), work.type)].append(work)
-        self._count = count
         self._pages_in_several_entries = frozenset(in_several_entries)
         self._entries_without_pages = tuple(without_pages)
 
     def __len__(self) -> int:
         """Return how many works are known."""
-        return self._count
+        return len(self._works)
+
+    def __iter__(self) -> Iterator[WorkEntry]:
+        """Yield every known work in seed file order, so the seed is read once."""
+        return iter(self._works)
 
     @property
     def pages_in_several_entries(self) -> frozenset[str]:
