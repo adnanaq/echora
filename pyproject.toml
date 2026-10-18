@@ -184,6 +184,12 @@ ignore = [
     "UP047",  # Generic function type parameters (not needed for Python 3.14)
 ]
 
+[tool.ruff.lint.isort]
+# The root tests package is first-party. Ruff finds that from the folder when run
+# on the repository, but Pants runs it in a sandbox that may not show it, and
+# the two then sort `from tests...` imports differently.
+known-first-party = ["tests"]
+
 # Per-file ignores
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["N806", "N803", "E402", "F841", "F811", "S101", "TRY003"]  # Tests: allow uppercase vars/args, imports not at top, unused vars, redefinitions, assert statements, long exception messages in mocks
