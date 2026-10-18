@@ -84,7 +84,7 @@ async def test_fetch_entry_pages_missing_page_stored_as_dead(tmp_path) -> None:
     summary = await fetcher.fetch_entry_pages([_one_piece(KITSU)])
     page = ProviderPageStore(tmp_path / "pages.jsonl").get_page("kitsu:anime:12")
     assert page is not None
-    assert page.dead
+    assert page.is_dead
     assert summary.outcomes == {FetchOutcome.DEAD: 1}
 
 

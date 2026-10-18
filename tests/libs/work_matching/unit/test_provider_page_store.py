@@ -27,7 +27,7 @@ def test_provider_page_store_add_pages_read_back_after_reopening(
     assert [reopened.get_page(page.key) for page in pages] == pages
 
 
-def test_provider_page_store_same_page_added_again_keeps_latest(tmp_path) -> None:
+def test_provider_page_store_get_current_key_added_again_keeps_latest(tmp_path) -> None:
     path = tmp_path / "pages.jsonl"
     store = ProviderPageStore(path)
     latest = _page(MAL, "One Piece")
@@ -92,6 +92,21 @@ def test_provider_page_store_has_page_found_by_lookup_page_after_add(tmp_path) -
     )
     assert store.has_page_found_by("mal:anime:21")
     assert not store.has_page_found_by("kitsu:anime:12")
+
+
+def test_provider_page_store_get_pages_found_by_gives_pages_after_reopening(
+    tmp_path,
+) -> None:
+    path = tmp_path / "pages.jsonl"
+    found = ProviderPage.from_canonical_record(
+        "https://animeschedule.net/anime/one-piece",
+        {"title": "One Piece"},
+        found_by=MAL,
+    )
+    ProviderPageStore(path).add_pages(found, _page(KITSU, "One Piece"))
+    reopened = ProviderPageStore(path)
+    assert reopened.get_pages_found_by("mal:anime:21") == (found,)
+    assert reopened.get_pages_found_by("kitsu:anime:12") == ()
 
 
 def test_provider_page_store_found_page_added_through_second_lookup_keeps_both(

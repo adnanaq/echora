@@ -27,7 +27,7 @@ imports nothing from `enrichment`.
 | **Renamed page** | A page whose address changed; the old address redirects to the new one. Anime-Planet renames pages. The old and new address are one page. |
 | **Found page** | A page found through another provider's page rather than listed in the seed. AnimeSchedule is looked up by MAL, AniList or AniDB id. |
 | **Lookup page** | A page a found page was found through. `ProviderPage.found_by` lists every one: a found page can be reached through pages of several entries, such as both entries of a split work. |
-| **Dead page** | A page the provider no longer serves (`ProviderPage.dead`). |
+| **Dead page** | A page the provider no longer serves (`ProviderPage.is_dead`). |
 | **Multi-work page** | A page naming two or more pages of one provider, such as an anthology page linking several MAL pages. Its links prove nothing. |
 | **Review** | A decision the rules do not settle. A person (later the review agent) answers it. |
 
@@ -35,16 +35,18 @@ imports nothing from `enrichment`.
 
 | File | Holds |
 | -- | -- |
-| `provider_page_key.py` | `provider_page_key`: an address to its page key. `provider_of_key`: a key's provider. |
+| `provider_page_key.py` | `get_page_key`: an address to its page key. `get_page_provider`: a key's provider. `rank_by_provider_trust`: how far a page's provider is trusted to name a work, in `REFERENCE_ORDER`. |
 | `work_entry.py` | `WorkEntry`, and the type and year comparisons `is_type_matching` and `is_year_matching`. |
-| `comparable_title.py` | `comparable_title`: a title folded for comparison (case, punctuation, Latin accents, "2nd Season"). |
+| `comparable_title.py` | `fold_title_for_comparison`: a title folded for comparison (case, punctuation, Latin accents, "2nd Season"). |
 | `known_works.py`, `known_works_from_seed.py` | The `KnownWorks` interface and its seed-backed lookup. |
-| `provider_page.py` | `ProviderPage`: what a provider says about one page, read from the canonical record its enrichment helper returns. `pages_by_current_key`: pages by the current key each resolves to. |
-| `provider_page_store.py` | `ProviderPageStore`: fetched pages kept in a JSON Lines file, so they outlive the 7-day HTTP cache. `has_page_found_by` tells whether a lookup through a page, such as AnimeSchedule's, was done. |
+| `provider_page.py` | `ProviderPage`: what a provider says about one page, read from the canonical record its enrichment helper returns. `index_pages_by_current_key`: pages by the current key each resolves to. |
+| `provider_page_store.py` | `ProviderPageStore`: fetched pages kept in a JSON Lines file, so they outlive the 7-day HTTP cache. `has_page_found_by` tells whether a lookup through a page, such as AnimeSchedule's, was done; `get_pages_found_by` returns the pages it found. |
 | `provider_page_links.py` | `ProviderPageLinks`: which pages of a group are linked. |
-| `doubled_provider_check.py` | `decide_doubled_providers`: the decision for each doubled provider of an entry. `doubled_provider_pages`: an entry's doubled providers and their pages, the rule seed cleaning lists entries by. `decided_provider`: the provider a page's decision falls under, AnimeCountdown under Simkl. |
+| `doubled_provider_check.py` | `decide_doubled_providers`: the decision for each doubled provider of an entry. `find_doubled_provider_pages`: an entry's doubled providers and their pages, the rule seed cleaning lists entries by. `get_decided_provider`: the provider a page's decision falls under, AnimeCountdown under Simkl. `get_seed_type`: the seed type a provider page's type falls under. |
 | `split_work_check.py` | `decide_split_work`: whether separate entries are one split work. |
-| `review_cases.py` | `ReviewCase`: one decision left to a person, with its answer. `ReviewFile`: the review file, its answers kept across runs. |
+| `page_placement.py` | `PagePlacement`: where one page of an entry with doubled providers goes. `place_pages_without_review`: the places when the rules settle the whole entry. `read_answer_placements`: an answer read into places. `suggest_page_placements`: the places the links point to, offered to a reviewer. |
+| `review_cases.py` | `ReviewCase`: one entry or split-work group left to a person, with its answer. `ReviewFile`: the review file, its answers kept across runs. |
+| `file_replacement.py` | `replace_file_lines`: a file's lines replaced in one step, so an interrupted run leaves the old file. |
 
 ## The flow
 
@@ -59,10 +61,12 @@ flowchart TD
     links --> doubled[decide_doubled_providers:<br/>each doubled provider of an entry]
     links --> split[decide_split_work:<br/>candidate entries]
     known --> doubled
-    doubled --> outcome{Settled?}
-    split --> outcome
-    outcome -- "same page, one work<br/>or mixed entry" --> caller[Caller applies the decision:<br/>seed cleaning writes corrections]
-    outcome -- review --> review[(ReviewFile:<br/>one review case per decision)]
+    doubled --> placed{place_pages_without_review:<br/>whole entry placed?}
+    placed -- yes --> caller[Caller applies the places:<br/>seed cleaning writes corrections]
+    placed -- no --> review[(ReviewFile:<br/>one review case per entry<br/>or split-work group)]
+    split --> settled{Settled?}
+    settled -- yes --> caller
+    settled -- no --> review
     review -- "a person answers;<br/>the next run hands the answer back" --> caller
 ```
 
@@ -74,7 +78,7 @@ flowchart TD
    * a link to a page of the same provider proves nothing and is ignored;
    * the links of a multi-work page are set aside.
 4. **Decide.** `decide_doubled_providers` decides each doubled provider of an entry, and `decide_split_work` decides whether candidate entries are one work.
-5. **Apply or review.** A settled decision goes to the caller to apply. A decision the links do not settle becomes a review case in the `ReviewFile`; once a person answers it, the next run hands the answer to the caller.
+5. **Place or review.** `place_pages_without_review` places every doubled page of an entry when the rules settle the whole entry, and the caller applies the places. Otherwise the entry becomes one review case in the `ReviewFile`, as does a split-work group the links do not settle; once a person answers, the next run hands the answer to the caller.
 
 Only links decide. A page's title, year, type, season and release date never
 decide: a provider listing one work twice gives the two pages different titles
@@ -154,14 +158,14 @@ provider:
 | `pages` | The provider's page keys in the entry, renamed pages folded into their current key. |
 | `reason` | The `Reason` above. |
 | `outcome` | The `Outcome` the reason gives: `SAME_PAGE`, `ONE_WORK`, `MIXED_ENTRY` or `REVIEW`. Everything but `REVIEW` can be applied as it stands. |
-| `belonging` | Each page that belongs, with the entry's pages linked with it. On a mixed entry these sets show which pages go together. |
-| `unrelated` | Each unrelated page, as an `UnrelatedPage`: its `links` naming the other work, and `other_works`, the known works those links belong to. |
-| `undecided` | The pages with no links either way. |
+| `belonging_pages` | Each page that belongs, with the entry's pages linked with it. On a mixed entry these sets show which pages go together. |
+| `unrelated_pages` | Each unrelated page, as an `UnrelatedPage`: its `links` naming the other work, and `other_works`, the known works those links belong to. |
+| `undecided_pages` | The pages with no links either way. |
 | `title_matches` | On review only: the pages whose main title matches the entry's title or the main title of one of its other pages. |
 | `year_type_matches` | On review only: the pages whose year and type agree with the entry's. |
 | `season_matches` | On review only: the pages in the entry's season. |
 
-`belonging`, `unrelated` and `undecided` are filled for every reason except
+`belonging_pages`, `unrelated_pages` and `undecided_pages` are filled for every reason except
 `SAME_PAGE`. On a review they show what the links say, even when a check that
 runs first, such as `DEAD_PAGE`, decided the reason.
 
@@ -196,7 +200,7 @@ anilist    LINKED_APART  MIXED_ENTRY  anilist:1 -> {kitsu:1, mal:1}
                                       anilist:2 -> {mal:2}
 ```
 
-The `belonging` sets show the two works: `mal:1`, `anilist:1` and `kitsu:1`
+The `belonging_pages` sets show the two works: `mal:1`, `anilist:1` and `kitsu:1`
 are one; `mal:2` and `anilist:2` the other.
 
 **2. One provider settled, another sent to review.** The entry holds `mal:3`,
@@ -221,7 +225,7 @@ reviewer at `animeplanet:example`, but do not decide.
 ```text
 provider     reason           outcome   result
 kitsu        ONE_LINKED       ONE_WORK  belonging: kitsu:3 -> {mal:3}
-                                        unrelated: kitsu:4 -> links {mal:9}, other work "Other Example"
+                                        unrelated_pages: kitsu:4 -> links {mal:9}, other work "Other Example"
 animeplanet  UNDECIDED_PAGES  REVIEW    undecided: animeplanet:example, animeplanet:example-movie
                                         title_matches: animeplanet:example
                                         year_type_matches: animeplanet:example
@@ -255,39 +259,85 @@ gives the reason:
 Every reason but `LINKED` goes to review. A shared title alone is never enough:
 remakes, music videos and short films reuse titles.
 
+## Placing an entry's pages
+
+A decision says which of one provider's pages belong to the entry; correcting
+the entry needs a place for every page. `page_placement` gives each page a
+place in the words a review answer uses, so places from the rules and from
+answers are applied the same way:
+
+| Place | Means | Applied as |
+| -- | -- | -- |
+| `entry` | The page belongs to this entry. | It stays. |
+| `other work` | The page belongs to a work outside this entry. | It joins the seed entry its links name when they name exactly one; otherwise it starts a new entry. |
+| `work 2`, `work 3`… | The entry is mixed, and the page belongs to its second, third… work. | Pages with the same number form one new entry. One case covers the whole entry, so a number names the same work on every page. |
+| `, main` after `entry` or `work N` | The page enrichment fetches when a work keeps two or more pages of one provider. | It is listed first, since enrichment takes the first address of each provider. |
+
+**Settled without a person.** `place_pages_without_review` places the entry only
+when every decision of it is one of these:
+
+| Decision | Places | Why it is enough |
+| -- | -- | -- |
+| `SAME_PAGE`, the entry listing the current address | The current page `entry`; the old address is dropped. | Both addresses are one page. |
+| `ONE_LINKED`, each other page naming at most one other work | The linked page `entry`, the others `other work`. | Each page has exactly one place. |
+
+Every other entry goes to review as one case:
+
+* a work keeping two pages of one provider (`SHARED_LINK`) needs a person to
+  name its main page;
+* a mixed entry (`LINKED_APART`) needs every page placed, and some pages, often
+  Anime-Planet, AniSearch, LiveChart or Simkl ones, are linked with neither
+  work;
+* a page naming two other works has no single place;
+* a renamed page whose current address the entry does not list has no address
+  to keep.
+
+**A valid answer** places every doubled page. One that splits the entry (any
+`work N`) places every page of the entry, since each must go to one of the
+works; otherwise a page left out stays in the entry. In each work, a provider
+with two or more pages has exactly one main page, and no other page is main.
+Simkl and AnimeCountdown count as two providers here: enrichment fetches
+neither.
+
+**A suggested answer** comes with each case. Pages joined by the decisions'
+links form works: the work holding the most trusted page (`rank_by_provider_trust`)
+is `entry`, the others `work 2`, `work 3`… by trust. A work joining two pages
+that a decision found linked apart is left out, since its pages are linked
+with both works (Puu-Neko's AniDB 8328). Pages linked with nothing get no
+suggestion.
+
 ## Review cases
 
-Every decision with outcome `REVIEW` becomes a `ReviewCase`, one JSON line in
-the review file. A person, or later the review agent, writes the answer into the
-line; the next run hands it back.
+Every entry the rules cannot place, and every split-work group they do not
+settle, becomes a `ReviewCase`, one JSON line in the review file. All of an
+entry's doubled providers are one case, since telling which works a mixed entry
+holds needs all its pages at once. A person, or later the review agent, writes
+the answer into the line; the next run hands it back.
 
 ```json
 {"case": "doubled provider: animeplanet:anime:example animeplanet:anime:example-movie in mal:anime:3",
  "answer": {"animeplanet:anime:example": "entry", "animeplanet:anime:example-movie": "other work"},
- "reason": "UNDECIDED_PAGES", "entries": {"mal:anime:3": "Example"}, "decision": {...}, "pages": [...]}
+ "suggested_answer": {"animeplanet:anime:example": "entry", "mal:anime:3": "entry"},
+ "reasons": ["UNDECIDED_PAGES"], "entries": {"mal:anime:3": {...}}, "decisions": [...], "pages": [...]}
 ```
 
 (One line in the file; wrapped here.)
 
 | Field | Holds |
 | -- | -- |
-| `case` | The case's name: its kind and its sorted page keys. `doubled provider: ` with the provider's pages and `in` the entry's reference page, since the answer places pages relative to that entry; or `split work: ` with the entries' reference pages. |
+| `case` | The case's name: its kind and its sorted page keys. `doubled provider: ` with every doubled page of the entry and `in` the entry's reference page, since the answer places pages relative to that entry; or `split work: ` with the entries' reference pages. |
 | `answer` | `null` until answered. |
-| `reason` | The decision's reason by name, so answers can be counted per reason even after its wording changes. |
-| `entries` | Each entry involved, by its reference page, with its title. |
-| `decision` | The `DoubledProviderDecision` or `SplitWorkDecision` as the rules made it. |
+| `suggested_answer` | For a doubled-provider case, the places the links point to (see "Placing an entry's pages"); empty for a split work. |
+| `reasons` | Each decision's reason by name, so answers can be counted per reason even after its wording changes. |
+| `entries` | Each entry involved, by its reference page, as its `WorkEntry`: title, type, year, season and pages. |
+| `decisions` | Every `DoubledProviderDecision` of the entry, or the one `SplitWorkDecision`, as the rules made them. Sets of page keys are written sorted, so two runs give the same file. |
 | `pages` | The details of the entries' fetched pages and of the pages found through them (such as AnimeSchedule), as `ProviderPage` stores them: every link the decision read. |
 
-**Answers.** A doubled provider's answer places every page of the case:
-
-* `entry`: it belongs to this entry;
-* `other work`: it belongs to another work;
-* `work 2`, `work 3`…: the entry is mixed, and the page belongs to its second,
-  third… work.
-
-A split work's answer is `one work` or `separate works`. `accepted_answer` gives
-the answer only when it is valid; anything else, such as a missing page or a
-misspelt word, leaves the case open and the text in place to correct.
+**Answers.** A doubled-provider answer places pages with the words in "Placing
+an entry's pages"; `accepted_answer` returns it read into `PagePlacement`s. A
+split work's answer is `one work` or `separate works`. An answer that is not
+valid, such as a missing page, a misspelt word or two main pages, leaves the
+case open and the text in place to correct.
 
 **Across runs.** `ReviewFile` reads only each line's `case` and `answer`.
 `write_cases` writes this run's cases with their kept answers, and replaces the
@@ -304,9 +354,10 @@ Only `answer` is kept from a line; anything else written in it is rebuilt. An
 answer that is not accepted, or a case answered on two lines, is logged as a
 warning. A line that is not valid JSON stops the run, with the file and line
 named, so a person's edit is never overwritten unread. Two cases with the same
-name in one run raise `DuplicateCaseError`. The file is written to disk next to
-the old one and renamed over it, keeping its permissions; the folder is then
-synced, so the rename survives a power cut. Do not edit the file
+name in one run raise `DuplicateCaseError`. The file is replaced through
+`replace_file_lines`: written to disk next to the old one and renamed over it,
+keeping its permissions; the folder is then synced, so the rename survives a
+power cut. Do not edit the file
 while a run is writing it: an answer saved during the run can be lost.
 
 Applying answers is the caller's job: seed cleaning turns them into corrections.
@@ -325,26 +376,30 @@ known_works = KnownWorksFromSeed.from_file("assets/seed_data/anime-offline-datab
 store = ProviderPageStore("data/seed_cleaning/provider_pages.jsonl")
 
 entry = known_works.find_by_page_key("mal:anime:10459")
-pages = [page for key in entry.pages if (page := store.get_page(key))]
+pages = [page for key in entry.pages if (page := store.get_page(key))] + [
+    found for key in entry.pages for found in store.get_pages_found_by(key)
+]
 for decision in decide_doubled_providers(entry, pages, known_works):
     if decision.outcome is Outcome.REVIEW:
-        print(decision.provider, decision.reason, decision.undecided)
+        print(decision.provider, decision.reason, decision.undecided_pages)
 ```
 
 Pass the found pages too (such as the entry's AnimeSchedule pages): their links
 count for their lookup pages.
 
-Review decisions go to the review file, and kept answers come back:
+An entry the rules cannot place goes to the review file as one case, and its
+kept answer comes back:
 
 ```python
-from work_matching import ReviewCase, ReviewFile
+from work_matching import ReviewCase, ReviewFile, place_pages_without_review
 
 review = ReviewFile("data/seed_cleaning/review.jsonl")
-cases = [
-    review.with_kept_answer(ReviewCase.from_doubled_provider(entry, decision, pages))
-    for decision in decide_doubled_providers(entry, pages, known_works)
-    if decision.outcome is Outcome.REVIEW
-]
-answered = {case.case: case.accepted_answer for case in cases if case.accepted_answer}
-unused = review.write_cases(cases)
+decisions = decide_doubled_providers(entry, pages, known_works)
+placements = place_pages_without_review(entry, decisions)
+if placements is None:
+    case = review.attach_kept_answer(
+        ReviewCase.from_doubled_provider_entry(entry, decisions, pages)
+    )
+    placements = case.accepted_answer  # None while the case is open
+    unused = review.write_cases([case])
 ```

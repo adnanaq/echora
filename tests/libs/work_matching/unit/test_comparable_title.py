@@ -1,5 +1,5 @@
 import pytest
-from work_matching.comparable_title import comparable_title
+from work_matching.comparable_title import fold_title_for_comparison
 
 
 @pytest.mark.parametrize(
@@ -14,10 +14,10 @@ from work_matching.comparable_title import comparable_title
         ("ＯＮＥ ＰＩＥＣＥ", "One Piece"),
     ],
 )
-def test_comparable_title_cosmetic_difference_gives_same_title(
+def test_fold_title_for_comparison_cosmetic_difference_gives_same_title(
     first: str, second: str
 ) -> None:
-    assert comparable_title(first) == comparable_title(second)
+    assert fold_title_for_comparison(first) == fold_title_for_comparison(second)
 
 
 @pytest.mark.parametrize(
@@ -29,15 +29,15 @@ def test_comparable_title_cosmetic_difference_gives_same_title(
         ("Hikari", "Hikaru"),
     ],
 )
-def test_comparable_title_different_titles_stay_different(
+def test_fold_title_for_comparison_different_titles_stay_different(
     first: str, second: str
 ) -> None:
-    assert comparable_title(first) != comparable_title(second)
+    assert fold_title_for_comparison(first) != fold_title_for_comparison(second)
 
 
-def test_comparable_title_non_latin_title_keeps_letters() -> None:
-    assert comparable_title("魔道祖师 前尘篇") == "魔道祖师 前尘篇"
+def test_fold_title_for_comparison_non_latin_title_keeps_letters() -> None:
+    assert fold_title_for_comparison("魔道祖师 前尘篇") == "魔道祖师 前尘篇"
 
 
-def test_comparable_title_punctuation_only_gives_empty_title() -> None:
-    assert comparable_title("!?…") == ""
+def test_fold_title_for_comparison_punctuation_only_gives_empty_title() -> None:
+    assert fold_title_for_comparison("!?…") == ""

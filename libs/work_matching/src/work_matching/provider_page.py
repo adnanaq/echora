@@ -11,7 +11,7 @@ from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict
 
-from work_matching.provider_page_key import provider_of_key, provider_page_key
+from work_matching.provider_page_key import get_page_key, get_page_provider
 
 
 class ProviderPage(BaseModel):
@@ -40,7 +40,7 @@ class ProviderPage(BaseModel):
     # pages of several entries, such as both entries of a split work, so every
     # lookup page is kept. Empty for a page the seed lists itself.
     found_by: tuple[str, ...] = ()
-    dead: bool = False
+    is_dead: bool = False
 
     @classmethod
     def from_canonical_record(
@@ -58,47 +58,49 @@ class ProviderPage(BaseModel):
             The page's titles, type, year, season, links to other providers'
             pages, and the key the page was renamed to, if it was renamed.
         """
-        key = provider_page_key(address)
-        own_provider = provider_of_key(key)
-        linked = {
-            provider_page_key(linked_address)
-            for linked_address in _linked_addresses(record)
+        key = get_page_key(address)
+        own_provider = get_page_provider(key)
+        linked_keys = {
+            get_page_key(linked_address)
+            for linked_address in _read_linked_addresses(record)
         }
-        renamed = sorted(
+        renamed_keys = sorted(
             linked_key
-            for linked_key in linked - {key}
-            if own_provider and provider_of_key(linked_key) == own_provider
+            for linked_key in linked_keys - {key}
+            if own_provider and get_page_provider(linked_key) == own_provider
         )
         return cls(
             key=key,
             address=address,
-            titles=tuple(dict.fromkeys(_record_titles(record))),
+            titles=tuple(dict.fromkeys(_read_record_titles(record))),
             type=record.get("type"),
             year=record.get("year"),
             season=record.get("season"),
             links=tuple(
                 sorted(
                     linked_key
-                    for linked_key in linked
-                    if provider_of_key(linked_key) not in (None, own_provider)
+                    for linked_key in linked_keys
+                    if get_page_provider(linked_key) not in (None, own_provider)
                 )
             ),
-            renamed_to=renamed[0] if renamed else None,
-            found_by=_lookup_keys(found_by),
+            renamed_to=renamed_keys[0] if renamed_keys else None,
+            found_by=_read_lookup_keys(found_by),
         )
 
     @classmethod
-    def dead_page(cls, address: str, found_by: str | None = None) -> Self:
+    def from_dead_address(cls, address: str, found_by: str | None = None) -> Self:
         """Record a dead page: one the provider no longer serves."""
         return cls(
-            key=provider_page_key(address),
+            key=get_page_key(address),
             address=address,
-            dead=True,
-            found_by=_lookup_keys(found_by),
+            is_dead=True,
+            found_by=_read_lookup_keys(found_by),
         )
 
 
-def pages_by_current_key(pages: Iterable[ProviderPage]) -> dict[str, ProviderPage]:
+def index_pages_by_current_key(
+    pages: Iterable[ProviderPage],
+) -> dict[str, ProviderPage]:
     """Index pages by the current key each resolves to.
 
     A renamed page resolves to the key it was renamed to, unless the page was also
@@ -118,20 +120,20 @@ def pages_by_current_key(pages: Iterable[ProviderPage]) -> dict[str, ProviderPag
     return pages_by_key
 
 
-def _lookup_keys(found_by: str | None) -> tuple[str, ...]:
+def _read_lookup_keys(found_by: str | None) -> tuple[str, ...]:
     """Return the lookup page's key as ``found_by`` holds it; empty without one."""
-    return (provider_page_key(found_by),) if found_by else ()
+    return (get_page_key(found_by),) if found_by else ()
 
 
-def _record_titles(record: dict[str, Any]) -> Iterator[str]:
+def _read_record_titles(record: dict[str, Any]) -> Iterator[str]:
     """Yield a record's titles, its main title first, skipping empty ones."""
-    for field in ("title", "title_english", "title_japanese"):
-        if title := record.get(field):
+    for title_field in ("title", "title_english", "title_japanese"):
+        if title := record.get(title_field):
             yield title
     yield from (title for title in (record.get("titles") or {}).values() if title)
 
 
-def _linked_addresses(record: dict[str, Any]) -> Iterator[str]:
+def _read_linked_addresses(record: dict[str, Any]) -> Iterator[str]:
     """Yield every page address a record lists in its two link fields.
 
     The fields are ``sources`` and ``external_sources``.

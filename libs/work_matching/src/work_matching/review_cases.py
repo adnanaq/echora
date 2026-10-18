@@ -1,18 +1,25 @@
 """Review cases: decisions the matching rules leave to a person, with their answers.
 
-Every decision with outcome ``REVIEW`` becomes a review case, one JSON line in the
-review file. A person, or later the review agent, writes the answer into the line,
-and the next run hands it back to the caller, who applies it. The rules:
+Every entry the rules cannot place, and every split-work group they cannot
+settle, becomes a review case: one JSON line in the review file. A person, or
+later the review agent, writes the answer into the line, and the next run hands
+it back to the caller, who applies it. The rules:
 
+- One case per entry: all of an entry's doubled providers are reviewed together,
+  because telling which works a mixed entry holds needs all its pages at once,
+  and because an answer's ``work 2`` then names the same work on every page.
 - Case name: a case is named by its kind and its sorted page keys, never by an
   entry's position, so the same case in a later seed release or discovery run
-  meets its kept answer. A doubled provider's case also names its entry's
+  meets its kept answer. A doubled-provider case also names its entry's
   reference page, because its answer places pages relative to that entry.
 - Changed pages: a case whose pages changed, or whose doubled pages moved to
   another entry, gets a new name, so it is asked again.
-- Answers: a doubled provider's answer places every page of the case (``entry``,
-  ``other work`` or ``work 2``, ``work 3``…); a split work's answer is
-  ``one work`` or ``separate works``. Any other answer leaves the case open.
+- Answers: a doubled-provider case's answer places pages with the words in
+  ``page_placement`` (``entry``, ``other work``, ``work 2``…, and ``, main``);
+  a split work's answer is ``one work`` or ``separate works``. Any other answer
+  leaves the case open.
+- Suggested answer: a doubled-provider case carries the places its links point
+  to, so a person starts from them rather than from nothing.
 - Kept answers: an answer whose case no longer comes up is kept as written,
   never applied, and reported.
 - Rewrite: the file is rewritten whole on each run, because people edit lines in
@@ -20,34 +27,35 @@ and the next run hands it back to the caller, who applies it. The rules:
 """
 
 import logging
-import os
-import re
-import shutil
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Self
 
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 
 from work_matching.doubled_provider_check import DoubledProviderDecision
-from work_matching.provider_page import ProviderPage, pages_by_current_key
+from work_matching.file_replacement import replace_file_lines
+from work_matching.page_placement import (
+    PagePlacement,
+    read_answer_placements,
+    suggest_page_placements,
+)
+from work_matching.provider_page import ProviderPage, index_pages_by_current_key
 from work_matching.split_work_check import SplitWorkDecision
 from work_matching.work_entry import WorkEntry
 
 logger = logging.getLogger(__name__)
 
-# Where a doubled provider's page goes: to this entry, to another work, or to
-# the second, third or later work of a mixed entry.
-_PAGE_PLACEMENT_ANSWER = re.compile(r"entry|other work|work (?:[2-9]|[1-9][0-9]+)")
 _SPLIT_WORK_ANSWERS = frozenset({"one work", "separate works"})
 
 
 class ReviewCase(BaseModel):
     """One decision left to a person: what the rules found, and the answer given.
 
-    Fields are written in this order, so ``case`` and ``answer`` open each line
-    of the review file and a person finds them first.
+    Fields are written in this order, so ``case``, ``answer`` and
+    ``suggested_answer`` open each line of the review file and a person finds
+    them first.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -56,60 +64,66 @@ class ReviewCase(BaseModel):
     case: str
     # As written in the file; ``accepted_answer`` says whether it is valid.
     answer: JsonValue = None
-    # The name of the decision's reason, which stays when its wording changes.
-    reason: str
-    # Each entry involved, by its reference page, with its title.
-    entries: dict[str, str]
-    decision: DoubledProviderDecision | SplitWorkDecision
+    # For a doubled-provider case, the place the links point to for each page
+    # they tie to a work; empty for a split-work case.
+    suggested_answer: dict[str, str] = {}
+    # The names of the decisions' reasons, which stay when their wording changes.
+    reasons: tuple[str, ...]
+    # Each entry involved, by its reference page.
+    entries: dict[str, WorkEntry]
+    # Every doubled-provider decision of the entry, or the one split-work
+    # decision of the group.
+    decisions: tuple[DoubledProviderDecision, ...] | tuple[SplitWorkDecision]
     # The entries' fetched pages and the pages found through them, which hold
-    # the links behind the decision.
+    # the links behind the decisions.
     pages: tuple[ProviderPage, ...] = ()
 
     @property
-    def accepted_answer(self) -> dict[str, str] | str | None:
+    def accepted_answer(self) -> dict[str, PagePlacement] | str | None:
         """The answer when it is a valid answer to this case, otherwise None.
 
-        A doubled provider's answer places every page of the case: ``entry``,
-        ``other work`` or ``work 2``, ``work 3`` and so on. A split work's
-        answer is ``one work`` or ``separate works``.
+        A doubled-provider answer comes back as each placed page's place; a
+        split-work answer as ``one work`` or ``separate works``.
         """
         answer = self.answer
-        if isinstance(self.decision, SplitWorkDecision):
+        doubled_provider_decisions = [
+            decision
+            for decision in self.decisions
+            if isinstance(decision, DoubledProviderDecision)
+        ]
+        if not doubled_provider_decisions:
             is_valid = isinstance(answer, str) and answer in _SPLIT_WORK_ANSWERS
             return answer if is_valid else None
-        if not isinstance(answer, dict) or set(answer) != set(self.decision.pages):
-            return None
-        page_placements = {
-            page_key: placement
-            for page_key, placement in answer.items()
-            if isinstance(placement, str)
-            and _PAGE_PLACEMENT_ANSWER.fullmatch(placement)
-        }
-        return page_placements if len(page_placements) == len(answer) else None
+        [entry] = self.entries.values()
+        return read_answer_placements(answer, entry, doubled_provider_decisions)
 
     @classmethod
-    def from_doubled_provider(
+    def from_doubled_provider_entry(
         cls,
         entry: WorkEntry,
-        decision: DoubledProviderDecision,
+        decisions: Sequence[DoubledProviderDecision],
         pages: Iterable[ProviderPage],
     ) -> Self:
-        """Make the review case for a doubled provider the rules could not settle.
+        """Make the review case for an entry whose pages the rules could not place.
 
         Args:
-            entry: The work entry the decision is about.
-            decision: The decision ``decide_doubled_providers`` made.
+            entry: The work entry the decisions are about.
+            decisions: Every decision ``decide_doubled_providers`` made for it.
             pages: The fetched pages; the details of the entry's pages are kept.
         """
+        doubled_pages = [key for decision in decisions for key in decision.pages]
         return cls(
             case=(
-                f"{_case_name('doubled provider', decision.pages)}"
+                f"{_build_case_name('doubled provider', doubled_pages)}"
                 f" in {entry.reference_page}"
             ),
-            reason=decision.reason.name,
-            entries={entry.reference_page: entry.title},
-            decision=decision,
-            pages=_page_details(pages, frozenset(entry.pages) | set(decision.pages)),
+            suggested_answer=suggest_page_placements(entry, decisions),
+            reasons=tuple(decision.reason.name for decision in decisions),
+            entries={entry.reference_page: entry},
+            decisions=tuple(decisions),
+            pages=_select_page_details(
+                pages, frozenset(entry.pages) | set(doubled_pages)
+            ),
         )
 
     @classmethod
@@ -122,13 +136,13 @@ class ReviewCase(BaseModel):
             decision: The decision ``decide_split_work`` made.
             pages: The fetched pages; the details of the entries' pages are kept.
         """
-        entries = {entry.reference_page: entry.title for entry in decision.entries}
+        entries = {entry.reference_page: entry for entry in decision.entries}
         return cls(
-            case=_case_name("split work", entries),
-            reason=decision.reason.name,
+            case=_build_case_name("split work", entries),
+            reasons=(decision.reason.name,),
             entries=entries,
-            decision=decision,
-            pages=_page_details(
+            decisions=(decision,),
+            pages=_select_page_details(
                 pages,
                 frozenset(key for entry in decision.entries for key in entry.pages),
             ),
@@ -171,9 +185,9 @@ class ReviewFile:
                 line.
         """
         self._path = Path(path)
-        self._answers_by_case = self._answers_in_file()
+        self._answers_by_case = self._read_answers_in_file()
 
-    def with_kept_answer(self, case: ReviewCase) -> ReviewCase:
+    def attach_kept_answer(self, case: ReviewCase) -> ReviewCase:
         """Return the case with the answer kept for it, or unchanged if none is.
 
         The kept answer comes back even when it is not valid, so it stays in
@@ -204,12 +218,14 @@ class ReviewFile:
         cases = tuple(cases)
         case_name_counts = Counter(case.case for case in cases)
         if repeated_case_names := [
-            name for name, count in case_name_counts.items() if count > 1
+            case_name
+            for case_name, case_count in case_name_counts.items()
+            if case_count > 1
         ]:
             raise DuplicateCaseError(repeated_case_names)
-        self._answers_by_case = self._answers_in_file()
+        self._answers_by_case = self._read_answers_in_file()
         cases_with_answers = sorted(
-            map(self.with_kept_answer, cases), key=lambda case: case.case
+            map(self.attach_kept_answer, cases), key=lambda case: case.case
         )
         for case in cases_with_answers:
             if case.answer is not None and case.accepted_answer is None:
@@ -219,19 +235,20 @@ class ReviewFile:
         unused_case_names = tuple(
             sorted(self._answers_by_case.keys() - case_name_counts.keys())
         )
-        self._replace_file(
+        replace_file_lines(
+            self._path,
             [case.model_dump_json() + "\n" for case in cases_with_answers]
-            + [self._answers_by_case[name][1] for name in unused_case_names]
+            + [self._answers_by_case[case_name][1] for case_name in unused_case_names],
         )
         return unused_case_names
 
-    def _answers_in_file(self) -> dict[str, tuple[JsonValue, str]]:
+    def _read_answers_in_file(self) -> dict[str, tuple[JsonValue, str]]:
         """Return each answered case's answer and its line as written."""
         answers_by_case: dict[str, tuple[JsonValue, str]] = {}
         if not self._path.exists():
             return answers_by_case
-        with self._path.open(encoding="utf-8") as review_lines:
-            for line_number, line in enumerate(review_lines, start=1):
+        with self._path.open(encoding="utf-8") as review_file:
+            for line_number, line in enumerate(review_file, start=1):
                 if not line.strip():
                     continue
                 try:
@@ -251,34 +268,13 @@ class ReviewFile:
                 )
         return answers_by_case
 
-    def _replace_file(self, lines: list[str]) -> None:
-        """Write the lines next to the review file, then rename over it in one step.
 
-        An interrupted run leaves the old file, and an existing file keeps its
-        permissions.
-        """
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        temporary_path = self._path.with_name(f".{self._path.name}.tmp")
-        try:
-            with temporary_path.open("w", encoding="utf-8") as output:
-                output.writelines(lines)
-                output.flush()
-                os.fsync(output.fileno())
-            if self._path.exists():
-                shutil.copymode(self._path, temporary_path)
-            temporary_path.replace(self._path)
-        except BaseException:
-            temporary_path.unlink(missing_ok=True)
-            raise
-        _sync_folder(self._path.parent)
-
-
-def _case_name(case_kind: str, page_keys: Iterable[str]) -> str:
+def _build_case_name(case_kind: str, page_keys: Iterable[str]) -> str:
     """Name a case by its kind and its sorted page keys."""
     return f"{case_kind}: {' '.join(sorted(page_keys))}"
 
 
-def _page_details(
+def _select_page_details(
     pages: Iterable[ProviderPage], page_keys: frozenset[str]
 ) -> tuple[ProviderPage, ...]:
     """Return the details of these pages and of pages found through them.
@@ -289,21 +285,6 @@ def _page_details(
     """
     return tuple(
         page
-        for key, page in sorted(pages_by_current_key(pages).items())
+        for key, page in sorted(index_pages_by_current_key(pages).items())
         if {key, page.key, *page.found_by} & page_keys
     )
-
-
-def _sync_folder(folder: Path) -> None:
-    """Write a folder's entries to disk, so a rename in it survives a power cut.
-
-    Syncing the file does not make its new name durable; the folder holds the
-    name. Systems that cannot open a folder, such as Windows, are skipped.
-    """
-    if not hasattr(os, "O_DIRECTORY"):
-        return
-    folder_descriptor = os.open(folder, os.O_RDONLY | os.O_DIRECTORY)
-    try:
-        os.fsync(folder_descriptor)
-    finally:
-        os.close(folder_descriptor)

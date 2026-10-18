@@ -1,7 +1,8 @@
 # seed_cleaning
 
-Finds the seed entries that need checking before enrichment, and fetches every
-page of them so the work matching rules can decide from their links. It reads
+Finds the seed entries that need checking before enrichment, fetches every
+page of them so the work matching rules can decide from their links, and
+records where each page of an entry with doubled providers ends up. It reads
 the downloaded seed release and never changes it. The library is deleted once
 discovery replaces the seed; `libs/work_matching` stays.
 
@@ -11,7 +12,7 @@ Terms are as in `GLOSSARY.md` and the `work_matching` README.
 
 | Entries to check | Found by | Why |
 | -- | -- | -- |
-| **Doubled provider** | An entry with pages of one provider carrying more than one id. Simkl and AnimeCountdown count as one provider. | The same rule `decide_doubled_providers` uses (`doubled_provider_pages`), so exactly the pages it decides are checked. |
+| **Doubled provider** | An entry with pages of one provider carrying more than one id. Simkl and AnimeCountdown count as one provider. | The same rule `decide_doubled_providers` uses (`find_doubled_provider_pages`), so exactly the pages it decides are checked. |
 | **Split-work candidates** | Entries matching by title, type, year and season, joined into groups. | A site often adds a page before the seed joins it to the work's main entry, so the page becomes an entry of its own. |
 
 A split-work match needs:
@@ -60,19 +61,61 @@ cache enrichment reads later.
   lookups wait 3 s between them: requests without an app token get its stricter,
   undocumented limit.
 
+## Correcting entries with doubled providers
+
+`correct_doubled_provider_entries` decides each entry with a doubled provider
+from the stored pages, including the pages found through them. When the rules
+settle the whole entry, its pages are placed at once; otherwise the entry is one
+review case, and its places come from the kept answer once a person gives a
+valid one (see "Placing an entry's pages" in the `work_matching` README). Each
+placed page becomes a `SeedCorrection`:
+
+| Field | Holds |
+| -- | -- |
+| `entry_reference_page` | The reference page of the seed entry that lists the page. |
+| `page_key`, `address` | The page as the seed entry lists it. |
+| `work` | `entry`, `other work` or `work 2`… |
+| `is_main_page` | Whether enrichment fetches this page for its provider in its work. |
+| `renamed_to` | The current page key, when the seed lists the page under an old address. |
+| `target_entry_reference_page` | The reference page of the seed entry an `other work` page joins; `null` when it starts a new entry. |
+| `reason` | The decision's reason by name, or `review answer`. |
+
+The rules:
+
+- **Final places, not steps.** A correction says where its page ends up, so
+  the order corrections are applied in never matters, even when a page moves
+  into an entry that is itself being corrected.
+- **Rebuilt every run** from this run's decisions and the kept answers, so the
+  file always matches them and needs no clean-up.
+- **Pages without a place stay** as the seed lists them and get no correction.
+- **Moves.** An `other work` page joins the seed entry its links name when they
+  name exactly one; otherwise it starts a new entry. Pages an answer puts in
+  the same `work N` form one new entry.
+- **Renamed pages.** The old address is dropped: the entry also lists the page
+  under its current address, or the rules send the entry to review.
+- **Main page first**, because enrichment fetches the first address of each
+  provider.
+
+`build_corrected_entries` turns the corrections into `WorkEntry`s: each seed entry
+they change, without the pages that left it and with those moved in, and each
+new entry. A new entry takes its title, type, year and season from its most
+trusted fetched page; a page with no fetched details only has the entry it came
+from to go by, so it takes that entry's title and an unknown type.
+
 ## Files
 
 | File | Holds |
 | -- | -- |
-| `doubled_provider_entries.py` | `doubled_provider_entries`: the entries holding a doubled provider. |
-| `split_work_candidates.py` | `SplitWorkCandidates` and `split_work_candidates`: the candidate groups. |
+| `doubled_provider_entries.py` | `find_doubled_provider_entries`: the entries holding a doubled provider. |
+| `split_work_candidates.py` | `SplitWorkCandidates` and `find_split_work_candidates`: the candidate groups. |
 | `provider_page_fetcher.py` | `ProviderPageFetcher`, `FetchSummary`, `FetchOutcome`: fetching every page of the entries to check. |
+| `seed_corrections.py` | `correct_doubled_provider_entries`, `SeedCorrection`, `build_corrected_entries`, `write_corrections`: where each page of an entry with doubled providers ends up. |
 
 ## Use
 
 ```bash
-uv run python scripts/clean_seed.py                  # list the entries to check and fetch their pages
-uv run python scripts/clean_seed.py --no-fetch       # only list the entries to check
+uv run python scripts/clean_seed.py                  # list the entries to check, fetch their pages, correct them
+uv run python scripts/clean_seed.py --no-fetch       # correct them from the pages already stored
 uv run python scripts/clean_seed.py path/to/seed.json --data-dir data/seed_cleaning
 ```
 
@@ -82,3 +125,5 @@ It writes to `data/seed_cleaning/` (git-ignored):
 | -- | -- |
 | `entries_to_check.json` | The seed's `$schema` (its address names the release), the doubled-provider entries with their doubled pages, and the candidate groups with their entries. Rewritten on each run. |
 | `provider_pages.jsonl` | Every fetched page, one per line; see `ProviderPageStore`. |
+| `review.jsonl` | One case per entry the rules cannot place, where a person writes the answer; see `ReviewFile`. Answers are kept across runs. |
+| `corrections.jsonl` | Every `SeedCorrection`, sorted by entry reference page and page key. Rewritten on each run. |

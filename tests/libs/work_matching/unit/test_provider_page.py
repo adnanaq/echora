@@ -1,6 +1,6 @@
 import pytest
 from pydantic import ValidationError
-from work_matching.provider_page import ProviderPage, pages_by_current_key
+from work_matching.provider_page import ProviderPage, index_pages_by_current_key
 
 KITSU = "https://kitsu.app/anime/12"
 MAL = "https://myanimelist.net/anime/21"
@@ -64,9 +64,9 @@ def test_provider_page_from_canonical_record_repeated_title_kept_once() -> None:
     assert page.titles == ("One Piece",)
 
 
-def test_provider_page_dead_page_has_no_details() -> None:
-    page = ProviderPage.dead_page(MAL)
-    assert (page.key, page.dead, page.titles, page.links) == (
+def test_provider_page_from_dead_address_has_no_details() -> None:
+    page = ProviderPage.from_dead_address(MAL)
+    assert (page.key, page.is_dead, page.titles, page.links) == (
         "mal:anime:21",
         True,
         (),
@@ -95,8 +95,10 @@ def test_provider_page_from_canonical_record_found_page_keeps_link_to_lookup_pag
     )
 
 
-def test_provider_page_dead_page_found_by_lookup_records_it() -> None:
-    assert ProviderPage.dead_page(MAL, found_by=KITSU).found_by == ("kitsu:anime:12",)
+def test_provider_page_from_dead_address_found_by_lookup_records_it() -> None:
+    assert ProviderPage.from_dead_address(MAL, found_by=KITSU).found_by == (
+        "kitsu:anime:12",
+    )
 
 
 def test_provider_page_json_round_trip_gives_equal_page(canonical_records) -> None:
@@ -104,25 +106,27 @@ def test_provider_page_json_round_trip_gives_equal_page(canonical_records) -> No
     assert ProviderPage.model_validate_json(page.model_dump_json()) == page
 
 
-def test_pages_by_current_key_renamed_page_found_under_new_key(
+def test_index_pages_by_current_key_renamed_page_found_under_new_key(
     canonical_records,
 ) -> None:
     renamed = ProviderPage.from_canonical_record(
         ANIME_PLANET_OLD, canonical_records[ANIME_PLANET_OLD]
     )
     plain = ProviderPage.from_canonical_record(MAL, canonical_records[MAL])
-    assert pages_by_current_key([renamed, plain]) == {
+    assert index_pages_by_current_key([renamed, plain]) == {
         "animeplanet:anime:cocoon-one-summer-of-girlhood": renamed,
         "mal:anime:21": plain,
     }
 
 
-def test_pages_by_current_key_page_fetched_at_new_key_wins(canonical_records) -> None:
+def test_index_pages_by_current_key_page_fetched_at_new_key_wins(
+    canonical_records,
+) -> None:
     renamed = ProviderPage.from_canonical_record(
         ANIME_PLANET_OLD, canonical_records[ANIME_PLANET_OLD]
     )
     current = renamed.model_copy(update={"key": renamed.renamed_to, "renamed_to": None})
-    assert pages_by_current_key([current, renamed])[current.key] is current
+    assert index_pages_by_current_key([current, renamed])[current.key] is current
 
 
 def test_provider_page_unknown_field_rejected() -> None:

@@ -37,8 +37,8 @@ from work_matching import (
     ProviderPage,
     ProviderPageStore,
     WorkEntry,
-    provider_of_key,
-    provider_page_key,
+    get_page_key,
+    get_page_provider,
 )
 
 logger = logging.getLogger(__name__)
@@ -71,7 +71,7 @@ class FetchOutcome(StrEnum):
 
     FETCHED = "fetched"
     # The provider said the page does not exist.
-    DEAD = "dead"
+    DEAD = "is_dead"
     # AnimeSchedule has no page for the lookup page: nothing to store.
     NOT_LISTED = "not listed"
     FAILED = "failed"
@@ -100,7 +100,7 @@ class _PageRequest:
     @property
     def label(self) -> str:
         """Name the request in the summary: its page key, or its lookup."""
-        key = provider_page_key(self.address)
+        key = get_page_key(self.address)
         return f"{self.service} via {key}" if self.is_found_page_lookup else key
 
 
@@ -151,7 +151,7 @@ class ProviderPageFetcher:
         distinct_requests = {
             (request.service, request.address): request
             for entry in entries
-            for request in self._requests_for(entry)
+            for request in self._list_requests(entry)
         }
         outcomes: Counter[FetchOutcome] = Counter()
         requests_by_service: defaultdict[str, list[_PageRequest]] = defaultdict(list)
@@ -161,27 +161,31 @@ class ProviderPageFetcher:
             else:
                 requests_by_service[request.service].append(request)
         async with asyncio.TaskGroup() as task_group:
-            queues = [
+            queue_tasks = [
                 task_group.create_task(self._run_queue(service, requests))
                 for service, requests in requests_by_service.items()
             ]
-        results = [result for queue in queues for result in queue.result()]
-        outcomes.update(result.outcome for result in results)
+        request_results = [
+            request_result
+            for queue_task in queue_tasks
+            for request_result in queue_task.result()
+        ]
+        outcomes.update(request_result.outcome for request_result in request_results)
         return FetchSummary(
             outcomes=dict(outcomes),
             failed_pages={
-                result.request.label: result.error
-                for result in results
-                if result.error is not None
+                request_result.request.label: request_result.error
+                for request_result in request_results
+                if request_result.error is not None
             },
         )
 
-    def _requests_for(self, entry: WorkEntry) -> list[_PageRequest]:
+    def _list_requests(self, entry: WorkEntry) -> list[_PageRequest]:
         """List every request one entry needs, whether done already or not."""
         requests = [
             _PageRequest(helper.service, helper.id_key, address, entry.title)
             for key, address in entry.pages.items()
-            if (helper := _HELPER_BY_PROVIDER.get(provider_of_key(key) or ""))
+            if (helper := _HELPER_BY_PROVIDER.get(get_page_provider(key) or ""))
         ]
         # AnimeSchedule is looked up through the first provider in the order that
         # has pages in the entry: MAL, else AniList, else AniDB.
@@ -189,7 +193,7 @@ class ProviderPageFetcher:
             lookup_addresses = [
                 address
                 for key, address in entry.pages.items()
-                if provider_of_key(key) == provider
+                if get_page_provider(key) == provider
             ]
             if lookup_addresses:
                 requests.extend(
@@ -211,7 +215,7 @@ class ProviderPageFetcher:
         A page request is done when the page is stored; a lookup is done when a
         found page was found through its lookup page.
         """
-        key = provider_page_key(request.address)
+        key = get_page_key(request.address)
         if request.is_found_page_lookup:
             return self._store.has_page_found_by(key)
         return key in self._store
@@ -226,20 +230,20 @@ class ProviderPageFetcher:
         work and its summary.
         """
         api_fetcher = self._new_api_fetcher()
-        results: list[_RequestResult] = []
+        request_results: list[_RequestResult] = []
         for position, request in enumerate(requests):
             if request.is_found_page_lookup and position:
                 await asyncio.sleep(self._seconds_between_found_page_lookups)
             try:
-                results.append(await self._fetch_request(api_fetcher, request))
+                request_results.append(await self._fetch_request(api_fetcher, request))
             except Exception as error:
                 logger.exception(f"Page fetch failed unexpectedly: {request.label}")
-                results.append(
+                request_results.append(
                     _RequestResult(
                         FetchOutcome.FAILED, request, f"{type(error).__name__}: {error}"
                     )
                 )
-        return results
+        return request_results
 
     async def _fetch_request(
         self, api_fetcher: ApiFetcher, request: _PageRequest
@@ -251,7 +255,7 @@ class ProviderPageFetcher:
         fetch: storing it as dead would keep a live page from ever being
         fetched again.
         """
-        fetched = await api_fetcher.fetch_all_data(
+        records_by_service = await api_fetcher.fetch_all_data(
             {request.id_key: request.address},
             {"title": request.title, "sources": [request.address]},
             only_services=[request.service],
@@ -260,35 +264,35 @@ class ProviderPageFetcher:
         )
         if request.service in api_fetcher.api_errors:
             failure = api_fetcher.api_errors[request.service]
-        elif request.service not in fetched:
+        elif request.service not in records_by_service:
             failure = "the service did not run"
-        elif fetched[request.service] is None:
+        elif records_by_service[request.service] is None:
             return _RequestResult(self._store_page(request, None), request)
-        elif (record := fetched[request.service].get("anime")) is None:
+        elif (anime_record := records_by_service[request.service].get("anime")) is None:
             failure = "the helper returned no anime record"
         else:
-            return _RequestResult(self._store_page(request, record), request)
+            return _RequestResult(self._store_page(request, anime_record), request)
         logger.warning(f"Page fetch failed, retried next run: {request.label}")
         return _RequestResult(FetchOutcome.FAILED, request, failure)
 
     def _store_page(
-        self, request: _PageRequest, record: dict[str, Any] | None
+        self, request: _PageRequest, anime_record: dict[str, Any] | None
     ) -> FetchOutcome:
         """Store what one request returned, and say what it came to."""
         if request.is_found_page_lookup:
-            if not record:
+            if not anime_record:
                 return FetchOutcome.NOT_LISTED
             # The AnimeSchedule mapper lists the page's own address first.
             self._store.add_pages(
                 ProviderPage.from_canonical_record(
-                    record["sources"][0], record, found_by=request.address
+                    anime_record["sources"][0], anime_record, found_by=request.address
                 )
             )
             return FetchOutcome.FETCHED
-        if not record:
-            self._store.add_pages(ProviderPage.dead_page(request.address))
+        if not anime_record:
+            self._store.add_pages(ProviderPage.from_dead_address(request.address))
             return FetchOutcome.DEAD
         self._store.add_pages(
-            ProviderPage.from_canonical_record(request.address, record)
+            ProviderPage.from_canonical_record(request.address, anime_record)
         )
         return FetchOutcome.FETCHED

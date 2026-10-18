@@ -6,6 +6,7 @@ each fetched page's details are kept in a JSON Lines file, one page per line.
 """
 
 import logging
+from collections import defaultdict
 from pathlib import Path
 
 from pydantic import ValidationError
@@ -45,9 +46,11 @@ class ProviderPageStore:
         """
         self._path = Path(path)
         self._pages: dict[str, ProviderPage] = {}
-        # Every lookup page a held found page was found through, so checking a
-        # lookup takes one set look-up rather than a scan of every page.
-        self._lookup_keys: set[str] = set()
+        # The keys of the found pages held for each lookup page, so finding them
+        # takes one look-up rather than a scan of every page.
+        self._found_page_keys_by_lookup_page: defaultdict[str, set[str]] = defaultdict(
+            set
+        )
         # Where the partial last line starts in the file, in bytes, or None
         # when the file has none. add_pages cuts the file at this point first.
         self._partial_line_offset: int | None = None
@@ -75,7 +78,18 @@ class ProviderPageStore:
         Args:
             lookup_key: The page key of the page the lookup went through.
         """
-        return lookup_key in self._lookup_keys
+        return lookup_key in self._found_page_keys_by_lookup_page
+
+    def get_pages_found_by(self, lookup_key: str) -> tuple[ProviderPage, ...]:
+        """Return the pages found through this lookup page, sorted by page key.
+
+        Args:
+            lookup_key: The page key of the page the lookup went through.
+        """
+        return tuple(
+            self._pages[key]
+            for key in sorted(self._found_page_keys_by_lookup_page.get(lookup_key, ()))
+        )
 
     def add_pages(self, *pages: ProviderPage) -> None:
         """Add pages to the store and write them to the end of the file in one write.
@@ -91,19 +105,20 @@ class ProviderPageStore:
         pages_by_key: dict[str, ProviderPage] = {}
         for page in pages:
             earlier = pages_by_key.get(page.key) or self._pages.get(page.key)
-            pages_by_key[page.key] = _with_lookup_pages_of(earlier, page)
+            pages_by_key[page.key] = _merge_lookup_pages(earlier, page)
         pages = tuple(pages_by_key.values())
         if not pages:
             return
         self._path.parent.mkdir(parents=True, exist_ok=True)
         if self._partial_line_offset is not None:
-            with self._path.open("rb+") as output:
-                output.truncate(self._partial_line_offset)
+            with self._path.open("rb+") as page_file:
+                page_file.truncate(self._partial_line_offset)
             self._partial_line_offset = None
-        with self._path.open("a", encoding="utf-8") as output:
-            output.writelines(f"{page.model_dump_json()}\n" for page in pages)
+        with self._path.open("a", encoding="utf-8") as page_file:
+            page_file.writelines(f"{page.model_dump_json()}\n" for page in pages)
         self._pages.update((page.key, page) for page in pages)
-        self._lookup_keys.update(key for page in pages for key in page.found_by)
+        for page in pages:
+            self._index_lookup_pages(page)
 
     def _read_pages(self) -> None:
         """Read every complete line, and note where a partial last line starts.
@@ -143,10 +158,15 @@ class ProviderPageStore:
             error.add_note(f"{self._path}, line {line_number}")
             raise
         self._pages[page.key] = page
-        self._lookup_keys.update(page.found_by)
+        self._index_lookup_pages(page)
+
+    def _index_lookup_pages(self, page: ProviderPage) -> None:
+        """Record a found page under each lookup page it was found through."""
+        for lookup_key in page.found_by:
+            self._found_page_keys_by_lookup_page[lookup_key].add(page.key)
 
 
-def _with_lookup_pages_of(
+def _merge_lookup_pages(
     earlier: ProviderPage | None, page: ProviderPage
 ) -> ProviderPage:
     """Return the page with the lookup pages of the earlier version added to its own.
