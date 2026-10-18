@@ -1,13 +1,20 @@
-"""Which provider pages of a group link to which, counted in both directions.
+"""Bidirectional links between candidate anime provider pages.
 
-A link from page A to page B ties the two together whichever page holds it, so
-a link is kept as an undirected edge. Only links between pages of the group
-count: a link to a page outside it says nothing about the group's pages.
+Cross-provider links are evaluated to determine whether candidate pages belong
+to the same work (such as deciding doubled providers in an entry, or checking
+whether candidate entries represent a split work).
 
-A found page, such as an AnimeSchedule page found by MAL id, is that provider's
-record of the same work as its lookup page. Its links count as links of the
-lookup page, so the two stay one page here. This is followed one step: a lookup
-page is a page of the provider looked up by, never a found page itself.
+Key rules from the work matching glossary:
+- Bidirectional: A link between Page A and Page B ties them together symmetrically,
+  whichever page holds the link.
+- Candidate scope: Only links between pages within the candidate set count;
+  external links (such as sequels or spin-offs) are ignored.
+- Renamed pages: When a provider renames a page, its old address resolves to
+  its current key.
+- Found pages: A found page (such as AnimeSchedule found by MAL ID) is credited
+  to its lookup page; its links count as links of that lookup page.
+- Multi-work pages: A page naming multiple pages from the same provider (e.g. an
+  anthology) does not prove identity for any single work. Its links are set aside.
 """
 
 from collections import defaultdict
@@ -19,70 +26,78 @@ from work_matching.provider_page_key import has_repeated_provider, provider_of_k
 
 
 class ProviderPageLinks:
-    """The links between a group's provider pages, renamed and found pages folded.
+    """Undirected graph of links between candidate pages of a work or entry.
 
-    A multi-work page, one that names two or more pages of one provider such as
-    an anthology page covering several works, is no evidence that any of them is
-    its work. Its links are kept apart and do not count. A found page names its
-    lookup page as well as the pages it links. A link to a page of the page's
-    own provider is no evidence either, since only another provider can confirm
-    a page.
+    Renamed pages resolve to their current key, and found pages fold into their
+    lookup page. Multi-work pages (pages referencing multiple entries of one
+    provider) and same-provider links are excluded from matching links.
     """
 
     def __init__(
         self, pages: Iterable[ProviderPage], page_keys: Iterable[str] = ()
     ) -> None:
-        """Collect the links between the group's pages.
+        """Collect links between the candidate pages of an entry or split work.
 
         Args:
-            pages: Details of the fetched pages; their links are the edges.
-            page_keys: Keys of further pages in the group, such as the entry's
-                pages of providers that are not fetched.
+            pages: Details of the fetched candidate pages whose links form the edges.
+            page_keys: Keys of additional candidate pages in the entry or work,
+                including pages from providers that were not fetched.
         """
-        fetched = tuple(pages)
-        self._lands_on = {page.key: page.lands_on for page in fetched if page.lands_on}
-        self._lookup_pages = {
-            page.key: self.same_page(page.found_by) for page in fetched if page.found_by
+        fetched_pages = tuple(pages)
+        self._renamed_keys = {
+            page.key: page.lands_on for page in fetched_pages if page.lands_on
         }
-        group = set(
-            map(self._folded_key, chain(page_keys, (page.key for page in fetched)))
+        self._lookup_pages = {
+            page.key: self.same_page(page.found_by)
+            for page in fetched_pages
+            if page.found_by
+        }
+        candidate_keys = set(
+            map(
+                self._current_key,
+                chain(page_keys, (page.key for page in fetched_pages)),
+            )
         )
         self._linked: defaultdict[str, set[str]] = defaultdict(set)
         self._linked_by_multi_work: defaultdict[str, set[str]] = defaultdict(set)
-        for page in fetched:
-            self._add_links(page, group)
+        for page in fetched_pages:
+            self._add_links(page, candidate_keys)
 
     def same_page(self, key: str) -> str:
-        """Return the key a page answers to now: its new key if it was renamed."""
-        return self._lands_on.get(key, key)
+        """Return the current key a renamed page resolves to, or the key unchanged."""
+        return self._renamed_keys.get(key, key)
 
     def linked_with(self, key: str) -> frozenset[str]:
-        """Return the group's pages linked with a page, in either direction."""
-        return frozenset(self._linked.get(self._folded_key(key), ()))
+        """Return candidate pages linked with a page, in either direction."""
+        return frozenset(self._linked.get(self._current_key(key), ()))
 
     def linked_by_multi_work_pages(self, key: str) -> frozenset[str]:
-        """Return the pages linking a page whose links were set aside."""
-        return frozenset(self._linked_by_multi_work.get(self._folded_key(key), ()))
+        """Return multi-work pages that linked to this page."""
+        return frozenset(self._linked_by_multi_work.get(self._current_key(key), ()))
 
-    def _add_links(self, page: ProviderPage, group: set[str]) -> None:
-        """Record one page's links within the group, a multi-work page's apart."""
-        source = self._folded_key(page.key)
-        targets = {self._folded_key(link) for link in page.links} - {source}
-        named = targets | {source} if page.found_by else targets
-        if has_repeated_provider(named):
-            for target in targets & group:
-                self._linked_by_multi_work[target].add(source)
+    def _add_links(self, page: ProviderPage, candidate_keys: set[str]) -> None:
+        """Record one page's links within the candidate keys.
+
+        A multi-work page's links are set apart rather than recorded.
+        """
+        source_key = self._current_key(page.key)
+        target_keys = {self._current_key(link) for link in page.links} - {source_key}
+        referenced_keys = target_keys | {source_key} if page.found_by else target_keys
+        if has_repeated_provider(referenced_keys):
+            for target_key in target_keys & candidate_keys:
+                self._linked_by_multi_work[target_key].add(source_key)
             return
-        source_provider = provider_of_key(source)
-        for target in targets & group:
-            if provider_of_key(target) != source_provider:
-                self._linked[source].add(target)
-                self._linked[target].add(source)
 
-    def _folded_key(self, key: str) -> str:
-        """Return the key a page's links are kept under.
+        source_provider = provider_of_key(source_key)
+        for target_key in target_keys & candidate_keys:
+            if provider_of_key(target_key) != source_provider:
+                self._linked[source_key].add(target_key)
+                self._linked[target_key].add(source_key)
 
-        A found page's links are kept under its lookup page, and a renamed
-        page's under its new key.
+    def _current_key(self, key: str) -> str:
+        """Return the current canonical key for a page key.
+
+        A found page's links are credited to its lookup page, and a renamed
+        page resolves to its current key.
         """
         return self._lookup_pages.get(key) or self.same_page(key)

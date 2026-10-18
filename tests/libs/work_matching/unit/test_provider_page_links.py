@@ -11,7 +11,7 @@ def test_provider_page_links_link_counts_both_ways(linked_page) -> None:
     assert links.linked_with("mal:anime:1") == frozenset({"kitsu:anime:1"})
 
 
-def test_provider_page_links_link_outside_group_ignored(linked_page) -> None:
+def test_provider_page_links_link_outside_candidates_ignored(linked_page) -> None:
     links = ProviderPageLinks(
         [linked_page("https://kitsu.app/anime/1", "https://myanimelist.net/anime/2")],
         ["mal:anime:1"],

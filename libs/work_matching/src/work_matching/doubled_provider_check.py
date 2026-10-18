@@ -1,10 +1,18 @@
 """Decide which of an entry's pages from one provider belong to the entry's work.
 
-An entry with two or more pages of one provider is a doubled provider. Links
-decide: a page linked with another provider's page of the entry belongs, and a
-page linking another work does not. Title, year and type never decide, because
-a provider that lists one work twice gives the two pages different titles, and
-picking one by title wrongly drops the other. They are recorded for review.
+A "doubled provider" occurs when an anime entry contains two or more pages from
+the same provider. Cross-provider links decide what these pages represent:
+- SAME_PAGE: The addresses resolve to the same canonical page (e.g. after a rename).
+- ONE_WORK: The pages belong to this entry's single work, either because only one
+  page links to the entry while others link other works, or because the provider
+  maintains duplicate pages for the same work that share links to the entry.
+- MIXED_ENTRY: The entry accidentally contains pages from multiple distinct works;
+  the doubled pages link to completely separate, disjoint sets of the entry's pages.
+- REVIEW: The link evidence is inconclusive, conflicting, or missing.
+
+Title, year, and type never decide automatically because providers listing one
+work twice often vary titles or release dates; picking by title would mistakenly
+drop duplicate pages. These attributes are recorded as metadata for review cases.
 """
 
 from collections import defaultdict
@@ -47,7 +55,7 @@ _SEED_TYPE: dict[str, WorkType] = {
 
 
 class Outcome(StrEnum):
-    """What a decision says about a doubled provider's pages."""
+    """The high-level conclusion for a doubled provider's pages."""
 
     SAME_PAGE = "same page"
     ONE_WORK = "one work"
@@ -56,21 +64,36 @@ class Outcome(StrEnum):
 
 
 class Reason(StrEnum):
-    """Why a decision came out as it did."""
+    """The specific rule explaining why a decision was reached."""
 
-    SAME_PAGE = "the addresses name one page"
-    ONE_LINKED = "one page is linked with the entry and the others link other works"
-    SHARED_LINK = "every linked page is linked with one same page of the entry"
-    LINKED_APART = "the linked pages are linked with separate pages of the entry"
-    MULTI_WORK_LINK = "a multi-work page links these pages"
-    DEAD_PAGE = "a page is no longer served"
-    CONTRADICTING_LINKS = "a page is linked with the entry and links another work"
-    UNDECIDED_PAGES = "a page is neither linked with the entry nor links another work"
-    DETAILS_DIFFER = (
-        "the linked pages share a linked page but their year or type differ"
+    SAME_PAGE = "the addresses are one page: an old address leads to the renamed one"
+    ONE_LINKED = (
+        "exactly one page is linked with the entry; every other page links a "
+        "different work"
     )
-    OVERLAPPING_LINKS = "the linked pages share some pages but none linked with all"
-    NONE_LINKED = "no page is linked with the entry"
+    SHARED_LINK = (
+        "the linked pages are all linked through one same page, with the same year "
+        "and type"
+    )
+    LINKED_APART = (
+        "the linked pages are linked through entirely separate pages, so each is a "
+        "separate work"
+    )
+    MULTI_WORK_LINK = "a page naming several pages of one provider links these pages"
+    DEAD_PAGE = "a page no longer exists on the provider's site"
+    CONTRADICTING_LINKS = (
+        "a page is linked with the entry and also links a different work"
+    )
+    UNDECIDED_PAGES = "a page has no link to the entry and no link to another work"
+    DETAILS_DIFFER = (
+        "the linked pages are linked through one same page, but their years or "
+        "types differ"
+    )
+    OVERLAPPING_LINKS = (
+        "the linked pages share some linked pages, but no page is linked with all "
+        "of them"
+    )
+    NONE_LINKED = "every page links a different work and none is linked with the entry"
 
     @property
     def outcome(self) -> Outcome:
@@ -95,12 +118,12 @@ _OUTCOME_OF_REASON: dict[Reason, Outcome] = {
 
 @dataclass(frozen=True, slots=True)
 class UnrelatedPage:
-    """A page whose links name another work."""
+    """A doubled provider page whose links point to another anime work."""
 
-    # Its links to pages outside the entry: pages of a provider the entry has,
-    # or pages of another known work.
+    # Outbound links to other works: pages of providers already in the entry,
+    # or pages of known works.
     links: frozenset[str]
-    # The known works those links belong to.
+    # The known work entries corresponding to those links.
     other_works: tuple[WorkEntry, ...]
 
 
@@ -110,17 +133,16 @@ class DoubledProviderDecision:
 
     # The provider decided; "simkl" for Simkl and AnimeCountdown together.
     provider: str
-    # The provider's pages, renamed pages folded into their current key.
+    # The provider's pages, with renamed pages resolved to their current key.
     pages: tuple[str, ...]
     reason: Reason
-    # Each page that belongs, with the entry's pages linked with it. On a mixed
-    # entry each page is a separate work, together with its linked pages.
+    # Each page that belongs, mapped to the entry's pages linked with it.
     belonging: Mapping[str, frozenset[str]] = field(default_factory=dict)
+    # Pages that link to another work instead of this entry.
     unrelated: Mapping[str, UnrelatedPage] = field(default_factory=dict)
-    # Pages without links either way.
+    # Pages with no links either to the entry or to another work.
     undecided: tuple[str, ...] = ()
-    # On review, the pages whose main title matches the entry's titles, those
-    # whose year and type agree with the entry's, and those in its season.
+    # Review helper metadata: pages matching the entry's title, year/type, or season.
     title_matches: tuple[str, ...] = ()
     year_type_matches: tuple[str, ...] = ()
     season_matches: tuple[str, ...] = ()
@@ -138,32 +160,29 @@ def decide_doubled_providers(
 
     Args:
         entry: The work entry.
-        pages: Details of the entry's fetched pages, and of the found pages
-            whose lookup page is one of them, such as AnimeSchedule's.
-        known_works: The works already known, to name the work an unrelated
+        pages: Details of the entry's fetched pages, and of found pages
+            whose lookup page is one of them (such as AnimeSchedule).
+        known_works: The works already known, to identify works an unrelated
             page links to.
 
     Returns:
         One decision per provider with two or more pages in the entry, in the
         order the entry lists them.
     """
-    groups: defaultdict[str, list[str]] = defaultdict(list)
+    pages_by_provider: defaultdict[str, list[str]] = defaultdict(list)
     for key in entry.pages:
-        if group := _decision_group(key):
-            groups[group].append(key)
+        if provider := _decision_provider(key):
+            pages_by_provider[provider].append(key)
     check = _EntryCheck(entry, pages, known_works)
     return [
-        check.decide_provider(group, keys)
-        for group, keys in groups.items()
+        check.decide_provider(provider, keys)
+        for provider, keys in pages_by_provider.items()
         if _has_several_ids(keys)
     ]
 
 
 class _EntryCheck:
-    """The links and details of one entry's pages, shared by its decisions.
-
-    Page details are found by each page's current key, as renamed pages fold.
-    """
+    """Evaluates links and metadata for one entry's doubled provider pages."""
 
     def __init__(
         self, entry: WorkEntry, pages: Iterable[ProviderPage], known_works: KnownWorks
@@ -179,28 +198,32 @@ class _EntryCheck:
     def decide_provider(
         self, provider: str, keys: list[str]
     ) -> DoubledProviderDecision:
-        """Decide one provider's pages."""
+        """Decide the outcome and belonging pages for one doubled provider."""
         pages = tuple(dict.fromkeys(map(self._links.same_page, keys)))
         if not _has_several_ids(pages):
             return DoubledProviderDecision(provider, pages, Reason.SAME_PAGE)
         linked = {key: self._links.linked_with(key) for key in pages}
-        elsewhere = {key: self._links_elsewhere(key) for key in pages}
-        reason = self._reason_for(pages, linked, elsewhere)
+        other_work_links = {key: self._links_to_other_works(key) for key in pages}
+        reason = self._reason_for(pages, linked, other_work_links)
         is_review = reason.outcome is Outcome.REVIEW
         return DoubledProviderDecision(
             provider,
             pages,
             reason,
             belonging={
-                key: linked[key] for key in pages if linked[key] and not elsewhere[key]
+                key: linked[key]
+                for key in pages
+                if linked[key] and not other_work_links[key]
             },
             unrelated={
-                key: UnrelatedPage(elsewhere[key], self._other_works(elsewhere[key]))
+                key: UnrelatedPage(
+                    other_work_links[key], self._other_works(other_work_links[key])
+                )
                 for key in pages
-                if elsewhere[key] and not linked[key]
+                if other_work_links[key] and not linked[key]
             },
             undecided=tuple(
-                key for key in pages if not (linked[key] or elsewhere[key])
+                key for key in pages if not (linked[key] or other_work_links[key])
             ),
             title_matches=self._title_matches(provider, pages) if is_review else (),
             year_type_matches=self._year_type_matches(pages) if is_review else (),
@@ -211,20 +234,20 @@ class _EntryCheck:
         self,
         pages: tuple[str, ...],
         linked: Mapping[str, frozenset[str]],
-        elsewhere: Mapping[str, frozenset[str]],
+        other_work_links: Mapping[str, frozenset[str]],
     ) -> Reason:
-        """Return the rule that decides the pages, checks that refuse first.
+        """Return the reason determining the pages' outcome, review triggers first.
 
-        A multi-work link or a dead page sends the pages to review before the
-        links are read, even when the page in question is the only one linked.
+        A multi-work link or dead page requires review before evaluating link graphs,
+        even if the page is the only one linked to the entry.
         """
         if any(map(self._links.linked_by_multi_work_pages, pages)):
             return Reason.MULTI_WORK_LINK
         if any(map(self._is_dead, pages)):
             return Reason.DEAD_PAGE
-        if any(linked[key] and elsewhere[key] for key in pages):
+        if any(linked[key] and other_work_links[key] for key in pages):
             return Reason.CONTRADICTING_LINKS
-        if not all(linked[key] or elsewhere[key] for key in pages):
+        if not all(linked[key] or other_work_links[key] for key in pages):
             return Reason.UNDECIDED_PAGES
         linked_sets = [linked[key] for key in pages if linked[key]]
         if not linked_sets:
@@ -245,14 +268,15 @@ class _EntryCheck:
         page = self._details.get(key)
         return page is not None and page.dead
 
-    def _links_elsewhere(self, key: str) -> frozenset[str]:
-        """Return a page's links naming another work.
+    def _links_to_other_works(self, key: str) -> frozenset[str]:
+        """Return a page's links that provide evidence of belonging to another work.
 
-        A link names another work when it points outside the entry, at a page
-        of a provider the entry has or at a page of another known work. A link
-        to a page of the page's own provider names nothing, as in
-        ``ProviderPageLinks``, which holds the links within the entry; this
-        reads the links that leave it.
+        A link points to another work when it points outside this entry to:
+        - A provider already present in this entry (indicating a conflicting ID).
+        - A page belonging to another known work in the database.
+
+        Links to the page's own provider or unknown providers outside the entry
+        do not count as evidence of another work.
         """
         page = self._details.get(key)
         own_provider = provider_of_key(key)
@@ -281,7 +305,7 @@ class _EntryCheck:
         entry_titles = {comparable_title(self._entry.title)} | {
             comparable_title(page.titles[0])
             for key in self._entry_pages
-            if _decision_group(key) != provider
+            if _decision_provider(key) != provider
             and (page := self._details.get(key))
             and page.titles
         }
@@ -339,7 +363,10 @@ def _has_several_ids(keys: Iterable[str]) -> bool:
     return len(set(map(page_id_of_key, keys))) > 1
 
 
-def _decision_group(key: str) -> str | None:
-    """Return the provider whose decision a page key falls under, if any."""
+def _decision_provider(key: str) -> str | None:
+    """Return the provider whose decision a page key falls under, if any.
+
+    AnimeCountdown shares ID numbering with Simkl, so its pages fall under 'simkl'.
+    """
     provider = provider_of_key(key)
     return _DECIDED_WITH.get(provider, provider) if provider else None
