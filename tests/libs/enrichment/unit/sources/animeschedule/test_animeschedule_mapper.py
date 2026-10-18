@@ -99,3 +99,20 @@ def test_anime_from_animeschedule_year_only_season_left_out() -> None:
     assert "season" not in anime_from_animeschedule(
         _anime(season={"season": "", "year": "2026"})
     )
+
+
+def test_anime_from_animeschedule_own_page_listed_first_in_sources() -> None:
+    mapped = anime_from_animeschedule(
+        _anime(
+            websites={
+                "mal": "myanimelist.net/anime/21",
+                "aniList": "anilist.co/anime/21",
+            }
+        )
+    )
+
+    assert mapped["sources"] == [
+        "https://animeschedule.net/anime/one-piece",
+        "https://myanimelist.net/anime/21",
+        "https://anilist.co/anime/21",
+    ]

@@ -87,6 +87,8 @@ def _title_groups(known_works: KnownWorksFromSeed) -> list[tuple[WorkEntry, ...]
         Each group of two or more entries, in seed file order.
     """
     works = list(known_works)
+    # By object, not reference page: two entries can list the same page, and
+    # find_by_title returns the very entries the seed lookup holds.
     position_of = {id(work): position for position, work in enumerate(works)}
     groups = UnionFind(range(len(works)))
     for position, work in enumerate(works):
