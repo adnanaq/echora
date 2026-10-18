@@ -202,7 +202,9 @@ multiprocess==0.70.19
 narwhals==2.26.0
     # via scikit-learn
 networkx==3.7
-    # via torch
+    # via
+    #   echora
+    #   torch
 numba==0.68.0
     # via ranx
 numpy==2.5.3

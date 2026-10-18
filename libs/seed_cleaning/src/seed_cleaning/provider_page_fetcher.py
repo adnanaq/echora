@@ -158,18 +158,21 @@ class ProviderPageFetcher:
                 outcomes[FetchOutcome.ALREADY_STORED] += 1
             else:
                 requests_by_service[request.service].append(request)
-        failed_pages: dict[str, str] = {}
-        for queue_results in await asyncio.gather(
-            *(
-                self._run_queue(service, requests)
+        async with asyncio.TaskGroup() as task_group:
+            queues = [
+                task_group.create_task(self._run_queue(service, requests))
                 for service, requests in requests_by_service.items()
-            )
-        ):
-            for result in queue_results:
-                outcomes[result.outcome] += 1
-                if result.error is not None:
-                    failed_pages[result.request.label] = result.error
-        return FetchSummary(outcomes=dict(outcomes), failed_pages=failed_pages)
+            ]
+        results = [result for queue in queues for result in queue.result()]
+        outcomes.update(result.outcome for result in results)
+        return FetchSummary(
+            outcomes=dict(outcomes),
+            failed_pages={
+                result.request.label: result.error
+                for result in results
+                if result.error is not None
+            },
+        )
 
     def _requests_for(self, entry: WorkEntry) -> list[_PageRequest]:
         """List every request one entry needs, whether done already or not."""

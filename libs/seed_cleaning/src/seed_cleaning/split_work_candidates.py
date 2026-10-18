@@ -11,6 +11,7 @@ import logging
 from collections import Counter
 from collections.abc import Sequence
 
+from networkx.utils import UnionFind
 from pydantic import BaseModel, ConfigDict
 from work_matching import KnownWorksFromSeed, WorkEntry, decided_provider
 
@@ -87,20 +88,17 @@ def _title_groups(known_works: KnownWorksFromSeed) -> list[tuple[WorkEntry, ...]
     """
     works = list(known_works)
     position_of = {id(work): position for position, work in enumerate(works)}
-    group_root = list(range(len(works)))
+    groups = UnionFind(range(len(works)))
     for position, work in enumerate(works):
         for match in known_works.find_by_title(work.title, work.type, work.year):
             if match is not work and _is_season_close(work.season, match.season):
-                _merge_groups(group_root, position, position_of[id(match)])
-    positions_by_root: dict[int, list[int]] = {}
-    for position in range(len(works)):
-        positions_by_root.setdefault(_find_group_root(group_root, position), []).append(
-            position
-        )
+                groups.union(position, position_of[id(match)])
+    positions_by_group = sorted(
+        sorted(positions) for positions in groups.to_sets() if len(positions) > 1
+    )
     return [
         tuple(works[position] for position in positions)
-        for positions in positions_by_root.values()
-        if len(positions) > 1
+        for positions in positions_by_group
     ]
 
 
@@ -133,18 +131,3 @@ def _shared_providers(entries: Sequence[WorkEntry]) -> list[str]:
 def _providers_of(entry: WorkEntry) -> set[str]:
     """Return the providers an entry has pages from, Simkl and AnimeCountdown as one."""
     return {provider for key in entry.pages if (provider := decided_provider(key))}
-
-
-def _find_group_root(group_root: list[int], position: int) -> int:
-    """Return the position that names the group an entry belongs to."""
-    while group_root[position] != position:
-        group_root[position] = group_root[group_root[position]]
-        position = group_root[position]
-    return position
-
-
-def _merge_groups(group_root: list[int], first: int, second: int) -> None:
-    """Put two entries, and the groups they belong to, in one group."""
-    group_root[_find_group_root(group_root, first)] = _find_group_root(
-        group_root, second
-    )

@@ -37,6 +37,7 @@ dependencies = [
     "numpy>=2.5.3",
     "langdetect>=1.0.9",
     "lxml>=5.0.0",
+    "networkx>=3.7", # UnionFind for grouping seed entries that may be one work
     # "dghs-imgutils>=0.19.0",
     "defusedxml>=0.7.1",
     "grpcio==1.84.0",
