@@ -190,6 +190,35 @@ def test_correct_doubled_provider_entries_answer_places_renamed_single_page_by_l
     ] == [("work 2", None)]
 
 
+def test_correct_doubled_provider_entries_answer_keeps_renamed_page_when_current_not_listed(
+    store, tmp_path
+) -> None:
+    other_planet = "https://www.anime-planet.com/anime/other-name"
+    works = KnownWorksFromSeed([_seed_entry("Show", MAL, OLD_PLANET, other_planet)])
+    entry = next(iter(works))
+    store.add_pages(
+        _page(OLD_PLANET, MAL, sources=[OLD_PLANET, NEW_PLANET]), _page(other_planet)
+    )
+    path = tmp_path / "review.jsonl"
+    [case] = _correct(entry, store, works, ReviewFile(path)).review_cases
+    answer = {
+        "animeplanet:anime:new-name": "entry",
+        "animeplanet:anime:other-name": "other work",
+    }
+    path.write_text(
+        case.model_copy(update={"answer": answer}).model_dump_json() + "\n",
+        encoding="utf-8",
+    )
+    corrections = _correct(entry, store, works, ReviewFile(path)).corrections
+    [corrected] = build_corrected_entries(corrections, works, store)[:1]
+    assert "animeplanet:anime:old-name" in corrected.entry.pages
+    assert [
+        (correction.work, correction.renamed_to)
+        for correction in corrections
+        if correction.page_key == "animeplanet:anime:old-name"
+    ] == [("entry", None)]
+
+
 def test_correct_doubled_provider_entries_page_linking_work_outside_seed_goes_to_review(
     entry, store, known_works, review_file
 ) -> None:

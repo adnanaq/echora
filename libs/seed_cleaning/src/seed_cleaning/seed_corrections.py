@@ -270,11 +270,11 @@ def _build_entry_corrections(
     """Turn one entry's page places into corrections, in the entry's page order.
 
     A doubled page listed under an old address takes the place of its current
-    page, since the decisions name doubled pages by their current key; the old
-    address is then dropped. Any other page is placed by the key the entry
-    lists, as an answer names it, and keeps its address: the entry does not list
-    its current address, so dropping the old one would lose the page. Pages
-    without a place stay as they are and get no correction.
+    page, since the decisions name doubled pages by their current key. The old
+    address is dropped only when the entry also lists the current one; otherwise
+    dropping it would lose the page, so it keeps its address. Any other page is
+    placed by the key the entry lists, as an answer names it. Pages without a
+    place stay as they are and get no correction.
     """
     current_key_by_page = {
         page.key: page.renamed_to for page in pages if page.renamed_to
@@ -301,7 +301,11 @@ def _build_entry_corrections(
                 address=address,
                 work=placement.work,
                 is_main_page=placement.is_main_page,
-                renamed_to=current_key if current_key != key else None,
+                renamed_to=(
+                    current_key
+                    if current_key != key and current_key in entry.pages
+                    else None
+                ),
                 target_entry_reference_page=(
                     target_entry_by_page.get(current_key)
                     if placement.work == OTHER_WORK

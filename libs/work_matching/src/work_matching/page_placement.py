@@ -118,6 +118,8 @@ def place_pages_without_review(
     placements: dict[str, PagePlacement] = {}
     for decision in decisions:
         if decision.outcome is Outcome.SAME_PAGE:
+            # The provider's addresses resolve to one current key, so a same-page
+            # decision holds exactly one page.
             placements[decision.pages[0]] = PagePlacement(ENTRY_WORK)
         placements |= dict.fromkeys(decision.belonging_pages, PagePlacement(ENTRY_WORK))
         placements |= dict.fromkeys(decision.unrelated_pages, PagePlacement(OTHER_WORK))
