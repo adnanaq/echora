@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 import pytest
 from pydantic import ValidationError
 from work_matching.provider_page import ProviderPage, index_pages_by_current_key
@@ -55,6 +57,50 @@ def test_provider_page_from_canonical_record_collects_titles_of_every_language(
     page = ProviderPage.from_canonical_record(ANISEARCH, canonical_records[ANISEARCH])
     assert page.titles[0] == "Mo Dao Zu Shi: Qianchen Pian"
     assert {"魔道祖师 前尘篇", "Madou Soshi: Zenjin Hen"} <= set(page.titles)
+
+
+def test_provider_page_from_canonical_record_reads_episode_count_and_air_dates() -> (
+    None
+):
+    page = ProviderPage.from_canonical_record(
+        "https://anilist.co/anime/163794",
+        {
+            "title": "The Boxer",
+            "episode_count": 12,
+            "aired_dates": {
+                "aired_from": "2026-04-05T15:00:00Z",
+                "aired_to": "2026-06-21T15:00:00Z",
+            },
+        },
+    )
+    assert (page.episode_count, page.aired_from, page.aired_to) == (
+        12,
+        datetime(2026, 4, 5, 15, tzinfo=UTC),
+        datetime(2026, 6, 21, 15, tzinfo=UTC),
+    )
+
+
+def test_provider_page_from_canonical_record_zero_episode_count_read_as_unknown() -> (
+    None
+):
+    page = ProviderPage.from_canonical_record(
+        "https://anilist.co/anime/21",
+        {
+            "title": "ONE PIECE",
+            "episode_count": 0,
+            "aired_dates": {"aired_from": "1999-10-19T15:00:00Z"},
+        },
+    )
+    assert (page.episode_count, page.aired_to) == (None, None)
+
+
+def test_provider_page_stored_line_without_episode_fields_loads() -> None:
+    page = ProviderPage.model_validate_json(
+        '{"key":"mal:anime:21","address":"https://myanimelist.net/anime/21",'
+        '"titles":["One Piece"],"type":"TV","year":1999,"season":"FALL","links":[],'
+        '"found_by":[],"is_dead":false,"renamed_to":null}'
+    )
+    assert (page.episode_count, page.aired_from, page.aired_to) == (None, None, None)
 
 
 def test_provider_page_from_canonical_record_repeated_title_kept_once() -> None:

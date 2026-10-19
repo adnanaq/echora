@@ -11,6 +11,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 from work_matching.provider_page import ProviderPage
+from work_matching.work_entry import WorkEntry
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +90,28 @@ class ProviderPageStore:
             self._pages[key]
             for key in sorted(self._found_page_keys_by_lookup_page.get(lookup_key, ()))
         )
+
+    def get_entry_pages(self, entry: WorkEntry) -> list[ProviderPage]:
+        """Return the stored details of an entry's pages, then of pages found through them.
+
+        The rules read an entry's links from both: a found page, such as
+        AnimeSchedule's found by MAL id, carries links its lookup page lacks.
+
+        Args:
+            entry: The work entry whose pages to return.
+
+        Returns:
+            The entry's stored pages in the entry's order, then the found pages
+            of each, sorted by page key. Pages not stored are left out.
+        """
+        return [
+            *(page for key in entry.pages if (page := self.get_page(key))),
+            *(
+                found_page
+                for key in entry.pages
+                for found_page in self.get_pages_found_by(key)
+            ),
+        ]
 
     def add_pages(self, *pages: ProviderPage) -> None:
         """Add pages to the store and write them to the end of the file in one write.

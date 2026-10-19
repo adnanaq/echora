@@ -65,6 +65,22 @@ PROVIDERS: frozenset[str] = frozenset(
     provider for patterns in _PAGE_PATTERNS.values() for provider, _ in patterns
 )
 
+# Each provider's page address as the seed spells it, filled with a key's kind
+# and id. Links are kept as page keys, so fetching a linked page needs its
+# address back; the seed's spelling keeps the cache shared with seed pages.
+_SEED_ADDRESS_BY_PROVIDER = {
+    "mal": "https://myanimelist.net/{kind}/{id}",
+    "anisearch": "https://anisearch.com/{kind}/{id}",
+    "anilist": "https://anilist.co/{kind}/{id}",
+    "anidb": "https://anidb.net/{kind}/{id}",
+    "kitsu": "https://kitsu.app/{kind}/{id}",
+    "animeplanet": "https://anime-planet.com/{kind}/{id}",
+    "ann": "https://animenewsnetwork.com/encyclopedia/{kind}.php?id={id}",
+    "livechart": "https://livechart.me/{kind}/{id}",
+    "simkl": "https://simkl.com/{kind}/{id}",
+    "animecountdown": "https://animecountdown.com/{id}",
+}
+
 # Which page names an entry: the providers that seed merged anime ids come
 # first, in the same order as ``link_rules._ID_SEED_ORDER``.
 REFERENCE_ORDER: tuple[str, ...] = (
@@ -128,6 +144,31 @@ def get_page_key(address: str) -> str:
     if not scheme_separator:
         return address.rstrip("/")
     return f"{scheme.lower()}://{host}/{path}".rstrip("/")
+
+
+def build_page_address(key: str) -> str | None:
+    """Return the address of the page a key names, spelled as the seed spells it.
+
+    The reverse of ``get_page_key`` for recognised pages: a page key read from
+    another page's links is turned back into an address that can be fetched.
+
+    Args:
+        key: A page key, as ``get_page_key`` gives it.
+
+    Returns:
+        The page address, or None when the key is not a known provider's page.
+
+    Examples:
+        >>> build_page_address("mal:anime:21")
+        'https://myanimelist.net/anime/21'
+        >>> build_page_address("https://example.com/show") is None
+        True
+    """
+    provider = get_page_provider(key)
+    if provider is None:
+        return None
+    _, page_kind, page_id = key.split(":", 2)
+    return _SEED_ADDRESS_BY_PROVIDER[provider].format(kind=page_kind, id=page_id)
 
 
 def get_page_provider(key: str) -> str | None:

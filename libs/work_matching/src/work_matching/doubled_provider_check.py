@@ -240,6 +240,20 @@ def get_seed_type(page: ProviderPage) -> WorkType | None:
     return _SEED_TYPE_BY_PROVIDER_TYPE.get(page.type or "")
 
 
+def is_page_details_matching(page: ProviderPage, entry: WorkEntry) -> bool:
+    """Report whether a page's year and type agree with an entry's.
+
+    A missing year agrees with any year, and an unknown type with any type,
+    because providers fill these in at different times. The page's type is
+    compared as the seed's coarser type. A page joining an entry, by a move or
+    as an added linked page, must agree, since a disagreement shows its link
+    may be a wrong mapping.
+    """
+    return is_year_matching(page.year, entry.year) and is_type_matching(
+        get_seed_type(page), entry.type
+    )
+
+
 class _EntryCheck:
     """Evaluates links and metadata for one entry's doubled provider pages."""
 
@@ -390,13 +404,11 @@ class _EntryCheck:
 
     def _find_year_type_matches(self, pages: tuple[str, ...]) -> tuple[str, ...]:
         """Return the pages whose year and type agree with the entry's."""
-        entry = self._entry
         return tuple(
             key
             for key in pages
             if (page := self._pages_by_current_key.get(key))
-            and is_year_matching(page.year, entry.year)
-            and is_type_matching(get_seed_type(page), entry.type)
+            and is_page_details_matching(page, self._entry)
         )
 
     def _find_season_matches(self, pages: tuple[str, ...]) -> tuple[str, ...]:

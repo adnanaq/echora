@@ -8,6 +8,7 @@ from work_matching.doubled_provider_check import (
     decide_doubled_providers,
     find_doubled_provider_pages,
     get_decided_provider,
+    is_page_details_matching,
 )
 from work_matching.known_works_from_seed import KnownWorksFromSeed
 from work_matching.provider_page import ProviderPage
@@ -526,3 +527,25 @@ def test_find_doubled_provider_pages_simkl_and_animecountdown_other_numbers_doub
     assert find_doubled_provider_pages(["simkl:anime:5", "animecountdown:anime:6"]) == {
         "simkl": ("simkl:anime:5", "animecountdown:anime:6")
     }
+
+
+@pytest.mark.parametrize(
+    ("page_type", "page_year", "expected"),
+    [
+        ("TV SHORT", 2020, True),
+        ("TV", None, True),
+        ("MOVIE", 2020, False),
+        ("TV", 2019, False),
+    ],
+)
+def test_is_page_details_matching_compares_year_and_seed_type(
+    work_entry, page_type: str, page_year: int | None, expected: bool
+) -> None:
+    page = ProviderPage(
+        key="anidb:anime:1",
+        address="https://anidb.net/anime/1",
+        type=page_type,
+        year=page_year,
+    )
+    entry = work_entry("https://myanimelist.net/anime/1", work_type="TV", year=2020)
+    assert is_page_details_matching(page, entry) is expected

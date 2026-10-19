@@ -92,3 +92,22 @@ def test_is_type_matching_unknown_or_missing_type_agrees_with_any(
     work_types: tuple, expected: bool
 ) -> None:
     assert is_type_matching(*work_types) is expected
+
+
+@pytest.mark.parametrize(
+    ("page_key", "expected"),
+    [
+        ("kitsu:anime:99", True),
+        ("anidb:anime:69", False),
+        ("https://example.com/show", False),
+    ],
+)
+def test_has_page_of_same_provider_compares_page_key_provider_with_entry_pages(
+    work_entry, page_key: str, expected: bool
+) -> None:
+    entry = work_entry(
+        "https://myanimelist.net/anime/21",
+        "https://kitsu.app/anime/12",
+        "https://example.com/other",
+    )
+    assert entry.has_page_of_same_provider(page_key) is expected

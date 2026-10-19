@@ -7,6 +7,7 @@ share one fetch and one cache.
 """
 
 from collections.abc import Iterable, Iterator
+from datetime import datetime
 from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict
@@ -27,6 +28,13 @@ class ProviderPage(BaseModel):
     type: str | None = None
     year: int | None = None
     season: str | None = None
+    # The number of episodes the provider lists, or None when it gives none.
+    # Episode counts and air dates never decide a match: they show a reviewer
+    # a provider dividing a work differently (one season against the whole run),
+    # and they stop an automatic change.
+    episode_count: int | None = None
+    aired_from: datetime | None = None
+    aired_to: datetime | None = None
     # Keys of other providers' pages this page links to, sorted. Shared
     # websites are left out: two different works can share an official site.
     links: tuple[str, ...] = ()
@@ -54,10 +62,12 @@ class ProviderPage(BaseModel):
                 through another provider's page.
 
         Returns:
-            The page's titles, type, year, season, links to other providers'
-            pages, and the key the page was renamed to, if it was renamed.
+            The page's titles, type, year, season, episode count, air dates,
+            links to other providers' pages, and the key the page was renamed
+            to, if it was renamed.
         """
         key = get_page_key(address)
+        aired_dates = record.get("aired_dates") or {}
         own_provider = get_page_provider(key)
         linked_keys = {
             get_page_key(linked_address)
@@ -75,6 +85,11 @@ class ProviderPage(BaseModel):
             type=record.get("type"),
             year=record.get("year"),
             season=record.get("season"),
+            # The canonical record holds 0 when the provider gives no count,
+            # such as for an anime still airing, so 0 is read as unknown.
+            episode_count=record.get("episode_count") or None,
+            aired_from=aired_dates.get("aired_from"),
+            aired_to=aired_dates.get("aired_to"),
             links=tuple(
                 sorted(
                     linked_key

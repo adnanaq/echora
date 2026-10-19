@@ -93,6 +93,21 @@ class WorkEntry(BaseModel):
             next(iter(self.pages)),
         )
 
+    def has_page_of_same_provider(self, page_key: str) -> bool:
+        """Report whether the entry holds a page of the provider this page key belongs to.
+
+        A page joining an entry that already holds a page of its provider would
+        make a doubled provider, which needs a person to decide. A key of no
+        known provider has no provider to share, so it never counts.
+
+        Args:
+            page_key: The key of the page that would join the entry.
+        """
+        provider = get_page_provider(page_key)
+        return provider is not None and any(
+            get_page_provider(key) == provider for key in self.pages
+        )
+
     @classmethod
     def from_seed_entry(cls, entry: dict[str, Any]) -> Self:
         """Build a work entry from one entry of an anime-offline-database file.

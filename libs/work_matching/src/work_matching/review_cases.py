@@ -1,9 +1,10 @@
 """Review cases: decisions the matching rules leave to a person, with their answers.
 
-Every entry the rules cannot place, and every split-work group they cannot
-settle, becomes a review case: one JSON line in the review file. A person, or
-later the review agent, writes the answer into the line, and the next run hands
-it back to the caller, who applies it. The rules:
+Every entry the rules cannot place, every split-work group they cannot
+settle, and every linked page they cannot add on their own becomes a review
+case: one JSON line in the review file. A person, or later the review agent,
+writes the answer into the line, and the next run hands it back to the caller,
+who applies it. The rules:
 
 - One case per entry: all of an entry's doubled providers are reviewed together,
   because telling which works a mixed entry holds needs all its pages at once,
@@ -16,10 +17,15 @@ it back to the caller, who applies it. The rules:
   another entry, gets a new name, so it is asked again.
 - Answers: a doubled-provider case's answer places pages with the words in
   ``page_placement`` (``entry``, ``other work``, ``work 2``…, and ``, main``);
-  a split work's answer is ``one work`` or ``separate works``. Any other answer
-  leaves the case open.
+  a split work's answer is ``one work`` or ``separate works``; a linked page's
+  answer uses the words in ``linked_page_check`` (``add``, ``add as part``,
+  either with ``to <reference page>``, and ``skip``). Any other answer leaves
+  the case open.
+- Linked-page case name: the linked page and the sorted reference pages of
+  the entries linking it, so a page linked from a new entry is asked again.
 - Suggested answer: a doubled-provider case carries the places its links point
-  to, so a person starts from them rather than from nothing.
+  to, and a linked-page case may carry ``add as part``, so a person starts from
+  them rather than from nothing.
 - Kept answers: an answer whose case no longer comes up is kept as written,
   never applied, and reported.
 - Rewrite: the file is rewritten whole on each run, because people edit lines in
@@ -35,6 +41,12 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 from work_matching.doubled_provider_check import DoubledProviderDecision
 from work_matching.file_replacement import replace_file_lines
+from work_matching.linked_page_check import (
+    LinkedPageAddition,
+    LinkedPageDecision,
+    read_linked_page_answer,
+    suggest_linked_page_answer,
+)
 from work_matching.page_placement import (
     PagePlacement,
     read_answer_placements,
@@ -64,27 +76,37 @@ class ReviewCase(BaseModel):
     # As written in the file; ``accepted_answer`` says whether it is valid.
     answer: JsonValue = None
     # For a doubled-provider case, the place the links point to for each page
-    # they tie to a work; empty for a split-work case.
+    # they tie to a work; for a linked-page case, ``add as part`` when the page
+    # looks like one season of its entry's work; empty for a split-work case.
     suggested_answer: dict[str, str] = {}
     # The names of the decisions' reasons, which stay when their wording changes.
     reasons: tuple[str, ...]
     # Each entry involved, by its reference page.
     entries: dict[str, WorkEntry]
-    # Every doubled-provider decision of the entry, or the one split-work
-    # decision of the group.
-    decisions: tuple[DoubledProviderDecision, ...] | tuple[SplitWorkDecision]
+    # Every doubled-provider decision of the entry, the one split-work decision
+    # of the group, or the one decision on a linked page.
+    decisions: (
+        tuple[DoubledProviderDecision, ...]
+        | tuple[SplitWorkDecision]
+        | tuple[LinkedPageDecision]
+    )
     # The entries' fetched pages and the pages found through them, which hold
     # the links behind the decisions.
     pages: tuple[ProviderPage, ...] = ()
 
     @property
-    def accepted_answer(self) -> dict[str, PagePlacement] | str | None:
+    def accepted_answer(
+        self,
+    ) -> dict[str, PagePlacement] | LinkedPageAddition | str | None:
         """The answer when it is a valid answer to this case, otherwise None.
 
         A doubled-provider answer comes back as each placed page's place; a
-        split-work answer as ``one work`` or ``separate works``.
+        split-work answer as ``one work`` or ``separate works``; a linked-page
+        answer as the addition, or ``skip``.
         """
         answer = self.answer
+        if isinstance(linked_page_decision := self.decisions[0], LinkedPageDecision):
+            return read_linked_page_answer(answer, linked_page_decision)
         doubled_provider_decisions = [
             decision
             for decision in self.decisions
@@ -144,6 +166,45 @@ class ReviewCase(BaseModel):
             pages=_select_page_details(
                 pages,
                 frozenset(key for entry in decision.entries for key in entry.pages),
+            ),
+        )
+
+    @classmethod
+    def from_linked_page(
+        cls, decision: LinkedPageDecision, pages: Iterable[ProviderPage]
+    ) -> Self:
+        """Make the review case for a linked page the rules could not add on their own.
+
+        Args:
+            decision: The decision ``decide_linked_page`` made.
+            pages: The fetched pages, including the linked page itself; the
+                details of the linked page and of the linking entries' pages
+                are kept.
+        """
+        pages = tuple(pages)
+        entries = {entry.reference_page: entry for entry in decision.linking_entries}
+        linked_page = next(page for page in pages if page.key == decision.page_key)
+        return cls(
+            case=(
+                f"{_build_case_name('linked page', [decision.page_key])}"
+                f" from {' '.join(entries)}"
+            ),
+            suggested_answer=suggest_linked_page_answer(decision, linked_page),
+            reasons=(decision.reason.name,),
+            entries=entries,
+            decisions=(decision,),
+            pages=_select_page_details(
+                pages,
+                frozenset(
+                    {
+                        decision.page_key,
+                        *(
+                            key
+                            for entry in decision.linking_entries
+                            for key in entry.pages
+                        ),
+                    }
+                ),
             ),
         )
 

@@ -7,10 +7,16 @@ from pydantic import ValidationError
 from work_matching import file_replacement
 from work_matching.doubled_provider_check import decide_doubled_providers
 from work_matching.known_works_from_seed import KnownWorksFromSeed
+from work_matching.linked_page_check import (
+    LinkedPageAddition,
+    LinkingEntry,
+    decide_linked_page,
+)
 from work_matching.page_placement import PagePlacement
 from work_matching.provider_page import ProviderPage
 from work_matching.review_cases import DuplicateCaseError, ReviewCase, ReviewFile
 from work_matching.split_work_check import decide_split_work
+from work_matching.work_entry import WorkEntry
 
 SIGEWINNE = "animeplanet:anime:genshin-impact-character-teaser-sigewinne-everyday-correspondence"
 VARESA = (
@@ -33,6 +39,37 @@ def split_case(linked_page, work_entry) -> ReviewCase:
     ]
     pages = [linked_page("https://myanimelist.net/anime/1")]
     return ReviewCase.from_split_work(decide_split_work(entries, pages), pages)
+
+
+@pytest.fixture
+def linked_page_case() -> ReviewCase:
+    entry = WorkEntry.from_seed_entry(
+        {
+            "title": "The Boxer",
+            "type": "TV",
+            "sources": ["https://anilist.co/anime/163794"],
+        }
+    )
+    entry_page = ProviderPage(
+        key="anilist:anime:163794",
+        address="https://anilist.co/anime/163794",
+        titles=("The Boxer",),
+        type="TV",
+        episode_count=12,
+        links=("mal:anime:65144",),
+    )
+    linked_page = ProviderPage(
+        key="mal:anime:65144",
+        address="https://myanimelist.net/anime/65144",
+        titles=("The Boxer",),
+        type="TV",
+        episode_count=1,
+    )
+    decision = decide_linked_page(
+        linked_page,
+        [LinkingEntry(entry, entry_page.episode_count, frozenset({linked_page.key}))],
+    )
+    return ReviewCase.from_linked_page(decision, [linked_page, entry_page])
 
 
 def test_review_case_from_doubled_provider_entry_names_case_by_pages_and_entry(
@@ -245,6 +282,61 @@ def test_review_case_accepted_answer_split_work_takes_one_of_two_answers(
     split_case, answer: object, accepted: str | None
 ) -> None:
     assert split_case.model_copy(update={"answer": answer}).accepted_answer == accepted
+
+
+def test_review_case_from_linked_page_names_case_by_page_and_linking_entries(
+    linked_page_case,
+) -> None:
+    assert (linked_page_case.case, linked_page_case.reasons) == (
+        "linked page: mal:anime:65144 from anilist:anime:163794",
+        ("EPISODE_COUNTS_DIFFER",),
+    )
+    assert list(linked_page_case.entries) == ["anilist:anime:163794"]
+    assert [page.key for page in linked_page_case.pages] == [
+        "anilist:anime:163794",
+        "mal:anime:65144",
+    ]
+
+
+def test_review_case_from_linked_page_suggests_part_for_fewer_episodes(
+    linked_page_case,
+) -> None:
+    assert linked_page_case.suggested_answer == {"mal:anime:65144": "add as part"}
+
+
+@pytest.mark.parametrize(
+    ("answer", "accepted"),
+    [
+        (
+            {"mal:anime:65144": "add as part"},
+            LinkedPageAddition("anilist:anime:163794", is_part_page=True),
+        ),
+        ({"mal:anime:65144": "skip"}, "skip"),
+        ({"mal:anime:65144": "entry"}, None),
+        ("one work", None),
+    ],
+)
+def test_review_case_accepted_answer_linked_page_reads_addition(
+    linked_page_case, answer: object, accepted: object
+) -> None:
+    assert (
+        linked_page_case.model_copy(update={"answer": answer}).accepted_answer
+        == accepted
+    )
+
+
+def test_review_file_attach_kept_answer_linked_page_answer_comes_back(
+    tmp_path, linked_page_case
+) -> None:
+    path = tmp_path / "review.jsonl"
+    answered_case = linked_page_case.model_copy(
+        update={"answer": {"mal:anime:65144": "add"}}
+    )
+    ReviewFile(path).write_cases([answered_case])
+    kept_case = ReviewFile(path).attach_kept_answer(linked_page_case)
+    assert kept_case.accepted_answer == LinkedPageAddition(
+        "anilist:anime:163794", is_part_page=False
+    )
 
 
 def test_review_file_missing_file_keeps_no_answers(tmp_path, doubled_case) -> None:

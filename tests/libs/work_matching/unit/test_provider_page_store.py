@@ -2,6 +2,7 @@ import pytest
 from pydantic import ValidationError
 from work_matching.provider_page import ProviderPage
 from work_matching.provider_page_store import ProviderPageStore
+from work_matching.work_entry import WorkEntry
 
 MAL = "https://myanimelist.net/anime/21"
 KITSU = "https://kitsu.app/anime/12"
@@ -124,6 +125,27 @@ def test_provider_page_store_found_page_added_through_second_lookup_keeps_both(
     reopened = ProviderPageStore(path).get_page("https://animeschedule.net/anime/ranma")
     assert reopened is not None
     assert reopened.found_by == ("anilist:anime:210", "mal:anime:21")
+
+
+def test_get_entry_pages_gives_stored_pages_then_pages_found_through_them(
+    tmp_path,
+) -> None:
+    store = ProviderPageStore(tmp_path / "pages.jsonl")
+    found_page = ProviderPage.from_canonical_record(
+        "https://animeschedule.net/anime/one-piece",
+        {"title": "One Piece", "sources": [MAL]},
+        found_by=MAL,
+    )
+    mal_page = _page(MAL, "One Piece")
+    store.add_pages(found_page, mal_page, _page(KITSU, "One Piece"))
+    entry = WorkEntry.from_seed_entry(
+        {
+            "title": "One Piece",
+            "type": "TV",
+            "sources": [MAL, "https://anidb.net/anime/69"],
+        }
+    )
+    assert store.get_entry_pages(entry) == [mal_page, found_page]
 
 
 def test_provider_page_store_found_page_added_twice_in_one_call_keeps_both_lookups(

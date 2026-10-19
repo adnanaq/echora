@@ -61,11 +61,11 @@ from work_matching.doubled_provider_check import (
     Outcome,
     UnrelatedPage,
     get_decided_provider,
-    get_seed_type,
+    is_page_details_matching,
 )
 from work_matching.provider_page import ProviderPage, index_pages_by_current_key
 from work_matching.provider_page_key import get_page_provider, rank_by_provider_trust
-from work_matching.work_entry import WorkEntry, is_type_matching, is_year_matching
+from work_matching.work_entry import WorkEntry
 
 # These words are written in review answers and in the corrections file, so
 # changing them would make kept answers invalid.
@@ -263,16 +263,11 @@ def find_move_target(
     if len(unrelated_page.other_works) != 1:
         return None
     [other_work] = unrelated_page.other_works
-    provider = get_page_provider(key)
-    if any(get_page_provider(other_key) == provider for other_key in other_work.pages):
+    if other_work.has_page_of_same_provider(key):
         return None
     # A page links another work only through its own fetched details, so it
     # has them; without them nothing confirms the move.
-    is_confirmed = (
-        page is not None
-        and is_year_matching(page.year, other_work.year)
-        and is_type_matching(get_seed_type(page), other_work.type)
-    )
+    is_confirmed = page is not None and is_page_details_matching(page, other_work)
     return other_work if is_confirmed else None
 
 
