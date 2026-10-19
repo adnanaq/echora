@@ -7,6 +7,7 @@ from work_matching.linked_page_check import (
     LinkedPageOutcome,
     LinkedPageReason,
     LinkingEntry,
+    NoLinkingEntryError,
     decide_linked_page,
     find_unheld_linked_pages,
     get_entry_episode_count,
@@ -221,6 +222,11 @@ def test_decide_linked_page_page_agreeing_with_entry_added() -> None:
 def test_decide_linked_page_unknown_episode_count_does_not_stop_addition() -> None:
     decision = _decide(BOXER_MAL_PAGE, _entry(BOXER_SEED_ENTRY), entry_episode_count=12)
     assert decision.outcome is LinkedPageOutcome.ADD
+
+
+def test_decide_linked_page_without_linking_entry_raises() -> None:
+    with pytest.raises(NoLinkingEntryError, match="mal:anime:65144"):
+        decide_linked_page(BOXER_MAL_PAGE, [])
 
 
 def test_decide_linked_page_dead_page_skipped() -> None:

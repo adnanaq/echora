@@ -289,5 +289,8 @@ def test_correct_linked_pages_answers_adding_two_pages_of_provider_add_neither(
     )
     with caplog.at_level(logging.WARNING):
         linked_page_corrections = _correct(known_works, store, ReviewFile(review_path))
-    assert linked_page_corrections.corrections == ()
+    assert (
+        linked_page_corrections.corrections,
+        linked_page_corrections.conflicting_page_keys,
+    ) == ((), ("mal:anime:65144", "mal:anime:65145"))
     assert "anilist:anime:163794" in caplog.text

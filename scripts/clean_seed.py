@@ -296,6 +296,10 @@ def write_results(
         f"Linked pages waiting for a fetch: {len(linked_page_corrections.waiting_page_keys)}"
     )
     print(f"Linked pages not found: {len(linked_page_corrections.not_found_page_keys)}")
+    for page_key in linked_page_corrections.conflicting_page_keys:
+        print(
+            f"Answer not applied, another page of its provider is added to the same entry: {page_key}"
+        )
     for case_name in unused_answer_case_names:
         print(f"Answer kept, its case no longer comes up: {case_name}")
 

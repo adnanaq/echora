@@ -136,6 +136,18 @@ class LinkedPageAddition:
     is_part_page: bool
 
 
+class NoLinkingEntryError(ValueError):
+    """A linked page was given to decide without an entry linking it.
+
+    A linked page is found through an entry's links, so a caller passing none
+    has lost track of where the page came from.
+    """
+
+    def __init__(self, page_key: str) -> None:
+        """Name the page given without a linking entry."""
+        super().__init__(f"No entry links the page to decide: {page_key}")
+
+
 def find_unheld_linked_pages(
     entry: WorkEntry,
     pages: Iterable[ProviderPage],
@@ -203,14 +215,19 @@ def decide_linked_page(
 
     Args:
         page: The linked page's fetched details.
-        linking_entries: Every entry whose pages link the page.
+        linking_entries: Every entry whose pages link the page; at least one.
 
     Returns:
         The decision, with the linking entries sorted by reference page.
+
+    Raises:
+        NoLinkingEntryError: No linking entry was given.
     """
     sorted_linking_entries = sorted(
         linking_entries, key=lambda linking_entry: linking_entry.entry.reference_page
     )
+    if not sorted_linking_entries:
+        raise NoLinkingEntryError(page.key)
     entries = tuple(linking_entry.entry for linking_entry in sorted_linking_entries)
     if page.is_dead:
         return LinkedPageDecision(page.key, LinkedPageReason.NOT_FOUND, entries)

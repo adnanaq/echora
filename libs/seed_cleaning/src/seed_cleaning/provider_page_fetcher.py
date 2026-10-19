@@ -121,19 +121,24 @@ class _RequestResult:
     error: str | None = None
 
 
-def _build_page_request(key: str, address: str, title: str) -> _PageRequest | None:
+def _build_page_request(
+    key: str, title: str, address: str | None = None
+) -> _PageRequest | None:
     """Return the request fetching one page, or None when its provider has no helper.
 
     Args:
         key: The page's key.
-        address: The page's address, as the request sends it.
         title: The title of the entry the page belongs to or is linked from,
             which some helpers search by.
+        address: The page's address as the seed lists it. A linked page is
+            known only by its key, so without an address it is built from the
+            key.
     """
     helper = _HELPER_BY_PROVIDER.get(get_page_provider(key) or "")
-    return (
-        _PageRequest(helper.service, helper.id_key, address, title) if helper else None
-    )
+    request_address = address or build_page_address(key)
+    if helper is None or request_address is None:
+        return None
+    return _PageRequest(helper.service, helper.id_key, request_address, title)
 
 
 class ProviderPageFetcher:
@@ -210,8 +215,7 @@ class ProviderPageFetcher:
         return await self._fetch_requests(
             request
             for key, title in titles_by_page_key.items()
-            if (address := build_page_address(key))
-            if (request := _build_page_request(key, address, title))
+            if (request := _build_page_request(key, title))
         )
 
     async def _fetch_requests(self, requests: Iterable[_PageRequest]) -> FetchSummary:
@@ -261,8 +265,8 @@ class ProviderPageFetcher:
         requests = [
             request
             for key, address in entry.pages.items()
-            if providers is None or get_page_provider(key) in providers
-            if (request := _build_page_request(key, address, entry.title))
+            if (providers is None or get_page_provider(key) in providers)
+            and (request := _build_page_request(key, entry.title, address))
         ]
         if providers is not None:
             return requests

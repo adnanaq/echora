@@ -73,10 +73,13 @@ class LinkingSeedEntry:
 
 
 class _PageAddition(NamedTuple):
-    """A linked page to add, where it goes, and why."""
+    """A linked page to add, the entry it joins, whether as a part, and why."""
 
-    addition: LinkedPageAddition
     page: ProviderPage
+    # The reference page of the work entry the page joins, as decided.
+    entry_reference_page: str
+    is_part_page: bool
+    # The decision's reason by name, or ``review answer``.
     reason: str
 
 
@@ -91,6 +94,9 @@ class LinkedPageCorrections:
     waiting_page_keys: tuple[str, ...]
     # Linked pages the provider says do not exist, sorted.
     not_found_page_keys: tuple[str, ...]
+    # Linked pages answers add as whole pages next to another page of their
+    # provider in one entry, so none of them is added, sorted.
+    conflicting_page_keys: tuple[str, ...] = ()
 
 
 def find_entries_without_mal_page(entries: Iterable[WorkEntry]) -> list[WorkEntry]:
@@ -209,8 +215,7 @@ def correct_linked_pages(
         review_file: The review file, for the answers kept in it.
 
     Returns:
-        The corrections adding pages, this run's linked-page review cases, and
-        the linked pages without a decision.
+        The corrections adding pages, the review cases, and the pages not added.
     """
     page_additions: list[_PageAddition] = []
     review_cases: list[ReviewCase] = []
@@ -226,83 +231,120 @@ def correct_linked_pages(
         )
         if decision.outcome is LinkedPageOutcome.SKIP:
             not_found_page_keys.append(key)
-        elif decision.outcome is LinkedPageOutcome.ADD:
-            [entry] = decision.linking_entries
-            addition = LinkedPageAddition(entry.reference_page, is_part_page=False)
-            page_additions.append(_PageAddition(addition, page, decision.reason.name))
-        else:
-            review_case = _build_review_case(decision, page, store, review_file)
+            continue
+        review_case, page_addition = _place_linked_page(
+            decision, page, store, review_file
+        )
+        if review_case is not None:
             review_cases.append(review_case)
-            if isinstance(addition := review_case.accepted_answer, LinkedPageAddition):
-                page_additions.append(
-                    _PageAddition(addition, page, REVIEW_ANSWER_REASON)
-                )
+        if page_addition is not None:
+            page_additions.append(page_addition)
+    kept_additions, conflicting_page_keys = _drop_conflicting_additions(page_additions)
     return LinkedPageCorrections(
-        corrections=tuple(_build_addition_corrections(page_additions, linked_pages)),
+        corrections=tuple(_build_addition_corrections(kept_additions, linked_pages)),
         review_cases=tuple(review_cases),
         waiting_page_keys=tuple(waiting_page_keys),
         not_found_page_keys=tuple(not_found_page_keys),
+        conflicting_page_keys=conflicting_page_keys,
     )
 
 
-def _build_review_case(
+def _place_linked_page(
     decision: LinkedPageDecision,
     page: ProviderPage,
     store: ProviderPageStore,
     review_file: ReviewFile,
-) -> ReviewCase:
-    """Make the review case for a linked page, with the answer kept for it."""
+) -> tuple[ReviewCase | None, _PageAddition | None]:
+    """Turn a decision to add or review a linked page into its addition or review case.
+
+    Returns:
+        The review case with its kept answer, None for a page the rules add;
+        and the addition, when the rules or an accepted answer add the page.
+    """
+    if decision.outcome is LinkedPageOutcome.ADD:
+        [entry] = decision.linking_entries
+        reason = decision.reason.name
+        return None, _PageAddition(
+            page, entry.reference_page, is_part_page=False, reason=reason
+        )
     entry_pages = (
         entry_page
         for entry in decision.linking_entries
         for entry_page in store.get_entry_pages(entry)
     )
-    return review_file.attach_kept_answer(
+    review_case = review_file.attach_kept_answer(
         ReviewCase.from_linked_page(decision, [page, *entry_pages])
+    )
+    addition = review_case.accepted_answer
+    if not isinstance(addition, LinkedPageAddition):
+        return review_case, None
+    return review_case, _PageAddition(
+        page, addition.entry_reference_page, addition.is_part_page, REVIEW_ANSWER_REASON
     )
 
 
-def _build_addition_corrections(
+def _drop_conflicting_additions(
     page_additions: Sequence[_PageAddition],
+) -> tuple[list[_PageAddition], tuple[str, ...]]:
+    """Leave out whole pages added two or more per provider to one entry.
+
+    A work holds one whole page of each provider but can hold several part
+    pages, so two whole pages of one provider joining one entry would make a
+    doubled provider. The rules never add two (an entry linking two such pages
+    sends both to review), so only answers can; neither page is added, and a
+    warning names the entry.
+
+    Returns:
+        The additions kept, and the sorted keys of the pages left out.
+    """
+    whole_page_counts = Counter(
+        (page_addition.entry_reference_page, get_page_provider(page_addition.page.key))
+        for page_addition in page_additions
+        if not page_addition.is_part_page
+    )
+    kept_additions: list[_PageAddition] = []
+    conflicting_page_keys: list[str] = []
+    for page_addition in page_additions:
+        entry_provider = (
+            page_addition.entry_reference_page,
+            get_page_provider(page_addition.page.key),
+        )
+        if not page_addition.is_part_page and whole_page_counts[entry_provider] > 1:
+            logger.warning(
+                f"Not adding {page_addition.page.key}: answers add two or more "
+                f"pages of its provider to {page_addition.entry_reference_page}"
+            )
+            conflicting_page_keys.append(page_addition.page.key)
+        else:
+            kept_additions.append(page_addition)
+    return kept_additions, tuple(sorted(conflicting_page_keys))
+
+
+def _build_addition_corrections(
+    page_additions: Iterable[_PageAddition],
     linked_pages: Mapping[str, Sequence[LinkingSeedEntry]],
 ) -> list[SeedCorrection]:
-    """Turn additions into corrections, leaving out two of one provider in one entry.
+    """Turn additions into corrections, each naming the seed entry the page joins.
 
-    Each correction names the seed entry the page joins, so the cleaned seed
-    finds it whatever the corrections did to the entry's own reference page.
+    The seed entry is named by its own reference page, so the cleaned seed
+    finds it whatever the corrections did to the entry's reference page.
     """
     seed_reference_page_by_entry = {
         linking.linking_entry.entry.reference_page: linking.seed_entry_reference_page
         for linking_seed_entries in linked_pages.values()
         for linking in linking_seed_entries
     }
-    # Whole pages, not parts, added per entry and provider: a work holds one
-    # whole page of each provider but can hold several part pages.
-    whole_page_counts = Counter(
-        (addition.entry_reference_page, get_page_provider(page.key))
-        for addition, page, _ in page_additions
-        if not addition.is_part_page
-    )
-    corrections: list[SeedCorrection] = []
-    for addition, page, reason in page_additions:
-        entry_provider = (addition.entry_reference_page, get_page_provider(page.key))
-        if not addition.is_part_page and whole_page_counts[entry_provider] > 1:
-            logger.warning(
-                f"Not adding {page.key}: answers add two or more pages of its "
-                f"provider to {addition.entry_reference_page}"
-            )
-            continue
-        corrections.append(
-            SeedCorrection(
-                entry_reference_page=seed_reference_page_by_entry[
-                    addition.entry_reference_page
-                ],
-                page_key=page.key,
-                address=page.address,
-                work=ENTRY_WORK,
-                is_added_page=True,
-                is_part_page=addition.is_part_page,
-                reason=reason,
-            )
+    return [
+        SeedCorrection(
+            entry_reference_page=seed_reference_page_by_entry[
+                page_addition.entry_reference_page
+            ],
+            page_key=page_addition.page.key,
+            address=page_addition.page.address,
+            work=ENTRY_WORK,
+            is_added_page=True,
+            is_part_page=page_addition.is_part_page,
+            reason=page_addition.reason,
         )
-    return corrections
+        for page_addition in page_additions
+    ]
