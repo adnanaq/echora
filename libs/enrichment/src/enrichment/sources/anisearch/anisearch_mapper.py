@@ -240,6 +240,8 @@ def anime_from_anisearch(anime: AniSearchAnime) -> dict[str, Any]:
         titles=anime.titles,
         synonyms=anime.synonyms,
         type=anime_type,
+        # The canonical model holds 0 when the count is not known.
+        episode_count=anime.episode_count or 0,
         source_material=source_material,
         status=status,
         year=year,

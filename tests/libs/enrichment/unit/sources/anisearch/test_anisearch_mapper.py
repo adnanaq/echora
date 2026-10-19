@@ -103,6 +103,14 @@ def test_anime_from_anisearch_type_gives_anime_type(
     assert anime_from_anisearch(AniSearchAnime(type=raw_type))["type"] == expected
 
 
+@pytest.mark.parametrize(("episode_count", "expected"), [(52, 52), (None, 0)])
+def test_anime_from_anisearch_episode_count_copied_unknown_gives_zero(
+    episode_count: int | None, expected: int
+) -> None:
+    mapped = anime_from_anisearch(AniSearchAnime(episode_count=episode_count))
+    assert mapped["episode_count"] == expected
+
+
 def test_anime_from_anisearch_source_material_gives_source_material_type() -> None:
     mapped = anime_from_anisearch(AniSearchAnime(source_material="Light Novel"))
     assert mapped["source_material"] == "LIGHT NOVEL"

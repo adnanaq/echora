@@ -12,6 +12,7 @@ from typing import Annotated, Any, Self
 from enrichment.sources.base.field_types import (
     NumberFromText,
     StrippedText,
+    number_from_display_text,
     strip_text_or_none,
 )
 from enrichment.sources.base.utils import (
@@ -58,6 +59,28 @@ def _type_name(value: object) -> object:
     if isinstance(value, str):
         return value.split(",")[0].strip() or None
     return value
+
+
+def _episode_count_from_type_line(type_line: object) -> int | None:
+    """Read the episode count from "Type: TV-Series, 25 (~24 min)".
+
+    AniSearch prints the count after the type and before the episode length in
+    brackets, and "?" while the count is not known, which reads as None. For an
+    anime still airing the count is AniSearch's estimate of the whole run.
+
+    >>> _episode_count_from_type_line("Type: TV-Series, 1200 (~24 min, Total: ~20 d)")
+    1200
+    >>> _episode_count_from_type_line("Type: TV-Series, ? (~24 min)") is None
+    True
+    >>> _episode_count_from_type_line("Type: Movie") is None
+    True
+    """
+    type_text = _without_label(type_line)
+    if not isinstance(type_text, str) or "," not in type_text:
+        return None
+    count_text = type_text.split(",", 1)[1].split("(", 1)[0]
+    episode_count = number_from_display_text(count_text)
+    return episode_count if isinstance(episode_count, int) else None
 
 
 def _synonym_list(value: object) -> object:
@@ -274,6 +297,8 @@ class AniSearchAnime(BaseModel):
     type: Annotated[str | None, BeforeValidator(_type_name)] = (
         None  # "TV-Series", "Movie", "OVA", etc.
     )
+    # Read from the same "Type:" line as the type; None while AniSearch gives "?".
+    episode_count: int | None = None
     source_material: LabelledText = None  # "Manga", "Light Novel", etc.
 
     # ── Dates (ISO YYYY-MM-DD, only when AniSearch states the day) ─────────
@@ -316,10 +341,16 @@ class AniSearchAnime(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _read_page_sections(cls, data: Any) -> Any:
-        """Split the page's published, broadcast and title sections into their fields."""
+        """Split the page's type, published, broadcast and title sections into their fields.
+
+        The "Type:" line holds the episode count after the type, so the count
+        is read from it before the type field keeps only the type.
+        """
         if not isinstance(data, dict):
             return data
         data = dict(data)
+        if "type" in data and "episode_count" not in data:
+            data["episode_count"] = _episode_count_from_type_line(data["type"])
         if "published" in data:
             data.update(_published_dates(data.pop("published")))
         if "broadcast" in data:
