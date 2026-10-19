@@ -364,6 +364,25 @@ def test_build_corrected_entries_main_page_listed_first(
     ]
 
 
+def test_build_corrected_entries_added_page_joins_entry(store, known_works) -> None:
+    corrections = [
+        SeedCorrection(
+            entry_reference_page="mal:anime:9",
+            page_key="anilist:anime:9",
+            address="https://anilist.co/anime/9",
+            work="entry",
+            is_added_page=True,
+            is_part_page=True,
+            reason="review answer",
+        )
+    ]
+    [corrected] = build_corrected_entries(corrections, known_works, store)
+    assert (corrected.seed_entry_reference_page, corrected.entry.pages) == (
+        "mal:anime:9",
+        {"mal:anime:9": TARGET_MAL, "anilist:anime:9": "https://anilist.co/anime/9"},
+    )
+
+
 def test_build_corrected_entries_work_pages_become_new_entry_from_trusted_page(
     entry, store, known_works
 ) -> None:

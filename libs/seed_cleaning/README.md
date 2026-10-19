@@ -2,7 +2,8 @@
 
 Finds the seed entries that need checking before enrichment, fetches every
 page of them so the work matching rules can decide from their links, and
-records where each page of an entry with doubled providers ends up. It reads
+records where each page of an entry with doubled providers ends up. It also
+adds the pages entries link that no seed entry holds, once checked. It reads
 the downloaded seed release and never changes it. The library is deleted once
 discovery replaces the seed; `libs/work_matching` stays.
 
@@ -43,6 +44,8 @@ entries' pages tie them together.
 episodes off, and keeps it in the `ProviderPageStore`. The same fetch fills the
 cache enrichment reads later.
 
+- **Episode counts and air dates** are kept with each page; pages stored
+  before they were kept get them from one `--refetch-stored` run.
 - **Which pages:** those of the providers enrichment has a helper for: MAL,
   AniList, Kitsu, AniDB, Anime-Planet, AniSearch. AnimeSchedule is not in the
   seed: its page is looked up through each of the entry's MAL pages (else
@@ -78,6 +81,8 @@ placed page becomes a `SeedCorrection`:
 | `is_main_page` | Whether enrichment fetches this page for its provider in its work. |
 | `renamed_to` | The current page key, when the seed lists the page under an old address. |
 | `target_entry_reference_page` | The reference page of the seed entry an `other work` page joins; `null` when it starts a new entry. |
+| `is_added_page` | Whether the page is not in the seed and is added to the entry (see "Adding linked pages"). |
+| `is_part_page` | Whether the page covers only part of its work, so enrichment combines it with the work's other part pages. |
 | `reason` | The decision's reason by name, or `review answer`. |
 
 The rules:
@@ -101,10 +106,41 @@ The rules:
   provider.
 
 `build_corrected_entries` turns the corrections into `WorkEntry`s: each seed entry
-they change, without the pages that left it and with those moved in, and each
-new entry. A new entry takes its title, type, year and season from its most
-trusted fetched page; a page with no fetched details only has the entry it came
-from to go by, so it takes that entry's title and an unknown type.
+they change, without the pages that left it and with those moved in or added,
+and each new entry. A new entry takes its title, type, year and season from its
+most trusted fetched page; a page with no fetched details only has the entry it
+came from to go by, so it takes that entry's title and an unknown type.
+
+## Adding linked pages
+
+Providers link pages the seed lacks, most often a MAL page linked from an
+entry's AniList, Kitsu or AniDB page. `linked_page_additions` fetches each one
+and adds it to the entry linking it when the work matching checks pass or an
+answer accepts it (see "Adding linked pages" in the `work_matching` README for
+the checks and answers). The rules:
+
+- **Which entries:** the entries to check and the entries without a MAL page
+  (`find_entries_without_mal_page`), as the doubled-provider corrections leave
+  them (`list_entries_with_placed_pages`). An entry whose doubled providers wait
+  for an answer is left out until answered: its pages are not placed yet, so a
+  link on one of them may belong to another work. New entries are left out,
+  since a correction must name a seed entry.
+- **Which pages are fetched for entries without a MAL page:** only AniList,
+  Kitsu and AniDB pages (`LINK_CARRYING_PROVIDERS`). Anime-Planet and AniSearch
+  pages carry no links to other providers, and AnimeSchedule pages rarely
+  link MAL, so fetching them would find nothing to add.
+- **Which links:** links to pages of providers whose pages are fetched
+  (`FETCHED_PROVIDERS`), so each linked page can be checked live. ANN,
+  LiveChart, Simkl and AnimeCountdown pages come from seed releases instead.
+- **Waiting:** a linked page not fetched yet, or whose fetch failed, gets no
+  decision; the next run fetches it again. A page the provider says does not
+  exist is stored as dead and never added.
+- **One step:** corrections are rebuilt from the downloaded seed on every run,
+  so an added page's own links are never followed.
+- **No doubled provider from answers:** two answers adding two whole pages of
+  one provider to one entry add neither, and a warning names the entry.
+- **Anime id:** an added MAL page changes the entry's anime id, since ids come
+  from the MAL page first; the cleaned seed replaces the old search entry.
 
 ## Files
 
@@ -112,15 +148,26 @@ from to go by, so it takes that entry's title and an unknown type.
 | -- | -- |
 | `doubled_provider_entries.py` | `find_doubled_provider_entries`: the entries holding a doubled provider. |
 | `split_work_candidates.py` | `SplitWorkCandidates` and `find_split_work_candidates`: the candidate groups. |
-| `provider_page_fetcher.py` | `ProviderPageFetcher`, `FetchSummary`, `FetchOutcome`: fetching every page of the entries to check. |
+| `provider_page_fetcher.py` | `ProviderPageFetcher`, `FetchSummary`, `FetchOutcome`, `FETCHED_PROVIDERS`: fetching every page of the entries to check, the link-carrying pages of entries without a MAL page, and linked pages by key. |
 | `seed_corrections.py` | `correct_doubled_provider_entries`, `SeedCorrection`, `build_corrected_entries`, `write_corrections`: where each page of an entry with doubled providers ends up. |
+| `linked_page_additions.py` | `find_entries_without_mal_page`, `list_entries_with_placed_pages`, `find_linked_pages`, `correct_linked_pages`: the linked pages added as corrections. |
 
 ## Use
 
 ```bash
 uv run python scripts/clean_seed.py                  # list the entries to check, fetch their pages, correct them
 uv run python scripts/clean_seed.py --no-fetch       # correct them from the pages already stored
+uv run python scripts/clean_seed.py --refetch-stored # fetch stored pages again, so they gain new fields
 uv run python scripts/clean_seed.py path/to/seed.json --data-dir data/seed_cleaning
+```
+
+AniDB caps requests per day as well as per second, and a ban blocks every
+AniDB request from the address, enrichment included. Run with a wide gap, and
+stop contacting AniDB after the first block; the next day's run picks up
+where this one stopped:
+
+```bash
+ANIDB_MIN_REQUEST_INTERVAL=8 ANIDB_BAN_COOLDOWN=86400 uv run python scripts/clean_seed.py
 ```
 
 It writes to `data/seed_cleaning/` (git-ignored):
@@ -129,5 +176,5 @@ It writes to `data/seed_cleaning/` (git-ignored):
 | -- | -- |
 | `entries_to_check.json` | The seed's `$schema` (its address names the release), the doubled-provider entries with their doubled pages, and the candidate groups with their entries. Rewritten on each run. |
 | `provider_pages.jsonl` | Every fetched page, one per line; see `ProviderPageStore`. |
-| `review.jsonl` | One case per entry the rules cannot place, where a person writes the answer; see `ReviewFile`. Answers are kept across runs. |
+| `review.jsonl` | One case per entry the rules cannot place and per linked page they cannot add, where a person writes the answer; see `ReviewFile`. Answers are kept across runs. |
 | `corrections.jsonl` | Every `SeedCorrection`, sorted by entry reference page and page key. Rewritten on each run. |

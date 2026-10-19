@@ -243,3 +243,77 @@ async def test_fetch_entry_pages_stored_page_in_two_entries_counted_once(
     await fetcher.fetch_entry_pages([_one_piece(KITSU)])
     summary = await fetcher.fetch_entry_pages([_one_piece(KITSU), _one_piece(KITSU)])
     assert summary.outcomes == {FetchOutcome.ALREADY_STORED: 1}
+
+
+async def test_fetch_entry_pages_given_providers_fetches_only_their_pages(
+    tmp_path,
+) -> None:
+    fetcher, api_fetcher = _fetcher(tmp_path, {})
+    await fetcher.fetch_entry_pages(
+        [_one_piece(MAL, KITSU, "https://anisearch.com/anime/2227")],
+        providers={"kitsu", "anidb"},
+    )
+    assert [(service, ids) for service, ids, _ in api_fetcher.requests] == [
+        ("kitsu", {"kitsu_url": KITSU})
+    ]
+
+
+async def test_fetch_linked_pages_builds_address_from_page_key_and_stores_page(
+    tmp_path,
+) -> None:
+    fetcher, api_fetcher = _fetcher(
+        tmp_path,
+        {
+            ("mal", "https://myanimelist.net/anime/65124"): {
+                "title": "Uchuu Senkan Yamato √2199",
+                "episode_count": 1,
+            }
+        },
+    )
+    summary = await fetcher.fetch_linked_pages(
+        {"mal:anime:65124": "Space Battleship Yamato Movie (New)"}
+    )
+    page = ProviderPageStore(tmp_path / "pages.jsonl").get_page("mal:anime:65124")
+    assert page is not None
+    assert (page.titles, page.episode_count) == (("Uchuu Senkan Yamato √2199",), 1)
+    assert api_fetcher.requests == [
+        (
+            "mal",
+            {"mal_url": "https://myanimelist.net/anime/65124"},
+            {
+                "title": "Space Battleship Yamato Movie (New)",
+                "sources": ["https://myanimelist.net/anime/65124"],
+            },
+        )
+    ]
+    assert summary.outcomes == {FetchOutcome.FETCHED: 1}
+
+
+async def test_fetch_linked_pages_provider_without_helper_skipped(tmp_path) -> None:
+    fetcher, api_fetcher = _fetcher(tmp_path, {})
+    summary = await fetcher.fetch_linked_pages({"ann:anime:128": "Xiao Qian"})
+    assert (api_fetcher.requests, summary.outcomes) == ([], {})
+
+
+async def test_fetch_entry_pages_fetching_stored_pages_again_replaces_details(
+    tmp_path,
+) -> None:
+    store_path = tmp_path / "pages.jsonl"
+    old_fetcher, _ = _fetcher(tmp_path, {("kitsu", KITSU): {"title": "One Piece"}})
+    await old_fetcher.fetch_entry_pages([_one_piece(KITSU)])
+    api_fetcher = ScriptedApiFetcher(
+        {("kitsu", KITSU): {"title": "One Piece", "episode_count": 1100}}
+    )
+    fetcher = ProviderPageFetcher(
+        lambda: api_fetcher,
+        ProviderPageStore(store_path),
+        seconds_between_found_page_lookups=0,
+        is_stored_page_fetched_again=True,
+    )
+    summary = await fetcher.fetch_entry_pages([_one_piece(KITSU)])
+    page = ProviderPageStore(store_path).get_page("kitsu:anime:12")
+    assert page is not None
+    assert (page.episode_count, summary.outcomes) == (
+        1100,
+        {FetchOutcome.FETCHED: 1},
+    )

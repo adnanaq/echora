@@ -3,8 +3,10 @@
 For every entry with a doubled provider, the work matching rules either place
 its pages themselves or leave the entry to a person as one review case. A
 correction records one page's final place, from the rules or from an accepted
-answer. The cleaned seed is built from the downloaded release plus these
-corrections, so the release itself is never edited. The rules:
+answer; a correction can also add a page the seed lacks (see
+``linked_page_additions``). The cleaned seed is built from the downloaded
+release plus these corrections, so the release itself is never edited. The
+rules:
 
 - Final places, not steps: each correction says where its page ends up, so the
   order corrections are applied in never matters, even when a page moves into
@@ -76,6 +78,13 @@ class SeedCorrection(BaseModel):
     # The reference page of the seed entry an ``other work`` page joins; None
     # when the page starts a new entry.
     target_entry_reference_page: str | None = None
+    # Whether the page is not in the seed and is added to the entry: a page the
+    # entry's pages link that no seed entry holds.
+    is_added_page: bool = False
+    # Whether the page covers only part of its work, such as one season of a
+    # run MyAnimeList lists whole, so enrichment combines it with the work's
+    # other part pages rather than taking it for the whole work.
+    is_part_page: bool = False
     # The name of the decision's reason, or ``review answer``.
     reason: str
 
@@ -147,7 +156,7 @@ def correct_doubled_provider_entries(
     corrections: list[SeedCorrection] = []
     review_cases: list[ReviewCase] = []
     for entry in entries:
-        pages = _load_entry_pages(entry, store)
+        pages = store.get_entry_pages(entry)
         decisions = decide_doubled_providers(entry, pages, known_works)
         placements = place_pages_without_review(entry, decisions, pages)
         reason_by_page = {
@@ -241,18 +250,6 @@ def write_corrections(path: str | Path, corrections: Iterable[SeedCorrection]) -
             )
         ),
     )
-
-
-def _load_entry_pages(entry: WorkEntry, store: ProviderPageStore) -> list[ProviderPage]:
-    """Return the stored details of an entry's pages and of pages found through them."""
-    return [
-        *(page for key in entry.pages if (page := store.get_page(key))),
-        *(
-            found_page
-            for key in entry.pages
-            for found_page in store.get_pages_found_by(key)
-        ),
-    ]
 
 
 def _group_corrections(corrections: Iterable[SeedCorrection]) -> _GroupedCorrections:
@@ -382,15 +379,19 @@ def _correct_seed_entry(
     corrections: Sequence[SeedCorrection],
     moved_in_corrections: Sequence[SeedCorrection],
 ) -> WorkEntry:
-    """Return a seed entry without the pages that left it, with those moved in."""
+    """Return a seed entry without the pages that left it, with those moved in or added."""
     leaving_pages = {
         correction.page_key
         for correction in corrections
         if correction.work != ENTRY_WORK or correction.renamed_to
     }
+    joining_corrections = [
+        *moved_in_corrections,
+        *(correction for correction in corrections if correction.is_added_page),
+    ]
     pages = {
         key: address for key, address in entry.pages.items() if key not in leaving_pages
-    } | {correction.page_key: correction.address for correction in moved_in_corrections}
+    } | {correction.page_key: correction.address for correction in joining_corrections}
     return entry.model_copy(
         update={
             "pages": _order_main_pages_first(
