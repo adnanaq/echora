@@ -148,10 +148,15 @@ def _extract_character_from_html(html: str) -> dict[str, Any] | None:
     desc_els = cast(list[Any], tree.xpath(_XPATHS["description"]))
     description = " ".join(desc_els[0].itertext()).strip() if desc_els else None
 
-    screenshot_hrefs = cast(list[str], tree.xpath(_XPATHS["screenshot_images"]))
+    # Plain strings: lxml's default ones keep the whole parsed page alive.
+    screenshot_hrefs = cast(
+        list[str], tree.xpath(_XPATHS["screenshot_images"], smart_strings=False)
+    )
     screenshot_images = [{"url": h} for h in screenshot_hrefs if h]
 
-    picture_srcs = cast(list[str], tree.xpath(_XPATHS["picture_images"]))
+    picture_srcs = cast(
+        list[str], tree.xpath(_XPATHS["picture_images"], smart_strings=False)
+    )
     picture_images = [{"url": s} for s in picture_srcs if s]
 
     role_els = cast(list[Any], tree.xpath(_XPATHS["anime_roles"]))

@@ -67,8 +67,8 @@ def _episode_count_from_type_line(type_line: object) -> int | None:
     - AniSearch prints the count after the type and before the episode length
       in brackets.
     - AniSearch prints "?" while the count is not known, which reads as None.
-    - For an anime still airing, the count is AniSearch's estimate of the whole
-      run.
+    - A count AniSearch marks as its estimate is not read here: the mark is a
+      tooltip the line's text does not hold, so ``AniSearchAnime`` checks it.
 
     Args:
         type_line: The type line as the crawler extracted it, label included.
@@ -91,19 +91,25 @@ def _episode_count_from_type_line(type_line: object) -> int | None:
     return episode_count if isinstance(episode_count, int) else None
 
 
-def _synonym_list(value: object) -> object:
-    """Split "Synonyms: OP, OneP" into names; no synonyms gives an empty list.
+def _strip_synonym_names(value: object) -> object:
+    """Strip the synonym names the crawler read, dropping blank ones.
 
-    >>> _synonym_list("Synonyms: Re:Zero, OP")
-    ['Re:Zero', 'OP']
+    - No synonyms gives an empty list.
+    - Names are never split: the crawler tells them apart by the page's
+      elements, because a name can hold commas.
+    - Text joined into one string fails validation instead of being split.
+
+    >>> _strip_synonym_names([" Age 12: Kiss, Hate, Love ", "", "OP"])
+    ['Age 12: Kiss, Hate, Love', 'OP']
     """
     if value is None:
         return []
-    value = _without_label(value)
-    if value is None:
-        return []
-    if isinstance(value, str):
-        return [name.strip() for name in value.split(",") if name.strip()]
+    if isinstance(value, list):
+        return [
+            synonym_name.strip()
+            for synonym_name in value
+            if isinstance(synonym_name, str) and synonym_name.strip()
+        ]
     return value
 
 
@@ -299,13 +305,14 @@ class AniSearchAnime(BaseModel):
     title_english: StrippedText = None
     title_japanese: StrippedText = None  # the Japanese block's native script
     titles: dict[str, str] = {}  # other languages, keyed by BCP 47 code
-    synonyms: Annotated[list[str], BeforeValidator(_synonym_list)] = []
+    synonyms: Annotated[list[str], BeforeValidator(_strip_synonym_names)] = []
 
     # ── Classification ────────────────────────────────────────────────────
     type: Annotated[str | None, BeforeValidator(_type_name)] = (
         None  # "TV-Series", "Movie", "OVA", etc.
     )
-    # Read from the same "Type:" line as the type; None while AniSearch gives "?".
+    # Read from the same "Type:" line as the type; None while AniSearch gives "?"
+    # or marks the count as its estimate.
     episode_count: int | None = None
     source_material: LabelledText = None  # "Manga", "Light Novel", etc.
 
@@ -352,7 +359,12 @@ class AniSearchAnime(BaseModel):
         """Split the page's type, published, broadcast and title sections into their fields.
 
         The "Type:" line holds the episode count after the type. The count is
-        read before the type field keeps only the type.
+        read before the type field keeps only the type:
+
+        - A count AniSearch marks as its estimate (``is_episode_count_estimated``)
+          reads as unknown, like AniSearch's "?": it is a guess, such as the
+          whole run of an anime still airing, and work matching compares counts.
+        - Any other count is kept.
 
         Args:
             data: The raw values the crawler extracted, by field name.
@@ -364,8 +376,13 @@ class AniSearchAnime(BaseModel):
         if not isinstance(data, dict):
             return data
         data = dict(data)
+        is_episode_count_estimated = data.pop("is_episode_count_estimated", False)
         if "type" in data and "episode_count" not in data:
-            data["episode_count"] = _episode_count_from_type_line(data["type"])
+            data["episode_count"] = (
+                None
+                if is_episode_count_estimated
+                else _episode_count_from_type_line(data["type"])
+            )
         if "published" in data:
             data.update(_published_dates(data.pop("published")))
         if "broadcast" in data:

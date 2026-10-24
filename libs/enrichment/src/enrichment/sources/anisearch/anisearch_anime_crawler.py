@@ -32,6 +32,10 @@ _ANISEARCH_BASE_URL = "https://www.anisearch.com"
 
 _VOTES_RE = re.compile(r"(\d[\d,]*)\s+members? have rated it")
 _IMG_SRC_RE = re.compile(r'<img src="([^"]+)"')
+# The tooltip AniSearch puts before an episode count it has only estimated, such
+# as the whole run of an anime still airing. Sometimes "Runtime: not confirmed"
+# follows in the same tooltip.
+_ESTIMATED_EPISODE_COUNT_TOOLTIP = "Number of episodes: preliminary estimate"
 
 # ---------------------------------------------------------------------------
 # XPath selectors
@@ -45,6 +49,7 @@ _XPATHS: dict[str, str] = {
     "title_block_main": ".//strong[contains(@class,'f16')]",
     "title_block_native": ".//div[contains(@class,'grey')]",
     "type": "//section[@id='information']//div[contains(@class,'type')]",
+    "type_tooltips": "//section[@id='information']//div[contains(@class,'type')]//@data-tooltip",
     "status": "//section[@id='information']//div[contains(@class,'status')]",
     "published": "//section[@id='information']//div[contains(@class,'released')]",
     "studio": "//section[@id='information']//div[contains(@class,'company')]//a[contains(@href,'company')]",
@@ -70,12 +75,55 @@ _XPATHS: dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 
+def _read_synonym_names(element: Any) -> list[str]:
+    """Read the names on AniSearch's synonyms line, each name whole.
+
+    AniSearch writes every synonym on one line, separated by commas, and sets
+    every second name in italics. A name can hold commas itself ("Age 12: Kiss,
+    Hate, Love"), so names are told apart by their elements, never by commas:
+
+    | Part of the line | Read as |
+    | -- | -- |
+    | A run of plain text | One name, without the commas around it. |
+    | An italic element | One name. |
+    | The hidden span that "read more" opens | Its own names, read the same way. |
+    | The "Synonyms:" label and the "read more" button | Nothing. |
+
+    Args:
+        element: The synonyms line, or the hidden span inside it.
+
+    Returns:
+        The names in page order.
+    """
+    synonym_names: list[str] = []
+    for node in element.xpath("node()"):
+        if isinstance(node, str):
+            synonym_name = node.strip().strip(",").strip()
+        elif node.tag == "i":
+            synonym_name = "".join(node.itertext()).strip()
+        elif node.tag == "span" and "header" not in (node.get("class") or "").split():
+            synonym_names.extend(_read_synonym_names(node))
+            continue
+        else:
+            continue
+        if synonym_name:
+            synonym_names.append(synonym_name)
+    return synonym_names
+
+
 def _extract_anime_from_html(html_text: str) -> dict[str, Any] | None:
     """Parse an AniSearch anime main page into the raw field dict.
 
     Values are the page text as found, labels included ("Type: TV-Series");
-    ``AniSearchAnime`` turns them into field values. Returns None if the HTML
-    cannot be parsed.
+    ``AniSearchAnime`` turns them into field values. Two values are read from
+    the page's elements instead, because the text alone loses them:
+
+    - ``synonyms``: one name per plain run or italic element, since a name can
+      hold commas (``_read_synonym_names``).
+    - ``is_episode_count_estimated``: whether the type line's tooltip says the
+      episode count is only AniSearch's estimate.
+
+    Returns None if the HTML cannot be parsed.
     """
     from lxml import etree
 
@@ -139,18 +187,23 @@ def _extract_anime_from_html(html_text: str) -> dict[str, Any] | None:
         for el in website_els
         if el.get("href")
     ]
+    synonym_lines = cast(list[Any], tree.xpath(_XPATHS["synonyms"]))
 
     return {
         "cover_image": _attr("cover_image"),
         "title_blocks": _title_blocks(),
         "type": _text("type"),
+        "is_episode_count_estimated": any(
+            tooltip.startswith(_ESTIMATED_EPISODE_COUNT_TOOLTIP)
+            for tooltip in cast(list[str], tree.xpath(_XPATHS["type_tooltips"]))
+        ),
         "status": _text("status"),
         "published": _text("published"),
         "studio": _text("studio"),
         "studio_url": _attr("studio_url"),
         "broadcast_raw": _text("broadcast_raw"),
         "source_material": _text("source_material"),
-        "synonyms": _text("synonyms"),
+        "synonyms": _read_synonym_names(synonym_lines[0]) if synonym_lines else [],
         "description": _text("description"),
         "genres": _names("genres"),
         "tags": _names("tags"),
@@ -200,7 +253,10 @@ def _extract_relations_from_html(html_text: str) -> dict[str, Any] | None:
             )
             rating = rating_els[0].get("title") if rating_els else None
 
-            image_attr = row.xpath(".//th[@scope='row']/@data-tooltip")
+            # Plain strings: lxml's default ones keep the whole parsed page alive.
+            image_attr = row.xpath(
+                ".//th[@scope='row']/@data-tooltip", smart_strings=False
+            )
             image = image_attr[0] if image_attr else None
 
             result.append(
@@ -328,6 +384,9 @@ def _build_anime_from_raw(raw: dict[str, Any], url: str) -> AniSearchAnime:
             "title_blocks": raw.get("title_blocks", []),
             "synonyms": raw.get("synonyms"),
             "type": raw.get("type"),
+            # A cached result without the flag is never read: the cache key
+            # changes with this module's code.
+            "is_episode_count_estimated": raw.get("is_episode_count_estimated", False),
             "source_material": raw.get("source_material"),
             "published": raw.get("published"),
             "status": raw.get("status"),

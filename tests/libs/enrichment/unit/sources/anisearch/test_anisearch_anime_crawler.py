@@ -28,7 +28,21 @@ from enrichment.sources.base.polite_http import FetchedPage
 _URL = "https://www.anisearch.com/anime/2227,one-piece"
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
+def one_piece_main_raw(read_page) -> dict:
+    values = _extract_anime_from_html(read_page("one_piece_main"))
+    assert values is not None
+    return values
+
+
+@pytest.fixture
+def one_piece_relations_raw(read_page) -> dict:
+    values = _extract_relations_from_html(read_page("one_piece_relations"))
+    assert values is not None
+    return values
+
+
+@pytest.fixture
 def one_piece_processed(one_piece_main_raw, one_piece_relations_raw):
     anime_rels, manga_rels = _parse_relations(one_piece_relations_raw)
     return {
@@ -90,30 +104,36 @@ def test_xpaths_relations_target_correct_sections() -> None:
     assert "tbody" in _XPATHS["anime_relation_rows"]
 
 
-def test_extract_anime_from_html_one_piece_page_reads_every_title_block(
-    one_piece_main_html,
+@pytest.mark.parametrize(
+    "page_name",
+    [
+        "one_piece_main",
+        "balala_the_fairies_2_main",
+        "mo_dao_zu_shi_main",
+        "twelve_sai_main",
+    ],
+)
+def test_extract_anime_from_html_saved_page_matches_saved_values(
+    read_page, data_regression, page_name: str
 ) -> None:
-    raw = _extract_anime_from_html(one_piece_main_html)
-    assert raw is not None
-    assert raw["title_blocks"][0] == {
-        "language": "ja",
-        "title": "One Piece",
-        "native_titles": ["ワンピース"],
-    }
-    assert [block["language"] for block in raw["title_blocks"]] == [
-        "ja",
-        "en",
-        "de",
-        "es",
-        "fr",
-        "it",
-    ]
+    data_regression.check(
+        _extract_anime_from_html(read_page(page_name)), basename=page_name
+    )
+
+
+def test_extract_relations_from_html_saved_page_matches_saved_values(
+    read_page, data_regression
+) -> None:
+    data_regression.check(
+        _extract_relations_from_html(read_page("one_piece_relations")),
+        basename="one_piece_relations",
+    )
 
 
 def test_extract_anime_from_html_chinese_work_with_japanese_title_reads_native_lines_in_page_order(
-    mo_dao_zu_shi_main_html,
+    read_page,
 ) -> None:
-    raw = _extract_anime_from_html(mo_dao_zu_shi_main_html)
+    raw = _extract_anime_from_html(read_page("mo_dao_zu_shi_main"))
     assert raw is not None
     assert raw["title_blocks"][:2] == [
         {
@@ -129,64 +149,6 @@ def test_extract_anime_from_html_chinese_work_with_japanese_title_reads_native_l
     ]
 
 
-def test_extract_anime_from_html_one_piece_page_reads_cover_address(
-    one_piece_main_html,
-) -> None:
-    raw = _extract_anime_from_html(one_piece_main_html)
-    assert raw is not None
-    assert raw["cover_image"] is not None
-    assert raw["cover_image"].startswith("https://")
-
-
-def test_extract_anime_from_html_one_piece_page_reads_type(one_piece_main_html) -> None:
-    raw = _extract_anime_from_html(one_piece_main_html)
-    assert raw is not None
-    assert "TV-Series" in (raw["type"] or "")
-
-
-def test_extract_anime_from_html_one_piece_page_reads_genres(
-    one_piece_main_html,
-) -> None:
-    raw = _extract_anime_from_html(one_piece_main_html)
-    assert raw is not None
-    assert len(raw["genres"]) > 0
-    assert all(isinstance(genre, str) for genre in raw["genres"])
-
-
-def test_extract_anime_from_html_one_piece_page_reads_tags(one_piece_main_html) -> None:
-    raw = _extract_anime_from_html(one_piece_main_html)
-    assert raw is not None
-    assert len(raw["tags"]) > 0
-
-
-def test_extract_anime_from_html_one_piece_page_reads_websites(
-    one_piece_main_html,
-) -> None:
-    raw = _extract_anime_from_html(one_piece_main_html)
-    assert raw is not None
-    assert len(raw["websites"]) > 0
-    assert all(w["url"] for w in raw["websites"])
-
-
-def test_extract_anime_from_html_one_piece_page_reads_studio(
-    one_piece_main_html,
-) -> None:
-    raw = _extract_anime_from_html(one_piece_main_html)
-    assert raw is not None
-    assert raw["studio"] == "Toei Animation Co., Ltd."
-    assert "toei-animation" in (raw["studio_url"] or "")
-
-
-def test_extract_anime_from_html_one_piece_page_reads_rating_and_votes(
-    one_piece_main_html,
-) -> None:
-    raw = _extract_anime_from_html(one_piece_main_html)
-    assert raw is not None
-    assert raw["rating_score"] is not None
-    assert "." in raw["rating_score"]
-    assert raw["rating_votes"] == 7902
-
-
 def test_extract_anime_from_html_empty_returns_none() -> None:
     assert _extract_anime_from_html("") is None
 
@@ -194,53 +156,6 @@ def test_extract_anime_from_html_empty_returns_none() -> None:
 def test_extract_anime_from_html_malformed_page_returns_empty_fields() -> None:
     raw = _extract_anime_from_html("<not valid xml at all >>>")
     assert (raw["title_blocks"], raw["genres"], raw["websites"]) == ([], [], [])
-
-
-def test_extract_relations_from_html_one_piece_page_reads_every_anime_relation(
-    one_piece_relations_html,
-) -> None:
-    raw = _extract_relations_from_html(one_piece_relations_html)
-    assert raw is not None
-    assert len(raw["anime_relations"]) == 79
-
-
-def test_extract_relations_from_html_one_piece_page_reads_every_manga_relation(
-    one_piece_relations_html,
-) -> None:
-    raw = _extract_relations_from_html(one_piece_relations_html)
-    assert raw is not None
-    assert len(raw["manga_relations"]) == 2
-
-
-def test_extract_relations_from_html_one_piece_page_reads_relation_fields(
-    one_piece_relations_html,
-) -> None:
-    raw = _extract_relations_from_html(one_piece_relations_html)
-    assert raw is not None
-    entry = raw["anime_relations"][0]
-    assert entry["relation_type"] is not None
-    assert entry["title"] is not None
-    assert entry["url"] is not None
-    assert entry["details"] is not None
-
-
-def test_extract_relations_from_html_one_piece_page_lists_original_manga(
-    one_piece_relations_html,
-) -> None:
-    raw = _extract_relations_from_html(one_piece_relations_html)
-    assert raw is not None
-    titles = [r["title"] for r in raw["manga_relations"]]
-    assert "One Piece" in titles
-
-
-def test_extract_relations_from_html_one_piece_page_keeps_image_tooltips(
-    one_piece_relations_html,
-) -> None:
-    raw = _extract_relations_from_html(one_piece_relations_html)
-    assert raw is not None
-    images = [r["image"] for r in raw["anime_relations"] if r.get("image")]
-    assert len(images) > 0
-    assert all("<img" in img for img in images)
 
 
 def test_extract_relations_from_html_empty_returns_none() -> None:
@@ -314,9 +229,9 @@ def _anime_from_page(raw: dict) -> AniSearchAnime:
 
 
 def test_build_anime_from_raw_chinese_work_reads_title_fields_from_title_blocks(
-    balala_the_fairies_2_main_html,
+    read_page,
 ) -> None:
-    raw = _extract_anime_from_html(balala_the_fairies_2_main_html)
+    raw = _extract_anime_from_html(read_page("balala_the_fairies_2_main"))
     assert raw is not None
     anime = _anime_from_page(raw)
     assert (anime.title, anime.title_english, anime.title_japanese, anime.titles) == (
@@ -334,19 +249,60 @@ def test_build_anime_from_raw_type_label_and_details_removed(
 
 
 @pytest.mark.parametrize(
-    ("page_fixture", "episode_count"),
+    ("page_name", "episode_count"),
     [
-        ("one_piece_main_html", 1200),
-        ("balala_the_fairies_2_main_html", 52),
-        ("mo_dao_zu_shi_main_html", 15),
+        ("balala_the_fairies_2_main", 52),
+        ("mo_dao_zu_shi_main", 15),
+        ("twelve_sai_main", 12),
     ],
 )
 def test_build_anime_from_raw_saved_page_reads_episode_count(
-    request, page_fixture: str, episode_count: int
+    read_page, page_name: str, episode_count: int
 ) -> None:
-    raw = _extract_anime_from_html(request.getfixturevalue(page_fixture))
+    raw = _extract_anime_from_html(read_page(page_name))
     assert raw is not None
     assert _anime_from_page(raw).episode_count == episode_count
+
+
+def test_build_anime_from_raw_estimated_episode_count_reads_unknown(
+    one_piece_main_raw,
+) -> None:
+    assert _anime_from_page(one_piece_main_raw).episode_count is None
+
+
+def test_extract_anime_from_html_marked_episode_count_reports_estimate(
+    one_piece_main_raw,
+) -> None:
+    assert one_piece_main_raw["is_episode_count_estimated"] is True
+
+
+def test_extract_anime_from_html_runtime_also_unconfirmed_reports_estimated_episode_count(
+    read_page,
+) -> None:
+    page_html = read_page("balala_the_fairies_2_main").replace(
+        "TV-Series, 52",
+        'TV-Series, <span class="issue-info showpop" data-tooltip="Number of '
+        'episodes: preliminary estimate&lt;br&gt;Runtime: not confirmed"></span>52',
+        1,
+    )
+    raw = _extract_anime_from_html(page_html)
+    assert raw is not None
+    assert raw["is_episode_count_estimated"] is True
+
+
+def test_extract_anime_from_html_names_behind_read_more_kept(read_page) -> None:
+    raw = _extract_anime_from_html(read_page("mo_dao_zu_shi_main"))
+    assert raw is not None
+    assert raw["synonyms"][-2:] == [
+        "The Master of Diabolism",
+        "Großmeister der dämonischen Kultivierung: Die Vergangenheit",
+    ]
+
+
+def test_extract_anime_from_html_synonym_holding_commas_kept_whole(read_page) -> None:
+    raw = _extract_anime_from_html(read_page("twelve_sai_main"))
+    assert raw is not None
+    assert raw["synonyms"] == ["Age 12: Kiss, Hate, Love"]
 
 
 def test_build_anime_from_raw_status_label_removed(one_piece_main_raw) -> None:
@@ -466,38 +422,21 @@ def test_build_anime_from_raw_source_material_label_removed(one_piece_main_raw) 
     assert _anime_from_page(one_piece_main_raw).source_material == "Manga"
 
 
-def test_build_anime_from_raw_synonyms_split_on_commas(one_piece_main_raw) -> None:
+def test_build_anime_from_raw_synonyms_kept_as_read(one_piece_main_raw) -> None:
     assert _anime_from_page(one_piece_main_raw).synonyms == ["OP", "OneP"]
 
 
-def test_build_anime_from_raw_synonym_with_colon_kept_whole(one_piece_main_raw) -> None:
-    raw = {**one_piece_main_raw, "synonyms": "Synonyms: Re:Zero, OP"}
-    assert _anime_from_page(raw).synonyms == ["Re:Zero", "OP"]
+def test_build_anime_from_raw_synonym_with_commas_kept_whole(
+    one_piece_main_raw,
+) -> None:
+    raw = {**one_piece_main_raw, "synonyms": ["Age 12: Kiss, Hate, Love"]}
+    assert _anime_from_page(raw).synonyms == ["Age 12: Kiss, Hate, Love"]
 
 
 def test_build_anime_from_raw_without_synonyms_gives_empty_list(
     one_piece_main_raw,
 ) -> None:
     assert _anime_from_page({**one_piece_main_raw, "synonyms": None}).synonyms == []
-
-
-def test_extract_anime_from_html_one_piece_page_gives_genre_names(
-    one_piece_main_html,
-) -> None:
-    raw = _extract_anime_from_html(one_piece_main_html)
-    assert raw is not None
-    assert "Action" in raw["genres"]
-    assert "Fighting-Shounen" in raw["genres"]
-    assert all(isinstance(genre, str) for genre in raw["genres"])
-
-
-def test_extract_anime_from_html_one_piece_page_gives_tag_names(
-    one_piece_main_html,
-) -> None:
-    raw = _extract_anime_from_html(one_piece_main_html)
-    assert raw is not None
-    assert "Pirate" in raw["tags"]
-    assert all(isinstance(tag, str) for tag in raw["tags"])
 
 
 def test_build_anime_from_raw_websites_kept(one_piece_main_raw) -> None:
@@ -736,11 +675,11 @@ def _site(
 
 @pytest.mark.usefixtures("cache_off")
 async def test_fetch_anisearch_anime_data_real_pages_returns_page_text(
-    one_piece_main_html: str, one_piece_relations_html: str
+    read_page,
 ) -> None:
     pages = {
-        f"{BASE_ANIME_URL}2227": one_piece_main_html,
-        f"{_URL}/relations?show=overall": one_piece_relations_html,
+        f"{BASE_ANIME_URL}2227": read_page("one_piece_main"),
+        f"{_URL}/relations?show=overall": read_page("one_piece_relations"),
     }
     with patch.object(
         crawler_module, "fetch_anisearch_page", autospec=True, side_effect=_site(pages)
@@ -781,9 +720,9 @@ async def test_fetch_anisearch_anime_data_empty_main_page_raises_parse_error() -
 
 @pytest.mark.usefixtures("cache_off")
 async def test_fetch_anisearch_anime_data_missing_relations_page_returns_data_without_relations(
-    one_piece_main_html: str,
+    read_page,
 ) -> None:
-    pages = {f"{BASE_ANIME_URL}2227,one-piece": one_piece_main_html}
+    pages = {f"{BASE_ANIME_URL}2227,one-piece": read_page("one_piece_main")}
     with patch.object(
         crawler_module, "fetch_anisearch_page", autospec=True, side_effect=_site(pages)
     ):
@@ -797,12 +736,12 @@ async def test_fetch_anisearch_anime_data_missing_relations_page_returns_data_wi
 
 @pytest.mark.usefixtures("cache_off")
 async def test_fetch_anisearch_anime_data_relations_fetch_failure_raises_network_error(
-    one_piece_main_html: str,
+    read_page,
 ) -> None:
     async def fetch(url: str) -> FetchedPage:
         if url.endswith("/relations?show=overall"):
             raise ServiceNetworkError(service="anisearch", cause="HTTP 500")
-        return FetchedPage(url=_URL, html=one_piece_main_html)
+        return FetchedPage(url=_URL, html=read_page("one_piece_main"))
 
     with (
         patch.object(
@@ -839,11 +778,11 @@ async def test_fetch_anisearch_anime_missing_page_returns_none() -> None:
 
 @pytest.mark.usefixtures("cache_off")
 async def test_fetch_anisearch_anime_bare_address_returns_canonical_anime_with_page_source(
-    one_piece_main_html: str, one_piece_relations_html: str
+    read_page,
 ) -> None:
     pages = {
-        f"{BASE_ANIME_URL}2227": one_piece_main_html,
-        f"{_URL}/relations?show=overall": one_piece_relations_html,
+        f"{BASE_ANIME_URL}2227": read_page("one_piece_main"),
+        f"{_URL}/relations?show=overall": read_page("one_piece_relations"),
     }
     with patch.object(
         crawler_module, "fetch_anisearch_page", autospec=True, side_effect=_site(pages)
