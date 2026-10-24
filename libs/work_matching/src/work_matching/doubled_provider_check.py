@@ -23,7 +23,7 @@ from typing import Annotated
 
 from pydantic import PlainSerializer
 from work_matching.comparable_title import fold_title_for_comparison
-from work_matching.known_works import KnownWorks
+from work_matching.known_work_entries import KnownWorkEntries
 from work_matching.provider_page import ProviderPage, index_pages_by_current_key
 from work_matching.provider_page_key import get_page_id, get_page_provider
 from work_matching.provider_page_links import ProviderPageLinks
@@ -132,9 +132,9 @@ class UnrelatedPage:
 
     # Outbound links to other works: pages of providers already in the entry,
     # or pages of known works.
-    links: PageKeySet
+    linked_page_keys: PageKeySet
     # The known work entries corresponding to those links.
-    other_works: tuple[WorkEntry, ...]
+    other_work_entries: tuple[WorkEntry, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,16 +143,18 @@ class DoubledProviderDecision:
 
     # The provider decided; "simkl" for Simkl and AnimeCountdown together.
     provider: str
-    # The provider's pages, with renamed pages resolved to their current key.
-    pages: tuple[str, ...]
+    # The provider's page keys, with renamed pages resolved to their current key.
+    page_keys: tuple[str, ...]
     reason: Reason
-    # Each page that belongs, mapped to the entry's pages linked with it.
-    belonging_pages: Mapping[str, PageKeySet] = field(default_factory=dict)
-    # Pages that link to another work instead of this entry.
+    # Each belonging page's key, mapped to the keys of the entry's pages linked
+    # with it.
+    belonging_page_keys: Mapping[str, PageKeySet] = field(default_factory=dict)
+    # Each unrelated page's key, mapped to what its links say about other works.
     unrelated_pages: Mapping[str, UnrelatedPage] = field(default_factory=dict)
-    # Pages with no links either to the entry or to another work.
-    undecided_pages: tuple[str, ...] = ()
-    # Review helper metadata: pages matching the entry's title, year/type, or season.
+    # Keys of pages with no links either to the entry or to another work.
+    undecided_page_keys: tuple[str, ...] = ()
+    # On review only: keys of pages matching the entry's title, year and type, or
+    # season.
     title_matches: tuple[str, ...] = ()
     year_type_matches: tuple[str, ...] = ()
     season_matches: tuple[str, ...] = ()
@@ -164,7 +166,9 @@ class DoubledProviderDecision:
 
 
 def decide_doubled_providers(
-    entry: WorkEntry, pages: Iterable[ProviderPage], known_works: KnownWorks
+    entry: WorkEntry,
+    pages: Iterable[ProviderPage],
+    known_work_entries: KnownWorkEntries,
 ) -> list[DoubledProviderDecision]:
     """Decide every doubled provider of one entry.
 
@@ -172,22 +176,26 @@ def decide_doubled_providers(
         entry: The work entry.
         pages: Details of the entry's fetched pages, and of searched pages
             searched by one of them (such as AnimeSchedule).
-        known_works: The works already known, to identify works an unrelated
-            page links to.
+        known_work_entries: The work entries already known, to identify the
+            entries an unrelated page links to.
 
     Returns:
         One decision per provider with two or more pages in the entry, in the
         order the entry lists them.
     """
-    entry_check = _EntryCheck(entry, pages, known_works)
+    entry_check = _EntryCheck(entry, pages, known_work_entries)
     return [
         entry_check.decide_provider(provider, list(page_keys))
-        for provider, page_keys in find_doubled_provider_pages(entry.pages).items()
+        for provider, page_keys in find_doubled_provider_page_keys(
+            entry.addresses_by_page_key
+        ).items()
     ]
 
 
-def find_doubled_provider_pages(page_keys: Iterable[str]) -> dict[str, tuple[str, ...]]:
-    """Return the pages of each doubled provider among these page keys.
+def find_doubled_provider_page_keys(
+    page_keys: Iterable[str],
+) -> dict[str, tuple[str, ...]]:
+    """Return the page keys of each doubled provider among these page keys.
 
     A provider is doubled when its pages carry more than one id: two pages of
     one provider with different ids are different pages. Pages of providers
@@ -197,19 +205,19 @@ def find_doubled_provider_pages(page_keys: Iterable[str]) -> dict[str, tuple[str
     so it checks exactly the pages ``decide_doubled_providers`` decides.
 
     Args:
-        page_keys: Page keys, such as an entry's pages.
+        page_keys: Page keys, such as the keys of an entry's pages.
 
     Returns:
         Each doubled provider, by the name its decision falls under, with its
         page keys in the order given.
     """
-    pages_by_provider: defaultdict[str, list[str]] = defaultdict(list)
+    page_keys_by_provider: defaultdict[str, list[str]] = defaultdict(list)
     for key in page_keys:
         if provider := get_decided_provider(key):
-            pages_by_provider[provider].append(key)
+            page_keys_by_provider[provider].append(key)
     return {
         provider: tuple(page_keys)
-        for provider, page_keys in pages_by_provider.items()
+        for provider, page_keys in page_keys_by_provider.items()
         if _has_several_ids(page_keys)
     }
 
@@ -267,87 +275,129 @@ class _EntryCheck:
     """Evaluates links and metadata for one entry's doubled provider pages."""
 
     def __init__(
-        self, entry: WorkEntry, pages: Iterable[ProviderPage], known_works: KnownWorks
+        self,
+        entry: WorkEntry,
+        pages: Iterable[ProviderPage],
+        known_work_entries: KnownWorkEntries,
     ) -> None:
         self._entry = entry
         fetched_pages = tuple(pages)
-        self._links = ProviderPageLinks(fetched_pages, entry.pages)
+        self._links = ProviderPageLinks(fetched_pages, entry.addresses_by_page_key)
         self._pages_by_current_key = index_pages_by_current_key(fetched_pages)
-        self._known_works = known_works
-        self._entry_pages = frozenset(map(self._links.get_current_key, entry.pages))
-        self._entry_providers = frozenset(map(get_page_provider, self._entry_pages))
+        self._known_work_entries = known_work_entries
+        self._entry_page_keys = frozenset(
+            map(self._links.get_current_key, entry.addresses_by_page_key)
+        )
+        self._entry_providers = frozenset(map(get_page_provider, self._entry_page_keys))
 
     def decide_provider(
         self, provider: str, page_keys: list[str]
     ) -> DoubledProviderDecision:
         """Decide the outcome and belonging pages for one doubled provider."""
-        pages = tuple(dict.fromkeys(map(self._links.get_current_key, page_keys)))
-        if not _has_several_ids(pages):
-            return DoubledProviderDecision(provider, pages, Reason.SAME_PAGE)
-        linked_pages_by_key = {key: self._links.get_linked_pages(key) for key in pages}
-        other_work_links = {key: self._find_links_to_other_works(key) for key in pages}
-        reason = self._choose_reason(pages, linked_pages_by_key, other_work_links)
+        current_page_keys = tuple(
+            dict.fromkeys(map(self._links.get_current_key, page_keys))
+        )
+        if not _has_several_ids(current_page_keys):
+            return DoubledProviderDecision(
+                provider, current_page_keys, Reason.SAME_PAGE
+            )
+        linked_page_keys_by_page_key = {
+            key: self._links.get_linked_page_keys(key) for key in current_page_keys
+        }
+        other_work_page_keys_by_page_key = {
+            key: self._find_linked_page_keys_of_other_works(key)
+            for key in current_page_keys
+        }
+        reason = self._choose_reason(
+            current_page_keys,
+            linked_page_keys_by_page_key,
+            other_work_page_keys_by_page_key,
+        )
         is_review = reason.outcome is Outcome.REVIEW
         return DoubledProviderDecision(
             provider,
-            pages,
+            current_page_keys,
             reason,
-            belonging_pages={
-                key: linked_pages_by_key[key]
-                for key in pages
-                if linked_pages_by_key[key] and not other_work_links[key]
+            belonging_page_keys={
+                key: linked_page_keys_by_page_key[key]
+                for key in current_page_keys
+                if linked_page_keys_by_page_key[key]
+                and not other_work_page_keys_by_page_key[key]
             },
             unrelated_pages={
                 key: UnrelatedPage(
-                    other_work_links[key], self._find_other_works(other_work_links[key])
+                    other_work_page_keys_by_page_key[key],
+                    self._find_other_work_entries(
+                        other_work_page_keys_by_page_key[key]
+                    ),
                 )
-                for key in pages
-                if other_work_links[key] and not linked_pages_by_key[key]
+                for key in current_page_keys
+                if other_work_page_keys_by_page_key[key]
+                and not linked_page_keys_by_page_key[key]
             },
-            undecided_pages=tuple(
+            undecided_page_keys=tuple(
                 key
-                for key in pages
-                if not (linked_pages_by_key[key] or other_work_links[key])
+                for key in current_page_keys
+                if not (
+                    linked_page_keys_by_page_key[key]
+                    or other_work_page_keys_by_page_key[key]
+                )
             ),
-            title_matches=self._find_title_matches(provider, pages)
+            title_matches=self._find_title_matches(provider, current_page_keys)
             if is_review
             else (),
-            year_type_matches=self._find_year_type_matches(pages) if is_review else (),
-            season_matches=self._find_season_matches(pages) if is_review else (),
+            year_type_matches=self._find_year_type_matches(current_page_keys)
+            if is_review
+            else (),
+            season_matches=self._find_season_matches(current_page_keys)
+            if is_review
+            else (),
         )
 
     def _choose_reason(
         self,
-        pages: tuple[str, ...],
-        linked_pages_by_key: Mapping[str, frozenset[str]],
-        other_work_links: Mapping[str, frozenset[str]],
+        page_keys: tuple[str, ...],
+        linked_page_keys_by_page_key: Mapping[str, frozenset[str]],
+        other_work_page_keys_by_page_key: Mapping[str, frozenset[str]],
     ) -> Reason:
         """Return the reason determining the pages' outcome, review triggers first.
 
         A multi-work link or dead page requires review before evaluating link graphs,
         even if the page is the only one linked to the entry.
         """
-        if any(map(self._links.get_linking_multi_work_pages, pages)):
+        if any(map(self._links.get_linking_multi_work_page_keys, page_keys)):
             return Reason.MULTI_WORK_LINK
-        if any(map(self._is_dead, pages)):
+        if any(map(self._is_dead, page_keys)):
             return Reason.DEAD_PAGE
-        if any(linked_pages_by_key[key] and other_work_links[key] for key in pages):
+        if any(
+            linked_page_keys_by_page_key[key] and other_work_page_keys_by_page_key[key]
+            for key in page_keys
+        ):
             return Reason.CONTRADICTING_LINKS
-        if not all(linked_pages_by_key[key] or other_work_links[key] for key in pages):
+        if not all(
+            linked_page_keys_by_page_key[key] or other_work_page_keys_by_page_key[key]
+            for key in page_keys
+        ):
             return Reason.UNDECIDED_PAGES
-        linked_page_sets = [
-            linked_pages_by_key[key] for key in pages if linked_pages_by_key[key]
+        linked_page_key_sets = [
+            linked_page_keys_by_page_key[key]
+            for key in page_keys
+            if linked_page_keys_by_page_key[key]
         ]
-        if not linked_page_sets:
+        if not linked_page_key_sets:
             return Reason.NONE_LINKED
-        if len(linked_page_sets) == 1:
+        if len(linked_page_key_sets) == 1:
             return Reason.ONE_LINKED
-        if frozenset.intersection(*linked_page_sets):
-            linked_page_keys = [key for key in pages if linked_pages_by_key[key]]
+        if frozenset.intersection(*linked_page_key_sets):
+            linked_page_keys = [
+                key for key in page_keys if linked_page_keys_by_page_key[key]
+            ]
             if self._is_details_matching(linked_page_keys):
                 return Reason.SHARED_LINK
             return Reason.DETAILS_DIFFER
-        if sum(map(len, linked_page_sets)) == len(frozenset.union(*linked_page_sets)):
+        if sum(map(len, linked_page_key_sets)) == len(
+            frozenset.union(*linked_page_key_sets)
+        ):
             return Reason.LINKED_APART
         return Reason.OVERLAPPING_LINKS
 
@@ -356,8 +406,8 @@ class _EntryCheck:
         page = self._pages_by_current_key.get(key)
         return page is not None and page.is_dead
 
-    def _find_links_to_other_works(self, key: str) -> frozenset[str]:
-        """Return a page's links that provide evidence of belonging to another work.
+    def _find_linked_page_keys_of_other_works(self, key: str) -> frozenset[str]:
+        """Return the keys of linked pages showing the page belongs to another work.
 
         A link points to another work when it points outside this entry to:
         - A provider already present in this entry (indicating a conflicting ID).
@@ -369,81 +419,91 @@ class _EntryCheck:
         page = self._pages_by_current_key.get(key)
         own_provider = get_page_provider(key)
         return frozenset(
-            link
-            for link in map(self._links.get_current_key, page.links if page else ())
-            if link not in self._entry_pages
-            and (provider := get_page_provider(link)) != own_provider
+            linked_page_key
+            for linked_page_key in map(
+                self._links.get_current_key, page.linked_page_keys if page else ()
+            )
+            if linked_page_key not in self._entry_page_keys
+            and (provider := get_page_provider(linked_page_key)) != own_provider
             and (
                 provider in self._entry_providers
-                or self._known_works.find_by_page_key(link) is not None
+                or self._known_work_entries.find_by_page_key(linked_page_key)
+                is not None
             )
         )
 
-    def _find_other_works(self, links: frozenset[str]) -> tuple[WorkEntry, ...]:
-        """Return the known works the links belong to, each once."""
-        linked_works = (
-            self._known_works.find_by_page_key(link) for link in sorted(links)
+    def _find_other_work_entries(
+        self, linked_page_keys: frozenset[str]
+    ) -> tuple[WorkEntry, ...]:
+        """Return the known work entries holding these linked pages, each once."""
+        linked_work_entries = (
+            self._known_work_entries.find_by_page_key(linked_page_key)
+            for linked_page_key in sorted(linked_page_keys)
         )
         return tuple(
-            {work.reference_page: work for work in linked_works if work}.values()
+            {
+                work_entry.reference_page: work_entry
+                for work_entry in linked_work_entries
+                if work_entry
+            }.values()
         )
 
     def _find_title_matches(
-        self, provider: str, pages: tuple[str, ...]
+        self, provider: str, page_keys: tuple[str, ...]
     ) -> tuple[str, ...]:
-        """Return the pages whose main title matches the entry's titles.
+        """Return the keys of the pages whose main title matches the entry's titles.
 
         The entry's titles are its own title and the main titles of its pages
         from other providers.
         """
         entry_titles = {fold_title_for_comparison(self._entry.title)} | {
             fold_title_for_comparison(page.titles[0])
-            for key in self._entry_pages
+            for key in self._entry_page_keys
             if get_decided_provider(key) != provider
             and (page := self._pages_by_current_key.get(key))
             and page.titles
         }
         return tuple(
             key
-            for key in pages
+            for key in page_keys
             if (page := self._pages_by_current_key.get(key))
             and page.titles
             and fold_title_for_comparison(page.titles[0]) in entry_titles
         )
 
-    def _find_year_type_matches(self, pages: tuple[str, ...]) -> tuple[str, ...]:
-        """Return the pages whose year and type agree with the entry's.
+    def _find_year_type_matches(self, page_keys: tuple[str, ...]) -> tuple[str, ...]:
+        """Return the keys of the pages whose year and type agree with the entry's.
 
         Args:
-            pages: The current keys of one doubled provider's pages.
+            page_keys: The current keys of one doubled provider's pages.
 
         Returns:
             The keys of the fetched pages that agree, in the order given.
         """
         return tuple(
             key
-            for key in pages
+            for key in page_keys
             if (page := self._pages_by_current_key.get(key))
             and is_page_details_matching(page, self._entry)
         )
 
-    def _find_season_matches(self, pages: tuple[str, ...]) -> tuple[str, ...]:
-        """Return the pages whose season is the entry's; none when it has no season."""
+    def _find_season_matches(self, page_keys: tuple[str, ...]) -> tuple[str, ...]:
+        """Return the keys of the pages in the entry's season; none without a season."""
         return tuple(
             key
-            for key in pages
+            for key in page_keys
             if self._entry.season
             and (page := self._pages_by_current_key.get(key))
             and page.season == self._entry.season
         )
 
-    def _is_details_matching(self, pages: list[str]) -> bool:
+    def _is_details_matching(self, page_keys: list[str]) -> bool:
         """Report whether the pages' years and types agree with each other.
 
         Pages without details, from providers that are not fetched, agree.
         """
         fetched_pages = [
-            page for key in pages if (page := self._pages_by_current_key.get(key))
+            page for key in page_keys if (page := self._pages_by_current_key.get(key))
         ]
         return is_year_matching(
             *(page.year for page in fetched_pages)

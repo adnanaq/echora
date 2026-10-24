@@ -55,7 +55,7 @@ class _EnrichmentHelper(NamedTuple):
     """An enrichment helper: its ``ApiFetcher`` service name and the id key it reads."""
 
     service: str
-    id_key: str
+    id_field: str
 
 
 # The helper for each provider that has one, by the provider's page key name.
@@ -92,8 +92,9 @@ class FetchSummary:
     """How a fetch run went: a count per outcome, and why each failure failed."""
 
     outcomes: Mapping[FetchOutcome, int]
-    # Each failed page by its page key, or "animeschedule via <page searched by>".
-    failed_pages: Mapping[str, str]
+    # Each failed request's error, by its label: the page key, or
+    # "animeschedule via <page key searched by>".
+    errors_by_request_label: Mapping[str, str]
 
 
 @dataclass(frozen=True)
@@ -101,7 +102,7 @@ class _PageRequest:
     """One request to make: a seed page, or an AnimeSchedule search by one."""
 
     service: str
-    id_key: str
+    id_field: str
     address: str
     title: str
     is_page_search: bool = False
@@ -142,7 +143,7 @@ def _build_page_request(
     request_address = address or build_page_address(key)
     if helper is None or request_address is None:
         return None
-    return _PageRequest(helper.service, helper.id_key, request_address, title)
+    return _PageRequest(helper.service, helper.id_field, request_address, title)
 
 
 def _combine_fetch_summaries(*summaries: FetchSummary) -> FetchSummary:
@@ -155,11 +156,13 @@ def _combine_fetch_summaries(*summaries: FetchSummary) -> FetchSummary:
         One summary with every count added and every failure kept.
     """
     outcomes: Counter[FetchOutcome] = Counter()
-    failed_pages: dict[str, str] = {}
+    errors_by_request_label: dict[str, str] = {}
     for summary in summaries:
         outcomes.update(summary.outcomes)
-        failed_pages |= summary.failed_pages
-    return FetchSummary(outcomes=dict(outcomes), failed_pages=failed_pages)
+        errors_by_request_label |= summary.errors_by_request_label
+    return FetchSummary(
+        outcomes=dict(outcomes), errors_by_request_label=errors_by_request_label
+    )
 
 
 class ProviderPageFetcher:
@@ -287,7 +290,7 @@ class ProviderPageFetcher:
         outcomes.update(request_result.outcome for request_result in request_results)
         return FetchSummary(
             outcomes=dict(outcomes),
-            failed_pages={
+            errors_by_request_label={
                 request_result.request.label: request_result.error
                 for request_result in request_results
                 if request_result.error is not None
@@ -310,7 +313,7 @@ class ProviderPageFetcher:
         """
         requests = [
             request
-            for key, address in entry.pages.items()
+            for key, address in entry.addresses_by_page_key.items()
             if (providers is None or get_page_provider(key) in providers)
             and (request := _build_page_request(key, entry.title, address))
         ]
@@ -321,14 +324,14 @@ class ProviderPageFetcher:
         for provider in _SEARCHED_BY_PROVIDERS:
             searched_by_addresses = [
                 address
-                for key, address in entry.pages.items()
+                for key, address in entry.addresses_by_page_key.items()
                 if get_page_provider(key) == provider
             ]
             if searched_by_addresses:
                 requests.extend(
                     _PageRequest(
                         _SEARCHED_PAGE_SERVICE,
-                        _HELPER_BY_PROVIDER[provider].id_key,
+                        _HELPER_BY_PROVIDER[provider].id_field,
                         address,
                         entry.title,
                         is_page_search=True,
@@ -394,7 +397,7 @@ class ProviderPageFetcher:
         fetched again.
         """
         records_by_service = await api_fetcher.fetch_all_data(
-            {request.id_key: request.address},
+            {request.id_field: request.address},
             {"title": request.title, "sources": [request.address]},
             only_services=[request.service],
             fetch_characters=False,
@@ -425,7 +428,7 @@ class ProviderPageFetcher:
                 ProviderPage.from_canonical_record(
                     anime_record["sources"][0],
                     anime_record,
-                    searched_by=request.address,
+                    searched_by_address=request.address,
                 )
             )
             return FetchOutcome.FETCHED

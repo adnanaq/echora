@@ -226,5 +226,5 @@ def has_repeated_provider(keys: Iterable[str]) -> bool:
         >>> has_repeated_provider(["mal:anime:1", "kitsu:anime:1"])
         False
     """
-    providers = Counter(filter(None, map(get_page_provider, keys)))
-    return any(page_count > 1 for page_count in providers.values())
+    page_count_by_provider = Counter(filter(None, map(get_page_provider, keys)))
+    return any(page_count > 1 for page_count in page_count_by_provider.values())

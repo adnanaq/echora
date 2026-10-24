@@ -47,12 +47,12 @@ def test_build_entries_to_check_document_names_entries_by_reference_page() -> No
     ]
 
 
-def _correction(page_key: str, work: str, **fields) -> SeedCorrection:
+def _correction(page_key: str, placement_word: str, **fields) -> SeedCorrection:
     return SeedCorrection(
         entry_reference_page="mal:anime:1",
         page_key=page_key,
         address=f"https://example.com/{page_key}",
-        work=work,
+        placement_word=placement_word,
         reason="review answer",
         **fields,
     )

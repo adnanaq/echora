@@ -72,7 +72,7 @@ class WorkEntry(BaseModel):
     year: int | None = None
     season: Annotated[Season | None, BeforeValidator(_read_known_season)] = None
     # Provider page key -> the address as the source wrote it, in source order.
-    pages: dict[str, str] = Field(min_length=1)
+    addresses_by_page_key: dict[str, str] = Field(min_length=1)
 
     @property
     def reference_page(self) -> str:
@@ -82,7 +82,7 @@ class WorkEntry(BaseModel):
         is named by its most trusted provider page instead.
         """
         page_key_by_provider = {
-            get_page_provider(key): key for key in reversed(self.pages)
+            get_page_provider(key): key for key in reversed(self.addresses_by_page_key)
         }
         return next(
             (
@@ -90,7 +90,7 @@ class WorkEntry(BaseModel):
                 for provider in REFERENCE_ORDER
                 if provider in page_key_by_provider
             ),
-            next(iter(self.pages)),
+            next(iter(self.addresses_by_page_key)),
         )
 
     def has_page_of_same_provider(self, page_key: str) -> bool:
@@ -108,27 +108,28 @@ class WorkEntry(BaseModel):
         """
         provider = get_page_provider(page_key)
         return provider is not None and any(
-            get_page_provider(key) == provider for key in self.pages
+            get_page_provider(key) == provider for key in self.addresses_by_page_key
         )
 
     @classmethod
-    def from_seed_entry(cls, entry: dict[str, Any]) -> Self:
+    def from_seed_entry(cls, seed_entry: dict[str, Any]) -> Self:
         """Build a work entry from one entry of an anime-offline-database file.
 
         Args:
-            entry: One item of the seed file's ``data`` list.
+            seed_entry: One item of the seed file's ``data`` list.
 
         Returns:
-            The entry's title, type, year, season and pages keyed by page.
+            The entry's title, type, year, season and page addresses keyed by
+            page key.
         """
-        anime_season = entry.get("animeSeason") or {}
-        pages: dict[str, str] = {}
-        for address in entry["sources"]:
-            pages.setdefault(get_page_key(address), address)
+        anime_season = seed_entry.get("animeSeason") or {}
+        addresses_by_page_key: dict[str, str] = {}
+        for address in seed_entry["sources"]:
+            addresses_by_page_key.setdefault(get_page_key(address), address)
         return cls(
-            title=entry["title"],
-            type=entry["type"],
+            title=seed_entry["title"],
+            type=seed_entry["type"],
             year=anime_season.get("year"),
             season=anime_season.get("season"),
-            pages=pages,
+            addresses_by_page_key=addresses_by_page_key,
         )

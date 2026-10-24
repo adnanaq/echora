@@ -16,7 +16,7 @@ from seed_cleaning.linked_page_additions import (
     LinkingSeedEntry,
     correct_linked_pages,
     find_entries_without_mal_page,
-    find_linked_pages,
+    find_linking_seed_entries,
     list_entries_with_placed_pages,
 )
 from seed_cleaning.provider_page_fetcher import (
@@ -57,7 +57,7 @@ __all__ = [
     "correct_doubled_provider_entries",
     "correct_linked_pages",
     "find_entries_without_mal_page",
-    "find_linked_pages",
+    "find_linking_seed_entries",
     "list_entries_with_placed_pages",
     "build_corrected_entries",
     "find_doubled_provider_entries",

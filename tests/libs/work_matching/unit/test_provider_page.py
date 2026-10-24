@@ -30,14 +30,18 @@ def test_provider_page_from_canonical_record_keeps_only_other_provider_pages_as_
     canonical_records,
 ) -> None:
     page = ProviderPage.from_canonical_record(KITSU, canonical_records[KITSU])
-    assert page.links == ("anidb:anime:69", "anilist:anime:21", "mal:anime:21")
+    assert page.linked_page_keys == (
+        "anidb:anime:69",
+        "anilist:anime:21",
+        "mal:anime:21",
+    )
 
 
 def test_provider_page_from_canonical_record_reads_old_anidb_and_ann_addresses(
     canonical_records,
 ) -> None:
     page = ProviderPage.from_canonical_record(MAL, canonical_records[MAL])
-    assert {"anidb:anime:69", "ann:anime:836"} <= set(page.links)
+    assert {"anidb:anime:69", "ann:anime:836"} <= set(page.linked_page_keys)
     assert page.renamed_to is None
 
 
@@ -48,7 +52,7 @@ def test_provider_page_from_canonical_record_renamed_page_names_new_key(
         ANIME_PLANET_OLD, canonical_records[ANIME_PLANET_OLD]
     )
     assert page.renamed_to == "animeplanet:anime:cocoon-one-summer-of-girlhood"
-    assert page.links == ()
+    assert page.linked_page_keys == ()
 
 
 def test_provider_page_from_canonical_record_collects_titles_of_every_language(
@@ -97,7 +101,7 @@ def test_provider_page_from_canonical_record_zero_episode_count_read_as_unknown(
 def test_provider_page_stored_line_without_episode_fields_loads() -> None:
     page = ProviderPage.model_validate_json(
         '{"key":"mal:anime:21","address":"https://myanimelist.net/anime/21",'
-        '"titles":["One Piece"],"type":"TV","year":1999,"season":"FALL","links":[],'
+        '"titles":["One Piece"],"type":"TV","year":1999,"season":"FALL","linked_page_keys":[],'
         '"searched_by":[],"is_dead":false,"renamed_to":null}'
     )
     assert (page.episode_count, page.aired_from, page.aired_to) == (None, None, None)
@@ -135,7 +139,7 @@ def test_provider_page_from_canonical_record_repeated_title_kept_once() -> None:
 
 def test_provider_page_from_dead_address_has_no_details() -> None:
     page = ProviderPage.from_dead_address(MAL)
-    assert (page.key, page.is_dead, page.titles, page.links) == (
+    assert (page.key, page.is_dead, page.titles, page.linked_page_keys) == (
         "mal:anime:21",
         True,
         (),
@@ -156,18 +160,18 @@ def test_provider_page_from_canonical_record_searched_page_keeps_link_to_searche
                 "https://anilist.co/anime/21",
             ],
         },
-        searched_by=MAL,
+        searched_by_address=MAL,
     )
-    assert (page.searched_by, page.links) == (
+    assert (page.searched_by, page.linked_page_keys) == (
         ("mal:anime:21",),
         ("anilist:anime:21", "mal:anime:21"),
     )
 
 
 def test_provider_page_from_dead_address_searched_by_page_records_key() -> None:
-    assert ProviderPage.from_dead_address(MAL, searched_by=KITSU).searched_by == (
-        "kitsu:anime:12",
-    )
+    assert ProviderPage.from_dead_address(
+        MAL, searched_by_address=KITSU
+    ).searched_by == ("kitsu:anime:12",)
 
 
 def test_provider_page_json_round_trip_gives_equal_page(canonical_records) -> None:

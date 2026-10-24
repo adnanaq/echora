@@ -75,7 +75,7 @@ async def test_fetch_entry_pages_record_stored_as_page_with_links(tmp_path) -> N
     summary = await fetcher.fetch_entry_pages([_one_piece(KITSU)])
     page = ProviderPageStore(tmp_path / "pages.jsonl").get_page("kitsu:anime:12")
     assert page is not None
-    assert (page.titles, page.links) == (("One Piece",), ("mal:anime:21",))
+    assert (page.titles, page.linked_page_keys) == (("One Piece",), ("mal:anime:21",))
     assert summary.outcomes == {FetchOutcome.FETCHED: 1}
 
 
@@ -95,7 +95,7 @@ async def test_fetch_entry_pages_failed_fetch_not_stored_and_reported(
     summary = await fetcher.fetch_entry_pages([_one_piece(KITSU)])
     assert "kitsu:anime:12" not in ProviderPageStore(tmp_path / "pages.jsonl")
     assert summary.outcomes == {FetchOutcome.FAILED: 1}
-    assert summary.failed_pages == {"kitsu:anime:12": "HTTP 503"}
+    assert summary.errors_by_request_label == {"kitsu:anime:12": "HTTP 503"}
 
 
 @pytest.mark.parametrize(
@@ -109,7 +109,7 @@ async def test_fetch_entry_pages_answer_without_record_fails_and_stores_nothing(
     summary = await fetcher.fetch_entry_pages([_one_piece(KITSU)])
     assert "kitsu:anime:12" not in ProviderPageStore(tmp_path / "pages.jsonl")
     assert summary.outcomes == {FetchOutcome.FAILED: 1}
-    assert list(summary.failed_pages) == ["kitsu:anime:12"]
+    assert list(summary.errors_by_request_label) == ["kitsu:anime:12"]
 
 
 async def test_fetch_entry_pages_stored_page_not_fetched_again(tmp_path) -> None:
@@ -220,7 +220,9 @@ async def test_fetch_entry_pages_unexpected_error_fails_page_and_other_queues_fi
         seconds_between_page_searches=0,
     )
     summary = await fetcher.fetch_entry_pages([_one_piece(MAL, KITSU)])
-    assert summary.failed_pages == {"kitsu:anime:12": "RuntimeError: store disk full"}
+    assert summary.errors_by_request_label == {
+        "kitsu:anime:12": "RuntimeError: store disk full"
+    }
     assert "mal:anime:21" in ProviderPageStore(tmp_path / "pages.jsonl")
 
 

@@ -88,7 +88,7 @@ def test_provider_page_store_has_page_searched_by_after_add(tmp_path) -> None:
         ProviderPage.from_canonical_record(
             "https://animeschedule.net/anime/one-piece",
             {"title": "One Piece"},
-            searched_by=MAL,
+            searched_by_address=MAL,
         )
     )
     assert store.has_page_searched_by("mal:anime:21")
@@ -102,7 +102,7 @@ def test_provider_page_store_get_pages_searched_by_gives_pages_after_reopening(
     found = ProviderPage.from_canonical_record(
         "https://animeschedule.net/anime/one-piece",
         {"title": "One Piece"},
-        searched_by=MAL,
+        searched_by_address=MAL,
     )
     ProviderPageStore(path).add_pages(found, _page(KITSU, "One Piece"))
     reopened = ProviderPageStore(path)
@@ -121,7 +121,7 @@ def test_provider_page_store_searched_page_added_through_second_search_keeps_bot
             ProviderPage.from_canonical_record(
                 "https://animeschedule.net/anime/ranma",
                 record,
-                searched_by=searched_by_address,
+                searched_by_address=searched_by_address,
             )
         )
     reopened = ProviderPageStore(path).get_page("https://animeschedule.net/anime/ranma")
@@ -136,7 +136,7 @@ def test_get_entry_pages_gives_stored_pages_then_pages_found_through_them(
     searched_page = ProviderPage.from_canonical_record(
         "https://animeschedule.net/anime/one-piece",
         {"title": "One Piece", "sources": [MAL]},
-        searched_by=MAL,
+        searched_by_address=MAL,
     )
     mal_page = _page(MAL, "One Piece")
     store.add_pages(searched_page, mal_page, _page(KITSU, "One Piece"))
@@ -160,7 +160,7 @@ def test_provider_page_store_searched_page_added_twice_in_one_call_keeps_both_se
             ProviderPage.from_canonical_record(
                 "https://animeschedule.net/anime/ranma",
                 record,
-                searched_by=searched_by_address,
+                searched_by_address=searched_by_address,
             )
             for searched_by_address in (MAL, "https://anilist.co/anime/210")
         )

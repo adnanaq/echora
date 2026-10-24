@@ -7,8 +7,8 @@ def test_provider_page_links_link_counts_both_ways(linked_page) -> None:
         [linked_page("https://kitsu.app/anime/1", "https://myanimelist.net/anime/1")],
         ["mal:anime:1"],
     )
-    assert links.get_linked_pages("kitsu:anime:1") == frozenset({"mal:anime:1"})
-    assert links.get_linked_pages("mal:anime:1") == frozenset({"kitsu:anime:1"})
+    assert links.get_linked_page_keys("kitsu:anime:1") == frozenset({"mal:anime:1"})
+    assert links.get_linked_page_keys("mal:anime:1") == frozenset({"kitsu:anime:1"})
 
 
 def test_provider_page_links_link_outside_candidates_ignored(linked_page) -> None:
@@ -16,7 +16,7 @@ def test_provider_page_links_link_outside_candidates_ignored(linked_page) -> Non
         [linked_page("https://kitsu.app/anime/1", "https://myanimelist.net/anime/2")],
         ["mal:anime:1"],
     )
-    assert links.get_linked_pages("kitsu:anime:1") == frozenset()
+    assert links.get_linked_page_keys("kitsu:anime:1") == frozenset()
 
 
 def test_provider_page_links_renamed_page_answers_to_current_key(
@@ -41,7 +41,7 @@ def test_provider_page_links_link_to_renamed_page_reaches_current_key(
         "https://kitsu.app/anime/1", "https://anime-planet.com/anime/old"
     )
     links = ProviderPageLinks([renamed, kitsu], ["animeplanet:anime:new"])
-    assert links.get_linked_pages("animeplanet:anime:new") == frozenset(
+    assert links.get_linked_page_keys("animeplanet:anime:new") == frozenset(
         {"kitsu:anime:1"}
     )
 
@@ -55,8 +55,8 @@ def test_provider_page_links_page_linking_two_pages_of_one_provider_set_aside(
         "https://myanimelist.net/anime/2",
     )
     links = ProviderPageLinks([anthology], ["mal:anime:1", "mal:anime:2"])
-    assert links.get_linked_pages("mal:anime:1") == frozenset()
-    assert links.get_linking_multi_work_pages("mal:anime:1") == frozenset(
+    assert links.get_linked_page_keys("mal:anime:1") == frozenset()
+    assert links.get_linking_multi_work_page_keys("mal:anime:1") == frozenset(
         {"anidb:anime:1"}
     )
 
@@ -65,8 +65,8 @@ def test_provider_page_links_searched_page_links_count_for_searched_by_page(
     matching_cases,
 ) -> None:
     entries, pages = matching_cases["puu_neko"]
-    links = ProviderPageLinks(pages, entries[0].pages)
-    assert links.get_linked_pages("mal:anime:10459") == frozenset(
+    links = ProviderPageLinks(pages, entries[0].addresses_by_page_key)
+    assert links.get_linked_page_keys("mal:anime:10459") == frozenset(
         {
             "anidb:anime:8328",
             "ann:anime:12559",
@@ -74,8 +74,8 @@ def test_provider_page_links_searched_page_links_count_for_searched_by_page(
             "kitsu:anime:6190",
         }
     )
-    assert links.get_linked_pages("https://animeschedule.net/anime/puu-neko") == (
-        links.get_linked_pages("mal:anime:10459")
+    assert links.get_linked_page_keys("https://animeschedule.net/anime/puu-neko") == (
+        links.get_linked_page_keys("mal:anime:10459")
     )
 
 
@@ -85,11 +85,11 @@ def test_provider_page_links_searched_page_naming_other_page_of_searched_by_prov
     found = ProviderPage.from_canonical_record(
         "https://animeschedule.net/anime/islay",
         {"title": "Islay", "sources": ["https://myanimelist.net/anime/2"]},
-        searched_by="https://myanimelist.net/anime/1",
+        searched_by_address="https://myanimelist.net/anime/1",
     )
     links = ProviderPageLinks([found], ["mal:anime:1", "mal:anime:2"])
-    assert links.get_linked_pages("mal:anime:1") == frozenset()
-    assert links.get_linking_multi_work_pages("mal:anime:2") == frozenset(
+    assert links.get_linked_page_keys("mal:anime:1") == frozenset()
+    assert links.get_linking_multi_work_page_keys("mal:anime:2") == frozenset(
         {"mal:anime:1"}
     )
 
@@ -103,22 +103,24 @@ def test_provider_page_links_searched_page_with_renamed_searched_by_page_counts_
     found = ProviderPage.from_canonical_record(
         "https://animeschedule.net/anime/show",
         {"title": "Show", "sources": ["https://myanimelist.net/anime/1"]},
-        searched_by="https://anime-planet.com/anime/old",
+        searched_by_address="https://anime-planet.com/anime/old",
     )
     links = ProviderPageLinks(
         [renamed, found], ["animeplanet:anime:new", "mal:anime:1"]
     )
-    assert links.get_linked_pages("animeplanet:anime:new") == frozenset({"mal:anime:1"})
+    assert links.get_linked_page_keys("animeplanet:anime:new") == frozenset(
+        {"mal:anime:1"}
+    )
 
 
 def test_provider_page_links_link_to_own_provider_page_ignored() -> None:
     page = ProviderPage(
         key="kitsu:anime:1",
         address="https://kitsu.app/anime/1",
-        links=("kitsu:anime:2",),
+        linked_page_keys=("kitsu:anime:2",),
     )
     links = ProviderPageLinks([page], ["kitsu:anime:2"])
-    assert links.get_linked_pages("kitsu:anime:1") == frozenset()
+    assert links.get_linked_page_keys("kitsu:anime:1") == frozenset()
 
 
 def test_provider_page_links_searched_page_counts_for_searched_by_page_not_given() -> (
@@ -127,10 +129,10 @@ def test_provider_page_links_searched_page_counts_for_searched_by_page_not_given
     found = ProviderPage.from_canonical_record(
         "https://animeschedule.net/anime/show",
         {"title": "Show", "sources": ["https://anilist.co/anime/1"]},
-        searched_by="https://myanimelist.net/anime/1",
+        searched_by_address="https://myanimelist.net/anime/1",
     )
     links = ProviderPageLinks([found], ["anilist:anime:1"])
-    assert links.get_linked_pages("mal:anime:1") == frozenset({"anilist:anime:1"})
+    assert links.get_linked_page_keys("mal:anime:1") == frozenset({"anilist:anime:1"})
 
 
 def test_provider_page_links_searched_page_through_two_searched_by_pages_links_each_with_other() -> (
@@ -146,14 +148,14 @@ def test_provider_page_links_searched_page_through_two_searched_by_pages_links_e
                 "https://anidb.net/anime/193",
             ],
         },
-        searched_by="https://myanimelist.net/anime/210",
+        searched_by_address="https://myanimelist.net/anime/210",
     ).model_copy(update={"searched_by": ("anilist:anime:210", "mal:anime:210")})
     links = ProviderPageLinks(
         [found], ["mal:anime:210", "anilist:anime:210", "anidb:anime:193"]
     )
-    assert links.get_linked_pages("mal:anime:210") == frozenset(
+    assert links.get_linked_page_keys("mal:anime:210") == frozenset(
         {"anilist:anime:210", "anidb:anime:193"}
     )
-    assert links.get_linked_pages("anilist:anime:210") == frozenset(
+    assert links.get_linked_page_keys("anilist:anime:210") == frozenset(
         {"mal:anime:210", "anidb:anime:193"}
     )

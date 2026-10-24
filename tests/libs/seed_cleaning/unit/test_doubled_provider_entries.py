@@ -13,5 +13,8 @@ def test_find_doubled_provider_entries_simkl_and_animecountdown_same_number_not_
     seed_works,
 ) -> None:
     cue = next(work for work in seed_works if work.title == "Cue!")
-    assert {"simkl:anime:1467793", "animecountdown:anime:1467793"} <= cue.pages.keys()
+    assert {
+        "simkl:anime:1467793",
+        "animecountdown:anime:1467793",
+    } <= cue.addresses_by_page_key.keys()
     assert find_doubled_provider_entries([cue]) == []

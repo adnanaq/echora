@@ -85,13 +85,13 @@ class PagePlacement:
     """Where one page goes: its work, and whether it is that work's main page."""
 
     # ``entry``, ``other work`` or ``work 2``, ``work 3``…
-    work: str
+    placement_word: str
     is_main_page: bool = False
 
     @property
     def is_numbered_work(self) -> bool:
         """Report whether the place is ``work 2`` or later: a mixed entry's other work."""
-        return self.work not in (ENTRY_WORK, OTHER_WORK)
+        return self.placement_word not in (ENTRY_WORK, OTHER_WORK)
 
 
 def place_pages_without_review(
@@ -122,26 +122,28 @@ def place_pages_without_review(
         if decision.outcome is Outcome.SAME_PAGE:
             # The provider's addresses resolve to one current key, so a same-page
             # decision holds exactly one page.
-            placements[decision.pages[0]] = PagePlacement(ENTRY_WORK)
-        placements |= dict.fromkeys(decision.belonging_pages, PagePlacement(ENTRY_WORK))
+            placements[decision.page_keys[0]] = PagePlacement(ENTRY_WORK)
+        placements |= dict.fromkeys(
+            decision.belonging_page_keys, PagePlacement(ENTRY_WORK)
+        )
         placements |= dict.fromkeys(decision.unrelated_pages, PagePlacement(OTHER_WORK))
     return placements
 
 
-def list_placeable_pages(
+def list_placeable_page_keys(
     entry: WorkEntry, decisions: Sequence[DoubledProviderDecision]
 ) -> tuple[str, ...]:
-    """Return the pages of an entry that an answer can place.
+    """Return the keys of the entry's pages that an answer can place.
 
     The doubled pages come first, named by their current key as the decisions
     name them; then the entry's other pages, named by the key the entry lists.
     """
     decided_providers = {decision.provider for decision in decisions}
     return (
-        *(key for decision in decisions for key in decision.pages),
+        *(key for decision in decisions for key in decision.page_keys),
         *(
             key
-            for key in entry.pages
+            for key in entry.addresses_by_page_key
             if get_decided_provider(key) not in decided_providers
         ),
     )
@@ -170,18 +172,18 @@ def read_answer_placements(
         if isinstance(placement_text, str)
         and (placement := _read_placement(placement_text))
     }
-    pages = set(list_placeable_pages(entry, decisions))
+    placeable_page_keys = set(list_placeable_page_keys(entry, decisions))
     is_mixed_entry_answer = any(
         placement.is_numbered_work for placement in placements.values()
     )
-    required_pages = (
-        pages
+    required_page_keys = (
+        placeable_page_keys
         if is_mixed_entry_answer
-        else {key for decision in decisions for key in decision.pages}
+        else {key for decision in decisions for key in decision.page_keys}
     )
     is_valid = (
         len(placements) == len(answer)
-        and required_pages <= placements.keys() <= pages
+        and required_page_keys <= placements.keys() <= placeable_page_keys
         and _is_main_page_named_once(placements)
     )
     return placements if is_valid else None
@@ -200,30 +202,34 @@ def suggest_page_placements(
         Each suggested page's place in answer words, in answer page order.
         Pages linked with nothing, or linked with two works, are left out.
     """
-    pages = list_placeable_pages(entry, decisions)
-    page_groups = UnionFind(pages)
+    placeable_page_keys = list_placeable_page_keys(entry, decisions)
+    page_groups = UnionFind(placeable_page_keys)
     for decision in decisions:
-        for key, linked_keys in decision.belonging_pages.items():
+        for key, linked_keys in decision.belonging_page_keys.items():
             page_groups.union(key, *linked_keys)
     # Each mixed-entry decision's pages are separate works, so no group may hold
     # two of them.
-    separate_work_pages = [
-        set(decision.belonging_pages)
+    separate_work_page_keys = [
+        set(decision.belonging_page_keys)
         for decision in decisions
         if decision.outcome is Outcome.MIXED_ENTRY
     ]
-    page_position = {key: position for position, key in enumerate(pages)}
+    page_position = {key: position for position, key in enumerate(placeable_page_keys)}
     groups_by_trust = sorted(
         (group for group in page_groups.to_sets() if len(group) > 1),
         key=lambda group: min(
-            (rank_by_provider_trust(key), page_position.get(key, len(pages)))
+            (
+                rank_by_provider_trust(key),
+                page_position.get(key, len(placeable_page_keys)),
+            )
             for key in group
         ),
     )
     suggested_placements: dict[str, str] = {}
     for work_number, group in enumerate(groups_by_trust, start=1):
         if not any(
-            len(group & decision_pages) > 1 for decision_pages in separate_work_pages
+            len(group & decision_page_keys) > 1
+            for decision_page_keys in separate_work_page_keys
         ):
             suggested_placements |= dict.fromkeys(
                 group, ENTRY_WORK if work_number == 1 else f"work {work_number}"
@@ -232,7 +238,9 @@ def suggest_page_placements(
         key: OTHER_WORK for decision in decisions for key in decision.unrelated_pages
     }
     return {
-        key: suggested_placements[key] for key in pages if key in suggested_placements
+        key: suggested_placements[key]
+        for key in placeable_page_keys
+        if key in suggested_placements
     }
 
 
@@ -260,15 +268,15 @@ def find_move_target(
     Returns:
         The seed entry to move the page to, or None when no move is sure.
     """
-    if len(unrelated_page.other_works) != 1:
+    if len(unrelated_page.other_work_entries) != 1:
         return None
-    [other_work] = unrelated_page.other_works
-    if other_work.has_page_of_same_provider(key):
+    [other_work_entry] = unrelated_page.other_work_entries
+    if other_work_entry.has_page_of_same_provider(key):
         return None
     # A page links another work only through its own fetched details, so it
     # has them; without them nothing confirms the move.
-    is_confirmed = page is not None and is_page_details_matching(page, other_work)
-    return other_work if is_confirmed else None
+    is_confirmed = page is not None and is_page_details_matching(page, other_work_entry)
+    return other_work_entry if is_confirmed else None
 
 
 def _is_decision_settled(
@@ -278,10 +286,10 @@ def _is_decision_settled(
 ) -> bool:
     """Report whether the rules can place one decision's pages without a person."""
     if decision.outcome is Outcome.SAME_PAGE:
-        return decision.pages[0] in entry.pages
+        return decision.page_keys[0] in entry.addresses_by_page_key
     return (
         decision.outcome is Outcome.ONE_WORK
-        and len(decision.belonging_pages) == 1
+        and len(decision.belonging_page_keys) == 1
         and all(
             find_move_target(key, unrelated_page, pages_by_current_key.get(key))
             is not None
@@ -311,10 +319,10 @@ def _is_main_page_named_once(placements: dict[str, PagePlacement]) -> bool:
         tuple[str, str | None], list[PagePlacement]
     ] = defaultdict(list)
     for key, placement in placements.items():
-        if placement.work != OTHER_WORK:
-            placements_by_work_provider[placement.work, get_page_provider(key)].append(
-                placement
-            )
+        if placement.placement_word != OTHER_WORK:
+            placements_by_work_provider[
+                placement.placement_word, get_page_provider(key)
+            ].append(placement)
     return all(
         sum(placement.is_main_page for placement in provider_placements)
         == (len(provider_placements) > 1)

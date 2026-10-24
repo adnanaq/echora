@@ -30,8 +30,9 @@ class ProviderPageLinks:
     """Undirected graph of links between candidate pages of a work or entry.
 
     Renamed pages resolve to their current key, and searched pages fold into
-    the pages they were searched by. Multi-work pages (pages referencing multiple entries of one
-    provider) and same-provider links are excluded from matching links.
+    the pages they were searched by. Multi-work pages (pages referencing
+    multiple entries of one provider) and same-provider links are excluded from
+    matching links.
     """
 
     def __init__(
@@ -61,9 +62,11 @@ class ProviderPageLinks:
                 )
             )
         )
-        self._linked_pages_by_key: defaultdict[str, set[str]] = defaultdict(set)
-        self._linking_multi_work_pages_by_key: defaultdict[str, set[str]] = defaultdict(
+        self._linked_page_keys_by_page_key: defaultdict[str, set[str]] = defaultdict(
             set
+        )
+        self._linking_multi_work_page_keys_by_page_key: defaultdict[str, set[str]] = (
+            defaultdict(set)
         )
         for page in fetched_pages:
             for source_key in self._get_current_keys(page.key):
@@ -73,23 +76,23 @@ class ProviderPageLinks:
         """Return the current key a renamed page resolves to, or the key unchanged."""
         return self._current_key_by_renamed_key.get(key, key)
 
-    def get_linked_pages(self, key: str) -> frozenset[str]:
-        """Return candidate pages linked with a page, in either direction.
+    def get_linked_page_keys(self, key: str) -> frozenset[str]:
+        """Return the keys of candidate pages linked with a page, in either direction.
 
         A searched page's key gives the pages linked with any page it was searched by.
         """
         return frozenset(
             chain.from_iterable(
-                self._linked_pages_by_key.get(current_key, ())
+                self._linked_page_keys_by_page_key.get(current_key, ())
                 for current_key in self._get_current_keys(key)
             )
         )
 
-    def get_linking_multi_work_pages(self, key: str) -> frozenset[str]:
-        """Return multi-work pages that linked to this page."""
+    def get_linking_multi_work_page_keys(self, key: str) -> frozenset[str]:
+        """Return the keys of multi-work pages that linked to this page."""
         return frozenset(
             chain.from_iterable(
-                self._linking_multi_work_pages_by_key.get(current_key, ())
+                self._linking_multi_work_page_keys_by_page_key.get(current_key, ())
                 for current_key in self._get_current_keys(key)
             )
         )
@@ -100,29 +103,34 @@ class ProviderPageLinks:
         """Record one page's links, as links of ``source_key``, within the candidates.
 
         ``source_key`` is the page's current key, or for a searched page one of
-        the pages it was searched by. A multi-work page's links are set apart rather than
-        recorded.
+        the pages it was searched by. A multi-work page's links are set apart
+        rather than recorded.
         """
-        target_keys = {self.get_current_key(link) for link in page.links} - {source_key}
+        target_keys = {
+            self.get_current_key(linked_page_key)
+            for linked_page_key in page.linked_page_keys
+        } - {source_key}
         referenced_keys = (
             target_keys | {source_key} if page.searched_by else target_keys
         )
         if has_repeated_provider(referenced_keys):
             for target_key in target_keys & candidate_keys:
-                self._linking_multi_work_pages_by_key[target_key].add(source_key)
+                self._linking_multi_work_page_keys_by_page_key[target_key].add(
+                    source_key
+                )
             return
 
         source_provider = get_page_provider(source_key)
         for target_key in target_keys & candidate_keys:
             if get_page_provider(target_key) != source_provider:
-                self._linked_pages_by_key[source_key].add(target_key)
-                self._linked_pages_by_key[target_key].add(source_key)
+                self._linked_page_keys_by_page_key[source_key].add(target_key)
+                self._linked_page_keys_by_page_key[target_key].add(source_key)
 
     def _get_current_keys(self, key: str) -> tuple[str, ...]:
         """Return the current keys a page key stands for.
 
-        A searched page stands for the pages it was searched by, and a renamed page resolves to
-        its current key.
+        A searched page stands for the pages it was searched by, and a renamed
+        page resolves to its current key.
         """
         return self._searched_by_keys_by_searched_page.get(key) or (
             self.get_current_key(key),

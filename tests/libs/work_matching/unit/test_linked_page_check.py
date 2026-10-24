@@ -1,5 +1,5 @@
 import pytest
-from work_matching.known_works_from_seed import KnownWorksFromSeed
+from work_matching.known_work_entries_from_seed import KnownWorkEntriesFromSeed
 from work_matching.linked_page_check import (
     SKIP_ANSWER,
     LinkedPageAddition,
@@ -9,7 +9,7 @@ from work_matching.linked_page_check import (
     LinkingEntryDetails,
     NoLinkingEntryError,
     decide_linked_page,
-    find_unheld_linked_pages,
+    find_unheld_linked_page_keys,
     get_entry_episode_count,
     read_linked_page_answer,
     suggest_linked_page_answer,
@@ -61,7 +61,7 @@ YAMATO_ANILIST_PAGE = ProviderPage(
     titles=("Uchuu Senkan Yamato √2199",),
     type="MOVIE",
     episode_count=1,
-    links=("mal:anime:65124",),
+    linked_page_keys=("mal:anime:65124",),
 )
 YAMATO_MAL_PAGE = ProviderPage(
     key="mal:anime:65124",
@@ -76,7 +76,7 @@ BOXER_ANILIST_PAGE = ProviderPage(
     titles=("The Boxer",),
     type="TV",
     episode_count=12,
-    links=("mal:anime:65144",),
+    linked_page_keys=("mal:anime:65144",),
 )
 BOXER_MAL_PAGE = ProviderPage(
     key="mal:anime:65144",
@@ -89,7 +89,7 @@ MORI_NO_YOUSEI_KITSU_PAGE = ProviderPage(
     address="https://kitsu.app/anime/40741",
     titles=("Mori no Yousei: Kinoko no Musume",),
     type="TV",
-    links=("mal:anime:35362",),
+    linked_page_keys=("mal:anime:35362",),
 )
 DOUKYUUSEI_MAL_PAGE = ProviderPage(
     key="mal:anime:3558",
@@ -97,13 +97,13 @@ DOUKYUUSEI_MAL_PAGE = ProviderPage(
     titles=("Doukyuusei: Natsu no Owari ni",),
     type="OVA",
     year=1994,
-    links=("anidb:anime:1159", "ann:anime:2125"),
+    linked_page_keys=("anidb:anime:1159", "ann:anime:2125"),
 )
 
 
 @pytest.fixture(scope="module")
-def known_works() -> KnownWorksFromSeed:
-    return KnownWorksFromSeed(
+def known_work_entries() -> KnownWorkEntriesFromSeed:
+    return KnownWorkEntriesFromSeed(
         [
             YAMATO_SEED_ENTRY,
             BOXER_SEED_ENTRY,
@@ -122,7 +122,7 @@ def _decide(
     *entries: WorkEntry,
     entry_episode_count: int | None,
     other_linked_page_keys: frozenset[str] = frozenset(),
-    known_works: KnownWorksFromSeed | None = None,
+    known_work_entries: KnownWorkEntriesFromSeed | None = None,
 ) -> LinkedPageDecision:
     return decide_linked_page(
         page,
@@ -134,12 +134,12 @@ def _decide(
             )
             for entry in entries
         ],
-        known_works or KnownWorksFromSeed([]),
+        known_work_entries or KnownWorkEntriesFromSeed([]),
     )
 
 
 def test_decide_linked_page_renamed_page_held_by_seed_entry_skipped(
-    known_works,
+    known_work_entries,
 ) -> None:
     kitsu_slug_page = ProviderPage(
         key="kitsu:anime:mori-no-yousei-kinoko-no-musume",
@@ -151,7 +151,7 @@ def test_decide_linked_page_renamed_page_held_by_seed_entry_skipped(
         kitsu_slug_page,
         _entry(BOXER_SEED_ENTRY),
         entry_episode_count=12,
-        known_works=known_works,
+        known_work_entries=known_work_entries,
     )
     assert (decision.reason, decision.outcome, decision.page_key) == (
         LinkedPageReason.HELD_UNDER_OTHER_ADDRESS,
@@ -174,7 +174,7 @@ def test_decide_linked_page_renamed_page_held_by_linking_entry_skipped() -> None
 
 
 def test_decide_linked_page_renamed_page_not_held_decided_under_current_key(
-    known_works,
+    known_work_entries,
 ) -> None:
     kitsu_slug_page = ProviderPage(
         key="kitsu:anime:the-boxer",
@@ -186,7 +186,7 @@ def test_decide_linked_page_renamed_page_not_held_decided_under_current_key(
         kitsu_slug_page,
         _entry(BOXER_SEED_ENTRY),
         entry_episode_count=12,
-        known_works=known_works,
+        known_work_entries=known_work_entries,
     )
     assert (decision.outcome, decision.page_key) == (
         LinkedPageOutcome.ADD,
@@ -194,46 +194,54 @@ def test_decide_linked_page_renamed_page_not_held_decided_under_current_key(
     )
 
 
-def test_find_unheld_linked_pages_link_to_page_no_entry_holds_returned(
-    known_works,
+def test_find_unheld_linked_page_keys_link_to_page_no_entry_holds_returned(
+    known_work_entries,
 ) -> None:
-    assert find_unheld_linked_pages(
+    assert find_unheld_linked_page_keys(
         _entry(MORI_NO_YOUSEI_SEED_ENTRY),
         [MORI_NO_YOUSEI_KITSU_PAGE],
-        known_works,
+        known_work_entries,
         LINKED_PROVIDERS,
     ) == frozenset({"mal:anime:35362"})
 
 
-def test_find_unheld_linked_pages_page_held_by_seed_entry_left_out(known_works) -> None:
-    page = BOXER_ANILIST_PAGE.model_copy(update={"links": ("anilist:anime:182615",)})
+def test_find_unheld_linked_page_keys_page_held_by_seed_entry_left_out(
+    known_work_entries,
+) -> None:
+    page = BOXER_ANILIST_PAGE.model_copy(
+        update={"linked_page_keys": ("anilist:anime:182615",)}
+    )
     assert (
-        find_unheld_linked_pages(
-            _entry(BOXER_SEED_ENTRY), [page], known_works, LINKED_PROVIDERS
+        find_unheld_linked_page_keys(
+            _entry(BOXER_SEED_ENTRY), [page], known_work_entries, LINKED_PROVIDERS
         )
         == frozenset()
     )
 
 
-def test_find_unheld_linked_pages_provider_not_given_left_out(known_works) -> None:
-    assert find_unheld_linked_pages(
+def test_find_unheld_linked_page_keys_provider_not_given_left_out(
+    known_work_entries,
+) -> None:
+    assert find_unheld_linked_page_keys(
         _entry(DOUKYUUSEI_SEED_ENTRY),
         [DOUKYUUSEI_MAL_PAGE],
-        known_works,
+        known_work_entries,
         LINKED_PROVIDERS,
     ) == frozenset({"anidb:anime:1159"})
 
 
-def test_find_unheld_linked_pages_manga_page_left_out(known_works) -> None:
+def test_find_unheld_linked_page_keys_manga_page_left_out(known_work_entries) -> None:
     page = MORI_NO_YOUSEI_KITSU_PAGE.model_copy(
-        update={"links": ("anilist:manga:119534", "mal:anime:35362")}
+        update={"linked_page_keys": ("anilist:manga:119534", "mal:anime:35362")}
     )
-    assert find_unheld_linked_pages(
-        _entry(MORI_NO_YOUSEI_SEED_ENTRY), [page], known_works, LINKED_PROVIDERS
+    assert find_unheld_linked_page_keys(
+        _entry(MORI_NO_YOUSEI_SEED_ENTRY), [page], known_work_entries, LINKED_PROVIDERS
     ) == frozenset({"mal:anime:35362"})
 
 
-def test_find_unheld_linked_pages_link_to_entry_own_page_left_out(known_works) -> None:
+def test_find_unheld_linked_page_keys_link_to_entry_own_page_left_out(
+    known_work_entries,
+) -> None:
     entry = WorkEntry.from_seed_entry(
         {
             **BOXER_SEED_ENTRY,
@@ -244,8 +252,8 @@ def test_find_unheld_linked_pages_link_to_entry_own_page_left_out(known_works) -
         }
     )
     assert (
-        find_unheld_linked_pages(
-            entry, [BOXER_ANILIST_PAGE], known_works, LINKED_PROVIDERS
+        find_unheld_linked_page_keys(
+            entry, [BOXER_ANILIST_PAGE], known_work_entries, LINKED_PROVIDERS
         )
         == frozenset()
     )
@@ -293,7 +301,7 @@ def test_decide_linked_page_unknown_episode_count_does_not_stop_addition() -> No
 
 def test_decide_linked_page_without_linking_entry_raises() -> None:
     with pytest.raises(NoLinkingEntryError, match="mal:anime:65144"):
-        decide_linked_page(BOXER_MAL_PAGE, [], KnownWorksFromSeed([]))
+        decide_linked_page(BOXER_MAL_PAGE, [], KnownWorkEntriesFromSeed([]))
 
 
 def test_decide_linked_page_dead_page_skipped() -> None:

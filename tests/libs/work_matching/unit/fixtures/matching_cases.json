@@ -36,7 +36,7 @@
         "type": "TV",
         "year": 2011,
         "season": "SPRING",
-        "links": [
+        "linked_page_keys": [
           "ann:anime:12559"
         ],
         "renamed_to": null,
@@ -53,7 +53,7 @@
         "type": "TV SHORT",
         "year": 2011,
         "season": "SPRING",
-        "links": [
+        "linked_page_keys": [
           "mal:anime:10459"
         ],
         "renamed_to": null,
@@ -70,7 +70,7 @@
         "type": "TV SHORT",
         "year": 2011,
         "season": "SUMMER",
-        "links": [
+        "linked_page_keys": [
           "mal:anime:11589"
         ],
         "renamed_to": null,
@@ -87,7 +87,7 @@
         "type": "TV",
         "year": 2011,
         "season": "SPRING",
-        "links": [],
+        "linked_page_keys": [],
         "renamed_to": null,
         "searched_by": [],
         "is_dead": false
@@ -102,7 +102,7 @@
         "type": "TV",
         "year": 2011,
         "season": "SPRING",
-        "links": [],
+        "linked_page_keys": [],
         "renamed_to": null,
         "searched_by": [],
         "is_dead": false
@@ -117,7 +117,7 @@
         "type": "TV SHORT",
         "year": 2011,
         "season": "SPRING",
-        "links": [
+        "linked_page_keys": [
           "anilist:anime:10459",
           "kitsu:anime:6190"
         ],
@@ -137,7 +137,7 @@
         "type": "TV SHORT",
         "year": 2011,
         "season": "SUMMER",
-        "links": [
+        "linked_page_keys": [
           "anilist:anime:11589",
           "kitsu:anime:6543"
         ],
@@ -157,7 +157,7 @@
         "type": "TV",
         "year": 2011,
         "season": "SPRING",
-        "links": [
+        "linked_page_keys": [
           "anilist:anime:10459",
           "mal:anime:10459"
         ],
@@ -175,7 +175,7 @@
         "type": "TV",
         "year": 2011,
         "season": "SUMMER",
-        "links": [
+        "linked_page_keys": [
           "anidb:anime:8328",
           "anilist:anime:11589",
           "mal:anime:11589"
@@ -195,7 +195,7 @@
         "type": "TV",
         "year": 2011,
         "season": "SPRING",
-        "links": [
+        "linked_page_keys": [
           "anidb:anime:8328",
           "ann:anime:12559"
         ],
@@ -213,7 +213,7 @@
         "type": "TV",
         "year": 2011,
         "season": "SUMMER",
-        "links": [],
+        "linked_page_keys": [],
         "renamed_to": null,
         "searched_by": [],
         "is_dead": false
@@ -255,7 +255,7 @@
         "type": "OVA",
         "year": 2014,
         "season": "SUMMER",
-        "links": [
+        "linked_page_keys": [
           "ann:anime:15817",
           "mal:anime:24151"
         ],
@@ -273,7 +273,7 @@
         "type": "OVA",
         "year": 2014,
         "season": "SUMMER",
-        "links": [
+        "linked_page_keys": [
           "mal:anime:24151"
         ],
         "renamed_to": null,
@@ -290,7 +290,7 @@
         "type": "OVA",
         "year": 2014,
         "season": "FALL",
-        "links": [
+        "linked_page_keys": [
           "mal:anime:24151"
         ],
         "renamed_to": null,
@@ -307,7 +307,7 @@
         "type": "OVA",
         "year": 2014,
         "season": "WINTER",
-        "links": [],
+        "linked_page_keys": [],
         "renamed_to": null,
         "searched_by": [],
         "is_dead": false
@@ -322,7 +322,7 @@
         "type": "OVA",
         "year": 2014,
         "season": "SUMMER",
-        "links": [],
+        "linked_page_keys": [],
         "renamed_to": null,
         "searched_by": [],
         "is_dead": false
@@ -337,7 +337,7 @@
         "type": "OVA",
         "year": 2014,
         "season": "SUMMER",
-        "links": [],
+        "linked_page_keys": [],
         "renamed_to": null,
         "searched_by": [],
         "is_dead": false
@@ -352,7 +352,7 @@
         "type": "OVA",
         "year": 2014,
         "season": "SUMMER",
-        "links": [
+        "linked_page_keys": [
           "anidb:anime:10626",
           "anilist:anime:20900",
           "animeplanet:anime:blue-spring-ride-page-13",
@@ -374,7 +374,7 @@
         "type": "OVA",
         "year": 2014,
         "season": "SUMMER",
-        "links": [
+        "linked_page_keys": [
           "anidb:anime:10626",
           "anilist:anime:20837",
           "mal:anime:24151"
@@ -394,7 +394,7 @@
         "type": "OVA",
         "year": 2014,
         "season": null,
-        "links": [
+        "linked_page_keys": [
           "anidb:anime:10626",
           "ann:anime:15817"
         ],
@@ -440,7 +440,7 @@
         "type": "TV SPECIAL",
         "year": 2025,
         "season": "SPRING",
-        "links": [
+        "linked_page_keys": [
           "ann:anime:28792",
           "mal:anime:55779"
         ],
@@ -459,7 +459,7 @@
         "type": "SPECIAL",
         "year": 2025,
         "season": "SPRING",
-        "links": [
+        "linked_page_keys": [
           "mal:anime:55779"
         ],
         "renamed_to": null,
@@ -476,7 +476,7 @@
         "type": "TV SPECIAL",
         "year": 2025,
         "season": "SPRING",
-        "links": [],
+        "linked_page_keys": [],
         "renamed_to": "animeplanet:anime:cocoon-one-summer-of-girlhood",
         "searched_by": [],
         "is_dead": false
@@ -491,7 +491,7 @@
         "type": "TV SPECIAL",
         "year": 2025,
         "season": "SPRING",
-        "links": [],
+        "linked_page_keys": [],
         "renamed_to": null,
         "searched_by": [],
         "is_dead": false
@@ -507,7 +507,7 @@
         "type": "TV SPECIAL",
         "year": 2025,
         "season": "SPRING",
-        "links": [],
+        "linked_page_keys": [],
         "renamed_to": null,
         "searched_by": [],
         "is_dead": false
@@ -522,7 +522,7 @@
         "type": "SPECIAL",
         "year": 2025,
         "season": "SPRING",
-        "links": [
+        "linked_page_keys": [
           "anidb:anime:18084",
           "anilist:anime:166527",
           "animeplanet:anime:cocoon",
@@ -543,7 +543,7 @@
         "type": "SPECIAL",
         "year": 2025,
         "season": "SPRING",
-        "links": [
+        "linked_page_keys": [
           "anilist:anime:166527",
           "mal:anime:55779"
         ],
@@ -561,7 +561,7 @@
         "type": "TV SPECIAL",
         "year": 2025,
         "season": null,
-        "links": [
+        "linked_page_keys": [
           "anidb:anime:18084",
           "ann:anime:28792"
         ],
@@ -597,7 +597,7 @@
         "type": "ONA",
         "year": 2024,
         "season": "SUMMER",
-        "links": [],
+        "linked_page_keys": [],
         "renamed_to": null,
         "searched_by": [],
         "is_dead": false
@@ -612,7 +612,7 @@
         "type": "ONA",
         "year": 2025,
         "season": "SPRING",
-        "links": [],
+        "linked_page_keys": [],
         "renamed_to": null,
         "searched_by": [],
         "is_dead": false
@@ -645,7 +645,7 @@
         "type": "ONA",
         "year": 2023,
         "season": "SUMMER",
-        "links": [],
+        "linked_page_keys": [],
         "renamed_to": null,
         "searched_by": [],
         "is_dead": false
@@ -660,7 +660,7 @@
         "type": "ONA",
         "year": 2024,
         "season": "WINTER",
-        "links": [],
+        "linked_page_keys": [],
         "renamed_to": null,
         "searched_by": [],
         "is_dead": false
@@ -704,7 +704,7 @@
         "type": "ONA",
         "year": 2026,
         "season": "WINTER",
-        "links": [
+        "linked_page_keys": [
           "mal:anime:58573"
         ],
         "renamed_to": null,
@@ -722,7 +722,7 @@
         "type": "ONA",
         "year": 2026,
         "season": "WINTER",
-        "links": [
+        "linked_page_keys": [
           "mal:anime:58573"
         ],
         "renamed_to": null,
@@ -739,7 +739,7 @@
         "type": "ONA",
         "year": 2026,
         "season": "WINTER",
-        "links": [],
+        "linked_page_keys": [],
         "renamed_to": null,
         "searched_by": [],
         "is_dead": false
@@ -758,7 +758,7 @@
         "type": "ONA",
         "year": 2026,
         "season": "WINTER",
-        "links": [],
+        "linked_page_keys": [],
         "renamed_to": null,
         "searched_by": [],
         "is_dead": false
@@ -773,7 +773,7 @@
         "type": "UNKNOWN",
         "year": 2026,
         "season": "WINTER",
-        "links": [
+        "linked_page_keys": [
           "anidb:anime:18579",
           "anilist:anime:176509",
           "animeplanet:anime:baki-dou",
@@ -796,7 +796,7 @@
         "type": "ONA",
         "year": 2026,
         "season": "WINTER",
-        "links": [
+        "linked_page_keys": [
           "anilist:anime:176509",
           "mal:anime:58573"
         ],
@@ -815,7 +815,7 @@
         "type": "ONA",
         "year": 2026,
         "season": null,
-        "links": [
+        "linked_page_keys": [
           "anidb:anime:18579",
           "ann:anime:32626"
         ],
@@ -870,7 +870,7 @@
         "type": "TV",
         "year": 2022,
         "season": "WINTER",
-        "links": [
+        "linked_page_keys": [
           "ann:anime:24629",
           "mal:anime:43735"
         ],
@@ -887,7 +887,7 @@
         "type": "TV",
         "year": 2022,
         "season": "WINTER",
-        "links": [
+        "linked_page_keys": [
           "mal:anime:43735"
         ],
         "renamed_to": null,
@@ -903,7 +903,7 @@
         "type": "TV",
         "year": 2022,
         "season": "WINTER",
-        "links": [],
+        "linked_page_keys": [],
         "renamed_to": null,
         "searched_by": [],
         "is_dead": false
@@ -918,7 +918,7 @@
         "type": "TV",
         "year": 2022,
         "season": "WINTER",
-        "links": [],
+        "linked_page_keys": [],
         "renamed_to": null,
         "searched_by": [],
         "is_dead": false
@@ -932,7 +932,7 @@
         "type": "TV",
         "year": 2022,
         "season": "WINTER",
-        "links": [
+        "linked_page_keys": [
           "anidb:anime:15827",
           "anilist:anime:125682",
           "animeplanet:anime:cue",
@@ -953,7 +953,7 @@
         "type": "TV",
         "year": 2022,
         "season": "WINTER",
-        "links": [
+        "linked_page_keys": [
           "anilist:anime:125682",
           "mal:anime:43735"
         ],
@@ -971,7 +971,7 @@
         "type": "TV",
         "year": 2022,
         "season": "WINTER",
-        "links": [
+        "linked_page_keys": [
           "anidb:anime:15827",
           "ann:anime:24629"
         ],

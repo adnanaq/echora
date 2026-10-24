@@ -40,7 +40,7 @@ from typing import Final
 
 from pydantic import JsonValue
 from work_matching.doubled_provider_check import is_page_details_matching
-from work_matching.known_works import KnownWorks
+from work_matching.known_work_entries import KnownWorkEntries
 from work_matching.provider_page import ProviderPage
 from work_matching.provider_page_key import (
     get_page_kind,
@@ -125,7 +125,7 @@ class LinkingEntryDetails:
     # As ``get_entry_episode_count`` gives it.
     episode_count: int | None
     # Every page the entry's pages link that no known work holds, as
-    # ``find_unheld_linked_pages`` gives them, so two of one provider are seen.
+    # ``find_unheld_linked_page_keys`` gives them, so two of one provider are seen.
     linked_page_keys: frozenset[str]
 
 
@@ -175,19 +175,19 @@ class NoLinkingEntryError(ValueError):
         super().__init__(f"No entry links the page to decide: {page_key}")
 
 
-def find_unheld_linked_pages(
+def find_unheld_linked_page_keys(
     entry: WorkEntry,
     pages: Iterable[ProviderPage],
-    known_works: KnownWorks,
+    known_work_entries: KnownWorkEntries,
     providers: Collection[str],
 ) -> frozenset[str]:
-    """Return the pages an entry's pages link that no known work and not the entry holds.
+    """Return the keys of linked pages that neither a known work nor the entry holds.
 
     Args:
         entry: The work entry.
         pages: The fetched details of the entry's pages and of pages searched
             by them, whose links are read.
-        known_works: The works already known.
+        known_work_entries: The work entries already known.
         providers: The providers whose linked pages can be added: those whose
             pages are fetched, so each one can be checked live.
 
@@ -195,13 +195,13 @@ def find_unheld_linked_pages(
         The page keys of the linked pages.
     """
     return frozenset(
-        link
+        linked_page_key
         for page in pages
-        for link in page.links
-        if get_page_provider(link) in providers
-        and get_page_kind(link) == "anime"
-        and link not in entry.pages
-        and known_works.find_by_page_key(link) is None
+        for linked_page_key in page.linked_page_keys
+        if get_page_provider(linked_page_key) in providers
+        and get_page_kind(linked_page_key) == "anime"
+        and linked_page_key not in entry.addresses_by_page_key
+        and known_work_entries.find_by_page_key(linked_page_key) is None
     )
 
 
@@ -221,17 +221,17 @@ def get_entry_episode_count(
     Returns:
         The episode count, or None when no page of the entry gives one.
     """
-    episode_count_by_page = {
+    episode_count_by_page_key = {
         page.key: page.episode_count
         for page in pages
-        if page.key in entry.pages and page.episode_count is not None
+        if page.key in entry.addresses_by_page_key and page.episode_count is not None
     }
     # min keeps the first of equally trusted pages, in the entry's own order.
     most_trusted_page_key = min(
-        episode_count_by_page, key=rank_by_provider_trust, default=None
+        episode_count_by_page_key, key=rank_by_provider_trust, default=None
     )
     return (
-        episode_count_by_page[most_trusted_page_key]
+        episode_count_by_page_key[most_trusted_page_key]
         if most_trusted_page_key is not None
         else None
     )
@@ -240,7 +240,7 @@ def get_entry_episode_count(
 def decide_linked_page(
     page: ProviderPage,
     linking_entry_details: Iterable[LinkingEntryDetails],
-    known_works: KnownWorks,
+    known_work_entries: KnownWorkEntries,
 ) -> LinkedPageDecision:
     """Decide whether a fetched linked page is added, reviewed or skipped.
 
@@ -251,7 +251,8 @@ def decide_linked_page(
     Args:
         page: The linked page's fetched details.
         linking_entry_details: Every entry whose pages link the page; at least one.
-        known_works: The works already known, to tell a page already held.
+        known_work_entries: The work entries already known, to tell a page
+            already held.
 
     Returns:
         The decision named by the page's current key, with the linking entries
@@ -272,8 +273,8 @@ def decide_linked_page(
     page_key = page.current_key
     if page.is_dead:
         reason = LinkedPageReason.NOT_FOUND
-    elif known_works.find_by_page_key(page_key) or any(
-        page_key in entry.pages for entry in linking_entries
+    elif known_work_entries.find_by_page_key(page_key) or any(
+        page_key in entry.addresses_by_page_key for entry in linking_entries
     ):
         reason = LinkedPageReason.HELD_UNDER_OTHER_ADDRESS
     elif len(linking_entries) > 1:

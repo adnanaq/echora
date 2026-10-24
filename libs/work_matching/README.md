@@ -31,11 +31,11 @@ Whatever the rules cannot settle becomes a review case, answered by a person
 | **Current key**      | The key a page is found under now. A renamed page, or a page reached by another spelling (a Kitsu slug for a page the seed lists by number), has another current key, which only fetching the page shows (`ProviderPage.current_key`).                                                        |
 | **Seed**             | The downloaded anime-offline-database file the enrichment pipeline starts from.                                                                                                                                                                                                               |
 | **Seed entry**       | One row of the seed: a title, type, year, season and a list of provider pages.                                                                                                                                                                                                                |
-| **Work entry**       | One work as this library sees it (`WorkEntry`): title, type, year, season and its pages by key. Built from a seed entry, later also from discovery.                                                                                                                                           |
+| **Work entry**       | One work as this library sees it (`WorkEntry`): title, type, year, season and its page addresses by page key (`addresses_by_page_key`). Built from a seed entry, later also from discovery.                                                                                                                                           |
 | **Reference page**   | The page that names an entry across seed releases: its most trusted page, MAL first, then AniList, AniDB, Kitsu, Anime-Planet, AniSearch, ANN, LiveChart, Simkl, AnimeCountdown (`REFERENCE_ORDER`). An entry's position in the seed file changes every release; its reference page does not. |
-| **Known works**      | All work entries, looked up by page key or by title, type and year (`KnownWorks`, backed by the seed in `KnownWorksFromSeed`). The seed lookup also reports pages listed in several entries and entries without pages.                                                                        |
+| **Known work entries** | All work entries, looked up by page key or by title, type and year (`KnownWorkEntries`, backed by the seed in `KnownWorkEntriesFromSeed`). The seed lookup also reports page keys listed in several entries and the titles of entries without pages.                                                                        |
 | **Held** | An entry holds a page when the entry lists the page among its pages. A known work holds a page when the work's entry does. |
-| **Link** | A page key one page lists for another provider's page (`ProviderPage.links`), read from the fetched record's `sources` and `external_sources`. A page's own provider is not a link (a second page of that provider is the page's new address, `renamed_to`), and neither are shared websites or unrecognised addresses. |
+| **Link** | A page key one page lists for another provider's page (`ProviderPage.linked_page_keys`), read from the fetched record's `sources` and `external_sources`. A page's own provider is not a link (a second page of that provider is the page's new address, `renamed_to`), and neither are shared websites or unrecognised addresses. |
 | **Linked** | Two pages are linked when either one lists the other among its links. Direction does not matter. Links from a multi-work page, and a searched page's link back to the page it was searched by, are ignored. |
 | **Doubled provider** | An entry listing two or more pages of one provider. It may be one page under two addresses, one work the provider lists twice, or two works mixed into one entry. Checking tells which.                                                                                                       |
 | **Mixed entry**      | An entry whose pages cover more than one work. Puu-Neko holds the pages of both "Puu-Neko" and "Puu-Neko Shougekijou".                                                                                                                                                                        |
@@ -56,7 +56,7 @@ Whatever the rules cannot settle becomes a review case, answered by a person
 ```mermaid
 flowchart TD
     seed[Seed file] --> entries[WorkEntry per seed entry,<br/>pages by page key]
-    seed --> known[KnownWorksFromSeed:<br/>every entry by page and by title]
+    seed --> known[KnownWorkEntriesFromSeed:<br/>every entry by page and by title]
     entries --> fetch[Caller fetches every page<br/>with the enrichment helpers]
     fetch --> store[(ProviderPageStore)]
     store --> pages[ProviderPage per page:<br/>titles, type, year, season,<br/>episode count, air dates, links]
@@ -70,7 +70,7 @@ flowchart TD
     split --> settled{Settled?}
     settled -- yes --> caller
     settled -- no --> review
-    pages --> unheld[find_unheld_linked_pages:<br/>linked anime pages of fetched providers<br/>that no known work holds]
+    pages --> unheld[find_unheld_linked_page_keys:<br/>linked anime pages of fetched providers<br/>that no known work holds]
     known --> unheld
     unheld --> fetchlinked[Caller fetches each linked page,<br/>and its current key when it reports another]
     fetchlinked --> linked{decide_linked_page:<br/>at the page's current key}
@@ -80,7 +80,7 @@ flowchart TD
     review -- "a person answers;<br/>the next run hands the answer back" --> caller
 ```
 
-1. **Read the seed.** Each seed entry becomes a `WorkEntry`, its pages keyed by page key. `KnownWorksFromSeed` indexes every entry by page and by title.
+1. **Read the seed.** Each seed entry becomes a `WorkEntry`, its pages keyed by page key. `KnownWorkEntriesFromSeed` indexes every entry by page and by title.
 2. **Fetch the pages.** The caller fetches each page through the enrichment helpers, with characters and episodes off, and builds a `ProviderPage` with `ProviderPage.from_canonical_record`. AnimeSchedule is searched by the entry's MAL page (else AniList, else AniDB), and its page records that page as `searched_by`. Pages are kept in a `ProviderPageStore`, so they outlive the 7-day HTTP cache.
 3. **Link the pages.** `ProviderPageLinks` joins the candidate pages by their links, in both directions:
    - a renamed page resolves to its current key;
@@ -89,7 +89,7 @@ flowchart TD
    - the links of a multi-work page are set aside.
 4. **Decide doubled providers and split works.** `decide_doubled_providers` decides each doubled provider of an entry, and `decide_split_work` decides whether candidate entries are one work.
 5. **Place or review.** `place_pages_without_review` places every doubled page of an entry when the rules settle the whole entry, and the caller applies the places. Otherwise the entry becomes one review case in the `ReviewFile`, as does a split-work group the links do not settle.
-6. **Add linked pages.** `find_unheld_linked_pages` lists the pages an entry's pages link that no known work holds. The caller fetches each, and its current key when the fetch reports another. `decide_linked_page` then adds the page, leaves it out, or makes a review case.
+6. **Add linked pages.** `find_unheld_linked_page_keys` lists the pages an entry's pages link that no known work holds. The caller fetches each, and its current key when the fetch reports another. `decide_linked_page` then adds the page, leaves it out, or makes a review case.
 7. **Apply answers.** Once a person answers a case, the next run hands the answer back to the caller, who applies it like a decision of the rules.
 
 **Links decide; details only stop.** A page's title, year, type, season,
@@ -169,17 +169,17 @@ provider:
 | Field               | Holds                                                                                                                                    |
 | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | `provider`          | The provider decided; `simkl` for Simkl and AnimeCountdown together.                                                                     |
-| `pages`             | The provider's page keys in the entry, renamed pages folded into their current key.                                                      |
+| `page_keys`         | The provider's page keys in the entry, renamed pages folded into their current key.                                                      |
 | `reason`            | The `Reason` above.                                                                                                                      |
 | `outcome`           | The `Outcome` the reason gives: `SAME_PAGE`, `ONE_WORK`, `MIXED_ENTRY` or `REVIEW`. Everything but `REVIEW` can be applied as it stands. |
-| `belonging_pages`   | Each page that belongs, with the entry's pages linked with it. On a mixed entry these sets show which pages go together.                 |
-| `unrelated_pages`   | Each unrelated page, as an `UnrelatedPage`: its `links` naming the other work, and `other_works`, the known works those links belong to. |
-| `undecided_pages`   | The pages with no links either way.                                                                                                      |
+| `belonging_page_keys`   | Each page that belongs, with the entry's pages linked with it. On a mixed entry these sets show which pages go together.                 |
+| `unrelated_pages`   | Each unrelated page, as an `UnrelatedPage`: its `linked_page_keys` naming the other work, and `other_work_entries`, the known work entries those links belong to. |
+| `undecided_page_keys`   | The pages with no links either way.                                                                                                      |
 | `title_matches`     | On review only: the pages whose main title matches the entry's title or the main title of one of its other pages.                        |
 | `year_type_matches` | On review only: the pages whose year and type agree with the entry's.                                                                    |
 | `season_matches`    | On review only: the pages in the entry's season.                                                                                         |
 
-`belonging_pages`, `unrelated_pages` and `undecided_pages` are filled for every
+`belonging_page_keys`, `unrelated_pages` and `undecided_page_keys` are filled for every
 reason except `SAME_PAGE`. On a review they show what the links say, even when
 a check that runs first, such as `DEAD_PAGE`, decided the reason.
 
@@ -215,7 +215,7 @@ anilist    LINKED_APART  MIXED_ENTRY  anilist:anime:1 -> {kitsu:anime:1, mal:ani
                                       anilist:anime:2 -> {mal:anime:2}
 ```
 
-The `belonging_pages` sets show the two works: `mal:anime:1`, `anilist:anime:1`
+The `belonging_page_keys` sets show the two works: `mal:anime:1`, `anilist:anime:1`
 and `kitsu:anime:1` are one; `mal:anime:2` and `anilist:anime:2` the other.
 
 **2. One provider settled, another sent to review.** The entry holds
@@ -337,7 +337,7 @@ no seed entry holds. Most such links are stale (the provider has deleted the
 page) and some are wrong mappings, so a linked page is checked before it joins
 an entry.
 
-**Finding them.** `find_unheld_linked_pages` lists the pages an entry's pages
+**Finding them.** `find_unheld_linked_page_keys` lists the pages an entry's pages
 link that no known work holds and the entry does not hold. It keeps only anime
 pages (a manga link names source material, not a page of the work) of
 providers whose pages can be fetched, so each can be checked live.
@@ -351,7 +351,7 @@ count as one page.
 
 **Deciding.** `decide_linked_page` takes the fetched page, every entry linking
 it (as `LinkingEntryDetails`: the entry, its episode count, and every unheld
-page it links), and the known works. The checks run in this order, and the
+page it links), and the known work entries. The checks run in this order, and the
 first that applies gives the reason:
 
 ```mermaid
@@ -421,7 +421,7 @@ person, or later the review agent, writes the answer into the line; the next
 run hands it back.
 
 ```json
-{"case": "doubled provider: animeplanet:anime:example animeplanet:anime:example-movie in mal:anime:3",
+{"case_name": "doubled provider: animeplanet:anime:example animeplanet:anime:example-movie in mal:anime:3",
  "answer": {"animeplanet:anime:example": "entry", "animeplanet:anime:example-movie": "other work"},
  "suggested_answer": {"animeplanet:anime:example": "entry", "mal:anime:3": "entry"},
  "reasons": ["UNDECIDED_PAGES"], "entries": {"mal:anime:3": {...}}, "decisions": [...], "pages": [...]}
@@ -431,11 +431,11 @@ run hands it back.
 
 | Field              | Holds                                                                                                                                                                                                                                                                                                                                                      |
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `case`             | The case's name: its kind and its sorted page keys. `doubled provider: ` with every doubled page of the entry and `in` the entry's reference page, since the answer places pages relative to that entry; `split work: ` with the entries' reference pages; or `linked page: ` with the page's current key and `from` the linking entries' reference pages. |
+| `case_name`        | The case's name: its kind and its sorted page keys. `doubled provider: ` with every doubled page of the entry and `in` the entry's reference page, since the answer places pages relative to that entry; `split work: ` with the entries' reference pages; or `linked page: ` with the page's current key and `from` the linking entries' reference pages. |
 | `answer`           | `null` until answered.                                                                                                                                                                                                                                                                                                                                     |
 | `suggested_answer` | For a doubled-provider case, the places the links point to (see "Placing an entry's pages"); for a linked page, possibly `add as part`; empty for a split work.                                                                                                                                                                                            |
 | `reasons`          | Each decision's reason by name, so answers can be counted per reason even after its wording changes.                                                                                                                                                                                                                                                       |
-| `entries`          | Each entry involved, by its reference page, as its `WorkEntry`: title, type, year, season and pages.                                                                                                                                                                                                                                                       |
+| `entries`          | Each entry involved, by its reference page, as its `WorkEntry`: title, type, year, season and page addresses.                                                                                                                                                                                                                                                       |
 | `decisions`        | Every `DoubledProviderDecision` of the entry, the one `SplitWorkDecision`, or the one `LinkedPageDecision`, as the rules made them. Sets of page keys are written sorted, so two runs give the same file.                                                                                                                                                  |
 | `pages`            | The details of the entries' fetched pages and of the pages searched by them (such as AnimeSchedule), as `ProviderPage` stores them: every link and detail the decision read.                                                                                                                                                                             |
 
@@ -450,7 +450,7 @@ run hands it back.
 An answer that is not valid, such as a missing page, a misspelt word or two
 main pages, leaves the case open and the text in place to correct.
 
-**Across runs.** `ReviewFile` reads only each line's `case` and `answer`.
+**Across runs.** `ReviewFile` reads only each line's `case_name` and `answer`.
 `write_cases` writes this run's cases with their kept answers, and replaces the
 file in one step, so an interrupted run leaves the old file:
 
@@ -480,14 +480,14 @@ Applying answers is the caller's job: seed cleaning turns them into corrections.
 | `provider_page_key.py`                       | `get_page_key`: an address to its page key. `build_page_address`: a page key back to an address, spelled as the seed spells it. `get_page_provider`, `get_page_kind`, `get_page_id`: the parts of a key. `rank_by_provider_trust`: how far a page's provider is trusted to name a work, in `REFERENCE_ORDER`.                                                                                                                                                                                      |
 | `work_entry.py`                              | `WorkEntry`, with `reference_page` and `has_page_of_same_provider`, and the type and year comparisons `is_type_matching` and `is_year_matching`.                                                                                                                                                                                                                                                                                                                                                   |
 | `comparable_title.py`                        | `fold_title_for_comparison`: a title folded for comparison (case, punctuation, Latin accents, "2nd Season").                                                                                                                                                                                                                                                                                                                                                                                       |
-| `known_works.py`, `known_works_from_seed.py` | The `KnownWorks` interface and its seed-backed lookup.                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `provider_page.py`                           | `ProviderPage`: what a provider says about one page (titles, type, year, season, episode count, air dates, links, current key), read from the canonical record its enrichment helper returns. `index_pages_by_current_key`: pages by the current key each resolves to.                                                                                                                                                                                                                             |
+| `known_work_entries.py`, `known_work_entries_from_seed.py` | The `KnownWorkEntries` interface and its seed-backed lookup.                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `provider_page.py`                           | `ProviderPage`: what a provider says about one page (titles, type, year, season, episode count, air dates, linked page keys, current key), read from the canonical record its enrichment helper returns. `index_pages_by_current_key`: pages by the current key each resolves to.                                                                                                                                                                                                                             |
 | `provider_page_store.py`                     | `ProviderPageStore`: fetched pages kept in a JSON Lines file. `get_entry_pages` returns an entry's pages and the pages searched by them; `has_page_searched_by` and `get_pages_searched_by` answer for searches such as AnimeSchedule's.                                                                                                                                                                                                                                                                |
 | `provider_page_links.py`                     | `ProviderPageLinks`: which pages of a group are linked.                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `doubled_provider_check.py`                  | `decide_doubled_providers`: the decision for each doubled provider of an entry. `find_doubled_provider_pages`: an entry's doubled providers and their pages, the rule seed cleaning lists entries by. `get_decided_provider`: the provider a page's decision falls under, AnimeCountdown under Simkl. `get_seed_type`: the seed type a provider page's type falls under. `is_page_details_matching`: whether a page's year and type agree with an entry's, the check moves and linked pages share. |
+| `doubled_provider_check.py`                  | `decide_doubled_providers`: the decision for each doubled provider of an entry. `find_doubled_provider_page_keys`: an entry's doubled providers and their pages, the rule seed cleaning lists entries by. `get_decided_provider`: the provider a page's decision falls under, AnimeCountdown under Simkl. `get_seed_type`: the seed type a provider page's type falls under. `is_page_details_matching`: whether a page's year and type agree with an entry's, the check moves and linked pages share. |
 | `page_placement.py`                          | `PagePlacement`: where one page of an entry with doubled providers goes. `place_pages_without_review`: the places when the rules settle the whole entry. `read_answer_placements`: an answer read into places. `suggest_page_placements`: the places the links point to, offered to a reviewer. `find_move_target`: the seed entry a page moves to, when the move is sure.                                                                                                                         |
 | `split_work_check.py`                        | `decide_split_work`: whether separate entries are one split work.                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `linked_page_check.py`                       | `find_unheld_linked_pages`: an entry's linked pages. `get_entry_episode_count`: an entry's episode count from its most trusted page giving one. `decide_linked_page`: whether a linked page is added, reviewed or not added. `read_linked_page_answer`, `suggest_linked_page_answer`: a review answer read, and the answer offered.                                                                                                                                                                |
+| `linked_page_check.py`                       | `find_unheld_linked_page_keys`: an entry's linked pages. `get_entry_episode_count`: an entry's episode count from its most trusted page giving one. `decide_linked_page`: whether a linked page is added, reviewed or not added. `read_linked_page_answer`, `suggest_linked_page_answer`: a review answer read, and the answer offered.                                                                                                                                                                |
 | `review_cases.py`                            | `ReviewCase`: one entry, split-work group or linked page left to a person, with its answer. `ReviewFile`: the review file, its answers kept across runs.                                                                                                                                                                                                                                                                                                                                           |
 | `file_replacement.py`                        | `replace_file_lines`: a file's lines replaced in one step, so an interrupted run leaves the old file.                                                                                                                                                                                                                                                                                                                                                                                              |
 
@@ -498,20 +498,20 @@ too (`get_entry_pages` includes them): their links count for the pages they were
 
 ```python
 from work_matching import (
-    KnownWorksFromSeed,
+    KnownWorkEntriesFromSeed,
     Outcome,
     ProviderPageStore,
     decide_doubled_providers,
 )
 
-known_works = KnownWorksFromSeed.from_file("assets/seed_data/anime-offline-database.json")
+known_work_entries = KnownWorkEntriesFromSeed.from_file("assets/seed_data/anime-offline-database.json")
 store = ProviderPageStore("data/seed_cleaning/provider_pages.jsonl")
 
-entry = known_works.find_by_page_key("mal:anime:10459")
+entry = known_work_entries.find_by_page_key("mal:anime:10459")
 pages = store.get_entry_pages(entry)
-for decision in decide_doubled_providers(entry, pages, known_works):
+for decision in decide_doubled_providers(entry, pages, known_work_entries):
     if decision.outcome is Outcome.REVIEW:
-        print(decision.provider, decision.reason, decision.undecided_pages)
+        print(decision.provider, decision.reason, decision.undecided_page_keys)
 ```
 
 An entry the rules cannot place goes to the review file as one case, and its
@@ -521,7 +521,7 @@ kept answer comes back:
 from work_matching import ReviewCase, ReviewFile, place_pages_without_review
 
 review = ReviewFile("data/seed_cleaning/review.jsonl")
-decisions = decide_doubled_providers(entry, pages, known_works)
+decisions = decide_doubled_providers(entry, pages, known_work_entries)
 placements = place_pages_without_review(entry, decisions, pages)
 if placements is None:
     case = review.attach_kept_answer(
@@ -538,18 +538,18 @@ from work_matching import (
     LinkedPageOutcome,
     LinkingEntryDetails,
     decide_linked_page,
-    find_unheld_linked_pages,
+    find_unheld_linked_page_keys,
     get_entry_episode_count,
 )
 
 fetched_providers = {"mal", "anilist", "kitsu", "anidb", "animeplanet", "anisearch"}
-linked_page_keys = find_unheld_linked_pages(entry, pages, known_works, fetched_providers)
+linked_page_keys = find_unheld_linked_page_keys(entry, pages, known_work_entries, fetched_providers)
 entry_details = LinkingEntryDetails(
     entry, get_entry_episode_count(entry, pages), linked_page_keys
 )
 for linked_page_key in linked_page_keys:
     if (linked_page := store.get_page(linked_page_key)) is not None:
-        decision = decide_linked_page(linked_page, [entry_details], known_works)
+        decision = decide_linked_page(linked_page, [entry_details], known_work_entries)
         if decision.outcome is LinkedPageOutcome.ADD:
             print("add", decision.page_key, "to", entry.reference_page)
 ```

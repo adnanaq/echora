@@ -59,14 +59,14 @@ Each step is described below.
 
 | Entries to check | Found by | Why |
 | -- | -- | -- |
-| **Doubled provider** | An entry with pages of one provider carrying more than one id. Simkl and AnimeCountdown count as one provider. | The same rule `decide_doubled_providers` uses (`find_doubled_provider_pages`), so exactly the pages it decides are checked. |
+| **Doubled provider** | An entry with pages of one provider carrying more than one id. Simkl and AnimeCountdown count as one provider. | The same rule `decide_doubled_providers` uses (`find_doubled_provider_page_keys`), so exactly the pages it decides are checked. |
 | **Split-work candidates** | Entries matching by title, type, year and season, joined into groups. | A site often adds a page before the seed joins it to the work's main entry, so the page becomes an entry of its own. |
 
 A split-work match needs:
 
-- the known-works title lookup to find one entry for the other: title equal once
-  case, punctuation, accents and season wording are folded, same type, and
-  equal years or a missing year. A missing year matches because the small entry
+- the title lookup of the known work entries to find one entry for the other:
+  title equal once case, punctuation, accents and season wording are folded,
+  same type, and equal years or a missing year. A missing year matches because the small entry
   of a split work usually has none yet;
 - seasons equal, next to each other, or one missing. Seasons far apart are
   different works ("Gelpiyo", winter and fall); neighbouring ones go either way.
@@ -136,7 +136,7 @@ placed page, and each added linked page, becomes a `SeedCorrection`:
 | -- | -- |
 | `entry_reference_page` | The reference page of the seed entry that lists the page, or that an added page joins. |
 | `page_key`, `address` | The page as the seed entry lists it; for an added page, its current key and the seed's spelling of it. |
-| `work` | `entry`, `other work` or `work 2`, `work 3` and so on. |
+| `placement_word` | `entry`, `other work` or `work 2`, `work 3` and so on. |
 | `is_main_page` | Whether enrichment fetches this page for its provider in its work. |
 | `renamed_to` | The current page key, when the seed lists the page under an old address. |
 | `target_entry_reference_page` | The reference page of the seed entry an `other work` page joins; `null` when it starts a new entry. |
@@ -246,4 +246,4 @@ It writes to `data/seed_cleaning/` (git-ignored):
 | `split_work_candidates.py` | `SplitWorkCandidates` and `find_split_work_candidates`: the candidate groups. |
 | `provider_page_fetcher.py` | `ProviderPageFetcher`, `FetchSummary`, `FetchOutcome`, `FETCHED_PROVIDERS`: fetching every page of the entries to check, the link-carrying pages of entries without a MAL page, and linked pages by key. |
 | `seed_corrections.py` | `correct_doubled_provider_entries`, `SeedCorrection`, `build_corrected_entries`, `write_corrections`: where each page of an entry with doubled providers ends up, and the corrected entries. |
-| `linked_page_additions.py` | `find_entries_without_mal_page`, `LINK_CARRYING_PROVIDERS`, `list_entries_with_placed_pages`, `find_linked_pages`, `correct_linked_pages`: the linked pages added as corrections. |
+| `linked_page_additions.py` | `find_entries_without_mal_page`, `LINK_CARRYING_PROVIDERS`, `list_entries_with_placed_pages`, `find_linking_seed_entries`, `correct_linked_pages`: the linked pages added as corrections. |

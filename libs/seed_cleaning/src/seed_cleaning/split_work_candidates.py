@@ -13,7 +13,7 @@ from collections.abc import Sequence
 
 from networkx.utils import UnionFind
 from pydantic import BaseModel, ConfigDict
-from work_matching import KnownWorksFromSeed, WorkEntry, get_decided_provider
+from work_matching import KnownWorkEntriesFromSeed, WorkEntry, get_decided_provider
 
 logger = logging.getLogger(__name__)
 
@@ -35,16 +35,16 @@ class SplitWorkCandidates(BaseModel):
 
 
 def find_split_work_candidates(
-    known_works: KnownWorksFromSeed,
+    known_work_entries: KnownWorkEntriesFromSeed,
 ) -> list[SplitWorkCandidates]:
     """Return every group of entries that may be one work split in several.
 
     Rules:
 
-    - Title, type and year: two entries match when the known-works title
-      lookup finds one for the other (title equal once case, punctuation,
-      accents and season wording are folded; same type; equal years, or a
-      missing year).
+    - Title, type and year: two entries match when the title lookup of the
+      known work entries finds one for the other. Titles are equal once case,
+      punctuation, accents and season wording are folded; types are the same;
+      years are equal, or one is missing.
     - Season: their seasons are equal, next to each other, or one is missing.
       A small entry often has no season yet; seasons far apart are different
       works ("Gelpiyo", winter and fall); neighbouring ones go either way.
@@ -57,17 +57,17 @@ def find_split_work_candidates(
       count as one provider.
 
     Args:
-        known_works: Every entry of the seed, by page and by title.
+        known_work_entries: Every entry of the seed, by page and by title.
 
     Returns:
         The kept groups, ordered by their first entry's place in the seed.
     """
     candidates: list[SplitWorkCandidates] = []
-    for entries in _group_entries_by_title(known_works):
+    for entries in _group_entries_by_title(known_work_entries):
         shared_providers = _find_shared_providers(entries)
         if len(shared_providers) > 1:
             logger.warning(
-                f"Split-work group dropped, its entries share {', '.join(shared_providers)}: "
+                f"Split-work_entry group dropped, its entries share {', '.join(shared_providers)}: "
                 f"{', '.join(entry.title for entry in entries)}"
             )
             continue
@@ -81,7 +81,7 @@ def find_split_work_candidates(
 
 
 def _group_entries_by_title(
-    known_works: KnownWorksFromSeed,
+    known_work_entries: KnownWorkEntriesFromSeed,
 ) -> list[tuple[WorkEntry, ...]]:
     """Group the entries that match by title, type, year and season.
 
@@ -91,25 +91,29 @@ def _group_entries_by_title(
     Returns:
         Each group of two or more entries, in seed file order.
     """
-    works = list(known_works)
+    work_entries = list(known_work_entries)
     # By object, not reference page: two entries can list the same page, and
     # find_by_title returns the very entries the seed lookup holds.
-    position_of = {id(work): position for position, work in enumerate(works)}
-    entry_groups = UnionFind(range(len(works)))
-    for position, work in enumerate(works):
-        for matching_work in known_works.find_by_title(
-            work.title, work.type, work.year
+    position_by_entry_id = {
+        id(work_entry): position for position, work_entry in enumerate(work_entries)
+    }
+    entry_groups = UnionFind(range(len(work_entries)))
+    for position, work_entry in enumerate(work_entries):
+        for matching_work_entry in known_work_entries.find_by_title(
+            work_entry.title, work_entry.type, work_entry.year
         ):
-            if matching_work is not work and _is_season_close(
-                work.season, matching_work.season
+            if matching_work_entry is not work_entry and _is_season_close(
+                work_entry.season, matching_work_entry.season
             ):
-                entry_groups.union(position, position_of[id(matching_work)])
-    positions_by_group = sorted(
+                entry_groups.union(
+                    position, position_by_entry_id[id(matching_work_entry)]
+                )
+    sorted_group_positions = sorted(
         sorted(positions) for positions in entry_groups.to_sets() if len(positions) > 1
     )
     return [
-        tuple(works[position] for position in positions)
-        for positions in positions_by_group
+        tuple(work_entries[position] for position in positions)
+        for positions in sorted_group_positions
     ]
 
 
@@ -145,4 +149,8 @@ def _find_shared_providers(entries: Sequence[WorkEntry]) -> list[str]:
 
 def _list_entry_providers(entry: WorkEntry) -> set[str]:
     """Return the providers an entry has pages from, Simkl and AnimeCountdown as one."""
-    return {provider for key in entry.pages if (provider := get_decided_provider(key))}
+    return {
+        provider
+        for key in entry.addresses_by_page_key
+        if (provider := get_decided_provider(key))
+    }

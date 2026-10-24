@@ -37,7 +37,7 @@ class ProviderPage(BaseModel):
     aired_to: datetime | None = None
     # Keys of other providers' pages this page links to, sorted. Shared
     # websites are left out: two different works can share an official site.
-    links: tuple[str, ...] = ()
+    linked_page_keys: tuple[str, ...] = ()
     # The key the address was renamed to. A record lists other providers' pages
     # and its own page, so a second page of its own provider is the page's
     # current address: an Anime-Planet rename, or a Kitsu page fetched by slug,
@@ -65,15 +65,19 @@ class ProviderPage(BaseModel):
 
     @classmethod
     def from_canonical_record(
-        cls, address: str, record: dict[str, Any], searched_by: str | None = None
+        cls,
+        address: str,
+        record: dict[str, Any],
+        searched_by_address: str | None = None,
     ) -> Self:
         """Read a page's details from the canonical record fetched for it.
 
         Args:
             address: The page address that was fetched.
             record: The canonical anime record the provider's helper returned.
-            searched_by: The address of the page searched by, when the page
-                was found by searching its provider with another page's id.
+            searched_by_address: The address of the page the search used, when
+                the page was found by searching its provider with another
+                page's id.
 
         Returns:
             The page's titles, type, year, season, episode count, air dates,
@@ -104,7 +108,7 @@ class ProviderPage(BaseModel):
             episode_count=record.get("episode_count") or None,
             aired_from=aired_dates.get("aired_from"),
             aired_to=aired_dates.get("aired_to"),
-            links=tuple(
+            linked_page_keys=tuple(
                 sorted(
                     linked_key
                     for linked_key in linked_keys
@@ -112,17 +116,19 @@ class ProviderPage(BaseModel):
                 )
             ),
             renamed_to=renamed_keys[0] if renamed_keys else None,
-            searched_by=_read_searched_by_keys(searched_by),
+            searched_by=_read_searched_by_keys(searched_by_address),
         )
 
     @classmethod
-    def from_dead_address(cls, address: str, searched_by: str | None = None) -> Self:
+    def from_dead_address(
+        cls, address: str, searched_by_address: str | None = None
+    ) -> Self:
         """Record a dead page: one the provider no longer serves."""
         return cls(
             key=get_page_key(address),
             address=address,
             is_dead=True,
-            searched_by=_read_searched_by_keys(searched_by),
+            searched_by=_read_searched_by_keys(searched_by_address),
         )
 
 
@@ -140,17 +146,17 @@ def index_pages_by_current_key(
     Returns:
         Each page by its current key.
     """
-    pages_by_key: dict[str, ProviderPage] = {}
+    pages_by_current_key: dict[str, ProviderPage] = {}
     for page in pages:
-        key = page.current_key
-        if key not in pages_by_key or page.key == key:
-            pages_by_key[key] = page
-    return pages_by_key
+        current_key = page.current_key
+        if current_key not in pages_by_current_key or page.key == current_key:
+            pages_by_current_key[current_key] = page
+    return pages_by_current_key
 
 
-def _read_searched_by_keys(searched_by: str | None) -> tuple[str, ...]:
-    """Return the searched-by page's key as ``searched_by`` holds it; empty without one."""
-    return (get_page_key(searched_by),) if searched_by else ()
+def _read_searched_by_keys(searched_by_address: str | None) -> tuple[str, ...]:
+    """Return the searched-by page's key as ``searched_by`` holds it, or nothing."""
+    return (get_page_key(searched_by_address),) if searched_by_address else ()
 
 
 def _read_record_titles(record: dict[str, Any]) -> Iterator[str]:
@@ -167,6 +173,6 @@ def _read_linked_addresses(record: dict[str, Any]) -> Iterator[str]:
     The fields are ``sources`` and ``external_sources``.
     """
     yield from (address for address in record.get("sources") or [] if address)
-    for link in record.get("external_sources") or []:
-        if address := link.get("source"):
+    for external_source in record.get("external_sources") or []:
+        if address := external_source.get("source"):
             yield address

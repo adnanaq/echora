@@ -94,7 +94,7 @@ class ProviderPageStore:
         )
 
     def get_entry_pages(self, entry: WorkEntry) -> list[ProviderPage]:
-        """Return the stored details of an entry's pages, then of pages searched by them.
+        """Return an entry's stored pages, then the pages searched by them.
 
         The rules read an entry's links from both: a searched page, such as
         AnimeSchedule's searched by MAL id, carries links the page it was
@@ -108,10 +108,14 @@ class ProviderPageStore:
             pages of each, sorted by page key. Pages not stored are left out.
         """
         return [
-            *(page for key in entry.pages if (page := self.get_page(key))),
+            *(
+                page
+                for key in entry.addresses_by_page_key
+                if (page := self.get_page(key))
+            ),
             *(
                 searched_page
-                for key in entry.pages
+                for key in entry.addresses_by_page_key
                 for searched_page in self.get_pages_searched_by(key)
             ),
         ]

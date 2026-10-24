@@ -1,9 +1,9 @@
 import pytest
 from work_matching.doubled_provider_check import decide_doubled_providers
-from work_matching.known_works_from_seed import KnownWorksFromSeed
+from work_matching.known_work_entries_from_seed import KnownWorkEntriesFromSeed
 from work_matching.page_placement import (
     PagePlacement,
-    list_placeable_pages,
+    list_placeable_page_keys,
     place_pages_without_review,
     read_answer_placements,
     suggest_page_placements,
@@ -20,8 +20,8 @@ OTHER_ANILIST = "https://anilist.co/anime/9"
 
 
 @pytest.fixture
-def known_works() -> KnownWorksFromSeed:
-    return KnownWorksFromSeed(
+def known_work_entries() -> KnownWorkEntriesFromSeed:
+    return KnownWorkEntriesFromSeed(
         [
             {"title": "Other", "type": "TV", "sources": [OTHER_MAL]},
             {"title": "Third", "type": "TV", "sources": [OTHER_ANILIST]},
@@ -30,21 +30,25 @@ def known_works() -> KnownWorksFromSeed:
 
 
 @pytest.fixture
-def one_linked(linked_page, work_entry, known_works):
+def one_linked(linked_page, work_entry, known_work_entries):
     entry = work_entry(MAL, KITSU_ONE, KITSU_TWO)
     pages = [
         linked_page(MAL),
         linked_page(KITSU_ONE, MAL),
         linked_page(KITSU_TWO, OTHER_MAL),
     ]
-    return entry, decide_doubled_providers(entry, pages, known_works), pages
+    return entry, decide_doubled_providers(entry, pages, known_work_entries), pages
 
 
 @pytest.fixture
 def shared_link(linked_page, work_entry):
     entry = work_entry(MAL, KITSU_ONE, KITSU_TWO)
     pages = [linked_page(KITSU_ONE, MAL), linked_page(KITSU_TWO, MAL)]
-    return entry, decide_doubled_providers(entry, pages, KnownWorksFromSeed([])), pages
+    return (
+        entry,
+        decide_doubled_providers(entry, pages, KnownWorkEntriesFromSeed([])),
+        pages,
+    )
 
 
 @pytest.fixture
@@ -60,14 +64,18 @@ def linked_apart(linked_page, work_entry):
         linked_page("https://anilist.co/anime/1", MAL),
         linked_page("https://anilist.co/anime/2", "https://myanimelist.net/anime/2"),
     ]
-    return entry, decide_doubled_providers(entry, pages, KnownWorksFromSeed([])), pages
+    return (
+        entry,
+        decide_doubled_providers(entry, pages, KnownWorkEntriesFromSeed([])),
+        pages,
+    )
 
 
 def _matching_case(matching_cases, name: str):
     entries, pages = matching_cases[name]
     return (
         entries[0],
-        decide_doubled_providers(entries[0], pages, KnownWorksFromSeed([])),
+        decide_doubled_providers(entries[0], pages, KnownWorkEntriesFromSeed([])),
         pages,
     )
 
@@ -105,26 +113,26 @@ def test_place_pages_without_review_mixed_entry_or_review_gives_none(
 
 
 def test_place_pages_without_review_page_linking_two_works_gives_none(
-    linked_page, work_entry, known_works
+    linked_page, work_entry, known_work_entries
 ) -> None:
     entry = work_entry(MAL, KITSU_ONE, KITSU_TWO)
     pages = [
         linked_page(KITSU_ONE, MAL),
         linked_page(KITSU_TWO, OTHER_MAL, OTHER_ANILIST),
     ]
-    decisions = decide_doubled_providers(entry, pages, known_works)
+    decisions = decide_doubled_providers(entry, pages, known_work_entries)
     assert place_pages_without_review(entry, decisions, pages) is None
 
 
 def test_place_pages_without_review_page_linking_work_outside_seed_gives_none(
-    linked_page, work_entry, known_works
+    linked_page, work_entry, known_work_entries
 ) -> None:
     entry = work_entry(MAL, KITSU_ONE, KITSU_TWO)
     pages = [
         linked_page(KITSU_ONE, MAL),
         linked_page(KITSU_TWO, "https://myanimelist.net/anime/77"),
     ]
-    decisions = decide_doubled_providers(entry, pages, known_works)
+    decisions = decide_doubled_providers(entry, pages, known_work_entries)
     assert place_pages_without_review(entry, decisions, pages) is None
 
 
@@ -140,7 +148,7 @@ def test_place_pages_without_review_page_linking_work_outside_seed_gives_none(
 def test_place_pages_without_review_moved_page_details_must_agree_with_target(
     work_entry, moved_page_details: dict, is_placed: bool
 ) -> None:
-    known_works = KnownWorksFromSeed(
+    known_work_entries = KnownWorkEntriesFromSeed(
         [
             {
                 "title": "Other",
@@ -160,7 +168,7 @@ def test_place_pages_without_review_moved_page_details_must_agree_with_target(
             {"title": "Other", "sources": [KITSU_TWO, OTHER_MAL]} | moved_page_details,
         ),
     ]
-    decisions = decide_doubled_providers(entry, pages, known_works)
+    decisions = decide_doubled_providers(entry, pages, known_work_entries)
     placements = place_pages_without_review(entry, decisions, pages)
     assert (placements is not None) is is_placed
 
@@ -168,7 +176,7 @@ def test_place_pages_without_review_moved_page_details_must_agree_with_target(
 def test_place_pages_without_review_target_holding_same_provider_gives_none(
     linked_page, work_entry
 ) -> None:
-    known_works = KnownWorksFromSeed(
+    known_work_entries = KnownWorkEntriesFromSeed(
         [
             {
                 "title": "Other",
@@ -179,7 +187,7 @@ def test_place_pages_without_review_target_holding_same_provider_gives_none(
     )
     entry = work_entry(MAL, KITSU_ONE, KITSU_TWO)
     pages = [linked_page(KITSU_ONE, MAL), linked_page(KITSU_TWO, OTHER_MAL)]
-    decisions = decide_doubled_providers(entry, pages, known_works)
+    decisions = decide_doubled_providers(entry, pages, known_work_entries)
     assert place_pages_without_review(entry, decisions, pages) is None
 
 
@@ -195,15 +203,15 @@ def test_place_pages_without_review_current_page_not_listed_gives_none(
         )
         for address in old_addresses
     ]
-    decisions = decide_doubled_providers(entry, pages, KnownWorksFromSeed([]))
+    decisions = decide_doubled_providers(entry, pages, KnownWorkEntriesFromSeed([]))
     assert place_pages_without_review(entry, decisions, pages) is None
 
 
-def test_list_placeable_pages_doubled_pages_first_then_other_pages(
+def test_list_placeable_page_keys_doubled_pages_first_then_other_pages(
     matching_cases,
 ) -> None:
     entry, decisions, _ = _matching_case(matching_cases, "cocoon")
-    assert list_placeable_pages(entry, decisions) == (
+    assert list_placeable_page_keys(entry, decisions) == (
         "animeplanet:anime:cocoon-one-summer-of-girlhood",
         "anidb:anime:18084",
         "anilist:anime:166527",

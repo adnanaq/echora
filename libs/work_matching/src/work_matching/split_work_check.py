@@ -57,10 +57,14 @@ def decide_split_work(
     if len(entries) < 2:
         return SplitWorkDecision(entries, SplitWorkReason.TOO_FEW_ENTRIES)
     links = ProviderPageLinks(
-        pages, chain.from_iterable(entry.pages for entry in entries)
+        pages, chain.from_iterable(entry.addresses_by_page_key for entry in entries)
     )
     if not _is_tied_together(
-        [frozenset(map(links.get_current_key, entry.pages)) for entry in entries], links
+        [
+            frozenset(map(links.get_current_key, entry.addresses_by_page_key))
+            for entry in entries
+        ],
+        links,
     ):
         return SplitWorkDecision(entries, SplitWorkReason.NOT_LINKED)
     if not is_type_matching(*(entry.type for entry in entries)):
@@ -87,7 +91,7 @@ def _is_tied_together(
     entries_to_visit = [0]
     while entries_to_visit:
         linked_keys = frozenset().union(
-            *map(links.get_linked_pages, entry_page_keys[entries_to_visit.pop()])
+            *map(links.get_linked_page_keys, entry_page_keys[entries_to_visit.pop()])
         )
         for entry_index, page_keys in enumerate(entry_page_keys):
             if entry_index not in reached_entries and linked_keys & page_keys:

@@ -33,7 +33,7 @@ from seed_cleaning.seed_corrections import (
 )
 from work_matching import (
     ENTRY_WORK,
-    KnownWorks,
+    KnownWorkEntries,
     LinkedPageAddition,
     LinkedPageDecision,
     LinkedPageOutcome,
@@ -46,7 +46,7 @@ from work_matching import (
     WorkEntry,
     build_page_address,
     decide_linked_page,
-    find_unheld_linked_pages,
+    find_unheld_linked_page_keys,
     get_entry_episode_count,
     get_page_provider,
 )
@@ -121,14 +121,16 @@ def find_entries_without_mal_page(entries: Iterable[WorkEntry]) -> list[WorkEntr
     return [
         entry
         for entry in entries
-        if not any(get_page_provider(key) == "mal" for key in entry.pages)
+        if not any(
+            get_page_provider(key) == "mal" for key in entry.addresses_by_page_key
+        )
     ]
 
 
 def list_entries_with_placed_pages(
     entries: Iterable[WorkEntry],
     doubled_provider_corrections: DoubledProviderCorrections,
-    known_works: KnownWorks,
+    known_work_entries: KnownWorkEntries,
     store: ProviderPageStore,
 ) -> list[CorrectedEntry]:
     """Return the entries whose links can be read, as the corrections leave them.
@@ -137,7 +139,7 @@ def list_entries_with_placed_pages(
         entries: The entries whose links to read.
         doubled_provider_corrections: The corrections and review cases of the
             entries with doubled providers.
-        known_works: Every seed entry.
+        known_work_entries: Every seed entry.
         store: The fetched pages.
 
     Returns:
@@ -155,7 +157,7 @@ def list_entries_with_placed_pages(
     corrected_entries = {
         corrected.seed_entry_reference_page: corrected
         for corrected in build_corrected_entries(
-            doubled_provider_corrections.corrections, known_works, store
+            doubled_provider_corrections.corrections, known_work_entries, store
         )
         if corrected.seed_entry_reference_page is not None
     }
@@ -172,32 +174,32 @@ def list_entries_with_placed_pages(
     ]
 
 
-def find_linked_pages(
+def find_linking_seed_entries(
     entries: Iterable[CorrectedEntry],
     store: ProviderPageStore,
-    known_works: KnownWorks,
+    known_work_entries: KnownWorkEntries,
 ) -> dict[str, tuple[LinkingSeedEntry, ...]]:
-    """Return each page the entries' pages link that no seed entry holds.
+    """Return the entries linking each page that no seed entry holds, by page key.
 
     Args:
         entries: The entries whose links to read, as
             ``list_entries_with_placed_pages`` gives them.
         store: The fetched pages, whose links are read.
-        known_works: Every seed entry.
+        known_work_entries: Every seed entry.
 
     Returns:
         Each linked page's key, sorted, mapped to the entries linking it. A
         new entry, which no seed entry stands for, links nothing.
     """
-    linking_entries_by_page: defaultdict[str, list[LinkingSeedEntry]] = defaultdict(
-        list
+    linking_seed_entries_by_page_key: defaultdict[str, list[LinkingSeedEntry]] = (
+        defaultdict(list)
     )
     for corrected in entries:
         if corrected.seed_entry_reference_page is None:
             continue
         entry_pages = store.get_entry_pages(corrected.entry)
-        linked_page_keys = find_unheld_linked_pages(
-            corrected.entry, entry_pages, known_works, FETCHED_PROVIDERS
+        linked_page_keys = find_unheld_linked_page_keys(
+            corrected.entry, entry_pages, known_work_entries, FETCHED_PROVIDERS
         )
         entry_details = LinkingEntryDetails(
             corrected.entry,
@@ -205,43 +207,44 @@ def find_linked_pages(
             linked_page_keys,
         )
         for key in linked_page_keys:
-            linking_entries_by_page[key].append(
+            linking_seed_entries_by_page_key[key].append(
                 LinkingSeedEntry(corrected.seed_entry_reference_page, entry_details)
             )
     return {
-        key: tuple(linking_entries_by_page[key])
-        for key in sorted(linking_entries_by_page)
+        key: tuple(linking_seed_entries_by_page_key[key])
+        for key in sorted(linking_seed_entries_by_page_key)
     }
 
 
 def correct_linked_pages(
-    linked_pages: Mapping[str, Sequence[LinkingSeedEntry]],
+    linking_seed_entries_by_page_key: Mapping[str, Sequence[LinkingSeedEntry]],
     store: ProviderPageStore,
-    known_works: KnownWorks,
+    known_work_entries: KnownWorkEntries,
     review_file: ReviewFile,
 ) -> LinkedPageCorrections:
     """Decide each fetched linked page, and turn additions into corrections.
 
     Args:
-        linked_pages: The linked pages and their entries (``find_linked_pages``).
+        linking_seed_entries_by_page_key: Each linked page's key mapped to the
+            entries linking it, as ``find_linking_seed_entries`` gives them.
         store: The fetched pages, holding the linked pages fetched so far.
-        known_works: Every seed entry, to tell a page held under another address.
+        known_work_entries: Every seed entry, to tell a page held under another address.
         review_file: The review file, for the answers kept in it.
 
     Returns:
         The corrections adding pages, the review cases, and the pages not added.
     """
-    pages_by_current_key, waiting_page_keys = _group_linked_pages_by_current_key(
-        linked_pages, store
+    linked_page_groups_by_current_key, waiting_page_keys = (
+        _group_linked_pages_by_current_key(linking_seed_entries_by_page_key, store)
     )
     page_additions: list[_PageAddition] = []
     review_cases: list[ReviewCase] = []
     skipped_page_keys: defaultdict[LinkedPageReason, list[str]] = defaultdict(list)
-    for page, linking_seed_entries in pages_by_current_key.values():
+    for page, linking_seed_entries in linked_page_groups_by_current_key.values():
         decision = decide_linked_page(
             page,
             (linking.entry_details for linking in linking_seed_entries),
-            known_works,
+            known_work_entries,
         )
         if decision.outcome is LinkedPageOutcome.SKIP:
             skipped_page_keys[decision.reason].append(decision.page_key)
@@ -255,7 +258,11 @@ def correct_linked_pages(
             page_additions.append(page_addition)
     kept_additions, conflicting_page_keys = _drop_conflicting_additions(page_additions)
     return LinkedPageCorrections(
-        corrections=tuple(_build_addition_corrections(kept_additions, linked_pages)),
+        corrections=tuple(
+            _build_addition_corrections(
+                kept_additions, linking_seed_entries_by_page_key
+            )
+        ),
         review_cases=tuple(review_cases),
         waiting_page_keys=waiting_page_keys,
         not_found_page_keys=tuple(skipped_page_keys[LinkedPageReason.NOT_FOUND]),
@@ -267,7 +274,7 @@ def correct_linked_pages(
 
 
 def _group_linked_pages_by_current_key(
-    linked_pages: Mapping[str, Sequence[LinkingSeedEntry]],
+    linking_seed_entries_by_page_key: Mapping[str, Sequence[LinkingSeedEntry]],
     store: ProviderPageStore,
 ) -> tuple[dict[str, _LinkedPageGroup], tuple[str, ...]]:
     """Group the fetched linked pages by the current key their fetch reports.
@@ -282,7 +289,8 @@ def _group_linked_pages_by_current_key(
       two spellings of one page never count as two pages of one provider.
 
     Args:
-        linked_pages: Each linked page's key mapped to the entries linking it.
+        linking_seed_entries_by_page_key: Each linked page's key mapped to the
+            entries linking it.
         store: The fetched pages.
 
     Returns:
@@ -291,40 +299,49 @@ def _group_linked_pages_by_current_key(
         sorted keys of linked pages not fetched yet.
     """
     fetched_pages = {
-        key: page for key in linked_pages if (page := store.get_page(key)) is not None
+        key: page
+        for key in linking_seed_entries_by_page_key
+        if (page := store.get_page(key)) is not None
     }
-    current_key_by_link = {key: page.current_key for key, page in fetched_pages.items()}
-    linking_entries_by_page: defaultdict[str, dict[str, LinkingSeedEntry]] = (
-        defaultdict(dict)
-    )
-    for key, current_key in current_key_by_link.items():
-        for linking in linked_pages[key]:
-            linking_entries_by_page[current_key].setdefault(
+    current_key_by_linked_page_key = {
+        key: page.current_key for key, page in fetched_pages.items()
+    }
+    linking_seed_entries_by_current_key: defaultdict[
+        str, dict[str, LinkingSeedEntry]
+    ] = defaultdict(dict)
+    for key, current_key in current_key_by_linked_page_key.items():
+        for linking in linking_seed_entries_by_page_key[key]:
+            linking_seed_entries_by_current_key[current_key].setdefault(
                 linking.seed_entry_reference_page,
-                _name_linked_pages_by_current_key(linking, current_key_by_link),
+                _name_linked_pages_by_current_key(
+                    linking, current_key_by_linked_page_key
+                ),
             )
-    pages_by_current_key = {
+    linked_page_groups_by_current_key = {
         current_key: (
             store.get_page(current_key) or fetched_pages[linked_key],
-            tuple(linking_entries_by_page[current_key].values()),
+            tuple(linking_seed_entries_by_current_key[current_key].values()),
         )
         for linked_key, current_key in sorted(
-            current_key_by_link.items(), key=lambda link: link[1]
+            current_key_by_linked_page_key.items(),
+            key=lambda linked_and_current_key: linked_and_current_key[1],
         )
     }
-    waiting_page_keys = tuple(key for key in linked_pages if key not in fetched_pages)
-    return pages_by_current_key, waiting_page_keys
+    waiting_page_keys = tuple(
+        key for key in linking_seed_entries_by_page_key if key not in fetched_pages
+    )
+    return linked_page_groups_by_current_key, waiting_page_keys
 
 
 def _name_linked_pages_by_current_key(
-    linking: LinkingSeedEntry, current_key_by_link: Mapping[str, str]
+    linking: LinkingSeedEntry, current_key_by_linked_page_key: Mapping[str, str]
 ) -> LinkingSeedEntry:
     """Rename a linking entry's other linked pages to the current keys their fetches report.
 
     Args:
         linking: An entry linking a page, with the linked pages as its links
             spell them.
-        current_key_by_link: Each fetched linked page's current key, by the
+        current_key_by_linked_page_key: Each fetched linked page's current key, by the
             key its link spells; pages not fetched keep their spelling.
 
     Returns:
@@ -335,7 +352,7 @@ def _name_linked_pages_by_current_key(
         entry_details=replace(
             linking.entry_details,
             linked_page_keys=frozenset(
-                current_key_by_link.get(linked_key, linked_key)
+                current_key_by_linked_page_key.get(linked_key, linked_key)
                 for linked_key in linking.entry_details.linked_page_keys
             ),
         ),
@@ -431,7 +448,7 @@ def _drop_conflicting_additions(
 
 def _build_addition_corrections(
     page_additions: Iterable[_PageAddition],
-    linked_pages: Mapping[str, Sequence[LinkingSeedEntry]],
+    linking_seed_entries_by_page_key: Mapping[str, Sequence[LinkingSeedEntry]],
 ) -> list[SeedCorrection]:
     """Turn additions into corrections, each naming the seed entry the page joins.
 
@@ -441,25 +458,25 @@ def _build_addition_corrections(
 
     Args:
         page_additions: The additions kept.
-        linked_pages: The linked pages and their entries, for each entry's
-            seed reference page.
+        linking_seed_entries_by_page_key: Each linked page's key mapped to the
+            entries linking it, for each entry's seed reference page.
 
     Returns:
         One correction per addition, in the order given.
     """
-    seed_reference_page_by_entry = {
+    seed_entry_reference_page_by_entry_reference_page = {
         linking.entry_details.entry.reference_page: linking.seed_entry_reference_page
-        for linking_seed_entries in linked_pages.values()
+        for linking_seed_entries in linking_seed_entries_by_page_key.values()
         for linking in linking_seed_entries
     }
     return [
         SeedCorrection(
-            entry_reference_page=seed_reference_page_by_entry[
+            entry_reference_page=seed_entry_reference_page_by_entry_reference_page[
                 page_addition.entry_reference_page
             ],
             page_key=page_addition.page_key,
             address=page_addition.address,
-            work=ENTRY_WORK,
+            placement_word=ENTRY_WORK,
             is_added_page=True,
             is_part_page=page_addition.is_part_page,
             reason=page_addition.reason,

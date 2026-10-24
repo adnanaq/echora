@@ -214,7 +214,7 @@ echora/
 - **Vector Processing** (`libs/vector_processing/`) - BGE-M3 text (1024-dim) + OpenCLIP image (768-dim) embeddings
 - **Qdrant Client** (`libs/qdrant_db/`) - Vector DB operations with quantization & multi-vector support
 - **HTTP Cache** (`libs/http_cache/`) - RFC 9111 compliant caching with Redis backend
-- **Work Matching** (`libs/work_matching/`) - Work entries, provider page keys and details, the known-works lookup by page or by title, type and year, the rules deciding from links which pages of a doubled provider belong to an entry, whether entries are one split work and whether a linked page no known work holds joins an entry, and the review file whose answers are kept across runs; imports nothing from enrichment
+- **Work Matching** (`libs/work_matching/`) - Work entries, provider page keys and details, the lookup of known work entries by page or by title, type and year, the rules deciding from links which pages of a doubled provider belong to an entry, whether entries are one split work and whether a linked page no known work holds joins an entry, and the review file whose answers are kept across runs; imports nothing from enrichment
 - **Seed Cleaning** (`libs/seed_cleaning/`) - Lists the seed entries that need checking (doubled providers and split-work candidates), fetches their pages into the provider page store through the enrichment helpers, writes their corrections, and adds checked linked pages the seed lacks; run with `scripts/clean_seed.py`, deleted once discovery replaces the seed
 - **Enrichment Pipeline** (`libs/enrichment/`)
 

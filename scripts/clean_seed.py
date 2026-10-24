@@ -49,19 +49,19 @@ from seed_cleaning import (
     correct_linked_pages,
     find_doubled_provider_entries,
     find_entries_without_mal_page,
-    find_linked_pages,
+    find_linking_seed_entries,
     find_split_work_candidates,
     list_entries_with_placed_pages,
     write_corrections,
 )
 from work_matching import (
     ENTRY_WORK,
-    KnownWorksFromSeed,
+    KnownWorkEntriesFromSeed,
     ProviderPageStore,
     ReviewCase,
     ReviewFile,
     WorkEntry,
-    find_doubled_provider_pages,
+    find_doubled_provider_page_keys,
     replace_file_lines,
 )
 
@@ -122,7 +122,9 @@ def build_entries_to_check_document(
             {
                 "reference_page": entry.reference_page,
                 "title": entry.title,
-                "doubled_providers": find_doubled_provider_pages(entry.pages),
+                "doubled_providers": find_doubled_provider_page_keys(
+                    entry.addresses_by_page_key
+                ),
             }
             for entry in doubled_provider_entries
         ],
@@ -182,7 +184,7 @@ def count_corrections(
             counts["old addresses dropped"] += 1
         elif correction.target_entry_reference_page:
             counts["pages moved to a seed entry"] += 1
-        elif correction.work != ENTRY_WORK:
+        elif correction.placement_word != ENTRY_WORK:
             counts["pages moved to a new entry"] += 1
         elif correction.is_main_page:
             counts["pages kept as main page"] += 1
@@ -193,21 +195,23 @@ def count_corrections(
 
 
 def list_entries_to_check(
-    seed_document: dict[str, Any], known_works: KnownWorksFromSeed, data_dir: Path
+    seed_document: dict[str, Any],
+    known_work_entries: KnownWorkEntriesFromSeed,
+    data_dir: Path,
 ) -> tuple[list[WorkEntry], list[WorkEntry]]:
     """Write ``entries_to_check.json`` and return the entries to check.
 
     Args:
         seed_document: The downloaded seed release, as read from its file.
-        known_works: Every seed entry.
+        known_work_entries: Every seed entry.
         data_dir: The folder ``entries_to_check.json`` is written to.
 
     Returns:
         The entries with a doubled provider, and every entry of a split-work
         candidate group.
     """
-    doubled_provider_entries = find_doubled_provider_entries(known_works)
-    candidate_groups = find_split_work_candidates(known_works)
+    doubled_provider_entries = find_doubled_provider_entries(known_work_entries)
+    candidate_groups = find_split_work_candidates(known_work_entries)
     data_dir.mkdir(parents=True, exist_ok=True)
     entries_to_check = build_entries_to_check_document(
         seed_document.get("$schema"), doubled_provider_entries, candidate_groups
@@ -267,14 +271,14 @@ def print_fetch_summary(pages_name: str, fetch_summary: FetchSummary) -> None:
     """
     for outcome, page_count in sorted(fetch_summary.outcomes.items()):
         print(f"{pages_name} {outcome}: {page_count}")
-    for failed_page, fetch_error in fetch_summary.failed_pages.items():
-        print(f"Failed, retried next run: {failed_page}: {fetch_error[:160]}")
+    for request_label, fetch_error in fetch_summary.errors_by_request_label.items():
+        print(f"Failed, retried next run: {request_label}: {fetch_error[:160]}")
 
 
 async def add_linked_pages(
     entries: list[WorkEntry],
     doubled_provider_corrections: DoubledProviderCorrections,
-    known_works: KnownWorksFromSeed,
+    known_work_entries: KnownWorkEntriesFromSeed,
     store: ProviderPageStore,
     page_fetcher: ProviderPageFetcher | None,
     review_file: ReviewFile,
@@ -286,7 +290,7 @@ async def add_linked_pages(
             entries without a MAL page.
         doubled_provider_corrections: The doubled-provider corrections and
             review cases, which say which entries have placed pages.
-        known_works: Every seed entry.
+        known_work_entries: Every seed entry.
         store: The provider page store.
         page_fetcher: The page fetcher, or None when the run fetches nothing.
         review_file: The review file, for the answers kept in it.
@@ -295,12 +299,12 @@ async def add_linked_pages(
         The corrections adding pages, the linked-page review cases, and the
         linked pages not added.
     """
-    linked_pages = find_linked_pages(
+    linking_seed_entries_by_page_key = find_linking_seed_entries(
         list_entries_with_placed_pages(
-            entries, doubled_provider_corrections, known_works, store
+            entries, doubled_provider_corrections, known_work_entries, store
         ),
         store,
-        known_works,
+        known_work_entries,
     )
     if page_fetcher is not None:
         print_fetch_summary(
@@ -310,11 +314,15 @@ async def add_linked_pages(
             await page_fetcher.fetch_linked_pages(
                 {
                     key: linking_seed_entries[0].entry_details.entry.title
-                    for key, linking_seed_entries in linked_pages.items()
+                    for key, linking_seed_entries in (
+                        linking_seed_entries_by_page_key.items()
+                    )
                 }
             ),
         )
-    return correct_linked_pages(linked_pages, store, known_works, review_file)
+    return correct_linked_pages(
+        linking_seed_entries_by_page_key, store, known_work_entries, review_file
+    )
 
 
 def write_results(
@@ -364,11 +372,11 @@ async def main() -> None:
     """List the entries to check, fetch their pages, correct them and add linked pages."""
     arguments = parse_arguments()
     seed_document = json.loads(arguments.seed_file.read_text(encoding="utf-8"))
-    known_works = KnownWorksFromSeed(seed_document["data"])
+    known_work_entries = KnownWorkEntriesFromSeed(seed_document["data"])
     doubled_provider_entries, candidate_entries = list_entries_to_check(
-        seed_document, known_works, arguments.data_dir
+        seed_document, known_work_entries, arguments.data_dir
     )
-    entries_without_mal_page = find_entries_without_mal_page(known_works)
+    entries_without_mal_page = find_entries_without_mal_page(known_work_entries)
     print(f"Entries without a MAL page: {len(entries_without_mal_page)}")
     store = ProviderPageStore(arguments.data_dir / "provider_pages.jsonl")
     review_file = ReviewFile(arguments.data_dir / "review.jsonl")
@@ -389,12 +397,12 @@ async def main() -> None:
                 ),
             )
         doubled_provider_corrections = correct_doubled_provider_entries(
-            doubled_provider_entries, store, known_works, review_file
+            doubled_provider_entries, store, known_work_entries, review_file
         )
         linked_page_corrections = await add_linked_pages(
             [*doubled_provider_entries, *candidate_entries, *entries_without_mal_page],
             doubled_provider_corrections,
-            known_works,
+            known_work_entries,
             store,
             page_fetcher,
             review_file,
