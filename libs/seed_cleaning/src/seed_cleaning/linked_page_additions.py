@@ -61,7 +61,7 @@ LINK_CARRYING_PROVIDERS: frozenset[str] = frozenset({"anilist", "kitsu", "anidb"
 
 @dataclass(frozen=True, slots=True)
 class LinkingSeedEntry:
-    """An entry linking a page no seed entry holds, and the seed entry it stands for."""
+    """Hold an entry linking an unheld page, and the seed entry it stands for."""
 
     # The reference page of the seed entry, which a correction names; the
     # corrected entry's own reference page can differ after a page moved out.
@@ -74,7 +74,7 @@ type _LinkedPageGroup = tuple[ProviderPage, tuple[LinkingSeedEntry, ...]]
 
 
 class _PageAddition(NamedTuple):
-    """A linked page to add, the entry it joins, whether as a part, and why."""
+    """Hold a linked page to add, the entry it joins, whether as a part, and why."""
 
     # The page's current key and the address the seed spells it with, which
     # can differ from the link's own spelling, such as a Kitsu slug.
@@ -89,7 +89,7 @@ class _PageAddition(NamedTuple):
 
 @dataclass(frozen=True)
 class LinkedPageCorrections:
-    """The added pages, the review cases, and the linked pages without a decision."""
+    """Hold the added pages, the review cases, and the linked pages not added."""
 
     corrections: tuple[SeedCorrection, ...]
     # Every linked-page case of this run, with its kept answer, for the review file.
@@ -336,7 +336,7 @@ def _group_linked_pages_by_current_key(
 def _name_linked_pages_by_current_key(
     linking: LinkingSeedEntry, current_key_by_linked_page_key: Mapping[str, str]
 ) -> LinkingSeedEntry:
-    """Rename a linking entry's other linked pages to the current keys their fetches report.
+    """Rename a linking entry's other linked pages to their fetched current keys.
 
     Args:
         linking: An entry linking a page, with the linked pages as its links
@@ -464,6 +464,8 @@ def _build_addition_corrections(
     Returns:
         One correction per addition, in the order given.
     """
+    # Keyed by the corrected entry's reference page, which is unique: each page
+    # belongs to one seed entry, and the corrections move a page, never copy it.
     seed_entry_reference_page_by_entry_reference_page = {
         linking.entry_details.entry.reference_page: linking.seed_entry_reference_page
         for linking_seed_entries in linking_seed_entries_by_page_key.values()
