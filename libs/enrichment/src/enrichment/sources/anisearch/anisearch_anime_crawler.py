@@ -384,6 +384,8 @@ def _build_anime_from_raw(raw: dict[str, Any], url: str) -> AniSearchAnime:
             "title_blocks": raw.get("title_blocks", []),
             "synonyms": raw.get("synonyms"),
             "type": raw.get("type"),
+            # A cached result without the flag is never read: the cache key
+            # changes with this module's code.
             "is_episode_count_estimated": raw.get("is_episode_count_estimated", False),
             "source_material": raw.get("source_material"),
             "published": raw.get("published"),
