@@ -7,6 +7,8 @@ Edge-case branches use inline overrides on top of the real fixture dict.
 No network calls are made.
 """
 
+import json
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -28,6 +30,11 @@ from enrichment.sources.base.polite_http import FetchedPage
 pytestmark = pytest.mark.asyncio
 
 _ONE_PIECE_CHARS_URL = "https://www.anisearch.com/anime/2227,one-piece/characters"
+
+
+@pytest.fixture
+def one_piece_refs_raw(original_datadir: Path) -> dict:
+    return json.loads((original_datadir / "one_piece_refs.json").read_text())
 
 
 # =============================================================================

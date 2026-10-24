@@ -1,9 +1,9 @@
 """Unit tests for AniSearch character detail crawler and mapper.
 
-Baseline tests use real XPath extraction output captured from:
-- https://www.anisearch.com/character/4852,monkey-d-luffy (2026-04-23)
+Baseline tests read the saved Luffy pages in ``test_anisearch_character_crawler/``
+and the values saved from them; see ``conftest.py`` for where each page came from.
 
-Edge-case branches use inline overrides on top of the real fixture dict.
+Edge-case branches use inline overrides on top of the extracted values.
 No network calls are made.
 """
 
@@ -44,9 +44,34 @@ _LUFFY_URL = "https://www.anisearch.com/character/4852,monkey-d-luffy"
 # =============================================================================
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
+def luffy_char_raw(read_page) -> dict:
+    values = _extract_character_from_html(read_page("luffy_char"))
+    assert values is not None
+    return values
+
+
+@pytest.fixture
 def luffy_char_processed(luffy_char_raw):
     return _post_process_character(luffy_char_raw)
+
+
+def test_extract_character_from_html_saved_page_matches_saved_values(
+    read_page, data_regression
+) -> None:
+    data_regression.check(
+        _extract_character_from_html(read_page("luffy_char")), basename="luffy_char"
+    )
+
+
+@pytest.mark.parametrize("page_name", ["luffy_anime_ography", "luffy_manga_ography"])
+def test_extract_ography_from_html_saved_page_matches_saved_values(
+    read_page, data_regression, page_name: str
+) -> None:
+    data_regression.check(
+        {"ography": _extract_ography_from_html(read_page(page_name))},
+        basename=page_name,
+    )
 
 
 # =============================================================================
@@ -138,7 +163,7 @@ def test_absolutize_anime_url_already_absolute() -> None:
 
 def test_post_process_favorites_parsed_to_int(luffy_char_raw) -> None:
     data = _post_process_character(luffy_char_raw)
-    assert data["favorites"] == 678
+    assert data["favorites"] == 682
 
 
 def test_post_process_anime_roles_urls_absolutized(luffy_char_raw) -> None:
@@ -158,30 +183,8 @@ def test_post_process_favorites_empty_string_none(luffy_char_raw) -> None:
 
 
 # =============================================================================
-# _extract_voice_actors — real _html from fixture
+# _extract_voice_actors
 # =============================================================================
-
-
-def test_extract_voice_actors_returns_list(luffy_char_html) -> None:
-    vas = _extract_voice_actors(luffy_char_html)
-    assert len(vas) > 0
-
-
-def test_extract_voice_actors_mayumi_tanaka_japanese(luffy_char_html) -> None:
-    vas = _extract_voice_actors(luffy_char_html)
-    mayumi = next((v for v in vas if "TANAKA" in v.name or "Tanaka" in v.name), None)
-    assert mayumi is not None
-    assert mayumi.language == "Japanese"
-    assert mayumi.url is not None and "anisearch.com" in mayumi.url
-
-
-def test_extract_voice_actors_colleen_clinkenbeard_english(luffy_char_html) -> None:
-    vas = _extract_voice_actors(luffy_char_html)
-    colleen = next(
-        (v for v in vas if "CLINKENBEARD" in v.name or "Clinkenbeard" in v.name), None
-    )
-    assert colleen is not None
-    assert colleen.language == "English"
 
 
 def test_extract_voice_actors_empty_html_returns_empty() -> None:
@@ -207,16 +210,8 @@ def test_extract_voice_actors_skips_whitespace_only_name() -> None:
 
 
 # =============================================================================
-# _extract_attributes — real _html from fixture
+# _extract_attributes
 # =============================================================================
-
-
-def test_extract_attributes_returns_dict(luffy_char_html) -> None:
-    attrs = _extract_attributes(luffy_char_html)
-    assert isinstance(attrs, dict)
-    assert len(attrs) > 0
-    assert attrs.get("gender") == "Male"
-    assert "age" in attrs
 
 
 def test_extract_attributes_empty_html_returns_empty() -> None:
@@ -245,7 +240,7 @@ def test_build_character_image(luffy_char_processed) -> None:
 
 def test_build_character_favorites(luffy_char_processed) -> None:
     char = _build_character_from_raw(luffy_char_processed, _LUFFY_URL)
-    assert char.favorites == 678
+    assert char.favorites == 682
 
 
 def test_character_description_placeholder_none(luffy_char_processed) -> None:
@@ -351,13 +346,13 @@ class FakeAniSearch:
 
 @pytest.fixture
 def luffy_site(
-    luffy_char_html: str, luffy_anime_ography_html: str, luffy_manga_ography_html: str
+    read_page,
 ) -> FakeAniSearch:
     return FakeAniSearch(
         {
-            _LUFFY_URL: luffy_char_html,
-            f"{_LUFFY_URL}/anime": luffy_anime_ography_html,
-            f"{_LUFFY_URL}/manga": luffy_manga_ography_html,
+            _LUFFY_URL: read_page("luffy_char"),
+            f"{_LUFFY_URL}/anime": read_page("luffy_anime_ography"),
+            f"{_LUFFY_URL}/manga": read_page("luffy_manga_ography"),
         }
     )
 
@@ -398,10 +393,10 @@ def _still_arriving(html: str) -> str:
 
 
 def test_extract_character_from_html_mid_load_page_loses_late_fields(
-    luffy_char_html: str,
+    read_page,
 ) -> None:
-    complete = _extract_character_from_html(luffy_char_html)
-    partial = _extract_character_from_html(_still_arriving(luffy_char_html))
+    complete = _extract_character_from_html(read_page("luffy_char"))
+    partial = _extract_character_from_html(_still_arriving(read_page("luffy_char")))
     assert complete is not None and partial is not None
     assert complete["name"] == partial["name"] == "Monkey D. Luffy"
     assert complete["favorites"] and not partial["favorites"]
@@ -496,23 +491,6 @@ def test_extract_ography_from_html_no_covers_list_returns_empty_list() -> None:
         _extract_ography_from_html("<html><body><p>nothing here</p></body></html>")
         == []
     )
-
-
-def test_extract_ography_from_html_valid_returns_absolute_list(
-    luffy_anime_ography_html,
-) -> None:
-    entries = _extract_ography_from_html(luffy_anime_ography_html)
-    assert entries is not None
-    assert len(entries) == 49
-    assert all(e["url"].startswith("https://") for e in entries)
-    assert all(e["title"] for e in entries)
-
-
-def test_extract_ography_from_html_multiple_entries(luffy_manga_ography_html) -> None:
-    entries = _extract_ography_from_html(luffy_manga_ography_html)
-    assert entries is not None
-    assert len(entries) == 10
-    assert all(e["url"].startswith("https://") for e in entries)
 
 
 # =============================================================================

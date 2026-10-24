@@ -1,6 +1,7 @@
 """Unit tests for anisearch_episode_crawler (plain HTTP + lxml XPath)."""
 
 import json
+import re
 from pathlib import Path
 from unittest.mock import patch
 
@@ -18,6 +19,29 @@ from enrichment.sources.base.framework import NullRepository
 from enrichment.sources.base.polite_http import FetchedPage
 
 _URL = "https://www.anisearch.com/anime/2227,one-piece"
+_EDGE_CASE_EPISODE_NUMBERS = ("1", "2", "279", "457", "50", "1144", "1200")
+
+
+@pytest.fixture
+def one_piece_episodes_raw(read_page) -> dict:
+    values = _extract_episodes_from_html(read_page("one_piece_episodes"))
+    assert values is not None
+    rows_by_number = {
+        re.sub(r"\D.*", "", row["episode_number_raw"]): row
+        for row in values["episodes"]
+    }
+    return {
+        "episodes": [rows_by_number[number] for number in _EDGE_CASE_EPISODE_NUMBERS]
+    }
+
+
+def test_extract_episodes_from_html_saved_page_matches_saved_values(
+    read_page, data_regression
+) -> None:
+    data_regression.check(
+        _extract_episodes_from_html(read_page("one_piece_episodes")),
+        basename="one_piece_episodes",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -61,31 +85,6 @@ def test_extract_episodes_no_table_returns_empty_list() -> None:
     raw = _extract_episodes_from_html("<html><body><p>nothing</p></body></html>")
     assert raw is not None
     assert raw["episodes"] == []
-
-
-def test_extract_episodes_real_fixture(one_piece_episodes_html) -> None:
-    raw = _extract_episodes_from_html(one_piece_episodes_html)
-    assert raw is not None
-    assert len(raw["episodes"]) > 0
-    first = raw["episodes"][0]
-    assert first["episode_number_raw"] is not None
-    assert "1" in first["episode_number_raw"]
-
-
-def test_extract_episodes_field_structure(one_piece_episodes_html) -> None:
-    raw = _extract_episodes_from_html(one_piece_episodes_html)
-    assert raw is not None
-    for row in raw["episodes"]:
-        assert set(row) >= {
-            "episode_number_raw",
-            "runtime",
-            "release_date",
-            "title_en",
-            "title_ja",
-            "title_de",
-            "title_fr",
-            "title_it",
-        }
 
 
 # ---------------------------------------------------------------------------
@@ -283,10 +282,10 @@ async def test_fetch_anisearch_episodes_real_page_returns_parsed_list(
     assert result[0]["titles"] == {
         "de": "Hier kommt Ruffy, der künftige König der Piraten!",
         "fr": "Je suis Luffy ! Celui qui deviendra Roi des pirates !",
-        "it": "Io sono Rufy! L'uomo che diventerà Re dei pirati!",
+        "it": "Il ragazzo di gomma",
     }
-    assert set(result[1]["titles"].keys()) == {"de", "fr"}
-    assert result[5]["titles"] == {}
+    assert set(result[1]["titles"].keys()) == {"de", "fr", "it"}
+    assert set(result[5]["titles"]) == {"de"}
     assert result[5]["episode_number"] == 1144
 
 
@@ -337,17 +336,17 @@ async def test_fetch_anisearch_episode_data_empty_page_returns_none() -> None:
 
 @pytest.mark.usefixtures("cache_off")
 async def test_fetch_anisearch_episode_data_real_html_returns_all_rows(
-    one_piece_episodes_html: str,
+    read_page,
 ) -> None:
     with patch.object(
         crawler_module,
         "fetch_anisearch_page",
         autospec=True,
-        return_value=_episodes_page(one_piece_episodes_html),
+        return_value=_episodes_page(read_page("one_piece_episodes")),
     ):
         result = await _fetch_anisearch_episode_data(_URL)
 
-    assert result == _extract_episodes_from_html(one_piece_episodes_html)
+    assert result == _extract_episodes_from_html(read_page("one_piece_episodes"))
 
 
 def test_get_extraction_schema_returns_xpaths() -> None:

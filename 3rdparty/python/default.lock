@@ -38,6 +38,7 @@
 //     "pytest-asyncio==1.4.0",
 //     "pytest-cov>=7.1.0",
 //     "pytest-mock==3.15.1",
+//     "pytest-regressions>=2.11.0",
 //     "pytest>=9.1.1",
 //     "qdrant-client==1.19.1",
 //     "ranx==0.3.21",
@@ -180,7 +181,9 @@
 //     "pyparsing==3.3.3",
 //     "pytest-asyncio==1.4.0",
 //     "pytest-cov==7.1.0",
+//     "pytest-datadir==1.8.0",
 //     "pytest-mock==3.15.1",
+//     "pytest-regressions==2.11.0",
 //     "pytest==9.1.1",
 //     "python-dateutil==2.9.0.post0",
 //     "python-dotenv==1.2.4",
@@ -375,7 +378,9 @@
     "pyparsing==3.3.3",
     "pytest-asyncio==1.4.0",
     "pytest-cov==7.1.0",
+    "pytest-datadir==1.8.0",
     "pytest-mock==3.15.1",
+    "pytest-regressions==2.11.0",
     "pytest==9.1.1",
     "python-dateutil==2.9.0.post0",
     "python-dotenv==1.2.4",
@@ -3313,6 +3318,25 @@
           "artifacts": [
             {
               "algorithm": "sha256",
+              "hash": "5c677bc097d907ac71ca418109adc3abe34cf0bddfe6cf78aecfbabd96a15cf0",
+              "url": "https://files.pythonhosted.org/packages/8f/7a/33895863aec26ac3bb5068a73583f935680d6ab6af2a9567d409430c3ee1/pytest_datadir-1.8.0-py3-none-any.whl"
+            }
+          ],
+          "project_name": "pytest-datadir",
+          "requires_dists": [
+            "pre-commit; extra == \"dev\"",
+            "pytest-datadir[testing]; extra == \"dev\"",
+            "pytest; extra == \"testing\"",
+            "pytest>=7.0",
+            "tox; extra == \"testing\""
+          ],
+          "requires_python": ">=3.8",
+          "version": "1.8.0"
+        },
+        {
+          "artifacts": [
+            {
+              "algorithm": "sha256",
               "hash": "0a25e2eb88fe5168d535041d09a4529a188176ae608a6d249ee65abc0949630d",
               "url": "https://files.pythonhosted.org/packages/5a/cc/06253936f4a7fa2e0f48dfe6d851d9c56df896a9ab09ac019d70b760619c/pytest_mock-3.15.1-py3-none-any.whl"
             }
@@ -3326,6 +3350,38 @@
           ],
           "requires_python": ">=3.9",
           "version": "3.15.1"
+        },
+        {
+          "artifacts": [
+            {
+              "algorithm": "sha256",
+              "hash": "fcb2bbcfb2fda256624d434c88cb1e4003667b7e078ee4084887cf839bbdf831",
+              "url": "https://files.pythonhosted.org/packages/97/61/fe772eda66bb8e2ee72da2937382aa4f803ca1e41092ca8d59953e96262c/pytest_regressions-2.11.0-py3-none-any.whl"
+            }
+          ],
+          "project_name": "pytest-regressions",
+          "requires_dists": [
+            "matplotlib; extra == \"dev\"",
+            "mypy; extra == \"dev\"",
+            "numpy; extra == \"dataframe\"",
+            "numpy; extra == \"dev\"",
+            "numpy; extra == \"image\"",
+            "numpy; extra == \"num\"",
+            "pandas; extra == \"dataframe\"",
+            "pandas; extra == \"dev\"",
+            "pandas; extra == \"num\"",
+            "pillow; extra == \"dev\"",
+            "pillow; extra == \"image\"",
+            "pre-commit; extra == \"dev\"",
+            "pyarrow; extra == \"dev\"",
+            "pytest-datadir>=1.7.0",
+            "pytest>=6.2.0",
+            "pyyaml",
+            "restructuredtext-lint; extra == \"dev\"",
+            "tox; extra == \"dev\""
+          ],
+          "requires_python": ">=3.10",
+          "version": "2.11.0"
         },
         {
           "artifacts": [
@@ -4519,6 +4575,7 @@
     "pytest-asyncio==1.4.0",
     "pytest-cov>=7.1.0",
     "pytest-mock==3.15.1",
+    "pytest-regressions>=2.11.0",
     "pytest>=9.1.1",
     "qdrant-client==1.19.1",
     "ranx==0.3.21",

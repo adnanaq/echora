@@ -402,12 +402,18 @@ pytest==9.1.1
     #   echora
     #   pytest-asyncio
     #   pytest-cov
+    #   pytest-datadir
     #   pytest-mock
+    #   pytest-regressions
 pytest-asyncio==1.4.0
     # via echora
 pytest-cov==7.1.0
     # via echora
+pytest-datadir==1.8.0
+    # via pytest-regressions
 pytest-mock==3.15.1
+    # via echora
+pytest-regressions==2.11.0
     # via echora
 python-dateutil==2.9.0.post0
     # via
@@ -424,6 +430,7 @@ pyyaml==6.0.3
     #   huggingface-hub
     #   ir-datasets
     #   peft
+    #   pytest-regressions
     #   timm
     #   transformers
 qdrant-client==1.19.1
