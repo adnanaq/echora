@@ -355,11 +355,12 @@ def test_correct_linked_pages_kept_answer_adds_part_page(
     [correction] = _correct(
         known_work_entries, store, ReviewFile(review_path)
     ).corrections
-    assert (correction.is_added_page, correction.is_part_page, correction.reason) == (
-        True,
-        True,
-        "review answer",
-    )
+    assert (
+        correction.is_added_page,
+        correction.is_part_page,
+        correction.is_anime_id_page,
+        correction.reason,
+    ) == (True, True, True, "review answer")
 
 
 def test_correct_linked_pages_answers_adding_two_pages_of_provider_add_neither(

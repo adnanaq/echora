@@ -9,6 +9,7 @@ is decided.
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
+from operator import itemgetter
 
 from work_matching import LinkingEntryDetails, ProviderPage, ProviderPageStore
 
@@ -77,12 +78,13 @@ def group_linked_pages_by_current_key(
             tuple(linking_seed_entries_by_current_key[current_key].values()),
         )
         for linked_key, current_key in sorted(
-            current_key_by_linked_page_key.items(),
-            key=lambda linked_and_current_key: linked_and_current_key[1],
+            current_key_by_linked_page_key.items(), key=itemgetter(1)
         )
     }
     waiting_page_keys = tuple(
-        key for key in linking_seed_entries_by_page_key if key not in fetched_pages
+        sorted(
+            key for key in linking_seed_entries_by_page_key if key not in fetched_pages
+        )
     )
     return linked_page_groups_by_current_key, waiting_page_keys
 

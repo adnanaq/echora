@@ -76,3 +76,11 @@ def test_rename_linked_pages_to_current_keys_unfetched_pages_keep_spelling() -> 
         {"kitsu:anime:51119", "mal:anime:65144"}
     )
     assert renamed.seed_entry_reference_page == boxer.seed_entry_reference_page
+
+
+def test_group_linked_pages_by_current_key_waiting_page_keys_sorted(store) -> None:
+    boxer = _linking_seed_entry(BOXER_ANILIST, "mal:anime:9", "mal:anime:10")
+    _, waiting_page_keys = group_linked_pages_by_current_key(
+        {"mal:anime:9": [boxer], "mal:anime:10": [boxer]}, store
+    )
+    assert waiting_page_keys == ("mal:anime:10", "mal:anime:9")
