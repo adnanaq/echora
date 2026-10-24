@@ -15,6 +15,7 @@ other two have taken theirs, decided by platform as well as by url.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from typing import Any
 
 from common.models.anime import StreamingEntry
@@ -361,9 +362,32 @@ def merged_anime_id(sources: list[str]) -> str:
     keys = sorted({get_page_key(url) for url in sources if url})
     if not keys:
         raise ValueError(f"Cannot derive an anime id from sources: {sources!r}")  # noqa: TRY003
-    for provider in _ID_SEED_ORDER:
-        match = next((key for key in keys if key.startswith(f"{provider}:")), None)
-        if match:
-            return generate_deterministic_id(match)
+    if anime_id_page_key := find_anime_id_page_key(keys):
+        return generate_deterministic_id(anime_id_page_key)
     logger.warning(f"No known provider URL among {keys}; id is coverage-dependent")
     return generate_deterministic_id("|".join(keys))
+
+
+def find_anime_id_page_key(sources: Iterable[str]) -> str | None:
+    """Return the page key a work's anime id is derived from.
+
+    The rules, applied in order:
+
+    - The first provider of ``_ID_SEED_ORDER`` with a page among the sources
+      gives the key: MAL, then AniList, AniDB, Kitsu, Anime-Planet, AniSearch.
+    - Among that provider's pages, the lowest page key in text order is taken,
+      so the choice does not depend on the order the sources are listed in.
+
+    Seed cleaning reads this to tell when an added page changes a work's id.
+
+    Args:
+        sources: Provider page addresses or page keys of one work.
+
+    Returns:
+        The page key, or None when no source is a page of those providers.
+    """
+    keys = sorted({get_page_key(source) for source in sources if source})
+    for provider in _ID_SEED_ORDER:
+        if match := next((key for key in keys if key.startswith(f"{provider}:")), None):
+            return match
+    return None

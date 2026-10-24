@@ -142,6 +142,7 @@ placed page, and each added linked page, becomes a `SeedCorrection`:
 | `target_entry_reference_page` | The reference page of the seed entry an `other work` page joins; `null` when it starts a new entry. |
 | `is_added_page` | Whether the page is not in the seed and is added to the entry (see "Adding linked pages"). |
 | `is_part_page` | Whether the page covers only part of its work, so enrichment combines it with the work's other part pages: an answer's `, part`, or an added page's `add as part`. |
+| `is_anime_id_page` | Whether the entry's anime id now comes from this added page, so the search entry stored under the old id must be replaced (see "Anime id" below). |
 | `reason` | Why the page is placed here: the doubled-provider decision's outcome by name (`SAME_PAGE`, `PAGES_OF_OTHER_WORKS`), the linked-page decision's reason by name, or `review answer`. |
 
 The rules:
@@ -203,9 +204,13 @@ rules:
 - **No doubled provider from answers:** two answers adding two whole pages of
   one provider to one entry add neither; the run prints both pages and a
   warning names the entry.
-- **Anime id:** an added MAL page changes the entry's anime id, since ids come
-  from the MAL page first, so the cleaned seed must replace the old search
-  entry.
+- **Anime id:** enrichment derives an entry's anime id from its pages: the
+  first of MAL, AniList, AniDB, Kitsu, Anime-Planet and AniSearch the entry
+  holds (`find_anime_id_page_key` in `enrichment.pipeline.link_rules`). An added
+  page that becomes that page, such as a MAL page added to an entry holding
+  only an AniList page, changes the id, and its correction says so
+  (`is_anime_id_page`). The cleaned seed must then replace the search entry
+  stored under the old id.
 
 ## Running it
 
@@ -247,3 +252,4 @@ It writes to `data/seed_cleaning/` (git-ignored):
 | `provider_page_fetcher.py` | `ProviderPageFetcher`, `FetchSummary`, `FetchOutcome`, `FETCHED_PROVIDERS`: fetching every page of the entries to check, the link-carrying pages of entries without a MAL page, and linked pages by key. |
 | `seed_corrections.py` | `correct_doubled_provider_entries`, `SeedCorrection`, `build_corrected_entries`, `write_corrections`: where each page of an entry with doubled providers ends up, and the corrected entries. |
 | `linked_page_additions.py` | `find_entries_without_mal_page`, `LINK_CARRYING_PROVIDERS`, `list_entries_with_placed_pages`, `find_linking_seed_entries`, `correct_linked_pages`: the linked pages added as corrections. |
+| `linked_page_groups.py` | `LinkingSeedEntry`, `group_linked_pages_by_current_key`, `rename_linked_pages_to_current_keys`: the linked pages grouped by the current key their fetch reports, so the spellings of one page are decided once. |

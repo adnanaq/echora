@@ -15,14 +15,20 @@ entry linking it when the checks pass or a person's answer accepts it.
 | Give a linked page not fetched yet, or whose fetch failed, no decision. | The next run fetches the page again. |
 | Never follow an added page's own links. | Corrections are rebuilt from the downloaded seed on every run, so additions never chain. |
 | Add neither page when answers add two whole pages of one provider to one entry. | Both pages would make a doubled provider; a warning names the entry. |
+| Mark an added page the entry's anime id now comes from (`is_anime_id_page`). | Enrichment derives the id from the entry's pages, MAL first, so the search entry under the old id must be replaced. |
 """
 
 import logging
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import NamedTuple
 
+from enrichment.pipeline.link_rules import find_anime_id_page_key
+from seed_cleaning.linked_page_groups import (
+    LinkingSeedEntry,
+    group_linked_pages_by_current_key,
+)
 from seed_cleaning.provider_page_fetcher import FETCHED_PROVIDERS
 from seed_cleaning.seed_corrections import (
     REVIEW_ANSWER_REASON,
@@ -57,20 +63,6 @@ logger = logging.getLogger(__name__)
 # them for their links alone is worth it. Anime-Planet and AniSearch pages
 # carry none.
 LINK_CARRYING_PROVIDERS: frozenset[str] = frozenset({"anilist", "kitsu", "anidb"})
-
-
-@dataclass(frozen=True, slots=True)
-class LinkingSeedEntry:
-    """Hold an entry linking an unheld page, and the seed entry it stands for."""
-
-    # The reference page of the seed entry, which a correction names; the
-    # corrected entry's own reference page can differ after a page moved out.
-    seed_entry_reference_page: str
-    entry_details: LinkingEntryDetails
-
-
-# One linked page's details and every entry linking it, under any spelling.
-type _LinkedPageGroup = tuple[ProviderPage, tuple[LinkingSeedEntry, ...]]
 
 
 class _PageAddition(NamedTuple):
@@ -235,7 +227,7 @@ def correct_linked_pages(
         The corrections adding pages, the review cases, and the pages not added.
     """
     linked_page_groups_by_current_key, waiting_page_keys = (
-        _group_linked_pages_by_current_key(linking_seed_entries_by_page_key, store)
+        group_linked_pages_by_current_key(linking_seed_entries_by_page_key, store)
     )
     page_additions: list[_PageAddition] = []
     review_cases: list[ReviewCase] = []
@@ -243,7 +235,10 @@ def correct_linked_pages(
     for page, linking_seed_entries in linked_page_groups_by_current_key.values():
         decision = decide_linked_page(
             page,
-            (linking.entry_details for linking in linking_seed_entries),
+            (
+                linking_seed_entry.entry_details
+                for linking_seed_entry in linking_seed_entries
+            ),
             known_work_entries,
         )
         if decision.outcome is LinkedPageOutcome.SKIP:
@@ -273,92 +268,6 @@ def correct_linked_pages(
     )
 
 
-def _group_linked_pages_by_current_key(
-    linking_seed_entries_by_page_key: Mapping[str, Sequence[LinkingSeedEntry]],
-    store: ProviderPageStore,
-) -> tuple[dict[str, _LinkedPageGroup], tuple[str, ...]]:
-    """Group the fetched linked pages by the current key their fetch reports.
-
-    Links spell one page several ways, such as a Kitsu slug and the Kitsu
-    number the seed uses. Only the fetched page tells which spellings are one
-    page. Grouping applies two rules:
-
-    - The spellings of one page are decided once, with every entry linking any
-      of them.
-    - Each entry's other linked pages are named by their current key too, so
-      two spellings of one page never count as two pages of one provider.
-
-    Args:
-        linking_seed_entries_by_page_key: Each linked page's key mapped to the
-            entries linking it.
-        store: The fetched pages.
-
-    Returns:
-        Each current key, sorted, mapped to the page's details (stored at the
-        current key when fetched there) and the entries linking it; and the
-        sorted keys of linked pages not fetched yet.
-    """
-    fetched_pages = {
-        key: page
-        for key in linking_seed_entries_by_page_key
-        if (page := store.get_page(key)) is not None
-    }
-    current_key_by_linked_page_key = {
-        key: page.current_key for key, page in fetched_pages.items()
-    }
-    linking_seed_entries_by_current_key: defaultdict[
-        str, dict[str, LinkingSeedEntry]
-    ] = defaultdict(dict)
-    for key, current_key in current_key_by_linked_page_key.items():
-        for linking in linking_seed_entries_by_page_key[key]:
-            linking_seed_entries_by_current_key[current_key].setdefault(
-                linking.seed_entry_reference_page,
-                _name_linked_pages_by_current_key(
-                    linking, current_key_by_linked_page_key
-                ),
-            )
-    linked_page_groups_by_current_key = {
-        current_key: (
-            store.get_page(current_key) or fetched_pages[linked_key],
-            tuple(linking_seed_entries_by_current_key[current_key].values()),
-        )
-        for linked_key, current_key in sorted(
-            current_key_by_linked_page_key.items(),
-            key=lambda linked_and_current_key: linked_and_current_key[1],
-        )
-    }
-    waiting_page_keys = tuple(
-        key for key in linking_seed_entries_by_page_key if key not in fetched_pages
-    )
-    return linked_page_groups_by_current_key, waiting_page_keys
-
-
-def _name_linked_pages_by_current_key(
-    linking: LinkingSeedEntry, current_key_by_linked_page_key: Mapping[str, str]
-) -> LinkingSeedEntry:
-    """Rename a linking entry's other linked pages to their fetched current keys.
-
-    Args:
-        linking: An entry linking a page, with the linked pages as its links
-            spell them.
-        current_key_by_linked_page_key: Each fetched linked page's current key, by the
-            key its link spells; pages not fetched keep their spelling.
-
-    Returns:
-        The same linking entry, its linked pages named by current key.
-    """
-    return replace(
-        linking,
-        entry_details=replace(
-            linking.entry_details,
-            linked_page_keys=frozenset(
-                current_key_by_linked_page_key.get(linked_key, linked_key)
-                for linked_key in linking.entry_details.linked_page_keys
-            ),
-        ),
-    )
-
-
 def _place_linked_page(
     decision: LinkedPageDecision,
     page: ProviderPage,
@@ -381,6 +290,8 @@ def _place_linked_page(
     # The seed's spelling of the page's current key, not the link's.
     address = build_page_address(page_key) or page.address
     if decision.outcome is LinkedPageOutcome.ADD:
+        # Only a page one entry links passes every check, so an added page has
+        # exactly one linking entry (``decide_linked_page``).
         [entry] = decision.linking_entries
         reason = decision.reason.name
         return None, _PageAddition(
@@ -447,40 +358,68 @@ def _drop_conflicting_additions(
 
 
 def _build_addition_corrections(
-    page_additions: Iterable[_PageAddition],
+    page_additions: Sequence[_PageAddition],
     linking_seed_entries_by_page_key: Mapping[str, Sequence[LinkingSeedEntry]],
 ) -> list[SeedCorrection]:
     """Turn additions into corrections, each naming the seed entry the page joins.
 
-    Each correction names the seed entry by the seed entry's own reference page.
-    The cleaned seed then finds the entry whatever the corrections did to the
-    entry's current reference page.
+    - Each correction names the seed entry by the seed entry's own reference
+      page. The cleaned seed then finds the entry whatever the corrections did
+      to the entry's current reference page.
+    - A correction marks the added page the entry's anime id now comes from
+      (``is_anime_id_page``). Enrichment derives the id from the entry's
+      pages, MAL first (``find_anime_id_page_key``), so the search entry stored
+      under the old id must be replaced.
 
     Args:
         page_additions: The additions kept.
         linking_seed_entries_by_page_key: Each linked page's key mapped to the
-            entries linking it, for each entry's seed reference page.
+            entries linking it, for each entry's seed reference page and pages.
 
     Returns:
         One correction per addition, in the order given.
     """
     # Keyed by the corrected entry's reference page, which is unique: each page
     # belongs to one seed entry, and the corrections move a page, never copy it.
-    seed_entry_reference_page_by_entry_reference_page = {
-        linking.entry_details.entry.reference_page: linking.seed_entry_reference_page
+    linking_seed_entry_by_entry_reference_page = {
+        linking_seed_entry.entry_details.entry.reference_page: linking_seed_entry
         for linking_seed_entries in linking_seed_entries_by_page_key.values()
-        for linking in linking_seed_entries
+        for linking_seed_entry in linking_seed_entries
+    }
+    added_page_keys_by_entry_reference_page: defaultdict[str, list[str]] = defaultdict(
+        list
+    )
+    for page_addition in page_additions:
+        added_page_keys_by_entry_reference_page[
+            page_addition.entry_reference_page
+        ].append(page_addition.page_key)
+    anime_id_page_key_by_entry_reference_page = {
+        reference_page: find_anime_id_page_key(
+            [
+                *linking_seed_entry_by_entry_reference_page[
+                    reference_page
+                ].entry_details.entry.addresses_by_page_key,
+                *added_page_keys,
+            ]
+        )
+        for reference_page, added_page_keys in (
+            added_page_keys_by_entry_reference_page.items()
+        )
     }
     return [
         SeedCorrection(
-            entry_reference_page=seed_entry_reference_page_by_entry_reference_page[
+            entry_reference_page=linking_seed_entry_by_entry_reference_page[
                 page_addition.entry_reference_page
-            ],
+            ].seed_entry_reference_page,
             page_key=page_addition.page_key,
             address=page_addition.address,
             placement_word=ENTRY_WORK,
             is_added_page=True,
             is_part_page=page_addition.is_part_page,
+            is_anime_id_page=page_addition.page_key
+            == anime_id_page_key_by_entry_reference_page[
+                page_addition.entry_reference_page
+            ],
             reason=page_addition.reason,
         )
         for page_addition in page_additions

@@ -85,6 +85,9 @@ class SeedCorrection(BaseModel):
     # run MyAnimeList lists whole, so enrichment combines it with the work's
     # other part pages rather than taking it for the whole work.
     is_part_page: bool = False
+    # Whether the entry's anime id now comes from this added page (MAL first), so
+    # the search entry stored under the entry's old id must be replaced.
+    is_anime_id_page: bool = False
     # Why the page is placed here: the doubled-provider decision's outcome name,
     # the linked-page decision's reason name, or ``review answer``.
     reason: str

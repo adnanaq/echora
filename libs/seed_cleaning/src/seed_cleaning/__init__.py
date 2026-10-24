@@ -13,11 +13,16 @@ from seed_cleaning.doubled_provider_entries import find_doubled_provider_entries
 from seed_cleaning.linked_page_additions import (
     LINK_CARRYING_PROVIDERS,
     LinkedPageCorrections,
-    LinkingSeedEntry,
     correct_linked_pages,
     find_entries_without_mal_page,
     find_linking_seed_entries,
     list_entries_with_placed_pages,
+)
+from seed_cleaning.linked_page_groups import (
+    LinkedPageGroup,
+    LinkingSeedEntry,
+    group_linked_pages_by_current_key,
+    rename_linked_pages_to_current_keys,
 )
 from seed_cleaning.provider_page_fetcher import (
     FETCHED_PROVIDERS,
@@ -49,7 +54,10 @@ __all__ = [
     "FetchOutcome",
     "FetchSummary",
     "LinkedPageCorrections",
+    "LinkedPageGroup",
     "LinkingSeedEntry",
+    "group_linked_pages_by_current_key",
+    "rename_linked_pages_to_current_keys",
     "ProviderPageFetcher",
     "SeedCorrection",
     "SplitWorkCandidates",
