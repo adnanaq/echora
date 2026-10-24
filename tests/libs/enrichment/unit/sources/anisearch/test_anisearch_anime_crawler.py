@@ -336,9 +336,9 @@ def test_build_anime_from_raw_type_label_and_details_removed(
 @pytest.mark.parametrize(
     ("page_fixture", "episode_count"),
     [
-        ("one_piece_main_html", 1200),
         ("balala_the_fairies_2_main_html", 52),
         ("mo_dao_zu_shi_main_html", 15),
+        ("twelve_sai_main_html", 12),
     ],
 )
 def test_build_anime_from_raw_saved_page_reads_episode_count(
@@ -347,6 +347,76 @@ def test_build_anime_from_raw_saved_page_reads_episode_count(
     raw = _extract_anime_from_html(request.getfixturevalue(page_fixture))
     assert raw is not None
     assert _anime_from_page(raw).episode_count == episode_count
+
+
+def test_build_anime_from_raw_estimated_episode_count_reads_unknown(
+    one_piece_main_html,
+) -> None:
+    raw = _extract_anime_from_html(one_piece_main_html)
+    assert raw is not None
+    assert _anime_from_page(raw).episode_count is None
+
+
+@pytest.mark.parametrize(
+    ("page_fixture", "is_estimated"),
+    [
+        ("one_piece_main_html", True),
+        ("balala_the_fairies_2_main_html", False),
+        ("mo_dao_zu_shi_main_html", False),
+        ("twelve_sai_main_html", False),
+    ],
+)
+def test_extract_anime_from_html_saved_page_reports_estimated_episode_count(
+    request, page_fixture: str, is_estimated: bool
+) -> None:
+    raw = _extract_anime_from_html(request.getfixturevalue(page_fixture))
+    assert raw is not None
+    assert raw["is_episode_count_estimated"] is is_estimated
+
+
+def test_extract_anime_from_html_runtime_also_unconfirmed_reports_estimated_episode_count(
+    balala_the_fairies_2_main_html,
+) -> None:
+    page_html = balala_the_fairies_2_main_html.replace(
+        "TV-Series, 52",
+        'TV-Series, <span class="issue-info showpop" data-tooltip="Number of '
+        'episodes: preliminary estimate&lt;br&gt;Runtime: not confirmed"></span>52',
+        1,
+    )
+    raw = _extract_anime_from_html(page_html)
+    assert raw is not None
+    assert raw["is_episode_count_estimated"] is True
+
+
+@pytest.mark.parametrize(
+    ("page_fixture", "synonyms"),
+    [
+        ("one_piece_main_html", ["OP", "OneP"]),
+        (
+            "balala_the_fairies_2_main_html",
+            ["Balala the Fairies Season 2", "Balala the Fairies: Miracle Dance"],
+        ),
+        (
+            "mo_dao_zu_shi_main_html",
+            [
+                "Founder of Diabolism",
+                "Grandmaster of Demonic Cultivation",
+                "Madou Soshi (魔道祖師)",
+                "Modao Zushi",
+                "The Founder of Evil Magic",
+                "The Master of Diabolism",
+                "Großmeister der dämonischen Kultivierung: Die Vergangenheit",
+            ],
+        ),
+        ("twelve_sai_main_html", ["Age 12: Kiss, Hate, Love"]),
+    ],
+)
+def test_extract_anime_from_html_saved_page_reads_one_synonym_per_name(
+    request, page_fixture: str, synonyms: list[str]
+) -> None:
+    raw = _extract_anime_from_html(request.getfixturevalue(page_fixture))
+    assert raw is not None
+    assert raw["synonyms"] == synonyms
 
 
 def test_build_anime_from_raw_status_label_removed(one_piece_main_raw) -> None:
@@ -466,13 +536,15 @@ def test_build_anime_from_raw_source_material_label_removed(one_piece_main_raw) 
     assert _anime_from_page(one_piece_main_raw).source_material == "Manga"
 
 
-def test_build_anime_from_raw_synonyms_split_on_commas(one_piece_main_raw) -> None:
+def test_build_anime_from_raw_synonyms_kept_as_read(one_piece_main_raw) -> None:
     assert _anime_from_page(one_piece_main_raw).synonyms == ["OP", "OneP"]
 
 
-def test_build_anime_from_raw_synonym_with_colon_kept_whole(one_piece_main_raw) -> None:
-    raw = {**one_piece_main_raw, "synonyms": "Synonyms: Re:Zero, OP"}
-    assert _anime_from_page(raw).synonyms == ["Re:Zero", "OP"]
+def test_build_anime_from_raw_synonym_with_commas_kept_whole(
+    one_piece_main_raw,
+) -> None:
+    raw = {**one_piece_main_raw, "synonyms": ["Age 12: Kiss, Hate, Love"]}
+    assert _anime_from_page(raw).synonyms == ["Age 12: Kiss, Hate, Love"]
 
 
 def test_build_anime_from_raw_without_synonyms_gives_empty_list(

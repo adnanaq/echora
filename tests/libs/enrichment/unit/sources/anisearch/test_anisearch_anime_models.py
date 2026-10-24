@@ -1,5 +1,6 @@
 import pytest
 from enrichment.sources.anisearch.anisearch_anime_models import AniSearchAnime
+from pydantic import ValidationError
 
 
 def _block(language: str, title: str, *native_titles: str) -> dict:
@@ -129,3 +130,29 @@ def test_anisearch_anime_given_episode_count_kept() -> None:
         {"type": "Type: TV-Series, 52 (~24 min)", "episode_count": 12}
     )
     assert anime.episode_count == 12
+
+
+def test_anisearch_anime_estimated_episode_count_reads_unknown() -> None:
+    anime = AniSearchAnime.model_validate(
+        {"type": "Type: TV-Series, 12", "is_episode_count_estimated": True}
+    )
+    assert (anime.type, anime.episode_count) == ("TV-Series", None)
+
+
+def test_anisearch_anime_episode_count_not_estimated_kept() -> None:
+    anime = AniSearchAnime.model_validate(
+        {"type": "Type: TV-Series, 12", "is_episode_count_estimated": False}
+    )
+    assert anime.episode_count == 12
+
+
+def test_anisearch_anime_synonyms_stripped_and_blank_names_dropped() -> None:
+    anime = AniSearchAnime.model_validate(
+        {"synonyms": [" Age 12: Kiss, Hate, Love ", "", "OP"]}
+    )
+    assert anime.synonyms == ["Age 12: Kiss, Hate, Love", "OP"]
+
+
+def test_anisearch_anime_synonyms_as_one_text_rejected() -> None:
+    with pytest.raises(ValidationError):
+        AniSearchAnime.model_validate({"synonyms": "Synonyms: OP, OneP"})

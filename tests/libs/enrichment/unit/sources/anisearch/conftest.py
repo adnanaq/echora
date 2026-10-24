@@ -8,6 +8,7 @@ Fixtures are real XPath extraction output captured from:
 - https://www.anisearch.com/character/4852,monkey-d-luffy/manga (2026-06-09)
 - https://www.anisearch.com/anime/2227,one-piece/characters (2026-04-23)
 - https://www.anisearch.com/anime/2227,one-piece/episodes (2026-04-28)
+- https://www.anisearch.com/anime/9589 (HTML 2026-10-24)
 """
 
 import json
@@ -36,6 +37,11 @@ def balala_the_fairies_2_main_html() -> str:
 @pytest.fixture(scope="session")
 def mo_dao_zu_shi_main_html() -> str:
     return (_FIXTURES / "mo_dao_zu_shi_main.html").read_text()
+
+
+@pytest.fixture(scope="session")
+def twelve_sai_main_html() -> str:
+    return (_FIXTURES / "twelve_sai_main.html").read_text()
 
 
 @pytest.fixture(scope="session")

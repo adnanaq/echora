@@ -67,8 +67,8 @@ def _episode_count_from_type_line(type_line: object) -> int | None:
     - AniSearch prints the count after the type and before the episode length
       in brackets.
     - AniSearch prints "?" while the count is not known, which reads as None.
-    - For an anime still airing, the count is AniSearch's estimate of the whole
-      run.
+    - A count AniSearch marks as its estimate is not read here: the mark is a
+      tooltip the line's text does not hold, so ``AniSearchAnime`` checks it.
 
     Args:
         type_line: The type line as the crawler extracted it, label included.
@@ -92,18 +92,21 @@ def _episode_count_from_type_line(type_line: object) -> int | None:
 
 
 def _synonym_list(value: object) -> object:
-    """Split "Synonyms: OP, OneP" into names; no synonyms gives an empty list.
+    """Keep each synonym the crawler read as one name; no synonyms gives an empty list.
 
-    >>> _synonym_list("Synonyms: Re:Zero, OP")
-    ['Re:Zero', 'OP']
+    The crawler tells names apart by the page's elements, because a name can
+    hold commas, so names are only stripped here and never split. Text joined
+    into one string is not split either: it fails validation.
+
+    >>> _synonym_list([" Age 12: Kiss, Hate, Love ", "", "OP"])
+    ['Age 12: Kiss, Hate, Love', 'OP']
     """
     if value is None:
         return []
-    value = _without_label(value)
-    if value is None:
-        return []
-    if isinstance(value, str):
-        return [name.strip() for name in value.split(",") if name.strip()]
+    if isinstance(value, list):
+        return [
+            name.strip() for name in value if isinstance(name, str) and name.strip()
+        ]
     return value
 
 
@@ -305,7 +308,8 @@ class AniSearchAnime(BaseModel):
     type: Annotated[str | None, BeforeValidator(_type_name)] = (
         None  # "TV-Series", "Movie", "OVA", etc.
     )
-    # Read from the same "Type:" line as the type; None while AniSearch gives "?".
+    # Read from the same "Type:" line as the type; None while AniSearch gives "?"
+    # or marks the count as its estimate.
     episode_count: int | None = None
     source_material: LabelledText = None  # "Manga", "Light Novel", etc.
 
@@ -352,7 +356,12 @@ class AniSearchAnime(BaseModel):
         """Split the page's type, published, broadcast and title sections into their fields.
 
         The "Type:" line holds the episode count after the type. The count is
-        read before the type field keeps only the type.
+        read before the type field keeps only the type:
+
+        - A count AniSearch marks as its estimate (``is_episode_count_estimated``)
+          reads as unknown, like AniSearch's "?": it is a guess, such as the
+          whole run of an anime still airing, and work matching compares counts.
+        - Any other count is kept.
 
         Args:
             data: The raw values the crawler extracted, by field name.
@@ -364,8 +373,13 @@ class AniSearchAnime(BaseModel):
         if not isinstance(data, dict):
             return data
         data = dict(data)
+        is_episode_count_estimated = data.pop("is_episode_count_estimated", False)
         if "type" in data and "episode_count" not in data:
-            data["episode_count"] = _episode_count_from_type_line(data["type"])
+            data["episode_count"] = (
+                None
+                if is_episode_count_estimated
+                else _episode_count_from_type_line(data["type"])
+            )
         if "published" in data:
             data.update(_published_dates(data.pop("published")))
         if "broadcast" in data:
