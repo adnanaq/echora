@@ -290,6 +290,15 @@ def test_extract_anime_from_html_runtime_also_unconfirmed_reports_estimated_epis
     assert raw["is_episode_count_estimated"] is True
 
 
+def test_extract_anime_from_html_names_behind_read_more_kept(read_page) -> None:
+    raw = _extract_anime_from_html(read_page("mo_dao_zu_shi_main"))
+    assert raw is not None
+    assert raw["synonyms"][-2:] == [
+        "The Master of Diabolism",
+        "Großmeister der dämonischen Kultivierung: Die Vergangenheit",
+    ]
+
+
 def test_extract_anime_from_html_synonym_holding_commas_kept_whole(read_page) -> None:
     raw = _extract_anime_from_html(read_page("twelve_sai_main"))
     assert raw is not None
