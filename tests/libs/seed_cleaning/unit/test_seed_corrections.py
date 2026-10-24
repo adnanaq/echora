@@ -79,7 +79,7 @@ def _correct(entry, store, known_work_entries, review_file):
     )
 
 
-def test_correct_doubled_provider_entries_settled_entry_moves_page_to_seed_entry(
+def test_correct_doubled_provider_entries_entry_without_review_moves_page_to_seed_entry(
     entry, store, known_work_entries, review_file
 ) -> None:
     store.add_pages(_page(KITSU_ONE, MAL), _page(KITSU_TWO, TARGET_MAL))
@@ -91,7 +91,7 @@ def test_correct_doubled_provider_entries_settled_entry_moves_page_to_seed_entry
             page_key="kitsu:anime:1",
             address=KITSU_ONE,
             placement_word="entry",
-            reason="ONE_LINKED",
+            reason="PAGES_OF_OTHER_WORKS",
         ),
         SeedCorrection(
             entry_reference_page="mal:anime:1",
@@ -99,7 +99,7 @@ def test_correct_doubled_provider_entries_settled_entry_moves_page_to_seed_entry
             address=KITSU_TWO,
             placement_word="other work",
             target_entry_reference_page="mal:anime:9",
-            reason="ONE_LINKED",
+            reason="PAGES_OF_OTHER_WORKS",
         ),
     )
 
@@ -143,7 +143,7 @@ def test_correct_doubled_provider_entries_duplicate_page_goes_to_review(
     store.add_pages(_page(KITSU_ONE, MAL), _page(KITSU_TWO, MAL))
     result = _correct(entry, store, known_work_entries, review_file)
     assert result.corrections == ()
-    assert [case.reasons for case in result.review_cases] == [("SHARED_LINK",)]
+    assert [case.reasons for case in result.review_cases] == [("DUPLICATE_PAGES",)]
 
 
 def test_correct_doubled_provider_entries_accepted_answer_gives_corrections(
@@ -165,6 +165,35 @@ def test_correct_doubled_provider_entries_accepted_answer_gives_corrections(
         ("kitsu:anime:1", False, "review answer"),
         ("kitsu:anime:2", True, "review answer"),
     ]
+
+
+def test_correct_doubled_provider_entries_part_page_answer_marks_corrections_part(
+    entry, store, known_work_entries, tmp_path
+) -> None:
+    store.add_pages(
+        _page(KITSU_ONE, MAL, episode_count=1), _page(KITSU_TWO, MAL, episode_count=4)
+    )
+    path = tmp_path / "review.jsonl"
+    [case] = _correct(entry, store, known_work_entries, ReviewFile(path)).review_cases
+    answered = case.model_copy(
+        update={
+            "answer": {"kitsu:anime:1": "entry, part", "kitsu:anime:2": "entry, part"}
+        }
+    )
+    path.write_text(answered.model_dump_json() + "\n", encoding="utf-8")
+    result = _correct(entry, store, known_work_entries, ReviewFile(path))
+    assert (case.reasons, case.suggested_answer) == (
+        ("PART_PAGES",),
+        {
+            "kitsu:anime:1": "entry, part",
+            "kitsu:anime:2": "entry, part",
+            "mal:anime:1": "entry",
+        },
+    )
+    assert [
+        (correction.page_key, correction.is_part_page)
+        for correction in result.corrections
+    ] == [("kitsu:anime:1", True), ("kitsu:anime:2", True)]
 
 
 def test_correct_doubled_provider_entries_answer_places_renamed_single_page_by_listed_key(
@@ -284,7 +313,9 @@ def test_correct_doubled_provider_entries_moved_page_details_differing_go_to_rev
         _page(KITSU_ONE, MAL), _page(KITSU_TWO, TARGET_MAL, type="OVA", year=1987)
     )
     review_cases = _correct(entry, store, known_work_entries, review_file).review_cases
-    assert [case.reasons for case in review_cases] == [("ONE_LINKED",)]
+    assert [case.reasons for case in review_cases] == [
+        ("PAGES_OF_OTHER_WORKS", "MOVE_NOT_SURE")
+    ]
 
 
 def test_build_corrected_entries_moved_page_leaves_entry_and_joins_seed_entry(

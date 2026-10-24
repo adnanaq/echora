@@ -155,8 +155,9 @@ def count_corrections(
     | old addresses dropped | The entry also lists the page's current address. |
     | pages moved to a seed entry, pages moved to a new entry | The page belongs to another work. |
     | pages kept as main page | The page stays and is its provider's main page, so the page is listed first. |
+    | pages kept as part page | The page stays and covers part of its work, so enrichment combines it with the work's other parts. |
 
-    A page that stays in its entry and is not the main page is not counted.
+    A page that stays in its entry, neither main page nor part page, is not counted.
 
     Args:
         corrections: Every seed correction of the run.
@@ -167,6 +168,7 @@ def count_corrections(
     """
     counts = {
         "pages kept as main page": 0,
+        "pages kept as part page": 0,
         "old addresses dropped": 0,
         "pages moved to a seed entry": 0,
         "pages moved to a new entry": 0,
@@ -188,6 +190,8 @@ def count_corrections(
             counts["pages moved to a new entry"] += 1
         elif correction.is_main_page:
             counts["pages kept as main page"] += 1
+        elif correction.is_part_page:
+            counts["pages kept as part page"] += 1
     for review_case in review_cases:
         is_answered = review_case.accepted_answer is not None
         counts["review cases answered" if is_answered else "review cases open"] += 1

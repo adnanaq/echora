@@ -62,6 +62,7 @@ def test_count_corrections_counts_each_change_once() -> None:
     corrections = (
         _correction("kitsu:anime:1", "entry"),
         _correction("kitsu:anime:2", "entry", is_main_page=True),
+        _correction("kitsu:anime:6", "entry", is_part_page=True),
         _correction("kitsu:anime:3", "entry", renamed_to="kitsu:anime:2"),
         _correction(
             "kitsu:anime:4", "other work", target_entry_reference_page="mal:anime:9"
@@ -72,6 +73,7 @@ def test_count_corrections_counts_each_change_once() -> None:
     )
     assert count_corrections(corrections, ()) == {
         "pages kept as main page": 1,
+        "pages kept as part page": 1,
         "old addresses dropped": 1,
         "pages moved to a seed entry": 1,
         "pages moved to a new entry": 1,

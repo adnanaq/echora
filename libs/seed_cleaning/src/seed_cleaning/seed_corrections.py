@@ -13,9 +13,11 @@ rules:
   an entry that is itself being corrected.
 - Rebuilt every run: corrections come from this run's decisions and the kept
   answers, so the file always matches them and needs no clean-up.
-- Moves: a page placed in ``other work`` joins the seed entry its links name
-  when they name exactly one; otherwise it starts a new entry. Pages a review
-  answer puts in the same ``work N`` form one new entry.
+- Moves: a page placed in ``other work`` joins the seed entry its sure move
+  names (``UnrelatedPage.move_target_entry``); otherwise it starts a new entry.
+  Pages a review answer puts in the same ``work N`` form one new entry.
+- Part pages: a page an answer marks ``, part`` is recorded as a part page, so
+  enrichment combines it with the work's other part pages.
 - Renamed pages: an old address is dropped, because the entry also lists the
   page under its current address (the rules send it to review otherwise).
 - Main page: a work's main page is listed before its other pages, because
@@ -45,9 +47,7 @@ from work_matching import (
     ReviewFile,
     WorkEntry,
     decide_doubled_providers,
-    find_move_target,
     get_seed_type,
-    index_pages_by_current_key,
     place_pages_without_review,
     rank_by_provider_trust,
     replace_file_lines,
@@ -85,7 +85,8 @@ class SeedCorrection(BaseModel):
     # run MyAnimeList lists whole, so enrichment combines it with the work's
     # other part pages rather than taking it for the whole work.
     is_part_page: bool = False
-    # The name of the decision's reason, or ``review answer``.
+    # Why the page is placed here: the doubled-provider decision's outcome name,
+    # the linked-page decision's reason name, or ``review answer``.
     reason: str
 
 
@@ -150,7 +151,8 @@ def correct_doubled_provider_entries(
         review_file: The review file, for the answers kept in it.
 
     Returns:
-        The corrections from settled entries and accepted answers, and every
+        The corrections from entries needing no review and from accepted
+        answers, and every
         review case of this run.
     """
     corrections: list[SeedCorrection] = []
@@ -158,9 +160,9 @@ def correct_doubled_provider_entries(
     for entry in entries:
         pages = store.get_entry_pages(entry)
         decisions = decide_doubled_providers(entry, pages, known_work_entries)
-        placements = place_pages_without_review(entry, decisions, pages)
+        placements = place_pages_without_review(decisions)
         reason_by_page_key = {
-            key: decision.reason.name
+            key: decision.outcome.name
             for decision in decisions
             for key in decision.page_keys
         }
@@ -310,7 +312,7 @@ def _build_entry_corrections(
     current_key_by_page_key = {
         page.key: page.renamed_to for page in pages if page.renamed_to
     }
-    target_reference_page_by_page_key = _find_target_reference_pages(decisions, pages)
+    target_reference_page_by_page_key = _find_target_reference_pages(decisions)
     corrections: list[SeedCorrection] = []
     for key, address in entry.addresses_by_page_key.items():
         placed_key_and_placement = _find_placement(
@@ -326,6 +328,7 @@ def _build_entry_corrections(
                 address=address,
                 placement_word=placement.placement_word,
                 is_main_page=placement.is_main_page,
+                is_part_page=placement.is_part_page,
                 renamed_to=(
                     current_key
                     if current_key != key and current_key in entry.addresses_by_page_key
@@ -343,24 +346,27 @@ def _build_entry_corrections(
 
 
 def _find_target_reference_pages(
-    decisions: Sequence[DoubledProviderDecision], pages: Iterable[ProviderPage]
+    decisions: Sequence[DoubledProviderDecision],
 ) -> dict[str, str]:
     """Return the reference page each unrelated page moves to, when the move is sure.
 
-    The rules and review answers share one check (``find_move_target``), so a
-    page an answer sends to another work never makes a doubled provider in
-    the entry it joins; without a sure target it starts a new entry.
+    The rules and review answers share one target
+    (``UnrelatedPage.move_target_entry``), so a page an answer sends to another
+    work never makes a doubled provider in the entry it joins. Without a sure
+    target the page starts a new entry.
+
+    Args:
+        decisions: The entry's doubled-provider decisions.
+
+    Returns:
+        Each unrelated page's current key, mapped to the reference page of the
+        seed entry it moves to; pages without a sure target are left out.
     """
-    pages_by_current_key = index_pages_by_current_key(pages)
     return {
-        key: target.reference_page
+        key: unrelated_page.move_target_entry.reference_page
         for decision in decisions
         for key, unrelated_page in decision.unrelated_pages.items()
-        if (
-            target := find_move_target(
-                key, unrelated_page, pages_by_current_key.get(key)
-            )
-        )
+        if unrelated_page.move_target_entry is not None
     }
 
 

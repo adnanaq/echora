@@ -84,7 +84,7 @@ def test_review_case_from_doubled_provider_entry_names_case_by_pages_and_entry(
 ) -> None:
     assert (doubled_case.case_name, doubled_case.reasons) == (
         f"doubled provider: {SIGEWINNE} {VARESA} in {SIGEWINNE}",
-        ("UNDECIDED_PAGES",),
+        ("UNDECIDED", "UNLINKED_PAGES"),
     )
     assert doubled_case.entries[SIGEWINNE].title == (
         "Genshin Impact: Character Teaser - Sigewinne: Everyday Correspondence"
@@ -135,7 +135,7 @@ def test_review_case_from_doubled_provider_entry_one_case_for_every_provider(
         " animeplanet:anime:blue-spring-ride-page-13"
         " animeplanet:anime:blue-spring-ride-unwritten in mal:anime:24151"
     )
-    assert case.reasons == ("SHARED_LINK", "UNDECIDED_PAGES")
+    assert case.reasons == ("PART_PAGES", "UNDECIDED", "UNLINKED_PAGES")
 
 
 def test_review_case_from_doubled_provider_entry_suggests_linked_places(
@@ -146,7 +146,7 @@ def test_review_case_from_doubled_provider_entry_suggests_linked_places(
         entries[0], pages, KnownWorkEntriesFromSeed([])
     )
     case = ReviewCase.from_doubled_provider_entry(entries[0], decisions, pages)
-    assert case.suggested_answer["anilist:anime:20900"] == "entry"
+    assert case.suggested_answer["anilist:anime:20900"] == "entry, part"
     assert "animeplanet:anime:blue-spring-ride-unwritten" not in case.suggested_answer
 
 

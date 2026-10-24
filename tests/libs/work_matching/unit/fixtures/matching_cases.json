@@ -273,6 +273,9 @@
         "type": "OVA",
         "year": 2014,
         "season": "SUMMER",
+        "episode_count": 1,
+        "aired_from": "2014-08-24T15:00:00Z",
+        "aired_to": "2014-08-24T15:00:00Z",
         "linked_page_keys": [
           "mal:anime:24151"
         ],
@@ -290,6 +293,9 @@
         "type": "OVA",
         "year": 2014,
         "season": "FALL",
+        "episode_count": 1,
+        "aired_from": "2014-12-11T15:00:00Z",
+        "aired_to": "2014-12-11T15:00:00Z",
         "linked_page_keys": [
           "mal:anime:24151"
         ],

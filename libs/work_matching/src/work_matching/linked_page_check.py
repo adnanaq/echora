@@ -39,8 +39,8 @@ from enum import StrEnum
 from typing import Final
 
 from pydantic import JsonValue
-from work_matching.doubled_provider_check import is_page_details_matching
 from work_matching.known_work_entries import KnownWorkEntries
+from work_matching.page_details_comparison import is_page_details_matching
 from work_matching.provider_page import ProviderPage
 from work_matching.provider_page_key import (
     get_page_kind,

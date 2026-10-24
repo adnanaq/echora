@@ -39,7 +39,7 @@ from pathlib import Path
 from typing import Self
 
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
-from work_matching.doubled_provider_check import DoubledProviderDecision
+from work_matching.doubled_provider_decision import DoubledProviderDecision
 from work_matching.file_replacement import replace_file_lines
 from work_matching.linked_page_check import (
     LinkedPageAddition,
@@ -79,7 +79,9 @@ class ReviewCase(BaseModel):
     # they tie to a work; for a linked-page case, ``add as part`` when the page
     # looks like one season of its entry's work; empty for a split-work case.
     suggested_answer: dict[str, str] = {}
-    # The names of the decisions' reasons, which stay when their wording changes.
+    # Names, which stay when the wording changes: for a doubled-provider case,
+    # each decision's outcome followed by its review reasons; for a split work
+    # or a linked page, the decision's reason.
     reasons: tuple[str, ...]
     # Each entry involved, by its reference page.
     entries: dict[str, WorkEntry]
@@ -148,7 +150,14 @@ class ReviewCase(BaseModel):
                 f" in {entry.reference_page}"
             ),
             suggested_answer=suggest_page_placements(entry, decisions),
-            reasons=tuple(decision.reason.name for decision in decisions),
+            reasons=tuple(
+                name
+                for decision in decisions
+                for name in (
+                    decision.outcome.name,
+                    *(reason.name for reason in decision.review_reasons),
+                )
+            ),
             entries={entry.reference_page: entry},
             decisions=tuple(decisions),
             pages=_select_page_details(

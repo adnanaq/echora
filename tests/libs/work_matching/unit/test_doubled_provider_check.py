@@ -1,20 +1,23 @@
+from datetime import UTC, datetime
+
 import pytest
 from common.models.anime import AnimeType
-from work_matching.doubled_provider_check import (
-    DoubledProviderDecision,
+from work_matching.doubled_provider_check import decide_doubled_providers
+from work_matching.doubled_provider_decision import (
     Outcome,
-    Reason,
+    ReviewReason,
     UnrelatedPage,
-    decide_doubled_providers,
-    find_doubled_provider_page_keys,
-    get_decided_provider,
-    is_page_details_matching,
 )
 from work_matching.known_work_entries_from_seed import KnownWorkEntriesFromSeed
 from work_matching.provider_page import ProviderPage
 from work_matching.work_entry import WorkEntry
 
 NO_OTHER_WORKS = KnownWorkEntriesFromSeed([])
+MAL = "https://myanimelist.net/anime/1"
+KITSU_ONE = "https://kitsu.app/anime/1"
+KITSU_TWO = "https://kitsu.app/anime/2"
+OTHER_MAL = "https://myanimelist.net/anime/9"
+OTHER_ANILIST = "https://anilist.co/anime/9"
 
 
 def _decisions(entry, pages, known_work_entries=NO_OTHER_WORKS):
@@ -24,25 +27,60 @@ def _decisions(entry, pages, known_work_entries=NO_OTHER_WORKS):
     }
 
 
+def _verdict(decision):
+    return decision.outcome, decision.review_reasons
+
+
+def _anilist_page(number: int, episode_count: int, aired_from: datetime):
+    return ProviderPage(
+        key=f"anilist:anime:{number}",
+        address=f"https://anilist.co/anime/{number}",
+        type="ONA",
+        year=aired_from.year,
+        episode_count=episode_count,
+        aired_from=aired_from,
+        linked_page_keys=("mal:anime:17295",),
+    )
+
+
+def _other_work(**fields) -> dict:
+    return {"title": "Other", "type": "TV", "sources": [OTHER_MAL]} | fields
+
+
 def test_decide_doubled_providers_renamed_page_same_page(matching_cases) -> None:
     entries, pages = matching_cases["cocoon"]
     decision = _decisions(entries[0], pages)["animeplanet"]
-    assert (decision.outcome, decision.reason) == (
-        Outcome.SAME_PAGE,
-        Reason.SAME_PAGE,
-    )
+    assert _verdict(decision) == (Outcome.SAME_PAGE, ())
     assert decision.page_keys == ("animeplanet:anime:cocoon-one-summer-of-girlhood",)
 
 
-def test_decide_doubled_providers_pages_linked_apart_mixed_entry(
+def test_decide_doubled_providers_renamed_page_only_old_addresses_listed_current_address_missing(
+    work_entry,
+) -> None:
+    new_address = "https://www.anime-planet.com/anime/new"
+    old_addresses = [f"https://www.anime-planet.com/anime/old-{n}" for n in (1, 2)]
+    pages = [
+        ProviderPage.from_canonical_record(
+            address, {"title": "Show", "sources": [address, new_address]}
+        )
+        for address in old_addresses
+    ]
+    decision = _decisions(work_entry(MAL, *old_addresses), pages)["animeplanet"]
+    assert _verdict(decision) == (
+        Outcome.SAME_PAGE,
+        (ReviewReason.CURRENT_ADDRESS_MISSING,),
+    )
+
+
+def test_decide_doubled_providers_pages_linked_apart_separate_works(
     matching_cases,
 ) -> None:
     entries, pages = matching_cases["puu_neko"]
     decisions = _decisions(entries[0], pages)
     assert {provider: decision.outcome for provider, decision in decisions.items()} == {
-        "mal": Outcome.MIXED_ENTRY,
-        "anilist": Outcome.MIXED_ENTRY,
-        "kitsu": Outcome.MIXED_ENTRY,
+        "mal": Outcome.SEPARATE_WORKS,
+        "anilist": Outcome.SEPARATE_WORKS,
+        "kitsu": Outcome.SEPARATE_WORKS,
     }
     assert decisions["kitsu"].belonging_page_keys == {
         "kitsu:anime:6190": frozenset(
@@ -61,52 +99,94 @@ def test_decide_doubled_providers_pages_linked_apart_mixed_entry(
     }
 
 
-def test_decide_doubled_providers_pages_sharing_linked_page_one_work(
+def test_decide_doubled_providers_pages_sharing_linked_page_aired_apart_part_pages(
     matching_cases,
 ) -> None:
     entries, pages = matching_cases["ao_haru_ride_ova"]
     decision = _decisions(entries[0], pages)["anilist"]
-    assert (decision.outcome, decision.reason) == (Outcome.ONE_WORK, Reason.SHARED_LINK)
+    assert _verdict(decision) == (Outcome.PART_PAGES, ())
     assert set(decision.belonging_page_keys) == {
         "anilist:anime:20837",
         "anilist:anime:20900",
     }
 
 
-def test_decide_doubled_providers_pages_sharing_link_with_other_years_review(
+def test_decide_doubled_providers_pages_sharing_linked_page_other_episode_counts_part_pages(
+    work_entry,
+) -> None:
+    first_aired = datetime(2010, 9, 8, 15, tzinfo=UTC)
+    entry = work_entry(
+        "https://myanimelist.net/anime/17295",
+        "https://anilist.co/anime/17295",
+        "https://anilist.co/anime/206843",
+        work_type="ONA",
+        year=2010,
+    )
+    pages = [
+        _anilist_page(17295, episode_count=1, aired_from=first_aired),
+        _anilist_page(206843, episode_count=4, aired_from=first_aired),
+    ]
+    assert _verdict(_decisions(entry, pages)["anilist"]) == (Outcome.PART_PAGES, ())
+
+
+def test_decide_doubled_providers_pages_sharing_linked_page_same_details_duplicate_pages(
     linked_page, work_entry
 ) -> None:
-    entry = work_entry(
-        "https://anilist.co/anime/1",
-        "https://kitsu.app/anime/1",
-        "https://kitsu.app/anime/2",
-    )
+    aired_from = datetime(1957, 8, 19, 15, tzinfo=UTC)
     pages = [
-        linked_page("https://kitsu.app/anime/1", "https://anilist.co/anime/1"),
-        linked_page("https://kitsu.app/anime/2", "https://anilist.co/anime/1"),
+        linked_page(address, MAL).model_copy(
+            update={"episode_count": 1, "aired_from": aired_from}
+        )
+        for address in (KITSU_ONE, KITSU_TWO)
     ]
+    decision = _decisions(work_entry(MAL, KITSU_ONE, KITSU_TWO), pages)["kitsu"]
+    assert _verdict(decision) == (Outcome.DUPLICATE_PAGES, ())
+    assert decision.needs_review
+
+
+def test_decide_doubled_providers_pages_sharing_link_unknown_details_duplicate_pages(
+    linked_page, work_entry
+) -> None:
+    pages = [linked_page(KITSU_ONE, MAL), linked_page(KITSU_TWO, MAL)]
+    decision = _decisions(work_entry(MAL, KITSU_ONE, KITSU_TWO), pages)["kitsu"]
+    assert _verdict(decision) == (Outcome.DUPLICATE_PAGES, ())
+
+
+def test_decide_doubled_providers_pages_sharing_link_with_other_years_details_differ(
+    linked_page, work_entry
+) -> None:
+    entry = work_entry("https://anilist.co/anime/1", KITSU_ONE, KITSU_TWO)
     pages = [
-        page.model_copy(update={"year": year})
-        for page, year in zip(pages, (2019, 2020))
+        linked_page(address, "https://anilist.co/anime/1").model_copy(
+            update={"year": year}
+        )
+        for address, year in ((KITSU_ONE, 2019), (KITSU_TWO, 2020))
     ]
-    decision = _decisions(entry, pages)["kitsu"]
-    assert (decision.outcome, decision.reason) == (
-        Outcome.REVIEW,
-        Reason.DETAILS_DIFFER,
+    assert _verdict(_decisions(entry, pages)["kitsu"]) == (
+        Outcome.DUPLICATE_PAGES,
+        (ReviewReason.DETAILS_DIFFER,),
     )
 
 
-def test_decide_doubled_providers_page_without_links_review(matching_cases) -> None:
+def test_decide_doubled_providers_music_and_special_pages_sharing_link_duplicate_pages(
+    linked_page, work_entry
+) -> None:
+    pages = [
+        linked_page(KITSU_ONE, MAL).model_copy(update={"type": "MUSIC"}),
+        linked_page(KITSU_TWO, MAL).model_copy(update={"type": "SPECIAL"}),
+    ]
+    decision = _decisions(work_entry(MAL, KITSU_ONE, KITSU_TWO), pages)["kitsu"]
+    assert _verdict(decision) == (Outcome.DUPLICATE_PAGES, ())
+
+
+def test_decide_doubled_providers_page_without_links_undecided(matching_cases) -> None:
     entries, pages = matching_cases["ao_haru_ride_ova"]
     decision = _decisions(entries[0], pages)["animeplanet"]
-    assert (decision.outcome, decision.reason) == (
-        Outcome.REVIEW,
-        Reason.UNDECIDED_PAGES,
-    )
+    assert _verdict(decision) == (Outcome.UNDECIDED, (ReviewReason.UNLINKED_PAGES,))
     assert decision.belonging_page_keys == {
         "animeplanet:anime:blue-spring-ride-page-13": frozenset({"mal:anime:24151"})
     }
-    assert decision.undecided_page_keys == (
+    assert decision.unlinked_page_keys == (
         "animeplanet:anime:blue-spring-ride-unwritten",
     )
 
@@ -117,7 +197,7 @@ def test_decide_doubled_providers_no_links_records_title_and_year_type_matches(
     entries, pages = matching_cases["genshin_sigewinne"]
     decision = _decisions(entries[0], pages)["animeplanet"]
     sigewinne = "animeplanet:anime:genshin-impact-character-teaser-sigewinne-everyday-correspondence"
-    assert decision.outcome is Outcome.REVIEW
+    assert decision.needs_review
     assert (decision.title_matches, decision.year_type_matches) == (
         (sigewinne,),
         (sigewinne,),
@@ -141,146 +221,244 @@ def test_decide_doubled_providers_no_links_records_season_matches(
     assert decision.season_matches == ("animeplanet:anime:first",)
 
 
-def test_decide_doubled_providers_unfetched_page_without_links_review(
+def test_decide_doubled_providers_applied_decision_records_no_matches(
+    linked_page, work_entry
+) -> None:
+    known_work_entries = KnownWorkEntriesFromSeed([_other_work()])
+    pages = [linked_page(KITSU_ONE, MAL), linked_page(KITSU_TWO, OTHER_MAL)]
+    decision = _decisions(
+        work_entry(MAL, KITSU_ONE, KITSU_TWO, year=None), pages, known_work_entries
+    )["kitsu"]
+    assert not decision.needs_review
+    assert (
+        decision.title_matches,
+        decision.year_type_matches,
+        decision.season_matches,
+    ) == ((), (), ())
+
+
+def test_decide_doubled_providers_unfetched_page_without_links_undecided(
     matching_cases,
 ) -> None:
     entries, pages = matching_cases["episode_count"]
     decision = _decisions(entries[0], pages)["ann"]
-    assert decision.reason is Reason.UNDECIDED_PAGES
+    assert decision.review_reasons == (ReviewReason.UNLINKED_PAGES,)
     assert decision.belonging_page_keys == {
         "ann:anime:32626": frozenset({"mal:anime:58573"})
     }
-    assert decision.undecided_page_keys == ("ann:anime:38845",)
+    assert decision.unlinked_page_keys == ("ann:anime:38845",)
 
 
-def test_decide_doubled_providers_page_linking_known_work_unrelated(
+def test_decide_doubled_providers_page_linking_known_work_moves_there(
     linked_page, work_entry
 ) -> None:
-    other_work = {
-        "title": "Other",
-        "type": "TV",
-        "animeSeason": {"year": 2020},
-        "sources": ["https://myanimelist.net/anime/2"],
-    }
+    other_work = _other_work(animeSeason={"year": 2020})
     known_work_entries = KnownWorkEntriesFromSeed([other_work])
-    entry = work_entry(
-        "https://myanimelist.net/anime/1",
-        "https://kitsu.app/anime/1",
-        "https://kitsu.app/anime/2",
-    )
-    pages = [
-        linked_page("https://kitsu.app/anime/1", "https://myanimelist.net/anime/1"),
-        linked_page("https://kitsu.app/anime/2", "https://myanimelist.net/anime/2"),
-    ]
-    decision = _decisions(entry, pages, known_work_entries)["kitsu"]
-    assert (decision.outcome, decision.reason) == (Outcome.ONE_WORK, Reason.ONE_LINKED)
+    pages = [linked_page(KITSU_ONE, MAL), linked_page(KITSU_TWO, OTHER_MAL)]
+    decision = _decisions(
+        work_entry(MAL, KITSU_ONE, KITSU_TWO), pages, known_work_entries
+    )["kitsu"]
+    assert _verdict(decision) == (Outcome.PAGES_OF_OTHER_WORKS, ())
     assert decision.unrelated_pages == {
         "kitsu:anime:2": UnrelatedPage(
-            linked_page_keys=frozenset({"mal:anime:2"}),
+            linked_page_keys=frozenset({"mal:anime:9"}),
             other_work_entries=(WorkEntry.from_seed_entry(other_work),),
+            move_target_entry=WorkEntry.from_seed_entry(other_work),
         )
     }
 
 
-def test_decide_doubled_providers_every_page_linking_other_work_review(
+def test_decide_doubled_providers_every_page_linking_other_work_no_page_linked_with_entry(
     linked_page, work_entry
 ) -> None:
-    entry = work_entry(
-        "https://myanimelist.net/anime/1",
-        "https://kitsu.app/anime/1",
-        "https://kitsu.app/anime/2",
-    )
     pages = [
-        linked_page("https://kitsu.app/anime/1", "https://myanimelist.net/anime/7"),
-        linked_page("https://kitsu.app/anime/2", "https://myanimelist.net/anime/8"),
+        linked_page(KITSU_ONE, "https://myanimelist.net/anime/7"),
+        linked_page(KITSU_TWO, "https://myanimelist.net/anime/8"),
     ]
-    decision = _decisions(entry, pages)["kitsu"]
-    assert (decision.outcome, decision.reason) == (Outcome.REVIEW, Reason.NONE_LINKED)
+    decision = _decisions(work_entry(MAL, KITSU_ONE, KITSU_TWO), pages)["kitsu"]
+    assert _verdict(decision) == (
+        Outcome.PAGES_OF_OTHER_WORKS,
+        (ReviewReason.NO_PAGE_LINKED_WITH_ENTRY, ReviewReason.MOVE_NOT_SURE),
+    )
     assert decision.unrelated_pages["kitsu:anime:1"].other_work_entries == ()
 
 
-def test_decide_doubled_providers_link_from_multi_work_page_review(
+@pytest.mark.parametrize(
+    ("moved_page_details", "is_move_sure"),
+    [
+        ({"type": "MOVIE", "year": 2020}, False),
+        ({"type": "TV", "year": 1987}, False),
+        ({"type": "TV", "year": 2020}, True),
+        ({"type": "TV SHORT"}, True),
+    ],
+)
+def test_decide_doubled_providers_moved_page_details_must_agree_with_target(
+    work_entry, moved_page_details: dict, is_move_sure: bool
+) -> None:
+    known_work_entries = KnownWorkEntriesFromSeed(
+        [_other_work(animeSeason={"year": 2020})]
+    )
+    pages = [
+        ProviderPage.from_canonical_record(
+            KITSU_ONE, {"title": "Show", "sources": [KITSU_ONE, MAL]}
+        ),
+        ProviderPage.from_canonical_record(
+            KITSU_TWO,
+            {"title": "Other", "sources": [KITSU_TWO, OTHER_MAL]} | moved_page_details,
+        ),
+    ]
+    decision = _decisions(
+        work_entry(MAL, KITSU_ONE, KITSU_TWO), pages, known_work_entries
+    )["kitsu"]
+    assert (ReviewReason.MOVE_NOT_SURE not in decision.review_reasons) is is_move_sure
+
+
+def test_decide_doubled_providers_target_holding_same_provider_move_not_sure(
+    linked_page, work_entry
+) -> None:
+    known_work_entries = KnownWorkEntriesFromSeed(
+        [_other_work(sources=[OTHER_MAL, "https://kitsu.app/anime/99"])]
+    )
+    pages = [linked_page(KITSU_ONE, MAL), linked_page(KITSU_TWO, OTHER_MAL)]
+    decision = _decisions(
+        work_entry(MAL, KITSU_ONE, KITSU_TWO), pages, known_work_entries
+    )["kitsu"]
+    assert _verdict(decision) == (
+        Outcome.PAGES_OF_OTHER_WORKS,
+        (ReviewReason.MOVE_NOT_SURE,),
+    )
+
+
+def test_decide_doubled_providers_page_linking_two_works_move_not_sure(
+    linked_page, work_entry
+) -> None:
+    known_work_entries = KnownWorkEntriesFromSeed(
+        [
+            _other_work(),
+            {"title": "Third", "type": "TV", "sources": [OTHER_ANILIST]},
+        ]
+    )
+    pages = [
+        linked_page(KITSU_ONE, MAL),
+        linked_page(KITSU_TWO, OTHER_MAL, OTHER_ANILIST),
+    ]
+    decision = _decisions(
+        work_entry(MAL, KITSU_ONE, KITSU_TWO), pages, known_work_entries
+    )["kitsu"]
+    assert decision.review_reasons == (ReviewReason.MOVE_NOT_SURE,)
+
+
+def test_decide_doubled_providers_page_linking_work_outside_seed_move_not_sure(
+    linked_page, work_entry
+) -> None:
+    pages = [
+        linked_page(KITSU_ONE, MAL),
+        linked_page(KITSU_TWO, "https://myanimelist.net/anime/77"),
+    ]
+    decision = _decisions(work_entry(MAL, KITSU_ONE, KITSU_TWO), pages)["kitsu"]
+    assert decision.review_reasons == (ReviewReason.MOVE_NOT_SURE,)
+
+
+def test_decide_doubled_providers_link_from_multi_work_page_lists_multi_work_link(
     linked_page, work_entry
 ) -> None:
     entry = work_entry(
-        "https://myanimelist.net/anime/1",
-        "https://myanimelist.net/anime/2",
-        "https://anidb.net/anime/1",
+        MAL, "https://myanimelist.net/anime/2", "https://anidb.net/anime/1"
     )
     anthology = linked_page(
-        "https://anidb.net/anime/1",
-        "https://myanimelist.net/anime/1",
-        "https://myanimelist.net/anime/2",
+        "https://anidb.net/anime/1", MAL, "https://myanimelist.net/anime/2"
     )
-    decision = _decisions(entry, [anthology])["mal"]
-    assert (decision.outcome, decision.reason) == (
-        Outcome.REVIEW,
-        Reason.MULTI_WORK_LINK,
+    assert _verdict(_decisions(entry, [anthology])["mal"]) == (
+        Outcome.UNDECIDED,
+        (ReviewReason.UNLINKED_PAGES, ReviewReason.MULTI_WORK_LINK),
     )
 
 
-def test_decide_doubled_providers_overlapping_links_review(
+def test_decide_doubled_providers_overlapping_links_undecided(
     linked_page, work_entry
 ) -> None:
     entry = work_entry(
-        "https://myanimelist.net/anime/1",
+        MAL,
         "https://myanimelist.net/anime/2",
         "https://myanimelist.net/anime/3",
         "https://anilist.co/anime/1",
-        "https://kitsu.app/anime/1",
+        KITSU_ONE,
     )
     pages = [
-        linked_page("https://myanimelist.net/anime/1", "https://anilist.co/anime/1"),
+        linked_page(MAL, "https://anilist.co/anime/1"),
         linked_page(
-            "https://myanimelist.net/anime/2",
-            "https://anilist.co/anime/1",
-            "https://kitsu.app/anime/1",
+            "https://myanimelist.net/anime/2", "https://anilist.co/anime/1", KITSU_ONE
         ),
-        linked_page("https://myanimelist.net/anime/3", "https://kitsu.app/anime/1"),
+        linked_page("https://myanimelist.net/anime/3", KITSU_ONE),
     ]
-    decision = _decisions(entry, pages)["mal"]
-    assert (decision.outcome, decision.reason) == (
-        Outcome.REVIEW,
-        Reason.OVERLAPPING_LINKS,
+    assert _verdict(_decisions(entry, pages)["mal"]) == (
+        Outcome.UNDECIDED,
+        (ReviewReason.OVERLAPPING_LINKS,),
     )
 
 
-def test_decide_doubled_providers_page_linked_and_linking_other_work_review(
+def test_decide_doubled_providers_page_linked_and_linking_other_work_contradicting(
+    linked_page, work_entry
+) -> None:
+    entry = work_entry(MAL, "https://anilist.co/anime/1", KITSU_ONE, KITSU_TWO)
+    pages = [
+        linked_page(KITSU_ONE, MAL),
+        linked_page(KITSU_TWO, "https://anilist.co/anime/1", OTHER_MAL),
+    ]
+    decision = _decisions(entry, pages)["kitsu"]
+    assert _verdict(decision) == (
+        Outcome.UNDECIDED,
+        (ReviewReason.CONTRADICTING_LINKS,),
+    )
+    assert decision.contradicting_page_keys == ("kitsu:anime:2",)
+
+
+def test_decide_doubled_providers_dead_page_lists_dead_page(
+    linked_page, work_entry
+) -> None:
+    entry = work_entry(MAL, "https://myanimelist.net/anime/2", KITSU_ONE)
+    pages = [
+        ProviderPage.from_dead_address(MAL),
+        linked_page(KITSU_ONE, "https://myanimelist.net/anime/2"),
+    ]
+    assert _verdict(_decisions(entry, pages)["mal"]) == (
+        Outcome.UNDECIDED,
+        (ReviewReason.UNLINKED_PAGES, ReviewReason.DEAD_PAGE),
+    )
+
+
+def test_decide_doubled_providers_multi_work_link_and_dead_page_lists_both(
     linked_page, work_entry
 ) -> None:
     entry = work_entry(
-        "https://myanimelist.net/anime/1",
-        "https://anilist.co/anime/1",
-        "https://kitsu.app/anime/1",
-        "https://kitsu.app/anime/2",
+        MAL, "https://myanimelist.net/anime/2", "https://anidb.net/anime/1"
     )
     pages = [
-        linked_page("https://kitsu.app/anime/1", "https://myanimelist.net/anime/1"),
         linked_page(
-            "https://kitsu.app/anime/2",
-            "https://anilist.co/anime/1",
-            "https://myanimelist.net/anime/9",
+            "https://anidb.net/anime/1", MAL, "https://myanimelist.net/anime/2"
         ),
+        ProviderPage.from_dead_address("https://myanimelist.net/anime/2"),
     ]
-    decision = _decisions(entry, pages)["kitsu"]
-    assert (decision.outcome, decision.reason) == (
-        Outcome.REVIEW,
-        Reason.CONTRADICTING_LINKS,
+    assert _decisions(entry, pages)["mal"].review_reasons == (
+        ReviewReason.UNLINKED_PAGES,
+        ReviewReason.MULTI_WORK_LINK,
+        ReviewReason.DEAD_PAGE,
     )
 
 
-def test_decide_doubled_providers_dead_page_review(linked_page, work_entry) -> None:
-    entry = work_entry(
-        "https://myanimelist.net/anime/1",
-        "https://myanimelist.net/anime/2",
-        "https://kitsu.app/anime/1",
-    )
+def test_decide_doubled_providers_dead_page_and_contradicting_links_lists_both(
+    linked_page, work_entry
+) -> None:
+    entry = work_entry(MAL, "https://anilist.co/anime/1", KITSU_ONE, KITSU_TWO)
     pages = [
-        ProviderPage.from_dead_address("https://myanimelist.net/anime/1"),
-        linked_page("https://kitsu.app/anime/1", "https://myanimelist.net/anime/2"),
+        ProviderPage.from_dead_address(KITSU_ONE),
+        linked_page(KITSU_TWO, "https://anilist.co/anime/1", OTHER_MAL),
     ]
-    decision = _decisions(entry, pages)["mal"]
-    assert (decision.outcome, decision.reason) == (Outcome.REVIEW, Reason.DEAD_PAGE)
+    assert _decisions(entry, pages)["kitsu"].review_reasons == (
+        ReviewReason.CONTRADICTING_LINKS,
+        ReviewReason.UNLINKED_PAGES,
+        ReviewReason.DEAD_PAGE,
+    )
 
 
 def test_decide_doubled_providers_simkl_and_animecountdown_decided_together(
@@ -294,18 +472,18 @@ def test_decide_doubled_providers_simkl_and_animecountdown_decided_together(
     )
     decisions = decide_doubled_providers(entry, [], NO_OTHER_WORKS)
     assert [(decision.provider, decision.outcome) for decision in decisions] == [
-        ("simkl", Outcome.REVIEW)
+        ("simkl", Outcome.UNDECIDED)
     ]
-    assert len(decisions[0].undecided_page_keys) == 4
+    assert len(decisions[0].unlinked_page_keys) == 4
 
 
-def test_decide_doubled_providers_simkl_and_animecountdown_other_numbers_review(
+def test_decide_doubled_providers_simkl_and_animecountdown_other_numbers_undecided(
     work_entry,
 ) -> None:
     entry = work_entry("https://simkl.com/anime/1", "https://animecountdown.com/2")
     decisions = decide_doubled_providers(entry, [], NO_OTHER_WORKS)
-    assert [(decision.provider, decision.reason) for decision in decisions] == [
-        ("simkl", Reason.UNDECIDED_PAGES)
+    assert [(decision.provider, decision.review_reasons) for decision in decisions] == [
+        ("simkl", (ReviewReason.UNLINKED_PAGES,))
     ]
 
 
@@ -317,32 +495,20 @@ def test_decide_doubled_providers_simkl_and_animecountdown_same_number_gives_not
 
 
 def test_decide_doubled_providers_no_doubled_provider_gives_nothing(work_entry) -> None:
-    entry = work_entry("https://myanimelist.net/anime/1", "https://kitsu.app/anime/1")
+    entry = work_entry(MAL, KITSU_ONE)
     assert decide_doubled_providers(entry, [], NO_OTHER_WORKS) == []
-
-
-@pytest.mark.parametrize("reason", list(Reason))
-def test_doubled_provider_decision_outcome_every_reason_gives_outcome(
-    reason: Reason,
-) -> None:
-    assert DoubledProviderDecision("mal", (), reason).outcome in set(Outcome)
 
 
 def test_decide_doubled_providers_link_to_provider_entry_lacks_counts_as_no_link(
     linked_page, work_entry
 ) -> None:
-    entry = work_entry(
-        "https://myanimelist.net/anime/1",
-        "https://kitsu.app/anime/1",
-        "https://kitsu.app/anime/2",
-    )
     pages = [
-        linked_page("https://kitsu.app/anime/1", "https://myanimelist.net/anime/1"),
-        linked_page("https://kitsu.app/anime/2", "https://anidb.net/anime/7"),
+        linked_page(KITSU_ONE, MAL),
+        linked_page(KITSU_TWO, "https://anidb.net/anime/7"),
     ]
-    decision = _decisions(entry, pages)["kitsu"]
-    assert (decision.reason, decision.undecided_page_keys) == (
-        Reason.UNDECIDED_PAGES,
+    decision = _decisions(work_entry(MAL, KITSU_ONE, KITSU_TWO), pages)["kitsu"]
+    assert (decision.review_reasons, decision.unlinked_page_keys) == (
+        (ReviewReason.UNLINKED_PAGES,),
         ("kitsu:anime:2",),
     )
 
@@ -390,50 +556,26 @@ def test_decide_doubled_providers_canonical_type_falls_under_one_seed_type(
 def test_decide_doubled_providers_link_to_own_provider_outside_entry_counts_as_no_link(
     linked_page, work_entry
 ) -> None:
-    entry = work_entry(
-        "https://myanimelist.net/anime/1",
-        "https://kitsu.app/anime/1",
-        "https://kitsu.app/anime/2",
-    )
     pages = [
-        linked_page("https://kitsu.app/anime/1", "https://myanimelist.net/anime/1"),
+        linked_page(KITSU_ONE, MAL),
         ProviderPage(
             key="kitsu:anime:2",
-            address="https://kitsu.app/anime/2",
+            address=KITSU_TWO,
             linked_page_keys=("kitsu:anime:9",),
         ),
     ]
-    decision = _decisions(entry, pages)["kitsu"]
-    assert (decision.reason, decision.undecided_page_keys) == (
-        Reason.UNDECIDED_PAGES,
+    decision = _decisions(work_entry(MAL, KITSU_ONE, KITSU_TWO), pages)["kitsu"]
+    assert (decision.review_reasons, decision.unlinked_page_keys) == (
+        (ReviewReason.UNLINKED_PAGES,),
         ("kitsu:anime:2",),
     )
-
-
-def test_decide_doubled_providers_multi_work_link_and_dead_page_multi_work_link_wins(
-    linked_page, work_entry
-) -> None:
-    entry = work_entry(
-        "https://myanimelist.net/anime/1",
-        "https://myanimelist.net/anime/2",
-        "https://anidb.net/anime/1",
-    )
-    pages = [
-        linked_page(
-            "https://anidb.net/anime/1",
-            "https://myanimelist.net/anime/1",
-            "https://myanimelist.net/anime/2",
-        ),
-        ProviderPage.from_dead_address("https://myanimelist.net/anime/2"),
-    ]
-    assert _decisions(entry, pages)["mal"].reason is Reason.MULTI_WORK_LINK
 
 
 def test_decide_doubled_providers_renamed_page_only_old_address_keeps_details(
     linked_page, work_entry
 ) -> None:
     entry = work_entry(
-        "https://myanimelist.net/anime/1",
+        MAL,
         "https://anime-planet.com/anime/old",
         "https://anime-planet.com/anime/other",
     )
@@ -441,114 +583,12 @@ def test_decide_doubled_providers_renamed_page_only_old_address_keeps_details(
         linked_page(
             "https://anime-planet.com/anime/old",
             "https://anime-planet.com/anime/new",
-            "https://myanimelist.net/anime/9",
+            OTHER_MAL,
         ),
-        linked_page(
-            "https://anime-planet.com/anime/other", "https://myanimelist.net/anime/1"
-        ),
+        linked_page("https://anime-planet.com/anime/other", MAL),
     ]
     decision = _decisions(entry, pages)["animeplanet"]
-    assert (decision.reason, set(decision.unrelated_pages)) == (
-        Reason.ONE_LINKED,
+    assert (decision.outcome, set(decision.unrelated_pages)) == (
+        Outcome.PAGES_OF_OTHER_WORKS,
         {"animeplanet:anime:new"},
     )
-
-
-def test_decide_doubled_providers_music_and_special_pages_sharing_link_one_work(
-    linked_page, work_entry
-) -> None:
-    entry = work_entry(
-        "https://myanimelist.net/anime/1",
-        "https://kitsu.app/anime/1",
-        "https://kitsu.app/anime/2",
-    )
-    pages = [
-        linked_page(
-            "https://kitsu.app/anime/1", "https://myanimelist.net/anime/1"
-        ).model_copy(update={"type": "MUSIC"}),
-        linked_page(
-            "https://kitsu.app/anime/2", "https://myanimelist.net/anime/1"
-        ).model_copy(update={"type": "SPECIAL"}),
-    ]
-    decision = _decisions(entry, pages)["kitsu"]
-    assert (decision.outcome, decision.reason) == (Outcome.ONE_WORK, Reason.SHARED_LINK)
-
-
-def test_decide_doubled_providers_dead_page_and_contradicting_links_dead_page_wins(
-    linked_page, work_entry
-) -> None:
-    entry = work_entry(
-        "https://myanimelist.net/anime/1",
-        "https://anilist.co/anime/1",
-        "https://kitsu.app/anime/1",
-        "https://kitsu.app/anime/2",
-    )
-    pages = [
-        ProviderPage.from_dead_address("https://kitsu.app/anime/1"),
-        linked_page(
-            "https://kitsu.app/anime/2",
-            "https://anilist.co/anime/1",
-            "https://myanimelist.net/anime/9",
-        ),
-    ]
-    assert _decisions(entry, pages)["kitsu"].reason is Reason.DEAD_PAGE
-
-
-@pytest.mark.parametrize(
-    ("key", "provider"),
-    [
-        ("animecountdown:anime:5", "simkl"),
-        ("simkl:anime:5", "simkl"),
-        ("mal:anime:1", "mal"),
-        ("https://example.com/anime/1", None),
-    ],
-)
-def test_get_decided_provider_animecountdown_counts_as_simkl(
-    key: str, provider: str | None
-) -> None:
-    assert get_decided_provider(key) == provider
-
-
-def test_find_doubled_provider_page_keys_provider_with_two_ids_listed() -> None:
-    assert find_doubled_provider_page_keys(
-        ["mal:anime:1", "kitsu:anime:1", "mal:anime:2"]
-    ) == {"mal": ("mal:anime:1", "mal:anime:2")}
-
-
-def test_find_doubled_provider_page_keys_simkl_and_animecountdown_same_number_not_doubled() -> (
-    None
-):
-    assert (
-        find_doubled_provider_page_keys(["simkl:anime:5", "animecountdown:anime:5"])
-        == {}
-    )
-
-
-def test_find_doubled_provider_page_keys_simkl_and_animecountdown_other_numbers_doubled() -> (
-    None
-):
-    assert find_doubled_provider_page_keys(
-        ["simkl:anime:5", "animecountdown:anime:6"]
-    ) == {"simkl": ("simkl:anime:5", "animecountdown:anime:6")}
-
-
-@pytest.mark.parametrize(
-    ("page_type", "page_year", "expected"),
-    [
-        ("TV SHORT", 2020, True),
-        ("TV", None, True),
-        ("MOVIE", 2020, False),
-        ("TV", 2019, False),
-    ],
-)
-def test_is_page_details_matching_compares_year_and_seed_type(
-    work_entry, page_type: str, page_year: int | None, expected: bool
-) -> None:
-    page = ProviderPage(
-        key="anidb:anime:1",
-        address="https://anidb.net/anime/1",
-        type=page_type,
-        year=page_year,
-    )
-    entry = work_entry("https://myanimelist.net/anime/1", work_type="TV", year=2020)
-    assert is_page_details_matching(page, entry) is expected

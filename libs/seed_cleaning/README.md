@@ -126,9 +126,9 @@ HTTP cache enrichment reads later.
 ## Correcting entries with doubled providers
 
 `correct_doubled_provider_entries` decides each entry with a doubled provider
-from the stored pages, including the pages searched by them. When the rules
-settle the whole entry, its pages are placed at once; otherwise the entry is one
-review case, and its places come from the kept answer once a person gives a
+from the stored pages, including the pages searched by them. When no decision
+of the entry needs review, its pages are placed at once; otherwise the entry is
+one review case, and its places come from the kept answer once a person gives a
 valid one (see "Placing an entry's pages" in the `work_matching` README). Each
 placed page, and each added linked page, becomes a `SeedCorrection`:
 
@@ -141,8 +141,8 @@ placed page, and each added linked page, becomes a `SeedCorrection`:
 | `renamed_to` | The current page key, when the seed lists the page under an old address. |
 | `target_entry_reference_page` | The reference page of the seed entry an `other work` page joins; `null` when it starts a new entry. |
 | `is_added_page` | Whether the page is not in the seed and is added to the entry (see "Adding linked pages"). |
-| `is_part_page` | Whether the page covers only part of its work, so enrichment combines it with the work's other part pages. |
-| `reason` | The decision's reason by name, or `review answer`. |
+| `is_part_page` | Whether the page covers only part of its work, so enrichment combines it with the work's other part pages: an answer's `, part`, or an added page's `add as part`. |
+| `reason` | Why the page is placed here: the doubled-provider decision's outcome by name (`SAME_PAGE`, `PAGES_OF_OTHER_WORKS`), the linked-page decision's reason by name, or `review answer`. |
 
 The rules:
 
@@ -152,13 +152,13 @@ The rules:
 - **Rebuilt every run** from this run's decisions and the kept answers, so the
   file always matches them and needs no clean-up.
 - **Pages without a place stay** as the seed lists them and get no correction.
-- **Moves.** An `other work` page joins the seed entry its links name when they
-  name exactly one; otherwise it starts a new entry. A page moves into a seed
-  entry only when that entry holds no page of the same provider and its year
-  and type agree with the page's (`find_move_target`). The rules and review
-  answers use the same check, so neither makes a new doubled provider; a page
-  an answer sends to another work without a sure target starts a new entry.
-  Pages an answer puts in the same `work N` form one new entry.
+- **Moves.** An `other work` page joins the seed entry its sure move names
+  (`UnrelatedPage.move_target_entry`): its links name exactly one seed entry,
+  that entry holds no page of the same provider, and their year and type agree.
+  The rules and review answers use the same target, so neither makes a new
+  doubled provider; a page an answer sends to another work without a sure
+  target starts a new entry. Pages an answer puts in the same `work N` form one
+  new entry.
 - **Renamed pages.** The old address is dropped: the entry also lists the page
   under its current address, or the rules send the entry to review.
 - **Main page first**, because enrichment fetches the first address of each

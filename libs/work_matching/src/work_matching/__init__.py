@@ -5,16 +5,16 @@ Terms are as in ``GLOSSARY.md``. This library imports nothing from enrichment.
 """
 
 from work_matching.comparable_title import fold_title_for_comparison
-from work_matching.doubled_provider_check import (
+from work_matching.doubled_provider_check import decide_doubled_providers
+from work_matching.doubled_provider_decision import (
     DoubledProviderDecision,
     Outcome,
-    Reason,
+    ReviewReason,
     UnrelatedPage,
-    decide_doubled_providers,
+)
+from work_matching.doubled_provider_pages import (
     find_doubled_provider_page_keys,
     get_decided_provider,
-    get_seed_type,
-    is_page_details_matching,
 )
 from work_matching.file_replacement import replace_file_lines
 from work_matching.known_work_entries import KnownWorkEntries
@@ -33,11 +33,14 @@ from work_matching.linked_page_check import (
     read_linked_page_answer,
     suggest_linked_page_answer,
 )
+from work_matching.page_details_comparison import (
+    get_seed_type,
+    is_page_details_matching,
+)
 from work_matching.page_placement import (
     ENTRY_WORK,
     OTHER_WORK,
     PagePlacement,
-    find_move_target,
     list_placeable_page_keys,
     place_pages_without_review,
     read_answer_placements,
@@ -79,7 +82,7 @@ __all__ = [
     "ProviderPage",
     "ProviderPageLinks",
     "ProviderPageStore",
-    "Reason",
+    "ReviewReason",
     "ReviewCase",
     "ReviewFile",
     "SplitWorkDecision",
@@ -93,7 +96,6 @@ __all__ = [
     "get_decided_provider",
     "decide_split_work",
     "find_doubled_provider_page_keys",
-    "find_move_target",
     "index_pages_by_current_key",
     "get_page_provider",
     "get_page_key",
