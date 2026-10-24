@@ -67,7 +67,12 @@ from work_matching import (
 
 
 def parse_arguments() -> argparse.Namespace:
-    """Read the seed file, the data folder and how to fetch."""
+    """Read the seed file, the data folder and how to fetch from the command line.
+
+    Returns:
+        The arguments: ``seed_file``, ``data_dir``, ``no_fetch`` and
+        ``refetch_stored``.
+    """
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
         "seed_file",
@@ -142,16 +147,21 @@ def count_corrections(
 
     Each correction that changes the seed is counted once, under one of these:
 
-    - a page added to the entry, whole or as a part: the entry's pages link
-      it and no seed entry holds it;
-    - an old address dropped, because the entry also lists the page's current
-      address;
-    - a page moved to another seed entry, or to a new entry;
-    - a page that stays in its entry but is its provider's main page, so it is
-      moved to the front of the entry's pages.
+    | Count | Correction |
+    | -- | -- |
+    | pages added, pages added as parts | A page the entry's pages link and no seed entry holds joins the entry. |
+    | old addresses dropped | The entry also lists the page's current address. |
+    | pages moved to a seed entry, pages moved to a new entry | The page belongs to another work. |
+    | pages kept as main page | The page stays and is its provider's main page, so the page is listed first. |
 
-    A page that stays in its entry and is not the main page changes nothing,
-    so it is not counted.
+    A page that stays in its entry and is not the main page is not counted.
+
+    Args:
+        corrections: Every seed correction of the run.
+        review_cases: Every review case of the run, with its kept answer.
+
+    Returns:
+        Each count by its printed name.
     """
     counts = {
         "pages kept as main page": 0,
@@ -187,6 +197,11 @@ def list_entries_to_check(
 ) -> tuple[list[WorkEntry], list[WorkEntry]]:
     """Write ``entries_to_check.json`` and return the entries to check.
 
+    Args:
+        seed_document: The downloaded seed release, as read from its file.
+        known_works: Every seed entry.
+        data_dir: The folder ``entries_to_check.json`` is written to.
+
     Returns:
         The entries with a doubled provider, and every entry of a split-work
         candidate group.
@@ -217,7 +232,17 @@ def list_entries_to_check(
 async def open_page_fetcher(
     store: ProviderPageStore, arguments: argparse.Namespace
 ) -> AsyncIterator[ProviderPageFetcher | None]:
-    """Open the cache and a page fetcher for the run; None when nothing is fetched."""
+    """Open the HTTP cache and a page fetcher for the run.
+
+    Args:
+        store: The provider page store the fetcher adds pages to.
+        arguments: The command-line arguments, for ``no_fetch`` and
+            ``refetch_stored``.
+
+    Yields:
+        The page fetcher, or None when the run fetches nothing. The cache is
+        closed when the run leaves the block.
+    """
     if arguments.no_fetch:
         yield None
         return
@@ -234,7 +259,12 @@ async def open_page_fetcher(
 
 
 def print_fetch_summary(pages_name: str, fetch_summary: FetchSummary) -> None:
-    """Print how a fetch went: a count per outcome, and each failure."""
+    """Print how a fetch went: a count per outcome, and each failure.
+
+    Args:
+        pages_name: The name of the pages fetched, starting each printed line.
+        fetch_summary: The fetch's summary.
+    """
     for outcome, page_count in sorted(fetch_summary.outcomes.items()):
         print(f"{pages_name} {outcome}: {page_count}")
     for failed_page, fetch_error in fetch_summary.failed_pages.items():
@@ -249,7 +279,22 @@ async def add_linked_pages(
     page_fetcher: ProviderPageFetcher | None,
     review_file: ReviewFile,
 ) -> LinkedPageCorrections:
-    """Fetch the pages entries link that no seed entry holds, and decide each."""
+    """Fetch the pages entries link that no seed entry holds, and decide each.
+
+    Args:
+        entries: The entries whose links to read: the entries to check and the
+            entries without a MAL page.
+        doubled_provider_corrections: The doubled-provider corrections and
+            review cases, which say which entries have placed pages.
+        known_works: Every seed entry.
+        store: The provider page store.
+        page_fetcher: The page fetcher, or None when the run fetches nothing.
+        review_file: The review file, for the answers kept in it.
+
+    Returns:
+        The corrections adding pages, the linked-page review cases, and the
+        linked pages not added.
+    """
     linked_pages = find_linked_pages(
         list_entries_with_placed_pages(
             entries, doubled_provider_corrections, known_works, store
@@ -260,15 +305,16 @@ async def add_linked_pages(
     if page_fetcher is not None:
         print_fetch_summary(
             "Linked pages",
+            # Every linked page is passed: the fetcher skips stored pages itself,
+            # and still fetches the current key of one stored under a slug.
             await page_fetcher.fetch_linked_pages(
                 {
-                    key: linking_seed_entries[0].linking_entry.entry.title
+                    key: linking_seed_entries[0].entry_details.entry.title
                     for key, linking_seed_entries in linked_pages.items()
-                    if key not in store
                 }
             ),
         )
-    return correct_linked_pages(linked_pages, store, review_file)
+    return correct_linked_pages(linked_pages, store, known_works, review_file)
 
 
 def write_results(
@@ -277,7 +323,14 @@ def write_results(
     doubled_provider_corrections: DoubledProviderCorrections,
     linked_page_corrections: LinkedPageCorrections,
 ) -> None:
-    """Write the review and corrections files, and print what they hold."""
+    """Write the review and corrections files, and print what they hold.
+
+    Args:
+        data_dir: The folder ``corrections.jsonl`` is written to.
+        review_file: The review file the cases are written to.
+        doubled_provider_corrections: The doubled-provider corrections and cases.
+        linked_page_corrections: The linked-page corrections and cases.
+    """
     review_cases = [
         *doubled_provider_corrections.review_cases,
         *linked_page_corrections.review_cases,
@@ -296,6 +349,9 @@ def write_results(
         f"Linked pages waiting for a fetch: {len(linked_page_corrections.waiting_page_keys)}"
     )
     print(f"Linked pages not found: {len(linked_page_corrections.not_found_page_keys)}")
+    print(
+        f"Linked pages held under another address: {len(linked_page_corrections.held_page_keys)}"
+    )
     for page_key in linked_page_corrections.conflicting_page_keys:
         print(
             f"Answer not applied, another page of its provider is added to the same entry: {page_key}"

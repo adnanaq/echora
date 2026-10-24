@@ -61,7 +61,7 @@ def _fetcher(tmp_path, answers) -> tuple[ProviderPageFetcher, ScriptedApiFetcher
     store = ProviderPageStore(tmp_path / "pages.jsonl")
     return (
         ProviderPageFetcher(
-            lambda: api_fetcher, store, seconds_between_found_page_lookups=0
+            lambda: api_fetcher, store, seconds_between_page_searches=0
         ),
         api_fetcher,
     )
@@ -138,9 +138,9 @@ async def test_fetch_entry_pages_animeschedule_found_through_mal_page(
         },
     )
     await fetcher.fetch_entry_pages([_one_piece(MAL, KITSU)])
-    found_page = ProviderPageStore(tmp_path / "pages.jsonl").get_page(SCHEDULE)
-    assert found_page is not None
-    assert found_page.found_by == ("mal:anime:21",)
+    searched_page = ProviderPageStore(tmp_path / "pages.jsonl").get_page(SCHEDULE)
+    assert searched_page is not None
+    assert searched_page.searched_by == ("mal:anime:21",)
     assert (
         "animeschedule",
         {"mal_url": MAL},
@@ -148,7 +148,7 @@ async def test_fetch_entry_pages_animeschedule_found_through_mal_page(
     ) in (api_fetcher.requests)
 
 
-async def test_fetch_entry_pages_animeschedule_lookup_done_not_repeated(
+async def test_fetch_entry_pages_animeschedule_search_done_not_repeated(
     tmp_path,
 ) -> None:
     fetcher, api_fetcher = _fetcher(
@@ -185,10 +185,10 @@ async def test_fetch_entry_pages_entry_with_two_mal_pages_looks_up_animeschedule
     other_mal = "https://myanimelist.net/anime/22"
     fetcher, api_fetcher = _fetcher(tmp_path, {})
     await fetcher.fetch_entry_pages([_one_piece(MAL, other_mal)])
-    lookups = [
+    searches = [
         ids for service, ids, _ in api_fetcher.requests if service == "animeschedule"
     ]
-    assert lookups == [{"mal_url": MAL}, {"mal_url": other_mal}]
+    assert searches == [{"mal_url": MAL}, {"mal_url": other_mal}]
 
 
 class KitsuRaisingApiFetcher(ScriptedApiFetcher):
@@ -217,23 +217,23 @@ async def test_fetch_entry_pages_unexpected_error_fails_page_and_other_queues_fi
     fetcher = ProviderPageFetcher(
         lambda: api_fetcher,
         ProviderPageStore(tmp_path / "pages.jsonl"),
-        seconds_between_found_page_lookups=0,
+        seconds_between_page_searches=0,
     )
     summary = await fetcher.fetch_entry_pages([_one_piece(MAL, KITSU)])
     assert summary.failed_pages == {"kitsu:anime:12": "RuntimeError: store disk full"}
     assert "mal:anime:21" in ProviderPageStore(tmp_path / "pages.jsonl")
 
 
-async def test_fetch_entry_pages_animeschedule_lookup_finding_nothing_repeated(
+async def test_fetch_entry_pages_animeschedule_search_finding_nothing_repeated(
     tmp_path,
 ) -> None:
     fetcher, api_fetcher = _fetcher(tmp_path, {})
     await fetcher.fetch_entry_pages([_one_piece(MAL)])
     await fetcher.fetch_entry_pages([_one_piece(MAL)])
-    lookups = [
+    searches = [
         ids for service, ids, _ in api_fetcher.requests if service == "animeschedule"
     ]
-    assert lookups == [{"mal_url": MAL}, {"mal_url": MAL}]
+    assert searches == [{"mal_url": MAL}, {"mal_url": MAL}]
 
 
 async def test_fetch_entry_pages_stored_page_in_two_entries_counted_once(
@@ -289,6 +289,47 @@ async def test_fetch_linked_pages_builds_address_from_page_key_and_stores_page(
     assert summary.outcomes == {FetchOutcome.FETCHED: 1}
 
 
+async def test_fetch_linked_pages_page_reporting_other_key_fetched_at_that_key(
+    tmp_path,
+) -> None:
+    kitsu_slug = "https://kitsu.app/anime/soshiki"
+    kitsu_number = "https://kitsu.app/anime/51119"
+    fetcher, api_fetcher = _fetcher(
+        tmp_path,
+        {
+            ("kitsu", kitsu_slug): {"title": "Soshiki", "sources": [kitsu_number]},
+            ("kitsu", kitsu_number): {"title": "Soshiki", "episode_count": 12},
+        },
+    )
+    summary = await fetcher.fetch_linked_pages({"kitsu:anime:soshiki": "Soshiki"})
+    stored_page = ProviderPageStore(tmp_path / "pages.jsonl").get_page(
+        "kitsu:anime:51119"
+    )
+    assert stored_page is not None
+    assert (stored_page.episode_count, len(api_fetcher.requests)) == (12, 2)
+    assert summary.outcomes == {FetchOutcome.FETCHED: 2}
+
+
+async def test_fetch_linked_pages_current_key_already_stored_not_fetched_again(
+    tmp_path,
+) -> None:
+    kitsu_slug = "https://kitsu.app/anime/soshiki"
+    kitsu_number = "https://kitsu.app/anime/51119"
+    fetcher, api_fetcher = _fetcher(
+        tmp_path,
+        {
+            ("kitsu", kitsu_slug): {"title": "Soshiki", "sources": [kitsu_number]},
+            ("kitsu", kitsu_number): {"title": "Soshiki"},
+        },
+    )
+    await fetcher.fetch_linked_pages({"kitsu:anime:51119": "Soshiki"})
+    await fetcher.fetch_linked_pages({"kitsu:anime:soshiki": "Soshiki"})
+    assert [ids for _, ids, _ in api_fetcher.requests] == [
+        {"kitsu_url": kitsu_number},
+        {"kitsu_url": kitsu_slug},
+    ]
+
+
 async def test_fetch_linked_pages_provider_without_helper_skipped(tmp_path) -> None:
     fetcher, api_fetcher = _fetcher(tmp_path, {})
     summary = await fetcher.fetch_linked_pages({"ann:anime:128": "Xiao Qian"})
@@ -307,7 +348,7 @@ async def test_fetch_entry_pages_fetching_stored_pages_again_replaces_details(
     fetcher = ProviderPageFetcher(
         lambda: api_fetcher,
         ProviderPageStore(store_path),
-        seconds_between_found_page_lookups=0,
+        seconds_between_page_searches=0,
         is_stored_page_fetched_again=True,
     )
     summary = await fetcher.fetch_entry_pages([_one_piece(KITSU)])

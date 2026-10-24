@@ -6,7 +6,7 @@ from work_matching.linked_page_check import (
     LinkedPageDecision,
     LinkedPageOutcome,
     LinkedPageReason,
-    LinkingEntry,
+    LinkingEntryDetails,
     NoLinkingEntryError,
     decide_linked_page,
     find_unheld_linked_pages,
@@ -122,17 +122,75 @@ def _decide(
     *entries: WorkEntry,
     entry_episode_count: int | None,
     other_linked_page_keys: frozenset[str] = frozenset(),
+    known_works: KnownWorksFromSeed | None = None,
 ) -> LinkedPageDecision:
     return decide_linked_page(
         page,
         [
-            LinkingEntry(
+            LinkingEntryDetails(
                 entry,
                 entry_episode_count,
-                frozenset({page.key}) | other_linked_page_keys,
+                frozenset({page.current_key}) | other_linked_page_keys,
             )
             for entry in entries
         ],
+        known_works or KnownWorksFromSeed([]),
+    )
+
+
+def test_decide_linked_page_renamed_page_held_by_seed_entry_skipped(
+    known_works,
+) -> None:
+    kitsu_slug_page = ProviderPage(
+        key="kitsu:anime:mori-no-yousei-kinoko-no-musume",
+        address="https://kitsu.app/anime/mori-no-yousei-kinoko-no-musume",
+        type="TV",
+        renamed_to="kitsu:anime:40741",
+    )
+    decision = _decide(
+        kitsu_slug_page,
+        _entry(BOXER_SEED_ENTRY),
+        entry_episode_count=12,
+        known_works=known_works,
+    )
+    assert (decision.reason, decision.outcome, decision.page_key) == (
+        LinkedPageReason.HELD_UNDER_OTHER_ADDRESS,
+        LinkedPageOutcome.SKIP,
+        "kitsu:anime:40741",
+    )
+
+
+def test_decide_linked_page_renamed_page_held_by_linking_entry_skipped() -> None:
+    anilist_old_page = ProviderPage(
+        key="anilist:anime:1",
+        address="https://anilist.co/anime/1",
+        type="TV",
+        renamed_to="anilist:anime:163794",
+    )
+    decision = _decide(
+        anilist_old_page, _entry(BOXER_SEED_ENTRY), entry_episode_count=12
+    )
+    assert decision.reason is LinkedPageReason.HELD_UNDER_OTHER_ADDRESS
+
+
+def test_decide_linked_page_renamed_page_not_held_decided_under_current_key(
+    known_works,
+) -> None:
+    kitsu_slug_page = ProviderPage(
+        key="kitsu:anime:the-boxer",
+        address="https://kitsu.app/anime/the-boxer",
+        type="TV",
+        renamed_to="kitsu:anime:51119",
+    )
+    decision = _decide(
+        kitsu_slug_page,
+        _entry(BOXER_SEED_ENTRY),
+        entry_episode_count=12,
+        known_works=known_works,
+    )
+    assert (decision.outcome, decision.page_key) == (
+        LinkedPageOutcome.ADD,
+        "kitsu:anime:51119",
     )
 
 
@@ -164,6 +222,15 @@ def test_find_unheld_linked_pages_provider_not_given_left_out(known_works) -> No
         known_works,
         LINKED_PROVIDERS,
     ) == frozenset({"anidb:anime:1159"})
+
+
+def test_find_unheld_linked_pages_manga_page_left_out(known_works) -> None:
+    page = MORI_NO_YOUSEI_KITSU_PAGE.model_copy(
+        update={"links": ("anilist:manga:119534", "mal:anime:35362")}
+    )
+    assert find_unheld_linked_pages(
+        _entry(MORI_NO_YOUSEI_SEED_ENTRY), [page], known_works, LINKED_PROVIDERS
+    ) == frozenset({"mal:anime:35362"})
 
 
 def test_find_unheld_linked_pages_link_to_entry_own_page_left_out(known_works) -> None:
@@ -226,7 +293,7 @@ def test_decide_linked_page_unknown_episode_count_does_not_stop_addition() -> No
 
 def test_decide_linked_page_without_linking_entry_raises() -> None:
     with pytest.raises(NoLinkingEntryError, match="mal:anime:65144"):
-        decide_linked_page(BOXER_MAL_PAGE, [])
+        decide_linked_page(BOXER_MAL_PAGE, [], KnownWorksFromSeed([]))
 
 
 def test_decide_linked_page_dead_page_skipped() -> None:

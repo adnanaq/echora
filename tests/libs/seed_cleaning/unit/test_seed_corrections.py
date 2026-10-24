@@ -97,11 +97,11 @@ def test_correct_doubled_provider_entries_settled_entry_moves_page_to_seed_entry
     )
 
 
-def test_correct_doubled_provider_entries_link_on_found_page_settles_entry(
+def test_correct_doubled_provider_entries_link_on_searched_page_settles_entry(
     entry, store, known_works, review_file
 ) -> None:
     found = ProviderPage.from_canonical_record(
-        SCHEDULE, {"title": "Show", "sources": [SCHEDULE, KITSU_ONE]}, found_by=MAL
+        SCHEDULE, {"title": "Show", "sources": [SCHEDULE, KITSU_ONE]}, searched_by=MAL
     )
     store.add_pages(found, _page(KITSU_ONE), _page(KITSU_TWO, TARGET_MAL))
     result = _correct(entry, store, known_works, review_file)

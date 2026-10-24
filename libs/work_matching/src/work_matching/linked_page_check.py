@@ -1,37 +1,35 @@
-"""Decide whether a page an entry's pages link, and no known work holds, joins that entry.
+"""Decide whether a linked page joins the entry linking it.
 
-Providers link pages the seed does not list: an AniList page names a MAL page
-no seed entry holds. Such a linked page is added to the entry linking it only
-after checks, because most of these links are stale (the provider has since
-deleted the page) and some are wrong mappings (a Kitsu page mapped to a recap
-OVA instead of its own work). The rules:
+A linked page is a page an entry's pages link that no known work holds, such as
+a MAL page named by an AniList page the seed lists alone. Most such links are
+stale, because the provider has deleted the page. Some are wrong mappings,
+such as a Kitsu page mapped to a recap OVA instead of its own work. A linked
+page therefore joins an entry only after these checks, run in this order:
 
-- Not found: a page the provider says does not exist is never added and needs
-  no person.
-- Linked from several entries: the page has no single entry to join, so a
-  person picks one.
-- Provider already in the entry: adding the page would make a doubled
-  provider, so a person decides; the page may be a part of the entry's work.
-- Several linked pages of one provider: when the entry's pages link two or
-  more pages of the page's provider that no known work holds, adding each would
-  make a doubled provider, so a person decides.
-- Year or type differ from the entry's: the link may be a wrong mapping, so a
-  person decides. The check is the one moves use (``is_page_details_matching``).
-- Episode counts differ, where both are known: providers divide long runs
-  differently, and a page listing fewer episodes is often one season of the
-  entry's whole run, so a person decides whether it is the work or a part.
-- Otherwise the page is added. Episode counts and air dates never decide a
-  match; they only stop an addition.
+| Check | Outcome | Reason for the check |
+| -- | -- | -- |
+| The provider says the page does not exist | not added | The link is stale. |
+| A seed entry, or a linking entry, holds the page's current key | not added | The link spells a held page another way, such as a Kitsu slug for a page the seed lists by number. |
+| Two or more entries link the page | review | The page has no single entry to join. |
+| The entry holds a page of the page's provider | review | Adding the page would make a doubled provider; the page may be a part page. |
+| The entry links two or more such pages of one provider | review | Adding each page would make a doubled provider. |
+| The year or type differs from the entry's | review | The link may be a wrong mapping; moves use the same check (``is_page_details_matching``). |
+| Both episode counts are known and differ | review | A page with fewer episodes is often one season of the entry's whole run. |
+| None of the above | added | |
+
+Other rules:
+
+- Only anime pages are linked pages: a manga link names source material.
+- Episode counts and air dates never decide a match; they only stop an addition.
 
 A review answer maps the page to one of these:
 
-- ``add``: add it to the one entry linking it, which must hold no page of the
-  page's provider, so an answer never makes a doubled provider either;
-- ``add as part``: add it as a part of that entry's work, which may already
-  hold pages of the provider, since a work can hold several part pages;
-- either followed by ``to <reference page>``, naming one of the linking
-  entries, which is required when several entries link the page;
-- ``skip``: leave the page out.
+| Answer | Effect |
+| -- | -- |
+| ``add`` | Add the page to the one linking entry, which must hold no page of the page's provider. |
+| ``add as part`` | Add the page as a part page of that entry's work; the entry may already hold pages of the provider. |
+| ``add to <reference page>``, ``add as part to <reference page>`` | Do the same for the named linking entry; required when several entries link the page. |
+| ``skip`` | Leave the page out. |
 """
 
 import re
@@ -44,15 +42,23 @@ from pydantic import JsonValue
 from work_matching.doubled_provider_check import is_page_details_matching
 from work_matching.known_works import KnownWorks
 from work_matching.provider_page import ProviderPage
-from work_matching.provider_page_key import get_page_provider, rank_by_provider_trust
+from work_matching.provider_page_key import (
+    get_page_kind,
+    get_page_provider,
+    rank_by_provider_trust,
+)
 from work_matching.work_entry import WorkEntry
 
 # These words are written in review answers, so changing them would make kept
 # answers invalid.
 SKIP_ANSWER: Final = "skip"
-_PART_PAGE_ANSWER = "add as part"
-_LINKED_PAGE_ANSWER_TEXT = re.compile(
-    r"(?P<addition>add as part|add)(?: to (?P<entry_reference_page>\S+))?"
+_WHOLE_PAGE_ANSWER: Final = "add"
+_PART_PAGE_ANSWER: Final = "add as part"
+# An answer adding the page, optionally naming the linking entry it joins. The
+# longer word comes first, so "add as part" is never read as "add".
+_LINKED_PAGE_ANSWER_TEXT: Final = re.compile(
+    rf"(?P<addition>{re.escape(_PART_PAGE_ANSWER)}|{re.escape(_WHOLE_PAGE_ANSWER)})"
+    r"(?: to (?P<entry_reference_page>\S+))?"
 )
 
 
@@ -72,6 +78,9 @@ class LinkedPageReason(StrEnum):
         "provider, and their year, type and episode count agree"
     )
     NOT_FOUND = "the provider says the page does not exist"
+    HELD_UNDER_OTHER_ADDRESS = (
+        "the page is one a seed entry already holds, under another address"
+    )
     SEVERAL_ENTRIES = "two or more entries link the page"
     PROVIDER_IN_ENTRY = "the entry already holds a page of the page's provider"
     SEVERAL_PAGES_OF_PROVIDER = (
@@ -83,13 +92,18 @@ class LinkedPageReason(StrEnum):
 
     @property
     def outcome(self) -> LinkedPageOutcome:
-        """What a decision with this reason does with the page."""
+        """Return what a decision with this reason does with the linked page.
+
+        Returns:
+            ``ADD``, ``REVIEW`` or ``SKIP``.
+        """
         return _OUTCOME_BY_REASON[self]
 
 
 _OUTCOME_BY_REASON: dict[LinkedPageReason, LinkedPageOutcome] = {
     LinkedPageReason.CHECKS_PASSED: LinkedPageOutcome.ADD,
     LinkedPageReason.NOT_FOUND: LinkedPageOutcome.SKIP,
+    LinkedPageReason.HELD_UNDER_OTHER_ADDRESS: LinkedPageOutcome.SKIP,
     LinkedPageReason.SEVERAL_ENTRIES: LinkedPageOutcome.REVIEW,
     LinkedPageReason.PROVIDER_IN_ENTRY: LinkedPageOutcome.REVIEW,
     LinkedPageReason.SEVERAL_PAGES_OF_PROVIDER: LinkedPageOutcome.REVIEW,
@@ -99,8 +113,13 @@ _OUTCOME_BY_REASON: dict[LinkedPageReason, LinkedPageOutcome] = {
 
 
 @dataclass(frozen=True, slots=True)
-class LinkingEntry:
-    """An entry whose pages link a page no known work holds, with what the checks read."""
+class LinkingEntryDetails:
+    """Hold an entry linking a page no known work holds, with the details the checks read.
+
+    A ``LinkedPageDecision`` keeps only the entries in ``linking_entries``. Deciding
+    also needs each entry's episode count and its other linked pages, so those
+    details travel with the entry here.
+    """
 
     entry: WorkEntry
     # As ``get_entry_episode_count`` gives it.
@@ -124,7 +143,11 @@ class LinkedPageDecision:
 
     @property
     def outcome(self) -> LinkedPageOutcome:
-        """What the decision does with the page; a person answers ``REVIEW``."""
+        """Return what the decision does with the linked page.
+
+        Returns:
+            ``ADD``, ``REVIEW`` or ``SKIP``; a person answers a ``REVIEW``.
+        """
         return self.reason.outcome
 
 
@@ -137,14 +160,18 @@ class LinkedPageAddition:
 
 
 class NoLinkingEntryError(ValueError):
-    """A linked page was given to decide without an entry linking it.
+    """Report a linked page given to decide without an entry linking it.
 
-    A linked page is found through an entry's links, so a caller passing none
-    has lost track of where the page came from.
+    A linked page is found through an entry's links. A caller passing no entry
+    has lost track of where the linked page came from.
     """
 
     def __init__(self, page_key: str) -> None:
-        """Name the page given without a linking entry."""
+        """Name the page given without a linking entry.
+
+        Args:
+            page_key: The key of the linked page.
+        """
         super().__init__(f"No entry links the page to decide: {page_key}")
 
 
@@ -158,8 +185,8 @@ def find_unheld_linked_pages(
 
     Args:
         entry: The work entry.
-        pages: The fetched details of the entry's pages and of pages found
-            through them, whose links are read.
+        pages: The fetched details of the entry's pages and of pages searched
+            by them, whose links are read.
         known_works: The works already known.
         providers: The providers whose linked pages can be added: those whose
             pages are fetched, so each one can be checked live.
@@ -172,6 +199,7 @@ def find_unheld_linked_pages(
         for page in pages
         for link in page.links
         if get_page_provider(link) in providers
+        and get_page_kind(link) == "anime"
         and link not in entry.pages
         and known_works.find_by_page_key(link) is None
     )
@@ -182,9 +210,9 @@ def get_entry_episode_count(
 ) -> int | None:
     """Return the episode count of an entry's most trusted page that gives one.
 
-    The fetched pages are newer than the seed's own count, and the most trusted
-    provider (MAL first) decides how a work is divided, so its count stands
-    for the entry.
+    The fetched pages are newer than the seed's own count. The most trusted
+    provider, MAL first, decides how a work is divided, so that provider's
+    count stands for the entry.
 
     Args:
         entry: The work entry.
@@ -198,48 +226,67 @@ def get_entry_episode_count(
         for page in pages
         if page.key in entry.pages and page.episode_count is not None
     }
-    return next(
-        (
-            episode_count_by_page[key]
-            for key in sorted(entry.pages, key=rank_by_provider_trust)
-            if key in episode_count_by_page
-        ),
-        None,
+    # min keeps the first of equally trusted pages, in the entry's own order.
+    most_trusted_page_key = min(
+        episode_count_by_page, key=rank_by_provider_trust, default=None
+    )
+    return (
+        episode_count_by_page[most_trusted_page_key]
+        if most_trusted_page_key is not None
+        else None
     )
 
 
 def decide_linked_page(
-    page: ProviderPage, linking_entries: Iterable[LinkingEntry]
+    page: ProviderPage,
+    linking_entry_details: Iterable[LinkingEntryDetails],
+    known_works: KnownWorks,
 ) -> LinkedPageDecision:
     """Decide whether a fetched linked page is added, reviewed or skipped.
 
+    The page is judged at its current key. A link can spell a held page another
+    way, such as a Kitsu slug for a page the seed lists by number. Only the
+    fetched page shows its current key.
+
     Args:
         page: The linked page's fetched details.
-        linking_entries: Every entry whose pages link the page; at least one.
+        linking_entry_details: Every entry whose pages link the page; at least one.
+        known_works: The works already known, to tell a page already held.
 
     Returns:
-        The decision, with the linking entries sorted by reference page.
+        The decision named by the page's current key, with the linking entries
+        sorted by reference page.
 
     Raises:
         NoLinkingEntryError: No linking entry was given.
     """
-    sorted_linking_entries = sorted(
-        linking_entries, key=lambda linking_entry: linking_entry.entry.reference_page
+    sorted_entry_details = sorted(
+        linking_entry_details,
+        key=lambda entry_details: entry_details.entry.reference_page,
     )
-    if not sorted_linking_entries:
+    if not sorted_entry_details:
         raise NoLinkingEntryError(page.key)
-    entries = tuple(linking_entry.entry for linking_entry in sorted_linking_entries)
-    if page.is_dead:
-        return LinkedPageDecision(page.key, LinkedPageReason.NOT_FOUND, entries)
-    if len(entries) > 1:
-        return LinkedPageDecision(page.key, LinkedPageReason.SEVERAL_ENTRIES, entries)
-    [linking_entry] = sorted_linking_entries
-    return LinkedPageDecision(
-        page.key,
-        _choose_single_entry_reason(page, linking_entry),
-        entries,
-        linking_entry.episode_count,
+    linking_entries = tuple(
+        entry_details.entry for entry_details in sorted_entry_details
     )
+    page_key = page.current_key
+    if page.is_dead:
+        reason = LinkedPageReason.NOT_FOUND
+    elif known_works.find_by_page_key(page_key) or any(
+        page_key in entry.pages for entry in linking_entries
+    ):
+        reason = LinkedPageReason.HELD_UNDER_OTHER_ADDRESS
+    elif len(linking_entries) > 1:
+        reason = LinkedPageReason.SEVERAL_ENTRIES
+    else:
+        [entry_details] = sorted_entry_details
+        return LinkedPageDecision(
+            page_key,
+            _choose_single_entry_reason(page, entry_details),
+            linking_entries,
+            entry_details.episode_count,
+        )
+    return LinkedPageDecision(page_key, reason, linking_entries)
 
 
 def suggest_linked_page_answer(
@@ -247,10 +294,14 @@ def suggest_linked_page_answer(
 ) -> dict[str, str]:
     """Suggest ``add as part`` for a page that looks like one season of its entry's work.
 
-    The suggestion is made when one entry links the page, their year and type
-    agree, and the page lists fewer episodes than the entry: providers that
-    divide a run into seasons list fewer episodes per page. Otherwise nothing
-    is suggested, and a person starts from the evidence alone.
+    The suggestion needs all of these:
+
+    - one entry links the page;
+    - the page's year and type agree with the entry's;
+    - the page lists fewer episodes than the entry.
+
+    Providers that divide a run into seasons list fewer episodes per page.
+    Without a suggestion, a person starts from the evidence alone.
 
     Args:
         decision: The decision on the linked page.
@@ -268,7 +319,7 @@ def suggest_linked_page_answer(
         and page.episode_count < decision.entry_episode_count
     )
     if is_fewer_episodes and is_page_details_matching(page, entry):
-        return {page.key: _PART_PAGE_ANSWER}
+        return {decision.page_key: _PART_PAGE_ANSWER}
     return {}
 
 
@@ -304,22 +355,35 @@ def read_linked_page_answer(
 
 
 def _choose_single_entry_reason(
-    page: ProviderPage, linking_entry: LinkingEntry
+    page: ProviderPage, entry_details: LinkingEntryDetails
 ) -> LinkedPageReason:
-    """Return the reason for a page that exists and one entry links."""
-    entry = linking_entry.entry
-    provider = get_page_provider(page.key)
-    if entry.has_page_of_same_provider(page.key):
+    """Return the reason for a linked page that exists and that one entry links.
+
+    The checks run in the order the module docstring lists them, and the first
+    check that applies gives the reason.
+
+    Args:
+        page: The linked page's fetched details.
+        entry_details: The one entry linking the page, with its episode count
+            and its other linked pages.
+
+    Returns:
+        The reason; ``CHECKS_PASSED`` when no check stops the addition.
+    """
+    entry = entry_details.entry
+    page_key = page.current_key
+    provider = get_page_provider(page_key)
+    if entry.has_page_of_same_provider(page_key):
         return LinkedPageReason.PROVIDER_IN_ENTRY
     if any(
-        key != page.key and get_page_provider(key) == provider
-        for key in linking_entry.linked_page_keys
+        key != page_key and get_page_provider(key) == provider
+        for key in entry_details.linked_page_keys
     ):
         return LinkedPageReason.SEVERAL_PAGES_OF_PROVIDER
     if not is_page_details_matching(page, entry):
         return LinkedPageReason.DETAILS_DIFFER
-    if None not in (page.episode_count, linking_entry.episode_count) and (
-        page.episode_count != linking_entry.episode_count
+    if None not in (page.episode_count, entry_details.episode_count) and (
+        page.episode_count != entry_details.episode_count
     ):
         return LinkedPageReason.EPISODE_COUNTS_DIFFER
     return LinkedPageReason.CHECKS_PASSED
@@ -328,7 +392,18 @@ def _choose_single_entry_reason(
 def _find_target_entry(
     decision: LinkedPageDecision, entry_reference_page: str | None
 ) -> WorkEntry | None:
-    """Return the linking entry an answer names, or the only one when it names none."""
+    """Return the linking entry an answer names, or the only linking entry.
+
+    Args:
+        decision: The decision the answer is about.
+        entry_reference_page: The reference page the answer names after
+            ``to``, or None when the answer names no entry.
+
+    Returns:
+        The named linking entry; without a name, the one linking entry. None
+        when the name matches no linking entry, or no name is given while
+        several entries link the page.
+    """
     entries = decision.linking_entries
     if entry_reference_page is None:
         return entries[0] if len(entries) == 1 else None

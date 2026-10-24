@@ -94,14 +94,17 @@ class WorkEntry(BaseModel):
         )
 
     def has_page_of_same_provider(self, page_key: str) -> bool:
-        """Report whether the entry holds a page of the provider this page key belongs to.
+        """Report whether the entry holds a page of the same provider as a page key.
 
         A page joining an entry that already holds a page of its provider would
-        make a doubled provider, which needs a person to decide. A key of no
-        known provider has no provider to share, so it never counts.
+        make a doubled provider. A doubled provider needs a person to decide.
 
         Args:
             page_key: The key of the page that would join the entry.
+
+        Returns:
+            True when one of the entry's pages has the key's provider. False for a
+            key of no known provider, which has no provider to share.
         """
         provider = get_page_provider(page_key)
         return provider is not None and any(

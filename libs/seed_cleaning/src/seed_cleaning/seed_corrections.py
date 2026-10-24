@@ -145,7 +145,7 @@ def correct_doubled_provider_entries(
 
     Args:
         entries: The seed entries with a doubled provider.
-        store: The fetched pages, including pages found through the entries'.
+        store: The fetched pages, including pages searched by the entries' pages.
         known_works: Every seed entry, to find the entries pages move to.
         review_file: The review file, for the answers kept in it.
 
@@ -379,7 +379,18 @@ def _correct_seed_entry(
     corrections: Sequence[SeedCorrection],
     moved_in_corrections: Sequence[SeedCorrection],
 ) -> WorkEntry:
-    """Return a seed entry without the pages that left it, with those moved in or added."""
+    """Return a seed entry as its corrections leave it.
+
+    Args:
+        entry: The seed entry.
+        corrections: The corrections naming the seed entry: pages leaving it,
+            staying in it, or added to it.
+        moved_in_corrections: The corrections of pages moving into the entry.
+
+    Returns:
+        The entry without the pages that left it, with the pages moved in or
+        added, and each provider's main page listed first.
+    """
     leaving_pages = {
         correction.page_key
         for correction in corrections

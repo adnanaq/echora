@@ -11,9 +11,9 @@ Key rules from the work matching glossary:
   external links (such as sequels or spin-offs) are ignored.
 - Renamed pages: When a provider renames a page, its old address resolves to
   its current key.
-- Found pages: A found page (such as AnimeSchedule found by MAL ID) is credited
-  to each of its lookup pages: its links count as links of every lookup page,
-  except the link back to that lookup page, which only shows how it was found.
+- Searched pages: A searched page (such as AnimeSchedule searched by MAL ID) is
+  credited to each page it was searched by: its links count as links of every
+  such page, except the link back to that page, which only shows how it was found.
 - Multi-work pages: A page naming multiple pages from the same provider (e.g. an
   anthology) does not prove identity for any single work. Its links are set aside.
 """
@@ -29,8 +29,8 @@ from work_matching.provider_page_key import get_page_provider, has_repeated_prov
 class ProviderPageLinks:
     """Undirected graph of links between candidate pages of a work or entry.
 
-    Renamed pages resolve to their current key, and found pages fold into their
-    lookup pages. Multi-work pages (pages referencing multiple entries of one
+    Renamed pages resolve to their current key, and searched pages fold into
+    the pages they were searched by. Multi-work pages (pages referencing multiple entries of one
     provider) and same-provider links are excluded from matching links.
     """
 
@@ -48,10 +48,10 @@ class ProviderPageLinks:
         self._current_key_by_renamed_key = {
             page.key: page.renamed_to for page in fetched_pages if page.renamed_to
         }
-        self._lookup_keys_by_found_page = {
-            page.key: tuple(map(self.get_current_key, page.found_by))
+        self._searched_by_keys_by_searched_page = {
+            page.key: tuple(map(self.get_current_key, page.searched_by))
             for page in fetched_pages
-            if page.found_by
+            if page.searched_by
         }
         candidate_keys = set(
             chain.from_iterable(
@@ -76,7 +76,7 @@ class ProviderPageLinks:
     def get_linked_pages(self, key: str) -> frozenset[str]:
         """Return candidate pages linked with a page, in either direction.
 
-        A found page's key gives the pages linked with any of its lookup pages.
+        A searched page's key gives the pages linked with any page it was searched by.
         """
         return frozenset(
             chain.from_iterable(
@@ -99,12 +99,14 @@ class ProviderPageLinks:
     ) -> None:
         """Record one page's links, as links of ``source_key``, within the candidates.
 
-        ``source_key`` is the page's current key, or for a found page one of its
-        lookup pages. A multi-work page's links are set apart rather than
+        ``source_key`` is the page's current key, or for a searched page one of
+        the pages it was searched by. A multi-work page's links are set apart rather than
         recorded.
         """
         target_keys = {self.get_current_key(link) for link in page.links} - {source_key}
-        referenced_keys = target_keys | {source_key} if page.found_by else target_keys
+        referenced_keys = (
+            target_keys | {source_key} if page.searched_by else target_keys
+        )
         if has_repeated_provider(referenced_keys):
             for target_key in target_keys & candidate_keys:
                 self._linking_multi_work_pages_by_key[target_key].add(source_key)
@@ -119,7 +121,9 @@ class ProviderPageLinks:
     def _get_current_keys(self, key: str) -> tuple[str, ...]:
         """Return the current keys a page key stands for.
 
-        A found page stands for its lookup pages, and a renamed page resolves to
+        A searched page stands for the pages it was searched by, and a renamed page resolves to
         its current key.
         """
-        return self._lookup_keys_by_found_page.get(key) or (self.get_current_key(key),)
+        return self._searched_by_keys_by_searched_page.get(key) or (
+            self.get_current_key(key),
+        )

@@ -5,6 +5,7 @@ from work_matching.provider_page_key import (
     build_page_address,
     get_page_id,
     get_page_key,
+    get_page_kind,
     get_page_provider,
     has_repeated_provider,
 )
@@ -133,6 +134,20 @@ def test_has_repeated_provider_counts_pages_of_known_providers(
     keys: list[str], expected: bool
 ) -> None:
     assert has_repeated_provider(keys) is expected
+
+
+@pytest.mark.parametrize(
+    ("key", "page_kind"),
+    [
+        ("anilist:manga:119534", "manga"),
+        ("mal:anime:21", "anime"),
+        ("https://example.com/show", None),
+    ],
+)
+def test_get_page_kind_gives_kind_of_recognised_key(
+    key: str, page_kind: str | None
+) -> None:
+    assert get_page_kind(key) == page_kind
 
 
 def test_get_page_id_recognised_key_gives_id() -> None:

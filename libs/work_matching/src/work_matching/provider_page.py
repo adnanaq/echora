@@ -39,27 +39,41 @@ class ProviderPage(BaseModel):
     # websites are left out: two different works can share an official site.
     links: tuple[str, ...] = ()
     # The key the address was renamed to. A record lists other providers' pages
-    # and its own page, so a second page of its own provider is the page's new
-    # address; on the fetched pages this is so only for Anime-Planet renames.
+    # and its own page, so a second page of its own provider is the page's
+    # current address: an Anime-Planet rename, or a Kitsu page fetched by slug,
+    # which lists itself by number.
     renamed_to: str | None = None
-    # The keys of the lookup pages this found page was found through, sorted:
-    # AnimeSchedule is found by MAL id. One found page can be reached through
-    # pages of several entries, such as both entries of a split work, so every
-    # lookup page is kept. Empty for a page the seed lists itself.
-    found_by: tuple[str, ...] = ()
+    # The keys of the pages this searched page was searched by, sorted:
+    # AnimeSchedule is searched by MAL id. One searched page can be reached
+    # through pages of several entries, such as both entries of a split work, so
+    # every one is kept. Empty for a page the seed lists itself.
+    searched_by: tuple[str, ...] = ()
     is_dead: bool = False
+
+    @property
+    def current_key(self) -> str:
+        """Return the key the page is found under now.
+
+        A page reached through an old or second spelling of its address is the
+        page at its current key. An example is a Kitsu page linked by slug while
+        the seed lists the page by number.
+
+        Returns:
+            The key the page was renamed to, or the page's own key.
+        """
+        return self.renamed_to or self.key
 
     @classmethod
     def from_canonical_record(
-        cls, address: str, record: dict[str, Any], found_by: str | None = None
+        cls, address: str, record: dict[str, Any], searched_by: str | None = None
     ) -> Self:
         """Read a page's details from the canonical record fetched for it.
 
         Args:
             address: The page address that was fetched.
             record: The canonical anime record the provider's helper returned.
-            found_by: The address of the lookup page, when the page was found
-                through another provider's page.
+            searched_by: The address of the page searched by, when the page
+                was found by searching its provider with another page's id.
 
         Returns:
             The page's titles, type, year, season, episode count, air dates,
@@ -98,17 +112,17 @@ class ProviderPage(BaseModel):
                 )
             ),
             renamed_to=renamed_keys[0] if renamed_keys else None,
-            found_by=_read_lookup_keys(found_by),
+            searched_by=_read_searched_by_keys(searched_by),
         )
 
     @classmethod
-    def from_dead_address(cls, address: str, found_by: str | None = None) -> Self:
+    def from_dead_address(cls, address: str, searched_by: str | None = None) -> Self:
         """Record a dead page: one the provider no longer serves."""
         return cls(
             key=get_page_key(address),
             address=address,
             is_dead=True,
-            found_by=_read_lookup_keys(found_by),
+            searched_by=_read_searched_by_keys(searched_by),
         )
 
 
@@ -128,15 +142,15 @@ def index_pages_by_current_key(
     """
     pages_by_key: dict[str, ProviderPage] = {}
     for page in pages:
-        key = page.renamed_to or page.key
+        key = page.current_key
         if key not in pages_by_key or page.key == key:
             pages_by_key[key] = page
     return pages_by_key
 
 
-def _read_lookup_keys(found_by: str | None) -> tuple[str, ...]:
-    """Return the lookup page's key as ``found_by`` holds it; empty without one."""
-    return (get_page_key(found_by),) if found_by else ()
+def _read_searched_by_keys(searched_by: str | None) -> tuple[str, ...]:
+    """Return the searched-by page's key as ``searched_by`` holds it; empty without one."""
+    return (get_page_key(searched_by),) if searched_by else ()
 
 
 def _read_record_titles(record: dict[str, Any]) -> Iterator[str]:

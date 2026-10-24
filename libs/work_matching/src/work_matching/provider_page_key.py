@@ -184,6 +184,24 @@ def get_page_provider(key: str) -> str | None:
     return provider if provider in PROVIDERS else None
 
 
+def get_page_kind(key: str) -> str | None:
+    """Return the kind of page a page key names: anime or manga.
+
+    Args:
+        key: A page key, as ``get_page_key`` gives it.
+
+    Returns:
+        ``anime`` or ``manga``, or None when the key is not a known provider's page.
+
+    Examples:
+        >>> get_page_kind("anilist:manga:119534")
+        'manga'
+        >>> get_page_kind("https://example.com/show") is None
+        True
+    """
+    return key.split(":", 2)[1] if get_page_provider(key) else None
+
+
 def get_page_id(key: str) -> str:
     """Return the id part of a page key, or the key itself when it is unrecognised.
 

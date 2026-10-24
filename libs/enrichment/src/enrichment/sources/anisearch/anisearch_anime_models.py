@@ -64,9 +64,17 @@ def _type_name(value: object) -> object:
 def _episode_count_from_type_line(type_line: object) -> int | None:
     """Read the episode count from "Type: TV-Series, 25 (~24 min)".
 
-    AniSearch prints the count after the type and before the episode length in
-    brackets, and "?" while the count is not known, which reads as None. For an
-    anime still airing the count is AniSearch's estimate of the whole run.
+    - AniSearch prints the count after the type and before the episode length
+      in brackets.
+    - AniSearch prints "?" while the count is not known, which reads as None.
+    - For an anime still airing, the count is AniSearch's estimate of the whole
+      run.
+
+    Args:
+        type_line: The type line as the crawler extracted it, label included.
+
+    Returns:
+        The episode count, or None when the line gives none.
 
     >>> _episode_count_from_type_line("Type: TV-Series, 1200 (~24 min, Total: ~20 d)")
     1200
@@ -343,8 +351,15 @@ class AniSearchAnime(BaseModel):
     def _read_page_sections(cls, data: Any) -> Any:
         """Split the page's type, published, broadcast and title sections into their fields.
 
-        The "Type:" line holds the episode count after the type, so the count
-        is read from it before the type field keeps only the type.
+        The "Type:" line holds the episode count after the type. The count is
+        read before the type field keeps only the type.
+
+        Args:
+            data: The raw values the crawler extracted, by field name.
+
+        Returns:
+            The values with each section split into its fields; other input
+            unchanged.
         """
         if not isinstance(data, dict):
             return data

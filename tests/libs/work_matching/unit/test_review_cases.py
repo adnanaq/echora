@@ -9,7 +9,7 @@ from work_matching.doubled_provider_check import decide_doubled_providers
 from work_matching.known_works_from_seed import KnownWorksFromSeed
 from work_matching.linked_page_check import (
     LinkedPageAddition,
-    LinkingEntry,
+    LinkingEntryDetails,
     decide_linked_page,
 )
 from work_matching.page_placement import PagePlacement
@@ -67,7 +67,12 @@ def linked_page_case() -> ReviewCase:
     )
     decision = decide_linked_page(
         linked_page,
-        [LinkingEntry(entry, entry_page.episode_count, frozenset({linked_page.key}))],
+        [
+            LinkingEntryDetails(
+                entry, entry_page.episode_count, frozenset({linked_page.key})
+            )
+        ],
+        KnownWorksFromSeed([]),
     )
     return ReviewCase.from_linked_page(decision, [linked_page, entry_page])
 
@@ -85,7 +90,7 @@ def test_review_case_from_doubled_provider_entry_names_case_by_pages_and_entry(
     assert [page.key for page in doubled_case.pages] == [SIGEWINNE, VARESA]
 
 
-def test_review_case_from_doubled_provider_entry_keeps_entry_and_found_pages(
+def test_review_case_from_doubled_provider_entry_keeps_entry_and_searched_pages(
     linked_page, work_entry
 ) -> None:
     entry = work_entry(
@@ -96,7 +101,7 @@ def test_review_case_from_doubled_provider_entry_keeps_entry_and_found_pages(
     found = ProviderPage.from_canonical_record(
         "https://animeschedule.net/anime/show",
         {"title": "Show"},
-        found_by="https://myanimelist.net/anime/1",
+        searched_by="https://myanimelist.net/anime/1",
     )
     pages = [
         linked_page("https://kitsu.app/anime/1"),
@@ -180,7 +185,9 @@ def test_review_case_from_doubled_provider_entry_writes_unrelated_links_sorted(
     assert written_links == sorted(written_links)
 
 
-def test_review_case_from_split_work_keeps_found_pages(linked_page, work_entry) -> None:
+def test_review_case_from_split_work_keeps_searched_pages(
+    linked_page, work_entry
+) -> None:
     entries = [
         work_entry("https://myanimelist.net/anime/1"),
         work_entry("https://anilist.co/anime/1"),
@@ -188,7 +195,7 @@ def test_review_case_from_split_work_keeps_found_pages(linked_page, work_entry) 
     found = ProviderPage.from_canonical_record(
         "https://animeschedule.net/anime/show",
         {"title": "Show"},
-        found_by="https://myanimelist.net/anime/1",
+        searched_by="https://myanimelist.net/anime/1",
     )
     pages = [linked_page("https://myanimelist.net/anime/1"), found]
     case = ReviewCase.from_split_work(decide_split_work(entries, pages), pages)

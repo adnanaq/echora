@@ -1,31 +1,26 @@
-"""Add the pages entries' pages link that no seed entry holds, as seed corrections.
+"""Add the pages entries link that no seed entry holds, as seed corrections.
 
 Providers link pages the seed lacks, most often a MAL page linked from an
-entry's AniList, Kitsu or AniDB page. Each such page is fetched, checked by the
-work matching rules (``linked_page_check``), and added to the entry linking it
-when the checks pass or a person's answer accepts it. The rules:
+entry's AniList, Kitsu or AniDB page. Each such linked page is fetched and
+checked by the work matching rules (``linked_page_check``). The page joins the
+entry linking it when the checks pass or a person's answer accepts it.
 
-- Which entries: each entry to check and each entry without a MAL page, as
-  the doubled-provider corrections leave it, so a page moved to another entry
-  is read under that entry. An entry whose doubled providers wait for a review
-  answer is left out until it is answered: its pages are not placed yet, so a
-  link on one of them may belong to another work. New entries built from
-  answers are left out too, since a correction must name a seed entry.
-- Which links: links to pages of providers whose pages are fetched, so every
-  linked page can be checked live; other providers' pages are filled in from
-  seed releases instead.
-- Waiting: a linked page not fetched yet, or whose fetch failed, gets no
-  decision; the next run fetches it again.
-- One step: corrections are rebuilt from the downloaded seed on every run, so
-  an added page's own links are never followed.
-- Two answers adding two pages of one provider to one entry would make a
-  doubled provider, so neither is added and a warning names the entry.
+| Rule | Reason for the rule |
+| -- | -- |
+| Read the links of each entry to check and each entry without a MAL page, as the doubled-provider corrections leave the entry. | A page moved to another entry is read under that entry. |
+| Leave out an entry whose doubled providers wait for a review answer. | The entry's pages are not placed yet, so a link on one of them may belong to another work. |
+| Leave out new entries built from answers. | A correction must name a seed entry. |
+| Keep only links to anime pages of providers whose pages are fetched. | Each linked page can then be checked live; other providers' pages come from seed releases. |
+| Group the linked pages by the current key their fetch reports. | One page can be linked under several spellings, such as a Kitsu slug and the Kitsu number. |
+| Give a linked page not fetched yet, or whose fetch failed, no decision. | The next run fetches the page again. |
+| Never follow an added page's own links. | Corrections are rebuilt from the downloaded seed on every run, so additions never chain. |
+| Add neither page when answers add two whole pages of one provider to one entry. | Both pages would make a doubled provider; a warning names the entry. |
 """
 
 import logging
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import NamedTuple
 
 from seed_cleaning.provider_page_fetcher import FETCHED_PROVIDERS
@@ -42,12 +37,14 @@ from work_matching import (
     LinkedPageAddition,
     LinkedPageDecision,
     LinkedPageOutcome,
-    LinkingEntry,
+    LinkedPageReason,
+    LinkingEntryDetails,
     ProviderPage,
     ProviderPageStore,
     ReviewCase,
     ReviewFile,
     WorkEntry,
+    build_page_address,
     decide_linked_page,
     find_unheld_linked_pages,
     get_entry_episode_count,
@@ -69,13 +66,20 @@ class LinkingSeedEntry:
     # The reference page of the seed entry, which a correction names; the
     # corrected entry's own reference page can differ after a page moved out.
     seed_entry_reference_page: str
-    linking_entry: LinkingEntry
+    entry_details: LinkingEntryDetails
+
+
+# One linked page's details and every entry linking it, under any spelling.
+type _LinkedPageGroup = tuple[ProviderPage, tuple[LinkingSeedEntry, ...]]
 
 
 class _PageAddition(NamedTuple):
     """A linked page to add, the entry it joins, whether as a part, and why."""
 
-    page: ProviderPage
+    # The page's current key and the address the seed spells it with, which
+    # can differ from the link's own spelling, such as a Kitsu slug.
+    page_key: str
+    address: str
     # The reference page of the work entry the page joins, as decided.
     entry_reference_page: str
     is_part_page: bool
@@ -94,6 +98,9 @@ class LinkedPageCorrections:
     waiting_page_keys: tuple[str, ...]
     # Linked pages the provider says do not exist, sorted.
     not_found_page_keys: tuple[str, ...]
+    # Linked pages a seed entry already holds under another address, by their
+    # current key, sorted.
+    held_page_keys: tuple[str, ...] = ()
     # Linked pages answers add as whole pages next to another page of their
     # provider in one entry, so none of them is added, sorted.
     conflicting_page_keys: tuple[str, ...] = ()
@@ -102,8 +109,14 @@ class LinkedPageCorrections:
 def find_entries_without_mal_page(entries: Iterable[WorkEntry]) -> list[WorkEntry]:
     """Return the entries holding no MAL page, in the order given.
 
-    A work is what MAL lists, and an entry's anime id comes from its MAL page
-    first, so an entry without one is where a missing MAL page matters most.
+    A work is what MAL lists. An entry's anime id comes from the entry's MAL
+    page first. A missing MAL page therefore matters most for these entries.
+
+    Args:
+        entries: The entries to filter, such as every seed entry.
+
+    Returns:
+        The entries without a MAL page.
     """
     return [
         entry
@@ -186,14 +199,14 @@ def find_linked_pages(
         linked_page_keys = find_unheld_linked_pages(
             corrected.entry, entry_pages, known_works, FETCHED_PROVIDERS
         )
-        linking_entry = LinkingEntry(
+        entry_details = LinkingEntryDetails(
             corrected.entry,
             get_entry_episode_count(corrected.entry, entry_pages),
             linked_page_keys,
         )
         for key in linked_page_keys:
             linking_entries_by_page[key].append(
-                LinkingSeedEntry(corrected.seed_entry_reference_page, linking_entry)
+                LinkingSeedEntry(corrected.seed_entry_reference_page, entry_details)
             )
     return {
         key: tuple(linking_entries_by_page[key])
@@ -204,33 +217,34 @@ def find_linked_pages(
 def correct_linked_pages(
     linked_pages: Mapping[str, Sequence[LinkingSeedEntry]],
     store: ProviderPageStore,
+    known_works: KnownWorks,
     review_file: ReviewFile,
 ) -> LinkedPageCorrections:
     """Decide each fetched linked page, and turn additions into corrections.
 
     Args:
-        linked_pages: Each linked page's key mapped to the entries linking it,
-            as ``find_linked_pages`` gives them.
+        linked_pages: The linked pages and their entries (``find_linked_pages``).
         store: The fetched pages, holding the linked pages fetched so far.
+        known_works: Every seed entry, to tell a page held under another address.
         review_file: The review file, for the answers kept in it.
 
     Returns:
         The corrections adding pages, the review cases, and the pages not added.
     """
+    pages_by_current_key, waiting_page_keys = _group_linked_pages_by_current_key(
+        linked_pages, store
+    )
     page_additions: list[_PageAddition] = []
     review_cases: list[ReviewCase] = []
-    waiting_page_keys: list[str] = []
-    not_found_page_keys: list[str] = []
-    for key, linking_seed_entries in linked_pages.items():
-        page = store.get_page(key)
-        if page is None:
-            waiting_page_keys.append(key)
-            continue
+    skipped_page_keys: defaultdict[LinkedPageReason, list[str]] = defaultdict(list)
+    for page, linking_seed_entries in pages_by_current_key.values():
         decision = decide_linked_page(
-            page, (linking.linking_entry for linking in linking_seed_entries)
+            page,
+            (linking.entry_details for linking in linking_seed_entries),
+            known_works,
         )
         if decision.outcome is LinkedPageOutcome.SKIP:
-            not_found_page_keys.append(key)
+            skipped_page_keys[decision.reason].append(decision.page_key)
             continue
         review_case, page_addition = _place_linked_page(
             decision, page, store, review_file
@@ -243,9 +257,88 @@ def correct_linked_pages(
     return LinkedPageCorrections(
         corrections=tuple(_build_addition_corrections(kept_additions, linked_pages)),
         review_cases=tuple(review_cases),
-        waiting_page_keys=tuple(waiting_page_keys),
-        not_found_page_keys=tuple(not_found_page_keys),
+        waiting_page_keys=waiting_page_keys,
+        not_found_page_keys=tuple(skipped_page_keys[LinkedPageReason.NOT_FOUND]),
+        held_page_keys=tuple(
+            skipped_page_keys[LinkedPageReason.HELD_UNDER_OTHER_ADDRESS]
+        ),
         conflicting_page_keys=conflicting_page_keys,
+    )
+
+
+def _group_linked_pages_by_current_key(
+    linked_pages: Mapping[str, Sequence[LinkingSeedEntry]],
+    store: ProviderPageStore,
+) -> tuple[dict[str, _LinkedPageGroup], tuple[str, ...]]:
+    """Group the fetched linked pages by the current key their fetch reports.
+
+    Links spell one page several ways, such as a Kitsu slug and the Kitsu
+    number the seed uses. Only the fetched page tells which spellings are one
+    page. Grouping applies two rules:
+
+    - The spellings of one page are decided once, with every entry linking any
+      of them.
+    - Each entry's other linked pages are named by their current key too, so
+      two spellings of one page never count as two pages of one provider.
+
+    Args:
+        linked_pages: Each linked page's key mapped to the entries linking it.
+        store: The fetched pages.
+
+    Returns:
+        Each current key, sorted, mapped to the page's details (stored at the
+        current key when fetched there) and the entries linking it; and the
+        sorted keys of linked pages not fetched yet.
+    """
+    fetched_pages = {
+        key: page for key in linked_pages if (page := store.get_page(key)) is not None
+    }
+    current_key_by_link = {key: page.current_key for key, page in fetched_pages.items()}
+    linking_entries_by_page: defaultdict[str, dict[str, LinkingSeedEntry]] = (
+        defaultdict(dict)
+    )
+    for key, current_key in current_key_by_link.items():
+        for linking in linked_pages[key]:
+            linking_entries_by_page[current_key].setdefault(
+                linking.seed_entry_reference_page,
+                _name_linked_pages_by_current_key(linking, current_key_by_link),
+            )
+    pages_by_current_key = {
+        current_key: (
+            store.get_page(current_key) or fetched_pages[linked_key],
+            tuple(linking_entries_by_page[current_key].values()),
+        )
+        for linked_key, current_key in sorted(
+            current_key_by_link.items(), key=lambda link: link[1]
+        )
+    }
+    waiting_page_keys = tuple(key for key in linked_pages if key not in fetched_pages)
+    return pages_by_current_key, waiting_page_keys
+
+
+def _name_linked_pages_by_current_key(
+    linking: LinkingSeedEntry, current_key_by_link: Mapping[str, str]
+) -> LinkingSeedEntry:
+    """Rename a linking entry's other linked pages to the current keys their fetches report.
+
+    Args:
+        linking: An entry linking a page, with the linked pages as its links
+            spell them.
+        current_key_by_link: Each fetched linked page's current key, by the
+            key its link spells; pages not fetched keep their spelling.
+
+    Returns:
+        The same linking entry, its linked pages named by current key.
+    """
+    return replace(
+        linking,
+        entry_details=replace(
+            linking.entry_details,
+            linked_page_keys=frozenset(
+                current_key_by_link.get(linked_key, linked_key)
+                for linked_key in linking.entry_details.linked_page_keys
+            ),
+        ),
     )
 
 
@@ -257,15 +350,24 @@ def _place_linked_page(
 ) -> tuple[ReviewCase | None, _PageAddition | None]:
     """Turn a decision to add or review a linked page into its addition or review case.
 
+    Args:
+        decision: A decision with the outcome ``ADD`` or ``REVIEW``.
+        page: The linked page's fetched details.
+        store: The fetched pages, for the details the review case shows.
+        review_file: The review file, for the answer kept for the case.
+
     Returns:
-        The review case with its kept answer, None for a page the rules add;
-        and the addition, when the rules or an accepted answer add the page.
+        The review case with its kept answer, or None for a page the rules add.
+        Then the addition, when the rules or an accepted answer add the page.
     """
+    page_key = decision.page_key
+    # The seed's spelling of the page's current key, not the link's.
+    address = build_page_address(page_key) or page.address
     if decision.outcome is LinkedPageOutcome.ADD:
         [entry] = decision.linking_entries
         reason = decision.reason.name
         return None, _PageAddition(
-            page, entry.reference_page, is_part_page=False, reason=reason
+            page_key, address, entry.reference_page, is_part_page=False, reason=reason
         )
     entry_pages = (
         entry_page
@@ -279,7 +381,11 @@ def _place_linked_page(
     if not isinstance(addition, LinkedPageAddition):
         return review_case, None
     return review_case, _PageAddition(
-        page, addition.entry_reference_page, addition.is_part_page, REVIEW_ANSWER_REASON
+        page_key,
+        address,
+        addition.entry_reference_page,
+        addition.is_part_page,
+        REVIEW_ANSWER_REASON,
     )
 
 
@@ -289,16 +395,19 @@ def _drop_conflicting_additions(
     """Leave out whole pages added two or more per provider to one entry.
 
     A work holds one whole page of each provider but can hold several part
-    pages, so two whole pages of one provider joining one entry would make a
-    doubled provider. The rules never add two (an entry linking two such pages
-    sends both to review), so only answers can; neither page is added, and a
-    warning names the entry.
+    pages. Two whole pages of one provider joining one entry would make a
+    doubled provider. The rules never add two such pages, because an entry
+    linking two of them sends both to review. Only answers can add two, so
+    neither page is added and a warning names the entry.
+
+    Args:
+        page_additions: The additions from the rules and the accepted answers.
 
     Returns:
         The additions kept, and the sorted keys of the pages left out.
     """
     whole_page_counts = Counter(
-        (page_addition.entry_reference_page, get_page_provider(page_addition.page.key))
+        (page_addition.entry_reference_page, get_page_provider(page_addition.page_key))
         for page_addition in page_additions
         if not page_addition.is_part_page
     )
@@ -307,14 +416,14 @@ def _drop_conflicting_additions(
     for page_addition in page_additions:
         entry_provider = (
             page_addition.entry_reference_page,
-            get_page_provider(page_addition.page.key),
+            get_page_provider(page_addition.page_key),
         )
         if not page_addition.is_part_page and whole_page_counts[entry_provider] > 1:
             logger.warning(
-                f"Not adding {page_addition.page.key}: answers add two or more "
+                f"Not adding {page_addition.page_key}: answers add two or more "
                 f"pages of its provider to {page_addition.entry_reference_page}"
             )
-            conflicting_page_keys.append(page_addition.page.key)
+            conflicting_page_keys.append(page_addition.page_key)
         else:
             kept_additions.append(page_addition)
     return kept_additions, tuple(sorted(conflicting_page_keys))
@@ -326,11 +435,20 @@ def _build_addition_corrections(
 ) -> list[SeedCorrection]:
     """Turn additions into corrections, each naming the seed entry the page joins.
 
-    The seed entry is named by its own reference page, so the cleaned seed
-    finds it whatever the corrections did to the entry's reference page.
+    Each correction names the seed entry by the seed entry's own reference page.
+    The cleaned seed then finds the entry whatever the corrections did to the
+    entry's current reference page.
+
+    Args:
+        page_additions: The additions kept.
+        linked_pages: The linked pages and their entries, for each entry's
+            seed reference page.
+
+    Returns:
+        One correction per addition, in the order given.
     """
     seed_reference_page_by_entry = {
-        linking.linking_entry.entry.reference_page: linking.seed_entry_reference_page
+        linking.entry_details.entry.reference_page: linking.seed_entry_reference_page
         for linking_seed_entries in linked_pages.values()
         for linking in linking_seed_entries
     }
@@ -339,8 +457,8 @@ def _build_addition_corrections(
             entry_reference_page=seed_reference_page_by_entry[
                 page_addition.entry_reference_page
             ],
-            page_key=page_addition.page.key,
-            address=page_addition.page.address,
+            page_key=page_addition.page_key,
+            address=page_addition.address,
             work=ENTRY_WORK,
             is_added_page=True,
             is_part_page=page_addition.is_part_page,

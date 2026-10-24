@@ -98,9 +98,32 @@ def test_provider_page_stored_line_without_episode_fields_loads() -> None:
     page = ProviderPage.model_validate_json(
         '{"key":"mal:anime:21","address":"https://myanimelist.net/anime/21",'
         '"titles":["One Piece"],"type":"TV","year":1999,"season":"FALL","links":[],'
-        '"found_by":[],"is_dead":false,"renamed_to":null}'
+        '"searched_by":[],"is_dead":false,"renamed_to":null}'
     )
     assert (page.episode_count, page.aired_from, page.aired_to) == (None, None, None)
+
+
+def test_provider_page_current_key_renamed_page_gives_new_key(
+    canonical_records,
+) -> None:
+    renamed = ProviderPage.from_canonical_record(
+        ANIME_PLANET_OLD, canonical_records[ANIME_PLANET_OLD]
+    )
+    plain = ProviderPage.from_canonical_record(MAL, canonical_records[MAL])
+    assert (renamed.current_key, plain.current_key) == (
+        "animeplanet:anime:cocoon-one-summer-of-girlhood",
+        "mal:anime:21",
+    )
+
+
+def test_provider_page_from_canonical_record_kitsu_slug_page_renamed_to_number() -> (
+    None
+):
+    page = ProviderPage.from_canonical_record(
+        "https://kitsu.app/anime/cue",
+        {"title": "CUE!", "sources": ["https://kitsu.app/anime/44979"]},
+    )
+    assert (page.key, page.current_key) == ("kitsu:anime:cue", "kitsu:anime:44979")
 
 
 def test_provider_page_from_canonical_record_repeated_title_kept_once() -> None:
@@ -120,7 +143,7 @@ def test_provider_page_from_dead_address_has_no_details() -> None:
     )
 
 
-def test_provider_page_from_canonical_record_found_page_keeps_link_to_lookup_page() -> (
+def test_provider_page_from_canonical_record_searched_page_keeps_link_to_searched_by_page() -> (
     None
 ):
     page = ProviderPage.from_canonical_record(
@@ -133,16 +156,16 @@ def test_provider_page_from_canonical_record_found_page_keeps_link_to_lookup_pag
                 "https://anilist.co/anime/21",
             ],
         },
-        found_by=MAL,
+        searched_by=MAL,
     )
-    assert (page.found_by, page.links) == (
+    assert (page.searched_by, page.links) == (
         ("mal:anime:21",),
         ("anilist:anime:21", "mal:anime:21"),
     )
 
 
-def test_provider_page_from_dead_address_found_by_lookup_records_it() -> None:
-    assert ProviderPage.from_dead_address(MAL, found_by=KITSU).found_by == (
+def test_provider_page_from_dead_address_searched_by_page_records_key() -> None:
+    assert ProviderPage.from_dead_address(MAL, searched_by=KITSU).searched_by == (
         "kitsu:anime:12",
     )
 

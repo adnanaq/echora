@@ -83,7 +83,60 @@ def _correct(
     return correct_linked_pages(
         find_linked_pages(_unchanged(known_works), store, known_works),
         store,
+        known_works,
         review_file,
+    )
+
+
+def test_correct_linked_pages_slug_of_held_page_not_added(
+    store, known_works, review_file
+) -> None:
+    kitsu_slug = "https://kitsu.app/anime/mori-no-yousei-kinoko-no-musume"
+    store.add_pages(
+        _page(BOXER_ANILIST, kitsu_slug),
+        _page(kitsu_slug, type="TV", sources=[kitsu_slug, MORI_NO_YOUSEI_KITSU]),
+    )
+    linked_page_corrections = _correct(known_works, store, review_file)
+    assert (
+        linked_page_corrections.corrections,
+        linked_page_corrections.review_cases,
+        linked_page_corrections.held_page_keys,
+    ) == ((), (), ("kitsu:anime:40741",))
+
+
+def test_correct_linked_pages_slug_of_unheld_page_added_under_number(
+    store, known_works, review_file
+) -> None:
+    kitsu_slug = "https://kitsu.app/anime/the-boxer"
+    store.add_pages(
+        _page(BOXER_ANILIST, kitsu_slug),
+        _page(
+            kitsu_slug, type="TV", sources=[kitsu_slug, "https://kitsu.app/anime/51119"]
+        ),
+    )
+    [correction] = _correct(known_works, store, review_file).corrections
+    assert (correction.page_key, correction.address) == (
+        "kitsu:anime:51119",
+        "https://kitsu.app/anime/51119",
+    )
+
+
+def test_correct_linked_pages_two_spellings_from_two_entries_decided_together(
+    store, known_works, review_file
+) -> None:
+    kitsu_slug = "https://kitsu.app/anime/the-boxer"
+    kitsu_number = "https://kitsu.app/anime/51119"
+    store.add_pages(
+        _page(BOXER_ANILIST, kitsu_slug),
+        _page(YAMATO_ANILIST, kitsu_number),
+        _page(kitsu_slug, type="TV", sources=[kitsu_slug, kitsu_number]),
+        _page(kitsu_number, type="TV"),
+    )
+    linked_page_corrections = _correct(known_works, store, review_file)
+    [review_case] = linked_page_corrections.review_cases
+    assert (linked_page_corrections.corrections, review_case.case) == (
+        (),
+        "linked page: kitsu:anime:51119 from anilist:anime:163794 anilist:anime:182615",
     )
 
 

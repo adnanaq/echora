@@ -170,8 +170,8 @@ def decide_doubled_providers(
 
     Args:
         entry: The work entry.
-        pages: Details of the entry's fetched pages, and of found pages
-            whose lookup page is one of them (such as AnimeSchedule).
+        pages: Details of the entry's fetched pages, and of searched pages
+            searched by one of them (such as AnimeSchedule).
         known_works: The works already known, to identify works an unrelated
             page links to.
 
@@ -243,11 +243,20 @@ def get_seed_type(page: ProviderPage) -> WorkType | None:
 def is_page_details_matching(page: ProviderPage, entry: WorkEntry) -> bool:
     """Report whether a page's year and type agree with an entry's.
 
-    A missing year agrees with any year, and an unknown type with any type,
-    because providers fill these in at different times. The page's type is
-    compared as the seed's coarser type. A page joining an entry, by a move or
-    as an added linked page, must agree, since a disagreement shows its link
-    may be a wrong mapping.
+    A page joining an entry, by a move or as an added linked page, must agree.
+    A disagreement shows the page's link may be a wrong mapping. The rules:
+
+    - A missing year agrees with any year, because providers fill years in at
+      different times.
+    - An unknown type agrees with any type, for the same reason.
+    - The page's type is compared as the seed's coarser type (``get_seed_type``).
+
+    Args:
+        page: The provider page's fetched details.
+        entry: The work entry the page would join.
+
+    Returns:
+        True when both the year and the type agree.
     """
     return is_year_matching(page.year, entry.year) and is_type_matching(
         get_seed_type(page), entry.type
@@ -403,7 +412,14 @@ class _EntryCheck:
         )
 
     def _find_year_type_matches(self, pages: tuple[str, ...]) -> tuple[str, ...]:
-        """Return the pages whose year and type agree with the entry's."""
+        """Return the pages whose year and type agree with the entry's.
+
+        Args:
+            pages: The current keys of one doubled provider's pages.
+
+        Returns:
+            The keys of the fetched pages that agree, in the order given.
+        """
         return tuple(
             key
             for key in pages

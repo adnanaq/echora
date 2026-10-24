@@ -90,7 +90,7 @@ class ReviewCase(BaseModel):
         | tuple[SplitWorkDecision]
         | tuple[LinkedPageDecision]
     )
-    # The entries' fetched pages and the pages found through them, which hold
+    # The entries' fetched pages and the pages searched by them, which hold
     # the links behind the decisions.
     pages: tuple[ProviderPage, ...] = ()
 
@@ -98,11 +98,18 @@ class ReviewCase(BaseModel):
     def accepted_answer(
         self,
     ) -> dict[str, PagePlacement] | LinkedPageAddition | str | None:
-        """The answer when it is a valid answer to this case, otherwise None.
+        """Return the case's answer read for the caller, when the answer is valid.
 
-        A doubled-provider answer comes back as each placed page's place; a
-        split-work answer as ``one work`` or ``separate works``; a linked-page
-        answer as the addition, or ``skip``.
+        Returns:
+            The answer, read by the case's kind:
+
+            | Case | Valid answer comes back as |
+            | -- | -- |
+            | doubled provider | Each placed page's ``PagePlacement``. |
+            | split work | ``one work`` or ``separate works``. |
+            | linked page | The ``LinkedPageAddition``, or ``skip``. |
+
+            None when the case is open or the answer is not valid.
         """
         answer = self.answer
         if isinstance(linked_page_decision := self.decisions[0], LinkedPageDecision):
@@ -180,10 +187,16 @@ class ReviewCase(BaseModel):
             pages: The fetched pages, including the linked page itself; the
                 details of the linked page and of the linking entries' pages
                 are kept.
+
+        Returns:
+            The case named by the linked page's current key and the linking
+            entries' reference pages, with a suggested answer when one applies.
         """
         pages = tuple(pages)
         entries = {entry.reference_page: entry for entry in decision.linking_entries}
-        linked_page = next(page for page in pages if page.key == decision.page_key)
+        linked_page = next(
+            page for page in pages if page.current_key == decision.page_key
+        )
         return cls(
             case=(
                 f"{_build_case_name('linked page', [decision.page_key])}"
@@ -337,14 +350,14 @@ def _build_case_name(case_kind: str, page_keys: Iterable[str]) -> str:
 def _select_page_details(
     pages: Iterable[ProviderPage], page_keys: frozenset[str]
 ) -> tuple[ProviderPage, ...]:
-    """Return the details of these pages and of pages found through them.
+    """Return the details of these pages and of pages searched by them.
 
     A page is kept when its key or its current key is one of ``page_keys``, or
-    when it was found through one of them (an AnimeSchedule page found by MAL
+    when it was searched by one of them (an AnimeSchedule page searched by MAL
     id), so a reviewer sees every link the decision read. Sorted by current key.
     """
     return tuple(
         page
         for key, page in sorted(index_pages_by_current_key(pages).items())
-        if {key, page.key, *page.found_by} & page_keys
+        if {key, page.key, *page.searched_by} & page_keys
     )

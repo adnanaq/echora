@@ -14,11 +14,11 @@ Each case is named after the situation it shows (`puu_neko` for a mixed entry,
 - `entries`: the seed entries, with only the fields work matching reads
   (`sources`, `title`, `type`, `animeSeason`);
 - `pages`: one `ProviderPage` per fetched page, as `ProviderPage.model_dump()`
-  writes it, including found pages such as AnimeSchedule's.
+  writes it, including searched pages such as AnimeSchedule's.
 
 The pages were fetched through the enrichment helpers, with characters and
 episodes off, and built with `ProviderPage.from_canonical_record`;
-AnimeSchedule pages were looked up by the entry's MAL page and carry it as
-`found_by`. To refresh a case, fetch its entries' pages the same way and
+AnimeSchedule pages were searched by the entry's MAL page and carry it as
+`searched_by`. To refresh a case, fetch its entries' pages the same way and
 replace its `pages`, then check the tests' expected decisions against the new
 pages before changing them.
