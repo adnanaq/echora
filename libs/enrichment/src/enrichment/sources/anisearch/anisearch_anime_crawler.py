@@ -255,7 +255,10 @@ def _extract_relations_from_html(html_text: str) -> dict[str, Any] | None:
             )
             rating = rating_els[0].get("title") if rating_els else None
 
-            image_attr = row.xpath(".//th[@scope='row']/@data-tooltip")
+            # Plain strings: lxml's default ones keep the whole parsed page alive.
+            image_attr = row.xpath(
+                ".//th[@scope='row']/@data-tooltip", smart_strings=False
+            )
             image = image_attr[0] if image_attr else None
 
             result.append(
