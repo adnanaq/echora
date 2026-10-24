@@ -5,11 +5,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 from clean_seed import build_entries_to_check_document, count_corrections
-from seed_cleaning import (
-    DoubledProviderCorrections,
-    SeedCorrection,
-    SplitWorkCandidates,
-)
+from seed_cleaning import SeedCorrection, SplitWorkCandidates
 from work_matching import WorkEntry
 
 
@@ -51,35 +47,38 @@ def test_build_entries_to_check_document_names_entries_by_reference_page() -> No
     ]
 
 
-def _correction(page_key: str, work: str, **fields) -> SeedCorrection:
+def _correction(page_key: str, placement_word: str, **fields) -> SeedCorrection:
     return SeedCorrection(
         entry_reference_page="mal:anime:1",
         page_key=page_key,
         address=f"https://example.com/{page_key}",
-        work=work,
+        placement_word=placement_word,
         reason="review answer",
         **fields,
     )
 
 
 def test_count_corrections_counts_each_change_once() -> None:
-    doubled_provider_corrections = DoubledProviderCorrections(
-        corrections=(
-            _correction("kitsu:anime:1", "entry"),
-            _correction("kitsu:anime:2", "entry", is_main_page=True),
-            _correction("kitsu:anime:3", "entry", renamed_to="kitsu:anime:2"),
-            _correction(
-                "kitsu:anime:4", "other work", target_entry_reference_page="mal:anime:9"
-            ),
-            _correction("kitsu:anime:5", "work 2"),
+    corrections = (
+        _correction("kitsu:anime:1", "entry"),
+        _correction("kitsu:anime:2", "entry", is_main_page=True),
+        _correction("kitsu:anime:6", "entry", is_part_page=True),
+        _correction("kitsu:anime:3", "entry", renamed_to="kitsu:anime:2"),
+        _correction(
+            "kitsu:anime:4", "other work", target_entry_reference_page="mal:anime:9"
         ),
-        review_cases=(),
+        _correction("kitsu:anime:5", "work 2"),
+        _correction("mal:anime:2", "entry", is_added_page=True),
+        _correction("anidb:anime:2", "entry", is_added_page=True, is_part_page=True),
     )
-    assert count_corrections(doubled_provider_corrections) == {
+    assert count_corrections(corrections, ()) == {
         "pages kept as main page": 1,
+        "pages kept as part page": 1,
         "old addresses dropped": 1,
         "pages moved to a seed entry": 1,
         "pages moved to a new entry": 1,
+        "pages added": 1,
+        "pages added as parts": 1,
         "review cases answered": 0,
         "review cases open": 0,
     }

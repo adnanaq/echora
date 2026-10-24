@@ -9,7 +9,6 @@ AniDB's `titles` before `_provider_supplied` existed.
 import json
 
 import pytest
-from enrichment.pipeline.link_rules import merged_anime_id
 from enrichment.pipeline.metadata_merger import (
     merge_agent_metadata,
     merge_provider_records,
@@ -239,25 +238,6 @@ def test_id_is_stable_across_differing_provider_coverage() -> None:
     )
     mal_only = merge_provider_records({"mal": _record()})
     assert full["id"] == mal_only["id"]
-
-
-def test_id_ignores_slug_decoration() -> None:
-    assert merged_anime_id([_MAL_URL]) == merged_anime_id(
-        ["https://myanimelist.net/anime/21"]
-    )
-
-
-def test_merged_anime_id_ann_only_work_ignores_address_spelling() -> None:
-    assert merged_anime_id(
-        ["https://animenewsnetwork.com/encyclopedia/anime.php?id=836"]
-    ) == merged_anime_id(
-        ["http://www.animenewsnetwork.com/encyclopedia/anime.php?id=836"]
-    )
-
-
-def test_id_requires_at_least_one_source() -> None:
-    with pytest.raises(ValueError, match="Cannot derive an anime id"):
-        merged_anime_id([])
 
 
 def test_the_most_trusted_provider_decides_the_field() -> None:

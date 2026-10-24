@@ -17,14 +17,16 @@ def test_work_entry_from_seed_entry_reads_matching_fields(seed_entries) -> None:
     )
 
 
-def test_work_entry_from_seed_entry_keys_pages_by_provider_page(seed_entries) -> None:
+def test_work_entry_from_seed_entry_keys_addresses_by_page_key(seed_entries) -> None:
     work = WorkEntry.from_seed_entry(_entry_titled(seed_entries, "One Piece"))
-    assert work.pages["mal:anime:21"] == "https://myanimelist.net/anime/21"
-    assert work.pages["kitsu:anime:12"] == "https://kitsu.app/anime/12"
-    assert work.pages["ann:anime:836"] == (
+    assert (
+        work.addresses_by_page_key["mal:anime:21"] == "https://myanimelist.net/anime/21"
+    )
+    assert work.addresses_by_page_key["kitsu:anime:12"] == "https://kitsu.app/anime/12"
+    assert work.addresses_by_page_key["ann:anime:836"] == (
         "https://animenewsnetwork.com/encyclopedia/anime.php?id=836"
     )
-    assert len(work.pages) == 10
+    assert len(work.addresses_by_page_key) == 10
 
 
 def test_work_entry_from_seed_entry_undefined_season_and_missing_year_give_none(
@@ -40,7 +42,7 @@ def test_work_entry_reference_page_follows_reference_order() -> None:
     work = WorkEntry(
         title="Test",
         type="TV",
-        pages={
+        addresses_by_page_key={
             "kitsu:anime:1": "https://kitsu.app/anime/1",
             "anilist:anime:2": "https://anilist.co/anime/2",
         },
@@ -52,7 +54,7 @@ def test_work_entry_reference_page_without_known_provider_takes_first_page() -> 
     work = WorkEntry(
         title="Test",
         type="TV",
-        pages={"https://example.com/a": "https://example.com/a"},
+        addresses_by_page_key={"https://example.com/a": "https://example.com/a"},
     )
     assert work.reference_page == "https://example.com/a"
 
@@ -60,13 +62,17 @@ def test_work_entry_reference_page_without_known_provider_takes_first_page() -> 
 def test_work_entry_unknown_type_rejected() -> None:
     with pytest.raises(ValidationError):
         WorkEntry.model_validate(
-            {"title": "Test", "type": "MUSIC", "pages": {"mal:anime:1": "x"}}
+            {
+                "title": "Test",
+                "type": "MUSIC",
+                "addresses_by_page_key": {"mal:anime:1": "x"},
+            }
         )
 
 
 def test_work_entry_without_pages_rejected() -> None:
     with pytest.raises(ValidationError):
-        WorkEntry(title="Test", type="TV", pages={})
+        WorkEntry(title="Test", type="TV", addresses_by_page_key={})
 
 
 @pytest.mark.parametrize(
@@ -92,3 +98,22 @@ def test_is_type_matching_unknown_or_missing_type_agrees_with_any(
     work_types: tuple, expected: bool
 ) -> None:
     assert is_type_matching(*work_types) is expected
+
+
+@pytest.mark.parametrize(
+    ("page_key", "expected"),
+    [
+        ("kitsu:anime:99", True),
+        ("anidb:anime:69", False),
+        ("https://example.com/show", False),
+    ],
+)
+def test_has_page_of_same_provider_compares_page_key_provider_with_entry_pages(
+    work_entry, page_key: str, expected: bool
+) -> None:
+    entry = work_entry(
+        "https://myanimelist.net/anime/21",
+        "https://kitsu.app/anime/12",
+        "https://example.com/other",
+    )
+    assert entry.has_page_of_same_provider(page_key) is expected

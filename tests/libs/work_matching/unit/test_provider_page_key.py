@@ -1,8 +1,11 @@
 import pytest
 from work_matching.provider_page_key import (
+    PROVIDERS,
     REFERENCE_ORDER,
+    build_page_address,
     get_page_id,
     get_page_key,
+    get_page_kind,
     get_page_provider,
     has_repeated_provider,
 )
@@ -133,6 +136,20 @@ def test_has_repeated_provider_counts_pages_of_known_providers(
     assert has_repeated_provider(keys) is expected
 
 
+@pytest.mark.parametrize(
+    ("key", "page_kind"),
+    [
+        ("anilist:manga:119534", "manga"),
+        ("mal:anime:21", "anime"),
+        ("https://example.com/show", None),
+    ],
+)
+def test_get_page_kind_gives_kind_of_recognised_key(
+    key: str, page_kind: str | None
+) -> None:
+    assert get_page_kind(key) == page_kind
+
+
 def test_get_page_id_recognised_key_gives_id() -> None:
     assert get_page_id("animecountdown:anime:38636") == "38636"
 
@@ -143,3 +160,35 @@ def test_get_page_id_unrecognised_key_gives_key() -> None:
 
 def test_get_page_id_id_with_colon_kept_whole() -> None:
     assert get_page_id("animeplanet:anime:re:zero") == "re:zero"
+
+
+@pytest.mark.parametrize(
+    "address",
+    [
+        "https://myanimelist.net/anime/65124",
+        "https://myanimelist.net/manga/2",
+        "https://anilist.co/anime/182615",
+        "https://kitsu.app/anime/40741",
+        "https://kitsu.app/anime/one-piece",
+        "https://anidb.net/anime/1159",
+        "https://anime-planet.com/anime/raise-a-suilen-nvade-show",
+        "https://anisearch.com/anime/9010",
+        "https://animenewsnetwork.com/encyclopedia/anime.php?id=32920",
+        "https://livechart.me/anime/12932",
+        "https://simkl.com/anime/48858",
+        "https://animecountdown.com/48858",
+    ],
+)
+def test_build_page_address_seed_address_key_gives_seed_address(address: str) -> None:
+    assert build_page_address(get_page_key(address)) == address
+
+
+def test_build_page_address_every_provider_gives_address_with_same_key() -> None:
+    keys = {f"{provider}:anime:21" for provider in PROVIDERS}
+    assert {
+        key for key in keys if get_page_key(build_page_address(key) or "") != key
+    } == set()
+
+
+def test_build_page_address_unrecognised_key_gives_none() -> None:
+    assert build_page_address("https://animeschedule.net/anime/one-piece") is None

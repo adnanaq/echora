@@ -126,10 +126,11 @@ uv run ty check libs/http_cache/
 
 ### Code Quality
 
-- Always use plain language instead of complex jargon and metaphorical language
+- Start the very first sentence with an active imperative verb (e.g., "Check," "Report," "Calculate") to state exactly what the function does in a single line.
+- Always use plain language and avoid terse shorthands complex jargon and metaphorical language
+- Enforce a strict limit of one idea per sentence to avoid dense, run-on explanations
 - Do not make up the terms, instead use terms that are commonly used in the domain
 - Focus on making your code expressive and efficient
-- Write clear comments/docstrings where needed and avoid terse shorthands
 - Use relevant data structures where needed
 - Avoid single-character variable or function names, do not use single-word function names.
 - Name variables, functions, constants and values after the domain thing they hold, using the terms the project already uses (its glossary, READMEs and models): `retry_delay_seconds`, `pages_by_provider`, `failed_requests`, not vague words such as `data`, `info`, `group`, `item`, `result` or `stuff`.
@@ -143,6 +144,12 @@ uv run ty check libs/http_cache/
 - Names are easy to search for and to tell apart: no single letters (loop counters included), no abbreviations that read as another word, and no names differing only by a small suffix.
 - Leave the type out of a name: `pages`, not `pages_list` or `pages_dict`; the type annotation already says it.
 - Module and function docstrings open with full sentences saying what the code is for. They list the outcomes or rules it applies and give the reason for each, rather than internal shorthand.
+- Explicitly name the specific noun instead of using ambiguous pronouns like "they," "it," or "this" when explaining complex logic.
+- Separate the brief summary line from the rest of the documentation using a clear blank line before the extended description.
+- Use Markdown tables or clean bulleted lists inside the extended description to break down multiple rules, conditions, or attributes instead of writing them in a single paragraph.
+- Include standard Google Style section blocks titled exactly "Args:" and "Returns:" (or "Yields:") to explicitly detail data types and expected outputs.
+- Avoid writing conversational or narrative prose that sounds like a developer thinking out loud.
+- Prohibit passive introductory phrases like "This function is used to" or "A report is generated for."
 
 ### Service Health Checks
 
@@ -207,8 +214,8 @@ echora/
 - **Vector Processing** (`libs/vector_processing/`) - BGE-M3 text (1024-dim) + OpenCLIP image (768-dim) embeddings
 - **Qdrant Client** (`libs/qdrant_db/`) - Vector DB operations with quantization & multi-vector support
 - **HTTP Cache** (`libs/http_cache/`) - RFC 9111 compliant caching with Redis backend
-- **Work Matching** (`libs/work_matching/`) - Work entries, provider page keys and details, the known-works lookup by page or by title, type and year, the rules deciding from links which pages of a doubled provider belong to an entry and whether entries are one split work, and the review file whose answers are kept across runs; imports nothing from enrichment
-- **Seed Cleaning** (`libs/seed_cleaning/`) - Lists the seed entries that need checking (doubled providers and split-work candidates) and fetches every page of them into the provider page store through the enrichment helpers; run with `scripts/clean_seed.py`, deleted once discovery replaces the seed
+- **Work Matching** (`libs/work_matching/`) - Work entries, provider page keys and details, the lookup of known work entries by page or by title, type and year, the rules deciding from links which pages of a doubled provider belong to an entry, whether entries are one split work and whether a linked page no known work holds joins an entry, and the review file whose answers are kept across runs; imports nothing from enrichment
+- **Seed Cleaning** (`libs/seed_cleaning/`) - Lists the seed entries that need checking (doubled providers and split-work candidates), fetches their pages into the provider page store through the enrichment helpers, writes their corrections, and adds checked linked pages the seed lacks; run with `scripts/clean_seed.py`, deleted once discovery replaces the seed
 - **Enrichment Pipeline** (`libs/enrichment/`)
 
 - **API Helpers**: Integration with 6+ external anime APIs (AniList, Kitsu, AniDB, etc.)

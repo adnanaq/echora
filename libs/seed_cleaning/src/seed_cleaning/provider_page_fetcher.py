@@ -9,13 +9,19 @@ Rules:
 - One request per page, with characters and episodes off, so links from two
   pages of one provider never mix.
 - Pages are fetched for the providers enrichment has a helper for; ANN,
-  LiveChart, Simkl and AnimeCountdown are not.
-- AnimeSchedule is not in the seed: its page is found through the entry's MAL
-  pages, else AniList, else AniDB, and records that page as ``found_by``.
+  LiveChart, Simkl and AnimeCountdown are not. A fetch can be limited to some
+  providers, such as only those whose pages carry links (AniList, Kitsu,
+  AniDB), when the pages are wanted for their links alone.
+- Linked pages, which another page names by page key, are fetched at the
+  address built back from the key, so the store holds their details too.
+- AnimeSchedule is not in the seed: its page is a searched page, found by
+  searching AnimeSchedule with the entry's MAL pages, else AniList, else AniDB.
+  The page records the page it was searched by as ``searched_by``.
 - A page already in the store is not fetched again, and an AnimeSchedule
-  lookup that found a page is not repeated, so a run picks up where the last
-  one stopped. A lookup that found nothing is repeated on every run, so a page
-  AnimeSchedule adds later is still found.
+  search that found a page is not repeated, so a run picks up where the last
+  one stopped. A search that found nothing is repeated on every run, so a page
+  AnimeSchedule adds later is still found. When stored details gain a field,
+  one run fetching stored pages again fills it in.
 - A page is stored as dead only when its provider said it does not exist: its
   helper answered None. A failed fetch, a service that did not run or a
   payload without an anime record is not stored, so the next run tries it
@@ -27,7 +33,7 @@ Rules:
 import asyncio
 import logging
 from collections import Counter, defaultdict
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Collection, Iterable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, NamedTuple
@@ -37,6 +43,7 @@ from work_matching import (
     ProviderPage,
     ProviderPageStore,
     WorkEntry,
+    build_page_address,
     get_page_key,
     get_page_provider,
 )
@@ -48,7 +55,7 @@ class _EnrichmentHelper(NamedTuple):
     """An enrichment helper: its ``ApiFetcher`` service name and the id key it reads."""
 
     service: str
-    id_key: str
+    id_field: str
 
 
 # The helper for each provider that has one, by the provider's page key name.
@@ -60,19 +67,21 @@ _HELPER_BY_PROVIDER = {
     "animeplanet": _EnrichmentHelper("anime_planet", "anime_planet_url"),
     "anisearch": _EnrichmentHelper("anisearch", "anisearch_url"),
 }
-# The providers AnimeSchedule is looked up through, in the order tried: the
+# The providers whose pages are fetched, so a page of theirs can be checked live.
+FETCHED_PROVIDERS: frozenset[str] = frozenset(_HELPER_BY_PROVIDER)
+# The providers AnimeSchedule is searched by, in the order tried: the
 # AnimeSchedule helper finds an anime by these ids.
-_FOUND_PAGE_LOOKUP_PROVIDERS = ("mal", "anilist", "anidb")
-_FOUND_PAGE_SERVICE = "animeschedule"
+_SEARCHED_BY_PROVIDERS = ("mal", "anilist", "anidb")
+_SEARCHED_PAGE_SERVICE = "animeschedule"
 
 
 class FetchOutcome(StrEnum):
-    """What fetching one page, or one AnimeSchedule lookup, came to."""
+    """What fetching one page, or one AnimeSchedule search, came to."""
 
     FETCHED = "fetched"
     # The provider said the page does not exist.
     DEAD = "dead"
-    # AnimeSchedule has no page for the lookup page: nothing to store.
+    # AnimeSchedule has no page for the page searched by: nothing to store.
     NOT_LISTED = "not listed"
     FAILED = "failed"
     ALREADY_STORED = "already stored"
@@ -83,25 +92,26 @@ class FetchSummary:
     """How a fetch run went: a count per outcome, and why each failure failed."""
 
     outcomes: Mapping[FetchOutcome, int]
-    # Each failed page by its page key, or "animeschedule via <lookup page>".
-    failed_pages: Mapping[str, str]
+    # Each failed request's error, by its label: the page key, or
+    # "animeschedule via <page key searched by>".
+    errors_by_request_label: Mapping[str, str]
 
 
 @dataclass(frozen=True)
 class _PageRequest:
-    """One request to make: a seed page, or an AnimeSchedule lookup through one."""
+    """One request to make: a seed page, or an AnimeSchedule search by one."""
 
     service: str
-    id_key: str
+    id_field: str
     address: str
     title: str
-    is_found_page_lookup: bool = False
+    is_page_search: bool = False
 
     @property
     def label(self) -> str:
-        """Name the request in the summary: its page key, or its lookup."""
+        """Name the request in the summary: its page key, or its search."""
         key = get_page_key(self.address)
-        return f"{self.service} via {key}" if self.is_found_page_lookup else key
+        return f"{self.service} via {key}" if self.is_page_search else key
 
 
 @dataclass(frozen=True)
@@ -113,6 +123,48 @@ class _RequestResult:
     error: str | None = None
 
 
+def _build_page_request(
+    key: str, title: str, address: str | None = None
+) -> _PageRequest | None:
+    """Return the request fetching one page.
+
+    Args:
+        key: The page's key.
+        title: The title of the entry the page belongs to or is linked from,
+            which some helpers search by.
+        address: The page's address as the seed lists it. A linked page is
+            known only by its key, so without an address the address is built
+            from the key.
+
+    Returns:
+        The request, or None when the page's provider has no enrichment helper.
+    """
+    helper = _HELPER_BY_PROVIDER.get(get_page_provider(key) or "")
+    request_address = address or build_page_address(key)
+    if helper is None or request_address is None:
+        return None
+    return _PageRequest(helper.service, helper.id_field, request_address, title)
+
+
+def _combine_fetch_summaries(*summaries: FetchSummary) -> FetchSummary:
+    """Add up the outcomes and failures of several fetches into one summary.
+
+    Args:
+        *summaries: The summaries of the fetches.
+
+    Returns:
+        One summary with every count added and every failure kept.
+    """
+    outcomes: Counter[FetchOutcome] = Counter()
+    errors_by_request_label: dict[str, str] = {}
+    for summary in summaries:
+        outcomes.update(summary.outcomes)
+        errors_by_request_label |= summary.errors_by_request_label
+    return FetchSummary(
+        outcomes=dict(outcomes), errors_by_request_label=errors_by_request_label
+    )
+
+
 class ProviderPageFetcher:
     """Fetch the pages of seed entries into a provider page store."""
 
@@ -121,7 +173,8 @@ class ProviderPageFetcher:
         new_api_fetcher: Callable[[], ApiFetcher],
         store: ProviderPageStore,
         *,
-        seconds_between_found_page_lookups: float = 3.0,
+        seconds_between_page_searches: float = 3.0,
+        is_stored_page_fetched_again: bool = False,
     ) -> None:
         """Set up the fetcher.
 
@@ -130,28 +183,92 @@ class ProviderPageFetcher:
                 Each queue needs its own, because an ``ApiFetcher`` keeps the
                 last fetch's errors on itself.
             store: Where fetched pages are kept.
-            seconds_between_found_page_lookups: The wait between AnimeSchedule
-                lookups. Requests without an app token get AnimeSchedule's
-                stricter, undocumented limit, and lookups at full speed get
+            seconds_between_page_searches: The wait between AnimeSchedule
+                searches. Requests without an app token get AnimeSchedule's
+                stricter, undocumented limit, and searches at full speed get
                 HTTP 429.
+            is_stored_page_fetched_again: Whether pages and searches the store
+                already holds are fetched again, replacing their stored
+                details. Used once after the stored details gain a field; the
+                cache serves pages fetched in the last week.
         """
         self._new_api_fetcher = new_api_fetcher
         self._store = store
-        self._seconds_between_found_page_lookups = seconds_between_found_page_lookups
+        self._seconds_between_page_searches = seconds_between_page_searches
+        self._is_stored_page_fetched_again = is_stored_page_fetched_again
 
-    async def fetch_entry_pages(self, entries: Iterable[WorkEntry]) -> FetchSummary:
+    async def fetch_entry_pages(
+        self,
+        entries: Iterable[WorkEntry],
+        *,
+        providers: Collection[str] | None = None,
+    ) -> FetchSummary:
         """Fetch every page of these entries that the store does not hold yet.
 
         Args:
             entries: The entries to fetch, such as the seed entries to check.
+            providers: The providers whose pages are fetched. None fetches every
+                provider with a helper and searches AnimeSchedule; a given set
+                fetches only those providers' pages, without searches, such as
+                only the providers whose pages carry links.
+
+        Returns:
+            A count per outcome, and the error of each failed page.
+        """
+        return await self._fetch_requests(
+            request
+            for entry in entries
+            for request in self._list_requests(entry, providers)
+        )
+
+    async def fetch_linked_pages(
+        self, titles_by_page_key: Mapping[str, str]
+    ) -> FetchSummary:
+        """Fetch linked pages, named by page key, that the store does not hold yet.
+
+        Links are kept as page keys, so each page's address is built back from
+        its key. Pages of providers without a helper are skipped. A link can
+        spell a page another way than the seed does, such as a Kitsu slug for a
+        page the seed lists by number; when a fetched page reports another
+        current key, that key is fetched too, so the page's details are stored
+        under the key an entry would hold it by.
+
+        Args:
+            titles_by_page_key: Each linked page's key, mapped to the title of
+                the entry linking it, which some helpers search by.
+
+        Returns:
+            A count per outcome, and the error of each failed page.
+        """
+        linked_page_summary = await self._fetch_requests(
+            request
+            for key, title in titles_by_page_key.items()
+            if (request := _build_page_request(key, title))
+        )
+        current_key_summary = await self._fetch_requests(
+            request
+            for key, title in titles_by_page_key.items()
+            if (page := self._store.get_page(key)) is not None
+            and page.renamed_to is not None
+            and page.renamed_to not in self._store
+            and (request := _build_page_request(page.renamed_to, title))
+        )
+        return _combine_fetch_summaries(linked_page_summary, current_key_summary)
+
+    async def _fetch_requests(self, requests: Iterable[_PageRequest]) -> FetchSummary:
+        """Make every request the store does not answer yet, and sum up the fetch.
+
+        - A request is made once, even when several entries need it.
+        - Each provider's requests run in a queue of their own.
+
+        Args:
+            requests: The requests to make, repeats included.
 
         Returns:
             A count per outcome, and the error of each failed page.
         """
         distinct_requests = {
-            (request.service, request.address): request
-            for entry in entries
-            for request in self._list_requests(entry)
+            (request.service, request.address): request for request in requests
         }
         outcomes: Counter[FetchOutcome] = Counter()
         requests_by_service: defaultdict[str, list[_PageRequest]] = defaultdict(list)
@@ -173,38 +290,53 @@ class ProviderPageFetcher:
         outcomes.update(request_result.outcome for request_result in request_results)
         return FetchSummary(
             outcomes=dict(outcomes),
-            failed_pages={
+            errors_by_request_label={
                 request_result.request.label: request_result.error
                 for request_result in request_results
                 if request_result.error is not None
             },
         )
 
-    def _list_requests(self, entry: WorkEntry) -> list[_PageRequest]:
-        """List every request one entry needs, whether done already or not."""
+    def _list_requests(
+        self, entry: WorkEntry, providers: Collection[str] | None
+    ) -> list[_PageRequest]:
+        """List every request one entry needs, whether done already or not.
+
+        Args:
+            entry: The work entry whose pages to request.
+            providers: The providers whose pages are requested. With a set
+                given, AnimeSchedule is not searched. None requests every
+                provider with a helper and searches AnimeSchedule.
+
+        Returns:
+            The page requests, then the AnimeSchedule searches.
+        """
         requests = [
-            _PageRequest(helper.service, helper.id_key, address, entry.title)
-            for key, address in entry.pages.items()
-            if (helper := _HELPER_BY_PROVIDER.get(get_page_provider(key) or ""))
+            request
+            for key, address in entry.addresses_by_page_key.items()
+            if (providers is None or get_page_provider(key) in providers)
+            and (request := _build_page_request(key, entry.title, address))
         ]
-        # AnimeSchedule is looked up through the first provider in the order that
+        if providers is not None:
+            return requests
+        # AnimeSchedule is searched by the first provider in the order that
         # has pages in the entry: MAL, else AniList, else AniDB.
-        for provider in _FOUND_PAGE_LOOKUP_PROVIDERS:
-            lookup_addresses = [
+        for provider in _SEARCHED_BY_PROVIDERS:
+            searched_by_addresses = [
                 address
-                for key, address in entry.pages.items()
+                for key, address in entry.addresses_by_page_key.items()
                 if get_page_provider(key) == provider
             ]
-            if lookup_addresses:
+            if searched_by_addresses:
                 requests.extend(
                     _PageRequest(
-                        _FOUND_PAGE_SERVICE,
-                        _HELPER_BY_PROVIDER[provider].id_key,
+                        _SEARCHED_PAGE_SERVICE,
+                        _HELPER_BY_PROVIDER[provider].id_field,
                         address,
                         entry.title,
-                        is_found_page_lookup=True,
+                        is_page_search=True,
                     )
-                    for address in lookup_addresses
+                    for address in searched_by_addresses
                 )
                 break
         return requests
@@ -212,12 +344,21 @@ class ProviderPageFetcher:
     def _is_done(self, request: _PageRequest) -> bool:
         """Report whether the store already holds what a request would fetch.
 
-        A page request is done when the page is stored; a lookup is done when a
-        found page was found through its lookup page.
+        - A page request is done when the page is stored.
+        - A search is done when the store holds a page searched by its page.
+        - No request is done while stored pages are being fetched again.
+
+        Args:
+            request: The page request or AnimeSchedule search.
+
+        Returns:
+            True when the request needs no fetch.
         """
+        if self._is_stored_page_fetched_again:
+            return False
         key = get_page_key(request.address)
-        if request.is_found_page_lookup:
-            return self._store.has_page_found_by(key)
+        if request.is_page_search:
+            return self._store.has_page_searched_by(key)
         return key in self._store
 
     async def _run_queue(
@@ -232,8 +373,8 @@ class ProviderPageFetcher:
         api_fetcher = self._new_api_fetcher()
         request_results: list[_RequestResult] = []
         for position, request in enumerate(requests):
-            if request.is_found_page_lookup and position:
-                await asyncio.sleep(self._seconds_between_found_page_lookups)
+            if request.is_page_search and position:
+                await asyncio.sleep(self._seconds_between_page_searches)
             try:
                 request_results.append(await self._fetch_request(api_fetcher, request))
             except Exception as error:
@@ -256,7 +397,7 @@ class ProviderPageFetcher:
         fetched again.
         """
         records_by_service = await api_fetcher.fetch_all_data(
-            {request.id_key: request.address},
+            {request.id_field: request.address},
             {"title": request.title, "sources": [request.address]},
             only_services=[request.service],
             fetch_characters=False,
@@ -279,13 +420,15 @@ class ProviderPageFetcher:
         self, request: _PageRequest, anime_record: dict[str, Any] | None
     ) -> FetchOutcome:
         """Store what one request returned, and say what it came to."""
-        if request.is_found_page_lookup:
+        if request.is_page_search:
             if not anime_record:
                 return FetchOutcome.NOT_LISTED
             # The AnimeSchedule mapper lists the page's own address first.
             self._store.add_pages(
                 ProviderPage.from_canonical_record(
-                    anime_record["sources"][0], anime_record, found_by=request.address
+                    anime_record["sources"][0],
+                    anime_record,
+                    searched_by_address=request.address,
                 )
             )
             return FetchOutcome.FETCHED

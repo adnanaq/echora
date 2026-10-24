@@ -1,3 +1,4 @@
+import pytest
 from enrichment.sources.anisearch.anisearch_anime_models import AniSearchAnime
 
 
@@ -97,3 +98,34 @@ def test_anisearch_anime_without_title_blocks_keeps_given_titles() -> None:
         "ワンピース",
         {},
     )
+
+
+@pytest.mark.parametrize(
+    ("type_line", "episode_count"),
+    [
+        ("Type: TV-Series, 52 (~24 min, Total: ~20 h 48 min)", 52),
+        ("Type: Web, 15 (~26 min)", 15),
+        ("Type: TV-Series, 1200 (~24 min, Total: ~20 d)", 1200),
+        ("Type: TV-Series, ? (~24 min)", None),
+        ("Type: TV-Series", None),
+        (None, None),
+    ],
+)
+def test_anisearch_anime_type_line_gives_episode_count(
+    type_line: str | None, episode_count: int | None
+) -> None:
+    assert AniSearchAnime.model_validate({"type": type_line}).episode_count == (
+        episode_count
+    )
+
+
+def test_anisearch_anime_type_line_with_episode_count_keeps_type() -> None:
+    anime = AniSearchAnime.model_validate({"type": "Type: Web, 15 (~26 min)"})
+    assert (anime.type, anime.episode_count) == ("Web", 15)
+
+
+def test_anisearch_anime_given_episode_count_kept() -> None:
+    anime = AniSearchAnime.model_validate(
+        {"type": "Type: TV-Series, 52 (~24 min)", "episode_count": 12}
+    )
+    assert anime.episode_count == 12

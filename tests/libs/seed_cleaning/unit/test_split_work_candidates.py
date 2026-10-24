@@ -2,7 +2,7 @@ import logging
 
 import pytest
 from seed_cleaning.split_work_candidates import find_split_work_candidates
-from work_matching import KnownWorksFromSeed
+from work_matching import KnownWorkEntriesFromSeed
 
 
 def _candidates_by_title(seed_works) -> dict[str, tuple[list[str], str | None]]:
@@ -55,7 +55,7 @@ def test_find_split_work_candidates_seasons_far_apart_not_grouped(seed_works) ->
 def test_find_split_work_candidates_entries_joined_through_shared_match_form_one_group() -> (
     None
 ):
-    works = KnownWorksFromSeed(
+    works = KnownWorkEntriesFromSeed(
         [
             {
                 "title": "Show",
@@ -86,7 +86,7 @@ def test_find_split_work_candidates_entries_joined_through_shared_match_form_one
 
 
 def test_find_split_work_candidates_single_entry_titles_give_nothing() -> None:
-    works = KnownWorksFromSeed(
+    works = KnownWorkEntriesFromSeed(
         [{"title": "Alone", "type": "TV", "sources": ["https://anilist.co/anime/1"]}]
     )
     assert find_split_work_candidates(works) == []

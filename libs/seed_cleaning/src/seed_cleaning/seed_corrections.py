@@ -3,17 +3,21 @@
 For every entry with a doubled provider, the work matching rules either place
 its pages themselves or leave the entry to a person as one review case. A
 correction records one page's final place, from the rules or from an accepted
-answer. The cleaned seed is built from the downloaded release plus these
-corrections, so the release itself is never edited. The rules:
+answer; a correction can also add a page the seed lacks (see
+``linked_page_additions``). The cleaned seed is built from the downloaded
+release plus these corrections, so the release itself is never edited. The
+rules:
 
 - Final places, not steps: each correction says where its page ends up, so the
   order corrections are applied in never matters, even when a page moves into
   an entry that is itself being corrected.
 - Rebuilt every run: corrections come from this run's decisions and the kept
   answers, so the file always matches them and needs no clean-up.
-- Moves: a page placed in ``other work`` joins the seed entry its links name
-  when they name exactly one; otherwise it starts a new entry. Pages a review
-  answer puts in the same ``work N`` form one new entry.
+- Moves: a page placed in ``other work`` joins the seed entry its sure move
+  names (``UnrelatedPage.move_target_entry``); otherwise it starts a new entry.
+  Pages a review answer puts in the same ``work N`` form one new entry.
+- Part pages: a page an answer marks ``, part`` is recorded as a part page, so
+  enrichment combines it with the work's other part pages.
 - Renamed pages: an old address is dropped, because the entry also lists the
   page under its current address (the rules send it to review otherwise).
 - Main page: a work's main page is listed before its other pages, because
@@ -35,7 +39,7 @@ from work_matching import (
     ENTRY_WORK,
     OTHER_WORK,
     DoubledProviderDecision,
-    KnownWorks,
+    KnownWorkEntries,
     PagePlacement,
     ProviderPage,
     ProviderPageStore,
@@ -43,9 +47,7 @@ from work_matching import (
     ReviewFile,
     WorkEntry,
     decide_doubled_providers,
-    find_move_target,
     get_seed_type,
-    index_pages_by_current_key,
     place_pages_without_review,
     rank_by_provider_trust,
     replace_file_lines,
@@ -68,7 +70,7 @@ class SeedCorrection(BaseModel):
     page_key: str
     address: str
     # The page's work in answer words: ``entry``, ``other work`` or ``work 2``…
-    work: str
+    placement_word: str
     # Whether enrichment fetches this page for its provider in its work.
     is_main_page: bool = False
     # The current page key, when the seed lists the page under an old address.
@@ -76,7 +78,18 @@ class SeedCorrection(BaseModel):
     # The reference page of the seed entry an ``other work`` page joins; None
     # when the page starts a new entry.
     target_entry_reference_page: str | None = None
-    # The name of the decision's reason, or ``review answer``.
+    # Whether the page is not in the seed and is added to the entry: a page the
+    # entry's pages link that no seed entry holds.
+    is_added_page: bool = False
+    # Whether the page covers only part of its work, such as one season of a
+    # run MyAnimeList lists whole, so enrichment combines it with the work's
+    # other part pages rather than taking it for the whole work.
+    is_part_page: bool = False
+    # Whether the entry's anime id now comes from this added page (MAL first), so
+    # the search entry stored under the entry's old id must be replaced.
+    is_anime_id_page: bool = False
+    # Why the page is placed here: the doubled-provider decision's outcome name,
+    # the linked-page decision's reason name, or ``review answer``.
     reason: str
 
 
@@ -116,9 +129,9 @@ class _GroupedCorrections(NamedTuple):
     """The corrections grouped by the entry each one changes or creates."""
 
     # Each seed entry's own corrections, by its reference page.
-    corrections_by_entry: dict[str, list[SeedCorrection]]
+    corrections_by_reference_page: dict[str, list[SeedCorrection]]
     # The corrections of pages moving into each seed entry, by its reference page.
-    moved_in_corrections_by_entry: dict[str, list[SeedCorrection]]
+    moved_in_corrections_by_reference_page: dict[str, list[SeedCorrection]]
     # The corrections of each new entry, keyed by the seed entry the pages leave
     # and by what makes them one new entry: an ``other work`` page alone forms
     # one, keyed by its page key; the pages of one ``work N`` form one together,
@@ -129,31 +142,32 @@ class _GroupedCorrections(NamedTuple):
 def correct_doubled_provider_entries(
     entries: Iterable[WorkEntry],
     store: ProviderPageStore,
-    known_works: KnownWorks,
+    known_work_entries: KnownWorkEntries,
     review_file: ReviewFile,
 ) -> DoubledProviderCorrections:
     """Place the pages of each entry with doubled providers, or ask a person.
 
     Args:
         entries: The seed entries with a doubled provider.
-        store: The fetched pages, including pages found through the entries'.
-        known_works: Every seed entry, to find the entries pages move to.
+        store: The fetched pages, including pages searched by the entries' pages.
+        known_work_entries: Every seed entry, to find the entries pages move to.
         review_file: The review file, for the answers kept in it.
 
     Returns:
-        The corrections from settled entries and accepted answers, and every
+        The corrections from entries needing no review and from accepted
+        answers, and every
         review case of this run.
     """
     corrections: list[SeedCorrection] = []
     review_cases: list[ReviewCase] = []
     for entry in entries:
-        pages = _load_entry_pages(entry, store)
-        decisions = decide_doubled_providers(entry, pages, known_works)
-        placements = place_pages_without_review(entry, decisions, pages)
-        reason_by_page = {
-            key: decision.reason.name
+        pages = store.get_entry_pages(entry)
+        decisions = decide_doubled_providers(entry, pages, known_work_entries)
+        placements = place_pages_without_review(decisions)
+        reason_by_page_key = {
+            key: decision.outcome.name
             for decision in decisions
-            for key in decision.pages
+            for key in decision.page_keys
         }
         if placements is None:
             review_case = review_file.attach_kept_answer(
@@ -164,10 +178,12 @@ def correct_doubled_provider_entries(
             if not isinstance(accepted_placements, dict):
                 continue
             placements = accepted_placements
-            reason_by_page = dict.fromkeys(accepted_placements, REVIEW_ANSWER_REASON)
+            reason_by_page_key = dict.fromkeys(
+                accepted_placements, REVIEW_ANSWER_REASON
+            )
         corrections.extend(
             _build_entry_corrections(
-                entry, decisions, placements, reason_by_page, pages
+                entry, decisions, placements, reason_by_page_key, pages
             )
         )
     return DoubledProviderCorrections(tuple(corrections), tuple(review_cases))
@@ -175,14 +191,14 @@ def correct_doubled_provider_entries(
 
 def build_corrected_entries(
     corrections: Iterable[SeedCorrection],
-    known_works: KnownWorks,
+    known_work_entries: KnownWorkEntries,
     store: ProviderPageStore,
 ) -> list[CorrectedEntry]:
     """Build every work entry the corrections change or create.
 
     Args:
         corrections: The seed corrections.
-        known_works: Every seed entry, to find the entries the corrections name.
+        known_work_entries: Every seed entry, to find the entries the corrections name.
         store: The fetched pages, for the details of new entries.
 
     Returns:
@@ -190,19 +206,21 @@ def build_corrected_entries(
         them (pages moved in come after the entries they leave), then the new
         entries.
     """
-    corrections_by_entry, moved_in_corrections_by_entry, new_entry_corrections = (
-        _group_corrections(corrections)
-    )
+    (
+        corrections_by_reference_page,
+        moved_in_corrections_by_reference_page,
+        new_entry_corrections,
+    ) = _group_corrections(corrections)
     changed_reference_pages = dict.fromkeys(
-        [*corrections_by_entry, *moved_in_corrections_by_entry]
+        [*corrections_by_reference_page, *moved_in_corrections_by_reference_page]
     )
     return [
         CorrectedEntry(
             seed_entry_reference_page=reference_page,
             entry=_correct_seed_entry(
-                _find_seed_entry(known_works, reference_page),
-                corrections_by_entry[reference_page],
-                moved_in_corrections_by_entry[reference_page],
+                _find_seed_entry(known_work_entries, reference_page),
+                corrections_by_reference_page[reference_page],
+                moved_in_corrections_by_reference_page[reference_page],
             ),
         )
         for reference_page in changed_reference_pages
@@ -210,7 +228,7 @@ def build_corrected_entries(
         CorrectedEntry(
             seed_entry_reference_page=None,
             entry=_build_new_entry(
-                _find_seed_entry(known_works, source_entry_reference_page),
+                _find_seed_entry(known_work_entries, source_entry_reference_page),
                 entry_corrections,
                 store,
             ),
@@ -243,43 +261,37 @@ def write_corrections(path: str | Path, corrections: Iterable[SeedCorrection]) -
     )
 
 
-def _load_entry_pages(entry: WorkEntry, store: ProviderPageStore) -> list[ProviderPage]:
-    """Return the stored details of an entry's pages and of pages found through them."""
-    return [
-        *(page for key in entry.pages if (page := store.get_page(key))),
-        *(
-            found_page
-            for key in entry.pages
-            for found_page in store.get_pages_found_by(key)
-        ),
-    ]
-
-
 def _group_corrections(corrections: Iterable[SeedCorrection]) -> _GroupedCorrections:
     """Group the corrections by the entry each one changes or creates."""
-    corrections_by_entry: defaultdict[str, list[SeedCorrection]] = defaultdict(list)
-    moved_in_corrections_by_entry: defaultdict[str, list[SeedCorrection]] = defaultdict(
+    corrections_by_reference_page: defaultdict[str, list[SeedCorrection]] = defaultdict(
         list
+    )
+    moved_in_corrections_by_reference_page: defaultdict[str, list[SeedCorrection]] = (
+        defaultdict(list)
     )
     new_entry_corrections: defaultdict[tuple[str, str], list[SeedCorrection]] = (
         defaultdict(list)
     )
     for correction in corrections:
-        corrections_by_entry[correction.entry_reference_page].append(correction)
+        corrections_by_reference_page[correction.entry_reference_page].append(
+            correction
+        )
         if correction.target_entry_reference_page:
-            moved_in_corrections_by_entry[
+            moved_in_corrections_by_reference_page[
                 correction.target_entry_reference_page
             ].append(correction)
-        elif correction.work == OTHER_WORK:
+        elif correction.placement_word == OTHER_WORK:
             new_entry_corrections[
                 correction.entry_reference_page, correction.page_key
             ].append(correction)
-        elif correction.work != ENTRY_WORK:
+        elif correction.placement_word != ENTRY_WORK:
             new_entry_corrections[
-                correction.entry_reference_page, correction.work
+                correction.entry_reference_page, correction.placement_word
             ].append(correction)
     return _GroupedCorrections(
-        corrections_by_entry, moved_in_corrections_by_entry, new_entry_corrections
+        corrections_by_reference_page,
+        moved_in_corrections_by_reference_page,
+        new_entry_corrections,
     )
 
 
@@ -287,7 +299,7 @@ def _build_entry_corrections(
     entry: WorkEntry,
     decisions: Sequence[DoubledProviderDecision],
     placements: Mapping[str, PagePlacement],
-    reason_by_page: Mapping[str, str],
+    reason_by_page_key: Mapping[str, str],
     pages: Iterable[ProviderPage],
 ) -> list[SeedCorrection]:
     """Turn one entry's page places into corrections, in the entry's page order.
@@ -300,58 +312,64 @@ def _build_entry_corrections(
     place stay as they are and get no correction.
     """
     pages = list(pages)
-    current_key_by_page = {
+    current_key_by_page_key = {
         page.key: page.renamed_to for page in pages if page.renamed_to
     }
-    target_entry_by_page = _find_target_entries(decisions, pages)
+    target_reference_page_by_page_key = _find_target_reference_pages(decisions)
     corrections: list[SeedCorrection] = []
-    for key, address in entry.pages.items():
-        found = _find_placement(key, current_key_by_page.get(key, key), placements)
-        if found is None:
+    for key, address in entry.addresses_by_page_key.items():
+        placed_key_and_placement = _find_placement(
+            key, current_key_by_page_key.get(key, key), placements
+        )
+        if placed_key_and_placement is None:
             continue
-        current_key, placement = found
+        current_key, placement = placed_key_and_placement
         corrections.append(
             SeedCorrection(
                 entry_reference_page=entry.reference_page,
                 page_key=key,
                 address=address,
-                work=placement.work,
+                placement_word=placement.placement_word,
                 is_main_page=placement.is_main_page,
+                is_part_page=placement.is_part_page,
                 renamed_to=(
                     current_key
-                    if current_key != key and current_key in entry.pages
+                    if current_key != key and current_key in entry.addresses_by_page_key
                     else None
                 ),
                 target_entry_reference_page=(
-                    target_entry_by_page.get(current_key)
-                    if placement.work == OTHER_WORK
+                    target_reference_page_by_page_key.get(current_key)
+                    if placement.placement_word == OTHER_WORK
                     else None
                 ),
-                reason=reason_by_page[current_key],
+                reason=reason_by_page_key[current_key],
             )
         )
     return corrections
 
 
-def _find_target_entries(
-    decisions: Sequence[DoubledProviderDecision], pages: Iterable[ProviderPage]
+def _find_target_reference_pages(
+    decisions: Sequence[DoubledProviderDecision],
 ) -> dict[str, str]:
-    """Return the seed entry each page linking another work moves to, if sure.
+    """Return the reference page each unrelated page moves to, when the move is sure.
 
-    The rules and review answers share one check (``find_move_target``), so a
-    page an answer sends to another work never makes a doubled provider in
-    the entry it joins; without a sure target it starts a new entry.
+    The rules and review answers share one target
+    (``UnrelatedPage.move_target_entry``), so a page an answer sends to another
+    work never makes a doubled provider in the entry it joins. Without a sure
+    target the page starts a new entry.
+
+    Args:
+        decisions: The entry's doubled-provider decisions.
+
+    Returns:
+        Each unrelated page's current key, mapped to the reference page of the
+        seed entry it moves to; pages without a sure target are left out.
     """
-    pages_by_current_key = index_pages_by_current_key(pages)
     return {
-        key: target.reference_page
+        key: unrelated_page.move_target_entry.reference_page
         for decision in decisions
         for key, unrelated_page in decision.unrelated_pages.items()
-        if (
-            target := find_move_target(
-                key, unrelated_page, pages_by_current_key.get(key)
-            )
-        )
+        if unrelated_page.move_target_entry is not None
     }
 
 
@@ -369,9 +387,11 @@ def _find_placement(
     return None
 
 
-def _find_seed_entry(known_works: KnownWorks, reference_page: str) -> WorkEntry:
+def _find_seed_entry(
+    known_work_entries: KnownWorkEntries, reference_page: str
+) -> WorkEntry:
     """Return the seed entry named by this reference page."""
-    entry = known_works.find_by_page_key(reference_page)
+    entry = known_work_entries.find_by_page_key(reference_page)
     if entry is None:
         raise UnknownSeedEntryError(reference_page)
     return entry
@@ -382,19 +402,36 @@ def _correct_seed_entry(
     corrections: Sequence[SeedCorrection],
     moved_in_corrections: Sequence[SeedCorrection],
 ) -> WorkEntry:
-    """Return a seed entry without the pages that left it, with those moved in."""
-    leaving_pages = {
+    """Return a seed entry as its corrections leave it.
+
+    Args:
+        entry: The seed entry.
+        corrections: The corrections naming the seed entry: pages leaving it,
+            staying in it, or added to it.
+        moved_in_corrections: The corrections of pages moving into the entry.
+
+    Returns:
+        The entry without the pages that left it, with the pages moved in or
+        added, and each provider's main page listed first.
+    """
+    leaving_page_keys = {
         correction.page_key
         for correction in corrections
-        if correction.work != ENTRY_WORK or correction.renamed_to
+        if correction.placement_word != ENTRY_WORK or correction.renamed_to
     }
-    pages = {
-        key: address for key, address in entry.pages.items() if key not in leaving_pages
-    } | {correction.page_key: correction.address for correction in moved_in_corrections}
+    joining_corrections = [
+        *moved_in_corrections,
+        *(correction for correction in corrections if correction.is_added_page),
+    ]
+    addresses_by_page_key = {
+        key: address
+        for key, address in entry.addresses_by_page_key.items()
+        if key not in leaving_page_keys
+    } | {correction.page_key: correction.address for correction in joining_corrections}
     return entry.model_copy(
         update={
-            "pages": _order_main_pages_first(
-                pages, [*corrections, *moved_in_corrections]
+            "addresses_by_page_key": _order_main_pages_first(
+                addresses_by_page_key, [*corrections, *moved_in_corrections]
             )
         }
     )
@@ -410,14 +447,14 @@ def _build_new_entry(
     Its title, type, year and season come from the most trusted page with
     fetched details; without one, the title of the entry the pages came from.
     """
-    pages = _order_main_pages_first(
+    addresses_by_page_key = _order_main_pages_first(
         {correction.page_key: correction.address for correction in corrections},
         corrections,
     )
     trusted_page = next(
         (
             page
-            for key in sorted(pages, key=rank_by_provider_trust)
+            for key in sorted(addresses_by_page_key, key=rank_by_provider_trust)
             if (page := store.get_page(key)) and page.titles and not page.is_dead
         ),
         None,
@@ -425,9 +462,14 @@ def _build_new_entry(
     if trusted_page is None:
         logger.warning(
             f"New entry has no fetched page details, so it takes the title of "
-            f"{source_seed_entry.reference_page} and an unknown type: {list(pages)}"
+            f"{source_seed_entry.reference_page} and an unknown type: "
+            f"{list(addresses_by_page_key)}"
         )
-        return WorkEntry(title=source_seed_entry.title, type="UNKNOWN", pages=pages)
+        return WorkEntry(
+            title=source_seed_entry.title,
+            type="UNKNOWN",
+            addresses_by_page_key=addresses_by_page_key,
+        )
     # Validated, so the page's season goes through the entry's season check.
     return WorkEntry.model_validate(
         {
@@ -435,20 +477,24 @@ def _build_new_entry(
             "type": get_seed_type(trusted_page) or "UNKNOWN",
             "year": trusted_page.year,
             "season": trusted_page.season,
-            "pages": pages,
+            "addresses_by_page_key": addresses_by_page_key,
         }
     )
 
 
 def _order_main_pages_first(
-    pages: Mapping[str, str], corrections: Iterable[SeedCorrection]
+    addresses_by_page_key: Mapping[str, str], corrections: Iterable[SeedCorrection]
 ) -> dict[str, str]:
-    """Order the pages with main pages first, the rest in their given order.
+    """Order the page addresses with main pages first, the rest in their given order.
 
     Enrichment fetches the first address of each provider, so a main page must
     come before the other pages of its provider.
     """
-    main_pages = {
+    main_page_keys = {
         correction.page_key for correction in corrections if correction.is_main_page
     }
-    return {key: pages[key] for key in pages if key in main_pages} | dict(pages)
+    return {
+        key: addresses_by_page_key[key]
+        for key in addresses_by_page_key
+        if key in main_page_keys
+    } | dict(addresses_by_page_key)

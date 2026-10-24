@@ -333,6 +333,22 @@ def test_build_anime_from_raw_type_label_and_details_removed(
     assert _anime_from_page(one_piece_main_raw).type == "TV-Series"
 
 
+@pytest.mark.parametrize(
+    ("page_fixture", "episode_count"),
+    [
+        ("one_piece_main_html", 1200),
+        ("balala_the_fairies_2_main_html", 52),
+        ("mo_dao_zu_shi_main_html", 15),
+    ],
+)
+def test_build_anime_from_raw_saved_page_reads_episode_count(
+    request, page_fixture: str, episode_count: int
+) -> None:
+    raw = _extract_anime_from_html(request.getfixturevalue(page_fixture))
+    assert raw is not None
+    assert _anime_from_page(raw).episode_count == episode_count
+
+
 def test_build_anime_from_raw_status_label_removed(one_piece_main_raw) -> None:
     assert _anime_from_page(one_piece_main_raw).status == "Ongoing"
 
