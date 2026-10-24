@@ -486,6 +486,14 @@ def test_encode_text_empty_string_returns_zero_embedding(): ...
 - The 500-line limit applies to source files only; test files have no line limit.
 - No comments or docstrings in test files; the test name says what it checks.
 
+**Saved pages** (crawler tests; AniSearch so far)
+
+- A saved page sits in the folder named after the test module that reads it (`test_anisearch_anime_crawler/one_piece_main.html`), read through pytest-datadir's `original_datadir`, which does not copy files. Keep the whole page as received; markup that looks like noise is often what a parser depends on.
+- What a crawler extracts from a page is checked with `data_regression.check(values, basename=<page name>)`, saved beside the page as `<page name>.yml`. Do not keep hand-copied extraction output: it drifts from the page.
+- Hand-written assertions stay only for the facts a test is about (a rule shown on one page), not for values the saved output already checks.
+- After an intended change to what a crawler extracts, regenerate with plain pytest (`--force-regen`, or `--regen-all` for many files), not Pants, which runs tests in a copy of the tree, and review the `.yml` diff before committing.
+- The module's `conftest.py` lists where each page came from and when it was captured.
+
 **Mocks, fakes and spies** (from [Thea Flowers' Python testing style guide](https://blog.thea.codes/my-python-testing-style-guide/))
 
 - Use the real object when it is cheap to build: `Settings`, `EmbeddingConfig`, dataclasses such as `VectorRuntime`, protobuf messages, Qdrant's response models (`qdrant_client.http.models.QueryResponse`, `ScoredPoint`, `Record`), grpc's `HealthServicer`.
