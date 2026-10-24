@@ -101,7 +101,7 @@ def _read_synonym_names(element: Any) -> list[str]:
             synonym_name = node.strip().strip(",").strip()
         elif node.tag == "i":
             synonym_name = "".join(node.itertext()).strip()
-        elif node.tag == "span" and "header" not in (node.get("class") or ""):
+        elif node.tag == "span" and "header" not in (node.get("class") or "").split():
             synonym_names.extend(_read_synonym_names(node))
             continue
         else:
