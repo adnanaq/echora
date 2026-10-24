@@ -95,20 +95,20 @@ def _read_synonym_names(element: Any) -> list[str]:
     Returns:
         The names in page order.
     """
-    names: list[str] = []
+    synonym_names: list[str] = []
     for node in element.xpath("node()"):
         if isinstance(node, str):
-            name = node.strip().strip(",").strip()
+            synonym_name = node.strip().strip(",").strip()
         elif node.tag == "i":
-            name = "".join(node.itertext()).strip()
+            synonym_name = "".join(node.itertext()).strip()
         elif node.tag == "span" and "header" not in (node.get("class") or ""):
-            names.extend(_read_synonym_names(node))
+            synonym_names.extend(_read_synonym_names(node))
             continue
         else:
             continue
-        if name:
-            names.append(name)
-    return names
+        if synonym_name:
+            synonym_names.append(synonym_name)
+    return synonym_names
 
 
 def _extract_anime_from_html(html_text: str) -> dict[str, Any] | None:
@@ -187,6 +187,7 @@ def _extract_anime_from_html(html_text: str) -> dict[str, Any] | None:
         for el in website_els
         if el.get("href")
     ]
+    synonym_lines = cast(list[Any], tree.xpath(_XPATHS["synonyms"]))
 
     return {
         "cover_image": _attr("cover_image"),
@@ -202,10 +203,7 @@ def _extract_anime_from_html(html_text: str) -> dict[str, Any] | None:
         "studio_url": _attr("studio_url"),
         "broadcast_raw": _text("broadcast_raw"),
         "source_material": _text("source_material"),
-        "synonyms": next(
-            map(_read_synonym_names, cast(list[Any], tree.xpath(_XPATHS["synonyms"]))),
-            [],
-        ),
+        "synonyms": _read_synonym_names(synonym_lines[0]) if synonym_lines else [],
         "description": _text("description"),
         "genres": _names("genres"),
         "tags": _names("tags"),

@@ -91,21 +91,24 @@ def _episode_count_from_type_line(type_line: object) -> int | None:
     return episode_count if isinstance(episode_count, int) else None
 
 
-def _synonym_list(value: object) -> object:
-    """Keep each synonym the crawler read as one name; no synonyms gives an empty list.
+def _strip_synonym_names(value: object) -> object:
+    """Strip the synonym names the crawler read, dropping blank ones.
 
-    The crawler tells names apart by the page's elements, because a name can
-    hold commas, so names are only stripped here and never split. Text joined
-    into one string is not split either: it fails validation.
+    - No synonyms gives an empty list.
+    - Names are never split: the crawler tells them apart by the page's
+      elements, because a name can hold commas.
+    - Text joined into one string fails validation instead of being split.
 
-    >>> _synonym_list([" Age 12: Kiss, Hate, Love ", "", "OP"])
+    >>> _strip_synonym_names([" Age 12: Kiss, Hate, Love ", "", "OP"])
     ['Age 12: Kiss, Hate, Love', 'OP']
     """
     if value is None:
         return []
     if isinstance(value, list):
         return [
-            name.strip() for name in value if isinstance(name, str) and name.strip()
+            synonym_name.strip()
+            for synonym_name in value
+            if isinstance(synonym_name, str) and synonym_name.strip()
         ]
     return value
 
@@ -302,7 +305,7 @@ class AniSearchAnime(BaseModel):
     title_english: StrippedText = None
     title_japanese: StrippedText = None  # the Japanese block's native script
     titles: dict[str, str] = {}  # other languages, keyed by BCP 47 code
-    synonyms: Annotated[list[str], BeforeValidator(_synonym_list)] = []
+    synonyms: Annotated[list[str], BeforeValidator(_strip_synonym_names)] = []
 
     # ── Classification ────────────────────────────────────────────────────
     type: Annotated[str | None, BeforeValidator(_type_name)] = (
