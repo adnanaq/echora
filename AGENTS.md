@@ -146,7 +146,7 @@ uv run ty check libs/http_cache/
 - Module and function docstrings open with full sentences saying what the code is for. They list the outcomes or rules it applies and give the reason for each, rather than internal shorthand.
 - Explicitly name the specific noun instead of using ambiguous pronouns like "they," "it," or "this" when explaining complex logic.
 - Separate the brief summary line from the rest of the documentation using a clear blank line before the extended description.
-- Use Markdown tables or clean bulleted lists inside the extended description to break down multiple rules, conditions, or attributes instead of writing them in a single paragraph.
+- Use clean bulleted lists inside the extended description to break down multiple rules, conditions, or attributes instead of writing them in a single paragraph. Never use Markdown tables in docstrings or comments: they are shown as plain text, so the table never renders. Tables belong in `.md` files only. When each item has several parts, put one line above the list naming them, such as "Each item reads ``<check>: <outcome>. <reason>``."
 - Include standard Google Style section blocks titled exactly "Args:" and "Returns:" (or "Yields:") to explicitly detail data types and expected outputs.
 - Avoid writing conversational or narrative prose that sounds like a developer thinking out loud.
 - Prohibit passive introductory phrases like "This function is used to" or "A report is generated for."

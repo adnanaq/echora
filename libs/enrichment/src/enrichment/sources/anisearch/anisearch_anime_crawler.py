@@ -82,12 +82,12 @@ def _read_synonym_names(element: Any) -> list[str]:
     every second name in italics. A name can hold commas itself ("Age 12: Kiss,
     Hate, Love"), so names are told apart by their elements, never by commas:
 
-    | Part of the line | Read as |
-    | -- | -- |
-    | A run of plain text | One name, without the commas around it. |
-    | An italic element | One name. |
-    | The hidden span that "read more" opens | Its own names, read the same way. |
-    | The "Synonyms:" label and the "read more" button | Nothing. |
+    Each item reads ``<part of the line>: <how it is read>``.
+
+    - A run of plain text: one name, without the commas around it.
+    - An italic element: one name.
+    - The hidden span that "read more" opens: its own names, read the same way.
+    - The "Synonyms:" label and the "read more" button: nothing.
 
     Args:
         element: The synonyms line, or the hidden span inside it.
