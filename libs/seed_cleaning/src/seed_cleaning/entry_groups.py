@@ -19,6 +19,17 @@ from seed_cleaning.split_work_candidates import SplitWorkCandidates
 from work_matching import KnownWorkEntriesFromSeed, WorkEntry
 
 
+class EntryNotInSeedError(LookupError):
+    """An entry given is not one of the entries the known work entries hold."""
+
+    def __init__(self, reference_page: str) -> None:
+        """Name the entry, and why a copy of an entry does not count."""
+        super().__init__(
+            f"Entry {reference_page} is not one of the seed's entries; entries "
+            "are told apart by object, so a copy of an entry does not count"
+        )
+
+
 def find_entry_groups(
     doubled_provider_entries: Iterable[WorkEntry],
     split_work_candidates: Iterable[SplitWorkCandidates],
@@ -27,33 +38,45 @@ def find_entry_groups(
     """Group the entries to check, merging groups that share an entry.
 
     Args:
-        doubled_provider_entries: The seed entries with a doubled provider.
-        split_work_candidates: The groups of split-work candidates.
+        doubled_provider_entries: The seed entries with a doubled provider, as
+            the objects ``known_work_entries`` holds.
+        split_work_candidates: The groups of split-work candidates, of the
+            same objects.
         known_work_entries: Every seed entry, for the seed order.
 
     Returns:
         Each entry group, its entries in seed order, the groups ordered by
         their first entry's place in the seed.
+
+    Raises:
+        EntryNotInSeedError: An entry is not one ``known_work_entries`` holds.
     """
+    work_entries = list(known_work_entries)
     seed_position_by_entry_id = {
-        id(entry): position for position, entry in enumerate(known_work_entries)
+        id(work_entry): position for position, work_entry in enumerate(work_entries)
     }
-    entry_by_id: dict[int, WorkEntry] = {}
     entry_groups = UnionFind()
     for group_entries in [
         *((entry,) for entry in doubled_provider_entries),
         *(candidates.entries for candidates in split_work_candidates),
     ]:
-        entry_by_id |= {id(entry): entry for entry in group_entries}
-        entry_groups.union(*map(id, group_entries))
-    sorted_entry_ids = sorted(
-        (
-            sorted(entry_ids, key=seed_position_by_entry_id.__getitem__)
-            for entry_ids in entry_groups.to_sets()
-        ),
-        key=lambda entry_ids: seed_position_by_entry_id[entry_ids[0]],
-    )
+        entry_groups.union(
+            *(
+                _find_seed_position(entry, seed_position_by_entry_id)
+                for entry in group_entries
+            )
+        )
     return [
-        tuple(entry_by_id[entry_id] for entry_id in entry_ids)
-        for entry_ids in sorted_entry_ids
+        tuple(work_entries[position] for position in positions)
+        for positions in sorted(sorted(group) for group in entry_groups.to_sets())
     ]
+
+
+def _find_seed_position(
+    entry: WorkEntry, seed_position_by_entry_id: dict[int, int]
+) -> int:
+    """Return an entry's place in the seed, or raise when the seed holds no such object."""
+    position = seed_position_by_entry_id.get(id(entry))
+    if position is None:
+        raise EntryNotInSeedError(entry.reference_page)
+    return position

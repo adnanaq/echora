@@ -1,4 +1,5 @@
-from seed_cleaning.entry_groups import find_entry_groups
+import pytest
+from seed_cleaning.entry_groups import EntryNotInSeedError, find_entry_groups
 from seed_cleaning.split_work_candidates import SplitWorkCandidates
 from work_matching import KnownWorkEntriesFromSeed
 
@@ -54,3 +55,12 @@ def test_find_entry_groups_entries_listing_same_page_stay_apart() -> None:
     assert _reference_pages(
         find_entry_groups([first, second], [], known_work_entries)
     ) == [["mal:anime:1"], ["mal:anime:1"]]
+
+
+def test_find_entry_groups_copy_of_entry_raises() -> None:
+    known_work_entries = KnownWorkEntriesFromSeed(
+        [_seed_entry("https://myanimelist.net/anime/1")]
+    )
+    [entry] = known_work_entries
+    with pytest.raises(EntryNotInSeedError):
+        find_entry_groups([entry.model_copy()], [], known_work_entries)

@@ -99,8 +99,8 @@ def build_corrected_entries(
             seed_entry_reference_page=reference_page,
             entry=_correct_seed_entry(
                 _find_seed_entry(known_work_entries, reference_page),
-                corrections_by_reference_page[reference_page],
-                moved_in_corrections_by_reference_page[reference_page],
+                corrections_by_reference_page.get(reference_page, []),
+                moved_in_corrections_by_reference_page.get(reference_page, []),
             ),
         )
         for reference_page in changed_reference_pages

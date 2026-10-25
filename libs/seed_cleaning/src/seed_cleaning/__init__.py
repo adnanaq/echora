@@ -15,7 +15,7 @@ from seed_cleaning.corrected_entries import (
     build_corrected_entries,
 )
 from seed_cleaning.doubled_provider_entries import find_doubled_provider_entries
-from seed_cleaning.entry_groups import find_entry_groups
+from seed_cleaning.entry_groups import EntryNotInSeedError, find_entry_groups
 from seed_cleaning.group_placement import correct_entry_groups
 from seed_cleaning.linked_page_additions import (
     LINK_CARRYING_PROVIDERS,
@@ -53,6 +53,7 @@ __all__ = [
     "LINK_CARRYING_PROVIDERS",
     "REVIEW_ANSWER_REASON",
     "CorrectedEntry",
+    "EntryNotInSeedError",
     "PlacementCorrections",
     "FetchOutcome",
     "FetchSummary",

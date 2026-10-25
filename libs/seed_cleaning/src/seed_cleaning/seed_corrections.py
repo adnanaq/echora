@@ -45,7 +45,7 @@ class SeedCorrection(BaseModel):
     # The page key and address as the seed entry lists them.
     page_key: str
     address: str
-    # The page's work in answer words: ``work 1``, ``work 2``… or ``other work``.
+    # The page's work in answer words: ``work 1``, ``work 2`` and so on or ``other work``.
     placement_word: str
     # Whether enrichment fetches this page for its provider in its work.
     is_main_page: bool = False
