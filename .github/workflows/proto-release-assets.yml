@@ -20,14 +20,17 @@ jobs:
     steps:
       # A run started by hand names its tag; only an existing proto-v* tag is
       # accepted, because the release step creates any tag it does not find.
+      # The name may hold only letters, digits, dots, underscores and hyphens,
+      # since it becomes part of file names.
       - name: Resolve tag name
+        shell: bash
         env:
           REQUESTED_TAG_NAME: ${{ inputs.tag_name || github.ref_name }}
         run: |
           set -euxo pipefail
           TAG_NAME="${REQUESTED_TAG_NAME}"
-          if [[ "${TAG_NAME}" != proto-v* ]]; then
-            echo "::error::Not a proto release tag (proto-v*): ${TAG_NAME}"
+          if [[ ! "${TAG_NAME}" =~ ^proto-v[0-9A-Za-z._-]+$ ]]; then
+            echo "::error::Not a proto release tag (proto-v followed by letters, digits, '.', '_' or '-'): ${TAG_NAME}"
             exit 1
           fi
 
