@@ -9,7 +9,7 @@ from work_matching.page_placement import (
     suggest_page_placements,
 )
 
-ENTRY = PagePlacement("entry")
+ENTRY = PagePlacement("work 1")
 OTHER_WORK = PagePlacement("other work")
 MAL = "https://myanimelist.net/anime/1"
 KITSU_ONE = "https://kitsu.app/anime/1"
@@ -111,6 +111,18 @@ def test_place_pages_without_review_separate_works_or_undecided_gives_none(
     )
 
 
+def test_place_pages_without_review_one_provider_needing_review_places_nothing(
+    linked_page, work_entry, known_work_entries
+) -> None:
+    planet_one = "https://www.anime-planet.com/anime/one"
+    planet_two = "https://www.anime-planet.com/anime/two"
+    entry = work_entry(MAL, KITSU_ONE, KITSU_TWO, planet_one, planet_two)
+    pages = [linked_page(KITSU_ONE, MAL), linked_page(KITSU_TWO, OTHER_MAL)]
+    decisions = decide_doubled_providers(entry, pages, known_work_entries)
+    assert [decision.needs_review for decision in decisions] == [False, True]
+    assert place_pages_without_review(decisions) is None
+
+
 def test_list_placeable_page_keys_doubled_pages_first_then_other_pages(
     matching_cases,
 ) -> None:
@@ -131,9 +143,9 @@ def test_list_placeable_page_keys_doubled_pages_first_then_other_pages(
 
 def test_suggest_page_placements_linked_groups_and_other_work(one_linked) -> None:
     assert suggest_page_placements(*one_linked[:2]) == {
-        "kitsu:anime:1": "entry",
+        "kitsu:anime:1": "work 1",
         "kitsu:anime:2": "other work",
-        "mal:anime:1": "entry",
+        "mal:anime:1": "work 1",
     }
 
 
@@ -141,9 +153,9 @@ def test_suggest_page_placements_works_linked_apart_numbered_by_trust(
     linked_apart,
 ) -> None:
     assert suggest_page_placements(*linked_apart[:2]) == {
-        "mal:anime:1": "entry",
+        "mal:anime:1": "work 1",
         "mal:anime:2": "work 2",
-        "anilist:anime:1": "entry",
+        "anilist:anime:1": "work 1",
         "anilist:anime:2": "work 2",
     }
 
@@ -161,11 +173,11 @@ def test_suggest_page_placements_unlinked_page_left_out(matching_cases) -> None:
         *_matching_case(matching_cases, "ao_haru_ride_ova")[:2]
     )
     assert suggestion == {
-        "anilist:anime:20837": "entry, part",
-        "anilist:anime:20900": "entry, part",
-        "animeplanet:anime:blue-spring-ride-page-13": "entry",
-        "kitsu:anime:8488": "entry",
-        "mal:anime:24151": "entry",
+        "anilist:anime:20837": "work 1, part",
+        "anilist:anime:20900": "work 1, part",
+        "animeplanet:anime:blue-spring-ride-page-13": "work 1",
+        "kitsu:anime:8488": "work 1",
+        "mal:anime:24151": "work 1",
     }
 
 
@@ -181,9 +193,9 @@ def part_pages(linked_page, work_entry):
 
 def test_suggest_page_placements_part_pages_marked_part(part_pages) -> None:
     assert suggest_page_placements(*part_pages) == {
-        "kitsu:anime:1": "entry, part",
-        "kitsu:anime:2": "entry, part",
-        "mal:anime:1": "entry",
+        "kitsu:anime:1": "work 1, part",
+        "kitsu:anime:2": "work 1, part",
+        "mal:anime:1": "work 1",
     }
 
 
@@ -196,40 +208,40 @@ def test_suggest_page_placements_details_differ_pages_left_out(
         for address, year in ((KITSU_ONE, 2013), (KITSU_TWO, 2021))
     ]
     decisions = decide_doubled_providers(entry, pages, KnownWorkEntriesFromSeed([]))
-    assert suggest_page_placements(entry, decisions) == {"mal:anime:1": "entry"}
+    assert suggest_page_placements(entry, decisions) == {"mal:anime:1": "work 1"}
 
 
 @pytest.mark.parametrize(
     ("answer", "placements"),
     [
         (
-            {"kitsu:anime:1": "entry", "kitsu:anime:2": "other work"},
+            {"kitsu:anime:1": "work 1", "kitsu:anime:2": "other work"},
             {"kitsu:anime:1": ENTRY, "kitsu:anime:2": OTHER_WORK},
         ),
         (
-            {"kitsu:anime:1": "entry, part", "kitsu:anime:2": "entry, part"},
+            {"kitsu:anime:1": "work 1, part", "kitsu:anime:2": "work 1, part"},
             {
-                "kitsu:anime:1": PagePlacement("entry", is_part_page=True),
-                "kitsu:anime:2": PagePlacement("entry", is_part_page=True),
+                "kitsu:anime:1": PagePlacement("work 1", is_part_page=True),
+                "kitsu:anime:2": PagePlacement("work 1", is_part_page=True),
             },
         ),
         (
-            {"kitsu:anime:1": "entry, part", "kitsu:anime:2": "other work"},
+            {"kitsu:anime:1": "work 1, part", "kitsu:anime:2": "other work"},
             {
-                "kitsu:anime:1": PagePlacement("entry", is_part_page=True),
+                "kitsu:anime:1": PagePlacement("work 1", is_part_page=True),
                 "kitsu:anime:2": OTHER_WORK,
             },
         ),
         (
-            {"kitsu:anime:1": "entry, main", "kitsu:anime:2": "entry"},
+            {"kitsu:anime:1": "work 1, main", "kitsu:anime:2": "work 1"},
             {
-                "kitsu:anime:1": PagePlacement("entry", is_main_page=True),
+                "kitsu:anime:1": PagePlacement("work 1", is_main_page=True),
                 "kitsu:anime:2": ENTRY,
             },
         ),
         (
             {
-                "kitsu:anime:1": "entry",
+                "kitsu:anime:1": "work 1",
                 "kitsu:anime:2": "other work",
                 "mal:anime:1": "other work",
             },
@@ -241,9 +253,9 @@ def test_suggest_page_placements_details_differ_pages_left_out(
         ),
         (
             {
-                "kitsu:anime:1": "entry",
+                "kitsu:anime:1": "work 1",
                 "kitsu:anime:2": "work 2",
-                "mal:anime:1": "entry",
+                "mal:anime:1": "work 1",
             },
             {
                 "kitsu:anime:1": ENTRY,
@@ -264,25 +276,31 @@ def test_read_answer_placements_valid_answer_gives_placements(
     [
         None,
         "one work",
-        {"kitsu:anime:1": "entry"},
-        {"kitsu:anime:1": "entry", "kitsu:anime:2": "entry"},
-        {"kitsu:anime:1": "entry, main", "kitsu:anime:2": "entry, main"},
-        {"kitsu:anime:1": "entry, main", "kitsu:anime:2": "other work"},
-        {"kitsu:anime:1": "entry", "kitsu:anime:2": "other work, main"},
-        {"kitsu:anime:1": "entry", "kitsu:anime:2": "other work, part"},
-        {"kitsu:anime:1": "entry, part", "kitsu:anime:2": "entry"},
-        {"kitsu:anime:1": "entry, part", "kitsu:anime:2": "entry, main"},
-        {"kitsu:anime:1": "entry, main, part", "kitsu:anime:2": "entry"},
-        {"kitsu:anime:1": "entry", "kitsu:anime:2": "work 2"},
-        {"kitsu:anime:1": "entry", "kitsu:anime:2": "work 1", "mal:anime:1": "entry"},
-        {"kitsu:anime:1": "entry", "kitsu:anime:2": "work 01", "mal:anime:1": "entry"},
-        {"kitsu:anime:1": "entry", "kitsu:anime:2": "maybe"},
+        {"kitsu:anime:1": "work 1"},
+        {"kitsu:anime:1": "work 1", "kitsu:anime:2": "work 1"},
+        {"kitsu:anime:1": "work 1, main", "kitsu:anime:2": "work 1, main"},
+        {"kitsu:anime:1": "work 1, main", "kitsu:anime:2": "other work"},
+        {"kitsu:anime:1": "work 1", "kitsu:anime:2": "other work, main"},
+        {"kitsu:anime:1": "work 1", "kitsu:anime:2": "other work, part"},
+        {"kitsu:anime:1": "work 1, part", "kitsu:anime:2": "work 1"},
+        {"kitsu:anime:1": "work 1, part", "kitsu:anime:2": "work 1, main"},
+        {"kitsu:anime:1": "work 1, main, part", "kitsu:anime:2": "work 1"},
+        {"kitsu:anime:1": "entry", "kitsu:anime:2": "other work"},
+        {"kitsu:anime:1": "work 0", "kitsu:anime:2": "other work"},
+        {"kitsu:anime:1": "work 1", "kitsu:anime:2": "work 2"},
+        {"kitsu:anime:1": "work 1", "kitsu:anime:2": "work 1", "mal:anime:1": "work 1"},
         {
-            "kitsu:anime:1": "entry",
-            "kitsu:anime:2": "other work",
-            "mal:anime:5": "entry",
+            "kitsu:anime:1": "work 1",
+            "kitsu:anime:2": "work 01",
+            "mal:anime:1": "work 1",
         },
-        {"kitsu:anime:1": 1, "kitsu:anime:2": ["entry"]},
+        {"kitsu:anime:1": "work 1", "kitsu:anime:2": "maybe"},
+        {
+            "kitsu:anime:1": "work 1",
+            "kitsu:anime:2": "other work",
+            "mal:anime:5": "work 1",
+        },
+        {"kitsu:anime:1": 1, "kitsu:anime:2": ["work 1"]},
     ],
 )
 def test_read_answer_placements_invalid_answer_gives_none(

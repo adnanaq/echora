@@ -3,21 +3,24 @@
 A decision covers one doubled provider: that provider's pages in one entry. A
 decision holds two separate answers:
 
-| Field | Answers |
-| -- | -- |
-| ``outcome`` | What the provider's pages are, relative to the entry. |
-| ``review_reasons`` | Why a person must check the decision; empty when nothing stops the rules. |
+Each item reads ``<field>: <what it answers>``.
+
+- ``outcome``: what the provider's pages are, relative to the entry.
+- ``review_reasons``: why a person must check the decision; empty when nothing
+  stops the rules.
 
 The rules apply a decision without a person only when the outcome is
 ``SAME_PAGE`` or ``PAGES_OF_OTHER_WORKS`` and no review reason applies. Every
 other outcome needs a person even without a review reason:
 
-| Outcome | Why a person is needed |
-| -- | -- |
-| ``DUPLICATE_PAGES`` | One of the pages has to be named the main page. |
-| ``PART_PAGES`` | Air dates and episode counts only suggest parts; they never decide. |
-| ``SEPARATE_WORKS`` | Every page of the entry has to be placed in one of the works. |
-| ``UNDECIDED`` | The links do not place every page. |
+Each item reads ``<outcome>: <why a person is needed>``.
+
+- ``DUPLICATE_PAGES``: one of the pages has to be named the main page.
+- ``PART_PAGES``: air dates and episode counts only suggest parts; they never
+  decide.
+- ``SEPARATE_WORKS``: every page of the entry has to be placed in one of the
+  works.
+- ``UNDECIDED``: the links do not place every page.
 """
 
 from collections.abc import Mapping
@@ -29,7 +32,7 @@ from pydantic import PlainSerializer
 from work_matching.work_entry import WorkEntry
 
 
-class Outcome(StrEnum):
+class DoubledProviderOutcome(StrEnum):
     """Name what a doubled provider's pages are, relative to the entry holding them."""
 
     # Every address resolves to one current key: an old address leads to the
@@ -66,7 +69,7 @@ class Outcome(StrEnum):
     UNDECIDED = "the links do not tell which work every page belongs to"
 
 
-class ReviewReason(StrEnum):
+class DoubledProviderReviewReason(StrEnum):
     """Name why a person must check a doubled-provider decision."""
 
     CURRENT_ADDRESS_MISSING = (
@@ -97,10 +100,10 @@ class ReviewReason(StrEnum):
 # Outcomes a person always checks, whatever the review reasons say.
 _ALWAYS_REVIEWED_OUTCOMES = frozenset(
     {
-        Outcome.DUPLICATE_PAGES,
-        Outcome.PART_PAGES,
-        Outcome.SEPARATE_WORKS,
-        Outcome.UNDECIDED,
+        DoubledProviderOutcome.DUPLICATE_PAGES,
+        DoubledProviderOutcome.PART_PAGES,
+        DoubledProviderOutcome.SEPARATE_WORKS,
+        DoubledProviderOutcome.UNDECIDED,
     }
 )
 
@@ -133,9 +136,9 @@ class DoubledProviderDecision:
     provider: str
     # The provider's page keys, with renamed pages resolved to their current key.
     page_keys: tuple[str, ...]
-    outcome: Outcome
-    # Every reason a person must check the decision, in ``ReviewReason`` order.
-    review_reasons: tuple[ReviewReason, ...] = ()
+    outcome: DoubledProviderOutcome
+    # Every reason a person must check the decision, in ``DoubledProviderReviewReason`` order.
+    review_reasons: tuple[DoubledProviderReviewReason, ...] = ()
     # Each belonging page's key, mapped to the keys of the entry's pages linked
     # with it.
     belonging_page_keys: Mapping[str, PageKeySet] = field(default_factory=dict)

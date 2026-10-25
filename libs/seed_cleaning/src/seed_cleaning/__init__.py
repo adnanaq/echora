@@ -2,14 +2,21 @@
 
 Seed cleaning reads the downloaded seed release, never changes it, and lists
 the entries to check: entries with a doubled provider and groups of split-work
-candidates. It fetches every page of them into the provider page store, where
-the work matching rules decide from their links, and records where each page
-of an entry with doubled providers ends up as seed corrections. It also adds
+candidates, merged into entry groups. It fetches every page of them into the
+provider page store, where the work matching rules decide from their links, and
+records where each page of an entry group ends up as seed corrections. It also adds
 the pages entries link that no seed entry holds, once checked. The library is
 deleted once discovery replaces the seed.
 """
 
+from seed_cleaning.corrected_entries import (
+    CorrectedEntry,
+    UnknownSeedEntryError,
+    build_corrected_entries,
+)
 from seed_cleaning.doubled_provider_entries import find_doubled_provider_entries
+from seed_cleaning.entry_groups import find_entry_groups
+from seed_cleaning.group_placement import correct_entry_groups
 from seed_cleaning.linked_page_additions import (
     LINK_CARRYING_PROVIDERS,
     LinkedPageCorrections,
@@ -32,12 +39,8 @@ from seed_cleaning.provider_page_fetcher import (
 )
 from seed_cleaning.seed_corrections import (
     REVIEW_ANSWER_REASON,
-    CorrectedEntry,
-    DoubledProviderCorrections,
+    PlacementCorrections,
     SeedCorrection,
-    UnknownSeedEntryError,
-    build_corrected_entries,
-    correct_doubled_provider_entries,
     write_corrections,
 )
 from seed_cleaning.split_work_candidates import (
@@ -50,7 +53,7 @@ __all__ = [
     "LINK_CARRYING_PROVIDERS",
     "REVIEW_ANSWER_REASON",
     "CorrectedEntry",
-    "DoubledProviderCorrections",
+    "PlacementCorrections",
     "FetchOutcome",
     "FetchSummary",
     "LinkedPageCorrections",
@@ -62,7 +65,8 @@ __all__ = [
     "SeedCorrection",
     "SplitWorkCandidates",
     "UnknownSeedEntryError",
-    "correct_doubled_provider_entries",
+    "correct_entry_groups",
+    "find_entry_groups",
     "correct_linked_pages",
     "find_entries_without_mal_page",
     "find_linking_seed_entries",

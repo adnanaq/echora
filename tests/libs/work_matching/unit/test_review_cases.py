@@ -6,6 +6,7 @@ import pytest
 from pydantic import ValidationError
 from work_matching import file_replacement
 from work_matching.doubled_provider_check import decide_doubled_providers
+from work_matching.entry_group import combine_group_entries
 from work_matching.known_work_entries_from_seed import KnownWorkEntriesFromSeed
 from work_matching.linked_page_check import (
     LinkedPageAddition,
@@ -15,7 +16,7 @@ from work_matching.linked_page_check import (
 from work_matching.page_placement import PagePlacement
 from work_matching.provider_page import ProviderPage
 from work_matching.review_cases import DuplicateCaseError, ReviewCase, ReviewFile
-from work_matching.split_work_check import decide_split_work
+from work_matching.split_work_check import list_split_work_review_reasons
 from work_matching.work_entry import WorkEntry
 
 SIGEWINNE = "animeplanet:anime:genshin-impact-character-teaser-sigewinne-everyday-correspondence"
@@ -30,7 +31,16 @@ def doubled_case(matching_cases) -> ReviewCase:
     decisions = decide_doubled_providers(
         entries[0], pages, KnownWorkEntriesFromSeed([])
     )
-    return ReviewCase.from_doubled_provider_entry(entries[0], decisions, pages)
+    return ReviewCase.from_entry_group([entries[0]], decisions, (), pages)
+
+
+def _build_group_case(entries, pages) -> ReviewCase:
+    decisions = decide_doubled_providers(
+        combine_group_entries(entries), pages, KnownWorkEntriesFromSeed([])
+    )
+    return ReviewCase.from_entry_group(
+        entries, decisions, list_split_work_review_reasons(entries, pages), pages
+    )
 
 
 @pytest.fixture
@@ -39,8 +49,7 @@ def split_case(linked_page, work_entry) -> ReviewCase:
         work_entry("https://myanimelist.net/anime/1"),
         work_entry("https://anilist.co/anime/1"),
     ]
-    pages = [linked_page("https://myanimelist.net/anime/1")]
-    return ReviewCase.from_split_work(decide_split_work(entries, pages), pages)
+    return _build_group_case(entries, [linked_page("https://myanimelist.net/anime/1")])
 
 
 @pytest.fixture
@@ -79,7 +88,7 @@ def linked_page_case() -> ReviewCase:
     return ReviewCase.from_linked_page(decision, [linked_page, entry_page])
 
 
-def test_review_case_from_doubled_provider_entry_names_case_by_pages_and_entry(
+def test_review_case_from_entry_group_single_entry_names_case_by_pages_and_entry(
     doubled_case,
 ) -> None:
     assert (doubled_case.case_name, doubled_case.reasons) == (
@@ -92,7 +101,7 @@ def test_review_case_from_doubled_provider_entry_names_case_by_pages_and_entry(
     assert [page.key for page in doubled_case.pages] == [SIGEWINNE, VARESA]
 
 
-def test_review_case_from_doubled_provider_entry_keeps_entry_and_searched_pages(
+def test_review_case_from_entry_group_single_entry_keeps_entry_and_searched_pages(
     linked_page, work_entry
 ) -> None:
     entry = work_entry(
@@ -113,7 +122,7 @@ def test_review_case_from_doubled_provider_entry_keeps_entry_and_searched_pages(
         found,
     ]
     decisions = decide_doubled_providers(entry, pages, KnownWorkEntriesFromSeed([]))
-    case = ReviewCase.from_doubled_provider_entry(entry, decisions, pages)
+    case = ReviewCase.from_entry_group([entry], decisions, (), pages)
     assert [page.key for page in case.pages] == [
         "https://animeschedule.net/anime/show",
         "kitsu:anime:1",
@@ -122,14 +131,14 @@ def test_review_case_from_doubled_provider_entry_keeps_entry_and_searched_pages(
     ]
 
 
-def test_review_case_from_doubled_provider_entry_one_case_for_every_provider(
+def test_review_case_from_entry_group_single_entry_one_case_for_every_provider(
     matching_cases,
 ) -> None:
     entries, pages = matching_cases["ao_haru_ride_ova"]
     decisions = decide_doubled_providers(
         entries[0], pages, KnownWorkEntriesFromSeed([])
     )
-    case = ReviewCase.from_doubled_provider_entry(entries[0], decisions, pages)
+    case = ReviewCase.from_entry_group([entries[0]], decisions, (), pages)
     assert case.case_name == (
         "doubled provider: anilist:anime:20837 anilist:anime:20900"
         " animeplanet:anime:blue-spring-ride-page-13"
@@ -138,30 +147,48 @@ def test_review_case_from_doubled_provider_entry_one_case_for_every_provider(
     assert case.reasons == ("PART_PAGES", "UNDECIDED", "UNLINKED_PAGES")
 
 
-def test_review_case_from_doubled_provider_entry_suggests_linked_places(
+def test_review_case_from_entry_group_single_entry_suggests_linked_places(
     matching_cases,
 ) -> None:
     entries, pages = matching_cases["ao_haru_ride_ova"]
     decisions = decide_doubled_providers(
         entries[0], pages, KnownWorkEntriesFromSeed([])
     )
-    case = ReviewCase.from_doubled_provider_entry(entries[0], decisions, pages)
-    assert case.suggested_answer["anilist:anime:20900"] == "entry, part"
+    case = ReviewCase.from_entry_group([entries[0]], decisions, (), pages)
+    assert case.suggested_answer["anilist:anime:20900"] == "work 1, part"
     assert "animeplanet:anime:blue-spring-ride-unwritten" not in case.suggested_answer
 
 
-def test_review_case_from_split_work_suggests_nothing(split_case) -> None:
+def test_review_case_from_entry_group_unlinked_entries_suggest_nothing(
+    split_case,
+) -> None:
     assert split_case.suggested_answer == {}
 
 
-def test_review_case_from_doubled_provider_entry_writes_linked_pages_sorted(
+def test_review_case_from_entry_group_linked_entries_suggest_one_work(
+    linked_page, work_entry
+) -> None:
+    entries = [
+        work_entry("https://myanimelist.net/anime/1"),
+        work_entry("https://anilist.co/anime/1"),
+    ]
+    pages = [
+        linked_page("https://anilist.co/anime/1", "https://myanimelist.net/anime/1")
+    ]
+    assert _build_group_case(entries, pages).suggested_answer == {
+        "mal:anime:1": "work 1",
+        "anilist:anime:1": "work 1",
+    }
+
+
+def test_review_case_from_entry_group_single_entry_writes_linked_pages_sorted(
     matching_cases,
 ) -> None:
     entries, pages = matching_cases["puu_neko"]
     decisions = decide_doubled_providers(
         entries[0], pages, KnownWorkEntriesFromSeed([])
     )
-    case = ReviewCase.from_doubled_provider_entry(entries[0], decisions, pages)
+    case = ReviewCase.from_entry_group([entries[0]], decisions, (), pages)
     written_decisions = json.loads(case.model_dump_json())["decisions"]
     assert all(
         linked_pages == sorted(linked_pages)
@@ -170,7 +197,7 @@ def test_review_case_from_doubled_provider_entry_writes_linked_pages_sorted(
     )
 
 
-def test_review_case_from_doubled_provider_entry_writes_unrelated_linked_page_keys_sorted(
+def test_review_case_from_entry_group_single_entry_writes_unrelated_linked_page_keys_sorted(
     linked_page, work_entry
 ) -> None:
     entry = work_entry(
@@ -189,13 +216,13 @@ def test_review_case_from_doubled_provider_entry_writes_unrelated_linked_page_ke
         linked_page("https://kitsu.app/anime/2", *linked_addresses),
     ]
     decisions = decide_doubled_providers(entry, pages, known_work_entries)
-    case = ReviewCase.from_doubled_provider_entry(entry, decisions, pages)
+    case = ReviewCase.from_entry_group([entry], decisions, (), pages)
     [decision] = json.loads(case.model_dump_json())["decisions"]
     written_links = decision["unrelated_pages"]["kitsu:anime:2"]["linked_page_keys"]
     assert written_links == sorted(written_links)
 
 
-def test_review_case_from_split_work_keeps_searched_pages(
+def test_review_case_from_entry_group_keeps_searched_pages(
     linked_page, work_entry
 ) -> None:
     entries = [
@@ -208,14 +235,14 @@ def test_review_case_from_split_work_keeps_searched_pages(
         searched_by_address="https://myanimelist.net/anime/1",
     )
     pages = [linked_page("https://myanimelist.net/anime/1"), found]
-    case = ReviewCase.from_split_work(decide_split_work(entries, pages), pages)
+    case = _build_group_case(entries, pages)
     assert [page.key for page in case.pages] == [
         "https://animeschedule.net/anime/show",
         "mal:anime:1",
     ]
 
 
-def test_review_case_from_split_work_keeps_renamed_page(work_entry) -> None:
+def test_review_case_from_entry_group_keeps_renamed_page(work_entry) -> None:
     old_address = "https://www.anime-planet.com/anime/old"
     entries = [work_entry(old_address), work_entry("https://myanimelist.net/anime/1")]
     renamed = ProviderPage.from_canonical_record(
@@ -225,14 +252,16 @@ def test_review_case_from_split_work_keeps_renamed_page(work_entry) -> None:
             "sources": [old_address, "https://www.anime-planet.com/anime/new"],
         },
     )
-    case = ReviewCase.from_split_work(decide_split_work(entries, [renamed]), [renamed])
+    case = _build_group_case(entries, [renamed])
     assert [page.key for page in case.pages] == ["animeplanet:anime:old"]
 
 
-def test_review_case_from_split_work_names_case_by_reference_pages(split_case) -> None:
+def test_review_case_from_entry_group_names_group_case_by_every_page(
+    split_case,
+) -> None:
     assert (split_case.case_name, split_case.reasons) == (
         "split work: anilist:anime:1 mal:anime:1",
-        ("NOT_LINKED",),
+        ("NOT_TIED_BY_LINKS",),
     )
     assert [page.key for page in split_case.pages] == ["mal:anime:1"]
 
@@ -241,18 +270,18 @@ def test_review_case_from_split_work_names_case_by_reference_pages(split_case) -
     ("answer", "placements"),
     [
         (
-            {SIGEWINNE: "entry", VARESA: "other work"},
-            {SIGEWINNE: PagePlacement("entry"), VARESA: PagePlacement("other work")},
+            {SIGEWINNE: "work 1", VARESA: "other work"},
+            {SIGEWINNE: PagePlacement("work 1"), VARESA: PagePlacement("other work")},
         ),
         (
-            {SIGEWINNE: "entry", VARESA: "work 10"},
-            {SIGEWINNE: PagePlacement("entry"), VARESA: PagePlacement("work 10")},
+            {SIGEWINNE: "work 1", VARESA: "work 10"},
+            {SIGEWINNE: PagePlacement("work 1"), VARESA: PagePlacement("work 10")},
         ),
         (
-            {SIGEWINNE: "entry, main", VARESA: "entry"},
+            {SIGEWINNE: "work 1, main", VARESA: "work 1"},
             {
-                SIGEWINNE: PagePlacement("entry", is_main_page=True),
-                VARESA: PagePlacement("entry"),
+                SIGEWINNE: PagePlacement("work 1", is_main_page=True),
+                VARESA: PagePlacement("work 1"),
             },
         ),
     ],
@@ -268,15 +297,15 @@ def test_review_case_accepted_answer_placement_for_every_page_gives_placements(
     "answer",
     [
         None,
-        {SIGEWINNE: "entry"},
-        {SIGEWINNE: "entry", VARESA: "entry"},
-        {SIGEWINNE: "entry", VARESA: "other work", "mal:anime:1": "entry"},
-        {SIGEWINNE: "entry", VARESA: "work 1"},
-        {SIGEWINNE: "entry", VARESA: "maybe"},
-        {SIGEWINNE: "entry", VARESA: "work 01"},
-        {SIGEWINNE: "entry", VARESA: "work 0"},
-        {SIGEWINNE: "entry", VARESA: "work 1٢"},
-        {SIGEWINNE: 1, VARESA: ["entry"]},
+        {SIGEWINNE: "work 1"},
+        {SIGEWINNE: "work 1", VARESA: "work 1"},
+        {SIGEWINNE: "work 1", VARESA: "other work", "mal:anime:1": "work 1"},
+        {SIGEWINNE: "work 1", VARESA: "work 1"},
+        {SIGEWINNE: "work 1", VARESA: "maybe"},
+        {SIGEWINNE: "work 1", VARESA: "work 01"},
+        {SIGEWINNE: "work 1", VARESA: "work 0"},
+        {SIGEWINNE: "work 1", VARESA: "work 1٢"},
+        {SIGEWINNE: 1, VARESA: ["work 1"]},
         "one work",
     ],
 )
@@ -289,14 +318,26 @@ def test_review_case_accepted_answer_invalid_doubled_provider_answer_gives_none(
 @pytest.mark.parametrize(
     ("answer", "accepted"),
     [
-        ("one work", "one work"),
-        ("separate works", "separate works"),
-        ("maybe", None),
-        ({"mal:anime:1": "entry"}, None),
+        (
+            {"mal:anime:1": "work 1", "anilist:anime:1": "work 1"},
+            {
+                "mal:anime:1": PagePlacement("work 1"),
+                "anilist:anime:1": PagePlacement("work 1"),
+            },
+        ),
+        (
+            {"mal:anime:1": "work 1", "anilist:anime:1": "work 2"},
+            {
+                "mal:anime:1": PagePlacement("work 1"),
+                "anilist:anime:1": PagePlacement("work 2"),
+            },
+        ),
+        ("one work", None),
+        ({"mal:anime:1": "work 1"}, None),
     ],
 )
-def test_review_case_accepted_answer_split_work_takes_one_of_two_answers(
-    split_case, answer: object, accepted: str | None
+def test_review_case_accepted_answer_entry_group_places_every_page(
+    split_case, answer: object, accepted: dict[str, PagePlacement] | None
 ) -> None:
     assert split_case.model_copy(update={"answer": answer}).accepted_answer == accepted
 
@@ -329,7 +370,7 @@ def test_review_case_from_linked_page_suggests_part_for_fewer_episodes(
             LinkedPageAddition("anilist:anime:163794", is_part_page=True),
         ),
         ({"mal:anime:65144": "skip"}, "skip"),
-        ({"mal:anime:65144": "entry"}, None),
+        ({"mal:anime:65144": "work 1"}, None),
         ("one work", None),
     ],
 )
@@ -375,11 +416,11 @@ def test_review_file_attach_kept_answer_answer_written_in_file_comes_back(
 ) -> None:
     path = tmp_path / "review.jsonl"
     ReviewFile(path).write_cases([doubled_case])
-    answer = {SIGEWINNE: "entry", VARESA: "other work"}
+    answer = {SIGEWINNE: "work 1", VARESA: "other work"}
     _answer_in_file(path, doubled_case.case_name, answer)
     kept = ReviewFile(path).attach_kept_answer(doubled_case)
     assert kept.accepted_answer == {
-        SIGEWINNE: PagePlacement("entry"),
+        SIGEWINNE: PagePlacement("work 1"),
         VARESA: PagePlacement("other work"),
     }
 
@@ -389,7 +430,9 @@ def test_review_file_attach_kept_answer_provider_gaining_page_reopens_case(
 ) -> None:
     path = tmp_path / "review.jsonl"
     ReviewFile(path).write_cases([doubled_case])
-    _answer_in_file(path, doubled_case.case_name, {SIGEWINNE: "entry", VARESA: "entry"})
+    _answer_in_file(
+        path, doubled_case.case_name, {SIGEWINNE: "work 1", VARESA: "work 1"}
+    )
     entries, pages = matching_cases["genshin_sigewinne"]
     third_page = "https://anime-planet.com/anime/genshin-impact-third-teaser"
     entry = entries[0].model_copy(
@@ -401,7 +444,7 @@ def test_review_file_attach_kept_answer_provider_gaining_page_reopens_case(
         }
     )
     decisions = decide_doubled_providers(entry, pages, KnownWorkEntriesFromSeed([]))
-    later_case = ReviewCase.from_doubled_provider_entry(entry, decisions, pages)
+    later_case = ReviewCase.from_entry_group([entry], decisions, (), pages)
     assert later_case.case_name != doubled_case.case_name
     assert ReviewFile(path).attach_kept_answer(later_case).answer is None
 
@@ -411,7 +454,9 @@ def test_review_file_attach_kept_answer_doubled_pages_in_other_entry_reopens_cas
 ) -> None:
     path = tmp_path / "review.jsonl"
     ReviewFile(path).write_cases([doubled_case])
-    _answer_in_file(path, doubled_case.case_name, {SIGEWINNE: "entry", VARESA: "entry"})
+    _answer_in_file(
+        path, doubled_case.case_name, {SIGEWINNE: "work 1", VARESA: "work 1"}
+    )
     entries, pages = matching_cases["genshin_sigewinne"]
     other_entry = entries[0].model_copy(
         update={
@@ -422,7 +467,7 @@ def test_review_file_attach_kept_answer_doubled_pages_in_other_entry_reopens_cas
     decisions = decide_doubled_providers(
         other_entry, pages, KnownWorkEntriesFromSeed([])
     )
-    moved_case = ReviewCase.from_doubled_provider_entry(other_entry, decisions, pages)
+    moved_case = ReviewCase.from_entry_group([other_entry], decisions, (), pages)
     assert moved_case.case_name != doubled_case.case_name
     assert ReviewFile(path).attach_kept_answer(moved_case).answer is None
 
@@ -432,7 +477,9 @@ def test_review_file_write_cases_answer_without_case_kept_and_reported(
 ) -> None:
     path = tmp_path / "review.jsonl"
     ReviewFile(path).write_cases([doubled_case, split_case])
-    _answer_in_file(path, doubled_case.case_name, {SIGEWINNE: "entry", VARESA: "entry"})
+    _answer_in_file(
+        path, doubled_case.case_name, {SIGEWINNE: "work 1", VARESA: "work 1"}
+    )
     unused = ReviewFile(path).write_cases([split_case])
     cases = [json.loads(line)["case_name"] for line in path.read_text().splitlines()]
     assert (unused, cases) == (
@@ -510,13 +557,13 @@ def test_review_file_blank_line_answers_read_and_line_not_written(
     path = tmp_path / "review.jsonl"
     ReviewFile(path).write_cases([doubled_case])
     _answer_in_file(
-        path, doubled_case.case_name, {SIGEWINNE: "entry", VARESA: "work 2"}
+        path, doubled_case.case_name, {SIGEWINNE: "work 1", VARESA: "work 2"}
     )
     path.write_text("\n" + path.read_text(encoding="utf-8") + "\n", encoding="utf-8")
     review = ReviewFile(path)
     kept = review.attach_kept_answer(doubled_case)
     review.write_cases([kept])
-    assert kept.answer == {SIGEWINNE: "entry", VARESA: "work 2"}
+    assert kept.answer == {SIGEWINNE: "work 1", VARESA: "work 2"}
     assert "" not in path.read_text(encoding="utf-8").splitlines()
 
 
@@ -531,11 +578,13 @@ def test_review_file_write_cases_answer_saved_after_opening_kept(
     path = tmp_path / "review.jsonl"
     ReviewFile(path).write_cases([doubled_case])
     review = ReviewFile(path)
-    _answer_in_file(path, doubled_case.case_name, {SIGEWINNE: "entry", VARESA: "entry"})
+    _answer_in_file(
+        path, doubled_case.case_name, {SIGEWINNE: "work 1", VARESA: "work 1"}
+    )
     review.write_cases([doubled_case])
     assert json.loads(path.read_text(encoding="utf-8"))["answer"] == {
-        SIGEWINNE: "entry",
-        VARESA: "entry",
+        SIGEWINNE: "work 1",
+        VARESA: "work 1",
     }
 
 
@@ -592,7 +641,9 @@ def test_review_file_case_answered_twice_logs_warning(
 ) -> None:
     path = tmp_path / "review.jsonl"
     ReviewFile(path).write_cases([doubled_case])
-    _answer_in_file(path, doubled_case.case_name, {SIGEWINNE: "entry", VARESA: "entry"})
+    _answer_in_file(
+        path, doubled_case.case_name, {SIGEWINNE: "work 1", VARESA: "work 1"}
+    )
     path.write_text(path.read_text(encoding="utf-8") * 2, encoding="utf-8")
     ReviewFile(path)
     assert doubled_case.case_name in caplog.text

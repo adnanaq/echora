@@ -8,13 +8,18 @@ from work_matching.comparable_title import fold_title_for_comparison
 from work_matching.doubled_provider_check import decide_doubled_providers
 from work_matching.doubled_provider_decision import (
     DoubledProviderDecision,
-    Outcome,
-    ReviewReason,
+    DoubledProviderOutcome,
+    DoubledProviderReviewReason,
     UnrelatedPage,
 )
 from work_matching.doubled_provider_pages import (
     find_doubled_provider_page_keys,
     get_decided_provider,
+)
+from work_matching.entry_group import (
+    combine_group_entries,
+    read_group_answer_placements,
+    suggest_group_page_placements,
 )
 from work_matching.file_replacement import replace_file_lines
 from work_matching.known_work_entries import KnownWorkEntries
@@ -38,7 +43,7 @@ from work_matching.page_details_comparison import (
     is_page_details_matching,
 )
 from work_matching.page_placement import (
-    ENTRY_WORK,
+    FIRST_WORK,
     OTHER_WORK,
     PagePlacement,
     list_placeable_page_keys,
@@ -57,14 +62,14 @@ from work_matching.provider_page_links import ProviderPageLinks
 from work_matching.provider_page_store import ProviderPageStore
 from work_matching.review_cases import DuplicateCaseError, ReviewCase, ReviewFile
 from work_matching.split_work_check import (
-    SplitWorkDecision,
-    SplitWorkReason,
-    decide_split_work,
+    SplitWorkReviewReason,
+    list_split_work_review_reasons,
 )
+from work_matching.surviving_entries import find_surviving_entries
 from work_matching.work_entry import WorkEntry
 
 __all__ = [
-    "ENTRY_WORK",
+    "FIRST_WORK",
     "OTHER_WORK",
     "SKIP_ANSWER",
     "LinkedPageAddition",
@@ -78,15 +83,14 @@ __all__ = [
     "DuplicateCaseError",
     "KnownWorkEntries",
     "KnownWorkEntriesFromSeed",
-    "Outcome",
+    "DoubledProviderOutcome",
     "ProviderPage",
     "ProviderPageLinks",
     "ProviderPageStore",
-    "ReviewReason",
+    "DoubledProviderReviewReason",
     "ReviewCase",
     "ReviewFile",
-    "SplitWorkDecision",
-    "SplitWorkReason",
+    "SplitWorkReviewReason",
     "UnrelatedPage",
     "WorkEntry",
     "read_answer_placements",
@@ -94,8 +98,12 @@ __all__ = [
     "fold_title_for_comparison",
     "decide_doubled_providers",
     "get_decided_provider",
-    "decide_split_work",
     "find_doubled_provider_page_keys",
+    "find_surviving_entries",
+    "combine_group_entries",
+    "list_split_work_review_reasons",
+    "read_group_answer_placements",
+    "suggest_group_page_placements",
     "index_pages_by_current_key",
     "get_page_provider",
     "get_page_key",

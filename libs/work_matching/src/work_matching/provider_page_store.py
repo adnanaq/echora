@@ -3,6 +3,8 @@
 The HTTP and crawler caches drop a page after about a week. Seed cleaning and
 discovery read these details again on every seed release, long after that, so
 each fetched page's details are kept in a JSON Lines file, one page per line.
+
+A real line of the file is shown in the README, under "A stored page".
 """
 
 import logging

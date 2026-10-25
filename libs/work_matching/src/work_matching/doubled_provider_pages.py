@@ -4,10 +4,13 @@ Seed cleaning lists the entries to check with ``find_doubled_provider_page_keys`
 and ``decide_doubled_providers`` decides exactly the providers it returns. The
 rules:
 
-| Rule | Reason for the rule |
-| -- | -- |
-| A provider is doubled when its pages carry more than one id. | Two pages of one provider with different ids are different pages. |
-| Simkl and AnimeCountdown count as one provider, named ``simkl``. | They number a work the same, so a Simkl page and an AnimeCountdown page with the same number are one page. |
+Each item gives the rule, then the reason for it.
+
+- A provider is doubled when its pages carry more than one id. Two pages of one
+  provider with different ids are different pages.
+- Simkl and AnimeCountdown count as one provider, named ``simkl``. They number a
+  work the same, so a Simkl page and an AnimeCountdown page with the same number
+  are one page.
 """
 
 from collections import defaultdict

@@ -5,17 +5,29 @@ entry's AniList, Kitsu or AniDB page. Each such linked page is fetched and
 checked by the work matching rules (``linked_page_check``). The page joins the
 entry linking it when the checks pass or a person's answer accepts it.
 
-| Rule | Reason for the rule |
-| -- | -- |
-| Read the links of each entry to check and each entry without a MAL page, as the doubled-provider corrections leave the entry. | A page moved to another entry is read under that entry. |
-| Leave out an entry whose doubled providers wait for a review answer. | The entry's pages are not placed yet, so a link on one of them may belong to another work. |
-| Leave out new entries built from answers. | A correction must name a seed entry. |
-| Keep only links to anime pages of providers whose pages are fetched. | Each linked page can then be checked live; other providers' pages come from seed releases. |
-| Group the linked pages by the current key their fetch reports. | One page can be linked under several spellings, such as a Kitsu slug and the Kitsu number. |
-| Give a linked page not fetched yet, or whose fetch failed, no decision. | The next run fetches the page again. |
-| Never follow an added page's own links. | Corrections are rebuilt from the downloaded seed on every run, so additions never chain. |
-| Add neither page when answers add two whole pages of one provider to one entry. | Both pages would make a doubled provider; a warning names the entry. |
-| Mark an added page the entry's anime id now comes from (`is_anime_id_page`). | Enrichment derives the id from the entry's pages, MAL first, so the search entry under the old id must be replaced. |
+Each item gives the rule, then the reason for it.
+
+- Read the links of each entry to check and each entry without a MAL page, as
+  the entry group corrections leave the entry. A page moved to another
+  entry is read under that entry.
+- Leave out an entry whose entry group waits for a review answer. The
+  entry's pages are not placed yet, so a link on one of them may belong to
+  another work.
+- Leave out new entries built from answers. A correction must name a seed entry.
+- Keep only links to anime pages of providers whose pages are fetched. Each
+  linked page can then be checked live; other providers' pages come from seed
+  releases.
+- Group the linked pages by the current key their fetch reports. One page can be
+  linked under several spellings, such as a Kitsu slug and the Kitsu number.
+- Give a linked page not fetched yet, or whose fetch failed, no decision. The
+  next run fetches the page again.
+- Never follow an added page's own links. Corrections are rebuilt from the
+  downloaded seed on every run, so additions never chain.
+- Add neither page when answers add two whole pages of one provider to one
+  entry. Both pages would make a doubled provider; a warning names the entry.
+- Mark an added page the entry's anime id now comes from (`is_anime_id_page`).
+  Enrichment derives the id from the entry's pages, MAL first, so the search
+  entry under the old id must be replaced.
 """
 
 import logging
@@ -25,6 +37,10 @@ from dataclasses import dataclass
 from typing import NamedTuple
 
 from enrichment.pipeline.link_rules import find_anime_id_page_key
+from seed_cleaning.corrected_entries import (
+    CorrectedEntry,
+    build_corrected_entries,
+)
 from seed_cleaning.linked_page_groups import (
     LinkingSeedEntry,
     group_linked_pages_by_current_key,
@@ -32,13 +48,11 @@ from seed_cleaning.linked_page_groups import (
 from seed_cleaning.provider_page_fetcher import FETCHED_PROVIDERS
 from seed_cleaning.seed_corrections import (
     REVIEW_ANSWER_REASON,
-    CorrectedEntry,
-    DoubledProviderCorrections,
+    PlacementCorrections,
     SeedCorrection,
-    build_corrected_entries,
 )
 from work_matching import (
-    ENTRY_WORK,
+    FIRST_WORK,
     KnownWorkEntries,
     LinkedPageAddition,
     LinkedPageDecision,
@@ -121,7 +135,7 @@ def find_entries_without_mal_page(entries: Iterable[WorkEntry]) -> list[WorkEntr
 
 def list_entries_with_placed_pages(
     entries: Iterable[WorkEntry],
-    doubled_provider_corrections: DoubledProviderCorrections,
+    group_corrections: PlacementCorrections,
     known_work_entries: KnownWorkEntries,
     store: ProviderPageStore,
 ) -> list[CorrectedEntry]:
@@ -129,27 +143,27 @@ def list_entries_with_placed_pages(
 
     Args:
         entries: The entries whose links to read.
-        doubled_provider_corrections: The corrections and review cases of the
-            entries with doubled providers.
+        group_corrections: The corrections and review cases of the entry
+            groups.
         known_work_entries: Every seed entry.
         store: The fetched pages.
 
     Returns:
         Each seed entry once, corrected where the corrections change it: the
         given entries in their order, then the entries pages moved into. An
-        entry with an unanswered doubled-provider case is left out, and so are
+        entry with an unanswered entry group case is left out, and so are
         new entries.
     """
     unplaced_reference_pages = {
         reference_page
-        for review_case in doubled_provider_corrections.review_cases
+        for review_case in group_corrections.review_cases
         if review_case.accepted_answer is None
         for reference_page in review_case.entries
     }
     corrected_entries = {
         corrected.seed_entry_reference_page: corrected
         for corrected in build_corrected_entries(
-            doubled_provider_corrections.corrections, known_work_entries, store
+            group_corrections.corrections, known_work_entries, store
         )
         if corrected.seed_entry_reference_page is not None
     }
@@ -181,22 +195,24 @@ def find_linking_seed_entries(
 
     Returns:
         Each linked page's key, sorted, mapped to the entries linking it. A
-        new entry, which no seed entry stands for, links nothing.
+        new entry links nothing, since no seed entry stands for it. A removed
+        entry links nothing either, since it has no pages left.
     """
     linking_seed_entries_by_page_key: defaultdict[str, list[LinkingSeedEntry]] = (
         defaultdict(list)
     )
     for corrected in entries:
-        if corrected.seed_entry_reference_page is None:
+        if (
+            corrected.seed_entry_reference_page is None
+            or (entry := corrected.entry) is None
+        ):
             continue
-        entry_pages = store.get_entry_pages(corrected.entry)
+        entry_pages = store.get_entry_pages(entry)
         linked_page_keys = find_unheld_linked_page_keys(
-            corrected.entry, entry_pages, known_work_entries, FETCHED_PROVIDERS
+            entry, entry_pages, known_work_entries, FETCHED_PROVIDERS
         )
         entry_details = LinkingEntryDetails(
-            corrected.entry,
-            get_entry_episode_count(corrected.entry, entry_pages),
-            linked_page_keys,
+            entry, get_entry_episode_count(entry, entry_pages), linked_page_keys
         )
         for key in linked_page_keys:
             linking_seed_entries_by_page_key[key].append(
@@ -413,7 +429,7 @@ def _build_addition_corrections(
             ].seed_entry_reference_page,
             page_key=page_addition.page_key,
             address=page_addition.address,
-            placement_word=ENTRY_WORK,
+            placement_word=FIRST_WORK,
             is_added_page=True,
             is_part_page=page_addition.is_part_page,
             is_anime_id_page=page_addition.page_key

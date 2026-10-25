@@ -1,35 +1,38 @@
 """Review cases: decisions the matching rules leave to a person, with their answers.
 
-Every entry the rules cannot place, every split-work group they cannot
-settle, and every linked page they cannot add on their own becomes a review
-case: one JSON line in the review file. A person, or later the review agent,
-writes the answer into the line, and the next run hands it back to the caller,
-who applies it. The rules:
+Every entry group the rules cannot place (``entry_group``) and every linked
+page they cannot add on their own becomes a review case: one JSON line in the
+review file. A person, or later the review agent, writes the answer into the
+line, and the next run hands it back to the caller, who applies it. The rules:
 
-- One case per entry: all of an entry's doubled providers are reviewed together,
-  because telling which works a mixed entry holds needs all its pages at once,
-  and because an answer's ``work 2`` then names the same work on every page.
+- One case per entry group: all the group's pages are placed together, because
+  telling which works the group holds needs all its pages at once, and because
+  an answer's ``work 2`` then names the same work on every page. Every group of
+  two or more entries is a case, since a shared title never proves one work.
 - Case name: a case is named by its kind and its sorted page keys, never by an
   entry's position, so the same case in a later seed release or discovery run
-  meets its kept answer. A doubled-provider case also names its entry's
-  reference page, because its answer places pages relative to that entry.
+  meets its kept answer. A single entry's case (``doubled provider``) names its
+  doubled pages and its reference page. A group's case (``split work``) names
+  every page of its entries, since its answer places every page.
 - Changed pages: a case whose pages changed, or whose doubled pages moved to
   another entry, gets a new name, so it is asked again.
-- Answers: a doubled-provider case's answer places pages with the words in
-  ``page_placement`` (``entry``, ``other work``, ``work 2``…, and ``, main``);
-  a split work's answer is ``one work`` or ``separate works``; a linked page's
-  answer uses the words in ``linked_page_check`` (``add``, ``add as part``,
-  either with ``to <reference page>``, and ``skip``). Any other answer leaves
-  the case open.
+- Answers: an entry group's answer places pages with the words in
+  ``page_placement`` (``work 1``, ``work 2``…, ``other work``, ``, main`` and
+  ``, part``); a linked page's answer uses the words in ``linked_page_check``
+  (``add``, ``add as part``, either with ``to <reference page>``, and
+  ``skip``). Any other answer leaves the case open.
 - Linked-page case name: the linked page and the sorted reference pages of
   the entries linking it, so a page linked from a new entry is asked again.
-- Suggested answer: a doubled-provider case carries the places its links point
+- Suggested answer: an entry group's case carries the places its links point
   to, and a linked-page case may carry ``add as part``, so a person starts from
   them rather than from nothing.
 - Kept answers: an answer whose case no longer comes up is kept as written,
   never applied, and reported.
 - Rewrite: the file is rewritten whole on each run, because people edit lines in
   place; only each line's case name and answer are read back.
+
+Real lines of the review file are shown in the README, under "Lines of the
+review file".
 """
 
 import logging
@@ -40,6 +43,10 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 from work_matching.doubled_provider_decision import DoubledProviderDecision
+from work_matching.entry_group import (
+    read_group_answer_placements,
+    suggest_group_page_placements,
+)
 from work_matching.file_replacement import replace_file_lines
 from work_matching.linked_page_check import (
     LinkedPageAddition,
@@ -47,18 +54,12 @@ from work_matching.linked_page_check import (
     read_linked_page_answer,
     suggest_linked_page_answer,
 )
-from work_matching.page_placement import (
-    PagePlacement,
-    read_answer_placements,
-    suggest_page_placements,
-)
+from work_matching.page_placement import PagePlacement
 from work_matching.provider_page import ProviderPage, index_pages_by_current_key
-from work_matching.split_work_check import SplitWorkDecision
+from work_matching.split_work_check import SplitWorkReviewReason
 from work_matching.work_entry import WorkEntry
 
 logger = logging.getLogger(__name__)
-
-_SPLIT_WORK_ANSWERS = frozenset({"one work", "separate works"})
 
 
 class ReviewCase(BaseModel):
@@ -75,23 +76,19 @@ class ReviewCase(BaseModel):
     case_name: str
     # As written in the file; ``accepted_answer`` says whether it is valid.
     answer: JsonValue = None
-    # For a doubled-provider case, the place the links point to for each page
+    # For an entry group's case, the place the links point to for each page
     # they tie to a work; for a linked-page case, ``add as part`` when the page
-    # looks like one season of its entry's work; empty for a split-work case.
+    # looks like one season of its entry's work.
     suggested_answer: dict[str, str] = {}
-    # Names, which stay when the wording changes: for a doubled-provider case,
-    # each decision's outcome followed by its review reasons; for a split work
-    # or a linked page, the decision's reason.
+    # Names, which stay when the wording changes: for an entry group's case,
+    # each decision's outcome followed by its review reasons, then the
+    # split-work review reasons; for a linked page, the decision's reason.
     reasons: tuple[str, ...]
     # Each entry involved, by its reference page.
     entries: dict[str, WorkEntry]
-    # Every doubled-provider decision of the entry, the one split-work decision
-    # of the group, or the one decision on a linked page.
-    decisions: (
-        tuple[DoubledProviderDecision, ...]
-        | tuple[SplitWorkDecision]
-        | tuple[LinkedPageDecision]
-    )
+    # Every doubled-provider decision of the group's combined entry (none when
+    # no provider is doubled), or the one decision on a linked page.
+    decisions: tuple[DoubledProviderDecision, ...] | tuple[LinkedPageDecision]
     # The entries' fetched pages and the pages searched by them, which hold
     # the links behind the decisions.
     pages: tuple[ProviderPage, ...] = ()
@@ -105,89 +102,64 @@ class ReviewCase(BaseModel):
         Returns:
             The answer, read by the case's kind:
 
-            | Case | Valid answer comes back as |
-            | -- | -- |
-            | doubled provider | Each placed page's ``PagePlacement``. |
-            | split work | ``one work`` or ``separate works``. |
-            | linked page | The ``LinkedPageAddition``, or ``skip``. |
+            Each item reads ``<case kind>: <what a valid answer comes back as>``.
+
+            - Entry group: each placed page's ``PagePlacement``.
+            - Linked page: the ``LinkedPageAddition``, or ``skip``.
 
             None when the case is open or the answer is not valid.
         """
-        answer = self.answer
-        if isinstance(linked_page_decision := self.decisions[0], LinkedPageDecision):
-            return read_linked_page_answer(answer, linked_page_decision)
-        doubled_provider_decisions = [
-            decision
-            for decision in self.decisions
-            if isinstance(decision, DoubledProviderDecision)
-        ]
-        if not doubled_provider_decisions:
-            is_valid = isinstance(answer, str) and answer in _SPLIT_WORK_ANSWERS
-            return answer if is_valid else None
-        [entry] = self.entries.values()
-        return read_answer_placements(answer, entry, doubled_provider_decisions)
-
-    @classmethod
-    def from_doubled_provider_entry(
-        cls,
-        entry: WorkEntry,
-        decisions: Sequence[DoubledProviderDecision],
-        pages: Iterable[ProviderPage],
-    ) -> Self:
-        """Make the review case for an entry whose pages the rules could not place.
-
-        Args:
-            entry: The work entry the decisions are about.
-            decisions: Every decision ``decide_doubled_providers`` made for it.
-            pages: The fetched pages; the details of the entry's pages are kept.
-        """
-        doubled_page_keys = [
-            key for decision in decisions for key in decision.page_keys
-        ]
-        return cls(
-            case_name=(
-                f"{_build_case_name('doubled provider', doubled_page_keys)}"
-                f" in {entry.reference_page}"
-            ),
-            suggested_answer=suggest_page_placements(entry, decisions),
-            reasons=tuple(
-                name
-                for decision in decisions
-                for name in (
-                    decision.outcome.name,
-                    *(reason.name for reason in decision.review_reasons),
-                )
-            ),
-            entries={entry.reference_page: entry},
-            decisions=tuple(decisions),
-            pages=_select_page_details(
-                pages, frozenset(entry.addresses_by_page_key) | set(doubled_page_keys)
-            ),
+        doubled_provider_decisions: list[DoubledProviderDecision] = []
+        for decision in self.decisions:
+            if isinstance(decision, LinkedPageDecision):
+                return read_linked_page_answer(self.answer, decision)
+            doubled_provider_decisions.append(decision)
+        return read_group_answer_placements(
+            self.answer, list(self.entries.values()), doubled_provider_decisions
         )
 
     @classmethod
-    def from_split_work(
-        cls, decision: SplitWorkDecision, pages: Iterable[ProviderPage]
+    def from_entry_group(
+        cls,
+        entries: Sequence[WorkEntry],
+        decisions: Sequence[DoubledProviderDecision],
+        split_work_review_reasons: Sequence[SplitWorkReviewReason],
+        pages: Iterable[ProviderPage],
     ) -> Self:
-        """Make the review case for split-work candidates the rules could not settle.
+        """Make the review case for an entry group whose pages the rules could not place.
 
         Args:
-            decision: The decision ``decide_split_work`` made.
-            pages: The fetched pages; the details of the entries' pages are kept.
+            entries: The group's entries: one entry with doubled providers, or
+                two or more entries that may be one split work.
+            decisions: Every decision ``decide_doubled_providers`` made for the
+                combined entry (``combine_group_entries``).
+            split_work_review_reasons: What speaks against the entries being
+                one work; empty for a single entry.
+            pages: The fetched pages; the details of the group's pages are kept.
+
+        Returns:
+            The case. A single entry's case is named by its doubled pages and
+            its reference page; a group's case by every page of its entries.
         """
-        entries = {entry.reference_page: entry for entry in decision.entries}
+        pages = tuple(pages)
+        doubled_page_keys = [
+            key for decision in decisions for key in decision.page_keys
+        ]
+        group_page_keys = [
+            key for entry in entries for key in entry.addresses_by_page_key
+        ]
         return cls(
-            case_name=_build_case_name("split work", entries),
-            reasons=(decision.reason.name,),
-            entries=entries,
-            decisions=(decision,),
+            case_name=_build_entry_group_case_name(
+                entries, doubled_page_keys, group_page_keys
+            ),
+            suggested_answer=suggest_group_page_placements(entries, decisions, pages),
+            reasons=_list_entry_group_reason_names(
+                decisions, split_work_review_reasons
+            ),
+            entries={entry.reference_page: entry for entry in entries},
+            decisions=tuple(decisions),
             pages=_select_page_details(
-                pages,
-                frozenset(
-                    key
-                    for entry in decision.entries
-                    for key in entry.addresses_by_page_key
-                ),
+                pages, frozenset(group_page_keys) | set(doubled_page_keys)
             ),
         )
 
@@ -361,6 +333,43 @@ class ReviewFile:
                     line.rstrip("\n") + "\n",
                 )
         return answers_and_lines_by_case_name
+
+
+def _build_entry_group_case_name(
+    entries: Sequence[WorkEntry],
+    doubled_page_keys: Iterable[str],
+    group_page_keys: Iterable[str],
+) -> str:
+    """Name an entry group's case.
+
+    A single entry's case names its doubled pages and its reference page, since
+    its answer places pages relative to that entry. A group's case names every
+    page of its entries, since its answer places every page.
+    """
+    if len(entries) == 1:
+        return (
+            f"{_build_case_name('doubled provider', doubled_page_keys)}"
+            f" in {entries[0].reference_page}"
+        )
+    return _build_case_name("split work", set(group_page_keys))
+
+
+def _list_entry_group_reason_names(
+    decisions: Iterable[DoubledProviderDecision],
+    split_work_review_reasons: Iterable[SplitWorkReviewReason],
+) -> tuple[str, ...]:
+    """List each decision's outcome and review reasons, then the split-work reasons."""
+    return (
+        *(
+            name
+            for decision in decisions
+            for name in (
+                decision.outcome.name,
+                *(reason.name for reason in decision.review_reasons),
+            )
+        ),
+        *(reason.name for reason in split_work_review_reasons),
+    )
 
 
 def _build_case_name(case_kind: str, page_keys: Iterable[str]) -> str:

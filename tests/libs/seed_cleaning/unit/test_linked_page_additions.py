@@ -2,6 +2,10 @@ import json
 import logging
 
 import pytest
+from seed_cleaning.corrected_entries import (
+    CorrectedEntry,
+)
+from seed_cleaning.group_placement import correct_entry_groups
 from seed_cleaning.linked_page_additions import (
     LinkedPageCorrections,
     correct_linked_pages,
@@ -9,11 +13,7 @@ from seed_cleaning.linked_page_additions import (
     find_linking_seed_entries,
     list_entries_with_placed_pages,
 )
-from seed_cleaning.seed_corrections import (
-    CorrectedEntry,
-    SeedCorrection,
-    correct_doubled_provider_entries,
-)
+from seed_cleaning.seed_corrections import SeedCorrection
 from work_matching import (
     KnownWorkEntriesFromSeed,
     ProviderPage,
@@ -182,8 +182,8 @@ def test_list_entries_with_placed_pages_corrected_entry_replaces_seed_entry(
             YAMATO_SEED_ENTRY,
         ]
     )
-    doubled_corrections = correct_doubled_provider_entries(
-        [doubled_entry], store, works, review_file
+    doubled_corrections = correct_entry_groups(
+        [[doubled_entry]], store, works, review_file
     )
     placed_entries = list_entries_with_placed_pages(
         list(works), doubled_corrections, works, store
@@ -208,8 +208,8 @@ def test_list_entries_with_placed_pages_entry_with_open_case_left_out(
             BOXER_SEED_ENTRY,
         ]
     )
-    doubled_corrections = correct_doubled_provider_entries(
-        [next(iter(works))], store, works, review_file
+    doubled_corrections = correct_entry_groups(
+        [[next(iter(works))]], store, works, review_file
     )
     placed_entries = list_entries_with_placed_pages(
         list(works), doubled_corrections, works, store
@@ -260,7 +260,7 @@ def test_correct_linked_pages_page_passing_checks_added_to_entry(
             entry_reference_page="anilist:anime:163794",
             page_key="mal:anime:65144",
             address=BOXER_MAL,
-            placement_word="entry",
+            placement_word="work 1",
             is_added_page=True,
             is_anime_id_page=True,
             reason="CHECKS_PASSED",

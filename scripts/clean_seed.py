@@ -9,12 +9,13 @@ the data folder:
   and AniDB pages of entries without a MAL page (the pages that carry links),
   and the pages they link that no seed entry holds, fetched through the
   enrichment helpers. A rerun fetches only what is not stored yet;
-- ``review.jsonl``: one case per entry the rules cannot place, and per linked
-  page they cannot add on their own, where a person writes the answer;
-  answers are kept across runs;
-- ``corrections.jsonl``: where each page of an entry with doubled providers
-  ends up, and each linked page added, from the rules or an accepted answer.
-  Rewritten on each run.
+- ``review.jsonl``: one case per entry group the rules cannot place (an
+  entry with doubled providers, or split-work candidates, merged when they
+  share an entry), and per linked page they cannot add on their own, where a
+  person writes the answer; answers are kept across runs;
+- ``corrections.jsonl``: where each page of an entry group ends up, and each
+  linked page added, from the rules or an accepted answer. Rewritten on each
+  run.
 
 AniDB caps requests per day, so a long run sets a wide gap and stops at the
 first block, and the next day's run resumes: ``ANIDB_MIN_REQUEST_INTERVAL=8``
@@ -39,23 +40,24 @@ from enrichment.pipeline.api_fetcher import ApiFetcher
 from http_cache import close_cache, configure_cache
 from seed_cleaning import (
     LINK_CARRYING_PROVIDERS,
-    DoubledProviderCorrections,
     FetchSummary,
     LinkedPageCorrections,
+    PlacementCorrections,
     ProviderPageFetcher,
     SeedCorrection,
     SplitWorkCandidates,
-    correct_doubled_provider_entries,
+    build_corrected_entries,
+    correct_entry_groups,
     correct_linked_pages,
     find_doubled_provider_entries,
     find_entries_without_mal_page,
+    find_entry_groups,
     find_linking_seed_entries,
     find_split_work_candidates,
     list_entries_with_placed_pages,
     write_corrections,
 )
 from work_matching import (
-    ENTRY_WORK,
     KnownWorkEntriesFromSeed,
     ProviderPageStore,
     ReviewCase,
@@ -142,6 +144,20 @@ def build_entries_to_check_document(
     }
 
 
+# The counts ``count_corrections`` gives, in printed order.
+CORRECTION_COUNT_NAMES = (
+    "pages kept as main page",
+    "pages kept as part page",
+    "old addresses dropped",
+    "pages moved to a seed entry",
+    "pages moved to a new entry",
+    "pages added",
+    "pages added as parts",
+    "review cases answered",
+    "review cases open",
+)
+
+
 def count_corrections(
     corrections: Iterable[SeedCorrection], review_cases: Iterable[ReviewCase]
 ) -> dict[str, int]:
@@ -149,13 +165,17 @@ def count_corrections(
 
     Each correction that changes the seed is counted once, under one of these:
 
-    | Count | Correction |
-    | -- | -- |
-    | pages added, pages added as parts | A page the entry's pages link and no seed entry holds joins the entry. |
-    | old addresses dropped | The entry also lists the page's current address. |
-    | pages moved to a seed entry, pages moved to a new entry | The page belongs to another work. |
-    | pages kept as main page | The page stays and is its provider's main page, so the page is listed first. |
-    | pages kept as part page | The page stays and covers part of its work, so enrichment combines it with the work's other parts. |
+    Each item reads ``<count names>: <correction counted>``.
+
+    - Pages added, pages added as parts: a page the entry's pages link and no
+      seed entry holds joins the entry.
+    - Old addresses dropped: the entry also lists the page's current address.
+    - Pages moved to a seed entry, pages moved to a new entry: the page
+      belongs to another work.
+    - Pages kept as main page: the page stays and is its provider's main
+      page, so the page is listed first.
+    - Pages kept as part page: the page stays and covers part of its work, so
+      enrichment combines it with the work's other parts.
 
     A page that stays in its entry, neither main page nor part page, is not counted.
 
@@ -166,17 +186,7 @@ def count_corrections(
     Returns:
         Each count by its printed name.
     """
-    counts = {
-        "pages kept as main page": 0,
-        "pages kept as part page": 0,
-        "old addresses dropped": 0,
-        "pages moved to a seed entry": 0,
-        "pages moved to a new entry": 0,
-        "pages added": 0,
-        "pages added as parts": 0,
-        "review cases answered": 0,
-        "review cases open": 0,
-    }
+    counts = dict.fromkeys(CORRECTION_COUNT_NAMES, 0)
     for correction in corrections:
         if correction.is_added_page:
             counts[
@@ -186,7 +196,7 @@ def count_corrections(
             counts["old addresses dropped"] += 1
         elif correction.target_entry_reference_page:
             counts["pages moved to a seed entry"] += 1
-        elif correction.placement_word != ENTRY_WORK:
+        elif correction.new_entry_key:
             counts["pages moved to a new entry"] += 1
         elif correction.is_main_page:
             counts["pages kept as main page"] += 1
@@ -202,8 +212,8 @@ def list_entries_to_check(
     seed_document: dict[str, Any],
     known_work_entries: KnownWorkEntriesFromSeed,
     data_dir: Path,
-) -> tuple[list[WorkEntry], list[WorkEntry]]:
-    """Write ``entries_to_check.json`` and return the entries to check.
+) -> list[tuple[WorkEntry, ...]]:
+    """Write ``entries_to_check.json`` and return the entry groups to check.
 
     Args:
         seed_document: The downloaded seed release, as read from its file.
@@ -211,8 +221,8 @@ def list_entries_to_check(
         data_dir: The folder ``entries_to_check.json`` is written to.
 
     Returns:
-        The entries with a doubled provider, and every entry of a split-work
-        candidate group.
+        The entry groups: each entry with a doubled provider and each group of
+        split-work candidates, merged when they share an entry.
     """
     doubled_provider_entries = find_doubled_provider_entries(known_work_entries)
     candidate_groups = find_split_work_candidates(known_work_entries)
@@ -231,9 +241,11 @@ def list_entries_to_check(
     print(
         f"Split-work candidate groups: {len(candidate_groups)} ({marked_group_count} marked)"
     )
-    return doubled_provider_entries, [
-        entry for group in candidate_groups for entry in group.entries
-    ]
+    entry_groups = find_entry_groups(
+        doubled_provider_entries, candidate_groups, known_work_entries
+    )
+    print(f"Entry groups: {len(entry_groups)}")
+    return entry_groups
 
 
 @asynccontextmanager
@@ -281,7 +293,7 @@ def print_fetch_summary(pages_name: str, fetch_summary: FetchSummary) -> None:
 
 async def add_linked_pages(
     entries: list[WorkEntry],
-    doubled_provider_corrections: DoubledProviderCorrections,
+    group_corrections: PlacementCorrections,
     known_work_entries: KnownWorkEntriesFromSeed,
     store: ProviderPageStore,
     page_fetcher: ProviderPageFetcher | None,
@@ -292,7 +304,7 @@ async def add_linked_pages(
     Args:
         entries: The entries whose links to read: the entries to check and the
             entries without a MAL page.
-        doubled_provider_corrections: The doubled-provider corrections and
+        group_corrections: The entry group corrections and
             review cases, which say which entries have placed pages.
         known_work_entries: Every seed entry.
         store: The provider page store.
@@ -305,7 +317,7 @@ async def add_linked_pages(
     """
     linking_seed_entries_by_page_key = find_linking_seed_entries(
         list_entries_with_placed_pages(
-            entries, doubled_provider_corrections, known_work_entries, store
+            entries, group_corrections, known_work_entries, store
         ),
         store,
         known_work_entries,
@@ -332,7 +344,7 @@ async def add_linked_pages(
 def write_results(
     data_dir: Path,
     review_file: ReviewFile,
-    doubled_provider_corrections: DoubledProviderCorrections,
+    group_corrections: PlacementCorrections,
     linked_page_corrections: LinkedPageCorrections,
 ) -> None:
     """Write the review and corrections files, and print what they hold.
@@ -340,15 +352,15 @@ def write_results(
     Args:
         data_dir: The folder ``corrections.jsonl`` is written to.
         review_file: The review file the cases are written to.
-        doubled_provider_corrections: The doubled-provider corrections and cases.
+        group_corrections: The entry group corrections and cases.
         linked_page_corrections: The linked-page corrections and cases.
     """
     review_cases = [
-        *doubled_provider_corrections.review_cases,
+        *group_corrections.review_cases,
         *linked_page_corrections.review_cases,
     ]
     corrections = [
-        *doubled_provider_corrections.corrections,
+        *group_corrections.corrections,
         *linked_page_corrections.corrections,
     ]
     unused_answer_case_names = review_file.write_cases(review_cases)
@@ -377,9 +389,10 @@ async def main() -> None:
     arguments = parse_arguments()
     seed_document = json.loads(arguments.seed_file.read_text(encoding="utf-8"))
     known_work_entries = KnownWorkEntriesFromSeed(seed_document["data"])
-    doubled_provider_entries, candidate_entries = list_entries_to_check(
+    entry_groups = list_entries_to_check(
         seed_document, known_work_entries, arguments.data_dir
     )
+    entries_to_check = [entry for entries in entry_groups for entry in entries]
     entries_without_mal_page = find_entries_without_mal_page(known_work_entries)
     print(f"Entries without a MAL page: {len(entries_without_mal_page)}")
     store = ProviderPageStore(arguments.data_dir / "provider_pages.jsonl")
@@ -390,9 +403,7 @@ async def main() -> None:
             # an entry sharing a page with another still gets its other pages.
             print_fetch_summary(
                 "Pages",
-                await page_fetcher.fetch_entry_pages(
-                    [*doubled_provider_entries, *candidate_entries]
-                ),
+                await page_fetcher.fetch_entry_pages(entries_to_check),
             )
             print_fetch_summary(
                 "Pages of entries without a MAL page",
@@ -400,23 +411,27 @@ async def main() -> None:
                     entries_without_mal_page, providers=LINK_CARRYING_PROVIDERS
                 ),
             )
-        doubled_provider_corrections = correct_doubled_provider_entries(
-            doubled_provider_entries, store, known_work_entries, review_file
+        group_corrections = correct_entry_groups(
+            entry_groups, store, known_work_entries, review_file
         )
         linked_page_corrections = await add_linked_pages(
-            [*doubled_provider_entries, *candidate_entries, *entries_without_mal_page],
-            doubled_provider_corrections,
+            [*entries_to_check, *entries_without_mal_page],
+            group_corrections,
             known_work_entries,
             store,
             page_fetcher,
             review_file,
         )
     write_results(
-        arguments.data_dir,
-        review_file,
-        doubled_provider_corrections,
-        linked_page_corrections,
+        arguments.data_dir, review_file, group_corrections, linked_page_corrections
     )
+    removed_entry_count = sum(
+        corrected.entry is None
+        for corrected in build_corrected_entries(
+            group_corrections.corrections, known_work_entries, store
+        )
+    )
+    print(f"Entries removed, every page moved out: {removed_entry_count}")
 
 
 if __name__ == "__main__":

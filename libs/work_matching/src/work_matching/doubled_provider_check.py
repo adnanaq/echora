@@ -2,15 +2,19 @@
 
 A doubled provider is an entry holding two or more pages of one provider. Each
 decision covers one doubled provider and records two things
-(``DoubledProviderDecision``): what the pages are (``Outcome``) and why a
-person must check it (``ReviewReason``). The rules:
+(``DoubledProviderDecision``): what the pages are (``DoubledProviderOutcome``) and why a
+person must check it (``DoubledProviderReviewReason``). The rules:
 
-| Rule | Reason for the rule |
-| -- | -- |
-| Links decide the outcome; titles never do. | Providers listing one work twice often vary the titles. |
-| Air dates and episode counts only tell duplicate pages from part pages. | Both outcomes always go to a person, so the details only shape the suggestion. |
-| Every review reason that applies is recorded, not only the first. | A reviewer sees every problem at once. |
-| A move to another seed entry is checked here (``MOVE_NOT_SURE``). | The decision then says by itself whether the rules can apply it. |
+Each item gives the rule, then the reason for it.
+
+- Links decide the outcome; titles never do. Providers listing one work twice
+  often vary the titles.
+- Air dates and episode counts only tell duplicate pages from part pages. Both
+  outcomes always go to a person, so the details only shape the suggestion.
+- Every review reason that applies is recorded, not only the first. A reviewer
+  sees every problem at once.
+- A move to another seed entry is checked here (``MOVE_NOT_SURE``). The decision
+  then says by itself whether the rules can apply it.
 """
 
 from collections.abc import Iterable, Mapping
@@ -19,8 +23,8 @@ from dataclasses import replace
 from work_matching.comparable_title import fold_title_for_comparison
 from work_matching.doubled_provider_decision import (
     DoubledProviderDecision,
-    Outcome,
-    ReviewReason,
+    DoubledProviderOutcome,
+    DoubledProviderReviewReason,
     UnrelatedPage,
 )
 from work_matching.doubled_provider_pages import (
@@ -108,10 +112,10 @@ class _EntryCheck:
             return DoubledProviderDecision(
                 provider,
                 current_page_keys,
-                Outcome.SAME_PAGE,
+                DoubledProviderOutcome.SAME_PAGE,
                 ()
                 if is_current_address_listed
-                else (ReviewReason.CURRENT_ADDRESS_MISSING,),
+                else (DoubledProviderReviewReason.CURRENT_ADDRESS_MISSING,),
             )
         decision = self._sort_pages_by_links(provider, current_page_keys)
         decision = replace(decision, review_reasons=self._list_review_reasons(decision))
@@ -131,12 +135,12 @@ class _EntryCheck:
 
         Each page falls in one group:
 
-        | Group | The page's links |
-        | -- | -- |
-        | belonging | link the entry's pages and no other work |
-        | unrelated | link another work and none of the entry's pages |
-        | contradicting | link the entry's pages and another work |
-        | unlinked | link neither |
+        Each item reads ``<group>: <what the page links>``.
+
+        - Belonging: the page links the entry's pages and no other work.
+        - Unrelated: the page links another work and none of the entry's pages.
+        - Contradicting: the page links the entry's pages and another work.
+        - Unlinked: the page links neither.
 
         Args:
             provider: The provider decided.
@@ -192,7 +196,7 @@ class _EntryCheck:
         self,
         belonging_page_keys: Mapping[str, frozenset[str]],
         unplaced_page_keys: tuple[str, ...],
-    ) -> Outcome:
+    ) -> DoubledProviderOutcome:
         """Name what the pages are, from the entry's pages each belonging page links.
 
         Args:
@@ -209,24 +213,24 @@ class _EntryCheck:
             shared sets give ``UNDECIDED``.
         """
         if unplaced_page_keys:
-            return Outcome.UNDECIDED
+            return DoubledProviderOutcome.UNDECIDED
         if len(belonging_page_keys) < 2:
-            return Outcome.PAGES_OF_OTHER_WORKS
+            return DoubledProviderOutcome.PAGES_OF_OTHER_WORKS
         linked_page_key_sets = list(belonging_page_keys.values())
         if frozenset.intersection(*linked_page_key_sets):
             if self._is_each_page_whole_work(list(belonging_page_keys)):
-                return Outcome.DUPLICATE_PAGES
-            return Outcome.PART_PAGES
+                return DoubledProviderOutcome.DUPLICATE_PAGES
+            return DoubledProviderOutcome.PART_PAGES
         if sum(map(len, linked_page_key_sets)) == len(
             frozenset.union(*linked_page_key_sets)
         ):
-            return Outcome.SEPARATE_WORKS
-        return Outcome.UNDECIDED
+            return DoubledProviderOutcome.SEPARATE_WORKS
+        return DoubledProviderOutcome.UNDECIDED
 
     def _list_review_reasons(
         self, decision: DoubledProviderDecision
-    ) -> tuple[ReviewReason, ...]:
-        """List every reason a person must check a decision, in ``ReviewReason`` order.
+    ) -> tuple[DoubledProviderReviewReason, ...]:
+        """List every reason a person must check a decision, in ``DoubledProviderReviewReason`` order.
 
         Args:
             decision: The decision with its outcome and page groups.
@@ -235,33 +239,44 @@ class _EntryCheck:
             Each review reason that applies; empty when none does.
         """
         is_one_work = decision.outcome in (
-            Outcome.DUPLICATE_PAGES,
-            Outcome.PART_PAGES,
+            DoubledProviderOutcome.DUPLICATE_PAGES,
+            DoubledProviderOutcome.PART_PAGES,
         )
         has_unplaced_pages = bool(
             decision.contradicting_page_keys or decision.unlinked_page_keys
         )
         reason_applies = {
-            ReviewReason.NO_PAGE_LINKED_WITH_ENTRY: (
-                decision.outcome is Outcome.PAGES_OF_OTHER_WORKS
+            DoubledProviderReviewReason.NO_PAGE_LINKED_WITH_ENTRY: (
+                decision.outcome is DoubledProviderOutcome.PAGES_OF_OTHER_WORKS
                 and not decision.belonging_page_keys
             ),
-            ReviewReason.MOVE_NOT_SURE: any(
+            DoubledProviderReviewReason.MOVE_NOT_SURE: any(
                 unrelated_page.move_target_entry is None
                 for unrelated_page in decision.unrelated_pages.values()
             ),
-            ReviewReason.DETAILS_DIFFER: is_one_work
+            DoubledProviderReviewReason.DETAILS_DIFFER: is_one_work
             and not self._is_details_matching(list(decision.belonging_page_keys)),
-            ReviewReason.CONTRADICTING_LINKS: bool(decision.contradicting_page_keys),
-            ReviewReason.UNLINKED_PAGES: bool(decision.unlinked_page_keys),
-            ReviewReason.OVERLAPPING_LINKS: decision.outcome is Outcome.UNDECIDED
+            DoubledProviderReviewReason.CONTRADICTING_LINKS: bool(
+                decision.contradicting_page_keys
+            ),
+            DoubledProviderReviewReason.UNLINKED_PAGES: bool(
+                decision.unlinked_page_keys
+            ),
+            DoubledProviderReviewReason.OVERLAPPING_LINKS: decision.outcome
+            is DoubledProviderOutcome.UNDECIDED
             and not has_unplaced_pages,
-            ReviewReason.MULTI_WORK_LINK: any(
+            DoubledProviderReviewReason.MULTI_WORK_LINK: any(
                 map(self._links.get_linking_multi_work_page_keys, decision.page_keys)
             ),
-            ReviewReason.DEAD_PAGE: any(map(self._is_dead, decision.page_keys)),
+            DoubledProviderReviewReason.DEAD_PAGE: any(
+                map(self._is_dead, decision.page_keys)
+            ),
         }
-        return tuple(reason for reason in ReviewReason if reason_applies.get(reason))
+        return tuple(
+            reason
+            for reason in DoubledProviderReviewReason
+            if reason_applies.get(reason)
+        )
 
     def _describe_unrelated_page(
         self, key: str, linked_page_keys: frozenset[str]
@@ -290,11 +305,15 @@ class _EntryCheck:
 
         The move is sure only when all of these hold, each for its own reason:
 
-        | Rule | Reason for the rule |
-        | -- | -- |
-        | The page's links name exactly one seed entry. | A link to a page outside the seed most often points to a page the provider has deleted, kept in a stale mapping. |
-        | That entry holds no page of the same provider. | The move would make a new doubled provider. |
-        | The page's year and type agree with that entry's. | A disagreement shows the mapping itself may be wrong. |
+        Each item gives the rule, then the reason for it.
+
+        - The page's links name exactly one seed entry. A link to a page
+          outside the seed most often points to a page the provider has
+          deleted, kept in a stale mapping.
+        - That entry holds no page of the same provider. Otherwise the move
+          would make a new doubled provider.
+        - The page's year and type agree with that entry's. A disagreement
+          shows the mapping itself may be wrong.
 
         The same target takes a page a review answer sends to ``other work``,
         so an answer cannot make a doubled provider either.

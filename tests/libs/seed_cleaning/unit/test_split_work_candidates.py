@@ -48,6 +48,41 @@ def test_find_split_work_candidates_entries_sharing_two_providers_dropped_and_lo
     assert any("Hanasaka" in message for message in caplog.messages)
 
 
+def test_find_split_work_candidates_entries_sharing_mal_dropped_and_logged(
+    caplog,
+) -> None:
+    works = KnownWorkEntriesFromSeed(
+        [
+            {
+                "title": "Show",
+                "type": "TV",
+                "sources": [f"https://myanimelist.net/anime/{number}"],
+            }
+            for number in (1, 2)
+        ]
+    )
+    with caplog.at_level(logging.WARNING):
+        assert find_split_work_candidates(works) == []
+    assert any("mal" in message for message in caplog.messages)
+
+
+def test_find_split_work_candidates_entries_listing_same_page_marked_with_provider() -> (
+    None
+):
+    shared_kitsu = "https://kitsu.app/anime/7"
+    works = KnownWorkEntriesFromSeed(
+        [
+            {"title": "Twin", "type": "TV", "sources": [address, shared_kitsu]}
+            for address in (
+                "https://myanimelist.net/anime/5",
+                "https://anilist.co/anime/5",
+            )
+        ]
+    )
+    [candidates] = find_split_work_candidates(works)
+    assert candidates.shared_provider == "kitsu"
+
+
 def test_find_split_work_candidates_seasons_far_apart_not_grouped(seed_works) -> None:
     assert "gelpiyo" not in _candidates_by_title(seed_works)
 

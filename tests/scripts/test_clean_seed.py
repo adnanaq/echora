@@ -60,16 +60,16 @@ def _correction(page_key: str, placement_word: str, **fields) -> SeedCorrection:
 
 def test_count_corrections_counts_each_change_once() -> None:
     corrections = (
-        _correction("kitsu:anime:1", "entry"),
-        _correction("kitsu:anime:2", "entry", is_main_page=True),
-        _correction("kitsu:anime:6", "entry", is_part_page=True),
-        _correction("kitsu:anime:3", "entry", renamed_to="kitsu:anime:2"),
+        _correction("kitsu:anime:1", "work 1"),
+        _correction("kitsu:anime:2", "work 1", is_main_page=True),
+        _correction("kitsu:anime:6", "work 1", is_part_page=True),
+        _correction("kitsu:anime:3", "work 1", renamed_to="kitsu:anime:2"),
         _correction(
             "kitsu:anime:4", "other work", target_entry_reference_page="mal:anime:9"
         ),
-        _correction("kitsu:anime:5", "work 2"),
-        _correction("mal:anime:2", "entry", is_added_page=True),
-        _correction("anidb:anime:2", "entry", is_added_page=True, is_part_page=True),
+        _correction("kitsu:anime:5", "work 2", new_entry_key="mal:anime:1 work 2"),
+        _correction("mal:anime:2", "work 1", is_added_page=True),
+        _correction("anidb:anime:2", "work 1", is_added_page=True, is_part_page=True),
     )
     assert count_corrections(corrections, ()) == {
         "pages kept as main page": 1,
