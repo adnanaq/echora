@@ -28,13 +28,14 @@ Each item gives the rule, then the reason for it.
   and every merged entry would lose its anime id.
 """
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 
 from pydantic import JsonValue
 from work_matching.doubled_provider_decision import DoubledProviderDecision
 from work_matching.page_placement import (
     OTHER_WORK,
     PagePlacement,
+    find_page_placement,
     read_answer_placements,
     read_placement,
     suggest_page_placements,
@@ -126,6 +127,7 @@ def read_group_answer_placements(
     answer: JsonValue,
     entries: Sequence[WorkEntry],
     decisions: Sequence[DoubledProviderDecision],
+    current_key_by_page_key: Mapping[str, str] | None = None,
 ) -> dict[str, PagePlacement] | None:
     """Read a review answer for a group into each page's place, when it is valid.
 
@@ -133,6 +135,8 @@ def read_group_answer_placements(
         answer: The answer as written: each page key mapped to its place.
         entries: The group's entries.
         decisions: The doubled-provider decisions of the combined entry.
+        current_key_by_page_key: Each renamed page's current key, by the key an
+            entry lists it under, since a doubled page is placed under it.
 
     Returns:
         Each placed page's place, or None when the answer breaks a placement
@@ -147,9 +151,12 @@ def read_group_answer_placements(
     )
     if placements is None or not is_entry_group:
         return placements
-    surviving_reference_pages = find_surviving_entries(entries, placements)
+    current_key_by_page_key = current_key_by_page_key or {}
+    surviving_reference_pages = find_surviving_entries(
+        entries, placements, current_key_by_page_key
+    )
     for placement_word, listing_reference_pages in _list_entries_per_work(
-        entries, placements
+        entries, placements, current_key_by_page_key
     ).items():
         if (
             len(listing_reference_pages) > 1
@@ -194,19 +201,22 @@ def _suggest_unlinked_entry_pages(
 
 
 def _list_entries_per_work(
-    entries: Sequence[WorkEntry], placements: dict[str, PagePlacement]
+    entries: Sequence[WorkEntry],
+    placements: dict[str, PagePlacement],
+    current_key_by_page_key: Mapping[str, str],
 ) -> dict[str, set[str]]:
     """Return the reference pages of the entries listing pages in each work.
 
-    A page placed by a current key no entry lists, as a renamed doubled page
-    is, counts for no entry; the entry lists the page under its old key.
+    A renamed page counts for the entry listing it under its old key.
     """
     listing_reference_pages_by_work: dict[str, set[str]] = {}
     for entry in entries:
         for page_key in entry.addresses_by_page_key:
-            placement = placements.get(page_key)
-            if placement and placement.placement_word != OTHER_WORK:
+            placed_page = find_page_placement(
+                page_key, placements, current_key_by_page_key
+            )
+            if placed_page and placed_page.placement.placement_word != OTHER_WORK:
                 listing_reference_pages_by_work.setdefault(
-                    placement.placement_word, set()
+                    placed_page.placement.placement_word, set()
                 ).add(entry.reference_page)
     return listing_reference_pages_by_work

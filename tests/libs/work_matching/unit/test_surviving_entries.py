@@ -84,3 +84,18 @@ def test_find_surviving_entries_only_part_reference_pages_most_trusted_part_surv
         "mal:anime:1": PagePlacement("work 1", is_part_page=True),
     }
     assert find_surviving_entries(entries, placements) == {"work 1": "mal:anime:1"}
+
+
+def test_find_surviving_entries_renamed_reference_page_found_by_current_key(
+    work_entry,
+) -> None:
+    entries = [work_entry("https://www.anime-planet.com/anime/old-name", ANN)]
+    placements = {
+        "animeplanet:anime:new-name": PagePlacement("work 2"),
+        "ann:anime:1": PagePlacement("work 1"),
+    }
+    assert find_surviving_entries(
+        entries,
+        placements,
+        {"animeplanet:anime:old-name": "animeplanet:anime:new-name"},
+    ) == {"work 2": "animeplanet:anime:old-name"}

@@ -17,7 +17,7 @@ line, and the next run hands it back to the caller, who applies it. The rules:
 - Changed pages: a case whose pages changed, or whose doubled pages moved to
   another entry, gets a new name, so it is asked again.
 - Answers: an entry group's answer places pages with the words in
-  ``page_placement`` (``work 1``, ``work 2``…, ``other work``, ``, main`` and
+  ``page_placement`` (``work 1``, ``work 2`` and so on, ``other work``, ``, main`` and
   ``, part``); a linked page's answer uses the words in ``linked_page_check``
   (``add``, ``add as part``, either with ``to <reference page>``, and
   ``skip``). Any other answer leaves the case open.
@@ -115,7 +115,10 @@ class ReviewCase(BaseModel):
                 return read_linked_page_answer(self.answer, decision)
             doubled_provider_decisions.append(decision)
         return read_group_answer_placements(
-            self.answer, list(self.entries.values()), doubled_provider_decisions
+            self.answer,
+            list(self.entries.values()),
+            doubled_provider_decisions,
+            {page.key: page.renamed_to for page in self.pages if page.renamed_to},
         )
 
     @classmethod

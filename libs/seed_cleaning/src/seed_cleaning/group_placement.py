@@ -36,6 +36,7 @@ from work_matching import (
     WorkEntry,
     combine_group_entries,
     decide_doubled_providers,
+    find_page_placement,
     find_surviving_entries,
     list_split_work_review_reasons,
     place_pages_without_review,
@@ -133,12 +134,15 @@ def _place_entry_group(
             return None, review_case
         placements = accepted_placements
         reason_by_page_key = dict.fromkeys(placements, REVIEW_ANSWER_REASON)
+    current_key_by_page_key = {
+        page.key: page.renamed_to for page in pages if page.renamed_to
+    }
     group_placement = _GroupPlacement(
         combined_entry,
         placements,
         reason_by_page_key,
-        find_surviving_entries(entries, placements),
-        {page.key: page.renamed_to for page in pages if page.renamed_to},
+        find_surviving_entries(entries, placements, current_key_by_page_key),
+        current_key_by_page_key,
         _find_target_reference_pages(decisions),
     )
     return group_placement, review_case
@@ -175,17 +179,19 @@ def _build_entry_corrections(
     """
     corrections: list[SeedCorrection] = []
     for key, address in entry.addresses_by_page_key.items():
-        placed_key_and_placement = _find_placement(
-            key,
-            group_placement.current_key_by_page_key.get(key, key),
-            group_placement.placements,
+        placed_page = find_page_placement(
+            key, group_placement.placements, group_placement.current_key_by_page_key
         )
-        if placed_key_and_placement is None:
+        if placed_page is None:
             continue
-        current_key, placement = placed_key_and_placement
         corrections.append(
             _build_seed_correction(
-                entry, key, address, current_key, placement, group_placement
+                entry,
+                key,
+                address,
+                placed_page.placed_key,
+                placed_page.placement,
+                group_placement,
             )
         )
     return corrections
@@ -299,17 +305,3 @@ def _find_target_reference_pages(
         for key, unrelated_page in decision.unrelated_pages.items()
         if unrelated_page.move_target_entry is not None
     }
-
-
-def _find_placement(
-    key: str, current_key: str, placements: Mapping[str, PagePlacement]
-) -> tuple[str, PagePlacement] | None:
-    """Return a page's place and the key it was found by, or None if it has none.
-
-    Decisions name a doubled page by its current key, and answers name any
-    other page by the key the entry lists, so both are tried.
-    """
-    for placed_key in (current_key, key):
-        if placed_key in placements:
-            return placed_key, placements[placed_key]
-    return None

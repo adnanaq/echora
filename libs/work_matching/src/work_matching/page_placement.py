@@ -55,8 +55,9 @@ A suggested answer is made for the reviewer this way:
 
 import re
 from collections import defaultdict
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from typing import NamedTuple
 
 from networkx.utils import UnionFind
 from pydantic import JsonValue
@@ -90,7 +91,7 @@ _PLACEMENT_ANSWER_TEXT = re.compile(
 class PagePlacement:
     """Hold where one page goes: its work, and whether it is a main or part page."""
 
-    # ``work 1``, ``work 2``… or ``other work``.
+    # ``work 1``, ``work 2`` and so on, or ``other work``.
     placement_word: str
     is_main_page: bool = False
     is_part_page: bool = False
@@ -99,6 +100,40 @@ class PagePlacement:
     def is_later_work(self) -> bool:
         """Report whether the place is ``work 2`` or later, a second or later work."""
         return self.placement_word not in (FIRST_WORK, OTHER_WORK)
+
+
+class PlacedPage(NamedTuple):
+    """A page's placement, and the key it was placed under."""
+
+    placed_key: str
+    placement: PagePlacement
+
+
+def find_page_placement(
+    page_key: str,
+    placements: Mapping[str, PagePlacement],
+    current_key_by_page_key: Mapping[str, str],
+) -> PlacedPage | None:
+    """Find a page's placement under its current key, else under the key listed.
+
+    Decisions name a doubled page by its current key, and answers name any
+    other page by the key the entry lists, so both are tried, the current key
+    first.
+
+    Args:
+        page_key: The key an entry lists the page under.
+        placements: Each placed page's placement, by the key it was placed under.
+        current_key_by_page_key: Each renamed page's current key, by the key an
+            entry lists it under.
+
+    Returns:
+        The placement and the key it was found under, or None when the page
+        has no placement.
+    """
+    for placed_key in (current_key_by_page_key.get(page_key, page_key), page_key):
+        if placed_key in placements:
+            return PlacedPage(placed_key, placements[placed_key])
+    return None
 
 
 def place_pages_without_review(

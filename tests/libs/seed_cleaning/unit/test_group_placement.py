@@ -2,8 +2,10 @@ import pytest
 from seed_cleaning.corrected_entries import (
     build_corrected_entries,
 )
+from seed_cleaning.entry_groups import find_entry_groups
 from seed_cleaning.group_placement import correct_entry_groups
 from seed_cleaning.seed_corrections import SeedCorrection
+from seed_cleaning.split_work_candidates import find_split_work_candidates
 from work_matching import (
     KnownWorkEntriesFromSeed,
     ProviderPage,
@@ -473,3 +475,81 @@ def test_correct_entry_groups_reference_page_marked_part_keeps_entry_whole(
         "kitsu:anime:2",
         "animeplanet:anime:show",
     ]
+
+
+def test_correct_entry_groups_renamed_reference_page_in_later_work_keeps_entry(
+    store, tmp_path
+) -> None:
+    ann_one = "https://animenewsnetwork.com/encyclopedia/anime.php?id=1"
+    ann_two = "https://animenewsnetwork.com/encyclopedia/anime.php?id=2"
+    simkl = "https://simkl.com/anime/1"
+    works = KnownWorkEntriesFromSeed(
+        [_seed_entry("Show", OLD_PLANET, NEW_PLANET, ann_one, ann_two, simkl)]
+    )
+    entry = next(iter(works))
+    store.add_pages(
+        _page(OLD_PLANET, sources=[OLD_PLANET, NEW_PLANET]), _page(NEW_PLANET)
+    )
+    path = tmp_path / "review.jsonl"
+    [case] = _correct(entry, store, works, ReviewFile(path)).review_cases
+    answer = {
+        "animeplanet:anime:new-name": "work 2",
+        "ann:anime:1": "work 1",
+        "ann:anime:2": "work 2",
+        "simkl:anime:1": "work 1",
+    }
+    path.write_text(
+        case.model_copy(update={"answer": answer}).model_dump_json() + "\n",
+        encoding="utf-8",
+    )
+    corrections = _correct(entry, store, works, ReviewFile(path)).corrections
+    assert [
+        (
+            corrected.seed_entry_reference_page,
+            None
+            if corrected.entry is None
+            else list(corrected.entry.addresses_by_page_key),
+        )
+        for corrected in build_corrected_entries(corrections, works, store)
+    ] == [
+        ("animeplanet:anime:old-name", ["animeplanet:anime:new-name", "ann:anime:2"]),
+        (None, ["ann:anime:1", "simkl:anime:1"]),
+    ]
+
+
+def test_correct_entry_groups_doubled_entry_also_split_work_candidate_gives_one_group_case(
+    store, review_file
+) -> None:
+    ann = "https://animenewsnetwork.com/encyclopedia/anime.php?id=1"
+    works = KnownWorkEntriesFromSeed(
+        [_seed_entry("Show", MAL, KITSU_ONE, KITSU_TWO), _seed_entry("Show", ann)]
+    )
+    doubled_entry = next(iter(works))
+    entry_groups = find_entry_groups(
+        [doubled_entry], find_split_work_candidates(works), works
+    )
+    placed = correct_entry_groups(entry_groups, store, works, review_file)
+    assert placed.corrections == ()
+    assert [case.case_name for case in placed.review_cases] == [
+        "split work: ann:anime:1 kitsu:anime:1 kitsu:anime:2 mal:anime:1"
+    ]
+
+
+def test_correct_entry_groups_answer_with_two_mal_pages_in_one_work_left_open(
+    store, tmp_path
+) -> None:
+    works = KnownWorkEntriesFromSeed(
+        [_seed_entry("Show", MAL), _seed_entry("Show", TARGET_MAL)]
+    )
+    path = tmp_path / "review.jsonl"
+    [case] = correct_entry_groups(
+        [list(works)], store, works, ReviewFile(path)
+    ).review_cases
+    answer = {"mal:anime:1": "work 1", "mal:anime:9": "work 1"}
+    path.write_text(
+        case.model_copy(update={"answer": answer}).model_dump_json() + "\n",
+        encoding="utf-8",
+    )
+    placed = correct_entry_groups([list(works)], store, works, ReviewFile(path))
+    assert placed.corrections == ()
+    assert [case.accepted_answer for case in placed.review_cases] == [None]
