@@ -58,10 +58,12 @@ _ID_FILTERS = (
 )
 _ANIME_ID = re.compile(r"/anime/(\d+)")
 
-# AnimSchedule answers 404 when no anime has the ID and 500 when a title search
-# finds nothing; any other error is a real failure.
+# AnimSchedule answers 404 when no anime has the ID. A title search that finds
+# nothing answers 404 too ("Couldn't find anime with these parameters."); it
+# used to answer 500, so 500 still counts as no match. Any other error is a
+# real failure.
 _ID_NOT_FOUND_STATUSES = frozenset({404})
-_TITLE_NOT_FOUND_STATUSES = frozenset({500})
+_TITLE_NOT_FOUND_STATUSES = frozenset({404, 500})
 
 
 def _page_address(url: str) -> str:
