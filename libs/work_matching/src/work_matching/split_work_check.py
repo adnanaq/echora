@@ -1,12 +1,23 @@
-"""Decide whether separate seed entries are one split work.
+"""Check what speaks against separate seed entries being one split work.
 
-Entries are one work only when links tie every entry to the others and their
-types and years agree. A shared title alone is never enough: remakes, music
-videos and short films reuse titles.
+A split work is one work the seed lists as two or more entries. Every group of
+such candidate entries goes to a person, because a shared title alone never
+proves one work: remakes, music videos and short films reuse titles. The checks
+only tell the reviewer what speaks against merging the group.
+
+Each item reads ``<review reason>: <what it means>``.
+
+- ``NOT_TIED_BY_LINKS``: links between the entries' pages do not connect every
+  entry. A page two entries both list does not tie them, since it may be a page
+  wrongly added to one of them.
+- ``TYPE_DIFFERS``: the entries' types differ.
+- ``YEAR_DIFFERS``: the entries' years differ.
+
+Every reason that applies is listed, not only the first, so a reviewer sees
+every problem at once.
 """
 
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
 from enum import StrEnum
 from itertools import chain
 
@@ -15,63 +26,48 @@ from work_matching.provider_page_links import ProviderPageLinks
 from work_matching.work_entry import WorkEntry, is_type_matching, is_year_matching
 
 
-class SplitWorkReason(StrEnum):
-    """Why candidate entries are or are not one work."""
+class SplitWorkReviewReason(StrEnum):
+    """What speaks against candidate entries being one work."""
 
-    LINKED = "links connect every entry, and their types and years agree"
-    TOO_FEW_ENTRIES = "fewer than two entries were given, so there is nothing to join"
-    NOT_LINKED = "links do not connect every entry"
-    TYPE_DIFFERS = "links connect every entry, but their types differ"
-    YEAR_DIFFERS = (
-        "links connect every entry and their types agree, but their years differ"
-    )
+    NOT_TIED_BY_LINKS = "links do not connect every entry"
+    TYPE_DIFFERS = "the entries' types differ"
+    YEAR_DIFFERS = "the entries' years differ"
 
 
-@dataclass(frozen=True, slots=True)
-class SplitWorkDecision:
-    """Whether candidate entries are one work, and why."""
-
-    entries: tuple[WorkEntry, ...]
-    reason: SplitWorkReason
-
-    @property
-    def is_one_work(self) -> bool:
-        """Whether the entries are one work; otherwise they go to review."""
-        return self.reason is SplitWorkReason.LINKED
-
-
-def decide_split_work(
+def list_split_work_review_reasons(
     entries: Sequence[WorkEntry], pages: Iterable[ProviderPage]
-) -> SplitWorkDecision:
-    """Decide whether candidate entries are one split work.
+) -> tuple[SplitWorkReviewReason, ...]:
+    """List what speaks against candidate entries being one split work.
 
     Args:
         entries: The candidate entries, such as entries sharing a title.
         pages: Details of the entries' fetched pages.
 
     Returns:
-        The decision, with the first check that failed as its reason: links
-        first, then type, then year.
+        Every review reason that applies, in ``SplitWorkReviewReason`` order;
+        empty when nothing does or fewer than two entries are given.
     """
-    entries = tuple(entries)
     if len(entries) < 2:
-        return SplitWorkDecision(entries, SplitWorkReason.TOO_FEW_ENTRIES)
+        return ()
     links = ProviderPageLinks(
         pages, chain.from_iterable(entry.addresses_by_page_key for entry in entries)
     )
-    if not _is_tied_together(
-        [
-            frozenset(map(links.get_current_key, entry.addresses_by_page_key))
-            for entry in entries
-        ],
-        links,
-    ):
-        return SplitWorkDecision(entries, SplitWorkReason.NOT_LINKED)
-    if not is_type_matching(*(entry.type for entry in entries)):
-        return SplitWorkDecision(entries, SplitWorkReason.TYPE_DIFFERS)
-    if not is_year_matching(*(entry.year for entry in entries)):
-        return SplitWorkDecision(entries, SplitWorkReason.YEAR_DIFFERS)
-    return SplitWorkDecision(entries, SplitWorkReason.LINKED)
+    reason_applies = {
+        SplitWorkReviewReason.NOT_TIED_BY_LINKS: not _is_tied_together(
+            [
+                frozenset(map(links.get_current_key, entry.addresses_by_page_key))
+                for entry in entries
+            ],
+            links,
+        ),
+        SplitWorkReviewReason.TYPE_DIFFERS: not is_type_matching(
+            *(entry.type for entry in entries)
+        ),
+        SplitWorkReviewReason.YEAR_DIFFERS: not is_year_matching(
+            *(entry.year for entry in entries)
+        ),
+    }
+    return tuple(reason for reason in SplitWorkReviewReason if reason_applies[reason])
 
 
 def _is_tied_together(
@@ -86,6 +82,9 @@ def _is_tied_together(
     Args:
         entry_page_keys: Each candidate entry's current page keys.
         links: The links between all the candidate entries' pages.
+
+    Returns:
+        True when the walk reaches every entry.
     """
     reached_entries = {0}
     entries_to_visit = [0]

@@ -1,7 +1,9 @@
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 from enrichment.pipeline.api_fetcher import ApiFetcher
+from seed_cleaning import provider_page_fetcher
 from seed_cleaning.provider_page_fetcher import FetchOutcome, ProviderPageFetcher
 from work_matching import ProviderPageStore, WorkEntry
 
@@ -40,6 +42,8 @@ class ScriptedApiFetcher(ApiFetcher):
         self.requests.append((service, ids, offline_data))
         self.api_errors = {}
         answer = self.answers.get((service, next(iter(ids.values()))))
+        if isinstance(answer, list):
+            answer = answer.pop(0)
         if isinstance(answer, Exception):
             self.api_errors[service] = str(answer)
             return {service: None}
@@ -98,6 +102,42 @@ async def test_fetch_entry_pages_failed_fetch_not_stored_and_reported(
     assert summary.errors_by_request_label == {"kitsu:anime:12": "HTTP 503"}
 
 
+async def test_fetch_entry_pages_failed_page_retried_after_queue_and_stored(
+    tmp_path,
+) -> None:
+    other_kitsu = "https://kitsu.app/anime/13"
+    fetcher, api_fetcher = _fetcher(
+        tmp_path,
+        {
+            ("kitsu", KITSU): [RuntimeError("HTTP 503"), {"title": "One Piece"}],
+            ("kitsu", other_kitsu): {"title": "One Piece Film"},
+        },
+    )
+    summary = await fetcher.fetch_entry_pages([_one_piece(KITSU, other_kitsu)])
+    assert [ids["kitsu_url"] for _, ids, _ in api_fetcher.requests] == [
+        KITSU,
+        other_kitsu,
+        KITSU,
+    ]
+    assert "kitsu:anime:12" in ProviderPageStore(tmp_path / "pages.jsonl")
+    assert (summary.outcomes, summary.errors_by_request_label) == (
+        {FetchOutcome.FETCHED: 2},
+        {},
+    )
+
+
+async def test_fetch_entry_pages_page_failing_retry_reported_once(tmp_path) -> None:
+    fetcher, api_fetcher = _fetcher(
+        tmp_path, {("kitsu", KITSU): RuntimeError("HTTP 503")}
+    )
+    summary = await fetcher.fetch_entry_pages([_one_piece(KITSU)])
+    assert len(api_fetcher.requests) == 2
+    assert (summary.outcomes, summary.errors_by_request_label) == (
+        {FetchOutcome.FAILED: 1},
+        {"kitsu:anime:12": "HTTP 503"},
+    )
+
+
 @pytest.mark.parametrize(
     "unexpected_answer",
     [HelperPayload(anime=None, characters=[]), HelperPayload(), SERVICE_NOT_RUN],
@@ -146,6 +186,27 @@ async def test_fetch_entry_pages_animeschedule_found_through_mal_page(
         {"mal_url": MAL},
         {"title": "One Piece", "sources": [MAL]},
     ) in (api_fetcher.requests)
+
+
+async def test_fetch_entry_pages_retried_search_waits_search_gap(tmp_path) -> None:
+    api_fetcher = ScriptedApiFetcher(
+        {
+            ("mal", MAL): {"title": "One Piece"},
+            ("animeschedule", MAL): [
+                RuntimeError("HTTP 503"),
+                {"title": "One Piece", "sources": [SCHEDULE, MAL]},
+            ],
+        }
+    )
+    fetcher = ProviderPageFetcher(
+        lambda: api_fetcher,
+        ProviderPageStore(tmp_path / "pages.jsonl"),
+        seconds_between_page_searches=3,
+    )
+    with patch.object(provider_page_fetcher.asyncio, "sleep", autospec=True) as sleep:
+        summary = await fetcher.fetch_entry_pages([_one_piece(MAL)])
+    assert [call.args for call in sleep.call_args_list] == [(3,)]
+    assert summary.outcomes == {FetchOutcome.FETCHED: 2}
 
 
 async def test_fetch_entry_pages_animeschedule_search_done_not_repeated(

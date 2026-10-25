@@ -58,10 +58,11 @@ _ID_FILTERS = (
 )
 _ANIME_ID = re.compile(r"/anime/(\d+)")
 
-# AnimSchedule answers 404 when no anime has the ID and 500 when a title search
-# finds nothing; any other error is a real failure.
-_ID_NOT_FOUND_STATUSES = frozenset({404})
-_TITLE_NOT_FOUND_STATUSES = frozenset({500})
+# AnimSchedule answers 404 when no anime has the ID, and when a title search
+# finds nothing ("Couldn't find anime with these parameters."). Any other
+# status, a 500 included, is a real failure, so a server error is never taken
+# for a missing anime.
+_NOT_FOUND_STATUSES = frozenset({404})
 
 
 def _page_address(url: str) -> str:
@@ -191,9 +192,7 @@ class AnimescheduleHelper(BaseEnrichmentHelper):
         for url_key, id_filter in _ID_FILTERS:
             source_url = ids.get(url_key) or ""
             if match := _ANIME_ID.search(source_url):
-                candidates = await self._query(
-                    {id_filter: match.group(1)}, _ID_NOT_FOUND_STATUSES
-                )
+                candidates = await self._query({id_filter: match.group(1)})
                 if found := _match_by_sources(candidates, [source_url]):
                     return found
         return None
@@ -211,7 +210,7 @@ class AnimescheduleHelper(BaseEnrichmentHelper):
         """
         if not title:
             return None
-        candidates = await self._query({"q": title}, _TITLE_NOT_FOUND_STATUSES)
+        candidates = await self._query({"q": title})
         raw_data = (
             _match_by_sources(candidates, sources)
             if sources
@@ -221,14 +220,11 @@ class AnimescheduleHelper(BaseEnrichmentHelper):
             logger.warning(f"AnimSchedule has no anime matching: {title}")
         return raw_data
 
-    async def _query(
-        self, params: dict[str, str], not_found_statuses: frozenset[int]
-    ) -> list[dict]:
+    async def _query(self, params: dict[str, str]) -> list[dict]:
         """Query AnimSchedule's anime list.
 
         Args:
             params: Filter or search parameters.
-            not_found_statuses: Statuses that mean no anime matched.
 
         Returns:
             The anime found; empty when there is no match.
@@ -240,7 +236,7 @@ class AnimescheduleHelper(BaseEnrichmentHelper):
         try:
             async with self._cache.get_aiohttp_session("animeschedule") as session:
                 async with session.get(_ANIME_LIST_URL, params=params) as response:
-                    if response.status in not_found_statuses:
+                    if response.status in _NOT_FOUND_STATUSES:
                         return []
                     response.raise_for_status()
                     found = await response.json()

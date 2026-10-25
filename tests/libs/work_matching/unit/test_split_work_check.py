@@ -1,93 +1,83 @@
 import pytest
-from work_matching.split_work_check import SplitWorkReason, decide_split_work
+from work_matching.split_work_check import (
+    SplitWorkReviewReason,
+    list_split_work_review_reasons,
+)
+
+MAL = "https://myanimelist.net/anime/1"
+ANILIST = "https://anilist.co/anime/1"
+KITSU = "https://kitsu.app/anime/1"
 
 
-def test_decide_split_work_linked_entries_one_work(matching_cases) -> None:
+def test_list_split_work_review_reasons_linked_entries_give_none(
+    matching_cases,
+) -> None:
     entries, pages = matching_cases["cue"]
-    decision = decide_split_work(entries, pages)
-    assert (decision.is_one_work, decision.reason) == (True, SplitWorkReason.LINKED)
+    assert list_split_work_review_reasons(entries, pages) == ()
 
 
-def test_decide_split_work_unlinked_entries_review(linked_page, work_entry) -> None:
-    entries = [
-        work_entry("https://myanimelist.net/anime/1"),
-        work_entry("https://anilist.co/anime/1"),
-    ]
-    pages = [
-        linked_page("https://myanimelist.net/anime/1", "https://kitsu.app/anime/1")
-    ]
-    decision = decide_split_work(entries, pages)
-    assert (decision.is_one_work, decision.reason) == (
-        False,
-        SplitWorkReason.NOT_LINKED,
+def test_list_split_work_review_reasons_unlinked_entries_not_tied(
+    linked_page, work_entry
+) -> None:
+    entries = [work_entry(MAL), work_entry(ANILIST)]
+    assert list_split_work_review_reasons(entries, [linked_page(MAL, KITSU)]) == (
+        SplitWorkReviewReason.NOT_TIED_BY_LINKS,
     )
 
 
-def test_decide_split_work_entry_linked_through_middle_entry_one_work(
+def test_list_split_work_review_reasons_entry_linked_through_middle_entry_gives_none(
     linked_page, work_entry
 ) -> None:
+    entries = [work_entry(MAL), work_entry(ANILIST), work_entry(KITSU)]
+    pages = [linked_page(ANILIST, MAL), linked_page(KITSU, ANILIST)]
+    assert list_split_work_review_reasons(entries, pages) == ()
+
+
+def test_list_split_work_review_reasons_types_differ(linked_page, work_entry) -> None:
+    entries = [work_entry(MAL, work_type="TV"), work_entry(ANILIST, work_type="MOVIE")]
+    assert list_split_work_review_reasons(entries, [linked_page(ANILIST, MAL)]) == (
+        SplitWorkReviewReason.TYPE_DIFFERS,
+    )
+
+
+def test_list_split_work_review_reasons_years_differ(linked_page, work_entry) -> None:
+    entries = [work_entry(MAL, year=2020), work_entry(ANILIST, year=2021)]
+    assert list_split_work_review_reasons(entries, [linked_page(ANILIST, MAL)]) == (
+        SplitWorkReviewReason.YEAR_DIFFERS,
+    )
+
+
+def test_list_split_work_review_reasons_every_failed_check_listed(work_entry) -> None:
     entries = [
-        work_entry("https://myanimelist.net/anime/1"),
-        work_entry("https://anilist.co/anime/1"),
-        work_entry("https://kitsu.app/anime/1"),
+        work_entry(MAL, work_type="TV", year=2020),
+        work_entry(ANILIST, work_type="MOVIE", year=2021),
     ]
-    pages = [
-        linked_page("https://anilist.co/anime/1", "https://myanimelist.net/anime/1"),
-        linked_page("https://kitsu.app/anime/1", "https://anilist.co/anime/1"),
-    ]
-    assert decide_split_work(entries, pages).is_one_work
+    assert list_split_work_review_reasons(entries, []) == (
+        SplitWorkReviewReason.NOT_TIED_BY_LINKS,
+        SplitWorkReviewReason.TYPE_DIFFERS,
+        SplitWorkReviewReason.YEAR_DIFFERS,
+    )
 
 
-def test_decide_split_work_types_differ_review(linked_page, work_entry) -> None:
-    entries = [
-        work_entry("https://myanimelist.net/anime/1", work_type="TV"),
-        work_entry("https://anilist.co/anime/1", work_type="MOVIE"),
-    ]
-    pages = [
-        linked_page("https://anilist.co/anime/1", "https://myanimelist.net/anime/1")
-    ]
-    assert decide_split_work(entries, pages).reason is SplitWorkReason.TYPE_DIFFERS
-
-
-def test_decide_split_work_years_differ_review(linked_page, work_entry) -> None:
-    entries = [
-        work_entry("https://myanimelist.net/anime/1", year=2020),
-        work_entry("https://anilist.co/anime/1", year=2021),
-    ]
-    pages = [
-        linked_page("https://anilist.co/anime/1", "https://myanimelist.net/anime/1")
-    ]
-    assert decide_split_work(entries, pages).reason is SplitWorkReason.YEAR_DIFFERS
-
-
-def test_decide_split_work_unknown_type_and_missing_year_agree(
+def test_list_split_work_review_reasons_unknown_type_and_missing_year_agree(
     linked_page, work_entry
 ) -> None:
-    entries = [
-        work_entry("https://myanimelist.net/anime/1", work_type="UNKNOWN", year=None),
-        work_entry("https://anilist.co/anime/1"),
-    ]
-    pages = [
-        linked_page("https://anilist.co/anime/1", "https://myanimelist.net/anime/1")
-    ]
-    assert decide_split_work(entries, pages).is_one_work
+    entries = [work_entry(MAL, work_type="UNKNOWN", year=None), work_entry(ANILIST)]
+    assert list_split_work_review_reasons(entries, [linked_page(ANILIST, MAL)]) == ()
 
 
 @pytest.mark.parametrize("entry_count", [0, 1])
-def test_decide_split_work_fewer_than_two_entries_review(
+def test_list_split_work_review_reasons_fewer_than_two_entries_give_none(
     work_entry, entry_count: int
 ) -> None:
-    entries = [work_entry("https://myanimelist.net/anime/1")][:entry_count]
-    decision = decide_split_work(entries, [])
-    assert (decision.is_one_work, decision.reason) == (
-        False,
-        SplitWorkReason.TOO_FEW_ENTRIES,
+    entries = [work_entry(MAL)][:entry_count]
+    assert list_split_work_review_reasons(entries, []) == ()
+
+
+def test_list_split_work_review_reasons_shared_page_without_link_not_tied(
+    work_entry,
+) -> None:
+    entries = [work_entry(MAL, KITSU), work_entry(ANILIST, KITSU)]
+    assert list_split_work_review_reasons(entries, []) == (
+        SplitWorkReviewReason.NOT_TIED_BY_LINKS,
     )
-
-
-def test_decide_split_work_shared_page_without_link_review(work_entry) -> None:
-    entries = [
-        work_entry("https://myanimelist.net/anime/1", "https://kitsu.app/anime/1"),
-        work_entry("https://anilist.co/anime/1", "https://kitsu.app/anime/1"),
-    ]
-    assert decide_split_work(entries, []).reason is SplitWorkReason.NOT_LINKED

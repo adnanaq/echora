@@ -18,6 +18,44 @@ It answers three questions, each from the links between provider pages:
 Whatever the rules cannot settle becomes a review case, answered by a person
 (later the review agent); the answer is kept and applied on every later run.
 
+## Contents
+
+- [Terms](#terms)
+- [How it works](#how-it-works)
+  - [Links decide; details only stop](#links-decide-details-only-stop)
+  - [A stored page](#a-stored-page)
+- [Doubled providers](#doubled-providers)
+  - [How pages are labelled](#how-pages-are-labelled)
+  - [Outcomes](#outcomes)
+  - [Review reasons](#review-reasons)
+  - [Sure moves](#sure-moves)
+  - [Decision fields](#decision-fields)
+  - [Worked examples](#worked-examples)
+  - [Every doubled-provider scenario](#every-doubled-provider-scenario)
+- [Placing pages](#placing-pages)
+  - [Surviving entries](#surviving-entries)
+  - [Placed by the rules](#placed-by-the-rules)
+  - [Valid answers](#valid-answers)
+  - [Suggested answers](#suggested-answers)
+- [Entry groups and split works](#entry-groups-and-split-works)
+  - [How a group is checked](#how-a-group-is-checked)
+  - [Every split-work scenario](#every-split-work-scenario)
+- [Linked pages](#linked-pages)
+  - [Finding linked pages](#finding-linked-pages)
+  - [Spellings](#spellings)
+  - [Deciding a linked page](#deciding-a-linked-page)
+  - [Answering a linked-page case](#answering-a-linked-page-case)
+- [Review cases](#review-cases)
+  - [Lines of the review file](#lines-of-the-review-file)
+  - [Case fields](#case-fields)
+  - [Accepted answers](#accepted-answers)
+  - [Across runs](#across-runs)
+- [Files](#files)
+- [Use](#use)
+  - [Decide an entry's doubled providers](#decide-an-entrys-doubled-providers)
+  - [Send an entry to review](#send-an-entry-to-review)
+  - [Decide an entry's linked pages](#decide-an-entrys-linked-pages)
+
 ## Terms
 
 | Term                 | Meaning                                                                                                                                                                                                                                                                                       |
@@ -55,29 +93,25 @@ Whatever the rules cannot settle becomes a review case, answered by a person
 
 ```mermaid
 flowchart TD
-    seed[Seed file] --> entries[WorkEntry per seed entry,<br/>pages by page key]
-    seed --> known[KnownWorkEntriesFromSeed:<br/>every entry by page and by title]
-    entries --> fetch[Caller fetches every page<br/>with the enrichment helpers]
-    fetch --> store[(ProviderPageStore)]
-    store --> pages[ProviderPage per page:<br/>titles, type, year, season,<br/>episode count, air dates, links]
-    pages --> links[ProviderPageLinks:<br/>links between the pages,<br/>in both directions]
-    links --> split[decide_split_work:<br/>candidate entries]
-    links --> doubled[decide_doubled_providers:<br/>each doubled provider of an entry]
+    seed[Read the seed file] --> entries[Turn each seed entry into a work entry,<br/>its pages named by page key]
+    seed --> known[Index every entry,<br/>so it can be found by page or by title]
+    entries --> fetch[The caller fetches every page<br/>through the enrichment helpers]
+    fetch --> store[(Keep the fetched pages<br/>in the provider page store)]
+    store --> links[Read the links between the pages,<br/>in both directions]
+    links --> groups[Group the entries to check: an entry<br/>with a doubled provider, or entries<br/>that may be one split work]
+    groups --> doubled[Decide each doubled provider from the links:<br/>what its pages are]
     known --> doubled
-    doubled --> placed{place_pages_without_review:<br/>whole entry placed?}
-    placed -- yes --> caller[Caller applies the decision:<br/>seed cleaning writes corrections]
-    placed -- no --> review[(ReviewFile:<br/>one review case per entry,<br/>split-work group or linked page)]
-    split --> settled{Settled?}
-    settled -- yes --> caller
-    settled -- no --> review
-    pages --> unheld[find_unheld_linked_page_keys:<br/>linked anime pages of fetched providers<br/>that no known work holds]
+    doubled --> settled{Is the group one entry<br/>whose decisions need no review?}
+    settled -- yes --> apply[The rules place the pages,<br/>and the caller writes the corrections]
+    settled -- no --> review[(Write one review case<br/>for a person to answer)]
+    links --> unheld[List the pages entries link<br/>that no known entry holds]
     known --> unheld
-    unheld --> fetchlinked[Caller fetches each linked page,<br/>and its current key when it reports another]
-    fetchlinked --> linked{decide_linked_page:<br/>at the page's current key}
-    linked -- needs a person --> review
-    linked -- "not found, or held<br/>under another address" --> skipped[Not added]
-    linked -- checks pass --> caller
-    review -- "a person answers;<br/>the next run hands the answer back" --> caller
+    unheld --> fetch_linked[The caller fetches each linked page,<br/>and its current address if it moved]
+    fetch_linked --> linked{Does the linked page<br/>pass every check?}
+    linked -- yes --> apply
+    linked -- "it no longer exists,<br/>or an entry already holds it" --> skipped[Leave the page out]
+    linked -- "the checks cannot tell" --> review
+    review -- "a person answers, and the<br/>next run applies the answer" --> apply
 ```
 
 1. **Read the seed.** Each seed entry becomes a `WorkEntry`, its pages keyed by page key. `KnownWorkEntriesFromSeed` indexes every entry by page and by title.
@@ -87,19 +121,37 @@ flowchart TD
    - a searched page counts as each page it was searched by, so AnimeSchedule's links count for every such page, and its link back to that page is ignored;
    - a link to a page of the same provider proves nothing and is ignored;
    - the links of a multi-work page are set aside.
-4. **Decide doubled providers and split works.** `decide_doubled_providers` decides each doubled provider of an entry, and `decide_split_work` decides whether candidate entries are one work.
-5. **Place or review.** `place_pages_without_review` places every doubled page of an entry when no decision needs review, and the caller applies the places. Otherwise the entry becomes one review case in the `ReviewFile`, as does a split-work group the links do not settle.
-6. **Add linked pages.** `find_unheld_linked_page_keys` lists the pages an entry's pages link that no known work holds. The caller fetches each, and its current key when the fetch reports another. `decide_linked_page` then adds the page, leaves it out, or makes a review case.
-7. **Apply answers.** Once a person answers a case, the next run hands the answer back to the caller, who applies it like a decision of the rules.
+4. **Decide doubled providers and split works.** The caller groups the entries to check into entry groups. `decide_doubled_providers` decides each doubled provider of a group's combined entry (`combine_group_entries`), and `list_split_work_review_reasons` lists what speaks against a group of entries being one work. See [Doubled providers](#doubled-providers) and [Entry groups and split works](#entry-groups-and-split-works).
+5. **Place or review.** `place_pages_without_review` places every doubled page of a single entry when no decision needs review, and the caller applies the places. Otherwise the group becomes one review case in the `ReviewFile`; a group of two or more entries always does. See [Placing pages](#placing-pages).
+6. **Add linked pages.** `find_unheld_linked_page_keys` lists the pages an entry's pages link that no known work holds. The caller fetches each, and its current key when the fetch reports another. `decide_linked_page` then adds the page, leaves it out, or makes a review case. See [Linked pages](#linked-pages).
+7. **Apply answers.** Once a person answers a case, the next run hands the answer back to the caller, who applies it like a decision of the rules. See [Review cases](#review-cases).
 
-**Links decide; details only stop.** A page's title, year, type, season,
+### Links decide; details only stop
+
+A page's title, year, type, season,
 episode count and air dates never decide that pages belong together: a provider
 listing one work twice gives the two pages different titles ("Ankeeto" and "The
 Question" on Anime-Planet), and picking one by title drops the other. Details
 only stop an automatic change, such as a move or an addition whose year or type
 disagrees, and they are shown on review cases to help the reviewer.
 
-## Deciding a doubled provider
+### A stored page
+
+A line of the file, taken from a real run. Each page is one line in the file;
+here it is shown across lines:
+
+```json
+{"key": "kitsu:anime:10561", "address": "https://kitsu.app/anime/10561",
+ "titles": ["Nami", "NAMI"], "type": "MOVIE", "year": 2000, "season": "WINTER",
+ "episode_count": 1, "aired_from": "1999-12-31T15:00:00Z",
+ "aired_to": "1999-12-31T15:00:00Z",
+ "linked_page_keys": ["anilist:anime:102289", "mal:anime:29949"],
+ "renamed_to": null, "searched_by": [], "is_dead": false}
+```
+
+Lines stored before a field was kept lack it, and read with its default.
+
+## Doubled providers
 
 A doubled provider is a provider with two or more pages in one entry.
 `decide_doubled_providers` makes one `DoubledProviderDecision` per doubled
@@ -108,6 +160,8 @@ provider. A decision holds two separate answers:
 - **`outcome`**: what the provider's pages are, relative to the entry.
 - **`review_reasons`**: why a person must check the decision. Every reason that
   applies is listed, not only the first.
+
+### How pages are labelled
 
 First, each page gets one of four labels from its links alone:
 
@@ -153,7 +207,7 @@ flowchart TD
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
 | `CURRENT_ADDRESS_MISSING`   | A `SAME_PAGE` decision whose entry lists only old addresses of the page, so dropping them would lose the page.                                                                                             |                                                                                            |
 | `NO_PAGE_LINKED_WITH_ENTRY` | A `PAGES_OF_OTHER_WORKS` decision in which no page is linked with the entry, so the entry would lose every page of the provider.                                                                          |                                                                                            |
-| `MOVE_NOT_SURE`             | A page of another work has no sure place to go: its links name no seed entry or several, that entry already holds a page of the provider, or the page's year or type differs from that entry's (see below). | Kitsu's "Qian Qiu" maps to a deleted MAL page, but is the entry's own "Thousand Autumns". |
+| `MOVE_NOT_SURE`             | A page of another work has no sure place to go: its links name no seed entry or several, that entry already holds a page of the provider, or the page's year or type differs from that entry's (see [Sure moves](#sure-moves)). | Kitsu's "Qian Qiu" maps to a deleted MAL page, but is the entry's own "Thousand Autumns". |
 | `DETAILS_DIFFER`            | Pages of one work (`DUPLICATE_PAGES` or `PART_PAGES`) whose years or types differ, so one of the links may be a provider's mistake. No answer is suggested for those pages.                               | Pocari Sweat: Kitsu's 2019 ad and its 2020 ad both link AniList 139182, the 2020 ad.        |
 | `CONTRADICTING_LINKS`       | A page is linked with the entry and also links a different work, so its links disagree.                                                                                                                     |                                                                                            |
 | `UNLINKED_PAGES`            | A page has no link to the entry and no link to another work, so nothing says where it belongs. This is the most common review: ANN, LiveChart, Simkl, AnimeCountdown and Anime-Planet pages are rarely linked. | Ao Haru Ride OVA: Anime-Planet's "Unwritten" page.                                         |
@@ -165,7 +219,9 @@ A decision needs review (`needs_review`) when any review reason applies, or
 when its outcome is `DUPLICATE_PAGES`, `PART_PAGES`, `SEPARATE_WORKS` or
 `UNDECIDED`.
 
-**A sure move.** A page of another work moves to a seed entry only when all of
+### Sure moves
+
+A page of another work moves to a seed entry only when all of
 these hold, and `UnrelatedPage.move_target_entry` then names that entry:
 
 | Rule                                                 | Reason for the rule                                                                                                                                        |
@@ -184,8 +240,8 @@ page with different numbers count as a doubling.
 | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `provider`                | The provider decided; `simkl` for Simkl and AnimeCountdown together.                                                                                                                                              |
 | `page_keys`               | The provider's page keys in the entry, renamed pages folded into their current key.                                                                                                                               |
-| `outcome`                 | The `Outcome` above.                                                                                                                                                                                              |
-| `review_reasons`          | Every `ReviewReason` that applies, in the order of the table above; empty when nothing stops the rules.                                                                                                          |
+| `outcome`                 | The `DoubledProviderOutcome` above.                                                                                                                                                                                              |
+| `review_reasons`          | Every `DoubledProviderReviewReason` that applies, in the order of the table above; empty when nothing stops the rules.                                                                                                          |
 | `belonging_page_keys`     | Each belonging page, with the entry's pages linked with it. On separate works these sets show which pages go together.                                                                                           |
 | `unrelated_pages`         | Each unrelated page, as an `UnrelatedPage`: its `linked_page_keys` naming the other work, `other_work_entries`, the known work entries those links belong to, and `move_target_entry`, set when the move is sure. |
 | `contradicting_page_keys` | The pages linked with the entry that also link a different work.                                                                                                                                                  |
@@ -273,7 +329,69 @@ needs a person.
 - If `anilist:anime:6` is from 2021, the review reason `DETAILS_DIFFER` is
   added: the year differs, so one link may be a provider's mistake.
 
-## Placing an entry's pages
+### Every doubled-provider scenario
+
+This map follows an entry with a doubled provider from the seed to the
+corrections file. Every path the code takes is on it. An entry that shares a
+title with other entries follows the
+[split-work map](#every-split-work-scenario) instead.
+
+```mermaid
+flowchart TD
+    entry[Entry with a doubled provider] --> grouped{Does it share an entry<br/>with split-work candidates?}
+    grouped -- yes --> group_case[The whole group is one<br/>split-work case, always reviewed]
+    grouped -- no --> decide[decide_doubled_providers:<br/>one decision per doubled provider]
+    decide --> needs{Does any decision<br/>need review?}
+    needs -- no --> rules[The rules place the pages]
+    rules --> same[SAME_PAGE: the current address stays,<br/>an old address is dropped]
+    rules --> moved[PAGES_OF_OTHER_WORKS: the linked page stays,<br/>each other page joins its sure target]
+    needs -- yes --> entry_case[One doubled-provider case<br/>for the whole entry]
+    group_case --> answer{Is a valid<br/>answer kept?}
+    entry_case --> answer
+    answer -- no --> open[The case stays open: the entry stays<br/>as the seed lists it, and its links<br/>are not read for linked pages]
+    answer -- yes --> placed[Each page goes where the answer puts it]
+    placed --> stays[In a work its own entry survives as:<br/>the page stays]
+    placed --> joins[In a work another entry survives as:<br/>the page joins that entry]
+    placed --> new_entry[In a work no entry survives as:<br/>the work's pages form a new entry]
+    placed --> other[other work: the page joins its sure target,<br/>or starts a new entry of its own]
+    joins --> removed[An entry left without pages<br/>is removed from the cleaned seed]
+```
+
+The map shows `decide_doubled_providers` as one step; how it reaches each
+outcome is broken down in [How pages are labelled](#how-pages-are-labelled).
+
+The table lists every scenario, with a real example where one is known.
+
+| Scenario | Rules decide | Placed by | Corrections |
+| -- | -- | -- | -- |
+| One page listed under an old and a current address (Gate Keepers on Anime-Planet: `gatekeepers` now leads to `gate-keepers`) | `SAME_PAGE` | The rules | The current address stays; the old one is dropped (`renamed_to`). |
+| One page listed only under old addresses | `SAME_PAGE`, `CURRENT_ADDRESS_MISSING` | A person | Whatever the answer places; dropping the old address would lose the page. |
+| One page belongs, every other page links one other seed entry, and the move is sure (Buriki no Dance on Kitsu) | `PAGES_OF_OTHER_WORKS` | The rules | The linked page stays; each other page joins its target (`target_entry_reference_page`). |
+| As above, but a move is not sure: its links name no seed entry or several, the target already holds a page of the provider, or year or type differ (Qian Qiu on Kitsu) | `PAGES_OF_OTHER_WORKS`, `MOVE_NOT_SURE` | A person | An `other work` page without a sure target starts a new entry of its own. |
+| No page of the provider is linked with the entry | `PAGES_OF_OTHER_WORKS`, `NO_PAGE_LINKED_WITH_ENTRY` | A person | Whatever the answer places, so the entry does not lose the provider. |
+| The provider lists the work twice, details agree (Fushigi na Taiko on Kitsu) | `DUPLICATE_PAGES` | A person | One page marked `, main` is listed first; the other pages stay in the work. |
+| Each page covers part of the work, details differ (Ao Haru Ride OVA on AniList) | `PART_PAGES` | A person, from a suggestion with `, part` | Each page marked `, part`, so enrichment combines them. |
+| Pages of one work whose years or types differ (Pocari Sweat on Kitsu) | `DUPLICATE_PAGES` or `PART_PAGES`, `DETAILS_DIFFER` | A person, with no suggestion for those pages | Whatever the answer places. |
+| The entry holds several works, each page linked with its own set of the entry's pages (Puu-Neko) | `SEPARATE_WORKS` | A person, placing every page in `work 1`, `work 2` and so on | Pages of the work the entry survives as stay; each other work's pages form a new entry. |
+| A page with no link either way, the most common case (Nintama Rantaro on ANN) | `UNDECIDED`, `UNLINKED_PAGES` | A person | Whatever the answer places. |
+| A page linked with the entry and with another work | `UNDECIDED`, `CONTRADICTING_LINKS` | A person | Whatever the answer places. |
+| Belonging pages sharing only some linked pages | `UNDECIDED`, `OVERLAPPING_LINKS` | A person | Whatever the answer places. |
+| A page linked by an anthology page naming several pages of one provider | any outcome, `MULTI_WORK_LINK` | A person | Whatever the answer places. |
+| A page the provider no longer has | any outcome, `DEAD_PAGE` | A person | Whatever the answer places. |
+| Two MAL pages in the entry | any outcome | The rules or a person | No work holds both: the rules keep one and move the other, and an answer putting both in one work is not valid, since a work is what MAL lists. |
+| The entry also shares a title with other entries (Atashin'chi Next) | The group's combined entry is decided as one | A person, placing every page of the group | Each work keeps its surviving entry; the other entries' pages join it, and an emptied entry is removed. |
+| A provider with pages in two grouped entries (Atashin'chi Next: ANN pages in both entries) | A doubled provider of the combined entry | A person, with the group | As above. |
+| Two doubled providers, one settled by the rules and one not | The settled one has no review reason; the other has one | A person | The whole entry is one case: nothing is applied, the settled provider included, until it is answered. |
+| Every doubled provider settled by the rules | `SAME_PAGE` or `PAGES_OF_OTHER_WORKS`, no review reason | The rules | All are applied in one run. |
+| A Simkl page and an AnimeCountdown page with different numbers | One doubled provider, `simkl`: the two sites number a work the same | As for any doubled provider | As for any doubled provider. |
+| The answer puts the entry's own reference page in `work 2` | | A person | The entry survives as `work 2` and keeps its pages there; the `work 1` pages leave as a new entry. |
+| The answer marks the entry's reference page `, part` | | A person | The entry still survives as that work, since no whole reference page is placed there. |
+| The answer places the entry's reference page under its current key, after a rename | | A person | The entry survives as the work its reference page is placed in, found under the current key. |
+| Pages the answer leaves out | | A person | They stay in the entry. Only an answer using `work 2` or later must place every page. |
+| A renamed page whose current address the entry does not list | | A person | The page keeps its old address, since dropping it would lose the page. |
+| An answer that is not valid: a doubled page left out, `work 2` without every page, two `, main` pages, `, main` on a provider's only page, `, part` mixed with `, main`, `other work` with a mark, a misspelt word, or a page the entry does not hold | | | The case stays open, the answer stays in the file to correct, and the run logs a warning. |
+
+## Placing pages
 
 A decision says what one provider's pages are; correcting the entry needs a
 place for every page. `page_placement` gives each page a place in the words a
@@ -282,76 +400,187 @@ same way:
 
 | Place                              | Means                                                                            | Applied as                                                                                                                                                                                                                       |
 | ---------------------------------- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `entry`                            | The page belongs to this entry.                                                  | It stays.                                                                                                                                                                                                                        |
+| `work 1`                           | The page belongs to the case's first work.                                       | It stays in the entry that survives as the first work (see [Surviving entries](#surviving-entries)); with no surviving entry, the work's pages form one new entry.                                                                                   |
 | `other work`                       | The page belongs to a work outside this entry.                                   | It joins the seed entry its sure move names (`move_target_entry`); otherwise it starts a new entry of its own, so two `other work` pages become two entries. Give pages of one new work the same `work N` instead.             |
-| `work 2`, `work 3` and so on       | The entry holds several works, and the page belongs to its second, third or later work. | Pages with the same number form one new entry. One case covers the whole entry, so a number names the same work on every page.                                                                                            |
-| `, main` after `entry` or `work N` | The page enrichment fetches when a work keeps two or more whole pages of one provider. | It is listed first, since enrichment takes the first address of each provider.                                                                                                                                         |
-| `, part` after `entry` or `work N` | The page covers only part of the work, such as one of two OVAs.                  | The correction marks it `is_part_page`, so enrichment combines it with the work's other part pages.                                                                                                                             |
+| `work 2`, `work 3` and so on       | The entry holds several works, and the page belongs to its second, third or later work. | Each work keeps its surviving entry, as `work 1` does; a work with none becomes one new entry. One case covers the whole entry, so a number names the same work on every page.                                               |
+| `, main` after `work N`            | The page enrichment fetches when a work keeps two or more whole pages of one provider. | It is listed first, since enrichment takes the first address of each provider.                                                                                                                                         |
+| `, part` after `work N`            | The page covers only part of the work, such as one of two OVAs.                  | The correction marks it `is_part_page`, so enrichment combines it with the work's other part pages.                                                                                                                             |
 
-**Applied without a person.** `place_pages_without_review` places an entry only
+### Surviving entries
+
+When pages are placed into works, each work keeps at most one seed entry, and
+the other entries' pages in that work move into it. Keeping a seed entry keeps
+its anime id, so search entries stored under that id stay valid.
+`find_surviving_entries` applies these rules:
+
+- Only an entry whose reference page is placed in the work can survive as that
+  work.
+- An entry whose reference page is a whole page wins over one whose reference
+  page is a part page, because a part entry stands for only part of the work.
+  A part entry still survives when no whole entry is placed in the work:
+  building a new entry instead would lose its anime id and split a single
+  entry's pages between two entries.
+- Among the entries left, the one whose reference page has the most trusted
+  provider survives (`rank_by_provider_trust`, MAL first). Two reference pages
+  of the same provider are told apart by page key, so every run picks the same
+  entry.
+- A renamed reference page is looked up under its current key first, since a
+  doubled page is placed under its current key (`find_page_placement`).
+- A reference page with no place counts as `work 1`, since only the rules leave
+  pages unplaced, and they keep the entry as its first work.
+- A work in which no entry's reference page is placed has no surviving entry,
+  and becomes one new entry.
+
+### Placed by the rules
+
+`place_pages_without_review` places an entry only
 when none of its decisions needs review. Then each `SAME_PAGE` decision keeps
 the current page, and each `PAGES_OF_OTHER_WORKS` decision keeps the linked page
-in `entry` and sends each other page to `other work`, joining its sure target.
+in `work 1` and sends each other page to `other work`, joining its sure target.
 Every other entry goes to review as one case.
 
-**A valid answer** follows these rules:
+### Valid answers
+
+A valid answer follows these rules:
 
 | Rule                                                                                                       | Reason for the rule                                                                |
 | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | It places every doubled page.                                                                              | Each doubled page needs a place.                                                   |
-| An answer using any `work N` places every page of the entry.                                               | Splitting the entry sends each page to one of the works; a page left out would stay in the entry otherwise. |
+| An answer using `work 2` or later places every page of the entry.                                          | Splitting the entry sends each page to one of the works; a page left out would stay in the entry otherwise. |
 | In each work, a provider's two or more pages are either all `, part`, or exactly one is `, main`.          | Enrichment needs either one page to fetch, or every part to combine.               |
 | A provider's single page in a work is not `, main`.                                                        | There is nothing to choose between.                                                |
+| No work holds two MAL pages.                                                                               | A work is what MAL lists, so two MAL pages are two works.                          |
+| A group of two or more entries places every page.                                                          | Merging entries moves pages between them, so each page needs a place.             |
+| A work holding pages of two or more entries has the reference page of one of them placed in it.            | Otherwise the work would become a new entry, and every merged entry would lose its anime id. |
 
 Simkl and AnimeCountdown count as two providers here: enrichment fetches
 neither.
 
-**A suggested answer** comes with each case. Pages joined by the decisions'
+### Suggested answers
+
+A suggested answer comes with each case. Pages joined by the decisions'
 links form works: the work holding the most trusted page
-(`rank_by_provider_trust`) is `entry`, the others `work 2`, `work 3` and so on
-by trust. A work joining two pages of one `SEPARATE_WORKS` decision is left out,
-since its pages are linked with both works (Puu-Neko's AniDB 8328). Pages of a
+(`rank_by_provider_trust`) is `work 1`, the others `work 2`, `work 3` and so on
+by trust. In a group of entries, pages of different entries linked with each
+other also join one work, and a page no link reaches follows the other pages
+of its own entry when all of them are suggested in one work, since the seed
+listing them together is the only thing known about it. Such a page gets no
+suggestion when its entry's pages are in different works, or when it is a
+doubled page. A work joining two pages of one `SEPARATE_WORKS`
+decision is left out, since its pages are linked with both works (Puu-Neko's
+AniDB 8328), and so is a work joining two MAL pages. Pages of a
 `PART_PAGES` decision are suggested with `, part`. Pages of a decision with
 `DETAILS_DIFFER`, and pages linked with nothing, get no suggestion.
 
-## Deciding a split work
+## Entry groups and split works
 
-A split work is one work spread over several seed entries. `decide_split_work`
-takes candidate entries, such as entries sharing a title, and returns a
-`SplitWorkDecision`. The checks run in this order, and the first that fails
-gives the reason:
+A split work is one work spread over several seed entries. An entry group is
+what one review case places: one entry with doubled providers, or two or more
+entries that may be one split work, or both when they share an entry. Its pages
+are placed together, since which works the group holds can only be told from
+all its pages at once.
 
-| Reason            | One work? | What it means                                                                                                                                                                                                                                        |
-| ----------------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `TOO_FEW_ENTRIES` | no        | Fewer than two entries were given, so there is nothing to join.                                                                                                                                                                                      |
-| `NOT_LINKED`      | no        | Links do not connect every entry: starting from the first entry and following links between their pages, at least one entry is never reached. A page that two entries both list does not connect them, since it may be wrongly added to one of them. |
-| `TYPE_DIFFERS`    | no        | Links connect every entry, but their seed types differ. `UNKNOWN` agrees with any type.                                                                                                                                                              |
-| `YEAR_DIFFERS`    | no        | Links connect every entry and the types agree, but their years differ. A missing year agrees with any year.                                                                                                                                          |
-| `LINKED`          | yes       | Links connect every entry, and their types and years agree: the entries are one work.                                                                                                                                                                |
+### How a group is checked
 
-Every reason but `LINKED` goes to review. A shared title alone is never enough:
-remakes, music videos and short films reuse titles.
+- **Combined entry.** `combine_group_entries` makes one entry holding every
+  page of the group, so a provider listed in two of its entries is a doubled
+  provider like any other. It takes its title, type, year and season from the
+  entry with the most trusted reference page. A single entry is used as it is.
+- **Always reviewed.** A group of two or more entries always becomes a review
+  case, because a shared title alone is never enough: remakes, music videos and
+  short films reuse titles.
+- **Review reasons.** `list_split_work_review_reasons` tells the reviewer what
+  speaks against the group being one work. Every reason that applies is
+  listed:
 
-## Adding linked pages
+| Reason              | What it means                                                                                                                                                                                                                               |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NOT_TIED_BY_LINKS` | Links do not connect every entry: starting from the first entry and following links between their pages, at least one entry is never reached. A page that two entries both list does not connect them, since it may be wrongly added to one of them. |
+| `TYPE_DIFFERS`      | The entries' seed types differ. `UNKNOWN` agrees with any type.                                                                                                                                                                             |
+| `YEAR_DIFFERS`      | The entries' years differ. A missing year agrees with any year.                                                                                                                                                                             |
+
+`read_group_answer_placements` reads a group's answer with the
+[placement rules](#valid-answers), and `suggest_group_page_placements` makes its suggestion.
+
+### Every split-work scenario
+
+This map follows seed entries sharing a title from the seed to the corrections
+file. Finding the candidates is seed cleaning's part
+(`find_split_work_candidates`, `find_entry_groups`); everything after the group
+is formed is this library's.
+
+```mermaid
+flowchart TD
+    seed[Seed entries] --> title{Same folded title and type,<br/>years equal or one missing?}
+    title -- no --> apart[Not a candidate]
+    title -- yes --> season{Seasons equal, next to each other,<br/>or one missing?}
+    season -- no --> apart
+    season -- yes --> shared{Which providers have pages<br/>in two or more of the entries?}
+    shared -- "two or more, or MAL" --> dropped[Group dropped and logged:<br/>different works]
+    shared -- "none, or one other provider" --> group[Candidate group]
+    group --> overlap{Does it share an entry with another<br/>group or a doubled-provider entry?}
+    overlap -- yes --> merged[Merged into one entry group]
+    overlap -- no --> combined
+    merged --> combined[Checked as one combined entry:<br/>doubled providers decided,<br/>split-work review reasons listed]
+    combined --> case[One split-work case, always reviewed]
+    case --> suggestion[Suggestion: linked pages share a work;<br/>an unlinked page follows its entry<br/>when the entry's pages agree]
+    suggestion --> answer{Is a valid answer kept?}
+    answer -- no --> open[Case stays open: every entry stays<br/>as the seed lists it]
+    answer -- yes --> works[Each work keeps its surviving entry]
+    works --> one[All pages in one work:<br/>the entries merge into the survivor,<br/>the others are removed]
+    works --> separate[Each entry's pages in a work of its own:<br/>every entry stays as it is]
+    works --> mixed[Pages split across works differently:<br/>pages move to their work's survivor,<br/>a work without one becomes a new entry]
+```
+
+The table lists every scenario, with a real example where one is known.
+
+| Scenario | Found as | Case | What an answer does |
+| -- | -- | -- | -- |
+| Entries linked to each other, same type and year (*CUE!*: an ANN-only entry and the MAL entry, whose AniDB and MAL pages link the ANN page) | Candidate group, sharing no provider | No review reason; every page suggested `work 1` | `work 1` everywhere merges them: the MAL entry survives, the ANN entry's page joins it, and the ANN entry is removed. |
+| Entries with no link between them (*Welsh & Shedar*: an ANN-only entry and a Simkl entry) | Candidate group | `NOT_TIED_BY_LINKS`; no suggestion, since neither entry has a linked page | The reviewer places every page; one work merges them, two works keep both. |
+| One provider lists both entries (*Dirty Pair Flash*: ANN has a page in each) | Candidate group marked with that provider | The shared provider is a doubled provider of the combined entry, here `UNDECIDED` with `UNLINKED_PAGES` | As above; the provider's pages may also be duplicate or part pages of one work. |
+| Two or more providers list the entries apart (*Hanasaka Jiisan*: AniDB and Simkl) | Dropped and logged | No case | Nothing: two providers keeping them apart points to different works. |
+| The entries hold different MAL pages | Dropped and logged | No case | Nothing: a work is what MAL lists. |
+| Seasons far apart (*Gelpiyo*: winter and fall) | Not grouped | No case | Nothing. |
+| An entry of the group also has a doubled provider (*Atashin'chi Next*) | Merged with the entry's doubled-provider case | One split-work case replaces both | The answer places every page of the group, the doubled pages included. |
+| Three entries joined through one shared match | One group of three | Each pair need not be linked; `NOT_TIED_BY_LINKS` only when some entry is reached by no link | As for two entries. |
+| Years differ through a chain: a 2020 entry and a 2021 entry both match an entry with no year | One group | `YEAR_DIFFERS` | The reviewer decides; the years alone do not separate them. |
+| Types differ | Never from the seed: the title lookup returns entries of one type only | `TYPE_DIFFERS`, for other callers such as discovery | The reviewer decides. |
+| An answer leaves a page out, puts two MAL pages in one work, or puts pages of two entries in a work holding none of their reference pages | | The answer is not valid; the case stays open | Nothing until the answer is corrected. |
+| Two seed entries listing the same page | Candidate group marked with that page's provider | The shared page does not tie them: `NOT_TIED_BY_LINKS` unless a link does. The provider is doubled in the combined entry | As for any group. |
+| Two candidate groups sharing an entry | Merged into one entry group | One case for all their entries | As for any group. |
+| Every reference page in a work is marked `, part` | | | The most trusted of those entries survives; a whole reference page would win. |
+| Two reference pages of the same provider in one work | | | The entry whose reference page has the lower page key survives, so every run picks the same one. |
+| A page no link reaches, in an entry whose suggested pages are in different works or include `other work` | | The page gets no suggestion | The reviewer places it. |
+| A doubled page no link reaches | | No suggestion, even when its entry's other pages agree | The reviewer judges it. |
+| A suggested work would hold two MAL pages | | That work gets no suggestion | The reviewer splits them. |
+
+## Linked pages
 
 Providers link pages the seed does not list: an AniList page names a MAL page
 no seed entry holds. Most such links are stale (the provider has deleted the
 page) and some are wrong mappings, so a linked page is checked before it joins
 an entry.
 
-**Finding them.** `find_unheld_linked_page_keys` lists the pages an entry's pages
+### Finding linked pages
+
+`find_unheld_linked_page_keys` lists the pages an entry's pages
 link that no known work holds and the entry does not hold. It keeps only anime
 pages (a manga link names source material, not a page of the work) of
 providers whose pages can be fetched, so each can be checked live.
 
-**Spellings.** A link can spell a page another way than the seed does:
+### Spellings
+
+A link can spell a page another way than the seed does:
 AnimeSchedule links Kitsu by slug while the seed lists Kitsu by number, and
 Anime-Planet renames its addresses. Only the fetched page tells its current
 key, so the caller fetches the page, fetches its current key too when the page
 reports another, and the page is decided at that key. The spellings of one page
 count as one page.
 
-**Deciding.** `decide_linked_page` takes the fetched page, every entry linking
+### Deciding a linked page
+
+`decide_linked_page` takes the fetched page, every entry linking
 it (as `LinkingEntryDetails`: the entry, its episode count, and every unheld
 page it links), and the known work entries. The checks run in this order, and the
 first that applies gives the reason:
@@ -401,7 +630,9 @@ unknown count never stops an addition.
 | `linking_entries`     | Every entry linking the page, sorted by reference page.                                                                       |
 | `entry_episode_count` | The one linking entry's episode count, shown to the reviewer; `None` when several entries link the page or no count is known. |
 
-**Answers.** A linked page's answer maps its current key to one of:
+### Answering a linked-page case
+
+A linked page's answer maps its current key to one of:
 
 | Answer                                                       | Means                                                                                                        |
 | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
@@ -413,46 +644,120 @@ unknown count never stops an addition.
 The case suggests `add as part` when one entry links the page, their year and
 type agree and the page lists fewer episodes.
 
+The end-to-end path of a linked page, from the entries read to the
+corrections file, is mapped in the seed cleaning README, under
+[Every linked-page scenario](../seed_cleaning/README.md#every-linked-page-scenario).
+
 ## Review cases
 
-Every entry the rules cannot place, every split-work group they do not settle,
-and every linked page they cannot add on their own becomes a `ReviewCase`, one
-JSON line in the review file. All of an entry's doubled providers are one case,
-since telling which works a mixed entry holds needs all its pages at once. A
+Every entry group the rules cannot place, and every linked page they cannot
+add on their own, becomes a `ReviewCase`, one JSON line in the review file
+(`ReviewCase.from_entry_group`, `ReviewCase.from_linked_page`). All of a
+group's pages are one case, since telling which works it holds needs all its
+pages at once. A
 person, or later the review agent, writes the answer into the line; the next
 run hands it back.
 
+### Lines of the review file
+
+Lines of the review file, taken from a real run. Each case is one line in the
+file; here each is shown across lines, and `...` marks parts left out.
+
+An entry with a doubled provider (`doubled provider`), still open:
+
 ```json
-{"case_name": "doubled provider: animeplanet:anime:example animeplanet:anime:example-movie in mal:anime:3",
- "answer": {"animeplanet:anime:example": "entry", "animeplanet:anime:example-movie": "other work"},
- "suggested_answer": {"animeplanet:anime:example": "entry", "mal:anime:3": "entry"},
- "reasons": ["UNDECIDED", "UNLINKED_PAGES"], "entries": {"mal:anime:3": {...}}, "decisions": [...], "pages": [...]}
+{"case_name": "doubled provider: ann:anime:19639 ann:anime:19640 in ann:anime:19639",
+ "answer": null,
+ "suggested_answer": {},
+ "reasons": ["UNDECIDED", "UNLINKED_PAGES"],
+ "entries": {"ann:anime:19639": {"title": "Nintama Rantaro", "type": "TV",
+     "year": 2013, "season": "SPRING", "addresses_by_page_key": {
+     "ann:anime:19639": "https://animenewsnetwork.com/encyclopedia/anime.php?id=19639",
+     "ann:anime:19640": "https://animenewsnetwork.com/encyclopedia/anime.php?id=19640"}}},
+ "decisions": [{"provider": "ann",
+     "page_keys": ["ann:anime:19639", "ann:anime:19640"],
+     "outcome": "the links do not tell which work every page belongs to",
+     "review_reasons": ["a page has no link to the entry and no link to another work"],
+     "belonging_page_keys": {}, "unrelated_pages": {},
+     "contradicting_page_keys": [],
+     "unlinked_page_keys": ["ann:anime:19639", "ann:anime:19640"],
+     "title_matches": [], "year_type_matches": [], "season_matches": []}],
+ "pages": []}
 ```
 
-(One line in the file; wrapped here.)
+A group of entries that may be one split work (`split work`), still open:
+
+```json
+{"case_name": "split work: animecountdown:anime:3252888 ann:anime:40549 simkl:anime:3252888",
+ "answer": null,
+ "suggested_answer": {},
+ "reasons": ["NOT_TIED_BY_LINKS"],
+ "entries": {
+     "ann:anime:40549": {"title": "Welsh & Shedar", "type": "TV", "year": 2026,
+         "season": "FALL", "addresses_by_page_key": {
+         "ann:anime:40549": "https://animenewsnetwork.com/encyclopedia/anime.php?id=40549"}},
+     "simkl:anime:3252888": {"title": "Welsh & Shedar", "type": "TV", "year": 2026,
+         "season": "FALL", "addresses_by_page_key": {
+         "animecountdown:anime:3252888": "https://animecountdown.com/3252888",
+         "simkl:anime:3252888": "https://simkl.com/anime/3252888"}}},
+ "decisions": [],
+ "pages": []}
+```
+
+The same kind of case once a person answered it (*CUE!*), merging the ANN-only
+entry into the MAL entry:
+
+```json
+{"case_name": "split work: anidb:anime:15827 anilist:anime:125682 ... simkl:anime:1467793",
+ "answer": {"ann:anime:24629": "work 1", "anidb:anime:15827": "work 1", ...,
+     "mal:anime:43735": "work 1", "simkl:anime:1467793": "work 1"},
+ "suggested_answer": {"ann:anime:24629": "work 1", ...},
+ "reasons": [], "entries": {...}, "decisions": [], "pages": [...]}
+```
+
+A linked page the rules could not add on their own (`linked page`):
+
+```json
+{"case_name": "linked page: anilist:anime:102289 from kitsu:anime:10561",
+ "answer": null,
+ "suggested_answer": {},
+ "reasons": ["DETAILS_DIFFER"],
+ "entries": {"kitsu:anime:10561": {"title": "Nami", "type": "MOVIE", ...}},
+ "decisions": [{"page_key": "anilist:anime:102289",
+     "reason": "the page's year or type differs from the entry's",
+     "linking_entries": [{"title": "Nami", "type": "MOVIE", ...}],
+     "entry_episode_count": 1}],
+ "pages": [{"key": "anilist:anime:102289", "address": "https://anilist.co/anime/102289",
+     "titles": ["Nami", "ナミ"], "type": "ONA", "year": 2000, ...}, ...]}
+```
+
+### Case fields
 
 | Field              | Holds                                                                                                                                                                                                                                                                                                                                                      |
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `case_name`        | The case's name: its kind and its sorted page keys. `doubled provider: ` with every doubled page of the entry and `in` the entry's reference page, since the answer places pages relative to that entry; `split work: ` with the entries' reference pages; or `linked page: ` with the page's current key and `from` the linking entries' reference pages. |
+| `case_name`        | The case's name: its kind and its sorted page keys. `doubled provider: ` with every doubled page of the entry and `in` the entry's reference page, since the answer places pages relative to that entry; `split work: ` with every page of the group's entries, since the answer places every page; or `linked page: ` with the page's current key and `from` the linking entries' reference pages. |
 | `answer`           | `null` until answered.                                                                                                                                                                                                                                                                                                                                     |
-| `suggested_answer` | For a doubled-provider case, the places the links point to (see "Placing an entry's pages"); for a linked page, possibly `add as part`; empty for a split work.                                                                                                                                                                                            |
-| `reasons`          | Names, so answers can be counted per reason even after the wording changes: for a doubled provider, each decision's outcome followed by its review reasons; otherwise the decision's reason.                                                                                                                                                                                                                                                       |
+| `suggested_answer` | For an entry group, the places the links point to (see [Suggested answers](#suggested-answers)); for a linked page, possibly `add as part`.                                                                                                                                                                                                                              |
+| `reasons`          | Names, so answers can be counted per reason even after the wording changes: for an entry group, each decision's outcome followed by its review reasons, then the split-work review reasons; for a linked page, the decision's reason.                                                                                                                                                                                                                                                       |
 | `entries`          | Each entry involved, by its reference page, as its `WorkEntry`: title, type, year, season and page addresses.                                                                                                                                                                                                                                                       |
-| `decisions`        | Every `DoubledProviderDecision` of the entry, the one `SplitWorkDecision`, or the one `LinkedPageDecision`, as the rules made them. Sets of page keys are written sorted, so two runs give the same file.                                                                                                                                                  |
+| `decisions`        | Every `DoubledProviderDecision` of the group's combined entry (none when no provider is doubled), or the one `LinkedPageDecision`, as the rules made them. Sets of page keys are written sorted, so two runs give the same file.                                                                                                                                                  |
 | `pages`            | The details of the entries' fetched pages and of the pages searched by them (such as AnimeSchedule), as `ProviderPage` stores them: every link and detail the decision read.                                                                                                                                                                             |
 
-**Answers.** `accepted_answer` returns a valid answer read for the caller:
+### Accepted answers
 
-- a doubled-provider answer places pages with the words in "Placing an entry's
-  pages", read into `PagePlacement`s;
-- a split work's answer is `one work` or `separate works`;
+`accepted_answer` returns a valid answer read for the caller:
+
+- an entry group's answer places pages with the words in
+  [Placing pages](#placing-pages), read into `PagePlacement`s;
 - a linked page's answer is read into a `LinkedPageAddition`, or `skip` (see
-  "Adding linked pages").
+  [Answering a linked-page case](#answering-a-linked-page-case)).
 
 An answer that is not valid, such as a missing page, a misspelt word or two
 main pages, leaves the case open and the text in place to correct.
 
-**Across runs.** `ReviewFile` reads only each line's `case_name` and `answer`.
+### Across runs
+
+`ReviewFile` reads only each line's `case_name` and `answer`.
 `write_cases` writes this run's cases with their kept answers, and replaces the
 file in one step, so an interrupted run leaves the old file:
 
@@ -475,6 +780,24 @@ during the run can be lost.
 
 Applying answers is the caller's job: seed cleaning turns them into corrections.
 
+The table lists every case the review file meets across runs.
+
+| Scenario | What happens |
+| -- | -- |
+| A case comes up with the same name as before | It gets its kept answer back. |
+| A provider gains a page, so the case's pages change | The case gets a new name and is asked again. |
+| A case's doubled pages move to another entry | The case gets a new name and is asked again. |
+| An answer whose case no longer comes up | Kept as written, never applied, and reported, so a seed release that brings the case back meets its answer. |
+| An unanswered case that no longer comes up | Dropped. |
+| An answer that is not valid | Kept in the file to correct, the case left open, and a warning logged. |
+| A case answered on two lines | The last line is kept, and a warning logged. |
+| An answer saved after the file was opened, before the run writes it | Kept: the answers are read again just before the write. |
+| A blank line | Skipped, and not written back. |
+| A line that is not JSON, or not a case | The run stops, naming the file and line, so a person's edit is never overwritten unread. |
+| Two cases with the same name in one run | `DuplicateCaseError`. |
+| The write fails part way | The old file stays as it was. |
+| The file already exists | The new file keeps its permissions; a new file gets the default ones. |
+
 ## Files
 
 | File                                         | Holds                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
@@ -487,16 +810,20 @@ Applying answers is the caller's job: seed cleaning turns them into corrections.
 | `provider_page_store.py`                     | `ProviderPageStore`: fetched pages kept in a JSON Lines file. `get_entry_pages` returns an entry's pages and the pages searched by them; `has_page_searched_by` and `get_pages_searched_by` answer for searches such as AnimeSchedule's.                                                                                                                                                                                                                                                                |
 | `provider_page_links.py`                     | `ProviderPageLinks`: which pages of a group are linked.                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `doubled_provider_check.py`                  | `decide_doubled_providers`: the decision for each doubled provider of an entry, with its outcome, every review reason, and the sure move of each unrelated page. |
-| `doubled_provider_decision.py`               | `DoubledProviderDecision`, `Outcome`, `ReviewReason` and `UnrelatedPage`: what a doubled provider's pages are, and why a person must check it (`needs_review`). |
+| `doubled_provider_decision.py`               | `DoubledProviderDecision`, `DoubledProviderOutcome`, `DoubledProviderReviewReason` and `UnrelatedPage`: what a doubled provider's pages are, and why a person must check it (`needs_review`). |
 | `doubled_provider_pages.py`                  | `find_doubled_provider_page_keys`: an entry's doubled providers and their pages, the rule seed cleaning lists entries by. `get_decided_provider`: the provider a page's decision falls under, AnimeCountdown under Simkl. |
 | `page_details_comparison.py`                 | `get_seed_type`: the seed type a provider page's type falls under. `is_page_details_matching`: whether a page's year and type agree with an entry's, the check moves and linked pages share. |
-| `page_placement.py`                          | `PagePlacement`: where one page of an entry with doubled providers goes, and whether it is a main or part page. `place_pages_without_review`: the places when no decision needs review. `read_answer_placements`: an answer read into places. `suggest_page_placements`: the places the links point to, offered to a reviewer. |
-| `split_work_check.py`                        | `decide_split_work`: whether separate entries are one split work.                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `page_placement.py`                          | `PagePlacement`: where one page of an entry with doubled providers goes, and whether it is a main or part page. `place_pages_without_review`: the places when no decision needs review. `read_answer_placements`: an answer read into places. `suggest_page_placements`: the places the links point to, offered to a reviewer. `find_page_placement`: a page's place under its current key, else under the key an entry lists. |
+| `split_work_check.py`                        | `list_split_work_review_reasons`: what speaks against separate entries being one split work.                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `entry_group.py`                             | `combine_group_entries`: one entry holding every page of an entry group. `read_group_answer_placements`, `suggest_group_page_placements`: a group's answer read, and the places offered.                                                                                                                                                                                                                                                                                                           |
 | `linked_page_check.py`                       | `find_unheld_linked_page_keys`: an entry's linked pages. `get_entry_episode_count`: an entry's episode count from its most trusted page giving one. `decide_linked_page`: whether a linked page is added, reviewed or not added. `read_linked_page_answer`, `suggest_linked_page_answer`: a review answer read, and the answer offered.                                                                                                                                                                |
-| `review_cases.py`                            | `ReviewCase`: one entry, split-work group or linked page left to a person, with its answer. `ReviewFile`: the review file, its answers kept across runs.                                                                                                                                                                                                                                                                                                                                           |
+| `surviving_entries.py`                       | `find_surviving_entries`: the seed entry each work of a placement keeps.                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `review_cases.py`                            | `ReviewCase`: one entry group or linked page left to a person, with its answer. `ReviewFile`: the review file, its answers kept across runs.                                                                                                                                                                                                                                                                                                                                           |
 | `file_replacement.py`                        | `replace_file_lines`: a file's lines replaced in one step, so an interrupted run leaves the old file.                                                                                                                                                                                                                                                                                                                                                                                              |
 
 ## Use
+
+### Decide an entry's doubled providers
 
 Decide an entry's doubled providers from the stored pages. Pass the searched pages
 too (`get_entry_pages` includes them): their links count for the pages they were searched by.
@@ -518,6 +845,8 @@ for decision in decide_doubled_providers(entry, pages, known_work_entries):
         print(decision.provider, decision.outcome, decision.review_reasons)
 ```
 
+### Send an entry to review
+
 An entry the rules cannot place goes to the review file as one case, and its
 kept answer comes back:
 
@@ -529,11 +858,13 @@ decisions = decide_doubled_providers(entry, pages, known_work_entries)
 placements = place_pages_without_review(decisions)
 if placements is None:
     case = review.attach_kept_answer(
-        ReviewCase.from_doubled_provider_entry(entry, decisions, pages)
+        ReviewCase.from_entry_group([entry], decisions, (), pages)
     )
     placements = case.accepted_answer  # None while the case is open
     unused = review.write_cases([case])
 ```
+
+### Decide an entry's linked pages
 
 Decide the linked pages of one entry, once they are fetched into the store:
 

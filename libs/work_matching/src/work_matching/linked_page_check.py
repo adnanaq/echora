@@ -6,16 +6,23 @@ stale, because the provider has deleted the page. Some are wrong mappings,
 such as a Kitsu page mapped to a recap OVA instead of its own work. A linked
 page therefore joins an entry only after these checks, run in this order:
 
-| Check | Outcome | Reason for the check |
-| -- | -- | -- |
-| The provider says the page does not exist | not added | The link is stale. |
-| A seed entry, or a linking entry, holds the page's current key | not added | The link spells a held page another way, such as a Kitsu slug for a page the seed lists by number. |
-| Two or more entries link the page | review | The page has no single entry to join. |
-| The entry holds a page of the page's provider | review | Adding the page would make a doubled provider; the page may be a part page. |
-| The entry links two or more such pages of one provider | review | Adding each page would make a doubled provider. |
-| The year or type differs from the entry's | review | The link may be a wrong mapping; moves use the same check (``is_page_details_matching``). |
-| Both episode counts are known and differ | review | A page with fewer episodes is often one season of the entry's whole run. |
-| None of the above | added | |
+Each item reads ``<check>: <outcome>. <reason for the check>``.
+
+- The provider says the page does not exist: not added. The link is stale.
+- A seed entry, or a linking entry, holds the page's current key: not added. The
+  link spells a held page another way, such as a Kitsu slug for a page the seed
+  lists by number.
+- Two or more entries link the page: review. The page has no single entry to
+  join.
+- The entry holds a page of the page's provider: review. Adding the page would
+  make a doubled provider; the page may be a part page.
+- The entry links two or more such pages of one provider: review. Adding each
+  page would make a doubled provider.
+- The year or type differs from the entry's: review. The link may be a wrong
+  mapping; moves use the same check (``is_page_details_matching``).
+- Both episode counts are known and differ: review. A page with fewer episodes
+  is often one season of the entry's whole run.
+- None of the above: added.
 
 Other rules:
 
@@ -24,12 +31,15 @@ Other rules:
 
 A review answer maps the page to one of these:
 
-| Answer | Effect |
-| -- | -- |
-| ``add`` | Add the page to the one linking entry, which must hold no page of the page's provider. |
-| ``add as part`` | Add the page as a part page of that entry's work; the entry may already hold pages of the provider. |
-| ``add to <reference page>``, ``add as part to <reference page>`` | Do the same for the named linking entry; required when several entries link the page. |
-| ``skip`` | Leave the page out. |
+Each item reads ``<answer>: <effect>``.
+
+- ``add``: add the page to the one linking entry, which must hold no page of the
+  page's provider.
+- ``add as part``: add the page as a part page of that entry's work; the entry
+  may already hold pages of the provider.
+- ``add to <reference page>``, ``add as part to <reference page>``: do the same
+  for the named linking entry; required when several entries link the page.
+- ``skip``: leave the page out.
 """
 
 import re

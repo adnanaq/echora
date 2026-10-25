@@ -9,18 +9,34 @@ and review the diff.
 
 Where each saved page came from:
 
-| File | Address | Captured |
-| -- | -- | -- |
-| one_piece_main.html | https://www.anisearch.com/anime/2227,one-piece | 2026-06-09 |
-| one_piece_relations.html | https://www.anisearch.com/anime/2227,one-piece/relations?show=overall | 2026-06-09 |
-| balala_the_fairies_2_main.html | https://www.anisearch.com/anime/11340,ba-la-la-xiao-mo-xian-zhi-qiji-wubu | by 2026-10-17 |
-| mo_dao_zu_shi_main.html | https://www.anisearch.com/anime/13751,mo-dao-zu-shi-qianchen-pian | by 2026-10-17 |
-| twelve_sai_main.html | https://www.anisearch.com/anime/9589 | 2026-10-24 |
-| luffy_char.html | https://www.anisearch.com/character/4852,monkey-d-luffy | 2026-06-09 |
-| luffy_anime_ography.html | https://www.anisearch.com/character/4852,monkey-d-luffy/anime | 2026-06-09 |
-| luffy_manga_ography.html | https://www.anisearch.com/character/4852,monkey-d-luffy/manga | 2026-06-09 |
-| one_piece_episodes.html | https://www.anisearch.com/anime/2227,one-piece/episodes | 2026-04-28 |
-| one_piece_refs.json | https://www.anisearch.com/anime/2227,one-piece/characters (extracted links only) | 2026-04-23 |
+Each item reads ``<file>: <address>, captured <date>``.
+
+- one_piece_main.html: https://www.anisearch.com/anime/2227,one-piece, captured
+  on 2026-06-09.
+- one_piece_relations.html:
+  https://www.anisearch.com/anime/2227,one-piece/relations?show=overall,
+  captured on 2026-06-09.
+- balala_the_fairies_2_main.html:
+  https://www.anisearch.com/anime/11340,ba-la-la-xiao-mo-xian-zhi-qiji-wubu,
+  captured by 2026-10-17.
+- mo_dao_zu_shi_main.html:
+  https://www.anisearch.com/anime/13751,mo-dao-zu-shi-qianchen-pian, captured by
+  2026-10-17.
+- twelve_sai_main.html: https://www.anisearch.com/anime/9589, captured on
+  2026-10-24.
+- luffy_char.html: https://www.anisearch.com/character/4852,monkey-d-luffy,
+  captured on 2026-06-09.
+- luffy_anime_ography.html:
+  https://www.anisearch.com/character/4852,monkey-d-luffy/anime, captured on
+  2026-06-09.
+- luffy_manga_ography.html:
+  https://www.anisearch.com/character/4852,monkey-d-luffy/manga, captured on
+  2026-06-09.
+- one_piece_episodes.html:
+  https://www.anisearch.com/anime/2227,one-piece/episodes, captured on
+  2026-04-28.
+- one_piece_refs.json: https://www.anisearch.com/anime/2227,one-piece/characters
+  (extracted links only), captured on 2026-04-23.
 """
 
 from collections.abc import Callable, Iterator

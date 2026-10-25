@@ -246,7 +246,7 @@ async def test_fetch_all_id_result_linking_elsewhere_searches_title(
 async def test_fetch_all_unknown_id_and_unmatched_title_returns_none(
     search_session,
 ) -> None:
-    _answer_by_lookup(search_session, id_status=404, title_status=500)
+    _answer_by_lookup(search_session, id_status=404, title_status=404)
 
     result = await AnimescheduleHelper(get_cache()).fetch_all(
         {"mal_url": MAL_URL}, {"title": "One Piece", "sources": [MAL_URL]}
@@ -255,7 +255,9 @@ async def test_fetch_all_unknown_id_and_unmatched_title_returns_none(
     assert result is None
 
 
-@pytest.mark.parametrize(("id_status", "title_status"), [(500, 500), (404, 404)])
+@pytest.mark.parametrize(
+    ("id_status", "title_status"), [(500, 500), (404, 500), (404, 503)]
+)
 async def test_fetch_all_status_outside_lookup_not_found_raises_service_network_error(
     search_session, id_status: int, title_status: int
 ) -> None:
