@@ -30,7 +30,7 @@ libs/enrichment/src/enrichment/
 │   ├── anisearch/      # AniSearch — plain HTTP scraping
 │   ├── anime_planet/   # Anime-Planet — browser scraping via zendriver
 │   ├── anidb/          # AniDB — XML API (characters via zendriver)
-│   └── animeschedule/  # AnimSchedule — REST API
+│   └── animeschedule/  # AnimeSchedule — REST API
 │
 ├── utils/
 │   ├── deduplication.py   # Semantic + string-based array deduplication
@@ -159,7 +159,7 @@ uv run python -m enrichment.sources.anidb.anidb_helper episodes https://anidb.ne
 uv run python -m enrichment.sources.anidb.anidb_helper characters https://anidb.net/anime/69 onepiece_anidb_characters.jsonl
 uv run python -m enrichment.sources.anidb.anidb_helper all https://anidb.net/anime/69 output_dir/
 
-# AnimSchedule
+# AnimeSchedule
 uv run python -m enrichment.sources.animeschedule.animeschedule_helper "One Piece"
 ```
 
@@ -233,7 +233,7 @@ Key behaviours:
 
 ## Caching
 
-All API-based sources (Kitsu, AniList, AniDB, AnimSchedule) use the `http_cache`
+All API-based sources (Kitsu, AniList, AniDB, AnimeSchedule) use the `http_cache`
 library (Hishel + Redis, RFC 9111). Browser-based crawlers use `@cached_result`
 from `http_cache.result_cache` with per-source TTLs. A cached result's key
 includes a hash of its function's source, so changing a crawler's fetch code makes
@@ -247,7 +247,7 @@ its old entries unused.
 | AniSearch | 7 days |
 | Anime-Planet | 7 days |
 | AniDB | 7 days |
-| AnimSchedule | 24 h |
+| AnimeSchedule | 24 h |
 
 ---
 

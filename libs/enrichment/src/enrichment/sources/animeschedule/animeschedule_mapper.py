@@ -1,8 +1,8 @@
-"""AnimSchedule → canonical model mapper.
+"""AnimeSchedule → canonical model mapper.
 
 Pure value normalization. No I/O, no side effects.
 
-AnimSchedule returns clean structured JSON, so mapping is straightforward.
+AnimeSchedule returns clean structured JSON, so mapping is straightforward.
 Key quirks handled here:
 - ``websites`` values are partial URLs (no https:// scheme)
 - ``stats.averageScore`` is 0–100 → normalize to 0–10
@@ -30,7 +30,7 @@ from common.models.anime import (
     StreamingEntry,
 )
 from common.utils.datetime_utils import normalize_to_utc
-from enrichment.sources.animeschedule.animeschedule_models import AnimScheduleAnime
+from enrichment.sources.animeschedule.animeschedule_models import AnimeScheduleAnime
 from enrichment.sources.base.companies import companies_from_roles
 from enrichment.sources.base.external_links import external_link
 from enrichment.utils.text_utils import normalize_score
@@ -40,7 +40,7 @@ from enrichment.utils.text_utils import normalize_score
 _IMAGE_CDN = "https://img.animeschedule.net/production/assets/public/img/"
 _BASE_URL = "https://animeschedule.net/anime/"
 
-# AnimSchedule website keys that map to cross-source source URLs
+# AnimeSchedule website keys that map to cross-source source URLs
 _WEBSITE_KEYS = ("mal", "aniList", "kitsu", "animePlanet", "anidb")
 
 
@@ -55,11 +55,11 @@ def _full_url(partial: str) -> str:
 # ── Public mapper ────────────────────────────────────────────────────────────
 
 
-def anime_from_animeschedule(anime: AnimScheduleAnime) -> dict[str, Any]:
-    """Normalize an AnimScheduleAnime into canonical Anime field values.
+def anime_from_animeschedule(anime: AnimeScheduleAnime) -> dict[str, Any]:
+    """Normalize an AnimeScheduleAnime into canonical Anime field values.
 
     Args:
-        anime: Validated AnimSchedule API response model.
+        anime: Validated AnimeSchedule API response model.
 
     Returns:
         Dict of canonical field name → normalized value (exclude_none applied).
@@ -169,7 +169,7 @@ def anime_from_animeschedule(anime: AnimScheduleAnime) -> dict[str, Any]:
                 )
 
     # ── Related anime ─────────────────────────────────────────────────────
-    # AnimSchedule provides slugs only; slug is used as fallback title until
+    # AnimeSchedule provides slugs only; slug is used as fallback title until
     # MAL/AniList consolidation fills in real titles and types.
     related_anime: dict[AnimeRelationType, list[RelatedAnime]] = {}
     for rel_key, slugs in anime.relations.items():

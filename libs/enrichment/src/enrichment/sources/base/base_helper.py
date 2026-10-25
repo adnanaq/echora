@@ -81,7 +81,7 @@ class BaseEnrichmentHelper(ABC):
         Fetch all available data for a specific anime from the service.
 
         Most implementations derive their lookup key from ``ids`` (e.g. ``ids["anilist_url"]``).
-        Search-based services with no platform ID (e.g. AnimSchedule) may instead use
+        Search-based services with no platform ID (e.g. AnimeSchedule) may instead use
         ``offline_data["title"]`` and validate against ``offline_data["sources"]``.
 
         Args:
