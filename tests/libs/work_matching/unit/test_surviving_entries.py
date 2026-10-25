@@ -54,7 +54,7 @@ def test_find_surviving_entries_each_work_gets_own_survivor(work_entry) -> None:
     }
 
 
-def test_find_surviving_entries_part_reference_page_never_survives(
+def test_find_surviving_entries_whole_reference_page_wins_over_part_page(
     work_entry,
 ) -> None:
     entries = [work_entry(MAL), work_entry(ANILIST)]
@@ -67,7 +67,7 @@ def test_find_surviving_entries_part_reference_page_never_survives(
     }
 
 
-def test_find_surviving_entries_work_without_whole_reference_page_has_no_survivor(
+def test_find_surviving_entries_work_without_reference_page_has_no_survivor(
     work_entry,
 ) -> None:
     entries = [work_entry(MAL, OTHER_ANILIST), work_entry(ANILIST)]
