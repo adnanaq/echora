@@ -384,6 +384,37 @@ def write_results(
         print(f"Answer kept, its case no longer comes up: {case_name}")
 
 
+def print_corrected_entry_counts(
+    group_corrections: PlacementCorrections,
+    known_work_entries: KnownWorkEntriesFromSeed,
+    store: ProviderPageStore,
+) -> None:
+    """Print how many entries the corrections remove, and how many new entries lack a type.
+
+    A new entry without fetched page details gets an unknown type, so the count
+    keeps such entries from being missed before indexing.
+
+    Args:
+        group_corrections: The entry group corrections.
+        known_work_entries: Every seed entry.
+        store: The fetched pages, for the new entries' details.
+    """
+    corrected_entries = build_corrected_entries(
+        group_corrections.corrections, known_work_entries, store
+    )
+    removed_entry_count = sum(
+        corrected.entry is None for corrected in corrected_entries
+    )
+    unknown_type_new_entry_count = sum(
+        corrected.seed_entry_reference_page is None
+        and corrected.entry is not None
+        and corrected.entry.type == "UNKNOWN"
+        for corrected in corrected_entries
+    )
+    print(f"Entries removed, every page moved out: {removed_entry_count}")
+    print(f"New entries with an unknown type: {unknown_type_new_entry_count}")
+
+
 async def main() -> None:
     """List the entries to check, fetch their pages, correct them and add linked pages."""
     arguments = parse_arguments()
@@ -425,13 +456,7 @@ async def main() -> None:
     write_results(
         arguments.data_dir, review_file, group_corrections, linked_page_corrections
     )
-    removed_entry_count = sum(
-        corrected.entry is None
-        for corrected in build_corrected_entries(
-            group_corrections.corrections, known_work_entries, store
-        )
-    )
-    print(f"Entries removed, every page moved out: {removed_entry_count}")
+    print_corrected_entry_counts(group_corrections, known_work_entries, store)
 
 
 if __name__ == "__main__":
