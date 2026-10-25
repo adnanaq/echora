@@ -1287,5 +1287,86 @@
         "is_dead": false
       }
     ]
+  },
+  "shin_oishinbo": {
+    "entries": [
+      {
+        "sources": [
+          "https://anilist.co/anime/217008",
+          "https://livechart.me/anime/13808"
+        ],
+        "title": "Shin Oishinbo",
+        "type": "TV",
+        "animeSeason": {
+          "season": "UNDEFINED"
+        }
+      },
+      {
+        "sources": [
+          "https://animecountdown.com/3256062",
+          "https://simkl.com/anime/3256062"
+        ],
+        "title": "Shin Oishinbo",
+        "type": "TV",
+        "animeSeason": {
+          "season": "UNDEFINED"
+        }
+      },
+      {
+        "sources": [
+          "https://anidb.net/anime/20405",
+          "https://anime-planet.com/anime/shin-oishinbo",
+          "https://animenewsnetwork.com/encyclopedia/anime.php?id=40552",
+          "https://anisearch.com/anime/22010",
+          "https://myanimelist.net/anime/65053"
+        ],
+        "title": "Shin Oishinbo",
+        "type": "TV",
+        "animeSeason": {
+          "season": "WINTER",
+          "year": 2027
+        }
+      }
+    ],
+    "pages": [
+      {
+        "key": "anilist:anime:217008",
+        "address": "https://anilist.co/anime/217008",
+        "titles": [
+          "Shin Oishinbo",
+          "新 美味しんぼ"
+        ],
+        "type": "TV",
+        "year": null,
+        "season": null,
+        "episode_count": null,
+        "aired_from": null,
+        "aired_to": null,
+        "linked_page_keys": [
+          "mal:anime:65053"
+        ],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "animeplanet:anime:shin-oishinbo",
+        "address": "https://anime-planet.com/anime/shin-oishinbo",
+        "titles": [
+          "Shin Oishinbo",
+          "Alt titles: Oishinbo (New), 新 美味しんぼ"
+        ],
+        "type": "TV",
+        "year": 2027,
+        "season": null,
+        "episode_count": null,
+        "aired_from": null,
+        "aired_to": null,
+        "linked_page_keys": [],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      }
+    ]
   }
 }

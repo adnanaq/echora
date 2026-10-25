@@ -302,3 +302,18 @@ def test_find_split_work_candidates_several_works_page_held_by_mal_entry_gives_n
         {"kitsu:anime:10949": frozenset({2, 3})},
     )
     assert find_split_work_candidates(_ajin_entries(), links) == []
+
+
+def test_find_split_work_candidates_several_works_holder_already_grouped_not_grouped_again() -> (
+    None
+):
+    links = SplitWorkLinks(
+        {(0, 1): (SplitWorkLink("anisearch:anime:10462", "mal:anime:30868"),)},
+        {"mal:anime:30868": frozenset({0}), "anidb:anime:11265": frozenset({1, 2, 3})},
+        {"anidb:anime:11265": frozenset({1, 2, 3})},
+    )
+    [candidates] = find_split_work_candidates(_ajin_entries(), links)
+    assert [entry.title for entry in candidates.entries] == [
+        "Ajin",
+        "Ajin Part 1: Shoudou",
+    ]

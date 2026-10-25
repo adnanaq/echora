@@ -5,6 +5,7 @@ import pytest
 from seed_cleaning.corrected_entries import (
     CorrectedEntry,
 )
+from seed_cleaning.entry_groups import EntryGroup
 from seed_cleaning.group_placement import correct_entry_groups
 from seed_cleaning.linked_page_additions import (
     LinkedPageCorrections,
@@ -183,7 +184,7 @@ def test_list_entries_with_placed_pages_corrected_entry_replaces_seed_entry(
         ]
     )
     doubled_corrections = correct_entry_groups(
-        [[doubled_entry]], store, works, review_file
+        [EntryGroup((doubled_entry,))], store, works, review_file
     )
     placed_entries = list_entries_with_placed_pages(
         list(works), doubled_corrections, works, store
@@ -209,7 +210,7 @@ def test_list_entries_with_placed_pages_entry_with_open_case_left_out(
         ]
     )
     doubled_corrections = correct_entry_groups(
-        [[next(iter(works))]], store, works, review_file
+        [EntryGroup((next(iter(works)),))], store, works, review_file
     )
     placed_entries = list_entries_with_placed_pages(
         list(works), doubled_corrections, works, store

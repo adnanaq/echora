@@ -4,6 +4,7 @@ from seed_cleaning.corrected_entries import (
     UnknownSeedEntryError,
     build_corrected_entries,
 )
+from seed_cleaning.entry_groups import EntryGroup
 from seed_cleaning.group_placement import correct_entry_groups
 from seed_cleaning.seed_corrections import SeedCorrection
 from work_matching import (
@@ -70,7 +71,9 @@ def review_file(tmp_path) -> ReviewFile:
 
 
 def _correct(entry, store, known_work_entries, review_file):
-    return correct_entry_groups([[entry]], store, known_work_entries, review_file)
+    return correct_entry_groups(
+        [EntryGroup((entry,))], store, known_work_entries, review_file
+    )
 
 
 def test_build_corrected_entries_moved_page_leaves_entry_and_joins_seed_entry(
@@ -122,7 +125,7 @@ def test_build_corrected_entries_page_moved_into_entry_corrected_itself_joins_co
         _page(NEW_PLANET),
     )
     corrections = correct_entry_groups(
-        [[work] for work in works], store, works, review_file
+        [EntryGroup((work,)) for work in works], store, works, review_file
     ).corrections
     corrected = build_corrected_entries(corrections, works, store)
     [target] = [
@@ -198,6 +201,35 @@ def test_build_corrected_entries_added_page_joins_entry(
     )
 
 
+def test_build_corrected_entries_added_page_moved_joins_target_only(
+    store, known_work_entries
+) -> None:
+    corrections = [
+        SeedCorrection(
+            entry_reference_page="mal:anime:9",
+            page_key="anilist:anime:9",
+            address="https://anilist.co/anime/9",
+            placement_word="work 1",
+            is_added_page=True,
+            target_entry_reference_page="mal:anime:1",
+            reason="review answer",
+        )
+    ]
+    assert {
+        corrected.seed_entry_reference_page: list(corrected.entry.addresses_by_page_key)
+        for corrected in build_corrected_entries(corrections, known_work_entries, store)
+        if corrected.entry is not None
+    } == {
+        "mal:anime:9": ["mal:anime:9"],
+        "mal:anime:1": [
+            "mal:anime:1",
+            "kitsu:anime:1",
+            "kitsu:anime:2",
+            "anilist:anime:9",
+        ],
+    }
+
+
 def test_build_corrected_entries_work_pages_become_new_entry_from_trusted_page(
     entry, store, known_work_entries
 ) -> None:
@@ -227,6 +259,7 @@ def test_build_corrected_entries_work_pages_become_new_entry_from_trusted_page(
             season="FALL",
             addresses_by_page_key={"kitsu:anime:2": KITSU_TWO},
         ),
+        new_entry_key="mal:anime:1 work 2",
     )
 
 
@@ -251,6 +284,7 @@ def test_build_corrected_entries_page_without_details_new_entry_takes_entry_titl
         entry=WorkEntry(
             title="Show", type="UNKNOWN", addresses_by_page_key={"ann:anime:5": ann}
         ),
+        new_entry_key="mal:anime:1 ann:anime:5",
     )
     assert "ann:anime:5" in caplog.text
 

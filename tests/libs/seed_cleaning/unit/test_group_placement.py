@@ -2,13 +2,10 @@ import pytest
 from seed_cleaning.corrected_entries import (
     build_corrected_entries,
 )
-from seed_cleaning.entry_groups import find_entry_groups
+from seed_cleaning.corrected_seed import build_corrected_seed
+from seed_cleaning.entry_groups import EntryGroup
 from seed_cleaning.group_placement import correct_entry_groups
 from seed_cleaning.seed_corrections import SeedCorrection
-from seed_cleaning.split_work_candidates import find_split_work_candidates
-from seed_cleaning.split_work_links import SplitWorkLinks
-
-NO_SPLIT_WORK_LINKS = SplitWorkLinks({}, {})
 from work_matching import (
     KnownWorkEntriesFromSeed,
     ProviderPage,
@@ -74,7 +71,9 @@ def review_file(tmp_path) -> ReviewFile:
 
 
 def _correct(entry, store, known_work_entries, review_file):
-    return correct_entry_groups([[entry]], store, known_work_entries, review_file)
+    return correct_entry_groups(
+        [EntryGroup((entry,))], store, known_work_entries, review_file
+    )
 
 
 def test_correct_entry_groups_entry_without_review_moves_page_to_seed_entry(
@@ -352,14 +351,20 @@ def cue_entries() -> KnownWorkEntriesFromSeed:
 
 def _answer_group_case(entries, store, review_file_path, answer):
     [case] = correct_entry_groups(
-        [entries], store, KnownWorkEntriesFromSeed([]), ReviewFile(review_file_path)
+        [EntryGroup(tuple(entries))],
+        store,
+        KnownWorkEntriesFromSeed([]),
+        ReviewFile(review_file_path),
     ).review_cases
     review_file_path.write_text(
         case.model_copy(update={"answer": answer}).model_dump_json() + "\n",
         encoding="utf-8",
     )
     return correct_entry_groups(
-        [entries], store, KnownWorkEntriesFromSeed([]), ReviewFile(review_file_path)
+        [EntryGroup(tuple(entries))],
+        store,
+        KnownWorkEntriesFromSeed([]),
+        ReviewFile(review_file_path),
     )
 
 
@@ -367,7 +372,9 @@ def test_correct_entry_groups_group_without_doubled_provider_goes_to_review(
     cue_entries, store, review_file
 ) -> None:
     store.add_pages(_page(CUE_MAL, CUE_ANN))
-    placed = correct_entry_groups([list(cue_entries)], store, cue_entries, review_file)
+    placed = correct_entry_groups(
+        [EntryGroup(tuple(cue_entries))], store, cue_entries, review_file
+    )
     assert placed.corrections == ()
     assert [
         (case.case_name, case.suggested_answer) for case in placed.review_cases
@@ -519,24 +526,6 @@ def test_correct_entry_groups_renamed_reference_page_in_later_work_keeps_entry(
     ]
 
 
-def test_correct_entry_groups_doubled_entry_also_split_work_candidate_gives_one_group_case(
-    store, review_file
-) -> None:
-    ann = "https://animenewsnetwork.com/encyclopedia/anime.php?id=1"
-    works = KnownWorkEntriesFromSeed(
-        [_seed_entry("Show", MAL, KITSU_ONE, KITSU_TWO), _seed_entry("Show", ann)]
-    )
-    doubled_entry = next(iter(works))
-    entry_groups = find_entry_groups(
-        [doubled_entry], find_split_work_candidates(works, NO_SPLIT_WORK_LINKS), works
-    )
-    placed = correct_entry_groups(entry_groups, store, works, review_file)
-    assert placed.corrections == ()
-    assert [case.case_name for case in placed.review_cases] == [
-        "split work: ann:anime:1 kitsu:anime:1 kitsu:anime:2 mal:anime:1"
-    ]
-
-
 def test_correct_entry_groups_answer_with_two_mal_pages_in_one_work_left_open(
     store, tmp_path
 ) -> None:
@@ -545,13 +534,138 @@ def test_correct_entry_groups_answer_with_two_mal_pages_in_one_work_left_open(
     )
     path = tmp_path / "review.jsonl"
     [case] = correct_entry_groups(
-        [list(works)], store, works, ReviewFile(path)
+        [EntryGroup(tuple(works))], store, works, ReviewFile(path)
     ).review_cases
     answer = {"mal:anime:1": "work 1", "mal:anime:9": "work 1"}
     path.write_text(
         case.model_copy(update={"answer": answer}).model_dump_json() + "\n",
         encoding="utf-8",
     )
-    placed = correct_entry_groups([list(works)], store, works, ReviewFile(path))
+    placed = correct_entry_groups(
+        [EntryGroup(tuple(works))], store, works, ReviewFile(path)
+    )
     assert placed.corrections == ()
     assert [case.accepted_answer for case in placed.review_cases] == [None]
+
+
+def test_correct_entry_groups_group_case_carries_evidence_and_shared_link_warning(
+    cue_entries, store, review_file
+) -> None:
+    store.add_pages(_page(CUE_MAL, CUE_ANN))
+    group = EntryGroup(
+        tuple(cue_entries),
+        ("mal:anime:43735 links ann:anime:24629",),
+        has_shared_tying_link=True,
+    )
+    [case] = correct_entry_groups([group], store, cue_entries, review_file).review_cases
+    assert case.candidate_evidence == ("mal:anime:43735 links ann:anime:24629",)
+    assert "LINK_SHARED_WITH_OTHER_ENTRIES" in case.reasons
+
+
+def test_correct_entry_groups_corrected_seed_names_pages_by_origin_and_entries_by_identity(
+    cue_entries, store, tmp_path
+) -> None:
+    first_pass_corrections = [
+        SeedCorrection(
+            entry_reference_page="mal:anime:43735",
+            page_key="kitsu:anime:44979",
+            address=CUE_KITSU,
+            placement_word="work 2",
+            new_entry_key="mal:anime:43735 work 2",
+            reason="review answer",
+        )
+    ]
+    corrected_seed = build_corrected_seed(first_pass_corrections, cue_entries, store)
+    corrected_entries = corrected_seed.known_work_entries
+    group_entries = tuple(
+        corrected_entries.find_by_page_key(key)
+        for key in ("ann:anime:24629", "kitsu:anime:44979")
+    )
+    path = tmp_path / "review.jsonl"
+    [case] = correct_entry_groups(
+        [EntryGroup(group_entries)],
+        store,
+        corrected_entries,
+        ReviewFile(path),
+        corrected_seed,
+    ).review_cases
+    answer = {"ann:anime:24629": "work 1", "kitsu:anime:44979": "work 1"}
+    path.write_text(
+        case.model_copy(update={"answer": answer}).model_dump_json() + "\n",
+        encoding="utf-8",
+    )
+    corrections = correct_entry_groups(
+        [EntryGroup(group_entries)],
+        store,
+        corrected_entries,
+        ReviewFile(path),
+        corrected_seed,
+    ).corrections
+    assert [
+        (
+            correction.entry_reference_page,
+            correction.page_key,
+            correction.target_entry_reference_page,
+            correction.new_entry_key,
+        )
+        for correction in corrections
+    ] == [
+        ("ann:anime:24629", "ann:anime:24629", None, "mal:anime:43735 work 2"),
+        ("mal:anime:43735", "kitsu:anime:44979", None, "mal:anime:43735 work 2"),
+    ]
+
+
+SAINT_SEIYA_SEED_ENTRIES = [
+    {
+        "title": "Saint Seiya: Knights of the Zodiac",
+        "type": "ONA",
+        "animeSeason": {"season": "SUMMER", "year": 2019},
+        "sources": [
+            "https://anidb.net/anime/13347",
+            "https://anilist.co/anime/102427",
+            "https://kitsu.app/anime/13695",
+            "https://livechart.me/anime/2822",
+            "https://myanimelist.net/anime/36040",
+        ],
+    },
+    {
+        "title": "Saint Seiya: Knights of the Zodiac Part 2",
+        "type": "ONA",
+        "animeSeason": {"season": "WINTER", "year": 2020},
+        "sources": [
+            "https://anilist.co/anime/114448",
+            "https://livechart.me/anime/9705",
+        ],
+    },
+]
+
+
+def test_correct_entry_groups_answer_merging_parts_moves_part_pages_into_work(
+    store, tmp_path
+) -> None:
+    works = KnownWorkEntriesFromSeed(SAINT_SEIYA_SEED_ENTRIES)
+    answer = {
+        "anidb:anime:13347": "work 1",
+        "anilist:anime:102427": "work 1, part",
+        "kitsu:anime:13695": "work 1",
+        "livechart:anime:2822": "work 1, main",
+        "mal:anime:36040": "work 1",
+        "anilist:anime:114448": "work 1, part",
+        "livechart:anime:9705": "work 1",
+    }
+    corrections = _answer_group_case(
+        list(works), store, tmp_path / "review.jsonl", answer
+    ).corrections
+    assert {
+        correction.page_key: (
+            correction.entry_reference_page,
+            correction.target_entry_reference_page,
+            correction.is_part_page,
+        )
+        for correction in corrections
+        if correction.page_key.startswith(("anilist", "livechart:anime:9705"))
+    } == {
+        "anilist:anime:102427": ("mal:anime:36040", None, True),
+        "anilist:anime:114448": ("anilist:anime:114448", "mal:anime:36040", True),
+        "livechart:anime:9705": ("anilist:anime:114448", "mal:anime:36040", False),
+    }

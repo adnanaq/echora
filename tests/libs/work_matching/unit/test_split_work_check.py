@@ -117,3 +117,12 @@ def test_list_split_work_review_reasons_mal_page_outside_group_listed(
     assert list_split_work_review_reasons(entries, pages) == (
         SplitWorkReviewReason.LINKS_MAL_PAGE_OUTSIDE_GROUP,
     )
+
+
+def test_list_split_work_review_reasons_partly_linked_group_not_tied(
+    matching_cases,
+) -> None:
+    entries, pages = matching_cases["shin_oishinbo"]
+    assert list_split_work_review_reasons(entries, pages) == (
+        SplitWorkReviewReason.NOT_TIED_BY_LINKS,
+    )

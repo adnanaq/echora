@@ -134,6 +134,30 @@ def _dated_page(
             id="aware-meisaku-kun-anime-planet-end-date-unknown",
         ),
         pytest.param(
+            _dated_page("anilist:anime:102416", "MUSIC", 1, "2013-10-22", "2013-10-22"),
+            _dated_page("mal:anime:20707", "MUSIC", 1, "2013-09-10"),
+            MalPageComparison.DETAILS_DIFFER,
+            id="0-music-video-same-count-start-apart",
+        ),
+        pytest.param(
+            _dated_page("anilist:anime:126186", "OVA", 3, "2021-09-14", "2021-09-14"),
+            _dated_page("mal:anime:43506", "OVA", 1, "2021-09-14"),
+            MalPageComparison.DETAILS_DIFFER,
+            id="alice-gear-aegis-more-episodes-same-day",
+        ),
+        pytest.param(
+            _dated_page("anilist:anime:8723", "OVA", 6, "1989-11-21"),
+            _dated_page("mal:anime:8723", "OVA", 8, "1992-07-04"),
+            MalPageComparison.DETAILS_UNKNOWN,
+            id="anime-rakugo-kan-fewer-episodes-mal-end-unknown",
+        ),
+        pytest.param(
+            _dated_page("anilist:anime:18227", "TV SHORT", 6, "2013-04-05"),
+            _dated_page("mal:anime:18227", "TV", 3, "2013-04-05"),
+            MalPageComparison.DETAILS_UNKNOWN,
+            id="bakujuu-gasshin-ziguru-hazeru-more-episodes-ends-unknown",
+        ),
+        pytest.param(
             _dated_page("kitsu:anime:50804", "TV", None, "2026-07-05"),
             _dated_page("mal:anime:63219", "TV", 12, "2026-07-05", "2026-09-20"),
             MalPageComparison.DETAILS_UNKNOWN,

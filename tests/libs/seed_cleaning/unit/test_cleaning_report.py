@@ -1,11 +1,9 @@
-import sys
-from pathlib import Path
-
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
-
-from clean_seed import build_entries_to_check_document, count_corrections
-from seed_cleaning import SeedCorrection, SplitWorkCandidates
+from seed_cleaning.cleaning_report import (
+    build_entries_to_check_document,
+    count_corrections,
+)
+from seed_cleaning.seed_corrections import SeedCorrection
+from seed_cleaning.split_work_candidates import SplitWorkCandidates
 from work_matching import WorkEntry
 
 
@@ -27,6 +25,7 @@ def test_build_entries_to_check_document_names_entries_by_reference_page() -> No
             _entry("Cue!", "https://myanimelist.net/anime/43735"),
         ),
         shared_provider=None,
+        candidate_evidence=("same title: 'CUE!' and 'Cue!'",),
     )
     document = build_entries_to_check_document("seed-schema-url", [doubled], [group])
     assert document["seed_schema"] == "seed-schema-url"
@@ -41,6 +40,8 @@ def test_build_entries_to_check_document_names_entries_by_reference_page() -> No
     ]
     [candidates] = document["split_work_candidates"]
     assert candidates["shared_provider"] is None
+    assert candidates["candidate_evidence"] == ["same title: 'CUE!' and 'Cue!'"]
+    assert candidates["has_shared_tying_link"] is False
     assert [entry["reference_page"] for entry in candidates["entries"]] == [
         "ann:anime:1",
         "mal:anime:43735",

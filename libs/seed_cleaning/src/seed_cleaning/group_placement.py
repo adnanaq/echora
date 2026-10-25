@@ -14,11 +14,21 @@ may be one split work (``entry_groups``). The rules:
   into it, and an entry left without pages is removed.
 - Unplaced pages stay: only the rules leave pages unplaced, and they keep the
   entry as its first work.
+- Second pass: groups of the second pass hold entries as the first pass left
+  them (``corrected_seed``), but corrections name the downloaded seed. So each
+  page's correction names the seed entry listing it, its address, and whether
+  it was added, and each entry it joins is named by the seed entry it stands
+  in for or its new entry key. A page moved in by the first pass that now
+  stays where it is records that place, so the second pass's correction can
+  stand in for the first's.
 """
 
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from typing import NamedTuple
 
+from seed_cleaning.corrected_seed import CorrectedSeed, PageOrigin
+from seed_cleaning.entry_groups import EntryGroup
 from seed_cleaning.seed_corrections import (
     REVIEW_ANSWER_REASON,
     PlacementCorrections,
@@ -50,6 +60,31 @@ class _PageDestination(NamedTuple):
     new_entry_key: str | None
 
 
+@dataclass(frozen=True)
+class _CorrectionNames:
+    """How corrections name pages and entries: by the seed, or by a corrected seed."""
+
+    # None in the first pass, whose entries are the seed's own.
+    corrected_seed: CorrectedSeed | None
+
+    def find_page_origin(
+        self, entry: WorkEntry, page_key: str, address: str
+    ) -> PageOrigin:
+        """Return the seed entry listing a page of an entry, its address and whether added."""
+        if self.corrected_seed is None:
+            return PageOrigin(entry.reference_page, address)
+        return self.corrected_seed.find_page_origin(entry.reference_page, page_key)
+
+    def find_entry_destination(self, reference_page: str) -> _PageDestination:
+        """Return how a correction names the entry with this reference page."""
+        if self.corrected_seed is None:
+            return _PageDestination(reference_page, None)
+        identity = self.corrected_seed.identity_by_reference_page[reference_page]
+        return _PageDestination(
+            identity.seed_entry_reference_page, identity.new_entry_key
+        )
+
+
 class _GroupPlacement(NamedTuple):
     """Where an entry group's pages go, and what the group's corrections read."""
 
@@ -63,21 +98,27 @@ class _GroupPlacement(NamedTuple):
     current_key_by_page_key: Mapping[str, str]
     # The seed entry each unrelated page surely moves to, by its current key.
     target_reference_page_by_page_key: Mapping[str, str]
+    correction_names: _CorrectionNames
 
 
 def correct_entry_groups(
-    entry_groups: Iterable[Sequence[WorkEntry]],
+    entry_groups: Iterable[EntryGroup],
     store: ProviderPageStore,
     known_work_entries: KnownWorkEntries,
     review_file: ReviewFile,
+    corrected_seed: CorrectedSeed | None = None,
 ) -> PlacementCorrections:
     """Place the pages of each entry group, or ask a person.
 
     Args:
-        entry_groups: The entry groups, as ``find_entry_groups`` gives them.
+        entry_groups: The entry groups, with why their entries are grouped.
         store: The fetched pages, including pages searched by the entries' pages.
-        known_work_entries: Every seed entry, to find the entries pages move to.
+        known_work_entries: Every entry the groups' entries come from, to find
+            the entries pages move to.
         review_file: The review file, for the answers kept in it.
+        corrected_seed: In the second pass, the corrected seed the groups'
+            entries come from, so corrections name the downloaded seed; None
+            in the first pass.
 
     Returns:
         The corrections from groups needing no review and from accepted
@@ -85,23 +126,25 @@ def correct_entry_groups(
     """
     corrections: list[SeedCorrection] = []
     review_cases: list[ReviewCase] = []
-    for entries in entry_groups:
+    correction_names = _CorrectionNames(corrected_seed)
+    for entry_group in entry_groups:
         group_placement, review_case = _place_entry_group(
-            entries, store, known_work_entries, review_file
+            entry_group, store, known_work_entries, review_file, correction_names
         )
         if review_case is not None:
             review_cases.append(review_case)
         if group_placement is not None:
-            for entry in entries:
+            for entry in entry_group.entries:
                 corrections.extend(_build_entry_corrections(entry, group_placement))
     return PlacementCorrections(tuple(corrections), tuple(review_cases))
 
 
 def _place_entry_group(
-    entries: Sequence[WorkEntry],
+    entry_group: EntryGroup,
     store: ProviderPageStore,
     known_work_entries: KnownWorkEntries,
     review_file: ReviewFile,
+    correction_names: _CorrectionNames,
 ) -> tuple[_GroupPlacement | None, ReviewCase | None]:
     """Place one entry group's pages by the rules, or by its accepted answer.
 
@@ -110,6 +153,7 @@ def _place_entry_group(
         answer is not valid; and its review case, or None when the rules
         placed the group.
     """
+    entries = entry_group.entries
     pages = _get_group_pages(entries, store)
     combined_entry = combine_group_entries(entries)
     decisions = decide_doubled_providers(combined_entry, pages, known_work_entries)
@@ -122,12 +166,7 @@ def _place_entry_group(
     review_case = None
     if placements is None:
         review_case = review_file.attach_kept_answer(
-            ReviewCase.from_entry_group(
-                entries,
-                decisions,
-                list_split_work_review_reasons(entries, pages),
-                pages,
-            )
+            _build_review_case(entry_group, decisions, pages)
         )
         accepted_placements = review_case.accepted_answer
         if not isinstance(accepted_placements, dict):
@@ -144,8 +183,28 @@ def _place_entry_group(
         find_surviving_entries(entries, placements, current_key_by_page_key),
         current_key_by_page_key,
         _find_target_reference_pages(decisions),
+        correction_names,
     )
     return group_placement, review_case
+
+
+def _build_review_case(
+    entry_group: EntryGroup,
+    decisions: Sequence[DoubledProviderDecision],
+    pages: Sequence[ProviderPage],
+) -> ReviewCase:
+    """Make an entry group's review case, with why its entries are grouped."""
+    return ReviewCase.from_entry_group(
+        entry_group.entries,
+        decisions,
+        list_split_work_review_reasons(
+            entry_group.entries,
+            pages,
+            has_shared_tying_link=entry_group.has_shared_tying_link,
+        ),
+        pages,
+        candidate_evidence=entry_group.candidate_evidence,
+    )
 
 
 def _get_group_pages(
@@ -210,17 +269,31 @@ def _build_seed_correction(
     The page records its current key as renamed only when the group also lists
     that key, so dropping the old address loses nothing.
     """
+    correction_names = group_placement.correction_names
+    origin = correction_names.find_page_origin(entry, page_key, address)
     destination = _find_page_destination(
         entry, page_key, placement, current_key, group_placement
     )
+    if destination is None:
+        # The page stays in its entry; it still moves when that entry is not
+        # the seed entry listing it, such as a page moved in by the first pass.
+        entry_destination = correction_names.find_entry_destination(
+            entry.reference_page
+        )
+        destination = (
+            _PageDestination(None, None)
+            if entry_destination == (origin.entry_reference_page, None)
+            else entry_destination
+        )
     is_renamed_page_listed = (
         current_key != page_key
         and current_key in group_placement.combined_entry.addresses_by_page_key
     )
     return SeedCorrection(
-        entry_reference_page=entry.reference_page,
+        entry_reference_page=origin.entry_reference_page,
         page_key=page_key,
-        address=address,
+        address=origin.address,
+        is_added_page=origin.is_added_page,
         placement_word=placement.placement_word,
         is_main_page=placement.is_main_page,
         is_part_page=placement.is_part_page,
@@ -237,8 +310,8 @@ def _find_page_destination(
     placement: PagePlacement,
     current_key: str,
     group_placement: _GroupPlacement,
-) -> _PageDestination:
-    """Find the entry a placed page ends up in.
+) -> _PageDestination | None:
+    """Find the entry a placed page ends up in, or None when it stays in its entry.
 
     Pages with the same new entry key become one new entry. Two different keys
     never read the same: reference pages and page keys hold no spaces, and a
@@ -246,10 +319,9 @@ def _find_page_destination(
 
     Each item reads ``<placement>: <where the page goes>``.
 
-    - ``other work`` with a sure move: the page joins that seed entry.
-    - ``other work`` without one: the key is ``<entry reference page> <page
-      key>``, so the page alone forms a new entry.
-    - A work the page's own entry survives as: the page stays.
+    - ``other work``: the page joins the seed entry of its sure move; without
+      one, it alone forms a new entry, keyed ``<entry reference page> <page key>``.
+    - A work the page's own entry survives as: None, the page stays.
     - A work another seed entry survives as: the page joins that entry.
     - A work no entry survives as: the key is ``<group reference page> work
       N``, so the group's pages in that work form one new entry together.
@@ -262,26 +334,40 @@ def _find_page_destination(
         group_placement: Where the entry's group places its pages.
 
     Returns:
-        The seed entry the page joins, or the new entry key it shares.
+        The seed entry the page joins, or the new entry key it shares, as
+        corrections name them; None when the page stays in its entry.
     """
     if placement.placement_word == OTHER_WORK:
-        move_target_reference_page = (
-            group_placement.target_reference_page_by_page_key.get(current_key)
+        return _find_other_work_destination(
+            entry, page_key, current_key, group_placement
         )
-        if move_target_reference_page:
-            return _PageDestination(move_target_reference_page, None)
-        return _PageDestination(None, f"{entry.reference_page} {page_key}")
     surviving_reference_page = group_placement.surviving_reference_page_by_work.get(
         placement.placement_word
     )
     if surviving_reference_page == entry.reference_page:
-        return _PageDestination(None, None)
+        return None
     if surviving_reference_page:
-        return _PageDestination(surviving_reference_page, None)
+        return group_placement.correction_names.find_entry_destination(
+            surviving_reference_page
+        )
     return _PageDestination(
         None,
         f"{group_placement.combined_entry.reference_page} {placement.placement_word}",
     )
+
+
+def _find_other_work_destination(
+    entry: WorkEntry, page_key: str, current_key: str, group_placement: _GroupPlacement
+) -> _PageDestination:
+    """Find where a page placed in ``other work`` goes: its sure move, or a new entry."""
+    move_target_reference_page = group_placement.target_reference_page_by_page_key.get(
+        current_key
+    )
+    if move_target_reference_page:
+        return group_placement.correction_names.find_entry_destination(
+            move_target_reference_page
+        )
+    return _PageDestination(None, f"{entry.reference_page} {page_key}")
 
 
 def _find_target_reference_pages(
