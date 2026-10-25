@@ -127,7 +127,7 @@ def read_group_answer_placements(
     answer: JsonValue,
     entries: Sequence[WorkEntry],
     decisions: Sequence[DoubledProviderDecision],
-    current_key_by_page_key: Mapping[str, str] | None = None,
+    current_key_by_page_key: Mapping[str, str],
 ) -> dict[str, PagePlacement] | None:
     """Read a review answer for a group into each page's place, when it is valid.
 
@@ -151,8 +151,7 @@ def read_group_answer_placements(
     )
     if placements is None or not is_entry_group:
         return placements
-    current_key_by_page_key = current_key_by_page_key or {}
-    surviving_reference_pages = find_surviving_entries(
+    surviving_reference_page_by_work = find_surviving_entries(
         entries, placements, current_key_by_page_key
     )
     for placement_word, listing_reference_pages in _list_entries_per_work(
@@ -160,7 +159,7 @@ def read_group_answer_placements(
     ).items():
         if (
             len(listing_reference_pages) > 1
-            and placement_word not in surviving_reference_pages
+            and placement_word not in surviving_reference_page_by_work
         ):
             return None
     return placements

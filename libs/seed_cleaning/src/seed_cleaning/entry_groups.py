@@ -62,7 +62,7 @@ def find_entry_groups(
     ]:
         entry_groups.union(
             *(
-                _find_seed_position(entry, seed_position_by_entry_id)
+                _get_seed_position(entry, seed_position_by_entry_id)
                 for entry in group_entries
             )
         )
@@ -72,7 +72,7 @@ def find_entry_groups(
     ]
 
 
-def _find_seed_position(
+def _get_seed_position(
     entry: WorkEntry, seed_position_by_entry_id: dict[int, int]
 ) -> int:
     """Return an entry's place in the seed, or raise when the seed holds no such object."""

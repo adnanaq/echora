@@ -11,7 +11,7 @@ ANN = "https://animenewsnetwork.com/encyclopedia/anime.php?id=1"
 def test_find_surviving_entries_unplaced_reference_page_survives_as_first_work(
     work_entry,
 ) -> None:
-    assert find_surviving_entries([work_entry(MAL, ANILIST)], {}) == {
+    assert find_surviving_entries([work_entry(MAL, ANILIST)], {}, {}) == {
         "work 1": "mal:anime:1"
     }
 
@@ -25,7 +25,7 @@ def test_find_surviving_entries_most_trusted_reference_page_survives(
         "anilist:anime:1": PagePlacement("work 1"),
         "mal:anime:1": PagePlacement("work 1"),
     }
-    assert find_surviving_entries(entries, placements) == {"work 1": "mal:anime:1"}
+    assert find_surviving_entries(entries, placements, {}) == {"work 1": "mal:anime:1"}
 
 
 def test_find_surviving_entries_same_provider_tie_broken_by_reference_page(
@@ -36,7 +36,9 @@ def test_find_surviving_entries_same_provider_tie_broken_by_reference_page(
         "anilist:anime:2": PagePlacement("work 1"),
         "anilist:anime:1": PagePlacement("work 1"),
     }
-    assert find_surviving_entries(entries, placements) == {"work 1": "anilist:anime:1"}
+    assert find_surviving_entries(entries, placements, {}) == {
+        "work 1": "anilist:anime:1"
+    }
 
 
 def test_find_surviving_entries_each_work_gets_own_survivor(work_entry) -> None:
@@ -46,7 +48,7 @@ def test_find_surviving_entries_each_work_gets_own_survivor(work_entry) -> None:
         "mal:anime:2": PagePlacement("work 1"),
         "anilist:anime:1": PagePlacement("work 2"),
     }
-    assert find_surviving_entries(entries, placements) == {
+    assert find_surviving_entries(entries, placements, {}) == {
         "work 1": "mal:anime:2",
         "work 2": "mal:anime:1",
     }
@@ -60,7 +62,9 @@ def test_find_surviving_entries_part_reference_page_never_survives(
         "mal:anime:1": PagePlacement("work 1", is_part_page=True),
         "anilist:anime:1": PagePlacement("work 1"),
     }
-    assert find_surviving_entries(entries, placements) == {"work 1": "anilist:anime:1"}
+    assert find_surviving_entries(entries, placements, {}) == {
+        "work 1": "anilist:anime:1"
+    }
 
 
 def test_find_surviving_entries_work_without_whole_reference_page_has_no_survivor(
@@ -72,7 +76,7 @@ def test_find_surviving_entries_work_without_whole_reference_page_has_no_survivo
         "anilist:anime:2": PagePlacement("work 2"),
         "anilist:anime:1": PagePlacement("other work"),
     }
-    assert find_surviving_entries(entries, placements) == {"work 1": "mal:anime:1"}
+    assert find_surviving_entries(entries, placements, {}) == {"work 1": "mal:anime:1"}
 
 
 def test_find_surviving_entries_only_part_reference_pages_most_trusted_part_survives(
@@ -83,7 +87,7 @@ def test_find_surviving_entries_only_part_reference_pages_most_trusted_part_surv
         "anilist:anime:1": PagePlacement("work 1", is_part_page=True),
         "mal:anime:1": PagePlacement("work 1", is_part_page=True),
     }
-    assert find_surviving_entries(entries, placements) == {"work 1": "mal:anime:1"}
+    assert find_surviving_entries(entries, placements, {}) == {"work 1": "mal:anime:1"}
 
 
 def test_find_surviving_entries_renamed_reference_page_found_by_current_key(

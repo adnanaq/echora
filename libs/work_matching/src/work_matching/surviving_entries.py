@@ -51,7 +51,7 @@ class _SurvivorCandidate(NamedTuple):
 def find_surviving_entries(
     entries: Iterable[WorkEntry],
     placements: Mapping[str, PagePlacement],
-    current_key_by_page_key: Mapping[str, str] | None = None,
+    current_key_by_page_key: Mapping[str, str],
 ) -> dict[str, str]:
     """Find the seed entry each work keeps, by the rules in the module docstring.
 
@@ -69,7 +69,7 @@ def find_surviving_entries(
     candidates_by_work: defaultdict[str, list[_SurvivorCandidate]] = defaultdict(list)
     for entry in entries:
         placed_page = find_page_placement(
-            entry.reference_page, placements, current_key_by_page_key or {}
+            entry.reference_page, placements, current_key_by_page_key
         )
         placement = placed_page.placement if placed_page else PagePlacement(FIRST_WORK)
         if placement.placement_word != OTHER_WORK:

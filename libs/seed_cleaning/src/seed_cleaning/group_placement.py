@@ -58,7 +58,7 @@ class _GroupPlacement(NamedTuple):
     placements: Mapping[str, PagePlacement]
     reason_by_page_key: Mapping[str, str]
     # Each work's surviving entry, as ``find_surviving_entries`` gives them.
-    surviving_reference_pages: Mapping[str, str]
+    surviving_reference_page_by_work: Mapping[str, str]
     # Each renamed page's current key, by the key an entry lists it under.
     current_key_by_page_key: Mapping[str, str]
     # The seed entry each unrelated page surely moves to, by its current key.
@@ -269,7 +269,7 @@ def _find_page_destination(
         if move_target_reference_page:
             return _PageDestination(move_target_reference_page, None)
         return _PageDestination(None, f"{entry.reference_page} {page_key}")
-    surviving_reference_page = group_placement.surviving_reference_pages.get(
+    surviving_reference_page = group_placement.surviving_reference_page_by_work.get(
         placement.placement_word
     )
     if surviving_reference_page == entry.reference_page:

@@ -127,9 +127,9 @@ def test_read_group_answer_placements_every_page_placed_gives_placements(
         "mal:anime:1": "work 1",
         "kitsu:anime:1": "work 1",
     }
-    assert read_group_answer_placements(answer, entries, decisions) == dict.fromkeys(
-        answer, PagePlacement("work 1")
-    )
+    assert read_group_answer_placements(
+        answer, entries, decisions, {}
+    ) == dict.fromkeys(answer, PagePlacement("work 1"))
 
 
 @pytest.mark.parametrize(
@@ -143,7 +143,7 @@ def test_read_group_answer_placements_invalid_answer_gives_none(
     cue_like_group, answer: dict[str, str]
 ) -> None:
     entries, decisions = cue_like_group
-    assert read_group_answer_placements(answer, entries, decisions) is None
+    assert read_group_answer_placements(answer, entries, decisions, {}) is None
 
 
 def test_read_group_answer_placements_two_mal_pages_in_one_work_gives_none(
@@ -151,7 +151,9 @@ def test_read_group_answer_placements_two_mal_pages_in_one_work_gives_none(
 ) -> None:
     entries = [work_entry(MAL), work_entry(OTHER_MAL)]
     answer = {"mal:anime:1": "work 1", "mal:anime:2": "work 1"}
-    assert read_group_answer_placements(answer, entries, _decide(entries, [])) is None
+    assert (
+        read_group_answer_placements(answer, entries, _decide(entries, []), {}) is None
+    )
 
 
 def test_read_group_answer_placements_two_mal_pages_in_separate_works_accepted(
@@ -159,7 +161,7 @@ def test_read_group_answer_placements_two_mal_pages_in_separate_works_accepted(
 ) -> None:
     entries = [work_entry(MAL), work_entry(OTHER_MAL)]
     answer = {"mal:anime:1": "work 1", "mal:anime:2": "work 2"}
-    assert read_group_answer_placements(answer, entries, _decide(entries, [])) == {
+    assert read_group_answer_placements(answer, entries, _decide(entries, []), {}) == {
         "mal:anime:1": PagePlacement("work 1"),
         "mal:anime:2": PagePlacement("work 2"),
     }
@@ -171,7 +173,9 @@ def test_read_group_answer_placements_single_entry_needs_only_doubled_pages(
     entries = [work_entry(MAL, KITSU, "https://kitsu.app/anime/2")]
     pages = [linked_page(KITSU, MAL), linked_page("https://kitsu.app/anime/2", MAL)]
     answer = {"kitsu:anime:1": "work 1, main", "kitsu:anime:2": "work 1"}
-    assert read_group_answer_placements(answer, entries, _decide(entries, pages)) == {
+    assert read_group_answer_placements(
+        answer, entries, _decide(entries, pages), {}
+    ) == {
         "kitsu:anime:1": PagePlacement("work 1", is_main_page=True),
         "kitsu:anime:2": PagePlacement("work 1"),
     }
@@ -188,7 +192,7 @@ def test_read_group_answer_placements_work_of_two_entries_without_reference_page
         "mal:anime:1": "work 1",
         "kitsu:anime:1": "work 2",
     }
-    assert read_group_answer_placements(answer, entries, decisions) is None
+    assert read_group_answer_placements(answer, entries, decisions, {}) is None
 
 
 def test_read_group_answer_placements_part_reference_pages_only_accepted(
@@ -200,4 +204,4 @@ def test_read_group_answer_placements_part_reference_pages_only_accepted(
         "mal:anime:1": "work 1, part",
         "kitsu:anime:1": "work 1",
     }
-    assert read_group_answer_placements(answer, entries, decisions) is not None
+    assert read_group_answer_placements(answer, entries, decisions, {}) is not None
