@@ -7,7 +7,7 @@ Field names are the environment variable names in lower case, so
 
 import logging
 
-from pydantic import Field
+from pydantic import Field, SecretStr
 
 from .env_settings import EnvSettings
 
@@ -62,6 +62,14 @@ class EnrichmentConfig(EnvSettings):
         default=300.0,
         ge=0,
         description="Seconds to stop contacting AniDB after it returns a 555 ban",
+    )
+    animeschedule_token: SecretStr | None = Field(
+        default=None,
+        description=(
+            "AnimeSchedule app token, sent as a bearer token. Without it, "
+            "AnimeSchedule leaves the provider links out of its answers, so no "
+            "result can be matched to its anime"
+        ),
     )
 
     weighted_score_baseline: float = Field(

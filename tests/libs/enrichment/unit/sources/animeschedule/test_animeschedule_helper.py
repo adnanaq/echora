@@ -15,6 +15,7 @@ from enrichment.sources.animeschedule.animeschedule_helper import (
 from enrichment.sources.base.exceptions import ServiceNetworkError, ServiceParseError
 from http_cache import get_cache
 from http_cache.aiohttp_adapter import CachedAiohttpSession
+from pydantic import SecretStr
 
 SEARCH_URL = "https://animeschedule.net/api/v3/anime"
 MAL_URL = "https://myanimelist.net/anime/21"
@@ -337,6 +338,32 @@ async def test_find_by_title_title_with_query_characters_sends_whole_title(
     assert (str(sent_url.with_query(None)), dict(sent_url.query)) == (
         SEARCH_URL,
         {"q": "009-1: R&B"},
+    )
+
+
+async def test_find_by_title_with_app_token_sends_bearer_header(
+    search_session,
+) -> None:
+    _answer(search_session, {"anime": []})
+
+    await AnimescheduleHelper(get_cache(), SecretStr("app-token"))._find_by_title(
+        "One Piece", []
+    )
+
+    assert search_session.get.call_args.kwargs["headers"] == {
+        "Authorization": "Bearer app-token"
+    }
+
+
+async def test_find_by_title_without_app_token_sends_no_authorization(
+    search_session,
+) -> None:
+    _answer(search_session, {"anime": []})
+
+    await AnimescheduleHelper(get_cache())._find_by_title("One Piece", [])
+
+    assert "Authorization" not in (
+        search_session.get.call_args.kwargs.get("headers") or {}
     )
 
 

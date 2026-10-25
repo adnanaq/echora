@@ -8,10 +8,13 @@ anime list by MyAnimeList, AniList and AniDB IDs, so the helper looks the anime
 up by the IDs in its source URLs. Only when none of them finds it does it search
 by title, keeping the result only if it links back to one of those sources.
 
+The app token is sent with every request: without it, AnimSchedule leaves the
+provider links out of its answers, so no result can be matched to its anime.
+
 Usage:
     # Programmatic usage via class
     from enrichment.sources.animeschedule.animeschedule_helper import AnimescheduleHelper
-    helper = AnimescheduleHelper(cache)
+    helper = AnimescheduleHelper(cache, config.animeschedule_token)
     data = await helper.fetch_all(ids, offline_data)
 
     # CLI usage
@@ -29,7 +32,7 @@ import sys
 from typing import Any
 
 import aiohttp
-from common.config import CacheConfig, RedisConfig
+from common.config import CacheConfig, EnrichmentConfig, RedisConfig
 from common.utils.jsonl_utils import append_jsonl
 from enrichment.sources.animeschedule.animeschedule_mapper import (
     anime_from_animeschedule,
@@ -41,6 +44,7 @@ from enrichment.sources.base.base_helper import (
 )
 from enrichment.sources.base.exceptions import ServiceNetworkError, ServiceParseError
 from http_cache import HTTPCacheManager, configure_cache
+from pydantic import SecretStr
 
 logger = logging.getLogger(__name__)
 
@@ -118,13 +122,23 @@ def _match_by_sources(candidates: list[dict], sources: list[str]) -> dict | None
 class AnimescheduleHelper(BaseEnrichmentHelper):
     """Fetch AnimSchedule data for an anime by its provider IDs, or its title."""
 
-    def __init__(self, cache: HTTPCacheManager) -> None:
+    def __init__(
+        self, cache: HTTPCacheManager, app_token: SecretStr | None = None
+    ) -> None:
         """Initialize AnimSchedule helper.
 
         Args:
             cache: Supplies the HTTP sessions, cached when caching is on.
+            app_token: The AnimSchedule app token, sent as a bearer token with
+                every request; None sends none, and the answers then lack the
+                provider links.
         """
         self._cache = cache
+        self._request_headers = (
+            {"Authorization": f"Bearer {app_token.get_secret_value()}"}
+            if app_token
+            else {}
+        )
 
     async def fetch_all(
         self,
@@ -235,7 +249,9 @@ class AnimescheduleHelper(BaseEnrichmentHelper):
         """
         try:
             async with self._cache.get_aiohttp_session("animeschedule") as session:
-                async with session.get(_ANIME_LIST_URL, params=params) as response:
+                async with session.get(
+                    _ANIME_LIST_URL, params=params, headers=self._request_headers
+                ) as response:
                     if response.status in _NOT_FOUND_STATUSES:
                         return []
                     response.raise_for_status()
@@ -281,7 +297,10 @@ async def main() -> int:
     )
     args = parser.parse_args()
 
-    helper = AnimescheduleHelper(configure_cache(CacheConfig(), RedisConfig()))
+    helper = AnimescheduleHelper(
+        configure_cache(CacheConfig(), RedisConfig()),
+        EnrichmentConfig().animeschedule_token,
+    )
     try:
         result = await helper.fetch_by_title(args.search_term, args.output)
     except Exception:

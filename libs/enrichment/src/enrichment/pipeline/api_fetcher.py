@@ -60,7 +60,9 @@ class ApiFetcher:
         "anidb": AniDBHelper,
         "anime_planet": lambda config, cache: AnimePlanetHelper(),
         "anisearch": lambda config, cache: AniSearchHelper(),
-        "animeschedule": lambda config, cache: AnimescheduleHelper(cache),
+        "animeschedule": lambda config, cache: AnimescheduleHelper(
+            cache, config.animeschedule_token
+        ),
         "mal": lambda config, cache: MalHelper(),
     }
 
