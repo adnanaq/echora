@@ -408,3 +408,25 @@ def test_suggest_group_page_placements_doubled_parts_of_mal_work_marked_part(
         "kitsu:anime:46536": "work 1, part",
         "kitsu:anime:46535": "work 1, part",
     }
+
+
+def test_suggest_group_page_placements_several_works_page_left_out_films_kept_apart(
+    matching_cases,
+) -> None:
+    entries, pages = matching_cases["ajin_films"]
+    suggested_placements = suggest_group_page_placements(
+        entries, _decide(entries, pages), pages
+    )
+    work_by_mal_page = {
+        key: suggested_placements.get(key)
+        for key in ("mal:anime:30868", "mal:anime:30869", "mal:anime:30870")
+    }
+    assert len(set(work_by_mal_page.values())) == 3
+    assert None not in work_by_mal_page.values()
+    assert (
+        suggested_placements["kitsu:anime:10949"] == work_by_mal_page["mal:anime:30868"]
+    )
+    assert "anidb:anime:11265" not in suggested_placements
+    assert not any(
+        placement.endswith(", part") for placement in suggested_placements.values()
+    )

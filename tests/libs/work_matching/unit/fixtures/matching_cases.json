@@ -1368,5 +1368,430 @@
         "is_dead": false
       }
     ]
+  },
+  "ajin_films": {
+    "entries": [
+      {
+        "sources": [
+          "https://anidb.net/anime/11265",
+          "https://animecountdown.com/499134",
+          "https://anisearch.com/anime/10462",
+          "https://simkl.com/anime/499134"
+        ],
+        "title": "Ajin",
+        "type": "MOVIE",
+        "animeSeason": {
+          "season": "FALL",
+          "year": 2015
+        }
+      },
+      {
+        "sources": [
+          "https://anilist.co/anime/21212",
+          "https://anime-planet.com/anime/ajin-movie-1-shoudou",
+          "https://animenewsnetwork.com/encyclopedia/anime.php?id=17176",
+          "https://kitsu.app/anime/10949",
+          "https://livechart.me/anime/1620",
+          "https://myanimelist.net/anime/30868"
+        ],
+        "title": "Ajin Part 1: Shoudou",
+        "type": "MOVIE",
+        "animeSeason": {
+          "season": "FALL",
+          "year": 2015
+        }
+      },
+      {
+        "sources": [
+          "https://anilist.co/anime/21505",
+          "https://anime-planet.com/anime/ajin-movie-2-shoutotsu",
+          "https://animenewsnetwork.com/encyclopedia/anime.php?id=17950",
+          "https://kitsu.app/anime/10950",
+          "https://livechart.me/anime/1622",
+          "https://myanimelist.net/anime/30869"
+        ],
+        "title": "Ajin Part 2: Shoutotsu",
+        "type": "MOVIE",
+        "animeSeason": {
+          "season": "SPRING",
+          "year": 2016
+        }
+      },
+      {
+        "sources": [
+          "https://anilist.co/anime/21681",
+          "https://anime-planet.com/anime/ajin-movie-3-shougeki",
+          "https://animenewsnetwork.com/encyclopedia/anime.php?id=18465",
+          "https://kitsu.app/anime/10951",
+          "https://livechart.me/anime/1623",
+          "https://myanimelist.net/anime/30870"
+        ],
+        "title": "Ajin Part 3: Shougeki",
+        "type": "MOVIE",
+        "animeSeason": {
+          "season": "SUMMER",
+          "year": 2016
+        }
+      }
+    ],
+    "pages": [
+      {
+        "key": "anidb:anime:11265",
+        "address": "https://anidb.net/anime/11265",
+        "titles": [
+          "Ajin",
+          "亜人",
+          "亚人 剧场版"
+        ],
+        "type": "MOVIE",
+        "year": 2015,
+        "season": "FALL",
+        "episode_count": 3,
+        "aired_from": "2015-11-26T15:00:00Z",
+        "aired_to": "2016-09-22T15:00:00Z",
+        "linked_page_keys": [],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "anisearch:anime:10462",
+        "address": "https://anisearch.com/anime/10462",
+        "titles": [
+          "Ajin",
+          "Ajin (Movie)",
+          "亜人",
+          "Ajin Trilogie"
+        ],
+        "type": "MOVIE",
+        "year": 2015,
+        "season": "FALL",
+        "episode_count": 3,
+        "aired_from": "2015-11-26T15:00:00Z",
+        "aired_to": "2016-09-22T15:00:00Z",
+        "linked_page_keys": [],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "anilist:anime:21212",
+        "address": "https://anilist.co/anime/21212",
+        "titles": [
+          "Ajin: Shoudou",
+          "AJIN: Demi-Human -Compel-",
+          "亜人 -衝動-"
+        ],
+        "type": "MOVIE",
+        "year": 2015,
+        "season": "FALL",
+        "episode_count": 1,
+        "aired_from": "2015-11-26T15:00:00Z",
+        "aired_to": "2015-11-26T15:00:00Z",
+        "linked_page_keys": [
+          "mal:anime:30868"
+        ],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "animeplanet:anime:ajin-movie-1-shoudou",
+        "address": "https://anime-planet.com/anime/ajin-movie-1-shoudou",
+        "titles": [
+          "Ajin Movie 1: Shoudou",
+          "亜人 衝動"
+        ],
+        "type": "MOVIE",
+        "year": 2015,
+        "season": null,
+        "episode_count": null,
+        "aired_from": null,
+        "aired_to": null,
+        "linked_page_keys": [],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "kitsu:anime:10949",
+        "address": "https://kitsu.app/anime/10949",
+        "titles": [
+          "Ajin Part 1: Shoudou",
+          "Ajin: Demi-Human - Compel",
+          "亜人　第１部「衝動」"
+        ],
+        "type": "MOVIE",
+        "year": 2015,
+        "season": "FALL",
+        "episode_count": 1,
+        "aired_from": "2015-11-26T15:00:00Z",
+        "aired_to": "2015-11-26T15:00:00Z",
+        "linked_page_keys": [
+          "anidb:anime:11265",
+          "anilist:anime:21212",
+          "mal:anime:30868"
+        ],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "mal:anime:30868",
+        "address": "https://myanimelist.net/anime/30868",
+        "titles": [
+          "Ajin Part 1: Shoudou",
+          "Ajin: Demi-Human Movie 1: Compel",
+          "亜人　第１部「衝動」"
+        ],
+        "type": "MOVIE",
+        "year": 2015,
+        "season": null,
+        "episode_count": 1,
+        "aired_from": "2015-11-26T15:00:00Z",
+        "aired_to": null,
+        "linked_page_keys": [
+          "anidb:anime:11265",
+          "ann:anime:17176"
+        ],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "https://animeschedule.net/anime/ajin-shoudou",
+        "address": "https://animeschedule.net/anime/ajin-shoudou",
+        "titles": [
+          "Ajin: Shoudou",
+          "亜人 -衝動-"
+        ],
+        "type": "MOVIE",
+        "year": 2015,
+        "season": "FALL",
+        "episode_count": 1,
+        "aired_from": "2015-11-26T15:00:00Z",
+        "aired_to": null,
+        "linked_page_keys": [
+          "anilist:anime:21212",
+          "kitsu:anime:10949",
+          "mal:anime:30868"
+        ],
+        "renamed_to": null,
+        "searched_by": [
+          "mal:anime:30868"
+        ],
+        "is_dead": false
+      },
+      {
+        "key": "anilist:anime:21505",
+        "address": "https://anilist.co/anime/21505",
+        "titles": [
+          "Ajin: Shoutotsu",
+          "亜人 -衝突-"
+        ],
+        "type": "MOVIE",
+        "year": 2016,
+        "season": "SPRING",
+        "episode_count": 1,
+        "aired_from": "2016-05-05T15:00:00Z",
+        "aired_to": "2016-05-05T15:00:00Z",
+        "linked_page_keys": [
+          "mal:anime:30869"
+        ],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "animeplanet:anime:ajin-movie-2-shoutotsu",
+        "address": "https://anime-planet.com/anime/ajin-movie-2-shoutotsu",
+        "titles": [
+          "Ajin Movie 2: Shoutotsu",
+          "亜人衝突"
+        ],
+        "type": "MOVIE",
+        "year": 2016,
+        "season": null,
+        "episode_count": null,
+        "aired_from": null,
+        "aired_to": null,
+        "linked_page_keys": [],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "kitsu:anime:10950",
+        "address": "https://kitsu.app/anime/10950",
+        "titles": [
+          "Ajin Part 2: Shoutotsu",
+          "亜人　第２部「衝突」"
+        ],
+        "type": "MOVIE",
+        "year": 2016,
+        "season": "SPRING",
+        "episode_count": 1,
+        "aired_from": "2016-05-05T15:00:00Z",
+        "aired_to": "2016-05-05T15:00:00Z",
+        "linked_page_keys": [
+          "anilist:anime:21505",
+          "mal:anime:30869"
+        ],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "mal:anime:30869",
+        "address": "https://myanimelist.net/anime/30869",
+        "titles": [
+          "Ajin Part 2: Shoutotsu",
+          "Ajin: Demi-Human Movie 2: Confront",
+          "亜人　第２部「衝突」"
+        ],
+        "type": "MOVIE",
+        "year": 2016,
+        "season": null,
+        "episode_count": 1,
+        "aired_from": "2016-05-05T15:00:00Z",
+        "aired_to": null,
+        "linked_page_keys": [
+          "anidb:anime:11265",
+          "ann:anime:17950"
+        ],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "https://animeschedule.net/anime/ajin-shoutotsu",
+        "address": "https://animeschedule.net/anime/ajin-shoutotsu",
+        "titles": [
+          "Ajin: Shoutotsu",
+          "亜人 -衝突-"
+        ],
+        "type": "MOVIE",
+        "year": 2016,
+        "season": "SPRING",
+        "episode_count": 1,
+        "aired_from": "2016-05-05T15:00:00Z",
+        "aired_to": null,
+        "linked_page_keys": [
+          "anilist:anime:21505",
+          "kitsu:anime:10950",
+          "mal:anime:30869"
+        ],
+        "renamed_to": null,
+        "searched_by": [
+          "mal:anime:30869"
+        ],
+        "is_dead": false
+      },
+      {
+        "key": "anilist:anime:21681",
+        "address": "https://anilist.co/anime/21681",
+        "titles": [
+          "Ajin: Shougeki",
+          "亜人 -衝戟-"
+        ],
+        "type": "MOVIE",
+        "year": 2016,
+        "season": "SUMMER",
+        "episode_count": 1,
+        "aired_from": "2016-09-22T15:00:00Z",
+        "aired_to": "2016-09-22T15:00:00Z",
+        "linked_page_keys": [
+          "mal:anime:30870"
+        ],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "animeplanet:anime:ajin-movie-3-shougeki",
+        "address": "https://anime-planet.com/anime/ajin-movie-3-shougeki",
+        "titles": [
+          "Ajin Movie 3: Shougeki",
+          "亜人衝戟"
+        ],
+        "type": "MOVIE",
+        "year": 2016,
+        "season": null,
+        "episode_count": null,
+        "aired_from": null,
+        "aired_to": null,
+        "linked_page_keys": [],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "kitsu:anime:10951",
+        "address": "https://kitsu.app/anime/10951",
+        "titles": [
+          "Ajin Part 3: Shougeki",
+          "亜人 第3部「衝戟」"
+        ],
+        "type": "MOVIE",
+        "year": 2016,
+        "season": "FALL",
+        "episode_count": 1,
+        "aired_from": "2016-09-22T15:00:00Z",
+        "aired_to": "2016-09-22T15:00:00Z",
+        "linked_page_keys": [
+          "anilist:anime:21681",
+          "mal:anime:30870"
+        ],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "mal:anime:30870",
+        "address": "https://myanimelist.net/anime/30870",
+        "titles": [
+          "Ajin Part 3: Shougeki",
+          "Ajin: Demi-Human Movie 3: Collide",
+          "亜人 第3部「衝戟」"
+        ],
+        "type": "MOVIE",
+        "year": 2016,
+        "season": null,
+        "episode_count": 1,
+        "aired_from": "2016-09-22T15:00:00Z",
+        "aired_to": null,
+        "linked_page_keys": [
+          "anidb:anime:11265",
+          "ann:anime:18465"
+        ],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "https://animeschedule.net/anime/ajin-shougeki",
+        "address": "https://animeschedule.net/anime/ajin-shougeki",
+        "titles": [
+          "Ajin: Shougeki",
+          "亜人 -衝戟-"
+        ],
+        "type": "MOVIE",
+        "year": 2016,
+        "season": "FALL",
+        "episode_count": 1,
+        "aired_from": "2016-09-22T15:00:00Z",
+        "aired_to": null,
+        "linked_page_keys": [
+          "anilist:anime:21681",
+          "kitsu:anime:10951",
+          "mal:anime:30870"
+        ],
+        "renamed_to": null,
+        "searched_by": [
+          "mal:anime:30870"
+        ],
+        "is_dead": false
+      }
+    ]
   }
 }
