@@ -240,7 +240,9 @@ def _find_page_destination(
 ) -> _PageDestination:
     """Find the entry a placed page ends up in.
 
-    Pages with the same new entry key become one new entry.
+    Pages with the same new entry key become one new entry. Two different keys
+    never read the same: reference pages and page keys hold no spaces, and a
+    page key never reads ``work N``.
 
     Each item reads ``<placement>: <where the page goes>``.
 
