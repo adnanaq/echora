@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: "Existing git tag to publish proto artifacts for"
+        description: "Existing proto-v* tag to publish proto artifacts for"
         required: true
         type: string
 
@@ -18,13 +18,17 @@ jobs:
       contents: write
 
     steps:
+      # A run started by hand names its tag; only an existing proto-v* tag is
+      # accepted, because the release step creates any tag it does not find.
       - name: Resolve tag name
+        env:
+          REQUESTED_TAG_NAME: ${{ inputs.tag_name || github.ref_name }}
         run: |
           set -euxo pipefail
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            TAG_NAME="${{ inputs.tag_name }}"
-          else
-            TAG_NAME="${{ github.ref_name }}"
+          TAG_NAME="${REQUESTED_TAG_NAME}"
+          if [[ "${TAG_NAME}" != proto-v* ]]; then
+            echo "::error::Not a proto release tag (proto-v*): ${TAG_NAME}"
+            exit 1
           fi
 
           SAFE_TAG="$(echo "${TAG_NAME}" | tr '/ ' '__')"
@@ -34,7 +38,7 @@ jobs:
       - name: Checkout repository at tag
         uses: actions/checkout@v6
         with:
-          ref: ${{ env.TAG_NAME }}
+          ref: refs/tags/${{ env.TAG_NAME }}
 
       - name: Set up Python
         uses: actions/setup-python@v6
