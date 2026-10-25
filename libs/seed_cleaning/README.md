@@ -138,8 +138,12 @@ HTTP cache enrichment reads later.
 - **Dead pages:** a page is stored as dead only when its provider said it does
   not exist, that is when its helper answered None. A failed fetch (a timeout,
   a block, a page that cannot be read, a service that did not run, a payload
-  without an anime record) is not stored, so the next run tries it again.
-  AnimeSchedule finding nothing stores nothing: there is no page.
+  without an anime record) is not stored. AnimeSchedule finding nothing stores
+  nothing: there is no page.
+- **Retries:** a failed page is fetched once more after the rest of its
+  provider's queue, so a provider that failed for a while, such as during a
+  block, gets a second chance in the same run. A page failing again is retried
+  on the next run.
 - **Reruns:** a page already stored, or an AnimeSchedule search that found a
   page, is not fetched again. A search that found nothing is repeated on every
   run, so a page AnimeSchedule adds later is still found.
@@ -157,7 +161,7 @@ The table lists every case a page fetch meets.
 | -- | -- |
 | The provider returns the page's record | The page is stored with its details and links. |
 | The provider says the page does not exist | Stored as dead and never fetched again. |
-| The fetch fails: a timeout, a block, a page that cannot be read, a service that did not run | Nothing stored; the failure is printed, and the next run tries again. |
+| The fetch fails: a timeout, a block, a page that cannot be read, a service that did not run | Nothing stored. The page is fetched once more after the rest of its provider's queue; if that fails too, the failure is printed and the next run tries again. |
 | The provider answers without an anime record | Counted as failed; nothing stored. |
 | An unexpected error in one fetch | That page fails; the other providers' queues finish. |
 | The page is already stored | Not fetched again, unless `--refetch-stored` asks, which replaces its details. |
