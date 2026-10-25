@@ -350,3 +350,29 @@ def test_build_corrected_entries_later_work_page_without_move_stays(
     [corrected] = build_corrected_entries(corrections, split_work_entries, store)
     assert corrected.entry is not None
     assert "kitsu:anime:44979" in corrected.entry.addresses_by_page_key
+
+
+def test_build_corrected_entries_new_entry_without_details_takes_most_trusted_entry_title(
+    split_work_entries, store
+) -> None:
+    corrections = [
+        SeedCorrection(
+            entry_reference_page=reference_page,
+            page_key=page_key,
+            address=address,
+            placement_word="work 2",
+            new_entry_key="mal:anime:43735 work 2",
+            reason="review answer",
+        )
+        for reference_page, page_key, address in [
+            ("ann:anime:24629", "ann:anime:24629", CUE_ANN),
+            ("mal:anime:43735", "kitsu:anime:44979", CUE_KITSU),
+        ]
+    ]
+    [new_entry] = [
+        corrected.entry
+        for corrected in build_corrected_entries(corrections, split_work_entries, store)
+        if corrected.seed_entry_reference_page is None
+    ]
+    assert new_entry is not None
+    assert new_entry.title == "Cue!"

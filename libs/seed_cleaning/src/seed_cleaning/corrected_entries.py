@@ -11,8 +11,10 @@ module rebuilds each entry the corrections touch:
 - Main page: a work's main page is listed before its other pages, because
   enrichment fetches the first address of each provider.
 - New entries take their title, type, year and season from their most trusted
-  fetched page. A page with no fetched details only has the entry it came from
-  to go by, so it takes that entry's title and an unknown type.
+  fetched page. Pages with no fetched details only have the entries they came
+  from to go by, so the new entry takes the title of the most trusted of those
+  entries, and an unknown type. Choosing by trust, not by correction order,
+  gives the same title whatever order the corrections come in.
 """
 
 import logging
@@ -98,7 +100,7 @@ def build_corrected_entries(
         CorrectedEntry(
             seed_entry_reference_page=reference_page,
             entry=_correct_seed_entry(
-                _find_seed_entry(known_work_entries, reference_page),
+                _get_seed_entry(known_work_entries, reference_page),
                 corrections_by_reference_page.get(reference_page, []),
                 moved_in_corrections_by_reference_page.get(reference_page, []),
             ),
@@ -108,8 +110,18 @@ def build_corrected_entries(
         CorrectedEntry(
             seed_entry_reference_page=None,
             entry=_build_new_entry(
-                _find_seed_entry(
-                    known_work_entries, entry_corrections[0].entry_reference_page
+                _get_seed_entry(
+                    known_work_entries,
+                    min(
+                        (
+                            correction.entry_reference_page
+                            for correction in entry_corrections
+                        ),
+                        key=lambda reference_page: (
+                            rank_by_provider_trust(reference_page),
+                            reference_page,
+                        ),
+                    ),
                 ),
                 entry_corrections,
                 store,
@@ -145,7 +157,7 @@ def _group_corrections(corrections: Iterable[SeedCorrection]) -> _GroupedCorrect
     )
 
 
-def _find_seed_entry(
+def _get_seed_entry(
     known_work_entries: KnownWorkEntries, reference_page: str
 ) -> WorkEntry:
     """Return the seed entry named by this reference page."""
