@@ -1,5 +1,6 @@
 from work_matching.known_work_entries import KnownWorkEntries
 from work_matching.known_work_entries_from_seed import KnownWorkEntriesFromSeed
+from work_matching.work_entry import WorkEntry
 
 
 def test_known_work_entries_from_seed_find_by_page_address_decorated_address_gives_work_entry(
@@ -136,3 +137,24 @@ def test_known_work_entries_from_seed_iteration_gives_work_entries_with_pages_in
         ]
     )
     assert [work.title for work in works] == ["First", "Second"]
+
+
+def test_known_work_entries_from_seed_from_work_entries_indexes_given_entries() -> None:
+    entries = [
+        WorkEntry(
+            title="Show",
+            type="TV",
+            year=2020,
+            addresses_by_page_key={"mal:anime:1": "https://myanimelist.net/anime/1"},
+        ),
+        WorkEntry(
+            title="Show!",
+            type="TV",
+            year=None,
+            addresses_by_page_key={"kitsu:anime:2": "https://kitsu.app/anime/2"},
+        ),
+    ]
+    known_work_entries = KnownWorkEntriesFromSeed.from_work_entries(entries)
+    assert list(known_work_entries) == entries
+    assert known_work_entries.find_by_page_key("kitsu:anime:2") is entries[1]
+    assert known_work_entries.find_by_title("Show", "TV", 2020) == entries

@@ -2,11 +2,15 @@ import pytest
 from work_matching.doubled_provider_check import decide_doubled_providers
 from work_matching.entry_group import (
     combine_group_entries,
+    list_mal_page_review_reasons,
     read_group_answer_placements,
     suggest_group_page_placements,
 )
 from work_matching.known_work_entries_from_seed import KnownWorkEntriesFromSeed
+from work_matching.page_details_comparison import MalPageComparison
 from work_matching.page_placement import PagePlacement
+from work_matching.provider_page import ProviderPage
+from work_matching.provider_page_key import get_page_key
 
 MAL = "https://myanimelist.net/anime/1"
 OTHER_MAL = "https://myanimelist.net/anime/2"
@@ -15,6 +19,31 @@ KITSU = "https://kitsu.app/anime/1"
 ANN = "https://animenewsnetwork.com/encyclopedia/anime.php?id=1"
 SIMKL = "https://simkl.com/anime/1"
 OTHER_KITSU = "https://kitsu.app/anime/2"
+
+
+def _detailed_page(
+    address: str,
+    page_type: str,
+    episode_count: int | None,
+    aired_from: str,
+    aired_to: str | None,
+    *linked_addresses: str,
+) -> ProviderPage:
+    return ProviderPage(
+        key=get_page_key(address),
+        address=address,
+        type=page_type,
+        episode_count=episode_count,
+        aired_from=aired_from,
+        aired_to=aired_to,
+        linked_page_keys=tuple(sorted(map(get_page_key, linked_addresses))),
+    )
+
+
+def _season_page(address: str, *linked_addresses: str) -> ProviderPage:
+    return _detailed_page(
+        address, "TV", 12, "2020-01-05", "2020-03-29", *linked_addresses
+    )
 
 
 def _decide(entries, pages):
@@ -47,7 +76,7 @@ def test_suggest_group_page_placements_linked_entries_one_work(
     linked_page, work_entry
 ) -> None:
     entries = [work_entry(ANILIST), work_entry(MAL, KITSU)]
-    pages = [linked_page(ANILIST, MAL)]
+    pages = [_season_page(ANILIST, MAL), _season_page(MAL)]
     assert suggest_group_page_placements(entries, _decide(entries, pages), pages) == {
         "anilist:anime:1": "work 1",
         "mal:anime:1": "work 1",
@@ -79,10 +108,14 @@ def test_suggest_group_page_placements_separate_links_numbered_by_trust(
 def test_suggest_group_page_placements_unlinked_page_follows_agreeing_entry(
     linked_page, work_entry
 ) -> None:
-    entries = [work_entry(ANN), work_entry(MAL, KITSU, SIMKL)]
-    pages = [linked_page(MAL, ANN), linked_page(KITSU, MAL)]
+    entries = [work_entry(ANILIST), work_entry(MAL, KITSU, SIMKL)]
+    pages = [
+        _season_page(ANILIST),
+        _season_page(MAL, ANILIST),
+        _season_page(KITSU, MAL),
+    ]
     assert suggest_group_page_placements(entries, _decide(entries, pages), pages) == {
-        "ann:anime:1": "work 1",
+        "anilist:anime:1": "work 1",
         "mal:anime:1": "work 1",
         "kitsu:anime:1": "work 1",
         "simkl:anime:1": "work 1",
@@ -93,7 +126,12 @@ def test_suggest_group_page_placements_unlinked_page_of_mixed_entry_left_out(
     linked_page, work_entry
 ) -> None:
     entries = [work_entry(MAL, KITSU, SIMKL), work_entry(ANILIST, OTHER_MAL)]
-    pages = [linked_page(ANILIST, MAL), linked_page(KITSU, OTHER_MAL)]
+    pages = [
+        _season_page(MAL),
+        _season_page(OTHER_MAL),
+        _season_page(ANILIST, MAL),
+        _season_page(KITSU, OTHER_MAL),
+    ]
     assert suggest_group_page_placements(entries, _decide(entries, pages), pages) == {
         "mal:anime:1": "work 1",
         "kitsu:anime:1": "work 2",
@@ -205,3 +243,168 @@ def test_read_group_answer_placements_part_reference_pages_only_accepted(
         "kitsu:anime:1": "work 1",
     }
     assert read_group_answer_placements(answer, entries, decisions, {}) is not None
+
+
+def test_suggest_group_page_placements_shorter_run_marked_part_and_unfetched_page_left_out(
+    work_entry,
+) -> None:
+    entries = [
+        work_entry(
+            "https://anidb.net/anime/12006", "https://anisearch.com/anime/11255"
+        ),
+        work_entry(
+            "https://myanimelist.net/anime/32956", "https://kitsu.app/anime/12168"
+        ),
+    ]
+    pages = [
+        _detailed_page(
+            "https://anisearch.com/anime/11255", "TV", 39, "2016-04-07", "2017-02-16"
+        ),
+        _detailed_page(
+            "https://myanimelist.net/anime/32956", "TV", 230, "2016-04-07", "2022-03-03"
+        ),
+        _detailed_page(
+            "https://kitsu.app/anime/12168",
+            "TV",
+            230,
+            "2016-04-07",
+            "2022-03-03",
+            "https://anidb.net/anime/12006",
+            "https://myanimelist.net/anime/32956",
+        ),
+    ]
+    assert suggest_group_page_placements(entries, _decide(entries, pages), pages) == {
+        "anisearch:anime:11255": "work 1, part",
+        "mal:anime:32956": "work 1",
+        "kitsu:anime:12168": "work 1",
+    }
+
+
+def _dirty_pair_flash_group(work_entry):
+    entries = [
+        work_entry(
+            "https://myanimelist.net/anime/1802", "https://kitsu.app/anime/1621"
+        ),
+        work_entry("https://anidb.net/anime/402", "https://anisearch.com/anime/1296"),
+    ]
+    pages = [
+        _detailed_page(
+            "https://myanimelist.net/anime/1802", "OVA", 6, "1994-01-20", "1994-06-20"
+        ),
+        _detailed_page(
+            "https://kitsu.app/anime/1621",
+            "OVA",
+            6,
+            "1994-01-20",
+            "1994-06-20",
+            "https://anidb.net/anime/402",
+            "https://myanimelist.net/anime/1802",
+        ),
+        _detailed_page(
+            "https://anisearch.com/anime/1296", "OVA", 16, "1994-01-20", "1996-04-24"
+        ),
+    ]
+    return entries, pages
+
+
+def test_suggest_group_page_placements_page_covering_several_works_left_out(
+    work_entry,
+) -> None:
+    entries, pages = _dirty_pair_flash_group(work_entry)
+    assert suggest_group_page_placements(entries, _decide(entries, pages), pages) == {
+        "mal:anime:1802": "work 1",
+        "kitsu:anime:1621": "work 1",
+    }
+
+
+def test_list_mal_page_review_reasons_lists_why_suggestions_left_out(
+    work_entry,
+) -> None:
+    entries, pages = _dirty_pair_flash_group(work_entry)
+    assert list_mal_page_review_reasons(entries, _decide(entries, pages), pages) == (
+        MalPageComparison.SEVERAL_WORKS,
+        MalPageComparison.DETAILS_UNKNOWN,
+    )
+
+
+def test_suggest_group_page_placements_page_listed_with_mal_page_kept_when_count_unknown(
+    work_entry,
+) -> None:
+    entries = [
+        work_entry(
+            "https://myanimelist.net/anime/63219",
+            "https://anilist.co/anime/205116",
+            "https://kitsu.app/anime/50804",
+        ),
+        work_entry("https://anisearch.com/anime/21800"),
+    ]
+    pages = [
+        _detailed_page(
+            "https://myanimelist.net/anime/63219", "TV", 12, "2026-07-05", "2026-09-20"
+        ),
+        _detailed_page(
+            "https://anilist.co/anime/205116",
+            "TV SHORT",
+            12,
+            "2026-07-04",
+            "2026-09-20",
+            "https://myanimelist.net/anime/63219",
+        ),
+        _detailed_page(
+            "https://kitsu.app/anime/50804",
+            "TV",
+            None,
+            "2026-07-05",
+            None,
+            "https://anilist.co/anime/205116",
+        ),
+        _detailed_page(
+            "https://anisearch.com/anime/21800", "TV", None, "2026-07-04", None
+        ),
+    ]
+    assert suggest_group_page_placements(entries, _decide(entries, pages), pages) == {
+        "mal:anime:63219": "work 1",
+        "anilist:anime:205116": "work 1",
+        "kitsu:anime:50804": "work 1",
+    }
+
+
+def test_suggest_group_page_placements_doubled_pages_keep_decision_marks(
+    work_entry,
+) -> None:
+    entries = [
+        work_entry(MAL, ANILIST),
+        work_entry(OTHER_KITSU, "https://anilist.co/anime/2"),
+    ]
+    pages = [
+        _detailed_page(MAL, "TV", 24, "2020-01-01", "2020-06-30"),
+        _detailed_page(ANILIST, "TV", 24, "2020-01-01", "2020-06-30", MAL),
+        _detailed_page(OTHER_KITSU, "TV", 12, "2020-04-01", "2020-06-30", MAL),
+        _detailed_page(
+            "https://anilist.co/anime/2", "TV", 12, "2020-04-01", "2020-06-30", MAL
+        ),
+    ]
+    assert suggest_group_page_placements(entries, _decide(entries, pages), pages) == {
+        "mal:anime:1": "work 1",
+        "anilist:anime:1": "work 1, part",
+        "kitsu:anime:2": "work 1, part",
+        "anilist:anime:2": "work 1, part",
+    }
+
+
+def test_suggest_group_page_placements_doubled_parts_of_mal_work_marked_part(
+    matching_cases,
+) -> None:
+    entries, pages = matching_cases["douluo_dalu_arcs"]
+    suggested_placements = suggest_group_page_placements(
+        entries, _decide(entries, pages), pages
+    )
+    assert {
+        key: placement
+        for key, placement in suggested_placements.items()
+        if key.startswith("kitsu:")
+    } == {
+        "kitsu:anime:42037": "work 1, part",
+        "kitsu:anime:46536": "work 1, part",
+        "kitsu:anime:46535": "work 1, part",
+    }

@@ -986,5 +986,306 @@
         "is_dead": false
       }
     ]
+  },
+  "douluo_dalu_arcs": {
+    "entries": [
+      {
+        "sources": [
+          "https://anidb.net/anime/14675",
+          "https://anilist.co/anime/103543",
+          "https://anime-planet.com/anime/soul-land-2nd-season",
+          "https://animecountdown.com/1038257",
+          "https://anisearch.com/anime/15535",
+          "https://kitsu.app/anime/42037",
+          "https://livechart.me/anime/8195",
+          "https://myanimelist.net/anime/37822",
+          "https://simkl.com/anime/1038257"
+        ],
+        "title": "Douluo Dalu 2nd Season",
+        "type": "ONA",
+        "animeSeason": {
+          "season": "FALL",
+          "year": 2018
+        }
+      },
+      {
+        "sources": [
+          "https://anilist.co/anime/152211",
+          "https://kitsu.app/anime/46536"
+        ],
+        "title": "Douluo Dalu: Ayin Fuhuo",
+        "type": "ONA",
+        "animeSeason": {
+          "season": "SUMMER",
+          "year": 2022
+        }
+      },
+      {
+        "sources": [
+          "https://anilist.co/anime/152212",
+          "https://kitsu.app/anime/46535"
+        ],
+        "title": "Douluo Dalu: Gui Zong Zhi Lu",
+        "type": "ONA",
+        "animeSeason": {
+          "season": "SUMMER",
+          "year": 2022
+        }
+      }
+    ],
+    "pages": [
+      {
+        "key": "anilist:anime:103543",
+        "address": "https://anilist.co/anime/103543",
+        "titles": [
+          "Douluo Dalu: Jingying Sai",
+          "斗罗大陆 精英赛"
+        ],
+        "type": "ONA",
+        "year": 2018,
+        "season": null,
+        "episode_count": 52,
+        "aired_from": "2018-11-30T15:00:00Z",
+        "aired_to": "2019-11-05T15:00:00Z",
+        "linked_page_keys": [
+          "mal:anime:37822"
+        ],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "animeplanet:anime:soul-land-2nd-season",
+        "address": "https://anime-planet.com/anime/soul-land-2nd-season",
+        "titles": [
+          "Soul Land 2nd Season",
+          "Alt titles: Douluo Dalu 2nd Season, 斗罗大陆2 - 绝世唐门"
+        ],
+        "type": "ONA",
+        "year": 2018,
+        "season": "WINTER",
+        "episode_count": 237,
+        "aired_from": "2018-11-30T15:00:00Z",
+        "aired_to": null,
+        "linked_page_keys": [],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "anisearch:anime:15535",
+        "address": "https://anisearch.com/anime/15535",
+        "titles": [
+          "Douluo Dalu Di-er Ji",
+          "Soul Land (Season 2)",
+          "斗罗大陆 第二季"
+        ],
+        "type": "ONA",
+        "year": 2018,
+        "season": "WINTER",
+        "episode_count": 237,
+        "aired_from": "2018-11-30T15:00:00Z",
+        "aired_to": "2023-06-09T15:00:00Z",
+        "linked_page_keys": [],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "kitsu:anime:42037",
+        "address": "https://kitsu.app/anime/42037",
+        "titles": [
+          "Douluo Dalu 2",
+          "斗罗大陆2 - 绝世唐门"
+        ],
+        "type": "ONA",
+        "year": 2018,
+        "season": "WINTER",
+        "episode_count": 52,
+        "aired_from": "2018-11-30T15:00:00Z",
+        "aired_to": "2019-11-15T15:00:00Z",
+        "linked_page_keys": [
+          "anilist:anime:103543",
+          "mal:anime:37822"
+        ],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "mal:anime:37822",
+        "address": "https://myanimelist.net/anime/37822",
+        "titles": [
+          "Douluo Dalu 2nd Season",
+          "Soul Land 2nd Season",
+          "斗罗大陆"
+        ],
+        "type": "ONA",
+        "year": 2018,
+        "season": null,
+        "episode_count": 237,
+        "aired_from": "2018-11-30T15:00:00Z",
+        "aired_to": "2023-06-09T15:00:00Z",
+        "linked_page_keys": [
+          "anidb:anime:14675"
+        ],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "https://animeschedule.net/anime/douluo-dalu-chongfan-haotian",
+        "address": "https://animeschedule.net/anime/douluo-dalu-chongfan-haotian",
+        "titles": [
+          "Douluo Dalu: Chongfan Haotian",
+          "斗罗大陆 重返昊天"
+        ],
+        "type": "ONA",
+        "year": 2021,
+        "season": "SUMMER",
+        "episode_count": 13,
+        "aired_from": "2021-08-20T15:00:00Z",
+        "aired_to": null,
+        "linked_page_keys": [
+          "anidb:anime:16548",
+          "anilist:anime:137761",
+          "animeplanet:anime:douluo-dalu-2nd-season",
+          "kitsu:anime:douluo-dalu-chongfan-haotian",
+          "mal:anime:37822"
+        ],
+        "renamed_to": null,
+        "searched_by": [
+          "anilist:anime:137761",
+          "mal:anime:37822"
+        ],
+        "is_dead": false
+      },
+      {
+        "key": "anilist:anime:152211",
+        "address": "https://anilist.co/anime/152211",
+        "titles": [
+          "Douluo Dalu: Ayin Fuhuo",
+          "斗罗大陆 阿银复活"
+        ],
+        "type": "ONA",
+        "year": 2022,
+        "season": null,
+        "episode_count": 3,
+        "aired_from": "2022-06-10T15:00:00Z",
+        "aired_to": "2022-06-24T15:00:00Z",
+        "linked_page_keys": [],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "kitsu:anime:46536",
+        "address": "https://kitsu.app/anime/46536",
+        "titles": [
+          "Douluo Dalu: Ayin Fuhuo"
+        ],
+        "type": "ONA",
+        "year": 2022,
+        "season": "SUMMER",
+        "episode_count": 3,
+        "aired_from": "2022-06-10T15:00:00Z",
+        "aired_to": "2022-06-24T15:00:00Z",
+        "linked_page_keys": [
+          "anilist:anime:152211"
+        ],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "https://animeschedule.net/anime/douluo-dalu-ayin-fuhuo",
+        "address": "https://animeschedule.net/anime/douluo-dalu-ayin-fuhuo",
+        "titles": [
+          "Douluo Dalu: Ayin Fuhuo",
+          "斗罗大陆 阿银复活"
+        ],
+        "type": "ONA",
+        "year": 2022,
+        "season": "SPRING",
+        "episode_count": 3,
+        "aired_from": "2022-06-10T15:00:00Z",
+        "aired_to": null,
+        "linked_page_keys": [
+          "anidb:anime:17442",
+          "anilist:anime:152211",
+          "animeplanet:anime:douluo-dalu-2nd-season",
+          "kitsu:anime:douluo-dalu-ayin-fuhuo",
+          "mal:anime:37822"
+        ],
+        "renamed_to": null,
+        "searched_by": [
+          "anilist:anime:152211"
+        ],
+        "is_dead": false
+      },
+      {
+        "key": "anilist:anime:152212",
+        "address": "https://anilist.co/anime/152212",
+        "titles": [
+          "Douluo Dalu: Gui Zong Zhi Lu",
+          "斗罗大陆 归宗之路"
+        ],
+        "type": "ONA",
+        "year": 2022,
+        "season": null,
+        "episode_count": 3,
+        "aired_from": "2022-07-01T15:00:00Z",
+        "aired_to": "2022-07-15T15:00:00Z",
+        "linked_page_keys": [],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "kitsu:anime:46535",
+        "address": "https://kitsu.app/anime/46535",
+        "titles": [
+          "Douluo Dalu: Gui Zong Zhi Lu"
+        ],
+        "type": "ONA",
+        "year": 2022,
+        "season": "SUMMER",
+        "episode_count": 3,
+        "aired_from": "2022-06-10T15:00:00Z",
+        "aired_to": "2022-06-24T15:00:00Z",
+        "linked_page_keys": [
+          "anilist:anime:152211"
+        ],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "https://animeschedule.net/anime/douluo-dalu-gui-zong-zhi-lu",
+        "address": "https://animeschedule.net/anime/douluo-dalu-gui-zong-zhi-lu",
+        "titles": [
+          "Douluo Dalu: Gui Zong Zhi Lu",
+          "斗罗大陆 归宗之路"
+        ],
+        "type": "ONA",
+        "year": 2022,
+        "season": "SUMMER",
+        "episode_count": 3,
+        "aired_from": "2022-07-01T15:00:00Z",
+        "aired_to": null,
+        "linked_page_keys": [
+          "anidb:anime:17442",
+          "anilist:anime:152212",
+          "animeplanet:anime:douluo-dalu-2nd-season",
+          "kitsu:anime:douluo-dalu-gui-zong-zhi-lu",
+          "mal:anime:37822"
+        ],
+        "renamed_to": null,
+        "searched_by": [
+          "anilist:anime:152212"
+        ],
+        "is_dead": false
+      }
+    ]
   }
 }

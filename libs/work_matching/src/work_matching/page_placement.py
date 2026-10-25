@@ -75,14 +75,14 @@ from work_matching.work_entry import WorkEntry
 FIRST_WORK = "work 1"
 OTHER_WORK = "other work"
 _MAIN_PAGE_MARK = ", main"
-_PART_PAGE_MARK = ", part"
+PART_PAGE_MARK = ", part"
 # No work holds two pages of this provider: a work is what MAL lists.
 _MAL_PROVIDER = "mal"
 # A place as an answer writes it: ``work N`` (N from 1), optionally marked
 # ``, main`` or ``, part``, or ``other work``.
 _PLACEMENT_ANSWER_TEXT = re.compile(
     rf"(?P<work>work [1-9][0-9]*)"
-    rf"(?P<mark>{_MAIN_PAGE_MARK}|{_PART_PAGE_MARK})?"
+    rf"(?P<mark>{_MAIN_PAGE_MARK}|{PART_PAGE_MARK})?"
     rf"|{OTHER_WORK}"
 )
 
@@ -257,7 +257,7 @@ def suggest_page_placements(
         elif decision.outcome is DoubledProviderOutcome.PART_PAGES:
             for key in decision.belonging_page_keys:
                 if key in suggested_placements:
-                    suggested_placements[key] += _PART_PAGE_MARK
+                    suggested_placements[key] += PART_PAGE_MARK
     suggested_placements |= {
         key: OTHER_WORK for decision in decisions for key in decision.unrelated_pages
     }
@@ -341,7 +341,7 @@ def read_placement(placement_text: str) -> PagePlacement | None:
     return PagePlacement(
         placement_match["work"] or OTHER_WORK,
         is_main_page=placement_match["mark"] == _MAIN_PAGE_MARK,
-        is_part_page=placement_match["mark"] == _PART_PAGE_MARK,
+        is_part_page=placement_match["mark"] == PART_PAGE_MARK,
     )
 
 

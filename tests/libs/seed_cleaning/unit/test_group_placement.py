@@ -6,6 +6,9 @@ from seed_cleaning.entry_groups import find_entry_groups
 from seed_cleaning.group_placement import correct_entry_groups
 from seed_cleaning.seed_corrections import SeedCorrection
 from seed_cleaning.split_work_candidates import find_split_work_candidates
+from seed_cleaning.split_work_links import SplitWorkLinks
+
+NO_SPLIT_WORK_LINKS = SplitWorkLinks({}, {})
 from work_matching import (
     KnownWorkEntriesFromSeed,
     ProviderPage,
@@ -372,7 +375,6 @@ def test_correct_entry_groups_group_without_doubled_provider_goes_to_review(
         (
             "split work: ann:anime:24629 kitsu:anime:44979 mal:anime:43735",
             {
-                "ann:anime:24629": "work 1",
                 "mal:anime:43735": "work 1",
                 "kitsu:anime:44979": "work 1",
             },
@@ -526,7 +528,7 @@ def test_correct_entry_groups_doubled_entry_also_split_work_candidate_gives_one_
     )
     doubled_entry = next(iter(works))
     entry_groups = find_entry_groups(
-        [doubled_entry], find_split_work_candidates(works), works
+        [doubled_entry], find_split_work_candidates(works, NO_SPLIT_WORK_LINKS), works
     )
     placed = correct_entry_groups(entry_groups, store, works, review_file)
     assert placed.corrections == ()
