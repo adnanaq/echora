@@ -24,8 +24,10 @@ Rules:
   one run fetching stored pages again fills it in.
 - A page is stored as dead only when its provider said it does not exist: its
   helper answered None. A failed fetch, a service that did not run or a
-  payload without an anime record is not stored, so the next run tries it
-  again.
+  payload without an anime record is not stored.
+- A failed page is retried once, after the rest of its provider's queue, so a
+  provider that failed for a while, such as during a block, gets a second
+  chance in the same run. A page failing again is retried on the next run.
 - Each provider runs in its own queue, one page at a time, so each site's own
   rate limits hold while different sites run side by side.
 """
@@ -364,26 +366,74 @@ class ProviderPageFetcher:
     async def _run_queue(
         self, service: str, requests: Iterable[_PageRequest]
     ) -> list[_RequestResult]:
-        """Make one provider's requests one at a time, storing each page at once.
+        """Make one provider's requests one at a time, then retry the failed ones once.
+
+        - Each page is stored as soon as it is fetched.
+        - A failed request is made once more after the rest of the queue, with
+          the same fetcher, so the provider's pacing and pauses still hold. A
+          provider that failed for a while, such as during a block, often
+          answers again by then. A request failing again waits for the next run.
+
+        Returns:
+            One result per request: its retry's result when it failed at first.
+        """
+        api_fetcher = self._new_api_fetcher()
+        first_results = await self._make_requests(api_fetcher, requests, is_retry=False)
+        retried_results = await self._make_requests(
+            api_fetcher,
+            [
+                request_result.request
+                for request_result in first_results
+                if request_result.outcome is FetchOutcome.FAILED
+            ],
+            is_retry=True,
+        )
+        return [
+            request_result
+            for request_result in first_results
+            if request_result.outcome is not FetchOutcome.FAILED
+        ] + retried_results
+
+    async def _make_requests(
+        self,
+        api_fetcher: ApiFetcher,
+        requests: Iterable[_PageRequest],
+        *,
+        is_retry: bool,
+    ) -> list[_RequestResult]:
+        """Make requests one at a time, and log each failure with when it is retried.
 
         An unexpected error in one request, such as a failed store write, fails
         that request and the queue goes on, so a long run keeps the rest of its
         work and its summary.
+
+        Args:
+            api_fetcher: The queue's fetcher.
+            requests: The requests to make, in order.
+            is_retry: Whether these requests already failed once this run; a
+                search then waits its gap first, since the queue made requests
+                before.
+
+        Returns:
+            One result per request, in order.
         """
-        api_fetcher = self._new_api_fetcher()
         request_results: list[_RequestResult] = []
         for position, request in enumerate(requests):
-            if request.is_page_search and position:
+            if request.is_page_search and (position or is_retry):
                 await asyncio.sleep(self._seconds_between_page_searches)
             try:
-                request_results.append(await self._fetch_request(api_fetcher, request))
+                request_result = await self._fetch_request(api_fetcher, request)
             except Exception as error:
                 logger.exception(f"Page fetch failed unexpectedly: {request.label}")
-                request_results.append(
-                    _RequestResult(
-                        FetchOutcome.FAILED, request, f"{type(error).__name__}: {error}"
-                    )
+                request_result = _RequestResult(
+                    FetchOutcome.FAILED, request, f"{type(error).__name__}: {error}"
                 )
+            if request_result.outcome is FetchOutcome.FAILED:
+                retry_time = "next run" if is_retry else "at the end of the queue"
+                logger.warning(
+                    f"Page fetch failed, retried {retry_time}: {request.label}"
+                )
+            request_results.append(request_result)
         return request_results
 
     async def _fetch_request(
@@ -413,7 +463,6 @@ class ProviderPageFetcher:
             failure = "the helper returned no anime record"
         else:
             return _RequestResult(self._store_page(request, anime_record), request)
-        logger.warning(f"Page fetch failed, retried next run: {request.label}")
         return _RequestResult(FetchOutcome.FAILED, request, failure)
 
     def _store_page(
