@@ -5,16 +5,19 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import uuid
+from dataclasses import replace
 from typing import Any
 
 import aiohttp
 from common.config import CacheConfig, RedisConfig
 from common.redis_client import create_redis_client
-from hishel import AsyncRedisStorage, BaseFilter, FilterPolicy
+from hishel import AsyncRedisStorage, BaseFilter, Entry, FilterPolicy, Headers, Request
 from hishel import Response as HishelResponse
 from redis.asyncio import Redis
 
 from .aiohttp_adapter import CachedAiohttpSession
+from .network_request_pacer import NetworkRequestPacer
 from .utils import _mask_url_credentials
 
 logger = logging.getLogger(__name__)
@@ -28,6 +31,69 @@ _XML_ERROR_ROOT = re.compile(rb"^\s*(?:<\?xml[^>]*\?>\s*)?<error[\s>]", re.IGNOR
 
 # Error envelopes are tiny; cap the scan so a large body is never searched.
 _MAX_ERROR_BODY_BYTES = 4096
+
+# Request headers that carry credentials, in lower case as hishel keeps them.
+_CREDENTIAL_HEADERS = frozenset({"authorization", "proxy-authorization", "cookie"})
+
+
+class CredentialFreeRedisStorage(AsyncRedisStorage):
+    """Hishel Redis storage that writes no credential header of a request.
+
+    Hishel stores each cached request next to its response, headers included,
+    so an app token sent as ``Authorization`` would stay in Redis as long as
+    the entry. Hishel has no option to leave headers out, so the stored copy
+    of the request drops them. The request sent over the network keeps them.
+
+    A cache entry is still found by its URL alone, so responses fetched with
+    and without a token share an entry.
+    """
+
+    async def create_entry(
+        self,
+        request: Request,
+        response: HishelResponse,
+        key: str,
+        id_: uuid.UUID | None = None,
+    ) -> Entry:
+        """Store a response with a copy of its request that holds no credentials.
+
+        Args:
+            request: The request the response answers.
+            response: The response to store.
+            key: The cache key hishel computed for the request.
+            id_: The entry's id, or None for a new one.
+
+        Returns:
+            The stored entry.
+        """
+        return await super().create_entry(
+            _remove_credential_headers(request), response, key, id_
+        )
+
+
+def _remove_credential_headers(request: Request) -> Request:
+    """Return a request without its credential headers, or the request itself when it has none.
+
+    Args:
+        request: The request to store.
+
+    Returns:
+        A copy holding every other header with all its values, or the same
+        request when no credential header is present, so most requests are
+        never copied.
+    """
+    if _CREDENTIAL_HEADERS.isdisjoint(request.headers):
+        return request
+    return replace(
+        request,
+        headers=Headers(
+            {
+                name: request.headers.get_list(name) or []
+                for name in request.headers
+                if name not in _CREDENTIAL_HEADERS
+            }
+        ),
+    )
 
 
 class NeverCacheErrorsFilter(BaseFilter[HishelResponse]):
@@ -113,6 +179,7 @@ class HTTPCacheManager:
         self._event_loop: asyncio.AbstractEventLoop | None = None
         self._response_client: Redis | None = None
         self._result_client: Redis | None = None
+        self._network_request_pacer = NetworkRequestPacer()
 
         if cache.cache_enabled and not redis.redis_url:
             logger.warning(
@@ -120,6 +187,15 @@ class HTTPCacheManager:
             )
         elif self.enabled and redis.redis_url:
             logger.info(f"Caching on Redis at {_mask_url_credentials(redis.redis_url)}")
+
+    @property
+    def network_request_pacer(self) -> NetworkRequestPacer:
+        """The gap kept between this process's network requests to each provider.
+
+        Every session this manager hands out, and every ``@cached_result``
+        function on a cache miss, waits its turn here, so cache hits never wait.
+        """
+        return self._network_request_pacer
 
     @property
     def enabled(self) -> bool:
@@ -148,11 +224,18 @@ class HTTPCacheManager:
             ...     async with session.post(url, json=payload) as response:
             ...         data = await response.json()
         """
+        # The pacer's hook runs only for requests that reach the network.
+        session_kwargs["trace_configs"] = [
+            *session_kwargs.get("trace_configs", []),
+            self._network_request_pacer.build_trace_config(service),
+        ]
         client = self._client_for_loop(decode_responses=False)
         if client is None:
             return aiohttp.ClientSession(**session_kwargs)
         ttl = self.cache.ttl_for(service)
-        storage = AsyncRedisStorage(client=client, ttl=ttl, key_prefix="hishel_cache")
+        storage = CredentialFreeRedisStorage(
+            client=client, ttl=ttl, key_prefix="hishel_cache"
+        )
         return CachedAiohttpSession(
             storage=storage,
             policy=self.policy,

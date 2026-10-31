@@ -25,9 +25,6 @@ Each item gives the rule, then the reason for it.
   downloaded seed on every run, so additions never chain.
 - Add neither page when answers add two whole pages of one provider to one
   entry. Both pages would make a doubled provider; a warning names the entry.
-- Mark an added page the entry's anime id now comes from (`is_anime_id_page`).
-  Enrichment derives the id from the entry's pages, MAL first, so the search
-  entry under the old id must be replaced.
 """
 
 import logging
@@ -36,7 +33,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import NamedTuple
 
-from enrichment.pipeline.link_rules import find_anime_id_page_key
+from enrichment.pipeline.page_requests import FETCHED_PROVIDERS
 from seed_cleaning.corrected_entries import (
     CorrectedEntry,
     build_corrected_entries,
@@ -45,7 +42,6 @@ from seed_cleaning.linked_page_groups import (
     LinkingSeedEntry,
     group_linked_pages_by_current_key,
 )
-from seed_cleaning.provider_page_fetcher import FETCHED_PROVIDERS
 from seed_cleaning.seed_corrections import (
     REVIEW_ANSWER_REASON,
     PlacementCorrections,
@@ -72,11 +68,6 @@ from work_matching import (
 )
 
 logger = logging.getLogger(__name__)
-
-# The providers whose pages carry links to other providers' pages, so fetching
-# them for their links alone is worth it. Anime-Planet and AniSearch pages
-# carry none.
-LINK_CARRYING_PROVIDERS: frozenset[str] = frozenset({"anilist", "kitsu", "anidb"})
 
 
 class _PageAddition(NamedTuple):
@@ -379,13 +370,9 @@ def _build_addition_corrections(
 ) -> list[SeedCorrection]:
     """Turn additions into corrections, each naming the seed entry the page joins.
 
-    - Each correction names the seed entry by the seed entry's own reference
-      page. The cleaned seed then finds the entry whatever the corrections did
-      to the entry's current reference page.
-    - A correction marks the added page the entry's anime id now comes from
-      (``is_anime_id_page``). Enrichment derives the id from the entry's
-      pages, MAL first (``find_anime_id_page_key``), so the search entry stored
-      under the old id must be replaced.
+    Each correction names the seed entry by the seed entry's own reference
+    page. The cleaned seed then finds the entry whatever the corrections did to
+    the entry's current reference page.
 
     Args:
         page_additions: The additions kept.
@@ -402,26 +389,6 @@ def _build_addition_corrections(
         for linking_seed_entries in linking_seed_entries_by_page_key.values()
         for linking_seed_entry in linking_seed_entries
     }
-    added_page_keys_by_entry_reference_page: defaultdict[str, list[str]] = defaultdict(
-        list
-    )
-    for page_addition in page_additions:
-        added_page_keys_by_entry_reference_page[
-            page_addition.entry_reference_page
-        ].append(page_addition.page_key)
-    anime_id_page_key_by_entry_reference_page = {
-        reference_page: find_anime_id_page_key(
-            [
-                *linking_seed_entry_by_entry_reference_page[
-                    reference_page
-                ].entry_details.entry.addresses_by_page_key,
-                *added_page_keys,
-            ]
-        )
-        for reference_page, added_page_keys in (
-            added_page_keys_by_entry_reference_page.items()
-        )
-    }
     return [
         SeedCorrection(
             entry_reference_page=linking_seed_entry_by_entry_reference_page[
@@ -432,10 +399,6 @@ def _build_addition_corrections(
             placement_word=FIRST_WORK,
             is_added_page=True,
             is_part_page=page_addition.is_part_page,
-            is_anime_id_page=page_addition.page_key
-            == anime_id_page_key_by_entry_reference_page[
-                page_addition.entry_reference_page
-            ],
             reason=page_addition.reason,
         )
         for page_addition in page_additions

@@ -13,6 +13,10 @@ libs/enrichment/src/enrichment/
 ├── pipeline/           # Orchestration layer
 │   ├── enrichment_pipeline.py   # EnrichmentPipeline — main entry point
 │   ├── api_fetcher.py           # ApiFetcher — parallel fan-out across all sources
+│   ├── pausing_api_fetcher.py   # PausingApiFetcher — a provider paused after failures, probed until it answers
+│   ├── provider_page_fetcher.py # ProviderPageFetcher — work entries' pages and linked pages into the page store
+│   ├── page_requests.py         # The requests fetching an entry's pages and AnimeSchedule searches
+│   ├── fetch_summary.py         # FetchOutcome, FetchSummary — what a page fetch came to
 │   ├── id_extractor.py          # PlatformIDExtractor — source URLs → ids dict
 │   ├── metadata_merger.py       # Merges the seven provider records into one Anime
 │   ├── metadata_rules.py        # Per-field rules for that merge
@@ -30,7 +34,7 @@ libs/enrichment/src/enrichment/
 │   ├── anisearch/      # AniSearch — plain HTTP scraping
 │   ├── anime_planet/   # Anime-Planet — browser scraping via zendriver
 │   ├── anidb/          # AniDB — XML API (characters via zendriver)
-│   └── animeschedule/  # AnimSchedule — REST API
+│   └── animeschedule/  # AnimeSchedule — REST API
 │
 ├── utils/
 │   ├── deduplication.py   # Semantic + string-based array deduplication
@@ -68,6 +72,7 @@ finally:
 Entering the pipeline sets the process-wide browser limit and removes browsers
 and profiles left behind by a killed run (`reap_orphans()`). `enrich_anime()`
 then:
+
 1. Extracts platform IDs via `PlatformIDExtractor`
 2. Fans out to all 7 sources in parallel via `ApiFetcher`
 3. Writes per-source JSONL files to `temp/<agent_dir>/`
@@ -91,6 +96,53 @@ async with ApiFetcher(settings.enrichment, cache) as fetcher:
     results = await fetcher.fetch_all_data(ids, offline_data, temp_dir)
 ```
 
+### `PausingApiFetcher`
+
+An `ApiFetcher` for bulk fetches of one provider at a time, such as seed
+cleaning's fetch over a whole seed release, and later discovery. After a set
+number of failures in a row the provider pauses, and one request per probe
+interval is sent until one goes through, so a site that blocks is not sent the
+rest of the queue.
+
+The gap between ordinary requests is not kept here but by the cache's network
+request pacer (see the `http_cache` README), which waits only for requests that
+reach the provider.
+
+```python
+from enrichment.pipeline.pausing_api_fetcher import PausingApiFetcher
+
+cache.network_request_pacer.set_seconds_between_requests(2)
+fetcher = PausingApiFetcher(
+    settings.enrichment,
+    cache,
+    failures_before_pausing=10,
+    seconds_between_probes=1800,
+)
+```
+
+### `ProviderPageFetcher`
+
+Fetches work entries' provider pages, and pages linked by page key, into the
+`work_matching` page store, one queue per provider. Seed cleaning fetches a
+whole seed release through it, and discovery will fetch newly found pages the
+same way.
+
+- Each page is requested once, through the provider's enrichment helper, and
+  stored as soon as it returns; a page the provider says does not exist is
+  stored as dead.
+- A failed page is retried once at the end of its provider's queue.
+- Before each fetch, one line per provider gives the requests needed, already
+  done and still to fetch; during it, a progress line every 100 requests.
+- An AnimeSchedule search that found nothing is skipped when the caller passes
+  a `NotListedSearchRecord`, which decides how long such searches stay skipped.
+
+```python
+from enrichment.pipeline.provider_page_fetcher import ProviderPageFetcher
+
+page_fetcher = ProviderPageFetcher(lambda: ApiFetcher(settings.enrichment, cache), store)
+fetch_summary = await page_fetcher.fetch_entry_pages(work_entries)
+```
+
 ### `PlatformIDExtractor`
 
 Regex-based extraction of platform identifiers from offline-database source URLs.
@@ -110,13 +162,13 @@ ids = PlatformIDExtractor().extract_all_ids(offline_data)
 is read from the environment variable of the same name in upper case, or from
 `.env`. Common settings:
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `ENRICHMENT_TEMP_DIR` | `temp` | Base directory for agent working dirs |
-| `ENRICHMENT_MAX_CONCURRENT_BROWSERS` | `4` | Most Chrome browsers open at once in the process |
-| `ENRICHMENT_SKIP_FAILED_APIS` | `true` | Return partial results when a source fails |
-| `ENRICHMENT_VERBOSE_LOGGING` | `false` | Log the configuration and extra timings |
-| `ANIDB_MIN_REQUEST_INTERVAL` | `2.0` | Seconds between AniDB API requests (backs off up to `ANIDB_MAX_REQUEST_INTERVAL`, 10.0) |
+| Variable                             | Default | Purpose                                                                                                                                    |
+| ------------------------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ENRICHMENT_TEMP_DIR`                | `temp`  | Base directory for agent working dirs                                                                                                      |
+| `ENRICHMENT_MAX_CONCURRENT_BROWSERS` | `4`     | Most Chrome browsers open at once in the process                                                                                           |
+| `ENRICHMENT_SKIP_FAILED_APIS`        | `true`  | Return partial results when a source fails                                                                                                 |
+| `ENRICHMENT_VERBOSE_LOGGING`         | `false` | Log the configuration and extra timings                                                                                                    |
+| `ANIDB_MIN_REQUEST_INTERVAL`         | `2.0`   | Seconds between AniDB requests that reach AniDB; cache hits never wait (backs off after failures up to `ANIDB_MAX_REQUEST_INTERVAL`, 10.0) |
 
 ---
 
@@ -159,7 +211,7 @@ uv run python -m enrichment.sources.anidb.anidb_helper episodes https://anidb.ne
 uv run python -m enrichment.sources.anidb.anidb_helper characters https://anidb.net/anime/69 onepiece_anidb_characters.jsonl
 uv run python -m enrichment.sources.anidb.anidb_helper all https://anidb.net/anime/69 output_dir/
 
-# AnimSchedule
+# AnimeSchedule
 uv run python -m enrichment.sources.animeschedule.animeschedule_helper "One Piece"
 ```
 
@@ -204,22 +256,23 @@ a page whose HTML never finishes is read after 10 s with a warning.
 
 Browsers never download what the crawlers do not read:
 
-* Every browser fails its image, font, media and stylesheet requests. The
+- Every browser fails its image, font, media and stylesheet requests. The
   crawlers parse only the HTML, and image URLs are read from attributes, so the
   extracted data is the same on every page type; scripts, XHR and fetch requests
   always load, because MAL renders parts of its pages with them and Cloudflare's
   checks are scripts.
-* MAL sessions pass `allowed_site=MAL_DOMAIN`: the browser may connect only to
+- MAL sessions pass `allowed_site=MAL_DOMAIN`: the browser may connect only to
   `myanimelist.net` and its subdomains, so the ad and tracking servers MAL's pages
   pull in are never reached. Never set it for Anime-Planet or AniDB: their
   Cloudflare check is served from `challenges.cloudflare.com`, another website.
-* Chrome's background downloads are switched off on every browser.
+- Chrome's background downloads are switched off on every browser.
 
 A crawler that needs everything loaded passes
 `browser_session(..., block_unused_resources=False)`; that turns the resource and
 host blocking off for its own sessions only.
 
 Key behaviours:
+
 - **Cloudflare**: AniDB character pages and Anime-Planet are behind Cloudflare;
   MAL and AniSearch are not. A challenge page is waited out and solved only if it
   stays (`sources/base/cloudflare_challenge.py`). AniDB's challenge clears by
@@ -233,21 +286,21 @@ Key behaviours:
 
 ## Caching
 
-All API-based sources (Kitsu, AniList, AniDB, AnimSchedule) use the `http_cache`
+All API-based sources (Kitsu, AniList, AniDB, AnimeSchedule) use the `http_cache`
 library (Hishel + Redis, RFC 9111). Browser-based crawlers use `@cached_result`
 from `http_cache.result_cache` with per-source TTLs. A cached result's key
 includes a hash of its function's source, so changing a crawler's fetch code makes
 its old entries unused.
 
-| Source | TTL |
-|---|---|
-| MAL | 7 days |
-| Kitsu | 7 days |
-| AniList | 7 days |
-| AniSearch | 7 days |
-| Anime-Planet | 7 days |
-| AniDB | 7 days |
-| AnimSchedule | 24 h |
+| Source        | TTL    |
+| ------------- | ------ |
+| MAL           | 7 days |
+| Kitsu         | 7 days |
+| AniList       | 7 days |
+| AniSearch     | 7 days |
+| Anime-Planet  | 7 days |
+| AniDB         | 7 days |
+| AnimeSchedule | 24 h   |
 
 ---
 

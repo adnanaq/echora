@@ -986,5 +986,812 @@
         "is_dead": false
       }
     ]
+  },
+  "douluo_dalu_arcs": {
+    "entries": [
+      {
+        "sources": [
+          "https://anidb.net/anime/14675",
+          "https://anilist.co/anime/103543",
+          "https://anime-planet.com/anime/soul-land-2nd-season",
+          "https://animecountdown.com/1038257",
+          "https://anisearch.com/anime/15535",
+          "https://kitsu.app/anime/42037",
+          "https://livechart.me/anime/8195",
+          "https://myanimelist.net/anime/37822",
+          "https://simkl.com/anime/1038257"
+        ],
+        "title": "Douluo Dalu 2nd Season",
+        "type": "ONA",
+        "animeSeason": {
+          "season": "FALL",
+          "year": 2018
+        }
+      },
+      {
+        "sources": [
+          "https://anilist.co/anime/152211",
+          "https://kitsu.app/anime/46536"
+        ],
+        "title": "Douluo Dalu: Ayin Fuhuo",
+        "type": "ONA",
+        "animeSeason": {
+          "season": "SUMMER",
+          "year": 2022
+        }
+      },
+      {
+        "sources": [
+          "https://anilist.co/anime/152212",
+          "https://kitsu.app/anime/46535"
+        ],
+        "title": "Douluo Dalu: Gui Zong Zhi Lu",
+        "type": "ONA",
+        "animeSeason": {
+          "season": "SUMMER",
+          "year": 2022
+        }
+      }
+    ],
+    "pages": [
+      {
+        "key": "anilist:anime:103543",
+        "address": "https://anilist.co/anime/103543",
+        "titles": [
+          "Douluo Dalu: Jingying Sai",
+          "斗罗大陆 精英赛"
+        ],
+        "type": "ONA",
+        "year": 2018,
+        "season": null,
+        "episode_count": 52,
+        "aired_from": "2018-11-30T15:00:00Z",
+        "aired_to": "2019-11-05T15:00:00Z",
+        "linked_page_keys": [
+          "mal:anime:37822"
+        ],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "animeplanet:anime:soul-land-2nd-season",
+        "address": "https://anime-planet.com/anime/soul-land-2nd-season",
+        "titles": [
+          "Soul Land 2nd Season",
+          "Alt titles: Douluo Dalu 2nd Season, 斗罗大陆2 - 绝世唐门"
+        ],
+        "type": "ONA",
+        "year": 2018,
+        "season": "WINTER",
+        "episode_count": 237,
+        "aired_from": "2018-11-30T15:00:00Z",
+        "aired_to": null,
+        "linked_page_keys": [],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "anisearch:anime:15535",
+        "address": "https://anisearch.com/anime/15535",
+        "titles": [
+          "Douluo Dalu Di-er Ji",
+          "Soul Land (Season 2)",
+          "斗罗大陆 第二季"
+        ],
+        "type": "ONA",
+        "year": 2018,
+        "season": "WINTER",
+        "episode_count": 237,
+        "aired_from": "2018-11-30T15:00:00Z",
+        "aired_to": "2023-06-09T15:00:00Z",
+        "linked_page_keys": [],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "kitsu:anime:42037",
+        "address": "https://kitsu.app/anime/42037",
+        "titles": [
+          "Douluo Dalu 2",
+          "斗罗大陆2 - 绝世唐门"
+        ],
+        "type": "ONA",
+        "year": 2018,
+        "season": "WINTER",
+        "episode_count": 52,
+        "aired_from": "2018-11-30T15:00:00Z",
+        "aired_to": "2019-11-15T15:00:00Z",
+        "linked_page_keys": [
+          "anilist:anime:103543",
+          "mal:anime:37822"
+        ],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "mal:anime:37822",
+        "address": "https://myanimelist.net/anime/37822",
+        "titles": [
+          "Douluo Dalu 2nd Season",
+          "Soul Land 2nd Season",
+          "斗罗大陆"
+        ],
+        "type": "ONA",
+        "year": 2018,
+        "season": null,
+        "episode_count": 237,
+        "aired_from": "2018-11-30T15:00:00Z",
+        "aired_to": "2023-06-09T15:00:00Z",
+        "linked_page_keys": [
+          "anidb:anime:14675"
+        ],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "https://animeschedule.net/anime/douluo-dalu-chongfan-haotian",
+        "address": "https://animeschedule.net/anime/douluo-dalu-chongfan-haotian",
+        "titles": [
+          "Douluo Dalu: Chongfan Haotian",
+          "斗罗大陆 重返昊天"
+        ],
+        "type": "ONA",
+        "year": 2021,
+        "season": "SUMMER",
+        "episode_count": 13,
+        "aired_from": "2021-08-20T15:00:00Z",
+        "aired_to": null,
+        "linked_page_keys": [
+          "anidb:anime:16548",
+          "anilist:anime:137761",
+          "animeplanet:anime:douluo-dalu-2nd-season",
+          "kitsu:anime:douluo-dalu-chongfan-haotian",
+          "mal:anime:37822"
+        ],
+        "renamed_to": null,
+        "searched_by": [
+          "anilist:anime:137761",
+          "mal:anime:37822"
+        ],
+        "is_dead": false
+      },
+      {
+        "key": "anilist:anime:152211",
+        "address": "https://anilist.co/anime/152211",
+        "titles": [
+          "Douluo Dalu: Ayin Fuhuo",
+          "斗罗大陆 阿银复活"
+        ],
+        "type": "ONA",
+        "year": 2022,
+        "season": null,
+        "episode_count": 3,
+        "aired_from": "2022-06-10T15:00:00Z",
+        "aired_to": "2022-06-24T15:00:00Z",
+        "linked_page_keys": [],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "kitsu:anime:46536",
+        "address": "https://kitsu.app/anime/46536",
+        "titles": [
+          "Douluo Dalu: Ayin Fuhuo"
+        ],
+        "type": "ONA",
+        "year": 2022,
+        "season": "SUMMER",
+        "episode_count": 3,
+        "aired_from": "2022-06-10T15:00:00Z",
+        "aired_to": "2022-06-24T15:00:00Z",
+        "linked_page_keys": [
+          "anilist:anime:152211"
+        ],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "https://animeschedule.net/anime/douluo-dalu-ayin-fuhuo",
+        "address": "https://animeschedule.net/anime/douluo-dalu-ayin-fuhuo",
+        "titles": [
+          "Douluo Dalu: Ayin Fuhuo",
+          "斗罗大陆 阿银复活"
+        ],
+        "type": "ONA",
+        "year": 2022,
+        "season": "SPRING",
+        "episode_count": 3,
+        "aired_from": "2022-06-10T15:00:00Z",
+        "aired_to": null,
+        "linked_page_keys": [
+          "anidb:anime:17442",
+          "anilist:anime:152211",
+          "animeplanet:anime:douluo-dalu-2nd-season",
+          "kitsu:anime:douluo-dalu-ayin-fuhuo",
+          "mal:anime:37822"
+        ],
+        "renamed_to": null,
+        "searched_by": [
+          "anilist:anime:152211"
+        ],
+        "is_dead": false
+      },
+      {
+        "key": "anilist:anime:152212",
+        "address": "https://anilist.co/anime/152212",
+        "titles": [
+          "Douluo Dalu: Gui Zong Zhi Lu",
+          "斗罗大陆 归宗之路"
+        ],
+        "type": "ONA",
+        "year": 2022,
+        "season": null,
+        "episode_count": 3,
+        "aired_from": "2022-07-01T15:00:00Z",
+        "aired_to": "2022-07-15T15:00:00Z",
+        "linked_page_keys": [],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "kitsu:anime:46535",
+        "address": "https://kitsu.app/anime/46535",
+        "titles": [
+          "Douluo Dalu: Gui Zong Zhi Lu"
+        ],
+        "type": "ONA",
+        "year": 2022,
+        "season": "SUMMER",
+        "episode_count": 3,
+        "aired_from": "2022-06-10T15:00:00Z",
+        "aired_to": "2022-06-24T15:00:00Z",
+        "linked_page_keys": [
+          "anilist:anime:152211"
+        ],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "https://animeschedule.net/anime/douluo-dalu-gui-zong-zhi-lu",
+        "address": "https://animeschedule.net/anime/douluo-dalu-gui-zong-zhi-lu",
+        "titles": [
+          "Douluo Dalu: Gui Zong Zhi Lu",
+          "斗罗大陆 归宗之路"
+        ],
+        "type": "ONA",
+        "year": 2022,
+        "season": "SUMMER",
+        "episode_count": 3,
+        "aired_from": "2022-07-01T15:00:00Z",
+        "aired_to": null,
+        "linked_page_keys": [
+          "anidb:anime:17442",
+          "anilist:anime:152212",
+          "animeplanet:anime:douluo-dalu-2nd-season",
+          "kitsu:anime:douluo-dalu-gui-zong-zhi-lu",
+          "mal:anime:37822"
+        ],
+        "renamed_to": null,
+        "searched_by": [
+          "anilist:anime:152212"
+        ],
+        "is_dead": false
+      }
+    ]
+  },
+  "shin_oishinbo": {
+    "entries": [
+      {
+        "sources": [
+          "https://anilist.co/anime/217008",
+          "https://livechart.me/anime/13808"
+        ],
+        "title": "Shin Oishinbo",
+        "type": "TV",
+        "animeSeason": {
+          "season": "UNDEFINED"
+        }
+      },
+      {
+        "sources": [
+          "https://animecountdown.com/3256062",
+          "https://simkl.com/anime/3256062"
+        ],
+        "title": "Shin Oishinbo",
+        "type": "TV",
+        "animeSeason": {
+          "season": "UNDEFINED"
+        }
+      },
+      {
+        "sources": [
+          "https://anidb.net/anime/20405",
+          "https://anime-planet.com/anime/shin-oishinbo",
+          "https://animenewsnetwork.com/encyclopedia/anime.php?id=40552",
+          "https://anisearch.com/anime/22010",
+          "https://myanimelist.net/anime/65053"
+        ],
+        "title": "Shin Oishinbo",
+        "type": "TV",
+        "animeSeason": {
+          "season": "WINTER",
+          "year": 2027
+        }
+      }
+    ],
+    "pages": [
+      {
+        "key": "anilist:anime:217008",
+        "address": "https://anilist.co/anime/217008",
+        "titles": [
+          "Shin Oishinbo",
+          "新 美味しんぼ"
+        ],
+        "type": "TV",
+        "year": null,
+        "season": null,
+        "episode_count": null,
+        "aired_from": null,
+        "aired_to": null,
+        "linked_page_keys": [
+          "mal:anime:65053"
+        ],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "animeplanet:anime:shin-oishinbo",
+        "address": "https://anime-planet.com/anime/shin-oishinbo",
+        "titles": [
+          "Shin Oishinbo",
+          "Alt titles: Oishinbo (New), 新 美味しんぼ"
+        ],
+        "type": "TV",
+        "year": 2027,
+        "season": null,
+        "episode_count": null,
+        "aired_from": null,
+        "aired_to": null,
+        "linked_page_keys": [],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      }
+    ]
+  },
+  "ajin_films": {
+    "entries": [
+      {
+        "sources": [
+          "https://anidb.net/anime/11265",
+          "https://animecountdown.com/499134",
+          "https://anisearch.com/anime/10462",
+          "https://simkl.com/anime/499134"
+        ],
+        "title": "Ajin",
+        "type": "MOVIE",
+        "animeSeason": {
+          "season": "FALL",
+          "year": 2015
+        }
+      },
+      {
+        "sources": [
+          "https://anilist.co/anime/21212",
+          "https://anime-planet.com/anime/ajin-movie-1-shoudou",
+          "https://animenewsnetwork.com/encyclopedia/anime.php?id=17176",
+          "https://kitsu.app/anime/10949",
+          "https://livechart.me/anime/1620",
+          "https://myanimelist.net/anime/30868"
+        ],
+        "title": "Ajin Part 1: Shoudou",
+        "type": "MOVIE",
+        "animeSeason": {
+          "season": "FALL",
+          "year": 2015
+        }
+      },
+      {
+        "sources": [
+          "https://anilist.co/anime/21505",
+          "https://anime-planet.com/anime/ajin-movie-2-shoutotsu",
+          "https://animenewsnetwork.com/encyclopedia/anime.php?id=17950",
+          "https://kitsu.app/anime/10950",
+          "https://livechart.me/anime/1622",
+          "https://myanimelist.net/anime/30869"
+        ],
+        "title": "Ajin Part 2: Shoutotsu",
+        "type": "MOVIE",
+        "animeSeason": {
+          "season": "SPRING",
+          "year": 2016
+        }
+      },
+      {
+        "sources": [
+          "https://anilist.co/anime/21681",
+          "https://anime-planet.com/anime/ajin-movie-3-shougeki",
+          "https://animenewsnetwork.com/encyclopedia/anime.php?id=18465",
+          "https://kitsu.app/anime/10951",
+          "https://livechart.me/anime/1623",
+          "https://myanimelist.net/anime/30870"
+        ],
+        "title": "Ajin Part 3: Shougeki",
+        "type": "MOVIE",
+        "animeSeason": {
+          "season": "SUMMER",
+          "year": 2016
+        }
+      }
+    ],
+    "pages": [
+      {
+        "key": "anidb:anime:11265",
+        "address": "https://anidb.net/anime/11265",
+        "titles": [
+          "Ajin",
+          "亜人",
+          "亚人 剧场版"
+        ],
+        "type": "MOVIE",
+        "year": 2015,
+        "season": "FALL",
+        "episode_count": 3,
+        "aired_from": "2015-11-26T15:00:00Z",
+        "aired_to": "2016-09-22T15:00:00Z",
+        "linked_page_keys": [],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "anisearch:anime:10462",
+        "address": "https://anisearch.com/anime/10462",
+        "titles": [
+          "Ajin",
+          "Ajin (Movie)",
+          "亜人",
+          "Ajin Trilogie"
+        ],
+        "type": "MOVIE",
+        "year": 2015,
+        "season": "FALL",
+        "episode_count": 3,
+        "aired_from": "2015-11-26T15:00:00Z",
+        "aired_to": "2016-09-22T15:00:00Z",
+        "linked_page_keys": [],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "anilist:anime:21212",
+        "address": "https://anilist.co/anime/21212",
+        "titles": [
+          "Ajin: Shoudou",
+          "AJIN: Demi-Human -Compel-",
+          "亜人 -衝動-"
+        ],
+        "type": "MOVIE",
+        "year": 2015,
+        "season": "FALL",
+        "episode_count": 1,
+        "aired_from": "2015-11-26T15:00:00Z",
+        "aired_to": "2015-11-26T15:00:00Z",
+        "linked_page_keys": [
+          "mal:anime:30868"
+        ],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "animeplanet:anime:ajin-movie-1-shoudou",
+        "address": "https://anime-planet.com/anime/ajin-movie-1-shoudou",
+        "titles": [
+          "Ajin Movie 1: Shoudou",
+          "亜人 衝動"
+        ],
+        "type": "MOVIE",
+        "year": 2015,
+        "season": null,
+        "episode_count": null,
+        "aired_from": null,
+        "aired_to": null,
+        "linked_page_keys": [],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "kitsu:anime:10949",
+        "address": "https://kitsu.app/anime/10949",
+        "titles": [
+          "Ajin Part 1: Shoudou",
+          "Ajin: Demi-Human - Compel",
+          "亜人　第１部「衝動」"
+        ],
+        "type": "MOVIE",
+        "year": 2015,
+        "season": "FALL",
+        "episode_count": 1,
+        "aired_from": "2015-11-26T15:00:00Z",
+        "aired_to": "2015-11-26T15:00:00Z",
+        "linked_page_keys": [
+          "anidb:anime:11265",
+          "anilist:anime:21212",
+          "mal:anime:30868"
+        ],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "mal:anime:30868",
+        "address": "https://myanimelist.net/anime/30868",
+        "titles": [
+          "Ajin Part 1: Shoudou",
+          "Ajin: Demi-Human Movie 1: Compel",
+          "亜人　第１部「衝動」"
+        ],
+        "type": "MOVIE",
+        "year": 2015,
+        "season": null,
+        "episode_count": 1,
+        "aired_from": "2015-11-26T15:00:00Z",
+        "aired_to": null,
+        "linked_page_keys": [
+          "anidb:anime:11265",
+          "ann:anime:17176"
+        ],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "https://animeschedule.net/anime/ajin-shoudou",
+        "address": "https://animeschedule.net/anime/ajin-shoudou",
+        "titles": [
+          "Ajin: Shoudou",
+          "亜人 -衝動-"
+        ],
+        "type": "MOVIE",
+        "year": 2015,
+        "season": "FALL",
+        "episode_count": 1,
+        "aired_from": "2015-11-26T15:00:00Z",
+        "aired_to": null,
+        "linked_page_keys": [
+          "anilist:anime:21212",
+          "kitsu:anime:10949",
+          "mal:anime:30868"
+        ],
+        "renamed_to": null,
+        "searched_by": [
+          "mal:anime:30868"
+        ],
+        "is_dead": false
+      },
+      {
+        "key": "anilist:anime:21505",
+        "address": "https://anilist.co/anime/21505",
+        "titles": [
+          "Ajin: Shoutotsu",
+          "亜人 -衝突-"
+        ],
+        "type": "MOVIE",
+        "year": 2016,
+        "season": "SPRING",
+        "episode_count": 1,
+        "aired_from": "2016-05-05T15:00:00Z",
+        "aired_to": "2016-05-05T15:00:00Z",
+        "linked_page_keys": [
+          "mal:anime:30869"
+        ],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "animeplanet:anime:ajin-movie-2-shoutotsu",
+        "address": "https://anime-planet.com/anime/ajin-movie-2-shoutotsu",
+        "titles": [
+          "Ajin Movie 2: Shoutotsu",
+          "亜人衝突"
+        ],
+        "type": "MOVIE",
+        "year": 2016,
+        "season": null,
+        "episode_count": null,
+        "aired_from": null,
+        "aired_to": null,
+        "linked_page_keys": [],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "kitsu:anime:10950",
+        "address": "https://kitsu.app/anime/10950",
+        "titles": [
+          "Ajin Part 2: Shoutotsu",
+          "亜人　第２部「衝突」"
+        ],
+        "type": "MOVIE",
+        "year": 2016,
+        "season": "SPRING",
+        "episode_count": 1,
+        "aired_from": "2016-05-05T15:00:00Z",
+        "aired_to": "2016-05-05T15:00:00Z",
+        "linked_page_keys": [
+          "anilist:anime:21505",
+          "mal:anime:30869"
+        ],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "mal:anime:30869",
+        "address": "https://myanimelist.net/anime/30869",
+        "titles": [
+          "Ajin Part 2: Shoutotsu",
+          "Ajin: Demi-Human Movie 2: Confront",
+          "亜人　第２部「衝突」"
+        ],
+        "type": "MOVIE",
+        "year": 2016,
+        "season": null,
+        "episode_count": 1,
+        "aired_from": "2016-05-05T15:00:00Z",
+        "aired_to": null,
+        "linked_page_keys": [
+          "anidb:anime:11265",
+          "ann:anime:17950"
+        ],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "https://animeschedule.net/anime/ajin-shoutotsu",
+        "address": "https://animeschedule.net/anime/ajin-shoutotsu",
+        "titles": [
+          "Ajin: Shoutotsu",
+          "亜人 -衝突-"
+        ],
+        "type": "MOVIE",
+        "year": 2016,
+        "season": "SPRING",
+        "episode_count": 1,
+        "aired_from": "2016-05-05T15:00:00Z",
+        "aired_to": null,
+        "linked_page_keys": [
+          "anilist:anime:21505",
+          "kitsu:anime:10950",
+          "mal:anime:30869"
+        ],
+        "renamed_to": null,
+        "searched_by": [
+          "mal:anime:30869"
+        ],
+        "is_dead": false
+      },
+      {
+        "key": "anilist:anime:21681",
+        "address": "https://anilist.co/anime/21681",
+        "titles": [
+          "Ajin: Shougeki",
+          "亜人 -衝戟-"
+        ],
+        "type": "MOVIE",
+        "year": 2016,
+        "season": "SUMMER",
+        "episode_count": 1,
+        "aired_from": "2016-09-22T15:00:00Z",
+        "aired_to": "2016-09-22T15:00:00Z",
+        "linked_page_keys": [
+          "mal:anime:30870"
+        ],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "animeplanet:anime:ajin-movie-3-shougeki",
+        "address": "https://anime-planet.com/anime/ajin-movie-3-shougeki",
+        "titles": [
+          "Ajin Movie 3: Shougeki",
+          "亜人衝戟"
+        ],
+        "type": "MOVIE",
+        "year": 2016,
+        "season": null,
+        "episode_count": null,
+        "aired_from": null,
+        "aired_to": null,
+        "linked_page_keys": [],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "kitsu:anime:10951",
+        "address": "https://kitsu.app/anime/10951",
+        "titles": [
+          "Ajin Part 3: Shougeki",
+          "亜人 第3部「衝戟」"
+        ],
+        "type": "MOVIE",
+        "year": 2016,
+        "season": "FALL",
+        "episode_count": 1,
+        "aired_from": "2016-09-22T15:00:00Z",
+        "aired_to": "2016-09-22T15:00:00Z",
+        "linked_page_keys": [
+          "anilist:anime:21681",
+          "mal:anime:30870"
+        ],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "mal:anime:30870",
+        "address": "https://myanimelist.net/anime/30870",
+        "titles": [
+          "Ajin Part 3: Shougeki",
+          "Ajin: Demi-Human Movie 3: Collide",
+          "亜人 第3部「衝戟」"
+        ],
+        "type": "MOVIE",
+        "year": 2016,
+        "season": null,
+        "episode_count": 1,
+        "aired_from": "2016-09-22T15:00:00Z",
+        "aired_to": null,
+        "linked_page_keys": [
+          "anidb:anime:11265",
+          "ann:anime:18465"
+        ],
+        "renamed_to": null,
+        "searched_by": [],
+        "is_dead": false
+      },
+      {
+        "key": "https://animeschedule.net/anime/ajin-shougeki",
+        "address": "https://animeschedule.net/anime/ajin-shougeki",
+        "titles": [
+          "Ajin: Shougeki",
+          "亜人 -衝戟-"
+        ],
+        "type": "MOVIE",
+        "year": 2016,
+        "season": "FALL",
+        "episode_count": 1,
+        "aired_from": "2016-09-22T15:00:00Z",
+        "aired_to": null,
+        "linked_page_keys": [
+          "anilist:anime:21681",
+          "kitsu:anime:10951",
+          "mal:anime:30870"
+        ],
+        "renamed_to": null,
+        "searched_by": [
+          "mal:anime:30870"
+        ],
+        "is_dead": false
+      }
+    ]
   }
 }

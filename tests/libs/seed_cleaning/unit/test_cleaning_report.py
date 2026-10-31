@@ -1,11 +1,11 @@
-import sys
-from pathlib import Path
-
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
-
-from clean_seed import build_entries_to_check_document, count_corrections
-from seed_cleaning import SeedCorrection, SplitWorkCandidates
+from seed_cleaning.cleaning_report import (
+    build_entries_to_check_document,
+    count_corrected_entries,
+    count_corrections,
+)
+from seed_cleaning.corrected_entries import CorrectedEntry
+from seed_cleaning.seed_corrections import SeedCorrection
+from seed_cleaning.split_work_candidates import SplitWorkCandidates
 from work_matching import WorkEntry
 
 
@@ -27,6 +27,7 @@ def test_build_entries_to_check_document_names_entries_by_reference_page() -> No
             _entry("Cue!", "https://myanimelist.net/anime/43735"),
         ),
         shared_provider=None,
+        candidate_evidence=("same title: 'CUE!' and 'Cue!'",),
     )
     document = build_entries_to_check_document("seed-schema-url", [doubled], [group])
     assert document["seed_schema"] == "seed-schema-url"
@@ -41,6 +42,8 @@ def test_build_entries_to_check_document_names_entries_by_reference_page() -> No
     ]
     [candidates] = document["split_work_candidates"]
     assert candidates["shared_provider"] is None
+    assert candidates["candidate_evidence"] == ["same title: 'CUE!' and 'Cue!'"]
+    assert candidates["has_shared_tying_link"] is False
     assert [entry["reference_page"] for entry in candidates["entries"]] == [
         "ann:anime:1",
         "mal:anime:43735",
@@ -81,4 +84,22 @@ def test_count_corrections_counts_each_change_once() -> None:
         "pages added as parts": 1,
         "review cases answered": 0,
         "review cases open": 0,
+    }
+
+
+def test_count_corrected_entries_counts_removed_and_untyped_new_entries() -> None:
+    show = WorkEntry.from_seed_entry(
+        {"title": "Show", "type": "TV", "sources": ["https://myanimelist.net/anime/1"]}
+    )
+    untyped_show = show.model_copy(update={"type": "UNKNOWN"})
+    assert count_corrected_entries(
+        [
+            CorrectedEntry("mal:anime:1", None),
+            CorrectedEntry(None, untyped_show, "mal:anime:1 work 2"),
+            CorrectedEntry(None, show, "mal:anime:1 work 3"),
+            CorrectedEntry("mal:anime:2", untyped_show),
+        ]
+    ) == {
+        "entries removed, every page moved out": 1,
+        "new entries with an unknown type": 1,
     }

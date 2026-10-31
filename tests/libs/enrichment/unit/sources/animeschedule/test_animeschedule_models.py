@@ -1,15 +1,15 @@
 import pytest
 from enrichment.sources.animeschedule.animeschedule_models import (
-    AnimScheduleAnime,
-    AnimScheduleNames,
-    AnimScheduleSeason,
+    AnimeScheduleAnime,
+    AnimeScheduleNames,
+    AnimeScheduleSeason,
 )
 
 _ZERO = "0001-01-01T00:00:00Z"
 
 
-def _anime(**fields: object) -> AnimScheduleAnime:
-    return AnimScheduleAnime.model_validate(
+def _anime(**fields: object) -> AnimeScheduleAnime:
+    return AnimeScheduleAnime.model_validate(
         {"id": "1", "route": "one-piece", "title": "One Piece", **fields}
     )
 
@@ -54,10 +54,11 @@ def test_anim_schedule_anime_delayed_description_is_delayed_reason() -> None:
 
 def test_anim_schedule_season_empty_season_becomes_none() -> None:
     assert (
-        AnimScheduleSeason.model_validate({"season": "", "year": "2026"}).season is None
+        AnimeScheduleSeason.model_validate({"season": "", "year": "2026"}).season
+        is None
     )
 
 
 @pytest.mark.parametrize("field", ["native", "romaji", "english", "abbreviation"])
 def test_anim_schedule_names_empty_name_becomes_none(field: str) -> None:
-    assert getattr(AnimScheduleNames.model_validate({field: " "}), field) is None
+    assert getattr(AnimeScheduleNames.model_validate({field: " "}), field) is None

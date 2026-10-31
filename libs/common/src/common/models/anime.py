@@ -56,7 +56,7 @@ class AnimeStatus(ProviderMappedEnum):
             "tba": cls.UPCOMING,
             "unreleased": cls.UPCOMING,
             "upcoming": cls.UPCOMING,
-            # AnimSchedule / AniSearch
+            # AnimeSchedule / AniSearch
             "ongoing": cls.ONGOING,
             "completed": cls.FINISHED,
             "delayed": cls.ONGOING,
@@ -103,7 +103,7 @@ class AnimeType(ProviderMappedEnum):
         Handles variants from MAL, AniList, AniDB, AnimePlanet, etc.
         """
         return {
-            # Common across MAL, AniList, Kitsu, AnimSchedule, AnimePlanet, AniSearch
+            # Common across MAL, AniList, Kitsu, AnimeSchedule, AnimePlanet, AniSearch
             "tv": cls.TV,
             "movie": cls.MOVIE,
             "ova": cls.OVA,
@@ -117,7 +117,7 @@ class AnimeType(ProviderMappedEnum):
             "cm": cls.CM,
             # AniList
             "tv_short": cls.TV_SHORT,
-            # AnimSchedule
+            # AnimeSchedule
             "tv short": cls.TV_SHORT,
             "ona (chinese)": cls.ONA,
             "movie (chinese)": cls.MOVIE,
@@ -328,10 +328,10 @@ class SourceMaterialType(ProviderMappedEnum):
     def provider_value_map(cls) -> dict[str, SourceMaterialType]:
         """Normalize source-specific strings from all enrichment sources.
 
-        Handles MAL, AniList, AnimSchedule, and other variant spellings.
+        Handles MAL, AniList, AnimeSchedule, and other variant spellings.
         """
         return {
-            # MAL / AnimSchedule (Title Case → lowercase key)
+            # MAL / AnimeSchedule (Title Case → lowercase key)
             "manga": cls.MANGA,
             "4-koma manga": cls.KOMA_4,
             "4-koma": cls.KOMA_4,
@@ -348,7 +348,7 @@ class SourceMaterialType(ProviderMappedEnum):
             "visual_novel": cls.VISUAL_NOVEL,
             "game": cls.GAME,
             "video_game": cls.GAME,  # AniList
-            "video game": cls.GAME,  # AnimSchedule: "Video Game"
+            "video game": cls.GAME,  # AnimeSchedule: "Video Game"
             "card game": cls.CARD_GAME,
             "card_game": cls.CARD_GAME,
             "music": cls.MUSIC,
@@ -484,7 +484,7 @@ class AnimeRelationType(ProviderMappedEnum):
     def provider_value_map(cls) -> dict[str, AnimeRelationType]:
         """Normalize source-specific relation strings from all enrichment sources.
 
-        Handles MAL, AniList, Kitsu, AnimSchedule (camelCase dict keys), and others.
+        Handles MAL, AniList, Kitsu, AnimeSchedule (camelCase dict keys), and others.
         """
         return {
             # MAL (Title Case)
@@ -512,7 +512,7 @@ class AnimeRelationType(ProviderMappedEnum):
             "full_story": cls.FULL_STORY,
             "parent_story": cls.PARENT_STORY,
             "spinoff": cls.SPIN_OFF,
-            # AnimSchedule (camelCase dict keys)
+            # AnimeSchedule (camelCase dict keys)
             "sequels": cls.SEQUEL,
             "prequels": cls.PREQUEL,
             "parents": cls.PARENT_STORY,
@@ -581,7 +581,7 @@ class Broadcast(StrictFieldsModel):
     """Recurring broadcast schedule and premiere dates.
 
     Merges the weekly broadcast slot (from MAL) with per-version
-    airtimes and premiere dates (from AnimSchedule).
+    airtimes and premiere dates (from AnimeSchedule).
     """
 
     # Weekly recurring slot (from MAL)
@@ -591,7 +591,7 @@ class Broadcast(StrictFieldsModel):
     )
     timezone: str | None = Field(None, description="Broadcast timezone (e.g., 'JST')")
 
-    # Per-version airtimes (from AnimSchedule)
+    # Per-version airtimes (from AnimeSchedule)
     jp_time: str | None = Field(
         None, description="Japanese broadcast time with timezone"
     )
@@ -602,7 +602,7 @@ class Broadcast(StrictFieldsModel):
     sub_delay_days: int | None = Field(None, description="Days after JP that sub drops")
     dub_delay_days: int | None = Field(None, description="Days after JP that dub drops")
 
-    # Per-version premiere dates (from AnimSchedule)
+    # Per-version premiere dates (from AnimeSchedule)
     premiere_jp: datetime | None = Field(None, description="Original JP premiere date")
     premiere_sub: datetime | None = Field(None, description="Subtitle premiere date")
     premiere_dub: datetime | None = Field(None, description="Dub premiere date")
@@ -614,7 +614,7 @@ class Broadcast(StrictFieldsModel):
 
 
 class AnimeHiatus(StrictFieldsModel):
-    """Current hiatus snapshot from AnimSchedule."""
+    """Current hiatus snapshot from AnimeSchedule."""
 
     reason: str | None = Field(None, description="Reason for hiatus or delay")
     hiatus_from: str | None = Field(None, description="Hiatus start date")
@@ -931,7 +931,7 @@ class Anime(StrictFieldsModel):
         default=EntityType.ANIME,
         description="Entity type for vector search filtering",
     )
-    month: str | None = Field(None, description="Premiere month from AnimSchedule")
+    month: str | None = Field(None, description="Premiere month from AnimeSchedule")
     nsfw: bool | None = Field(None, description="Not Safe For Work flag from Kitsu")
     rating: AnimeRating = Field(
         default=AnimeRating.UNKNOWN, description="Content rating (PG-13, R, etc.)"
@@ -1009,7 +1009,7 @@ class Anime(StrictFieldsModel):
         None, description="Recurring broadcast schedule and premiere dates"
     )
     hiatus: AnimeHiatus | None = Field(
-        None, description="Current hiatus snapshot from AnimSchedule"
+        None, description="Current hiatus snapshot from AnimeSchedule"
     )
     images: AnimeImages = Field(
         default_factory=AnimeImages,

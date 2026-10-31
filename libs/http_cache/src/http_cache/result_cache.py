@@ -22,13 +22,16 @@ import logging
 import re
 import types
 from collections.abc import Awaitable, Callable
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from common.config import CacheConfig
 from common.config.cache_config import DEFAULT_TTL
 from redis.exceptions import RedisError
 
 from .setup import get_cache
+
+if TYPE_CHECKING:
+    from .manager import HTTPCacheManager
 
 # Module-level values that shape what a crawler extracts: selector tables,
 # patterns, base addresses. Numbers are left out, so changing a delay or a
@@ -283,8 +286,10 @@ class _CachedFunction[**P, R]:
         """Return the cached result, or call the function and cache its return value.
 
         On a cache hit, returns the deserialized value without calling the
-        original function. On a miss, executes the function once, stores the
-        non-None result with SETEX, and returns it. Redis and JSON errors are
+        original function, and without waiting: only a call that runs the
+        function, which reaches the provider, waits its network turn. On a
+        miss, executes the function once, stores the non-None result with
+        SETEX, and returns it. Redis and JSON errors are
         best-effort and fall back to calling the original function. ``None``
         results are returned but not cached.
 
@@ -294,7 +299,7 @@ class _CachedFunction[**P, R]:
         cache = get_cache()
         redis_client = cache.get_result_client()
         if redis_client is None:
-            return await self._func(*args, **kwargs)
+            return await self._call_function(cache, *args, **kwargs)
 
         cache_key = self._cache_key(cache.cache, args, kwargs)
 
@@ -302,7 +307,7 @@ class _CachedFunction[**P, R]:
             cached_data = await redis_client.get(cache_key)
         except RedisError as e:
             logging.warning(f"Cache read error in {self._func_name}: {e}")
-            return await self._func(*args, **kwargs)
+            return await self._call_function(cache, *args, **kwargs)
 
         if cached_data:
             try:
@@ -313,7 +318,7 @@ class _CachedFunction[**P, R]:
                     f"Cache decode error in {self._func_name} for key {cache_key}: {e}"
                 )
 
-        result = await self._func(*args, **kwargs)
+        result = await self._call_function(cache, *args, **kwargs)
 
         if result is None:
             return result
@@ -440,6 +445,23 @@ class _CachedFunction[**P, R]:
                 await pipe.execute()
         except RedisError as e:
             logging.warning(f"Cache batch write error in {self._func_name}: {e}")
+
+    async def _call_function(
+        self, cache: HTTPCacheManager, *args: P.args, **kwargs: P.kwargs
+    ) -> R:
+        """Wait for the provider's network turn, then run the wrapped function.
+
+        Args:
+            cache: The cache manager, whose pacer spaces out the provider's
+                network requests.
+            *args: Passed to the function.
+            **kwargs: Passed to the function.
+
+        Returns:
+            The function's result.
+        """
+        await cache.network_request_pacer.wait_for_network_turn(self._service)
+        return await self._func(*args, **kwargs)
 
     def _cache_key(
         self, config: CacheConfig, args: tuple[Any, ...], kwargs: dict[str, Any]

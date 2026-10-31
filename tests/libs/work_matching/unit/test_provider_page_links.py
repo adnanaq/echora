@@ -159,3 +159,16 @@ def test_provider_page_links_searched_page_through_two_searched_by_pages_links_e
     assert links.get_linked_page_keys("anilist:anime:210") == frozenset(
         {"mal:anime:210", "anidb:anime:193"}
     )
+
+
+def test_provider_page_links_page_linked_with_several_mal_pages_ties_nothing(
+    matching_cases,
+) -> None:
+    entries, pages = matching_cases["ajin_films"]
+    links = ProviderPageLinks(
+        pages, [key for entry in entries for key in entry.addresses_by_page_key]
+    )
+    assert links.get_linked_page_keys("anidb:anime:11265") == frozenset()
+    assert links.get_linked_page_keys("mal:anime:30868") == frozenset(
+        {"anilist:anime:21212", "ann:anime:17176", "kitsu:anime:10949"}
+    )

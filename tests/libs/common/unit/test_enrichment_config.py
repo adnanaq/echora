@@ -88,3 +88,15 @@ def test_log_configuration_failed_providers_not_skipped_logs_fatal(
         EnrichmentConfig(enrichment_skip_failed_apis=False).log_configuration()
 
     assert "failed providers fatal" in caplog.text
+
+
+def test_enrichment_config_animeschedule_token_unset_by_default() -> None:
+    assert EnrichmentConfig().animeschedule_token is None
+
+
+def test_enrichment_config_animeschedule_token_read_and_hidden() -> None:
+    with patch.dict("os.environ", {"ANIMESCHEDULE_TOKEN": "app-token-value"}):
+        config = EnrichmentConfig()
+    assert config.animeschedule_token is not None
+    assert config.animeschedule_token.get_secret_value() == "app-token-value"
+    assert "app-token-value" not in repr(config)

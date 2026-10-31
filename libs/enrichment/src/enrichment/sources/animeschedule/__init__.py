@@ -1,1 +1,1 @@
-"""AnimSchedule typed models and canonical mapper."""
+"""AnimeSchedule typed models and canonical mapper."""

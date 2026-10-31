@@ -44,6 +44,7 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 from work_matching.doubled_provider_decision import DoubledProviderDecision
 from work_matching.entry_group import (
+    list_mal_page_review_reasons,
     read_group_answer_placements,
     suggest_group_page_placements,
 )
@@ -54,6 +55,7 @@ from work_matching.linked_page_check import (
     read_linked_page_answer,
     suggest_linked_page_answer,
 )
+from work_matching.page_details_comparison import MalPageComparison
 from work_matching.page_placement import PagePlacement
 from work_matching.provider_page import ProviderPage, index_pages_by_current_key
 from work_matching.split_work_check import SplitWorkReviewReason
@@ -82,8 +84,12 @@ class ReviewCase(BaseModel):
     suggested_answer: dict[str, str] = {}
     # Names, which stay when the wording changes: for an entry group's case,
     # each decision's outcome followed by its review reasons, then the
-    # split-work review reasons; for a linked page, the decision's reason.
+    # split-work review reasons, then why the MAL check left pages without a
+    # suggestion; for a linked page, the decision's reason.
     reasons: tuple[str, ...]
+    # For a split-work case, why its entries are candidates: each shared title
+    # and each link that tied them; empty for other cases.
+    candidate_evidence: tuple[str, ...] = ()
     # Each entry involved, by its reference page.
     entries: dict[str, WorkEntry]
     # Every doubled-provider decision of the group's combined entry (none when
@@ -128,6 +134,8 @@ class ReviewCase(BaseModel):
         decisions: Sequence[DoubledProviderDecision],
         split_work_review_reasons: Sequence[SplitWorkReviewReason],
         pages: Iterable[ProviderPage],
+        *,
+        candidate_evidence: Sequence[str] = (),
     ) -> Self:
         """Make the review case for an entry group whose pages the rules could not place.
 
@@ -139,6 +147,8 @@ class ReviewCase(BaseModel):
             split_work_review_reasons: What speaks against the entries being
                 one work; empty for a single entry.
             pages: The fetched pages; the details of the group's pages are kept.
+            candidate_evidence: Why the entries are candidates, shown to the
+                reviewer; empty for a single entry.
 
         Returns:
             The case. A single entry's case is named by its doubled pages and
@@ -157,8 +167,11 @@ class ReviewCase(BaseModel):
             ),
             suggested_answer=suggest_group_page_placements(entries, decisions, pages),
             reasons=_list_entry_group_reason_names(
-                decisions, split_work_review_reasons
+                decisions,
+                split_work_review_reasons,
+                list_mal_page_review_reasons(entries, decisions, pages),
             ),
+            candidate_evidence=tuple(candidate_evidence),
             entries={entry.reference_page: entry for entry in entries},
             decisions=tuple(decisions),
             pages=_select_page_details(
@@ -360,8 +373,12 @@ def _build_entry_group_case_name(
 def _list_entry_group_reason_names(
     decisions: Iterable[DoubledProviderDecision],
     split_work_review_reasons: Iterable[SplitWorkReviewReason],
+    mal_page_review_reasons: Iterable[MalPageComparison],
 ) -> tuple[str, ...]:
-    """List each decision's outcome and review reasons, then the split-work reasons."""
+    """List each decision's outcome and review reasons, then the other reasons.
+
+    The split-work reasons come next, then why the MAL check left pages out.
+    """
     return (
         *(
             name
@@ -372,6 +389,7 @@ def _list_entry_group_reason_names(
             )
         ),
         *(reason.name for reason in split_work_review_reasons),
+        *(comparison.name for comparison in mal_page_review_reasons),
     )
 
 

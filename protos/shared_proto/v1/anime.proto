@@ -163,14 +163,14 @@ message AiredDates {
 }
 
 // Weekly broadcast slot (from MAL) plus per-version streaming times
-// and premiere dates (from AnimSchedule). Merged from the old separate
+// and premiere dates (from AnimeSchedule). Merged from the old separate
 // Broadcast + BroadcastSchedule + PremiereDates messages.
 message Broadcast {
   // Weekly slot (MAL)
   optional string day = 1;
   optional string time = 2;
   optional string timezone = 3;
-  // Per-version streaming times (AnimSchedule)
+  // Per-version streaming times (AnimeSchedule)
   optional string jp_time = 4;
   optional string sub_time = 5;
   optional string dub_time = 6;

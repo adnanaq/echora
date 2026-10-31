@@ -15,6 +15,7 @@ from work_matching.linked_page_check import (
 )
 from work_matching.page_placement import PagePlacement
 from work_matching.provider_page import ProviderPage
+from work_matching.provider_page_key import get_page_key
 from work_matching.review_cases import DuplicateCaseError, ReviewCase, ReviewFile
 from work_matching.split_work_check import list_split_work_review_reasons
 from work_matching.work_entry import WorkEntry
@@ -32,6 +33,18 @@ def doubled_case(matching_cases) -> ReviewCase:
         entries[0], pages, KnownWorkEntriesFromSeed([])
     )
     return ReviewCase.from_entry_group([entries[0]], decisions, (), pages)
+
+
+def _season_page(address: str, *linked_page_keys: str) -> ProviderPage:
+    return ProviderPage(
+        key=get_page_key(address),
+        address=address,
+        type="TV",
+        episode_count=12,
+        aired_from="2020-01-05",
+        aired_to="2020-03-29",
+        linked_page_keys=linked_page_keys,
+    )
 
 
 def _build_group_case(entries, pages) -> ReviewCase:
@@ -173,12 +186,33 @@ def test_review_case_from_entry_group_linked_entries_suggest_one_work(
         work_entry("https://anilist.co/anime/1"),
     ]
     pages = [
-        linked_page("https://anilist.co/anime/1", "https://myanimelist.net/anime/1")
+        _season_page("https://myanimelist.net/anime/1"),
+        _season_page("https://anilist.co/anime/1", "mal:anime:1"),
     ]
     assert _build_group_case(entries, pages).suggested_answer == {
         "mal:anime:1": "work 1",
         "anilist:anime:1": "work 1",
     }
+
+
+def test_review_case_from_entry_group_lists_why_suggestions_left_out(
+    work_entry,
+) -> None:
+    entries = [
+        work_entry("https://myanimelist.net/anime/1"),
+        work_entry("https://anilist.co/anime/1"),
+    ]
+    pages = [
+        _season_page("https://myanimelist.net/anime/1"),
+        _season_page("https://anilist.co/anime/1", "mal:anime:1").model_copy(
+            update={"type": "MOVIE"}
+        ),
+    ]
+    case = _build_group_case(entries, pages)
+    assert (case.suggested_answer, case.reasons[-1:]) == (
+        {"mal:anime:1": "work 1"},
+        ("DETAILS_DIFFER",),
+    )
 
 
 def test_review_case_from_entry_group_single_entry_writes_linked_pages_sorted(
@@ -264,6 +298,34 @@ def test_review_case_from_entry_group_names_group_case_by_every_page(
         ("NOT_TIED_BY_LINKS",),
     )
     assert [page.key for page in split_case.pages] == ["mal:anime:1"]
+
+
+def test_review_case_from_entry_group_keeps_candidate_evidence(
+    linked_page, work_entry
+) -> None:
+    entries = [
+        work_entry("https://myanimelist.net/anime/1"),
+        work_entry("https://anilist.co/anime/1"),
+    ]
+    pages = [
+        linked_page("https://anilist.co/anime/1", "https://myanimelist.net/anime/1")
+    ]
+    evidence = ("anilist:anime:1 links mal:anime:1",)
+    case = ReviewCase.from_entry_group(
+        entries,
+        [],
+        list_split_work_review_reasons(entries, pages),
+        pages,
+        candidate_evidence=evidence,
+    )
+    assert case.candidate_evidence == evidence
+    assert list(json.loads(case.model_dump_json()))[:5] == [
+        "case_name",
+        "answer",
+        "suggested_answer",
+        "reasons",
+        "candidate_evidence",
+    ]
 
 
 @pytest.mark.parametrize(

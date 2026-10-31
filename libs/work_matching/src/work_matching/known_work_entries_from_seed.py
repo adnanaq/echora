@@ -28,29 +28,14 @@ class KnownWorkEntriesFromSeed(KnownWorkEntries):
         Args:
             seed_entries: The ``data`` list of an anime-offline-database document.
         """
-        self._entries: list[WorkEntry] = []
-        self._entry_by_page_key: dict[str, WorkEntry] = {}
-        self._entries_by_title_and_type: defaultdict[
-            tuple[str, WorkType], list[WorkEntry]
-        ] = defaultdict(list)
-        page_keys_in_several_entries: set[str] = set()
         titles_of_entries_without_pages: list[str] = []
+        work_entries: list[WorkEntry] = []
         for seed_entry in seed_entries:
-            if not seed_entry["sources"]:
+            if seed_entry["sources"]:
+                work_entries.append(WorkEntry.from_seed_entry(seed_entry))
+            else:
                 titles_of_entries_without_pages.append(seed_entry["title"])
-                continue
-            work_entry = WorkEntry.from_seed_entry(seed_entry)
-            self._entries.append(work_entry)
-            for key in work_entry.addresses_by_page_key:
-                if (
-                    self._entry_by_page_key.setdefault(key, work_entry)
-                    is not work_entry
-                ):
-                    page_keys_in_several_entries.add(key)
-            self._entries_by_title_and_type[
-                (fold_title_for_comparison(work_entry.title), work_entry.type)
-            ].append(work_entry)
-        self._page_keys_in_several_entries = frozenset(page_keys_in_several_entries)
+        self._index_work_entries(work_entries)
         self._titles_of_entries_without_pages = tuple(titles_of_entries_without_pages)
 
     def __len__(self) -> int:
@@ -84,6 +69,22 @@ class KnownWorkEntriesFromSeed(KnownWorkEntries):
         with Path(path).open(encoding="utf-8") as seed_file:
             return cls(json.load(seed_file)["data"])
 
+    @classmethod
+    def from_work_entries(cls, work_entries: Iterable[WorkEntry]) -> Self:
+        """Index work entries already built, such as seed entries as corrections leave them.
+
+        Args:
+            work_entries: The work entries, in the order they are iterated.
+
+        Returns:
+            The lookup over exactly these entries; none is without pages, since a
+            work entry always holds one.
+        """
+        known_work_entries = cls.__new__(cls)
+        known_work_entries._index_work_entries(work_entries)
+        known_work_entries._titles_of_entries_without_pages = ()
+        return known_work_entries
+
     def find_by_page_key(self, key: str) -> WorkEntry | None:
         """Return the work entry holding the page with this key, or None.
 
@@ -115,3 +116,28 @@ class KnownWorkEntriesFromSeed(KnownWorkEntries):
             )
             if year is None or work_entry.year is None or work_entry.year == year
         ]
+
+    def _index_work_entries(self, work_entries: Iterable[WorkEntry]) -> None:
+        """Index work entries by page key and by folded title and type.
+
+        A page listed in more than one entry is kept by the first and reported
+        in ``page_keys_in_several_entries``.
+        """
+        self._entries: list[WorkEntry] = []
+        self._entry_by_page_key: dict[str, WorkEntry] = {}
+        self._entries_by_title_and_type: defaultdict[
+            tuple[str, WorkType], list[WorkEntry]
+        ] = defaultdict(list)
+        page_keys_in_several_entries: set[str] = set()
+        for work_entry in work_entries:
+            self._entries.append(work_entry)
+            for key in work_entry.addresses_by_page_key:
+                if (
+                    self._entry_by_page_key.setdefault(key, work_entry)
+                    is not work_entry
+                ):
+                    page_keys_in_several_entries.add(key)
+            self._entries_by_title_and_type[
+                (fold_title_for_comparison(work_entry.title), work_entry.type)
+            ].append(work_entry)
+        self._page_keys_in_several_entries = frozenset(page_keys_in_several_entries)
