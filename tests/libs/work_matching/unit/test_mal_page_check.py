@@ -69,3 +69,23 @@ def test_check_with_mal_pages_other_work_kept_unchecked(work_entry) -> None:
         suggested_placements,
         (),
     )
+
+
+def test_check_with_mal_pages_dead_mal_page_leaves_other_entry_page_out(
+    work_entry,
+) -> None:
+    entries = [work_entry(AWARE_ANISEARCH), work_entry(AWARE_MAL)]
+    pages = [
+        ProviderPage.from_dead_address(AWARE_MAL),
+        _detailed_page(AWARE_ANISEARCH, "TV", 39, "2016-04-07", "2017-02-16"),
+    ]
+    mal_page_check = check_with_mal_pages(
+        entries,
+        [],
+        {"anisearch:anime:11255": "work 1", "mal:anime:32956": "work 1"},
+        pages,
+    )
+    assert mal_page_check == (
+        {"mal:anime:32956": "work 1"},
+        (MalPageComparison.DETAILS_UNKNOWN,),
+    )
