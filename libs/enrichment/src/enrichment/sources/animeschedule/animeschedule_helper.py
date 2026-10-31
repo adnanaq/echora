@@ -29,6 +29,7 @@ import logging
 import os
 import re
 import sys
+from functools import cache
 from typing import Any
 
 import aiohttp
@@ -119,6 +120,19 @@ def _match_by_sources(candidates: list[dict], sources: list[str]) -> dict | None
     return None
 
 
+@cache
+def _warn_missing_app_token() -> None:
+    """Warn once per process that AnimeSchedule answers will lack provider links.
+
+    Helpers are built afresh for every fetch, so warning in each one would
+    repeat the same line for every page.
+    """
+    logger.warning(
+        "ANIMESCHEDULE_TOKEN is not set: AnimeSchedule answers without provider "
+        "links, so no search result can be matched to its anime"
+    )
+
+
 class AnimescheduleHelper(BaseEnrichmentHelper):
     """Fetch AnimeSchedule data for an anime by its provider IDs, or its title."""
 
@@ -139,6 +153,8 @@ class AnimescheduleHelper(BaseEnrichmentHelper):
             if app_token
             else {}
         )
+        if not app_token:
+            _warn_missing_app_token()
 
     async def fetch_all(
         self,

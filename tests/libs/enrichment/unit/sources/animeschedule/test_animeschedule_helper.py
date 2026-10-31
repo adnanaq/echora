@@ -449,3 +449,18 @@ async def test_main_without_title_argument_exits_with_usage_error() -> None:
         await main()
 
     assert exit_info.value.code == 2
+
+
+def test_animeschedule_helper_without_app_token_warns_once(caplog) -> None:
+    animeschedule_helper._warn_missing_app_token.cache_clear()
+    with caplog.at_level("WARNING"):
+        AnimescheduleHelper(get_cache())
+        AnimescheduleHelper(get_cache())
+    assert caplog.text.count("ANIMESCHEDULE_TOKEN") == 1
+
+
+def test_animeschedule_helper_with_app_token_does_not_warn(caplog) -> None:
+    animeschedule_helper._warn_missing_app_token.cache_clear()
+    with caplog.at_level("WARNING"):
+        AnimescheduleHelper(get_cache(), SecretStr("app-token"))
+    assert "ANIMESCHEDULE_TOKEN" not in caplog.text
