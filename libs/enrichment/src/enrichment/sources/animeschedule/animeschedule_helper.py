@@ -29,7 +29,6 @@ import logging
 import os
 import re
 import sys
-from functools import cache
 from typing import Any
 
 import aiohttp
@@ -43,7 +42,11 @@ from enrichment.sources.base.base_helper import (
     BaseEnrichmentHelper,
     normalize_enrichment_payload,
 )
-from enrichment.sources.base.exceptions import ServiceNetworkError, ServiceParseError
+from enrichment.sources.base.exceptions import (
+    ServiceNetworkError,
+    ServiceNotConfiguredError,
+    ServiceParseError,
+)
 from http_cache import HTTPCacheManager, configure_cache
 from pydantic import SecretStr
 
@@ -120,17 +123,31 @@ def _match_by_sources(candidates: list[dict], sources: list[str]) -> dict | None
     return None
 
 
-@cache
-def _warn_missing_app_token() -> None:
-    """Warn once per process that AnimeSchedule answers will lack provider links.
+def require_app_token(app_token: SecretStr | None) -> SecretStr:
+    """Return the AnimeSchedule app token, refusing to go on without one.
 
-    Helpers are built afresh for every fetch, so warning in each one would
-    repeat the same line for every page.
+    Without the token AnimeSchedule answers without the provider links, so no
+    result could be matched, and the cache would keep those answers for later
+    runs. Callers check it before any request: the helper before each request,
+    and a bulk fetch before it starts.
+
+    Args:
+        app_token: The token from ``ANIMESCHEDULE_TOKEN``, or None.
+
+    Returns:
+        The token, when it is set and not empty.
+
+    Raises:
+        ServiceNotConfiguredError: When the token is missing or empty.
     """
-    logger.warning(
-        "ANIMESCHEDULE_TOKEN is not set: AnimeSchedule answers without provider "
-        "links, so no search result can be matched to its anime"
-    )
+    if app_token is None or not app_token.get_secret_value():
+        raise ServiceNotConfiguredError(
+            service="animeschedule",
+            setting="ANIMESCHEDULE_TOKEN",
+            reason="AnimeSchedule answers without provider links, so no result "
+            "could be matched",
+        )
+    return app_token
 
 
 class AnimescheduleHelper(BaseEnrichmentHelper):
@@ -144,17 +161,14 @@ class AnimescheduleHelper(BaseEnrichmentHelper):
         Args:
             cache: Supplies the HTTP sessions, cached when caching is on.
             app_token: The AnimeSchedule app token, sent as a bearer token with
-                every request; None sends none, and the answers then lack the
-                provider links.
+                every request. Without it, or when it is empty, every request
+                raises ``ServiceNotConfiguredError`` before reaching the
+                network: AnimeSchedule then answers without the provider links,
+                so no result could be matched, and the cache would keep those
+                answers for later runs.
         """
         self._cache = cache
-        self._request_headers = (
-            {"Authorization": f"Bearer {app_token.get_secret_value()}"}
-            if app_token
-            else {}
-        )
-        if not app_token:
-            _warn_missing_app_token()
+        self._app_token = app_token
 
     async def fetch_all(
         self,
@@ -260,13 +274,17 @@ class AnimescheduleHelper(BaseEnrichmentHelper):
             The anime found; empty when there is no match.
 
         Raises:
+            ServiceNotConfiguredError: If no app token is set; nothing is sent.
             ServiceNetworkError: If the request fails.
             ServiceParseError: If the response is not JSON.
         """
+        request_headers = {
+            "Authorization": f"Bearer {require_app_token(self._app_token).get_secret_value()}"
+        }
         try:
             async with self._cache.get_aiohttp_session("animeschedule") as session:
                 async with session.get(
-                    _ANIME_LIST_URL, params=params, headers=self._request_headers
+                    _ANIME_LIST_URL, params=params, headers=request_headers
                 ) as response:
                     if response.status in _NOT_FOUND_STATUSES:
                         return []

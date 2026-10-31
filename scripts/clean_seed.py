@@ -62,6 +62,7 @@ from common.config import get_settings
 from enrichment.pipeline.fetch_summary import describe_fetch_summary
 from enrichment.pipeline.pausing_api_fetcher import PausingApiFetcher
 from enrichment.pipeline.provider_page_fetcher import ProviderPageFetcher
+from enrichment.sources.animeschedule.animeschedule_helper import require_app_token
 from enrichment.sources.mal import mal_anime_crawler
 from http_cache import close_cache, configure_cache
 from seed_cleaning import (
@@ -254,6 +255,8 @@ async def fetch_pages(
     """
     set_fetch_defaults(arguments)
     settings = get_settings()
+    # Every AnimeSchedule search would fail without the token; stop before fetching.
+    require_app_token(settings.enrichment.animeschedule_token)
     cache = configure_cache(settings.cache, settings.redis)
     # The gap applies only to requests that reach a provider; cache hits never wait.
     cache.network_request_pacer.set_seconds_between_requests(
