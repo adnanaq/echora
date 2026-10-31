@@ -1,17 +1,17 @@
-"""Fetch every page of the seed entries that need checking into the provider page store.
+"""Fetch work entries' provider pages, and pages linked by key, into the provider page store.
 
-The work matching rules decide from each page's details and links, so every
-page of each entry to check is fetched once through the enrichment helpers and kept in
-the ``ProviderPageStore``. The same fetch fills the cache enrichment reads.
+The work matching rules decide from each page's details and links, so each
+page is fetched once through the enrichment helpers and kept in the
+``ProviderPageStore``. The same fetch fills the cache enrichment reads. Seed
+cleaning fetches a whole seed release through it, and discovery will fetch
+newly found pages the same way.
 
 Rules:
 
 - One request per page, with characters and episodes off, so links from two
   pages of one provider never mix.
 - Pages are fetched for the providers enrichment has a helper for; ANN,
-  LiveChart, Simkl and AnimeCountdown are not. A fetch can be limited to some
-  providers, such as only those whose pages carry links (AniList, Kitsu,
-  AniDB), when the pages are wanted for their links alone.
+  LiveChart, Simkl and AnimeCountdown are not.
 - Linked pages, which another page names by page key, are fetched at the
   address built back from the key, so the store holds their details too.
 - AnimeSchedule is not in the seed: its page is a searched page, found by
@@ -19,8 +19,9 @@ Rules:
   The page records the page it was searched by as ``searched_by``.
 - A page already in the store is not fetched again, and an AnimeSchedule
   search that found a page is not repeated, so a run picks up where the last
-  one stopped. A search that found nothing is repeated on every run, so a page
-  AnimeSchedule adds later is still found. When stored details gain a field,
+  one stopped. A search that found nothing is repeated, so a page AnimeSchedule
+  adds later is still found, unless the caller keeps a record of such
+  searches (``NotListedSearchRecord``) to skip them. When stored details gain a field,
   one run fetching stored pages again fills it in.
 - A page is stored as dead only when its provider said it does not exist: its
   helper answered None. A failed fetch, a service that did not run or a
@@ -35,136 +36,75 @@ Rules:
 import asyncio
 import logging
 from collections import Counter, defaultdict
-from collections.abc import Callable, Collection, Iterable, Mapping
-from dataclasses import dataclass
-from enum import StrEnum
-from typing import Any, NamedTuple
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
+from typing import Any, Protocol
 
 from enrichment.pipeline.api_fetcher import ApiFetcher
+from enrichment.pipeline.fetch_summary import (
+    FetchOutcome,
+    FetchSummary,
+    combine_fetch_summaries,
+)
+from enrichment.pipeline.page_requests import (
+    PageRequest,
+    RequestResult,
+    build_page_request,
+    list_entry_requests,
+)
 from work_matching import (
     ProviderPage,
     ProviderPageStore,
     WorkEntry,
-    build_page_address,
     get_page_key,
-    get_page_provider,
 )
 
 logger = logging.getLogger(__name__)
 
 
-class _EnrichmentHelper(NamedTuple):
-    """An enrichment helper: its ``ApiFetcher`` service name and the id key it reads."""
-
-    service: str
-    id_field: str
+# Requests between two progress lines of one provider queue.
+_REQUESTS_PER_PROGRESS_LINE = 100
 
 
-# The helper for each provider that has one, by the provider's page key name.
-_HELPER_BY_PROVIDER = {
-    "mal": _EnrichmentHelper("mal", "mal_url"),
-    "anilist": _EnrichmentHelper("anilist", "anilist_url"),
-    "kitsu": _EnrichmentHelper("kitsu", "kitsu_url"),
-    "anidb": _EnrichmentHelper("anidb", "anidb_url"),
-    "animeplanet": _EnrichmentHelper("anime_planet", "anime_planet_url"),
-    "anisearch": _EnrichmentHelper("anisearch", "anisearch_url"),
-}
-# The providers whose pages are fetched, so a page of theirs can be checked live.
-FETCHED_PROVIDERS: frozenset[str] = frozenset(_HELPER_BY_PROVIDER)
-# The providers AnimeSchedule is searched by, in the order tried: the
-# AnimeSchedule helper finds an anime by these ids.
-_SEARCHED_BY_PROVIDERS = ("mal", "anilist", "anidb")
-_SEARCHED_PAGE_SERVICE = "animeschedule"
-
-
-class FetchOutcome(StrEnum):
-    """What fetching one page, or one AnimeSchedule search, came to."""
-
-    FETCHED = "fetched"
-    # The provider said the page does not exist.
-    DEAD = "dead"
-    # AnimeSchedule has no page for the page searched by: nothing to store.
-    NOT_LISTED = "not listed"
-    FAILED = "failed"
-    ALREADY_STORED = "already stored"
-
-
-@dataclass(frozen=True)
-class FetchSummary:
-    """How a fetch run went: a count per outcome, and why each failure failed."""
-
-    outcomes: Mapping[FetchOutcome, int]
-    # Each failed request's error, by its label: the page key, or
-    # "animeschedule via <page key searched by>".
-    errors_by_request_label: Mapping[str, str]
-
-
-@dataclass(frozen=True)
-class _PageRequest:
-    """One request to make: a seed page, or an AnimeSchedule search by one."""
-
-    service: str
-    id_field: str
-    address: str
-    title: str
-    is_page_search: bool = False
-
-    @property
-    def label(self) -> str:
-        """Name the request in the summary: its page key, or its search."""
-        key = get_page_key(self.address)
-        return f"{self.service} via {key}" if self.is_page_search else key
-
-
-@dataclass(frozen=True)
-class _RequestResult:
-    """What one request came to, with the error when it failed."""
-
-    outcome: FetchOutcome
-    request: _PageRequest
-    error: str | None = None
-
-
-def _build_page_request(
-    key: str, title: str, address: str | None = None
-) -> _PageRequest | None:
-    """Return the request fetching one page.
+def _log_queue_progress(
+    request: PageRequest,
+    made_request_count: int,
+    queue_request_count: int,
+    is_retry: bool,
+) -> None:
+    """Log how many of a queue's requests are made, every so many and after the last.
 
     Args:
-        key: The page's key.
-        title: The title of the entry the page belongs to or is linked from,
-            which some helpers search by.
-        address: The page's address as the seed lists it. A linked page is
-            known only by its key, so without an address the address is built
-            from the key.
-
-    Returns:
-        The request, or None when the page's provider has no enrichment helper.
+        request: The request just made, naming the queue's service.
+        made_request_count: The queue's requests made so far, this one included.
+        queue_request_count: The queue's requests in all.
+        is_retry: Whether the queue is retrying its failed requests.
     """
-    helper = _HELPER_BY_PROVIDER.get(get_page_provider(key) or "")
-    request_address = address or build_page_address(key)
-    if helper is None or request_address is None:
-        return None
-    return _PageRequest(helper.service, helper.id_field, request_address, title)
-
-
-def _combine_fetch_summaries(*summaries: FetchSummary) -> FetchSummary:
-    """Add up the outcomes and failures of several fetches into one summary.
-
-    Args:
-        *summaries: The summaries of the fetches.
-
-    Returns:
-        One summary with every count added and every failure kept.
-    """
-    outcomes: Counter[FetchOutcome] = Counter()
-    errors_by_request_label: dict[str, str] = {}
-    for summary in summaries:
-        outcomes.update(summary.outcomes)
-        errors_by_request_label |= summary.errors_by_request_label
-    return FetchSummary(
-        outcomes=dict(outcomes), errors_by_request_label=errors_by_request_label
+    if (
+        made_request_count % _REQUESTS_PER_PROGRESS_LINE
+        and made_request_count != queue_request_count
+    ):
+        return
+    queue_name = f"{request.service} retries" if is_retry else request.service
+    logger.info(
+        f"{queue_name}: {made_request_count}/{queue_request_count} requests made"
     )
+
+
+class NotListedSearchRecord(Protocol):
+    """A record of the page keys whose AnimeSchedule search found nothing.
+
+    The fetcher skips a search whose page key the record holds, and adds each
+    search that finds nothing. The caller decides how long a search stays
+    recorded, such as seed cleaning for one seed release.
+    """
+
+    def __contains__(self, searched_by_key: object) -> bool:
+        """Report whether the search by this page key found nothing before."""
+        ...
+
+    def add(self, searched_by_key: str) -> None:
+        """Record that the search by this page key found nothing."""
+        ...
 
 
 class ProviderPageFetcher:
@@ -175,8 +115,8 @@ class ProviderPageFetcher:
         new_api_fetcher: Callable[[], ApiFetcher],
         store: ProviderPageStore,
         *,
-        seconds_between_page_searches: float = 3.0,
         is_stored_page_fetched_again: bool = False,
+        not_listed_searches: NotListedSearchRecord | None = None,
     ) -> None:
         """Set up the fetcher.
 
@@ -185,42 +125,33 @@ class ProviderPageFetcher:
                 Each queue needs its own, because an ``ApiFetcher`` keeps the
                 last fetch's errors on itself.
             store: Where fetched pages are kept.
-            seconds_between_page_searches: The wait between AnimeSchedule
-                searches. Requests without an app token get AnimeSchedule's
-                stricter, undocumented limit, and searches at full speed get
-                HTTP 429.
             is_stored_page_fetched_again: Whether pages and searches the store
                 already holds are fetched again, replacing their stored
                 details. Used once after the stored details gain a field; the
                 cache serves pages fetched in the last week.
+            not_listed_searches: The page keys whose AnimeSchedule search found
+                nothing and is not to be repeated, such as seed cleaning's
+                record for one seed release; None repeats every such search.
         """
         self._new_api_fetcher = new_api_fetcher
         self._store = store
-        self._seconds_between_page_searches = seconds_between_page_searches
         self._is_stored_page_fetched_again = is_stored_page_fetched_again
+        self._not_listed_searches = not_listed_searches
 
     async def fetch_entry_pages(
         self,
         entries: Iterable[WorkEntry],
-        *,
-        providers: Collection[str] | None = None,
     ) -> FetchSummary:
-        """Fetch every page of these entries that the store does not hold yet.
+        """Fetch every page of these entries, and AnimeSchedule's, not stored yet.
 
         Args:
-            entries: The entries to fetch, such as the seed entries to check.
-            providers: The providers whose pages are fetched. None fetches every
-                provider with a helper and searches AnimeSchedule; a given set
-                fetches only those providers' pages, without searches, such as
-                only the providers whose pages carry links.
+            entries: The entries to fetch, such as every seed entry.
 
         Returns:
             A count per outcome, and the error of each failed page.
         """
         return await self._fetch_requests(
-            request
-            for entry in entries
-            for request in self._list_requests(entry, providers)
+            request for entry in entries for request in list_entry_requests(entry)
         )
 
     async def fetch_linked_pages(
@@ -245,7 +176,7 @@ class ProviderPageFetcher:
         linked_page_summary = await self._fetch_requests(
             request
             for key, title in titles_by_page_key.items()
-            if (request := _build_page_request(key, title))
+            if (request := build_page_request(key, title))
         )
         current_key_summary = await self._fetch_requests(
             request
@@ -253,11 +184,11 @@ class ProviderPageFetcher:
             if (page := self._store.get_page(key)) is not None
             and page.renamed_to is not None
             and page.renamed_to not in self._store
-            and (request := _build_page_request(page.renamed_to, title))
+            and (request := build_page_request(page.renamed_to, title))
         )
-        return _combine_fetch_summaries(linked_page_summary, current_key_summary)
+        return combine_fetch_summaries(linked_page_summary, current_key_summary)
 
-    async def _fetch_requests(self, requests: Iterable[_PageRequest]) -> FetchSummary:
+    async def _fetch_requests(self, requests: Iterable[PageRequest]) -> FetchSummary:
         """Make every request the store does not answer yet, and sum up the fetch.
 
         - A request is made once, even when several entries need it.
@@ -273,12 +204,19 @@ class ProviderPageFetcher:
             (request.service, request.address): request for request in requests
         }
         outcomes: Counter[FetchOutcome] = Counter()
-        requests_by_service: defaultdict[str, list[_PageRequest]] = defaultdict(list)
+        requests_by_service: defaultdict[str, list[PageRequest]] = defaultdict(list)
+        done_results_by_service: defaultdict[str, list[RequestResult]] = defaultdict(
+            list
+        )
         for request in distinct_requests.values():
-            if self._is_done(request):
-                outcomes[FetchOutcome.ALREADY_STORED] += 1
+            if done_outcome := self._find_done_outcome(request):
+                outcomes[done_outcome] += 1
+                done_results_by_service[request.service].append(
+                    RequestResult(done_outcome, request)
+                )
             else:
                 requests_by_service[request.service].append(request)
+        self._log_fetch_plan(requests_by_service, done_results_by_service)
         async with asyncio.TaskGroup() as task_group:
             queue_tasks = [
                 task_group.create_task(self._run_queue(service, requests))
@@ -299,73 +237,79 @@ class ProviderPageFetcher:
             },
         )
 
-    def _list_requests(
-        self, entry: WorkEntry, providers: Collection[str] | None
-    ) -> list[_PageRequest]:
-        """List every request one entry needs, whether done already or not.
+    def _log_fetch_plan(
+        self,
+        requests_by_service: Mapping[str, Collection[PageRequest]],
+        done_results_by_service: Mapping[str, Collection[RequestResult]],
+    ) -> None:
+        """Log, per provider, the requests needed, already done, and to fetch.
+
+        A run over a new seed release then shows at its start how much of the
+        release is new, rather than only the store's total.
+
+        Each line reads ``<service>: <needed> needed, <done> done (<dead> dead,
+        <not listed> not listed), <to fetch> to fetch``. Dead counts the stored
+        pages the provider said do not exist; not listed counts the
+        AnimeSchedule searches that found nothing earlier in this release.
 
         Args:
-            entry: The work entry whose pages to request.
-            providers: The providers whose pages are requested. With a set
-                given, AnimeSchedule is not searched. None requests every
-                provider with a helper and searches AnimeSchedule.
-
-        Returns:
-            The page requests, then the AnimeSchedule searches.
+            requests_by_service: The requests still to make, by service.
+            done_results_by_service: The requests needing no fetch, with why,
+                by service.
         """
-        requests = [
-            request
-            for key, address in entry.addresses_by_page_key.items()
-            if (providers is None or get_page_provider(key) in providers)
-            and (request := _build_page_request(key, entry.title, address))
-        ]
-        if providers is not None:
-            return requests
-        # AnimeSchedule is searched by the first provider in the order that
-        # has pages in the entry: MAL, else AniList, else AniDB.
-        for provider in _SEARCHED_BY_PROVIDERS:
-            searched_by_addresses = [
-                address
-                for key, address in entry.addresses_by_page_key.items()
-                if get_page_provider(key) == provider
-            ]
-            if searched_by_addresses:
-                requests.extend(
-                    _PageRequest(
-                        _SEARCHED_PAGE_SERVICE,
-                        _HELPER_BY_PROVIDER[provider].id_field,
-                        address,
-                        entry.title,
-                        is_page_search=True,
+        for service in sorted(requests_by_service.keys() | done_results_by_service):
+            to_fetch_count = len(requests_by_service.get(service, ()))
+            done_results = done_results_by_service.get(service, ())
+            dead_count = sum(
+                not done_result.request.is_page_search
+                and (
+                    page := self._store.get_page(
+                        get_page_key(done_result.request.address)
                     )
-                    for address in searched_by_addresses
                 )
-                break
-        return requests
+                is not None
+                and page.is_dead
+                for done_result in done_results
+            )
+            not_listed_count = sum(
+                done_result.outcome is FetchOutcome.NOT_LISTED_EARLIER
+                for done_result in done_results
+            )
+            logger.info(
+                f"{service}: {to_fetch_count + len(done_results)} needed, "
+                f"{len(done_results)} done ({dead_count} dead, "
+                f"{not_listed_count} not listed), {to_fetch_count} to fetch"
+            )
 
-    def _is_done(self, request: _PageRequest) -> bool:
-        """Report whether the store already holds what a request would fetch.
+    def _find_done_outcome(self, request: PageRequest) -> FetchOutcome | None:
+        """Report whether a request needs no fetch, and why.
 
         - A page request is done when the page is stored.
-        - A search is done when the store holds a page searched by its page.
+        - A search is done when the store holds a page searched by its page,
+          or when it found nothing earlier in this seed release.
         - No request is done while stored pages are being fetched again.
 
         Args:
             request: The page request or AnimeSchedule search.
 
         Returns:
-            True when the request needs no fetch.
+            ``ALREADY_STORED`` or ``NOT_LISTED_EARLIER`` when no fetch is
+            needed; None when the request must be made.
         """
         if self._is_stored_page_fetched_again:
-            return False
+            return None
         key = get_page_key(request.address)
-        if request.is_page_search:
-            return self._store.has_page_searched_by(key)
-        return key in self._store
+        if not request.is_page_search:
+            return FetchOutcome.ALREADY_STORED if key in self._store else None
+        if self._store.has_page_searched_by(key):
+            return FetchOutcome.ALREADY_STORED
+        if self._not_listed_searches is not None and key in self._not_listed_searches:
+            return FetchOutcome.NOT_LISTED_EARLIER
+        return None
 
     async def _run_queue(
-        self, service: str, requests: Iterable[_PageRequest]
-    ) -> list[_RequestResult]:
+        self, service: str, requests: Sequence[PageRequest]
+    ) -> list[RequestResult]:
         """Make one provider's requests one at a time, then retry the failed ones once.
 
         - Each page is stored as soon as it is fetched.
@@ -397,35 +341,35 @@ class ProviderPageFetcher:
     async def _make_requests(
         self,
         api_fetcher: ApiFetcher,
-        requests: Iterable[_PageRequest],
+        requests: Sequence[PageRequest],
         *,
         is_retry: bool,
-    ) -> list[_RequestResult]:
-        """Make requests one at a time, and log each failure with when it is retried.
+    ) -> list[RequestResult]:
+        """Make requests one at a time, logging each failure and the queue's progress.
 
-        An unexpected error in one request, such as a failed store write, fails
-        that request and the queue goes on, so a long run keeps the rest of its
-        work and its summary.
+        - An unexpected error in one request, such as a failed store write,
+          fails that request and the queue goes on, so a long run keeps the
+          rest of its work and its summary.
+        - A progress line is logged every ``_REQUESTS_PER_PROGRESS_LINE``
+          requests and after the last, so a run lasting days shows how far
+          each provider got.
 
         Args:
             api_fetcher: The queue's fetcher.
             requests: The requests to make, in order.
-            is_retry: Whether these requests already failed once this run; a
-                search then waits its gap first, since the queue made requests
-                before.
+            is_retry: Whether these requests already failed once this run,
+                which names the queue's progress lines.
 
         Returns:
             One result per request, in order.
         """
-        request_results: list[_RequestResult] = []
-        for position, request in enumerate(requests):
-            if request.is_page_search and (position or is_retry):
-                await asyncio.sleep(self._seconds_between_page_searches)
+        request_results: list[RequestResult] = []
+        for request in requests:
             try:
                 request_result = await self._fetch_request(api_fetcher, request)
             except Exception as error:
                 logger.exception(f"Page fetch failed unexpectedly: {request.label}")
-                request_result = _RequestResult(
+                request_result = RequestResult(
                     FetchOutcome.FAILED, request, f"{type(error).__name__}: {error}"
                 )
             if request_result.outcome is FetchOutcome.FAILED:
@@ -434,11 +378,12 @@ class ProviderPageFetcher:
                     f"Page fetch failed, retried {retry_time}: {request.label}"
                 )
             request_results.append(request_result)
+            _log_queue_progress(request, len(request_results), len(requests), is_retry)
         return request_results
 
     async def _fetch_request(
-        self, api_fetcher: ApiFetcher, request: _PageRequest
-    ) -> _RequestResult:
+        self, api_fetcher: ApiFetcher, request: PageRequest
+    ) -> RequestResult:
         """Make one request and store what it returned.
 
         Only a helper answering None means the page does not exist. A service
@@ -458,19 +403,21 @@ class ProviderPageFetcher:
         elif request.service not in records_by_service:
             failure = "the service did not run"
         elif records_by_service[request.service] is None:
-            return _RequestResult(self._store_page(request, None), request)
+            return RequestResult(self._store_page(request, None), request)
         elif (anime_record := records_by_service[request.service].get("anime")) is None:
             failure = "the helper returned no anime record"
         else:
-            return _RequestResult(self._store_page(request, anime_record), request)
-        return _RequestResult(FetchOutcome.FAILED, request, failure)
+            return RequestResult(self._store_page(request, anime_record), request)
+        return RequestResult(FetchOutcome.FAILED, request, failure)
 
     def _store_page(
-        self, request: _PageRequest, anime_record: dict[str, Any] | None
+        self, request: PageRequest, anime_record: dict[str, Any] | None
     ) -> FetchOutcome:
         """Store what one request returned, and say what it came to."""
         if request.is_page_search:
             if not anime_record:
+                if self._not_listed_searches is not None:
+                    self._not_listed_searches.add(get_page_key(request.address))
                 return FetchOutcome.NOT_LISTED
             # The AnimeSchedule mapper lists the page's own address first.
             self._store.add_pages(

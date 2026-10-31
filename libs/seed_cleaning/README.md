@@ -1,8 +1,9 @@
 # seed_cleaning
 
-Repairs the seed before enrichment reads it. It finds the seed entries that need
-checking, fetches their provider pages so the `work_matching` rules can decide
-from their links, and writes the result as seed corrections:
+Repairs the seed before enrichment reads it. It fetches every page of a seed
+release, and every page those pages link that no seed entry holds, so the
+`work_matching` rules can decide from their links. Then it finds the seed
+entries that need checking and writes the result as seed corrections:
 
 - where each page of an entry group ends up: an entry with a doubled provider,
   or entries that may be one split work;
@@ -45,16 +46,15 @@ doubled provider, split work, linked page, part page) are defined in the
 | **Entry to check**           | A seed entry with a doubled provider, or one of a group of split-work candidates.                                                                                                     |
 | **First pass, second pass**  | The two rounds of a run. The first places the entries with a doubled provider and adds linked pages; the second groups split-work candidates on the entries as the first leaves them. |
 | **Corrected seed**           | Every work entry as the first pass's corrections leave it, with how corrections name each entry (its seed entry or new entry key) and each page (the seed entry listing it).          |
-| **Entry without a MAL page** | A seed entry listing no MyAnimeList page. Its AniList, Kitsu and AniDB pages are fetched for their links, since a missing MAL page matters most there.                                |
+| **Entry without a MAL page** | A seed entry listing no MyAnimeList page. The pages it links are checked for adding, since a missing MAL page matters most there.                                                     |
 | **Seed correction**          | One change to the seed, by page: where a page of an entry ends up, or a page added to an entry (`SeedCorrection`). Corrections are rebuilt on every run.                              |
 | **Provider page store**      | `data/seed_cleaning/provider_pages.jsonl`: every fetched page's details, kept beyond the 7-day HTTP cache, so a rerun fetches only what is missing.                                   |
 | **Review file**              | `data/seed_cleaning/review.jsonl`: one case per decision left to a person, with the answers kept across runs.                                                                         |
 
 ## The run
 
-`scripts/clean_seed.py` runs these steps in order, in two passes. With
-`--no-fetch` it skips the fetching steps and works from the pages already
-stored.
+`scripts/clean_seed.py` runs these steps in order: a fetch, then two passes.
+With `--no-fetch` it skips the fetch and works from the pages already stored.
 
 ```mermaid
 flowchart TD
@@ -62,66 +62,69 @@ flowchart TD
     store[(Provider page store)]
     answers[(review.jsonl answers<br/>kept from earlier runs)]
 
+    subgraph fetch[Fetch]
+        direction TB
+        fetch_seed[1. Fetch every seed entry's pages<br/>and AnimeSchedule's]
+        fetch_linked[2. Fetch every page they link<br/>that no seed entry holds]
+        fetch_seed --> fetch_linked
+    end
+
     subgraph first[First pass]
         direction TB
-        list[1. List the entries with a doubled provider<br/>and the entries without a MAL page]
-        fetch_check[2. Fetch every page of the<br/>doubled-provider entries]
-        fetch_without_mal[3. Fetch AniList, Kitsu and AniDB pages<br/>of entries without a MAL page]
+        list[3. List the entries with a doubled provider<br/>and the entries without a MAL page]
         doubled[4. Place the doubled-provider entries]
-        fetch_linked[5. Fetch the linked pages<br/>of placed entries]
-        decide[6. Decide each linked page]
-        list --> fetch_check --> doubled
-        list --> fetch_without_mal --> doubled
-        doubled --> fetch_linked --> decide
+        decide[5. Decide each page those entries link]
+        list --> doubled --> decide
     end
 
     subgraph second[Second pass]
         direction TB
-        corrected[7. Build the corrected seed;<br/>leave out entries with an open case]
-        candidates[8. Find split-work candidates<br/>by title and link]
-        fetch_candidates[9. Fetch the candidates' pages]
-        split[10. Place the candidate groups]
-        corrected --> candidates --> fetch_candidates --> split
+        corrected[6. Build the corrected seed;<br/>leave out entries with an open case]
+        candidates[7. Find split-work candidates<br/>by title and link]
+        split[8. Place the candidate groups]
+        corrected --> candidates --> split
     end
 
-    seed --> first
+    seed --> fetch --> first
     first -- corrections and open cases --> second
-    first <-. pages .-> store
-    second <-. pages .-> store
+    fetch -. pages .-> store
+    store -. pages .-> first
+    store -. pages .-> second
     answers -. read .-> first
     answers -. read .-> second
     first -- cases and corrections --> write
     second -- candidates, cases and corrections --> write
-    write[11. Write entries_to_check.json,<br/>review.jsonl and corrections.jsonl]
+    write[9. Write entries_to_check.json,<br/>review.jsonl and corrections.jsonl]
 ```
 
-Solid arrows give the order of the steps; dotted arrows are what the passes
-fetch into and read from the store and the review file:
+Solid arrows give the order of the steps; dotted arrows are what the steps
+write to and read from the store and the review file:
 
-- Steps 2, 3, 5 and 9 add pages to the store; steps 4 to 8 and 10 read it.
-- Steps 4, 6 and 10 read the answers kept in `review.jsonl`.
-- Step 7 reads the downloaded seed again, to rebuild the entries the first
+- Steps 1 and 2 add pages to the store; the passes only read it.
+- Steps 4, 5 and 8 read the answers kept in `review.jsonl`.
+- Step 6 reads the downloaded seed again, to rebuild the entries the first
   pass's corrections change.
-- Step 11 writes both passes' results: the first pass's cases and corrections,
+- Step 9 writes both passes' results: the first pass's cases and corrections,
   the candidate groups, and the second pass's cases and corrections, which
   stand in for the first pass's.
 
+Fetch:
+
+1. **Fetch every seed entry's pages:** every page of a provider with an enrichment helper, and AnimeSchedule through each entry's MAL pages (else AniList, else AniDB). Split works are found by links, and a link is only seen when the store holds the page carrying it. See [Fetching pages](#fetching-pages).
+2. **Fetch every linked page no seed entry holds**, for every entry, and the current key of any linked page fetched under another spelling. Deciding a linked page needs its details, and discovery will read the same pages.
+
 First pass:
 
-1. **List the entries.** The entries with a doubled provider, and the entries without a MAL page. See [Entries to check](#entries-to-check).
-2. **Fetch the doubled-provider entries:** every page of a provider with an enrichment helper, and AnimeSchedule through each entry's MAL pages (else AniList, else AniDB). See [Fetching pages](#fetching-pages).
-3. **Fetch the entries without a MAL page:** their AniList, Kitsu and AniDB pages only.
+3. **List the entries.** The entries with a doubled provider, and the entries without a MAL page. See [Entries to check](#entries-to-check).
 4. **Place the doubled-provider entries:** each entry is one group, placed by the rules or by one review case. See [Placing entry groups](#placing-entry-groups).
-5. **Fetch the linked pages** of the entries whose pages are placed, and the current key of any linked page fetched under another spelling.
-6. **Decide the linked pages:** add, review, or leave out (not found, or already held under another address). See [Adding linked pages](#adding-linked-pages).
+5. **Decide the pages the placed entries and the entries without a MAL page link:** add, review, or leave out (not found, or already held under another address). See [Adding linked pages](#adding-linked-pages).
 
 Second pass:
 
-7. **Build the corrected seed** from the first pass's corrections, and leave out the entries of every case still open. See [Second pass](#second-pass).
-8. **Find split-work candidates** among those entries, by title and by link. See [Split-work candidates](#split-work-candidates).
-9. **Fetch the candidates' pages.** Links are read before this fetch, so pages fetched here tie entries from the next run on.
-10. **Place the candidate groups:** every group is one review case.
-11. **Write** `entries_to_check.json`, `review.jsonl` and `corrections.jsonl`, the second pass's corrections standing in for the first's, and print the counts. See [Output files](#output-files).
+6. **Build the corrected seed** from the first pass's corrections, and leave out the entries of every case still open. See [Second pass](#second-pass).
+7. **Find split-work candidates** among those entries, by title and by link. See [Split-work candidates](#split-work-candidates).
+8. **Place the candidate groups:** every group is one review case.
+9. **Write** `entries_to_check.json`, `review.jsonl` and `corrections.jsonl`, the second pass's corrections standing in for the first's, and log the counts. See [Output files](#output-files).
 
 Each step is described below.
 
@@ -182,7 +185,8 @@ takes is mapped in the `work_matching` README, under
 
 ## Fetching pages
 
-`ProviderPageFetcher` fetches each page once through the public
+`ProviderPageFetcher` (in `enrichment.pipeline`, with `page_requests.py` and
+`fetch_summary.py`, so discovery can reuse them) fetches each page once through the public
 `ApiFetcher.fetch_all_data`, one service at a time, with characters and
 episodes off, and keeps it in the provider page store. The same fetch fills the
 HTTP cache enrichment reads later.
@@ -194,11 +198,10 @@ HTTP cache enrichment reads later.
   with each of the entry's MAL pages (else AniList, else AniDB), and records
   that page in `searched_by`. One AnimeSchedule page searched by pages of two
   entries keeps both.
-- **Limited to some providers:** for the entries without a MAL page only
-  AniList, Kitsu and AniDB pages are fetched (`LINK_CARRYING_PROVIDERS`), with
-  no AnimeSchedule search. Anime-Planet and AniSearch pages carry no links to
-  other providers, and AnimeSchedule pages rarely link MAL, so fetching them
-  would find nothing to add.
+- **Every entry:** every seed entry's pages are fetched, then every page
+  they link that no seed entry holds (`fetch_seed_and_linked_pages` in
+  `seed_fetch.py`). Linked pages are listed only once the seed pages are
+  stored, because their links are read from the stored pages.
 - **Linked pages:** a linked page is known only by its key, so its address is
   built back from the key (`build_page_address`). When its fetch reports
   another current key, that key is fetched too, so the details are stored under
@@ -213,15 +216,25 @@ HTTP cache enrichment reads later.
   block, gets a second chance in the same run. A page failing again is retried
   on the next run.
 - **Reruns:** a page already stored, or an AnimeSchedule search that found a
-  page, is not fetched again. A search that found nothing is repeated on every
-  run, so a page AnimeSchedule adds later is still found.
+  page, is not fetched again. A search that found nothing is recorded with the
+  release in `not_listed_searches.jsonl` and not repeated in that release: over
+  a whole release such searches take about 11 hours. A new release starts with
+  none recorded, so a page AnimeSchedule added since is still found.
 - **New fields:** each page keeps its episode count and air dates. Pages stored
   before a field was kept get it from one `--refetch-stored` run, which fetches
   every stored page again; the cache serves pages fetched in the last week.
 - **Pace:** each provider has its own queue, one page at a time, so each
-  site's rate limits hold while different sites run side by side. AnimeSchedule
-  searches wait 3 seconds between them: requests without an app token get its
-  stricter, undocumented limit.
+  site's rate limits hold while different sites run side by side. The cache's
+  network request pacer keeps a 2-second gap between one provider's requests
+  that reach the network; an answer from the cache never waits, so a run over
+  pages the cache holds is not slowed. The script fetches through
+  `PausingApiFetcher` (in `enrichment.pipeline`, so discovery can reuse it):
+  after 10 failures in a row a provider pauses, with one probe every 30
+  minutes, so a site that blocks is not sent the rest of its queue.
+- **Plan and progress:** before each fetch, one line per provider gives the
+  requests needed, already stored (and how many of those are dead), and still
+  to fetch, so a run over a new release shows how much of it is new. During
+  the fetch, each provider logs its progress every 100 requests.
 
 The table lists every case a page fetch meets.
 
@@ -235,10 +248,9 @@ The table lists every case a page fetch meets.
 | The page is already stored                                                                  | Not fetched again, unless `--refetch-stored` asks, which replaces its details.                                                                                |
 | The provider has no enrichment helper (ANN, LiveChart, Simkl, AnimeCountdown)               | Skipped.                                                                                                                                                      |
 | The same page is listed by two entries                                                      | Fetched once, and counted once.                                                                                                                               |
-| An entry without a MAL page                                                                 | Only its AniList, Kitsu and AniDB pages are fetched (`LINK_CARRYING_PROVIDERS`).                                                                              |
 | AnimeSchedule finds a page through the entry's MAL page (else AniList, else AniDB)          | Stored as a searched page, recording the page it was found by; that search is not repeated.                                                                   |
 | An entry with two MAL pages                                                                 | AnimeSchedule is searched once per MAL page.                                                                                                                  |
-| AnimeSchedule finds nothing                                                                 | Nothing stored; the search is repeated on the next run.                                                                                                       |
+| AnimeSchedule finds nothing                                                                 | Nothing stored; the search is recorded and repeated only in the next release.                                                                                 |
 | A linked page, known only by its key                                                        | Its address is built from the key (`build_page_address`), and the page stored.                                                                                |
 | A linked page reports another current key                                                   | That key is fetched too, unless it is already stored.                                                                                                         |
 | A linked page of a provider without a helper                                                | Skipped.                                                                                                                                                      |
@@ -287,19 +299,19 @@ the final place.
 
 Each correction is a `SeedCorrection`:
 
-| Field                         | Holds                                                                                                                                                                                               |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `entry_reference_page`        | The reference page of the seed entry that lists the page, or that an added page joins.                                                                                                              |
-| `page_key`, `address`         | The page as the seed entry lists it; for an added page, its current key and the seed's spelling of it.                                                                                              |
-| `placement_word`              | `work 1`, `work 2` and so on, or `other work`.                                                                                                                                                      |
-| `is_main_page`                | Whether enrichment fetches this page for its provider in its work.                                                                                                                                  |
-| `renamed_to`                  | The current page key, when the seed lists the page under an old address.                                                                                                                            |
-| `target_entry_reference_page` | The reference page of the seed entry the page joins: the sure move target of an `other work` page, or the entry that survives as the page's work; `null` when the page stays or starts a new entry. |
-| `new_entry_key`               | The new entry the page starts or joins: pages with the same key form one new entry. `null` when the page stays or joins a seed entry.                                                               |
-| `is_added_page`               | Whether the page is not in the seed and is added to the entry (see [Adding linked pages](#adding-linked-pages)).                                                                                    |
-| `is_part_page`                | Whether the page covers only part of its work, so enrichment combines it with the work's other part pages: an answer's `, part`, or an added page's `add as part`.                                  |
-| `is_anime_id_page`            | Whether the entry's anime id now comes from this added page, so the search entry stored under the old id must be replaced (see the anime id rule under [Linked-page rules](#linked-page-rules)).    |
-| `reason`                      | Why the page is placed here: the doubled-provider decision's outcome by name (`SAME_PAGE`, `PAGES_OF_OTHER_WORKS`), the linked-page decision's reason by name, or `review answer`.                  |
+| Field                         | Holds                                                                                                                                                                                                                       |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `entry_reference_page`        | The reference page of the seed entry that lists the page, or that an added page joins.                                                                                                                                      |
+| `page_key`, `address`         | The page as the seed entry lists it; for an added page, its current key and the seed's spelling of it.                                                                                                                      |
+| `placement_word`              | `work 1`, `work 2` and so on, or `other work`.                                                                                                                                                                              |
+| `is_main_page`                | Whether enrichment fetches this page for its provider in its work.                                                                                                                                                          |
+| `renamed_to`                  | The current page key, when the seed lists the page under an old address.                                                                                                                                                    |
+| `target_entry_reference_page` | The reference page of the seed entry the page joins: the sure move target of an `other work` page, or the entry that survives as the page's work; `null` when the page stays or starts a new entry.                         |
+| `new_entry_key`               | The new entry the page starts or joins: pages with the same key form one new entry. `null` when the page stays or joins a seed entry.                                                                                       |
+| `is_added_page`               | Whether the page is not in the seed and is added to the entry (see [Adding linked pages](#adding-linked-pages)).                                                                                                            |
+| `is_part_page`                | Whether the page covers only part of its work, so enrichment combines it with the work's other part pages: an answer's `, part`, or an added page's `add as part`.                                                          |
+| `is_anime_id_page`            | Whether the anime id of the seed entry this added page ends in now comes from the page, so the search entry stored under the old id must be replaced (see the anime id rule under [Linked-page rules](#linked-page-rules)). |
+| `reason`                      | Why the page is placed here: the doubled-provider decision's outcome by name (`SAME_PAGE`, `PAGES_OF_OTHER_WORKS`), the linked-page decision's reason by name, or `review answer`.                                          |
 
 ### Correction rules
 
@@ -501,6 +513,12 @@ the checks and the answers).
   only an AniList page, changes the id, and its correction says so
   (`is_anime_id_page`). The cleaned seed must then replace the search entry
   stored under the old id.
+  - The mark is set after both passes, on the entries as the merged corrections
+    leave them (`mark_anime_id_pages`). The second pass can move an added page,
+    or move another entry's MAL page into the added page's entry, so the first
+    pass's entries can name the wrong page.
+  - A page in a new entry is never marked: a new entry takes the place of no
+    seed entry, so no search entry is stored under an old id.
 
 ### Every linked-page scenario
 
@@ -516,8 +534,8 @@ flowchart TD
     placed -- no --> corrected[The entry as the first pass's corrections<br/>leave it; a removed or new entry is left out]
     corrected --> links{Does a page link an anime page of a<br/>fetched provider that no seed entry holds?}
     links -- no --> nothing[Nothing to add]
-    links -- yes --> fetch{Is the linked page fetched?}
-    fetch -- "not yet, or the fetch failed" --> waiting[Waiting: fetched on the next run]
+    links -- yes --> fetch{Is the linked page stored?<br/>Step 2 fetched it earlier in the run}
+    fetch -- "its fetch failed, or the run<br/>used --no-fetch" --> waiting[Waiting: fetched on the next run that fetches]
     fetch -- yes --> current[Grouped by its current key:<br/>every spelling decided once]
     current --> decide{decide_linked_page}
     decide -- NOT_FOUND --> skip_dead[Not added: the provider deleted the page]
@@ -530,10 +548,9 @@ flowchart TD
     answer -- "add, add as part,<br/>or either to a named entry" --> conflict{Would two whole pages of one<br/>provider join the same entry?}
     conflict -- yes --> neither[Neither page added;<br/>a warning names the entry]
     conflict -- no --> add
-    add --> anime_id{Does the entry's anime id<br/>now come from this page?}
+    add --> correction[Correction with is_added_page]
+    correction --> anime_id{After both passes, does the anime id<br/>of the seed entry the page ends in<br/>come from this page?}
     anime_id -- yes --> id_page[Correction marked is_anime_id_page]
-    anime_id -- no --> correction[Correction with is_added_page]
-    id_page --> correction
 ```
 
 The table lists every scenario, with a real example where one is known.
@@ -543,7 +560,7 @@ The table lists every scenario, with a real example where one is known.
 | An entry's group waits for a review answer                                                                                                                                                                      | Its links are not read: its pages are not placed yet, so a link on one of them may belong to another work.                     |
 | A new entry built from an answer, or an entry every page left                                                                                                                                                   | Not read: a correction must name a seed entry that still has pages.                                                            |
 | A link to a manga page, or to a page of a provider that is not fetched (ANN, LiveChart, Simkl, AnimeCountdown)                                                                                                  | Ignored: a manga link names source material, and the other pages cannot be checked live.                                       |
-| The linked page is not fetched yet, or its fetch failed                                                                                                                                                         | Waiting, with no decision; the next run fetches it.                                                                            |
+| The linked page's fetch failed, or the run used `--no-fetch`                                                                                                                                                    | Waiting, with no decision; the next run that fetches tries it again.                                                           |
 | The provider says the page does not exist (most MAL links from AniList and Kitsu)                                                                                                                               | `NOT_FOUND`: stored as dead, never added, no case.                                                                             |
 | The link spells a page a seed entry holds another way (an AnimeSchedule Kitsu slug for a page the seed lists by number)                                                                                         | `HELD_UNDER_OTHER_ADDRESS`: not added, no case.                                                                                |
 | One entry links it and every check passes (MAL 65144 _The Boxer_, linked from AniList 163794)                                                                                                                   | `CHECKS_PASSED`: added; here the entry's anime id now comes from the MAL page, so the correction is marked `is_anime_id_page`. |
@@ -560,44 +577,52 @@ The table lists every scenario, with a real example where one is known.
 ## Running it
 
 ```bash
-uv run python scripts/clean_seed.py                  # list the entries to check, fetch their pages, correct them
-uv run python scripts/clean_seed.py --no-fetch       # correct them from the pages already stored
+uv run python scripts/clean_seed.py                  # fetch the seed's pages and linked pages, then correct the entries
+uv run python scripts/clean_seed.py --no-fetch       # correct the entries from the pages already stored
 uv run python scripts/clean_seed.py --refetch-stored # fetch stored pages again, so they gain new fields
 uv run python scripts/clean_seed.py path/to/seed.json --data-dir data/seed_cleaning
-uv run python scripts/clean_seed.py --store data/seed_pages/provider_pages.jsonl --no-fetch
 ```
 
-Split works are found by links as well as titles, and a link is only seen when
-the store holds the linking page. `--store` reads a store holding every seed
-entry's pages, so links between any two entries are found.
+A fetch over a whole release takes days, mostly because of AniDB's daily cap.
+Each page is stored as soon as it is fetched, so a run can be stopped and run
+again: it fetches only what is not stored yet. A new release fetches only its
+new pages. The pacing options (`--seconds-between-requests`,
+`--failures-before-pausing`, `--seconds-between-probes`,
+`--seconds-before-mal-pictures`) are listed in the script's `--help`.
 
 ### AniDB limits
 
 AniDB caps requests per day as well as per second, and a ban blocks every
-AniDB request from the address, enrichment included. Run with a wide gap, and
-stop contacting AniDB after the first block; the next day's run picks up where
-this one stopped:
+AniDB request from the address, enrichment included. After a ban the AniDB
+queue pauses like any other and probes every 30 minutes; AniDB's own
+stand-down (`ANIDB_BAN_COOLDOWN`) defaults to the same interval, so each probe
+reaches AniDB rather than being refused by the helper. A wider gap between
+AniDB requests lowers the chance of a ban:
 
 ```bash
-ANIDB_MIN_REQUEST_INTERVAL=8 ANIDB_BAN_COOLDOWN=86400 uv run python scripts/clean_seed.py
+ANIDB_MIN_REQUEST_INTERVAL=8 uv run python scripts/clean_seed.py
 ```
 
 ### Output files
 
-The run prints the entries found, a count per fetch outcome, every failed
-fetch, the corrections by kind, the review cases open and answered, and the
-linked pages waiting, not found, or held under another address.
+The run reports, to the terminal and to the release's log file, the fetch plan
+and progress per provider, a count per fetch outcome and the first failures,
+the entries found, the corrections by kind, the review cases open and
+answered, and the linked pages waiting, not found, or held under another
+address.
 
 It writes to the data folder, `data/seed_cleaning/` unless `--data-dir` names
 another (git-ignored). The provider page store is `provider_pages.jsonl` in
 that folder unless `--store` names another file.
 
-| File                    | Written                                                                                                                                      | Holds                                                                                                                                                                                                                                | Used for                                                                                                                                         |
-| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `provider_pages.jsonl`  | During the run, a line per page as each fetch returns (steps 2, 3, 5 and 9); never with `--no-fetch`. Added to across runs, never rewritten. | Every fetched page's details, one per line, dead pages included; see `ProviderPageStore`.                                                                                                                                            | Read by every step that decides: links, episode counts and air dates. Kept beyond the 7-day HTTP cache, so a rerun fetches only what is missing. |
-| `entries_to_check.json` | At the end of the run (step 11). Rewritten each run.                                                                                         | The seed's `$schema` (its address names the release), the doubled-provider entries with their doubled pages, and the split-work candidate groups with their entries, their evidence and whether a tying page is linked from outside. | Read by people, to see what a release holds to check; no code reads it.                                                                          |
-| `review.jsonl`          | At the end of the run (step 11), after both passes; read at the start of the next. Rewritten each run, answers kept.                         | One case per entry group the rules cannot place and per linked page they cannot add, with the evidence, reasons and suggested answer; see `ReviewFile`.                                                                              | A person writes each case's `answer`; the next run reads the answers back and turns the valid ones into corrections.                             |
-| `corrections.jsonl`     | At the end of the run (step 11). Rewritten each run.                                                                                         | Every `SeedCorrection` of both passes, merged, sorted by entry reference page and page key.                                                                                                                                          | Building the cleaned seed: the downloaded release plus these corrections, so the release is never edited. Nothing builds it yet.                 |
+| File                            | Written                                                                                                                                                               | Holds                                                                                                                                                                                                                                | Used for                                                                                                                                         |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `provider_pages.jsonl`          | During the run, a line per page as each fetch returns (steps 1 and 2); never with `--no-fetch`. Added to across runs, never rewritten.                                | Every fetched page's details, one per line, dead pages included; see `ProviderPageStore`.                                                                                                                                            | Read by every step that decides: links, episode counts and air dates. Kept beyond the 7-day HTTP cache, so a rerun fetches only what is missing. |
+| `entries_to_check.json`         | At the end of the run (step 9). Rewritten each run.                                                                                                                   | The seed's `$schema` (its address names the release), the doubled-provider entries with their doubled pages, and the split-work candidate groups with their entries, their evidence and whether a tying page is linked from outside. | Read by people, to see what a release holds to check; no code reads it.                                                                          |
+| `review.jsonl`                  | At the end of the run (step 9), after both passes; read at the start of the next. Rewritten each run, answers kept.                                                   | One case per entry group the rules cannot place and per linked page they cannot add, with the evidence, reasons and suggested answer; see `ReviewFile`.                                                                              | A person writes each case's `answer`; the next run reads the answers back and turns the valid ones into corrections.                             |
+| `corrections.jsonl`             | At the end of the run (step 9). Rewritten each run.                                                                                                                   | Every `SeedCorrection` of both passes, merged, sorted by entry reference page and page key.                                                                                                                                          | Building the cleaned seed: the downloaded release plus these corrections, so the release is never edited. Nothing builds it yet.                 |
+| `not_listed_searches.jsonl`     | During the fetch, a line per AnimeSchedule search that finds nothing; never with `--no-fetch`. Rewritten without other releases' lines when a new release is fetched. | The page key each search was made by, and the release.                                                                                                                                                                               | Skipping those searches for the rest of the release.                                                                                             |
+| `logs/clean_seed_<release>.log` | Throughout the run, appended; one file per seed release, named after the release tag in the seed's `$schema`.                                                         | Everything the run reports, each run starting with a dated line naming the release and seed file.                                                                                                                                    | Reading what each release's runs did, and studying fetch failures to improve fetching. Earlier releases' logs are kept.                          |
 
 ## Files
 
@@ -606,7 +631,8 @@ that folder unless `--store` names another file.
 | `doubled_provider_entries.py` | `find_doubled_provider_entries`: the entries holding a doubled provider.                                                                                                                                        |
 | `split_work_links.py`         | `SplitWorkLink`, `SplitWorkLinks`, `find_split_work_links`: the links tying entries, the entries linking each page, and the pages covering several works.                                                       |
 | `split_work_candidates.py`    | `SplitWorkCandidates` and `find_split_work_candidates`: the candidate groups by title, link and several-works page, with their evidence.                                                                        |
-| `provider_page_fetcher.py`    | `ProviderPageFetcher`, `FetchSummary`, `FetchOutcome`, `FETCHED_PROVIDERS`: fetching every page of the entries to check, the link-carrying pages of entries without a MAL page, and linked pages by key.        |
+| `seed_fetch.py`               | `fetch_seed_and_linked_pages`, `list_unheld_linked_page_titles`, `SeedFetchSummary`, `read_seed_release_name`: the fetch step, and the release name that names the run's log.                                   |
+| `not_listed_searches.py`      | `NotListedSearchFile`: the AnimeSchedule searches that found nothing in one release.                                                                                                                            |
 | `entry_groups.py`             | `EntryGroup`: the entries one review case places, with why they are grouped.                                                                                                                                    |
 | `corrected_seed.py`           | `build_corrected_seed`, `CorrectedSeed`, `EntryIdentity`, `PageOrigin`: every entry as the first pass leaves it, and how corrections name its entries and pages.                                                |
 | `split_work_pass.py`          | `prepare_split_work_pass`, `SplitWorkPass`: the second pass's entries and candidate groups.                                                                                                                     |
@@ -614,5 +640,5 @@ that folder unless `--store` names another file.
 | `group_placement.py`          | `correct_entry_groups`: each entry group's pages placed, from the rules or a review answer.                                                                                                                     |
 | `seed_corrections.py`         | `SeedCorrection`, `PlacementCorrections`, `merge_corrections`, `write_corrections`: where each checked page ends up, the two passes merged, written to the corrections file.                                    |
 | `corrected_entries.py`        | `build_corrected_entries`, `CorrectedEntry`: the work entries the corrections change or create.                                                                                                                 |
-| `linked_page_additions.py`    | `find_entries_without_mal_page`, `LINK_CARRYING_PROVIDERS`, `list_entries_with_placed_pages`, `find_linking_seed_entries`, `correct_linked_pages`: the linked pages added as corrections.                       |
+| `linked_page_additions.py`    | `find_entries_without_mal_page`, `list_entries_with_placed_pages`, `find_linking_seed_entries`, `correct_linked_pages`: the linked pages added as corrections.                                                  |
 | `linked_page_groups.py`       | `LinkingSeedEntry`, `group_linked_pages_by_current_key`, `rename_linked_pages_to_current_keys`: the linked pages grouped by the current key their fetch reports, so the spellings of one page are decided once. |

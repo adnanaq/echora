@@ -152,6 +152,11 @@ class AniDBHelper(BaseEnrichmentHelper):
         self.max_retries = config.anidb_max_retries
 
         self.ban_cooldown = config.anidb_ban_cooldown
+        # AniDB's minimum gap is kept by the cache's pacer, which waits only for
+        # requests that reach AniDB; an answer from the cache does not wait.
+        cache.network_request_pacer.set_minimum_seconds_between_requests(
+            "anidb", self.min_request_interval
+        )
 
     # =========================================================================
     # PUBLIC INTERFACE (BaseEnrichmentHelper contract)
@@ -382,26 +387,28 @@ class AniDBHelper(BaseEnrichmentHelper):
     # =========================================================================
 
     async def _adaptive_rate_limit(self, is_retry: bool = False) -> None:
-        """Apply adaptive rate limiting with exponential back-off on errors.
+        """Slow down after failed requests, with exponential back-off.
+
+        The normal gap between requests is kept by the cache's network
+        request pacer, which waits only for requests that reach AniDB. This
+        wait adds the back-off after failures, which grows with each failure in
+        a row, up to ``max_request_interval``.
 
         Args:
-            is_retry: When True, multiplies the calculated interval by 1.5
-                to add extra delay for retry attempts.
+            is_retry: When True, multiplies the back-off by 1.5 to add extra
+                delay for retry attempts.
         """
-        current_time = time.time()
-        time_since_last = current_time - _state.last_request_at
-
-        if _state.consecutive_failures > 0:
-            error_multiplier = min(2**_state.consecutive_failures, 8)
-            adaptive_interval = min(
-                self.error_cooldown_base * error_multiplier, self.max_request_interval
-            )
-        else:
-            adaptive_interval = self.min_request_interval
-
+        if _state.consecutive_failures == 0:
+            _state.last_request_at = time.time()
+            return
+        error_multiplier = min(2**_state.consecutive_failures, 8)
+        adaptive_interval = min(
+            self.error_cooldown_base * error_multiplier, self.max_request_interval
+        )
         if is_retry:
             adaptive_interval *= 1.5
 
+        time_since_last = time.time() - _state.last_request_at
         if time_since_last < adaptive_interval:
             wait_time = adaptive_interval - time_since_last
             logger.info(f"Rate limiting: waiting {wait_time:.2f}s")

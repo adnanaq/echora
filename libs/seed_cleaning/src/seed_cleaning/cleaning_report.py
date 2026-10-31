@@ -7,6 +7,7 @@ corrections' counts; both are built here so they can be tested without a run.
 from collections.abc import Iterable
 from typing import Any
 
+from seed_cleaning.corrected_entries import CorrectedEntry
 from seed_cleaning.seed_corrections import SeedCorrection
 from seed_cleaning.split_work_candidates import SplitWorkCandidates
 from work_matching import ReviewCase, WorkEntry, find_doubled_provider_page_keys
@@ -114,3 +115,31 @@ def count_corrections(
         is_answered = review_case.accepted_answer is not None
         counts["review cases answered" if is_answered else "review cases open"] += 1
     return counts
+
+
+def count_corrected_entries(
+    corrected_entries: Iterable[CorrectedEntry],
+) -> dict[str, int]:
+    """Count the entries the corrections remove, and the new entries without a type.
+
+    A new entry without fetched page details gets an unknown type, so the count
+    keeps such entries from being missed before indexing.
+
+    Args:
+        corrected_entries: The entries both passes' corrections change or create.
+
+    Returns:
+        Each count's name mapped to its count, in the order the run reports them.
+    """
+    corrected_entries = list(corrected_entries)
+    return {
+        "entries removed, every page moved out": sum(
+            corrected.entry is None for corrected in corrected_entries
+        ),
+        "new entries with an unknown type": sum(
+            corrected.seed_entry_reference_page is None
+            and corrected.entry is not None
+            and corrected.entry.type == "UNKNOWN"
+            for corrected in corrected_entries
+        ),
+    }

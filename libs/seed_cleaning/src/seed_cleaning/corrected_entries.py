@@ -26,6 +26,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import NamedTuple
 
+from enrichment.pipeline.link_rules import find_anime_id_page_key
 from seed_cleaning.seed_corrections import SeedCorrection
 from work_matching import (
     KnownWorkEntries,
@@ -134,6 +135,55 @@ def build_corrected_entries(
             ),
         )
         for new_entry_key, entry_corrections in new_entry_corrections.items()
+    ]
+
+
+def mark_anime_id_pages(
+    corrections: Iterable[SeedCorrection],
+    corrected_entries: Iterable[CorrectedEntry],
+) -> list[SeedCorrection]:
+    """Mark each added page the anime id of its seed entry now comes from.
+
+    Enrichment derives a work's anime id from the work's pages, MAL first
+    (``find_anime_id_page_key``). When the id comes from an added page, the
+    search entry stored under the seed entry's old id must be replaced.
+
+    - The rule reads the entries as both passes' corrections leave them. The
+      second pass can move an added page, or move another entry's MAL page into
+      the added page's entry, so the first pass's entries can name the wrong page.
+    - A page in a new entry is never marked. A new entry takes the place of no
+      seed entry, so no search entry is stored under an old id.
+
+    Args:
+        corrections: Both passes' corrections, merged.
+        corrected_entries: The entries those corrections change or create.
+
+    Returns:
+        The corrections in the order given, each added page's
+        ``is_anime_id_page`` set by the rules above.
+    """
+    anime_id_page_key_by_seed_reference_page = {
+        corrected.seed_entry_reference_page: find_anime_id_page_key(
+            corrected.entry.addresses_by_page_key
+        )
+        for corrected in corrected_entries
+        if corrected.seed_entry_reference_page is not None
+        and corrected.entry is not None
+    }
+    return [
+        correction.model_copy(
+            update={
+                "is_anime_id_page": correction.new_entry_key is None
+                and anime_id_page_key_by_seed_reference_page.get(
+                    correction.target_entry_reference_page
+                    or correction.entry_reference_page
+                )
+                == correction.page_key
+            }
+        )
+        if correction.is_added_page
+        else correction
+        for correction in corrections
     ]
 
 
