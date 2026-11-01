@@ -245,7 +245,7 @@ Create a robust, scalable, and intelligent vector database service that serves a
 
 **Technical Requirements**:
 
-- Integration with MyAnimeList, AniList, Kitsu, AnimePlanet, AniDB, AnimSchedule
+- Integration with MyAnimeList, AniList, Kitsu, AnimePlanet, AniDB, AnimeSchedule
 - Web scraping with Cloudflare bypass
 - 6-stage AI enrichment pipeline
 - Configurable processing workflows

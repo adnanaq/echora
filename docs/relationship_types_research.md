@@ -151,7 +151,7 @@ Full Story:
 
 ---
 
-## AnimSchedule Structure
+## AnimeSchedule Structure
 
 **Format**: Category-based grouping
 
@@ -263,7 +263,7 @@ RelatedAnimeEntry:
 1. Check AnimePlanet temp files - what is `relation_subtype`?
 2. Check AniList temp files - is there format information?
 3. Check AniSearch temp files - is there format information?
-4. Check AnimSchedule temp files - relationship vs format?
+4. Check AnimeSchedule temp files - relationship vs format?
 5. Look at MAL temp files (`mal_anime.jsonl`) - verify two-level structure
 
 ---

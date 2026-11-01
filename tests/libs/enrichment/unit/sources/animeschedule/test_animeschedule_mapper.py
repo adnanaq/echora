@@ -7,10 +7,10 @@ the mapper drops here is lost for good.
 from enrichment.sources.animeschedule.animeschedule_mapper import (
     anime_from_animeschedule,
 )
-from enrichment.sources.animeschedule.animeschedule_models import AnimScheduleAnime
+from enrichment.sources.animeschedule.animeschedule_models import AnimeScheduleAnime
 
 
-def _anime(**fields: object) -> AnimScheduleAnime:
+def _anime(**fields: object) -> AnimeScheduleAnime:
     defaults = {
         "id": "one-piece",
         "route": "one-piece",
@@ -18,7 +18,7 @@ def _anime(**fields: object) -> AnimScheduleAnime:
         "month": "October",
         "year": 1999,
     }
-    return AnimScheduleAnime.model_validate({**defaults, **fields})
+    return AnimeScheduleAnime.model_validate({**defaults, **fields})
 
 
 def test_calendar_fields_reach_the_canonical_record() -> None:

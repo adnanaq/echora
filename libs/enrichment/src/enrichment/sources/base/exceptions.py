@@ -51,6 +51,14 @@ class ServiceParseError(ServiceError):
         super().__init__(f"parse error: {cause}", service=service)
 
 
+class ServiceNotConfiguredError(ServiceError):
+    """A setting the service needs is missing, so no request is sent."""
+
+    def __init__(self, *, service: str, setting: str, reason: str) -> None:
+        self.setting = setting
+        super().__init__(f"{setting} is not set: {reason}", service=service)
+
+
 class AniListGraphQLError(ServiceError):
     """AniList GraphQL-level errors — protocol-specific, not retryable."""
 

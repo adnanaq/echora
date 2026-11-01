@@ -5,6 +5,7 @@ import pytest
 from seed_cleaning.corrected_entries import (
     CorrectedEntry,
 )
+from seed_cleaning.entry_groups import EntryGroup
 from seed_cleaning.group_placement import correct_entry_groups
 from seed_cleaning.linked_page_additions import (
     LinkedPageCorrections,
@@ -28,9 +29,6 @@ YAMATO_ANILIST = "https://anilist.co/anime/182615"
 YAMATO_ANIDB = "https://anidb.net/anime/18902"
 YAMATO_MAL = "https://myanimelist.net/anime/65124"
 MORI_NO_YOUSEI_KITSU = "https://kitsu.app/anime/40741"
-SOSHIKI_ANILIST = "https://anilist.co/anime/217714"
-SOSHIKI_MAL = "https://myanimelist.net/anime/65105"
-SOSHIKI_KITSU = "https://kitsu.app/anime/51119"
 
 
 def _seed_entry(title: str, work_type: str, *addresses: str) -> dict:
@@ -183,7 +181,7 @@ def test_list_entries_with_placed_pages_corrected_entry_replaces_seed_entry(
         ]
     )
     doubled_corrections = correct_entry_groups(
-        [[doubled_entry]], store, works, review_file
+        [EntryGroup((doubled_entry,))], store, works, review_file
     )
     placed_entries = list_entries_with_placed_pages(
         list(works), doubled_corrections, works, store
@@ -209,7 +207,7 @@ def test_list_entries_with_placed_pages_entry_with_open_case_left_out(
         ]
     )
     doubled_corrections = correct_entry_groups(
-        [[next(iter(works))]], store, works, review_file
+        [EntryGroup((next(iter(works)),))], store, works, review_file
     )
     placed_entries = list_entries_with_placed_pages(
         list(works), doubled_corrections, works, store
@@ -262,35 +260,10 @@ def test_correct_linked_pages_page_passing_checks_added_to_entry(
             address=BOXER_MAL,
             placement_word="work 1",
             is_added_page=True,
-            is_anime_id_page=True,
             reason="CHECKS_PASSED",
         ),
     )
     assert linked_page_corrections.review_cases == ()
-
-
-def test_correct_linked_pages_page_after_entry_anime_id_page_keeps_anime_id(
-    store, review_file
-) -> None:
-    known_work_entries = KnownWorkEntriesFromSeed(
-        [
-            _seed_entry(
-                "Soshiki no Shukuteki to Kekkon shitara Mecha Amai",
-                "TV",
-                SOSHIKI_ANILIST,
-                SOSHIKI_MAL,
-            )
-        ]
-    )
-    store.add_pages(
-        _page(SOSHIKI_ANILIST, SOSHIKI_MAL, SOSHIKI_KITSU),
-        _page(SOSHIKI_KITSU, SOSHIKI_MAL, type="TV"),
-    )
-    [correction] = _correct(known_work_entries, store, review_file).corrections
-    assert (correction.page_key, correction.is_anime_id_page) == (
-        "kitsu:anime:51119",
-        False,
-    )
 
 
 def test_correct_linked_pages_page_not_stored_waits_for_fetch(
@@ -358,9 +331,8 @@ def test_correct_linked_pages_kept_answer_adds_part_page(
     assert (
         correction.is_added_page,
         correction.is_part_page,
-        correction.is_anime_id_page,
         correction.reason,
-    ) == (True, True, True, "review answer")
+    ) == (True, True, "review answer")
 
 
 def test_correct_linked_pages_answers_adding_two_pages_of_provider_add_neither(

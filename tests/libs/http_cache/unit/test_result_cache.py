@@ -7,11 +7,11 @@ from collections.abc import Iterator
 from contextlib import AbstractContextManager
 from datetime import datetime, timedelta
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import AsyncMock, call, patch
 
 import pytest
 from common.config import CacheConfig, RedisConfig
-from http_cache import configure_cache
+from http_cache import configure_cache, get_cache
 from http_cache.result_cache import (
     _compute_schema_hash,
     _generate_cache_key,
@@ -525,6 +525,25 @@ async def test_cached_result_second_call_returns_cached_value_without_calling(
     assert list(redis_store.values) == [
         _key("test", _compute_schema_hash(fetch.__wrapped__), "item1")
     ]
+
+
+async def test_cached_result_cache_hit_skips_network_turn(
+    redis_store: InMemoryRedis,
+) -> None:
+    pacer = get_cache().network_request_pacer
+
+    @cached_result("mal", key_prefix="test")
+    async def fetch(item_id: str) -> dict[str, str]:
+        return {"id": item_id}
+
+    with patch.object(
+        pacer,
+        "wait_for_network_turn",
+        new=AsyncMock(wraps=pacer.wait_for_network_turn),
+    ) as wait_for_network_turn:
+        for item_id in ("item1", "item1", "item2"):
+            await fetch(item_id)
+    assert wait_for_network_turn.await_args_list == [call("mal"), call("mal")]
 
 
 async def test_cached_result_caching_off_calls_function_every_time() -> None:

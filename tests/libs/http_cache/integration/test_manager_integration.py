@@ -1,6 +1,7 @@
 import asyncio
 from collections import Counter
 from collections.abc import AsyncIterator
+from unittest.mock import AsyncMock, patch
 
 import pytest
 import pytest_asyncio
@@ -313,3 +314,18 @@ async def test_get_aiohttp_session_concurrent_calls_share_one_redis_client(
     storages = await asyncio.gather(*(open_storage(task) for task in range(10)))
 
     assert len({id(storage._client) for storage in storages}) == 1
+
+
+async def test_get_aiohttp_session_cache_hit_skips_network_turn(
+    cache: HTTPCacheManager, server: tuple[str, Counter[str]]
+) -> None:
+    base, hits = server
+    pacer = cache.network_request_pacer
+    with patch.object(
+        pacer,
+        "wait_for_network_turn",
+        new=AsyncMock(wraps=pacer.wait_for_network_turn),
+    ) as wait_for_network_turn:
+        for anime_id in ("1", "1", "2"):
+            await _get(cache, f"{base}/json?id={anime_id}", "kitsu")
+    assert (wait_for_network_turn.await_count, hits["/json?id=1"]) == (2, 1)

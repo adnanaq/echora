@@ -1,7 +1,7 @@
-"""Pydantic models for the AnimSchedule API v3 anime response.
+"""Pydantic models for the AnimeSchedule API v3 anime response.
 
 These mirror the JSON structure with camelCase → snake_case aliases. The
-models turn AnimSchedule's values into field values (HTML descriptions into
+models turn AnimeSchedule's values into field values (HTML descriptions into
 plain text, its "not set" date into None); mapping to the canonical Anime model
 lives in animeschedule_mapper.py.
 """
@@ -19,7 +19,7 @@ _UNSET_DATE_PREFIX = "0001-01-01"
 
 
 def _unset_date_to_none(value: object) -> object:
-    """Turn AnimSchedule's "not set" date ("0001-01-01T00:00:00Z") into None.
+    """Turn AnimeSchedule's "not set" date ("0001-01-01T00:00:00Z") into None.
 
     >>> _unset_date_to_none("0001-01-01T00:00:00Z") is None
     True
@@ -32,10 +32,10 @@ def _unset_date_to_none(value: object) -> object:
     return value
 
 
-AnimScheduleDate = Annotated[str | None, BeforeValidator(_unset_date_to_none)]
+AnimeScheduleDate = Annotated[str | None, BeforeValidator(_unset_date_to_none)]
 
 
-class AnimScheduleStats(BaseModel):
+class AnimeScheduleStats(BaseModel):
     """Community statistics sub-object."""
 
     average_score: float | None = Field(None, alias="averageScore")
@@ -46,7 +46,7 @@ class AnimScheduleStats(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
-class AnimScheduleNames(BaseModel):
+class AnimeScheduleNames(BaseModel):
     """Title variants for an anime entry."""
 
     native: StrippedText = None  # Japanese title
@@ -58,10 +58,10 @@ class AnimScheduleNames(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
-class AnimScheduleSeason(BaseModel):
+class AnimeScheduleSeason(BaseModel):
     """Season metadata sub-object.
 
-    ``season`` is None for year-only entries (e.g. "2026"), which AnimSchedule
+    ``season`` is None for year-only entries (e.g. "2026"), which AnimeSchedule
     sends as an empty string.
     """
 
@@ -73,7 +73,7 @@ class AnimScheduleSeason(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
-class AnimScheduleStream(BaseModel):
+class AnimeScheduleStream(BaseModel):
     """Single streaming platform entry inside ``websites.streams``."""
 
     platform: str
@@ -83,10 +83,10 @@ class AnimScheduleStream(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
-class AnimScheduleAnime(BaseModel):
-    """Typed representation of an AnimSchedule API v3 anime object.
+class AnimeScheduleAnime(BaseModel):
+    """Typed representation of an AnimeSchedule API v3 anime object.
 
-    Dates AnimSchedule sends as "not set" ("0001-01-01T00:00:00Z") are None.
+    Dates AnimeSchedule sends as "not set" ("0001-01-01T00:00:00Z") are None.
     ``websites`` values are partial URLs (no scheme) except for the
     ``streams`` key which holds a list of dicts.
     """
@@ -103,22 +103,22 @@ class AnimScheduleAnime(BaseModel):
     length_min: int | None = Field(None, alias="lengthMin")
 
     # ── Dates (ISO) ──────────────────────────────────────────────────────
-    premier: AnimScheduleDate = None  # JP original premiere
-    sub_premier: AnimScheduleDate = Field(None, alias="subPremier")
-    dub_premier: AnimScheduleDate = Field(None, alias="dubPremier")
-    jpn_time: AnimScheduleDate = Field(
+    premier: AnimeScheduleDate = None  # JP original premiere
+    sub_premier: AnimeScheduleDate = Field(None, alias="subPremier")
+    dub_premier: AnimeScheduleDate = Field(None, alias="dubPremier")
+    jpn_time: AnimeScheduleDate = Field(
         None, alias="jpnTime"
     )  # latest known JP air time
-    sub_time: AnimScheduleDate = Field(None, alias="subTime")
-    dub_time: AnimScheduleDate = Field(None, alias="dubTime")
-    delayed_from: AnimScheduleDate = Field(None, alias="delayedFrom")
-    delayed_until: AnimScheduleDate = Field(None, alias="delayedUntil")
+    sub_time: AnimeScheduleDate = Field(None, alias="subTime")
+    dub_time: AnimeScheduleDate = Field(None, alias="dubTime")
+    delayed_from: AnimeScheduleDate = Field(None, alias="delayedFrom")
+    delayed_until: AnimeScheduleDate = Field(None, alias="delayedUntil")
     delayed_reason: StrippedText = Field(None, alias="delayedDesc")
 
     # ── Calendar ─────────────────────────────────────────────────────────
     month: str | None = None
     year: int | None = None
-    season: AnimScheduleSeason | None = None
+    season: AnimeScheduleSeason | None = None
 
     # ── Taxonomy ({name, route} dicts) ───────────────────────────────────
     genres: list[dict[str, str]] = Field(default_factory=list)
@@ -130,10 +130,10 @@ class AnimScheduleAnime(BaseModel):
     image_version_route: str | None = Field(None, alias="imageVersionRoute")
 
     # ── Community data ───────────────────────────────────────────────────
-    stats: AnimScheduleStats | None = None
+    stats: AnimeScheduleStats | None = None
 
     # ── Names / titles ───────────────────────────────────────────────────
-    names: AnimScheduleNames | None = None
+    names: AnimeScheduleNames | None = None
 
     # ── Relations: key → list of slugs ───────────────────────────────────
     # Keys: "sequels"|"prequels"|"parents"|"sideStories"|"spinoffs"|"alternatives"|"other"

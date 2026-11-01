@@ -1,4 +1,7 @@
+import logging
+
 import pytest
+from common.models.anime import AnimeRating
 from enrichment.sources.kitsu.kitsu_models import (
     KitsuAnimeAttributes,
     KitsuCharacterAttributes,
@@ -215,3 +218,97 @@ def test_strip_preamble_double_spaces_in_narrative_joins_sentences():
     )
     result = _strip_preamble(desc)
     assert result == "First sentence of narrative. Second sentence after double space."
+
+
+@pytest.mark.parametrize(
+    ("age_rating", "guide", "expected"),
+    [
+        ("G", "All Ages", AnimeRating.G),
+        ("G", "Kids", AnimeRating.G),
+        ("PG", "Children", AnimeRating.PG),
+        ("PG", "Teens 13 or older", AnimeRating.PG13),
+        ("PG", "13 - Teens 13 or older", AnimeRating.PG13),
+        ("PG", "13 and older", AnimeRating.PG13),
+        ("PG", "Teens 13 or Older Violence", AnimeRating.PG13),
+        ("PG", "teens or older", AnimeRating.PG13),
+        ("PG", "PG-13", AnimeRating.PG13),
+        ("PG", "13 Brief Nudity", AnimeRating.PG13),
+        ("PG", "Some Graphic Violence", AnimeRating.PG),
+        ("PG", "Partial Nudity", AnimeRating.PG),
+        ("R", "17+ (violence & profanity)", AnimeRating.R),
+        ("R", "17+", AnimeRating.R),
+        ("R", "gore", AnimeRating.R),
+        ("R", "Mild Nudity", AnimeRating.RPLUS),
+        ("R", "partial nudity", AnimeRating.RPLUS),
+        ("R", "Partial nuditiy", AnimeRating.RPLUS),
+        ("R", "Ecchi, ", AnimeRating.RPLUS),
+        ("R", "Nudity, Sex", AnimeRating.RPLUS),
+        ("R", "smut", AnimeRating.RPLUS),
+        ("R", "Ecchi, Erotica", AnimeRating.RPLUS),
+        ("R18", "Hentai", AnimeRating.RX),
+        ("R", None, AnimeRating.R),
+        ("R", "", AnimeRating.R),
+    ],
+)
+def test_kitsu_anime_attributes_content_rating_code_level_raised_by_guide(
+    age_rating: str, guide: str | None, expected: AnimeRating
+) -> None:
+    attrs = KitsuAnimeAttributes(ageRating=age_rating, ageRatingGuide=guide)
+    assert attrs.content_rating is expected
+
+
+@pytest.mark.parametrize(
+    ("age_rating", "guide", "expected"),
+    [
+        ("G", "Teens 13 or older", AnimeRating.G),
+        ("G", "Children", AnimeRating.G),
+        ("R", "Teens 13 or older", AnimeRating.R),
+        ("PG", "All Ages", AnimeRating.PG),
+        ("PG", "Mild Nudity", AnimeRating.PG),
+        ("PG", "17+ (violence & profanity)", AnimeRating.PG),
+        ("R", "None", AnimeRating.R),
+    ],
+)
+def test_kitsu_anime_attributes_content_rating_guide_disagreeing_with_code_keeps_code(
+    age_rating: str, guide: str, expected: AnimeRating
+) -> None:
+    attrs = KitsuAnimeAttributes(ageRating=age_rating, ageRatingGuide=guide)
+    assert attrs.content_rating is expected
+
+
+@pytest.mark.parametrize(
+    ("guide", "expected"),
+    [
+        ("Mild Nudity", AnimeRating.RPLUS),
+        ("13 teens or older", AnimeRating.PG13),
+        ("13teens or older", AnimeRating.PG13),
+        ("17+ (violence & profanity)", AnimeRating.R),
+        ("Children", AnimeRating.PG),
+        ("None", AnimeRating.UNKNOWN),
+        ("", AnimeRating.UNKNOWN),
+        (None, AnimeRating.UNKNOWN),
+    ],
+)
+def test_kitsu_anime_attributes_content_rating_without_code_reads_guide(
+    guide: str | None, expected: AnimeRating
+) -> None:
+    attrs = KitsuAnimeAttributes(ageRating=None, ageRatingGuide=guide)
+    assert attrs.content_rating is expected
+
+
+def test_kitsu_anime_attributes_content_rating_unread_guide_with_code_logs_nothing(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    attrs = KitsuAnimeAttributes(ageRating="R", ageRatingGuide="Mature Themes")
+    with caplog.at_level(logging.WARNING):
+        assert attrs.content_rating is AnimeRating.R
+    assert caplog.text == ""
+
+
+def test_kitsu_anime_attributes_content_rating_unread_guide_without_code_logs_warning(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    attrs = KitsuAnimeAttributes(ageRating=None, ageRatingGuide="Mature Themes")
+    with caplog.at_level(logging.WARNING):
+        assert attrs.content_rating is AnimeRating.UNKNOWN
+    assert "Mature Themes" in caplog.text

@@ -333,7 +333,7 @@ def test_anime_from_kitsu_rating_guide_wins(age_rating, guide, expected):
 
 
 def test_anime_from_kitsu_unrecognized_guide_falls_back_to_code():
-    anime = _make_anime(ageRating="R", ageRatingGuide="Nudity")
+    anime = _make_anime(ageRating="R", ageRatingGuide="Mature Themes")
     result = anime_from_kitsu(anime)
     assert result["rating"] == "R - 17+ (violence & profanity)"
 

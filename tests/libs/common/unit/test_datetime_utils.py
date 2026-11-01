@@ -336,7 +336,7 @@ class TestNormalizeToUtc:
         """Treats a UTC-labeled midnight string as a JST air date and shifts it."""
         from common.utils.datetime_utils import normalize_to_utc
 
-        # MAL/AnimSchedule often return this for air dates
+        # MAL/AnimeSchedule often return this for air dates
         date_str = "2024-10-04T00:00:00+00:00"
         result = normalize_to_utc(date_str)
         # Should be treated as 2024-10-04 00:00 JST -> 2024-10-03 15:00 UTC

@@ -5,10 +5,11 @@ from unittest.mock import NonCallableMagicMock, create_autospec, patch
 import aiohttp
 import pytest
 from common.config import CacheConfig, RedisConfig
-from hishel import AsyncRedisStorage, FilterPolicy, Response
+from hishel import AsyncRedisStorage, FilterPolicy, Headers, Request, Response
 from http_cache.aiohttp_adapter import CachedAiohttpSession
 from http_cache.manager import (
     _MAX_ERROR_BODY_BYTES,
+    CredentialFreeRedisStorage,
     HTTPCacheManager,
     NeverCacheErrorsFilter,
 )
@@ -371,3 +372,46 @@ def test_never_cache_errors_filter_apply_body_past_scan_limit_returns_true() -> 
     body = b'<error code="500">banned</error>' + b"x" * _MAX_ERROR_BODY_BYTES
 
     assert NeverCacheErrorsFilter().apply(_response(200), body) is True
+
+
+async def _store_request(request: Request) -> Request:
+    storage = CredentialFreeRedisStorage(client=create_autospec(Redis, instance=True))
+    with patch.object(AsyncRedisStorage, "create_entry", autospec=True) as create_entry:
+        await storage.create_entry(request, Response(status_code=200), "key")
+    return create_entry.call_args.args[1]
+
+
+async def test_credential_free_redis_storage_drops_credential_headers() -> None:
+    request = Request(
+        method="GET",
+        url="https://animeschedule.net/api/v3/anime",
+        headers=Headers(
+            {
+                "Authorization": "Bearer app-token",
+                "Cookie": "session=1",
+                "Accept": ["application/json", "text/plain"],
+            }
+        ),
+    )
+    stored_request = await _store_request(request)
+    assert dict(stored_request.headers) == {"accept": "application/json, text/plain"}
+    assert request.headers["authorization"] == "Bearer app-token"
+
+
+async def test_credential_free_redis_storage_request_without_credentials_stored_unchanged() -> (
+    None
+):
+    request = Request(
+        method="GET",
+        url="https://kitsu.app/api/edge/anime/1",
+        headers=Headers({"Accept": "application/json"}),
+    )
+    assert await _store_request(request) is request
+
+
+async def test_get_aiohttp_session_enabled_stores_without_credentials() -> None:
+    session = _manager().get_aiohttp_session("animeschedule")
+    try:
+        assert isinstance(session.storage, CredentialFreeRedisStorage)
+    finally:
+        await session.close()

@@ -1,5 +1,6 @@
 import json
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import create_autospec, patch
 
@@ -11,10 +12,16 @@ from enrichment.sources.animeschedule.animeschedule_helper import (
     AnimescheduleHelper,
     _match_by_sources,
     main,
+    require_app_token,
 )
-from enrichment.sources.base.exceptions import ServiceNetworkError, ServiceParseError
+from enrichment.sources.base.exceptions import (
+    ServiceNetworkError,
+    ServiceNotConfiguredError,
+    ServiceParseError,
+)
 from http_cache import get_cache
 from http_cache.aiohttp_adapter import CachedAiohttpSession
+from pydantic import SecretStr
 
 SEARCH_URL = "https://animeschedule.net/api/v3/anime"
 MAL_URL = "https://myanimelist.net/anime/21"
@@ -30,6 +37,15 @@ OTHER_RESULT = {
     "route": "one-piece-film",
     "websites": {"mal": "myanimelist.net/anime/99"},
 }
+
+
+APP_TOKEN = SecretStr("app-token")
+
+
+@pytest.fixture
+def app_token_environment() -> Iterator[None]:
+    with patch.dict("os.environ", {"ANIMESCHEDULE_TOKEN": "app-token"}):
+        yield
 
 
 @pytest.fixture
@@ -172,7 +188,7 @@ async def test_fetch_all_mal_id_finds_anime_without_title_search(
 ) -> None:
     _answer(search_session, {"anime": [ONE_PIECE_RESULT]})
 
-    result = await AnimescheduleHelper(get_cache()).fetch_all(
+    result = await AnimescheduleHelper(get_cache(), APP_TOKEN).fetch_all(
         {"mal_url": "https://myanimelist.net/anime/21/One_Piece"},
         {"title": "One Piece", "sources": [MAL_URL]},
     )
@@ -187,7 +203,7 @@ async def test_fetch_all_unknown_mal_id_tries_anilist_then_anidb(
 ) -> None:
     _response(search_session).status = 404
 
-    await AnimescheduleHelper(get_cache()).fetch_all(
+    await AnimescheduleHelper(get_cache(), APP_TOKEN).fetch_all(
         {
             "mal_url": "https://myanimelist.net/anime/21",
             "anilist_url": "https://anilist.co/anime/21",
@@ -221,7 +237,7 @@ async def test_fetch_all_ids_not_found_searches_title_and_matches_sources(
     _answer_by_lookup(search_session, id_status=404, title_status=200)
     _answer(search_session, {"anime": [OTHER_RESULT, ONE_PIECE_RESULT]})
 
-    result = await AnimescheduleHelper(get_cache()).fetch_all(
+    result = await AnimescheduleHelper(get_cache(), APP_TOKEN).fetch_all(
         {"mal_url": MAL_URL}, {"title": "One Piece", "sources": [MAL_URL]}
     )
 
@@ -235,7 +251,7 @@ async def test_fetch_all_id_result_linking_elsewhere_searches_title(
 ) -> None:
     _answer(search_session, {"anime": [OTHER_RESULT]})
 
-    result = await AnimescheduleHelper(get_cache()).fetch_all(
+    result = await AnimescheduleHelper(get_cache(), APP_TOKEN).fetch_all(
         {"mal_url": MAL_URL}, {"title": "One Piece", "sources": [MAL_URL]}
     )
 
@@ -248,7 +264,7 @@ async def test_fetch_all_unknown_id_and_unmatched_title_returns_none(
 ) -> None:
     _answer_by_lookup(search_session, id_status=404, title_status=404)
 
-    result = await AnimescheduleHelper(get_cache()).fetch_all(
+    result = await AnimescheduleHelper(get_cache(), APP_TOKEN).fetch_all(
         {"mal_url": MAL_URL}, {"title": "One Piece", "sources": [MAL_URL]}
     )
 
@@ -267,13 +283,13 @@ async def test_fetch_all_status_outside_lookup_not_found_raises_service_network_
     )
 
     with pytest.raises(ServiceNetworkError):
-        await AnimescheduleHelper(get_cache()).fetch_all(
+        await AnimescheduleHelper(get_cache(), APP_TOKEN).fetch_all(
             {"mal_url": MAL_URL}, {"title": "One Piece", "sources": [MAL_URL]}
         )
 
 
 async def test_fetch_all_without_ids_or_title_sends_nothing(search_session) -> None:
-    assert await AnimescheduleHelper(get_cache()).fetch_all({}, {}) is None
+    assert await AnimescheduleHelper(get_cache(), APP_TOKEN).fetch_all({}, {}) is None
     search_session.get.assert_not_called()
 
 
@@ -282,7 +298,7 @@ async def test_fetch_all_output_directory_appends_mapped_result(
 ) -> None:
     _answer(search_session, {"anime": [ONE_PIECE_RESULT]})
 
-    result = await AnimescheduleHelper(get_cache()).fetch_all(
+    result = await AnimescheduleHelper(get_cache(), APP_TOKEN).fetch_all(
         {"mal_url": MAL_URL}, {}, temp_dir=str(tmp_path)
     )
 
@@ -298,7 +314,9 @@ async def test_find_by_title_without_sources_returns_first_result(
     _answer(search_session, {"anime": [ONE_PIECE_RESULT, OTHER_RESULT]})
 
     assert (
-        await AnimescheduleHelper(get_cache())._find_by_title("One Piece", [])
+        await AnimescheduleHelper(get_cache(), APP_TOKEN)._find_by_title(
+            "One Piece", []
+        )
         == ONE_PIECE_RESULT
     )
 
@@ -309,7 +327,9 @@ async def test_find_by_title_with_sources_and_no_matching_result_returns_none(
     _answer(search_session, {"anime": [OTHER_RESULT]})
 
     assert (
-        await AnimescheduleHelper(get_cache())._find_by_title("One Piece", [MAL_URL])
+        await AnimescheduleHelper(get_cache(), APP_TOKEN)._find_by_title(
+            "One Piece", [MAL_URL]
+        )
         is None
     )
 
@@ -321,7 +341,10 @@ async def test_find_by_title_without_results_returns_none(
     _answer(search_session, payload)
 
     assert (
-        await AnimescheduleHelper(get_cache())._find_by_title("One Piece", []) is None
+        await AnimescheduleHelper(get_cache(), APP_TOKEN)._find_by_title(
+            "One Piece", []
+        )
+        is None
     )
 
 
@@ -330,7 +353,7 @@ async def test_find_by_title_title_with_query_characters_sends_whole_title(
 ) -> None:
     _answer(search_session, {"anime": []})
 
-    await AnimescheduleHelper(get_cache())._find_by_title("009-1: R&B", [])
+    await AnimescheduleHelper(get_cache(), APP_TOKEN)._find_by_title("009-1: R&B", [])
 
     request = search_session.get.call_args
     sent_url = yarl.URL(request.args[0]).update_query(request.kwargs.get("params", {}))
@@ -338,6 +361,30 @@ async def test_find_by_title_title_with_query_characters_sends_whole_title(
         SEARCH_URL,
         {"q": "009-1: R&B"},
     )
+
+
+async def test_find_by_title_with_app_token_sends_bearer_header(
+    search_session,
+) -> None:
+    _answer(search_session, {"anime": []})
+
+    await AnimescheduleHelper(get_cache(), APP_TOKEN)._find_by_title("One Piece", [])
+
+    assert search_session.get.call_args.kwargs["headers"] == {
+        "Authorization": "Bearer app-token"
+    }
+
+
+@pytest.mark.parametrize("app_token", [None, SecretStr("")])
+async def test_find_by_title_without_app_token_raises_not_configured_without_request(
+    search_session, app_token: SecretStr | None
+) -> None:
+    with pytest.raises(ServiceNotConfiguredError, match="ANIMESCHEDULE_TOKEN"):
+        await AnimescheduleHelper(get_cache(), app_token)._find_by_title(
+            "One Piece", []
+        )
+
+    assert search_session.get.call_count == 0
 
 
 async def test_find_by_title_connection_error_raises_service_network_error(
@@ -348,7 +395,9 @@ async def test_find_by_title_connection_error_raises_service_network_error(
     )
 
     with pytest.raises(ServiceNetworkError):
-        await AnimescheduleHelper(get_cache())._find_by_title("One Piece", [])
+        await AnimescheduleHelper(get_cache(), APP_TOKEN)._find_by_title(
+            "One Piece", []
+        )
 
 
 async def test_find_by_title_error_status_raises_service_network_error(
@@ -358,7 +407,9 @@ async def test_find_by_title_error_status_raises_service_network_error(
     _response(search_session).raise_for_status.side_effect = _error_status(503)
 
     with pytest.raises(ServiceNetworkError):
-        await AnimescheduleHelper(get_cache())._find_by_title("One Piece", [])
+        await AnimescheduleHelper(get_cache(), APP_TOKEN)._find_by_title(
+            "One Piece", []
+        )
 
 
 async def test_find_by_title_invalid_json_raises_service_parse_error(
@@ -367,9 +418,12 @@ async def test_find_by_title_invalid_json_raises_service_parse_error(
     _response(search_session).json.side_effect = json.JSONDecodeError("bad", "", 0)
 
     with pytest.raises(ServiceParseError):
-        await AnimescheduleHelper(get_cache())._find_by_title("One Piece", [])
+        await AnimescheduleHelper(get_cache(), APP_TOKEN)._find_by_title(
+            "One Piece", []
+        )
 
 
+@pytest.mark.usefixtures("app_token_environment")
 async def test_main_found_title_writes_default_output_and_returns_zero(
     search_session, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -382,6 +436,7 @@ async def test_main_found_title_writes_default_output_and_returns_zero(
     assert (tmp_path / "animeschedule.jsonl").exists()
 
 
+@pytest.mark.usefixtures("app_token_environment")
 async def test_main_found_title_writes_chosen_output_and_returns_zero(
     search_session, tmp_path: Path
 ) -> None:
@@ -394,6 +449,7 @@ async def test_main_found_title_writes_chosen_output_and_returns_zero(
     assert json.loads(output.read_text())["title"] == "One Piece"
 
 
+@pytest.mark.usefixtures("app_token_environment")
 async def test_main_without_result_returns_one(search_session, tmp_path: Path) -> None:
     _answer(search_session, {"anime": []})
 
@@ -403,6 +459,7 @@ async def test_main_without_result_returns_one(search_session, tmp_path: Path) -
         assert await main() == 1
 
 
+@pytest.mark.usefixtures("app_token_environment")
 async def test_main_search_error_returns_one(search_session, tmp_path: Path) -> None:
     search_session.get.return_value.__aenter__.side_effect = aiohttp.ClientError(
         "connection refused"
@@ -422,3 +479,31 @@ async def test_main_without_title_argument_exits_with_usage_error() -> None:
         await main()
 
     assert exit_info.value.code == 2
+
+
+async def test_main_without_app_token_returns_one(
+    search_session, tmp_path: Path
+) -> None:
+    with (
+        patch.dict("os.environ", {"ANIMESCHEDULE_TOKEN": ""}),
+        patch.object(
+            sys,
+            "argv",
+            ["script.py", "One Piece", "--output", str(tmp_path / "out.jsonl")],
+        ),
+    ):
+        assert await main() == 1
+
+    assert search_session.get.call_count == 0
+
+
+@pytest.mark.parametrize("app_token", [None, SecretStr("")])
+def test_require_app_token_missing_token_raises_not_configured(
+    app_token: SecretStr | None,
+) -> None:
+    with pytest.raises(ServiceNotConfiguredError, match="ANIMESCHEDULE_TOKEN"):
+        require_app_token(app_token)
+
+
+def test_require_app_token_set_token_returned() -> None:
+    assert require_app_token(APP_TOKEN) is APP_TOKEN

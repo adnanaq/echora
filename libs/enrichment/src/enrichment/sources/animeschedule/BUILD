@@ -1,4 +1,4 @@
-"""AnimSchedule source — API helper, typed models, and canonical mapper."""
+"""AnimeSchedule source — API helper, typed models, and canonical mapper."""
 
 python_sources(
     dependencies=[

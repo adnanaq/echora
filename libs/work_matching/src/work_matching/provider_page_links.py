@@ -16,6 +16,10 @@ Key rules from the work matching glossary:
   such page, except the link back to that page, which only shows how it was found.
 - Multi-work pages: A page naming multiple pages from the same provider (e.g. an
   anthology) does not prove identity for any single work. Its links are set aside.
+- Several-works pages: A page linked with two or more MAL pages, in either
+  direction, covers several works, since a work is what MAL lists (e.g. AniDB's
+  single page for three films MAL lists apart). Its links are set aside too, so
+  it ties none of those works together.
 """
 
 from collections import defaultdict
@@ -24,6 +28,10 @@ from itertools import chain
 
 from work_matching.provider_page import ProviderPage
 from work_matching.provider_page_key import get_page_provider, has_repeated_provider
+
+# A work is what MAL lists, so a page linked with two of its pages covers
+# several works.
+_MAL_PROVIDER = "mal"
 
 
 class ProviderPageLinks:
@@ -71,6 +79,7 @@ class ProviderPageLinks:
         for page in fetched_pages:
             for source_key in self._get_current_keys(page.key):
                 self._add_links(page, source_key, candidate_keys)
+        self._set_aside_several_works_pages()
 
     def get_current_key(self, key: str) -> str:
         """Return the current key a renamed page resolves to, or the key unchanged."""
@@ -125,6 +134,25 @@ class ProviderPageLinks:
             if get_page_provider(target_key) != source_provider:
                 self._linked_page_keys_by_page_key[source_key].add(target_key)
                 self._linked_page_keys_by_page_key[target_key].add(source_key)
+
+    def _set_aside_several_works_pages(self) -> None:
+        """Remove every link of a page linked with two or more MAL pages.
+
+        Such a page covers several works, so a link through it would tie
+        separate works together.
+        """
+        several_works_page_keys = [
+            key
+            for key, linked_page_keys in self._linked_page_keys_by_page_key.items()
+            if sum(
+                get_page_provider(linked_key) == _MAL_PROVIDER
+                for linked_key in linked_page_keys
+            )
+            > 1
+        ]
+        for key in several_works_page_keys:
+            for linked_key in self._linked_page_keys_by_page_key.pop(key):
+                self._linked_page_keys_by_page_key[linked_key].discard(key)
 
     def _get_current_keys(self, key: str) -> tuple[str, ...]:
         """Return the current keys a page key stands for.

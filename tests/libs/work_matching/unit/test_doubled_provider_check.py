@@ -392,6 +392,29 @@ def test_decide_doubled_providers_overlapping_links_undecided(
     linked_page, work_entry
 ) -> None:
     entry = work_entry(
+        KITSU_ONE,
+        KITSU_TWO,
+        "https://kitsu.app/anime/3",
+        "https://anilist.co/anime/1",
+        "https://anidb.net/anime/1",
+    )
+    pages = [
+        linked_page(KITSU_ONE, "https://anilist.co/anime/1"),
+        linked_page(
+            KITSU_TWO, "https://anilist.co/anime/1", "https://anidb.net/anime/1"
+        ),
+        linked_page("https://kitsu.app/anime/3", "https://anidb.net/anime/1"),
+    ]
+    assert _verdict(_decisions(entry, pages)["kitsu"]) == (
+        DoubledProviderOutcome.UNDECIDED,
+        (DoubledProviderReviewReason.OVERLAPPING_LINKS,),
+    )
+
+
+def test_decide_doubled_providers_mal_pages_sharing_linked_pages_unlinked(
+    linked_page, work_entry
+) -> None:
+    entry = work_entry(
         MAL,
         "https://myanimelist.net/anime/2",
         "https://myanimelist.net/anime/3",
@@ -407,7 +430,7 @@ def test_decide_doubled_providers_overlapping_links_undecided(
     ]
     assert _verdict(_decisions(entry, pages)["mal"]) == (
         DoubledProviderOutcome.UNDECIDED,
-        (DoubledProviderReviewReason.OVERLAPPING_LINKS,),
+        (DoubledProviderReviewReason.UNLINKED_PAGES,),
     )
 
 

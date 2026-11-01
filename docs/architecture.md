@@ -45,7 +45,7 @@ graph TB
     end
 
     subgraph Sources["External sources"]
-        API_S[REST / GraphQL / XML<br/>AniList - Kitsu - AniDB - AnimSchedule]
+        API_S[REST / GraphQL / XML<br/>AniList - Kitsu - AniDB - AnimeSchedule]
         CRAWL[zendriver + lxml<br/>MAL - AniSearch - Anime-Planet - AniDB chars]
     end
 

@@ -173,8 +173,13 @@ def canonical_platform(url: str) -> str:
         return "unknown"
     if domain == "wikipedia.org":
         return f"wikipedia_{parts.subdomain.lower().partition('.')[0]}"
-    candidate = parts.fqdn.lower().removeprefix("www.")
-    while candidate != domain:
+    candidate = parts.fqdn.lower()
+    # A host that is the registrable domain keeps its ``www.``: on a public
+    # suffix such as ``www.ne.jp``, removing it would leave a host that never
+    # shortens to the domain.
+    if candidate != domain:
+        candidate = candidate.removeprefix("www.")
+    while candidate.endswith(f".{domain}"):
         if name := _PLATFORM_NAMES.get(candidate):
             return name
         candidate = candidate.partition(".")[2]

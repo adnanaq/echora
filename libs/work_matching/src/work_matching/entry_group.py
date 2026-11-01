@@ -15,6 +15,10 @@ once. The rules:
   seed listing them together is the only thing known about such a page. It
   gets no suggestion when its entry's suggested pages are in different works,
   or when it is a doubled page, which the reviewer must judge.
+- MAL check: in a group of two or more entries, each suggestion is then kept,
+  marked ``, part`` or left out by comparing its page with the MAL page of its
+  suggested work (``mal_page_check``), because a link or a shared entry alone
+  has joined separate works.
 - Answers follow the placement rules of ``page_placement``. A group of two or
   more entries adds two rules:
 
@@ -32,6 +36,8 @@ from collections.abc import Iterable, Mapping, Sequence
 
 from pydantic import JsonValue
 from work_matching.doubled_provider_decision import DoubledProviderDecision
+from work_matching.mal_page_check import check_with_mal_pages
+from work_matching.page_details_comparison import MalPageComparison
 from work_matching.page_placement import (
     OTHER_WORK,
     PagePlacement,
@@ -90,9 +96,50 @@ def suggest_group_page_placements(
     Returns:
         Each suggested page's place in answer words, as
         ``suggest_page_placements`` gives them. A group of two or more entries
-        also joins pages linked with each other into one work, and gives a
-        page no link reaches the work of its own entry's suggested pages.
+        also joins pages linked with each other into one work, gives a page no
+        link reaches the work of its own entry's suggested pages, and then
+        keeps only the suggestions the MAL check in the module docstring keeps.
     """
+    pages = tuple(pages)
+    suggested_placements = _suggest_linked_group_placements(entries, decisions, pages)
+    if len(entries) == 1:
+        return suggested_placements
+    return check_with_mal_pages(
+        entries, decisions, suggested_placements, pages
+    ).placements
+
+
+def list_mal_page_review_reasons(
+    entries: Sequence[WorkEntry],
+    decisions: Sequence[DoubledProviderDecision],
+    pages: Iterable[ProviderPage],
+) -> tuple[MalPageComparison, ...]:
+    """List why the MAL check left pages of a group without a suggestion.
+
+    Args:
+        entries: The group's entries.
+        decisions: The doubled-provider decisions of the combined entry.
+        pages: Details of the group's fetched pages.
+
+    Returns:
+        Each comparison that left a page out, once, in ``MalPageComparison``
+        order; empty for a single entry, which the check does not apply to.
+    """
+    if len(entries) == 1:
+        return ()
+    pages = tuple(pages)
+    suggested_placements = _suggest_linked_group_placements(entries, decisions, pages)
+    return check_with_mal_pages(
+        entries, decisions, suggested_placements, pages
+    ).left_out_comparisons
+
+
+def _suggest_linked_group_placements(
+    entries: Sequence[WorkEntry],
+    decisions: Sequence[DoubledProviderDecision],
+    pages: Sequence[ProviderPage],
+) -> dict[str, str]:
+    """Suggest places from links and entries alone, before the MAL check."""
     combined_entry = combine_group_entries(entries)
     if len(entries) == 1:
         return suggest_page_placements(combined_entry, decisions)

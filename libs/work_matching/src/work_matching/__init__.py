@@ -18,6 +18,7 @@ from work_matching.doubled_provider_pages import (
 )
 from work_matching.entry_group import (
     combine_group_entries,
+    list_mal_page_review_reasons,
     read_group_answer_placements,
     suggest_group_page_placements,
 )
@@ -39,6 +40,8 @@ from work_matching.linked_page_check import (
     suggest_linked_page_answer,
 )
 from work_matching.page_details_comparison import (
+    MalPageComparison,
+    compare_page_with_mal_page,
     get_seed_type,
     is_page_details_matching,
 )
@@ -108,6 +111,9 @@ __all__ = [
     "list_split_work_review_reasons",
     "read_group_answer_placements",
     "suggest_group_page_placements",
+    "list_mal_page_review_reasons",
+    "MalPageComparison",
+    "compare_page_with_mal_page",
     "index_pages_by_current_key",
     "get_page_provider",
     "get_page_key",

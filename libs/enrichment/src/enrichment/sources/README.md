@@ -33,7 +33,7 @@ sources/
 ├── anisearch/                 # AniSearch (plain HTTP + lxml)
 ├── anime_planet/              # Anime-Planet (browser scraping via zendriver + lxml)
 ├── anidb/                     # AniDB (XML API via aiohttp + zendriver for characters)
-└── animeschedule/             # AnimSchedule (REST API via aiohttp)
+└── animeschedule/             # AnimeSchedule (REST API via aiohttp)
 ```
 
 ## Base Framework
@@ -275,7 +275,7 @@ uv run python -m enrichment.sources.anidb.anidb_helper all https://anidb.net/ani
 
 ---
 
-### AnimSchedule (`sources/animeschedule/`)
+### AnimeSchedule (`sources/animeschedule/`)
 
 REST API via aiohttp. Lookup is title-search-based (no persistent anime ID).
 

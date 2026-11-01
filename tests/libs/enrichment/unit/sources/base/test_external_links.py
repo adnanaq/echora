@@ -88,6 +88,12 @@ def test_canonical_platform_other_host_on_listed_domain_uses_domain_name() -> No
     assert canonical_platform("https://zhidao.baidu.com/question/1") == "baidu"
 
 
+def test_canonical_platform_www_domain_on_public_suffix_names_www() -> None:
+    assert (
+        canonical_platform("https://www.ne.jp/asahi/magneticwave/popcan/kowa/") == "www"
+    )
+
+
 @pytest.mark.parametrize(
     ("url", "expected"),
     [

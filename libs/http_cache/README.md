@@ -24,10 +24,14 @@ A Redis-backed caching library providing HTTP-level and result-level caching for
 
 ```mermaid
 flowchart TB
+    Client["API Helper/Fetcher"]
+    ResultDecorator["@cached_result<br/>Decorator"]
+
     subgraph CacheManager["HTTPCacheManager (set by configure_cache)"]
         Config["CacheConfig + RedisConfig<br/>(from Settings)"]
-        RedisStorage["AsyncRedisStorage<br/>(Redis Backend)"]
         Session["CachedAiohttpSession<br/>(Async Context Manager)"]
+        RedisStorage["CredentialFreeRedisStorage<br/>(hishel AsyncRedisStorage,<br/>requests stored without credentials)"]
+        Pacer["NetworkRequestPacer<br/>(gap before each<br/>network request)"]
     end
 
     subgraph Redis["Redis Server"]
@@ -35,12 +39,13 @@ flowchart TB
         ResultKeys["result_cache:*<br/>(Function results)"]
     end
 
-    Client["API Helper/Fetcher"] -->|get_aiohttp_session| CacheManager
+    Client -->|get_aiohttp_session| Session
     Config -->|configures| RedisStorage
     Session -->|uses| RedisStorage
+    Session -->|cache miss| Pacer
     RedisStorage -->|stores/retrieves| HTTPKeys
-
-    ResultDecorator["@cached_result<br/>Decorator"] -->|stores/retrieves| ResultKeys
+    ResultDecorator -->|cache miss| Pacer
+    ResultDecorator -->|stores/retrieves| ResultKeys
 
     style Redis fill:#ff6b6b
     style CacheManager fill:#4ecdc4
@@ -52,12 +57,13 @@ flowchart TB
 
 - **HTTPCacheManager**: Hands out cached aiohttp sessions and owns both Redis clients; the app creates one with `configure_cache` and code reads it with `get_cache()`
 - **CachedAiohttpSession**: Async context manager wrapping aiohttp.ClientSession with caching
-- **AsyncRedisStorage**: hishel's own Redis storage, built by the manager for each session with the source's TTL
+- **CredentialFreeRedisStorage**: hishel's `AsyncRedisStorage`, built by the manager for each session with the source's TTL, storing each request without its `Authorization`, `Proxy-Authorization` and `Cookie` headers
 - **@cached_result**: Decorator for caching function results (used by crawlers)
+- **NetworkRequestPacer**: The gap kept between one process's requests to each provider that reach the network; an answer from the cache never waits
 
 **Storage Strategy**:
 
-- HTTP-level caching: `hishel_cache:*` keys, written by hishel's `AsyncRedisStorage`: `entry:<id>`, `idx:<cache key>`, `stream:<id>` and `stream_done:<id>`
+- HTTP-level caching: `hishel_cache:*` keys, written through `CredentialFreeRedisStorage`, a subclass of hishel's `AsyncRedisStorage`: `entry:<id>`, `idx:<cache key>`, `stream:<id>` and `stream_done:<id>`
 - Result-level caching: `result_cache:*` keys (managed by @cached_result decorator)
 - Both use the same Redis server with different key prefixes for isolation
 
@@ -157,6 +163,7 @@ For usage patterns in the enrichment pipeline (session ownership, event loop man
 - `get_aiohttp_session(service: str, **kwargs)`: a `CachedAiohttpSession` that keeps responses for the source's TTL, or a plain `aiohttp.ClientSession` when caching is off. Accepts the usual `aiohttp.ClientSession` arguments.
 - `get_result_client() -> Redis | None`: the Redis client for crawl results, or None when caching is off.
 - `enabled`: whether caching is on.
+- `network_request_pacer`: the `NetworkRequestPacer` every session it hands out and every `@cached_result` function uses.
 - `close() -> None`: closes both Redis clients.
 
 Each Redis client belongs to the event loop it was created on, so both are created again when called from a different loop.
@@ -181,6 +188,7 @@ async def fetch_anime(url: str) -> dict[str, Any] | None:
 Whether to cache and the TTL are read from `get_cache()` on every call, so the decorator can run at import, before the app configures the cache.
 
 **Features:**
+
 - Automatic cache key generation from function name + schema hash + arguments
 - Schema versioning with automatic invalidation (function source code hashing)
 - Graceful fallback on Redis failures (RedisError) and JSON serialization errors (TypeError)
@@ -206,6 +214,33 @@ Whether to cache and the TTL are read from `get_cache()` on every call, so the d
 - **Use case:** Non-HTTP operations (web scraping, computations, file I/O)
 - **Caches:** Serialized function return values (JSON)
 - **Implementation:** Python decorator with Redis storage and automatic schema invalidation
+
+### Network Request Pacing
+
+A provider's rate limit counts the requests that reach it, not the answers the
+cache gives, so the gap between requests is kept where a request goes to the
+network (`NetworkRequestPacer`, owned by the manager):
+
+- **HTTP sessions:** every session from `get_aiohttp_session(service)` carries
+  an aiohttp request-start hook (`TraceConfig.on_request_start`). aiohttp runs
+  it only for a request that goes to the network; inside
+  `CachedAiohttpSession` hishel sends one only on a cache miss.
+- **`@cached_result`:** the function waits its turn only when it runs, on a
+  cache miss, under its `service`.
+- **Gaps:** `set_seconds_between_requests(seconds)` sets the gap for every
+  provider; `set_minimum_seconds_between_requests(service, seconds)` sets a
+  provider's own floor, such as AniDB's `ANIDB_MIN_REQUEST_INTERVAL`. The
+  larger applies. No gap is set by default.
+- **Order:** each request claims its time before waiting, so requests made at
+  once to one provider still go out one gap apart; different providers never
+  wait for each other.
+- **Timeouts:** aiohttp starts a request's total timeout before the hook, so
+  the wait counts towards it; provider timeouts are 30 to 60 seconds.
+
+```python
+cache = configure_cache(settings.cache, settings.redis)
+cache.network_request_pacer.set_seconds_between_requests(2)
+```
 
 ### Cache Management Features
 
@@ -236,18 +271,23 @@ The cache manager is designed for **async concurrency** within Python's asyncio 
 ### Thread-Safety Guarantees
 
 **CachedAiohttpSession:**
+
 - Safe for concurrent async requests within single event loop
 - Multiple instances can share same Redis storage backend
 - Not safe for sharing across threads or event loops
 
 **AsyncRedisStorage (hishel):**
+
 - Writes an entry and its index in one Redis transaction
 - Serves a response only once its body is stored completely; a body cut off mid-stream is dropped
 - Keeps each response for the source's TTL from when it was fetched; a cache hit does not extend it
 - Does not cache response bodies over 10 MB; they are still returned to the caller
 - A removed entry leaves the index at once and Redis frees its keys 180 s later
+- Stores no credential: hishel keeps each request next to its response, headers included, and has no option to leave headers out, so `CredentialFreeRedisStorage` stores a copy without `Authorization`, `Proxy-Authorization` and `Cookie`. The request sent over the network keeps them.
+- Finds an entry by its URL alone, so a response fetched with a token and one fetched without share an entry. A source whose answers depend on a token (AnimeSchedule) needs it set before its responses are cached.
 
 **@cached_result Decorator:**
+
 - Safe for concurrent async function calls
 - Redis atomic operations ensure process-safe caching
 - Automatic per-event-loop client management
@@ -303,6 +343,7 @@ For enrichment pipeline-specific tests, see [enrichment/README.md - Testing](../
 ### Result Caching (`@cached_result`)
 
 **None Values Are Never Cached:**
+
 ```python
 @cached_result(ttl=3600)
 async def fetch_data(id: str) -> Optional[dict]:
@@ -312,6 +353,7 @@ async def fetch_data(id: str) -> Optional[dict]:
 ```
 
 **Schema Hash Changes Invalidate Cache:**
+
 ```python
 # Version 1 (schema_hash: abc123...)
 @cached_result()

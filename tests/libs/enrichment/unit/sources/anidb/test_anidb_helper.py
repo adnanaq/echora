@@ -29,6 +29,7 @@ from enrichment.sources.base.exceptions import (
 )
 from http_cache import HTTPCacheManager
 from http_cache.aiohttp_adapter import CachedAiohttpSession
+from http_cache.network_request_pacer import NetworkRequestPacer
 
 pytestmark = pytest.mark.asyncio
 
@@ -339,50 +340,35 @@ async def test_make_request_concurrent_requests_queue_one_at_a_time(
     assert not overlapped
 
 
-async def test_make_request_successive_helpers_keep_shortest_gap(cache, waits) -> None:
+def test_anidb_helper_sets_network_gap_from_config(cache) -> None:
+    cache.network_request_pacer = NetworkRequestPacer()
     config = EnrichmentConfig()
-
-    for aid in range(3):
-        await AniDBHelper(config, cache)._make_request({"aid": aid})
-
-    gaps = _waited_seconds(waits)
-    assert len(gaps) == 2
-    assert all(
-        gap == pytest.approx(config.anidb_min_request_interval, abs=0.5) for gap in gaps
-    )
+    AniDBHelper(config, cache)
+    assert cache.network_request_pacer.get_seconds_between_requests(
+        "anidb"
+    ) == pytest.approx(config.anidb_min_request_interval)
 
 
-async def test_adaptive_rate_limit_recent_request_waits_shortest_gap(
-    cache, waits
-) -> None:
-    helper = AniDBHelper(EnrichmentConfig(), cache)
-    _state.last_request_at = time.time()
-
-    await helper._adaptive_rate_limit()
-
-    assert _waited_seconds(waits) == [
-        pytest.approx(helper.min_request_interval, abs=0.1)
-    ]
-
-
-async def test_adaptive_rate_limit_old_request_does_not_wait(cache, waits) -> None:
-    helper = AniDBHelper(EnrichmentConfig(), cache)
-    _state.last_request_at = time.time() - helper.max_request_interval
-
-    await helper._adaptive_rate_limit()
-
-    assert _waited_seconds(waits) == []
-
-
-async def test_adaptive_rate_limit_retry_waits_half_again(cache, waits) -> None:
+async def test_adaptive_rate_limit_without_failures_does_not_wait(cache, waits) -> None:
     helper = AniDBHelper(EnrichmentConfig(), cache)
     _state.last_request_at = time.time()
 
     await helper._adaptive_rate_limit(is_retry=True)
 
-    assert _waited_seconds(waits) == [
-        pytest.approx(helper.min_request_interval * 1.5, abs=0.1)
-    ]
+    assert _waited_seconds(waits) == []
+
+
+async def test_adaptive_rate_limit_retry_after_failure_waits_half_again(
+    cache, waits
+) -> None:
+    helper = AniDBHelper(EnrichmentConfig(), cache)
+    _state.consecutive_failures = 1
+    _state.last_request_at = time.time()
+
+    await helper._adaptive_rate_limit(is_retry=True)
+
+    expected = min(helper.error_cooldown_base * 2, helper.max_request_interval) * 1.5
+    assert _waited_seconds(waits) == [pytest.approx(expected, abs=0.1)]
 
 
 async def test_adaptive_rate_limit_after_failures_waits_error_cooldown(

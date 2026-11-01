@@ -16,6 +16,10 @@ rules:
 - Renamed pages: a page an entry lists under an old address records its
   current key, so the old address can be dropped (the rules send it to review
   otherwise).
+- Two passes: a second-pass correction stands in for the first pass's
+  correction of the same page of the same seed entry (``merge_corrections``).
+  The second pass places pages where the first pass left them, so its
+  correction already holds the page's final place.
 
 How corrected entries are rebuilt from the corrections is in
 ``corrected_entries``.
@@ -64,8 +68,9 @@ class SeedCorrection(BaseModel):
     # run MyAnimeList lists whole, so enrichment combines it with the work's
     # other part pages rather than taking it for the whole work.
     is_part_page: bool = False
-    # Whether the entry's anime id now comes from this added page (MAL first), so
-    # the search entry stored under the entry's old id must be replaced.
+    # Whether the anime id of the seed entry this added page ends in now comes
+    # from the page (MAL first), so the search entry stored under the entry's
+    # old id must be replaced. Set after both passes (``mark_anime_id_pages``).
     is_anime_id_page: bool = False
     # Why the page is placed here: the doubled-provider decision's outcome name,
     # the linked-page decision's reason name, or ``review answer``.
@@ -100,3 +105,31 @@ def write_corrections(path: str | Path, corrections: Iterable[SeedCorrection]) -
             )
         ),
     )
+
+
+def merge_corrections(
+    first_pass_corrections: Iterable[SeedCorrection],
+    second_pass_corrections: Iterable[SeedCorrection],
+) -> list[SeedCorrection]:
+    """Merge two passes' corrections, the second standing in for the first's.
+
+    Args:
+        first_pass_corrections: The first pass's corrections.
+        second_pass_corrections: The second pass's corrections, made on the
+            entries as the first pass left them.
+
+    Returns:
+        Each first-pass correction no second-pass correction names by the same
+        seed entry and page, in order, then every second-pass correction.
+    """
+    second_pass_corrections = list(second_pass_corrections)
+    replaced_entry_pages = {
+        (correction.entry_reference_page, correction.page_key)
+        for correction in second_pass_corrections
+    }
+    return [
+        correction
+        for correction in first_pass_corrections
+        if (correction.entry_reference_page, correction.page_key)
+        not in replaced_entry_pages
+    ] + second_pass_corrections

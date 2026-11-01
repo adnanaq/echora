@@ -1,4 +1,4 @@
-"""AnimSchedule source unit tests."""
+"""AnimeSchedule source unit tests."""
 
 python_tests(
     dependencies=[
