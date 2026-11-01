@@ -166,50 +166,37 @@ async def test_fetch_entry_pages_provider_without_helper_skipped(tmp_path) -> No
     assert summary.outcomes == {}
 
 
-async def test_fetch_entry_pages_animeschedule_found_through_mal_page(
-    tmp_path,
-) -> None:
-    fetcher, api_fetcher = _fetcher(
-        tmp_path,
-        {
-            ("mal", MAL): {"title": "One Piece", "sources": [MAL]},
-            ("animeschedule", MAL): {"title": "One Piece", "sources": [SCHEDULE, MAL]},
-        },
-    )
-    await fetcher.fetch_entry_pages([_one_piece(MAL, KITSU)])
-    searched_page = ProviderPageStore(tmp_path / "pages.jsonl").get_page(SCHEDULE)
-    assert searched_page is not None
-    assert searched_page.searched_by == ("mal:anime:21",)
-    assert (
-        "animeschedule",
-        {"mal_url": MAL},
-        {"title": "One Piece", "sources": [MAL]},
-    ) in (api_fetcher.requests)
-
-
-async def test_fetch_entry_pages_animeschedule_search_done_not_repeated(
+async def test_search_animeschedule_found_through_mal_page_stored_as_searched_page(
     tmp_path,
 ) -> None:
     fetcher, api_fetcher = _fetcher(
         tmp_path,
         {("animeschedule", MAL): {"title": "One Piece", "sources": [SCHEDULE, MAL]}},
     )
-    await fetcher.fetch_entry_pages([_one_piece(MAL)])
-    requests_before = len(api_fetcher.requests)
-    await fetcher.fetch_entry_pages([_one_piece(MAL)])
-    assert len(api_fetcher.requests) == requests_before
+    await fetcher.search_animeschedule([_one_piece(MAL, KITSU)])
+    searched_page = ProviderPageStore(tmp_path / "pages.jsonl").get_page(SCHEDULE)
+    assert searched_page is not None
+    assert searched_page.searched_by == ("mal:anime:21",)
+    assert api_fetcher.requests == [
+        ("animeschedule", {"mal_url": MAL}, {"title": "One Piece", "sources": [MAL]})
+    ]
 
 
-async def test_fetch_entry_pages_animeschedule_without_anime_stores_nothing(
-    tmp_path,
-) -> None:
-    fetcher, _ = _fetcher(tmp_path, {("mal", MAL): {"title": "One Piece"}})
-    summary = await fetcher.fetch_entry_pages([_one_piece(MAL)])
-    assert len(ProviderPageStore(tmp_path / "pages.jsonl")) == 1
-    assert summary.outcomes == {
-        FetchOutcome.FETCHED: 1,
-        FetchOutcome.NOT_LISTED: 1,
-    }
+async def test_search_animeschedule_search_done_not_repeated(tmp_path) -> None:
+    fetcher, api_fetcher = _fetcher(
+        tmp_path,
+        {("animeschedule", MAL): {"title": "One Piece", "sources": [SCHEDULE, MAL]}},
+    )
+    await fetcher.search_animeschedule([_one_piece(MAL)])
+    await fetcher.search_animeschedule([_one_piece(MAL)])
+    assert len(api_fetcher.requests) == 1
+
+
+async def test_search_animeschedule_without_anime_stores_nothing(tmp_path) -> None:
+    fetcher, _ = _fetcher(tmp_path, {})
+    summary = await fetcher.search_animeschedule([_one_piece(MAL)])
+    assert len(ProviderPageStore(tmp_path / "pages.jsonl")) == 0
+    assert summary.outcomes == {FetchOutcome.NOT_LISTED: 1}
 
 
 async def test_fetch_entry_pages_page_in_two_entries_fetched_once(tmp_path) -> None:
@@ -218,16 +205,16 @@ async def test_fetch_entry_pages_page_in_two_entries_fetched_once(tmp_path) -> N
     assert len(api_fetcher.requests) == 1
 
 
-async def test_fetch_entry_pages_entry_with_two_mal_pages_looks_up_animeschedule_twice(
+async def test_search_animeschedule_entry_with_two_mal_pages_searches_twice(
     tmp_path,
 ) -> None:
     other_mal = "https://myanimelist.net/anime/22"
     fetcher, api_fetcher = _fetcher(tmp_path, {})
-    await fetcher.fetch_entry_pages([_one_piece(MAL, other_mal)])
-    searches = [
-        ids for service, ids, _ in api_fetcher.requests if service == "animeschedule"
+    await fetcher.search_animeschedule([_one_piece(MAL, other_mal)])
+    assert [ids for _, ids, _ in api_fetcher.requests] == [
+        {"mal_url": MAL},
+        {"mal_url": other_mal},
     ]
-    assert searches == [{"mal_url": MAL}, {"mal_url": other_mal}]
 
 
 class KitsuRaisingApiFetcher(ScriptedApiFetcher):
@@ -263,16 +250,16 @@ async def test_fetch_entry_pages_unexpected_error_fails_page_and_other_queues_fi
     assert "mal:anime:21" in ProviderPageStore(tmp_path / "pages.jsonl")
 
 
-async def test_fetch_entry_pages_animeschedule_search_finding_nothing_repeated(
+async def test_search_animeschedule_finding_nothing_without_record_repeated(
     tmp_path,
 ) -> None:
     fetcher, api_fetcher = _fetcher(tmp_path, {})
-    await fetcher.fetch_entry_pages([_one_piece(MAL)])
-    await fetcher.fetch_entry_pages([_one_piece(MAL)])
-    searches = [
-        ids for service, ids, _ in api_fetcher.requests if service == "animeschedule"
+    await fetcher.search_animeschedule([_one_piece(MAL)])
+    await fetcher.search_animeschedule([_one_piece(MAL)])
+    assert [ids for _, ids, _ in api_fetcher.requests] == [
+        {"mal_url": MAL},
+        {"mal_url": MAL},
     ]
-    assert searches == [{"mal_url": MAL}, {"mal_url": MAL}]
 
 
 async def test_fetch_entry_pages_stored_page_in_two_entries_counted_once(
@@ -411,22 +398,34 @@ async def test_fetch_entry_pages_logs_progress_every_hundred_requests(
     ]
 
 
-async def test_fetch_entry_pages_search_not_listed_in_release_not_repeated(
+async def test_search_animeschedule_not_listed_in_release_not_repeated(
     tmp_path,
 ) -> None:
-    api_fetcher = ScriptedApiFetcher({("mal", MAL): {"title": "One Piece"}})
+    api_fetcher = ScriptedApiFetcher({})
     fetcher = ProviderPageFetcher(
         lambda: api_fetcher,
         ProviderPageStore(tmp_path / "pages.jsonl"),
         not_listed_searches=set(),
     )
+    await fetcher.search_animeschedule([_one_piece(MAL)])
+    summary = await fetcher.search_animeschedule([_one_piece(MAL)])
+    assert len(api_fetcher.requests) == 1
+    assert summary.outcomes == {FetchOutcome.NOT_LISTED_EARLIER: 1}
+
+
+async def test_fetch_entry_pages_fetches_entry_pages_without_searching(
+    tmp_path,
+) -> None:
+    fetcher, api_fetcher = _fetcher(tmp_path, {("mal", MAL): {"title": "One Piece"}})
     await fetcher.fetch_entry_pages([_one_piece(MAL)])
-    summary = await fetcher.fetch_entry_pages([_one_piece(MAL)])
-    assert [service for service, _, _ in api_fetcher.requests] == [
-        "mal",
-        "animeschedule",
-    ]
-    assert summary.outcomes == {
-        FetchOutcome.ALREADY_STORED: 1,
-        FetchOutcome.NOT_LISTED_EARLIER: 1,
-    }
+    assert [service for service, _, _ in api_fetcher.requests] == ["mal"]
+
+
+async def test_search_animeschedule_searches_without_fetching_pages(tmp_path) -> None:
+    fetcher, api_fetcher = _fetcher(
+        tmp_path,
+        {("animeschedule", MAL): {"title": "One Piece", "sources": [SCHEDULE, MAL]}},
+    )
+    summary = await fetcher.search_animeschedule([_one_piece(MAL)])
+    assert [service for service, _, _ in api_fetcher.requests] == ["animeschedule"]
+    assert summary.outcomes == {FetchOutcome.FETCHED: 1}

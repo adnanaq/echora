@@ -49,7 +49,8 @@ from enrichment.pipeline.page_requests import (
     PageRequest,
     RequestResult,
     build_page_request,
-    list_entry_requests,
+    list_animeschedule_search_requests,
+    list_entry_page_requests,
 )
 from work_matching import (
     ProviderPage,
@@ -138,11 +139,11 @@ class ProviderPageFetcher:
         self._is_stored_page_fetched_again = is_stored_page_fetched_again
         self._not_listed_searches = not_listed_searches
 
-    async def fetch_entry_pages(
-        self,
-        entries: Iterable[WorkEntry],
-    ) -> FetchSummary:
-        """Fetch every page of these entries, and AnimeSchedule's, not stored yet.
+    async def fetch_entry_pages(self, entries: Iterable[WorkEntry]) -> FetchSummary:
+        """Fetch every page of these entries that the store does not hold yet.
+
+        AnimeSchedule is searched separately (``search_animeschedule``), so a
+        caller can fetch the entries' own pages before the slow searches.
 
         Args:
             entries: The entries to fetch, such as every seed entry.
@@ -151,7 +152,22 @@ class ProviderPageFetcher:
             A count per outcome, and the error of each failed page.
         """
         return await self._fetch_requests(
-            request for entry in entries for request in list_entry_requests(entry)
+            request for entry in entries for request in list_entry_page_requests(entry)
+        )
+
+    async def search_animeschedule(self, entries: Iterable[WorkEntry]) -> FetchSummary:
+        """Search AnimeSchedule for these entries, skipping searches already done.
+
+        Args:
+            entries: The entries to search AnimeSchedule for.
+
+        Returns:
+            A count per outcome, and the error of each failed search.
+        """
+        return await self._fetch_requests(
+            request
+            for entry in entries
+            for request in list_animeschedule_search_requests(entry)
         )
 
     async def fetch_linked_pages(

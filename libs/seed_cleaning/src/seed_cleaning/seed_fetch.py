@@ -13,6 +13,11 @@ Each item gives the rule, then the reason for it.
   and later steps, such as discovery, read the same pages.
 - Linked pages are listed after the seed pages are stored, because their links
   are read from the stored pages.
+- AnimeSchedule is searched after the linked pages. Its searches are the slow
+  part (one per entry, about 12 hours over a release), and the passes need the
+  linked pages more. The pages AnimeSchedule finds link pages too, so the
+  linked pages are listed once more after the searches; nearly all are stored
+  by then.
 - A linked page is fetched once, with the title of the first entry in seed
   order linking it; some helpers search by title.
 """
@@ -22,7 +27,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from enrichment.pipeline.fetch_summary import FetchSummary
+from enrichment.pipeline.fetch_summary import FetchSummary, combine_fetch_summaries
 from enrichment.pipeline.page_requests import FETCHED_PROVIDERS
 from enrichment.pipeline.provider_page_fetcher import ProviderPageFetcher
 from work_matching import (
@@ -42,6 +47,7 @@ class SeedFetchSummary:
 
     seed_page_summary: FetchSummary
     linked_page_summary: FetchSummary
+    animeschedule_search_summary: FetchSummary
 
 
 async def fetch_seed_and_linked_pages(
@@ -49,7 +55,14 @@ async def fetch_seed_and_linked_pages(
     store: ProviderPageStore,
     page_fetcher: ProviderPageFetcher,
 ) -> SeedFetchSummary:
-    """Fetch every seed entry's pages, then every unheld page they link.
+    """Fetch every seed entry's pages, the unheld pages they link, then AnimeSchedule's.
+
+    Each item is one step, in order.
+
+    - Every seed entry's own pages.
+    - Every unheld page those pages link.
+    - The AnimeSchedule searches.
+    - The unheld pages the found AnimeSchedule pages add to those links.
 
     Args:
         known_work_entries: Every entry of the seed release.
@@ -57,13 +70,30 @@ async def fetch_seed_and_linked_pages(
         page_fetcher: The fetcher adding pages to that store.
 
     Returns:
-        The summary of each of the two fetches.
+        The summary of the seed pages, of both linked-page fetches together,
+        and of the AnimeSchedule searches.
     """
     seed_page_summary = await page_fetcher.fetch_entry_pages(known_work_entries)
-    linked_page_summary = await page_fetcher.fetch_linked_pages(
-        list_unheld_linked_page_titles(known_work_entries, store)
+    linked_page_titles = list_unheld_linked_page_titles(known_work_entries, store)
+    linked_page_summary = await page_fetcher.fetch_linked_pages(linked_page_titles)
+    animeschedule_search_summary = await page_fetcher.search_animeschedule(
+        known_work_entries
     )
-    return SeedFetchSummary(seed_page_summary, linked_page_summary)
+    # Only the links the found AnimeSchedule pages add are new.
+    linked_by_searched_page_summary = await page_fetcher.fetch_linked_pages(
+        {
+            page_key: title
+            for page_key, title in list_unheld_linked_page_titles(
+                known_work_entries, store
+            ).items()
+            if page_key not in linked_page_titles
+        }
+    )
+    return SeedFetchSummary(
+        seed_page_summary,
+        combine_fetch_summaries(linked_page_summary, linked_by_searched_page_summary),
+        animeschedule_search_summary,
+    )
 
 
 def list_unheld_linked_page_titles(

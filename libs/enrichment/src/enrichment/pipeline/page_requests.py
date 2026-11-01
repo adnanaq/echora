@@ -91,22 +91,35 @@ def build_page_request(
     return PageRequest(helper.service, helper.id_field, request_address, title)
 
 
-def list_entry_requests(entry: WorkEntry) -> list[PageRequest]:
-    """List every request one entry needs, whether done already or not.
+def list_entry_page_requests(entry: WorkEntry) -> list[PageRequest]:
+    """List the requests for every page an entry lists, whether done already or not.
 
     Args:
         entry: The work entry whose pages to request.
 
     Returns:
-        The page requests, then the AnimeSchedule searches.
+        One request per page of a provider with an enrichment helper.
     """
-    requests = [
+    return [
         request
         for key, address in entry.addresses_by_page_key.items()
         if (request := build_page_request(key, entry.title, address))
     ]
-    # AnimeSchedule is searched by the first provider in the order that
-    # has pages in the entry: MAL, else AniList, else AniDB.
+
+
+def list_animeschedule_search_requests(entry: WorkEntry) -> list[PageRequest]:
+    """List the AnimeSchedule searches an entry needs, whether done already or not.
+
+    AnimeSchedule is searched by the first provider in the order that has pages
+    in the entry: MAL, else AniList, else AniDB, once per page of it.
+
+    Args:
+        entry: The work entry to search AnimeSchedule for.
+
+    Returns:
+        One search per page of that provider; none when the entry has no page
+        of any of them.
+    """
     for provider in _SEARCHED_BY_PROVIDERS:
         searched_by_addresses = [
             address
@@ -114,7 +127,7 @@ def list_entry_requests(entry: WorkEntry) -> list[PageRequest]:
             if get_page_provider(key) == provider
         ]
         if searched_by_addresses:
-            requests.extend(
+            return [
                 PageRequest(
                     _SEARCHED_PAGE_SERVICE,
                     _HELPER_BY_PROVIDER[provider].id_field,
@@ -123,6 +136,5 @@ def list_entry_requests(entry: WorkEntry) -> list[PageRequest]:
                     is_page_search=True,
                 )
                 for address in searched_by_addresses
-            )
-            break
-    return requests
+            ]
+    return []

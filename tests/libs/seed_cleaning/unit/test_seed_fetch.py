@@ -12,6 +12,7 @@ ONE_PIECE_MAL = "https://myanimelist.net/anime/21"
 ONE_PIECE_KITSU = "https://kitsu.app/anime/12"
 ONE_PIECE_FILM_ANIDB = "https://anidb.net/anime/1530"
 ONE_PIECE_FILM_ANIDB_KEY = "anidb:anime:1530"
+ONE_PIECE_SCHEDULE = "https://animeschedule.net/anime/one-piece"
 
 
 def _seed_entry(title: str, *addresses: str) -> dict[str, Any]:
@@ -87,6 +88,57 @@ async def test_fetch_seed_and_linked_pages_page_seed_holds_not_fetched_as_linked
         ProviderPageFetcher(lambda: api_fetcher, store),
     )
     assert seed_fetch_summary.linked_page_summary.outcomes == {}
+
+
+async def test_fetch_seed_and_linked_pages_linked_pages_fetched_before_searches(
+    tmp_path,
+) -> None:
+    known_work_entries = KnownWorkEntriesFromSeed(
+        [_seed_entry("One Piece", ONE_PIECE_MAL)]
+    )
+    api_fetcher = _api_fetcher(
+        {
+            ("mal", ONE_PIECE_MAL): {
+                "title": "One Piece",
+                "sources": [ONE_PIECE_FILM_ANIDB],
+            },
+            ("anidb", ONE_PIECE_FILM_ANIDB): {"title": "One Piece Film"},
+        }
+    )
+    store = ProviderPageStore(tmp_path / "pages.jsonl")
+    await fetch_seed_and_linked_pages(
+        known_work_entries, store, ProviderPageFetcher(lambda: api_fetcher, store)
+    )
+    assert [
+        call.kwargs["only_services"][0]
+        for call in api_fetcher.fetch_all_data.call_args_list
+    ] == ["mal", "anidb", "animeschedule"]
+
+
+async def test_fetch_seed_and_linked_pages_page_linked_by_searched_page_fetched(
+    tmp_path,
+) -> None:
+    known_work_entries = KnownWorkEntriesFromSeed(
+        [_seed_entry("One Piece", ONE_PIECE_MAL)]
+    )
+    api_fetcher = _api_fetcher(
+        {
+            ("mal", ONE_PIECE_MAL): {"title": "One Piece"},
+            ("animeschedule", ONE_PIECE_MAL): {
+                "title": "One Piece",
+                "sources": [ONE_PIECE_SCHEDULE, ONE_PIECE_MAL, ONE_PIECE_FILM_ANIDB],
+            },
+            ("anidb", ONE_PIECE_FILM_ANIDB): {"title": "One Piece Film"},
+        }
+    )
+    store = ProviderPageStore(tmp_path / "pages.jsonl")
+    seed_fetch_summary = await fetch_seed_and_linked_pages(
+        known_work_entries, store, ProviderPageFetcher(lambda: api_fetcher, store)
+    )
+    assert ONE_PIECE_FILM_ANIDB_KEY in store
+    assert seed_fetch_summary.animeschedule_search_summary.outcomes == {
+        FetchOutcome.FETCHED: 1
+    }
 
 
 @pytest.mark.parametrize(
