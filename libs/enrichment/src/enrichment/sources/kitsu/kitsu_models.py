@@ -7,7 +7,7 @@ Fields use camelCase to match the Kitsu API attribute names directly.
 import re
 from typing import Annotated
 
-from common.models.anime import ThemeEntry
+from common.models.anime import AnimeRating, ThemeEntry
 from enrichment.sources.base.field_types import (
     PlainText,
     StrippedText,
@@ -21,6 +21,12 @@ _LINE_BREAK = re.compile(r"\s*(?:<br\s*/?>|</?p\b[^>]*>|\n)\s*", re.IGNORECASE)
 _VALUE_CONTINUATION = re.compile(r"^[\d(]")
 # Prose start embedded in a value-continuation chunk: after ")" or a digit, a Capital word
 _PROSE_IN_VALUE = re.compile(r"[)\d]\s+([A-Z][a-z])")
+# Rating guide wordings for teen content: "13 - Teens 13 or older", "PG-13".
+_TEEN_CONTENT_IN_RATING_GUIDE = re.compile(r"13|teen", re.IGNORECASE)
+# Rating guide wordings for sexual content: "partial nudity", "Ecchi", "smut".
+_SEXUAL_CONTENT_IN_RATING_GUIDE = re.compile(
+    r"nudit|ecchi|sex|smut|erotica", re.IGNORECASE
+)
 
 
 def _without_null_texts(values: object) -> object:
@@ -159,6 +165,40 @@ class KitsuAnimeAttributes(BaseModel):
     youtubeVideoId: str | None = None
     nextRelease: str | None = None  # ISO datetime e.g. "2023-10-08T09:30:00.000+09:00"
     nsfw: bool = False
+
+    @property
+    def content_rating(self) -> AnimeRating:
+        """Read the age rating from Kitsu's rating code and its free-text guide.
+
+        Kitsu's ``ageRating`` code has no PG-13 or R+ level; editors note
+        those in ``ageRatingGuide``, typed by hand in many wordings.
+
+        - The code sets the level (G, PG, R, R18), because it comes from a
+          fixed list and the guide is free text.
+        - A guide naming teen content ("13", "teen") raises PG to PG-13.
+        - A guide naming sexual content ("nudity", "ecchi", "smut") raises R to
+          R+, never to Rx: Kitsu codes adult titles R18.
+        - Without a code, the guide alone is read the same way. A guide that
+          still has no meaning is logged, since the rating is then unknown.
+
+        Returns:
+            The canonical rating, or ``UNKNOWN`` when neither field gives one.
+        """
+        guide = self.ageRatingGuide or ""
+        is_teen_content = bool(_TEEN_CONTENT_IN_RATING_GUIDE.search(guide))
+        is_sexual_content = bool(_SEXUAL_CONTENT_IN_RATING_GUIDE.search(guide))
+        if self.ageRating:
+            coded_rating = AnimeRating(self.ageRating)
+            if coded_rating is AnimeRating.PG and is_teen_content:
+                return AnimeRating.PG13
+            if coded_rating is AnimeRating.R and is_sexual_content:
+                return AnimeRating.RPLUS
+            return coded_rating
+        if is_sexual_content:
+            return AnimeRating.RPLUS
+        if is_teen_content:
+            return AnimeRating.PG13
+        return AnimeRating(guide) if guide.strip() else AnimeRating.UNKNOWN
 
     @property
     def scored_by(self) -> int | None:

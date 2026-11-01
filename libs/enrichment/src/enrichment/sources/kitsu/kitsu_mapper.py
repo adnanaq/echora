@@ -11,7 +11,6 @@ from common.models.anime import (
     AiredDates,
     Anime,
     AnimeImages,
-    AnimeRating,
     AnimeStatus,
     AnimeType,
     Broadcast,
@@ -137,11 +136,7 @@ def anime_from_kitsu(anime: KitsuAnime) -> dict[str, Any]:
     if start_dt or end_dt:
         aired_dates = AiredDates(aired_from=start_dt, aired_to=end_dt)
 
-    # ageRating alone collapses PG-13 into PG and R+ into R; the guide carries
-    # the distinction, so prefer it and fall back to the code.
-    rating = AnimeRating(attrs.ageRatingGuide)
-    if rating is AnimeRating.UNKNOWN:
-        rating = AnimeRating(attrs.ageRating)
+    rating = attrs.content_rating
 
     by_role: dict[str, list[CompanyEntry]] = {
         "studio": [],

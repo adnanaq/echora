@@ -199,16 +199,24 @@ Kitsu and AnimePlanet have **no dedicated source material field**. Kitsu confirm
 | ----------- | ---------------------------------- | ------------------- | -------------------------------------------- | --------------------------- | ------------------------ | --------------------------- |
 | `G`         | `"G - All Ages"`                   | `"G"` (6,727)       | —                                            | —                           | —                        | On Your Mark (1047)         |
 | `PG`        | `"PG - Children"`                  | `"PG"` (10,394)     | —                                            | —                           | —                        | Pokemon (527), One Piece    |
-| `PG13`      | `"PG-13 - Teens 13 or older"`      | —                   | —                                            | —                           | —                        | One Piece (21)              |
+| `PG13`      | `"PG-13 - Teens 13 or older"`      | `"PG"` + teen guide | —                                            | —                           | —                        | One Piece (21)              |
 | `R17`       | `"R - 17+ (violence & profanity)"` | `"R"` (2,497)       | —                                            | —                           | —                        | Cowboy Bebop (1), AoT       |
-| `R_PLUS`    | `"R+ - Mild Nudity"`               | —                   | —                                            | —                           | —                        | MAL 19, 26, 32              |
+| `R_PLUS`    | `"R+ - Mild Nudity"`               | `"R"` + nudity guide | —                                            | —                           | —                        | MAL 19, 26, 32              |
 | `RX`        | `"Rx - Hentai"`                    | `"R18"` (0 entries) | —                                            | —                           | —                        | MAL 188, 203                |
 | _(omit)_    | `null`                             | `null`              | —                                            | —                           | —                        | Some upcoming/obscure anime |
 | _(numeric)_ | —                                  | —                   | `permanent` / `temporary` / `review` ratings | `aggregateRating` (JSON-LD) | community rating (score) | One Piece (69)              |
 
 **MAL**: `AnimeRating` enum uses MAL's full rating strings — no normalization needed.
 **AniList**: Uses `isAdult` (boolean) instead of rating.
-**Kitsu**: 3 active values (G, PG, R) + R18 (0 entries). `ageRatingGuide` has free-text description. No PG-13 equivalent — Kitsu maps PG-13 content to PG with guide text, which the mapper prefers over `ageRating`. The guide is what tells PG-13 from PG: over 853 cached Kitsu anime with `ageRating` `"PG"`, the guide is `"Children"` 32 times (→ `PG`) and a teen wording 197 times (→ `PG13`): `"Teens 13 or older"` 167, `"Teens 13 or Older"` 16, `"13 teens or older"` 9, `"13"` 5. With `ageRating` `"R"` it is `"17+ (violence & profanity)"` 30, `"Mild Nudity"` 16, and the variants `"violence & profanity"`, `"Violence, Profanity"`, `"17+ (violence and profanity)"`, `"Violence and Profanity"`, `"Violence"` (→ `R`). `"Some Graphic Violence"` (1, with `"PG"`) has no mapping, so the code `"PG"` is used.
+**Kitsu**: codes `G`, `PG`, `R` and `R18`; the public API returns no `R18` titles. Kitsu has no PG-13 or R+ code: editors note them in the free-text `ageRatingGuide`, typed in many wordings ("Teens 13 or older", "13 - Teens 13 or older", "13 and older"; "Mild Nudity", "partial nudity", "Ecchi"). `KitsuAnimeAttributes.content_rating` reads both fields:
+
+- The code sets the level, because it comes from a fixed list.
+- A guide naming teen content (`13`, `teen`) raises `PG` to `PG13`.
+- A guide naming sexual content (`nudit`, `ecchi`, `sex`, `smut`, `erotica`) raises `R` to `R_PLUS`, never to `RX`, since Kitsu codes adult titles `R18`.
+- A guide disagreeing with the code otherwise is ignored (code `G` with "Teens 13 or older" stays `G`).
+- Without a code, the guide alone is read the same way, then through the `AnimeRating` map; only a guide that still has no meaning is logged.
+
+Over 20,230 cached Kitsu anime: `PG` 9,645, `G` 6,080, `R` 2,355, no code 2,145 (2,129 of them with no guide either).
 **AnimeSchedule**: No rating/age rating field.
 **AniDB**: No age rating field. Has numeric community ratings in 3 categories: `permanent` (weighted, long-standing voters), `temporary` (recent/low-vote-count), `review` (from written reviews). Each has `value` (float, scale 1–10) and `count` (int). These map to `statistics["anidb"]` in the canonical model, not to `rating` (age classification). Example: One Piece permanent=8.33 (9547 votes), temporary=8.58 (10282), review=8.68 (20).
 **AnimePlanet**: No age rating field (`contentRating` in JSON-LD is always `null`). Has community ratings via JSON-LD `aggregateRating`: `ratingValue` (float, scale 0.5–5), `ratingCount`, `reviewCount`, `bestRating: 5`, `worstRating: 0.5`. Maps to `statistics["anime_planet"]`. Example: One Piece ratingValue=4.314, ratingCount=63900, reviewCount=267.
