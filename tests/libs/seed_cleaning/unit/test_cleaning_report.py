@@ -2,8 +2,10 @@ from seed_cleaning.cleaning_report import (
     build_entries_to_check_document,
     count_corrected_entries,
     count_corrections,
+    describe_linked_page_outcomes,
 )
 from seed_cleaning.corrected_entries import CorrectedEntry
+from seed_cleaning.linked_page_additions import LinkedPageCorrections
 from seed_cleaning.seed_corrections import SeedCorrection
 from seed_cleaning.split_work_candidates import SplitWorkCandidates
 from work_matching import WorkEntry
@@ -103,3 +105,21 @@ def test_count_corrected_entries_counts_removed_and_untyped_new_entries() -> Non
         "entries removed, every page moved out": 1,
         "new entries with an unknown type": 1,
     }
+
+
+def test_describe_linked_page_outcomes_counts_then_conflicting_pages_listed() -> None:
+    linked_page_corrections = LinkedPageCorrections(
+        corrections=(),
+        review_cases=(),
+        waiting_page_keys=("anidb:anime:1", "anidb:anime:2"),
+        not_found_page_keys=("mal:anime:3",),
+        held_page_keys=(),
+        conflicting_page_keys=("mal:anime:4",),
+    )
+    assert describe_linked_page_outcomes(linked_page_corrections) == [
+        "Linked pages waiting for a fetch: 2",
+        "Linked pages not found: 1",
+        "Linked pages held under another address: 0",
+        "Answer not applied, another page of its provider is added to the same "
+        "entry: mal:anime:4",
+    ]

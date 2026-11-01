@@ -64,8 +64,8 @@ flowchart TD
 
     subgraph fetch[Fetch]
         direction TB
-        fetch_seed[1. Fetch every seed entry's pages<br/>and AnimeSchedule's]
-        fetch_linked[2. Fetch every page they link<br/>that no seed entry holds]
+        fetch_seed[1. Fetch every seed entry's own pages]
+        fetch_linked[2. Fetch every page they link that no seed<br/>entry holds, then search AnimeSchedule<br/>and fetch the pages it finds add]
         fetch_seed --> fetch_linked
     end
 
@@ -110,8 +110,8 @@ write to and read from the store and the review file:
 
 Fetch:
 
-1. **Fetch every seed entry's pages:** every page of a provider with an enrichment helper, and AnimeSchedule through each entry's MAL pages (else AniList, else AniDB). Split works are found by links, and a link is only seen when the store holds the page carrying it. See [Fetching pages](#fetching-pages).
-2. **Fetch every linked page no seed entry holds**, for every entry, and the current key of any linked page fetched under another spelling. Deciding a linked page needs its details, and discovery will read the same pages.
+1. **Fetch every seed entry's own pages:** every page of a provider with an enrichment helper. Split works are found by links, and a link is only seen when the store holds the page carrying it. See [Fetching pages](#fetching-pages).
+2. **Fetch every linked page no seed entry holds**, for every entry, and the current key of any linked page fetched under another spelling. Deciding a linked page needs its details, and discovery will read the same pages. **Then search AnimeSchedule** through each entry's MAL pages (else AniList, else AniDB), and fetch the linked pages the found AnimeSchedule pages add. The searches come last because they are the slow part (about 12 hours over a release) and the passes need the linked pages more.
 
 First pass:
 
@@ -228,9 +228,13 @@ HTTP cache enrichment reads later.
   network request pacer keeps a 2-second gap between one provider's requests
   that reach the network; an answer from the cache never waits, so a run over
   pages the cache holds is not slowed. The script fetches through
-  `PausingApiFetcher` (in `enrichment.pipeline`, so discovery can reuse it):
+  `CircuitBreakerApiFetcher` (in `enrichment.pipeline`, so discovery can reuse it):
   after 10 failures in a row a provider pauses, with one probe every 30
-  minutes, so a site that blocks is not sent the rest of its queue.
+  minutes, so a site that blocks is not sent the rest of its queue. After 6
+  hours paused it is given up on: its remaining pages fail without a request
+  and are retried on the next run, so a site that is gone or an address that
+  stays banned cannot keep the run going. Each provider pauses, resumes and
+  gives up on its own.
 - **Plan and progress:** before each fetch, one line per provider gives the
   requests needed, already stored (and how many of those are dead), and still
   to fetch, so a run over a new release shows how much of it is new. During
@@ -588,7 +592,8 @@ Each page is stored as soon as it is fetched, so a run can be stopped and run
 again: it fetches only what is not stored yet. A new release fetches only its
 new pages. The pacing options (`--seconds-between-requests`,
 `--failures-before-pausing`, `--seconds-between-probes`,
-`--seconds-before-mal-pictures`) are listed in the script's `--help`.
+`--hours-before-giving-up` (0 never gives up), `--seconds-before-mal-pictures`)
+are listed in the script's `--help`.
 
 ### AniDB limits
 

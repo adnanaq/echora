@@ -34,7 +34,8 @@ The fetch keeps to each provider's limits:
 
 - a gap between one provider's network requests; an answer from the cache
   never waits;
-- after failures in a row, a pause with a probe every 30 minutes;
+- after failures in a row, a pause probing every 30 minutes, given up after
+  6 hours so the run still ends; the pages left wait for the next run;
 - AniDB's stand-down after a ban equal to the probe interval, so the probe
   reaches AniDB.
 
@@ -45,8 +46,7 @@ Environment variables already set win over these defaults.
 Usage:
     uv run python scripts/clean_seed.py [SEED_FILE] [--data-dir DIR]
         [--store PATH] [--no-fetch | --refetch-stored]
-        [--seconds-between-requests 2] [--failures-before-pausing 10]
-        [--seconds-between-probes 1800] [--seconds-before-mal-pictures 1.5]
+        (pacing options: see --help)
 """
 
 import argparse
@@ -59,8 +59,8 @@ from pathlib import Path
 from typing import Any
 
 from common.config import get_settings
+from enrichment.pipeline.circuit_breaker_api_fetcher import CircuitBreakerApiFetcher
 from enrichment.pipeline.fetch_summary import describe_fetch_summary
-from enrichment.pipeline.pausing_api_fetcher import PausingApiFetcher
 from enrichment.pipeline.provider_page_fetcher import ProviderPageFetcher
 from enrichment.sources.animeschedule.animeschedule_helper import require_app_token
 from enrichment.sources.mal import mal_anime_crawler
@@ -79,6 +79,7 @@ from seed_cleaning import (
     correct_linked_pages,
     count_corrected_entries,
     count_corrections,
+    describe_linked_page_outcomes,
     fetch_seed_and_linked_pages,
     find_doubled_provider_entries,
     find_entries_without_mal_page,
@@ -143,6 +144,12 @@ def add_pacing_arguments(parser: argparse.ArgumentParser) -> None:
         default=_SECONDS_BETWEEN_PROBES,
         type=float,
         help="Wait between requests of a paused provider (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--hours-before-giving-up",
+        default=6.0,
+        type=float,
+        help="Time paused before a provider is given up on; 0 never (default: %(default)s)",
     )
     parser.add_argument(
         "--seconds-before-mal-pictures",
@@ -212,7 +219,7 @@ def configure_run_log(log_path: Path) -> None:
     for logger_name in (
         __name__,
         "seed_cleaning",
-        "enrichment.pipeline.pausing_api_fetcher",
+        "enrichment.pipeline.circuit_breaker_api_fetcher",
         "enrichment.pipeline.provider_page_fetcher",
     ):
         logging.getLogger(logger_name).setLevel(logging.INFO)
@@ -267,11 +274,13 @@ async def fetch_pages(
             known_work_entries,
             store,
             ProviderPageFetcher(
-                lambda: PausingApiFetcher(
+                lambda: CircuitBreakerApiFetcher(
                     settings.enrichment,
                     cache,
                     failures_before_pausing=arguments.failures_before_pausing,
                     seconds_between_probes=arguments.seconds_between_probes,
+                    seconds_before_giving_up=arguments.hours_before_giving_up * 3600
+                    or None,
                 ),
                 store,
                 is_stored_page_fetched_again=arguments.refetch_stored,
@@ -285,6 +294,7 @@ async def fetch_pages(
     for pages_name, fetch_summary in [
         ("Seed pages", seed_fetch_summary.seed_page_summary),
         ("Linked pages", seed_fetch_summary.linked_page_summary),
+        ("AnimeSchedule searches", seed_fetch_summary.animeschedule_search_summary),
     ]:
         for report_line in describe_fetch_summary(
             pages_name, fetch_summary, _FAILED_PAGES_LISTED
@@ -345,16 +355,8 @@ def write_results(
         corrections, review_cases
     ).items():
         logger.info(f"{count_name.capitalize()}: {correction_count}")
-    for count_name, page_keys in [
-        ("waiting for a fetch", linked_page_corrections.waiting_page_keys),
-        ("not found", linked_page_corrections.not_found_page_keys),
-        ("held under another address", linked_page_corrections.held_page_keys),
-    ]:
-        logger.info(f"Linked pages {count_name}: {len(page_keys)}")
-    for page_key in linked_page_corrections.conflicting_page_keys:
-        logger.info(
-            f"Answer not applied, another page of its provider is added to the same entry: {page_key}"
-        )
+    for report_line in describe_linked_page_outcomes(linked_page_corrections):
+        logger.info(report_line)
     for case_name in unused_answer_case_names:
         logger.info(f"Answer kept, its case no longer comes up: {case_name}")
 

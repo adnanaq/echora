@@ -13,7 +13,7 @@ libs/enrichment/src/enrichment/
 ├── pipeline/           # Orchestration layer
 │   ├── enrichment_pipeline.py   # EnrichmentPipeline — main entry point
 │   ├── api_fetcher.py           # ApiFetcher — parallel fan-out across all sources
-│   ├── pausing_api_fetcher.py   # PausingApiFetcher — a provider paused after failures, probed until it answers
+│   ├── circuit_breaker_api_fetcher.py # CircuitBreakerApiFetcher — a provider paused after failures, probed until it answers
 │   ├── provider_page_fetcher.py # ProviderPageFetcher — work entries' pages and linked pages into the page store
 │   ├── page_requests.py         # The requests fetching an entry's pages and AnimeSchedule searches
 │   ├── fetch_summary.py         # FetchOutcome, FetchSummary — what a page fetch came to
@@ -96,27 +96,30 @@ async with ApiFetcher(settings.enrichment, cache) as fetcher:
     results = await fetcher.fetch_all_data(ids, offline_data, temp_dir)
 ```
 
-### `PausingApiFetcher`
+### `CircuitBreakerApiFetcher`
 
 An `ApiFetcher` for bulk fetches of one provider at a time, such as seed
 cleaning's fetch over a whole seed release, and later discovery. After a set
 number of failures in a row the provider pauses, and one request per probe
 interval is sent until one goes through, so a site that blocks is not sent the
-rest of the queue.
+rest of the queue. With `seconds_before_giving_up` set, a provider paused that
+long is given up on: every later request fails at once, without reaching the
+network, so a run does not probe a site that is gone for days.
 
 The gap between ordinary requests is not kept here but by the cache's network
 request pacer (see the `http_cache` README), which waits only for requests that
 reach the provider.
 
 ```python
-from enrichment.pipeline.pausing_api_fetcher import PausingApiFetcher
+from enrichment.pipeline.circuit_breaker_api_fetcher import CircuitBreakerApiFetcher
 
 cache.network_request_pacer.set_seconds_between_requests(2)
-fetcher = PausingApiFetcher(
+fetcher = CircuitBreakerApiFetcher(
     settings.enrichment,
     cache,
     failures_before_pausing=10,
     seconds_between_probes=1800,
+    seconds_before_giving_up=6 * 3600,
 )
 ```
 

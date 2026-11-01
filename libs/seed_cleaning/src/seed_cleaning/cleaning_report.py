@@ -8,6 +8,7 @@ from collections.abc import Iterable
 from typing import Any
 
 from seed_cleaning.corrected_entries import CorrectedEntry
+from seed_cleaning.linked_page_additions import LinkedPageCorrections
 from seed_cleaning.seed_corrections import SeedCorrection
 from seed_cleaning.split_work_candidates import SplitWorkCandidates
 from work_matching import ReviewCase, WorkEntry, find_doubled_provider_page_keys
@@ -143,3 +144,29 @@ def count_corrected_entries(
             for corrected in corrected_entries
         ),
     }
+
+
+def describe_linked_page_outcomes(
+    linked_page_corrections: LinkedPageCorrections,
+) -> list[str]:
+    """Describe the linked pages not added, in report lines.
+
+    Args:
+        linked_page_corrections: The linked-page step's outcomes.
+
+    Returns:
+        A count of the pages waiting for a fetch, not found, and held under
+        another address, then one line per page an answer could not add
+        because another page of its provider joins the same entry.
+    """
+    return [
+        f"Linked pages waiting for a fetch: {len(linked_page_corrections.waiting_page_keys)}",
+        f"Linked pages not found: {len(linked_page_corrections.not_found_page_keys)}",
+        "Linked pages held under another address: "
+        f"{len(linked_page_corrections.held_page_keys)}",
+        *(
+            "Answer not applied, another page of its provider is added to the "
+            f"same entry: {page_key}"
+            for page_key in linked_page_corrections.conflicting_page_keys
+        ),
+    ]

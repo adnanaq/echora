@@ -15,6 +15,7 @@ from seed_cleaning.cleaning_report import (
     build_entries_to_check_document,
     count_corrected_entries,
     count_corrections,
+    describe_linked_page_outcomes,
 )
 from seed_cleaning.corrected_entries import (
     CorrectedEntry,
@@ -75,6 +76,7 @@ __all__ = [
     "build_entries_to_check_document",
     "count_corrected_entries",
     "count_corrections",
+    "describe_linked_page_outcomes",
     "REVIEW_ANSWER_REASON",
     "CorrectedEntry",
     "CorrectedSeed",
