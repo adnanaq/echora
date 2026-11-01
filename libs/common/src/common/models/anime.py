@@ -379,6 +379,12 @@ class SourceMaterialType(ProviderMappedEnum):
             "comic": cls.COMIC,
             "live_action": cls.LIVE_ACTION,
             "live action": cls.LIVE_ACTION,
+            "live-action": cls.LIVE_ACTION,  # AniSearch
+            # AnimePlanet "Based on a Movie" / "Based on a TV Series": the
+            # tagged works are live-action films and dramas (Star Wars,
+            # Kamen Rider, Garo), as AniDB's two tags below.
+            "movie": cls.LIVE_ACTION,
+            "tv series": cls.LIVE_ACTION,
             "live-action film": cls.LIVE_ACTION,  # AniDB tag name
             "television programme": cls.LIVE_ACTION,  # AniDB tag name
             "western comics": cls.COMIC,  # AniDB tag name
