@@ -1,3 +1,5 @@
+import itertools
+
 import pytest
 from seed_cleaning.corrected_entries import (
     CorrectedEntry,
@@ -7,7 +9,7 @@ from seed_cleaning.corrected_entries import (
 )
 from seed_cleaning.entry_groups import EntryGroup
 from seed_cleaning.group_placement import correct_entry_groups
-from seed_cleaning.seed_corrections import SeedCorrection
+from seed_cleaning.seed_corrections import SeedCorrection, merge_corrections
 from work_matching import (
     KnownWorkEntriesFromSeed,
     ProviderPage,
@@ -511,3 +513,69 @@ def test_mark_anime_id_pages_entry_holding_mal_page_leaves_added_page_unmarked(
         store,
     )
     assert not correction.is_anime_id_page
+
+
+def _moved_page_correction(target_entry_reference_page: str) -> SeedCorrection:
+    return SeedCorrection(
+        entry_reference_page="kitsu:anime:5",
+        page_key="kitsu:anime:5",
+        address=KITSU_FIVE,
+        placement_word="other work",
+        target_entry_reference_page=target_entry_reference_page,
+        reason="review answer",
+    )
+
+
+def _pages_by_entry(corrected_entries) -> dict:
+    return {
+        (corrected.seed_entry_reference_page, corrected.new_entry_key): None
+        if corrected.entry is None
+        else list(corrected.entry.addresses_by_page_key)
+        for corrected in corrected_entries
+    }
+
+
+def test_build_corrected_entries_page_moved_by_both_passes_ends_in_one_entry(
+    anime_id_entries, store
+) -> None:
+    corrections = merge_corrections(
+        [_moved_page_correction("mal:anime:9")],
+        [_moved_page_correction("kitsu:anime:6")],
+    )
+    pages_by_entry = _pages_by_entry(
+        build_corrected_entries(corrections, anime_id_entries, store)
+    )
+    assert [
+        entry_name
+        for entry_name, page_keys in pages_by_entry.items()
+        if page_keys and "kitsu:anime:5" in page_keys
+    ] == [("kitsu:anime:6", None)]
+
+
+def test_build_corrected_entries_any_correction_order_gives_same_entries(
+    anime_id_entries, store
+) -> None:
+    corrections = [
+        _added_page_correction(),
+        SeedCorrection(
+            entry_reference_page="mal:anime:9",
+            page_key="mal:anime:9",
+            address=TARGET_MAL,
+            placement_word="work 1",
+            target_entry_reference_page="kitsu:anime:5",
+            reason="review answer",
+        ),
+        SeedCorrection(
+            entry_reference_page="kitsu:anime:6",
+            page_key="kitsu:anime:6",
+            address=KITSU_SIX,
+            placement_word="work 2",
+            new_entry_key="kitsu:anime:6 work 2",
+            reason="review answer",
+        ),
+    ]
+    entries_by_order = [
+        _pages_by_entry(build_corrected_entries(order, anime_id_entries, store))
+        for order in itertools.permutations(corrections)
+    ]
+    assert all(entries == entries_by_order[0] for entries in entries_by_order)
