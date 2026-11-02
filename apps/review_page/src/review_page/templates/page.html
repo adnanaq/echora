@@ -4,14 +4,14 @@
 <header class="layout-toolbar">
   <h1>Seed review</h1>
   {{ parts.tabs("View", [
-       ("cases", "Cases", "Answer the review cases, then Run."),
-       ("corrections", "Corrections", "See what the last run changed in the seed, entry by entry."),
+       ("cases", "Cases", tooltips.CASES_TAB),
+       ("corrections", "Corrections", tooltips.CORRECTIONS_TAB),
      ], "tab", "setTab") }}
   <div id="toolbar" hx-post="/fragments/toolbar" hx-trigger="load, refresh-toolbar from:body"></div>
   {{ parts.store_dropdown("Theme", [
-       ("system", "System", "Follow the computer's light or dark setting."),
-       ("light", "Light", "Always use the light theme."),
-       ("dark", "Dark", "Always use the dark theme."),
+       ("system", "System", theme_tooltips["system"]),
+       ("light", "Light", theme_tooltips["light"]),
+       ("dark", "Dark", theme_tooltips["dark"]),
      ], "theme", "setTheme") }}
 </header>
 
@@ -56,7 +56,7 @@
        aria-label="Resize the case list" aria-controls="case-list-panel"
        :aria-valuenow="$store.review.sidebar_width"
        :aria-valuemin="$store.review.SIDEBAR_MIN_WIDTH" :aria-valuemax="$store.review.SIDEBAR_MAX_WIDTH"
-       title="Drag, or use the arrow keys, to change the case list's width. Double-click for the default."
+       title="{{ tooltips.RESIZE_CASE_LIST }}"
        @pointerdown="$store.review.startSidebarResize($event)"
        @dblclick="$store.review.setSidebarWidth($store.review.SIDEBAR_DEFAULT_WIDTH)"
        @keydown.left.prevent="$store.review.setSidebarWidth($store.review.sidebar_width - 16)"

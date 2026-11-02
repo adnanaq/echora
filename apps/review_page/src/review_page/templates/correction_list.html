@@ -5,18 +5,18 @@
 <div class="filter-group">
   <span class="filter-group-label">Change</span>
   {% for value in change_values %}{{ parts.chip(value[:1] | upper ~ value[1:], "correction_changes", value, chip_counts.get(value, 0),
-       "Entries with a page that stays as it was." if value == "unchanged" else "Entries with a page the run changed this way: " ~ value ~ ".",
+       correction_change_tooltips[value],
        toggle="toggleCorrectionFilter", is_on=value in state.correction_changes) }}{% endfor %}
 </div>
 <div class="filter-group">
   <span class="filter-group-label">Source</span>
   {{ parts.chip("Your answer", "correction_sources", "your answer", chip_counts["your answer"],
-                "Entries with a page a reviewer's answer placed.", toggle="toggleCorrectionFilter",
+                tooltips.ANSWER_SOURCE_CHIP, toggle="toggleCorrectionFilter",
                 is_on="your answer" in state.correction_sources) }}
   {{ parts.chip("Rules", "correction_sources", "rules", chip_counts["rules"],
-                "Entries with a page the rules placed without an answer.", toggle="toggleCorrectionFilter",
+                tooltips.RULES_SOURCE_CHIP, toggle="toggleCorrectionFilter",
                 is_on="rules" in state.correction_sources) }}
-  <button type="button" id="reset-correction-filters" class="part-chip" title="Show every corrected entry: clear the change and source filters and the search."
+  <button type="button" id="reset-correction-filters" class="part-chip" title="{{ tooltips.RESET_CORRECTION_FILTERS }}"
           @click="$store.review.resetCorrectionFilters()">Reset filters</button>
 </div>
 
@@ -28,7 +28,7 @@
             @click="$store.review.openCorrection({{ row.reference_page | tojson | forceescape }})">
       <span class="case-row-title">
         <strong>{{ row.title }}</strong>
-        {% if row.has_answer_correction %}{{ parts.pill("Your answer", "suggested", "A reviewer's answer placed at least one of this entry's pages.") }}{% endif %}
+        {% if row.has_answer_correction %}{{ parts.pill("Your answer", "suggested", tooltips.ENTRY_FROM_ANSWER) }}{% endif %}
       </span>
       <span class="case-row-meta">
         <span class="page-key">{{ row.reference_page }}</span>

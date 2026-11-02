@@ -3,12 +3,12 @@
   {% if buttons.unsaved_count %}
   <span>{{ buttons.unsaved_count }} unsaved case{{ "s" if buttons.unsaved_count != 1 }}</span>
   {{ parts.button("Discard", "secondary", not is_run_going, click="$store.review.discardEdits()",
-                  description="Drop every unsaved edit in this browser.") }}
+                  description=tooltips.DISCARD) }}
   {% endif %}
   {{ parts.button("Save all (" ~ buttons.unsaved_count ~ ")", "main", buttons.is_save_all_enabled,
                   hx_post="/answers", hx_vals={"action": "save_all"},
-                  description="Save every unsaved edit. Edits that break a rule stay unsaved and are marked rejected.") }}
-  <span title="Run seed cleaning without fetching, applying every saved answer. Enabled once every edit is saved.{% if buttons.run_changes %} Saved changes: {% endif %}{% for change, count in buttons.run_changes.items() %}{{ count }} {{ change.value }}{% if not loop.last %}, {% endif %}{% endfor %}">
+                  description=tooltips.SAVE_ALL) }}
+  <span title="{{ tooltips.RUN }}{% if buttons.run_changes %} {{ tooltips.RUN_CHANGES_PREFIX }} {% endif %}{% for change, count in buttons.run_changes.items() %}{{ count }} {{ change.value }}{% if not loop.last %}, {% endif %}{% endfor %}">
     {{ parts.button("Run (" ~ buttons.run_count ~ ")", "main", buttons.is_run_enabled, hx_post="/run") }}
   </span>
   {% if is_run_going %}<span class="part-status state-saved_applies_on_run"><span class="part-status-dot"></span>Run going…</span>{% endif %}

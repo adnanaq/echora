@@ -18,7 +18,7 @@
 <h3 class="case-section-title">Review cases</h3>
 <ul class="case-list-plain">
   {% for case_name, case_title in panel.case_links %}
-  <li><button type="button" id="{{ element_id('show-case', case_name) }}" class="link-button" title="Open this case on the Cases tab."
+  <li><button type="button" id="{{ element_id('show-case', case_name) }}" class="link-button" title="{{ tooltips.SHOW_CASE }}"
               @click="$store.review.showCase({{ case_name | tojson | forceescape }})">{{ case_title }}</button>
       <span class="page-key">{{ case_name.split(":")[0] }}</span></li>
   {% endfor %}
@@ -31,11 +31,11 @@
   <thead>
     <tr>
       <th>Page</th>
-      <th title="What the run changes for the page, named as in the run summary.">Change</th>
-      <th title="Where the page ends up.">Goes to</th>
-      <th title="The page's work and mark in answer words.">Work and mark</th>
-      <th title="Why the page goes there.">Why</th>
-      <th title="Whether a reviewer's answer or the rules placed the page.">Source</th>
+      <th title="{{ tooltips.CHANGE_COLUMN }}">Change</th>
+      <th title="{{ tooltips.DESTINATION_COLUMN }}">Goes to</th>
+      <th title="{{ tooltips.WORK_AND_MARK_COLUMN }}">Work and mark</th>
+      <th title="{{ tooltips.REASON_COLUMN }}">Why</th>
+      <th title="{{ tooltips.SOURCE_COLUMN }}">Source</th>
     </tr>
   </thead>
   <tbody>
@@ -46,7 +46,7 @@
       <td>{% if row.destination_address %}<a href="{{ row.destination_address }}" target="_blank" rel="noopener">{{ row.destination_label }}</a>{% else %}{{ row.destination_label }}{% endif %}</td>
       <td><code>{{ row.place }}</code></td>
       <td>{{ row.reason_sentence }}</td>
-      <td>{% if row.is_from_answer %}{{ parts.pill("Your answer", "suggested", "A reviewer's answer placed the page.") }}{% else %}Rules{% endif %}</td>
+      <td>{% if row.is_from_answer %}{{ parts.pill("Your answer", "suggested", tooltips.PAGE_FROM_ANSWER) }}{% else %}Rules{% endif %}</td>
     </tr>
     {% endfor %}
   </tbody>

@@ -11,7 +11,7 @@
 <div class="filter-group">
   <span class="filter-group-label">Edits</span>
   {% for edit_state in edit_states %}{{ parts.chip(edit_state.value[:1] | upper ~ edit_state.value[1:], "edit_states", edit_state.value, chip_counts[edit_state.value], edit_state.description, is_on=edit_state in state.edit_states) }}{% endfor %}
-  <button type="button" id="reset-case-filters" class="part-chip" title="Show every case: clear the kind, case and edit filters and the search." @click="$store.review.resetFilters()">Reset filters</button>
+  <button type="button" id="reset-case-filters" class="part-chip" title="{{ tooltips.RESET_CASE_FILTERS }}" @click="$store.review.resetFilters()">Reset filters</button>
 </div>
 
 {% if case_page.rows %}
@@ -23,12 +23,12 @@
       <span class="case-row-title">
         <strong>{{ row.title }}</strong>
         {% if row.is_new %}{{ parts.pill("New", "new", new_state.description) }}{% endif %}
-        {% if row.is_answer_unused %}{{ parts.pill("No longer comes up", "unused", parts.ANSWER_UNUSED_DESCRIPTION) }}{% endif %}
+        {% if row.is_answer_unused %}{{ parts.pill("No longer comes up", "unused", tooltips.ANSWER_UNUSED) }}{% endif %}
       </span>
       <span class="case-row-meta">
         <span title="{{ row.kind.description }}">{{ row.kind.value }}</span>
         {{ parts.status(row_edit_states[row.case_name]) }}
-        {% if row.is_open and row.has_suggestion %}{{ parts.pill("Suggested", "suggested", parts.SUGGESTED_DESCRIPTION) }}{% endif %}
+        {% if row.is_open and row.has_suggestion %}{{ parts.pill("Suggested", "suggested", tooltips.SUGGESTED) }}{% endif %}
       </span>
     </button>
   </li>

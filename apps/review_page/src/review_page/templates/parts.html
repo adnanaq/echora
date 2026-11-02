@@ -24,12 +24,12 @@
     {% for option in options %}
     <option value="{{ option.value }}"
             {% if option.value == selected %}selected{% endif %}
-            {% if option.disabling_rule %}disabled title="Not offered: {{ option.disabling_rule.value }}"{% elif option.description %}title="{{ option.description }}"{% endif %}>
+            {% if option.disabling_rule %}disabled title="{{ tooltips.NOT_OFFERED_PREFIX }} {{ option.disabling_rule.value }}"{% elif option.description %}title="{{ option.description }}"{% endif %}>
       {{ option.value or "—" }}
     </option>
     {% endfor %}
   </select>
-  {% if is_changed %}<span class="part-changed-mark" title="Changed from the original value">•</span>{% endif %}
+  {% if is_changed %}<span class="part-changed-mark" title="{{ tooltips.CHANGED_CHOICE }}">•</span>{% endif %}
 </span>
 {%- endmacro %}
 
@@ -69,8 +69,6 @@
 {%- endmacro %}
 
 {# What the tags mean, so the list and the case panel explain them alike. #}
-{% set SUGGESTED_DESCRIPTION = "The rules suggest an answer. The case opens on it, and Accept saves it." %}
-{% set ANSWER_UNUSED_DESCRIPTION = "The last run did not bring this case up, so its answer changed nothing. Another answer changed its pages." %}
 
 {#
   Tabs switching the page's view, in the look of the filter chips. choices:
@@ -124,8 +122,8 @@
 {% macro sidebar_button(flag_name, click) -%}
 <button type="button" class="part-button tone-secondary is-icon-only" @click="{{ click }}"
         aria-controls="case-list-panel" :aria-expanded="$store.review.{{ flag_name }}"
-        :aria-label="$store.review.{{ flag_name }} ? 'Hide the case list' : 'Show the case list'"
-        :title="$store.review.{{ flag_name }} ? 'Hide the case list' : 'Show the case list'">
+        :aria-label="$store.review.{{ flag_name }} ? {{ tooltips.HIDE_CASE_LIST | tojson | forceescape }} : {{ tooltips.SHOW_CASE_LIST | tojson | forceescape }}"
+        :title="$store.review.{{ flag_name }} ? {{ tooltips.HIDE_CASE_LIST | tojson | forceescape }} : {{ tooltips.SHOW_CASE_LIST | tojson | forceescape }}">
   <svg class="part-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"
        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
     <rect x="3" y="3" width="18" height="18" rx="2"></rect>
@@ -160,11 +158,11 @@
 <div class="pager">
   <span>Viewing {{ list_page.first_row_number }}–{{ list_page.first_row_number + list_page.rows | length - 1 }} of {{ list_page.filtered_count }}</span>
   <span class="pager-buttons">
-    {{ icon_button("First page", ["m11 17-5-5 5-5", "m18 17-5-5 5-5"], not is_first, show_page ~ "(1)") }}
-    {{ icon_button("Previous page", ["m15 18-6-6 6-6"], not is_first, show_page ~ "(" ~ (list_page.page_number - 1) ~ ")") }}
+    {{ icon_button(tooltips.FIRST_PAGE, ["m11 17-5-5 5-5", "m18 17-5-5 5-5"], not is_first, show_page ~ "(1)") }}
+    {{ icon_button(tooltips.PREVIOUS_PAGE, ["m15 18-6-6 6-6"], not is_first, show_page ~ "(" ~ (list_page.page_number - 1) ~ ")") }}
     <span>{{ list_page.page_number }} / {{ list_page.page_count }}</span>
-    {{ icon_button("Next page", ["m9 18 6-6-6-6"], not is_last, show_page ~ "(" ~ (list_page.page_number + 1) ~ ")") }}
-    {{ icon_button("Last page", ["m6 17 5-5-5-5", "m13 17 5-5-5-5"], not is_last, show_page ~ "(" ~ list_page.page_count ~ ")") }}
+    {{ icon_button(tooltips.NEXT_PAGE, ["m9 18 6-6-6-6"], not is_last, show_page ~ "(" ~ (list_page.page_number + 1) ~ ")") }}
+    {{ icon_button(tooltips.LAST_PAGE, ["m6 17 5-5-5-5", "m13 17 5-5-5-5"], not is_last, show_page ~ "(" ~ list_page.page_count ~ ")") }}
   </span>
 </div>
 {%- endmacro %}

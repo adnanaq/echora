@@ -8,16 +8,16 @@
   <h2>{{ view.title }}</h2>
   <span>
     {{ parts.status(view.edit_state) }}
-    {% if view.is_suggestion_shown %}{{ parts.pill("Suggested, not yet answered", "suggested", parts.SUGGESTED_DESCRIPTION) }}{% endif %}
+    {% if view.is_suggestion_shown %}{{ parts.pill("Suggested, not yet answered", "suggested", tooltips.SUGGESTED) }}{% endif %}
   </span>
 </div>
 {% if is_answer_unused %}
-<p class="notice-line">{{ parts.pill("No longer comes up", "unused") }} {{ parts.ANSWER_UNUSED_DESCRIPTION }} Answer the case that replaced it.</p>
+<p class="notice-line">{{ parts.pill("No longer comes up", "unused") }} {{ tooltips.ANSWER_UNUSED }} Answer the case that replaced it.</p>
 {% endif %}
 {% if correction_links %}
 <p class="notice-line">
   {% for reference_page, entry_title, correction_count in correction_links %}
-  <button type="button" id="{{ element_id('show-correction', reference_page) }}" class="link-button" title="Open this entry on the Corrections tab."
+  <button type="button" id="{{ element_id('show-correction', reference_page) }}" class="link-button" title="{{ tooltips.SHOW_CORRECTIONS }}"
           @click="$store.review.showCorrection({{ reference_page | tojson | forceescape }})">{{ correction_count }} correction{{ "s" if correction_count != 1 }} from the last run for {{ entry_title }}</button>{% if not loop.last %} · {% endif %}
   {% endfor %}
 </p>
@@ -53,8 +53,8 @@
     <tr>
       <th>Page</th><th>Entry</th>
       {% for column in view.shown_columns %}<th>{{ column.value }}</th>{% endfor %}
-      <th title="Which work the page belongs to. Pages with the same work number are one work.">Work</th>
-      <th title="How the page stands beside the provider's other pages in its work.">Mark</th>
+      <th title="{{ tooltips.WORK_COLUMN }}">Work</th>
+      <th title="{{ tooltips.MARK_COLUMN }}">Mark</th>
     </tr>
   </thead>
   <tbody>
@@ -109,7 +109,7 @@
 {% set chosen = view.chosen_answer.get(decision.page_key, "") if view.chosen_answer is mapping else "" %}
 {{ parts.dropdown("linked_answer", view.linked_page_options, chosen, "Answer for " ~ decision.page_key,
                   hx_vals={"page_key": decision.page_key}, empty_label="no answer",
-                  empty_description="No answer yet. The case stays open.") }}
+                  empty_description=tooltips.NO_LINKED_PAGE_ANSWER) }}
 <dl class="choice-meanings answer-meanings">
   {% for option in view.linked_page_options %}
   <dt class="{% if option.value == chosen %}is-chosen{% endif %}{% if option.disabling_rule %} is-disabled{% endif %}">{{ option.value }}</dt>
@@ -129,12 +129,12 @@
 
 <div class="case-buttons">
   {{ parts.button("Reset", "secondary", view.buttons.is_reset_enabled, hx_post="/answers", hx_vals={"action": "reset", "case_name": case.case_name},
-                  description="Go back to the answer the last run used, and save that.") }}
+                  description=tooltips.RESET) }}
   {{ parts.button("Accept", "secondary", view.buttons.is_accept_enabled, hx_post="/answers", hx_vals={"action": "accept", "case_name": case.case_name},
-                  description="Save the suggested answer.") }}
+                  description=tooltips.ACCEPT) }}
   {{ parts.button("Save", "main", view.buttons.is_save_enabled, hx_post="/answers", hx_vals={"action": "save", "case_name": case.case_name},
-                  description="Check the shown answer against the rules and save it. The next Run applies it.") }}
+                  description=tooltips.SAVE) }}
   {{ parts.button("Save & next ▸", "main", view.buttons.is_save_and_next_enabled, hx_post="/answers", hx_vals={"action": "save_next", "case_name": case.case_name},
-                  description="Save, then open the next case in the list.") }}
+                  description=tooltips.SAVE_AND_NEXT) }}
 </div>
 {% endif %}

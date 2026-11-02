@@ -1,26 +1,31 @@
 """Decide each case's state and which buttons are enabled, from answers alone.
 
-These rules decide what the review page shows and allows. They are plain
-functions of the answers, so they are tested without a browser. Each item
-gives the rule, then the reason for it.
+The rules below decide what the review page shows and allows. The functions
+here depend on the answers alone, so the rules are tested without a browser.
+Each item gives the rule, then the reason for it.
 
 - An answer with no pages counts as no answer, so a case whose choices are
   all cleared is open again.
 - A case's original value is its answer as the last run wrote it. A saved
-  answer is answered, changed or cleared against it, and only such cases
-  count for Run: a case saved back to its original changes nothing.
+  answer counts as answered, changed or cleared against the original value.
+  Only those cases count for Run, since a case saved back to its original
+  changes nothing.
 - A case's edit state reads in this order: rejected (its last save broke a
   rule), edited and not saved, saved and applying on Run, unchanged.
 - An unanswered case starts on its suggestion, so the suggestion stands in
-  for a missing saved or original answer: an untouched suggestion is not an
-  edit, and Accept is the button that saves it.
-- Save and Save & next are enabled while the chosen answer differs from the
-  saved one; Accept while a complete suggestion differs from the saved one;
-  Reset while the chosen or saved answer differs from the original.
-- Save all is enabled while any case has unsaved edits; Run while saved
-  answers differ from their originals and nothing is left unsaved, so a Run
-  never misses an edit.
-- While a run is going every button is disabled; the run rewrites the cases.
+  for a missing saved or original answer. An untouched suggestion is then
+  not an edit, and Accept is the button that saves it.
+- Buttons are enabled as follows:
+
+  - Save and Save & next: while the chosen answer differs from the saved one.
+  - Accept: while a complete suggestion differs from the saved answer.
+  - Reset: while the chosen or saved answer differs from the original.
+  - Save all: while any case has unsaved edits.
+  - Run: while saved answers differ from their originals and nothing is left
+    unsaved, so a Run never misses an edit.
+
+- While a run is going, every button is disabled, because the run rewrites
+  the cases.
 - Filters within one group (kinds, case states, edit states) widen the list;
   filters in different groups narrow it.
 """
@@ -30,6 +35,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 
 from pydantic import JsonValue
+from review_page.tooltips import CASE_STATE_TOOLTIPS, EDIT_STATE_TOOLTIPS
 from work_matching import ReviewCase, ReviewCaseKind, list_required_page_keys
 
 ROWS_PER_PAGE = 25
@@ -55,7 +61,7 @@ class CaseEditState(StrEnum):
     @property
     def description(self) -> str:
         """Return what the state means, as the page's tooltips show it."""
-        return _DESCRIPTION_BY_EDIT_STATE[self]
+        return EDIT_STATE_TOOLTIPS[self.value]
 
 
 class CaseState(StrEnum):
@@ -69,31 +75,7 @@ class CaseState(StrEnum):
     @property
     def description(self) -> str:
         """Return what the state means, as the page's tooltips show it."""
-        return _DESCRIPTION_BY_CASE_STATE[self]
-
-
-_DESCRIPTION_BY_EDIT_STATE: dict[CaseEditState, str] = {
-    CaseEditState.REJECTED: (
-        "The last save broke a rule. The edit is kept in this browser, not saved."
-    ),
-    CaseEditState.EDITED_NOT_SAVED: (
-        "Changed in this browser and not saved yet. Save, or Save all, writes it."
-    ),
-    CaseEditState.SAVED_APPLIES_ON_RUN: (
-        "Saved to the review file. The next Run applies it to the seed."
-    ),
-    CaseEditState.UNCHANGED: "Nothing edited or saved since the last run.",
-}
-
-_DESCRIPTION_BY_CASE_STATE: dict[CaseState, str] = {
-    CaseState.OPEN: "The review file holds no answer for the case yet.",
-    CaseState.ANSWERED: "The review file holds an answer for the case.",
-    CaseState.CHANGED: (
-        "The saved answer differs from the answer the last run used, so the "
-        "next Run changes the seed."
-    ),
-    CaseState.NEW: "The last run brought the case up for the first time.",
-}
+        return CASE_STATE_TOOLTIPS[self.value]
 
 
 @dataclass(frozen=True, slots=True)
@@ -187,6 +169,9 @@ def find_case_edit_state(
         unsaved: The browser's unsaved answer, when it has one.
         has_unsaved_edit: Whether the browser holds an unsaved answer.
         is_rejected: Whether the case's last save broke a rule.
+
+    Returns:
+        The case's one edit state.
     """
     if is_rejected:
         return CaseEditState.REJECTED
@@ -200,8 +185,14 @@ def find_case_edit_state(
 def is_suggestion_complete(case: ReviewCase) -> bool:
     """Report whether a case's suggested answer can be saved as it is.
 
-    It must place every page the answer must place and follow every rule, so
-    Accept never saves an answer the run refuses.
+    The suggestion must place every page the answer must place and follow
+    every rule. Accept then never saves an answer the run refuses.
+
+    Args:
+        case: The review case, with its suggestion.
+
+    Returns:
+        True when the suggestion can be saved unchanged.
     """
     suggested_answer = case.suggested_answer
     if not suggested_answer:
@@ -234,6 +225,9 @@ def find_case_buttons(
         saved: The answer in the file now.
         chosen: The answer the case's choices show now.
         is_run_going: Whether a run is rewriting the cases.
+
+    Returns:
+        Whether Save, Save & next, Accept and Reset are enabled.
     """
     if is_run_going:
         return CaseButtons(False, False, False, False)
@@ -265,6 +259,10 @@ def find_page_buttons(
         original_answers: Each answered case's answer as the last run wrote it.
         saved_answers: Each answered case's answer in the file now.
         is_run_going: Whether a run is rewriting the cases.
+
+    Returns:
+        Whether Save all and Run are enabled, the unsaved and changed counts,
+        and the saved changes by kind.
     """
     run_changes: dict[SavedChange, int] = {}
     for case_name in original_answers.keys() | saved_answers.keys():
@@ -348,11 +346,15 @@ def page_list_rows[Row](rows: Sequence[Row], page_number: int) -> ListPage[Row]:
 
 
 def find_next_case_name(rows: Sequence[CaseRow], case_name: str) -> str | None:
-    """Return the case after this one in the filtered list.
+    """Return the case after the given one in the filtered list.
+
+    Args:
+        rows: The filtered list's rows, in list order.
+        case_name: The case just saved.
 
     Returns:
-        The following case; the first case when this one is not in the list;
-        None after the last case or for an empty list.
+        The case after the given one. The first case when the given one is
+        not in the list. None after the last case, or for an empty list.
     """
     case_names = [row.case_name for row in rows]
     if case_name not in case_names:
