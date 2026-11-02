@@ -200,6 +200,23 @@ its exit code; its output is in `data/seed_cleaning/logs/review_page_runs.log`.
 - **One writer at a time.** Saves and runs take an operating-system file lock
   on `review.jsonl.lock`. A save while a run holds it is refused with a notice,
   and nothing is written. The lock works between the container and the host.
+- **Cases a run removed.** A case a run removed after the page loaded it is
+  rejected with that reason, like an answer breaking a rule, and Save All
+  still saves the other cases. When the run removes it during the save itself,
+  between the check and the write, nothing is saved and a notice asks for a
+  reload.
+- **Only the page itself.** Other websites open in the same browser cannot
+  save answers or start runs (`request_guards.py`):
+  - a request naming any host but `127.0.0.1` or `localhost` gets 400, which
+    stops DNS rebinding;
+  - a POST without the `HX-Request: true` header htmx sends gets 403, and a
+    site on another origin cannot add that header without a CORS preflight,
+    which the server refuses.
+
+  A request under another name, such as a Kubernetes probe of `/health`,
+  must send `Host: localhost`, or that name must be added to
+  `LOCAL_HOST_NAMES`.
+
 - **Linked-page conflicts.** Two answers adding whole pages of one provider to
   one entry are saved with a warning, since the run adds neither.
 
@@ -289,6 +306,7 @@ the file source is tested on a temporary data folder, runs included.
 | `case_views.py`              | What the case list and case panel show: rows, page rows, choices, notes, columns.                     |
 | `correction_views.py`        | What the Corrections tab shows: corrected entries, filters, an entry's pages and destinations.        |
 | `browser_state.py`           | `BrowserState`: the reviewer's state as the browser sends it.                                         |
+| `request_guards.py`          | The host check and the htmx header check that refuse requests from other websites.                    |
 | `template_functions.py`      | `static_url` and `element_id`, given to every template.                                               |
 | `templates/`                 | The page, its fragments and `parts.html`, the shared parts.                                           |
 | `static/`                    | `parts.css`, `review_page.js` and the copied libraries.                                               |
