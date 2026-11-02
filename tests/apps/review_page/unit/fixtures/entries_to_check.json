@@ -1,0 +1,194 @@
+{
+ "seed_schema": "https://raw.githubusercontent.com/cedya77/anime-offline-database/refs/tags/2026-43/schemas/anime-offline-database-minified.schema.json",
+ "doubled_provider_entries": [
+  {
+   "reference_page": "mal:anime:57822",
+   "title": "Atashin'chi Next",
+   "doubled_providers": {
+    "animeplanet": [
+     "animeplanet:anime:atashinchi-next",
+     "animeplanet:anime:atashinchi-next-2025"
+    ],
+    "simkl": [
+     "animecountdown:anime:2466820",
+     "animecountdown:anime:3021866",
+     "simkl:anime:2466820",
+     "simkl:anime:3021866"
+    ],
+    "ann": [
+     "ann:anime:31487",
+     "ann:anime:37934"
+    ]
+   }
+  },
+  {
+   "reference_page": "mal:anime:57374",
+   "title": "Buriki no Dance",
+   "doubled_providers": {
+    "kitsu": [
+     "kitsu:anime:48612",
+     "kitsu:anime:51023"
+    ]
+   }
+  },
+  {
+   "reference_page": "mal:anime:2090",
+   "title": "Choujikuu Seiki Orguss 02",
+   "doubled_providers": {
+    "animeplanet": [
+     "animeplanet:anime:orguss-02",
+     "animeplanet:anime:super-dimension-century-orguss-02"
+    ]
+   }
+  },
+  {
+   "reference_page": "mal:anime:37196",
+   "title": "Hana (Music)",
+   "doubled_providers": {
+    "anilist": [
+     "anilist:anime:139266",
+     "anilist:anime:199801"
+    ]
+   }
+  },
+  {
+   "reference_page": "mal:anime:40815",
+   "title": "Honzuki no Gekokujou: Shisho ni Naru Tame ni wa Shudan wo Erandeiraremasen 2nd Season",
+   "doubled_providers": {
+    "animeplanet": [
+     "animeplanet:anime:ascendance-of-a-bookworm-season-2",
+     "animeplanet:anime:ascendance-of-a-bookworm-season-2-ill-do-anything-to-become-a-librarian"
+    ]
+   }
+  },
+  {
+   "reference_page": "mal:anime:42429",
+   "title": "Honzuki no Gekokujou: Shisho ni Naru Tame ni wa Shudan wo Erandeiraremasen 3rd Season",
+   "doubled_providers": {
+    "animeplanet": [
+     "animeplanet:anime:ascendance-of-a-bookworm-season-3",
+     "animeplanet:anime:ascendance-of-a-bookworm-season-3-ill-do-anything-to-become-a-librarian"
+    ]
+   }
+  },
+  {
+   "reference_page": "mal:anime:39476",
+   "title": "Houkiboshi",
+   "doubled_providers": {
+    "kitsu": [
+     "kitsu:anime:43389",
+     "kitsu:anime:50921"
+    ]
+   }
+  },
+  {
+   "reference_page": "mal:anime:61418",
+   "title": "Kusunoki no Bannin",
+   "doubled_providers": {
+    "animeplanet": [
+     "animeplanet:anime:kusunoki-no-bannin",
+     "animeplanet:anime:the-keeper-of-the-camphor-tree"
+    ]
+   }
+  },
+  {
+   "reference_page": "mal:anime:61202",
+   "title": "Mononoke Movie 3: Hebigami",
+   "doubled_providers": {
+    "animeplanet": [
+     "animeplanet:anime:mononoke-movie-3-hebigami",
+     "animeplanet:anime:mononoke-the-movie-chapter-iii-the-curse-of-the-serpent"
+    ]
+   }
+  },
+  {
+   "reference_page": "mal:anime:62193",
+   "title": "Paris ni Saku Etoile",
+   "doubled_providers": {
+    "animeplanet": [
+     "animeplanet:anime:paris-ni-saku-ltoile",
+     "animeplanet:anime:samurai-ballerina"
+    ]
+   }
+  },
+  {
+   "reference_page": "mal:anime:37594",
+   "title": "Present (Music, 2016)",
+   "doubled_providers": {
+    "anilist": [
+     "anilist:anime:102788",
+     "anilist:anime:178580"
+    ]
+   }
+  }
+ ],
+ "split_work_candidates": [
+  {
+   "shared_provider": null,
+   "candidate_evidence": [
+    "same title: \"ATASHIn'CHI Next\" and \"Atashin'chi Next\"",
+    "https://animeschedule.net/anime/atashin-chi-next-2nd-season links anidb:anime:19895",
+    "anidb:anime:19895 links mal:anime:63013",
+    "https://animeschedule.net/anime/atashin-chi-next-2nd-season links anilist:anime:203146",
+    "https://animeschedule.net/anime/atashin-chi-next-2nd-season links mal:anime:63013",
+    "anidb:anime:19895 links ann:anime:31487"
+   ],
+   "has_shared_tying_link": false,
+   "entries": [
+    {
+     "reference_page": "ann:anime:40555",
+     "title": "ATASHIn'CHI Next",
+     "type": "ONA",
+     "year": null,
+     "season": null,
+     "addresses_by_page_key": {
+      "ann:anime:40555": "https://animenewsnetwork.com/encyclopedia/anime.php?id=40555"
+     }
+    },
+    {
+     "reference_page": "mal:anime:57822",
+     "title": "Atashin'chi Next",
+     "type": "ONA",
+     "year": 2024,
+     "season": "SPRING",
+     "addresses_by_page_key": {
+      "animeplanet:anime:atashinchi-next": "https://anime-planet.com/anime/atashinchi-next",
+      "anidb:anime:18633": "https://anidb.net/anime/18633",
+      "anilist:anime:173313": "https://anilist.co/anime/173313",
+      "animeplanet:anime:atashinchi-next-2025": "https://anime-planet.com/anime/atashinchi-next-2025",
+      "animecountdown:anime:2466820": "https://animecountdown.com/2466820",
+      "animecountdown:anime:3021866": "https://animecountdown.com/3021866",
+      "ann:anime:31487": "https://animenewsnetwork.com/encyclopedia/anime.php?id=31487",
+      "ann:anime:37934": "https://animenewsnetwork.com/encyclopedia/anime.php?id=37934",
+      "anisearch:anime:19081": "https://anisearch.com/anime/19081",
+      "livechart:anime:12494": "https://livechart.me/anime/12494",
+      "mal:anime:57822": "https://myanimelist.net/anime/57822",
+      "simkl:anime:2466820": "https://simkl.com/anime/2466820",
+      "simkl:anime:3021866": "https://simkl.com/anime/3021866"
+     }
+    },
+    {
+     "reference_page": "mal:anime:63013",
+     "title": "Atashin'chi Next 2nd Season",
+     "type": "ONA",
+     "year": 2025,
+     "season": "FALL",
+     "addresses_by_page_key": {
+      "anilist:anime:203146": "https://anilist.co/anime/203146",
+      "mal:anime:63013": "https://myanimelist.net/anime/63013"
+     }
+    },
+    {
+     "reference_page": "anidb:anime:19895",
+     "title": "Atashinchi Next (2025)",
+     "type": "ONA",
+     "year": 2025,
+     "season": "FALL",
+     "addresses_by_page_key": {
+      "anidb:anime:19895": "https://anidb.net/anime/19895"
+     }
+    }
+   ]
+  }
+ ]
+}

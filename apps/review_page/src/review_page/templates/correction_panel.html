@@ -1,0 +1,55 @@
+{% import "parts.html" as parts with context %}
+{% if panel is none %}
+<p class="empty-state">Choose an entry from the list.</p>
+{% else %}
+<div class="case-heading">
+  <h2>{{ panel.title }}</h2>
+</div>
+<p class="case-meta">
+  Reference page {{ parts.page_link(panel.reference_page, panel.reference_address) }}
+  · {{ panel.rows | length }} page{{ "s" if panel.rows | length != 1 }} corrected
+</p>
+<p class="suggested-note">
+  From the last run{% if run_summary %}, {{ run_summary.finished_at.strftime("%Y-%m-%d %H:%M") }} UTC{% endif %}.
+  Answers saved since then show here after the next Run.
+</p>
+
+{% if panel.case_links %}
+<h3 class="case-section-title">Review cases</h3>
+<ul class="case-list-plain">
+  {% for case_name, case_title in panel.case_links %}
+  <li><button type="button" id="{{ element_id('show-case', case_name) }}" class="link-button" title="Open this case on the Cases tab."
+              @click="$store.review.showCase({{ case_name | tojson | forceescape }})">{{ case_title }}</button>
+      <span class="page-key">{{ case_name.split(":")[0] }}</span></li>
+  {% endfor %}
+</ul>
+{% endif %}
+
+<h3 class="case-section-title">Pages</h3>
+<div class="table-scroll">
+<table class="page-table">
+  <thead>
+    <tr>
+      <th>Page</th>
+      <th title="What the run changes for the page, named as in the run summary.">Change</th>
+      <th title="Where the page ends up.">Goes to</th>
+      <th title="The page's work and mark in answer words.">Work and mark</th>
+      <th title="Why the page goes there.">Why</th>
+      <th title="Whether a reviewer's answer or the rules placed the page.">Source</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in panel.rows %}
+    <tr class="{% if row.change_label != 'Unchanged' %}is-changed{% endif %}">
+      <td>{{ parts.page_link(row.page_key, row.address) }}</td>
+      <td>{{ row.change_label }}</td>
+      <td>{% if row.destination_address %}<a href="{{ row.destination_address }}" target="_blank" rel="noopener">{{ row.destination_label }}</a>{% else %}{{ row.destination_label }}{% endif %}</td>
+      <td><code>{{ row.place }}</code></td>
+      <td>{{ row.reason_sentence }}</td>
+      <td>{% if row.is_from_answer %}{{ parts.pill("Your answer", "suggested", "A reviewer's answer placed the page.") }}{% else %}Rules{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}

@@ -1,0 +1,63 @@
+"""Give every template the functions it calls: static file addresses and element ids.
+
+Both are registered once as a Starlette context processor
+(``add_template_functions``), so every template, fragment or page, calls them
+the same way. Each item gives the function, then the reason for it.
+
+- ``static_url``: a static file's address carries its content hash, so a
+  browser fetches a changed stylesheet or script again instead of its copy.
+- ``element_id``: every control inside a region htmx redraws carries an id
+  built from what it controls. htmx keeps focus on an element with the same
+  id across a redraw and, by default, does not scroll to it; without an id the
+  focused control is removed, focus falls back to the page, and the browser
+  jumps (https://htmx.org/attributes/hx-swap/, "Focus scroll").
+"""
+
+import hashlib
+import re
+from functools import cache
+from pathlib import Path
+from typing import Any
+
+from fastapi import Request
+
+STATIC_DIR = Path(__file__).parent / "static"
+_NOT_ID_CHARACTERS = re.compile(r"[^A-Za-z0-9_-]+")
+
+
+@cache
+def build_static_url(file_path: str) -> str:
+    """Return a static file's address with its content hash, so a changed file is fetched again.
+
+    The hash changes only when the file does, so an unchanged file stays cached.
+
+    Args:
+        file_path: The file's path inside the static folder, such as
+            ``parts.css``.
+
+    Returns:
+        ``/static/<file_path>?v=<first 12 hex digits of its SHA-256>``.
+    """
+    content_hash = hashlib.sha256((STATIC_DIR / file_path).read_bytes()).hexdigest()
+    return f"/static/{file_path}?v={content_hash[:12]}"
+
+
+def build_element_id(*parts: object) -> str:
+    """Return an element id built from what the element controls, the same on every redraw.
+
+    Args:
+        parts: The element's kind and what it controls, such as
+            ``"choice", "work", "Work of mal:anime:1"``.
+
+    Returns:
+        The parts joined by hyphens, every run of characters an id should not
+        hold replaced by one hyphen.
+    """
+    joined = "-".join(str(part) for part in parts)
+    return _NOT_ID_CHARACTERS.sub("-", joined).strip("-")
+
+
+def add_template_functions(request: Request) -> dict[str, Any]:
+    """Give every template ``static_url`` and ``element_id``, as a context processor."""
+    del request  # Every template gets the same functions.
+    return {"static_url": build_static_url, "element_id": build_element_id}

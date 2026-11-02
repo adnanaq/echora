@@ -1,0 +1,45 @@
+{% import "parts.html" as parts with context %}
+{% if not has_corrections %}
+<p class="empty-state">No corrections yet: the last run corrected no entry, or no run has finished.</p>
+{% else %}
+<div class="filter-group">
+  <span class="filter-group-label">Change</span>
+  {% for value in change_values %}{{ parts.chip(value[:1] | upper ~ value[1:], "correction_changes", value, chip_counts.get(value, 0),
+       "Entries with a page that stays as it was." if value == "unchanged" else "Entries with a page the run changed this way: " ~ value ~ ".",
+       toggle="toggleCorrectionFilter", is_on=value in state.correction_changes) }}{% endfor %}
+</div>
+<div class="filter-group">
+  <span class="filter-group-label">Source</span>
+  {{ parts.chip("Your answer", "correction_sources", "your answer", chip_counts["your answer"],
+                "Entries with a page a reviewer's answer placed.", toggle="toggleCorrectionFilter",
+                is_on="your answer" in state.correction_sources) }}
+  {{ parts.chip("Rules", "correction_sources", "rules", chip_counts["rules"],
+                "Entries with a page the rules placed without an answer.", toggle="toggleCorrectionFilter",
+                is_on="rules" in state.correction_sources) }}
+  <button type="button" id="reset-correction-filters" class="part-chip" title="Show every corrected entry: clear the change and source filters and the search."
+          @click="$store.review.resetCorrectionFilters()">Reset filters</button>
+</div>
+
+{% if entry_page.rows %}
+<ul class="case-list">
+  {% for row in entry_page.rows %}
+  <li>
+    <button type="button" id="{{ element_id('entry', row.reference_page) }}" class="case-row{% if row.reference_page == open_entry %} is-open{% endif %}"
+            @click="$store.review.openCorrection({{ row.reference_page | tojson | forceescape }})">
+      <span class="case-row-title">
+        <strong>{{ row.title }}</strong>
+        {% if row.has_answer_correction %}{{ parts.pill("Your answer", "suggested", "A reviewer's answer placed at least one of this entry's pages.") }}{% endif %}
+      </span>
+      <span class="case-row-meta">
+        <span class="page-key">{{ row.reference_page }}</span>
+        <span>{{ row.changed_page_count }} of {{ row.page_count }} page{{ "s" if row.page_count != 1 }} changed</span>
+      </span>
+    </button>
+  </li>
+  {% endfor %}
+</ul>
+{{ parts.pager(entry_page, "$store.review.showCorrectionPage") }}
+{% else %}
+<p class="empty-state">No corrected entry matches these filters.</p>
+{% endif %}
+{% endif %}

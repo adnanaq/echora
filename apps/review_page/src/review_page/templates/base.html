@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Seed review</title>
+  <script>
+    // Set the theme before the first paint, so a dark page never shows light
+    // first. "System" follows the operating system's light or dark setting.
+    // The choice is the one review_page.js keeps in localStorage.
+    function applyReviewPageTheme(choice) {
+      const isDark = choice === "dark"
+        || (choice !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
+      document.documentElement.dataset.theme = isDark ? "dark" : "light";
+    }
+    try {
+      applyReviewPageTheme(JSON.parse(localStorage.getItem("review_page_theme")) || "system");
+    } catch {
+      applyReviewPageTheme("system");
+    }
+  </script>
+  <link rel="stylesheet" href="{{ static_url('parts.css') }}">
+  <script src="{{ static_url('vendor/htmx-2.0.11.min.js') }}"></script>
+  {#
+    Deferred scripts run in this order. The persist plugin comes before
+    Alpine's core, as its documentation asks, and the page's store after the
+    plugin: both register on "alpine:init", and the store needs $persist.
+  #}
+  <script defer src="{{ static_url('vendor/alpinejs-persist-3.17.5.min.js') }}"></script>
+  <script defer src="{{ static_url('review_page.js') }}"></script>
+  <script defer src="{{ static_url('vendor/alpinejs-3.17.5.min.js') }}"></script>
+</head>
+<body x-data hx-vals='js:{browser_state: Alpine.store("review").toJson()}'>
+  {% block body %}{% endblock %}
+</body>
+</html>
