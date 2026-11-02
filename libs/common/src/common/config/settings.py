@@ -14,6 +14,7 @@ from .env_settings import EnvSettings
 from .observability_config import ObservabilityConfig
 from .qdrant_config import QdrantConfig
 from .redis_config import RedisConfig
+from .review_page_config import ReviewPageConfig
 from .service_config import ServiceConfig
 
 
@@ -44,6 +45,7 @@ class Settings(EnvSettings):
     redis: RedisConfig = Field(default_factory=RedisConfig)
     cache: CacheConfig = Field(default_factory=CacheConfig)
     enrichment: EnrichmentConfig = Field(default_factory=EnrichmentConfig)
+    review_page: ReviewPageConfig = Field(default_factory=ReviewPageConfig)
 
     @field_validator("environment", mode="before")
     @classmethod
