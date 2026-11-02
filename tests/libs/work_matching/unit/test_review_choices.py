@@ -10,6 +10,7 @@ from work_matching.review_choices import (
     MAIN_MARK,
     NO_MARK,
     PART_MARK,
+    ChoiceRule,
     choose_group_page_place,
     find_linked_page_conflicts,
     list_group_page_choices,
@@ -180,8 +181,19 @@ def test_list_group_page_choices_other_work_offers_no_mark(review_cases) -> None
     )
     assert _disabling_rules(choices["anidb:anime:19188"].mark_options) == {
         NO_MARK: None,
-        MAIN_MARK: PlacementRule.PLACE_NOT_READABLE,
-        PART_MARK: PlacementRule.PLACE_NOT_READABLE,
+        MAIN_MARK: ChoiceRule.MARK_IN_OTHER_WORK,
+        PART_MARK: ChoiceRule.MARK_IN_OTHER_WORK,
+    }
+
+
+def test_list_group_page_choices_page_without_work_offers_no_mark(
+    review_cases,
+) -> None:
+    choices = _choices_by_page_key(review_cases["gochuumon_movie"], {})
+    assert _disabling_rules(choices["anidb:anime:19188"].mark_options) == {
+        NO_MARK: None,
+        MAIN_MARK: ChoiceRule.MARK_WITHOUT_WORK,
+        PART_MARK: ChoiceRule.MARK_WITHOUT_WORK,
     }
 
 

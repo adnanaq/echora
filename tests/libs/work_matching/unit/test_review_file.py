@@ -417,6 +417,25 @@ def test_review_file_save_answers_seen_saved_answer_changed_raises_and_keeps_fil
     assert review_file_path.read_text(encoding="utf-8") == saved_text
 
 
+def test_review_file_save_answers_case_on_two_lines_writes_answer_to_both(
+    review_file_path, review_cases, review_case_lines
+) -> None:
+    case_name = review_cases["nami"].case_name
+    nami_line = next(line for line in review_case_lines if case_name in line)
+    review_file_path.write_text(
+        "".join(review_case_lines) + nami_line, encoding="utf-8"
+    )
+    review_file = ReviewFile(review_file_path)
+    review_file.save_answers({case_name: {"anilist:anime:102289": "skip"}})
+    saved_answers = [
+        json.loads(line)["answer"]
+        for line in review_file_path.read_text(encoding="utf-8").splitlines()
+        if case_name in line
+    ]
+    assert saved_answers == [{"anilist:anime:102289": "skip"}] * 2
+    assert review_file.get_answers()[case_name] == {"anilist:anime:102289": "skip"}
+
+
 def test_review_file_save_answers_none_clears_answer(
     review_file_path, review_cases, review_case_lines
 ) -> None:

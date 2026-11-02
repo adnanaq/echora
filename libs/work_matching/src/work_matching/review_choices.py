@@ -18,8 +18,10 @@ Each item gives the rule, then the reason for it.
 - ``main`` and ``part`` stay offered while the provider's other pages in the
   work carry the other mark. Choosing either changes those pages too (see
   below), so the answer still keeps one main page or only part pages.
-- ``main`` and ``part`` are disabled for a page with no work or in
-  ``other work``: the answer words have no mark there.
+- ``main`` and ``part`` are disabled for a page with no work yet, since a
+  mark says how the page stands within its work (``ChoiceRule``).
+- ``main`` and ``part`` are disabled for a page in ``other work``, since the
+  mark would belong to a work outside the case (``ChoiceRule``).
 - Choosing ``part`` makes the provider's other pages in that work ``part``
   too; choosing ``main`` leaves them unmarked; taking ``part`` off one takes
   it off all. A work's pages of one provider are all parts or none, so one
@@ -41,6 +43,7 @@ Each item gives the rule, then the reason for it.
 from collections import defaultdict
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from enum import StrEnum
 
 from pydantic import JsonValue
 from work_matching.answer_rules import LinkedPageAnswerRule, PlacementRule
@@ -73,13 +76,29 @@ _MARKS = (NO_MARK, MAIN_MARK, PART_MARK)
 _MAL_PROVIDER = "mal"
 
 
+class ChoiceRule(StrEnum):
+    """A reason a choice is not offered that no answer rule states.
+
+    The answer rules (``PlacementRule``) check a whole answer when it is
+    saved. These reasons explain a single dropdown option to the reviewer.
+    """
+
+    MARK_WITHOUT_WORK = (
+        "choose a work for the page first, since a mark applies within a work"
+    )
+    MARK_IN_OTHER_WORK = (
+        "a page going to another work takes no mark here, since the mark would "
+        "belong to that other work"
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class ChoiceOption:
     """One choice a reviewer can make, and the rule that disables it, if any."""
 
     # As written in the answer: ``work 2``, ``part``, ``add to <entry>``.
     value: str
-    disabling_rule: PlacementRule | LinkedPageAnswerRule | None = None
+    disabling_rule: PlacementRule | LinkedPageAnswerRule | ChoiceRule | None = None
 
     @property
     def is_disabled(self) -> bool:
@@ -340,15 +359,15 @@ def _find_work_disabling_rule(
 
 def _find_mark_disabling_rule(
     page_key: str, mark: str, placements: Mapping[str, PagePlacement]
-) -> PlacementRule | None:
+) -> PlacementRule | ChoiceRule | None:
     """Return the rule disabling a mark for a page, as the module docstring lists."""
     if mark == NO_MARK:
         return None
     placement = placements.get(page_key)
     if placement is None:
-        return PlacementRule.PAGE_WITHOUT_PLACE
+        return ChoiceRule.MARK_WITHOUT_WORK
     if placement.placement_word == OTHER_WORK:
-        return PlacementRule.PLACE_NOT_READABLE
+        return ChoiceRule.MARK_IN_OTHER_WORK
     if mark == MAIN_MARK and not _list_provider_keys_in_work(placements, page_key):
         return PlacementRule.SINGLE_PAGE_MARKED_MAIN
     return None

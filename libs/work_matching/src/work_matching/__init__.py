@@ -81,6 +81,7 @@ from work_matching.review_case_reasons import describe_case_reasons
 from work_matching.review_cases import ReviewCase, ReviewCaseKind
 from work_matching.review_choices import (
     ChoiceOption,
+    ChoiceRule,
     GroupPageChoices,
     LinkedPageConflict,
     choose_group_page_place,
@@ -113,6 +114,7 @@ __all__ = [
     "NO_MARK",
     "PART_MARK",
     "ChoiceOption",
+    "ChoiceRule",
     "GroupPageChoices",
     "LinkedPageConflict",
     "ReviewFileLockedError",

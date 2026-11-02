@@ -20,9 +20,9 @@ class PlacementRule(StrEnum):
         "a place must be 'work N', 'work N, main', 'work N, part' or 'other work'"
     )
     PAGE_OUTSIDE_CASE = "the answer places a page this case does not hold"
-    PAGE_WITHOUT_PLACE = "a page this answer must place has no place"
+    PAGE_WITHOUT_PLACE = "a page that must be placed has no place"
     WORK_WITH_TWO_MAL_PAGES = (
-        "a work holds one MAL page, because a work is what MAL lists"
+        "a work can hold only one MAL page, since each MAL page is one work"
     )
     SINGLE_PAGE_MARKED_MAIN = (
         "a provider's only page in a work cannot be 'main', since there is "

@@ -3,12 +3,12 @@
 A reviewer picks these words from the review page's dropdowns. The page shows
 each word's meaning beside it, so the reviewer knows what a run will do with
 the answer. The meanings repeat the rules of ``page_placement`` and
-``linked_page_check`` in a reviewer's terms; those modules decide what a word
-does. Each item reads ``<word>: <meaning>``.
+``linked_page_check`` in a reviewer's terms. Those modules decide what a
+word does. Each item reads ``<word>: <meaning>``.
 
 - ``work 1``: the page stays in the entry that survives as the case's first
   work.
-- ``work 2`` and later: the page belongs to another work in the case; every
+- ``work 2`` and later: the page belongs to another work in the case. Every
   page then needs a place.
 - ``other work``: the page belongs to a work outside the case.
 - no mark, ``main``, ``part``: how the page stands beside the provider's other
@@ -49,29 +49,30 @@ LATER_WORK_MEANING: Final = (
 
 _MEANING_BY_WORD: Final[dict[str, str]] = {
     _FIRST_WORK: (
-        "The page belongs to the case's first work. It stays in the entry that "
-        "survives as that work."
+        "The page belongs to the case's first work. The page stays in the entry "
+        "that survives as that work."
     ),
     OTHER_WORK: (
-        "The page belongs to a work outside this case. It joins that work's "
-        "seed entry when the move is sure, and otherwise starts a new entry."
+        "The page belongs to a work outside this case. If the page's links "
+        "point to that work's seed entry, the page moves there. Otherwise, the "
+        "page starts a new entry."
     ),
     NO_MARK: (
-        "No mark: the page is the provider's only page in its work, or another "
-        "of the provider's pages there is 'main'."
+        "No mark. Use no mark for a provider's only page in a work. Also use no "
+        "mark for the provider's other pages in a work where one page is 'main'."
     ),
     MAIN_MARK: (
-        "The work keeps two or more whole pages of this provider, and this is "
-        "the one enrichment fetches. The provider's other pages there stay "
-        "unmarked."
+        "The work keeps two or more whole pages of this provider. Enrichment "
+        "fetches the page marked 'main'. The provider's other pages in the "
+        "work stay unmarked."
     ),
     PART_MARK: (
         "The page covers only part of the work, such as one of two OVAs. "
-        "Enrichment combines it with the work's other part pages."
+        "Enrichment combines the page with the work's other part pages."
     ),
     WHOLE_PAGE_ANSWER: (
-        "Add the page to the entry linking it. The entry must hold no page of "
-        "the page's provider."
+        "Add the page to the linking entry. The entry must hold no page of the "
+        "page's provider."
     ),
     PART_PAGE_ANSWER: (
         "Add the page as a part page of the linking entry's work. The entry may "
@@ -112,8 +113,8 @@ def describe_answer_word(answer_word: str) -> str:
 # A page the answer leaves out has no place; the review page shows it as
 # "no place".
 NO_PLACE_MEANING: Final = (
-    "The page has no place yet. A page marked * needs one before the answer "
-    "can be saved."
+    "The page has no place yet. A page marked * needs a place before the "
+    "answer can be saved."
 )
 
 # Each placement word and its meaning, in the order a reviewer meets them, so
