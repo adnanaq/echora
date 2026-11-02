@@ -1,4 +1,5 @@
 import pytest
+from work_matching.answer_rules import LinkedPageAnswerRule
 from work_matching.known_work_entries_from_seed import KnownWorkEntriesFromSeed
 from work_matching.linked_page_check import (
     SKIP_ANSWER,
@@ -8,6 +9,7 @@ from work_matching.linked_page_check import (
     LinkedPageReason,
     LinkingEntryDetails,
     NoLinkingEntryError,
+    check_linked_page_answer,
     decide_linked_page,
     find_unheld_linked_page_keys,
     get_entry_episode_count,
@@ -504,3 +506,49 @@ def test_read_linked_page_answer_answer_not_naming_page_alone_rejected(
 ) -> None:
     decision = _decide(BOXER_MAL_PAGE, _entry(BOXER_SEED_ENTRY), entry_episode_count=12)
     assert read_linked_page_answer(answer, decision) is None
+
+
+@pytest.mark.parametrize(
+    ("answer", "broken_rules"),
+    [
+        ("add", (LinkedPageAnswerRule.ANSWER_NOT_PAGE_ANSWER,)),
+        ({"mal:anime:1": "add"}, (LinkedPageAnswerRule.ANSWER_NOT_PAGE_ANSWER,)),
+        ({"mal:anime:65144": 1}, (LinkedPageAnswerRule.ANSWER_NOT_READABLE,)),
+        ({"mal:anime:65144": "move"}, (LinkedPageAnswerRule.ANSWER_NOT_READABLE,)),
+        (
+            {"mal:anime:65144": "add to anilist:anime:1"},
+            (LinkedPageAnswerRule.ENTRY_NOT_LINKING,),
+        ),
+        ({"mal:anime:65144": "add"}, ()),
+        ({"mal:anime:65144": "skip"}, ()),
+    ],
+)
+def test_check_linked_page_answer_one_linking_entry_reports_broken_rules(
+    answer: object, broken_rules: tuple[LinkedPageAnswerRule, ...]
+) -> None:
+    decision = _decide(BOXER_MAL_PAGE, _entry(BOXER_SEED_ENTRY), entry_episode_count=12)
+    assert check_linked_page_answer(answer, decision).broken_rules == broken_rules
+
+
+def test_check_linked_page_answer_several_entries_without_name_reports_rule() -> None:
+    decision = _decide(
+        BOXER_MAL_PAGE,
+        _entry(BOXER_SEED_ENTRY),
+        _entry(YAMATO_SEED_ENTRY),
+        entry_episode_count=None,
+    )
+    assert check_linked_page_answer(
+        {"mal:anime:65144": "add"}, decision
+    ).broken_rules == (LinkedPageAnswerRule.ENTRY_NOT_NAMED,)
+
+
+def test_check_linked_page_answer_whole_page_to_entry_holding_provider_reports_rule() -> (
+    None
+):
+    anidb_page = ProviderPage(
+        key="anidb:anime:20000", address="https://anidb.net/anime/20000", type="MOVIE"
+    )
+    decision = _decide(anidb_page, _entry(YAMATO_SEED_ENTRY), entry_episode_count=1)
+    assert check_linked_page_answer(
+        {"anidb:anime:20000": "add"}, decision
+    ).broken_rules == (LinkedPageAnswerRule.PROVIDER_IN_ENTRY,)

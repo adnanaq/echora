@@ -35,14 +35,16 @@ Each item gives the rule, then the reason for it.
 from collections.abc import Iterable, Mapping, Sequence
 
 from pydantic import JsonValue
+from work_matching.answer_rules import PlacementRule
 from work_matching.doubled_provider_decision import DoubledProviderDecision
 from work_matching.mal_page_check import check_with_mal_pages
 from work_matching.page_details_comparison import MalPageComparison
 from work_matching.page_placement import (
     OTHER_WORK,
     PagePlacement,
+    PlacementCheck,
+    check_answer_placements,
     find_page_placement,
-    read_answer_placements,
     read_placement,
     suggest_page_placements,
 )
@@ -189,27 +191,56 @@ def read_group_answer_placements(
         Each placed page's place, or None when the answer breaks a placement
         rule or a group rule in the module docstring.
     """
+    placement_check = check_group_answer_placements(
+        answer, entries, decisions, current_key_by_page_key
+    )
+    return placement_check.placements if placement_check.is_valid else None
+
+
+def check_group_answer_placements(
+    answer: JsonValue,
+    entries: Sequence[WorkEntry],
+    decisions: Sequence[DoubledProviderDecision],
+    current_key_by_page_key: Mapping[str, str],
+) -> PlacementCheck:
+    """Read a group's review answer into places and list every rule it breaks.
+
+    The group rules in the module docstring are checked only on an answer
+    that follows the placement rules, because which entry survives as a work
+    can only be told from valid places.
+
+    Args:
+        answer: The answer as written: each page key mapped to its place.
+        entries: The group's entries.
+        decisions: The doubled-provider decisions of the combined entry.
+        current_key_by_page_key: Each renamed page's current key, by the key an
+            entry lists it under, since a doubled page is placed under it.
+
+    Returns:
+        The places that could be read, and the broken rules in check order.
+    """
     is_entry_group = len(entries) > 1
-    placements = read_answer_placements(
+    placement_check = check_answer_placements(
         answer,
         combine_group_entries(entries),
         decisions,
         is_every_page_required=is_entry_group,
     )
-    if placements is None or not is_entry_group:
-        return placements
+    if not placement_check.is_valid or not is_entry_group:
+        return placement_check
+    placements = placement_check.placements
     surviving_reference_page_by_work = find_surviving_entries(
         entries, placements, current_key_by_page_key
     )
-    for placement_word, listing_reference_pages in _list_entries_per_work(
-        entries, placements, current_key_by_page_key
-    ).items():
-        if (
-            len(listing_reference_pages) > 1
-            and placement_word not in surviving_reference_page_by_work
-        ):
-            return None
-    return placements
+    if any(
+        len(listing_reference_pages) > 1
+        and placement_word not in surviving_reference_page_by_work
+        for placement_word, listing_reference_pages in _list_entries_per_work(
+            entries, placements, current_key_by_page_key
+        ).items()
+    ):
+        return PlacementCheck(placements, (PlacementRule.WORK_WITHOUT_REFERENCE_PAGE,))
+    return placement_check
 
 
 def _suggest_unlinked_entry_pages(

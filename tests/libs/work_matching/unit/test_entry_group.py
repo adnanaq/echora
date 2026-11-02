@@ -1,6 +1,8 @@
 import pytest
+from work_matching.answer_rules import PlacementRule
 from work_matching.doubled_provider_check import decide_doubled_providers
 from work_matching.entry_group import (
+    check_group_answer_placements,
     combine_group_entries,
     list_mal_page_review_reasons,
     read_group_answer_placements,
@@ -430,3 +432,39 @@ def test_suggest_group_page_placements_several_works_page_left_out_films_kept_ap
     assert not any(
         placement.endswith(", part") for placement in suggested_placements.values()
     )
+
+
+def test_check_group_answer_placements_work_of_two_entries_without_reference_page_reports_rule(
+    linked_page, work_entry
+) -> None:
+    entries = [work_entry(ANN, SIMKL), work_entry(MAL, KITSU)]
+    decisions = _decide(entries, [linked_page(MAL, ANN)])
+    answer = {
+        "ann:anime:1": "work 1",
+        "simkl:anime:1": "work 2",
+        "mal:anime:1": "work 1",
+        "kitsu:anime:1": "work 2",
+    }
+    assert check_group_answer_placements(
+        answer, entries, decisions, {}
+    ).broken_rules == (PlacementRule.WORK_WITHOUT_REFERENCE_PAGE,)
+
+
+def test_check_group_answer_placements_page_left_out_reports_rule(
+    cue_like_group,
+) -> None:
+    entries, decisions = cue_like_group
+    answer = {"ann:anime:1": "work 1", "mal:anime:1": "work 1"}
+    assert check_group_answer_placements(
+        answer, entries, decisions, {}
+    ).broken_rules == (PlacementRule.PAGE_WITHOUT_PLACE,)
+
+
+def test_check_group_answer_placements_two_mal_pages_in_one_work_reports_rule(
+    work_entry,
+) -> None:
+    entries = [work_entry(MAL), work_entry(OTHER_MAL)]
+    answer = {"mal:anime:1": "work 1, part", "mal:anime:2": "work 1, part"}
+    assert check_group_answer_placements(
+        answer, entries, _decide(entries, []), {}
+    ).broken_rules == (PlacementRule.WORK_WITH_TWO_MAL_PAGES,)

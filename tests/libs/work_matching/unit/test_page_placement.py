@@ -1,8 +1,10 @@
 import pytest
+from work_matching.answer_rules import PlacementRule
 from work_matching.doubled_provider_check import decide_doubled_providers
 from work_matching.known_work_entries_from_seed import KnownWorkEntriesFromSeed
 from work_matching.page_placement import (
     PagePlacement,
+    check_answer_placements,
     list_placeable_page_keys,
     place_pages_without_review,
     read_answer_placements,
@@ -307,3 +309,70 @@ def test_read_answer_placements_invalid_answer_gives_none(
     shared_link, answer: object
 ) -> None:
     assert read_answer_placements(answer, *shared_link[:2]) is None
+
+
+@pytest.mark.parametrize(
+    ("answer", "broken_rules"),
+    [
+        (None, (PlacementRule.ANSWER_NOT_PAGE_PLACES,)),
+        ("one work", (PlacementRule.ANSWER_NOT_PAGE_PLACES,)),
+        ({"kitsu:anime:1": "work 1"}, (PlacementRule.PAGE_WITHOUT_PLACE,)),
+        (
+            {"kitsu:anime:1": "work 1", "kitsu:anime:2": "work 1"},
+            (PlacementRule.PROVIDER_PAGES_NOT_MARKED_ONCE,),
+        ),
+        (
+            {"kitsu:anime:1": "work 1, part", "kitsu:anime:2": "work 1, main"},
+            (PlacementRule.PROVIDER_PAGES_NOT_MARKED_ONCE,),
+        ),
+        (
+            {"kitsu:anime:1": "work 1, main", "kitsu:anime:2": "other work"},
+            (PlacementRule.SINGLE_PAGE_MARKED_MAIN,),
+        ),
+        (
+            {"kitsu:anime:1": "work 1", "kitsu:anime:2": "other work, main"},
+            (PlacementRule.PLACE_NOT_READABLE, PlacementRule.PAGE_WITHOUT_PLACE),
+        ),
+        (
+            {"kitsu:anime:1": "work 1", "kitsu:anime:2": "work 2"},
+            (PlacementRule.PAGE_WITHOUT_PLACE,),
+        ),
+        (
+            {
+                "kitsu:anime:1": "work 1",
+                "kitsu:anime:2": "other work",
+                "mal:anime:5": "work 1",
+            },
+            (PlacementRule.PAGE_OUTSIDE_CASE,),
+        ),
+        (
+            {"kitsu:anime:1": 1, "kitsu:anime:2": ["work 1"]},
+            (PlacementRule.PLACE_NOT_READABLE, PlacementRule.PAGE_WITHOUT_PLACE),
+        ),
+        ({"kitsu:anime:1": "work 1", "kitsu:anime:2": "other work"}, ()),
+    ],
+)
+def test_check_answer_placements_reports_broken_rules(
+    shared_link, answer: object, broken_rules: tuple[PlacementRule, ...]
+) -> None:
+    assert (
+        check_answer_placements(answer, *shared_link[:2]).broken_rules == broken_rules
+    )
+
+
+def test_check_answer_placements_two_mal_pages_in_one_work_reports_rule(
+    linked_apart,
+) -> None:
+    entry, decisions, _ = linked_apart
+    answer = dict.fromkeys(list_placeable_page_keys(entry, decisions), "work 1, part")
+    assert check_answer_placements(answer, entry, decisions).broken_rules == (
+        PlacementRule.WORK_WITH_TWO_MAL_PAGES,
+    )
+
+
+def test_check_answer_placements_valid_answer_keeps_placements(shared_link) -> None:
+    answer = {"kitsu:anime:1": "work 1, part", "kitsu:anime:2": "work 1, part"}
+    assert check_answer_placements(answer, *shared_link[:2]).placements == {
+        "kitsu:anime:1": PagePlacement("work 1", is_part_page=True),
+        "kitsu:anime:2": PagePlacement("work 1", is_part_page=True),
+    }
