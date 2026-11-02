@@ -62,11 +62,19 @@ there) and `assets/seed_data` read-only (a run reads the seed file). It is
 published on `127.0.0.1` only, runs as a non-root user with the host user's
 uid, and restarts unless stopped. Its health check calls `GET /health`.
 
+Both folders must exist before Compose starts. `data/seed_cleaning` appears
+after the first `scripts/clean_seed.py` run; on a fresh clone, create it with
+`mkdir -p data/seed_cleaning`. Compose refuses to start rather than create a
+missing folder, because Docker would create it owned by root, where the
+container's user cannot write.
+
 Without Docker, from the repository root, so the default data folder and
 seed-cleaning script are found:
 
 ```bash
-uv run python -m review_page.main   # with libs/*/src and apps/review_page/src on PYTHONPATH
+./pants run apps/review_page:review_page
+# or, without Pants:
+PYTHONPATH="apps/review_page/src:$(printf '%s:' libs/*/src)" uv run python -m review_page.main
 ```
 
 The image (`apps/review_page/Dockerfile.dev`, `Dockerfile.prd`) holds the page,
@@ -176,7 +184,9 @@ Run.
 Run is enabled while saved answers differ from their original values and no
 edit is left unsaved, so a run never misses an edit. While it runs, the page
 shows "Run going" and every button waits; when it ends, the summary, the
-lists, the original values and the Corrections tab refresh. A failed run shows
+lists, the original values and the Corrections tab refresh. The page asks for
+the run state every few seconds, so a run started from the terminal or
+another tab shows the same way. A failed run shows
 its exit code; its output is in `data/seed_cleaning/logs/review_page_runs.log`.
 
 ### Layout and settings
@@ -217,6 +227,15 @@ its exit code; its output is in `data/seed_cleaning/logs/review_page_runs.log`.
   must send `Host: localhost`, or that name must be added to
   `LOCAL_HOST_NAMES`.
 
+- **Edits started from an older answer.** Each unsaved edit keeps the saved
+  answer it started from. When another tab or browser has saved a different
+  answer since, the save is refused with that reason, checked again under the
+  file lock, and nothing is written. Saving again replaces that answer on
+  purpose.
+- **Several tabs.** Open tabs of the page share unsaved edits through the
+  browser's `storage` event, so an edit made in one shows in the others, and
+  a save in one clears it everywhere. Filters and the open case stay per tab.
+  A second browser keeps its own edits, which the check above protects.
 - **Linked-page conflicts.** Two answers adding whole pages of one provider to
   one entry are saved with a warning, since the run adds neither.
 
@@ -298,8 +317,11 @@ the file source is tested on a temporary data folder, runs included.
 | `main.py`                    | Starts the page: reads the settings, builds the file source, serves the app with uvicorn.             |
 | `app.py`                     | `create_app`, `ReviewPageRoutes`: the page, the Cases tab's fragments, choices, saves and Run.        |
 | `correction_routes.py`       | `CorrectionRoutes`: the Corrections tab's fragments.                                                  |
+| `run_routes.py`              | `RunRoutes`: starting Run, the run panel, and the run state every page polls.                         |
+| `htmx_responses.py`          | The empty and refusal responses that hand the browser htmx events.                                    |
 | `review_case_source.py`      | `ReviewCaseSource`: the source the page reads and writes through.                                     |
 | `file_review_case_source.py` | `FileReviewCaseSource`: the source over seed cleaning's local files, and its conversions to messages. |
+| `answer_checks.py`           | The checks an answer passes before the file source saves it, and linked-page conflict warnings.       |
 | `review_case_messages.py`    | Conversion between `work_matching.ReviewCase` and its message, and the helpers for ordered mappings.  |
 | `run_summary.py`             | `RunSummary`, `build_run_summary`: the last run's summary read from its message.                      |
 | `page_state.py`              | Edit states, case states, buttons, filters and paging, as plain functions of the answers.             |
