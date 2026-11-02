@@ -153,13 +153,15 @@ uv run ty check libs/http_cache/
 
 ### Service Health Checks
 
-Both services are gRPC only — they expose no HTTP endpoints, so `curl` will not
-reach them.
+The vector and enrichment services are gRPC only — they expose no HTTP
+endpoints, so `curl` will not reach them. The review page is HTTP, on
+`127.0.0.1:8003` only.
 
 ```bash
 # Service health (grpc_health_probe ships in both images)
 docker exec echora-dev-vector-service     grpc_health_probe -addr=localhost:8001
 docker exec echora-dev-enrichment-service grpc_health_probe -addr=localhost:8002
+docker inspect -f '{{.State.Health.Status}}' echora-dev-review-page   # GET /health
 
 # Qdrant health (plain HTTP)
 curl http://localhost:6333/healthz
@@ -185,7 +187,8 @@ echora/
 │   ├── vector_service/             # gRPC vector search service
 │   │   └── src/vector_service/
 │   │       └── routes/            # gRPC route handlers
-│   └── enrichment_service/        # Data enrichment service
+│   ├── enrichment_service/        # Data enrichment service
+│   └── review_page/               # Local web page for seed-cleaning review cases
 │
 ├── libs/                          # Shared libraries (business logic)
 │   ├── common/                    # Shared configuration & models
@@ -215,6 +218,7 @@ echora/
 - **Qdrant Client** (`libs/qdrant_db/`) - Vector DB operations with quantization & multi-vector support
 - **HTTP Cache** (`libs/http_cache/`) - RFC 9111 compliant caching with Redis backend
 - **Work Matching** (`libs/work_matching/`) - Work entries, provider page keys and details, the lookup of known work entries by page or by title, type and year, the rules deciding from links which pages of a doubled provider belong to an entry, whether entries are one split work and whether a linked page no known work holds joins an entry, and the review file whose answers are kept across runs; imports nothing from enrichment
+- **Review Page** (`apps/review_page/`) - FastAPI + htmx page to answer review cases, Run `clean_seed.py --no-fetch`, and see corrections; reads cases only through `ReviewCaseSource` (proto messages), and only `file_review_case_source.py` imports `seed_cleaning`; see its README
 - **Seed Cleaning** (`libs/seed_cleaning/`) - Lists the seed entries that need checking (doubled providers and split-work candidates), fetches their pages into the provider page store through the enrichment helpers, writes their corrections, and adds checked linked pages the seed lacks; run with `scripts/clean_seed.py`, deleted once discovery replaces the seed
 - **Enrichment Pipeline** (`libs/enrichment/`)
 

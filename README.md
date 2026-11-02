@@ -20,6 +20,8 @@ echora/
 │   │       └── routes/                # Search and admin gRPC handlers
 │   ├── enrichment_service/            # gRPC enrichment orchestration service
 │   │   └── src/enrichment_service/
+│   ├── review_page/                   # Local web page for seed-cleaning review cases (see its README)
+│   │   └── src/review_page/
 │   └── agent_service/                 # gRPC agent service
 │       └── src/agent_service/
 │           ├── routes/                # Agent gRPC handlers
@@ -49,6 +51,8 @@ echora/
 │   │   └── src/http_cache/            # Cache manager, aiohttp adapter, result cache
 │   ├── observability/                 # OpenTelemetry bootstrap (logs, traces, metrics)
 │   │   └── src/observability/         # Telemetry setup, gRPC interceptor, metric registry
+│   ├── seed_cleaning/                 # Checks and corrects seed entries before enrichment
+│   │   └── src/seed_cleaning/         # Entries to check, page fetch, corrections, run result
 │   ├── qdrant_db/                     # Qdrant vector database client
 │   │   └── src/qdrant_db/
 │   │       ├── collection/            # Collection lifecycle + schema builder
@@ -71,12 +75,14 @@ echora/
 │   ├── conftest.py                    # Root fixtures (settings, clients)
 │   ├── apps/                          # App-level tests
 │   │   ├── vector_service/            # unit/, integration/
-│   │   └── enrichment_service/        # unit/
+│   │   ├── enrichment_service/        # unit/
+│   │   └── review_page/               # unit/
 │   ├── libs/                          # Per-library test suites
 │   │   ├── common/                    # unit/, integration/
 │   │   ├── enrichment/                # unit/ (sources, pipeline, utils), integration/
 │   │   ├── http_cache/                # unit/, integration/
 │   │   ├── observability/             # unit/
+│   │   ├── seed_cleaning/             # unit/
 │   │   ├── qdrant_db/                 # unit/ (collection), integration/
 │   │   ├── vector_db_interface/       # unit/, integration/
 │   │   ├── vector_processing/         # unit/ (embedding_models, processors, reranking)
@@ -146,15 +152,16 @@ docker compose -f docker/docker-compose.dev.yml up -d --build
 > `apps/` it will silently run the old code — typically surfacing as a config
 > `ValidationError` for a setting the stale image has never heard of.
 
-| Service | Address |
-| --- | --- |
-| vector_service (gRPC) | `localhost:8001` |
-| enrichment_service (gRPC) | `localhost:8002` |
-| Qdrant dashboard | <http://localhost:6333/dashboard> |
-| Redis | `localhost:6379` |
-| RedisInsight | <http://localhost:5540> (add host `redis`, port `6379`) |
+| Service                               | Address                                                 |
+| ------------------------------------- | ------------------------------------------------------- |
+| vector_service (gRPC)                 | `localhost:8001`                                        |
+| enrichment_service (gRPC)             | `localhost:8002`                                        |
+| review page (HTTP, this machine only) | <http://127.0.0.1:8003>                                 |
+| Qdrant dashboard                      | <http://localhost:6333/dashboard>                       |
+| Redis                                 | `localhost:6379`                                        |
+| RedisInsight                          | <http://localhost:5540> (add host `redis`, port `6379`) |
 
-> **First run takes ~15 minutes.** It builds two images and then downloads the
+> **First run takes ~15 minutes.** It builds three images and then downloads the
 > embedding models (BGE-M3 + OpenCLIP, several GB) into the `echora-dev_model-cache`
 > volume. `vector-service` stays `starting` until that finishes — this is why
 > its healthcheck has a 15-minute `start_period`. Subsequent starts are fast;
@@ -174,6 +181,7 @@ docker compose -f docker/docker-compose.dev.yml up -d qdrant redis
 # 3. Run a service
 ./pants run apps/vector_service:vector_service        # gRPC on :8001
 ./pants run apps/enrichment_service:enrichment_service # gRPC on :8002
+./pants run apps/review_page:review_page               # HTTP on 127.0.0.1:8003
 ```
 
 Pants resolves its own interpreter from `PATH`, independently of the venv. If
@@ -194,8 +202,9 @@ and `Dockerfile.prd`) install Chromium and start Xvfb, so Path A needs neither.
 
 ### 3. Verify
 
-Both services are **gRPC only** — there are no HTTP endpoints, so `curl` will
-not work. Use the standard gRPC health protocol:
+The vector and enrichment services are **gRPC only** — there are no HTTP
+endpoints, so `curl` will not work. Use the standard gRPC health protocol (the
+review page is plain HTTP: `GET http://127.0.0.1:8003/health`):
 
 **Path A (Docker)** — `grpc_health_probe` ships in both images:
 
