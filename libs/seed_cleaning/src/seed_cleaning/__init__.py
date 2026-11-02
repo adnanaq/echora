@@ -16,6 +16,7 @@ from seed_cleaning.cleaning_report import (
     count_corrected_entries,
     count_corrections,
     describe_linked_page_outcomes,
+    find_correction_change,
 )
 from seed_cleaning.corrected_entries import (
     CorrectedEntry,
@@ -29,6 +30,10 @@ from seed_cleaning.corrected_seed import (
     PageOrigin,
     UnknownPageOriginError,
     build_corrected_seed,
+)
+from seed_cleaning.correction_reasons import (
+    ANSWER_REASON_SENTENCE,
+    describe_correction_reason,
 )
 from seed_cleaning.doubled_provider_entries import find_doubled_provider_entries
 from seed_cleaning.entry_groups import EntryGroup
@@ -47,6 +52,15 @@ from seed_cleaning.linked_page_groups import (
     rename_linked_pages_to_current_keys,
 )
 from seed_cleaning.not_listed_searches import NotListedSearchFile
+from seed_cleaning.seed_cleaning_run import (
+    CORRECTIONS_FILE_NAME,
+    ENTRIES_TO_CHECK_FILE_NAME,
+    REVIEW_FILE_NAME,
+    RUN_RESULT_FILE_NAME,
+    SeedCleaningRunResult,
+    read_seed_cleaning_run_result,
+    run_seed_cleaning,
+)
 from seed_cleaning.seed_corrections import (
     REVIEW_ANSWER_REASON,
     PlacementCorrections,
@@ -72,10 +86,20 @@ from seed_cleaning.split_work_links import (
 from seed_cleaning.split_work_pass import SplitWorkPass, prepare_split_work_pass
 
 __all__ = [
+    "REVIEW_FILE_NAME",
+    "RUN_RESULT_FILE_NAME",
+    "SeedCleaningRunResult",
+    "read_seed_cleaning_run_result",
+    "run_seed_cleaning",
+    "ANSWER_REASON_SENTENCE",
     "CORRECTION_COUNT_NAMES",
+    "CORRECTIONS_FILE_NAME",
+    "ENTRIES_TO_CHECK_FILE_NAME",
     "build_entries_to_check_document",
     "count_corrected_entries",
     "count_corrections",
+    "describe_correction_reason",
+    "find_correction_change",
     "describe_linked_page_outcomes",
     "REVIEW_ANSWER_REASON",
     "CorrectedEntry",

@@ -56,7 +56,6 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 from common.config import get_settings
 from enrichment.pipeline.circuit_breaker_api_fetcher import CircuitBreakerApiFetcher
@@ -66,38 +65,14 @@ from enrichment.sources.animeschedule.animeschedule_helper import require_app_to
 from enrichment.sources.mal import mal_anime_crawler
 from http_cache import close_cache, configure_cache
 from seed_cleaning import (
-    EntryGroup,
-    LinkedPageCorrections,
     NotListedSearchFile,
-    PlacementCorrections,
-    SeedCorrection,
-    SplitWorkCandidates,
-    SplitWorkPass,
-    build_corrected_entries,
-    build_entries_to_check_document,
-    correct_entry_groups,
-    correct_linked_pages,
-    count_corrected_entries,
-    count_corrections,
-    describe_linked_page_outcomes,
     fetch_seed_and_linked_pages,
-    find_doubled_provider_entries,
-    find_entries_without_mal_page,
-    find_linking_seed_entries,
-    list_entries_with_placed_pages,
-    mark_anime_id_pages,
-    merge_corrections,
-    prepare_split_work_pass,
     read_seed_release_name,
-    write_corrections,
+    run_seed_cleaning,
 )
 from work_matching import (
     KnownWorkEntriesFromSeed,
     ProviderPageStore,
-    ReviewCase,
-    ReviewFile,
-    WorkEntry,
-    replace_file_lines,
 )
 
 logger = logging.getLogger(__name__)
@@ -303,180 +278,6 @@ async def fetch_pages(
     logger.info(f"Pages in the store: {len(store)}")
 
 
-def write_entries_to_check(
-    seed_document: dict[str, Any],
-    doubled_provider_entries: list[WorkEntry],
-    candidate_groups: list[SplitWorkCandidates],
-    data_dir: Path,
-) -> None:
-    """Write ``entries_to_check.json`` and log how many entries each pass checks.
-
-    Args:
-        seed_document: The downloaded seed release, as read from its file.
-        doubled_provider_entries: The first pass's entries.
-        candidate_groups: The second pass's groups of split-work candidates.
-        data_dir: The folder ``entries_to_check.json`` is written to.
-    """
-    entries_to_check = build_entries_to_check_document(
-        seed_document.get("$schema"), doubled_provider_entries, candidate_groups
-    )
-    replace_file_lines(
-        data_dir / "entries_to_check.json",
-        [json.dumps(entries_to_check, ensure_ascii=False, indent=1) + "\n"],
-    )
-    marked_group_count = sum(
-        group.shared_provider is not None for group in candidate_groups
-    )
-    logger.info(f"Entries with a doubled provider: {len(doubled_provider_entries)}")
-    logger.info(
-        f"Split-work candidate groups: {len(candidate_groups)} ({marked_group_count} marked)"
-    )
-
-
-def write_results(
-    data_dir: Path,
-    review_file: ReviewFile,
-    corrections: list[SeedCorrection],
-    review_cases: list[ReviewCase],
-    linked_page_corrections: LinkedPageCorrections,
-) -> None:
-    """Write the review and corrections files, and log what they hold.
-
-    Args:
-        data_dir: The folder ``corrections.jsonl`` is written to.
-        review_file: The review file the cases are written to.
-        corrections: Both passes' corrections, merged.
-        review_cases: Both passes' review cases.
-        linked_page_corrections: The linked-page outcomes, for their counts.
-    """
-    unused_answer_case_names = review_file.write_cases(review_cases)
-    write_corrections(data_dir / "corrections.jsonl", corrections)
-    for count_name, correction_count in count_corrections(
-        corrections, review_cases
-    ).items():
-        logger.info(f"{count_name.capitalize()}: {correction_count}")
-    for report_line in describe_linked_page_outcomes(linked_page_corrections):
-        logger.info(report_line)
-    for case_name in unused_answer_case_names:
-        logger.info(f"Answer kept, its case no longer comes up: {case_name}")
-
-
-def run_first_pass(
-    known_work_entries: KnownWorkEntriesFromSeed,
-    store: ProviderPageStore,
-    review_file: ReviewFile,
-) -> tuple[PlacementCorrections, LinkedPageCorrections]:
-    """Place the entries with a doubled provider and add the pages entries link.
-
-    Links are read from the doubled-provider entries and the entries without a
-    MAL page.
-
-    Args:
-        known_work_entries: Every seed entry.
-        store: The provider page store, holding every page the pass reads.
-        review_file: The review file, for the answers kept in it.
-
-    Returns:
-        The doubled-provider corrections and cases, and the linked-page ones.
-    """
-    doubled_provider_entries = find_doubled_provider_entries(known_work_entries)
-    entries_without_mal_page = find_entries_without_mal_page(known_work_entries)
-    logger.info(f"Entries without a MAL page: {len(entries_without_mal_page)}")
-    group_corrections = correct_entry_groups(
-        [EntryGroup((entry,)) for entry in doubled_provider_entries],
-        store,
-        known_work_entries,
-        review_file,
-    )
-    linking_seed_entries_by_page_key = find_linking_seed_entries(
-        list_entries_with_placed_pages(
-            [*doubled_provider_entries, *entries_without_mal_page],
-            group_corrections,
-            known_work_entries,
-            store,
-        ),
-        store,
-        known_work_entries,
-    )
-    linked_page_corrections = correct_linked_pages(
-        linking_seed_entries_by_page_key, store, known_work_entries, review_file
-    )
-    return group_corrections, linked_page_corrections
-
-
-def run_second_pass(
-    split_work_pass: SplitWorkPass, store: ProviderPageStore, review_file: ReviewFile
-) -> PlacementCorrections:
-    """Place each group of split-work candidates.
-
-    Args:
-        split_work_pass: The second pass's entries and candidate groups.
-        store: The provider page store, holding every page the pass reads.
-        review_file: The review file, for the answers kept in it.
-
-    Returns:
-        The split-work corrections and cases.
-    """
-    return correct_entry_groups(
-        [EntryGroup.from_candidates(group) for group in split_work_pass.candidates],
-        store,
-        split_work_pass.known_work_entries,
-        review_file,
-        split_work_pass.corrected_seed,
-    )
-
-
-def correct_seed(
-    seed_document: dict[str, Any],
-    known_work_entries: KnownWorkEntriesFromSeed,
-    store: ProviderPageStore,
-    data_dir: Path,
-) -> None:
-    """Run both passes over the stored pages and write what they decided.
-
-    Args:
-        seed_document: The downloaded seed release, as read from its file.
-        known_work_entries: Every seed entry.
-        store: The provider page store.
-        data_dir: The folder the review, corrections and entries files go to.
-    """
-    review_file = ReviewFile(data_dir / "review.jsonl")
-    group_corrections, linked_page_corrections = run_first_pass(
-        known_work_entries, store, review_file
-    )
-    first_pass_corrections = [
-        *group_corrections.corrections,
-        *linked_page_corrections.corrections,
-    ]
-    first_pass_cases = [
-        *group_corrections.review_cases,
-        *linked_page_corrections.review_cases,
-    ]
-    split_work_pass = prepare_split_work_pass(
-        first_pass_corrections, first_pass_cases, known_work_entries, store
-    )
-    split_work_corrections = run_second_pass(split_work_pass, store, review_file)
-    write_entries_to_check(
-        seed_document,
-        find_doubled_provider_entries(known_work_entries),
-        split_work_pass.candidates,
-        data_dir,
-    )
-    corrections = merge_corrections(
-        first_pass_corrections, split_work_corrections.corrections
-    )
-    corrected_entries = build_corrected_entries(corrections, known_work_entries, store)
-    write_results(
-        data_dir,
-        review_file,
-        mark_anime_id_pages(corrections, corrected_entries),
-        [*first_pass_cases, *split_work_corrections.review_cases],
-        linked_page_corrections,
-    )
-    for count_name, entry_count in count_corrected_entries(corrected_entries).items():
-        logger.info(f"{count_name.capitalize()}: {entry_count}")
-
-
 async def main() -> None:
     """Fetch the seed release's pages, then run both passes and write their results."""
     arguments = parse_arguments()
@@ -493,7 +294,13 @@ async def main() -> None:
     )
     if not arguments.no_fetch:
         await fetch_pages(known_work_entries, store, release_name, arguments)
-    correct_seed(seed_document, known_work_entries, store, arguments.data_dir)
+    run_seed_cleaning(
+        seed_document,
+        arguments.seed_file,
+        known_work_entries,
+        store,
+        arguments.data_dir,
+    )
 
 
 if __name__ == "__main__":

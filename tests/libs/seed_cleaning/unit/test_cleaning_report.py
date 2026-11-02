@@ -1,8 +1,10 @@
+import pytest
 from seed_cleaning.cleaning_report import (
     build_entries_to_check_document,
     count_corrected_entries,
     count_corrections,
     describe_linked_page_outcomes,
+    find_correction_change,
 )
 from seed_cleaning.corrected_entries import CorrectedEntry
 from seed_cleaning.linked_page_additions import LinkedPageCorrections
@@ -123,3 +125,23 @@ def test_describe_linked_page_outcomes_counts_then_conflicting_pages_listed() ->
         "Answer not applied, another page of its provider is added to the same "
         "entry: mal:anime:4",
     ]
+
+
+@pytest.mark.parametrize(
+    ("fields", "change"),
+    [
+        ({}, None),
+        ({"is_main_page": True}, "pages kept as main page"),
+        ({"is_part_page": True}, "pages kept as part page"),
+        ({"renamed_to": "kitsu:anime:2"}, "old addresses dropped"),
+        ({"target_entry_reference_page": "mal:anime:9"}, "pages moved to a seed entry"),
+        ({"new_entry_key": "mal:anime:1 work 2"}, "pages moved to a new entry"),
+        ({"is_added_page": True}, "pages added"),
+        ({"is_added_page": True, "is_part_page": True}, "pages added as parts"),
+    ],
+)
+def test_find_correction_change_names_change_counted(fields, change) -> None:
+    assert (
+        find_correction_change(_correction("kitsu:anime:1", "work 1", **fields))
+        == change
+    )
