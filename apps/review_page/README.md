@@ -94,7 +94,9 @@ built on it).
 ### Settings
 
 `ReviewPageConfig` in `libs/common/src/common/config/review_page_config.py`,
-read like every other sub-config of `Settings`:
+read like every other sub-config of `Settings`. The settings are trusted: Run
+starts the configured script with the server's own Python, so only the person
+running the page sets them.
 
 | Environment variable            | Default                 | Meaning                                                                                                |
 | ------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------ |
@@ -217,7 +219,12 @@ summary, the lists, the original values and the Corrections tab refresh.
 
 The page asks for the run state every few seconds, so a run started from the
 terminal or another tab shows the same way. A failed run shows its exit code.
-The run's output is in `data/seed_cleaning/logs/review_page_runs.log`.
+The run's output is in `data/seed_cleaning/logs/review_page_runs.log`. A log
+past about 1 MB moves to `review_page_runs.log.1` before the next run.
+
+A run keeps going when the page's server restarts. The restarted server
+follows that run through the review file's lock, but cannot read the run's
+exit code, so a failure shows only in the run log.
 
 ### Layout and settings
 
@@ -247,11 +254,13 @@ The run's output is in `data/seed_cleaning/logs/review_page_runs.log`.
   reload.
 - **Only the page itself.** Other websites open in the same browser cannot
   save answers or start runs (`request_guards.py`):
-  - a request naming any host but `127.0.0.1` or `localhost` gets 400, which
-    stops DNS rebinding;
-  - a POST without the `HX-Request: true` header htmx sends gets 403, and a
-    site on another origin cannot add that header without a CORS preflight,
-    which the server refuses.
+  - a request naming any host but `127.0.0.1`, `localhost` or `[::1]` gets
+    400, which stops DNS rebinding;
+  - a POST without the `HX-Request: true` header htmx sends gets 403. A site
+    on another origin cannot add that header without a CORS preflight, which
+    the server refuses;
+  - a POST whose `Origin` header names another host gets 403, a second check
+    in case the header check ever lets a request through.
 
   A request under another name, such as a Kubernetes probe of `/health`,
   must send `Host: localhost`, or that name must be added to
@@ -351,24 +360,26 @@ the file source is tested on a temporary data folder, runs included.
 
 ## Files
 
-| File                         | Holds                                                                                                 |
-| ---------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `main.py`                    | Starts the page: reads the settings, builds the file source, serves the app with uvicorn.             |
-| `app.py`                     | `create_app`, `ReviewPageRoutes`: the page, the Cases tab's fragments, choices, saves and Run.        |
-| `correction_routes.py`       | `CorrectionRoutes`: the Corrections tab's fragments.                                                  |
-| `run_routes.py`              | `RunRoutes`: starting Run, the run panel, and the run state every page polls.                         |
-| `htmx_responses.py`          | The empty and refusal responses that hand the browser htmx events.                                    |
-| `review_case_source.py`      | `ReviewCaseSource`: the source the page reads and writes through.                                     |
-| `file_review_case_source.py` | `FileReviewCaseSource`: the source over seed cleaning's local files, and its conversions to messages. |
-| `answer_checks.py`           | The checks an answer passes before the file source saves it, and linked-page conflict warnings.       |
-| `review_case_messages.py`    | Conversion between `work_matching.ReviewCase` and its message, and the helpers for ordered mappings.  |
-| `run_summary.py`             | `RunSummary`, `build_run_summary`: the last run's summary read from its message.                      |
-| `page_state.py`              | Edit states, case states, buttons, filters and paging, as plain functions of the answers.             |
-| `case_views.py`              | What the case list and case panel show: rows, page rows, choices, notes, columns.                     |
-| `correction_views.py`        | What the Corrections tab shows: corrected entries, filters, an entry's pages and destinations.        |
-| `browser_state.py`           | `BrowserState`: the reviewer's state as the browser sends it.                                         |
-| `request_guards.py`          | The host check and the htmx header check that refuse requests from other websites.                    |
-| `template_functions.py`      | `static_url`, `element_id` and the tooltips, given to every template.                                 |
-| `tooltips.py`                | Every tooltip the page writes itself (`Tooltip`, and the texts for states, changes and themes).       |
-| `templates/`                 | The page, its fragments and `parts.html`, the shared parts.                                           |
-| `static/`                    | `parts.css`, `review_page.js` and the copied libraries.                                               |
+| File                         | Holds                                                                                                           |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `main.py`                    | Starts the page: reads the settings, builds the file source, serves the app with uvicorn.                       |
+| `app.py`                     | `create_app`, `PageRoutes`: builds the app, serves the page shell and health check, and the broken-line notice. |
+| `case_routes.py`             | `CaseRoutes`: the Cases tab's toolbar, list, open case, choices and saves.                                      |
+| `correction_routes.py`       | `CorrectionRoutes`: the Corrections tab's fragments.                                                            |
+| `run_routes.py`              | `RunRoutes`: starting Run, the run panel, and the run state every page polls.                                   |
+| `htmx_responses.py`          | The empty and refusal responses that hand the browser htmx events.                                              |
+| `review_case_source.py`      | `ReviewCaseSource`: the source the page reads and writes through.                                               |
+| `file_review_case_source.py` | `FileReviewCaseSource`: the source over seed cleaning's local files, and its conversions to messages.           |
+| `answer_checks.py`           | The checks an answer passes before the file source saves it, and linked-page conflict warnings.                 |
+| `review_case_messages.py`    | Conversion between `work_matching.ReviewCase` and its message, and the helpers for ordered mappings.            |
+| `run_summary.py`             | `build_run_summary`: reads the last run's summary from its message.                                             |
+| `models.py`                  | Every data shape the page passes between modules and templates: states, rows, views, filters, `BrowserState`.   |
+| `page_state.py`              | Decides each case's edit state and case state, the buttons, the filters and paging, from the answers alone.     |
+| `case_views.py`              | Builds the case list's rows and assembles the case panel's view.                                                |
+| `case_panel_tables.py`       | Builds the case panel's tables: entries, page rows with choices and notes, comparison rows, evidence.           |
+| `correction_views.py`        | Builds what the Corrections tab shows: corrected entries, filters, an entry's pages and destinations.           |
+| `request_guards.py`          | The host check and the htmx header check that refuse requests from other websites.                              |
+| `template_functions.py`      | `static_url`, `element_id` and the tooltips, given to every template.                                           |
+| `tooltips.py`                | Every tooltip the page writes itself (`Tooltip`, and the texts for states, changes and themes).                 |
+| `templates/`                 | The page, its fragments and `parts.html`, the shared parts.                                                     |
+| `static/`                    | `parts.css`, `review_page.js` and the copied libraries.                                                         |
