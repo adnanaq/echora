@@ -49,6 +49,7 @@ from enum import StrEnum
 from typing import Final
 
 from pydantic import JsonValue
+from work_matching.answer_rules import LinkedPageAnswerRule
 from work_matching.known_work_entries import KnownWorkEntries
 from work_matching.page_details_comparison import is_page_details_matching
 from work_matching.provider_page import ProviderPage
@@ -62,12 +63,12 @@ from work_matching.work_entry import WorkEntry
 # These words are written in review answers, so changing them would make kept
 # answers invalid.
 SKIP_ANSWER: Final = "skip"
-_WHOLE_PAGE_ANSWER: Final = "add"
-_PART_PAGE_ANSWER: Final = "add as part"
+WHOLE_PAGE_ANSWER: Final = "add"
+PART_PAGE_ANSWER: Final = "add as part"
 # An answer adding the page, optionally naming the linking entry it joins. The
 # longer word comes first, so "add as part" is never read as "add".
 _LINKED_PAGE_ANSWER_TEXT: Final = re.compile(
-    rf"(?P<addition>{re.escape(_PART_PAGE_ANSWER)}|{re.escape(_WHOLE_PAGE_ANSWER)})"
+    rf"(?P<addition>{re.escape(PART_PAGE_ANSWER)}|{re.escape(WHOLE_PAGE_ANSWER)})"
     r"(?: to (?P<entry_reference_page>\S+))?"
 )
 
@@ -167,6 +168,21 @@ class LinkedPageAddition:
 
     entry_reference_page: str
     is_part_page: bool
+
+
+@dataclass(frozen=True, slots=True)
+class LinkedPageAnswerCheck:
+    """Hold a linked-page answer once read: the accepted answer, or the rule it breaks."""
+
+    # The addition, ``SKIP_ANSWER``, or None when a rule is broken.
+    accepted_answer: LinkedPageAddition | str | None
+    # Empty when the answer is valid; otherwise the one rule broken first.
+    broken_rules: tuple[LinkedPageAnswerRule, ...]
+
+    @property
+    def is_valid(self) -> bool:
+        """Report whether the answer breaks no rule."""
+        return not self.broken_rules
 
 
 class NoLinkingEntryError(ValueError):
@@ -330,7 +346,7 @@ def suggest_linked_page_answer(
         and page.episode_count < decision.entry_episode_count
     )
     if is_fewer_episodes and is_page_details_matching(page, entry):
-        return {decision.page_key: _PART_PAGE_ANSWER}
+        return {decision.page_key: PART_PAGE_ANSWER}
     return {}
 
 
@@ -345,24 +361,59 @@ def read_linked_page_answer(
 
     Returns:
         The accepted addition, ``SKIP_ANSWER`` for a page left out, or None
-        when the answer is not valid.
+        when the answer breaks a rule ``check_linked_page_answer`` checks.
+    """
+    return check_linked_page_answer(answer, decision).accepted_answer
+
+
+def check_linked_page_answer(
+    answer: JsonValue, decision: LinkedPageDecision
+) -> LinkedPageAnswerCheck:
+    """Read a review answer about a linked page and name the rule it breaks.
+
+    The rules are checked in this order, and the first broken one is named,
+    since each needs the ones before it to hold:
+
+    - the answer maps the linked page's key, alone, to its answer;
+    - the answer is one of the words in the module docstring;
+    - it names a linking entry, or there is only one;
+    - a whole page joins an entry holding no page of its provider.
+
+    Args:
+        answer: The answer as written: the page key mapped to the answer text.
+        decision: The decision the answer is about.
+
+    Returns:
+        The accepted answer and no broken rule, or no answer and the rule.
     """
     if not isinstance(answer, dict) or answer.keys() != {decision.page_key}:
-        return None
+        return LinkedPageAnswerCheck(
+            None, (LinkedPageAnswerRule.ANSWER_NOT_PAGE_ANSWER,)
+        )
     answer_text = answer[decision.page_key]
     if answer_text == SKIP_ANSWER:
-        return SKIP_ANSWER
+        return LinkedPageAnswerCheck(SKIP_ANSWER, ())
     if not isinstance(answer_text, str) or not (
         answer_match := _LINKED_PAGE_ANSWER_TEXT.fullmatch(answer_text)
     ):
-        return None
-    target_entry = _find_target_entry(decision, answer_match["entry_reference_page"])
-    is_part_page = answer_match["addition"] == _PART_PAGE_ANSWER
-    if target_entry is None or (
-        not is_part_page and target_entry.has_page_of_same_provider(decision.page_key)
-    ):
-        return None
-    return LinkedPageAddition(target_entry.reference_page, is_part_page)
+        return LinkedPageAnswerCheck(None, (LinkedPageAnswerRule.ANSWER_NOT_READABLE,))
+    named_reference_page = answer_match["entry_reference_page"]
+    target_entry = _find_target_entry(decision, named_reference_page)
+    if target_entry is None:
+        return LinkedPageAnswerCheck(
+            None,
+            (
+                LinkedPageAnswerRule.ENTRY_NOT_NAMED
+                if named_reference_page is None
+                else LinkedPageAnswerRule.ENTRY_NOT_LINKING,
+            ),
+        )
+    is_part_page = answer_match["addition"] == PART_PAGE_ANSWER
+    if not is_part_page and target_entry.has_page_of_same_provider(decision.page_key):
+        return LinkedPageAnswerCheck(None, (LinkedPageAnswerRule.PROVIDER_IN_ENTRY,))
+    return LinkedPageAnswerCheck(
+        LinkedPageAddition(target_entry.reference_page, is_part_page), ()
+    )
 
 
 def _choose_single_entry_reason(

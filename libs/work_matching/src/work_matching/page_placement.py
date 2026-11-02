@@ -61,6 +61,7 @@ from typing import NamedTuple
 
 from networkx.utils import UnionFind
 from pydantic import JsonValue
+from work_matching.answer_rules import PlacementRule
 from work_matching.doubled_provider_decision import (
     DoubledProviderDecision,
     DoubledProviderOutcome,
@@ -107,6 +108,21 @@ class PlacedPage(NamedTuple):
 
     placed_key: str
     placement: PagePlacement
+
+
+@dataclass(frozen=True, slots=True)
+class PlacementCheck:
+    """Hold an answer's readable places and every placement rule it breaks."""
+
+    # Each page whose place could be read, by the key the answer names it by.
+    placements: dict[str, PagePlacement]
+    # In the order the rules are checked; empty when the answer is valid.
+    broken_rules: tuple[PlacementRule, ...]
+
+    @property
+    def is_valid(self) -> bool:
+        """Report whether the answer breaks no placement rule."""
+        return not self.broken_rules
 
 
 def find_page_placement(
@@ -199,10 +215,39 @@ def read_answer_placements(
             for a group of entries, even without ``work 2`` or later.
 
     Returns:
-        Each placed page's place, or None when the answer is not valid.
+        Each placed page's place, or None when the answer breaks a rule
+        ``check_answer_placements`` checks.
+    """
+    placement_check = check_answer_placements(
+        answer, entry, decisions, is_every_page_required=is_every_page_required
+    )
+    return placement_check.placements if placement_check.is_valid else None
+
+
+def check_answer_placements(
+    answer: JsonValue,
+    entry: WorkEntry,
+    decisions: Sequence[DoubledProviderDecision],
+    *,
+    is_every_page_required: bool = False,
+) -> PlacementCheck:
+    """Read a review answer into places and list every placement rule it breaks.
+
+    The rules are the ones the module docstring lists. Each is checked on its
+    own, so a reviewer sees every problem of an answer at once.
+
+    Args:
+        answer: The answer as written: each page key mapped to its place.
+        entry: The work entry the answer places pages of.
+        decisions: The entry's doubled-provider decisions.
+        is_every_page_required: Whether the answer must place every page, as
+            for a group of entries, even without ``work 2`` or later.
+
+    Returns:
+        The places that could be read, and the broken rules in check order.
     """
     if not isinstance(answer, dict):
-        return None
+        return PlacementCheck({}, (PlacementRule.ANSWER_NOT_PAGE_PLACES,))
     placements = {
         key: placement
         for key, placement_text in answer.items()
@@ -218,13 +263,27 @@ def read_answer_placements(
         if is_mixed_entry_answer or is_every_page_required
         else {key for decision in decisions for key in decision.page_keys}
     )
-    is_valid = (
-        len(placements) == len(answer)
-        and required_page_keys <= placements.keys() <= placeable_page_keys
-        and _is_each_provider_marked_once(placements)
-        and not _has_work_with_two_mal_pages(placements)
-    )
-    return placements if is_valid else None
+    broken_rules = [
+        rule
+        for rule, is_broken in (
+            (PlacementRule.PLACE_NOT_READABLE, len(placements) != len(answer)),
+            (
+                PlacementRule.PAGE_OUTSIDE_CASE,
+                bool(placements.keys() - placeable_page_keys),
+            ),
+            (
+                PlacementRule.PAGE_WITHOUT_PLACE,
+                bool(required_page_keys - placements.keys()),
+            ),
+            (
+                PlacementRule.WORK_WITH_TWO_MAL_PAGES,
+                _has_work_with_two_mal_pages(placements),
+            ),
+        )
+        if is_broken
+    ]
+    broken_rules.extend(_list_broken_mark_rules(placements))
+    return PlacementCheck(placements, tuple(broken_rules))
 
 
 def suggest_page_placements(
@@ -345,8 +404,10 @@ def read_placement(placement_text: str) -> PagePlacement | None:
     )
 
 
-def _is_each_provider_marked_once(placements: dict[str, PagePlacement]) -> bool:
-    """Report whether each work's provider pages carry valid main and part marks.
+def _list_broken_mark_rules(
+    placements: dict[str, PagePlacement],
+) -> list[PlacementRule]:
+    """List the main and part mark rules each work's provider pages break.
 
     Each item reads ``<pages of the provider in the work>: <valid marks>``.
 
@@ -359,7 +420,8 @@ def _is_each_provider_marked_once(placements: dict[str, PagePlacement]) -> bool:
         placements: Each placed page's place, by its page key.
 
     Returns:
-        True when every work's providers follow the rules above.
+        Each broken rule once, in the order first found; empty when every
+        work's providers follow the rules above.
     """
     placements_by_work_provider: defaultdict[
         tuple[str, str | None], list[PagePlacement]
@@ -369,9 +431,12 @@ def _is_each_provider_marked_once(placements: dict[str, PagePlacement]) -> bool:
             placements_by_work_provider[
                 placement.placement_word, get_page_provider(key)
             ].append(placement)
-    return all(
-        _is_provider_marked_once(provider_placements)
-        for provider_placements in placements_by_work_provider.values()
+    return list(
+        dict.fromkeys(
+            broken_rule
+            for provider_placements in placements_by_work_provider.values()
+            if (broken_rule := _find_broken_mark_rule(provider_placements))
+        )
     )
 
 
@@ -389,20 +454,25 @@ def _has_two_mal_pages(page_keys: Iterable[str]) -> bool:
     return sum(get_page_provider(key) == _MAL_PROVIDER for key in page_keys) > 1
 
 
-def _is_provider_marked_once(provider_placements: list[PagePlacement]) -> bool:
-    """Report whether one provider's pages in one work carry valid main and part marks.
+def _find_broken_mark_rule(
+    provider_placements: list[PagePlacement],
+) -> PlacementRule | None:
+    """Return the mark rule one provider's pages in one work break, if any.
 
     Args:
         provider_placements: The places of one provider's pages in one work.
 
     Returns:
-        True when one page is unmarked or a part, or when several pages are
-        all parts or have exactly one main page and no part.
+        ``SINGLE_PAGE_MARKED_MAIN`` for a lone page marked main;
+        ``PROVIDER_PAGES_NOT_MARKED_ONCE`` for several pages that are neither
+        all parts nor one main page with no part; None otherwise.
     """
     main_page_count = sum(placement.is_main_page for placement in provider_placements)
     part_page_count = sum(placement.is_part_page for placement in provider_placements)
     if len(provider_placements) == 1:
-        return main_page_count == 0
-    return part_page_count == len(provider_placements) or (
+        return PlacementRule.SINGLE_PAGE_MARKED_MAIN if main_page_count else None
+    if part_page_count == len(provider_placements) or (
         main_page_count == 1 and part_page_count == 0
-    )
+    ):
+        return None
+    return PlacementRule.PROVIDER_PAGES_NOT_MARKED_ONCE

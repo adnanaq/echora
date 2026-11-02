@@ -1,5 +1,9 @@
 """Enrichment API helpers integration tests."""
 
+python_test_utils(
+    name="conftest",
+)
+
 python_tests(
     dependencies=[
         "//libs/enrichment/src/enrichment",

@@ -6,6 +6,7 @@ from .enrichment_config import EnrichmentConfig
 from .observability_config import ObservabilityConfig
 from .qdrant_config import QdrantConfig
 from .redis_config import RedisConfig
+from .review_page_config import ReviewPageConfig
 from .service_config import ServiceConfig
 from .settings import Settings, get_settings
 
@@ -16,6 +17,7 @@ __all__ = [
     "ObservabilityConfig",
     "QdrantConfig",
     "RedisConfig",
+    "ReviewPageConfig",
     "ServiceConfig",
     "Settings",
     "get_settings",

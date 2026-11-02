@@ -36,22 +36,23 @@ review file".
 """
 
 import logging
-from collections import Counter
 from collections.abc import Iterable, Sequence
-from pathlib import Path
+from enum import StrEnum
 from typing import Self
 
-from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
+from pydantic import BaseModel, ConfigDict, JsonValue
+from work_matching.answer_rules import LinkedPageAnswerRule, PlacementRule
 from work_matching.doubled_provider_decision import DoubledProviderDecision
 from work_matching.entry_group import (
+    check_group_answer_placements,
     list_mal_page_review_reasons,
     read_group_answer_placements,
     suggest_group_page_placements,
 )
-from work_matching.file_replacement import replace_file_lines
 from work_matching.linked_page_check import (
     LinkedPageAddition,
     LinkedPageDecision,
+    check_linked_page_answer,
     read_linked_page_answer,
     suggest_linked_page_answer,
 )
@@ -62,6 +63,35 @@ from work_matching.split_work_check import SplitWorkReviewReason
 from work_matching.work_entry import WorkEntry
 
 logger = logging.getLogger(__name__)
+
+
+class ReviewCaseKind(StrEnum):
+    """What a review case decides, named as its case name begins."""
+
+    DOUBLED_PROVIDER = "doubled provider"
+    SPLIT_WORK = "split work"
+    LINKED_PAGE = "linked page"
+
+    @property
+    def description(self) -> str:
+        """Return what a case of this kind asks the reviewer to decide."""
+        return _DESCRIPTION_BY_CASE_KIND[self]
+
+
+_DESCRIPTION_BY_CASE_KIND: dict[ReviewCaseKind, str] = {
+    ReviewCaseKind.DOUBLED_PROVIDER: (
+        "An entry holds two or more pages of one provider. The answer places "
+        "each page in a work."
+    ),
+    ReviewCaseKind.SPLIT_WORK: (
+        "Two or more seed entries may be one work split up. The answer says "
+        "which pages form each work."
+    ),
+    ReviewCaseKind.LINKED_PAGE: (
+        "An entry links a page no seed entry holds. The answer says whether the "
+        "page joins the entry."
+    ),
+}
 
 
 class ReviewCase(BaseModel):
@@ -100,6 +130,20 @@ class ReviewCase(BaseModel):
     pages: tuple[ProviderPage, ...] = ()
 
     @property
+    def kind(self) -> ReviewCaseKind:
+        """Return what the case decides, read from its decisions and entries.
+
+        Returns:
+            ``LINKED_PAGE`` for a linked page's decision, ``SPLIT_WORK`` for a
+            group of two or more entries, ``DOUBLED_PROVIDER`` otherwise.
+        """
+        if any(isinstance(decision, LinkedPageDecision) for decision in self.decisions):
+            return ReviewCaseKind.LINKED_PAGE
+        if len(self.entries) > 1:
+            return ReviewCaseKind.SPLIT_WORK
+        return ReviewCaseKind.DOUBLED_PROVIDER
+
+    @property
     def accepted_answer(
         self,
     ) -> dict[str, PagePlacement] | LinkedPageAddition | str | None:
@@ -126,6 +170,32 @@ class ReviewCase(BaseModel):
             doubled_provider_decisions,
             {page.key: page.renamed_to for page in self.pages if page.renamed_to},
         )
+
+    def list_broken_answer_rules(
+        self, answer: JsonValue
+    ) -> tuple[PlacementRule, ...] | tuple[LinkedPageAnswerRule, ...]:
+        """List the rules an answer to this case breaks, with the run's own checks.
+
+        The review page checks an answer with this before saving it, so it
+        never saves an answer the run would refuse.
+
+        Args:
+            answer: The answer as it would be written in the file.
+
+        Returns:
+            Each broken rule; empty when the run would accept the answer.
+        """
+        doubled_provider_decisions: list[DoubledProviderDecision] = []
+        for decision in self.decisions:
+            if isinstance(decision, LinkedPageDecision):
+                return check_linked_page_answer(answer, decision).broken_rules
+            doubled_provider_decisions.append(decision)
+        return check_group_answer_placements(
+            answer,
+            list(self.entries.values()),
+            doubled_provider_decisions,
+            {page.key: page.renamed_to for page in self.pages if page.renamed_to},
+        ).broken_rules
 
     @classmethod
     def from_entry_group(
@@ -223,132 +293,6 @@ class ReviewCase(BaseModel):
                 ),
             ),
         )
-
-
-class _KeptAnswer(BaseModel):
-    """The part of a review file line read back: the case name and its answer."""
-
-    case_name: str
-    answer: JsonValue = None
-
-
-class DuplicateCaseError(ValueError):
-    """Two review cases written in one run have the same case name."""
-
-    def __init__(self, case_names: Iterable[str]) -> None:
-        """Name the cases written more than once."""
-        super().__init__(f"Review cases given more than once: {', '.join(case_names)}")
-
-
-class ReviewFile:
-    """The review file: review cases kept in one JSON Lines file across runs.
-
-    A person edits lines in place, so the file is rewritten whole rather than
-    appended to. Only each line's case name and answer are read back; the rest
-    of a line is rebuilt by the run, so anything else written in it is not kept.
-    One process at a time writes the file, and a person does not edit it during
-    a run: an answer saved after ``write_cases`` reads the file again is lost.
-    """
-
-    def __init__(self, path: str | Path) -> None:
-        """Read the answers already written, if the file exists.
-
-        Args:
-            path: The JSON Lines review file.
-
-        Raises:
-            ValidationError: A line is not a case. Its note names the file and
-                line.
-        """
-        self._path = Path(path)
-        self._answers_and_lines_by_case_name = self._read_answers_in_file()
-
-    def attach_kept_answer(self, case: ReviewCase) -> ReviewCase:
-        """Return the case with the answer kept for it, or unchanged if none is.
-
-        The kept answer comes back even when it is not valid, so it stays in
-        the file to be corrected.
-        """
-        kept_answer = self._answers_and_lines_by_case_name.get(case.case_name)
-        return (
-            case.model_copy(update={"answer": kept_answer[0]}) if kept_answer else case
-        )
-
-    def write_cases(self, cases: Iterable[ReviewCase]) -> tuple[str, ...]:
-        """Write this run's cases, with their kept answers, in place of the file.
-
-        The answers are read again first, so one saved since the file was
-        opened is kept. A kept answer whose case is not among the cases is
-        written back as it was, never applied. An unanswered case that did not
-        come up is dropped.
-
-        Args:
-            cases: The review cases of this run.
-
-        Returns:
-            The case names of kept answers whose case did not come up.
-
-        Raises:
-            DuplicateCaseError: Two cases have the same case name.
-        """
-        cases = tuple(cases)
-        case_name_counts = Counter(case.case_name for case in cases)
-        if repeated_case_names := [
-            case_name
-            for case_name, case_count in case_name_counts.items()
-            if case_count > 1
-        ]:
-            raise DuplicateCaseError(repeated_case_names)
-        self._answers_and_lines_by_case_name = self._read_answers_in_file()
-        cases_with_answers = sorted(
-            map(self.attach_kept_answer, cases), key=lambda case: case.case_name
-        )
-        for case in cases_with_answers:
-            if case.answer is not None and case.accepted_answer is None:
-                logger.warning(
-                    f"Review case answer not accepted, left open: {case.case_name}"
-                )
-        unused_case_names = tuple(
-            sorted(
-                self._answers_and_lines_by_case_name.keys() - case_name_counts.keys()
-            )
-        )
-        replace_file_lines(
-            self._path,
-            [case.model_dump_json() + "\n" for case in cases_with_answers]
-            + [
-                self._answers_and_lines_by_case_name[case_name][1]
-                for case_name in unused_case_names
-            ],
-        )
-        return unused_case_names
-
-    def _read_answers_in_file(self) -> dict[str, tuple[JsonValue, str]]:
-        """Return each answered case's answer and its line as written."""
-        answers_and_lines_by_case_name: dict[str, tuple[JsonValue, str]] = {}
-        if not self._path.exists():
-            return answers_and_lines_by_case_name
-        with self._path.open(encoding="utf-8") as review_file:
-            for line_number, line in enumerate(review_file, start=1):
-                if not line.strip():
-                    continue
-                try:
-                    kept_answer = _KeptAnswer.model_validate_json(line)
-                except ValidationError as error:
-                    error.add_note(f"{self._path}, line {line_number}")
-                    raise
-                if kept_answer.answer is None:
-                    continue
-                if kept_answer.case_name in answers_and_lines_by_case_name:
-                    logger.warning(
-                        "Review case answered twice, the last kept: "
-                        f"{kept_answer.case_name}"
-                    )
-                answers_and_lines_by_case_name[kept_answer.case_name] = (
-                    kept_answer.answer,
-                    line.rstrip("\n") + "\n",
-                )
-        return answers_and_lines_by_case_name
 
 
 def _build_entry_group_case_name(

@@ -98,24 +98,40 @@ def count_corrections(
     """
     counts = dict.fromkeys(CORRECTION_COUNT_NAMES, 0)
     for correction in corrections:
-        if correction.is_added_page:
-            counts[
-                "pages added as parts" if correction.is_part_page else "pages added"
-            ] += 1
-        elif correction.renamed_to:
-            counts["old addresses dropped"] += 1
-        elif correction.target_entry_reference_page:
-            counts["pages moved to a seed entry"] += 1
-        elif correction.new_entry_key:
-            counts["pages moved to a new entry"] += 1
-        elif correction.is_main_page:
-            counts["pages kept as main page"] += 1
-        elif correction.is_part_page:
-            counts["pages kept as part page"] += 1
+        if change := find_correction_change(correction):
+            counts[change] += 1
     for review_case in review_cases:
         is_answered = review_case.accepted_answer is not None
         counts["review cases answered" if is_answered else "review cases open"] += 1
     return counts
+
+
+def find_correction_change(correction: SeedCorrection) -> str | None:
+    """Return the change a correction makes, named as ``count_corrections`` counts it.
+
+    The first matching change wins, in this order, so each correction has one:
+    added page (as a part or whole), old address dropped, moved to a seed entry,
+    moved to a new entry, kept as main page, kept as part page.
+
+    Args:
+        correction: One seed correction.
+
+    Returns:
+        The count name, or None for a page that stays in its entry unchanged.
+    """
+    if correction.is_added_page:
+        return "pages added as parts" if correction.is_part_page else "pages added"
+    if correction.renamed_to:
+        return "old addresses dropped"
+    if correction.target_entry_reference_page:
+        return "pages moved to a seed entry"
+    if correction.new_entry_key:
+        return "pages moved to a new entry"
+    if correction.is_main_page:
+        return "pages kept as main page"
+    if correction.is_part_page:
+        return "pages kept as part page"
+    return None
 
 
 def count_corrected_entries(

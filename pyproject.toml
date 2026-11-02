@@ -54,6 +54,12 @@ dependencies = [
     "structlog>=26.1.0",
     "tldextract>=5.4.0",
     "zendriver>=0.17.1",
+    # Review page (apps/review_page): web server, templates, review-file lock
+    "fastapi>=0.162.0",
+    "uvicorn>=0.54.0",
+    "jinja2>=3.1.6",
+    "filelock>=4.0.9",
+    "python-multipart>=0.0.33",  # FastAPI reads the page's form posts with it
 ]
 
 [project.optional-dependencies]
@@ -66,6 +72,7 @@ dev = [
     "pytest-regressions>=2.11.0",  # Expected outputs of saved pages, kept beside them
     "grpcio-tools==1.84.0",    # Proto stub generation (referenced by scripts/BUILD)
     "ranx==0.3.21",            # Search accuracy scores (benchmarks/vector_service/quality/measure_qdrant_search.py)
+    "httpx2>=2.16.0",          # Starlette's TestClient (review page tests); its httpx use is deprecated
 ]
 
 [tool.pytest.ini_options]
@@ -134,6 +141,7 @@ extra-paths = [
     "libs/work_matching/src",
     "apps/enrichment_service/src",
     "apps/vector_service/src",
+    "apps/review_page/src",
     "scripts",  # Script tests import scripts as top-level modules
     "stubs",  # Custom third-party type stubs
 ]

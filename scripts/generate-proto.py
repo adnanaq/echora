@@ -39,6 +39,7 @@ TARGETS: list[ProtoTarget] = [
         "protos": [
             PROTO_ROOT / "shared_proto" / "v1" / "error.proto",
             PROTO_ROOT / "shared_proto" / "v1" / "anime.proto",
+            PROTO_ROOT / "shared_proto" / "v1" / "review_cases.proto",
         ],
         "proto_include": PROTO_ROOT,
         "out_root": REPO_ROOT / "libs" / "common" / "src" / "shared_proto",

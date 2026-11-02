@@ -211,6 +211,56 @@ services:
       start_period: 60s
     restart: unless-stopped
 
+  # Seed review page: answer seed cleaning's review cases and start a run.
+  review-page:
+    build:
+      context: ..
+      dockerfile: apps/review_page/Dockerfile.dev
+    image: echora-review-page:dev
+    container_name: echora-dev-review-page
+    # The page saves answers and starts runs on local files, so it is reached
+    # from this machine only.
+    ports:
+      - "127.0.0.1:8003:8003"
+    environment:
+      - ENVIRONMENT=development
+      - REVIEW_PAGE_HOST=0.0.0.0
+      - REVIEW_PAGE_PORT=8003
+      - REVIEW_PAGE_DATA_DIR=/app/data/seed_cleaning
+    # Saves and runs write the review file and the run's results, so the data
+    # folder is writable. A run reads the seed file the last run used, a path
+    # relative to /app, so the seed folder sits at the same place.
+    # Both folders must exist first: the short syntax would create a missing
+    # one owned by root, where the container's user (uid 1000) cannot write,
+    # so Compose refuses to start instead (create_host_path: false).
+    volumes:
+      - type: bind
+        source: ../data/seed_cleaning
+        target: /app/data/seed_cleaning
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../assets/seed_data
+        target: /app/assets/seed_data
+        read_only: true
+        bind:
+          create_host_path: false
+    networks:
+      - echora-network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8003/health', timeout=5)",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
 networks:
   echora-network:
     driver: bridge
