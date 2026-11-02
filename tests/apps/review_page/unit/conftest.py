@@ -12,7 +12,7 @@ from review_page.file_review_case_source import (
 from review_page.review_case_messages import convert_case_to_message
 from review_page.review_case_source import ReviewCaseSource
 from shared_proto.v1 import review_cases_pb2
-from work_matching import ReviewCase, ReviewFileLockedError
+from work_matching import ReviewCase, ReviewFileLockedError, UnknownCaseError
 
 _REVIEW_CASE_FIXTURE = (
     Path(__file__).parents[3]
@@ -87,6 +87,7 @@ class FakeReviewCaseSource(ReviewCaseSource):
     def __init__(self, cases: Sequence[ReviewCase]) -> None:
         self.cases = {case.case_name: case for case in cases}
         self.is_locked = False
+        self.is_case_dropped_by_run = False
         self.is_seed_file_known = True
         self.is_running = False
         self.run_result: review_cases_pb2.SeedCleaningRunResult | None = None
@@ -114,6 +115,8 @@ class FakeReviewCaseSource(ReviewCaseSource):
     ) -> list[review_cases_pb2.RuleCheckResult]:
         if self.is_locked:
             raise ReviewFileLockedError(__file__)
+        if self.is_case_dropped_by_run:
+            raise UnknownCaseError([answer.case_name for answer in case_answers])
         results = []
         for case_answer in case_answers:
             answer = (
@@ -153,4 +156,8 @@ def source(review_cases) -> FakeReviewCaseSource:
 
 @pytest.fixture
 def client(source) -> TestClient:
-    return TestClient(create_app(source))
+    return TestClient(
+        create_app(source),
+        base_url="http://127.0.0.1:8003",
+        headers={"HX-Request": "true"},
+    )

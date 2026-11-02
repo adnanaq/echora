@@ -135,6 +135,8 @@ class FileReviewCaseSource(ReviewCaseSource):
         Raises:
             ReviewFileLockedError: A run is writing the review file; nothing
                 is saved.
+            UnknownCaseError: A run removed a named case between the check
+                and the save; nothing is saved.
         """
         cases_by_name = {case.case_name: case for case in self._read_cases()}
         answers_to_save: dict[str, JsonValue] = {}

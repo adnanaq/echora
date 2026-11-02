@@ -50,6 +50,8 @@ class ReviewCaseSource(ABC):
 
         Raises:
             ReviewFileLockedError: A run is writing the cases; nothing is saved.
+            UnknownCaseError: A run removed a named case after the answers
+                were checked; nothing is saved.
         """
 
     @abstractmethod

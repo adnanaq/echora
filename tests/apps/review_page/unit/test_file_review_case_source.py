@@ -170,6 +170,21 @@ def test_file_review_case_source_save_answers_unknown_case_not_saved(source) -> 
     assert result.broken_rule_sentences
 
 
+def test_file_review_case_source_save_answers_dropped_case_rejected_others_saved(
+    source, review_cases
+) -> None:
+    case_name = review_cases["atashinchi_next"].case_name
+    results = source.save_answers(
+        [
+            _case_answer("split work: none:anime:1", {"none:anime:1": "work 1"}),
+            _case_answer(case_name, ATASHINCHI_ANSWER),
+        ]
+    )
+    saved_case = source.get_case(case_name)
+    assert [result.is_saved for result in results] == [False, True]
+    assert saved_case is not None and saved_case.HasField("answer")
+
+
 def test_file_review_case_source_save_answers_while_run_holds_lock_raises(
     source, review_cases, data_dir
 ) -> None:

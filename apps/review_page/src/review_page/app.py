@@ -14,7 +14,10 @@ gives the rule, then the reason for it.
   cases (with the broken rules) and, for Save & next, the next case, so the
   browser updates its own edits and redraws.
 - A save while a run holds the review file answers 409 with a notice, and
-  changes nothing.
+  changes nothing. So does a save during which a run removes one of its cases,
+  between the source's check and its write; a case removed before the check
+  is rejected on its own, like a broken answer.
+- Requests from anywhere but the page itself are refused (``request_guards``).
 - The server listens where ``ReviewPageConfig`` says, on localhost by default.
 """
 
@@ -48,6 +51,7 @@ from review_page.page_state import (
     find_row_edit_state,
     page_list_rows,
 )
+from review_page.request_guards import add_request_guards
 from review_page.review_case_messages import (
     build_case_answer,
     convert_message_to_case,
@@ -59,6 +63,7 @@ from work_matching import (
     ReviewCase,
     ReviewCaseKind,
     ReviewFileLockedError,
+    UnknownCaseError,
     choose_group_page_place,
 )
 
@@ -76,6 +81,7 @@ def create_app(source: ReviewCaseSource) -> FastAPI:
         The app, with its routes, templates and static files.
     """
     app = FastAPI(title="Review page", docs_url=None, redoc_url=None, openapi_url=None)
+    add_request_guards(app)
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
     templates = Jinja2Templates(
         directory=_PACKAGE_DIR / "templates",
@@ -268,6 +274,12 @@ class ReviewPageRoutes:
         except ReviewFileLockedError:
             return _notice_response(
                 409, "A run is writing the cases; saves wait until it ends."
+            )
+        except UnknownCaseError:
+            return _notice_response(
+                409,
+                "A run changed the cases since the page loaded them; "
+                "nothing was saved. Reload the page.",
             )
         next_case_name = None
         if action == "save_next" and all(result.is_saved for result in results):

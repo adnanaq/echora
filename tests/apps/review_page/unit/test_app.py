@@ -314,6 +314,20 @@ def test_answers_while_run_holds_lock_answers_409(client, source, review_cases) 
     assert "notice" in _events(response)
 
 
+def test_answers_after_run_drops_case_answers_409(client, source, review_cases) -> None:
+    source.is_case_dropped_by_run = True
+    response = client.post(
+        "/answers",
+        data={
+            **_state(),
+            "action": "save",
+            "case_name": review_cases["atashinchi_next"].case_name,
+        },
+    )
+    assert response.status_code == 409
+    assert "nothing was saved" in _events(response)["notice"]["text"]
+
+
 def test_run_started_reports_event(client, source) -> None:
     response = client.post("/run", data=_state())
     assert (response.status_code, _events(response), source.is_running) == (
