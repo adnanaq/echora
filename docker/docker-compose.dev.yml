@@ -230,9 +230,21 @@ services:
     # Saves and runs write the review file and the run's results, so the data
     # folder is writable. A run reads the seed file the last run used, a path
     # relative to /app, so the seed folder sits at the same place.
+    # Both folders must exist first: the short syntax would create a missing
+    # one owned by root, where the container's user (uid 1000) cannot write,
+    # so Compose refuses to start instead (create_host_path: false).
     volumes:
-      - ../data/seed_cleaning:/app/data/seed_cleaning
-      - ../assets/seed_data:/app/assets/seed_data:ro
+      - type: bind
+        source: ../data/seed_cleaning
+        target: /app/data/seed_cleaning
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../assets/seed_data
+        target: /app/assets/seed_data
+        read_only: true
+        bind:
+          create_host_path: false
     networks:
       - echora-network
     healthcheck:
