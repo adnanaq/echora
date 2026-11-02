@@ -42,9 +42,9 @@ _NAMED_ENTRY_ANSWER: Final = re.compile(
 
 # One meaning for work 2 and every later work, so a legend can list them once.
 LATER_WORK_MEANING: Final = (
-    "The page belongs to another work in the case, not the first. Pages with "
-    "the same number are one work, and an answer using work 2 or later places "
-    "every page."
+    "The page belongs to a different work in this case, not the first one. "
+    "All pages set to the same number form one work. "
+    "Once any page uses work 2 or later, every page in the case needs a place."
 )
 
 _MEANING_BY_WORD: Final[dict[str, str]] = {
