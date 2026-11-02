@@ -6,11 +6,8 @@ htmx fragment. The Corrections tab's routes only read, so they never take the
 review file's lock.
 """
 
-from typing import Annotated
-
-from fastapi import APIRouter, Form, Request, Response
+from fastapi import APIRouter, Request, Response
 from fastapi.templating import Jinja2Templates
-from review_page.browser_state import BrowserState
 from review_page.correction_views import (
     ANSWER_SOURCE,
     RULES_SOURCE,
@@ -20,13 +17,12 @@ from review_page.correction_views import (
     count_corrected_entry_rows,
     filter_corrected_entry_rows,
 )
+from review_page.models import BrowserState, BrowserStateField
 from review_page.page_state import page_list_rows
 from review_page.review_case_messages import convert_message_to_case
 from review_page.review_case_source import ReviewCaseSource
 from review_page.run_summary import build_run_summary
 from work_matching import ReviewCase
-
-BrowserStateField = Annotated[str | None, Form()]
 
 
 class CorrectionRoutes:
@@ -54,7 +50,15 @@ class CorrectionRoutes:
     def render_correction_list(
         self, request: Request, browser_state: BrowserStateField = None
     ) -> Response:
-        """Return the change and source chips with their counts, and one page of entries."""
+        """Return the change and source chips with their counts, and one page of entries.
+
+        Args:
+            request: The request being answered.
+            browser_state: The browser's state, as its JSON form field.
+
+        Returns:
+            The Corrections list fragment.
+        """
         state = BrowserState.from_form_field(browser_state)
         all_rows = build_corrected_entry_rows(
             self._source.list_corrections(),
@@ -87,7 +91,16 @@ class CorrectionRoutes:
     def render_correction_panel(
         self, request: Request, browser_state: BrowserStateField = None
     ) -> Response:
-        """Return the open entry's corrected pages, and the cases holding it."""
+        """Return the open entry's corrected pages, and the cases holding it.
+
+        Args:
+            request: The request being answered.
+            browser_state: The browser's state, as its JSON form field.
+
+        Returns:
+            The open entry's panel fragment, or its empty state when no entry is
+            open.
+        """
         state = BrowserState.from_form_field(browser_state)
         run_message = self._source.get_last_run_result()
         panel = (
@@ -112,7 +125,11 @@ class CorrectionRoutes:
         )
 
     def _load_cases(self) -> list[ReviewCase]:
-        """Read every case from the source, for titles and links."""
+        """Read every case from the source, for titles and links.
+
+        Returns:
+            Every case, converted from its message to the library model.
+        """
         return [
             convert_message_to_case(message) for message in self._source.list_cases()
         ]

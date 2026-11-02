@@ -4,139 +4,50 @@ The templates only lay out what these views hold. Every decision is made
 here or in the libraries, so every decision is tested without a browser. Each
 item gives the rule, then the reason for it.
 
-- An entry group's case shows one row per page an answer can place, in
-  ``list_placeable_case_page_keys`` order. Each row names the entry listing
-  the page (A, B, ...) and whether the page is that entry's reference page.
-- Pages that were only searched, such as AnimeSchedule's, are shown as
-  evidence, since an answer cannot place them.
+- The case panel's tables (entries, page rows, comparison rows, evidence)
+  are built by ``case_panel_tables``; this module assembles them.
 - A case starts on its unsaved edit, else its saved answer, else its
   suggestion, which is then marked as not yet answered.
 - A page whose place differs from the case's original value is marked
   changed, so the reviewer sees what a save would change.
-- Show only differences hides each detail column that is the same on every
-  row, and each comparison row where the entry and the linked page agree.
-  The switch never hides a page or its choices.
+- Show only differences never hides a page or its choices; the tables hide
+  only details every page shares.
 - A list row's title is the combined entry's title for an entry group (the
   most trusted entry's), and the linking entry's for a linked page.
 """
 
 from collections.abc import Collection, Mapping, Sequence
-from dataclasses import dataclass
-from enum import StrEnum
+from typing import Any
 
 from pydantic import JsonValue
-from review_page.page_state import (
-    CaseButtons,
-    CaseEditState,
+from review_page.case_panel_tables import (
+    build_comparison_rows,
+    build_entry_views,
+    build_page_rows,
+    find_linked_page_address,
+    list_evidence_pages,
+    list_shown_columns,
+)
+from review_page.models import (
     CaseRow,
+    CaseView,
+    PageRowView,
+    RunSummary,
+)
+from review_page.page_state import (
     find_case_buttons,
     find_case_edit_state,
     find_saved_change,
 )
 from work_matching import (
-    ChoiceOption,
-    GroupPageChoices,
     LinkedPageDecision,
-    PlacementRule,
-    ProviderPage,
     ReviewCase,
     ReviewCaseKind,
-    build_page_address,
     combine_group_entries,
     describe_case_reasons,
-    list_group_page_choices,
     list_linked_page_options,
 )
 from work_matching.answer_words import PLACEMENT_WORD_MEANINGS
-
-# Rules that disable a page's choice because of where other pages are placed.
-_RULES_FROM_OTHER_PAGES = frozenset({PlacementRule.WORK_WITH_TWO_MAL_PAGES})
-
-
-class DetailColumn(StrEnum):
-    """A page detail shown in an entry group's page table, by its heading."""
-
-    TITLES = "Titles"
-    TYPE = "Type"
-    EPISODE_COUNT = "Eps"
-    AIRED_FROM = "Aired from"
-    AIRED_TO = "Aired to"
-    LINKS = "Links"
-
-
-@dataclass(frozen=True, slots=True)
-class PageRowView:
-    """One page of an entry group's case, with its details and choices."""
-
-    page_key: str
-    address: str
-    entry_label: str
-    is_reference_page: bool
-    details: dict[DetailColumn, str]
-    choices: GroupPageChoices
-    # Whether the page's place differs from the case's original value.
-    is_changed: bool
-    # Why choices that other pages' places disable are not offered.
-    disabled_choice_notes: tuple[str, ...] = ()
-    # Whether a rejected save left this page, which the answer must place,
-    # without a place, so the reviewer sees which page the rule is about.
-    is_place_missing: bool = False
-    # The pages this page links to, so the Links column opens each one.
-    linked_pages: tuple[PageLink, ...] = ()
-
-
-@dataclass(frozen=True, slots=True)
-class PageLink:
-    """A page key a page links to, with the provider address it opens."""
-
-    page_key: str
-    # None for a key that names no known provider's page; shown as text.
-    address: str | None
-
-
-@dataclass(frozen=True, slots=True)
-class ComparisonRowView:
-    """One detail of a linked-page case: the entry's value against the page's."""
-
-    label: str
-    entry_value: str
-    page_value: str
-    is_different: bool
-
-
-@dataclass(frozen=True, slots=True)
-class EntryView:
-    """One entry of a case, as its heading shows it."""
-
-    label: str
-    title: str
-    summary: str
-    reference_page: str
-
-
-@dataclass(frozen=True, slots=True)
-class CaseView:
-    """Everything the case panel shows for one case."""
-
-    case: ReviewCase
-    # The title the case list shows, so the heading matches the list.
-    title: str
-    edit_state: CaseEditState
-    chosen_answer: JsonValue
-    is_suggestion_shown: bool
-    reason_sentences: tuple[str, ...]
-    entries: tuple[EntryView, ...]
-    page_rows: tuple[PageRowView, ...]
-    shown_columns: tuple[DetailColumn, ...]
-    evidence_pages: tuple[ProviderPage, ...]
-    linked_page_options: tuple[ChoiceOption, ...]
-    comparison_rows: tuple[ComparisonRowView, ...]
-    # The linked page's address for a linked-page case, so its key opens it.
-    linked_page_address: str
-    # Each placement word and its meaning, listed under an entry group's pages.
-    choice_meanings: tuple[tuple[str, str], ...]
-    buttons: CaseButtons
-    show_only_differences: bool
 
 
 def find_original_answer(
@@ -221,27 +132,16 @@ def build_case_view(
         its buttons and its notes.
     """
     is_suggestion_shown = unsaved is None and case.answer in (None, {})
-    chosen_answer: JsonValue = (
-        unsaved
-        if unsaved is not None
-        else (_copy_suggested_answer(case) if is_suggestion_shown else case.answer)
-    )
+    chosen_answer = _choose_shown_answer(case, unsaved, is_suggestion_shown)
     is_linked_page = case.kind is ReviewCaseKind.LINKED_PAGE
     page_rows = (
         ()
         if is_linked_page
-        else _build_page_rows(
-            case,
-            chosen_answer,
-            # An unanswered case starts from its suggestion, so rows are
-            # marked where they differ from what the reviewer was first shown.
-            original
-            if original not in (None, {}) or not case.suggested_answer
-            else _copy_suggested_answer(case),
-            is_rejected=is_rejected,
-        )
+        else _build_marked_page_rows(case, chosen_answer, original, is_rejected)
     )
-    comparison_rows = _build_comparison_rows(case) if is_linked_page else ()
+    comparison_rows = (
+        build_comparison_rows(case, show_only_differences) if is_linked_page else ()
+    )
     return CaseView(
         case=case,
         title=find_case_title(case),
@@ -255,18 +155,14 @@ def build_case_view(
         chosen_answer=chosen_answer,
         is_suggestion_shown=is_suggestion_shown and bool(case.suggested_answer),
         reason_sentences=describe_case_reasons(case),
-        entries=_build_entry_views(case),
+        entries=build_entry_views(case),
         page_rows=page_rows,
-        shown_columns=_list_shown_columns(page_rows, show_only_differences),
-        evidence_pages=_list_evidence_pages(case, page_rows),
+        shown_columns=list_shown_columns(page_rows, show_only_differences),
+        evidence_pages=list_evidence_pages(case, page_rows),
         linked_page_options=list_linked_page_options(case) if is_linked_page else (),
-        linked_page_address=_find_linked_page_address(case) if is_linked_page else "",
+        linked_page_address=find_linked_page_address(case) if is_linked_page else "",
         choice_meanings=() if is_linked_page else PLACEMENT_WORD_MEANINGS,
-        comparison_rows=tuple(
-            row
-            for row in comparison_rows
-            if row.is_different or not show_only_differences
-        ),
+        comparison_rows=comparison_rows,
         buttons=find_case_buttons(
             case,
             original=original,
@@ -278,219 +174,62 @@ def build_case_view(
     )
 
 
-def _build_page_rows(
-    case: ReviewCase,
-    chosen_answer: JsonValue,
-    original: JsonValue,
-    *,
-    is_rejected: bool,
-) -> tuple[PageRowView, ...]:
-    """Build one row per placeable page, with its details, choices and marks."""
-    answer = chosen_answer if isinstance(chosen_answer, dict) else {}
-    original_answer = original if isinstance(original, dict) else {}
-    pages_by_key = {
-        key: page for page in case.pages for key in (page.key, page.current_key)
-    }
-    entry_label_by_page_key, reference_page_keys = _label_entry_pages(case)
-    return tuple(
-        PageRowView(
-            page_key=choices.page_key,
-            address=_find_page_address(case, choices.page_key, pages_by_key),
-            entry_label=entry_label_by_page_key.get(choices.page_key, ""),
-            is_reference_page=choices.page_key in reference_page_keys,
-            details=_describe_page(pages_by_key.get(choices.page_key)),
-            choices=choices,
-            is_changed=answer.get(choices.page_key)
-            != original_answer.get(choices.page_key),
-            disabled_choice_notes=_explain_disabled_choices(choices),
-            is_place_missing=is_rejected
-            and choices.is_required
-            and choices.work is None,
-            linked_pages=_list_page_links(pages_by_key.get(choices.page_key)),
-        )
-        for choices in list_group_page_choices(case, answer)
-    )
-
-
-def _explain_disabled_choices(choices: GroupPageChoices) -> tuple[str, ...]:
-    """Explain the choices other pages' places disable, one line per rule.
-
-    Each item gives the rule, then the reason for it.
-
-    - A rule disabling several choices, such as a work for each other MAL
-      page, is stated once with every choice it disables. A case with many
-      MAL pages then does not repeat the same sentence on every row.
-    - A choice the page's own place disables, such as ``main`` for a
-      provider's only page, is explained by the option's tooltip alone. Most
-      rows then stay quiet.
+def _choose_shown_answer(
+    case: ReviewCase, unsaved: JsonValue, is_suggestion_shown: bool
+) -> JsonValue:
+    """Return the answer the case panel starts on: the edit, else the saved answer or suggestion.
 
     Args:
-        choices: One page's choices, with the rule disabling each one.
+        case: The review case, with its saved answer and suggestion.
+        unsaved: The browser's unsaved answer, or None.
+        is_suggestion_shown: Whether the case has neither an edit nor a saved
+            answer, so the panel starts on the suggestion.
 
     Returns:
-        One note per rule another page's place breaks, naming the choices the
-        rule disables.
+        The unsaved answer, a copy of the suggestion, or the saved answer.
     """
-    choices_by_rule: dict[PlacementRule, list[str]] = {}
-    for option in (*choices.work_options, *choices.mark_options):
-        if option.disabling_rule in _RULES_FROM_OTHER_PAGES:
-            choices_by_rule.setdefault(option.disabling_rule, []).append(
-                option.value or "—"
-            )
-    return tuple(
-        f"{_join_choice_names(names)} {'is' if len(names) == 1 else 'are'} not "
-        f"offered: {rule.value}"
-        for rule, names in choices_by_rule.items()
+    if unsaved is not None:
+        return unsaved
+    return _copy_suggested_answer(case) if is_suggestion_shown else case.answer
+
+
+def _build_marked_page_rows(
+    case: ReviewCase, chosen_answer: JsonValue, original: JsonValue, is_rejected: bool
+) -> tuple[PageRowView, ...]:
+    """Build an entry group's page rows, marking places that differ from the start.
+
+    An unanswered case starts from its suggestion, so rows are marked where
+    they differ from what the reviewer was first shown, not from no answer.
+
+    Args:
+        case: An entry group's case.
+        chosen_answer: The answer the case's choices show now.
+        original: The case's answer as the last run wrote it.
+        is_rejected: Whether the case's last save broke a rule.
+
+    Returns:
+        One row per placeable page.
+    """
+    starting_answer = (
+        original
+        if original not in (None, {}) or not case.suggested_answer
+        else _copy_suggested_answer(case)
     )
-
-
-def _join_choice_names(names: list[str]) -> str:
-    """Join choice names the way a sentence lists them: "a, b and c"."""
-    if len(names) == 1:
-        return names[0]
-    return f"{', '.join(names[:-1])} and {names[-1]}"
-
-
-def _label_entry_pages(case: ReviewCase) -> tuple[dict[str, str], set[str]]:
-    """Return each page's entry label (A, B, ...) and the entries' reference pages."""
-    entry_label_by_page_key: dict[str, str] = {}
-    for label, entry in zip(_entry_labels(), case.entries.values(), strict=False):
-        for page_key in entry.addresses_by_page_key:
-            entry_label_by_page_key.setdefault(page_key, label)
-    return entry_label_by_page_key, set(case.entries)
-
-
-def _build_entry_views(case: ReviewCase) -> tuple[EntryView, ...]:
-    """Describe each entry of the case, labelled A, B, ... in the case's order."""
-    return tuple(
-        EntryView(
-            label=label,
-            title=entry.title,
-            summary=" · ".join(
-                str(value) for value in (entry.type, entry.year, entry.season) if value
-            ),
-            reference_page=reference_page,
-        )
-        for label, (reference_page, entry) in zip(
-            _entry_labels(), case.entries.items(), strict=False
-        )
+    return build_page_rows(
+        case, chosen_answer, starting_answer, is_rejected=is_rejected
     )
-
-
-def _build_comparison_rows(case: ReviewCase) -> tuple[ComparisonRowView, ...]:
-    """Compare a linked page's details with its one linking entry's."""
-    [decision] = case.decisions
-    if not isinstance(decision, LinkedPageDecision):
-        return ()
-    page = next(
-        (page for page in case.pages if page.current_key == decision.page_key), None
-    )
-    entry = decision.linking_entries[0]
-    pairs = (
-        ("Type", entry.type, page.type if page else None),
-        ("Year", entry.year, page.year if page else None),
-        ("Season", entry.season, page.season if page else None),
-        (
-            "Episodes",
-            decision.entry_episode_count,
-            page.episode_count if page else None,
-        ),
-        ("Titles", entry.title, ", ".join(page.titles) if page else None),
-    )
-    return tuple(
-        ComparisonRowView(
-            label=label,
-            entry_value=_show_value(entry_value),
-            page_value=_show_value(page_value),
-            is_different=_show_value(entry_value) != _show_value(page_value),
-        )
-        for label, entry_value, page_value in pairs
-    )
-
-
-def _list_shown_columns(
-    page_rows: Sequence[PageRowView], show_only_differences: bool
-) -> tuple[DetailColumn, ...]:
-    """Return the detail columns to show; with the switch on, the ones that differ."""
-    if not show_only_differences:
-        return tuple(DetailColumn)
-    return tuple(
-        column
-        for column in DetailColumn
-        if len({row.details[column] for row in page_rows}) > 1
-    )
-
-
-def _list_evidence_pages(
-    case: ReviewCase, page_rows: Sequence[PageRowView]
-) -> tuple[ProviderPage, ...]:
-    """Return the case's pages no answer places, such as pages found by a search."""
-    placed_page_keys = {row.page_key for row in page_rows}
-    linked_page_keys = {
-        decision.page_key
-        for decision in case.decisions
-        if isinstance(decision, LinkedPageDecision)
-    }
-    entry_page_keys = {
-        key for entry in case.entries.values() for key in entry.addresses_by_page_key
-    }
-    return tuple(
-        page
-        for page in case.pages
-        if page.key not in placed_page_keys | linked_page_keys | entry_page_keys
-        and page.current_key not in placed_page_keys | linked_page_keys
-    )
-
-
-def _describe_page(page: ProviderPage | None) -> dict[DetailColumn, str]:
-    """Return a page's details as the table shows them; blank for an unfetched page."""
-    if page is None:
-        return dict.fromkeys(DetailColumn, "—")
-    return {
-        DetailColumn.TITLES: ", ".join(page.titles) or "—",
-        DetailColumn.TYPE: _show_value(page.type),
-        DetailColumn.EPISODE_COUNT: _show_value(page.episode_count),
-        DetailColumn.AIRED_FROM: _show_value(
-            page.aired_from and page.aired_from.date()
-        ),
-        DetailColumn.AIRED_TO: _show_value(page.aired_to and page.aired_to.date()),
-        DetailColumn.LINKS: ", ".join(page.linked_page_keys) or "—",
-    }
-
-
-def _find_linked_page_address(case: ReviewCase) -> str:
-    """Return the address of a linked-page case's page, from its fetched details."""
-    [decision] = case.decisions
-    if not isinstance(decision, LinkedPageDecision):
-        return ""
-    return _find_page_address(
-        case, decision.page_key, {page.key: page for page in case.pages}
-    )
-
-
-def _list_page_links(page: ProviderPage | None) -> tuple[PageLink, ...]:
-    """Return the pages a fetched page links to, each with its provider address."""
-    if page is None:
-        return ()
-    return tuple(
-        PageLink(page_key, build_page_address(page_key))
-        for page_key in page.linked_page_keys
-    )
-
-
-def _find_page_address(
-    case: ReviewCase, page_key: str, pages_by_key: Mapping[str, ProviderPage]
-) -> str:
-    """Return a page's address from its entry, else from its fetched details."""
-    for entry in case.entries.values():
-        if page_key in entry.addresses_by_page_key:
-            return entry.addresses_by_page_key[page_key]
-    page = pages_by_key.get(page_key)
-    return page.address if page else ""
 
 
 def find_case_title(case: ReviewCase) -> str:
-    """Return the title a case is listed under."""
+    """Return the title a case is listed under.
+
+    Args:
+        case: The review case.
+
+    Returns:
+        The linking entry's title for a linked-page case; the combined entry's
+        title for an entry group's case.
+    """
     if case.kind is ReviewCaseKind.LINKED_PAGE:
         [decision] = case.decisions
         if isinstance(decision, LinkedPageDecision):
@@ -499,17 +238,59 @@ def find_case_title(case: ReviewCase) -> str:
 
 
 def _copy_suggested_answer(case: ReviewCase) -> dict[str, JsonValue]:
-    """Return the case's suggestion as an answer the reviewer can change."""
+    """Return the case's suggestion as an answer the reviewer can change.
+
+    Args:
+        case: The review case.
+
+    Returns:
+        A new dictionary holding the suggestion's places.
+    """
     return {page_key: place for page_key, place in case.suggested_answer.items()}
 
 
-def _entry_labels() -> list[str]:
-    """Return entry labels A to Z, then numbers for larger groups."""
-    return [chr(code) for code in range(ord("A"), ord("Z") + 1)] + [
-        str(number) for number in range(27, 1000)
-    ]
+def list_original_answers(
+    cases: list[ReviewCase], run_result: RunSummary | None
+) -> dict[str, Any]:
+    """Return each case's original value, leaving out cases without one.
+
+    Args:
+        cases: Every case, with its saved answer.
+        run_result: The last run's result, or None before the first run.
+
+    Returns:
+        Each case's original value, by case name, for cases that have one.
+    """
+    original_answers = run_result.original_answers if run_result else None
+    return {
+        case.case_name: original
+        for case in cases
+        if (
+            original := find_original_answer(
+                case.case_name, case.answer, original_answers
+            )
+        )
+    }
 
 
-def _show_value(value: object) -> str:
-    """Write a detail for the page: an em dash for a missing value."""
-    return "—" if value in (None, "") else str(value)
+def build_all_case_rows(
+    cases: Sequence[ReviewCase],
+    run_result: RunSummary | None,
+) -> list[CaseRow]:
+    """Build every case's list row, marked from the last run's result.
+
+    Args:
+        cases: Every case.
+        run_result: The last run's result, or None before the first run.
+
+    Returns:
+        One list row per case, with its new and unused-answer tags.
+    """
+    if run_result is None:
+        return build_case_rows(cases, original_answers=None, new_case_names=())
+    return build_case_rows(
+        cases,
+        original_answers=run_result.original_answers,
+        new_case_names=set(run_result.new_case_names),
+        unused_answer_case_names=set(run_result.unused_answer_case_names),
+    )

@@ -21,9 +21,14 @@ shows what any source reports. Each item gives the rule, then the reason for it.
 """
 
 from collections.abc import Sequence
-from dataclasses import dataclass, field
 
 from review_page.case_views import find_case_title
+from review_page.models import (
+    CorrectedEntryRow,
+    CorrectionFilter,
+    CorrectionPanelView,
+    CorrectionRowView,
+)
 from shared_proto.v1 import review_cases_pb2
 from work_matching import (
     LinkedPageDecision,
@@ -36,59 +41,6 @@ UNCHANGED = "unchanged"
 # The source filter values: a reviewer's answer, or the rules alone.
 ANSWER_SOURCE = "your answer"
 RULES_SOURCE = "rules"
-
-
-@dataclass(frozen=True, slots=True)
-class CorrectedEntryRow:
-    """One corrected entry as the Corrections list shows it."""
-
-    reference_page: str
-    title: str
-    # Every change the entry's pages make, UNCHANGED included.
-    changes: frozenset[str]
-    page_count: int
-    # The pages that change, leaving out pages that stay as they were.
-    changed_page_count: int
-    has_answer_correction: bool
-    has_rule_correction: bool
-    page_keys: tuple[str, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class CorrectionFilter:
-    """The Corrections tab's filters; an empty group lets every entry through."""
-
-    changes: frozenset[str] = frozenset()
-    sources: frozenset[str] = frozenset()
-    search_text: str = ""
-
-
-@dataclass(frozen=True, slots=True)
-class CorrectionRowView:
-    """One page of a corrected entry, as the entry's table shows it."""
-
-    page_key: str
-    address: str
-    # The change as the run summary names it, or "Unchanged".
-    change_label: str
-    # The page's work and mark in answer words: "work 1, part".
-    place: str
-    destination_label: str
-    destination_address: str | None
-    reason_sentence: str
-    is_from_answer: bool
-
-
-@dataclass(frozen=True, slots=True)
-class CorrectionPanelView:
-    """One corrected entry, as the Corrections panel shows it."""
-
-    reference_page: str
-    reference_address: str | None
-    title: str
-    rows: tuple[CorrectionRowView, ...]
-    # Each case holding the entry: its name and its list title.
-    case_links: tuple[tuple[str, str], ...] = field(default=())
 
 
 def build_corrected_entry_rows(
@@ -136,7 +88,15 @@ def build_corrected_entry_rows(
 def filter_corrected_entry_rows(
     rows: Sequence[CorrectedEntryRow], correction_filter: CorrectionFilter
 ) -> list[CorrectedEntryRow]:
-    """Return the rows every chosen filter group lets through, in their order."""
+    """Return the rows every chosen filter group lets through, in their order.
+
+    Args:
+        rows: Every corrected entry's row.
+        correction_filter: The chosen change and source chips and the search.
+
+    Returns:
+        The matching rows.
+    """
     search_text = correction_filter.search_text.strip().casefold()
     return [
         row
@@ -244,7 +204,15 @@ def list_case_correction_links(
 def _build_correction_row(
     correction: review_cases_pb2.SeedCorrection,
 ) -> CorrectionRowView:
-    """Describe one correction as a row of its entry's table."""
+    """Describe one correction as a row of its entry's table.
+
+    Args:
+        correction: One correction message.
+
+    Returns:
+        The row: the page, the change, its place, where the page goes, why, and
+        whether an answer placed it.
+    """
     change = _get_change(correction)
     destination_label, destination_address = _describe_destination(correction)
     mark = ", main" if correction.is_main_page else ""
@@ -264,7 +232,15 @@ def _build_correction_row(
 def _describe_destination(
     correction: review_cases_pb2.SeedCorrection,
 ) -> tuple[str, str | None]:
-    """Return where a corrected page goes, and the address to open, if any."""
+    """Return where a corrected page goes, and the address to open, if any.
+
+    Args:
+        correction: One correction message.
+
+    Returns:
+        The destination's label, and the address to link it to, or None when
+        there is nothing to open.
+    """
     if correction.is_added_page:
         return "added to this entry", correction.address
     if correction.HasField("renamed_to"):
@@ -283,12 +259,27 @@ def _describe_destination(
 
 
 def _get_change(correction: review_cases_pb2.SeedCorrection) -> str:
-    """Return a correction's change, or UNCHANGED for a page that stays as it was."""
+    """Return a correction's change, or UNCHANGED for a page that stays as it was.
+
+    Args:
+        correction: One correction message.
+
+    Returns:
+        The change's name, or ``UNCHANGED``.
+    """
     return correction.change if correction.HasField("change") else UNCHANGED
 
 
 def _list_row_sources(row: CorrectedEntryRow) -> set[str]:
-    """Return the source filter values an entry matches."""
+    """Return the source filter values an entry matches.
+
+    Args:
+        row: One corrected entry's row.
+
+    Returns:
+        ``ANSWER_SOURCE``, ``RULES_SOURCE``, or both, as the entry's pages were
+        placed.
+    """
     sources = set()
     if row.has_answer_correction:
         sources.add(ANSWER_SOURCE)
@@ -301,7 +292,16 @@ def _map_entry_titles(
     checked_entries: Sequence[review_cases_pb2.CheckedEntry],
     cases: Sequence[ReviewCase],
 ) -> dict[str, str]:
-    """Map entry reference pages to titles: the run's checked entries over the cases'."""
+    """Map entry reference pages to titles: the run's checked entries over the cases'.
+
+    Args:
+        checked_entries: The entries the last run checked.
+        cases: Every review case.
+
+    Returns:
+        Each entry reference page mapped to its title; a checked entry's title
+        wins over a case's.
+    """
     title_by_reference_page: dict[str, str] = {}
     for case in cases:
         for entry in case.entries.values():
@@ -318,7 +318,15 @@ def _map_entry_titles(
 
 
 def _list_case_entry_reference_pages(case: ReviewCase) -> list[str]:
-    """Return the reference pages of the entries a case decides about, in its order."""
+    """Return the reference pages of the entries a case decides about, in its order.
+
+    Args:
+        case: The review case.
+
+    Returns:
+        The case's entries' reference pages, then each linking entry's not yet
+        listed, in the case's order.
+    """
     reference_pages = list(case.entries)
     for decision in case.decisions:
         if isinstance(decision, LinkedPageDecision):

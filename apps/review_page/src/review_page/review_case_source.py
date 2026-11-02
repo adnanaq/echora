@@ -33,15 +33,30 @@ class ReviewCaseSource(ABC):
 
     @abstractmethod
     def list_cases(self) -> list[review_cases_pb2.ReviewCase]:
-        """Return every review case with its saved answer, in case name order."""
+        """Return every review case with its saved answer, in case name order.
+
+        Returns:
+            Every case in the source.
+        """
 
     @abstractmethod
     def get_case(self, case_name: str) -> review_cases_pb2.ReviewCase | None:
-        """Return one review case with its saved answer, or None when it is unknown."""
+        """Return one review case with its saved answer, or None when it is unknown.
+
+        Args:
+            case_name: The case to read.
+
+        Returns:
+            The case, or None when the source does not hold it.
+        """
 
     @abstractmethod
     def get_last_run_result(self) -> review_cases_pb2.SeedCleaningRunResult | None:
-        """Return what the last run did, or None when no run has finished yet."""
+        """Return what the last run did, or None when no run has finished yet.
+
+        Returns:
+            The last run's result, or None before the first run.
+        """
 
     @abstractmethod
     def save_answers(
@@ -76,7 +91,12 @@ class ReviewCaseSource(ABC):
 
     @abstractmethod
     def get_run_state(self) -> review_cases_pb2.RunState:
-        """Return whether a run is going, and how the last one started here ended."""
+        """Return whether a run is going, and how the last one started here ended.
+
+        Returns:
+            Whether a run is going, and the last page-started run's exit code when
+            one has ended.
+        """
 
     @abstractmethod
     def list_corrections(self) -> list[review_cases_pb2.SeedCorrection]:

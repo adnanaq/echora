@@ -28,7 +28,11 @@ DOCSTRINGS = _list_docstrings()
 FUNCTION_DOCSTRINGS = [
     (label, node, docstring)
     for label, node, docstring in DOCSTRINGS
-    if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and "\n" in docstring
+    if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+    and not any(
+        isinstance(decorator, ast.Name) and decorator.id == "property"
+        for decorator in node.decorator_list
+    )
 ]
 
 
@@ -50,7 +54,7 @@ def _returns_value(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     FUNCTION_DOCSTRINGS,
     ids=[label for label, _, _ in FUNCTION_DOCSTRINGS],
 )
-def test_multi_line_function_docstring_has_args_and_returns(
+def test_function_docstring_has_args_and_returns(
     label: str, node: ast.FunctionDef, docstring: str
 ) -> None:
     missing_sections = [

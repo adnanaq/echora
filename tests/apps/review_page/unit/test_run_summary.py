@@ -2,7 +2,8 @@ import dataclasses
 from datetime import UTC, datetime
 
 from review_page.file_review_case_source import convert_run_result_to_message
-from review_page.run_summary import RunSummary, build_run_summary
+from review_page.models import RunSummary
+from review_page.run_summary import build_run_summary
 from seed_cleaning import SeedCleaningRunResult
 
 

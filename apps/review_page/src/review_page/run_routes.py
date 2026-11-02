@@ -12,21 +12,17 @@ Each item gives the rule, then the reason for it.
   panel on a timer instead would close its summary while it is read.
 """
 
-from typing import Annotated
-
-from fastapi import APIRouter, Form, Request, Response
+from fastapi import APIRouter, Request, Response
 from fastapi.templating import Jinja2Templates
-from review_page.browser_state import BrowserState
 from review_page.file_review_case_source import RunSeedFileUnknownError
 from review_page.htmx_responses import (
     build_event_headers,
     build_event_response,
     build_notice_response,
 )
+from review_page.models import BrowserState, BrowserStateField
 from review_page.review_case_source import ReviewCaseSource
 from review_page.run_summary import build_run_summary
-
-BrowserStateField = Annotated[str | None, Form()]
 
 
 class RunRoutes:
@@ -50,7 +46,11 @@ class RunRoutes:
             self.router.add_api_route(path, endpoint, methods=["POST"])
 
     def start_run(self) -> Response:
-        """Start a run, unless one is going, and tell the browser to follow it."""
+        """Start a run, unless one is going, and tell the browser to follow it.
+
+        Returns:
+            A ``runstarted`` event, or a 409 notice when no seed file is known.
+        """
         try:
             self._source.start_run()
         except RunSeedFileUnknownError as error:
@@ -58,14 +58,27 @@ class RunRoutes:
         return build_event_response({"runstarted": True})
 
     def report_run_state(self) -> Response:
-        """Send whether a run is going, as a ``runstate`` event and no content."""
+        """Send whether a run is going, as a ``runstate`` event and no content.
+
+        Returns:
+            A 204 response carrying the ``runstate`` event.
+        """
         is_running = self._source.get_run_state().is_running
         return build_event_response({"runstate": {"is_running": is_running}})
 
     def render_run_panel(
         self, request: Request, browser_state: BrowserStateField = None
     ) -> Response:
-        """Return the run panel: the run going, or the last run's results."""
+        """Return the run panel: the run going, or the last run's results.
+
+        Args:
+            request: The request being answered.
+            browser_state: The browser's state, as its JSON form field.
+
+        Returns:
+            The run panel fragment, with a ``runstate`` event saying whether a run
+            is going.
+        """
         state = BrowserState.from_form_field(browser_state)
         run_state = self._source.get_run_state()
         run_result_message = self._source.get_last_run_result()

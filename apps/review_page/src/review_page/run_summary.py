@@ -7,35 +7,14 @@ file source without changing the page. ``RunSummary`` keeps the message's field
 names, so the templates read the same names whichever source wrote it.
 """
 
-from dataclasses import dataclass
 from datetime import datetime
 
-from pydantic import JsonValue
+from review_page.models import RunSummary
 from review_page.review_case_messages import (
     convert_message_to_fields,
     join_ordered_mappings,
 )
 from shared_proto.v1 import review_cases_pb2
-
-
-@dataclass(frozen=True, slots=True)
-class RunSummary:
-    """What the last run did, as the run panel and the case states read it."""
-
-    seed_file: str
-    started_at: datetime
-    finished_at: datetime
-    # Counts by name, in the order the run reports them.
-    correction_counts: dict[str, int]
-    corrected_entry_counts: dict[str, int]
-    linked_page_counts: dict[str, int]
-    rejected_answer_case_names: tuple[str, ...]
-    conflicting_linked_page_keys: tuple[str, ...]
-    unused_answer_case_names: tuple[str, ...]
-    case_names: tuple[str, ...]
-    new_case_names: tuple[str, ...]
-    # Every answer as the run wrote it: each case's original value.
-    original_answers: dict[str, JsonValue]
 
 
 def build_run_summary(message: review_cases_pb2.SeedCleaningRunResult) -> RunSummary:

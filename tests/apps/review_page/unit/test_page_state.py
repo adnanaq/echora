@@ -1,11 +1,13 @@
 import pytest
 from pydantic import JsonValue
-from review_page.page_state import (
+from review_page.models import (
     CaseEditState,
     CaseFilter,
     CaseRow,
     CaseState,
     SavedChange,
+)
+from review_page.page_state import (
     count_case_rows,
     filter_case_rows,
     find_case_buttons,

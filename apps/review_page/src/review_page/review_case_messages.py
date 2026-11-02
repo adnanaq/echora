@@ -126,7 +126,14 @@ def build_case_answer(
 
 
 def convert_message_to_fields(message: Any) -> dict[str, Any]:
-    """Return a message's fields by their proto names, unset fields included."""
+    """Return a message's fields by their proto names, unset fields included.
+
+    Args:
+        message: Any protobuf message.
+
+    Returns:
+        The message's fields as JSON values, keyed by their proto names.
+    """
     return json_format.MessageToDict(
         message,
         preserving_proto_field_name=True,
@@ -135,7 +142,15 @@ def convert_message_to_fields(message: Any) -> dict[str, Any]:
 
 
 def list_ordered_mappings(fields: Any) -> Any:
-    """Turn every ordered mapping into its list of pairs, in the mapping's order."""
+    """Turn every ordered mapping into its list of pairs, in the mapping's order.
+
+    Args:
+        fields: A model's JSON form, or any value inside it.
+
+    Returns:
+        The same value, each field named in ``_ORDERED_MAPPING_FIELDS`` turned
+        from a mapping into its list of pairs.
+    """
     if isinstance(fields, list):
         return [list_ordered_mappings(item) for item in fields]
     if not isinstance(fields, dict):
@@ -151,7 +166,15 @@ def list_ordered_mappings(fields: Any) -> Any:
 
 
 def join_ordered_mappings(fields: Any) -> Any:
-    """Turn every list of pairs back into its mapping, in the list's order."""
+    """Turn every list of pairs back into its mapping, in the list's order.
+
+    Args:
+        fields: A message's JSON form, or any value inside it.
+
+    Returns:
+        The same value, each field named in ``_ORDERED_MAPPING_FIELDS`` turned
+        from its list of pairs back into a mapping.
+    """
     if isinstance(fields, list):
         return [join_ordered_mappings(item) for item in fields]
     if not isinstance(fields, dict):

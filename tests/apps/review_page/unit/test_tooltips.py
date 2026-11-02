@@ -3,7 +3,7 @@ import re
 from pathlib import Path
 
 import pytest
-from review_page.page_state import CaseEditState, CaseState
+from review_page.models import CaseEditState, CaseState
 from review_page.tooltips import (
     CASE_STATE_TOOLTIPS,
     CORRECTION_CHANGE_TOOLTIPS,

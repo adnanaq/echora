@@ -1,11 +1,9 @@
 from review_page.case_views import (
-    DetailColumn,
-    PageLink,
     build_case_rows,
     build_case_view,
     find_original_answer,
 )
-from review_page.page_state import CaseEditState, SavedChange
+from review_page.models import CaseEditState, DetailColumn, PageLink, SavedChange
 from work_matching import (
     PART_MARK,
     KnownWorkEntriesFromSeed,

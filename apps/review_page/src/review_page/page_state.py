@@ -31,120 +31,33 @@ Each item gives the rule, then the reason for it.
 """
 
 from collections.abc import Collection, Mapping, Sequence
-from dataclasses import dataclass, field
-from enum import StrEnum
 
 from pydantic import JsonValue
-from review_page.tooltips import CASE_STATE_TOOLTIPS, EDIT_STATE_TOOLTIPS
+from review_page.models import (
+    CaseButtons,
+    CaseEditState,
+    CaseFilter,
+    CaseRow,
+    CaseState,
+    ListPage,
+    PageButtons,
+    SavedChange,
+)
 from work_matching import ReviewCase, ReviewCaseKind, list_required_page_keys
 
 ROWS_PER_PAGE = 25
 
 
-class SavedChange(StrEnum):
-    """How a case's saved answer differs from its original value."""
-
-    UNCHANGED = "unchanged"
-    ANSWERED = "answered"
-    CHANGED = "changed"
-    CLEARED = "cleared"
-
-
-class CaseEditState(StrEnum):
-    """Where a case's answer stands between the reviewer's edits and the next Run."""
-
-    REJECTED = "rejected"
-    EDITED_NOT_SAVED = "edited, not saved"
-    SAVED_APPLIES_ON_RUN = "saved, applies on Run"
-    UNCHANGED = "unchanged"
-
-    @property
-    def description(self) -> str:
-        """Return what the state means, as the page's tooltips show it."""
-        return EDIT_STATE_TOOLTIPS[self.value]
-
-
-class CaseState(StrEnum):
-    """A case's answer as the file holds it, as the state filter names it."""
-
-    OPEN = "open"
-    ANSWERED = "answered"
-    CHANGED = "changed"
-    NEW = "new"
-
-    @property
-    def description(self) -> str:
-        """Return what the state means, as the page's tooltips show it."""
-        return CASE_STATE_TOOLTIPS[self.value]
-
-
-@dataclass(frozen=True, slots=True)
-class CaseRow:
-    """One case as the case list shows it."""
-
-    case_name: str
-    kind: ReviewCaseKind
-    title: str
-    saved_change: SavedChange
-    # Whether the file holds no answer for the case.
-    is_open: bool
-    # Whether the last run brought the case up for the first time.
-    is_new: bool
-    # Whether the case carries a suggested answer.
-    has_suggestion: bool
-    # Whether the file keeps the case's answer although the last run no longer
-    # brought the case up, as when another answer changed its pages.
-    is_answer_unused: bool = False
-
-
-@dataclass(frozen=True, slots=True)
-class CaseFilter:
-    """The filters chosen on the page; an empty group lets every case through."""
-
-    kinds: frozenset[ReviewCaseKind] = frozenset()
-    case_states: frozenset[str] = frozenset()
-    edit_states: frozenset[CaseEditState] = frozenset()
-    search_text: str = ""
-    # The browser's cases with unsaved edits, and with rejected saves.
-    unsaved_case_names: frozenset[str] = frozenset()
-    rejected_case_names: frozenset[str] = frozenset()
-
-
-@dataclass(frozen=True, slots=True)
-class ListPage[Row]:
-    """One page of a filtered list: cases, or corrected entries."""
-
-    rows: list[Row]
-    page_number: int
-    page_count: int
-    # The position of the page's first case in the filtered list, from 1.
-    first_row_number: int
-    filtered_count: int
-
-
-@dataclass(frozen=True, slots=True)
-class CaseButtons:
-    """Which of one case's buttons are enabled."""
-
-    is_save_enabled: bool
-    is_accept_enabled: bool
-    is_reset_enabled: bool
-    is_save_and_next_enabled: bool
-
-
-@dataclass(frozen=True, slots=True)
-class PageButtons:
-    """The page's Save all and Run buttons, with the counts they show."""
-
-    unsaved_count: int
-    run_count: int
-    is_save_all_enabled: bool
-    is_run_enabled: bool
-    run_changes: dict[SavedChange, int] = field(default_factory=dict)
-
-
 def find_saved_change(original: JsonValue, saved: JsonValue) -> SavedChange:
-    """Return how a saved answer differs from the case's original value."""
+    """Return how a saved answer differs from the case's original value.
+
+    Args:
+        original: The case's answer as the last run wrote it.
+        saved: The case's answer in the file now.
+
+    Returns:
+        Unchanged, answered, changed or cleared.
+    """
     original, saved = _normalize_answer(original), _normalize_answer(saved)
     if saved == original:
         return SavedChange.UNCHANGED
@@ -283,7 +196,15 @@ def find_page_buttons(
 
 
 def filter_case_rows(rows: Sequence[CaseRow], case_filter: CaseFilter) -> list[CaseRow]:
-    """Return the rows every chosen filter group lets through, in their order."""
+    """Return the rows every chosen filter group lets through, in their order.
+
+    Args:
+        rows: Every case's list row.
+        case_filter: The chosen filters and search.
+
+    Returns:
+        The matching rows.
+    """
     search_text = case_filter.search_text.strip().casefold()
     return [
         row
@@ -332,7 +253,15 @@ def count_case_rows(rows: Sequence[CaseRow], case_filter: CaseFilter) -> dict[st
 
 
 def page_list_rows[Row](rows: Sequence[Row], page_number: int) -> ListPage[Row]:
-    """Return one page of rows; a page past the end gives the last page."""
+    """Return one page of rows; a page past the end gives the last page.
+
+    Args:
+        rows: The filtered rows.
+        page_number: The page asked for, counted from 1.
+
+    Returns:
+        The page's rows, with the page number, page count and positions.
+    """
     page_count = max(1, -(-len(rows) // ROWS_PER_PAGE))
     page_number = min(max(page_number, 1), page_count)
     first_index = (page_number - 1) * ROWS_PER_PAGE
@@ -364,7 +293,15 @@ def find_next_case_name(rows: Sequence[CaseRow], case_name: str) -> str | None:
 
 
 def _find_case_states(row: CaseRow) -> set[str]:
-    """Return every state filter value a row matches."""
+    """Return every state filter value a row matches.
+
+    Args:
+        row: One case's list row.
+
+    Returns:
+        The case state values the row matches: open or answered, and changed
+        and new when they apply.
+    """
     states = {CaseState.OPEN.value if row.is_open else CaseState.ANSWERED.value}
     if row.saved_change is not SavedChange.UNCHANGED:
         states.add(CaseState.CHANGED.value)
@@ -374,7 +311,15 @@ def _find_case_states(row: CaseRow) -> set[str]:
 
 
 def find_row_edit_state(row: CaseRow, case_filter: CaseFilter) -> CaseEditState:
-    """Return a row's edit state from the browser's unsaved and rejected cases."""
+    """Return a row's edit state from the browser's unsaved and rejected cases.
+
+    Args:
+        row: One case's list row.
+        case_filter: The filter holding the browser's unsaved and rejected cases.
+
+    Returns:
+        The row's one edit state.
+    """
     if row.case_name in case_filter.rejected_case_names:
         return CaseEditState.REJECTED
     if row.case_name in case_filter.unsaved_case_names:
@@ -385,5 +330,12 @@ def find_row_edit_state(row: CaseRow, case_filter: CaseFilter) -> CaseEditState:
 
 
 def _normalize_answer(answer: JsonValue) -> JsonValue:
-    """Return None for an answer with no pages, so it counts as no answer."""
+    """Return None for an answer with no pages, so it counts as no answer.
+
+    Args:
+        answer: A case's answer, or None.
+
+    Returns:
+        None for a missing or empty answer, else the answer.
+    """
     return None if answer in (None, {}) else answer

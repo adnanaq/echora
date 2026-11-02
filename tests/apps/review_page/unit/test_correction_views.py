@@ -2,12 +2,12 @@ from review_page.correction_views import (
     ANSWER_SOURCE,
     RULES_SOURCE,
     UNCHANGED,
-    CorrectionFilter,
     build_corrected_entry_rows,
     build_correction_panel,
     count_corrected_entry_rows,
     filter_corrected_entry_rows,
 )
+from review_page.models import CorrectionFilter
 from shared_proto.v1 import review_cases_pb2
 
 RENAMED_ENTRIES = [

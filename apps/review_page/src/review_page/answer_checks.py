@@ -51,7 +51,14 @@ def read_seen_saved_answers(
 
 
 def read_case_answer(case_answer: review_cases_pb2.CaseAnswer) -> JsonValue:
-    """Return a case answer's JSON value, or None when it is unset."""
+    """Return a case answer's JSON value, or None when it is unset.
+
+    Args:
+        case_answer: The answer message to read.
+
+    Returns:
+        The answer as a JSON value, or None when the message leaves it unset.
+    """
     if not case_answer.HasField("answer"):
         return None
     return json_format.MessageToDict(case_answer.answer)
@@ -105,7 +112,16 @@ def check_case_answer(
 def _refuse_answer(
     case_name: str, rule_name: str, rule_sentence: str
 ) -> review_cases_pb2.RuleCheckResult:
-    """Return a refused answer's result with its one rule."""
+    """Return a refused answer's result with its one rule.
+
+    Args:
+        case_name: The case whose answer is refused.
+        rule_name: The refusal's rule name.
+        rule_sentence: The refusal's rule as the reviewer reads it.
+
+    Returns:
+        A result marked not saved, carrying the one rule.
+    """
     return review_cases_pb2.RuleCheckResult(
         case_name=case_name,
         is_saved=False,
