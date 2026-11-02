@@ -1,0 +1,228 @@
+syntax = "proto3";
+
+package shared_proto.v1;
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+// =============================================================================
+// REVIEW CASES
+//
+// Decisions the work-matching rules leave to a person, the answers given, and
+// what a seed-cleaning run did with them. The review page reads and writes
+// these through a review case source; today the source is the local review
+// file, later a gRPC service on the enrichment service.
+//
+// Messages only, no service yet. Each message mirrors a pydantic model in
+// libs/work_matching or libs/seed_cleaning field for field, with the same field
+// names, so google.protobuf.json_format converts between them. Enum values
+// are kept as the strings the models write, the sentences a reviewer reads.
+// The models' mappings are lists of pairs here, in the models' order, since a
+// proto map keeps no order: an entry's addresses (enrichment fetches each
+// provider's first address), a case's entries (named A, B and so on), and the
+// suggestions and decisions, kept as the rules wrote them.
+// =============================================================================
+
+// One page of an entry: its page key and its address.
+message PageAddress {
+  string page_key = 1;
+  string address = 2;
+}
+
+// One seed or known work entry: work_matching.WorkEntry.
+message WorkEntry {
+  string title = 1;
+  string type = 2;
+  optional int32 year = 3;
+  optional string season = 4;
+  // Each page of the entry, in the entry's order. A list, not a map: a proto
+  // map keeps no order, and enrichment fetches each provider's first address.
+  repeated PageAddress addresses_by_page_key = 5;
+}
+
+// One entry of a case, by its reference page.
+message CaseEntry {
+  string reference_page = 1;
+  WorkEntry entry = 2;
+}
+
+// One provider page's fetched details: work_matching.ProviderPage.
+message ProviderPage {
+  string key = 1;
+  string address = 2;
+  repeated string titles = 3;
+  optional string type = 4;
+  optional int32 year = 5;
+  optional string season = 6;
+  optional int32 episode_count = 7;
+  optional google.protobuf.Timestamp aired_from = 8;
+  optional google.protobuf.Timestamp aired_to = 9;
+  repeated string linked_page_keys = 10;
+  optional string renamed_to = 11;
+  repeated string searched_by = 12;
+  bool is_dead = 13;
+}
+
+// What a doubled page's links say about the other work it belongs to:
+// work_matching.UnrelatedPage.
+message UnrelatedPage {
+  repeated string linked_page_keys = 1;
+  repeated WorkEntry other_work_entries = 2;
+  optional WorkEntry move_target_entry = 3;
+}
+
+// A belonging page and the entry's pages linked with it.
+message BelongingPage {
+  string page_key = 1;
+  repeated string linked_page_keys = 2;
+}
+
+// An unrelated page and what its links say about its other work.
+message UnrelatedPageEntry {
+  string page_key = 1;
+  UnrelatedPage unrelated_page = 2;
+}
+
+// A page and its place, in the answer words: a suggested answer's item.
+message PagePlace {
+  string page_key = 1;
+  string place = 2;
+}
+
+// What one doubled provider's pages are: work_matching.DoubledProviderDecision.
+message DoubledProviderDecision {
+  string provider = 1;
+  repeated string page_keys = 2;
+  // The outcome's sentence.
+  string outcome = 3;
+  // Each review reason's sentence.
+  repeated string review_reasons = 4;
+  // Each belonging page with the entry's pages linked with it, in order.
+  repeated BelongingPage belonging_page_keys = 5;
+  // Each unrelated page with what its links say, in order.
+  repeated UnrelatedPageEntry unrelated_pages = 6;
+  repeated string contradicting_page_keys = 7;
+  repeated string unlinked_page_keys = 8;
+  repeated string title_matches = 9;
+  repeated string year_type_matches = 10;
+  repeated string season_matches = 11;
+}
+
+// What happens to one linked page no known work holds:
+// work_matching.LinkedPageDecision.
+message LinkedPageDecision {
+  string page_key = 1;
+  // The reason's sentence.
+  string reason = 2;
+  repeated WorkEntry linking_entries = 3;
+  optional int32 entry_episode_count = 4;
+}
+
+// One review case: work_matching.ReviewCase. The model keeps its decisions in
+// one list of either kind; here each kind has its own field, and a case fills
+// only the one for its kind.
+message ReviewCase {
+  string case_name = 1;
+  // The answer as written; any JSON, since an answer that breaks a rule is
+  // kept for the reviewer to fix. Unset for an open case.
+  optional google.protobuf.Value answer = 2;
+  // The suggested place of each page, in answer page order.
+  repeated PagePlace suggested_answer = 3;
+  // Reason names, as the run writes them.
+  repeated string reasons = 4;
+  repeated string candidate_evidence = 5;
+  // Each entry involved, in the case's order, which names the entries A, B
+  // and so on; a list, since a proto map keeps no order.
+  repeated CaseEntry entries = 6;
+  repeated DoubledProviderDecision doubled_provider_decisions = 7;
+  repeated LinkedPageDecision linked_page_decisions = 8;
+  repeated ProviderPage pages = 9;
+}
+
+// An answer to save for one case; unset clears the case's answer.
+message CaseAnswer {
+  string case_name = 1;
+  optional google.protobuf.Value answer = 2;
+}
+
+// Whether a saved answer follows the rules, and if not, which rules it breaks.
+message RuleCheckResult {
+  string case_name = 1;
+  bool is_saved = 2;
+  // The broken rules' names (work_matching.PlacementRule or
+  // work_matching.LinkedPageAnswerRule), empty when the answer was saved.
+  repeated string broken_rule_names = 3;
+  // The same rules as the sentences a reviewer reads.
+  repeated string broken_rule_sentences = 4;
+  // Problems that do not stop the save, such as two linked-page answers
+  // adding whole pages of one provider to one entry, which the run adds neither of.
+  repeated string warnings = 5;
+}
+
+// One count a run reports, by its name.
+message NamedCount {
+  string name = 1;
+  int32 count = 2;
+}
+
+// What one seed-cleaning run did: seed_cleaning.SeedCleaningRunResult.
+message SeedCleaningRunResult {
+  string seed_file = 1;
+  google.protobuf.Timestamp started_at = 2;
+  google.protobuf.Timestamp finished_at = 3;
+  // Counts in the order the run reports them.
+  repeated NamedCount correction_counts = 4;
+  repeated NamedCount corrected_entry_counts = 5;
+  repeated NamedCount linked_page_counts = 6;
+  repeated string rejected_answer_case_names = 7;
+  repeated string conflicting_linked_page_keys = 8;
+  repeated string unused_answer_case_names = 9;
+  repeated string case_names = 10;
+  repeated string new_case_names = 11;
+  // Every answer as the run wrote it: each case's original value.
+  map<string, google.protobuf.Value> original_answers = 12;
+}
+
+// Where one checked page ends up after the last run, and why: one line of the
+// seed's corrections. Fields 1-12 are named as seed_cleaning.SeedCorrection;
+// the source fills change and reason_sentence, so the page shows them without
+// knowing how a source decides them.
+message SeedCorrection {
+  string entry_reference_page = 1;
+  string page_key = 2;
+  string address = 3;
+  string placement_word = 4;
+  bool is_main_page = 5;
+  optional string renamed_to = 6;
+  optional string target_entry_reference_page = 7;
+  optional string new_entry_key = 8;
+  bool is_added_page = 9;
+  bool is_part_page = 10;
+  bool is_anime_id_page = 11;
+  // The reason's name, as the source keeps it.
+  string reason = 12;
+  // What the correction changes, such as "pages moved to a seed entry";
+  // unset for a page that stays in its entry unchanged.
+  optional string change = 13;
+  // The reason as the sentence a reviewer reads.
+  string reason_sentence = 14;
+  // Whether a reviewer's answer placed the page, rather than the rules.
+  bool is_from_answer = 15;
+}
+
+// An entry the last run checked, by its reference page, so corrections show
+// its title.
+message CheckedEntry {
+  string reference_page = 1;
+  string title = 2;
+  optional string type = 3;
+  optional int32 year = 4;
+}
+
+// Whether a run is applying the saved answers right now.
+message RunState {
+  bool is_running = 1;
+  // How the last run started from the page ended, once it ended: 0 for
+  // success. Unset while it runs, or when no run was started from the page.
+  optional int32 last_exit_code = 2;
+}
