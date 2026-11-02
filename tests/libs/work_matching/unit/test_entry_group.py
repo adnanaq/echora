@@ -1,4 +1,5 @@
 import pytest
+from pydantic import JsonValue
 from work_matching.answer_rules import PlacementRule
 from work_matching.doubled_provider_check import decide_doubled_providers
 from work_matching.entry_group import (
@@ -162,7 +163,7 @@ def test_read_group_answer_placements_every_page_placed_gives_placements(
     cue_like_group,
 ) -> None:
     entries, decisions = cue_like_group
-    answer = {
+    answer: dict[str, JsonValue] = {
         "ann:anime:1": "work 1",
         "mal:anime:1": "work 1",
         "kitsu:anime:1": "work 1",
@@ -180,7 +181,7 @@ def test_read_group_answer_placements_every_page_placed_gives_placements(
     ],
 )
 def test_read_group_answer_placements_invalid_answer_gives_none(
-    cue_like_group, answer: dict[str, str]
+    cue_like_group, answer: JsonValue
 ) -> None:
     entries, decisions = cue_like_group
     assert read_group_answer_placements(answer, entries, decisions, {}) is None
@@ -190,7 +191,7 @@ def test_read_group_answer_placements_two_mal_pages_in_one_work_gives_none(
     work_entry,
 ) -> None:
     entries = [work_entry(MAL), work_entry(OTHER_MAL)]
-    answer = {"mal:anime:1": "work 1", "mal:anime:2": "work 1"}
+    answer: dict[str, JsonValue] = {"mal:anime:1": "work 1", "mal:anime:2": "work 1"}
     assert (
         read_group_answer_placements(answer, entries, _decide(entries, []), {}) is None
     )
@@ -200,7 +201,7 @@ def test_read_group_answer_placements_two_mal_pages_in_separate_works_accepted(
     work_entry,
 ) -> None:
     entries = [work_entry(MAL), work_entry(OTHER_MAL)]
-    answer = {"mal:anime:1": "work 1", "mal:anime:2": "work 2"}
+    answer: dict[str, JsonValue] = {"mal:anime:1": "work 1", "mal:anime:2": "work 2"}
     assert read_group_answer_placements(answer, entries, _decide(entries, []), {}) == {
         "mal:anime:1": PagePlacement("work 1"),
         "mal:anime:2": PagePlacement("work 2"),
@@ -212,7 +213,10 @@ def test_read_group_answer_placements_single_entry_needs_only_doubled_pages(
 ) -> None:
     entries = [work_entry(MAL, KITSU, "https://kitsu.app/anime/2")]
     pages = [linked_page(KITSU, MAL), linked_page("https://kitsu.app/anime/2", MAL)]
-    answer = {"kitsu:anime:1": "work 1, main", "kitsu:anime:2": "work 1"}
+    answer: dict[str, JsonValue] = {
+        "kitsu:anime:1": "work 1, main",
+        "kitsu:anime:2": "work 1",
+    }
     assert read_group_answer_placements(
         answer, entries, _decide(entries, pages), {}
     ) == {
@@ -226,7 +230,7 @@ def test_read_group_answer_placements_work_of_two_entries_without_reference_page
 ) -> None:
     entries = [work_entry(ANN, SIMKL), work_entry(MAL, KITSU)]
     decisions = _decide(entries, [linked_page(MAL, ANN)])
-    answer = {
+    answer: dict[str, JsonValue] = {
         "ann:anime:1": "work 1",
         "simkl:anime:1": "work 2",
         "mal:anime:1": "work 1",
@@ -239,7 +243,7 @@ def test_read_group_answer_placements_part_reference_pages_only_accepted(
     cue_like_group,
 ) -> None:
     entries, decisions = cue_like_group
-    answer = {
+    answer: dict[str, JsonValue] = {
         "ann:anime:1": "work 1, part",
         "mal:anime:1": "work 1, part",
         "kitsu:anime:1": "work 1",
@@ -439,7 +443,7 @@ def test_check_group_answer_placements_work_of_two_entries_without_reference_pag
 ) -> None:
     entries = [work_entry(ANN, SIMKL), work_entry(MAL, KITSU)]
     decisions = _decide(entries, [linked_page(MAL, ANN)])
-    answer = {
+    answer: dict[str, JsonValue] = {
         "ann:anime:1": "work 1",
         "simkl:anime:1": "work 2",
         "mal:anime:1": "work 1",
@@ -454,7 +458,7 @@ def test_check_group_answer_placements_page_left_out_reports_rule(
     cue_like_group,
 ) -> None:
     entries, decisions = cue_like_group
-    answer = {"ann:anime:1": "work 1", "mal:anime:1": "work 1"}
+    answer: dict[str, JsonValue] = {"ann:anime:1": "work 1", "mal:anime:1": "work 1"}
     assert check_group_answer_placements(
         answer, entries, decisions, {}
     ).broken_rules == (PlacementRule.PAGE_WITHOUT_PLACE,)
@@ -464,7 +468,10 @@ def test_check_group_answer_placements_two_mal_pages_in_one_work_reports_rule(
     work_entry,
 ) -> None:
     entries = [work_entry(MAL), work_entry(OTHER_MAL)]
-    answer = {"mal:anime:1": "work 1, part", "mal:anime:2": "work 1, part"}
+    answer: dict[str, JsonValue] = {
+        "mal:anime:1": "work 1, part",
+        "mal:anime:2": "work 1, part",
+    }
     assert check_group_answer_placements(
         answer, entries, _decide(entries, []), {}
     ).broken_rules == (PlacementRule.WORK_WITH_TWO_MAL_PAGES,)

@@ -1,4 +1,5 @@
 import pytest
+from pydantic import JsonValue
 from work_matching.answer_rules import LinkedPageAnswerRule
 from work_matching.known_work_entries_from_seed import KnownWorkEntriesFromSeed
 from work_matching.linked_page_check import (
@@ -502,7 +503,7 @@ def test_read_linked_page_answer_part_to_entry_holding_provider_accepted() -> No
     ],
 )
 def test_read_linked_page_answer_answer_not_naming_page_alone_rejected(
-    answer: object,
+    answer: JsonValue,
 ) -> None:
     decision = _decide(BOXER_MAL_PAGE, _entry(BOXER_SEED_ENTRY), entry_episode_count=12)
     assert read_linked_page_answer(answer, decision) is None
@@ -524,7 +525,7 @@ def test_read_linked_page_answer_answer_not_naming_page_alone_rejected(
     ],
 )
 def test_check_linked_page_answer_one_linking_entry_reports_broken_rules(
-    answer: object, broken_rules: tuple[LinkedPageAnswerRule, ...]
+    answer: JsonValue, broken_rules: tuple[LinkedPageAnswerRule, ...]
 ) -> None:
     decision = _decide(BOXER_MAL_PAGE, _entry(BOXER_SEED_ENTRY), entry_episode_count=12)
     assert check_linked_page_answer(answer, decision).broken_rules == broken_rules

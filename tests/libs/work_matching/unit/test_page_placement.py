@@ -1,4 +1,5 @@
 import pytest
+from pydantic import JsonValue
 from work_matching.answer_rules import PlacementRule
 from work_matching.doubled_provider_check import decide_doubled_providers
 from work_matching.known_work_entries_from_seed import KnownWorkEntriesFromSeed
@@ -268,7 +269,7 @@ def test_suggest_page_placements_details_differ_pages_left_out(
     ],
 )
 def test_read_answer_placements_valid_answer_gives_placements(
-    shared_link, answer: dict[str, str], placements: dict[str, PagePlacement]
+    shared_link, answer: JsonValue, placements: dict[str, PagePlacement]
 ) -> None:
     assert read_answer_placements(answer, *shared_link[:2]) == placements
 
@@ -306,7 +307,7 @@ def test_read_answer_placements_valid_answer_gives_placements(
     ],
 )
 def test_read_answer_placements_invalid_answer_gives_none(
-    shared_link, answer: object
+    shared_link, answer: JsonValue
 ) -> None:
     assert read_answer_placements(answer, *shared_link[:2]) is None
 
@@ -353,7 +354,7 @@ def test_read_answer_placements_invalid_answer_gives_none(
     ],
 )
 def test_check_answer_placements_reports_broken_rules(
-    shared_link, answer: object, broken_rules: tuple[PlacementRule, ...]
+    shared_link, answer: JsonValue, broken_rules: tuple[PlacementRule, ...]
 ) -> None:
     assert (
         check_answer_placements(answer, *shared_link[:2]).broken_rules == broken_rules
@@ -364,14 +365,19 @@ def test_check_answer_placements_two_mal_pages_in_one_work_reports_rule(
     linked_apart,
 ) -> None:
     entry, decisions, _ = linked_apart
-    answer = dict.fromkeys(list_placeable_page_keys(entry, decisions), "work 1, part")
+    answer: dict[str, JsonValue] = dict.fromkeys(
+        list_placeable_page_keys(entry, decisions), "work 1, part"
+    )
     assert check_answer_placements(answer, entry, decisions).broken_rules == (
         PlacementRule.WORK_WITH_TWO_MAL_PAGES,
     )
 
 
 def test_check_answer_placements_valid_answer_keeps_placements(shared_link) -> None:
-    answer = {"kitsu:anime:1": "work 1, part", "kitsu:anime:2": "work 1, part"}
+    answer: dict[str, JsonValue] = {
+        "kitsu:anime:1": "work 1, part",
+        "kitsu:anime:2": "work 1, part",
+    }
     assert check_answer_placements(answer, *shared_link[:2]).placements == {
         "kitsu:anime:1": PagePlacement("work 1", is_part_page=True),
         "kitsu:anime:2": PagePlacement("work 1", is_part_page=True),
