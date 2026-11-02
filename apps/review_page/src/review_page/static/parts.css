@@ -153,6 +153,8 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; }
 }
 .part-chip.is-on { color: var(--color-main-text); background: var(--color-main); border-color: var(--color-main); }
 .part-chip-count { opacity: 0.75; }
+/* On the main colour, a faded count falls under 4.5:1; keep it solid. */
+.part-chip.is-on .part-chip-count { opacity: 1; }
 
 /* Pill */
 .part-pill { font-size: var(--size-small); border-radius: var(--radius-pill); padding: 0 var(--space-2); border: 1px solid currentColor; white-space: nowrap; }
