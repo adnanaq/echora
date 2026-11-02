@@ -2,8 +2,8 @@
 
 The page reads the run only through the review case source's message
 (``SeedCleaningRunResult`` in ``shared_proto/v1/review_cases.proto``), never
-through the seed-cleaning library, so a source for Discovery replaces the file
-source without changing the page. ``RunSummary`` keeps the message's field
+through the seed-cleaning library. A source for Discovery then replaces the
+file source without changing the page. ``RunSummary`` keeps the message's field
 names, so the templates read the same names whichever source wrote it.
 """
 

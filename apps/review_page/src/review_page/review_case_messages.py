@@ -5,22 +5,28 @@ The review case source hands the page protobuf messages
 source later. The rules and choices still run on the library models
 (``work_matching.ReviewCase``), so the page converts between them. A source
 converts its own records to messages with the same mapping helpers
-(``list_ordered_mappings``, ``join_ordered_mappings``). Each item gives the rule, then the reason for
-it.
+(``list_ordered_mappings``, ``join_ordered_mappings``). Each item gives the
+rule, then the reason for it.
 
 - Each message has the model's field names, so Google's
-  ``google.protobuf.json_format`` converts through the models' JSON form; no
+  ``google.protobuf.json_format`` converts through the models' JSON form. No
   field is copied by hand, and a field added to both is converted at once.
-- The one difference is a case's decisions: the model keeps one list of either
-  kind, and a message cannot repeat a union, so the list moves to the field of
-  the case's kind (``doubled_provider_decisions`` or ``linked_page_decisions``).
+- A case's decisions are the one difference. The model keeps one list of
+  either kind, and a message cannot repeat a union, so the list moves to the
+  field of the case's kind (``doubled_provider_decisions`` or
+  ``linked_page_decisions``).
 - The models' mappings are lists of pairs in the messages, because a proto map
-  keeps no order and the order matters: an entry's addresses (enrichment
-  fetches each provider's first address), a case's entries (named A, B and so
-  on), suggestions in answer page order, and counts in the order a run reports
-  them. ``_ORDERED_MAPPING_FIELDS`` names each field and its pair; a mapping
-  becomes its list and back in the same order. Only a lookup with no order,
-  the run's original answers by case name, stays a map.
+  keeps no order and these orders matter:
+
+  - an entry's addresses, since enrichment fetches each provider's first
+    address;
+  - a case's entries, named A, B and so on;
+  - suggestions, in answer page order;
+  - counts, in the order a run reports them.
+
+- ``_ORDERED_MAPPING_FIELDS`` names each field and its pair. A mapping becomes
+  its list and back in the same order. Only a lookup with no order, the run's
+  original answers by case name, stays a map.
 - Fields without a set value are written out, so a model's required fields
   that are empty, such as a case with no reasons, survive the round trip.
 

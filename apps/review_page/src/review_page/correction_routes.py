@@ -1,8 +1,9 @@
 """Serve the Corrections tab: the corrected entries, and one entry's pages.
 
-The routes follow the Cases tab's: each reads the source on every request and
-the browser's state from its form field, and returns an htmx fragment. They
-only read, so they never take the review file's lock.
+The routes work like the Cases tab's routes. Each route reads the source on
+every request and the browser's state from its form field, and returns an
+htmx fragment. The Corrections tab's routes only read, so they never take the
+review file's lock.
 """
 
 from typing import Annotated

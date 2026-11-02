@@ -1,4 +1,4 @@
-"""Where the review page reads cases, saves answers and starts a Run: one swappable source.
+"""Define the one swappable source the review page reads cases from, saves answers to and runs.
 
 The page talks to nothing else, so where cases are kept can change without
 changing the page. Each item gives the rule, then the reason for it.
@@ -8,13 +8,14 @@ changing the page. Each item gives the rule, then the reason for it.
   will send, so a gRPC source needs no new types.
 - The first source, ``FileReviewCaseSource``, reads and writes seed cleaning's
   local review file. Discovery adds a source backed by the enrichment
-  service's gRPC API; it implements these same methods and is tested against
-  the same checks.
+  service's gRPC API. That source implements these same methods and is
+  tested against the same checks.
 - A source checks every answer before saving it, with the same rules a run
   uses, so a page using any source never saves an answer the run refuses.
-- An answer carrying the saved answer its edit started from is refused, with
-  ``ANSWER_SAVED_ELSEWHERE_RULE_NAME``, when the case's saved answer is
-  another one by then, so a save from a second tab is never replaced unseen.
+- An answer may carry the saved answer its edit started from. The answer is
+  refused, with ``ANSWER_SAVED_ELSEWHERE_RULE_NAME``, when the case's saved
+  answer is another one by then. A save from a second tab is then never
+  replaced unseen.
 """
 
 from abc import ABC, abstractmethod

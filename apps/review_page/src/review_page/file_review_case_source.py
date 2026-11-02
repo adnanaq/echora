@@ -1,33 +1,36 @@
-"""The first review case source: seed cleaning's local review file and its run script.
+"""Read and save review cases in seed cleaning's local files, and start its run script.
 
 Each item gives the rule, then the reason for it.
 
 - Cases are read from ``review.jsonl`` on every call, not kept in memory, so
   the server holds no state and always shows what the file holds. Reading all
   635 cases of a release takes about 0.06 s.
-- An answer is checked with ``ReviewCase.list_broken_answer_rules``, the run's
-  own checks, before it is saved; answers that break a rule are not saved and
-  come back with the rules.
+- Every answer passes ``answer_checks`` before it is saved, which uses the
+  run's own rules. Answers that break a rule are not saved and come back with
+  the rules.
 - Answers that follow the rules are saved together through
   ``ReviewFile.save_answers``, which holds the file's lock and rewrites only
   their lines.
 - Two linked-page answers adding whole pages of one provider to one entry are
-  saved, with a warning, because the run adds neither page; the reviewer
-  decides which to change.
+  saved with a warning, because the run adds neither page. The reviewer
+  decides which answer to change.
 - Run starts ``clean_seed.py --no-fetch`` as its own process, so its memory
   (about 0.9 GB for a release) is never the server's, and a server restart
-  does not stop it. Its output is appended to ``logs/review_page_runs.log``.
-- One run starts at a time: a lock covers the check for a running run, the
+  does not stop it. The run's output is appended to
+  ``logs/review_page_runs.log``.
+- One run starts at a time. A lock covers the check for a running run, the
   start and the process id file, so two clicks or two tabs cannot start two
-  runs. The same lock covers reading the run state, so when a run ends only
-  one request collects its exit code, and every other request reads the exit
-  code that request wrote.
-- The run's process id is kept in ``review_run.pid``, and how it ended in
-  ``review_run.exit_code``; both files are written in one step, so a reader
-  never sees one half written. Only the server that started the run trusts
-  the process id: after a restart the id may belong to another process. Any
-  other run, and a run seen from another server, is followed through the
-  review file's lock, which a run holds while it works.
+  runs.
+- The same lock covers reading the run state. When a run ends, one request
+  collects the run's exit code, and every other request reads the exit code
+  that request wrote.
+- The run's process id is kept in ``review_run.pid``, and the run's exit code
+  in ``review_run.exit_code``. Both files are written in one step, so a
+  reader never sees one half written.
+- Only the server that started the run trusts the process id, because after
+  a restart the id may belong to another process. Any other run, and a run
+  seen from another server, is followed through the review file's lock,
+  which a run holds while it works.
 - Run uses the configured seed file, else the one the last run read, so a Run
   never switches seed releases on its own.
 """
@@ -203,11 +206,18 @@ class FileReviewCaseSource(ReviewCaseSource):
     def get_run_state(self) -> review_cases_pb2.RunState:
         """Return whether a run is going, and how the last run started here ended.
 
-        A run started here is followed by its process id; when it has ended,
-        its exit code is kept and the process id removed. Any other run is
-        seen while it holds the review file's lock. A process id file this
-        server did not write is left alone, so the server that started that
-        run still records its exit code.
+        Each item gives the rule, then the reason for it.
+
+        - A run started here is followed by its process id. When the run has
+          ended, its exit code is kept and the process id file removed.
+        - Any other run is seen while it holds the review file's lock, since
+          only the starting server can follow a run's process.
+        - A process id file this server did not write is left alone, so the
+          server that started that run still records the run's exit code.
+
+        Returns:
+            Whether a run is going, and the last page-started run's exit code
+            when one has ended.
         """
         with self._run_lock:
             return self._read_run_state()
@@ -229,9 +239,13 @@ class FileReviewCaseSource(ReviewCaseSource):
     def list_checked_entries(self) -> list[review_cases_pb2.CheckedEntry]:
         """Return both passes' entries from ``entries_to_check.json``, once each.
 
-        A split-work candidate's entry carries its type and year, so it stands
-        in for the same entry listed by the doubled-provider pass with its title
-        alone.
+        A split-work candidate's entry carries its type and year. That entry
+        therefore replaces the same entry from the doubled-provider pass,
+        which lists the title alone.
+
+        Returns:
+            Each checked entry once, with its title, and its type and year when
+            known. The list is empty before the first run.
         """
         entries_path = self._data_dir / ENTRIES_TO_CHECK_FILE_NAME
         if not entries_path.exists():
@@ -376,7 +390,9 @@ def _check_process(process_id: int) -> tuple[bool, int | None]:
         process_id: The run's process id, from the process id file.
 
     Returns:
-        Whether it runs, and its exit code when it ended; None otherwise.
+        Whether the run is going, and the run's exit code once it ended here.
+        The exit code is None while the run goes and for a process this
+        server did not start.
     """
     try:
         ended_process_id, wait_status = os.waitpid(process_id, os.WNOHANG)

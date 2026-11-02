@@ -158,6 +158,9 @@ def filter_corrected_entry_rows(
 def count_corrected_entry_rows(rows: Sequence[CorrectedEntryRow]) -> dict[str, int]:
     """Count the entries each filter chip would let through, over every row.
 
+    Args:
+        rows: Every corrected entry's row, before filtering.
+
     Returns:
         Each change seen, UNCHANGED, ANSWER_SOURCE and RULES_SOURCE mapped to
         the number of entries matching it.

@@ -1,12 +1,10 @@
 """Start the review page: read the settings, build the file source, serve the app.
 
-Run it from the repository root, so the default data folder
-(``data/seed_cleaning``) and seed-cleaning script (``scripts/clean_seed.py``)
-are found:
-
-    uv run python -m review_page.main      (with the libraries on PYTHONPATH)
-
-In the dev Docker stack it runs as the ``review-page`` service instead.
+Start the page from the repository root, so the default data folder
+(``data/seed_cleaning``) and the seed-cleaning script
+(``scripts/clean_seed.py``) are found. The README gives the commands, with
+Pants or with uv. In the dev Docker stack, the page runs as the
+``review-page`` service instead.
 """
 
 import uvicorn

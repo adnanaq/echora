@@ -1,21 +1,21 @@
 """Turn review cases into what the page's templates show.
 
-The templates only lay out what these views hold; every decision is made
-here or in the libraries, so it is tested without a browser. Each item gives
-the rule, then the reason for it.
+The templates only lay out what these views hold. Every decision is made
+here or in the libraries, so every decision is tested without a browser. Each
+item gives the rule, then the reason for it.
 
 - An entry group's case shows one row per page an answer can place, in
-  ``list_placeable_case_page_keys`` order, with the entry listing it (A, B,
-  ...) and whether it is that entry's reference page. Pages that were only
-  searched, such as AnimeSchedule's, are shown as evidence, since an answer
-  cannot place them.
+  ``list_placeable_case_page_keys`` order. Each row names the entry listing
+  the page (A, B, ...) and whether the page is that entry's reference page.
+- Pages that were only searched, such as AnimeSchedule's, are shown as
+  evidence, since an answer cannot place them.
 - A case starts on its unsaved edit, else its saved answer, else its
   suggestion, which is then marked as not yet answered.
 - A page whose place differs from the case's original value is marked
   changed, so the reviewer sees what a save would change.
 - Show only differences hides each detail column that is the same on every
-  row, and each comparison row where the entry and the linked page agree. It
-  never hides a page or its choices.
+  row, and each comparison row where the entry and the linked page agree.
+  The switch never hides a page or its choices.
 - A list row's title is the combined entry's title for an entry group (the
   most trusted entry's), and the linking entry's for a linked page.
 """
@@ -148,9 +148,12 @@ def find_original_answer(
 
     Args:
         case_name: The case.
-        saved_answer: Its answer in the file now.
+        saved_answer: The case's answer in the file now.
         original_answers: The last run's answers, or None before any run wrote
             a result, when the file's answers stand as originals.
+
+    Returns:
+        The case's original value, or None when the case had no answer.
     """
     if original_answers is None:
         return saved_answer
@@ -172,6 +175,9 @@ def build_case_rows(
         new_case_names: The cases the last run brought up for the first time.
         unused_answer_case_names: The kept answers whose case the last run no
             longer brought up.
+
+    Returns:
+        One row per case, with the case's states and tags.
     """
     return [
         CaseRow(
@@ -204,11 +210,15 @@ def build_case_view(
 
     Args:
         case: The review case, with its saved answer.
-        original: Its answer as the last run wrote it.
+        original: The case's answer as the last run wrote it.
         unsaved: The browser's unsaved answer, or None.
         is_rejected: Whether the case's last save broke a rule.
         is_run_going: Whether a run is rewriting the cases.
         show_only_differences: Whether to hide details every page shares.
+
+    Returns:
+        What the panel shows: the case's pages with their details and choices,
+        its buttons and its notes.
     """
     is_suggestion_shown = unsaved is None and case.answer in (None, {})
     chosen_answer: JsonValue = (
@@ -305,11 +315,21 @@ def _build_page_rows(
 def _explain_disabled_choices(choices: GroupPageChoices) -> tuple[str, ...]:
     """Explain the choices other pages' places disable, one line per rule.
 
-    A rule disabling several choices, such as a work for each other MAL page,
-    is stated once with every choice it disables, so a case with many MAL
-    pages does not repeat the same sentence on every row. Choices a page's own
-    place disables, such as ``main`` for a provider's only page, are explained
-    by the option's tooltip alone, so most rows stay quiet.
+    Each item gives the rule, then the reason for it.
+
+    - A rule disabling several choices, such as a work for each other MAL
+      page, is stated once with every choice it disables. A case with many
+      MAL pages then does not repeat the same sentence on every row.
+    - A choice the page's own place disables, such as ``main`` for a
+      provider's only page, is explained by the option's tooltip alone. Most
+      rows then stay quiet.
+
+    Args:
+        choices: One page's choices, with the rule disabling each one.
+
+    Returns:
+        One note per rule another page's place breaks, naming the choices the
+        rule disables.
     """
     choices_by_rule: dict[PlacementRule, list[str]] = {}
     for option in (*choices.work_options, *choices.mark_options):

@@ -1,12 +1,12 @@
-"""What the browser sends with each request: its unsaved edits, filters and open case.
+"""Read the state the browser sends with each request: unsaved edits, filters and open case.
 
-The server keeps no state between requests, so everything that is the
-reviewer's alone lives in the browser (kept in localStorage by Alpine's
-persist plugin) and comes with each request as one JSON form field. Each
-item gives the rule, then the reason for it.
+The server keeps no state between requests. Everything that is the
+reviewer's alone therefore lives in the browser, kept in localStorage by
+Alpine's persist plugin. The browser sends that state with each request as
+one JSON form field. Each item gives the rule, then the reason for it.
 
-- Unsaved edits are answers by case name; an edit equal to the saved answer is
-  dropped by the browser, so every edit here differs from the file.
+- Unsaved edits are answers by case name. The browser drops an edit equal to
+  the saved answer, so every edit here differs from the file.
 - Rejected cases carry the sentences of the rules their last save broke, so
   the list and the panel can show them until the case is edited or saved.
 - Each unsaved edit keeps the saved answer it started from, so a save made

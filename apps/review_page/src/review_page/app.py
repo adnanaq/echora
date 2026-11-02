@@ -1,4 +1,4 @@
-"""The review page's web routes: the page, its fragments, saves and Run.
+"""Serve the review page: the page itself, the Cases tab's fragments, choices and saves.
 
 The browser loads one page, then asks for parts of it (the toolbar, the case
 list, the open case, the run panel) as HTML fragments with htmx. Each item
@@ -10,13 +10,16 @@ gives the rule, then the reason for it.
 - Changing a choice posts it, and the server answers with the redrawn case and
   an ``answerchanged`` event carrying the new answer, which the browser keeps
   as an unsaved edit. The rules decide the choices; the browser never does.
-- Saves answer with an ``answerssaved`` event naming the saved and rejected
-  cases (with the broken rules) and, for Save & next, the next case, so the
-  browser updates its own edits and redraws.
+- A save answers with an ``answerssaved`` event naming the saved and rejected
+  cases, with the broken rules, so the browser updates its own edits and
+  redraws. For Save & next, the event also names the next case.
 - A save while a run holds the review file answers 409 with a notice, and
-  changes nothing. So does a save during which a run removes one of its cases,
-  between the source's check and its write; a case removed before the check
-  is rejected on its own, like a broken answer.
+  changes nothing.
+- A save during which a run removes one of its cases, between the source's
+  check and its write, also answers 409 and changes nothing. A case removed
+  before the check is rejected on its own, like a broken answer.
+- Run and the run panel are served by ``run_routes``, and the Corrections tab
+  by ``correction_routes``.
 - Requests from anywhere but the page itself are refused (``request_guards``).
 - The server listens where ``ReviewPageConfig`` says, on localhost by default.
 """
@@ -259,9 +262,22 @@ class ReviewPageRoutes:
     ) -> Response:
         """Save, accept, reset or save all, and report what was saved or rejected.
 
-        Each action names its answers: ``save`` and ``save_next`` the case's
-        shown answer, ``accept`` its suggestion, ``reset`` its original value,
-        ``save_all`` every unsaved edit.
+        Each item reads ``<action>: <answers it saves>``.
+
+        - ``save`` and ``save_next``: the case's shown answer.
+        - ``accept``: the case's suggestion.
+        - ``reset``: the case's original value.
+        - ``save_all``: every unsaved edit.
+
+        Args:
+            browser_state: The browser's state, as its JSON form field.
+            action: Which answers to save, from the list above.
+            case_name: The case the action is for; unused by ``save_all``.
+
+        Returns:
+            An ``answerssaved`` event naming the saved, rejected and
+            changed-elsewhere cases; a 409 notice when a run holds the review
+            file or changed the cases during the save.
         """
         state = BrowserState.from_form_field(browser_state)
         cases_by_name = {case.case_name: case for case in self._load_cases()}
