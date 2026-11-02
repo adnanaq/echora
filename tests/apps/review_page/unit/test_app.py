@@ -2,7 +2,7 @@ import json
 
 from google.protobuf import json_format
 from jinja2 import Template
-from review_page.page_state import CaseEditState, CaseState
+from review_page.models import CaseEditState, CaseState
 from review_page.template_functions import build_element_id, build_static_url
 from shared_proto.v1 import review_cases_pb2
 from work_matching import (
@@ -234,7 +234,7 @@ def test_answers_save_rule_breaking_edit_reports_rule(client, review_cases) -> N
         },
     )
     assert _events(response)["answerssaved"]["rejected"] == {
-        case_name: ["a page this answer must place has no place"]
+        case_name: ["a page that must be placed has no place"]
     }
 
 
@@ -553,3 +553,12 @@ def test_run_state_reports_run_started_elsewhere(client, source) -> None:
         204,
         {"runstate": {"is_running": True}},
     )
+
+
+def test_case_list_unreadable_review_file_answers_notice_naming_line(
+    client, source
+) -> None:
+    source.is_review_file_unreadable = True
+    response = client.post("/fragments/case-list", data=_state())
+    assert response.status_code == 500
+    assert "Line 2 of review.jsonl" in _events(response)["notice"]["text"]

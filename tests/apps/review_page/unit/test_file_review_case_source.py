@@ -11,8 +11,10 @@ from pathlib import Path
 import pytest
 from google.protobuf import json_format
 from review_page.file_review_case_source import (
+    RUN_LOG_LIMIT_BYTES,
     FileReviewCaseSource,
     RunSeedFileUnknownError,
+    UnreadableReviewFileError,
 )
 from review_page.review_case_source import ANSWER_SAVED_ELSEWHERE_RULE_NAME
 from seed_cleaning import (
@@ -552,3 +554,31 @@ def test_file_review_case_source_list_checked_entries_before_any_run_gives_none(
     source,
 ) -> None:
     assert source.list_checked_entries() == []
+
+
+def test_file_review_case_source_list_cases_broken_line_names_line(
+    source, data_dir, review_case_lines
+) -> None:
+    lines = list(review_case_lines)
+    lines[1] = '{"case_name": "hand edited", "answer": \n'
+    (data_dir / "review.jsonl").write_text("".join(lines), encoding="utf-8")
+    with pytest.raises(UnreadableReviewFileError, match="Line 2 of"):
+        source.list_cases()
+
+
+def test_file_review_case_source_start_run_full_run_log_keeps_previous_log(
+    source, data_dir
+) -> None:
+    run_log = data_dir / "logs" / "review_page_runs.log"
+    run_log.parent.mkdir()
+    run_log.write_bytes(b"x" * (RUN_LOG_LIMIT_BYTES + 1))
+    source.start_run()
+    _wait_for_run_end(source)
+    previous_log = run_log.with_name("review_page_runs.log.1")
+    assert (
+        previous_log.stat().st_size,
+        run_log.stat().st_size < RUN_LOG_LIMIT_BYTES,
+    ) == (
+        RUN_LOG_LIMIT_BYTES + 1,
+        True,
+    )

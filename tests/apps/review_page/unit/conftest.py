@@ -9,6 +9,7 @@ from review_page.app import create_app
 from review_page.file_review_case_source import (
     FileReviewCaseSource,
     RunSeedFileUnknownError,
+    UnreadableReviewFileError,
 )
 from review_page.review_case_messages import convert_case_to_message
 from review_page.review_case_source import ReviewCaseSource
@@ -95,6 +96,7 @@ class FakeReviewCaseSource(ReviewCaseSource):
         self.is_locked = False
         self.is_case_dropped_by_run = False
         self.is_answer_changed_during_save = False
+        self.is_review_file_unreadable = False
         self.is_seed_file_known = True
         self.is_running = False
         self.run_result: review_cases_pb2.SeedCleaningRunResult | None = None
@@ -102,6 +104,8 @@ class FakeReviewCaseSource(ReviewCaseSource):
         self.checked_entries: list[review_cases_pb2.CheckedEntry] = []
 
     def list_cases(self) -> list[review_cases_pb2.ReviewCase]:
+        if self.is_review_file_unreadable:
+            raise UnreadableReviewFileError(Path("review.jsonl"), 2)
         return [convert_case_to_message(case) for case in self.cases.values()]
 
     def get_case(self, case_name: str) -> review_cases_pb2.ReviewCase | None:

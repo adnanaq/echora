@@ -70,3 +70,40 @@ def test_add_request_guards_preflight_from_other_origin_gets_no_cors_permission(
         },
     )
     assert "access-control-allow-origin" not in response.headers
+
+
+def test_add_request_guards_ipv6_loopback_host_answers_ok(client) -> None:
+    response = client.get("/health", headers={"Host": "[::1]:8003"})
+    assert response.status_code == 200
+
+
+def test_add_request_guards_foreign_host_without_htmx_header_answers_400(
+    client,
+) -> None:
+    response = client.post(
+        "/run", headers={"Host": "attacker.example", "HX-Request": "false"}
+    )
+    assert response.status_code == 400
+
+
+def test_add_request_guards_post_from_other_origin_answers_403_and_saves_nothing(
+    client, source, review_cases
+) -> None:
+    response = client.post(
+        "/answers",
+        headers={"Origin": "https://attacker.example"},
+        data=_save_form(review_cases),
+    )
+    case_name = review_cases["atashinchi_next"].case_name
+    assert (response.status_code, source.cases[case_name].answer) == (403, None)
+
+
+def test_add_request_guards_post_from_page_origin_saves(
+    client, source, review_cases
+) -> None:
+    response = client.post(
+        "/answers",
+        headers={"Origin": "http://localhost:8003"},
+        data=_save_form(review_cases),
+    )
+    assert response.status_code == 204

@@ -17,7 +17,8 @@ Each item gives the rule, then the reason for it.
 - Run starts ``clean_seed.py --no-fetch`` as its own process, so its memory
   (about 0.9 GB for a release) is never the server's, and a server restart
   does not stop it. The run's output is appended to
-  ``logs/review_page_runs.log``.
+  ``logs/review_page_runs.log``. A log past ``RUN_LOG_LIMIT_BYTES`` moves to
+  its ``.1`` copy first, so the log never grows without limit.
 - One run starts at a time. A lock covers the check for a running run, the
   start and the process id file, so two clicks or two tabs cannot start two
   runs.
@@ -44,7 +45,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from google.protobuf import json_format
-from pydantic import JsonValue
+from pydantic import JsonValue, ValidationError
 from review_page.answer_checks import (
     check_case_answer,
     list_conflict_warnings,
@@ -78,6 +79,10 @@ from work_matching import (
 _PROCESS_ID_FILE_NAME = "review_run.pid"
 _EXIT_CODE_FILE_NAME = "review_run.exit_code"
 _RUN_LOG_PATH = Path("logs") / "review_page_runs.log"
+# A run log past this size moves to ``review_page_runs.log.1`` before the next
+# run, replacing the older copy, so the logs never take more than about twice
+# this. One run writes a few kilobytes.
+RUN_LOG_LIMIT_BYTES = 1_000_000
 
 
 class RunSeedFileUnknownError(RuntimeError):
@@ -88,6 +93,22 @@ class RunSeedFileUnknownError(RuntimeError):
         super().__init__(
             "No seed file to clean: set REVIEW_PAGE_SEED_FILE, or run "
             "scripts/clean_seed.py once so its result names the file"
+        )
+
+
+class UnreadableReviewFileError(RuntimeError):
+    """A line of the review file is not a valid review case, such as after a hand edit."""
+
+    def __init__(self, review_file_path: Path, line_number: int) -> None:
+        """Name the line, and say how to make the file readable again.
+
+        Args:
+            review_file_path: The review file.
+            line_number: The broken line, counted from 1.
+        """
+        super().__init__(
+            f"Line {line_number} of {review_file_path.name} is not a valid review "
+            "case. Fix or remove that line, then reload the page."
         )
 
 
@@ -119,18 +140,33 @@ class FileReviewCaseSource(ReviewCaseSource):
         self._run_lock = threading.RLock()
 
     def list_cases(self) -> list[review_cases_pb2.ReviewCase]:
-        """Return every case in the review file, in file order."""
+        """Return every case in the review file, in file order.
+
+        Returns:
+            Every case, converted to its message.
+        """
         return [convert_case_to_message(case) for case in self._read_cases()]
 
     def get_case(self, case_name: str) -> review_cases_pb2.ReviewCase | None:
-        """Return the named case in the review file, or None when it is not there."""
+        """Return the named case in the review file, or None when it is not there.
+
+        Args:
+            case_name: The case to read.
+
+        Returns:
+            The case's message, or None when the file does not hold the case.
+        """
         case = next(
             (case for case in self._read_cases() if case.case_name == case_name), None
         )
         return None if case is None else convert_case_to_message(case)
 
     def get_last_run_result(self) -> review_cases_pb2.SeedCleaningRunResult | None:
-        """Return the result the last run wrote, or None before the first run."""
+        """Return the result the last run wrote, or None before the first run.
+
+        Returns:
+            The last run's result message, or None before the first run.
+        """
         result = read_seed_cleaning_run_result(self._data_dir)
         return None if result is None else convert_run_result_to_message(result)
 
@@ -223,7 +259,11 @@ class FileReviewCaseSource(ReviewCaseSource):
             return self._read_run_state()
 
     def list_corrections(self) -> list[review_cases_pb2.SeedCorrection]:
-        """Return the corrections file's lines, each with its change and reason sentence."""
+        """Return the corrections file's lines, each with its change and reason sentence.
+
+        Returns:
+            Every correction's message; none before the first run.
+        """
         corrections_path = self._data_dir / CORRECTIONS_FILE_NAME
         if not corrections_path.exists():
             return []
@@ -270,18 +310,37 @@ class FileReviewCaseSource(ReviewCaseSource):
         return list(entries_by_reference_page.values())
 
     def _read_cases(self) -> list[ReviewCase]:
-        """Read every case in the review file; none when it does not exist yet."""
+        """Read every case in the review file; none when it does not exist yet.
+
+        Returns:
+            The cases, in file order.
+
+        Raises:
+            UnreadableReviewFileError: A line is not a valid review case; the
+                error names the line.
+        """
         if not self._review_file_path.exists():
             return []
+        cases: list[ReviewCase] = []
         with self._review_file_path.open(encoding="utf-8") as review_file:
-            return [
-                ReviewCase.model_validate_json(line)
-                for line in review_file
-                if line.strip()
-            ]
+            for line_number, line in enumerate(review_file, start=1):
+                if not line.strip():
+                    continue
+                try:
+                    cases.append(ReviewCase.model_validate_json(line))
+                except ValidationError as error:
+                    raise UnreadableReviewFileError(
+                        self._review_file_path, line_number
+                    ) from error
+        return cases
 
     def _read_run_state(self) -> review_cases_pb2.RunState:
-        """Return the run state, recording a finished run's exit code; the caller holds the run lock."""
+        """Return the run state, recording a finished run's exit code; the caller holds the run lock.
+
+        Returns:
+            Whether a run is going, and the last page-started run's exit code when
+            one has ended.
+        """
         process_id_path = self._data_dir / _PROCESS_ID_FILE_NAME
         if process_id_path.exists():
             is_running, exit_code = _check_process(
@@ -303,9 +362,21 @@ class FileReviewCaseSource(ReviewCaseSource):
         return run_state
 
     def _start_run_process(self, seed_file: Path) -> subprocess.Popen[bytes]:
-        """Start ``clean_seed.py --no-fetch`` on the seed file, its output in the run log."""
+        """Start ``clean_seed.py --no-fetch`` on the seed file, its output in the run log.
+
+        A run log past ``RUN_LOG_LIMIT_BYTES`` first moves to its ``.1`` copy,
+        so the log never grows without limit.
+
+        Args:
+            seed_file: The seed release file the run cleans.
+
+        Returns:
+            The run's process.
+        """
         run_log_path = self._data_dir / _RUN_LOG_PATH
         run_log_path.parent.mkdir(parents=True, exist_ok=True)
+        if run_log_path.exists() and run_log_path.stat().st_size > RUN_LOG_LIMIT_BYTES:
+            run_log_path.replace(run_log_path.with_name(f"{run_log_path.name}.1"))
         with run_log_path.open("a", encoding="utf-8") as run_log:
             # The script and its arguments are fixed; no shell runs them.
             return subprocess.Popen(  # noqa: S603
@@ -323,7 +394,14 @@ class FileReviewCaseSource(ReviewCaseSource):
             )
 
     def _find_seed_file(self) -> Path:
-        """Return the configured seed file, else the one the last run read."""
+        """Return the configured seed file, else the one the last run read.
+
+        Returns:
+            The seed release file Run cleans.
+
+        Raises:
+            RunSeedFileUnknownError: No seed file is configured or recorded.
+        """
         if self._seed_file is not None:
             return self._seed_file
         last_run_result = read_seed_cleaning_run_result(self._data_dir)
