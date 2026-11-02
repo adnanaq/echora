@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 from google.protobuf import json_format
+from review_page.answer_checks import check_case_answer, read_seen_saved_answers
 from review_page.app import create_app
 from review_page.file_review_case_source import (
     FileReviewCaseSource,
@@ -12,7 +13,12 @@ from review_page.file_review_case_source import (
 from review_page.review_case_messages import convert_case_to_message
 from review_page.review_case_source import ReviewCaseSource
 from shared_proto.v1 import review_cases_pb2
-from work_matching import ReviewCase, ReviewFileLockedError, UnknownCaseError
+from work_matching import (
+    ReviewCase,
+    ReviewFileLockedError,
+    SavedAnswerChangedError,
+    UnknownCaseError,
+)
 
 _REVIEW_CASE_FIXTURE = (
     Path(__file__).parents[3]
@@ -88,6 +94,7 @@ class FakeReviewCaseSource(ReviewCaseSource):
         self.cases = {case.case_name: case for case in cases}
         self.is_locked = False
         self.is_case_dropped_by_run = False
+        self.is_answer_changed_during_save = False
         self.is_seed_file_known = True
         self.is_running = False
         self.run_result: review_cases_pb2.SeedCleaningRunResult | None = None
@@ -117,6 +124,9 @@ class FakeReviewCaseSource(ReviewCaseSource):
             raise ReviewFileLockedError(Path(__file__))
         if self.is_case_dropped_by_run:
             raise UnknownCaseError([answer.case_name for answer in case_answers])
+        if self.is_answer_changed_during_save:
+            raise SavedAnswerChangedError([answer.case_name for answer in case_answers])
+        seen_saved_answers = read_seen_saved_answers(case_answers)
         results = []
         for case_answer in case_answers:
             answer = (
@@ -125,18 +135,10 @@ class FakeReviewCaseSource(ReviewCaseSource):
                 else None
             )
             case = self.cases[case_answer.case_name]
-            broken_rules = (
-                () if answer is None else case.list_broken_answer_rules(answer)
-            )
-            if not broken_rules:
+            result = check_case_answer(case, case.case_name, answer, seen_saved_answers)
+            if result.is_saved:
                 self.cases[case.case_name] = case.model_copy(update={"answer": answer})
-            results.append(
-                review_cases_pb2.RuleCheckResult(
-                    case_name=case.case_name,
-                    is_saved=not broken_rules,
-                    broken_rule_sentences=[rule.value for rule in broken_rules],
-                )
-            )
+            results.append(result)
         return results
 
     def start_run(self) -> review_cases_pb2.RunState:

@@ -6,6 +6,13 @@
 //   are kept in localStorage by Alpine's persist plugin,
 //   so a reload, a Run or a server restart loses none of them. The server
 //   keeps no state; every htmx request sends this state as `browser_state`.
+// - Each unsaved edit keeps the saved answer it started from
+//   (`seen_saved_answers`), so the server refuses a save that would replace
+//   an answer saved meanwhile from another tab.
+// - Open tabs share unsaved edits: a change in one reaches the others through
+//   the browser's `storage` event. Filters and the open case stay per tab.
+// - Every page asks for the run state every few seconds, so a run started
+//   from the terminal or another tab disables its buttons too.
 // - The server decides every choice and rule. This script only stores what
 //   the server's events report and asks for the regions to redraw.
 
@@ -15,9 +22,39 @@ function refreshRegions(...regions) {
   }
 }
 
+// Return a copy of a mapping without the named keys.
+function withoutKeys(mapping, keys) {
+  const kept = { ...mapping };
+  for (const key of keys) {
+    delete kept[key];
+  }
+  return kept;
+}
+
+// The stored values open tabs share, by their localStorage key.
+const SHARED_STORE_FIELDS = {
+  review_page_edits: "edits",
+  review_page_seen_saved_answers: "seen_saved_answers",
+  review_page_rejected: "rejected",
+};
+
+// One save in another tab changes several shared values at once, each with
+// its own storage event; they are redrawn once, after the last one arrives.
+const SHARED_CHANGE_SETTLE_MILLISECONDS = 50;
+let sharedChangeRedrawTimer = null;
+
+function redrawAfterSharedChanges() {
+  clearTimeout(sharedChangeRedrawTimer);
+  sharedChangeRedrawTimer = setTimeout(
+    () => refreshRegions("toolbar", "list", "case"),
+    SHARED_CHANGE_SETTLE_MILLISECONDS,
+  );
+}
+
 document.addEventListener("alpine:init", () => {
   Alpine.store("review", {
     edits: Alpine.$persist({}).as("review_page_edits"),
+    seen_saved_answers: Alpine.$persist({}).as("review_page_seen_saved_answers"),
     rejected: Alpine.$persist({}).as("review_page_rejected"),
     kinds: Alpine.$persist([]).as("review_page_kinds"),
     case_states: Alpine.$persist([]).as("review_page_case_states"),
@@ -51,6 +88,7 @@ document.addEventListener("alpine:init", () => {
     toJson() {
       return JSON.stringify({
         edits: this.edits,
+        seen_saved_answers: this.seen_saved_answers,
         rejected: this.rejected,
         kinds: this.kinds,
         case_states: this.case_states,
@@ -191,6 +229,7 @@ document.addEventListener("alpine:init", () => {
 
     discardEdits() {
       this.edits = {};
+      this.seen_saved_answers = {};
       this.rejected = {};
       refreshRegions("toolbar", "list", "case");
     },
@@ -207,31 +246,43 @@ document.addEventListener("DOMContentLoaded", () => {
 
   body.addEventListener("answerchanged", (event) => {
     const store = Alpine.store("review");
-    const { case_name: caseName, answer, is_unsaved: isUnsaved } = event.detail;
-    const edits = { ...store.edits };
+    const {
+      case_name: caseName,
+      answer,
+      is_unsaved: isUnsaved,
+      saved_answer: savedAnswer,
+    } = event.detail;
     if (isUnsaved) {
-      edits[caseName] = answer;
+      store.edits = { ...store.edits, [caseName]: answer };
+      // The first change of an edit records the saved answer it started from.
+      if (!(caseName in store.seen_saved_answers)) {
+        store.seen_saved_answers = {
+          ...store.seen_saved_answers,
+          [caseName]: savedAnswer ?? null,
+        };
+      }
     } else {
-      delete edits[caseName];
+      store.edits = withoutKeys(store.edits, [caseName]);
+      store.seen_saved_answers = withoutKeys(store.seen_saved_answers, [caseName]);
     }
-    store.edits = edits;
-    const rejected = { ...store.rejected };
-    delete rejected[caseName];
-    store.rejected = rejected;
+    store.rejected = withoutKeys(store.rejected, [caseName]);
     refreshRegions("toolbar", "list");
   });
 
   body.addEventListener("answerssaved", (event) => {
     const store = Alpine.store("review");
-    const edits = { ...store.edits };
-    const rejected = { ...store.rejected };
-    for (const caseName of event.detail.saved) {
-      delete edits[caseName];
-      delete rejected[caseName];
-    }
-    Object.assign(rejected, event.detail.rejected);
-    store.edits = edits;
-    store.rejected = rejected;
+    const { saved, saved_elsewhere: savedElsewhere } = event.detail;
+    store.edits = withoutKeys(store.edits, saved);
+    // An edit refused because another tab saved meanwhile forgets the answer
+    // it started from, so saving it again replaces that answer on purpose.
+    store.seen_saved_answers = withoutKeys(store.seen_saved_answers, [
+      ...saved,
+      ...savedElsewhere,
+    ]);
+    store.rejected = {
+      ...withoutKeys(store.rejected, saved),
+      ...event.detail.rejected,
+    };
     store.notice = event.detail.warnings.join(" ");
     if (event.detail.next_case_name) {
       store.open_case_name = event.detail.next_case_name;
@@ -248,9 +299,26 @@ document.addEventListener("DOMContentLoaded", () => {
     const store = Alpine.store("review");
     const wasRunning = store.is_running;
     store.is_running = event.detail.is_running;
-    if (wasRunning && !store.is_running) {
-      refreshRegions("toolbar", "list", "case", "correction-list", "correction");
+    if (!wasRunning && store.is_running) {
+      refreshRegions("run", "toolbar", "case");
+    } else if (wasRunning && !store.is_running) {
+      refreshRegions("run", "toolbar", "list", "case", "correction-list", "correction");
     }
+  });
+
+  // Another tab changed shared stored values: take them and redraw. Setting
+  // the same value back stores nothing new, so the tabs do not echo.
+  window.addEventListener("storage", (event) => {
+    const field = SHARED_STORE_FIELDS[event.key];
+    if (!field) {
+      return;
+    }
+    try {
+      Alpine.store("review")[field] = JSON.parse(event.newValue ?? "{}");
+    } catch {
+      return;
+    }
+    redrawAfterSharedChanges();
   });
 
   body.addEventListener("notice", (event) => {
@@ -259,11 +327,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // htmx does not process response headers on error statuses the same way
   // everywhere, so a refusal's notice is also read from its JSON body.
+  // A body without a notice, such as FastAPI's {"detail": ...} for 404 and
+  // 422, or a plain-text refusal, shows the general notice.
   body.addEventListener("htmx:responseError", (event) => {
+    const generalNotice = "The server could not do that; see its log.";
     try {
-      Alpine.store("review").notice = JSON.parse(event.detail.xhr.responseText).notice;
+      Alpine.store("review").notice =
+        JSON.parse(event.detail.xhr.responseText).notice || generalNotice;
     } catch {
-      Alpine.store("review").notice = "The server could not do that; see its log.";
+      Alpine.store("review").notice = generalNotice;
     }
   });
 });

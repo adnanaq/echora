@@ -9,6 +9,8 @@ item gives the rule, then the reason for it.
   dropped by the browser, so every edit here differs from the file.
 - Rejected cases carry the sentences of the rules their last save broke, so
   the list and the panel can show them until the case is edited or saved.
+- Each unsaved edit keeps the saved answer it started from, so a save made
+  meanwhile from another tab is noticed instead of replaced.
 - A malformed field is read as an empty state rather than failing the page,
   since localStorage can hold values an older page version wrote.
 """
@@ -25,6 +27,8 @@ class BrowserState(BaseModel):
     """The reviewer's own state, as the browser keeps it."""
 
     edits: dict[str, JsonValue] = {}
+    # The saved answer each edit started from (None for none), by case name.
+    seen_saved_answers: dict[str, JsonValue] = {}
     rejected: dict[str, list[str]] = {}
     kinds: list[ReviewCaseKind] = []
     case_states: list[CaseState] = []

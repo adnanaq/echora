@@ -90,7 +90,12 @@ from work_matching.review_choices import (
     list_placeable_case_page_keys,
     list_required_page_keys,
 )
-from work_matching.review_file import DuplicateCaseError, ReviewFile, UnknownCaseError
+from work_matching.review_file import (
+    DuplicateCaseError,
+    ReviewFile,
+    SavedAnswerChangedError,
+    UnknownCaseError,
+)
 from work_matching.review_file_lock import (
     ReviewFileLockedError,
     hold_review_file_lock,
@@ -151,6 +156,7 @@ __all__ = [
     "DoubledProviderReviewReason",
     "ReviewCase",
     "ReviewCaseKind",
+    "SavedAnswerChangedError",
     "UnknownCaseError",
     "ReviewFile",
     "SplitWorkReviewReason",

@@ -14,6 +14,7 @@ from review_page.file_review_case_source import (
     FileReviewCaseSource,
     RunSeedFileUnknownError,
 )
+from review_page.review_case_source import ANSWER_SAVED_ELSEWHERE_RULE_NAME
 from seed_cleaning import (
     REVIEW_ANSWER_REASON,
     SeedCleaningRunResult,
@@ -160,6 +161,37 @@ def test_file_review_case_source_save_answers_unset_answer_clears_saved_answer(
     assert (data_dir / "review.jsonl").read_text(encoding="utf-8") == "".join(
         review_case_lines
     )
+
+
+def test_file_review_case_source_save_answers_saved_elsewhere_rejected_and_kept(
+    source, review_cases
+) -> None:
+    case_name = review_cases["atashinchi_next"].case_name
+    other_tab_answer = {**ATASHINCHI_ANSWER, "anidb:anime:19895": "work 2"}
+    source.save_answers([_case_answer(case_name, other_tab_answer)])
+    case_answer = _case_answer(case_name, ATASHINCHI_ANSWER)
+    json_format.ParseDict(None, case_answer.seen_saved_answer)
+    [result] = source.save_answers([case_answer])
+    saved_case = source.get_case(case_name)
+    assert (result.is_saved, list(result.broken_rule_names)) == (
+        False,
+        [ANSWER_SAVED_ELSEWHERE_RULE_NAME],
+    )
+    assert saved_case is not None
+    assert json_format.MessageToDict(saved_case.answer) == other_tab_answer
+
+
+def test_file_review_case_source_save_answers_seen_answer_in_other_key_order_saves(
+    source, review_cases
+) -> None:
+    case_name = review_cases["atashinchi_next"].case_name
+    source.save_answers([_case_answer(case_name, ATASHINCHI_ANSWER)])
+    case_answer = _case_answer(case_name, None)
+    json_format.ParseDict(
+        dict(reversed(list(ATASHINCHI_ANSWER.items()))), case_answer.seen_saved_answer
+    )
+    [result] = source.save_answers([case_answer])
+    assert result.is_saved
 
 
 def test_file_review_case_source_save_answers_unknown_case_not_saved(source) -> None:
@@ -315,6 +347,29 @@ def test_file_review_case_source_start_run_requested_at_once_starts_one_run(
     assert started_runs == ["started"]
 
 
+def test_file_review_case_source_get_run_state_asked_at_once_after_failed_run_reports_exit_code(
+    source, data_dir
+) -> None:
+    (data_dir / "exit_code").write_text("3")
+    source.start_run()
+    time.sleep(1)
+    barrier = threading.Barrier(8)
+    run_states = []
+
+    def read_run_state_after_barrier() -> None:
+        barrier.wait()
+        run_states.append(source.get_run_state())
+
+    threads = [threading.Thread(target=read_run_state_after_barrier) for _ in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert [
+        (run_state.is_running, run_state.last_exit_code) for run_state in run_states
+    ] == [(False, 3)] * 8
+
+
 def test_file_review_case_source_get_run_state_process_id_not_started_here_not_running(
     source, data_dir
 ) -> None:
@@ -409,6 +464,24 @@ def test_file_review_case_source_list_corrections_keeps_every_line(
         }
         for line in correction_lines
     ]
+
+
+def test_file_review_case_source_list_corrections_line_separator_in_value_keeps_line_whole(
+    source, data_dir, correction_lines
+) -> None:
+    first_fields = json.loads(correction_lines[0])
+    first_fields["address"] += "\u2028\u0085"
+    (data_dir / "corrections.jsonl").write_text(
+        json.dumps(first_fields, ensure_ascii=False)
+        + "\n"
+        + "".join(correction_lines[1:]),
+        encoding="utf-8",
+    )
+    corrections = source.list_corrections()
+    assert (len(corrections), corrections[0].address) == (
+        len(correction_lines),
+        first_fields["address"],
+    )
 
 
 def test_file_review_case_source_list_corrections_fills_change_and_reason(

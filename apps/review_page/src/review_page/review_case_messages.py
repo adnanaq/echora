@@ -28,6 +28,7 @@ When the enrichment service serves cases over gRPC, this module moves to a
 library both import.
 """
 
+from collections.abc import Mapping
 from typing import Any
 
 from google.protobuf import json_format
@@ -91,12 +92,19 @@ def convert_message_to_case(message: review_cases_pb2.ReviewCase) -> ReviewCase:
     return ReviewCase.model_validate(case_fields)
 
 
-def build_case_answer(case_name: str, answer: Any) -> review_cases_pb2.CaseAnswer:
+def build_case_answer(
+    case_name: str,
+    answer: Any,
+    *,
+    seen_saved_answers: Mapping[str, Any] | None = None,
+) -> review_cases_pb2.CaseAnswer:
     """Build the message saving one case's answer; None clears the answer.
 
     Args:
         case_name: The case.
         answer: The answer as it would be written in the file, or None.
+        seen_saved_answers: The saved answer each edit started from, by case
+            name; the case's one, when present, is sent to be checked.
 
     Returns:
         The message, with the answer as a JSON value, or unset for None.
@@ -104,6 +112,10 @@ def build_case_answer(case_name: str, answer: Any) -> review_cases_pb2.CaseAnswe
     case_answer = review_cases_pb2.CaseAnswer(case_name=case_name)
     if answer not in (None, {}):
         json_format.ParseDict(answer, case_answer.answer)
+    if seen_saved_answers and case_name in seen_saved_answers:
+        json_format.ParseDict(
+            seen_saved_answers[case_name], case_answer.seen_saved_answer
+        )
     return case_answer
 
 

@@ -12,12 +12,19 @@ changing the page. Each item gives the rule, then the reason for it.
   the same checks.
 - A source checks every answer before saving it, with the same rules a run
   uses, so a page using any source never saves an answer the run refuses.
+- An answer carrying the saved answer its edit started from is refused, with
+  ``ANSWER_SAVED_ELSEWHERE_RULE_NAME``, when the case's saved answer is
+  another one by then, so a save from a second tab is never replaced unseen.
 """
 
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 
 from shared_proto.v1 import review_cases_pb2
+
+# The broken-rule name of an answer refused because the case's saved answer
+# changed after its edit began; the page offers to save it again.
+ANSWER_SAVED_ELSEWHERE_RULE_NAME = "ANSWER_SAVED_ELSEWHERE"
 
 
 class ReviewCaseSource(ABC):
@@ -43,6 +50,8 @@ class ReviewCaseSource(ABC):
 
         Args:
             case_answers: Each case's new answer; an unset answer clears it.
+                A set ``seen_saved_answer`` is the saved answer the edit
+                started from, checked before saving.
 
         Returns:
             One result per answer, in the given order: saved, or the rules it
@@ -52,6 +61,8 @@ class ReviewCaseSource(ABC):
             ReviewFileLockedError: A run is writing the cases; nothing is saved.
             UnknownCaseError: A run removed a named case after the answers
                 were checked; nothing is saved.
+            SavedAnswerChangedError: Another save changed a case's answer
+                between the check and the save; nothing is saved.
         """
 
     @abstractmethod

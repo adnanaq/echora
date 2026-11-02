@@ -1,5 +1,7 @@
 import pytest
+from google.protobuf import json_format
 from review_page.review_case_messages import (
+    build_case_answer,
     convert_case_to_message,
     convert_message_to_case,
 )
@@ -74,3 +76,18 @@ def test_convert_case_to_message_answer_kept_as_json(review_cases) -> None:
 
 def test_convert_case_to_message_open_case_leaves_answer_unset(review_cases) -> None:
     assert not convert_case_to_message(review_cases["nami"]).HasField("answer")
+
+
+def test_build_case_answer_seen_saved_answer_given_sets_it() -> None:
+    case_answer = build_case_answer(
+        "split work: a",
+        {"mal:anime:1": "work 1"},
+        seen_saved_answers={"split work: a": None},
+    )
+    assert case_answer.HasField("seen_saved_answer")
+    assert json_format.MessageToDict(case_answer.seen_saved_answer) is None
+
+
+def test_build_case_answer_without_seen_saved_answer_leaves_it_unset() -> None:
+    case_answer = build_case_answer("split work: a", {"mal:anime:1": "work 1"})
+    assert not case_answer.HasField("seen_saved_answer")

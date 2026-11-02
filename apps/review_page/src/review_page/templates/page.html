@@ -24,6 +24,9 @@
 
 <div id="run-panel" class="run-panel" hx-post="/fragments/run-panel"
      hx-trigger="load, refresh-run from:body"></div>
+{# Asks whether a run is going, so a run started from the terminal or another
+   tab disables this page's buttons too; it fires a runstate event, no HTML. #}
+<div hidden hx-post="/run-state" hx-trigger="every 5s" hx-swap="none"></div>
 
 <main class="layout-main" :class="{ 'is-sidebar-closed': !$store.review.is_sidebar_open }"
       :style="{ '--sidebar-width': $store.review.sidebar_width + 'px' }">

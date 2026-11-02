@@ -165,6 +165,7 @@ def test_choice_part_spreads_and_reports_unsaved_answer(client, review_cases) ->
         "case_name": case_name,
         "answer": dict.fromkeys(GOCHUUMON_DOUBLED_PAGES, "work 1, part"),
         "is_unsaved": True,
+        "saved_answer": None,
     }
 
 
@@ -267,6 +268,69 @@ def test_answers_save_next_rejected_save_stays(client, review_cases) -> None:
         },
     )
     assert _events(response)["answerssaved"]["next_case_name"] is None
+
+
+def test_answers_save_edit_after_other_tab_saved_reports_saved_elsewhere(
+    client, source, review_cases
+) -> None:
+    case_name = review_cases["atashinchi_next"].case_name
+    other_tab_answer = {**ATASHINCHI_ANSWER, "anidb:anime:19895": "work 2"}
+    source.cases[case_name] = source.cases[case_name].model_copy(
+        update={"answer": other_tab_answer}
+    )
+    response = client.post(
+        "/answers",
+        data={
+            **_state(
+                edits={case_name: ATASHINCHI_ANSWER},
+                seen_saved_answers={case_name: None},
+            ),
+            "action": "save",
+            "case_name": case_name,
+        },
+    )
+    answers_saved = _events(response)["answerssaved"]
+    assert (answers_saved["saved"], answers_saved["saved_elsewhere"]) == (
+        [],
+        [case_name],
+    )
+    assert source.cases[case_name].answer == other_tab_answer
+
+
+def test_answers_save_edit_with_unchanged_seen_answer_saves(
+    client, source, review_cases
+) -> None:
+    case_name = review_cases["atashinchi_next"].case_name
+    response = client.post(
+        "/answers",
+        data={
+            **_state(
+                edits={case_name: ATASHINCHI_ANSWER},
+                seen_saved_answers={case_name: None},
+            ),
+            "action": "save",
+            "case_name": case_name,
+        },
+    )
+    assert _events(response)["answerssaved"]["saved"] == [case_name]
+    assert source.cases[case_name].answer == ATASHINCHI_ANSWER
+
+
+def test_answers_save_while_other_save_changes_answer_answers_409(
+    client, source, review_cases
+) -> None:
+    source.is_answer_changed_during_save = True
+    case_name = review_cases["atashinchi_next"].case_name
+    response = client.post(
+        "/answers",
+        data={
+            **_state(edits={case_name: ATASHINCHI_ANSWER}),
+            "action": "save",
+            "case_name": case_name,
+        },
+    )
+    assert response.status_code == 409
+    assert "nothing was saved" in _events(response)["notice"]["text"]
 
 
 def test_answers_accept_saves_suggestion(client, source, review_cases) -> None:
@@ -480,3 +544,12 @@ def test_case_list_chosen_chips_drawn_on(client) -> None:
         chip_classes("chip-case_states-open"),
         chip_classes("chip-kinds-split-work"),
     ) == ("part-chip is-on", "part-chip is-on", "part-chip")
+
+
+def test_run_state_reports_run_started_elsewhere(client, source) -> None:
+    source.is_running = True
+    response = client.post("/run-state", data=_state())
+    assert (response.status_code, _events(response)) == (
+        204,
+        {"runstate": {"is_running": True}},
+    )

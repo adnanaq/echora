@@ -19,7 +19,9 @@ Each item gives the rule, then the reason for it.
   does not stop it. Its output is appended to ``logs/review_page_runs.log``.
 - One run starts at a time: a lock covers the check for a running run, the
   start and the process id file, so two clicks or two tabs cannot start two
-  runs.
+  runs. The same lock covers reading the run state, so when a run ends only
+  one request collects its exit code, and every other request reads the exit
+  code that request wrote.
 - The run's process id is kept in ``review_run.pid``, and how it ended in
   ``review_run.exit_code``; both files are written in one step, so a reader
   never sees one half written. Only the server that started the run trusts
@@ -35,11 +37,17 @@ import os
 import subprocess
 import sys
 import threading
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from pathlib import Path
 
 from google.protobuf import json_format
 from pydantic import JsonValue
+from review_page.answer_checks import (
+    check_case_answer,
+    list_conflict_warnings,
+    read_case_answer,
+    read_seen_saved_answers,
+)
 from review_page.review_case_messages import (
     convert_case_to_message,
     list_ordered_mappings,
@@ -59,9 +67,7 @@ from seed_cleaning import (
 from shared_proto.v1 import review_cases_pb2
 from work_matching import (
     ReviewCase,
-    ReviewCaseKind,
     ReviewFile,
-    find_linked_page_conflicts,
     is_review_file_locked,
     replace_file_lines,
 )
@@ -69,10 +75,6 @@ from work_matching import (
 _PROCESS_ID_FILE_NAME = "review_run.pid"
 _EXIT_CODE_FILE_NAME = "review_run.exit_code"
 _RUN_LOG_PATH = Path("logs") / "review_page_runs.log"
-_UNKNOWN_CASE_RULE_NAME = "UNKNOWN_CASE"
-_UNKNOWN_CASE_SENTENCE = (
-    "the case is not in the review file; a run has dropped it since the page was loaded"
-)
 
 
 class RunSeedFileUnknownError(RuntimeError):
@@ -111,7 +113,7 @@ class FileReviewCaseSource(ReviewCaseSource):
         self._seed_file = seed_file
         self._python_executable = python_executable
         self._review_file_path = data_dir / REVIEW_FILE_NAME
-        self._run_start_lock = threading.Lock()
+        self._run_lock = threading.RLock()
 
     def list_cases(self) -> list[review_cases_pb2.ReviewCase]:
         """Return every case in the review file, in file order."""
@@ -145,21 +147,34 @@ class FileReviewCaseSource(ReviewCaseSource):
                 is saved.
             UnknownCaseError: A run removed a named case between the check
                 and the save; nothing is saved.
+            SavedAnswerChangedError: Another save changed a case's answer
+                between the check and the save; nothing is saved.
         """
         cases_by_name = {case.case_name: case for case in self._read_cases()}
+        seen_saved_answers = read_seen_saved_answers(case_answers)
         answers_to_save: dict[str, JsonValue] = {}
         results: list[review_cases_pb2.RuleCheckResult] = []
         for case_answer in case_answers:
-            answer = _read_answer(case_answer)
-            result = _check_answer(
-                cases_by_name.get(case_answer.case_name), case_answer.case_name, answer
+            answer = read_case_answer(case_answer)
+            result = check_case_answer(
+                cases_by_name.get(case_answer.case_name),
+                case_answer.case_name,
+                answer,
+                seen_saved_answers,
             )
             if result.is_saved:
                 answers_to_save[case_answer.case_name] = answer
             results.append(result)
         if answers_to_save:
-            ReviewFile(self._review_file_path).save_answers(answers_to_save)
-            warnings_by_case_name = _list_conflict_warnings(
+            ReviewFile(self._review_file_path).save_answers(
+                answers_to_save,
+                seen_saved_answers={
+                    case_name: seen_answer
+                    for case_name, seen_answer in seen_saved_answers.items()
+                    if case_name in answers_to_save
+                },
+            )
+            warnings_by_case_name = list_conflict_warnings(
                 cases_by_name, answers_to_save
             )
             for result in results:
@@ -175,7 +190,7 @@ class FileReviewCaseSource(ReviewCaseSource):
         Raises:
             RunSeedFileUnknownError: No seed file is configured or recorded.
         """
-        with self._run_start_lock:
+        with self._run_lock:
             if self.get_run_state().is_running:
                 return review_cases_pb2.RunState(is_running=True)
             run_process = self._start_run_process(self._find_seed_file())
@@ -194,36 +209,22 @@ class FileReviewCaseSource(ReviewCaseSource):
         server did not write is left alone, so the server that started that
         run still records its exit code.
         """
-        process_id_path = self._data_dir / _PROCESS_ID_FILE_NAME
-        if process_id_path.exists():
-            is_running, exit_code = _check_process(
-                int(process_id_path.read_text(encoding="utf-8"))
-            )
-            if is_running:
-                return review_cases_pb2.RunState(is_running=True)
-            if exit_code is not None:
-                replace_file_lines(
-                    self._data_dir / _EXIT_CODE_FILE_NAME, [str(exit_code)]
-                )
-                process_id_path.unlink(missing_ok=True)
-        run_state = review_cases_pb2.RunState(
-            is_running=is_review_file_locked(self._review_file_path)
-        )
-        exit_code_path = self._data_dir / _EXIT_CODE_FILE_NAME
-        if exit_code_path.exists():
-            run_state.last_exit_code = int(exit_code_path.read_text(encoding="utf-8"))
-        return run_state
+        with self._run_lock:
+            return self._read_run_state()
 
     def list_corrections(self) -> list[review_cases_pb2.SeedCorrection]:
         """Return the corrections file's lines, each with its change and reason sentence."""
         corrections_path = self._data_dir / CORRECTIONS_FILE_NAME
         if not corrections_path.exists():
             return []
-        return [
-            convert_correction_to_message(SeedCorrection.model_validate_json(line))
-            for line in corrections_path.read_text(encoding="utf-8").splitlines()
-            if line.strip()
-        ]
+        # Lines end at "\n" only: a value may hold U+2028 or U+0085
+        # unescaped, which str.splitlines would also split at.
+        with corrections_path.open(encoding="utf-8") as corrections_file:
+            return [
+                convert_correction_to_message(SeedCorrection.model_validate_json(line))
+                for line in corrections_file
+                if line.strip()
+            ]
 
     def list_checked_entries(self) -> list[review_cases_pb2.CheckedEntry]:
         """Return both passes' entries from ``entries_to_check.json``, once each.
@@ -264,6 +265,28 @@ class FileReviewCaseSource(ReviewCaseSource):
                 for line in review_file
                 if line.strip()
             ]
+
+    def _read_run_state(self) -> review_cases_pb2.RunState:
+        """Return the run state, recording a finished run's exit code; the caller holds the run lock."""
+        process_id_path = self._data_dir / _PROCESS_ID_FILE_NAME
+        if process_id_path.exists():
+            is_running, exit_code = _check_process(
+                int(process_id_path.read_text(encoding="utf-8"))
+            )
+            if is_running:
+                return review_cases_pb2.RunState(is_running=True)
+            if exit_code is not None:
+                replace_file_lines(
+                    self._data_dir / _EXIT_CODE_FILE_NAME, [str(exit_code)]
+                )
+                process_id_path.unlink(missing_ok=True)
+        run_state = review_cases_pb2.RunState(
+            is_running=is_review_file_locked(self._review_file_path)
+        )
+        exit_code_path = self._data_dir / _EXIT_CODE_FILE_NAME
+        if exit_code_path.exists():
+            run_state.last_exit_code = int(exit_code_path.read_text(encoding="utf-8"))
+        return run_state
 
     def _start_run_process(self, seed_file: Path) -> subprocess.Popen[bytes]:
         """Start ``clean_seed.py --no-fetch`` on the seed file, its output in the run log."""
@@ -338,67 +361,6 @@ def convert_correction_to_message(
     message.reason_sentence = describe_correction_reason(correction)
     message.is_from_answer = correction.reason == REVIEW_ANSWER_REASON
     return message
-
-
-def _read_answer(case_answer: review_cases_pb2.CaseAnswer) -> JsonValue:
-    """Return a case answer's JSON value, or None when it is unset."""
-    if not case_answer.HasField("answer"):
-        return None
-    return json_format.MessageToDict(case_answer.answer)
-
-
-def _check_answer(
-    case: ReviewCase | None, case_name: str, answer: JsonValue
-) -> review_cases_pb2.RuleCheckResult:
-    """Check one answer with the run's rules; clearing an answer always passes."""
-    if case is None:
-        return review_cases_pb2.RuleCheckResult(
-            case_name=case_name,
-            is_saved=False,
-            broken_rule_names=[_UNKNOWN_CASE_RULE_NAME],
-            broken_rule_sentences=[_UNKNOWN_CASE_SENTENCE],
-        )
-    broken_rules = () if answer is None else case.list_broken_answer_rules(answer)
-    return review_cases_pb2.RuleCheckResult(
-        case_name=case_name,
-        is_saved=not broken_rules,
-        broken_rule_names=[rule.name for rule in broken_rules],
-        broken_rule_sentences=[rule.value for rule in broken_rules],
-    )
-
-
-def _list_conflict_warnings(
-    cases_by_name: Mapping[str, ReviewCase], saved_answers: Mapping[str, JsonValue]
-) -> dict[str, list[str]]:
-    """Warn on saved linked-page answers that add a whole page beside another of its provider.
-
-    Args:
-        cases_by_name: Every case in the file, before the save.
-        saved_answers: The answers just saved, by case name.
-
-    Returns:
-        Each just-saved case in a conflict, mapped to its warnings.
-    """
-    linked_page_cases = [
-        case.model_copy(
-            update={"answer": saved_answers.get(case.case_name, case.answer)}
-        )
-        for case in cases_by_name.values()
-        if case.kind is ReviewCaseKind.LINKED_PAGE
-    ]
-    warnings_by_case_name: dict[str, list[str]] = {}
-    for conflict in find_linked_page_conflicts(linked_page_cases):
-        for case_name in conflict.case_names:
-            if case_name in saved_answers:
-                other_case_names = ", ".join(
-                    name for name in conflict.case_names if name != case_name
-                )
-                warnings_by_case_name.setdefault(case_name, []).append(
-                    f"another answer also adds a whole {conflict.provider} page to "
-                    f"{conflict.entry_reference_page}, so the run adds neither: "
-                    f"{other_case_names}"
-                )
-    return warnings_by_case_name
 
 
 def _check_process(process_id: int) -> tuple[bool, int | None]:

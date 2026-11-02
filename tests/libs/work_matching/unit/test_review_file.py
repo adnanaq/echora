@@ -14,7 +14,12 @@ from work_matching.linked_page_check import (
 )
 from work_matching.page_placement import PagePlacement
 from work_matching.review_cases import ReviewCase
-from work_matching.review_file import DuplicateCaseError, ReviewFile, UnknownCaseError
+from work_matching.review_file import (
+    DuplicateCaseError,
+    ReviewFile,
+    SavedAnswerChangedError,
+    UnknownCaseError,
+)
 from work_matching.review_file_lock import ReviewFileLockedError
 
 SIGEWINNE = "animeplanet:anime:genshin-impact-character-teaser-sigewinne-everyday-correspondence"
@@ -359,6 +364,57 @@ def test_review_file_save_answers_keeps_other_lines_unchanged(
         )
         if case_name not in line
     ] == [line for line in review_case_lines if case_name not in line]
+
+
+def test_review_file_save_answers_title_with_line_separator_keeps_line_whole(
+    review_file_path, review_cases, review_case_lines
+) -> None:
+    nami_case_name = review_cases["nami"].case_name
+    nami_line = next(line for line in review_case_lines if nami_case_name in line)
+    nami_fields = json.loads(nami_line)
+    for entry in nami_fields["entries"].values():
+        entry["title"] += "\u2028\u0085Part 2"
+    separated_line = json.dumps(nami_fields, ensure_ascii=False) + "\n"
+    review_file_path.write_text(
+        "".join(
+            separated_line if line == nami_line else line for line in review_case_lines
+        ),
+        encoding="utf-8",
+    )
+    ReviewFile(review_file_path).save_answers(
+        {review_cases["atashinchi_next"].case_name: None}
+    )
+    with review_file_path.open(encoding="utf-8") as saved_file:
+        assert separated_line in saved_file.readlines()
+
+
+def test_review_file_save_answers_seen_saved_answer_matching_saves(
+    review_file_path, review_cases
+) -> None:
+    case_name = review_cases["nami"].case_name
+    review_file = ReviewFile(review_file_path)
+    review_file.save_answers({case_name: {"anilist:anime:102289": "skip"}})
+    review_file.save_answers(
+        {case_name: {"anilist:anime:102289": "add"}},
+        seen_saved_answers={case_name: {"anilist:anime:102289": "skip"}},
+    )
+    assert review_file.get_answers()[case_name] == {"anilist:anime:102289": "add"}
+
+
+def test_review_file_save_answers_seen_saved_answer_changed_raises_and_keeps_file(
+    review_file_path, review_cases
+) -> None:
+    case_name = review_cases["nami"].case_name
+    review_file = ReviewFile(review_file_path)
+    review_file.save_answers({case_name: {"anilist:anime:102289": "skip"}})
+    saved_text = review_file_path.read_text(encoding="utf-8")
+    with pytest.raises(SavedAnswerChangedError) as raised:
+        review_file.save_answers(
+            {case_name: {"anilist:anime:102289": "add"}},
+            seen_saved_answers={case_name: None},
+        )
+    assert raised.value.case_names == (case_name,)
+    assert review_file_path.read_text(encoding="utf-8") == saved_text
 
 
 def test_review_file_save_answers_none_clears_answer(

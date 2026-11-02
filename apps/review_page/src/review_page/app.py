@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import APIRouter, FastAPI, Form, Request, Response
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import JsonValue
@@ -39,7 +39,7 @@ from review_page.case_views import (
 )
 from review_page.correction_routes import CorrectionRoutes
 from review_page.correction_views import list_case_correction_links
-from review_page.file_review_case_source import RunSeedFileUnknownError
+from review_page.htmx_responses import build_event_response, build_notice_response
 from review_page.page_state import (
     CaseEditState,
     CaseRow,
@@ -56,13 +56,18 @@ from review_page.review_case_messages import (
     build_case_answer,
     convert_message_to_case,
 )
-from review_page.review_case_source import ReviewCaseSource
+from review_page.review_case_source import (
+    ANSWER_SAVED_ELSEWHERE_RULE_NAME,
+    ReviewCaseSource,
+)
+from review_page.run_routes import RunRoutes
 from review_page.run_summary import RunSummary, build_run_summary
 from review_page.template_functions import STATIC_DIR, add_template_functions
 from work_matching import (
     ReviewCase,
     ReviewCaseKind,
     ReviewFileLockedError,
+    SavedAnswerChangedError,
     UnknownCaseError,
     choose_group_page_place,
 )
@@ -89,6 +94,7 @@ def create_app(source: ReviewCaseSource) -> FastAPI:
     )
     app.include_router(ReviewPageRoutes(source, templates).router)
     app.include_router(CorrectionRoutes(source, templates).router)
+    app.include_router(RunRoutes(source, templates).router)
     return app
 
 
@@ -114,9 +120,7 @@ class ReviewPageRoutes:
             ("/fragments/case-list", self.render_case_list),
             ("/fragments/case-panel", self.render_case_panel),
             ("/fragments/choice", self.choose_answer),
-            ("/fragments/run-panel", self.render_run_panel),
             ("/answers", self.save_answers),
-            ("/run", self.start_run),
         ):
             self.router.add_api_route(path, endpoint, methods=["POST"])
 
@@ -241,6 +245,7 @@ class ReviewPageRoutes:
                     "case_name": case.case_name,
                     "answer": new_answer,
                     "is_unsaved": is_unsaved,
+                    "saved_answer": case.answer,
                 }
             }
         )
@@ -267,16 +272,24 @@ class ReviewPageRoutes:
         try:
             results = self._source.save_answers(
                 [
-                    build_case_answer(name, answer)
+                    build_case_answer(
+                        name, answer, seen_saved_answers=state.seen_saved_answers
+                    )
                     for name, answer in answers_by_case_name.items()
                 ]
             )
         except ReviewFileLockedError:
-            return _notice_response(
+            return build_notice_response(
                 409, "A run is writing the cases; saves wait until it ends."
             )
+        except SavedAnswerChangedError:
+            return build_notice_response(
+                409,
+                "Another tab saved one of these cases while this save ran; "
+                "nothing was saved. Save again.",
+            )
         except UnknownCaseError:
-            return _notice_response(
+            return build_notice_response(
                 409,
                 "A run changed the cases since the page loaded them; "
                 "nothing was saved. Reload the page.",
@@ -288,7 +301,7 @@ class ReviewPageRoutes:
                 state.to_case_filter(),
             )
             next_case_name = find_next_case_name(rows, case_name)
-        return _trigger_response(
+        return build_event_response(
             {
                 "answerssaved": {
                     "saved": [
@@ -299,6 +312,11 @@ class ReviewPageRoutes:
                         for result in results
                         if not result.is_saved
                     },
+                    "saved_elsewhere": [
+                        result.case_name
+                        for result in results
+                        if ANSWER_SAVED_ELSEWHERE_RULE_NAME in result.broken_rule_names
+                    ],
                     "warnings": [
                         warning for result in results for warning in result.warnings
                     ],
@@ -306,40 +324,6 @@ class ReviewPageRoutes:
                 }
             }
         )
-
-    def start_run(self) -> Response:
-        """Start a run, unless one is going, and tell the browser to follow it."""
-        try:
-            self._source.start_run()
-        except RunSeedFileUnknownError as error:
-            return _notice_response(409, str(error))
-        return _trigger_response({"runstarted": True})
-
-    def render_run_panel(
-        self, request: Request, browser_state: BrowserStateField = None
-    ) -> Response:
-        """Return the run panel: the run going, or the last run's results."""
-        state = BrowserState.from_form_field(browser_state)
-        run_state = self._source.get_run_state()
-        case_names = {case.case_name for case in self._load_cases()}
-        response = self._templates.TemplateResponse(
-            request,
-            "run_panel.html",
-            {
-                "run_state": run_state,
-                "run_result": self._load_run_result(),
-                "gone_edit_case_names": sorted(set(state.edits) - case_names),
-            },
-        )
-        response.headers["HX-Trigger"] = json.dumps(
-            {
-                "runstate": {
-                    "is_running": run_state.is_running,
-                    "case_names": sorted(case_names),
-                }
-            }
-        )
-        return response
 
     def _render_case(
         self,
@@ -446,20 +430,6 @@ def _list_original_answers(
             )
         )
     }
-
-
-def _trigger_response(events: dict[str, Any]) -> Response:
-    """Return an empty response that raises these htmx events in the browser."""
-    return Response(status_code=204, headers={"HX-Trigger": json.dumps(events)})
-
-
-def _notice_response(status_code: int, notice: str) -> Response:
-    """Return a refusal the browser shows as a notice."""
-    return JSONResponse(
-        {"notice": notice},
-        status_code=status_code,
-        headers={"HX-Trigger": json.dumps({"notice": {"text": notice}})},
-    )
 
 
 def _build_all_case_rows(

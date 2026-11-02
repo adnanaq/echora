@@ -17,7 +17,7 @@ Each item gives the rule, then the reason for it.
 
 import logging
 from collections import Counter
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 
 from pydantic import BaseModel, JsonValue, ValidationError
@@ -54,6 +54,18 @@ class UnknownCaseError(KeyError):
         """Name the cases the review file does not hold."""
         super().__init__(
             f"Review cases not in the review file: {', '.join(case_names)}"
+        )
+
+
+class SavedAnswerChangedError(ValueError):
+    """Cases hold another saved answer than the one their edits started from."""
+
+    def __init__(self, case_names: Iterable[str]) -> None:
+        """Keep and name the cases whose saved answer changed."""
+        self.case_names = tuple(case_names)
+        super().__init__(
+            "Saved answers changed since their edits began: "
+            + ", ".join(self.case_names)
         )
 
 
@@ -152,7 +164,12 @@ class ReviewFile:
         )
         return unused_case_names
 
-    def save_answers(self, answers_by_case_name: Mapping[str, JsonValue]) -> None:
+    def save_answers(
+        self,
+        answers_by_case_name: Mapping[str, JsonValue],
+        *,
+        seen_saved_answers: Mapping[str, JsonValue] | None = None,
+    ) -> None:
         """Write answers into their cases' lines, keeping every other line as it is.
 
         This is how the review page saves. Each item gives the rule, then the
@@ -168,33 +185,47 @@ class ReviewFile:
         - A None answer clears the case's answer, which leaves it open.
         - Nothing is written when a case name is not in the file, so a
           mistyped name never loses the other answers.
+        - Nothing is written when a case's saved answer is not the one its
+          edit started from, so an answer saved from another tab is never
+          replaced unseen. The check runs under the lock, so no save slips in
+          between.
 
         Args:
             answers_by_case_name: Each case's new answer, by its case name.
+            seen_saved_answers: The saved answer each edit started from, by
+                case name (None for no answer); cases left out are not checked.
 
         Raises:
             ReviewFileLockedError: Another process holds the file's lock.
             UnknownCaseError: A case name is not in the file.
+            SavedAnswerChangedError: A case's saved answer is not the one its
+                edit started from.
         """
         with hold_review_file_lock(
             self._path, seconds_to_wait=_SECONDS_TO_WAIT_FOR_ANOTHER_SAVE
         ):
-            lines = (
-                self._path.read_text(encoding="utf-8").splitlines(keepends=True)
-                if self._path.exists()
-                else []
-            )
-            saved_lines = [
-                _replace_line_answer(line, answers_by_case_name) for line in lines
-            ]
-            missing_case_names = answers_by_case_name.keys() - {
-                _KeptAnswer.model_validate_json(line).case_name
+            # Lines end at "\n" only: a value may hold U+2028 or U+0085
+            # unescaped, which str.splitlines would also split at.
+            lines = []
+            if self._path.exists():
+                with self._path.open(encoding="utf-8") as review_file:
+                    lines = review_file.readlines()
+            kept_answers = [
+                _KeptAnswer.model_validate_json(line) if line.strip() else None
                 for line in lines
-                if line.strip()
-            }
-            if missing_case_names:
-                raise UnknownCaseError(sorted(missing_case_names))
-            replace_file_lines(self._path, saved_lines)
+            ]
+            _check_answers_against_file(
+                kept_answers, answers_by_case_name, seen_saved_answers or {}
+            )
+            replace_file_lines(
+                self._path,
+                (
+                    _write_line_answer(line, answers_by_case_name[kept.case_name])
+                    if kept is not None and kept.case_name in answers_by_case_name
+                    else line
+                    for line, kept in zip(lines, kept_answers, strict=True)
+                ),
+            )
         self._answers_and_lines_by_case_name = self._read_answers_in_file()
 
     def _read_answers_in_file(self) -> dict[str, tuple[JsonValue, str]]:
@@ -225,28 +256,45 @@ class ReviewFile:
         return answers_and_lines_by_case_name
 
 
-def _replace_line_answer(
-    line: str, answers_by_case_name: Mapping[str, JsonValue]
-) -> str:
-    """Return the line with its case's new answer, or unchanged when not named.
+def _check_answers_against_file(
+    kept_answers: Sequence[_KeptAnswer | None],
+    answers_by_case_name: Mapping[str, JsonValue],
+    seen_saved_answers: Mapping[str, JsonValue],
+) -> None:
+    """Refuse answers for cases the file lacks, or whose saved answer changed.
 
     Args:
-        line: One line of the review file, ending with its line break.
+        kept_answers: Each line's case name and answer, None for a blank line.
         answers_by_case_name: Each case's new answer, by its case name.
+        seen_saved_answers: The saved answer each edit started from, by case
+            name.
+
+    Raises:
+        UnknownCaseError: A case name is not in the file.
+        SavedAnswerChangedError: A case's saved answer is not the one its
+            edit started from.
+    """
+    answers_in_file = {kept.case_name: kept.answer for kept in kept_answers if kept}
+    if missing_case_names := answers_by_case_name.keys() - answers_in_file.keys():
+        raise UnknownCaseError(sorted(missing_case_names))
+    if changed_case_names := sorted(
+        case_name
+        for case_name, seen_answer in seen_saved_answers.items()
+        if answers_in_file.get(case_name) != seen_answer
+    ):
+        raise SavedAnswerChangedError(changed_case_names)
+
+
+def _write_line_answer(line: str, answer: JsonValue) -> str:
+    """Return a review file line rewritten with a new answer.
+
+    Args:
+        line: One case's line of the review file, ending with its line break.
+        answer: The case's new answer; None clears it.
 
     Returns:
-        The case rewritten with its new answer, in the order ``write_cases``
-        writes fields; the line as it was otherwise.
+        The case with its new answer, in the order ``write_cases`` writes
+        fields, ending with a line break.
     """
-    if not line.strip():
-        return line
-    case_name = _KeptAnswer.model_validate_json(line).case_name
-    if case_name not in answers_by_case_name:
-        return line
     case = ReviewCase.model_validate_json(line)
-    return (
-        case.model_copy(
-            update={"answer": answers_by_case_name[case_name]}
-        ).model_dump_json()
-        + "\n"
-    )
+    return case.model_copy(update={"answer": answer}).model_dump_json() + "\n"

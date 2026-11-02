@@ -165,12 +165,14 @@ class ReviewCase(_message.Message):
     def __init__(self, case_name: _Optional[str] = ..., answer: _Optional[_Union[_struct_pb2.Value, _Mapping]] = ..., suggested_answer: _Optional[_Iterable[_Union[PagePlace, _Mapping]]] = ..., reasons: _Optional[_Iterable[str]] = ..., candidate_evidence: _Optional[_Iterable[str]] = ..., entries: _Optional[_Iterable[_Union[CaseEntry, _Mapping]]] = ..., doubled_provider_decisions: _Optional[_Iterable[_Union[DoubledProviderDecision, _Mapping]]] = ..., linked_page_decisions: _Optional[_Iterable[_Union[LinkedPageDecision, _Mapping]]] = ..., pages: _Optional[_Iterable[_Union[ProviderPage, _Mapping]]] = ...) -> None: ...
 
 class CaseAnswer(_message.Message):
-    __slots__ = ("case_name", "answer")
+    __slots__ = ("case_name", "answer", "seen_saved_answer")
     CASE_NAME_FIELD_NUMBER: _ClassVar[int]
     ANSWER_FIELD_NUMBER: _ClassVar[int]
+    SEEN_SAVED_ANSWER_FIELD_NUMBER: _ClassVar[int]
     case_name: str
     answer: _struct_pb2.Value
-    def __init__(self, case_name: _Optional[str] = ..., answer: _Optional[_Union[_struct_pb2.Value, _Mapping]] = ...) -> None: ...
+    seen_saved_answer: _struct_pb2.Value
+    def __init__(self, case_name: _Optional[str] = ..., answer: _Optional[_Union[_struct_pb2.Value, _Mapping]] = ..., seen_saved_answer: _Optional[_Union[_struct_pb2.Value, _Mapping]] = ...) -> None: ...
 
 class RuleCheckResult(_message.Message):
     __slots__ = ("case_name", "is_saved", "broken_rule_names", "broken_rule_sentences", "warnings")

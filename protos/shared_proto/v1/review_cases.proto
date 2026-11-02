@@ -143,6 +143,10 @@ message ReviewCase {
 message CaseAnswer {
   string case_name = 1;
   optional google.protobuf.Value answer = 2;
+  // The saved answer the reviewer's edit started from (null for none). When
+  // set, the save is refused if the case's saved answer is another one by
+  // then, such as one saved from another tab, so no save is lost unseen.
+  optional google.protobuf.Value seen_saved_answer = 3;
 }
 
 // Whether a saved answer follows the rules, and if not, which rules it breaks.
