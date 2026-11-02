@@ -1,7 +1,9 @@
 import dataclasses
 import json
+import os
 import subprocess
 import sys
+import threading
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -279,6 +281,45 @@ def test_file_review_case_source_start_run_while_running_starts_nothing_more(
     source.start_run()
     _wait_for_run_end(source)
     assert not (data_dir / "run_arguments.json").exists()
+
+
+def test_file_review_case_source_start_run_requested_at_once_starts_one_run(
+    data_dir, tmp_path
+) -> None:
+    script = tmp_path / "counting_clean_seed.py"
+    script.write_text(
+        "import sys, time\n"
+        "from pathlib import Path\n"
+        "data_dir = Path(sys.argv[sys.argv.index('--data-dir') + 1])\n"
+        "with (data_dir / 'started_runs.log').open('a') as log:\n"
+        "    log.write('started\\n')\n"
+        "time.sleep(0.5)\n",
+        encoding="utf-8",
+    )
+    source = FileReviewCaseSource(
+        data_dir, script, seed_file=Path("assets/seed_data/seed.json")
+    )
+    barrier = threading.Barrier(8)
+
+    def start_run_after_barrier() -> None:
+        barrier.wait()
+        source.start_run()
+
+    threads = [threading.Thread(target=start_run_after_barrier) for _ in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    _wait_for_run_end(source)
+    started_runs = (data_dir / "started_runs.log").read_text().splitlines()
+    assert started_runs == ["started"]
+
+
+def test_file_review_case_source_get_run_state_process_id_not_started_here_not_running(
+    source, data_dir
+) -> None:
+    (data_dir / "review_run.pid").write_text(str(os.getpid()), encoding="utf-8")
+    assert not source.get_run_state().is_running
 
 
 def test_file_review_case_source_start_run_without_known_seed_file_raises(

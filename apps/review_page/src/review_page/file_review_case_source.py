@@ -17,10 +17,15 @@ Each item gives the rule, then the reason for it.
 - Run starts ``clean_seed.py --no-fetch`` as its own process, so its memory
   (about 0.9 GB for a release) is never the server's, and a server restart
   does not stop it. Its output is appended to ``logs/review_page_runs.log``.
+- One run starts at a time: a lock covers the check for a running run, the
+  start and the process id file, so two clicks or two tabs cannot start two
+  runs.
 - The run's process id is kept in ``review_run.pid``, and how it ended in
-  ``review_run.exit_code``, so any server process can tell whether the run
-  started from the page is still going. A run started some other way is seen
-  through the review file's lock, which it holds while it writes.
+  ``review_run.exit_code``; both files are written in one step, so a reader
+  never sees one half written. Only the server that started the run trusts
+  the process id: after a restart the id may belong to another process. Any
+  other run, and a run seen from another server, is followed through the
+  review file's lock, which a run holds while it works.
 - Run uses the configured seed file, else the one the last run read, so a Run
   never switches seed releases on its own.
 """
@@ -29,6 +34,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
@@ -57,6 +63,7 @@ from work_matching import (
     ReviewFile,
     find_linked_page_conflicts,
     is_review_file_locked,
+    replace_file_lines,
 )
 
 _PROCESS_ID_FILE_NAME = "review_run.pid"
@@ -104,6 +111,7 @@ class FileReviewCaseSource(ReviewCaseSource):
         self._seed_file = seed_file
         self._python_executable = python_executable
         self._review_file_path = data_dir / REVIEW_FILE_NAME
+        self._run_start_lock = threading.Lock()
 
     def list_cases(self) -> list[review_cases_pb2.ReviewCase]:
         """Return every case in the review file, in file order."""
@@ -167,29 +175,14 @@ class FileReviewCaseSource(ReviewCaseSource):
         Raises:
             RunSeedFileUnknownError: No seed file is configured or recorded.
         """
-        if self.get_run_state().is_running:
-            return review_cases_pb2.RunState(is_running=True)
-        seed_file = self._find_seed_file()
-        run_log_path = self._data_dir / _RUN_LOG_PATH
-        run_log_path.parent.mkdir(parents=True, exist_ok=True)
-        with run_log_path.open("a", encoding="utf-8") as run_log:
-            run_process = subprocess.Popen(  # noqa: S603  (fixed script and arguments)
-                [
-                    self._python_executable,
-                    str(self._clean_seed_script),
-                    str(seed_file),
-                    "--no-fetch",
-                    "--data-dir",
-                    str(self._data_dir),
-                ],
-                stdout=run_log,
-                stderr=subprocess.STDOUT,
-                start_new_session=True,
+        with self._run_start_lock:
+            if self.get_run_state().is_running:
+                return review_cases_pb2.RunState(is_running=True)
+            run_process = self._start_run_process(self._find_seed_file())
+            (self._data_dir / _EXIT_CODE_FILE_NAME).unlink(missing_ok=True)
+            replace_file_lines(
+                self._data_dir / _PROCESS_ID_FILE_NAME, [str(run_process.pid)]
             )
-        (self._data_dir / _EXIT_CODE_FILE_NAME).unlink(missing_ok=True)
-        (self._data_dir / _PROCESS_ID_FILE_NAME).write_text(
-            str(run_process.pid), encoding="utf-8"
-        )
         return review_cases_pb2.RunState(is_running=True)
 
     def get_run_state(self) -> review_cases_pb2.RunState:
@@ -197,7 +190,9 @@ class FileReviewCaseSource(ReviewCaseSource):
 
         A run started here is followed by its process id; when it has ended,
         its exit code is kept and the process id removed. Any other run is
-        seen while it holds the review file's lock.
+        seen while it holds the review file's lock. A process id file this
+        server did not write is left alone, so the server that started that
+        run still records its exit code.
         """
         process_id_path = self._data_dir / _PROCESS_ID_FILE_NAME
         if process_id_path.exists():
@@ -207,10 +202,10 @@ class FileReviewCaseSource(ReviewCaseSource):
             if is_running:
                 return review_cases_pb2.RunState(is_running=True)
             if exit_code is not None:
-                (self._data_dir / _EXIT_CODE_FILE_NAME).write_text(
-                    str(exit_code), encoding="utf-8"
+                replace_file_lines(
+                    self._data_dir / _EXIT_CODE_FILE_NAME, [str(exit_code)]
                 )
-            process_id_path.unlink(missing_ok=True)
+                process_id_path.unlink(missing_ok=True)
         run_state = review_cases_pb2.RunState(
             is_running=is_review_file_locked(self._review_file_path)
         )
@@ -269,6 +264,26 @@ class FileReviewCaseSource(ReviewCaseSource):
                 for line in review_file
                 if line.strip()
             ]
+
+    def _start_run_process(self, seed_file: Path) -> subprocess.Popen[bytes]:
+        """Start ``clean_seed.py --no-fetch`` on the seed file, its output in the run log."""
+        run_log_path = self._data_dir / _RUN_LOG_PATH
+        run_log_path.parent.mkdir(parents=True, exist_ok=True)
+        with run_log_path.open("a", encoding="utf-8") as run_log:
+            # The script and its arguments are fixed; no shell runs them.
+            return subprocess.Popen(  # noqa: S603
+                [
+                    self._python_executable,
+                    str(self._clean_seed_script),
+                    str(seed_file),
+                    "--no-fetch",
+                    "--data-dir",
+                    str(self._data_dir),
+                ],
+                stdout=run_log,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
 
     def _find_seed_file(self) -> Path:
         """Return the configured seed file, else the one the last run read."""
@@ -387,27 +402,24 @@ def _list_conflict_warnings(
 
 
 def _check_process(process_id: int) -> tuple[bool, int | None]:
-    """Report whether a process is still running, and its exit code once it ended.
+    """Report whether a run this server started is still going, and its exit code once it ended.
 
-    A process this server started is collected with ``waitpid``, which gives
-    its exit code and keeps it from staying as a finished child. A process
-    another server process started can only be tested for being alive, so its
-    exit code is unknown.
+    The process is collected with ``waitpid``, which gives its exit code and
+    keeps it from staying as a finished child. A process id this server did
+    not start counts as not running here: after a restart the id may belong
+    to an unrelated process. The caller then follows the run through the
+    review file's lock.
 
     Args:
-        process_id: The run's process id.
+        process_id: The run's process id, from the process id file.
 
     Returns:
-        Whether it runs, and its exit code when it ended here; None otherwise.
+        Whether it runs, and its exit code when it ended; None otherwise.
     """
     try:
         ended_process_id, wait_status = os.waitpid(process_id, os.WNOHANG)
     except ChildProcessError:
-        try:
-            os.kill(process_id, 0)
-        except ProcessLookupError:
-            return False, None
-        return True, None
+        return False, None
     if ended_process_id == 0:
         return True, None
     return False, os.waitstatus_to_exitcode(wait_status)
