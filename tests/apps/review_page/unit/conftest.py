@@ -114,7 +114,7 @@ class FakeReviewCaseSource(ReviewCaseSource):
         self, case_answers: Sequence[review_cases_pb2.CaseAnswer]
     ) -> list[review_cases_pb2.RuleCheckResult]:
         if self.is_locked:
-            raise ReviewFileLockedError(__file__)
+            raise ReviewFileLockedError(Path(__file__))
         if self.is_case_dropped_by_run:
             raise UnknownCaseError([answer.case_name for answer in case_answers])
         results = []

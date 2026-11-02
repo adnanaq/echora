@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from google.protobuf import json_format, struct_pb2
+from google.protobuf import json_format
 from review_page.file_review_case_source import (
     FileReviewCaseSource,
     RunSeedFileUnknownError,
@@ -32,9 +32,7 @@ ATASHINCHI_ANSWER = {
 def _case_answer(case_name: str, answer: object) -> review_cases_pb2.CaseAnswer:
     case_answer = review_cases_pb2.CaseAnswer(case_name=case_name)
     if answer is not None:
-        value = struct_pb2.Value()
-        value.struct_value.update(answer)
-        case_answer.answer.CopyFrom(value)
+        json_format.ParseDict(answer, case_answer.answer)
     return case_answer
 
 

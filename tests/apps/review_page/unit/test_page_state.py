@@ -1,4 +1,5 @@
 import pytest
+from pydantic import JsonValue
 from review_page.page_state import (
     CaseEditState,
     CaseFilter,
@@ -17,7 +18,7 @@ from review_page.page_state import (
 )
 from work_matching import ReviewCaseKind
 
-ATASHINCHI_ANSWER = {
+ATASHINCHI_ANSWER: dict[str, JsonValue] = {
     "mal:anime:63013": "work 1",
     "anilist:anime:203146": "work 1",
     "anidb:anime:19895": "work 1",

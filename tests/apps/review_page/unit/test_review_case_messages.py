@@ -3,6 +3,7 @@ from review_page.review_case_messages import (
     convert_case_to_message,
     convert_message_to_case,
 )
+from work_matching import LinkedPageDecision
 
 
 @pytest.mark.parametrize(
@@ -43,10 +44,12 @@ def test_convert_message_to_case_round_trip_keeps_linking_entry_address_order(
     assert [
         list(entry.addresses_by_page_key)
         for decision in converted_case.decisions
+        if isinstance(decision, LinkedPageDecision)
         for entry in decision.linking_entries
     ] == [
         list(entry.addresses_by_page_key)
         for decision in case.decisions
+        if isinstance(decision, LinkedPageDecision)
         for entry in decision.linking_entries
     ]
 
