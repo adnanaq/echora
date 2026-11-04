@@ -50,6 +50,8 @@ from work_matching import (
     find_surviving_entries,
     list_split_work_review_reasons,
     place_pages_without_review,
+    resolve_named_entries,
+    suggest_target_entries,
 )
 
 
@@ -165,8 +167,11 @@ def _place_entry_group(
     }
     review_case = None
     if placements is None:
-        review_case = review_file.attach_kept_answer(
-            _build_review_case(entry_group, decisions, pages)
+        review_case = resolve_named_entries(
+            review_file.attach_kept_answer(
+                _build_review_case(entry_group, decisions, pages, known_work_entries)
+            ),
+            known_work_entries,
         )
         accepted_placements = review_case.accepted_answer
         if not isinstance(accepted_placements, dict):
@@ -182,7 +187,12 @@ def _place_entry_group(
         reason_by_page_key,
         find_surviving_entries(entries, placements, current_key_by_page_key),
         current_key_by_page_key,
-        _find_target_reference_pages(decisions),
+        _find_target_reference_pages(decisions)
+        | _find_named_target_reference_pages(
+            placements,
+            review_case.named_entry_reference_pages if review_case else {},
+            current_key_by_page_key,
+        ),
         correction_names,
     )
     return group_placement, review_case
@@ -192,9 +202,21 @@ def _build_review_case(
     entry_group: EntryGroup,
     decisions: Sequence[DoubledProviderDecision],
     pages: Sequence[ProviderPage],
+    known_work_entries: KnownWorkEntries,
 ) -> ReviewCase:
-    """Make an entry group's review case, with why its entries are grouped."""
-    return ReviewCase.from_entry_group(
+    """Make an entry group's review case, with why its entries are grouped.
+
+    Args:
+        entry_group: The group's entries and why they are grouped.
+        decisions: The doubled-provider decisions of the combined entry.
+        pages: The entries' fetched pages and the pages searched by them.
+        known_work_entries: The seed's entries, to suggest the entries a page
+            in ``other work`` could move to.
+
+    Returns:
+        The case, with its seed entries of the same series as suggestions.
+    """
+    review_case = ReviewCase.from_entry_group(
         entry_group.entries,
         decisions,
         list_split_work_review_reasons(
@@ -204,6 +226,13 @@ def _build_review_case(
         ),
         pages,
         candidate_evidence=entry_group.candidate_evidence,
+    )
+    return review_case.model_copy(
+        update={
+            "target_entry_suggestions": suggest_target_entries(
+                review_case, known_work_entries
+            )
+        }
     )
 
 
@@ -392,4 +421,36 @@ def _find_target_reference_pages(
         for decision in decisions
         for key, unrelated_page in decision.unrelated_pages.items()
         if unrelated_page.move_target_entry is not None
+    }
+
+
+def _find_named_target_reference_pages(
+    placements: Mapping[str, PagePlacement],
+    named_entry_reference_pages: Mapping[str, str],
+    current_key_by_page_key: Mapping[str, str],
+) -> dict[str, str]:
+    """Return the reference page each page an answer sends to a named seed entry moves to.
+
+    An answer's named entry replaces any target the links found, since a
+    person chose it.
+
+    Args:
+        placements: Each placed page's place, by the key the answer names it by.
+        named_entry_reference_pages: Each named page key, mapped to the reference
+            page of the seed entry holding it.
+        current_key_by_page_key: Each renamed page's current key, by the key an
+            entry lists it under.
+
+    Returns:
+        Each named page's current key, mapped to the reference page it moves to.
+    """
+    return {
+        current_key_by_page_key.get(page_key, page_key): reference_page
+        for page_key, placement in placements.items()
+        if placement.named_entry_page_key
+        and (
+            reference_page := named_entry_reference_pages.get(
+                placement.named_entry_page_key
+            )
+        )
     }
