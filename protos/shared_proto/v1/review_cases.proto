@@ -137,6 +137,20 @@ message ReviewCase {
   repeated DoubledProviderDecision doubled_provider_decisions = 7;
   repeated LinkedPageDecision linked_page_decisions = 8;
   repeated ProviderPage pages = 9;
+  // Each page key the answer names after "other work", mapped to the
+  // reference page of the seed entry holding it; a lookup, so a map.
+  map<string, string> named_entry_reference_pages = 10;
+  // Seed entries of the case's series, offered as the entry a page in
+  // "other work" moves to, closest titles first.
+  repeated TargetEntrySuggestion target_entry_suggestions = 11;
+}
+
+// A seed entry offered as the place a page in "other work" moves to.
+message TargetEntrySuggestion {
+  string reference_page = 1;
+  string title = 2;
+  // The providers the entry already holds pages of.
+  repeated string providers = 3;
 }
 
 // An answer to save for one case; unset clears the case's answer.
