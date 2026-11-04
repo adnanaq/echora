@@ -42,7 +42,7 @@ Each item gives the rule, then the reason for it.
 
 from collections import defaultdict
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 
 from pydantic import JsonValue
@@ -68,6 +68,7 @@ from work_matching.page_placement import (
     PagePlacement,
     list_placeable_page_keys,
     read_placement,
+    write_placement,
 )
 from work_matching.provider_page_key import get_page_provider
 from work_matching.review_cases import ReviewCase, ReviewCaseKind
@@ -118,6 +119,8 @@ class GroupPageChoices:
     page_key: str
     # ``work N`` or ``other work``; None while the page has no place.
     work: str | None
+    # The page key written after ``other work``; None when no entry is named.
+    named_entry_page_key: str | None
     # ``NO_MARK``, ``MAIN_MARK`` or ``PART_MARK``.
     mark: str
     # Whether the answer must place this page to be saved.
@@ -207,6 +210,7 @@ def list_group_page_choices(
         GroupPageChoices(
             page_key=page_key,
             work=placement.placement_word if placement else None,
+            named_entry_page_key=placement.named_entry_page_key if placement else None,
             mark=_get_mark(placement),
             is_required=page_key in required_page_keys,
             work_options=tuple(
@@ -239,19 +243,24 @@ def choose_group_page_place(
     Args:
         answer: The answer so far: page keys mapped to places.
         page_key: The page whose place is chosen.
-        work: ``work N`` or ``other work``; None removes the page's place.
+        work: ``work N``, ``other work`` or ``other work <page key>``; None
+            removes the page's place. Text that is not a place is kept as
+            written, so the answer's check reports it.
         mark: ``NO_MARK``, ``MAIN_MARK`` or ``PART_MARK``.
 
     Returns:
         The new answer: the chosen place, then the mark changes the module
         docstring lists. Places that could not be read are kept as written.
     """
+    chosen_placement = read_placement(work) if work is not None else None
+    if work is not None and chosen_placement is None:
+        return {**answer, page_key: work}
     placements = _read_placements(answer)
     previous_placement = placements.pop(page_key, None)
-    if work is not None:
-        is_marked_work = work != OTHER_WORK
-        placements[page_key] = PagePlacement(
-            work,
+    if chosen_placement is not None:
+        is_marked_work = chosen_placement.placement_word != OTHER_WORK
+        placements[page_key] = replace(
+            chosen_placement,
             is_main_page=is_marked_work and mark == MAIN_MARK,
             is_part_page=is_marked_work and mark == PART_MARK,
         )
@@ -263,7 +272,7 @@ def choose_group_page_place(
             for key, place_text in answer.items()
             if key != page_key and key not in placements
         },
-        **{key: _format_place(placement) for key, placement in placements.items()},
+        **{key: write_placement(placement) for key, placement in placements.items()},
     }
 
 
@@ -456,12 +465,6 @@ def _get_mark(placement: PagePlacement | None) -> str:
     if placement.is_main_page:
         return MAIN_MARK
     return PART_MARK if placement.is_part_page else NO_MARK
-
-
-def _format_place(placement: PagePlacement) -> str:
-    """Write a place in the answer words: ``work 1``, ``work 1, part``, ``other work``."""
-    mark = _get_mark(placement)
-    return f"{placement.placement_word}, {mark}" if mark else placement.placement_word
 
 
 def _get_group_decisions(case: ReviewCase) -> tuple[DoubledProviderDecision, ...]:

@@ -53,3 +53,24 @@ class KnownWorkEntries(Protocol):
             Several can match, so a caller must not take the first as the
             answer.
         """
+
+    def find_by_series(self, title: str) -> list[WorkEntry]:
+        """Return the work entries whose titles belong to the same series as this one.
+
+        Two titles belong to one series when, after folding, one of these holds:
+
+        - One is the other or starts with the other followed by more words,
+          as "Kusuriya no Hitorigoto" and "Kusuriya no Hitorigoto Season 2".
+        - Both start with the title's longest word prefix of a few words that
+          another title also starts with, as "Kaguya-sama wa Kokurasetai
+          Movie" and "Kaguya-sama wa Kokurasetai: Ultra Romantic".
+
+        Args:
+            title: A title, folded like ``find_by_title``'s.
+
+        Returns:
+            The entries with the same title, then those with shorter titles
+            of the series, longest first, then those with longer titles, then
+            those sharing the prefix, in title order. Titles can share words by
+            chance, so these are suggestions for a person, never sure matches.
+        """

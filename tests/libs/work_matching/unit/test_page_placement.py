@@ -9,7 +9,8 @@ from work_matching.page_placement import (
     list_placeable_page_keys,
     place_pages_without_review,
     read_answer_placements,
-    suggest_page_placements,
+    read_placement,
+    write_placement,
 )
 
 ENTRY = PagePlacement("work 1")
@@ -32,17 +33,6 @@ def known_work_entries() -> KnownWorkEntriesFromSeed:
 
 
 @pytest.fixture
-def one_linked(linked_page, work_entry, known_work_entries):
-    entry = work_entry(MAL, KITSU_ONE, KITSU_TWO)
-    pages = [
-        linked_page(MAL),
-        linked_page(KITSU_ONE, MAL),
-        linked_page(KITSU_TWO, OTHER_MAL),
-    ]
-    return entry, decide_doubled_providers(entry, pages, known_work_entries), pages
-
-
-@pytest.fixture
 def shared_link(linked_page, work_entry):
     entry = work_entry(MAL, KITSU_ONE, KITSU_TWO)
     pages = [linked_page(KITSU_ONE, MAL), linked_page(KITSU_TWO, MAL)]
@@ -53,39 +43,10 @@ def shared_link(linked_page, work_entry):
     )
 
 
-@pytest.fixture
-def linked_apart(linked_page, work_entry):
-    entry = work_entry(
-        MAL,
-        "https://myanimelist.net/anime/2",
-        "https://anilist.co/anime/1",
-        "https://anilist.co/anime/2",
-        "https://anisearch.com/anime/1",
-    )
-    pages = [
-        linked_page("https://anilist.co/anime/1", MAL),
-        linked_page("https://anilist.co/anime/2", "https://myanimelist.net/anime/2"),
-    ]
-    return (
-        entry,
-        decide_doubled_providers(entry, pages, KnownWorkEntriesFromSeed([])),
-        pages,
-    )
-
-
-def _matching_case(matching_cases, name: str):
-    entries, pages = matching_cases[name]
-    return (
-        entries[0],
-        decide_doubled_providers(entries[0], pages, KnownWorkEntriesFromSeed([])),
-        pages,
-    )
-
-
 def test_place_pages_without_review_renamed_page_keeps_current_page(
-    matching_cases,
+    matching_case_decisions,
 ) -> None:
-    entry, decisions, pages = _matching_case(matching_cases, "cocoon")
+    entry, decisions, pages = matching_case_decisions("cocoon")
     assert place_pages_without_review(decisions) == {
         "animeplanet:anime:cocoon-one-summer-of-girlhood": ENTRY
     }
@@ -107,11 +68,9 @@ def test_place_pages_without_review_pages_sharing_link_gives_none(shared_link) -
 
 @pytest.mark.parametrize("case_name", ["puu_neko", "genshin_sigewinne"])
 def test_place_pages_without_review_separate_works_or_undecided_gives_none(
-    matching_cases, case_name: str
+    matching_case_decisions, case_name: str
 ) -> None:
-    assert (
-        place_pages_without_review(_matching_case(matching_cases, case_name)[1]) is None
-    )
+    assert place_pages_without_review(matching_case_decisions(case_name)[1]) is None
 
 
 def test_place_pages_without_review_one_provider_needing_review_places_nothing(
@@ -127,9 +86,9 @@ def test_place_pages_without_review_one_provider_needing_review_places_nothing(
 
 
 def test_list_placeable_page_keys_doubled_pages_first_then_other_pages(
-    matching_cases,
+    matching_case_decisions,
 ) -> None:
-    entry, decisions, _ = _matching_case(matching_cases, "cocoon")
+    entry, decisions, _ = matching_case_decisions("cocoon")
     assert list_placeable_page_keys(entry, decisions) == (
         "animeplanet:anime:cocoon-one-summer-of-girlhood",
         "anidb:anime:18084",
@@ -142,76 +101,6 @@ def test_list_placeable_page_keys_doubled_pages_first_then_other_pages(
         "mal:anime:55779",
         "simkl:anime:2196692",
     )
-
-
-def test_suggest_page_placements_linked_groups_and_other_work(one_linked) -> None:
-    assert suggest_page_placements(*one_linked[:2]) == {
-        "kitsu:anime:1": "work 1",
-        "kitsu:anime:2": "other work",
-        "mal:anime:1": "work 1",
-    }
-
-
-def test_suggest_page_placements_works_linked_apart_numbered_by_trust(
-    linked_apart,
-) -> None:
-    assert suggest_page_placements(*linked_apart[:2]) == {
-        "mal:anime:1": "work 1",
-        "mal:anime:2": "work 2",
-        "anilist:anime:1": "work 1",
-        "anilist:anime:2": "work 2",
-    }
-
-
-def test_suggest_page_placements_works_joined_through_shared_page_left_out(
-    matching_cases,
-) -> None:
-    assert (
-        suggest_page_placements(*_matching_case(matching_cases, "puu_neko")[:2]) == {}
-    )
-
-
-def test_suggest_page_placements_unlinked_page_left_out(matching_cases) -> None:
-    suggestion = suggest_page_placements(
-        *_matching_case(matching_cases, "ao_haru_ride_ova")[:2]
-    )
-    assert suggestion == {
-        "anilist:anime:20837": "work 1, part",
-        "anilist:anime:20900": "work 1, part",
-        "animeplanet:anime:blue-spring-ride-page-13": "work 1",
-        "kitsu:anime:8488": "work 1",
-        "mal:anime:24151": "work 1",
-    }
-
-
-@pytest.fixture
-def part_pages(linked_page, work_entry):
-    entry = work_entry(MAL, KITSU_ONE, KITSU_TWO)
-    pages = [
-        linked_page(KITSU_ONE, MAL).model_copy(update={"episode_count": 1}),
-        linked_page(KITSU_TWO, MAL).model_copy(update={"episode_count": 4}),
-    ]
-    return entry, decide_doubled_providers(entry, pages, KnownWorkEntriesFromSeed([]))
-
-
-def test_suggest_page_placements_part_pages_marked_part(part_pages) -> None:
-    assert suggest_page_placements(*part_pages) == {
-        "kitsu:anime:1": "work 1, part",
-        "kitsu:anime:2": "work 1, part",
-        "mal:anime:1": "work 1",
-    }
-
-
-def test_suggest_page_placements_details_differ_pages_left_out(
-    linked_page, work_entry
-) -> None:
-    entry = work_entry(MAL, KITSU_ONE, KITSU_TWO)
-    pages = [
-        linked_page(address, MAL).model_copy(update={"year": year})
-        for address, year in ((KITSU_ONE, 2013), (KITSU_TWO, 2021))
-    ]
-    decisions = decide_doubled_providers(entry, pages, KnownWorkEntriesFromSeed([]))
-    assert suggest_page_placements(entry, decisions) == {"mal:anime:1": "work 1"}
 
 
 @pytest.mark.parametrize(
@@ -382,3 +271,72 @@ def test_check_answer_placements_valid_answer_keeps_placements(shared_link) -> N
         "kitsu:anime:1": PagePlacement("work 1", is_part_page=True),
         "kitsu:anime:2": PagePlacement("work 1", is_part_page=True),
     }
+
+
+def test_read_placement_other_work_naming_page_key_keeps_key() -> None:
+    assert read_placement("other work mal:anime:62841") == PagePlacement(
+        "other work", named_entry_page_key="mal:anime:62841"
+    )
+
+
+@pytest.mark.parametrize(
+    "placement_text", ["other work Kusuriya", "other work mal:anime:", "other work "]
+)
+def test_read_placement_other_work_naming_no_page_key_gives_none(
+    placement_text: str,
+) -> None:
+    assert read_placement(placement_text) is None
+
+
+@pytest.mark.parametrize(
+    "placement_text",
+    ["work 1", "work 2, main", "work 3, part", "other work", "other work mal:anime:9"],
+)
+def test_write_placement_gives_text_read(placement_text: str) -> None:
+    placement = read_placement(placement_text)
+    assert placement is not None
+    assert write_placement(placement) == placement_text
+
+
+def test_check_answer_placements_named_entry_in_seed_keeps_placement(
+    shared_link,
+) -> None:
+    answer: JsonValue = {
+        "kitsu:anime:1": "work 1",
+        "kitsu:anime:2": "other work mal:anime:9",
+    }
+    placement_check = check_answer_placements(
+        answer,
+        *shared_link[:2],
+        named_entry_reference_pages={"mal:anime:9": "mal:anime:9"},
+    )
+    assert placement_check.broken_rules == ()
+    assert placement_check.placements["kitsu:anime:2"] == PagePlacement(
+        "other work", named_entry_page_key="mal:anime:9"
+    )
+
+
+def test_check_answer_placements_named_entry_not_in_seed_reports_rule(
+    shared_link,
+) -> None:
+    answer: JsonValue = {
+        "kitsu:anime:1": "work 1",
+        "kitsu:anime:2": "other work mal:anime:9",
+    }
+    assert check_answer_placements(answer, *shared_link[:2]).broken_rules == (
+        PlacementRule.NAMED_ENTRY_UNKNOWN,
+    )
+
+
+def test_check_answer_placements_named_entry_in_case_reports_rule(
+    shared_link,
+) -> None:
+    answer: JsonValue = {
+        "kitsu:anime:1": "work 1",
+        "kitsu:anime:2": "other work mal:anime:1",
+    }
+    assert check_answer_placements(
+        answer,
+        *shared_link[:2],
+        named_entry_reference_pages={"mal:anime:1": "mal:anime:1"},
+    ).broken_rules == (PlacementRule.NAMED_ENTRY_IN_CASE,)

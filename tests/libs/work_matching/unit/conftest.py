@@ -171,3 +171,60 @@ def linked_page_case() -> ReviewCase:
         KnownWorkEntriesFromSeed([]),
     )
     return ReviewCase.from_linked_page(decision, [linked_page, entry_page])
+
+
+_LINKED_MAL = "https://myanimelist.net/anime/1"
+_LINKED_KITSU_ONE = "https://kitsu.app/anime/1"
+_LINKED_KITSU_TWO = "https://kitsu.app/anime/2"
+_OTHER_MAL = "https://myanimelist.net/anime/9"
+_OTHER_ANILIST = "https://anilist.co/anime/9"
+
+
+@pytest.fixture
+def matching_case_decisions(matching_cases):
+    def decide_matching_case(name: str):
+        entries, pages = matching_cases[name]
+        return (
+            entries[0],
+            decide_doubled_providers(entries[0], pages, KnownWorkEntriesFromSeed([])),
+            pages,
+        )
+
+    return decide_matching_case
+
+
+@pytest.fixture
+def one_linked(linked_page, work_entry):
+    entry = work_entry(_LINKED_MAL, _LINKED_KITSU_ONE, _LINKED_KITSU_TWO)
+    pages = [
+        linked_page(_LINKED_MAL),
+        linked_page(_LINKED_KITSU_ONE, _LINKED_MAL),
+        linked_page(_LINKED_KITSU_TWO, _OTHER_MAL),
+    ]
+    known_work_entries = KnownWorkEntriesFromSeed(
+        [
+            {"title": "Other", "type": "TV", "sources": [_OTHER_MAL]},
+            {"title": "Third", "type": "TV", "sources": [_OTHER_ANILIST]},
+        ]
+    )
+    return entry, decide_doubled_providers(entry, pages, known_work_entries), pages
+
+
+@pytest.fixture
+def linked_apart(linked_page, work_entry):
+    entry = work_entry(
+        _LINKED_MAL,
+        "https://myanimelist.net/anime/2",
+        "https://anilist.co/anime/1",
+        "https://anilist.co/anime/2",
+        "https://anisearch.com/anime/1",
+    )
+    pages = [
+        linked_page("https://anilist.co/anime/1", _LINKED_MAL),
+        linked_page("https://anilist.co/anime/2", "https://myanimelist.net/anime/2"),
+    ]
+    return (
+        entry,
+        decide_doubled_providers(entry, pages, KnownWorkEntriesFromSeed([])),
+        pages,
+    )

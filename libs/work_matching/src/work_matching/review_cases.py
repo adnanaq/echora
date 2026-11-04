@@ -46,18 +46,17 @@ from work_matching.doubled_provider_decision import DoubledProviderDecision
 from work_matching.entry_group import (
     check_group_answer_placements,
     list_mal_page_review_reasons,
-    read_group_answer_placements,
     suggest_group_page_placements,
 )
 from work_matching.linked_page_check import (
     LinkedPageAddition,
+    LinkedPageAnswerCheck,
     LinkedPageDecision,
     check_linked_page_answer,
-    read_linked_page_answer,
     suggest_linked_page_answer,
 )
 from work_matching.page_details_comparison import MalPageComparison
-from work_matching.page_placement import PagePlacement
+from work_matching.page_placement import PagePlacement, PlacementCheck
 from work_matching.provider_page import ProviderPage, index_pages_by_current_key
 from work_matching.split_work_check import SplitWorkReviewReason
 from work_matching.work_entry import WorkEntry
@@ -94,6 +93,18 @@ _DESCRIPTION_BY_CASE_KIND: dict[ReviewCaseKind, str] = {
 }
 
 
+class TargetEntrySuggestion(BaseModel):
+    """A seed entry of the case's series, offered as the place a page in ``other work`` moves to."""
+
+    model_config = ConfigDict(frozen=True)
+
+    reference_page: str
+    title: str
+    # The providers the entry already holds pages of, so the page offers it
+    # only for pages of other providers, never doubling one.
+    providers: tuple[str, ...]
+
+
 class ReviewCase(BaseModel):
     """One decision left to a person: what the rules found, and the answer given.
 
@@ -128,6 +139,14 @@ class ReviewCase(BaseModel):
     # The entries' fetched pages and the pages searched by them, which hold
     # the links behind the decisions.
     pages: tuple[ProviderPage, ...] = ()
+    # Each page key the answer names after ``other work``, mapped to the
+    # reference page of the seed entry holding it. ``resolve_named_entries``
+    # fills it from the seed before the answer is checked; an unfilled key
+    # breaks ``NAMED_ENTRY_UNKNOWN``.
+    named_entry_reference_pages: dict[str, str] = {}
+    # Seed entries of the same series as the case's entries, offered as the
+    # entry a page in ``other work`` moves to; never applied without an answer.
+    target_entry_suggestions: tuple[TargetEntrySuggestion, ...] = ()
 
     @property
     def kind(self) -> ReviewCaseKind:
@@ -159,17 +178,10 @@ class ReviewCase(BaseModel):
 
             None when the case is open or the answer is not valid.
         """
-        doubled_provider_decisions: list[DoubledProviderDecision] = []
-        for decision in self.decisions:
-            if isinstance(decision, LinkedPageDecision):
-                return read_linked_page_answer(self.answer, decision)
-            doubled_provider_decisions.append(decision)
-        return read_group_answer_placements(
-            self.answer,
-            list(self.entries.values()),
-            doubled_provider_decisions,
-            {page.key: page.renamed_to for page in self.pages if page.renamed_to},
-        )
+        answer_check = self._check_answer(self.answer)
+        if isinstance(answer_check, LinkedPageAnswerCheck):
+            return answer_check.accepted_answer
+        return answer_check.placements if answer_check.is_valid else None
 
     def list_broken_answer_rules(
         self, answer: JsonValue
@@ -185,17 +197,32 @@ class ReviewCase(BaseModel):
         Returns:
             Each broken rule; empty when the run would accept the answer.
         """
+        return self._check_answer(answer).broken_rules
+
+    def _check_answer(
+        self, answer: JsonValue
+    ) -> PlacementCheck | LinkedPageAnswerCheck:
+        """Check an answer with the rules of the case's kind.
+
+        Args:
+            answer: The answer as it would be written in the file.
+
+        Returns:
+            The linked-page check for a linked-page case; otherwise the group's
+            placement check, with the case's resolved named entries.
+        """
         doubled_provider_decisions: list[DoubledProviderDecision] = []
         for decision in self.decisions:
             if isinstance(decision, LinkedPageDecision):
-                return check_linked_page_answer(answer, decision).broken_rules
+                return check_linked_page_answer(answer, decision)
             doubled_provider_decisions.append(decision)
         return check_group_answer_placements(
             answer,
             list(self.entries.values()),
             doubled_provider_decisions,
             {page.key: page.renamed_to for page in self.pages if page.renamed_to},
-        ).broken_rules
+            named_entry_reference_pages=self.named_entry_reference_pages,
+        )
 
     @classmethod
     def from_entry_group(

@@ -99,6 +99,19 @@ def test_list_group_page_choices_starts_on_given_answer(review_cases) -> None:
     ) == ("other work", "work 1", PART_MARK)
 
 
+def test_list_group_page_choices_other_work_named_entry_keeps_named_key(
+    review_cases,
+) -> None:
+    choices = _choices_by_page_key(
+        review_cases["gochuumon_movie"],
+        {"anidb:anime:19188": "other work mal:anime:21273"},
+    )
+    assert (
+        choices["anidb:anime:19188"].work,
+        choices["anidb:anime:19188"].named_entry_page_key,
+    ) == ("other work", "mal:anime:21273")
+
+
 def test_list_group_page_choices_second_mal_page_in_work_disabled(
     two_mal_group,
 ) -> None:

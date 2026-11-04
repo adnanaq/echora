@@ -12,6 +12,9 @@ Each item reads ``<place>: <meaning>``.
 - ``other work``: the page belongs to a work outside the entry. It joins that
   work's seed entry when the move is sure (``UnrelatedPage.move_target_entry``),
   and otherwise starts a new entry.
+- ``other work <page key>``: the page belongs to the seed entry holding that
+  page, such as ``other work mal:anime:62841``. A reviewer names the entry
+  when no link ties the page to its work, as for pages of unfetched providers.
 - ``work 2``, ``work 3`` and so on: the entry holds several works, and the page
   belongs to its second, third or later work. One review case covers the whole
   entry, so a number means the same work on every page.
@@ -38,19 +41,13 @@ Each item gives the rule, then the reason for it.
   choose between.
 - No work holds two MAL pages. A work is what MAL lists, so two MAL pages are
   two works.
+- A page named after ``other work`` belongs to a seed entry outside the case.
+  A page of the case's own entries is placed with ``work N`` instead.
+- A seed entry holds the page named after ``other work``. The caller looks
+  the names up in the seed (``named_entry_reference_pages``), so an unknown
+  page is refused rather than moved nowhere.
 
-A suggested answer is made for the reviewer this way:
-
-- Pages joined by the decisions' links form groups, one group per work.
-- Groups are numbered ``work 1``, ``work 2`` and so on in order of trust, the
-  group holding the most trusted page first.
-- A group holding two pages of one ``SEPARATE_WORKS`` decision is left out,
-  because a page in it is linked with both works.
-- A group holding two MAL pages is left out, because no work holds two MAL
-  pages.
-- Pages of a ``PART_PAGES`` decision are suggested with ``, part``.
-- Pages of a decision whose years or types differ (``DETAILS_DIFFER``) get no
-  suggestion, because they may be different works.
+Suggested answers are made by ``placement_suggestions``.
 """
 
 import re
@@ -59,16 +56,18 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import NamedTuple
 
-from networkx.utils import UnionFind
 from pydantic import JsonValue
 from work_matching.answer_rules import PlacementRule
 from work_matching.doubled_provider_decision import (
     DoubledProviderDecision,
     DoubledProviderOutcome,
-    DoubledProviderReviewReason,
 )
 from work_matching.doubled_provider_pages import get_decided_provider
-from work_matching.provider_page_key import get_page_provider, rank_by_provider_trust
+from work_matching.provider_page_key import (
+    build_page_address,
+    get_page_key,
+    get_page_provider,
+)
 from work_matching.work_entry import WorkEntry
 
 # These words are written in review answers and in the corrections file, so
@@ -84,7 +83,7 @@ _MAL_PROVIDER = "mal"
 _PLACEMENT_ANSWER_TEXT = re.compile(
     rf"(?P<work>work [1-9][0-9]*)"
     rf"(?P<mark>{_MAIN_PAGE_MARK}|{PART_PAGE_MARK})?"
-    rf"|{OTHER_WORK}"
+    rf"|{OTHER_WORK}(?: (?P<named_entry_page_key>\S+))?"
 )
 
 
@@ -96,6 +95,9 @@ class PagePlacement:
     placement_word: str
     is_main_page: bool = False
     is_part_page: bool = False
+    # For ``other work <page key>``: the page key naming the seed entry the
+    # page moves to.
+    named_entry_page_key: str | None = None
 
     @property
     def is_later_work(self) -> bool:
@@ -230,6 +232,7 @@ def check_answer_placements(
     decisions: Sequence[DoubledProviderDecision],
     *,
     is_every_page_required: bool = False,
+    named_entry_reference_pages: Mapping[str, str] | None = None,
 ) -> PlacementCheck:
     """Read a review answer into places and list every placement rule it breaks.
 
@@ -242,6 +245,9 @@ def check_answer_placements(
         decisions: The entry's doubled-provider decisions.
         is_every_page_required: Whether the answer must place every page, as
             for a group of entries, even without ``work 2`` or later.
+        named_entry_reference_pages: Each page key named after ``other
+            work``, mapped to the reference page of the seed entry holding
+            it. A named key missing here breaks ``NAMED_ENTRY_UNKNOWN``.
 
     Returns:
         The places that could be read, and the broken rules in check order.
@@ -263,6 +269,12 @@ def check_answer_placements(
         if is_mixed_entry_answer or is_every_page_required
         else {key for decision in decisions for key in decision.page_keys}
     )
+    named_entry_page_keys = {
+        placement.named_entry_page_key
+        for placement in placements.values()
+        if placement.named_entry_page_key
+    }
+    named_page_keys_in_case = named_entry_page_keys & entry.addresses_by_page_key.keys()
     broken_rules = [
         rule
         for rule, is_broken in (
@@ -279,6 +291,15 @@ def check_answer_placements(
                 PlacementRule.WORK_WITH_TWO_MAL_PAGES,
                 _has_work_with_two_mal_pages(placements),
             ),
+            (PlacementRule.NAMED_ENTRY_IN_CASE, bool(named_page_keys_in_case)),
+            (
+                PlacementRule.NAMED_ENTRY_UNKNOWN,
+                bool(
+                    named_entry_page_keys
+                    - named_page_keys_in_case
+                    - (named_entry_reference_pages or {}).keys()
+                ),
+            ),
         )
         if is_broken
     ]
@@ -286,122 +307,62 @@ def check_answer_placements(
     return PlacementCheck(placements, tuple(broken_rules))
 
 
-def suggest_page_placements(
-    entry: WorkEntry,
-    decisions: Sequence[DoubledProviderDecision],
-    linked_page_key_pairs: Iterable[tuple[str, str]] = (),
-) -> dict[str, str]:
-    """Suggest a place for each page the decisions' links tie to a work.
-
-    Args:
-        entry: The work entry.
-        decisions: The entry's doubled-provider decisions.
-        linked_page_key_pairs: Further pairs of the entry's pages linked with
-            each other, which also join pages into one work. A group of
-            entries passes the links between its entries' pages.
-
-    Returns:
-        Each suggested page's place in answer words, in answer page order.
-        Pages linked with nothing, linked with two works, or of a decision
-        whose years or types differ, are left out.
-    """
-    placeable_page_keys = list_placeable_page_keys(entry, decisions)
-    suggested_placements = _suggest_work_per_page(
-        placeable_page_keys, decisions, linked_page_key_pairs
-    )
-    for decision in decisions:
-        if DoubledProviderReviewReason.DETAILS_DIFFER in decision.review_reasons:
-            for key in decision.belonging_page_keys:
-                suggested_placements.pop(key, None)
-        elif decision.outcome is DoubledProviderOutcome.PART_PAGES:
-            for key in decision.belonging_page_keys:
-                if key in suggested_placements:
-                    suggested_placements[key] += PART_PAGE_MARK
-    suggested_placements |= {
-        key: OTHER_WORK for decision in decisions for key in decision.unrelated_pages
-    }
-    return {
-        key: suggested_placements[key]
-        for key in placeable_page_keys
-        if key in suggested_placements
-    }
-
-
-def _suggest_work_per_page(
-    placeable_page_keys: Sequence[str],
-    decisions: Sequence[DoubledProviderDecision],
-    linked_page_key_pairs: Iterable[tuple[str, str]],
-) -> dict[str, str]:
-    """Group the pages the links join into works, and name each work.
-
-    Args:
-        placeable_page_keys: The keys of the pages an answer can place, in
-            answer order.
-        decisions: The entry's doubled-provider decisions.
-        linked_page_key_pairs: Further pairs of pages linked with each other.
-
-    Returns:
-        Each grouped page's work in answer words: ``work 1`` for the group
-        holding the most trusted page, then ``work 2``, ``work 3`` and so on.
-        A group holding two pages of one ``SEPARATE_WORKS`` decision, or two
-        MAL pages, is left out.
-    """
-    page_groups = _join_linked_pages(
-        placeable_page_keys, decisions, linked_page_key_pairs
-    )
-    # Each separate-works decision's pages are separate works, so no group may
-    # hold two of them.
-    separate_work_page_keys = [
-        set(decision.belonging_page_keys)
-        for decision in decisions
-        if decision.outcome is DoubledProviderOutcome.SEPARATE_WORKS
-    ]
-    page_position = {key: position for position, key in enumerate(placeable_page_keys)}
-    groups_by_trust = sorted(
-        (group for group in page_groups.to_sets() if len(group) > 1),
-        key=lambda group: min(
-            (
-                rank_by_provider_trust(key),
-                page_position.get(key, len(placeable_page_keys)),
-            )
-            for key in group
-        ),
-    )
-    suggested_placements: dict[str, str] = {}
-    for work_number, group in enumerate(groups_by_trust, start=1):
-        if not any(
-            len(group & decision_page_keys) > 1
-            for decision_page_keys in separate_work_page_keys
-        ) and not _has_two_mal_pages(group):
-            suggested_placements |= dict.fromkeys(group, f"work {work_number}")
-    return suggested_placements
-
-
-def _join_linked_pages(
-    placeable_page_keys: Sequence[str],
-    decisions: Sequence[DoubledProviderDecision],
-    linked_page_key_pairs: Iterable[tuple[str, str]],
-) -> UnionFind:
-    """Join each belonging page with its linked pages, and each linked pair."""
-    page_groups = UnionFind(placeable_page_keys)
-    for decision in decisions:
-        for key, linked_keys in decision.belonging_page_keys.items():
-            page_groups.union(key, *linked_keys)
-    for page_key_pair in linked_page_key_pairs:
-        page_groups.union(*page_key_pair)
-    return page_groups
-
-
 def read_placement(placement_text: str) -> PagePlacement | None:
-    """Read one page's place as an answer writes it, or None for other text."""
+    """Read one page's place as an answer writes it, or None for other text.
+
+    ``other work`` may name a seed entry by one of its page keys. A named key
+    must be a provider page key that ``get_page_key`` gives back from its own
+    address, so a key with a missing or malformed id makes the text
+    unreadable.
+
+    Args:
+        placement_text: The place as written, such as ``work 2, part`` or
+            ``other work mal:anime:62841``.
+
+    Returns:
+        The place, or None when the text is not a place.
+    """
     placement_match = _PLACEMENT_ANSWER_TEXT.fullmatch(placement_text)
     if not placement_match:
+        return None
+    named_entry_page_key = placement_match["named_entry_page_key"]
+    if named_entry_page_key and not _is_page_key(named_entry_page_key):
         return None
     return PagePlacement(
         placement_match["work"] or OTHER_WORK,
         is_main_page=placement_match["mark"] == _MAIN_PAGE_MARK,
         is_part_page=placement_match["mark"] == PART_PAGE_MARK,
+        named_entry_page_key=named_entry_page_key,
     )
+
+
+def _is_page_key(text: str) -> bool:
+    """Report whether text is a provider page key, by its round trip through an address.
+
+    Args:
+        text: The text an answer names after ``other work``.
+
+    Returns:
+        True when the text names a provider page and reads back unchanged.
+    """
+    address = build_page_address(text)
+    return address is not None and get_page_key(address) == text
+
+
+def write_placement(placement: PagePlacement) -> str:
+    """Write one page's place as an answer writes it; ``read_placement`` reads it back.
+
+    Args:
+        placement: The place to write.
+
+    Returns:
+        The place's text, such as ``work 2, part`` or ``other work mal:anime:9``.
+    """
+    if placement.named_entry_page_key:
+        return f"{OTHER_WORK} {placement.named_entry_page_key}"
+    mark = _MAIN_PAGE_MARK if placement.is_main_page else ""
+    mark = PART_PAGE_MARK if placement.is_part_page else mark
+    return placement.placement_word + mark
 
 
 def _list_broken_mark_rules(
@@ -446,10 +407,10 @@ def _has_work_with_two_mal_pages(placements: dict[str, PagePlacement]) -> bool:
     for key, placement in placements.items():
         if placement.placement_word != OTHER_WORK:
             page_keys_by_work[placement.placement_word].add(key)
-    return any(map(_has_two_mal_pages, page_keys_by_work.values()))
+    return any(map(has_two_mal_pages, page_keys_by_work.values()))
 
 
-def _has_two_mal_pages(page_keys: Iterable[str]) -> bool:
+def has_two_mal_pages(page_keys: Iterable[str]) -> bool:
     """Report whether two or more of these page keys are MAL pages."""
     return sum(get_page_provider(key) == _MAL_PROVIDER for key in page_keys) > 1
 

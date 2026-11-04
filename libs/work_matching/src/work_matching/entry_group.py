@@ -46,8 +46,8 @@ from work_matching.page_placement import (
     check_answer_placements,
     find_page_placement,
     read_placement,
-    suggest_page_placements,
 )
+from work_matching.placement_suggestions import suggest_page_placements
 from work_matching.provider_page import ProviderPage
 from work_matching.provider_page_key import rank_by_provider_trust
 from work_matching.provider_page_links import ProviderPageLinks
@@ -202,6 +202,8 @@ def check_group_answer_placements(
     entries: Sequence[WorkEntry],
     decisions: Sequence[DoubledProviderDecision],
     current_key_by_page_key: Mapping[str, str],
+    *,
+    named_entry_reference_pages: Mapping[str, str] | None = None,
 ) -> PlacementCheck:
     """Read a group's review answer into places and list every rule it breaks.
 
@@ -215,6 +217,8 @@ def check_group_answer_placements(
         decisions: The doubled-provider decisions of the combined entry.
         current_key_by_page_key: Each renamed page's current key, by the key an
             entry lists it under, since a doubled page is placed under it.
+        named_entry_reference_pages: Each page key named after ``other work``,
+            mapped to the reference page of the seed entry holding it.
 
     Returns:
         The places that could be read, and the broken rules in check order.
@@ -225,6 +229,7 @@ def check_group_answer_placements(
         combine_group_entries(entries),
         decisions,
         is_every_page_required=is_entry_group,
+        named_entry_reference_pages=named_entry_reference_pages,
     )
     if not placement_check.is_valid or not is_entry_group:
         return placement_check

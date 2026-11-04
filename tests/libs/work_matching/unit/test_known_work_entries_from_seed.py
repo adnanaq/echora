@@ -158,3 +158,75 @@ def test_known_work_entries_from_seed_from_work_entries_indexes_given_entries() 
     assert list(known_work_entries) == entries
     assert known_work_entries.find_by_page_key("kitsu:anime:2") is entries[1]
     assert known_work_entries.find_by_title("Show", "TV", 2020) == entries
+
+
+def _series_seed_entries() -> list[dict]:
+    return [
+        {
+            "title": title,
+            "type": "TV",
+            "sources": [f"https://myanimelist.net/anime/{number}"],
+        }
+        for number, title in enumerate(
+            (
+                "Kusuriya no Hitorigoto",
+                "Kusuriya no Hitorigoto 2nd Season",
+                "Kusuriya no Hitorigoto 3rd Season Part 2",
+                "Kusuriya",
+                "Kusuriyasan",
+                "Kaguya-sama wa Kokurasetai: First Kiss wa Owaranai",
+                "Kaguya-sama wa Kokurasetai Movie",
+                "Kaguya-sama wa Kokurasetai: Ultra Romantic",
+                "Other Show",
+            ),
+            start=1,
+        )
+    ]
+
+
+def test_known_work_entries_from_seed_find_by_series_finds_shorter_longer_and_sibling_titles() -> (
+    None
+):
+    series = KnownWorkEntriesFromSeed(_series_seed_entries()).find_by_series(
+        "Kusuriya no Hitorigoto 2nd Season"
+    )
+    assert [entry.title for entry in series] == [
+        "Kusuriya no Hitorigoto 2nd Season",
+        "Kusuriya no Hitorigoto",
+        "Kusuriya",
+        "Kusuriya no Hitorigoto 3rd Season Part 2",
+    ]
+
+
+def test_known_work_entries_from_seed_find_by_series_sibling_shares_longest_root() -> (
+    None
+):
+    series = KnownWorkEntriesFromSeed(_series_seed_entries()).find_by_series(
+        "Kaguya-sama wa Kokurasetai: First Kiss wa Owaranai"
+    )
+    assert [entry.title for entry in series] == [
+        "Kaguya-sama wa Kokurasetai: First Kiss wa Owaranai",
+        "Kaguya-sama wa Kokurasetai Movie",
+        "Kaguya-sama wa Kokurasetai: Ultra Romantic",
+    ]
+
+
+def test_known_work_entries_from_seed_find_by_series_two_word_root_finds_no_sibling() -> (
+    None
+):
+    series = KnownWorkEntriesFromSeed(_series_seed_entries()).find_by_series(
+        "Kusuriya no Kusuri"
+    )
+    assert [entry.title for entry in series] == ["Kusuriya"]
+
+
+def test_known_work_entries_from_seed_find_by_series_matches_whole_words_only() -> None:
+    series = KnownWorkEntriesFromSeed(_series_seed_entries()).find_by_series("Kusuriya")
+    assert "Kusuriyasan" not in [entry.title for entry in series]
+    assert len(series) == 4
+
+
+def test_known_work_entries_from_seed_find_by_series_title_folding_to_nothing_gives_none() -> (
+    None
+):
+    assert KnownWorkEntriesFromSeed(_series_seed_entries()).find_by_series("!!") == []

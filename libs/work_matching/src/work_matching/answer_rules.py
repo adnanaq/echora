@@ -32,6 +32,11 @@ class PlacementRule(StrEnum):
         "a provider's pages in one work must be all 'part', or one 'main' and "
         "the rest unmarked"
     )
+    NAMED_ENTRY_IN_CASE = (
+        "the page named after 'other work' belongs to an entry of this case; "
+        "place the page with 'work N' instead"
+    )
+    NAMED_ENTRY_UNKNOWN = "no seed entry holds the page named after 'other work'"
     WORK_WITHOUT_REFERENCE_PAGE = (
         "a work holding pages of two or more entries must hold one of those "
         "entries' reference pages, so one entry survives as the work"
