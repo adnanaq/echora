@@ -8,6 +8,9 @@ Each item gives the rule, then the reason for it.
 - Every answer passes ``answer_checks`` before it is saved, which uses the
   run's own rules. Answers that break a rule are not saved and come back with
   the rules.
+- An answer naming a seed entry after ``other work`` is checked against Run's
+  seed file (``seed_entries``), with the run's own lookup, so the page refuses
+  the entries the run would.
 - Answers that follow the rules are saved together through
   ``ReviewFile.save_answers``, which holds the file's lock and rewrites only
   their lines.
@@ -57,6 +60,7 @@ from review_page.review_case_messages import (
     list_ordered_mappings,
 )
 from review_page.review_case_source import ReviewCaseSource
+from review_page.seed_entries import load_seed_entries
 from seed_cleaning import (
     CORRECTIONS_FILE_NAME,
     ENTRIES_TO_CHECK_FILE_NAME,
@@ -73,7 +77,9 @@ from work_matching import (
     ReviewCase,
     ReviewFile,
     is_review_file_locked,
+    list_named_entry_page_keys,
     replace_file_lines,
+    resolve_named_entries,
 )
 
 _PROCESS_ID_FILE_NAME = "review_run.pid"
@@ -195,11 +201,13 @@ class FileReviewCaseSource(ReviewCaseSource):
         results: list[review_cases_pb2.RuleCheckResult] = []
         for case_answer in case_answers:
             answer = read_case_answer(case_answer)
+            case = cases_by_name.get(case_answer.case_name)
+            if case is not None and list_named_entry_page_keys(answer):
+                case = resolve_named_entries(
+                    case, load_seed_entries(self._find_seed_file()), answer
+                )
             result = check_case_answer(
-                cases_by_name.get(case_answer.case_name),
-                case_answer.case_name,
-                answer,
-                seen_saved_answers,
+                case, case_answer.case_name, answer, seen_saved_answers
             )
             if result.is_saved:
                 answers_to_save[case_answer.case_name] = answer

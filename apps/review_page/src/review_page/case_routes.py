@@ -60,12 +60,14 @@ from review_page.review_case_source import (
 from review_page.run_summary import build_run_summary
 from shared_proto.v1 import review_cases_pb2
 from work_matching import (
+    OTHER_WORK,
     ReviewCase,
     ReviewCaseKind,
     ReviewFileLockedError,
     SavedAnswerChangedError,
     UnknownCaseError,
     choose_group_page_place,
+    get_page_key,
 )
 
 # The notice each save refusal shows; every refusal saves nothing.
@@ -198,6 +200,7 @@ class CaseRoutes:
         work: Annotated[str, Form()] = "",
         mark: Annotated[str, Form()] = "",
         linked_answer: Annotated[str, Form()] = "",
+        named_entry: Annotated[str, Form()] = "",
     ) -> Response:
         """Apply one choice to the open case and return the redrawn case with its new answer.
 
@@ -208,6 +211,7 @@ class CaseRoutes:
             work: The work chosen for the page, or empty for no place.
             mark: The mark chosen for the page, or empty for no mark.
             linked_answer: The answer chosen for a linked-page case.
+            named_entry: The page key or address of the entry ``other work`` names.
 
         Returns:
             The redrawn case panel, with an ``answerchanged`` event carrying the
@@ -229,7 +233,7 @@ class CaseRoutes:
             new_answer = choose_group_page_place(
                 current_answer if isinstance(current_answer, dict) else {},
                 page_key,
-                work or None,
+                _write_work(work, named_entry),
                 mark,
             )
         # An unanswered case starts on its suggestion, so choosing back to it
@@ -404,6 +408,26 @@ def _get_shown_answer(case: ReviewCase) -> dict[str, Any] | Any:
     if case.answer not in (None, {}):
         return case.answer
     return {page_key: place for page_key, place in case.suggested_answer.items()}
+
+
+def _write_work(work: str, named_entry: str) -> str | None:
+    """Write a page's chosen work, with the seed entry ``other work`` names.
+
+    A pasted address is written as its page key. Other text is kept as typed,
+    so the answer's check reports it.
+
+    Args:
+        work: The work chosen for the page, or empty for no place.
+        named_entry: The named seed entry's page key or address, or empty.
+
+    Returns:
+        ``other work <page key>`` when ``other work`` names an entry, else the
+        chosen work; None for no place.
+    """
+    named_entry_text = named_entry.strip()
+    if work == OTHER_WORK and named_entry_text:
+        return f"{OTHER_WORK} {get_page_key(named_entry_text)}"
+    return work or None
 
 
 def _choose_answers_to_save(

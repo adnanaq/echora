@@ -34,6 +34,29 @@
 {%- endmacro %}
 
 {#
+  The seed entry an "other work" page moves to: a text box offering the row's
+  suggested entries (a datalist), which also takes a pasted page key or
+  address. A change posts the page's place again with the named entry.
+#}
+{% macro named_entry_box(row) -%}
+{% set label = "Seed entry for " ~ row.page_key %}
+{% set list_id = element_id("targets", row.page_key) %}
+<span class="part-named-entry">
+  <input type="text" id="{{ element_id('choice', 'named_entry', label) }}" name="named_entry"
+         value="{{ row.choices.named_entry_page_key or '' }}" list="{{ list_id }}"
+         aria-label="{{ label }}" title="{{ tooltips.NAMED_ENTRY }}" placeholder="new entry"
+         autocomplete="off" spellcheck="false"
+         hx-post="/fragments/choice" hx-target="#case-panel" hx-swap="innerHTML" hx-trigger="change"
+         hx-vals='{{ {"page_key": row.page_key, "work": "other work", "mark": row.choices.mark} | tojson }}'>
+  <datalist id="{{ list_id }}">
+    {% for entry in row.target_entry_options %}
+    <option value="{{ entry.reference_page }}" label="{{ entry.title }} ({{ entry.providers | join(', ') }})"></option>
+    {% endfor %}
+  </datalist>
+</span>
+{%- endmacro %}
+
+{#
   A filter chip, on or off, with an optional count; description is its tooltip.
   is_on draws the chip's state from the server too: htmx resets a redrawn
   element's class from the new HTML, so a class set only in the browser would

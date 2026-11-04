@@ -73,6 +73,10 @@ class Tooltip(StrEnum):
     MARK_COLUMN = "How the page stands beside the provider's other pages in its work."
     NO_LINKED_PAGE_ANSWER = "No answer yet. The case stays open."
     CHANGED_CHOICE = "Changed since the last run."
+    NAMED_ENTRY = (
+        "The seed entry the page moves to: pick a suggestion, or paste the "
+        "entry's page key or provider address. Empty makes the page a new entry."
+    )
     NOT_OFFERED_PREFIX = "Not offered:"
     RESET = "Go back to the answer the last run used, and save that answer."
     ACCEPT = "Save the suggested answer."

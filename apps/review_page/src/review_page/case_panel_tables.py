@@ -8,6 +8,9 @@ gives the rule, then the reason for it.
   the page (A, B, ...) and whether the page is that entry's reference page.
 - A rule another page's place breaks is stated once under the dropdown, with
   every choice it disables, so a case with many MAL pages does not repeat it.
+- A row offers as ``other work`` targets only the case's suggested entries
+  holding no page of the row page's provider, since moving the page there
+  would double that provider.
 - Pages that were only searched, such as AnimeSchedule's, are shown as
   evidence, since an answer cannot place them.
 - A linked-page case compares the page's details with the linking entry's,
@@ -34,6 +37,7 @@ from work_matching import (
     ProviderPage,
     ReviewCase,
     build_page_address,
+    get_page_provider,
     list_group_page_choices,
 )
 
@@ -80,6 +84,11 @@ def build_page_rows(
             and choices.is_required
             and choices.work is None,
             linked_pages=_list_page_links(pages_by_key.get(choices.page_key)),
+            target_entry_options=tuple(
+                suggestion
+                for suggestion in case.target_entry_suggestions
+                if get_page_provider(choices.page_key) not in suggestion.providers
+            ),
         )
         for choices in list_group_page_choices(case, answer)
     )

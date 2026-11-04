@@ -81,6 +81,34 @@ def source(data_dir, run_script) -> FileReviewCaseSource:
     )
 
 
+@pytest.fixture
+def seed_source(data_dir, run_script, tmp_path) -> FileReviewCaseSource:
+    seed_file = tmp_path / "seed.json"
+    seed_file.write_text(
+        json.dumps(
+            {
+                "data": [
+                    {
+                        "title": "Gochuumon wa Usagi desu ka?",
+                        "type": "TV",
+                        "sources": ["https://myanimelist.net/anime/21273"],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    return FileReviewCaseSource(data_dir, run_script, seed_file=seed_file)
+
+
+def _gochuumon_named_answer(named_entry_page_key: str) -> dict[str, str]:
+    return {
+        "anidb:anime:19188": f"other work {named_entry_page_key}",
+        "anidb:anime:19792": "work 1",
+        "mal:anime:61115": "work 1",
+    }
+
+
 def test_file_review_case_source_list_cases_gives_every_case(
     source, review_cases
 ) -> None:
@@ -115,6 +143,29 @@ def test_file_review_case_source_save_answers_valid_answer_saved(
         )
     }
     assert (result.is_saved, saved[case_name]) == (True, ATASHINCHI_ANSWER)
+
+
+def test_file_review_case_source_save_answers_named_seed_entry_saved(
+    seed_source, review_cases
+) -> None:
+    case_name = review_cases["gochuumon_movie"].case_name
+    [result] = seed_source.save_answers(
+        [_case_answer(case_name, _gochuumon_named_answer("mal:anime:21273"))]
+    )
+    assert (result.is_saved, list(result.broken_rule_names)) == (True, [])
+
+
+def test_file_review_case_source_save_answers_named_entry_outside_seed_not_saved(
+    seed_source, review_cases
+) -> None:
+    case_name = review_cases["gochuumon_movie"].case_name
+    [result] = seed_source.save_answers(
+        [_case_answer(case_name, _gochuumon_named_answer("mal:anime:99999"))]
+    )
+    assert (result.is_saved, list(result.broken_rule_names)) == (
+        False,
+        [PlacementRule.NAMED_ENTRY_UNKNOWN.name],
+    )
 
 
 def test_file_review_case_source_save_answers_rule_breaking_answer_not_saved(

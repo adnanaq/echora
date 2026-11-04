@@ -1,5 +1,6 @@
 import json
 
+import pytest
 from google.protobuf import json_format
 from jinja2 import Template
 from review_page.models import CaseEditState, CaseState
@@ -189,6 +190,61 @@ def test_choice_back_to_suggestion_reports_no_unsaved_edit(
         answer_changed["is_unsaved"],
         "edited, not saved" in response.text,
     ) == (dict(case.suggested_answer), False, False)
+
+
+@pytest.mark.parametrize(
+    "named_entry",
+    ["mal:anime:21273", "https://myanimelist.net/anime/21273", " mal:anime:21273 "],
+)
+def test_choice_other_work_named_entry_written_as_page_key(
+    client, review_cases, named_entry
+) -> None:
+    case_name = review_cases["gochuumon_movie"].case_name
+    response = client.post(
+        "/fragments/choice",
+        data={
+            **_state(open_case_name=case_name),
+            "page_key": "anidb:anime:19188",
+            "work": "other work",
+            "mark": "",
+            "named_entry": named_entry,
+        },
+    )
+    answer = _events(response)["answerchanged"]["answer"]
+    assert answer["anidb:anime:19188"] == "other work mal:anime:21273"
+
+
+def test_choice_other_work_unreadable_named_entry_kept_as_written(
+    client, review_cases
+) -> None:
+    case_name = review_cases["gochuumon_movie"].case_name
+    response = client.post(
+        "/fragments/choice",
+        data={
+            **_state(open_case_name=case_name),
+            "page_key": "anidb:anime:19188",
+            "work": "other work",
+            "mark": "",
+            "named_entry": "Gochuumon",
+        },
+    )
+    answer = _events(response)["answerchanged"]["answer"]
+    assert answer["anidb:anime:19188"] == "other work Gochuumon"
+
+
+def test_case_panel_other_work_page_shows_named_entry_box(client, review_cases) -> None:
+    case_name = review_cases["gochuumon_movie"].case_name
+    response = client.post(
+        "/fragments/case-panel",
+        data=_state(
+            open_case_name=case_name,
+            edits={case_name: {"anidb:anime:19188": "other work mal:anime:21273"}},
+        ),
+    )
+    assert (
+        response.text.count('name="named_entry"'),
+        'value="mal:anime:21273"' in response.text,
+    ) == (1, True)
 
 
 def test_choice_linked_page_answer_reported(client, review_cases) -> None:

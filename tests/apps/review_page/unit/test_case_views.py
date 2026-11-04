@@ -10,6 +10,7 @@ from work_matching import (
     PlacementRule,
     ReviewCase,
     ReviewCaseKind,
+    TargetEntrySuggestion,
     WorkEntry,
     build_page_address,
     combine_group_entries,
@@ -115,6 +116,39 @@ def test_build_case_view_rows_name_entry_and_reference_page(review_cases) -> Non
         ("mal:anime:63013", "A", True),
         ("anidb:anime:19895", "B", True),
     ]
+
+
+def test_build_case_view_rows_offer_target_entries_lacking_page_provider(
+    review_cases,
+) -> None:
+    case = review_cases["gochuumon_movie"].model_copy(
+        update={
+            "target_entry_suggestions": (
+                TargetEntrySuggestion(
+                    reference_page="mal:anime:21273",
+                    title="Gochuumon wa Usagi desu ka?",
+                    providers=("anidb", "mal"),
+                ),
+                TargetEntrySuggestion(
+                    reference_page="mal:anime:29787",
+                    title="Gochuumon wa Usagi desu ka??",
+                    providers=("mal",),
+                ),
+            )
+        }
+    )
+    options_by_page_key = {
+        row.page_key: [entry.reference_page for entry in row.target_entry_options]
+        for row in _view(case).page_rows
+    }
+    assert {
+        page_key: options_by_page_key[page_key]
+        for page_key in ("anidb:anime:19188", "anidb:anime:19792", "mal:anime:61115")
+    } == {
+        "anidb:anime:19188": ["mal:anime:29787"],
+        "anidb:anime:19792": ["mal:anime:29787"],
+        "mal:anime:61115": [],
+    }
 
 
 def test_build_case_view_reasons_read_as_sentences(review_cases) -> None:

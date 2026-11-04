@@ -28,6 +28,7 @@ from work_matching import (
     ProviderPage,
     ReviewCase,
     ReviewCaseKind,
+    TargetEntrySuggestion,
 )
 
 # Case states.
@@ -180,6 +181,8 @@ class PageRowView:
     is_place_missing: bool = False
     # The pages this page links to, so the Links column opens each one.
     linked_pages: tuple[PageLink, ...] = ()
+    # The suggested seed entries ``other work`` can name for this page.
+    target_entry_options: tuple[TargetEntrySuggestion, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

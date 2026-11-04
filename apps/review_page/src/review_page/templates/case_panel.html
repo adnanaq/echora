@@ -74,6 +74,7 @@
                           is_changed=row.is_changed, is_invalid=row.is_place_missing,
                           hx_vals={"page_key": row.page_key, "mark": row.choices.mark}, empty_label="no place",
                           empty_description=choice_meaning_by_word["no place"]) }}
+        {% if row.choices.work == "other work" %}{{ parts.named_entry_box(row) }}{% endif %}
         {% for note in row.disabled_choice_notes %}{{ parts.note_line(note) }}{% endfor %}
       </td>
       <td class="choice-cell">
