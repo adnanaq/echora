@@ -175,6 +175,12 @@ removed answer would be asked again.
     work as parts too. Choosing `main` leaves the other pages unmarked.
   - A choice another page's place rules out, such as a second MAL page in one
     work, is greyed out, with one note per rule under the dropdown.
+  - Choosing `other work` shows a box for the seed entry the page joins. It
+    offers the case's suggested entries holding no page of the row's
+    provider, and takes a pasted page key or provider address, written as the
+    key. Left empty, the page starts a new entry. Saving checks the named
+    entry against Run's seed file, loaded on the first such save and kept
+    while the file is unchanged.
   - "What the choices mean" under the table explains every word. Hovering any
     dropdown, filter, tag or button says what it does.
 - **States.** Each case shows one edit state: rejected (its last save broke a
@@ -370,6 +376,7 @@ the file source is tested on a temporary data folder, runs included.
 | `htmx_responses.py`          | The empty and refusal responses that hand the browser htmx events.                                              |
 | `review_case_source.py`      | `ReviewCaseSource`: the source the page reads and writes through.                                               |
 | `file_review_case_source.py` | `FileReviewCaseSource`: the source over seed cleaning's local files, and its conversions to messages.           |
+| `seed_entries.py`            | Loads Run's seed file for answers naming an entry, once per seed release.                                       |
 | `answer_checks.py`           | The checks an answer passes before the file source saves it, and linked-page conflict warnings.                 |
 | `review_case_messages.py`    | Conversion between `work_matching.ReviewCase` and its message, and the helpers for ordered mappings.            |
 | `run_summary.py`             | `build_run_summary`: reads the last run's summary from its message.                                             |

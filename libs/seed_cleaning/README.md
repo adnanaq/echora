@@ -303,19 +303,19 @@ the final place.
 
 Each correction is a `SeedCorrection`:
 
-| Field                         | Holds                                                                                                                                                                                                                       |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `entry_reference_page`        | The reference page of the seed entry that lists the page, or that an added page joins.                                                                                                                                      |
-| `page_key`, `address`         | The page as the seed entry lists it; for an added page, its current key and the seed's spelling of it.                                                                                                                      |
-| `placement_word`              | `work 1`, `work 2` and so on, or `other work`.                                                                                                                                                                              |
-| `is_main_page`                | Whether enrichment fetches this page for its provider in its work.                                                                                                                                                          |
-| `renamed_to`                  | The current page key, when the seed lists the page under an old address.                                                                                                                                                    |
-| `target_entry_reference_page` | The reference page of the seed entry the page joins: the sure move target of an `other work` page, or the entry that survives as the page's work; `null` when the page stays or starts a new entry.                         |
-| `new_entry_key`               | The new entry the page starts or joins: pages with the same key form one new entry. `null` when the page stays or joins a seed entry.                                                                                       |
-| `is_added_page`               | Whether the page is not in the seed and is added to the entry (see [Adding linked pages](#adding-linked-pages)).                                                                                                            |
-| `is_part_page`                | Whether the page covers only part of its work, so enrichment combines it with the work's other part pages: an answer's `, part`, or an added page's `add as part`.                                                          |
-| `is_anime_id_page`            | Whether the anime id of the seed entry this added page ends in now comes from the page, so the search entry stored under the old id must be replaced (see the anime id rule under [Linked-page rules](#linked-page-rules)). |
-| `reason`                      | Why the page is placed here: the doubled-provider decision's outcome by name (`SAME_PAGE`, `PAGES_OF_OTHER_WORKS`), the linked-page decision's reason by name, or `review answer`.                                          |
+| Field                         | Holds                                                                                                                                                                                                                                   |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `entry_reference_page`        | The reference page of the seed entry that lists the page, or that an added page joins.                                                                                                                                                  |
+| `page_key`, `address`         | The page as the seed entry lists it; for an added page, its current key and the seed's spelling of it.                                                                                                                                  |
+| `placement_word`              | `work 1`, `work 2` and so on, or `other work`.                                                                                                                                                                                          |
+| `is_main_page`                | Whether enrichment fetches this page for its provider in its work.                                                                                                                                                                      |
+| `renamed_to`                  | The current page key, when the seed lists the page under an old address.                                                                                                                                                                |
+| `target_entry_reference_page` | The reference page of the seed entry the page joins: the target of an `other work` page (its sure move, or the entry an answer names), or the entry that survives as the page's work; `null` when the page stays or starts a new entry. |
+| `new_entry_key`               | The new entry the page starts or joins: pages with the same key form one new entry. `null` when the page stays or joins a seed entry.                                                                                                   |
+| `is_added_page`               | Whether the page is not in the seed and is added to the entry (see [Adding linked pages](#adding-linked-pages)).                                                                                                                        |
+| `is_part_page`                | Whether the page covers only part of its work, so enrichment combines it with the work's other part pages: an answer's `, part`, or an added page's `add as part`.                                                                      |
+| `is_anime_id_page`            | Whether the anime id of the seed entry this added page ends in now comes from the page, so the search entry stored under the old id must be replaced (see the anime id rule under [Linked-page rules](#linked-page-rules)).             |
+| `reason`                      | Why the page is placed here: the doubled-provider decision's outcome by name (`SAME_PAGE`, `PAGES_OF_OTHER_WORKS`), the linked-page decision's reason by name, or `review answer`.                                                      |
 
 ### Correction rules
 
@@ -333,6 +333,13 @@ The rules:
   The rules and review answers use the same target, so neither makes a new
   doubled provider; a page an answer sends to another work without a sure
   target starts a new entry.
+- **Named moves.** An answer's `other work <page key>` sends the page to the
+  seed entry holding that key, and the correction records that entry as
+  `target_entry_reference_page`. The run looks the key up in the seed while
+  building the case; a key no seed entry holds leaves the case open.
+- **Target suggestions.** Each entry group's case lists the seed entries of
+  its series a page could join (`target_entry_suggestions`); a run never
+  applies them.
 - **Works.** A page in `work N` joins the entry that survives as that work
   (`find_surviving_entries`); without one, the pages in that work form one new
   entry.

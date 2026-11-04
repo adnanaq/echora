@@ -407,13 +407,14 @@ place for every page. `page_placement` gives each page a place in the words a
 review answer uses, so places from the rules and from answers are applied the
 same way:
 
-| Place                        | Means                                                                                   | Applied as                                                                                                                                                                                                         |
-| ---------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `work 1`                     | The page belongs to the case's first work.                                              | It stays in the entry that survives as the first work (see [Surviving entries](#surviving-entries)); with no surviving entry, the work's pages form one new entry.                                                 |
-| `other work`                 | The page belongs to a work outside this entry.                                          | It joins the seed entry its sure move names (`move_target_entry`); otherwise it starts a new entry of its own, so two `other work` pages become two entries. Give pages of one new work the same `work N` instead. |
-| `work 2`, `work 3` and so on | The entry holds several works, and the page belongs to its second, third or later work. | Each work keeps its surviving entry, as `work 1` does; a work with none becomes one new entry. One case covers the whole entry, so a number names the same work on every page.                                     |
-| `, main` after `work N`      | The page enrichment fetches when a work keeps two or more whole pages of one provider.  | It is listed first, since enrichment takes the first address of each provider.                                                                                                                                     |
-| `, part` after `work N`      | The page covers only part of the work, such as one of two OVAs.                         | The correction marks it `is_part_page`, so enrichment combines it with the work's other part pages.                                                                                                                |
+| Place                        | Means                                                                                       | Applied as                                                                                                                                                                                                         |
+| ---------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `work 1`                     | The page belongs to the case's first work.                                                  | It stays in the entry that survives as the first work (see [Surviving entries](#surviving-entries)); with no surviving entry, the work's pages form one new entry.                                                 |
+| `other work`                 | The page belongs to a work outside this entry.                                              | It joins the seed entry its sure move names (`move_target_entry`); otherwise it starts a new entry of its own, so two `other work` pages become two entries. Give pages of one new work the same `work N` instead. |
+| `other work <page key>`      | The page belongs to the seed entry holding that page, such as `other work mal:anime:61114`. | It joins that entry, whatever the links say. The case keeps the entry's reference page (`named_entry_reference_pages`), looked up in the seed before the answer is checked.                                        |
+| `work 2`, `work 3` and so on | The entry holds several works, and the page belongs to its second, third or later work.     | Each work keeps its surviving entry, as `work 1` does; a work with none becomes one new entry. One case covers the whole entry, so a number names the same work on every page.                                     |
+| `, main` after `work N`      | The page enrichment fetches when a work keeps two or more whole pages of one provider.      | It is listed first, since enrichment takes the first address of each provider.                                                                                                                                     |
+| `, part` after `work N`      | The page covers only part of the work, such as one of two OVAs.                             | The correction marks it `is_part_page`, so enrichment combines it with the work's other part pages.                                                                                                                |
 
 ### Surviving entries
 
@@ -460,10 +461,29 @@ A valid answer follows these rules:
 | A provider's single page in a work is not `, main`.                                               | There is nothing to choose between.                                                                         |
 | No work holds two MAL pages.                                                                      | A work is what MAL lists, so two MAL pages are two works.                                                   |
 | A group of two or more entries places every page.                                                 | Merging entries moves pages between them, so each page needs a place.                                       |
+| A page key named after `other work` is held by a seed entry.                                      | The page must join an entry that exists; an unknown key would lose the page.                                |
+| A page key named after `other work` is not held by an entry of the case.                          | Pages moving within the case are placed with `work N`.                                                      |
 | A work holding pages of two or more entries has the reference page of one of them placed in it.   | Otherwise the work would become a new entry, and every merged entry would lose its anime id.                |
 
 Simkl and AnimeCountdown count as two providers here: enrichment fetches
 neither.
+
+### Suggested target entries
+
+Each entry group's case lists seed entries an `other work` page could join
+(`target_entry_suggestions`), found by `suggest_target_entries`. Each item gives
+the rule, then the reason for it.
+
+- The entries share a series title with an entry of the case
+  (`KnownWorkEntries.find_by_series`): one title starts with the other, or
+  both start with the same root of at least three words. A shorter root also
+  starts unrelated titles.
+- The case's own entries are left out, since those pages are placed with
+  `work N`.
+- At most `MAX_TARGET_ENTRY_SUGGESTIONS` are kept, so a long series does not
+  swell every case.
+- Titles can share words by chance, so a suggestion is never applied; an answer
+  names the entry.
 
 ### Suggested answers
 
