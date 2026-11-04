@@ -1,42 +1,38 @@
-"""Read and save review cases in seed cleaning's local files, and start its run script.
+"""Read and persist review cases in local seed-cleaning files and manage pipeline runs.
 
-Each item gives the rule, then the reason for it.
+Implements ``ReviewCaseSource`` over the local ``review.jsonl`` file, correction
+outputs, and the ``scripts/clean_seed.py`` subprocess.
 
-- Cases are read from ``review.jsonl`` on every call, not kept in memory, so
-  the server holds no state and always shows what the file holds. Reading all
-  635 cases of a release takes about 0.06 s.
-- Every answer passes ``answer_checks`` before it is saved, which uses the
-  run's own rules. Answers that break a rule are not saved and come back with
-  the rules.
-- An answer naming a seed entry after ``other work`` is checked against Run's
-  seed file (``seed_entries``), with the run's own lookup, so the page refuses
-  the entries the run would.
-- Answers that follow the rules are saved together through
-  ``ReviewFile.save_answers``, which holds the file's lock and rewrites only
-  their lines.
-- Two linked-page answers adding whole pages of one provider to one entry are
-  saved with a warning, because the run adds neither page. The reviewer
-  decides which answer to change.
-- Run starts ``clean_seed.py --no-fetch`` as its own process, so its memory
-  (about 0.9 GB for a release) is never the server's, and a server restart
-  does not stop it. The run's output is appended to
-  ``logs/review_page_runs.log``. A log past ``RUN_LOG_LIMIT_BYTES`` moves to
-  its ``.1`` copy first, so the log never grows without limit.
-- One run starts at a time. A lock covers the check for a running run, the
-  start and the process id file, so two clicks or two tabs cannot start two
-  runs.
-- The same lock covers reading the run state. When a run ends, one request
-  collects the run's exit code, and every other request reads the exit code
-  that request wrote.
-- The run's process id is kept in ``review_run.pid``, and the run's exit code
-  in ``review_run.exit_code``. Both files are written in one step, so a
-  reader never sees one half written.
-- Only the server that started the run trusts the process id, because after
-  a restart the id may belong to another process. Any other run, and a run
-  seen from another server, is followed through the review file's lock,
-  which a run holds while it works.
-- Run uses the configured seed file, else the one the last run read, so a Run
-  never switches seed releases on its own.
+Each operational rule reads `<rule>: <reason>`:
+- Stateless file reads: Cases are parsed from ``review.jsonl`` on each call rather
+  than cached in memory so the server remains stateless and reflects external file
+  updates immediately.
+- Pre-save rule validation: Every submitted answer is validated through
+  ``answer_checks`` using domain placement rules before writing to disk.
+- Seed entry resolution: Answers referencing an external seed entry via
+  ``other work`` are resolved against the active seed release via ``seed_entries``
+  so unknown or conflicting target entries are rejected before saving.
+- Atomic line updates: Validated answers are persisted together through
+  ``ReviewFile.save_answers``, which acquires the review file lock and rewrites
+  only modified lines.
+- Provider conflict warnings: Linked-page answers that attach whole pages from
+  the same provider to a single work entry are saved with a warning so the
+  reviewer can resolve the conflict before running the pipeline.
+- Isolated run subprocess: Starting a run spawns ``clean_seed.py --no-fetch`` in
+  an independent process group so pipeline memory usage stays outside the web
+  server and server restarts do not terminate active runs.
+- Bounded run logs: Subprocess output appends to ``logs/review_page_runs.log``,
+  rotating to ``review_page_runs.log.1`` once file size exceeds
+  ``RUN_LOG_LIMIT_BYTES``.
+- Synchronized run lifecycle: A reentrant lock serializes run startup, process ID
+  tracking in ``review_run.pid``, and exit code collection in
+  ``review_run.exit_code`` so concurrent requests never launch duplicate runs.
+- Cross-process run detection: Only the server process that spawned a run polls
+  the child PID via ``waitpid``, while external or pre-restart runs are detected
+  by checking whether ``review.jsonl.lock`` is held.
+- Consistent seed release selection: Runs use the explicitly configured seed file
+  or fall back to the seed file recorded by the previous run so releases never
+  switch unexpectedly.
 """
 
 import json
@@ -92,10 +88,10 @@ RUN_LOG_LIMIT_BYTES = 1_000_000
 
 
 class RunSeedFileUnknownError(RuntimeError):
-    """Run has no seed file: none is configured, and no run has recorded one."""
+    """Indicate that no seed file is configured or recorded for a pipeline run."""
 
     def __init__(self) -> None:
-        """Say how to give Run a seed file."""
+        """Initialize the error with instructions for configuring a seed file."""
         super().__init__(
             "No seed file to clean: set REVIEW_PAGE_SEED_FILE, or run "
             "scripts/clean_seed.py once so its result names the file"
@@ -103,14 +99,14 @@ class RunSeedFileUnknownError(RuntimeError):
 
 
 class UnreadableReviewFileError(RuntimeError):
-    """A line of the review file is not a valid review case, such as after a hand edit."""
+    """Indicate that a line in the review file failed JSON or schema validation."""
 
     def __init__(self, review_file_path: Path, line_number: int) -> None:
-        """Name the line, and say how to make the file readable again.
+        """Initialize the error with the corrupted file name and 1-based line number.
 
         Args:
-            review_file_path: The review file.
-            line_number: The broken line, counted from 1.
+            review_file_path: Path to the unreadable review JSONL file.
+            line_number: The 1-based line number where validation failed.
         """
         super().__init__(
             f"Line {line_number} of {review_file_path.name} is not a valid review "
@@ -119,7 +115,7 @@ class UnreadableReviewFileError(RuntimeError):
 
 
 class FileReviewCaseSource(ReviewCaseSource):
-    """Read and save cases in the local review file, and run the seed-cleaning script."""
+    """Manage review cases, saved answers, and pipeline runs using local files."""
 
     def __init__(
         self,
@@ -129,14 +125,14 @@ class FileReviewCaseSource(ReviewCaseSource):
         seed_file: Path | None = None,
         python_executable: str = sys.executable,
     ) -> None:
-        """Keep where the files are and how to start a run.
+        """Initialize the file-backed review case source with paths and execution settings.
 
         Args:
-            data_dir: Seed cleaning's data folder, holding ``review.jsonl``.
-            clean_seed_script: The seed-cleaning script Run starts.
-            seed_file: The seed release file Run cleans; None uses the file
-                of the last run.
-            python_executable: The Python that runs the script.
+            data_dir: Directory containing ``review.jsonl`` and run state files.
+            clean_seed_script: Path to ``scripts/clean_seed.py`` executed on run.
+            seed_file: Explicit seed release file path, or None to use the path
+                recorded by the previous pipeline run.
+            python_executable: Python interpreter executable used to launch runs.
         """
         self._data_dir = data_dir
         self._clean_seed_script = clean_seed_script
@@ -146,21 +142,21 @@ class FileReviewCaseSource(ReviewCaseSource):
         self._run_lock = threading.RLock()
 
     def list_cases(self) -> list[review_cases_pb2.ReviewCase]:
-        """Return every case in the review file, in file order.
+        """Read all review cases from the local review file in file order.
 
         Returns:
-            Every case, converted to its message.
+            All review cases converted to protobuf messages.
         """
         return [convert_case_to_message(case) for case in self._read_cases()]
 
     def get_case(self, case_name: str) -> review_cases_pb2.ReviewCase | None:
-        """Return the named case in the review file, or None when it is not there.
+        """Read a single review case by name from the local review file.
 
         Args:
-            case_name: The case to read.
+            case_name: The unique identifier of the review case to look up.
 
         Returns:
-            The case's message, or None when the file does not hold the case.
+            The matching review case message, or None when absent from the file.
         """
         case = next(
             (case for case in self._read_cases() if case.case_name == case_name), None
@@ -168,37 +164,37 @@ class FileReviewCaseSource(ReviewCaseSource):
         return None if case is None else convert_case_to_message(case)
 
     def get_last_run_result(self) -> review_cases_pb2.SeedCleaningRunResult | None:
-        """Return the result the last run wrote, or None before the first run.
+        """Read the ``SeedCleaningRunResult`` recorded by the most recent pipeline run.
 
         Returns:
-            The last run's result message, or None before the first run.
+            The last run result message, or None before the first run completes.
         """
-        result = read_seed_cleaning_run_result(self._data_dir)
-        return None if result is None else convert_run_result_to_message(result)
+        run_result = read_seed_cleaning_run_result(self._data_dir)
+        return None if run_result is None else convert_run_result_to_message(run_result)
 
     def save_answers(
         self, case_answers: Sequence[review_cases_pb2.CaseAnswer]
     ) -> list[review_cases_pb2.RuleCheckResult]:
-        """Check each answer with the run's rules and save the ones that follow them.
+        """Validate submitted answers against placement rules and write valid answers to disk.
 
         Args:
-            case_answers: Each case's new answer; an unset answer clears it.
+            case_answers: Submitted case answers to validate and save; an unset
+                answer clears the existing saved answer.
 
         Returns:
-            One result per answer, in the given order.
+            One validation check result per submitted answer in request order.
 
         Raises:
-            ReviewFileLockedError: A run is writing the review file; nothing
-                is saved.
-            UnknownCaseError: A run removed a named case between the check
-                and the save; nothing is saved.
-            SavedAnswerChangedError: Another save changed a case's answer
-                between the check and the save; nothing is saved.
+            ReviewFileLockedError: A pipeline run holds the review file lock.
+            UnknownCaseError: A concurrent run removed a target case between
+                validation and persistence.
+            SavedAnswerChangedError: Another session modified a case's saved
+                answer between validation and persistence.
         """
         cases_by_name = {case.case_name: case for case in self._read_cases()}
         seen_saved_answers = read_seen_saved_answers(case_answers)
         answers_to_save: dict[str, JsonValue] = {}
-        results: list[review_cases_pb2.RuleCheckResult] = []
+        check_results: list[review_cases_pb2.RuleCheckResult] = []
         for case_answer in case_answers:
             answer = read_case_answer(case_answer)
             case = cases_by_name.get(case_answer.case_name)
@@ -206,12 +202,12 @@ class FileReviewCaseSource(ReviewCaseSource):
                 case = resolve_named_entries(
                     case, load_seed_entries(self._find_seed_file()), answer
                 )
-            result = check_case_answer(
+            check_result = check_case_answer(
                 case, case_answer.case_name, answer, seen_saved_answers
             )
-            if result.is_saved:
+            if check_result.is_saved:
                 answers_to_save[case_answer.case_name] = answer
-            results.append(result)
+            check_results.append(check_result)
         if answers_to_save:
             ReviewFile(self._review_file_path).save_answers(
                 answers_to_save,
@@ -224,18 +220,21 @@ class FileReviewCaseSource(ReviewCaseSource):
             warnings_by_case_name = list_conflict_warnings(
                 cases_by_name, answers_to_save
             )
-            for result in results:
-                result.warnings.extend(warnings_by_case_name.get(result.case_name, ()))
-        return results
+            for check_result in check_results:
+                check_result.warnings.extend(
+                    warnings_by_case_name.get(check_result.case_name, ())
+                )
+        return check_results
 
     def start_run(self) -> review_cases_pb2.RunState:
-        """Start ``clean_seed.py --no-fetch`` in its own process, unless a run is going.
+        """Launch ``clean_seed.py --no-fetch`` in a background subprocess if no run is active.
 
         Returns:
-            The run state: running.
+            The active run state marked as running.
 
         Raises:
-            RunSeedFileUnknownError: No seed file is configured or recorded.
+            RunSeedFileUnknownError: Neither configured settings nor a previous
+                run result specifies a seed file path.
         """
         with self._run_lock:
             if self.get_run_state().is_running:
@@ -248,29 +247,27 @@ class FileReviewCaseSource(ReviewCaseSource):
         return review_cases_pb2.RunState(is_running=True)
 
     def get_run_state(self) -> review_cases_pb2.RunState:
-        """Return whether a run is going, and how the last run started here ended.
+        """Report whether a pipeline run is active and the exit code of the last run.
 
-        Each item gives the rule, then the reason for it.
-
-        - A run started here is followed by its process id. When the run has
-          ended, its exit code is kept and the process id file removed.
-        - Any other run is seen while it holds the review file's lock, since
-          only the starting server can follow a run's process.
-        - A process id file this server did not write is left alone, so the
-          server that started that run still records the run's exit code.
+        Each tracking rule reads `<rule>: <reason>`:
+        - Child process polling: Runs spawned by this server process are tracked
+          by PID; once finished, the exit code is persisted and the PID file removed.
+        - File lock fallback: Runs started externally or before a server restart
+          are detected while they hold the review file lock.
+        - Foreign PID preservation: A PID file written by another server process
+          is left untouched so the originating process can collect its exit code.
 
         Returns:
-            Whether a run is going, and the last page-started run's exit code
-            when one has ended.
+            The current run state message with active status and last exit code.
         """
         with self._run_lock:
             return self._read_run_state()
 
     def list_corrections(self) -> list[review_cases_pb2.SeedCorrection]:
-        """Return the corrections file's lines, each with its change and reason sentence.
+        """Read all seed corrections from the last run with change labels and reasons.
 
         Returns:
-            Every correction's message; none before the first run.
+            All seed correction messages, or an empty list before the first run.
         """
         corrections_path = self._data_dir / CORRECTIONS_FILE_NAME
         if not corrections_path.exists():
@@ -285,15 +282,14 @@ class FileReviewCaseSource(ReviewCaseSource):
             ]
 
     def list_checked_entries(self) -> list[review_cases_pb2.CheckedEntry]:
-        """Return both passes' entries from ``entries_to_check.json``, once each.
+        """Read deduplicated checked entries from ``entries_to_check.json``.
 
-        A split-work candidate's entry carries its type and year. That entry
-        therefore replaces the same entry from the doubled-provider pass,
-        which lists the title alone.
+        Entries from split-work candidates include anime type and year metadata
+        and therefore supersede doubled-provider entries for the same reference page.
 
         Returns:
-            Each checked entry once, with its title, and its type and year when
-            known. The list is empty before the first run.
+            One checked entry message per reference page key, or an empty list
+            before the first run.
         """
         entries_path = self._data_dir / ENTRIES_TO_CHECK_FILE_NAME
         if not entries_path.exists():
@@ -305,8 +301,8 @@ class FileReviewCaseSource(ReviewCaseSource):
             )
             for entry in document.get("doubled_provider_entries", [])
         }
-        for group in document.get("split_work_candidates", []):
-            for entry in group["entries"]:
+        for candidate in document.get("split_work_candidates", []):
+            for entry in candidate["entries"]:
                 entries_by_reference_page[entry["reference_page"]] = (
                     review_cases_pb2.CheckedEntry(
                         reference_page=entry["reference_page"],
@@ -318,14 +314,13 @@ class FileReviewCaseSource(ReviewCaseSource):
         return list(entries_by_reference_page.values())
 
     def _read_cases(self) -> list[ReviewCase]:
-        """Read every case in the review file; none when it does not exist yet.
+        """Parse all review cases from ``review.jsonl`` in file order.
 
         Returns:
-            The cases, in file order.
+            The parsed review case models, or an empty list when the file is absent.
 
         Raises:
-            UnreadableReviewFileError: A line is not a valid review case; the
-                error names the line.
+            UnreadableReviewFileError: A line in the review file failed validation.
         """
         if not self._review_file_path.exists():
             return []
@@ -343,11 +338,12 @@ class FileReviewCaseSource(ReviewCaseSource):
         return cases
 
     def _read_run_state(self) -> review_cases_pb2.RunState:
-        """Return the run state, recording a finished run's exit code; the caller holds the run lock.
+        """Inspect the active run process or lock file and record completed exit codes.
+
+        Assumes the caller holds ``self._run_lock``.
 
         Returns:
-            Whether a run is going, and the last page-started run's exit code when
-            one has ended.
+            The current run state with active status and any recorded exit code.
         """
         process_id_path = self._data_dir / _PROCESS_ID_FILE_NAME
         if process_id_path.exists():
@@ -370,16 +366,16 @@ class FileReviewCaseSource(ReviewCaseSource):
         return run_state
 
     def _start_run_process(self, seed_file: Path) -> subprocess.Popen[bytes]:
-        """Start ``clean_seed.py --no-fetch`` on the seed file, its output in the run log.
+        """Spawn ``clean_seed.py --no-fetch`` for the given seed file with log rotation.
 
-        A run log past ``RUN_LOG_LIMIT_BYTES`` first moves to its ``.1`` copy,
-        so the log never grows without limit.
+        Rotates ``review_page_runs.log`` to ``review_page_runs.log.1`` when its
+        size exceeds ``RUN_LOG_LIMIT_BYTES``.
 
         Args:
-            seed_file: The seed release file the run cleans.
+            seed_file: Path to the seed release file to clean.
 
         Returns:
-            The run's process.
+            The spawned subprocess handle.
         """
         run_log_path = self._data_dir / _RUN_LOG_PATH
         run_log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -402,10 +398,10 @@ class FileReviewCaseSource(ReviewCaseSource):
             )
 
     def _find_seed_file(self) -> Path:
-        """Return the configured seed file, else the one the last run read.
+        """Resolve the seed file path from configuration or the previous run result.
 
         Returns:
-            The seed release file Run cleans.
+            The resolved seed release file path.
 
         Raises:
             RunSeedFileUnknownError: No seed file is configured or recorded.
@@ -419,18 +415,18 @@ class FileReviewCaseSource(ReviewCaseSource):
 
 
 def convert_run_result_to_message(
-    result: SeedCleaningRunResult,
+    run_result: SeedCleaningRunResult,
 ) -> review_cases_pb2.SeedCleaningRunResult:
-    """Convert a seed-cleaning run's result to the message the page reads.
+    """Convert a ``SeedCleaningRunResult`` model into its protobuf message.
 
     Args:
-        result: The run's result, as the run wrote it.
+        run_result: The run result model written by the seed-cleaning pipeline.
 
     Returns:
-        The message; its counts keep the run's order.
+        The corresponding protobuf message with ordered count entries preserved.
     """
     return json_format.ParseDict(
-        list_ordered_mappings(result.model_dump(mode="json")),
+        list_ordered_mappings(run_result.model_dump(mode="json")),
         review_cases_pb2.SeedCleaningRunResult(),
     )
 
@@ -438,17 +434,16 @@ def convert_run_result_to_message(
 def convert_correction_to_message(
     correction: SeedCorrection,
 ) -> review_cases_pb2.SeedCorrection:
-    """Convert one seed correction to the message the page reads.
+    """Convert a seed correction model into a protobuf message with display metadata.
 
-    The message also carries what the correction changes, its reason as a
-    sentence, and whether an answer placed the page, so the page shows them
-    without the seed-cleaning rules.
+    Populates the change category label, human-readable reason sentence, and
+    whether the placement originated from a reviewer answer.
 
     Args:
-        correction: One line of the corrections file.
+        correction: A single seed correction model from the corrections file.
 
     Returns:
-        The message.
+        The populated ``SeedCorrection`` protobuf message.
     """
     fields = {
         field: value
@@ -464,21 +459,19 @@ def convert_correction_to_message(
 
 
 def _check_process(process_id: int) -> tuple[bool, int | None]:
-    """Report whether a run this server started is still going, and its exit code once it ended.
+    """Check whether a child run process spawned by this server is still executing.
 
-    The process is collected with ``waitpid``, which gives its exit code and
-    keeps it from staying as a finished child. A process id this server did
-    not start counts as not running here: after a restart the id may belong
-    to an unrelated process. The caller then follows the run through the
-    review file's lock.
+    Reaps finished child processes via ``os.waitpid`` to collect their exit code
+    and avoid zombie processes. Process IDs not spawned by the current server
+    process raise ``ChildProcessError`` and are treated as not running here so
+    the caller falls back to checking the review file lock.
 
     Args:
-        process_id: The run's process id, from the process id file.
+        process_id: The process ID read from ``review_run.pid``.
 
     Returns:
-        Whether the run is going, and the run's exit code once it ended here.
-        The exit code is None while the run goes and for a process this
-        server did not start.
+        A tuple of ``(is_running, exit_code)`` where ``exit_code`` is None while
+        running or when the process is not a child of this server.
     """
     try:
         ended_process_id, wait_status = os.waitpid(process_id, os.WNOHANG)

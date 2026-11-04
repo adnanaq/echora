@@ -30,8 +30,8 @@ ATASHINCHI_ANSWER = {
 def _view(case, **options):
     return build_case_view(
         case,
-        original=options.get("original"),
-        unsaved=options.get("unsaved"),
+        original_answer=options.get("original_answer"),
+        unsaved_answer=options.get("unsaved_answer"),
         is_rejected=options.get("is_rejected", False),
         is_run_going=options.get("is_run_going", False),
         show_only_differences=options.get("show_only_differences", False),
@@ -86,7 +86,7 @@ def test_build_case_view_untouched_suggestion_marks_no_row_changed(
 
 def test_build_case_view_unsaved_edit_shown_and_marked(review_cases) -> None:
     edit = {**ATASHINCHI_ANSWER, "anidb:anime:19895": "work 2"}
-    view = _view(review_cases["atashinchi_next"], unsaved=edit)
+    view = _view(review_cases["atashinchi_next"], unsaved_answer=edit)
     changed_page_keys = {row.page_key for row in view.page_rows if row.is_changed}
     assert (view.chosen_answer, view.edit_state, changed_page_keys) == (
         edit,
@@ -98,9 +98,11 @@ def test_build_case_view_unsaved_edit_shown_and_marked(review_cases) -> None:
 def test_build_case_view_answered_case_marks_rows_differing_from_original(
     review_cases,
 ) -> None:
-    original = {**ATASHINCHI_ANSWER, "mal:anime:63013": "work 2"}
+    original_answer = {**ATASHINCHI_ANSWER, "mal:anime:63013": "work 2"}
     view = _view(
-        review_cases["atashinchi_next"], original=original, unsaved=ATASHINCHI_ANSWER
+        review_cases["atashinchi_next"],
+        original_answer=original_answer,
+        unsaved_answer=ATASHINCHI_ANSWER,
     )
     assert [row.page_key for row in view.page_rows if row.is_changed] == [
         "mal:anime:63013"
@@ -237,7 +239,7 @@ def _mal_only_case(*mal_numbers: int) -> ReviewCase:
 def test_build_case_view_rows_join_works_one_rule_disables_into_one_note() -> None:
     view = _view(
         _mal_only_case(1, 2, 3),
-        unsaved={"mal:anime:1": "work 1", "mal:anime:2": "work 2"},
+        unsaved_answer={"mal:anime:1": "work 1", "mal:anime:2": "work 2"},
     )
     notes = {row.page_key: row.disabled_choice_notes for row in view.page_rows}
     assert notes["mal:anime:3"] == (
@@ -263,7 +265,7 @@ def test_build_case_view_rows_explain_choices_other_pages_disable() -> None:
         combine_group_entries(entries), [], KnownWorkEntriesFromSeed([])
     )
     case = ReviewCase.from_entry_group(entries, decisions, [], [])
-    view = _view(case, unsaved={"mal:anime:1": "work 1"})
+    view = _view(case, unsaved_answer={"mal:anime:1": "work 1"})
     notes = {row.page_key: row.disabled_choice_notes for row in view.page_rows}
     assert notes["mal:anime:2"] == (
         f"work 1 is not offered: {PlacementRule.WORK_WITH_TWO_MAL_PAGES.value}",
@@ -285,7 +287,7 @@ def test_build_case_view_rejected_case_marks_required_pages_without_place(
     review_cases,
 ) -> None:
     edit = {"anidb:anime:19895": "work 1", "anilist:anime:203146": "work 1"}
-    view = _view(review_cases["atashinchi_next"], unsaved=edit, is_rejected=True)
+    view = _view(review_cases["atashinchi_next"], unsaved_answer=edit, is_rejected=True)
     assert [row.page_key for row in view.page_rows if row.is_place_missing] == [
         "mal:anime:63013"
     ]
@@ -293,7 +295,7 @@ def test_build_case_view_rejected_case_marks_required_pages_without_place(
 
 def test_build_case_view_unrejected_case_marks_no_missing_place(review_cases) -> None:
     edit = {"anidb:anime:19895": "work 1", "anilist:anime:203146": "work 1"}
-    view = _view(review_cases["atashinchi_next"], unsaved=edit)
+    view = _view(review_cases["atashinchi_next"], unsaved_answer=edit)
     assert not any(row.is_place_missing for row in view.page_rows)
 
 

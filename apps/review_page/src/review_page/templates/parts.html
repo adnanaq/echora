@@ -29,7 +29,7 @@
     </option>
     {% endfor %}
   </select>
-  {% if is_changed %}<span class="part-changed-mark" title="{{ tooltips.CHANGED_CHOICE }}">•</span>{% endif %}
+  {% if is_changed %}<span class="part-changed-mark" title="{{ tooltips.CHANGED_CHOICE_MARK }}">•</span>{% endif %}
 </span>
 {%- endmacro %}
 
@@ -44,7 +44,7 @@
 <span class="part-named-entry">
   <input type="text" id="{{ element_id('choice', 'named_entry', label) }}" name="named_entry"
          value="{{ row.choices.named_entry_page_key or '' }}" list="{{ list_id }}"
-         aria-label="{{ label }}" title="{{ tooltips.NAMED_ENTRY }}" placeholder="new entry"
+         aria-label="{{ label }}" title="{{ tooltips.TARGET_ENTRY_INPUT }}" placeholder="new entry"
          autocomplete="off" spellcheck="false"
          hx-post="/fragments/choice" hx-target="#case-panel" hx-swap="innerHTML" hx-trigger="change"
          hx-vals='{{ {"page_key": row.page_key, "work": "other work", "mark": row.choices.mark} | tojson }}'>

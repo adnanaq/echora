@@ -1,22 +1,23 @@
-"""Serve the Cases tab: the toolbar, the case list, the open case, choices and saves.
+"""Serve HTTP routes for the Cases tab toolbar, case list, case panel, choices, and saves.
 
-The browser asks for each region as an HTML fragment with htmx. Each item
-gives the rule, then the reason for it.
+Renders regional HTML fragments for htmx requests and processes interactive
+choice updates and answer saves.
 
-- Every request carries the browser's state (``BrowserState``) and reads the
-  cases from the source again, so the server holds nothing between requests
-  and a restart loses nothing.
-- Changing a choice posts it, and the server answers with the redrawn case and
-  an ``answerchanged`` event carrying the new answer, which the browser keeps
-  as an unsaved edit. The rules decide the choices; the browser never does.
-- A save answers with an ``answerssaved`` event naming the saved and rejected
-  cases, with the broken rules, so the browser updates its own edits and
-  redraws. For Save & next, the event also names the next case.
-- A save while a run holds the review file answers 409 with a notice, and
-  changes nothing.
-- A save during which a run removes one of its cases, between the source's
-  check and its write, also answers 409 and changes nothing. A case removed
-  before the check is rejected on its own, like a broken answer.
+Each route rule reads `<rule>: <reason>`:
+- Stateless request handling: Every request supplies the client's ``BrowserState``
+  and reloads cases from the ``ReviewCaseSource`` so the server retains no
+  session state across requests.
+- Server-evaluated choices: Selecting a placement option posts to ``/fragments/choice``,
+  returning the redrawn case panel alongside an ``answerchanged`` event so
+  placement rules are evaluated exclusively on the server.
+- Batch and single-case saves: Saving dispatches an ``answerssaved`` event
+  listing saved cases, rejected cases with broken rule explanations, and the
+  next case identifier when ``save_next`` succeeds.
+- Lock contention handling: Save requests attempted while a pipeline run holds
+  the review file lock return HTTP 409 with a notice without modifying storage.
+- Concurrent case removal handling: Cases removed by a run between validation
+  and write return HTTP 409 and leave storage unchanged, whereas cases absent
+  before validation are reported as rejected in ``answerssaved``.
 """
 
 import json
@@ -42,12 +43,12 @@ from review_page.models import (
     RunSummary,
 )
 from review_page.page_state import (
+    build_page_buttons,
     count_case_rows,
     filter_case_rows,
     find_next_case_name,
-    find_page_buttons,
-    find_row_edit_state,
-    page_list_rows,
+    paginate_rows,
+    resolve_row_edit_state,
 )
 from review_page.review_case_messages import (
     build_case_answer,
@@ -85,14 +86,14 @@ _SAVE_REFUSAL_NOTICES: Final[dict[type[Exception], str]] = {
 
 
 class CaseRoutes:
-    """The Cases tab's routes over one source; the instance keeps no request state."""
+    """Register and serve stateless HTTP routes for the Cases tab."""
 
     def __init__(self, source: ReviewCaseSource, templates: Jinja2Templates) -> None:
-        """Register the Cases tab's routes on a router.
+        """Register Cases tab endpoints on a new router instance.
 
         Args:
-            source: Where cases are read, answers saved and runs started.
-            templates: The page's Jinja templates.
+            source: The review case source used to read cases and persist answers.
+            templates: The Jinja2 templates collection for rendering HTML fragments.
         """
         self._source = source
         self._templates = templates
@@ -109,22 +110,22 @@ class CaseRoutes:
     def render_toolbar(
         self, request: Request, browser_state: BrowserStateField = None
     ) -> Response:
-        """Return the toolbar: Save all and Run, with their counts.
+        """Render the top toolbar fragment with Save All and Run button states.
 
         Args:
-            request: The request being answered.
-            browser_state: The browser's state, as its JSON form field.
+            request: The incoming HTTP request.
+            browser_state: The serialized ``BrowserState`` JSON form field.
 
         Returns:
-            The toolbar fragment.
+            The rendered toolbar HTML fragment.
         """
-        state = BrowserState.from_form_field(browser_state)
-        cases, run_result = self._load_cases(), self._load_run_result()
+        state = BrowserState.parse_form_field(browser_state)
+        cases, last_run_summary = self._load_cases(), self._load_last_run_summary()
         case_names = {case.case_name for case in cases}
         is_run_going = self._source.get_run_state().is_running
-        page_buttons = find_page_buttons(
+        page_buttons = build_page_buttons(
             unsaved_case_names=set(state.edits) & case_names,
-            original_answers=list_original_answers(cases, run_result),
+            original_answers=list_original_answers(cases, last_run_summary),
             saved_answers={
                 case.case_name: case.answer for case in cases if case.answer
             },
@@ -136,27 +137,27 @@ class CaseRoutes:
             {
                 "buttons": page_buttons,
                 "is_run_going": is_run_going,
-                "run_result": run_result,
+                "run_summary": last_run_summary,
             },
         )
 
     def render_case_list(
         self, request: Request, browser_state: BrowserStateField = None
     ) -> Response:
-        """Return the filter chips with their counts, and one page of the filtered list.
+        """Render the filter chips with counts and one paginated page of case rows.
 
         Args:
-            request: The request being answered.
-            browser_state: The browser's state, as its JSON form field.
+            request: The incoming HTTP request.
+            browser_state: The serialized ``BrowserState`` JSON form field.
 
         Returns:
-            The case list fragment.
+            The rendered case list HTML fragment.
         """
-        state = BrowserState.from_form_field(browser_state)
-        cases, run_result = self._load_cases(), self._load_run_result()
-        case_filter = state.to_case_filter()
-        all_rows = build_all_case_rows(cases, run_result)
-        case_page = page_list_rows(
+        state = BrowserState.parse_form_field(browser_state)
+        cases, last_run_summary = self._load_cases(), self._load_last_run_summary()
+        case_filter = state.build_case_filter()
+        all_rows = build_all_case_rows(cases, last_run_summary)
+        case_page = paginate_rows(
             filter_case_rows(all_rows, case_filter), state.page_number
         )
         return self._templates.TemplateResponse(
@@ -169,7 +170,7 @@ class CaseRoutes:
                 "case_states": list(CaseState),
                 "edit_states": list(CaseEditState),
                 "row_edit_states": {
-                    row.case_name: find_row_edit_state(row, case_filter)
+                    row.case_name: resolve_row_edit_state(row, case_filter)
                     for row in case_page.rows
                 },
                 "open_case_name": state.open_case_name,
@@ -180,16 +181,17 @@ class CaseRoutes:
     def render_case_panel(
         self, request: Request, browser_state: BrowserStateField = None
     ) -> Response:
-        """Return the open case, starting on its edit, saved answer or suggestion.
+        """Render the inspection panel for the currently selected review case.
 
         Args:
-            request: The request being answered.
-            browser_state: The browser's state, as its JSON form field.
+            request: The incoming HTTP request.
+            browser_state: The serialized ``BrowserState`` JSON form field.
 
         Returns:
-            The case panel fragment, or its empty state when no case is open.
+            The rendered case panel HTML fragment, or its empty state when no
+            case is selected.
         """
-        state = BrowserState.from_form_field(browser_state)
+        state = BrowserState.parse_form_field(browser_state)
         return self._render_case(request, state, state.open_case_name, None)
 
     def choose_answer(
@@ -202,29 +204,28 @@ class CaseRoutes:
         linked_answer: Annotated[str, Form()] = "",
         named_entry: Annotated[str, Form()] = "",
     ) -> Response:
-        """Apply one choice to the open case and return the redrawn case with its new answer.
+        """Apply a placement choice to the open case and return the updated panel.
 
         Args:
-            request: The request being answered.
-            browser_state: The browser's state, as its JSON form field.
-            page_key: The page whose place changes, for an entry group's case.
-            work: The work chosen for the page, or empty for no place.
-            mark: The mark chosen for the page, or empty for no mark.
-            linked_answer: The answer chosen for a linked-page case.
-            named_entry: The page key or address of the entry ``other work`` names.
+            request: The incoming HTTP request.
+            browser_state: The serialized ``BrowserState`` JSON form field.
+            page_key: The provider page key whose placement is being updated.
+            work: The selected work placement word, or empty for no placement.
+            mark: The selected page mark (``main`` or ``part``), or empty.
+            linked_answer: The selected decision word for a linked-page case.
+            named_entry: The target seed entry page key or address for ``other work``.
 
         Returns:
-            The redrawn case panel, with an ``answerchanged`` event carrying the
-            new answer, whether it is unsaved, and the saved answer the edit
-            started from.
+            The redrawn case panel HTML fragment with an ``answerchanged`` event
+            header carrying the updated answer and baseline saved answer.
         """
-        state = BrowserState.from_form_field(browser_state)
+        state = BrowserState.parse_form_field(browser_state)
         case = self._load_case(state.open_case_name)
         if case is None:
             return self._render_case(request, state, None, None)
         current_answer = state.edits.get(case.case_name)
         if current_answer is None:
-            current_answer = _get_shown_answer(case)
+            current_answer = _choose_shown_answer(case)
         if case.kind is ReviewCaseKind.LINKED_PAGE:
             new_answer: dict[str, JsonValue] = (
                 {page_key: linked_answer} if linked_answer else {}
@@ -238,7 +239,7 @@ class CaseRoutes:
             )
         # An unanswered case starts on its suggestion, so choosing back to it
         # leaves nothing unsaved; Accept is the button that saves it.
-        is_unsaved = (new_answer or None) != (_get_shown_answer(case) or None)
+        is_unsaved = (new_answer or None) != (_choose_shown_answer(case) or None)
         if is_unsaved:
             state.edits[case.case_name] = new_answer
         else:
@@ -263,38 +264,38 @@ class CaseRoutes:
         action: Annotated[str, Form()] = "save",
         case_name: Annotated[str, Form()] = "",
     ) -> Response:
-        """Save, accept, reset or save all, and report what was saved or rejected.
+        """Persist answers for a save action and report saved or rejected cases.
 
-        Each item reads ``<action>: <answers it saves>``.
-
-        - ``save`` and ``save_next``: the case's shown answer.
-        - ``accept``: the case's suggestion.
-        - ``reset``: the case's original value.
-        - ``save_all``: every unsaved edit.
+        Each action reads ``<action>: <answers persisted>``:
+        - ``save`` and ``save_next``: The active answer shown for ``case_name``.
+        - ``accept``: The rule-generated suggested answer for ``case_name``.
+        - ``reset``: The baseline answer recorded by the last run for ``case_name``.
+        - ``save_all``: All staged unsaved edits across all cases in ``browser_state``.
 
         Args:
-            browser_state: The browser's state, as its JSON form field.
-            action: Which answers to save, from the list above.
-            case_name: The case the action is for; unused by ``save_all``.
+            browser_state: The serialized ``BrowserState`` JSON form field.
+            action: The save operation name from the list above.
+            case_name: The target case identifier for single-case actions.
 
         Returns:
-            An ``answerssaved`` event naming the saved, rejected and
-            changed-elsewhere cases; a 409 notice when a run holds the review
-            file or changed the cases during the save.
+            A 204 event response carrying ``answerssaved``, or a 409 notice
+            response when a concurrent run or save conflict prevents writing.
         """
-        state = BrowserState.from_form_field(browser_state)
+        state = BrowserState.parse_form_field(browser_state)
         cases_by_name = {case.case_name: case for case in self._load_cases()}
-        run_result = self._load_run_result()
+        last_run_summary = self._load_last_run_summary()
         answers_by_case_name = _choose_answers_to_save(
-            action, case_name, state, cases_by_name, run_result
+            action, case_name, state, cases_by_name, last_run_summary
         )
         try:
-            results = self._source.save_answers(
+            check_results = self._source.save_answers(
                 [
                     build_case_answer(
-                        name, answer, seen_saved_answers=state.seen_saved_answers
+                        target_case_name,
+                        answer,
+                        seen_saved_answers=state.seen_saved_answers,
                     )
-                    for name, answer in answers_by_case_name.items()
+                    for target_case_name, answer in answers_by_case_name.items()
                 ]
             )
         except (
@@ -304,14 +305,16 @@ class CaseRoutes:
         ) as error:
             return build_notice_response(409, _SAVE_REFUSAL_NOTICES[type(error)])
         next_case_name = None
-        if action == "save_next" and all(result.is_saved for result in results):
+        if action == "save_next" and all(
+            check_result.is_saved for check_result in check_results
+        ):
             rows = filter_case_rows(
-                build_all_case_rows(list(cases_by_name.values()), run_result),
-                state.to_case_filter(),
+                build_all_case_rows(list(cases_by_name.values()), last_run_summary),
+                state.build_case_filter(),
             )
             next_case_name = find_next_case_name(rows, case_name)
         return build_event_response(
-            {"answerssaved": _build_answers_saved_event(results, next_case_name)}
+            {"answerssaved": _build_answers_saved_event(check_results, next_case_name)}
         )
 
     def _render_case(
@@ -321,31 +324,31 @@ class CaseRoutes:
         case_name: str | None,
         case: ReviewCase | None,
     ) -> Response:
-        """Return the case panel for a case, or the empty panel when there is none.
+        """Render the case panel fragment for a given case or its empty state.
 
         Args:
-            request: The request being answered.
-            state: The browser's state.
-            case_name: The case to show, when ``case`` is not given.
-            case: The case already read, or None to read it by name.
+            request: The incoming HTTP request.
+            state: The parsed ``BrowserState`` from the request.
+            case_name: The case identifier to load when ``case`` is None.
+            case: A pre-loaded ``ReviewCase`` instance, or None to load by name.
 
         Returns:
-            The case panel fragment, or its empty state.
+            The rendered ``case_panel.html`` response.
         """
         case = case or self._load_case(case_name)
         if case is None:
             return self._templates.TemplateResponse(
                 request, "case_panel.html", {"view": None}
             )
-        run_result = self._load_run_result()
+        last_run_summary = self._load_last_run_summary()
         view = build_case_view(
             case,
-            original=find_original_answer(
+            original_answer=find_original_answer(
                 case.case_name,
                 case.answer,
-                run_result.original_answers if run_result else None,
+                last_run_summary.original_answers if last_run_summary else None,
             ),
-            unsaved=state.edits.get(case.case_name),
+            unsaved_answer=state.edits.get(case.case_name),
             is_rejected=case.case_name in state.rejected,
             is_run_going=self._source.get_run_state().is_running,
             show_only_differences=state.show_only_differences,
@@ -359,51 +362,52 @@ class CaseRoutes:
                 "correction_links": list_case_correction_links(
                     case, self._source.list_corrections()
                 ),
-                "is_answer_unused": run_result is not None
-                and case.case_name in run_result.unused_answer_case_names,
+                "is_answer_unused": last_run_summary is not None
+                and case.case_name in last_run_summary.unused_answer_case_names,
             },
         )
 
     def _load_cases(self) -> list[ReviewCase]:
-        """Read every case from the source.
+        """Load all review cases from the source as domain models.
 
         Returns:
-            Every case, converted from its message to the library model.
+            All review cases converted from protobuf messages to domain models.
         """
         return [
             convert_message_to_case(message) for message in self._source.list_cases()
         ]
 
     def _load_case(self, case_name: str | None) -> ReviewCase | None:
-        """Read one case from the source, or None when it is not there.
+        """Load a single review case by name from the source.
 
         Args:
-            case_name: The case to read, or None.
+            case_name: The case identifier to look up, or None.
 
         Returns:
-            The case, or None when no name is given or the source lacks the case.
+            The converted ``ReviewCase`` domain model, or None when absent.
         """
         message = self._source.get_case(case_name) if case_name else None
         return None if message is None else convert_message_to_case(message)
 
-    def _load_run_result(self) -> RunSummary | None:
-        """Read the last run's result from the source.
+    def _load_last_run_summary(self) -> RunSummary | None:
+        """Read the last pipeline run summary from the source.
 
         Returns:
             The last run's summary, or None before the first run.
         """
-        message = self._source.get_last_run_result()
-        return None if message is None else build_run_summary(message)
+        last_run_result = self._source.get_last_run_result()
+        return None if last_run_result is None else build_run_summary(last_run_result)
 
 
-def _get_shown_answer(case: ReviewCase) -> dict[str, Any] | Any:
-    """Return the answer the case shows before any edit: saved, else the suggestion.
+def _choose_shown_answer(case: ReviewCase) -> dict[str, Any] | Any:
+    """Select the initial answer displayed for a case before any browser edits.
 
     Args:
-        case: The review case, with its saved answer and suggestion.
+        case: The review case containing its saved answer and suggested answer.
 
     Returns:
-        The saved answer, or a copy of the suggestion for an unanswered case.
+        The persisted answer when present, or a mutable copy of the suggested
+        answer for an unanswered case.
     """
     if case.answer not in (None, {}):
         return case.answer
@@ -411,18 +415,18 @@ def _get_shown_answer(case: ReviewCase) -> dict[str, Any] | Any:
 
 
 def _write_work(work: str, named_entry: str) -> str | None:
-    """Write a page's chosen work, with the seed entry ``other work`` names.
+    """Format a page's selected work placement string, resolving ``other work`` targets.
 
-    A pasted address is written as its page key. Other text is kept as typed,
-    so the answer's check reports it.
+    Normalizes pasted provider URLs to their canonical page keys while preserving
+    unrecognized text so validation rules can report invalid entry keys.
 
     Args:
-        work: The work chosen for the page, or empty for no place.
-        named_entry: The named seed entry's page key or address, or empty.
+        work: The selected work placement word, or empty for no placement.
+        named_entry: The target seed entry page key or provider URL, or empty.
 
     Returns:
-        ``other work <page key>`` when ``other work`` names an entry, else the
-        chosen work; None for no place.
+        ``"other work <page_key>"`` when ``other work`` is paired with a target
+        entry, the selected work string, or None when ``work`` is empty.
     """
     named_entry_text = named_entry.strip()
     if work == OTHER_WORK and named_entry_text:
@@ -435,20 +439,20 @@ def _choose_answers_to_save(
     case_name: str,
     state: BrowserState,
     cases_by_name: dict[str, ReviewCase],
-    run_result: RunSummary | None,
+    last_run_summary: RunSummary | None,
 ) -> dict[str, Any]:
-    """Return the answers an action saves, by case name; unknown cases are kept to report.
+    """Select the mapping of case names to answer payloads for a save action.
 
     Args:
-        action: ``save``, ``save_next``, ``accept``, ``reset`` or ``save_all``.
-        case_name: The case the action is for; unused by ``save_all``.
-        state: The browser's state, holding the unsaved edits.
-        cases_by_name: Every case, by case name.
-        run_result: The last run's result, or None before the first run.
+        action: One of ``save``, ``save_next``, ``accept``, ``reset``, or ``save_all``.
+        case_name: The target case identifier for single-case actions.
+        state: The parsed ``BrowserState`` holding staged unsaved edits.
+        cases_by_name: All stored review cases indexed by case name.
+        last_run_summary: The last pipeline run summary, or None before the first run.
 
     Returns:
-        The answers to save, by case name. A case the file no longer holds is
-        kept, so the source reports it as rejected.
+        A dictionary mapping target case names to the answer payloads to persist.
+        Unknown case names are retained so the source reports them as rejected.
     """
     if action == "save_all":
         return dict(state.edits)
@@ -462,38 +466,47 @@ def _choose_answers_to_save(
             case_name: find_original_answer(
                 case_name,
                 case.answer,
-                run_result.original_answers if run_result else None,
+                last_run_summary.original_answers if last_run_summary else None,
             )
         }
     answer = state.edits.get(case_name)
-    return {case_name: answer if answer is not None else _get_shown_answer(case)}
+    return {case_name: answer if answer is not None else _choose_shown_answer(case)}
 
 
 def _build_answers_saved_event(
-    results: Sequence[review_cases_pb2.RuleCheckResult], next_case_name: str | None
+    check_results: Sequence[review_cases_pb2.RuleCheckResult],
+    next_case_name: str | None,
 ) -> dict[str, Any]:
-    """Build the ``answerssaved`` event the browser updates its edits from.
+    """Construct the ``answerssaved`` htmx event payload from rule check results.
 
     Args:
-        results: The source's result for each answer saved.
-        next_case_name: The case Save & next opens, or None.
+        check_results: Validation results returned by ``ReviewCaseSource.save_answers``.
+        next_case_name: The next case identifier to open for ``save_next``, or None.
 
     Returns:
-        The saved cases, the rejected cases with their rule sentences, the
-        cases another tab changed, the warnings, and the next case.
+        A dictionary containing ``saved`` case names, ``rejected`` rule sentences,
+        ``saved_elsewhere`` case names, ``warnings``, and ``next_case_name``.
     """
     return {
-        "saved": [result.case_name for result in results if result.is_saved],
+        "saved": [
+            check_result.case_name
+            for check_result in check_results
+            if check_result.is_saved
+        ],
         "rejected": {
-            result.case_name: list(result.broken_rule_sentences)
-            for result in results
-            if not result.is_saved
+            check_result.case_name: list(check_result.broken_rule_sentences)
+            for check_result in check_results
+            if not check_result.is_saved
         },
         "saved_elsewhere": [
-            result.case_name
-            for result in results
-            if ANSWER_SAVED_ELSEWHERE_RULE_NAME in result.broken_rule_names
+            check_result.case_name
+            for check_result in check_results
+            if ANSWER_SAVED_ELSEWHERE_RULE_NAME in check_result.broken_rule_names
         ],
-        "warnings": [warning for result in results for warning in result.warnings],
+        "warnings": [
+            warning
+            for check_result in check_results
+            for warning in check_result.warnings
+        ],
         "next_case_name": next_case_name,
     }

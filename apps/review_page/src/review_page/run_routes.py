@@ -1,15 +1,13 @@
-"""Serve Run: start it, show its panel, and tell every open page whether a run is going.
+"""Serve pipeline run routes to start runs, render run summaries, and poll run status.
 
-Each item gives the rule, then the reason for it.
-
-- Run starts the source's run and answers with a ``runstarted`` event, so the
-  page follows it at once.
-- The run panel shows the run going or the last run's results, and sends a
-  ``runstate`` event with whether a run is going.
-- ``/run-state`` sends only that event, with no HTML. Every open page asks
-  for it every few seconds, so a run started elsewhere, such as from the
-  terminal or another tab, disables the page's buttons too. Redrawing the
-  panel on a timer instead would close its summary while it is read.
+Each route rule reads `<rule>: <reason>`:
+- Immediate run tracking: Starting a run triggers the review case source and
+  emits a ``runstarted`` event so the browser begins polling run status immediately.
+- Run panel rendering: The run panel renders either the in-progress status or
+  the completed run summary alongside a ``runstate`` event.
+- Lightweight status polling: ``/run-state`` returns only the ``runstate`` event
+  without HTML so open browser tabs detect externally started runs and disable
+  buttons without collapsing an open summary details element.
 """
 
 from fastapi import APIRouter, Request, Response
@@ -26,14 +24,14 @@ from review_page.run_summary import build_run_summary
 
 
 class RunRoutes:
-    """Run's routes over one source; the instance keeps no request state."""
+    """Register and serve HTTP routes for starting and monitoring pipeline runs."""
 
     def __init__(self, source: ReviewCaseSource, templates: Jinja2Templates) -> None:
-        """Register Run's routes on a router.
+        """Register pipeline run endpoints on a new router instance.
 
         Args:
-            source: Where runs are started and their state and results read.
-            templates: The page's Jinja templates.
+            source: The review case source used to start runs and read run summaries.
+            templates: The Jinja2 templates collection for rendering HTML fragments.
         """
         self._source = source
         self._templates = templates
@@ -46,10 +44,11 @@ class RunRoutes:
             self.router.add_api_route(path, endpoint, methods=["POST"])
 
     def start_run(self) -> Response:
-        """Start a run, unless one is going, and tell the browser to follow it.
+        """Start a seed-cleaning pipeline run if none is active and notify the browser.
 
         Returns:
-            A ``runstarted`` event, or a 409 notice when no seed file is known.
+            A 204 event response emitting ``runstarted``, or a 409 notice response
+            when no seed file path is known.
         """
         try:
             self._source.start_run()
@@ -58,10 +57,10 @@ class RunRoutes:
         return build_event_response({"runstarted": True})
 
     def report_run_state(self) -> Response:
-        """Send whether a run is going, as a ``runstate`` event and no content.
+        """Report whether a pipeline run is currently active via an htmx event header.
 
         Returns:
-            A 204 response carrying the ``runstate`` event.
+            A 204 response carrying the ``runstate`` event payload.
         """
         is_running = self._source.get_run_state().is_running
         return build_event_response({"runstate": {"is_running": is_running}})
@@ -69,29 +68,28 @@ class RunRoutes:
     def render_run_panel(
         self, request: Request, browser_state: BrowserStateField = None
     ) -> Response:
-        """Return the run panel: the run going, or the last run's results.
+        """Render the run status and summary panel fragment with a ``runstate`` header.
 
         Args:
-            request: The request being answered.
-            browser_state: The browser's state, as its JSON form field.
+            request: The incoming HTTP request.
+            browser_state: The serialized ``BrowserState`` JSON form field.
 
         Returns:
-            The run panel fragment, with a ``runstate`` event saying whether a run
-            is going.
+            The rendered run panel HTML fragment with a ``runstate`` event header.
         """
-        state = BrowserState.from_form_field(browser_state)
+        state = BrowserState.parse_form_field(browser_state)
         run_state = self._source.get_run_state()
-        run_result_message = self._source.get_last_run_result()
-        case_names = {message.case_name for message in self._source.list_cases()}
+        last_run_result = self._source.get_last_run_result()
+        case_names = {case.case_name for case in self._source.list_cases()}
         response = self._templates.TemplateResponse(
             request,
             "run_panel.html",
             {
                 "run_state": run_state,
-                "run_result": (
+                "run_summary": (
                     None
-                    if run_result_message is None
-                    else build_run_summary(run_result_message)
+                    if last_run_result is None
+                    else build_run_summary(last_run_result)
                 ),
                 "gone_edit_case_names": sorted(set(state.edits) - case_names),
             },

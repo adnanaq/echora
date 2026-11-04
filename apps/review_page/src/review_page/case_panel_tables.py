@@ -1,23 +1,26 @@
-"""Build the case panel's tables: entries, page rows, comparison rows and evidence.
+"""Construct presentation tables and comparison models for the case review panel.
 
-``case_views.build_case_view`` assembles the panel from these parts. Each item
-gives the rule, then the reason for it.
+Assembles entry headings, candidate provider page rows, side-by-side metadata
+comparisons, and background evidence pages consumed by ``case_views.build_case_view``.
 
-- An entry group's case shows one row per page an answer can place, in
-  ``list_placeable_case_page_keys`` order. Each row names the entry listing
-  the page (A, B, ...) and whether the page is that entry's reference page.
-- A rule another page's place breaks is stated once under the dropdown, with
-  every choice it disables, so a case with many MAL pages does not repeat it.
-- A row offers as ``other work`` targets only the case's suggested entries
-  holding no page of the row page's provider, since moving the page there
-  would double that provider.
-- Pages that were only searched, such as AnimeSchedule's, are shown as
-  evidence, since an answer cannot place them.
-- A linked-page case compares the page's details with the linking entry's,
-  row by row, so the reviewer sees where they differ.
-- Show only differences keeps only the detail columns whose values differ
-  between rows, and only the comparison rows where the entry and the page
-  differ.
+Key presentation and constraint rules include:
+- Placeable pages: An entry group case presents one row for each placeable
+  provider page in deterministic ``list_placeable_case_page_keys`` order,
+  annotating the entry label (Work A, Work B) and whether the page serves as
+  that entry's reference page.
+- Constraint explanations: When placing one page disables choices on another
+  (such as assigning two MyAnimeList pages to the same work), the disabling
+  rule is displayed once beneath the dropdown with all disabled options.
+- Merge targets: Rows offer candidate seed entries for "other work" movements
+  only when the target entry does not already hold a page from that provider,
+  preventing the move from introducing duplicate providers.
+- Evidence pages: Pages found via search without placement obligations (such
+  as AnimeSchedule entries) are displayed in an evidence table for context.
+- Linked page comparisons: A linked-page case presents side-by-side attribute
+  comparisons against its linking entry to help reviewers decide whether to
+  keep, split, or ignore the link.
+- Difference filtering: The "Show only differences" mode hides detail columns
+  and comparison rows whose values are identical across all candidate pages.
 """
 
 from collections.abc import Mapping, Sequence
@@ -48,23 +51,23 @@ _RULES_FROM_OTHER_PAGES = frozenset({PlacementRule.WORK_WITH_TWO_MAL_PAGES})
 def build_page_rows(
     case: ReviewCase,
     chosen_answer: JsonValue,
-    original: JsonValue,
+    original_answer: JsonValue = None,
     *,
     is_rejected: bool,
 ) -> tuple[PageRowView, ...]:
-    """Build one row per placeable page, with its details, choices and marks.
+    """Build candidate provider page rows with details, placement options, and flags.
 
     Args:
-        case: An entry group's case.
-        chosen_answer: The answer the case's choices show now.
-        original: The case's answer as the last run wrote it.
-        is_rejected: Whether the case's last save broke a rule.
+        case: The review case containing candidate provider pages.
+        chosen_answer: The placement mappings currently selected in the UI.
+        original_answer: The baseline answer payload from the previous pipeline run.
+        is_rejected: Whether the last save attempt failed constraint validation.
 
     Returns:
-        One row per placeable page, in ``list_placeable_case_page_keys`` order.
+        A tuple of PageRowView instances in deterministic placeable key order.
     """
     answer = chosen_answer if isinstance(chosen_answer, dict) else {}
-    original_answer = original if isinstance(original, dict) else {}
+    base_answer = original_answer if isinstance(original_answer, dict) else {}
     pages_by_key = {
         key: page for page in case.pages for key in (page.key, page.current_key)
     }
@@ -78,7 +81,7 @@ def build_page_rows(
             details=_describe_page(pages_by_key.get(choices.page_key)),
             choices=choices,
             is_changed=answer.get(choices.page_key)
-            != original_answer.get(choices.page_key),
+            != base_answer.get(choices.page_key),
             disabled_choice_notes=_explain_disabled_choices(choices),
             is_place_missing=is_rejected
             and choices.is_required
@@ -95,23 +98,16 @@ def build_page_rows(
 
 
 def _explain_disabled_choices(choices: GroupPageChoices) -> tuple[str, ...]:
-    """Explain the choices other pages' places disable, one line per rule.
+    """Explain placement options disabled by placement constraints on other pages.
 
-    Each item gives the rule, then the reason for it.
-
-    - A rule disabling several choices, such as a work for each other MAL
-      page, is stated once with every choice it disables. A case with many
-      MAL pages then does not repeat the same sentence on every row.
-    - A choice the page's own place disables, such as ``main`` for a
-      provider's only page, is explained by the option's tooltip alone. Most
-      rows then stay quiet.
+    Aggregates choices disabled by multi-page rules (such as allowing only one
+    MyAnimeList page per work) into a single concise note per broken rule.
 
     Args:
-        choices: One page's choices, with the rule disabling each one.
+        choices: Placement options for a single page, including any disabling rule.
 
     Returns:
-        One note per rule another page's place breaks, naming the choices the
-        rule disables.
+        A tuple of explanatory notes, one per violated rule, listing all disabled options.
     """
     choices_by_rule: dict[PlacementRule, list[str]] = {}
     for option in (*choices.work_options, *choices.mark_options):
@@ -127,13 +123,13 @@ def _explain_disabled_choices(choices: GroupPageChoices) -> tuple[str, ...]:
 
 
 def _join_choice_names(names: list[str]) -> str:
-    """Join choice names the way a sentence lists them: "a, b and c".
+    """Join option names into a natural grammatical list ("a, b and c").
 
     Args:
-        names: One or more choice names.
+        names: One or more placement option names to join.
 
     Returns:
-        The names joined with commas and a final "and".
+        The option names joined with commas and a final "and".
     """
     if len(names) == 1:
         return names[0]
@@ -141,31 +137,33 @@ def _join_choice_names(names: list[str]) -> str:
 
 
 def _label_entry_pages(case: ReviewCase) -> tuple[dict[str, str], set[str]]:
-    """Return each page's entry label (A, B, ...) and the entries' reference pages.
+    """Map each page key to its entry label (A, B, ...) and collect reference page keys.
 
     Args:
-        case: The review case.
+        case: The review case containing work entries.
 
     Returns:
-        Each page key mapped to the label of the first entry listing the page,
-        and the set of the entries' reference pages.
+        A tuple containing a dictionary mapping each page key to the label of
+        the first entry holding that page, and the set of reference page keys.
     """
     entry_label_by_page_key: dict[str, str] = {}
-    for label, entry in zip(_entry_labels(), case.entries.values(), strict=False):
+    for label, entry in zip(_build_entry_labels(), case.entries.values(), strict=False):
         for page_key in entry.addresses_by_page_key:
             entry_label_by_page_key.setdefault(page_key, label)
     return entry_label_by_page_key, set(case.entries)
 
 
 def build_entry_views(case: ReviewCase) -> tuple[EntryView, ...]:
-    """Describe each entry of the case, labelled A, B, ... in the case's order.
+    """Build display headings for each work entry in the review case.
+
+    Labels entries sequentially (A, B, ...) according to their order in the case.
 
     Args:
-        case: The review case.
+        case: The review case containing work entries.
 
     Returns:
-        One heading per entry, with its label, title, summary and reference
-        page.
+        A tuple of EntryView instances with labels, titles, metadata summaries,
+        and reference page keys.
     """
     return tuple(
         EntryView(
@@ -177,7 +175,7 @@ def build_entry_views(case: ReviewCase) -> tuple[EntryView, ...]:
             reference_page=reference_page,
         )
         for label, (reference_page, entry) in zip(
-            _entry_labels(), case.entries.items(), strict=False
+            _build_entry_labels(), case.entries.items(), strict=False
         )
     )
 
@@ -185,15 +183,15 @@ def build_entry_views(case: ReviewCase) -> tuple[EntryView, ...]:
 def build_comparison_rows(
     case: ReviewCase, show_only_differences: bool
 ) -> tuple[ComparisonRowView, ...]:
-    """Compare a linked page's details with its one linking entry's.
+    """Compare a candidate linked page's metadata against its linking work entry.
 
     Args:
-        case: The review case; only a linked-page case has comparison rows.
-        show_only_differences: Whether to keep only the rows that differ.
+        case: The review case; only linked-page cases produce comparison rows.
+        show_only_differences: Whether to filter out rows where both values match.
 
     Returns:
-        One row per detail, marking where the entry and the page differ; none
-        for an entry group's case.
+        A tuple of ComparisonRowView instances for each compared attribute,
+        or an empty tuple for entry group cases.
     """
     [decision] = case.decisions
     if not isinstance(decision, LinkedPageDecision):
@@ -228,15 +226,15 @@ def build_comparison_rows(
 def list_shown_columns(
     page_rows: Sequence[PageRowView], show_only_differences: bool
 ) -> tuple[DetailColumn, ...]:
-    """Return the detail columns to show; with the switch on, the ones that differ.
+    """Determine which detail columns to display in the candidate page table.
 
     Args:
-        page_rows: The case's page rows.
-        show_only_differences: Whether the "Show only differences" switch is on.
+        page_rows: The candidate page rows rendered for the review case.
+        show_only_differences: Whether to hide columns with identical values across rows.
 
     Returns:
-        Every column with the switch off; otherwise the columns whose values
-        differ between rows.
+        All DetailColumn members when difference filtering is off; otherwise only
+        columns whose values vary across two or more rows.
     """
     if not show_only_differences:
         return tuple(DetailColumn)
@@ -250,14 +248,15 @@ def list_shown_columns(
 def list_evidence_pages(
     case: ReviewCase, page_rows: Sequence[PageRowView]
 ) -> tuple[ProviderPage, ...]:
-    """Return the case's pages no answer places, such as pages found by a search.
+    """List background provider pages that require no placement decision.
 
     Args:
-        case: The review case.
-        page_rows: The case's page rows, the pages an answer places.
+        case: The review case containing all fetched provider pages.
+        page_rows: The candidate page rows that require placement decisions.
 
     Returns:
-        The case's pages that no row, linked page or entry holds.
+        A tuple of ProviderPage instances not present in candidate rows, linked
+        page decisions, or work entries.
     """
     placed_page_keys = {row.page_key for row in page_rows}
     linked_page_keys = {
@@ -277,13 +276,14 @@ def list_evidence_pages(
 
 
 def _describe_page(page: ProviderPage | None) -> dict[DetailColumn, str]:
-    """Return a page's details as the table shows them; blank for an unfetched page.
+    """Format a provider page's metadata attributes into table column strings.
 
     Args:
-        page: The page's fetched details, or None for an unfetched page.
+        page: The fetched provider page details, or None for an unfetched page.
 
     Returns:
-        Each detail column's text; an em dash where a value is missing.
+        A dictionary mapping each DetailColumn to its formatted display string,
+        using an em dash for missing values.
     """
     if page is None:
         return dict.fromkeys(DetailColumn, "—")
@@ -300,14 +300,13 @@ def _describe_page(page: ProviderPage | None) -> dict[DetailColumn, str]:
 
 
 def find_linked_page_address(case: ReviewCase) -> str:
-    """Return the address of a linked-page case's page, from its fetched details.
+    """Resolve the external URL for the candidate page in a linked-page case.
 
     Args:
-        case: The review case.
+        case: The review case under inspection.
 
     Returns:
-        The linked page's address, or an empty string for an entry group's
-        case.
+        The external URL of the linked page, or an empty string for entry group cases.
     """
     [decision] = case.decisions
     if not isinstance(decision, LinkedPageDecision):
@@ -318,14 +317,14 @@ def find_linked_page_address(case: ReviewCase) -> str:
 
 
 def _list_page_links(page: ProviderPage | None) -> tuple[PageLink, ...]:
-    """Return the pages a fetched page links to, each with its provider address.
+    """Build external hyperlink views for all pages referenced by a provider page.
 
     Args:
-        page: The page's fetched details, or None for an unfetched page.
+        page: The fetched provider page details, or None for an unfetched page.
 
     Returns:
-        Each linked page key with its provider address; none for an unfetched
-        page.
+        A tuple of PageLink instances pairing each linked page key with its
+        resolved provider URL, or an empty tuple when unfetched.
     """
     if page is None:
         return ()
@@ -338,15 +337,15 @@ def _list_page_links(page: ProviderPage | None) -> tuple[PageLink, ...]:
 def _find_page_address(
     case: ReviewCase, page_key: str, pages_by_key: Mapping[str, ProviderPage]
 ) -> str:
-    """Return a page's address from its entry, else from its fetched details.
+    """Resolve a provider page's external URL from case entries or fetched details.
 
     Args:
-        case: The review case.
-        page_key: The page whose address to find.
-        pages_by_key: The case's fetched pages, by page key and current key.
+        case: The review case containing work entries.
+        page_key: The provider page key to look up.
+        pages_by_key: Fetched provider pages indexed by page key and current key.
 
     Returns:
-        The page's address, or an empty string when neither source has it.
+        The external URL string, or an empty string when neither source holds it.
     """
     for entry in case.entries.values():
         if page_key in entry.addresses_by_page_key:
@@ -355,11 +354,12 @@ def _find_page_address(
     return page.address if page else ""
 
 
-def _entry_labels() -> list[str]:
-    """Return entry labels A to Z, then numbers for larger groups.
+def _build_entry_labels() -> list[str]:
+    """Generate entry labels A to Z, followed by numbers for larger entry groups.
 
     Returns:
-        The labels in order: A to Z, then 27 to 999.
+        A list of sequential work entry labels starting with A through Z,
+        then numeric strings 27 through 999.
     """
     return [chr(code) for code in range(ord("A"), ord("Z") + 1)] + [
         str(number) for number in range(27, 1000)
@@ -367,12 +367,12 @@ def _entry_labels() -> list[str]:
 
 
 def _show_value(value: object) -> str:
-    """Write a detail for the page: an em dash for a missing value.
+    """Format a detail value for display, returning an em dash for missing values.
 
     Args:
-        value: A page detail, or None.
+        value: The metadata attribute value to display, or None.
 
     Returns:
-        The value as text, or an em dash when the value is missing.
+        The string representation of the value, or an em dash when empty or None.
     """
     return "—" if value in (None, "") else str(value)

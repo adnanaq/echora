@@ -1,21 +1,23 @@
-"""Define the one swappable source the review page reads cases from, saves answers to and runs.
+"""Define the abstract interface for reading review cases, saving answers, and running seed cleaning.
 
-The page talks to nothing else, so where cases are kept can change without
-changing the page. Each item gives the rule, then the reason for it.
+Decouples the review web application from underlying storage so that local file
+storage can be swapped for a remote gRPC service without modifying route handlers
+or presentation views.
 
-- Every method takes and returns protobuf messages
-  (``shared_proto/v1/review_cases.proto``), the same messages a gRPC service
-  will send, so a gRPC source needs no new types.
-- The first source, ``FileReviewCaseSource``, reads and writes seed cleaning's
-  local review file. Discovery adds a source backed by the enrichment
-  service's gRPC API. That source implements these same methods and is
-  tested against the same checks.
-- A source checks every answer before saving it, with the same rules a run
-  uses, so a page using any source never saves an answer the run refuses.
-- An answer may carry the saved answer its edit started from. The answer is
-  refused, with ``ANSWER_SAVED_ELSEWHERE_RULE_NAME``, when the case's saved
-  answer is another one by then. A save from a second tab is then never
-  replaced unseen.
+Each design rule reads `<rule>: <reason>`:
+- Protobuf message boundary: Every method exchanges protobuf messages defined in
+  ``shared_proto/v1/review_cases.proto`` so a gRPC service implementation requires
+  no type adaptations.
+- Swappable implementations: ``FileReviewCaseSource`` reads and writes local
+  seed-cleaning files, while future discovery workflows can provide a gRPC-backed
+  source implementing the same contract.
+- Pre-save validation: Implementations validate every submitted answer against
+  domain placement rules before persisting changes so invalid placements are
+  never stored.
+- Optimistic concurrency control: Answer submissions may include the baseline
+  saved answer observed when editing began, rejecting concurrent modifications
+  with ``ANSWER_SAVED_ELSEWHERE_RULE_NAME`` so edits from another session are
+  never overwritten silently.
 """
 
 from abc import ABC, abstractmethod
@@ -23,93 +25,96 @@ from collections.abc import Sequence
 
 from shared_proto.v1 import review_cases_pb2
 
-# The broken-rule name of an answer refused because the case's saved answer
-# changed after its edit began; the page offers to save it again.
+# Rule identifier returned when a case's saved answer changed after editing began.
 ANSWER_SAVED_ELSEWHERE_RULE_NAME = "ANSWER_SAVED_ELSEWHERE"
 
 
 class ReviewCaseSource(ABC):
-    """Read review cases, save their answers, and apply the answers with a Run."""
+    """Provide storage and execution operations for review cases, answers, and runs."""
 
     @abstractmethod
     def list_cases(self) -> list[review_cases_pb2.ReviewCase]:
-        """Return every review case with its saved answer, in case name order.
+        """Retrieve all review cases with their persisted answers in case name order.
 
         Returns:
-            Every case in the source.
+            All review case messages stored in the source.
         """
 
     @abstractmethod
     def get_case(self, case_name: str) -> review_cases_pb2.ReviewCase | None:
-        """Return one review case with its saved answer, or None when it is unknown.
+        """Retrieve a single review case with its persisted answer by case name.
 
         Args:
-            case_name: The case to read.
+            case_name: The unique identifier of the review case to read.
 
         Returns:
-            The case, or None when the source does not hold it.
+            The matching review case message, or None when absent from the source.
         """
 
     @abstractmethod
     def get_last_run_result(self) -> review_cases_pb2.SeedCleaningRunResult | None:
-        """Return what the last run did, or None when no run has finished yet.
+        """Retrieve the ``SeedCleaningRunResult`` message from the most recent run.
 
         Returns:
-            The last run's result, or None before the first run.
+            The last run result message, or None when no run has completed yet.
         """
 
     @abstractmethod
     def save_answers(
         self, case_answers: Sequence[review_cases_pb2.CaseAnswer]
     ) -> list[review_cases_pb2.RuleCheckResult]:
-        """Check each answer and save the ones that follow the rules.
+        """Validate submitted answers against placement rules and persist valid entries.
 
         Args:
-            case_answers: Each case's new answer; an unset answer clears it.
-                A set ``seen_saved_answer`` is the saved answer the edit
-                started from, checked before saving.
+            case_answers: The submitted case answers to validate and persist.
+                An unset answer field clears the stored answer for that case.
+                A populated ``seen_saved_answer`` specifies the baseline answer
+                present when editing started for optimistic concurrency checks.
 
         Returns:
-            One result per answer, in the given order: saved, or the rules it
-            breaks; with any warning about answers that conflict.
+            One validation check outcome per submitted answer in request order,
+            including broken rules and cross-case provider conflict warnings.
 
         Raises:
-            ReviewFileLockedError: A run is writing the cases; nothing is saved.
-            UnknownCaseError: A run removed a named case after the answers
-                were checked; nothing is saved.
-            SavedAnswerChangedError: Another save changed a case's answer
-                between the check and the save; nothing is saved.
+            ReviewFileLockedError: A pipeline run holds the review file lock,
+                preventing any answers from being saved.
+            UnknownCaseError: A concurrent run removed a target case between
+                validation and persistence, leaving storage unchanged.
+            SavedAnswerChangedError: Another session modified a case's stored
+                answer between validation and persistence, leaving storage unchanged.
         """
 
     @abstractmethod
     def start_run(self) -> review_cases_pb2.RunState:
-        """Start applying the saved answers, unless a run is already going.
+        """Start a seed-cleaning pipeline run to apply saved answers if none is active.
 
         Returns:
-            The run state after starting.
+            The active pipeline run state after starting or checking the run.
         """
 
     @abstractmethod
     def get_run_state(self) -> review_cases_pb2.RunState:
-        """Return whether a run is going, and how the last one started here ended.
+        """Retrieve whether a pipeline run is active and the exit code of the last run.
 
         Returns:
-            Whether a run is going, and the last page-started run's exit code when
-            one has ended.
+            The current run state message indicating active execution and the
+            exit code of the most recent page-initiated run.
         """
 
     @abstractmethod
     def list_corrections(self) -> list[review_cases_pb2.SeedCorrection]:
-        """Return every correction the last run made, each with its change and reason.
+        """Retrieve all seed entry corrections produced by the most recent run.
 
         Returns:
-            The corrections in the source's order; empty before the first run.
+            The seed correction messages in source order, or an empty list
+            before the first run completes.
         """
 
     @abstractmethod
     def list_checked_entries(self) -> list[review_cases_pb2.CheckedEntry]:
-        """Return the entries the last run checked, so corrections show their titles.
+        """Retrieve the seed entries inspected during the most recent pipeline run.
 
         Returns:
-            One entry per reference page; empty before the first run.
+            One checked entry message per reference page key for resolving titles,
+            or an empty list before the first run completes.
         """

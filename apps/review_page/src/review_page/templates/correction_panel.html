@@ -46,7 +46,7 @@
       <td>{% if row.destination_address %}<a href="{{ row.destination_address }}" target="_blank" rel="noopener">{{ row.destination_label }}</a>{% else %}{{ row.destination_label }}{% endif %}</td>
       <td><code>{{ row.place }}</code></td>
       <td>{{ row.reason_sentence }}</td>
-      <td>{% if row.is_from_answer %}{{ parts.pill("Your answer", "suggested", tooltips.PAGE_FROM_ANSWER) }}{% else %}Rules{% endif %}</td>
+      <td>{% if row.is_from_answer %}{{ parts.pill("Your answer", "suggested", tooltips.PAGE_FROM_ANSWER_PILL) }}{% else %}Rules{% endif %}</td>
     </tr>
     {% endfor %}
   </tbody>

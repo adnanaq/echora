@@ -28,7 +28,7 @@
             @click="$store.review.openCorrection({{ row.reference_page | tojson | forceescape }})">
       <span class="case-row-title">
         <strong>{{ row.title }}</strong>
-        {% if row.has_answer_correction %}{{ parts.pill("Your answer", "suggested", tooltips.ENTRY_FROM_ANSWER) }}{% endif %}
+        {% if row.has_answer_correction %}{{ parts.pill("Your answer", "suggested", tooltips.ENTRY_FROM_ANSWER_PILL) }}{% endif %}
       </span>
       <span class="case-row-meta">
         <span class="page-key">{{ row.reference_page }}</span>

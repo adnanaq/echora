@@ -8,11 +8,11 @@
   <h2>{{ view.title }}</h2>
   <span>
     {{ parts.status(view.edit_state) }}
-    {% if view.is_suggestion_shown %}{{ parts.pill("Suggested, not yet answered", "suggested", tooltips.SUGGESTED) }}{% endif %}
+    {% if view.is_suggestion_shown %}{{ parts.pill("Suggested, not yet answered", "suggested", tooltips.SUGGESTED_ANSWER_PILL) }}{% endif %}
   </span>
 </div>
 {% if is_answer_unused %}
-<p class="notice-line">{{ parts.pill("No longer comes up", "unused") }} {{ tooltips.ANSWER_UNUSED }} Answer the case that replaced it.</p>
+<p class="notice-line">{{ parts.pill("No longer comes up", "unused") }} {{ tooltips.UNUSED_ANSWER_PILL }} Answer the case that replaced it.</p>
 {% endif %}
 {% if correction_links %}
 <p class="notice-line">
@@ -130,12 +130,12 @@
 
 <div class="case-buttons">
   {{ parts.button("Reset", "secondary", view.buttons.is_reset_enabled, hx_post="/answers", hx_vals={"action": "reset", "case_name": case.case_name},
-                  description=tooltips.RESET) }}
+                  description=tooltips.RESET_ANSWER) }}
   {{ parts.button("Accept", "secondary", view.buttons.is_accept_enabled, hx_post="/answers", hx_vals={"action": "accept", "case_name": case.case_name},
-                  description=tooltips.ACCEPT) }}
+                  description=tooltips.ACCEPT_SUGGESTION) }}
   {{ parts.button("Save", "main", view.buttons.is_save_enabled, hx_post="/answers", hx_vals={"action": "save", "case_name": case.case_name},
-                  description=tooltips.SAVE) }}
+                  description=tooltips.SAVE_ANSWER) }}
   {{ parts.button("Save & next ▸", "main", view.buttons.is_save_and_next_enabled, hx_post="/answers", hx_vals={"action": "save_next", "case_name": case.case_name},
-                  description=tooltips.SAVE_AND_NEXT) }}
+                  description=tooltips.SAVE_ANSWER_AND_NEXT) }}
 </div>
 {% endif %}

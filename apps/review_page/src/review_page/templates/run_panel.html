@@ -4,29 +4,29 @@
   <p><span class="part-status state-saved_applies_on_run"><span class="part-status-dot"></span>Run going</span>
   — applying the saved answers. Cases can still be edited; every button waits until it ends.</p>
 </div>
-{% elif run_result %}
+{% elif run_summary %}
 <details class="layout-panel">
   <summary>
     Last run: {{ "failed (exit code " ~ run_state.last_exit_code ~ "), see data/seed_cleaning/logs" if run_state.HasField("last_exit_code") and run_state.last_exit_code != 0 else "succeeded" }}
-    · {{ run_result.finished_at.strftime("%Y-%m-%d %H:%M") }} UTC
-    · {{ ((run_result.finished_at - run_result.started_at).total_seconds()) | round(1) }} s
-    · {{ run_result.case_names | length }} cases, {{ run_result.new_case_names | length }} new
+    · {{ run_summary.finished_at.strftime("%Y-%m-%d %H:%M") }} UTC
+    · {{ ((run_summary.finished_at - run_summary.started_at).total_seconds()) | round(1) }} s
+    · {{ run_summary.case_names | length }} cases, {{ run_summary.new_case_names | length }} new
   </summary>
   <div class="run-summary">
-    {% for name, count in run_result.correction_counts.items() %}<span>{{ name | capitalize }}: {{ count }}</span>{% endfor %}
-    {% for name, count in run_result.corrected_entry_counts.items() %}<span>{{ name | capitalize }}: {{ count }}</span>{% endfor %}
+    {% for name, count in run_summary.correction_counts.items() %}<span>{{ name | capitalize }}: {{ count }}</span>{% endfor %}
+    {% for name, count in run_summary.corrected_entry_counts.items() %}<span>{{ name | capitalize }}: {{ count }}</span>{% endfor %}
   </div>
-  {% if run_result.rejected_answer_case_names %}
+  {% if run_summary.rejected_answer_case_names %}
   <h3 class="case-section-title">Answers the run rejected</h3>
-  <ul class="case-list-plain">{% for name in run_result.rejected_answer_case_names %}<li><code>{{ name }}</code></li>{% endfor %}</ul>
+  <ul class="case-list-plain">{% for name in run_summary.rejected_answer_case_names %}<li><code>{{ name }}</code></li>{% endfor %}</ul>
   {% endif %}
-  {% if run_result.conflicting_linked_page_keys %}
+  {% if run_summary.conflicting_linked_page_keys %}
   <h3 class="case-section-title">Linked pages not added: another page of their provider is added to the same entry</h3>
-  <ul class="case-list-plain">{% for key in run_result.conflicting_linked_page_keys %}<li><code>{{ key }}</code></li>{% endfor %}</ul>
+  <ul class="case-list-plain">{% for key in run_summary.conflicting_linked_page_keys %}<li><code>{{ key }}</code></li>{% endfor %}</ul>
   {% endif %}
-  {% if run_result.unused_answer_case_names %}
+  {% if run_summary.unused_answer_case_names %}
   <h3 class="case-section-title">Answers whose case no longer comes up</h3>
-  <ul class="case-list-plain">{% for name in run_result.unused_answer_case_names %}<li><code>{{ name }}</code></li>{% endfor %}</ul>
+  <ul class="case-list-plain">{% for name in run_summary.unused_answer_case_names %}<li><code>{{ name }}</code></li>{% endfor %}</ul>
   {% endif %}
   {% if gone_edit_case_names %}
   <h3 class="case-section-title">Unsaved edits whose case is gone</h3>
