@@ -74,8 +74,9 @@
 {#
   A filter chip, on or off, with an optional count; description is its tooltip.
   The label is the value with a capital first letter. is_on draws the chip's
-  state from the server too: htmx resets a redrawn element's class from the new
-  HTML, so a class set only in the browser would be lost on the next redraw.
+  state from the server too, because htmx resets a redrawn element's class from
+  the new HTML, and a class set only in the browser would be lost on the next
+  redraw.
 #}
 {% macro chip(list_name, value, count=None, description="", tab="cases", is_on=False) -%}
 <button type="button" id="{{ element_id('chip', list_name, value) }}" class="control-chip{% if is_on %} is-on{% endif %}"{% if description %} title="{{ description }}"{% endif %}

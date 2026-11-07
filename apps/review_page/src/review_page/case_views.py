@@ -56,9 +56,9 @@ from work_matching.answer_words import PLACEMENT_WORD_MEANINGS
 def find_original_answer(
     case: ReviewCase, last_run_summary: RunSummary | None
 ) -> JsonValue:
-    """Find a case's original answer: the answer the last run wrote.
+    """Find a case's original answer, which is the answer the last run wrote.
 
-    Before the first run, the saved answer is the original answer.
+    Before the first run, the saved answer counts as the original answer.
 
     Args:
         case: The review case with its saved answer.
@@ -192,7 +192,7 @@ def build_case_view(
 def resolve_shown_answer(case: ReviewCase, unsaved_answer: JsonValue) -> JsonValue:
     """Resolve the answer the case panel shows and a choice starts from.
 
-    Each answer is used when every answer above it is missing:
+    The panel shows the first of these answers that is present.
 
     - The unsaved browser edit.
     - The saved answer, when the saved answer places a page.

@@ -525,7 +525,7 @@ class _EntryCheck:
         ) and is_type_matching(*map(resolve_seed_type, fetched_pages))
 
     def _find_fetched_pages(self, page_keys: Iterable[str]) -> dict[str, ProviderPage]:
-        """Find the fetched details of these pages; pages never fetched are left out.
+        """Find the fetched details of these pages, leaving out pages never fetched.
 
         Args:
             page_keys: The current keys of the pages to look up.

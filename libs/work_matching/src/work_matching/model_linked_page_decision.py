@@ -119,7 +119,7 @@ class LinkedPageDecision:
 
 @dataclass(frozen=True, slots=True)
 class LinkedPageAddition:
-    """Hold an accepted addition: the entry a linked page joins, and whether as a part."""
+    """Hold an accepted addition, which names the entry a linked page joins and whether as a part."""
 
     entry_reference_page: str
     is_part_page: bool
@@ -127,7 +127,7 @@ class LinkedPageAddition:
 
 @dataclass(frozen=True, slots=True)
 class LinkedPageAnswerCheck:
-    """Hold a linked-page answer once read: the accepted answer, or the rule it breaks."""
+    """Hold a linked-page answer once read, with the accepted answer or the rule it breaks."""
 
     # The addition, ``SKIP_ANSWER``, or None when a rule is broken.
     accepted_answer: LinkedPageAddition | str | None

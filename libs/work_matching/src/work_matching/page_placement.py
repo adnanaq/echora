@@ -76,7 +76,7 @@ from work_matching.work_entry import WorkEntry
 FIRST_WORK = "work 1"
 OTHER_WORK = "other work"
 # The marks a page's place can carry after ``work N``; no mark is written as
-# nothing. An answer writes a mark after a comma: ``work 2, part``.
+# nothing. An answer writes a mark after a comma, as in ``work 2, part``.
 NO_MARK = ""
 MAIN_MARK = "main"
 PART_MARK = "part"

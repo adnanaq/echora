@@ -37,7 +37,8 @@ class ChoiceRule(StrEnum):
 class ChoiceOption:
     """Hold one choice a reviewer can make and the rule that disables it, if any."""
 
-    # As written in the answer: ``work 2``, ``part``, ``add to <entry>``.
+    # The value as an answer writes it, such as ``work 2``, ``part`` or
+    # ``add to <entry>``.
     value: str
     disabling_rule: PlacementRule | LinkedPageAnswerRule | ChoiceRule | None = None
 
@@ -62,7 +63,7 @@ class ChoiceOption:
 
 @dataclass(frozen=True, slots=True)
 class GroupPageChoices:
-    """Hold one page of an entry group's case: its current place and the choices left."""
+    """Hold one page of an entry group's case, with its current place and the choices left."""
 
     page_key: str
     # ``work N`` or ``other work``; None while the page has no place.
