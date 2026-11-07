@@ -3,7 +3,8 @@
 The caller decides which errors are worth another attempt, because each
 service raises its own error types. Each rule reads ``<rule>: <reason>``.
 
-- Required error check: the caller passes ``is_transient_error``, so this
+- Required error check: the caller passes ``is_transient_error``, such as
+  ``common.utils.transient_errors.is_transient_service_error``, so this
   shared library imports no service client, such as Qdrant's.
 - Doubling delay: each retry waits twice as long as the one before, so a
   struggling service gets more time to recover.

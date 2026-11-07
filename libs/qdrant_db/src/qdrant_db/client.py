@@ -11,8 +11,10 @@ from typing import Any, Protocol, cast
 
 from common.config import QdrantConfig
 from common.utils.request_batcher import RequestBatcher
+from common.utils.transient_errors import is_transient_service_error
 from pydantic import PositiveInt, SkipValidation, validate_call
 from qdrant_client import AsyncQdrantClient
+from qdrant_client.http.exceptions import ResponseHandlingException
 from qdrant_client.http.models import QueryResponse
 from qdrant_client.models import (
     Filter,
@@ -52,11 +54,28 @@ from qdrant_db.query_builder import (
     build_text_search_params,
 )
 from qdrant_db.tracing import qdrant_span
-from qdrant_db.transient_errors import is_transient_qdrant_error
 from qdrant_db.utils import DuplicateKeyError, deduplicate_items, retry_with_backoff
 from vector_db_interface import SearchHit, VectorDBClient, VectorDocument
 
 logger = logging.getLogger(__name__)
+
+
+def _is_transient_qdrant_error(error: Exception) -> bool:
+    """Check whether a Qdrant client error is worth another attempt.
+
+    The general rules of ``is_transient_service_error`` apply, and
+    ``ResponseHandlingException`` is retried as well, because Qdrant's client
+    raises it when a response arrives broken, which is usually a network fault.
+
+    Args:
+        error: The error the Qdrant operation raised.
+
+    Returns:
+        True when the error is transient.
+    """
+    return is_transient_service_error(
+        error, transient_error_types=(ResponseHandlingException,)
+    )
 
 
 class _Telemetry(Protocol):
@@ -346,7 +365,7 @@ class QdrantClient(VectorDBClient):
             try:
                 await retry_with_backoff(
                     operation=_upsert,
-                    is_transient_error=is_transient_qdrant_error,
+                    is_transient_error=_is_transient_qdrant_error,
                     max_retries=max_retries,
                     retry_delay=retry_delay,
                 )
@@ -424,7 +443,7 @@ class QdrantClient(VectorDBClient):
         try:
             await retry_with_backoff(
                 operation=_perform_update,
-                is_transient_error=is_transient_qdrant_error,
+                is_transient_error=_is_transient_qdrant_error,
                 max_retries=max_retries,
                 retry_delay=retry_delay,
             )
@@ -509,7 +528,7 @@ class QdrantClient(VectorDBClient):
         try:
             await retry_with_backoff(
                 operation=_perform_update,
-                is_transient_error=is_transient_qdrant_error,
+                is_transient_error=_is_transient_qdrant_error,
                 max_retries=max_retries,
                 retry_delay=retry_delay,
             )

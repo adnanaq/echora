@@ -1,13 +1,14 @@
-"""Decide which Qdrant client errors are worth retrying.
+"""Decide which errors from a remote service are worth retrying.
 
-``qdrant_db.client`` passes ``is_transient_qdrant_error`` to
-``common.utils.retry.retry_with_backoff``, so the Qdrant exception types stay
-in this library. Each rule reads ``<error>: <outcome>. <reason>``.
+Callers pass ``is_transient_service_error`` to
+``common.utils.retry.retry_with_backoff``, adding the error types their own
+client raises for transient faults, so this shared library imports no service
+client. Each rule reads ``<error>: <outcome>. <reason>``.
 
 - Timeout or dropped connection: retried. The next attempt usually reaches
   the server.
-- ``ResponseHandlingException``: retried. Qdrant's client raises it when a
-  response arrives broken, which is usually a network fault.
+- One of the caller's ``transient_error_types``: retried. The caller knows its
+  client raises these for transient faults, such as a broken response.
 - HTTP status 408, 409, 425, 429 or 5xx (``RETRYABLE_HTTP_STATUS_CODES``):
   retried. The server is busy, rate limiting, or briefly failing.
 - Any other status, such as 400 or 422: not retried. The request itself is
@@ -16,10 +17,7 @@ in this library. Each rule reads ``<error>: <outcome>. <reason>``.
   fault: retried. Some client errors carry no status, only this text.
 """
 
-import asyncio
 from typing import Final
-
-from qdrant_client.http.exceptions import ResponseHandlingException
 
 RETRYABLE_HTTP_STATUS_CODES: Final = frozenset({408, 409, 425, 429, 500, 502, 503, 504})
 _TRANSIENT_MESSAGE_WORDS: Final = (
@@ -31,23 +29,24 @@ _TRANSIENT_MESSAGE_WORDS: Final = (
 )
 
 
-def is_transient_qdrant_error(error: Exception) -> bool:
-    """Check whether a Qdrant client error is worth another attempt.
+def is_transient_service_error(
+    error: Exception,
+    *,
+    transient_error_types: tuple[type[Exception], ...] = (),
+) -> bool:
+    """Check whether an error from a remote service is worth another attempt.
 
     Args:
-        error: The error the Qdrant operation raised.
+        error: The error the service operation raised.
+        transient_error_types: Error types of the caller's client that always
+            mean a transient fault.
 
     Returns:
         True for the transient errors the module docstring lists.
     """
     if isinstance(
         error,
-        (
-            asyncio.TimeoutError,
-            ConnectionError,
-            TimeoutError,
-            ResponseHandlingException,
-        ),
+        (ConnectionError, TimeoutError, *transient_error_types),
     ):
         return True
     status_code = _find_status_code(error)
