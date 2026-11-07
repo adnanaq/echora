@@ -2,6 +2,7 @@ import pytest
 from work_matching.answer_rules import PlacementRule
 from work_matching.known_work_entries_from_seed import KnownWorkEntriesFromSeed
 from work_matching.named_entries import (
+    MAX_TARGET_ENTRY_SUGGESTIONS,
     list_named_entry_page_keys,
     resolve_named_entries,
     suggest_target_entries,
@@ -50,7 +51,10 @@ def test_list_named_entry_page_keys_reads_keys_after_other_work(named_answer) ->
     assert list_named_entry_page_keys(named_answer) == [SERIES_MAL]
 
 
-@pytest.mark.parametrize("answer", [None, "work 1", {"mal:anime:1": "other work"}])
+@pytest.mark.parametrize(
+    "answer",
+    [None, "work 1", {"mal:anime:1": "other work"}, {"mal:anime:1": 1}],
+)
 def test_list_named_entry_page_keys_answer_naming_no_entry_gives_none(answer) -> None:
     assert list_named_entry_page_keys(answer) == []
 
@@ -135,3 +139,31 @@ def test_suggest_target_entries_closest_titles_first_across_case_entries(
         "Alpha Beta",
         "Alpha",
     ]
+
+
+def test_suggest_target_entries_keeps_closest_titles_up_to_cap(review_cases) -> None:
+    seed_titles = (
+        "Alpha Beta Gamma Delta",
+        "Alpha Beta",
+        *(f"Alpha Beta Gamma Delta {number}" for number in range(1, 14)),
+    )
+    seed = KnownWorkEntriesFromSeed(
+        [
+            {
+                "title": title,
+                "type": "TV",
+                "sources": [f"https://myanimelist.net/anime/{number}"],
+            }
+            for number, title in enumerate(seed_titles, start=1)
+        ]
+    )
+    case_entry = seed.find_by_page_key("mal:anime:1")
+    assert case_entry is not None
+    case = review_cases["gochuumon_movie"].model_copy(
+        update={"entries": {case_entry.reference_page_key: case_entry}}
+    )
+    suggested_titles = [
+        suggestion.title for suggestion in suggest_target_entries(case, seed)
+    ]
+    assert len(suggested_titles) == MAX_TARGET_ENTRY_SUGGESTIONS
+    assert "Alpha Beta" not in suggested_titles
