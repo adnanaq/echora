@@ -75,10 +75,12 @@ class Tooltip(StrEnum):
     CHANGED_CHOICE_MARK = (
         "This placement differs from the baseline answer recorded by the previous run"
     )
-    TARGET_ENTRY_INPUT = (
-        "Specify the target seed entry by selecting a suggestion or pasting an entry "
-        "page key or provider address. Leaving this field empty assigns the page to "
-        "a new work entry."
+    TARGET_ENTRY_DROPDOWN = (
+        "Select the seed entry the page moves to. New entry assigns the page to a "
+        "new work entry; other entry takes a page key or provider address."
+    )
+    TARGET_ENTRY_KEY_INPUT = (
+        "Paste the target seed entry's page key or provider address, then press Enter."
     )
     NOT_OFFERED_PREFIX = "Not offered:"
     RESET_ANSWER = (

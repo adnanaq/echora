@@ -1,4 +1,5 @@
 import json
+import re
 
 import pytest
 from google.protobuf import json_format
@@ -9,6 +10,7 @@ from shared_proto.v1 import review_cases_pb2
 from work_matching import (
     PART_MARK,
     ReviewCaseKind,
+    TargetEntrySuggestion,
     describe_answer_word,
 )
 
@@ -61,7 +63,7 @@ def test_page_offers_system_light_and_dark_themes(client) -> None:
             for value in ('value="system"', 'value="light"', 'value="dark"')
         ],
         "setTheme($event.target.value)" in theme_select,
-        page.index("applyReviewPageTheme(") < page.index("parts.css"),
+        page.index("applyReviewPageTheme(") < page.index("review_page.css"),
     ) == ([True, True, True], True, True)
 
 
@@ -94,7 +96,7 @@ def test_page_case_list_button_sits_beside_search_and_in_rail(client) -> None:
 
 
 def test_static_parts_stylesheet_served(client) -> None:
-    assert client.get("/static/parts.css").status_code == 200
+    assert client.get("/static/review_page.css").status_code == 200
 
 
 def test_case_list_lists_every_case_with_counts(client, review_cases) -> None:
@@ -232,19 +234,77 @@ def test_choice_other_work_unreadable_named_entry_kept_as_written(
     assert answer["anidb:anime:19188"] == "other work Gochuumon"
 
 
-def test_case_panel_other_work_page_shows_named_entry_box(client, review_cases) -> None:
-    case_name = review_cases["gochuumon_movie"].case_name
-    response = client.post(
+GOCHUUMON_SERIES_SUGGESTION = TargetEntrySuggestion(
+    reference_page="mal:anime:21273",
+    title="Gochuumon wa Usagi desu ka?",
+    providers=("mal",),
+)
+
+
+def _render_other_work_panel(client, source, review_cases, place: str) -> str:
+    case = review_cases["gochuumon_movie"].model_copy(
+        update={"target_entry_suggestions": (GOCHUUMON_SERIES_SUGGESTION,)}
+    )
+    source.cases[case.case_name] = case
+    return client.post(
         "/fragments/case-panel",
         data=_state(
-            open_case_name=case_name,
-            edits={case_name: {"anidb:anime:19188": "other work mal:anime:21273"}},
+            open_case_name=case.case_name,
+            edits={case.case_name: {"anidb:anime:19188": place}},
         ),
+    ).text
+
+
+def _cut_named_entry_controls(panel: str) -> str:
+    start = panel.index('class="control-dropdown control-named-entry"')
+    return panel[start : panel.index("</span>", panel.index("<input", start))]
+
+
+def test_case_panel_other_work_offers_new_entry_suggestions_and_other_entry(
+    client, source, review_cases
+) -> None:
+    controls = _cut_named_entry_controls(
+        _render_other_work_panel(client, source, review_cases, "other work")
+    )
+    option_values = re.findall(r'<option value="([^"]*)"', controls)
+    assert (
+        option_values,
+        "Gochuumon wa Usagi desu ka?" in controls,
+        re.search(r'<option value=""\s+selected', controls) is not None,
+        "isTypingKey: false" in controls,
+        'style="display: none"' in controls,
+    ) == (["", "mal:anime:21273", "other entry"], True, True, True, True)
+
+
+def test_case_panel_other_work_suggested_entry_named_selects_suggestion(
+    client, source, review_cases
+) -> None:
+    controls = _cut_named_entry_controls(
+        _render_other_work_panel(
+            client, source, review_cases, "other work mal:anime:21273"
+        )
     )
     assert (
-        response.text.count('name="named_entry"'),
-        'value="mal:anime:21273"' in response.text,
-    ) == (1, True)
+        re.search(r'<option value="mal:anime:21273"[^>]*\sselected', controls)
+        is not None,
+        "isTypingKey: false" in controls,
+    ) == (True, True)
+
+
+def test_case_panel_other_work_unsuggested_entry_named_shows_key_box(
+    client, source, review_cases
+) -> None:
+    controls = _cut_named_entry_controls(
+        _render_other_work_panel(
+            client, source, review_cases, "other work mal:anime:29787"
+        )
+    )
+    assert (
+        re.search(r'<option value="other entry"[^>]*\sselected', controls) is not None,
+        "isTypingKey: true" in controls,
+        'value="mal:anime:29787"' in controls,
+        'style="display: none"' in controls,
+    ) == (True, True, True, False)
 
 
 def test_choice_linked_page_answer_reported(client, review_cases) -> None:
@@ -290,7 +350,7 @@ def test_answers_save_rule_breaking_edit_reports_rule(client, review_cases) -> N
         },
     )
     assert _events(response)["answerssaved"]["rejected"] == {
-        case_name: ["a page that must be placed has no place"]
+        case_name: ["every required page must be assigned to a work"]
     }
 
 
@@ -481,8 +541,8 @@ def test_run_panel_reports_run_state(client, source) -> None:
 
 def test_page_links_static_files_with_content_hash(client) -> None:
     page = client.get("/").text
-    assert build_static_url("parts.css") in page
-    assert "?v=" in build_static_url("parts.css")
+    assert build_static_url("review_page.css") in page
+    assert "?v=" in build_static_url("review_page.css")
 
 
 def test_static_file_served_at_hashed_address(client) -> None:
@@ -579,7 +639,7 @@ def test_redrawn_controls_carry_stable_ids(client, review_cases) -> None:
 
 
 def test_redrawn_regions_never_anchor_scrolling(client) -> None:
-    stylesheet = client.get("/static/parts.css").text
+    stylesheet = client.get("/static/review_page.css").text
     rule = stylesheet[stylesheet.index("#case-list, #case-panel") :]
     assert "overflow-anchor: none" in rule[: rule.index("}")]
 
@@ -599,7 +659,28 @@ def test_case_list_chosen_chips_drawn_on(client) -> None:
         chip_classes("chip-kinds-linked-page"),
         chip_classes("chip-case_states-open"),
         chip_classes("chip-kinds-split-work"),
-    ) == ("part-chip is-on", "part-chip is-on", "part-chip")
+    ) == ("control-chip is-on", "control-chip is-on", "control-chip")
+
+
+def test_case_list_chip_count_shown_in_brackets(client) -> None:
+    case_list = client.post("/fragments/case-list", data=_state()).text
+    chip = case_list[case_list.index('id="chip-kinds-linked-page"') :]
+    chip = chip[: chip.index("</button>")]
+    assert re.search(r'<span class="control-chip-count">\(\d+\)</span>', chip)
+
+
+def test_case_panel_linked_page_heading_links_entry_and_page_below_titles(
+    client, review_cases
+) -> None:
+    panel = client.post(
+        "/fragments/case-panel",
+        data=_state(open_case_name=review_cases["nami"].case_name),
+    ).text
+    heading = panel[panel.index("<thead>") : panel.index("</thead>")]
+    assert (
+        '<br><a class="page-key" href="https://kitsu.app/anime/10561"' in heading,
+        '<br><a class="page-key" href="https://anilist.co/anime/102289"' in heading,
+    ) == (True, True)
 
 
 def test_run_state_reports_run_started_elsewhere(client, source) -> None:

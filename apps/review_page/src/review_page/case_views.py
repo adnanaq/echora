@@ -25,8 +25,8 @@ from pydantic import JsonValue
 from review_page.case_panel_tables import (
     build_comparison_rows,
     build_entry_views,
+    build_linked_page_case_links,
     build_page_rows,
-    find_linked_page_address,
     list_evidence_pages,
     list_shown_columns,
 )
@@ -145,6 +145,7 @@ def build_case_view(
     is_suggestion_shown = unsaved_answer is None and case.answer in (None, {})
     chosen_answer = _choose_shown_answer(case, unsaved_answer, is_suggestion_shown)
     is_linked_page = case.kind is ReviewCaseKind.LINKED_PAGE
+    linking_entry_link, linked_page_link = build_linked_page_case_links(case)
     page_rows = (
         ()
         if is_linked_page
@@ -171,7 +172,8 @@ def build_case_view(
         shown_columns=list_shown_columns(page_rows, show_only_differences),
         evidence_pages=list_evidence_pages(case, page_rows),
         linked_page_options=list_linked_page_options(case) if is_linked_page else (),
-        linked_page_address=find_linked_page_address(case) if is_linked_page else "",
+        linking_entry_link=linking_entry_link,
+        linked_page_link=linked_page_link,
         choice_meanings=() if is_linked_page else PLACEMENT_WORD_MEANINGS,
         comparison_rows=comparison_rows,
         buttons=build_case_buttons(

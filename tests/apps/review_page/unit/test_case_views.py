@@ -16,7 +16,7 @@ from work_matching import (
     combine_group_entries,
     decide_doubled_providers,
     describe_answer_word,
-    get_page_key,
+    resolve_page_key,
 )
 from work_matching.answer_words import LATER_WORK_MEANING
 
@@ -233,7 +233,7 @@ def _mal_only_case(*mal_numbers: int) -> ReviewCase:
     decisions = decide_doubled_providers(
         combine_group_entries(entries), [], KnownWorkEntriesFromSeed([])
     )
-    return ReviewCase.from_entry_group(entries, decisions, [], [])
+    return ReviewCase.build_entry_group_case(entries, decisions, [], [])
 
 
 def test_build_case_view_rows_join_works_one_rule_disables_into_one_note() -> None:
@@ -254,7 +254,7 @@ def test_build_case_view_rows_explain_choices_other_pages_disable() -> None:
             title=title,
             type="TV",
             year=2020,
-            addresses_by_page_key={get_page_key(address): address},
+            addresses_by_page_key={resolve_page_key(address): address},
         )
         for title, address in (
             ("First", "https://myanimelist.net/anime/1"),
@@ -264,7 +264,7 @@ def test_build_case_view_rows_explain_choices_other_pages_disable() -> None:
     decisions = decide_doubled_providers(
         combine_group_entries(entries), [], KnownWorkEntriesFromSeed([])
     )
-    case = ReviewCase.from_entry_group(entries, decisions, [], [])
+    case = ReviewCase.build_entry_group_case(entries, decisions, [], [])
     view = _view(case, unsaved_answer={"mal:anime:1": "work 1"})
     notes = {row.page_key: row.disabled_choice_notes for row in view.page_rows}
     assert notes["mal:anime:2"] == (
@@ -308,10 +308,17 @@ def test_build_case_view_rows_link_linked_page_keys_to_addresses(review_cases) -
     )
 
 
-def test_build_case_view_linked_page_gives_page_address(review_cases) -> None:
-    assert _view(review_cases["nami"]).linked_page_address == (
-        "https://anilist.co/anime/102289"
+def test_build_case_view_linked_page_links_entry_and_linked_page(review_cases) -> None:
+    view = _view(review_cases["nami"])
+    assert (view.linking_entry_link, view.linked_page_link) == (
+        PageLink("kitsu:anime:10561", "https://kitsu.app/anime/10561"),
+        PageLink("anilist:anime:102289", "https://anilist.co/anime/102289"),
     )
+
+
+def test_build_case_view_entry_group_has_no_linked_page_links(review_cases) -> None:
+    view = _view(review_cases["atashinchi_next"])
+    assert (view.linking_entry_link, view.linked_page_link) == (None, None)
 
 
 def test_build_case_rows_marks_answers_last_run_left_unused(review_cases) -> None:

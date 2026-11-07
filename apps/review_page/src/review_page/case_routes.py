@@ -68,7 +68,7 @@ from work_matching import (
     SavedAnswerChangedError,
     UnknownCaseError,
     choose_group_page_place,
-    get_page_key,
+    resolve_page_key,
 )
 
 # The notice each save refusal shows; every refusal saves nothing.
@@ -430,7 +430,7 @@ def _write_work(work: str, named_entry: str) -> str | None:
     """
     named_entry_text = named_entry.strip()
     if work == OTHER_WORK and named_entry_text:
-        return f"{OTHER_WORK} {get_page_key(named_entry_text)}"
+        return f"{OTHER_WORK} {resolve_page_key(named_entry_text)}"
     return work or None
 
 

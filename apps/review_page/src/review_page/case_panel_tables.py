@@ -40,8 +40,8 @@ from work_matching import (
     ProviderPage,
     ReviewCase,
     build_page_address,
-    get_page_provider,
     list_group_page_choices,
+    read_page_provider,
 )
 
 # Rules that disable a page's choice because of where other pages are placed.
@@ -90,7 +90,7 @@ def build_page_rows(
             target_entry_options=tuple(
                 suggestion
                 for suggestion in case.target_entry_suggestions
-                if get_page_provider(choices.page_key) not in suggestion.providers
+                if read_page_provider(choices.page_key) not in suggestion.providers
             ),
         )
         for choices in list_group_page_choices(case, answer)
@@ -299,20 +299,33 @@ def _describe_page(page: ProviderPage | None) -> dict[DetailColumn, str]:
     }
 
 
-def find_linked_page_address(case: ReviewCase) -> str:
-    """Resolve the external URL for the candidate page in a linked-page case.
+def build_linked_page_case_links(
+    case: ReviewCase,
+) -> tuple[PageLink | None, PageLink | None]:
+    """Build the links a linked-page case shows under its two column headings.
 
     Args:
         case: The review case under inspection.
 
     Returns:
-        The external URL of the linked page, or an empty string for entry group cases.
+        The linking entry's reference page link and the linked page link; both
+        None for entry group cases.
     """
-    [decision] = case.decisions
+    decision = case.decisions[0] if case.decisions else None
     if not isinstance(decision, LinkedPageDecision):
-        return ""
-    return _find_page_address(
-        case, decision.page_key, {page.key: page for page in case.pages}
+        return None, None
+    linking_entry = decision.linking_entries[0]
+    return (
+        PageLink(
+            linking_entry.reference_page_key,
+            linking_entry.addresses_by_page_key[linking_entry.reference_page_key],
+        ),
+        PageLink(
+            decision.page_key,
+            _find_page_address(
+                case, decision.page_key, {page.key: page for page in case.pages}
+            ),
+        ),
     )
 
 

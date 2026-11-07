@@ -284,8 +284,10 @@ class CaseView:
     evidence_pages: tuple[ProviderPage, ...]
     linked_page_options: tuple[ChoiceOption, ...]
     comparison_rows: tuple[ComparisonRowView, ...]
-    # The linked page's address for a linked-page case, so its key opens it.
-    linked_page_address: str
+    # A linked-page case's entry reference page and linked page, so each key
+    # opens its provider page; None for entry group cases.
+    linking_entry_link: PageLink | None
+    linked_page_link: PageLink | None
     # Each placement word and its meaning, listed under an entry group's pages.
     choice_meanings: tuple[tuple[str, str], ...]
     buttons: CaseButtons
