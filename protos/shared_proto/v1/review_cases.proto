@@ -226,6 +226,9 @@ message SeedCorrection {
   string reason_sentence = 14;
   // Whether a reviewer's answer placed the page, rather than the rules.
   bool is_from_answer = 15;
+  // The page key an answer named after "other work". The page ends up
+  // wherever that named page ends up.
+  optional string named_entry_page_key = 16;
 }
 
 // An entry the last run checked, by its reference page, so corrections show

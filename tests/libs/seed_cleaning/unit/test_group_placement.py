@@ -708,10 +708,11 @@ def test_correct_entry_groups_answer_naming_seed_entry_moves_page_there(
             correction.placement_word,
             correction.target_entry_reference_page,
             correction.new_entry_key,
+            correction.named_entry_page_key,
         )
         for correction in corrections
         if correction.page_key == "kitsu:anime:2"
-    ] == [("other work", "mal:anime:9", None)]
+    ] == [("other work", "mal:anime:9", None, "mal:anime:9")]
 
 
 def test_correct_entry_groups_answer_naming_entry_outside_seed_left_open(

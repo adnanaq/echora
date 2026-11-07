@@ -329,6 +329,7 @@ def _build_seed_correction(
         renamed_to=current_key if is_renamed_page_listed else None,
         target_entry_reference_page=destination.target_entry_reference_page,
         new_entry_key=destination.new_entry_key,
+        named_entry_page_key=placement.named_entry_page_key,
         reason=group_placement.reason_by_page_key[current_key],
     )
 

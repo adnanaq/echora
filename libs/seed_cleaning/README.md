@@ -311,6 +311,7 @@ Each correction is a `SeedCorrection`:
 | `is_main_page`                | Whether enrichment fetches this page for its provider in its work.                                                                                                                                                                      |
 | `renamed_to`                  | The current page key, when the seed lists the page under an old address.                                                                                                                                                                |
 | `target_entry_reference_page` | The reference page of the seed entry the page joins: the target of an `other work` page (its sure move, or the entry an answer names), or the entry that survives as the page's work; `null` when the page stays or starts a new entry. |
+| `named_entry_page_key`        | The page key an answer named after `other work`, which the page follows wherever it ends up. `null` when no answer named a page.                                                                                                        |
 | `new_entry_key`               | The new entry the page starts or joins: pages with the same key form one new entry. `null` when the page stays or joins a seed entry.                                                                                                   |
 | `is_added_page`               | Whether the page is not in the seed and is added to the entry (see [Adding linked pages](#adding-linked-pages)).                                                                                                                        |
 | `is_part_page`                | Whether the page covers only part of its work, so enrichment combines it with the work's other part pages: an answer's `, part`, or an added page's `add as part`.                                                                      |
@@ -335,8 +336,15 @@ The rules:
   target starts a new entry.
 - **Named moves.** An answer's `other work <page key>` sends the page to the
   seed entry holding that key, and the correction records that entry as
-  `target_entry_reference_page`. The run looks the key up in the seed while
-  building the case; a key no seed entry holds leaves the case open.
+  `target_entry_reference_page` and the key as `named_entry_page_key`. The run
+  looks the key up in the seed while building the case; a key no seed entry
+  holds leaves the case open.
+- **Following the named page.** The page belongs with the page the answer
+  named, so it ends up wherever that page ends up. When the same run moves the
+  named page out of its seed entry, to another seed entry or to a new entry,
+  the page follows it (`follow_named_entry_pages`, run once both passes are
+  merged). Otherwise the page could be left in a seed entry that no longer
+  holds the named page, or alone in it.
 - **Target suggestions.** Each entry group's case lists the seed entries of
   its series a page could join (`target_entry_suggestions`); a run never
   applies them.
@@ -366,6 +374,7 @@ A page the rules keep in its entry, under the address it has now:
   "is_main_page": false,
   "renamed_to": null,
   "target_entry_reference_page": null,
+  "named_entry_page_key": null,
   "new_entry_key": null,
   "is_added_page": false,
   "is_part_page": false,
@@ -386,6 +395,7 @@ one (`renamed_to`):
   "is_main_page": false,
   "renamed_to": "animeplanet:anime:gate-keepers",
   "target_entry_reference_page": null,
+  "named_entry_page_key": null,
   "new_entry_key": null,
   "is_added_page": false,
   "is_part_page": false,
@@ -405,6 +415,7 @@ A page the rules move to the seed entry its links name:
   "is_main_page": false,
   "renamed_to": null,
   "target_entry_reference_page": "mal:anime:62648",
+  "named_entry_page_key": null,
   "new_entry_key": null,
   "is_added_page": false,
   "is_part_page": false,
@@ -425,6 +436,7 @@ ANN-only entry merged into the MAL entry, which is then removed):
   "is_main_page": false,
   "renamed_to": null,
   "target_entry_reference_page": "mal:anime:43735",
+  "named_entry_page_key": null,
   "new_entry_key": null,
   "is_added_page": false,
   "is_part_page": false,
@@ -445,6 +457,7 @@ shared by every page with the same `new_entry_key`:
   "is_main_page": false,
   "renamed_to": null,
   "target_entry_reference_page": null,
+  "named_entry_page_key": null,
   "new_entry_key": "mal:anime:43735 work 2",
   "is_added_page": false,
   "is_part_page": false,
@@ -465,6 +478,7 @@ id now comes from it, since it is a MAL page:
   "is_main_page": false,
   "renamed_to": null,
   "target_entry_reference_page": null,
+  "named_entry_page_key": null,
   "new_entry_key": null,
   "is_added_page": true,
   "is_part_page": false,
