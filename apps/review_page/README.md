@@ -44,12 +44,12 @@ seed cleaning terms (seed correction, review file, provider page store) in the
 [`seed_cleaning` README](../../libs/seed_cleaning/README.md#terms). The page
 adds:
 
-| Term                | Meaning                                                                                                                             |
-| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| **Original answer** | A case's baseline answer recorded by the last pipeline run. "Changed" and "Reset" compare against it.                               |
-| **Unsaved edit**    | An unpersisted answer choice staged in the browser until saved or discarded.                                                        |
-| **Saved answer**    | A placement answer persisted to the review file on disk. The next Run applies it.                                                   |
-| **Suggestion**      | The placement suggested by matching rules. An unanswered case opens on it; Accept saves it.                                         |
+| Term                | Meaning                                                                                                                              |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| **Original answer** | A case's baseline answer recorded by the last pipeline run. "Changed" and "Reset" compare against it.                                |
+| **Unsaved edit**    | An unpersisted answer choice staged in the browser until saved or discarded.                                                         |
+| **Saved answer**    | A placement answer persisted to the review file on disk. The next Run applies it.                                                    |
+| **Suggestion**      | The placement suggested by matching rules. An unanswered case opens on it; Accept saves it.                                          |
 | **Case source**     | Interface for reading cases and corrections, saving answers, and tracking runs (`ReviewCaseSource`). The initial source reads files. |
 
 ## Running it
@@ -348,8 +348,8 @@ implementation and the only module in `review_page` that imports
   descriptions) live in `work_matching` alongside the rule logic. Automated
   tests verify that every `Tooltip` constant is referenced and that rendered
   fragments contain no empty `title=""` attributes.
-- **Styling and components.** A single stylesheet (`static/parts.css`) defines
-  light and dark theme tokens, and `templates/parts.html` provides reusable
+- **Styling and components.** A single stylesheet (`static/review_page.css`) defines
+  light and dark theme tokens, and `templates/control_macros.html` provides reusable
   Jinja macros (dropdown, chip, pill, status, button, icon button, pager, tabs,
   and notice lines). Static asset URLs include a content hash (`build_static_url`)
   for cache busting.
@@ -402,5 +402,5 @@ directories including subprocess execution.
 | `request_guards.py`          | `add_request_guards`, `refuse_post_from_other_sites`: host header and HTMX origin checks blocking cross-site requests.              |
 | `template_functions.py`      | `build_static_url`, `build_element_id`, `add_template_functions`: registers `static_url`, `element_id`, and `tooltips` in Jinja2.   |
 | `tooltips.py`                | `Tooltip` enum and tooltip mappings for edit states, case states, correction changes, and color themes.                             |
-| `templates/`                 | Jinja2 HTML templates for the page shell, HTMX fragments, and shared UI macros (`parts.html`).                                      |
-| `static/`                    | Stylesheet (`parts.css`), Alpine.js client store (`review_page.js`), and vendored frontend libraries (`vendor/`).                   |
+| `templates/`                 | Jinja2 HTML templates for the page shell, HTMX fragments, and shared UI macros (`control_macros.html`).                             |
+| `static/`                    | Stylesheet (`review_page.css`), Alpine.js client store (`review_page.js`), and vendored frontend libraries (`vendor/`).             |
