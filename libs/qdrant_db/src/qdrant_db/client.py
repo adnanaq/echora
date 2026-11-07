@@ -52,6 +52,7 @@ from qdrant_db.query_builder import (
     build_text_search_params,
 )
 from qdrant_db.tracing import qdrant_span
+from qdrant_db.transient_errors import is_transient_qdrant_error
 from qdrant_db.utils import DuplicateKeyError, deduplicate_items, retry_with_backoff
 from vector_db_interface import SearchHit, VectorDBClient, VectorDocument
 
@@ -345,6 +346,7 @@ class QdrantClient(VectorDBClient):
             try:
                 await retry_with_backoff(
                     operation=_upsert,
+                    is_transient_error=is_transient_qdrant_error,
                     max_retries=max_retries,
                     retry_delay=retry_delay,
                 )
@@ -422,6 +424,7 @@ class QdrantClient(VectorDBClient):
         try:
             await retry_with_backoff(
                 operation=_perform_update,
+                is_transient_error=is_transient_qdrant_error,
                 max_retries=max_retries,
                 retry_delay=retry_delay,
             )
@@ -506,6 +509,7 @@ class QdrantClient(VectorDBClient):
         try:
             await retry_with_backoff(
                 operation=_perform_update,
+                is_transient_error=is_transient_qdrant_error,
                 max_retries=max_retries,
                 retry_delay=retry_delay,
             )
