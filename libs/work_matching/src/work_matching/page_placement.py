@@ -58,13 +58,14 @@ from typing import NamedTuple
 
 from pydantic import JsonValue
 from work_matching.answer_rules import PlacementRule
-from work_matching.doubled_provider_decision import (
+from work_matching.doubled_provider_pages import resolve_decided_provider
+from work_matching.model_doubled_provider_decision import (
     DoubledProviderDecision,
     DoubledProviderOutcome,
 )
-from work_matching.doubled_provider_pages import resolve_decided_provider
 from work_matching.provider_page_key import (
     build_page_address,
+    is_mal_page,
     read_page_provider,
     resolve_page_key,
 )
@@ -74,10 +75,13 @@ from work_matching.work_entry import WorkEntry
 # changing them would make kept answers invalid.
 FIRST_WORK = "work 1"
 OTHER_WORK = "other work"
-_MAIN_PAGE_MARK = ", main"
-PART_PAGE_MARK = ", part"
-# No work holds two pages of this provider: a work is what MAL lists.
-_MAL_PROVIDER = "mal"
+# The marks a page's place can carry after ``work N``; no mark is written as
+# nothing. An answer writes a mark after a comma: ``work 2, part``.
+NO_MARK = ""
+MAIN_MARK = "main"
+PART_MARK = "part"
+_MAIN_PAGE_MARK = f", {MAIN_MARK}"
+PART_PAGE_MARK = f", {PART_MARK}"
 # A place as an answer writes it: ``work N`` (N from 1), optionally marked
 # ``, main`` or ``, part``, or ``other work``.
 _PLACEMENT_ANSWER_TEXT = re.compile(
@@ -371,9 +375,33 @@ def has_two_mal_pages(page_keys: Iterable[str]) -> bool:
     Returns:
         True when at least two page keys belong to MAL.
     """
-    return (
-        sum(read_page_provider(page_key) == _MAL_PROVIDER for page_key in page_keys) > 1
+    return sum(is_mal_page(page_key) for page_key in page_keys) > 1
+
+
+def build_page_keys_by_work_provider(
+    placements: Mapping[str, PagePlacement],
+) -> dict[tuple[str, str | None], list[str]]:
+    """Build the page keys of each provider in each work, ``other work`` aside.
+
+    The mark rules and the MAL rule apply to one provider's pages in one work,
+    and ``other work`` is not one work, so its pages are left out.
+
+    Args:
+        placements: Each placed page's place, by its page key.
+
+    Returns:
+        The page keys, in the given order, by their work's placement word and
+        their provider.
+    """
+    page_keys_by_work_provider: defaultdict[tuple[str, str | None], list[str]] = (
+        defaultdict(list)
     )
+    for page_key, placement in placements.items():
+        if placement.placement_word != OTHER_WORK:
+            page_keys_by_work_provider[
+                placement.placement_word, read_page_provider(page_key)
+            ].append(page_key)
+    return dict(page_keys_by_work_provider)
 
 
 def _is_page_key(text: str) -> bool:
@@ -408,19 +436,15 @@ def _list_broken_mark_rules(
         Each broken rule once, in the order first found; empty when every
         work's providers follow the rules above.
     """
-    placements_by_work_provider: defaultdict[
-        tuple[str, str | None], list[PagePlacement]
-    ] = defaultdict(list)
-    for page_key, placement in placements.items():
-        if placement.placement_word != OTHER_WORK:
-            placements_by_work_provider[
-                placement.placement_word, read_page_provider(page_key)
-            ].append(placement)
     return list(
         dict.fromkeys(
             broken_rule
-            for provider_placements in placements_by_work_provider.values()
-            if (broken_rule := _find_broken_mark_rule(provider_placements))
+            for page_keys in build_page_keys_by_work_provider(placements).values()
+            if (
+                broken_rule := _find_broken_mark_rule(
+                    [placements[page_key] for page_key in page_keys]
+                )
+            )
         )
     )
 
@@ -434,11 +458,9 @@ def _has_work_with_two_mal_pages(placements: dict[str, PagePlacement]) -> bool:
     Returns:
         True when any numbered work holds two or more MAL pages.
     """
-    page_keys_by_work: defaultdict[str, set[str]] = defaultdict(set)
-    for page_key, placement in placements.items():
-        if placement.placement_word != OTHER_WORK:
-            page_keys_by_work[placement.placement_word].add(page_key)
-    return any(map(has_two_mal_pages, page_keys_by_work.values()))
+    return any(
+        map(has_two_mal_pages, build_page_keys_by_work_provider(placements).values())
+    )
 
 
 def _find_broken_mark_rule(

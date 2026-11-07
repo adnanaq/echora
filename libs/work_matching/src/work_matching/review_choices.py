@@ -42,107 +42,40 @@ Each item gives the rule, then the reason for it.
 
 from collections import defaultdict
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, replace
-from enum import StrEnum
+from dataclasses import replace
 
 from pydantic import JsonValue
-from work_matching.answer_rules import LinkedPageAnswerRule, PlacementRule
-from work_matching.answer_words import (
-    MAIN_MARK,
-    NO_MARK,
-    PART_MARK,
-    describe_answer_word,
-)
-from work_matching.doubled_provider_decision import DoubledProviderDecision
+from work_matching.answer_rules import PlacementRule
 from work_matching.entry_group import combine_group_entries
 from work_matching.linked_page_check import (
     PART_PAGE_ANSWER,
     SKIP_ANSWER,
     WHOLE_PAGE_ANSWER,
-    LinkedPageAddition,
-    LinkedPageDecision,
     check_linked_page_answer,
 )
+from work_matching.model_linked_page_decision import LinkedPageAddition
+from work_matching.model_review_choices import (
+    ChoiceOption,
+    ChoiceRule,
+    GroupPageChoices,
+    LinkedPageConflict,
+)
 from work_matching.page_placement import (
+    MAIN_MARK,
+    NO_MARK,
     OTHER_WORK,
+    PART_MARK,
     PagePlacement,
+    build_page_keys_by_work_provider,
+    has_two_mal_pages,
     list_placeable_page_keys,
     read_placement,
     write_placement,
 )
-from work_matching.provider_page_key import read_page_provider
+from work_matching.provider_page_key import is_mal_page, read_page_provider
 from work_matching.review_cases import ReviewCase, ReviewCaseKind
 
 _MARKS = (NO_MARK, MAIN_MARK, PART_MARK)
-_MAL_PROVIDER = "mal"
-
-
-class ChoiceRule(StrEnum):
-    """Define a reason a choice is not offered that no answer rule states.
-
-    The answer rules (``PlacementRule``) check a whole answer when it is
-    saved. These reasons explain a single dropdown option to the reviewer.
-    """
-
-    MARK_WITHOUT_WORK = (
-        "choose a work for the page first, since a mark applies within a work"
-    )
-    MARK_IN_OTHER_WORK = (
-        "a page moved to another work cannot be marked 'main' or 'part' in this case"
-    )
-
-
-@dataclass(frozen=True, slots=True)
-class ChoiceOption:
-    """Hold one choice a reviewer can make and the rule that disables it, if any."""
-
-    # As written in the answer: ``work 2``, ``part``, ``add to <entry>``.
-    value: str
-    disabling_rule: PlacementRule | LinkedPageAnswerRule | ChoiceRule | None = None
-
-    @property
-    def is_disabled(self) -> bool:
-        """Report whether the choice is disabled by a rule.
-
-        Returns:
-            True when ``disabling_rule`` is set.
-        """
-        return self.disabling_rule is not None
-
-    @property
-    def description(self) -> str:
-        """Return what the choice does, as ``describe_answer_word`` says.
-
-        Returns:
-            The user-facing meaning of the choice value.
-        """
-        return describe_answer_word(self.value)
-
-
-@dataclass(frozen=True, slots=True)
-class GroupPageChoices:
-    """Hold one page of an entry group's case: its current place and the choices left."""
-
-    page_key: str
-    # ``work N`` or ``other work``; None while the page has no place.
-    work: str | None
-    # The page key written after ``other work``; None when no entry is named.
-    named_entry_page_key: str | None
-    # ``NO_MARK``, ``MAIN_MARK`` or ``PART_MARK``.
-    mark: str
-    # Whether the answer must place this page to be saved.
-    is_required: bool
-    work_options: tuple[ChoiceOption, ...]
-    mark_options: tuple[ChoiceOption, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class LinkedPageConflict:
-    """Hold linked-page answers adding whole pages of one provider to one entry."""
-
-    entry_reference_page: str
-    provider: str
-    case_names: tuple[str, ...]
 
 
 def list_placeable_case_page_keys(case: ReviewCase) -> tuple[str, ...]:
@@ -156,7 +89,8 @@ def list_placeable_case_page_keys(case: ReviewCase) -> tuple[str, ...]:
         ``list_placeable_page_keys`` orders them.
     """
     return list_placeable_page_keys(
-        combine_group_entries(list(case.entries.values())), _read_group_decisions(case)
+        combine_group_entries(list(case.entries.values())),
+        case.doubled_provider_decisions,
     )
 
 
@@ -182,7 +116,7 @@ def list_required_page_keys(
         return frozenset(list_placeable_case_page_keys(case))
     return frozenset(
         page_key
-        for decision in _read_group_decisions(case)
+        for decision in case.doubled_provider_decisions
         for page_key in decision.page_keys
     )
 
@@ -293,12 +227,15 @@ def list_linked_page_options(case: ReviewCase) -> tuple[ChoiceOption, ...]:
     """List a linked-page case's answers, each with the rule that disables it.
 
     Args:
-        case: A linked-page case.
+        case: The review case; only a linked-page case has answers to list.
 
     Returns:
-        The additions the module docstring lists, then ``skip``.
+        The additions the module docstring lists, then ``skip``; empty for an
+        entry group case.
     """
-    decision = _read_linked_page_decision(case)
+    decision = case.linked_page_decision
+    if decision is None:
+        return ()
     if len(decision.linking_entries) == 1:
         values = [WHOLE_PAGE_ANSWER, PART_PAGE_ANSWER]
     else:
@@ -341,10 +278,11 @@ def find_linked_page_conflicts(
     """
     case_names_by_target: defaultdict[tuple[str, str], list[str]] = defaultdict(list)
     for case in cases:
-        if case.kind is not ReviewCaseKind.LINKED_PAGE:
+        decision = case.linked_page_decision
+        if decision is None:
             continue
         accepted_answer = case.accepted_answer
-        provider = read_page_provider(_read_linked_page_decision(case).page_key)
+        provider = read_page_provider(decision.page_key)
         if (
             isinstance(accepted_answer, LinkedPageAddition)
             and not accepted_answer.is_part_page
@@ -374,17 +312,19 @@ def _find_work_disabling_rule(
         ``WORK_WITH_TWO_MAL_PAGES`` when the work already holds another MAL
         page, or None otherwise.
     """
-    if work_word == OTHER_WORK or read_page_provider(page_key) != _MAL_PROVIDER:
+    if work_word == OTHER_WORK:
         return None
-    is_work_holding_other_mal_page = any(
-        other_page_key != page_key
-        and read_page_provider(other_page_key) == _MAL_PROVIDER
-        and placement.placement_word == work_word
-        for other_page_key, placement in placements.items()
-    )
+    work_page_keys = [
+        page_key,
+        *(
+            other_page_key
+            for other_page_key, placement in placements.items()
+            if other_page_key != page_key and placement.placement_word == work_word
+        ),
+    ]
     return (
         PlacementRule.WORK_WITH_TWO_MAL_PAGES
-        if is_work_holding_other_mal_page
+        if is_mal_page(page_key) and has_two_mal_pages(work_page_keys)
         else None
     )
 
@@ -455,15 +395,7 @@ def _normalize_marks(placements: dict[str, PagePlacement]) -> None:
     Args:
         placements: The current placements by page key, updated in place.
     """
-    page_keys_by_work_provider: defaultdict[tuple[str, str | None], list[str]] = (
-        defaultdict(list)
-    )
-    for page_key, placement in placements.items():
-        if placement.placement_word != OTHER_WORK:
-            page_keys_by_work_provider[
-                placement.placement_word, read_page_provider(page_key)
-            ].append(page_key)
-    for page_keys in page_keys_by_work_provider.values():
+    for page_keys in build_page_keys_by_work_provider(placements).values():
         if any(placements[page_key].is_part_page for page_key in page_keys):
             for page_key in page_keys:
                 placements[page_key] = PagePlacement(
@@ -487,14 +419,13 @@ def _list_provider_page_keys_in_work(
     Returns:
         The other page keys of the same provider in the same work.
     """
-    placement = placements[page_key]
-    provider = read_page_provider(page_key)
+    work_provider = (placements[page_key].placement_word, read_page_provider(page_key))
     return [
         other_page_key
-        for other_page_key, other_placement in placements.items()
+        for other_page_key in build_page_keys_by_work_provider(placements).get(
+            work_provider, []
+        )
         if other_page_key != page_key
-        and other_placement.placement_word == placement.placement_word
-        and read_page_provider(other_page_key) == provider
     ]
 
 
@@ -540,37 +471,3 @@ def _resolve_mark(placement: PagePlacement | None) -> str:
     if placement.is_main_page:
         return MAIN_MARK
     return PART_MARK if placement.is_part_page else NO_MARK
-
-
-def _read_group_decisions(case: ReviewCase) -> tuple[DoubledProviderDecision, ...]:
-    """Read an entry group case's doubled-provider decisions.
-
-    Args:
-        case: The review case.
-
-    Returns:
-        The doubled-provider decisions from ``case.decisions``.
-    """
-    return tuple(
-        decision
-        for decision in case.decisions
-        if isinstance(decision, DoubledProviderDecision)
-    )
-
-
-def _read_linked_page_decision(case: ReviewCase) -> LinkedPageDecision:
-    """Read a linked-page case's one decision.
-
-    Args:
-        case: A linked-page review case.
-
-    Returns:
-        The single ``LinkedPageDecision``.
-
-    Raises:
-        TypeError: If the case's decision is not a ``LinkedPageDecision``.
-    """
-    [decision] = case.decisions
-    if not isinstance(decision, LinkedPageDecision):
-        raise TypeError(case.case_name)
-    return decision

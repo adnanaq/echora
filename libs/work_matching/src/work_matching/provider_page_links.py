@@ -30,11 +30,11 @@ from collections.abc import Iterable
 from itertools import chain
 
 from work_matching.provider_page import ProviderPage
-from work_matching.provider_page_key import has_repeated_provider, read_page_provider
-
-# A work is what MAL lists, so a page linked with two of its pages covers
-# several works.
-_MAL_PROVIDER = "mal"
+from work_matching.provider_page_key import (
+    has_repeated_provider,
+    is_mal_page,
+    read_page_provider,
+)
 
 
 class ProviderPageLinks:
@@ -176,10 +176,7 @@ class ProviderPageLinks:
         multi_mal_page_keys = [
             page_key
             for page_key, linked_page_keys in self._linked_page_keys_by_page_key.items()
-            if sum(
-                read_page_provider(linked_page_key) == _MAL_PROVIDER
-                for linked_page_key in linked_page_keys
-            )
+            if sum(is_mal_page(linked_page_key) for linked_page_key in linked_page_keys)
             > 1
         ]
         for page_key in multi_mal_page_keys:

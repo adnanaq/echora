@@ -25,15 +25,14 @@ from work_matching.linked_page_check import (
     SKIP_ANSWER,
     WHOLE_PAGE_ANSWER,
 )
-from work_matching.page_placement import OTHER_WORK
+from work_matching.page_placement import (
+    FIRST_WORK,
+    MAIN_MARK,
+    NO_MARK,
+    OTHER_WORK,
+    PART_MARK,
+)
 
-# The marks a page's place can carry after ``work N``; no mark is written as
-# nothing.
-NO_MARK: Final = ""
-MAIN_MARK: Final = "main"
-PART_MARK: Final = "part"
-
-_FIRST_WORK: Final = "work 1"
 _LATER_WORK: Final = re.compile(r"work ([2-9]|[1-9]\d+)")
 _NAMED_ENTRY_ANSWER: Final = re.compile(
     rf"(?P<addition>{re.escape(PART_PAGE_ANSWER)}|{re.escape(WHOLE_PAGE_ANSWER)})"
@@ -48,7 +47,7 @@ LATER_WORK_MEANING: Final = (
 )
 
 _MEANING_BY_WORD: Final[dict[str, str]] = {
-    _FIRST_WORK: (
+    FIRST_WORK: (
         "Assign the page to the first work in this case. Pages in work 1 stay "
         "in the surviving entry for that work."
     ),
@@ -93,7 +92,7 @@ NO_PLACE_MEANING: Final = (
 # Each placement word and its meaning, in the order a reviewer meets them, so
 # a page can list them once under an entry group's pages.
 PLACEMENT_WORD_MEANINGS: Final[tuple[tuple[str, str], ...]] = (
-    (_FIRST_WORK, _MEANING_BY_WORD[_FIRST_WORK]),
+    (FIRST_WORK, _MEANING_BY_WORD[FIRST_WORK]),
     ("work 2, work 3, …", LATER_WORK_MEANING),
     (OTHER_WORK, _MEANING_BY_WORD[OTHER_WORK]),
     ("no place", NO_PLACE_MEANING),

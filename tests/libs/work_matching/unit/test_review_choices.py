@@ -5,12 +5,14 @@ from work_matching.answer_rules import LinkedPageAnswerRule, PlacementRule
 from work_matching.doubled_provider_check import decide_doubled_providers
 from work_matching.entry_group import combine_group_entries
 from work_matching.known_work_entries_from_seed import KnownWorkEntriesFromSeed
+from work_matching.model_review_choices import (
+    ChoiceRule,
+)
 from work_matching.review_cases import ReviewCase
 from work_matching.review_choices import (
     MAIN_MARK,
     NO_MARK,
     PART_MARK,
-    ChoiceRule,
     choose_group_page_place,
     find_linked_page_conflicts,
     list_group_page_choices,

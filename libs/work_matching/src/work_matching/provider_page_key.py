@@ -201,6 +201,20 @@ def read_page_provider(page_key: str) -> str | None:
     return provider if provider in PROVIDERS else None
 
 
+def is_mal_page(page_key: str) -> bool:
+    """Check whether a page key is a MyAnimeList page.
+
+    A work is what MAL lists, so several rules treat MAL pages apart.
+
+    Args:
+        page_key: A page key, as ``resolve_page_key`` gives it.
+
+    Returns:
+        True when the key belongs to MAL.
+    """
+    return read_page_provider(page_key) == "mal"
+
+
 def read_page_kind(page_key: str) -> str | None:
     """Return the media kind (``anime`` or ``manga``) from a recognised page key.
 

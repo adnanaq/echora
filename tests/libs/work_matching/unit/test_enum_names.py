@@ -1,6 +1,6 @@
 import pytest
-from work_matching.doubled_provider_decision import DoubledProviderOutcome
 from work_matching.enum_names import read_member_by_name, write_member_name
+from work_matching.model_doubled_provider_decision import DoubledProviderOutcome
 
 
 def test_write_member_name_gives_member_name() -> None:

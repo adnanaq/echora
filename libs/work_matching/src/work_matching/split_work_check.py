@@ -31,13 +31,9 @@ from enum import StrEnum
 from itertools import chain
 
 from work_matching.provider_page import ProviderPage
-from work_matching.provider_page_key import read_page_provider
+from work_matching.provider_page_key import is_mal_page
 from work_matching.provider_page_links import ProviderPageLinks
 from work_matching.work_entry import WorkEntry, is_type_matching, is_year_matching
-
-# A work is what MAL lists, so a linked MAL page outside the group may be the
-# entries' work.
-_MAL_PROVIDER = "mal"
 
 
 class SplitWorkReviewReason(StrEnum):
@@ -153,8 +149,7 @@ def _has_mal_link_outside_group(
         page_key for entry in entries for page_key in entry.addresses_by_page_key
     }
     return any(
-        read_page_provider(linked_page_key) == _MAL_PROVIDER
-        and linked_page_key not in held_page_keys
+        is_mal_page(linked_page_key) and linked_page_key not in held_page_keys
         for page in pages
         for linked_page_key in page.linked_page_keys
     )

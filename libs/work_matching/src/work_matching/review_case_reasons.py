@@ -17,8 +17,7 @@ is not enough. Each item gives the rule, then the reason for it.
   written, so a case is never hidden by its reasons.
 """
 
-from work_matching.doubled_provider_decision import DoubledProviderDecision
-from work_matching.linked_page_check import LinkedPageDecision
+from work_matching.model_doubled_provider_decision import DoubledProviderDecision
 from work_matching.page_details_comparison import MalPageComparison
 from work_matching.review_cases import ReviewCase
 from work_matching.split_work_check import SplitWorkReviewReason
@@ -39,12 +38,14 @@ def describe_case_reasons(case: ReviewCase) -> tuple[str, ...]:
     Returns:
         One sentence per name in ``case.reasons``.
     """
-    decision_sentences: list[str] = []
-    for decision in case.decisions:
-        if isinstance(decision, LinkedPageDecision):
-            decision_sentences.append(decision.reason.value)
-        else:
-            decision_sentences.extend(_describe_decision(decision))
+    if case.linked_page_decision is not None:
+        decision_sentences = [case.linked_page_decision.reason.value]
+    else:
+        decision_sentences = [
+            sentence
+            for decision in case.doubled_provider_decisions
+            for sentence in _describe_decision(decision)
+        ]
     later_reason_names = case.reasons[len(decision_sentences) :]
     return (
         *decision_sentences,

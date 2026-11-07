@@ -6,7 +6,12 @@ import pytest
 from work_matching.doubled_provider_check import decide_doubled_providers
 from work_matching.entry_group import combine_group_entries
 from work_matching.known_work_entries_from_seed import KnownWorkEntriesFromSeed
-from work_matching.linked_page_check import LinkingEntryDetails, decide_linked_page
+from work_matching.linked_page_check import (
+    decide_linked_page,
+)
+from work_matching.model_linked_page_decision import (
+    LinkingEntryDetails,
+)
 from work_matching.provider_page import ProviderPage
 from work_matching.provider_page_key import resolve_page_key
 from work_matching.review_cases import ReviewCase

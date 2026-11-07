@@ -42,18 +42,20 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, JsonValue
 from work_matching.answer_rules import LinkedPageAnswerRule, PlacementRule
-from work_matching.doubled_provider_decision import DoubledProviderDecision
 from work_matching.entry_group import (
     check_group_answer_placements,
     list_mal_page_review_reasons,
     suggest_group_page_placements,
 )
 from work_matching.linked_page_check import (
+    check_linked_page_answer,
+    suggest_linked_page_answer,
+)
+from work_matching.model_doubled_provider_decision import DoubledProviderDecision
+from work_matching.model_linked_page_decision import (
     LinkedPageAddition,
     LinkedPageAnswerCheck,
     LinkedPageDecision,
-    check_linked_page_answer,
-    suggest_linked_page_answer,
 )
 from work_matching.page_details_comparison import MalPageComparison
 from work_matching.page_placement import PagePlacement, PlacementCheck
@@ -229,7 +231,7 @@ class ReviewCase(BaseModel):
         )
         return cls(
             case_name=(
-                f"{_build_case_name('linked page', [decision.page_key])}"
+                f"{_build_case_name(ReviewCaseKind.LINKED_PAGE, [decision.page_key])}"
                 f" from {' '.join(entries)}"
             ),
             suggested_answer=suggest_linked_page_answer(decision, linked_page),
@@ -259,11 +261,40 @@ class ReviewCase(BaseModel):
             ``LINKED_PAGE`` for a linked page's decision, ``SPLIT_WORK`` for a
             group of two or more entries, ``DOUBLED_PROVIDER`` otherwise.
         """
-        if any(isinstance(decision, LinkedPageDecision) for decision in self.decisions):
+        if self.linked_page_decision is not None:
             return ReviewCaseKind.LINKED_PAGE
         if len(self.entries) > 1:
             return ReviewCaseKind.SPLIT_WORK
         return ReviewCaseKind.DOUBLED_PROVIDER
+
+    @property
+    def linked_page_decision(self) -> LinkedPageDecision | None:
+        """Return the decision of a linked-page case.
+
+        Returns:
+            The case's one linked-page decision, or None for an entry group case.
+        """
+        return next(
+            (
+                decision
+                for decision in self.decisions
+                if isinstance(decision, LinkedPageDecision)
+            ),
+            None,
+        )
+
+    @property
+    def doubled_provider_decisions(self) -> tuple[DoubledProviderDecision, ...]:
+        """Return the doubled-provider decisions of an entry group case.
+
+        Returns:
+            The case's doubled-provider decisions; empty for a linked-page case.
+        """
+        return tuple(
+            decision
+            for decision in self.decisions
+            if isinstance(decision, DoubledProviderDecision)
+        )
 
     @property
     def accepted_answer(
@@ -314,15 +345,12 @@ class ReviewCase(BaseModel):
             The linked-page check for a linked-page case; otherwise the group's
             placement check, with the case's resolved named entries.
         """
-        doubled_provider_decisions: list[DoubledProviderDecision] = []
-        for decision in self.decisions:
-            if isinstance(decision, LinkedPageDecision):
-                return check_linked_page_answer(answer, decision)
-            doubled_provider_decisions.append(decision)
+        if self.linked_page_decision is not None:
+            return check_linked_page_answer(answer, self.linked_page_decision)
         return check_group_answer_placements(
             answer,
             list(self.entries.values()),
-            doubled_provider_decisions,
+            self.doubled_provider_decisions,
             {page.key: page.renamed_to for page in self.pages if page.renamed_to},
             named_entry_reference_pages=self.named_entry_reference_pages,
         )
@@ -349,10 +377,10 @@ def _build_entry_group_case_name(
     """
     if len(entries) == 1:
         return (
-            f"{_build_case_name('doubled provider', doubled_page_keys)}"
+            f"{_build_case_name(ReviewCaseKind.DOUBLED_PROVIDER, doubled_page_keys)}"
             f" in {entries[0].reference_page_key}"
         )
-    return _build_case_name("split work", set(group_page_keys))
+    return _build_case_name(ReviewCaseKind.SPLIT_WORK, set(group_page_keys))
 
 
 def _list_entry_group_reason_names(
@@ -386,17 +414,17 @@ def _list_entry_group_reason_names(
     )
 
 
-def _build_case_name(case_kind: str, page_keys: Iterable[str]) -> str:
+def _build_case_name(case_kind: ReviewCaseKind, page_keys: Iterable[str]) -> str:
     """Build a case name from its kind and its sorted page keys.
 
     Args:
-        case_kind: The case kind prefix.
+        case_kind: The case kind, written as the name's prefix.
         page_keys: The page keys to sort into the case name.
 
     Returns:
         The formatted case name prefix and sorted page keys.
     """
-    return f"{case_kind}: {' '.join(sorted(page_keys))}"
+    return f"{case_kind.value}: {' '.join(sorted(page_keys))}"
 
 
 def _select_page_details(

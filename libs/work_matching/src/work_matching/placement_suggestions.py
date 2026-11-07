@@ -20,7 +20,7 @@ reason for it.
 from collections.abc import Iterable, Sequence
 
 from networkx.utils import UnionFind
-from work_matching.doubled_provider_decision import (
+from work_matching.model_doubled_provider_decision import (
     DoubledProviderDecision,
     DoubledProviderOutcome,
     DoubledProviderReviewReason,

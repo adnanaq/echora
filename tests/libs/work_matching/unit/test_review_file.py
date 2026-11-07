@@ -9,7 +9,7 @@ from pydantic import ValidationError
 from work_matching import file_replacement
 from work_matching.doubled_provider_check import decide_doubled_providers
 from work_matching.known_work_entries_from_seed import KnownWorkEntriesFromSeed
-from work_matching.linked_page_check import (
+from work_matching.model_linked_page_decision import (
     LinkedPageAddition,
 )
 from work_matching.page_placement import PagePlacement

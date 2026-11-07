@@ -36,8 +36,8 @@ from collections.abc import Iterable, Mapping, Sequence
 
 from pydantic import JsonValue
 from work_matching.answer_rules import PlacementRule
-from work_matching.doubled_provider_decision import DoubledProviderDecision
 from work_matching.mal_page_check import check_with_mal_pages
+from work_matching.model_doubled_provider_decision import DoubledProviderDecision
 from work_matching.page_details_comparison import MalPageComparison
 from work_matching.page_placement import (
     OTHER_WORK,

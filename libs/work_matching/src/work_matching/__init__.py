@@ -6,20 +6,9 @@ nothing from enrichment.
 """
 
 from work_matching.answer_rules import LinkedPageAnswerRule, PlacementRule
-from work_matching.answer_words import (
-    MAIN_MARK,
-    NO_MARK,
-    PART_MARK,
-    describe_answer_word,
-)
+from work_matching.answer_words import describe_answer_word
 from work_matching.comparable_title import fold_title_for_comparison
 from work_matching.doubled_provider_check import decide_doubled_providers
-from work_matching.doubled_provider_decision import (
-    DoubledProviderDecision,
-    DoubledProviderOutcome,
-    DoubledProviderReviewReason,
-    UnrelatedPage,
-)
 from work_matching.doubled_provider_pages import (
     find_doubled_provider_page_keys,
     resolve_decided_provider,
@@ -36,12 +25,6 @@ from work_matching.known_work_entries import KnownWorkEntries
 from work_matching.known_work_entries_from_seed import KnownWorkEntriesFromSeed
 from work_matching.linked_page_check import (
     SKIP_ANSWER,
-    LinkedPageAddition,
-    LinkedPageAnswerCheck,
-    LinkedPageDecision,
-    LinkedPageOutcome,
-    LinkedPageReason,
-    LinkingEntryDetails,
     NoLinkingEntryError,
     check_linked_page_answer,
     decide_linked_page,
@@ -49,6 +32,26 @@ from work_matching.linked_page_check import (
     find_unheld_linked_page_keys,
     read_linked_page_answer,
     suggest_linked_page_answer,
+)
+from work_matching.model_doubled_provider_decision import (
+    DoubledProviderDecision,
+    DoubledProviderOutcome,
+    DoubledProviderReviewReason,
+    UnrelatedPage,
+)
+from work_matching.model_linked_page_decision import (
+    LinkedPageAddition,
+    LinkedPageAnswerCheck,
+    LinkedPageDecision,
+    LinkedPageOutcome,
+    LinkedPageReason,
+    LinkingEntryDetails,
+)
+from work_matching.model_review_choices import (
+    ChoiceOption,
+    ChoiceRule,
+    GroupPageChoices,
+    LinkedPageConflict,
 )
 from work_matching.named_entries import (
     MAX_TARGET_ENTRY_SUGGESTIONS,
@@ -64,7 +67,10 @@ from work_matching.page_details_comparison import (
 )
 from work_matching.page_placement import (
     FIRST_WORK,
+    MAIN_MARK,
+    NO_MARK,
     OTHER_WORK,
+    PART_MARK,
     PagePlacement,
     PlacedPage,
     PlacementCheck,
@@ -89,10 +95,6 @@ from work_matching.provider_page_store import ProviderPageStore
 from work_matching.review_case_reasons import describe_case_reasons
 from work_matching.review_cases import ReviewCase, ReviewCaseKind, TargetEntrySuggestion
 from work_matching.review_choices import (
-    ChoiceOption,
-    ChoiceRule,
-    GroupPageChoices,
-    LinkedPageConflict,
     choose_group_page_place,
     find_linked_page_conflicts,
     list_group_page_choices,

@@ -3,12 +3,12 @@ import json
 import pytest
 from work_matching.answer_rules import LinkedPageAnswerRule, PlacementRule
 from work_matching.doubled_provider_check import decide_doubled_providers
-from work_matching.doubled_provider_decision import (
+from work_matching.known_work_entries_from_seed import KnownWorkEntriesFromSeed
+from work_matching.model_doubled_provider_decision import (
     DoubledProviderOutcome,
     DoubledProviderReviewReason,
 )
-from work_matching.known_work_entries_from_seed import KnownWorkEntriesFromSeed
-from work_matching.linked_page_check import (
+from work_matching.model_linked_page_decision import (
     LinkedPageAddition,
     LinkedPageReason,
 )
@@ -399,10 +399,14 @@ def test_review_case_accepted_answer_linked_page_reads_addition(
         ("nami", ReviewCaseKind.LINKED_PAGE),
     ],
 )
-def test_review_case_kind_read_from_case(
+def test_review_case_kind_and_decisions_read_from_case(
     review_cases, case_name: str, kind: ReviewCaseKind
 ) -> None:
-    assert review_cases[case_name].kind is kind
+    case = review_cases[case_name]
+    is_linked_page = kind is ReviewCaseKind.LINKED_PAGE
+    assert case.kind is kind
+    assert case.linked_page_decision is (case.decisions[0] if is_linked_page else None)
+    assert case.doubled_provider_decisions == (() if is_linked_page else case.decisions)
 
 
 def test_review_case_list_broken_answer_rules_group_answer_missing_page(

@@ -4,6 +4,7 @@ from work_matching.provider_page_key import (
     REFERENCE_ORDER,
     build_page_address,
     has_repeated_provider,
+    is_mal_page,
     read_page_id,
     read_page_kind,
     read_page_provider,
@@ -118,6 +119,14 @@ def test_read_page_provider_recognised_key_gives_provider() -> None:
 
 def test_read_page_provider_unrecognised_key_gives_none() -> None:
     assert read_page_provider(resolve_page_key("https://example.com/show")) is None
+
+
+@pytest.mark.parametrize(
+    ("page_key", "is_mal"),
+    [("mal:anime:21", True), ("anidb:anime:69", False), ("https://example.com", False)],
+)
+def test_is_mal_page_only_mal_keys_return_true(page_key, is_mal) -> None:
+    assert is_mal_page(page_key) is is_mal
 
 
 def test_reference_order_starts_with_merged_id_providers() -> None:

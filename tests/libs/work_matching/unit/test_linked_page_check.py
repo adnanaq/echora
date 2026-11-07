@@ -4,11 +4,6 @@ from work_matching.answer_rules import LinkedPageAnswerRule
 from work_matching.known_work_entries_from_seed import KnownWorkEntriesFromSeed
 from work_matching.linked_page_check import (
     SKIP_ANSWER,
-    LinkedPageAddition,
-    LinkedPageDecision,
-    LinkedPageOutcome,
-    LinkedPageReason,
-    LinkingEntryDetails,
     NoLinkingEntryError,
     check_linked_page_answer,
     decide_linked_page,
@@ -16,6 +11,13 @@ from work_matching.linked_page_check import (
     find_unheld_linked_page_keys,
     read_linked_page_answer,
     suggest_linked_page_answer,
+)
+from work_matching.model_linked_page_decision import (
+    LinkedPageAddition,
+    LinkedPageDecision,
+    LinkedPageOutcome,
+    LinkedPageReason,
+    LinkingEntryDetails,
 )
 from work_matching.provider_page import ProviderPage
 from work_matching.work_entry import WorkEntry

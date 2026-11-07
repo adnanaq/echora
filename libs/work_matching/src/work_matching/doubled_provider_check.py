@@ -21,18 +21,18 @@ from collections.abc import Iterable, Mapping
 from dataclasses import replace
 
 from work_matching.comparable_title import fold_title_for_comparison
-from work_matching.doubled_provider_decision import (
-    DoubledProviderDecision,
-    DoubledProviderOutcome,
-    DoubledProviderReviewReason,
-    UnrelatedPage,
-)
 from work_matching.doubled_provider_pages import (
     find_doubled_provider_page_keys,
     has_several_page_ids,
     resolve_decided_provider,
 )
 from work_matching.known_work_entries import KnownWorkEntries
+from work_matching.model_doubled_provider_decision import (
+    DoubledProviderDecision,
+    DoubledProviderOutcome,
+    DoubledProviderReviewReason,
+    UnrelatedPage,
+)
 from work_matching.page_details_comparison import (
     is_page_details_matching,
     resolve_seed_type,
@@ -432,19 +432,20 @@ class _EntryCheck:
         Returns:
             The keys of the fetched pages whose main title matches the entry.
         """
-        entry_titles = {fold_title_for_comparison(self._entry.title)} | {
-            fold_title_for_comparison(page.titles[0])
+        other_provider_page_keys = [
+            page_key
             for page_key in self._entry_page_keys
             if resolve_decided_provider(page_key) != provider
-            and (page := self._pages_by_current_page_key.get(page_key))
-            and page.titles
+        ]
+        entry_titles = {fold_title_for_comparison(self._entry.title)} | {
+            fold_title_for_comparison(page.titles[0])
+            for page in self._find_fetched_pages(other_provider_page_keys).values()
+            if page.titles
         }
         return tuple(
             page_key
-            for page_key in page_keys
-            if (page := self._pages_by_current_page_key.get(page_key))
-            and page.titles
-            and fold_title_for_comparison(page.titles[0]) in entry_titles
+            for page_key, page in self._find_fetched_pages(page_keys).items()
+            if page.titles and fold_title_for_comparison(page.titles[0]) in entry_titles
         )
 
     def _find_year_type_matches(self, page_keys: tuple[str, ...]) -> tuple[str, ...]:
@@ -458,9 +459,8 @@ class _EntryCheck:
         """
         return tuple(
             page_key
-            for page_key in page_keys
-            if (page := self._pages_by_current_page_key.get(page_key))
-            and is_page_details_matching(page, self._entry)
+            for page_key, page in self._find_fetched_pages(page_keys).items()
+            if is_page_details_matching(page, self._entry)
         )
 
     def _find_season_matches(self, page_keys: tuple[str, ...]) -> tuple[str, ...]:
@@ -472,12 +472,12 @@ class _EntryCheck:
         Returns:
             The keys of the fetched pages matching the entry's season.
         """
+        if not self._entry.season:
+            return ()
         return tuple(
             page_key
-            for page_key in page_keys
-            if self._entry.season
-            and (page := self._pages_by_current_page_key.get(page_key))
-            and page.season == self._entry.season
+            for page_key, page in self._find_fetched_pages(page_keys).items()
+            if page.season == self._entry.season
         )
 
     def _is_each_page_whole_work(self, page_keys: list[str]) -> bool:
@@ -495,11 +495,7 @@ class _EntryCheck:
         Returns:
             True when the details agree, so the pages are duplicates.
         """
-        fetched_pages = [
-            page
-            for page_key in page_keys
-            if (page := self._pages_by_current_page_key.get(page_key))
-        ]
+        fetched_pages = self._find_fetched_pages(page_keys).values()
         episode_counts = {
             page.episode_count
             for page in fetched_pages
@@ -523,11 +519,22 @@ class _EntryCheck:
         Returns:
             True when all known years and seed types agree.
         """
-        fetched_pages = [
-            page
-            for page_key in page_keys
-            if (page := self._pages_by_current_page_key.get(page_key))
-        ]
+        fetched_pages = self._find_fetched_pages(page_keys).values()
         return is_year_matching(
             *(page.year for page in fetched_pages)
         ) and is_type_matching(*map(resolve_seed_type, fetched_pages))
+
+    def _find_fetched_pages(self, page_keys: Iterable[str]) -> dict[str, ProviderPage]:
+        """Find the fetched details of these pages; pages never fetched are left out.
+
+        Args:
+            page_keys: The current keys of the pages to look up.
+
+        Returns:
+            Each fetched page by its key, in the order given.
+        """
+        return {
+            page_key: page
+            for page_key in page_keys
+            if (page := self._pages_by_current_page_key.get(page_key))
+        }

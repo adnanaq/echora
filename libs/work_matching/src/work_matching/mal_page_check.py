@@ -24,25 +24,25 @@ in one work (``page_placement``). Each comparison that left a page out is
 returned, so the review case can tell the reviewer why.
 """
 
-from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import NamedTuple, Self
 
-from work_matching.doubled_provider_decision import DoubledProviderDecision
+from work_matching.model_doubled_provider_decision import DoubledProviderDecision
 from work_matching.page_details_comparison import (
     MalPageComparison,
     compare_page_with_mal_page,
 )
-from work_matching.page_placement import OTHER_WORK, PART_PAGE_MARK, read_placement
+from work_matching.page_placement import (
+    OTHER_WORK,
+    PART_PAGE_MARK,
+    build_page_keys_by_work_provider,
+    read_placement,
+)
 from work_matching.provider_page import ProviderPage, index_pages_by_current_page_key
-from work_matching.provider_page_key import read_page_provider
+from work_matching.provider_page_key import is_mal_page
 from work_matching.provider_page_links import ProviderPageLinks
 from work_matching.work_entry import WorkEntry
-
-# A work is what MAL lists, so the pages of a work are measured against its
-# MAL page.
-_MAL_PROVIDER = "mal"
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,7 +89,7 @@ class _GroupMalPageDetails:
             mal_page_key_by_work={
                 placement.placement_word: page_key
                 for page_key, placement_text in suggested_placements.items()
-                if read_page_provider(page_key) == _MAL_PROVIDER
+                if is_mal_page(page_key)
                 and (placement := read_placement(placement_text))
             },
             reference_page_by_page_key={
@@ -240,21 +240,21 @@ def _mark_doubled_part_pages(
     """
     if not doubled_part_page_keys:
         return placements
-    page_keys_by_work_provider: defaultdict[tuple[str, str | None], list[str]] = (
-        defaultdict(list)
-    )
-    unmarked_part_page_keys: set[str] = set()
-    for page_key, placement_text in placements.items():
-        if placement := read_placement(placement_text):
-            page_keys_by_work_provider[
-                placement.placement_word, read_page_provider(page_key)
-            ].append(page_key)
-            if page_key in doubled_part_page_keys and not (
-                placement.is_part_page or placement.is_main_page
-            ):
-                unmarked_part_page_keys.add(page_key)
+    read_placements = {
+        page_key: placement
+        for page_key, placement_text in placements.items()
+        if (placement := read_placement(placement_text))
+    }
+    unmarked_part_page_keys = {
+        page_key
+        for page_key, placement in read_placements.items()
+        if page_key in doubled_part_page_keys
+        and not (placement.is_part_page or placement.is_main_page)
+    }
     marked_placements = dict(placements)
-    for (placement_word, _), page_keys in page_keys_by_work_provider.items():
+    for (placement_word, _), page_keys in build_page_keys_by_work_provider(
+        read_placements
+    ).items():
         if len(page_keys) > 1 and unmarked_part_page_keys.issuperset(page_keys):
             marked_placements |= dict.fromkeys(
                 page_keys, placement_word + PART_PAGE_MARK
