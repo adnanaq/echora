@@ -97,3 +97,41 @@ def test_suggest_target_entries_lists_series_entries_outside_case(
         (suggestion.reference_page, suggestion.title, suggestion.providers)
         for suggestion in suggestions
     ] == [(SERIES_MAL, "Gochuumon wa Usagi desu ka?", ("anidb", "mal"))]
+
+
+def test_suggest_target_entries_closest_titles_first_across_case_entries(
+    review_cases,
+) -> None:
+    seed_titles = (
+        "Alpha Beta Gamma Delta",
+        "Zeta Eta Theta",
+        "Alpha",
+        "Alpha Beta",
+        "Alpha Beta Gamma",
+        "Zeta Eta Theta 2nd Season",
+    )
+    seed = KnownWorkEntriesFromSeed(
+        [
+            {
+                "title": title,
+                "type": "TV",
+                "sources": [f"https://myanimelist.net/anime/{number}"],
+            }
+            for number, title in enumerate(seed_titles, start=1)
+        ]
+    )
+    case_entries = {
+        work_entry.reference_page_key: work_entry
+        for work_entry in (
+            seed.find_by_page_key("mal:anime:1"),
+            seed.find_by_page_key("mal:anime:2"),
+        )
+        if work_entry
+    }
+    case = review_cases["gochuumon_movie"].model_copy(update={"entries": case_entries})
+    assert [suggestion.title for suggestion in suggest_target_entries(case, seed)] == [
+        "Alpha Beta Gamma",
+        "Zeta Eta Theta 2nd Season",
+        "Alpha Beta",
+        "Alpha",
+    ]
