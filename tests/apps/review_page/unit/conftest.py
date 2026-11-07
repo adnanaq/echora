@@ -9,10 +9,10 @@ from review_page.app import create_app
 from review_page.file_review_case_source import (
     FileReviewCaseSource,
     RunSeedFileUnknownError,
-    UnreadableReviewFileError,
 )
+from review_page.review_case_loader import UnreadableReviewFileError
 from review_page.review_case_messages import convert_case_to_message
-from review_page.review_case_source import ReviewCaseSource
+from review_page.review_case_source import ReviewCaseSource, SeedFileUnavailableError
 from shared_proto.v1 import review_cases_pb2
 from work_matching import (
     ReviewCase,
@@ -98,6 +98,7 @@ class FakeReviewCaseSource(ReviewCaseSource):
         self.is_answer_changed_during_save = False
         self.is_review_file_unreadable = False
         self.is_seed_file_known = True
+        self.is_seed_file_readable = True
         self.is_running = False
         self.run_result: review_cases_pb2.SeedCleaningRunResult | None = None
         self.corrections: list[review_cases_pb2.SeedCorrection] = []
@@ -130,6 +131,8 @@ class FakeReviewCaseSource(ReviewCaseSource):
             raise UnknownCaseError([answer.case_name for answer in case_answers])
         if self.is_answer_changed_during_save:
             raise SavedAnswerChangedError([answer.case_name for answer in case_answers])
+        if not self.is_seed_file_readable:
+            raise SeedFileUnavailableError
         seen_saved_answers = read_seen_saved_answers(case_answers)
         results = []
         for case_answer in case_answers:

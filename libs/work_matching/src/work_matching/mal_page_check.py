@@ -24,33 +24,33 @@ in one work (``page_placement``). Each comparison that left a page out is
 returned, so the review case can tell the reviewer why.
 """
 
-from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import NamedTuple, Self
 
-from work_matching.doubled_provider_decision import DoubledProviderDecision
+from work_matching.model_doubled_provider_decision import DoubledProviderDecision
 from work_matching.page_details_comparison import (
     MalPageComparison,
     compare_page_with_mal_page,
 )
-from work_matching.page_placement import OTHER_WORK, PART_PAGE_MARK, read_placement
-from work_matching.provider_page import ProviderPage, index_pages_by_current_key
-from work_matching.provider_page_key import get_page_provider
+from work_matching.page_placement import (
+    OTHER_WORK,
+    PART_PAGE_MARK,
+    build_page_keys_by_work_provider,
+    read_placement,
+)
+from work_matching.provider_page import ProviderPage, index_pages_by_current_page_key
+from work_matching.provider_page_key import is_mal_page
 from work_matching.provider_page_links import ProviderPageLinks
 from work_matching.work_entry import WorkEntry
-
-# A work is what MAL lists, so the pages of a work are measured against its
-# MAL page.
-_MAL_PROVIDER = "mal"
 
 
 @dataclass(frozen=True, slots=True)
 class _GroupMalPageDetails:
-    """What every page of a group shares when checked against MAL pages."""
+    """Hold what every page of a group shares when checked against MAL pages."""
 
     links: ProviderPageLinks
-    pages_by_current_key: dict[str, ProviderPage]
+    pages_by_current_page_key: dict[str, ProviderPage]
     # Each work's MAL page key, by the work's ``work N`` word.
     mal_page_key_by_work: dict[str, str]
     # The reference page of the entry listing each page.
@@ -58,39 +58,53 @@ class _GroupMalPageDetails:
     doubled_page_keys: frozenset[str]
 
     @classmethod
-    def from_group(
+    def build_group_mal_details(
         cls,
         entries: Sequence[WorkEntry],
         decisions: Sequence[DoubledProviderDecision],
         suggested_placements: dict[str, str],
         pages: Sequence[ProviderPage],
     ) -> Self:
-        """Collect what a group's pages share for the MAL check."""
+        """Build what a group's pages share for the MAL check.
+
+        Args:
+            entries: The group's work entries.
+            decisions: The doubled-provider decisions of the combined entry.
+            suggested_placements: The suggested placements by page key.
+            pages: Details of the group's fetched pages.
+
+        Returns:
+            The shared details for comparing the group's pages against MAL pages.
+        """
         return cls(
             links=ProviderPageLinks(
                 pages,
-                [key for entry in entries for key in entry.addresses_by_page_key],
+                [
+                    page_key
+                    for entry in entries
+                    for page_key in entry.addresses_by_page_key
+                ],
             ),
-            pages_by_current_key=index_pages_by_current_key(pages),
+            pages_by_current_page_key=index_pages_by_current_page_key(pages),
             mal_page_key_by_work={
-                placement.placement_word: key
-                for key, placement_text in suggested_placements.items()
-                if get_page_provider(key) == _MAL_PROVIDER
+                placement.placement_word: page_key
+                for page_key, placement_text in suggested_placements.items()
+                if is_mal_page(page_key)
                 and (placement := read_placement(placement_text))
             },
             reference_page_by_page_key={
-                key: entry.reference_page
+                page_key: entry.reference_page_key
                 for entry in entries
-                for key in entry.addresses_by_page_key
+                for page_key in entry.addresses_by_page_key
             },
             doubled_page_keys=frozenset(
-                key for decision in decisions for key in decision.page_keys
+                page_key for decision in decisions for page_key in decision.page_keys
             ),
         )
 
 
 class _CheckedPage(NamedTuple):
-    """One page's place after the MAL check."""
+    """Hold one page's place after the MAL check."""
 
     # None when the check left the page's suggestion out.
     placement_text: str | None
@@ -102,7 +116,7 @@ class _CheckedPage(NamedTuple):
 
 
 class MalPageCheck(NamedTuple):
-    """The suggestions left after the MAL check, and why any page was left out."""
+    """Hold the suggestions left after the MAL check and why any page was left out."""
 
     placements: dict[str, str]
     left_out_comparisons: tuple[MalPageComparison, ...]
@@ -127,23 +141,23 @@ def check_with_mal_pages(
         The suggestions kept, with ``, part`` added where the page is a part,
         and each comparison that left a page out.
     """
-    group_details = _GroupMalPageDetails.from_group(
+    group_details = _GroupMalPageDetails.build_group_mal_details(
         entries, decisions, suggested_placements, pages
     )
     checked_placements: dict[str, str] = {}
     left_out_comparisons: set[MalPageComparison] = set()
     doubled_part_page_keys: set[str] = set()
-    for key, suggested_placement_text in suggested_placements.items():
+    for page_key, suggested_placement_text in suggested_placements.items():
         checked_page = _check_page_placement(
-            key, suggested_placement_text, group_details
+            page_key, suggested_placement_text, group_details
         )
         if checked_page.left_out_comparison is not None:
             left_out_comparisons.add(checked_page.left_out_comparison)
         if checked_page.placement_text is None:
             continue
-        checked_placements[key] = checked_page.placement_text
+        checked_placements[page_key] = checked_page.placement_text
         if checked_page.is_doubled_part_page:
-            doubled_part_page_keys.add(key)
+            doubled_part_page_keys.add(page_key)
     return MalPageCheck(
         _mark_doubled_part_pages(checked_placements, doubled_part_page_keys),
         tuple(
@@ -185,8 +199,12 @@ def _check_page_placement(
         return _CheckedPage(placement_text)
     links = group_details.links
     comparison = _compare_with_mal_page(
-        group_details.pages_by_current_key.get(links.get_current_key(page_key)),
-        group_details.pages_by_current_key.get(links.get_current_key(mal_page_key)),
+        group_details.pages_by_current_page_key.get(
+            links.get_current_page_key(page_key)
+        ),
+        group_details.pages_by_current_page_key.get(
+            links.get_current_page_key(mal_page_key)
+        ),
     )
     reference_page_by_page_key = group_details.reference_page_by_page_key
     if not _is_suggestion_kept(
@@ -196,7 +214,7 @@ def _check_page_placement(
     ):
         return _CheckedPage(None, comparison)
     is_part_page = comparison is MalPageComparison.PART_OF_WORK
-    if links.get_current_key(page_key) in group_details.doubled_page_keys:
+    if links.get_current_page_key(page_key) in group_details.doubled_page_keys:
         return _CheckedPage(placement_text, is_doubled_part_page=is_part_page)
     if is_part_page:
         return _CheckedPage(placement.placement_word + PART_PAGE_MARK)
@@ -222,21 +240,21 @@ def _mark_doubled_part_pages(
     """
     if not doubled_part_page_keys:
         return placements
-    page_keys_by_work_provider: defaultdict[tuple[str, str | None], list[str]] = (
-        defaultdict(list)
-    )
-    unmarked_part_page_keys: set[str] = set()
-    for key, placement_text in placements.items():
-        if placement := read_placement(placement_text):
-            page_keys_by_work_provider[
-                placement.placement_word, get_page_provider(key)
-            ].append(key)
-            if key in doubled_part_page_keys and not (
-                placement.is_part_page or placement.is_main_page
-            ):
-                unmarked_part_page_keys.add(key)
+    read_placements = {
+        page_key: placement
+        for page_key, placement_text in placements.items()
+        if (placement := read_placement(placement_text))
+    }
+    unmarked_part_page_keys = {
+        page_key
+        for page_key, placement in read_placements.items()
+        if page_key in doubled_part_page_keys
+        and not (placement.is_part_page or placement.is_main_page)
+    }
     marked_placements = dict(placements)
-    for (placement_word, _), page_keys in page_keys_by_work_provider.items():
+    for (placement_word, _), page_keys in build_page_keys_by_work_provider(
+        read_placements
+    ).items():
         if len(page_keys) > 1 and unmarked_part_page_keys.issuperset(page_keys):
             marked_placements |= dict.fromkeys(
                 page_keys, placement_word + PART_PAGE_MARK

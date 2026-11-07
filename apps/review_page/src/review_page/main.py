@@ -1,10 +1,9 @@
-"""Start the review page: read the settings, build the file source, serve the app.
+"""Launch the review page web server with configured file storage and uvicorn settings.
 
-Start the page from the repository root, so the default data folder
-(``data/seed_cleaning``) and the seed-cleaning script
-(``scripts/clean_seed.py``) are found. The README gives the commands, with
-Pants or with uv. In the dev Docker stack, the page runs as the
-``review-page`` service instead.
+Run this entry point from the repository root so default relative paths for the
+seed-cleaning directory (``data/seed_cleaning``) and script
+(``scripts/clean_seed.py``) resolve accurately. In the development Docker stack,
+this module runs as the ``review-page`` container service.
 """
 
 import uvicorn
@@ -14,7 +13,7 @@ from review_page.file_review_case_source import FileReviewCaseSource
 
 
 def main() -> None:
-    """Serve the review page where ``ReviewPageConfig`` says, on localhost by default."""
+    """Load review page settings, initialize the file source, and start the server."""
     config = get_settings().review_page
     source = FileReviewCaseSource(
         config.review_page_data_dir,

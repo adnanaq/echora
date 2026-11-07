@@ -4,7 +4,7 @@ from work_matching import WorkEntry
 
 
 def _entry(address: str) -> WorkEntry:
-    return WorkEntry.from_seed_entry(
+    return WorkEntry.read_seed_entry(
         {"title": "Show", "type": "TV", "sources": [address]}
     )
 

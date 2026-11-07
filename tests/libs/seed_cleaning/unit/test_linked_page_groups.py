@@ -18,11 +18,11 @@ KITSU_NUMBER = "https://kitsu.app/anime/51119"
 
 
 def _linking_seed_entry(address: str, *linked_page_keys: str) -> LinkingSeedEntry:
-    entry = WorkEntry.from_seed_entry(
+    entry = WorkEntry.read_seed_entry(
         {"title": "Show", "type": "TV", "sources": [address]}
     )
     return LinkingSeedEntry(
-        entry.reference_page,
+        entry.reference_page_key,
         LinkingEntryDetails(entry, None, frozenset(linked_page_keys)),
     )
 
@@ -31,10 +31,10 @@ def _linking_seed_entry(address: str, *linked_page_keys: str) -> LinkingSeedEntr
 def store(tmp_path) -> ProviderPageStore:
     store = ProviderPageStore(tmp_path / "provider_pages.jsonl")
     store.add_pages(
-        ProviderPage.from_canonical_record(
+        ProviderPage.read_canonical_record(
             KITSU_SLUG, {"title": "Show", "sources": [KITSU_SLUG, KITSU_NUMBER]}
         ),
-        ProviderPage.from_canonical_record(KITSU_NUMBER, {"title": "Show"}),
+        ProviderPage.read_canonical_record(KITSU_NUMBER, {"title": "Show"}),
     )
     return store
 

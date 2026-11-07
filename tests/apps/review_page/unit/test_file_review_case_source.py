@@ -14,9 +14,12 @@ from review_page.file_review_case_source import (
     RUN_LOG_LIMIT_BYTES,
     FileReviewCaseSource,
     RunSeedFileUnknownError,
-    UnreadableReviewFileError,
 )
-from review_page.review_case_source import ANSWER_SAVED_ELSEWHERE_RULE_NAME
+from review_page.review_case_loader import UnreadableReviewFileError
+from review_page.review_case_source import (
+    ANSWER_SAVED_ELSEWHERE_RULE_NAME,
+    SeedFileUnavailableError,
+)
 from seed_cleaning import (
     REVIEW_ANSWER_REASON,
     SeedCleaningRunResult,
@@ -81,6 +84,34 @@ def source(data_dir, run_script) -> FileReviewCaseSource:
     )
 
 
+@pytest.fixture
+def seed_source(data_dir, run_script, tmp_path) -> FileReviewCaseSource:
+    seed_file = tmp_path / "seed.json"
+    seed_file.write_text(
+        json.dumps(
+            {
+                "data": [
+                    {
+                        "title": "Gochuumon wa Usagi desu ka?",
+                        "type": "TV",
+                        "sources": ["https://myanimelist.net/anime/21273"],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    return FileReviewCaseSource(data_dir, run_script, seed_file=seed_file)
+
+
+def _gochuumon_named_answer(named_entry_page_key: str) -> dict[str, str]:
+    return {
+        "anidb:anime:19188": f"other work {named_entry_page_key}",
+        "anidb:anime:19792": "work 1",
+        "mal:anime:61115": "work 1",
+    }
+
+
 def test_file_review_case_source_list_cases_gives_every_case(
     source, review_cases
 ) -> None:
@@ -117,6 +148,46 @@ def test_file_review_case_source_save_answers_valid_answer_saved(
     assert (result.is_saved, saved[case_name]) == (True, ATASHINCHI_ANSWER)
 
 
+def test_file_review_case_source_save_answers_named_seed_entry_saved(
+    seed_source, review_cases
+) -> None:
+    case_name = review_cases["gochuumon_movie"].case_name
+    [result] = seed_source.save_answers(
+        [_case_answer(case_name, _gochuumon_named_answer("mal:anime:21273"))]
+    )
+    assert (result.is_saved, list(result.broken_rule_names)) == (True, [])
+
+
+def test_file_review_case_source_save_answers_named_entry_outside_seed_not_saved(
+    seed_source, review_cases
+) -> None:
+    case_name = review_cases["gochuumon_movie"].case_name
+    [result] = seed_source.save_answers(
+        [_case_answer(case_name, _gochuumon_named_answer("mal:anime:99999"))]
+    )
+    assert (result.is_saved, list(result.broken_rule_names)) == (
+        False,
+        [PlacementRule.UNKNOWN_NAMED_ENTRY.name],
+    )
+
+
+@pytest.mark.parametrize(
+    "seed_file", [None, Path("assets/seed_data/missing_seed.json")]
+)
+def test_file_review_case_source_save_answers_named_entry_without_seed_file_raises(
+    data_dir, run_script, review_cases, review_case_lines, seed_file
+) -> None:
+    source = FileReviewCaseSource(data_dir, run_script, seed_file=seed_file)
+    case_name = review_cases["gochuumon_movie"].case_name
+    with pytest.raises(SeedFileUnavailableError):
+        source.save_answers(
+            [_case_answer(case_name, _gochuumon_named_answer("mal:anime:21273"))]
+        )
+    assert (data_dir / "review.jsonl").read_text(encoding="utf-8").splitlines(
+        keepends=True
+    ) == review_case_lines
+
+
 def test_file_review_case_source_save_answers_rule_breaking_answer_not_saved(
     source, review_cases, data_dir, review_case_lines
 ) -> None:
@@ -130,8 +201,8 @@ def test_file_review_case_source_save_answers_rule_breaking_answer_not_saved(
         list(result.broken_rule_sentences),
     ) == (
         False,
-        [PlacementRule.PAGE_WITHOUT_PLACE.name],
-        [PlacementRule.PAGE_WITHOUT_PLACE.value],
+        [PlacementRule.MISSING_REQUIRED_PLACEMENT.name],
+        [PlacementRule.MISSING_REQUIRED_PLACEMENT.value],
     )
     assert (data_dir / "review.jsonl").read_text(encoding="utf-8") == "".join(
         review_case_lines
@@ -528,7 +599,9 @@ def test_file_review_case_source_list_checked_entries_reads_both_passes(
         for group in document["split_work_candidates"]
         for entry in group["entries"]
     ]
-    entries = {entry.reference_page: entry for entry in source.list_checked_entries()}
+    entries = {
+        entry.entry_reference_page: entry for entry in source.list_checked_entries()
+    }
     first_split_entry = split_entries[0]
     first_split_message = entries[first_split_entry["reference_page"]]
     assert (

@@ -44,13 +44,13 @@ seed cleaning terms (seed correction, review file, provider page store) in the
 [`seed_cleaning` README](../../libs/seed_cleaning/README.md#terms). The page
 adds:
 
-| Term               | Meaning                                                                                                                             |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
-| **Original value** | A case's answer as the last run wrote it. "Changed" and "Reset" compare against it.                                                 |
-| **Unsaved edit**   | A choice made on the page and not saved yet. It lives in the browser until it is saved or discarded.                                |
-| **Saved answer**   | An answer written to the review file. The next Run applies it.                                                                      |
-| **Suggestion**     | The answer the rules suggest for a case. An unanswered case opens on it; Accept saves it.                                           |
-| **Case source**    | Where the page reads cases and corrections, saves answers and starts runs (`ReviewCaseSource`). The first source reads local files. |
+| Term                | Meaning                                                                                                                              |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| **Original answer** | A case's baseline answer recorded by the last pipeline run. "Changed" and "Reset" compare against it.                                |
+| **Unsaved edit**    | An unpersisted answer choice staged in the browser until saved or discarded.                                                         |
+| **Saved answer**    | A placement answer persisted to the review file on disk. The next Run applies it.                                                    |
+| **Suggestion**      | The placement suggested by matching rules. An unanswered case opens on it; Accept saves it.                                          |
+| **Case source**     | Interface for reading cases and corrections, saving answers, and tracking runs (`ReviewCaseSource`). The initial source reads files. |
 
 ## Running it
 
@@ -112,239 +112,259 @@ relative to the repository (`assets/seed_data/…`), not a full path.
 
 ## A review, step by step
 
-1. Run seed cleaning from the terminal. Seed cleaning fetches the pages, then
-   writes the review cases, the corrections and the run's summary to
+1. Run seed cleaning from the terminal. Seed cleaning fetches provider pages and
+   writes the review cases, corrections, and run result to
    `data/seed_cleaning/`.
-2. Open the page. The Cases tab lists every case. Filter by kind, by whether
-   a case is answered, or by edit state, and search by title or page key.
-3. Open a case and choose a work and mark for each page, or an answer for a
-   linked page. Every choice is checked against the rules as it is made. A
-   choice the rules refuse is greyed out, with the reason.
-4. Save (or Save & next, or Save all for every unsaved case). A save that
-   breaks a rule is refused, the rule is shown, and the edit stays in the
-   browser for fixing.
-5. Press Run. Run starts seed cleaning without fetching (`--no-fetch`) and
-   applies every saved answer. Run uses `REVIEW_PAGE_SEED_FILE` when it is
-   set, and otherwise the seed file the last run read.
-6. Read the run's summary at the top, and the Corrections tab, to check that
-   the run did what the answers meant.
+2. Open the review page. The Cases tab lists every review case. Filter by case
+   kind, case state, or edit state, and search by title or page key.
+3. Open a case and select a work and mark for each provider page, or select a
+   decision for a linked page. Choices are validated against placement rules as
+   they are selected, and disallowed options are disabled with an explanation.
+4. Click Save (or Save & next, or Save all for all staged edits). Saves that
+   violate a placement rule are rejected with the rule message, keeping the
+   staged edit in the browser for correction.
+5. Click Run. Run invokes seed cleaning without network fetching (`--no-fetch`)
+   and applies all saved answers using `REVIEW_PAGE_SEED_FILE` when configured,
+   or the seed file recorded by the previous run.
+6. Inspect the run summary banner and the Corrections tab to verify the
+   resulting entry changes.
 
 ### A new seed release
 
-1. Put the new seed file in `assets/seed_data/`.
-2. Run seed cleaning from the terminal, naming the file:
+1. Place the new seed file in `assets/seed_data/`.
+2. Run seed cleaning from the terminal with the new seed file path:
 
    ```bash
    uv run python scripts/clean_seed.py assets/seed_data/anime-offline-database-minified.json
    ```
 
-3. Reload the page. The page reads the cases and summary on every request,
-   so there is nothing to import and nothing to rebuild. Run follows the new
-   release on its own.
+3. Reload the review page. Because the server reads cases and run results on
+   every request, no import or rebuild step is needed, and subsequent Runs
+   automatically use the new seed file.
 
-The page's Run never fetches. The first run of a release, which fetches its
-pages, is always started from the terminal.
+The review page's Run button never fetches over the network; the initial run
+for a new seed release is always executed from the terminal.
 
-Saved answers carry over to the new release by case name:
+Saved answers carry over to the new seed release by case name:
 
-- A case whose pages are the same gets its saved answer back, and the run
-  applies that answer again.
-- A case whose pages changed in the new release gets a new name. The case is
-  asked again and marked New.
-- The old answer of a changed case stays in the review file but is not
-  applied. The run summary lists the old answer under "Answers whose case no
-  longer comes up".
+- A case whose candidate pages are unchanged retains its saved answer, which the
+  run applies automatically.
+- A case whose candidate pages changed in the new release receives a new case
+  name, appears as an open case, and is badged `New`.
+- The prior answer for a modified case remains in the review file without being
+  applied and is listed in the run summary under "Answers whose case no longer
+  comes up".
 
-An answered case is never removed from the review file. Every run starts
-again from the downloaded seed and applies the saved answers anew, so a
-removed answer would be asked again.
+Saved answers are never deleted from the review file because every pipeline run
+starts from the original seed file and reapplies all saved answers.
 
 ## The page
 
 ### Cases tab
 
-- **List.** One row per case: its title, kind, edit state and tags (New,
-  Suggested, No longer comes up). Filters within one group widen the list;
-  groups narrow each other. 25 rows a page.
-- **Case panel.** Why the case needs review, its evidence, its entries, and a
-  table of its pages. Each page row shows the page's details (titles, type,
-  episodes, air dates, links to the provider pages) and a Work and a Mark
-  dropdown. "Show only differences" hides the details every page shares.
+- **List.** Displays one row per review case with its title, kind, edit state,
+  and status pills (`New`, `Suggested`, `No longer comes up`). Selecting
+  multiple chips within the same filter category widens the match (logical OR),
+  while combining different filter categories narrows the match (logical AND).
+  Paginated at 25 rows per page.
+- **Case panel.** Displays the review reason sentences, work entry headers, and
+  candidate provider page table. Each page row displays extracted metadata
+  (titles, type, episode count, air dates, and external provider links) along
+  with Work and Mark dropdowns. Enabling "Show only differences" hides metadata
+  columns and comparison rows whose values are identical across all pages.
 - **Choices.**
-  - Choosing `part` for one page marks the provider's other pages in that
-    work as parts too. Choosing `main` leaves the other pages unmarked.
-  - A choice another page's place rules out, such as a second MAL page in one
-    work, is greyed out, with one note per rule under the dropdown.
-  - "What the choices mean" under the table explains every word. Hovering any
-    dropdown, filter, tag or button says what it does.
-- **States.** Each case shows one edit state: rejected (its last save broke a
-  rule), edited and not saved, saved and applying on Run, or unchanged. Rows
-  whose place differs from the case's starting answer are highlighted. An
-  unanswered case starts on its suggestion, so an untouched suggestion is not
-  an edit.
+  - Selecting `part` for one page marks the provider's other pages in that
+    work as parts as well. Selecting `main` leaves the other pages unmarked.
+  - Options disabled by another page's placement (such as assigning a second
+    MyAnimeList page to the same work) are greyed out, with one explanatory
+    note per rule displayed beneath the dropdown.
+  - Selecting `other work` displays an input box for the target seed entry.
+    The input offers candidate entries from the case that hold no page from
+    that provider, and also accepts a pasted page key or provider address
+    (normalized to its page key). Leaving the field empty assigns the page to
+    a new entry. Saving validates the named entry against the seed file, which
+    is loaded on first use and cached while its modification time and size
+    remain unchanged.
+  - "What the choices mean" beneath the table explains each placement value.
+    Hovering any dropdown, filter, badge, or button displays its tooltip.
+- **States.** Each case displays one edit state: `rejected` (the last save
+  violated a placement rule), `edited, not saved`, `saved, applies on Run`, or
+  `unchanged`. Rows whose placement differs from the case's baseline answer are
+  highlighted. An unanswered case opens on its suggested answer, so an
+  unmodified suggestion is not treated as an unsaved edit.
 - **Buttons.**
-  - Save and Save & next: enabled while the shown answer differs from the
-    saved one.
-  - Accept: enabled while a complete suggestion differs from the saved answer.
-  - Reset: enabled while the shown or saved answer differs from the original
-    value.
-  - Every button is disabled while a run is going.
-- **No longer comes up.** The file keeps the case's answer, but the last run
-  no longer brought the case up, because another answer changed the case's
-  pages. The kept answer changed nothing. Answer the case that replaced it.
+  - Save and Save & next: enabled when the chosen answer differs from the saved answer.
+  - Accept: enabled when a complete suggested answer differs from the saved answer.
+  - Reset: enabled when the chosen or saved answer differs from the original answer.
+  - Every button is disabled while a pipeline run is in progress.
+- **No longer comes up.** The review file retains the case's saved answer, but
+  the last pipeline run no longer produced the case because an upstream decision
+  modified its pages. The retained answer had no effect; answer the replacement
+  case instead.
 
 ### Corrections tab
 
-What the last run changed, one corrected entry at a time:
+Displays entry modifications from the last pipeline run, one corrected entry at a time:
 
-- **List.** Each corrected entry with how many of its pages changed, and a
-  "Your answer" tag when an answer placed any of them. Filter by change (pages
-  moved, old addresses dropped, kept as main or part page, unchanged) and by
-  source (your answer or the rules).
-- **Entry panel.** A table of the entry's pages: the change, where the page
-  goes (the seed entry it joins, linked to that entry's page, a new entry, its
-  current address, or staying), its work and mark, why, and the source.
-- **Links both ways.** A corrected entry links the review cases holding it,
-  and a case shows how many corrections the last run made for its entries.
+- **List.** Lists each corrected entry with the number of modified pages and a
+  "Your answer" badge when a reviewer's answer placed at least one page. Filter
+  by change category (pages moved, old addresses dropped, kept as main or part
+  page, unchanged) and by decision source (reviewer answer or matching rules).
+- **Entry panel.** Shows a table of the entry's provider pages: the change
+  category, destination (target seed entry, linked page, new entry, current
+  address, or unchanged), assigned work and mark, rule explanation, and source.
+- **Cross-links.** A corrected entry links back to the review cases containing
+  it, and a review case links to any corrections from the last run that
+  modified its entries.
 
-Corrections are the last run's; answers saved since then show after the next
-Run.
+Corrections reflect the last completed pipeline run; answers saved afterward
+take effect on the next Run.
 
 ### Run
 
-Run is enabled while saved answers differ from their original values and no
-edit is left unsaved, so a run never misses an edit. While a run goes, the
-page shows "Run going" and every button waits. When the run ends, the
-summary, the lists, the original values and the Corrections tab refresh.
+Run is enabled while saved answers differ from their original answers and no
+edit is left unsaved, ensuring a run never misses an in-memory edit. While a run is
+active, the toolbar indicates "Run going" and action buttons are disabled. When the run ends,
+the summary, the lists, the original answers, and the Corrections tab refresh automatically.
 
-The page asks for the run state every few seconds, so a run started from the
-terminal or another tab shows the same way. A failed run shows its exit code.
-The run's output is in `data/seed_cleaning/logs/review_page_runs.log`. A log
-past about 1 MB moves to `review_page_runs.log.1` before the next run.
+The page polls `/runs/state` every few seconds, so a pipeline run started from
+the terminal or another browser tab is tracked identically. A failed run
+reports its exit code. Subprocess output is written to
+`data/seed_cleaning/logs/review_page_runs.log`, which rotates to
+`review_page_runs.log.1` once it exceeds 1 MB before starting a new run.
 
-A run keeps going when the page's server restarts. The restarted server
-follows that run through the review file's lock, but cannot read the run's
-exit code, so a failure shows only in the run log.
+An active run continues if the web server restarts. The restarted server
+detects the running process via the operating-system lock on `review.jsonl.lock`,
+though its exit code will only be recorded in the run log.
 
 ### Layout and settings
 
-- The case list can be hidden and shown (the button beside the search box) and
-  resized by dragging the divider or with the arrow keys; double-click resets
-  its width. The list's narrowest width still shows a row's tags in full.
-- Theme: System (follows the computer's light or dark setting), Light or Dark.
-- The browser keeps the reviewer's own state across reloads, page restarts and
-  runs: unsaved edits, rejected saves, filters, searches, pages, the open case
-  and entry, the tab, the theme, and the list's width and visibility.
+- The case list sidebar can be toggled with the button beside the search box
+  and resized by dragging the divider or pressing the arrow keys;
+  double-clicking restores the default width. The minimum sidebar width keeps
+  row badges visible.
+- Theme: System (follows the operating system's light or dark setting), Light,
+  or Dark.
+- Browser `localStorage` preserves session state across reloads, server
+  restarts, and pipeline runs: staged unsaved edits, rejected saves, active
+  filters, search text, pagination indices, open case and entry selections,
+  active tab, color theme, and sidebar width and visibility.
 
 ## Saving safely
 
-- **Rules first.** The source checks every answer with the same rules a run
-  uses (`work_matching`) before saving it, so the page never saves an answer
-  the run would refuse.
-- **One line changed.** A save rewrites only the answered cases' `answer`
-  fields; every other line of the review file stays byte for byte, and the file
-  is replaced atomically.
-- **One writer at a time.** Saves and runs take an operating-system file lock
-  on `review.jsonl.lock`. A save while a run holds it is refused with a notice,
-  and nothing is written. The lock works between the container and the host.
-- **Cases a run removed.** A case a run removed after the page loaded it is
-  rejected with that reason, like an answer breaking a rule. Save all still
-  saves the other cases. When the run removes the case during the save itself,
-  between the check and the write, nothing is saved and a notice asks for a
-  reload.
-- **Only the page itself.** Other websites open in the same browser cannot
-  save answers or start runs (`request_guards.py`):
-  - a request naming any host but `127.0.0.1`, `localhost` or `[::1]` gets
-    400, which stops DNS rebinding;
-  - a POST without the `HX-Request: true` header htmx sends gets 403. A site
-    on another origin cannot add that header without a CORS preflight, which
-    the server refuses;
-  - a POST whose `Origin` header names another host gets 403, a second check
-    in case the header check ever lets a request through.
+- **Rule validation first.** The case source validates every candidate answer
+  against the `work_matching` placement rules before persisting it, preventing
+  invalid answers from being written to disk.
+- **Targeted line updates.** Saving rewrites only the `answer` field on
+  modified case lines in `review.jsonl`; all other lines remain unchanged byte
+  for byte, and the file is replaced atomically.
+- **Exclusive file locking.** Saves and pipeline runs acquire a non-blocking
+  operating-system lock on `review.jsonl.lock`. Save attempts while a run holds
+  the lock are refused with a notice and leave disk files untouched. The lock
+  coordinates access across container and host processes.
+- **Removed cases.** If a pipeline run removed a case after the browser loaded
+  it, saving that case is rejected with an explanatory message while `Save all`
+  still persists remaining valid cases. If a concurrent modification removes a
+  target case between validation and file rewrite, the write is aborted and a
+  notice prompts a reload.
+- **Cross-site request protection.** External websites open in the same browser
+  cannot submit answers or trigger runs (`request_guards.py`):
+  - requests with a `Host` header other than `127.0.0.1`, `localhost`, or `[::1]`
+    are rejected with HTTP 400 to prevent DNS rebinding;
+  - `POST` requests without the `HX-Request: true` header sent by htmx are
+    rejected with HTTP 403, as cross-origin sites cannot attach custom headers
+    without a CORS preflight (which the server denies);
+  - `POST` requests carrying an `Origin` header from a non-local host are
+    rejected with HTTP 403 as defense in depth.
 
-  A request under another name, such as a Kubernetes probe of `/health`,
-  must send `Host: localhost`, or that name must be added to
-  `LOCAL_HOST_NAMES`.
+  Health probes or local requests using another hostname must send
+  `Host: localhost` or register the hostname in `LOCAL_HOST_NAMES`.
 
-- **Edits started from an older answer.** Each unsaved edit keeps the saved
-  answer it started from. When another tab or browser has saved a different
-  answer since, the save is refused with that reason, checked again under the
-  file lock, and nothing is written. Saving again replaces that answer on
-  purpose.
-- **Several tabs.** Open tabs of the page share unsaved edits through the
-  browser's `storage` event. An edit made in one tab shows in the others, and
-  a save in one tab clears the edit everywhere. Filters and the open case stay
-  per tab. A second browser keeps its own edits, which the check above
-  protects.
-- **Linked-page conflicts.** Two answers adding whole pages of one provider to
-  one entry are saved with a warning, since the run adds neither.
+- **Optimistic concurrency conflict detection.** Each unsaved edit records the
+  base saved answer (`seen_saved_answer`) present when the edit began. If another
+  session or tab modified the saved answer concurrently, the save is rejected under
+  the review file lock to prevent accidental overwrites. Submitting again without
+  the base revision explicitly forces the update.
+- **Multi-tab synchronization.** Open tabs in the same browser synchronize
+  staged edits via the `storage` event. Edits made in one tab appear in other
+  tabs, and saving in one tab clears the staged edit across all tabs. Active
+  filters and open case selections remain independent per tab. Separate browser
+  profiles maintain separate state protected by optimistic concurrency checks.
+- **Linked-page conflicts.** When two saved answers assign whole pages from the
+  same provider to the same work entry, the save succeeds with a warning notice
+  because the pipeline skips conflicting additions.
 
 ## Files it reads and writes
 
 All in `data/seed_cleaning/` (`REVIEW_PAGE_DATA_DIR`):
 
-| File                                     | Page reads                                          | Page writes                               |
-| ---------------------------------------- | --------------------------------------------------- | ----------------------------------------- |
-| `review.jsonl`                           | The cases and their saved answers.                  | Answers, on Save, Accept, Reset.          |
-| `review_run.json`                        | The last run's summary, original values, seed file. | Never; a run writes it.                   |
-| `corrections.jsonl`                      | The Corrections tab.                                | Never; a run writes it.                   |
-| `entries_to_check.json`                  | Titles of corrected entries.                        | Never; a run writes it.                   |
-| `review.jsonl.lock`                      | Whether a run is going.                             | Taken during a save.                      |
-| `review_run.pid`, `review_run.exit_code` | The run the page started, and how it ended.         | When Run starts and ends.                 |
-| `logs/review_page_runs.log`              | Never.                                              | The output of runs started from the page. |
+| File                                     | Page reads                                                 | Page writes                                |
+| ---------------------------------------- | ---------------------------------------------------------- | ------------------------------------------ |
+| `review.jsonl`                           | Review cases and their persisted answers.                  | Saved answers on Save, Accept, and Reset.  |
+| `review_run.json`                        | Last run result, baseline original answers, and seed file. | Never; written by the seed-cleaning run.   |
+| `corrections.jsonl`                      | Seed entry corrections for the Corrections tab.            | Never; written by the seed-cleaning run.   |
+| `entries_to_check.json`                  | Titles and metadata of checked seed entries.               | Never; written by the seed-cleaning run.   |
+| `review.jsonl.lock`                      | Whether a pipeline run currently holds the lock.           | Acquired during answer saves.              |
+| `review_run.pid`, `review_run.exit_code` | Active run process ID and last subprocess exit code.       | Written when starting and completing runs. |
+| `logs/review_page_runs.log`              | Never.                                                     | Standard output and error of spawned runs. |
 
 ## How it is built
 
 ### The case source
 
-The page reaches cases only through one swappable source
-(`review_case_source.py`), whose methods take and return the protobuf messages
-in `protos/shared_proto/v1/review_cases.proto`:
+The review page accesses data exclusively through an abstract interface
+(`ReviewCaseSource` in `review_case_source.py`), whose methods exchange
+protobuf messages defined in `protos/shared_proto/v1/review_cases.proto`:
 
-- list and get cases, save answers (checked), start a run and read its state;
-- read the last run's summary, its corrections and the entries it checked.
+- list and look up review cases, validate and save answers, start a pipeline
+  run, and query run execution state;
+- read the last run result (`SeedCleaningRunResult`), seed corrections, and
+  checked seed entries.
 
-`FileReviewCaseSource` is the first source and the only module that imports
-`seed_cleaning`. The file source:
+`FileReviewCaseSource` (`file_review_case_source.py`) is the local file-backed
+implementation and the only module in `review_page` that imports
+`seed_cleaning`. `FileReviewCaseSource`:
 
-- reads the files above;
-- converts seed cleaning's models to the messages;
-- fills in what the page shows without knowing seed cleaning: each
-  correction's change, the correction's reason as a sentence, and whether an
-  answer placed the page.
+- reads and writes the local data files listed above;
+- converts `seed_cleaning` domain records into protobuf messages;
+- precomputes correction display labels, rule explanation sentences, and answer
+  provenance flags so downstream views remain decoupled from `seed_cleaning`.
 
 ### Server and browser
 
-- **Server.** FastAPI with Jinja templates. The server keeps no state between
-  requests. Every request rereads the files, which costs a few milliseconds,
-  so a page restart loses nothing.
-- **Fragments.** htmx redraws one region at a time (toolbar, run panel, list,
-  case panel, corrections list and panel). Every control in a redrawn region
-  has a stable id, so focus stays where it was, and the regions are never
-  scroll anchors, so a redraw never moves the view.
-- **Browser state.** Alpine.js holds the reviewer's state, kept in
-  localStorage by its persist plugin, and sends it with every request.
-- **Tooltips.** The page's own wording (buttons, columns, filters, states,
-  tabs) lives in `tooltips.py`, which every template reads. Rule wording (what
-  an answer word does, why an option is not offered, what a case kind is)
-  lives in `work_matching`, next to the rules it explains. A test fails on a
-  tooltip text no page uses and on an empty tooltip.
-- **Look.** One stylesheet (`static/parts.css`) of named colours and sizes,
-  with a light and a dark set, and one Jinja macro per shared part
-  (`templates/parts.html`: dropdown, chip, pill, status, button, icon button,
-  pager, tabs, notes), so each part looks and behaves the same everywhere.
-  Static files carry a content hash in their address, so a browser never keeps
-  an old copy.
-- **Libraries.** htmx, Alpine.js and its persist plugin are copied into
-  `static/vendor/` at fixed versions, with their checksums in that folder's
-  README; nothing is loaded from the internet.
+- **Server.** FastAPI with Jinja2 templates. The server holds no session state
+  between requests, so server restarts never lose state. The review cases are
+  converted once per version of `review.jsonl` (`ReviewCaseLoader`) and read
+  again whenever the file changes, so every page shows what the file holds.
+- **Fragments.** htmx updates individual page regions (toolbar, run panel, case
+  list, case panel, corrections list, and correction panel). Interactive controls
+  carry deterministic element IDs (`build_element_id`) to preserve focus across
+  swaps, and scrollable regions disable scroll anchoring (`overflow-anchor: none`).
+- **Browser state.** Alpine.js manages client-side state persisted to
+  `localStorage` via `@alpinejs/persist` and submits it in the `browser_state`
+  form field (`BrowserState`) on every fragment request.
+- **Tooltips.** User interface copy for buttons, columns, filters, states, and
+  tabs is centralized in `tooltips.py` and injected into templates. Domain rule
+  explanations (placement choice meanings, disabling rules, and case kind
+  descriptions) live in `work_matching` alongside the rule logic. Automated
+  tests verify that every `Tooltip` constant is referenced and that rendered
+  fragments contain no empty `title=""` attributes.
+- **Styling and components.** A single stylesheet (`static/review_page.css`) defines
+  light and dark theme tokens, and `templates/control_macros.html` provides reusable
+  Jinja macros (dropdown, chip, pill, status, button, icon button, pager, tabs,
+  and notice lines). Static asset URLs include a content hash (`build_static_url`)
+  for cache busting.
+- **Vendor libraries.** Pinned versions of htmx, Alpine.js, and `@alpinejs/persist`
+  are vendored in `static/vendor/` with SHA-256 checksums documented in
+  `static/vendor/README.md`; no external network requests are made at runtime.
 
 ### Discovery and production
 
-When Discovery replaces the seed, a source backed by the enrichment service
-implements the same methods with the same messages, and the page does not
-change. In production the page sits behind the backend, which is the only
-entry point for the frontend; until then it stays a local dev service.
+When Discovery replaces the offline seed file, an enrichment-service-backed
+`ReviewCaseSource` implementation will exchange the same protobuf messages
+without requiring changes to the web application. In production, the review
+page will run behind the backend API gateway; during seed cleaning, it runs as
+a local development service.
 
 ## Tests
 
@@ -352,34 +372,37 @@ entry point for the frontend; until then it stays a local dev service.
 ./pants test tests/apps/review_page::
 ```
 
-`tests/apps/review_page/unit/` tests every module with real review cases
-(`tests/libs/work_matching/unit/fixtures/review_cases.jsonl`) and real
-corrections and checked entries (`fixtures/`). Routes are tested with
-FastAPI's test client over a fake source that subclasses `ReviewCaseSource`;
-the file source is tested on a temporary data folder, runs included.
+`tests/apps/review_page/unit/` tests all modules against fixture review cases
+(`tests/libs/work_matching/unit/fixtures/review_cases.jsonl`), corrections, and
+checked entries (`tests/apps/review_page/unit/fixtures/`). Route handlers are
+tested with FastAPI's `TestClient` against an in-memory `ReviewCaseSource`
+test double, and `FileReviewCaseSource` is tested against temporary data
+directories including subprocess execution.
 
 ## Files
 
-| File                         | Holds                                                                                                           |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `main.py`                    | Starts the page: reads the settings, builds the file source, serves the app with uvicorn.                       |
-| `app.py`                     | `create_app`, `PageRoutes`: builds the app, serves the page shell and health check, and the broken-line notice. |
-| `case_routes.py`             | `CaseRoutes`: the Cases tab's toolbar, list, open case, choices and saves.                                      |
-| `correction_routes.py`       | `CorrectionRoutes`: the Corrections tab's fragments.                                                            |
-| `run_routes.py`              | `RunRoutes`: starting Run, the run panel, and the run state every page polls.                                   |
-| `htmx_responses.py`          | The empty and refusal responses that hand the browser htmx events.                                              |
-| `review_case_source.py`      | `ReviewCaseSource`: the source the page reads and writes through.                                               |
-| `file_review_case_source.py` | `FileReviewCaseSource`: the source over seed cleaning's local files, and its conversions to messages.           |
-| `answer_checks.py`           | The checks an answer passes before the file source saves it, and linked-page conflict warnings.                 |
-| `review_case_messages.py`    | Conversion between `work_matching.ReviewCase` and its message, and the helpers for ordered mappings.            |
-| `run_summary.py`             | `build_run_summary`: reads the last run's summary from its message.                                             |
-| `models.py`                  | Every data shape the page passes between modules and templates: states, rows, views, filters, `BrowserState`.   |
-| `page_state.py`              | Decides each case's edit state and case state, the buttons, the filters and paging, from the answers alone.     |
-| `case_views.py`              | Builds the case list's rows and assembles the case panel's view.                                                |
-| `case_panel_tables.py`       | Builds the case panel's tables: entries, page rows with choices and notes, comparison rows, evidence.           |
-| `correction_views.py`        | Builds what the Corrections tab shows: corrected entries, filters, an entry's pages and destinations.           |
-| `request_guards.py`          | The host check and the htmx header check that refuse requests from other websites.                              |
-| `template_functions.py`      | `static_url`, `element_id` and the tooltips, given to every template.                                           |
-| `tooltips.py`                | Every tooltip the page writes itself (`Tooltip`, and the texts for states, changes and themes).                 |
-| `templates/`                 | The page, its fragments and `parts.html`, the shared parts.                                                     |
-| `static/`                    | `parts.css`, `review_page.js` and the copied libraries.                                                         |
+| File                         | Holds                                                                                                                               |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `main.py`                    | Entry point that loads `Settings`, initializes `FileReviewCaseSource`, and starts the Uvicorn server.                               |
+| `app.py`                     | `create_app`, `PageRoutes`: configures FastAPI middleware, static mounts, exception handlers, `/health`, and the `/` shell route.   |
+| `case_routes.py`             | `CaseRoutes`: HTMX fragment routes for the Cases tab toolbar, list, case panel, interactive choices, and answer saves.              |
+| `correction_routes.py`       | `CorrectionRoutes`: HTMX fragment routes for the Corrections tab list and entry detail panel.                                       |
+| `run_routes.py`              | `RunRoutes`: endpoints for starting a pipeline run, polling `/runs/state`, and rendering the run summary panel.                     |
+| `htmx_responses.py`          | `build_event_response`, `build_notice_response`, `build_event_headers`: responses carrying `HX-Trigger` headers for Alpine.js.      |
+| `review_case_source.py`      | `ReviewCaseSource`: abstract interface for reading cases and corrections, saving answers, and managing pipeline runs.               |
+| `file_review_case_source.py` | `FileReviewCaseSource`: local file-backed `ReviewCaseSource` implementation and `seed_cleaning` protobuf converters.                |
+| `review_case_loader.py`      | `ReviewCaseLoader`: reads `review.jsonl` once per file version, keeping its cases and their messages until the file changes.        |
+| `seed_entries.py`            | `load_seed_entries`: loads and caches known seed entries from the active seed file when validating `other work` targets.            |
+| `answer_checks.py`           | Validates candidate answers against placement constraints and checks optimistic concurrency.                                        |
+| `review_case_messages.py`    | Conversions between `work_matching.ReviewCase` and its protobuf message, plus ordered mapping helpers.                              |
+| `run_summary.py`             | `build_run_summary`: parses the last run's `SeedCleaningRunResult` message into a `RunSummary` model.                               |
+| `models.py`                  | Domain models, row projections, filter criteria, and `BrowserState`.                                                                |
+| `page_state.py`              | `resolve_saved_change`, `resolve_case_edit_state`, `build_case_buttons`, `build_page_buttons`, `filter_case_rows`, `paginate_rows`. |
+| `case_views.py`              | Constructs case list summary rows and assembles the inspection panel view.                                                          |
+| `case_panel_tables.py`       | Builds entry views, candidate page rows (`build_page_rows`), comparison rows, visible columns, and evidence pages.                  |
+| `correction_views.py`        | Builds corrected entry list rows, filters and counts corrections, and assembles `CorrectionPanelView` detail panels.                |
+| `request_guards.py`          | `add_request_guards`, `refuse_post_from_other_sites`: host header and HTMX origin checks blocking cross-site requests.              |
+| `template_functions.py`      | `build_static_url`, `build_element_id`, `add_template_functions`: registers `static_url`, `element_id`, and `tooltips` in Jinja2.   |
+| `tooltips.py`                | `Tooltip` enum and tooltip mappings for edit states, case states, correction changes, and color themes.                             |
+| `templates/`                 | Jinja2 HTML templates for the page shell, HTMX fragments, and shared UI macros (`control_macros.html`).                             |
+| `static/`                    | Stylesheet (`review_page.css`), Alpine.js client store (`review_page.js`), and vendored frontend libraries (`vendor/`).             |

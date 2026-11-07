@@ -31,6 +31,23 @@ function withoutKeys(mapping, keys) {
   return kept;
 }
 
+// The store fields and the region of each tab's list, so one filter, reset and
+// page function serves both tabs.
+const TAB_LISTS = {
+  cases: {
+    filterFields: ["kinds", "case_states", "edit_states"],
+    searchField: "search_text",
+    pageField: "page_number",
+    region: "list",
+  },
+  corrections: {
+    filterFields: ["correction_changes", "correction_sources"],
+    searchField: "correction_search_text",
+    pageField: "correction_page_number",
+    region: "correction-list",
+  },
+};
+
 // The stored values open tabs share, by their localStorage key.
 const SHARED_STORE_FIELDS = {
   review_page_edits: "edits",
@@ -54,7 +71,9 @@ function redrawAfterSharedChanges() {
 document.addEventListener("alpine:init", () => {
   Alpine.store("review", {
     edits: Alpine.$persist({}).as("review_page_edits"),
-    seen_saved_answers: Alpine.$persist({}).as("review_page_seen_saved_answers"),
+    seen_saved_answers: Alpine.$persist({}).as(
+      "review_page_seen_saved_answers",
+    ),
     rejected: Alpine.$persist({}).as("review_page_rejected"),
     kinds: Alpine.$persist([]).as("review_page_kinds"),
     case_states: Alpine.$persist([]).as("review_page_case_states"),
@@ -62,15 +81,27 @@ document.addEventListener("alpine:init", () => {
     search_text: Alpine.$persist("").as("review_page_search_text"),
     page_number: Alpine.$persist(1).as("review_page_page_number"),
     open_case_name: Alpine.$persist(null).as("review_page_open_case_name"),
-    show_only_differences: Alpine.$persist(false).as("review_page_show_only_differences"),
+    show_only_differences: Alpine.$persist(false).as(
+      "review_page_show_only_differences",
+    ),
     // The shown tab, "cases" or "corrections", and the Corrections tab's own
     // filters, search, page and open entry.
     tab: Alpine.$persist("cases").as("review_page_tab"),
-    correction_changes: Alpine.$persist([]).as("review_page_correction_changes"),
-    correction_sources: Alpine.$persist([]).as("review_page_correction_sources"),
-    correction_search_text: Alpine.$persist("").as("review_page_correction_search_text"),
-    correction_page_number: Alpine.$persist(1).as("review_page_correction_page_number"),
-    open_correction_entry: Alpine.$persist(null).as("review_page_open_correction_entry"),
+    correction_changes: Alpine.$persist([]).as(
+      "review_page_correction_changes",
+    ),
+    correction_sources: Alpine.$persist([]).as(
+      "review_page_correction_sources",
+    ),
+    correction_search_text: Alpine.$persist("").as(
+      "review_page_correction_search_text",
+    ),
+    correction_page_number: Alpine.$persist(1).as(
+      "review_page_correction_page_number",
+    ),
+    open_correction_entry: Alpine.$persist(null).as(
+      "review_page_open_correction_entry",
+    ),
     // "system", "light" or "dark"; base.html applies it before the first paint.
     theme: Alpine.$persist("system").as("review_page_theme"),
     // The case list's width in pixels, and whether it is shown.
@@ -105,53 +136,31 @@ document.addEventListener("alpine:init", () => {
       });
     },
 
-    toggleFilter(listName, value) {
+    toggleFilter(tab, listName, value) {
       const values = this[listName];
       this[listName] = values.includes(value)
         ? values.filter((chosen) => chosen !== value)
         : [...values, value];
-      this.page_number = 1;
-      refreshRegions("list");
+      this.showPage(tab, 1);
     },
 
-    resetFilters() {
-      this.kinds = [];
-      this.case_states = [];
-      this.edit_states = [];
-      this.search_text = "";
-      this.page_number = 1;
-      refreshRegions("list");
+    resetFilters(tab) {
+      const tabList = TAB_LISTS[tab];
+      for (const filterField of tabList.filterFields) {
+        this[filterField] = [];
+      }
+      this[tabList.searchField] = "";
+      this.showPage(tab, 1);
     },
 
-    showPage(pageNumber) {
-      this.page_number = pageNumber;
-      refreshRegions("list");
+    showPage(tab, pageNumber) {
+      const tabList = TAB_LISTS[tab];
+      this[tabList.pageField] = pageNumber;
+      refreshRegions(tabList.region);
     },
 
     setTab(tab) {
       this.tab = tab;
-    },
-
-    toggleCorrectionFilter(listName, value) {
-      const values = this[listName];
-      this[listName] = values.includes(value)
-        ? values.filter((chosen) => chosen !== value)
-        : [...values, value];
-      this.correction_page_number = 1;
-      refreshRegions("correction-list");
-    },
-
-    resetCorrectionFilters() {
-      this.correction_changes = [];
-      this.correction_sources = [];
-      this.correction_search_text = "";
-      this.correction_page_number = 1;
-      refreshRegions("correction-list");
-    },
-
-    showCorrectionPage(pageNumber) {
-      this.correction_page_number = pageNumber;
-      refreshRegions("correction-list");
     },
 
     openCorrection(referencePage) {
@@ -186,7 +195,9 @@ document.addEventListener("alpine:init", () => {
     toggleSidebar() {
       this.is_sidebar_open = !this.is_sidebar_open;
       Alpine.nextTick(() => {
-        const shownButtonPlace = this.is_sidebar_open ? ".list-panel-top" : ".layout-rail";
+        const shownButtonPlace = this.is_sidebar_open
+          ? ".list-panel-top"
+          : ".layout-rail";
         document.querySelector(`${shownButtonPlace} .is-icon-only`)?.focus();
       });
     },
@@ -196,8 +207,13 @@ document.addEventListener("alpine:init", () => {
     setSidebarWidth(width) {
       const main = document.querySelector(".layout-main");
       const roomLeft = main ? main.clientWidth - 480 : this.SIDEBAR_MAX_WIDTH;
-      const widest = Math.max(this.SIDEBAR_MIN_WIDTH, Math.min(this.SIDEBAR_MAX_WIDTH, roomLeft));
-      this.sidebar_width = Math.round(Math.min(widest, Math.max(this.SIDEBAR_MIN_WIDTH, width)));
+      const widest = Math.max(
+        this.SIDEBAR_MIN_WIDTH,
+        Math.min(this.SIDEBAR_MAX_WIDTH, roomLeft),
+      );
+      this.sidebar_width = Math.round(
+        Math.min(widest, Math.max(this.SIDEBAR_MIN_WIDTH, width)),
+      );
     },
 
     // Follow the pointer until it is released; pointer capture keeps the drag
@@ -210,7 +226,8 @@ document.addEventListener("alpine:init", () => {
       const startWidth = this.sidebar_width;
       divider.setPointerCapture(event.pointerId);
       divider.classList.add("is-dragging");
-      const follow = (moveEvent) => this.setSidebarWidth(startWidth + moveEvent.clientX - startX);
+      const follow = (moveEvent) =>
+        this.setSidebarWidth(startWidth + moveEvent.clientX - startX);
       const stop = () => {
         divider.classList.remove("is-dragging");
         divider.removeEventListener("pointermove", follow);
@@ -263,7 +280,9 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     } else {
       store.edits = withoutKeys(store.edits, [caseName]);
-      store.seen_saved_answers = withoutKeys(store.seen_saved_answers, [caseName]);
+      store.seen_saved_answers = withoutKeys(store.seen_saved_answers, [
+        caseName,
+      ]);
     }
     store.rejected = withoutKeys(store.rejected, [caseName]);
     refreshRegions("toolbar", "list");
@@ -302,7 +321,14 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!wasRunning && store.is_running) {
       refreshRegions("run", "toolbar", "case");
     } else if (wasRunning && !store.is_running) {
-      refreshRegions("run", "toolbar", "list", "case", "correction-list", "correction");
+      refreshRegions(
+        "run",
+        "toolbar",
+        "list",
+        "case",
+        "correction-list",
+        "correction",
+      );
     }
   });
 
@@ -336,6 +362,17 @@ document.addEventListener("DOMContentLoaded", () => {
         JSON.parse(event.detail.xhr.responseText).notice || generalNotice;
     } catch {
       Alpine.store("review").notice = generalNotice;
+    }
+  });
+
+  // A server error page is swapped into its region so the error shows where
+  // it happened. A notice response is JSON, shown by the notice banner
+  // above, so its body is never swapped into a region.
+  document.body.addEventListener("htmx:beforeOnLoad", function (evt) {
+    const contentType = evt.detail.xhr.getResponseHeader("Content-Type") || "";
+    if (evt.detail.xhr.status === 500 && !contentType.includes("application/json")) {
+      evt.detail.shouldSwap = true;
+      evt.detail.isError = false;
     }
   });
 });

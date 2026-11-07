@@ -31,31 +31,28 @@ from enum import StrEnum
 from itertools import chain
 
 from work_matching.provider_page import ProviderPage
-from work_matching.provider_page_key import get_page_provider
+from work_matching.provider_page_key import is_mal_page
 from work_matching.provider_page_links import ProviderPageLinks
 from work_matching.work_entry import WorkEntry, is_type_matching, is_year_matching
 
-# A work is what MAL lists, so a linked MAL page outside the group may be the
-# entries' work.
-_MAL_PROVIDER = "mal"
-
 
 class SplitWorkReviewReason(StrEnum):
-    """What speaks against candidate entries being one work, or weakens the evidence."""
+    """Define review reasons that speak against candidate entries being one work."""
 
     NOT_TIED_BY_LINKS = "links do not connect every entry"
     TYPE_DIFFERS = "the entries' types differ"
     YEAR_DIFFERS = "the entries' years differ"
     NO_PAGE_CHECKED = (
-        "no page of the entries could be fetched, so only what the seed holds is known"
+        "none of the entries' pages could be fetched, so only the seed data is "
+        "available"
     )
     LINK_SHARED_WITH_OTHER_ENTRIES = (
         "a page tying the entries is also linked from entries outside the group, "
         "so it may cover several works"
     )
     LINKS_MAL_PAGE_OUTSIDE_GROUP = (
-        "a page links a MAL page no entry of the group holds, so the work may be "
-        "missing from the case"
+        "a page links to a MAL page outside this group, so another entry for "
+        "this work may be missing from the case"
     )
 
 
@@ -87,7 +84,7 @@ def list_split_work_review_reasons(
     reason_applies = {
         SplitWorkReviewReason.NOT_TIED_BY_LINKS: not _is_tied_together(
             [
-                frozenset(map(links.get_current_key, entry.addresses_by_page_key))
+                frozenset(map(links.get_current_page_key, entry.addresses_by_page_key))
                 for entry in entries
             ],
             links,
@@ -126,11 +123,11 @@ def _is_tied_together(
     reached_entries = {0}
     entries_to_visit = [0]
     while entries_to_visit:
-        linked_keys = frozenset().union(
+        linked_page_keys = frozenset().union(
             *map(links.get_linked_page_keys, entry_page_keys[entries_to_visit.pop()])
         )
         for entry_index, page_keys in enumerate(entry_page_keys):
-            if entry_index not in reached_entries and linked_keys & page_keys:
+            if entry_index not in reached_entries and linked_page_keys & page_keys:
                 reached_entries.add(entry_index)
                 entries_to_visit.append(entry_index)
     return len(reached_entries) == len(entry_page_keys)
@@ -139,11 +136,20 @@ def _is_tied_together(
 def _has_mal_link_outside_group(
     entries: Sequence[WorkEntry], pages: Sequence[ProviderPage]
 ) -> bool:
-    """Report whether a page links a MAL page none of the entries holds."""
-    held_page_keys = {key for entry in entries for key in entry.addresses_by_page_key}
+    """Report whether a page links a MAL page none of the entries holds.
+
+    Args:
+        entries: The candidate work entries.
+        pages: Details of the entries' fetched pages.
+
+    Returns:
+        True when any page links a MAL page key outside the entries.
+    """
+    held_page_keys = {
+        page_key for entry in entries for page_key in entry.addresses_by_page_key
+    }
     return any(
-        get_page_provider(linked_page_key) == _MAL_PROVIDER
-        and linked_page_key not in held_page_keys
+        is_mal_page(linked_page_key) and linked_page_key not in held_page_keys
         for page in pages
         for linked_page_key in page.linked_page_keys
     )

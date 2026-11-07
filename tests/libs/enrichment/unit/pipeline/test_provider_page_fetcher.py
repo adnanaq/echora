@@ -56,7 +56,7 @@ class ScriptedApiFetcher(ApiFetcher):
 
 
 def _one_piece(*addresses: str) -> WorkEntry:
-    return WorkEntry.from_seed_entry(
+    return WorkEntry.read_seed_entry(
         {"title": "One Piece", "type": "TV", "sources": list(addresses)}
     )
 

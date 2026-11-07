@@ -1,8 +1,8 @@
-"""The review file: review cases kept in one JSON Lines file across runs.
+"""Read and write review cases in one JSON Lines file across runs.
 
-A run writes every case it could not decide into the file, with the answer
-kept for it. A person, or the review page, answers cases in the file, and the
-next run reads the answers back. The rules for the cases themselves are in
+A run writes every case that could not be decided into the file, with the answer
+kept for the case. A person, or the review page, answers cases in the file, and
+the next run reads the answers back. The rules for the cases themselves are in
 ``review_cases``; this module only reads and writes the file:
 
 Each item gives the rule, then the reason for it.
@@ -11,7 +11,7 @@ Each item gives the rule, then the reason for it.
   place; only each line's case name and answer are read back.
 - The review page saves answers (``save_answers``) by rewriting only the named
   cases' lines, so a save changes nothing else.
-- Both hold the file's lock, so a save never lands between a run's read and its
+- Both hold the file's lock, so a save never lands between a run's read and
   rewrite.
 """
 
@@ -43,7 +43,11 @@ class DuplicateCaseError(ValueError):
     """Two review cases written in one run have the same case name."""
 
     def __init__(self, case_names: Iterable[str]) -> None:
-        """Name the cases written more than once."""
+        """Name the cases written more than once.
+
+        Args:
+            case_names: The repeated case names.
+        """
         super().__init__(f"Review cases given more than once: {', '.join(case_names)}")
 
 
@@ -51,7 +55,11 @@ class UnknownCaseError(KeyError):
     """Answers were given for case names the review file does not hold."""
 
     def __init__(self, case_names: Iterable[str]) -> None:
-        """Name the cases the review file does not hold."""
+        """Name the cases the review file does not hold.
+
+        Args:
+            case_names: The unknown case names.
+        """
         super().__init__(
             f"Review cases not in the review file: {', '.join(case_names)}"
         )
@@ -61,7 +69,11 @@ class SavedAnswerChangedError(ValueError):
     """Cases hold another saved answer than the one their edits started from."""
 
     def __init__(self, case_names: Iterable[str]) -> None:
-        """Keep and name the cases whose saved answer changed."""
+        """Keep and name the cases whose saved answer changed.
+
+        Args:
+            case_names: The case names whose saved answers changed concurrently.
+        """
         self.case_names = tuple(case_names)
         super().__init__(
             "Saved answers changed since their edits began: "
@@ -74,10 +86,11 @@ class ReviewFile:
 
     A person edits lines in place, so the file is rewritten whole rather than
     appended to. Only each line's case name and answer are read back; the rest
-    of a line is rebuilt by the run, so anything else written in it is not kept.
-    One process at a time writes the file: ``save_answers`` holds the file's
-    lock (``review_file_lock``), and a run holds it around ``write_cases``, so
-    an answer is never saved between a run's read and its rewrite.
+    of a line is rebuilt by the run, so anything else written in the line is not
+    kept. One process at a time writes the file: ``save_answers`` holds the
+    file's lock (``review_file_lock``), and a run holds the lock around
+    ``write_cases``, so an answer is never saved between a run's read and
+    rewrite.
     """
 
     def __init__(self, path: str | Path) -> None:
@@ -87,17 +100,24 @@ class ReviewFile:
             path: The JSON Lines review file.
 
         Raises:
-            ValidationError: A line is not a case. Its note names the file and
-                line.
+            ValidationError: A line is not a case. The error note names the file
+                and line.
         """
         self._path = Path(path)
         self._answers_and_lines_by_case_name = self._read_answers_in_file()
 
     def attach_kept_answer(self, case: ReviewCase) -> ReviewCase:
-        """Return the case with the answer kept for it, or unchanged if none is.
+        """Return the case with the answer kept for the case, or unchanged if none is.
 
-        The kept answer comes back even when it is not valid, so it stays in
-        the file to be corrected.
+        The kept answer comes back even when the answer is not valid, so the
+        answer stays in the file to be corrected.
+
+        Args:
+            case: The review case to attach a kept answer to.
+
+        Returns:
+            The review case with the kept answer attached, or unchanged when no
+            answer is kept.
         """
         kept_answer = self._answers_and_lines_by_case_name.get(case.case_name)
         return (
@@ -108,7 +128,10 @@ class ReviewFile:
         """Return every answer in the file as last read, by case name.
 
         After ``write_cases`` these are the answers the run wrote, so a caller
-        can keep them as each case's original value.
+        can keep those answers as each case's baseline value.
+
+        Returns:
+            A mapping from case name to the saved answer value.
         """
         return {
             case_name: answer
@@ -170,36 +193,37 @@ class ReviewFile:
         *,
         seen_saved_answers: Mapping[str, JsonValue] | None = None,
     ) -> None:
-        """Write answers into their cases' lines, keeping every other line as it is.
+        """Write answers into their cases' lines, keeping every other line unchanged.
 
-        This is how the review page saves. Each item gives the rule, then the
-        reason for it.
+        The review page calls this method to save user edits. Each item gives
+        the rule, then the reason for the rule.
 
         - The file's lock is held while saving, and the save fails while
-          another process, such as a run, holds it. A save between a run's
-          read and its rewrite would otherwise be lost.
+          another process, such as a run, holds the lock. A save between a run's
+          read and rewrite would otherwise be lost.
         - The file is read again under the lock, so answers saved by another
-          writer since this one opened the file are kept.
+          writer since this writer opened the file are kept.
         - Only the named cases' lines are rewritten, with the new answer;
           every other line keeps its bytes, so a save changes nothing else.
-        - A None answer clears the case's answer, which leaves it open.
+        - A None answer clears the case's answer, which leaves the case open.
         - Nothing is written when a case name is not in the file, so a
           mistyped name never loses the other answers.
-        - Nothing is written when a case's saved answer is not the one its
-          edit started from, so an answer saved from another tab is never
-          replaced unseen. The check runs under the lock, so no save slips in
+        - Nothing is written when a case's saved answer differs from the
+          baseline answer the edit started from, preventing optimistic
+          concurrency conflicts when another session modified the file
+          concurrently. The check runs under the lock, so no save slips in
           between.
 
         Args:
-            answers_by_case_name: Each case's new answer, by its case name.
+            answers_by_case_name: Each case's new answer, by case name.
             seen_saved_answers: The saved answer each edit started from, by
                 case name (None for no answer); cases left out are not checked.
 
         Raises:
             ReviewFileLockedError: Another process holds the file's lock.
             UnknownCaseError: A case name is not in the file.
-            SavedAnswerChangedError: A case's saved answer is not the one its
-                edit started from.
+            SavedAnswerChangedError: A case's saved answer differs from the
+                baseline answer the edit started from.
         """
         with hold_review_file_lock(
             self._path, seconds_to_wait=_SECONDS_TO_WAIT_FOR_ANOTHER_SAVE
@@ -220,16 +244,27 @@ class ReviewFile:
             replace_file_lines(
                 self._path,
                 (
-                    _write_line_answer(line, answers_by_case_name[kept.case_name])
-                    if kept is not None and kept.case_name in answers_by_case_name
+                    _write_line_answer(
+                        line, answers_by_case_name[kept_answer.case_name]
+                    )
+                    if kept_answer is not None
+                    and kept_answer.case_name in answers_by_case_name
                     else line
-                    for line, kept in zip(lines, kept_answers, strict=True)
+                    for line, kept_answer in zip(lines, kept_answers, strict=True)
                 ),
             )
         self._answers_and_lines_by_case_name = self._read_answers_in_file()
 
     def _read_answers_in_file(self) -> dict[str, tuple[JsonValue, str]]:
-        """Return each answered case's answer and its line as written."""
+        """Return each answered case's answer and line as written.
+
+        Returns:
+            A mapping from case name to a tuple of the saved answer and raw JSON
+            line.
+
+        Raises:
+            ValidationError: A line is not a valid review case object.
+        """
         answers_and_lines_by_case_name: dict[str, tuple[JsonValue, str]] = {}
         if not self._path.exists():
             return answers_and_lines_by_case_name
@@ -274,7 +309,11 @@ def _check_answers_against_file(
         SavedAnswerChangedError: A case's saved answer is not the one its
             edit started from.
     """
-    answers_in_file = {kept.case_name: kept.answer for kept in kept_answers if kept}
+    answers_in_file = {
+        kept_answer.case_name: kept_answer.answer
+        for kept_answer in kept_answers
+        if kept_answer
+    }
     if missing_case_names := answers_by_case_name.keys() - answers_in_file.keys():
         raise UnknownCaseError(sorted(missing_case_names))
     if changed_case_names := sorted(

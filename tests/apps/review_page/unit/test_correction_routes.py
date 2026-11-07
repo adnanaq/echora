@@ -139,4 +139,4 @@ def test_correction_list_chosen_chips_drawn_on(client, corrected_source) -> None
     chip = correction_list[
         correction_list.index('id="chip-correction_sources-rules"') :
     ]
-    assert 'class="part-chip is-on"' in chip[: chip.index(">")]
+    assert 'class="control-chip is-on"' in chip[: chip.index(">")]

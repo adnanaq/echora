@@ -32,8 +32,8 @@ from work_matching import (
     KnownWorkEntries,
     ProviderPageStore,
     WorkEntry,
-    get_seed_type,
     rank_by_provider_trust,
+    resolve_seed_type,
 )
 
 logger = logging.getLogger(__name__)
@@ -303,7 +303,7 @@ def _build_new_entry(
     if trusted_page is None:
         logger.warning(
             f"New entry has no fetched page details, so it takes the title of "
-            f"{source_seed_entry.reference_page} and an unknown type: "
+            f"{source_seed_entry.reference_page_key} and an unknown type: "
             f"{list(addresses_by_page_key)}"
         )
         return WorkEntry(
@@ -315,7 +315,7 @@ def _build_new_entry(
     return WorkEntry.model_validate(
         {
             "title": trusted_page.titles[0],
-            "type": get_seed_type(trusted_page) or "UNKNOWN",
+            "type": resolve_seed_type(trusted_page) or "UNKNOWN",
             "year": trusted_page.year,
             "season": trusted_page.season,
             "addresses_by_page_key": addresses_by_page_key,

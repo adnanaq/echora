@@ -30,7 +30,7 @@ def build_entries_to_check_document(
         "seed_schema": seed_schema,
         "doubled_provider_entries": [
             {
-                "reference_page": entry.reference_page,
+                "reference_page": entry.reference_page_key,
                 "title": entry.title,
                 "doubled_providers": find_doubled_provider_page_keys(
                     entry.addresses_by_page_key
@@ -44,7 +44,7 @@ def build_entries_to_check_document(
                 "candidate_evidence": list(group.candidate_evidence),
                 "has_shared_tying_link": group.has_shared_tying_link,
                 "entries": [
-                    {"reference_page": entry.reference_page}
+                    {"reference_page": entry.reference_page_key}
                     | entry.model_dump(mode="json")
                     for entry in group.entries
                 ],

@@ -45,7 +45,7 @@ from typing import NamedTuple
 from networkx.utils import UnionFind
 from pydantic import BaseModel, ConfigDict
 from seed_cleaning.split_work_links import SplitWorkLinks
-from work_matching import KnownWorkEntriesFromSeed, WorkEntry, get_decided_provider
+from work_matching import KnownWorkEntriesFromSeed, WorkEntry, resolve_decided_provider
 
 logger = logging.getLogger(__name__)
 
@@ -325,5 +325,5 @@ def _list_entry_providers(entry: WorkEntry) -> set[str]:
     return {
         provider
         for key in entry.addresses_by_page_key
-        if (provider := get_decided_provider(key))
+        if (provider := resolve_decided_provider(key))
     }

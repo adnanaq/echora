@@ -25,7 +25,7 @@ from enrichment.sources.base.external_links import (
     canonical_platform,
     normalize_link_url,
 )
-from work_matching import get_page_key
+from work_matching import resolve_page_key
 
 logger = logging.getLogger(__name__)
 
@@ -300,7 +300,7 @@ def merge_sources(ranked: Ranked, offline_data: dict[str, Any] | None) -> list[s
         for url in urls:
             if not url:
                 continue
-            key = get_page_key(url)
+            key = resolve_page_key(url)
             if len(url) > len(best.get(key, "")):
                 best[key] = url
     return [url for key, url in best.items() if not _superseded_by_number(key, best)]
@@ -359,7 +359,7 @@ def merged_anime_id(sources: list[str]) -> str:
         ValueError: When ``sources`` is empty; a work with no URL has no
             identity to derive.
     """
-    keys = sorted({get_page_key(url) for url in sources if url})
+    keys = sorted({resolve_page_key(url) for url in sources if url})
     if not keys:
         raise ValueError(f"Cannot derive an anime id from sources: {sources!r}")  # noqa: TRY003
     if anime_id_page_key := find_anime_id_page_key(keys):
@@ -386,7 +386,7 @@ def find_anime_id_page_key(sources: Iterable[str]) -> str | None:
     Returns:
         The page key, or None when no source is a page of those providers.
     """
-    keys = sorted({get_page_key(source) for source in sources if source})
+    keys = sorted({resolve_page_key(source) for source in sources if source})
     for provider in _ID_SEED_ORDER:
         if match := next((key for key in keys if key.startswith(f"{provider}:")), None):
             return match

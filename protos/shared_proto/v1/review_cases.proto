@@ -93,9 +93,9 @@ message PagePlace {
 message DoubledProviderDecision {
   string provider = 1;
   repeated string page_keys = 2;
-  // The outcome's sentence.
+  // The outcome's member name, such as SAME_PAGE.
   string outcome = 3;
-  // Each review reason's sentence.
+  // Each review reason's member name.
   repeated string review_reasons = 4;
   // Each belonging page with the entry's pages linked with it, in order.
   repeated BelongingPage belonging_page_keys = 5;
@@ -112,7 +112,7 @@ message DoubledProviderDecision {
 // work_matching.LinkedPageDecision.
 message LinkedPageDecision {
   string page_key = 1;
-  // The reason's sentence.
+  // The reason's member name, such as CHECKS_PASSED.
   string reason = 2;
   repeated WorkEntry linking_entries = 3;
   optional int32 entry_episode_count = 4;
@@ -137,6 +137,20 @@ message ReviewCase {
   repeated DoubledProviderDecision doubled_provider_decisions = 7;
   repeated LinkedPageDecision linked_page_decisions = 8;
   repeated ProviderPage pages = 9;
+  // Each page key the answer names after "other work", mapped to the
+  // reference page of the seed entry holding it; a lookup, so a map.
+  map<string, string> named_entry_reference_pages = 10;
+  // Seed entries of the case's series, offered as the entry a page in
+  // "other work" moves to, closest titles first.
+  repeated TargetEntrySuggestion target_entry_suggestions = 11;
+}
+
+// A seed entry offered as the place a page in "other work" moves to.
+message TargetEntrySuggestion {
+  string entry_reference_page = 1;
+  string title = 2;
+  // The providers the entry already holds pages of.
+  repeated string providers = 3;
 }
 
 // An answer to save for one case; unset clears the case's answer.
@@ -212,12 +226,15 @@ message SeedCorrection {
   string reason_sentence = 14;
   // Whether a reviewer's answer placed the page, rather than the rules.
   bool is_from_answer = 15;
+  // The page key an answer named after "other work". The page ends up
+  // wherever that named page ends up.
+  optional string named_entry_page_key = 16;
 }
 
 // An entry the last run checked, by its reference page, so corrections show
 // its title.
 message CheckedEntry {
-  string reference_page = 1;
+  string entry_reference_page = 1;
   string title = 2;
   optional string type = 3;
   optional int32 year = 4;

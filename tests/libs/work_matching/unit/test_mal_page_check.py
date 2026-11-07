@@ -1,14 +1,14 @@
 from work_matching.mal_page_check import check_with_mal_pages
 from work_matching.page_details_comparison import MalPageComparison
 from work_matching.provider_page import ProviderPage
-from work_matching.provider_page_key import get_page_key
+from work_matching.provider_page_key import resolve_page_key
 
 AWARE_MAL = "https://myanimelist.net/anime/32956"
 AWARE_ANISEARCH = "https://anisearch.com/anime/11255"
 AWARE_ANIDB = "https://anidb.net/anime/12006"
 
 
-def _detailed_page(
+def _build_detailed_page(
     address: str,
     page_type: str,
     episode_count: int | None,
@@ -16,7 +16,7 @@ def _detailed_page(
     aired_to: str | None,
 ) -> ProviderPage:
     return ProviderPage(
-        key=get_page_key(address),
+        key=resolve_page_key(address),
         address=address,
         type=page_type,
         episode_count=episode_count,
@@ -30,8 +30,8 @@ def test_check_with_mal_pages_part_page_marked_and_unfetched_page_left_out(
 ) -> None:
     entries = [work_entry(AWARE_ANIDB, AWARE_ANISEARCH), work_entry(AWARE_MAL)]
     pages = [
-        _detailed_page(AWARE_MAL, "TV", 230, "2016-04-07", "2022-03-03"),
-        _detailed_page(AWARE_ANISEARCH, "TV", 39, "2016-04-07", "2017-02-16"),
+        _build_detailed_page(AWARE_MAL, "TV", 230, "2016-04-07", "2022-03-03"),
+        _build_detailed_page(AWARE_ANISEARCH, "TV", 39, "2016-04-07", "2017-02-16"),
     ]
     mal_page_check = check_with_mal_pages(
         entries,
@@ -76,8 +76,8 @@ def test_check_with_mal_pages_dead_mal_page_leaves_other_entry_page_out(
 ) -> None:
     entries = [work_entry(AWARE_ANISEARCH), work_entry(AWARE_MAL)]
     pages = [
-        ProviderPage.from_dead_address(AWARE_MAL),
-        _detailed_page(AWARE_ANISEARCH, "TV", 39, "2016-04-07", "2017-02-16"),
+        ProviderPage.build_dead_page(AWARE_MAL),
+        _build_detailed_page(AWARE_ANISEARCH, "TV", 39, "2016-04-07", "2017-02-16"),
     ]
     mal_page_check = check_with_mal_pages(
         entries,

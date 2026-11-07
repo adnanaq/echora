@@ -1,23 +1,23 @@
-"""Build the Corrections tab: the entries the last run corrected, and each entry's pages.
+"""Build presentation models for the Corrections tab from review case source messages.
 
-The tab reads the corrections only as the review case source's messages, so it
-shows what any source reports. Each item gives the rule, then the reason for it.
+Constructs corrected entry summary rows, filter chip counts, and per-entry page
+correction panels exclusively from ``ReviewCaseSource`` protobuf messages so the
+tab operates independently of the underlying storage backend.
 
-- One list row per corrected entry, in the source's order, because a reviewer
-  checks an entry at a time, as on the Cases tab.
-- An entry is titled from the run's checked entries, then from a review case
-  holding it, then by its reference page. A correction names its entry only by
-  reference page.
-- Filters within one group (changes, sources) widen the list; groups narrow
-  each other, as the Cases tab's filters do. A change filter keeps an entry
-  with at least one page making that change; "unchanged" keeps an entry with a
-  page that stays as it was.
-- A page's destination names where it goes: the seed entry it joins (by
-  reference page, linked to that page), a new entry, its current address, or
-  that it stays. A target entry is often not one the run checked, so its title
-  is not known.
-- The panel links the cases holding the entry, so a reviewer goes from a
-  correction to the answer behind it.
+Each presentation rule reads `<rule>: <reason>`:
+- Entry-grouped rows: The list displays one row per corrected entry in source
+  order because reviewers inspect corrections one work entry at a time.
+- Title resolution precedence: Entry titles resolve from the run's checked
+  entries first, then from any review case containing the entry, and finally
+  fall back to the entry reference page key.
+- Filter combination: Selecting multiple chips within a single filter category
+  (changes or sources) widens matches with an OR condition, whereas selecting
+  across categories narrows matches with an AND condition.
+- Destination formatting: Each page row describes its destination (target seed
+  entry reference page with link, new entry, renamed current address, or
+  unchanged) without requiring the target entry's title.
+- Case cross-linking: The entry panel links every review case referencing that
+  entry so reviewers can navigate directly between a correction and its answer.
 """
 
 from collections.abc import Sequence
@@ -29,16 +29,17 @@ from review_page.models import (
     CorrectionPanelView,
     CorrectionRowView,
 )
+from review_page.template_functions import capitalize_first_letter
 from shared_proto.v1 import review_cases_pb2
 from work_matching import (
-    LinkedPageDecision,
     ReviewCase,
+    WorkEntry,
     build_page_address,
 )
 
-# The change filter value for a page that stays as it was.
+# Filter chip value matching entries with at least one unchanged page.
 UNCHANGED = "unchanged"
-# The source filter values: a reviewer's answer, or the rules alone.
+# Filter chip values distinguishing answer-driven placements from rule-only placements.
 ANSWER_SOURCE = "your answer"
 RULES_SOURCE = "rules"
 
@@ -48,15 +49,15 @@ def build_corrected_entry_rows(
     checked_entries: Sequence[review_cases_pb2.CheckedEntry],
     cases: Sequence[ReviewCase],
 ) -> list[CorrectedEntryRow]:
-    """Build one row per corrected entry, in the order the corrections name them.
+    """Build one summary row per corrected entry in the order corrections appear.
 
     Args:
-        corrections: Every correction of the last run.
-        checked_entries: The entries the last run checked, for titles.
-        cases: The review cases, for the titles of entries no check lists.
+        corrections: All seed correction messages from the most recent run.
+        checked_entries: Checked entry messages from the last run for resolving titles.
+        cases: Review cases used as a fallback source for entry titles.
 
     Returns:
-        The rows, one per entry reference page.
+        A list of ``CorrectedEntryRow`` models, one per corrected entry reference page.
     """
     title_by_reference_page = _map_entry_titles(checked_entries, cases)
     corrections_by_entry: dict[str, list[review_cases_pb2.SeedCorrection]] = {}
@@ -66,9 +67,9 @@ def build_corrected_entry_rows(
         )
     return [
         CorrectedEntryRow(
-            reference_page=reference_page,
+            entry_reference_page=reference_page,
             title=title_by_reference_page.get(reference_page, reference_page),
-            changes=frozenset(map(_get_change, entry_corrections)),
+            changes=frozenset(map(_read_change, entry_corrections)),
             page_count=len(entry_corrections),
             changed_page_count=sum(
                 correction.HasField("change") for correction in entry_corrections
@@ -88,14 +89,14 @@ def build_corrected_entry_rows(
 def filter_corrected_entry_rows(
     rows: Sequence[CorrectedEntryRow], correction_filter: CorrectionFilter
 ) -> list[CorrectedEntryRow]:
-    """Return the rows every chosen filter group lets through, in their order.
+    """Filter corrected entry rows by selected change chips, source chips, and search text.
 
     Args:
-        rows: Every corrected entry's row.
-        correction_filter: The chosen change and source chips and the search.
+        rows: All corrected entry summary rows before filtering.
+        correction_filter: Active change chips, source chips, and search query.
 
     Returns:
-        The matching rows.
+        The subset of ``CorrectedEntryRow`` models matching all active filter groups.
     """
     search_text = correction_filter.search_text.strip().casefold()
     return [
@@ -109,21 +110,21 @@ def filter_corrected_entry_rows(
         and (
             not search_text
             or search_text in row.title.casefold()
-            or search_text in row.reference_page
+            or search_text in row.entry_reference_page
             or any(search_text in page_key for page_key in row.page_keys)
         )
     ]
 
 
 def count_corrected_entry_rows(rows: Sequence[CorrectedEntryRow]) -> dict[str, int]:
-    """Count the entries each filter chip would let through, over every row.
+    """Count how many corrected entry rows match each change and source filter chip.
 
     Args:
-        rows: Every corrected entry's row, before filtering.
+        rows: All corrected entry summary rows before filtering.
 
     Returns:
-        Each change seen, UNCHANGED, ANSWER_SOURCE and RULES_SOURCE mapped to
-        the number of entries matching it.
+        A dictionary mapping each change label, ``UNCHANGED``, ``ANSWER_SOURCE``,
+        and ``RULES_SOURCE`` to the number of matching entry rows.
     """
     counts = {UNCHANGED: 0, ANSWER_SOURCE: 0, RULES_SOURCE: 0}
     for row in rows:
@@ -138,16 +139,17 @@ def build_correction_panel(
     checked_entries: Sequence[review_cases_pb2.CheckedEntry],
     cases: Sequence[ReviewCase],
 ) -> CorrectionPanelView | None:
-    """Build the panel for one corrected entry.
+    """Build the detail panel view for a single corrected seed entry.
 
     Args:
-        reference_page: The entry's reference page.
-        corrections: Every correction of the last run.
-        checked_entries: The entries the last run checked, for titles.
-        cases: The review cases, for titles and the links to them.
+        reference_page: The reference page key identifying the seed entry.
+        corrections: All seed correction messages from the most recent run.
+        checked_entries: Checked entry messages from the last run for resolving titles.
+        cases: Review cases used to resolve fallback titles and build cross-links.
 
     Returns:
-        The panel, or None when no correction names the entry.
+        The assembled ``CorrectionPanelView``, or None when no corrections exist
+        for ``reference_page``.
     """
     entry_corrections = [
         correction
@@ -157,8 +159,8 @@ def build_correction_panel(
     if not entry_corrections:
         return None
     return CorrectionPanelView(
-        reference_page=reference_page,
-        reference_address=build_page_address(reference_page),
+        entry_reference_page=reference_page,
+        entry_reference_address=build_page_address(reference_page),
         title=_map_entry_titles(checked_entries, cases).get(
             reference_page, reference_page
         ),
@@ -174,15 +176,15 @@ def build_correction_panel(
 def list_case_correction_links(
     case: ReviewCase, corrections: Sequence[review_cases_pb2.SeedCorrection]
 ) -> tuple[tuple[str, str, int], ...]:
-    """Return each of a case's entries the last run corrected, for the case panel's links.
+    """List corrected entries belonging to a review case for cross-linking in the case panel.
 
     Args:
-        case: The open review case.
-        corrections: Every correction of the last run.
+        case: The active review case being inspected.
+        corrections: All seed correction messages from the most recent run.
 
     Returns:
-        Each corrected entry's reference page, title and number of corrections,
-        in the case's entry order.
+        A tuple of ``(reference_page, title, correction_count)`` triples in the
+        case's entry order for entries that have corrections.
     """
     title_by_reference_page = _map_entry_titles((), (case,))
     correction_counts: dict[str, int] = {}
@@ -204,24 +206,24 @@ def list_case_correction_links(
 def _build_correction_row(
     correction: review_cases_pb2.SeedCorrection,
 ) -> CorrectionRowView:
-    """Describe one correction as a row of its entry's table.
+    """Convert a single ``SeedCorrection`` message into a ``CorrectionRowView`` model.
 
     Args:
-        correction: One correction message.
+        correction: A single seed correction protobuf message.
 
     Returns:
-        The row: the page, the change, its place, where the page goes, why, and
-        whether an answer placed it.
+        The populated ``CorrectionRowView`` with formatted change, placement,
+        destination, and provenance fields.
     """
-    change = _get_change(correction)
+    change = _read_change(correction)
     destination_label, destination_address = _describe_destination(correction)
-    mark = ", main" if correction.is_main_page else ""
-    mark += ", part" if correction.is_part_page else ""
+    mark_suffix = ", main" if correction.is_main_page else ""
+    mark_suffix += ", part" if correction.is_part_page else ""
     return CorrectionRowView(
         page_key=correction.page_key,
         address=correction.address,
-        change_label=change[:1].upper() + change[1:],
-        place=correction.placement_word + mark,
+        change_label=capitalize_first_letter(change),
+        place=correction.placement_word + mark_suffix,
         destination_label=destination_label,
         destination_address=destination_address,
         reason_sentence=correction.reason_sentence,
@@ -232,14 +234,14 @@ def _build_correction_row(
 def _describe_destination(
     correction: review_cases_pb2.SeedCorrection,
 ) -> tuple[str, str | None]:
-    """Return where a corrected page goes, and the address to open, if any.
+    """Format the destination label and optional external link URL for a correction.
 
     Args:
-        correction: One correction message.
+        correction: A single seed correction protobuf message.
 
     Returns:
-        The destination's label, and the address to link it to, or None when
-        there is nothing to open.
+        A tuple of ``(destination_label, destination_address)`` where
+        ``destination_address`` is None when no external link applies.
     """
     if correction.is_added_page:
         return "added to this entry", correction.address
@@ -258,27 +260,26 @@ def _describe_destination(
     return "stays in this entry", None
 
 
-def _get_change(correction: review_cases_pb2.SeedCorrection) -> str:
-    """Return a correction's change, or UNCHANGED for a page that stays as it was.
+def _read_change(correction: review_cases_pb2.SeedCorrection) -> str:
+    """Read a correction's change category name, defaulting to ``UNCHANGED`` when unset.
 
     Args:
-        correction: One correction message.
+        correction: A single seed correction protobuf message.
 
     Returns:
-        The change's name, or ``UNCHANGED``.
+        The change category string, or ``UNCHANGED`` when the page is unchanged.
     """
     return correction.change if correction.HasField("change") else UNCHANGED
 
 
 def _list_row_sources(row: CorrectedEntryRow) -> set[str]:
-    """Return the source filter values an entry matches.
+    """Identify which source filter chip values apply to a corrected entry row.
 
     Args:
-        row: One corrected entry's row.
+        row: A corrected entry summary row.
 
     Returns:
-        ``ANSWER_SOURCE``, ``RULES_SOURCE``, or both, as the entry's pages were
-        placed.
+        A set containing ``ANSWER_SOURCE``, ``RULES_SOURCE``, or both.
     """
     sources = set()
     if row.has_answer_correction:
@@ -292,47 +293,53 @@ def _map_entry_titles(
     checked_entries: Sequence[review_cases_pb2.CheckedEntry],
     cases: Sequence[ReviewCase],
 ) -> dict[str, str]:
-    """Map entry reference pages to titles: the run's checked entries over the cases'.
+    """Build a lookup mapping entry reference page keys to display titles.
+
+    Titles from ``checked_entries`` take precedence over titles extracted from
+    review cases.
 
     Args:
-        checked_entries: The entries the last run checked.
-        cases: Every review case.
+        checked_entries: Checked entry messages from the most recent pipeline run.
+        cases: All review cases for fallback title extraction.
 
     Returns:
-        Each entry reference page mapped to its title; a checked entry's title
-        wins over a case's.
+        A dictionary mapping each entry reference page key to its resolved title.
     """
     title_by_reference_page: dict[str, str] = {}
     for case in cases:
-        for entry in case.entries.values():
-            title_by_reference_page[entry.reference_page] = entry.title
-        for decision in case.decisions:
-            if isinstance(decision, LinkedPageDecision):
-                for linking_entry in decision.linking_entries:
-                    title_by_reference_page[linking_entry.reference_page] = (
-                        linking_entry.title
-                    )
+        for entry in _list_case_entries(case):
+            title_by_reference_page[entry.reference_page_key] = entry.title
     for checked_entry in checked_entries:
-        title_by_reference_page[checked_entry.reference_page] = checked_entry.title
+        title_by_reference_page[checked_entry.entry_reference_page] = (
+            checked_entry.title
+        )
     return title_by_reference_page
 
 
 def _list_case_entry_reference_pages(case: ReviewCase) -> list[str]:
-    """Return the reference pages of the entries a case decides about, in its order.
+    """Collect the reference page keys of all entries involved in a review case.
 
     Args:
-        case: The review case.
+        case: The review case to inspect.
 
     Returns:
-        The case's entries' reference pages, then each linking entry's not yet
-        listed, in the case's order.
+        A deduplicated list of entry reference page keys in the case's entry order.
     """
-    reference_pages = list(case.entries)
-    for decision in case.decisions:
-        if isinstance(decision, LinkedPageDecision):
-            reference_pages.extend(
-                entry.reference_page
-                for entry in decision.linking_entries
-                if entry.reference_page not in reference_pages
-            )
-    return reference_pages
+    return list(
+        dict.fromkeys(entry.reference_page_key for entry in _list_case_entries(case))
+    )
+
+
+def _list_case_entries(case: ReviewCase) -> list[WorkEntry]:
+    """List every seed entry a review case involves.
+
+    Args:
+        case: The review case to inspect.
+
+    Returns:
+        The case's entries, followed by the entries linking to its linked pages.
+    """
+    linking_entries = (
+        case.linked_page_decision.linking_entries if case.linked_page_decision else ()
+    )
+    return [*case.entries.values(), *linking_entries]

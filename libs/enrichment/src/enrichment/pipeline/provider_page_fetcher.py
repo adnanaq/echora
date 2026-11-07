@@ -56,7 +56,7 @@ from work_matching import (
     ProviderPage,
     ProviderPageStore,
     WorkEntry,
-    get_page_key,
+    resolve_page_key,
 )
 
 logger = logging.getLogger(__name__)
@@ -280,7 +280,7 @@ class ProviderPageFetcher:
                 not done_result.request.is_page_search
                 and (
                     page := self._store.get_page(
-                        get_page_key(done_result.request.address)
+                        resolve_page_key(done_result.request.address)
                     )
                 )
                 is not None
@@ -314,7 +314,7 @@ class ProviderPageFetcher:
         """
         if self._is_stored_page_fetched_again:
             return None
-        key = get_page_key(request.address)
+        key = resolve_page_key(request.address)
         if not request.is_page_search:
             return FetchOutcome.ALREADY_STORED if key in self._store else None
         if self._store.has_page_searched_by(key):
@@ -433,11 +433,11 @@ class ProviderPageFetcher:
         if request.is_page_search:
             if not anime_record:
                 if self._not_listed_searches is not None:
-                    self._not_listed_searches.add(get_page_key(request.address))
+                    self._not_listed_searches.add(resolve_page_key(request.address))
                 return FetchOutcome.NOT_LISTED
             # The AnimeSchedule mapper lists the page's own address first.
             self._store.add_pages(
-                ProviderPage.from_canonical_record(
+                ProviderPage.read_canonical_record(
                     anime_record["sources"][0],
                     anime_record,
                     searched_by_address=request.address,
@@ -445,9 +445,9 @@ class ProviderPageFetcher:
             )
             return FetchOutcome.FETCHED
         if not anime_record:
-            self._store.add_pages(ProviderPage.from_dead_address(request.address))
+            self._store.add_pages(ProviderPage.build_dead_page(request.address))
             return FetchOutcome.DEAD
         self._store.add_pages(
-            ProviderPage.from_canonical_record(request.address, anime_record)
+            ProviderPage.read_canonical_record(request.address, anime_record)
         )
         return FetchOutcome.FETCHED

@@ -1,4 +1,4 @@
-"""Review cases: decisions the matching rules leave to a person, with their answers.
+"""Model review cases that the matching rules leave to a person, along with their answers.
 
 Every entry group the rules cannot place (``entry_group``) and every linked
 page they cannot add on their own becomes a review case: one JSON line in the
@@ -42,23 +42,24 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, JsonValue
 from work_matching.answer_rules import LinkedPageAnswerRule, PlacementRule
-from work_matching.doubled_provider_decision import DoubledProviderDecision
 from work_matching.entry_group import (
     check_group_answer_placements,
     list_mal_page_review_reasons,
-    read_group_answer_placements,
     suggest_group_page_placements,
 )
 from work_matching.linked_page_check import (
-    LinkedPageAddition,
-    LinkedPageDecision,
     check_linked_page_answer,
-    read_linked_page_answer,
     suggest_linked_page_answer,
 )
+from work_matching.model_doubled_provider_decision import DoubledProviderDecision
+from work_matching.model_linked_page_decision import (
+    LinkedPageAddition,
+    LinkedPageAnswerCheck,
+    LinkedPageDecision,
+)
 from work_matching.page_details_comparison import MalPageComparison
-from work_matching.page_placement import PagePlacement
-from work_matching.provider_page import ProviderPage, index_pages_by_current_key
+from work_matching.page_placement import PagePlacement, PlacementCheck
+from work_matching.provider_page import ProviderPage, index_pages_by_current_page_key
 from work_matching.split_work_check import SplitWorkReviewReason
 from work_matching.work_entry import WorkEntry
 
@@ -66,7 +67,7 @@ logger = logging.getLogger(__name__)
 
 
 class ReviewCaseKind(StrEnum):
-    """What a review case decides, named as its case name begins."""
+    """Define the kinds of review cases, named as their case names begin."""
 
     DOUBLED_PROVIDER = "doubled provider"
     SPLIT_WORK = "split work"
@@ -74,7 +75,11 @@ class ReviewCaseKind(StrEnum):
 
     @property
     def description(self) -> str:
-        """Return what a case of this kind asks the reviewer to decide."""
+        """Return what a case of this kind asks the reviewer to decide.
+
+        Returns:
+            The user-facing description of the review case kind.
+        """
         return _DESCRIPTION_BY_CASE_KIND[self]
 
 
@@ -94,8 +99,20 @@ _DESCRIPTION_BY_CASE_KIND: dict[ReviewCaseKind, str] = {
 }
 
 
+class TargetEntrySuggestion(BaseModel):
+    """Hold a seed entry of the case's series offered as the move target for an ``other work`` page."""
+
+    model_config = ConfigDict(frozen=True)
+
+    entry_reference_page: str
+    title: str
+    # The providers the entry already holds pages of, so the page offers it
+    # only for pages of other providers, never doubling one.
+    providers: tuple[str, ...]
+
+
 class ReviewCase(BaseModel):
-    """One decision left to a person: what the rules found, and the answer given.
+    """Hold one decision left to a person, including what the rules found and the answer given.
 
     Fields are written in this order, so ``case_name``, ``answer`` and
     ``suggested_answer`` open each line of the review file and a person finds
@@ -128,77 +145,17 @@ class ReviewCase(BaseModel):
     # The entries' fetched pages and the pages searched by them, which hold
     # the links behind the decisions.
     pages: tuple[ProviderPage, ...] = ()
-
-    @property
-    def kind(self) -> ReviewCaseKind:
-        """Return what the case decides, read from its decisions and entries.
-
-        Returns:
-            ``LINKED_PAGE`` for a linked page's decision, ``SPLIT_WORK`` for a
-            group of two or more entries, ``DOUBLED_PROVIDER`` otherwise.
-        """
-        if any(isinstance(decision, LinkedPageDecision) for decision in self.decisions):
-            return ReviewCaseKind.LINKED_PAGE
-        if len(self.entries) > 1:
-            return ReviewCaseKind.SPLIT_WORK
-        return ReviewCaseKind.DOUBLED_PROVIDER
-
-    @property
-    def accepted_answer(
-        self,
-    ) -> dict[str, PagePlacement] | LinkedPageAddition | str | None:
-        """Return the case's answer read for the caller, when the answer is valid.
-
-        Returns:
-            The answer, read by the case's kind:
-
-            Each item reads ``<case kind>: <what a valid answer comes back as>``.
-
-            - Entry group: each placed page's ``PagePlacement``.
-            - Linked page: the ``LinkedPageAddition``, or ``skip``.
-
-            None when the case is open or the answer is not valid.
-        """
-        doubled_provider_decisions: list[DoubledProviderDecision] = []
-        for decision in self.decisions:
-            if isinstance(decision, LinkedPageDecision):
-                return read_linked_page_answer(self.answer, decision)
-            doubled_provider_decisions.append(decision)
-        return read_group_answer_placements(
-            self.answer,
-            list(self.entries.values()),
-            doubled_provider_decisions,
-            {page.key: page.renamed_to for page in self.pages if page.renamed_to},
-        )
-
-    def list_broken_answer_rules(
-        self, answer: JsonValue
-    ) -> tuple[PlacementRule, ...] | tuple[LinkedPageAnswerRule, ...]:
-        """List the rules an answer to this case breaks, with the run's own checks.
-
-        The review page checks an answer with this before saving it, so it
-        never saves an answer the run would refuse.
-
-        Args:
-            answer: The answer as it would be written in the file.
-
-        Returns:
-            Each broken rule; empty when the run would accept the answer.
-        """
-        doubled_provider_decisions: list[DoubledProviderDecision] = []
-        for decision in self.decisions:
-            if isinstance(decision, LinkedPageDecision):
-                return check_linked_page_answer(answer, decision).broken_rules
-            doubled_provider_decisions.append(decision)
-        return check_group_answer_placements(
-            answer,
-            list(self.entries.values()),
-            doubled_provider_decisions,
-            {page.key: page.renamed_to for page in self.pages if page.renamed_to},
-        ).broken_rules
+    # Each page key the answer names after ``other work``, mapped to the
+    # reference page of the seed entry holding it. ``resolve_named_entries``
+    # fills it from the seed before the answer is checked; an unfilled key
+    # breaks ``UNKNOWN_NAMED_ENTRY``.
+    named_entry_reference_pages: dict[str, str] = {}
+    # Seed entries of the same series as the case's entries, offered as the
+    # entry a page in ``other work`` moves to; never applied without an answer.
+    target_entry_suggestions: tuple[TargetEntrySuggestion, ...] = ()
 
     @classmethod
-    def from_entry_group(
+    def build_entry_group_case(
         cls,
         entries: Sequence[WorkEntry],
         decisions: Sequence[DoubledProviderDecision],
@@ -207,7 +164,7 @@ class ReviewCase(BaseModel):
         *,
         candidate_evidence: Sequence[str] = (),
     ) -> Self:
-        """Make the review case for an entry group whose pages the rules could not place.
+        """Build the review case for an entry group whose pages the rules could not place.
 
         Args:
             entries: The group's entries: one entry with doubled providers, or
@@ -226,10 +183,10 @@ class ReviewCase(BaseModel):
         """
         pages = tuple(pages)
         doubled_page_keys = [
-            key for decision in decisions for key in decision.page_keys
+            page_key for decision in decisions for page_key in decision.page_keys
         ]
         group_page_keys = [
-            key for entry in entries for key in entry.addresses_by_page_key
+            page_key for entry in entries for page_key in entry.addresses_by_page_key
         ]
         return cls(
             case_name=_build_entry_group_case_name(
@@ -242,7 +199,7 @@ class ReviewCase(BaseModel):
                 list_mal_page_review_reasons(entries, decisions, pages),
             ),
             candidate_evidence=tuple(candidate_evidence),
-            entries={entry.reference_page: entry for entry in entries},
+            entries={entry.reference_page_key: entry for entry in entries},
             decisions=tuple(decisions),
             pages=_select_page_details(
                 pages, frozenset(group_page_keys) | set(doubled_page_keys)
@@ -250,10 +207,10 @@ class ReviewCase(BaseModel):
         )
 
     @classmethod
-    def from_linked_page(
+    def build_linked_page_case(
         cls, decision: LinkedPageDecision, pages: Iterable[ProviderPage]
     ) -> Self:
-        """Make the review case for a linked page the rules could not add on their own.
+        """Build the review case for a linked page the rules could not add on their own.
 
         Args:
             decision: The decision ``decide_linked_page`` made.
@@ -266,13 +223,15 @@ class ReviewCase(BaseModel):
             entries' reference pages, with a suggested answer when one applies.
         """
         pages = tuple(pages)
-        entries = {entry.reference_page: entry for entry in decision.linking_entries}
+        entries = {
+            entry.reference_page_key: entry for entry in decision.linking_entries
+        }
         linked_page = next(
             page for page in pages if page.current_key == decision.page_key
         )
         return cls(
             case_name=(
-                f"{_build_case_name('linked page', [decision.page_key])}"
+                f"{_build_case_name(ReviewCaseKind.LINKED_PAGE, [decision.page_key])}"
                 f" from {' '.join(entries)}"
             ),
             suggested_answer=suggest_linked_page_answer(decision, linked_page),
@@ -285,13 +244,115 @@ class ReviewCase(BaseModel):
                     {
                         decision.page_key,
                         *(
-                            key
+                            page_key
                             for entry in decision.linking_entries
-                            for key in entry.addresses_by_page_key
+                            for page_key in entry.addresses_by_page_key
                         ),
                     }
                 ),
             ),
+        )
+
+    @property
+    def kind(self) -> ReviewCaseKind:
+        """Return what the case decides, read from its decisions and entries.
+
+        Returns:
+            ``LINKED_PAGE`` for a linked page's decision, ``SPLIT_WORK`` for a
+            group of two or more entries, ``DOUBLED_PROVIDER`` otherwise.
+        """
+        if self.linked_page_decision is not None:
+            return ReviewCaseKind.LINKED_PAGE
+        if len(self.entries) > 1:
+            return ReviewCaseKind.SPLIT_WORK
+        return ReviewCaseKind.DOUBLED_PROVIDER
+
+    @property
+    def linked_page_decision(self) -> LinkedPageDecision | None:
+        """Return the decision of a linked-page case.
+
+        Returns:
+            The case's one linked-page decision, or None for an entry group case.
+        """
+        return next(
+            (
+                decision
+                for decision in self.decisions
+                if isinstance(decision, LinkedPageDecision)
+            ),
+            None,
+        )
+
+    @property
+    def doubled_provider_decisions(self) -> tuple[DoubledProviderDecision, ...]:
+        """Return the doubled-provider decisions of an entry group case.
+
+        Returns:
+            The case's doubled-provider decisions; empty for a linked-page case.
+        """
+        return tuple(
+            decision
+            for decision in self.decisions
+            if isinstance(decision, DoubledProviderDecision)
+        )
+
+    @property
+    def accepted_answer(
+        self,
+    ) -> dict[str, PagePlacement] | LinkedPageAddition | str | None:
+        """Return the case's answer read for the caller, when the answer is valid.
+
+        Returns:
+            The answer, read by the case's kind:
+
+            Each item reads ``<case kind>: <what a valid answer comes back as>``.
+
+            - Entry group: each placed page's ``PagePlacement``.
+            - Linked page: the ``LinkedPageAddition``, or ``skip``.
+
+            None when the case is open or the answer is not valid.
+        """
+        answer_check = self._check_answer(self.answer)
+        if isinstance(answer_check, LinkedPageAnswerCheck):
+            return answer_check.accepted_answer
+        return answer_check.placements if answer_check.is_valid else None
+
+    def list_broken_answer_rules(
+        self, answer: JsonValue
+    ) -> tuple[PlacementRule, ...] | tuple[LinkedPageAnswerRule, ...]:
+        """List the rules an answer to this case breaks, with the run's own checks.
+
+        The review page checks an answer with this before saving it, so it
+        never saves an answer the run would refuse.
+
+        Args:
+            answer: The answer as it would be written in the file.
+
+        Returns:
+            Each broken rule; empty when the run would accept the answer.
+        """
+        return self._check_answer(answer).broken_rules
+
+    def _check_answer(
+        self, answer: JsonValue
+    ) -> PlacementCheck | LinkedPageAnswerCheck:
+        """Check an answer with the rules of the case's kind.
+
+        Args:
+            answer: The answer as it would be written in the file.
+
+        Returns:
+            The linked-page check for a linked-page case; otherwise the group's
+            placement check, with the case's resolved named entries.
+        """
+        if self.linked_page_decision is not None:
+            return check_linked_page_answer(answer, self.linked_page_decision)
+        return check_group_answer_placements(
+            answer,
+            list(self.entries.values()),
+            self.doubled_provider_decisions,
+            {page.key: page.renamed_to for page in self.pages if page.renamed_to},
+            named_entry_reference_pages=self.named_entry_reference_pages,
         )
 
 
@@ -300,18 +361,26 @@ def _build_entry_group_case_name(
     doubled_page_keys: Iterable[str],
     group_page_keys: Iterable[str],
 ) -> str:
-    """Name an entry group's case.
+    """Build an entry group's case name.
 
     A single entry's case names its doubled pages and its reference page, since
     its answer places pages relative to that entry. A group's case names every
     page of its entries, since its answer places every page.
+
+    Args:
+        entries: The group's entries.
+        doubled_page_keys: The group's doubled page keys.
+        group_page_keys: Every page key listed across the group's entries.
+
+    Returns:
+        The formatted case name.
     """
     if len(entries) == 1:
         return (
-            f"{_build_case_name('doubled provider', doubled_page_keys)}"
-            f" in {entries[0].reference_page}"
+            f"{_build_case_name(ReviewCaseKind.DOUBLED_PROVIDER, doubled_page_keys)}"
+            f" in {entries[0].reference_page_key}"
         )
-    return _build_case_name("split work", set(group_page_keys))
+    return _build_case_name(ReviewCaseKind.SPLIT_WORK, set(group_page_keys))
 
 
 def _list_entry_group_reason_names(
@@ -322,6 +391,14 @@ def _list_entry_group_reason_names(
     """List each decision's outcome and review reasons, then the other reasons.
 
     The split-work reasons come next, then why the MAL check left pages out.
+
+    Args:
+        decisions: The doubled-provider decisions for the group.
+        split_work_review_reasons: The split-work review reasons.
+        mal_page_review_reasons: The MAL page comparison reasons.
+
+    Returns:
+        All reason names in order.
     """
     return (
         *(
@@ -337,9 +414,17 @@ def _list_entry_group_reason_names(
     )
 
 
-def _build_case_name(case_kind: str, page_keys: Iterable[str]) -> str:
-    """Name a case by its kind and its sorted page keys."""
-    return f"{case_kind}: {' '.join(sorted(page_keys))}"
+def _build_case_name(case_kind: ReviewCaseKind, page_keys: Iterable[str]) -> str:
+    """Build a case name from its kind and its sorted page keys.
+
+    Args:
+        case_kind: The case kind, written as the name's prefix.
+        page_keys: The page keys to sort into the case name.
+
+    Returns:
+        The formatted case name prefix and sorted page keys.
+    """
+    return f"{case_kind.value}: {' '.join(sorted(page_keys))}"
 
 
 def _select_page_details(
@@ -350,9 +435,18 @@ def _select_page_details(
     A page is kept when its key or its current key is one of ``page_keys``, or
     when it was searched by one of them (an AnimeSchedule page searched by MAL
     id), so a reviewer sees every link the decision read. Sorted by current key.
+
+    Args:
+        pages: The candidate fetched pages.
+        page_keys: The page keys belonging to the review case.
+
+    Returns:
+        The matching pages sorted by current page key.
     """
     return tuple(
         page
-        for key, page in sorted(index_pages_by_current_key(pages).items())
-        if {key, page.key, *page.searched_by} & page_keys
+        for current_page_key, page in sorted(
+            index_pages_by_current_page_key(pages).items()
+        )
+        if {current_page_key, page.key, *page.searched_by} & page_keys
     )

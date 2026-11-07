@@ -20,6 +20,12 @@ rules:
   correction of the same page of the same seed entry (``merge_corrections``).
   The second pass places pages where the first pass left them, so its
   correction already holds the page's final place.
+- Named pages: a page an answer sends to ``other work <page key>`` belongs
+  with the named page, so the page ends up wherever the named page ends up
+  (``follow_named_entry_pages``). When this run moves the named page out of
+  its seed entry, the page follows it to the other seed entry or to the new
+  entry. Following runs once both passes are merged, because only then is
+  every page's final place known.
 
 How corrected entries are rebuilt from the corrections is in
 ``corrected_entries``.
@@ -58,6 +64,9 @@ class SeedCorrection(BaseModel):
     # The reference page of the seed entry the page joins; None when the page
     # stays or starts a new entry.
     target_entry_reference_page: str | None = None
+    # The page key an answer named after ``other work``; the page ends up
+    # wherever that named page ends up. None when no answer named a page.
+    named_entry_page_key: str | None = None
     # The new entry the page joins: pages with the same key form one new entry.
     # None when the page stays or joins a seed entry.
     new_entry_key: str | None = None
@@ -133,3 +142,85 @@ def merge_corrections(
         if (correction.entry_reference_page, correction.page_key)
         not in replaced_entry_pages
     ] + second_pass_corrections
+
+
+def follow_named_entry_pages(
+    corrections: Iterable[SeedCorrection],
+) -> list[SeedCorrection]:
+    """Move each page an answer sent to a named page into the entry where that named page ends up.
+
+    A page sent to ``other work <page key>`` first joins the seed entry
+    holding the named page. When another correction moves the named page out
+    of that entry, the page follows it, and a named page that was itself sent
+    to a named page is followed in turn.
+
+    Args:
+        corrections: Every correction of the run, both passes merged.
+
+    Returns:
+        The corrections in the same order, each page that follows a moved
+        named page pointing at the named page's final entry.
+    """
+    corrections = list(corrections)
+    correction_by_entry_page = {
+        (correction.entry_reference_page, correction.page_key): correction
+        for correction in corrections
+    }
+    return [
+        _follow_named_entry_page(correction, correction_by_entry_page)
+        for correction in corrections
+    ]
+
+
+def _follow_named_entry_page(
+    correction: SeedCorrection,
+    correction_by_entry_page: dict[tuple[str, str], SeedCorrection],
+) -> SeedCorrection:
+    """Point one correction at the final entry of the page its answer named.
+
+    Args:
+        correction: The correction to follow.
+        correction_by_entry_page: Every correction, by its seed entry's
+            reference page and its page key.
+
+    Returns:
+        The correction pointing at the named page's final entry, or the
+        correction unchanged when no answer named a page or the named page
+        stays in its seed entry.
+    """
+    destination = (correction.target_entry_reference_page, correction.new_entry_key)
+    followed_correction = correction
+    seen_entry_pages: set[tuple[str, str]] = set()
+    while (
+        followed_correction.named_entry_page_key
+        and followed_correction.target_entry_reference_page
+    ):
+        named_entry_page = (
+            followed_correction.target_entry_reference_page,
+            followed_correction.named_entry_page_key,
+        )
+        named_correction = correction_by_entry_page.get(named_entry_page)
+        if named_entry_page in seen_entry_pages or named_correction is None:
+            break
+        seen_entry_pages.add(named_entry_page)
+        if not (
+            named_correction.target_entry_reference_page
+            or named_correction.new_entry_key
+        ):
+            break
+        destination = (
+            named_correction.target_entry_reference_page,
+            named_correction.new_entry_key,
+        )
+        followed_correction = named_correction
+    if destination == (
+        correction.target_entry_reference_page,
+        correction.new_entry_key,
+    ):
+        return correction
+    return correction.model_copy(
+        update={
+            "target_entry_reference_page": destination[0],
+            "new_entry_key": destination[1],
+        }
+    )

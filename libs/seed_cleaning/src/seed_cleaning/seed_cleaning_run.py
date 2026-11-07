@@ -46,6 +46,7 @@ from seed_cleaning.linked_page_additions import (
 )
 from seed_cleaning.seed_corrections import (
     PlacementCorrections,
+    follow_named_entry_pages,
     merge_corrections,
     write_corrections,
 )
@@ -156,8 +157,10 @@ def run_seed_cleaning(
             split_work_pass.candidates,
             data_dir,
         )
-        merged_corrections = merge_corrections(
-            first_pass_corrections, split_work_corrections.corrections
+        merged_corrections = follow_named_entry_pages(
+            merge_corrections(
+                first_pass_corrections, split_work_corrections.corrections
+            )
         )
         corrected_entries = build_corrected_entries(
             merged_corrections, known_work_entries, store

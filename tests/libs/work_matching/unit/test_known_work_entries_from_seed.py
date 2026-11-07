@@ -68,30 +68,31 @@ def test_known_work_entries_from_seed_find_by_title_missing_year_on_either_side_
     seed_entries,
 ) -> None:
     works = KnownWorkEntriesFromSeed(seed_entries)
-    assert [w.title for w in works.find_by_title("One Piece", "TV", None)] == [
+    assert [work.title for work in works.find_by_title("One Piece", "TV", None)] == [
         "One Piece"
     ]
     assert [
-        w.title for w in works.find_by_title("2.5-jigen no Ririsa Season 2", "TV", 2026)
+        work.title
+        for work in works.find_by_title("2.5-jigen no Ririsa Season 2", "TV", 2026)
     ] == ["2.5-jigen no Ririsa 2nd Season"]
 
 
 def test_known_work_entries_from_seed_page_in_two_entries_reported_and_first_kept() -> (
     None
 ):
-    shared = "https://myanimelist.net/anime/1"
+    shared_address = "https://myanimelist.net/anime/1"
     works = KnownWorkEntriesFromSeed(
         [
-            {"title": "First", "type": "TV", "sources": [shared]},
+            {"title": "First", "type": "TV", "sources": [shared_address]},
             {
                 "title": "Second",
                 "type": "TV",
-                "sources": [shared, "https://anilist.co/anime/2"],
+                "sources": [shared_address, "https://anilist.co/anime/2"],
             },
         ]
     )
-    assert works.page_keys_in_several_entries == frozenset({"mal:anime:1"})
-    work = works.find_by_page_address(shared)
+    assert works.multi_entry_page_keys == frozenset({"mal:anime:1"})
+    work = works.find_by_page_address(shared_address)
     assert work is not None
     assert work.title == "First"
 
@@ -109,15 +110,15 @@ def test_known_work_entries_from_seed_entry_without_sources_skipped_and_reported
             },
         ]
     )
-    assert (len(works), works.titles_of_entries_without_pages) == (1, ("No Pages",))
+    assert (len(works), works.pageless_entry_titles) == (1, ("No Pages",))
 
 
-def test_known_work_entries_from_seed_from_file_counts_every_entry(
+def test_known_work_entries_from_seed_load_seed_file_counts_every_entry(
     seed_file, seed_entries
 ) -> None:
-    works = KnownWorkEntriesFromSeed.from_file(seed_file)
+    works = KnownWorkEntriesFromSeed.load_seed_file(seed_file)
     assert len(works) == len(seed_entries)
-    assert works.page_keys_in_several_entries == frozenset()
+    assert works.multi_entry_page_keys == frozenset()
 
 
 def test_known_work_entries_from_seed_satisfies_known_work_entries_lookup(
@@ -139,7 +140,9 @@ def test_known_work_entries_from_seed_iteration_gives_work_entries_with_pages_in
     assert [work.title for work in works] == ["First", "Second"]
 
 
-def test_known_work_entries_from_seed_from_work_entries_indexes_given_entries() -> None:
+def test_known_work_entries_from_seed_index_work_entries_indexes_given_entries() -> (
+    None
+):
     entries = [
         WorkEntry(
             title="Show",
@@ -154,7 +157,84 @@ def test_known_work_entries_from_seed_from_work_entries_indexes_given_entries() 
             addresses_by_page_key={"kitsu:anime:2": "https://kitsu.app/anime/2"},
         ),
     ]
-    known_work_entries = KnownWorkEntriesFromSeed.from_work_entries(entries)
+    known_work_entries = KnownWorkEntriesFromSeed.index_work_entries(entries)
     assert list(known_work_entries) == entries
     assert known_work_entries.find_by_page_key("kitsu:anime:2") is entries[1]
     assert known_work_entries.find_by_title("Show", "TV", 2020) == entries
+
+
+def _build_series_seed_entries() -> list[dict]:
+    return [
+        {
+            "title": title,
+            "type": "TV",
+            "sources": [f"https://myanimelist.net/anime/{number}"],
+        }
+        for number, title in enumerate(
+            (
+                "Kusuriya no Hitorigoto",
+                "Kusuriya no Hitorigoto 2nd Season",
+                "Kusuriya no Hitorigoto 3rd Season Part 2",
+                "Kusuriya",
+                "Kusuriyasan",
+                "Kaguya-sama wa Kokurasetai: First Kiss wa Owaranai",
+                "Kaguya-sama wa Kokurasetai Movie",
+                "Kaguya-sama wa Kokurasetai: Ultra Romantic",
+                "Other Show",
+            ),
+            start=1,
+        )
+    ]
+
+
+def test_known_work_entries_from_seed_find_by_series_finds_shorter_longer_and_sibling_titles() -> (
+    None
+):
+    series = KnownWorkEntriesFromSeed(_build_series_seed_entries()).find_by_series(
+        "Kusuriya no Hitorigoto 2nd Season"
+    )
+    assert [entry.title for entry in series] == [
+        "Kusuriya no Hitorigoto 2nd Season",
+        "Kusuriya no Hitorigoto",
+        "Kusuriya",
+        "Kusuriya no Hitorigoto 3rd Season Part 2",
+    ]
+
+
+def test_known_work_entries_from_seed_find_by_series_sibling_shares_longest_root() -> (
+    None
+):
+    series = KnownWorkEntriesFromSeed(_build_series_seed_entries()).find_by_series(
+        "Kaguya-sama wa Kokurasetai: First Kiss wa Owaranai"
+    )
+    assert [entry.title for entry in series] == [
+        "Kaguya-sama wa Kokurasetai: First Kiss wa Owaranai",
+        "Kaguya-sama wa Kokurasetai Movie",
+        "Kaguya-sama wa Kokurasetai: Ultra Romantic",
+    ]
+
+
+def test_known_work_entries_from_seed_find_by_series_two_word_root_finds_no_sibling() -> (
+    None
+):
+    series = KnownWorkEntriesFromSeed(_build_series_seed_entries()).find_by_series(
+        "Kusuriya no Kusuri"
+    )
+    assert [entry.title for entry in series] == ["Kusuriya"]
+
+
+def test_known_work_entries_from_seed_find_by_series_matches_whole_words_only() -> None:
+    series = KnownWorkEntriesFromSeed(_build_series_seed_entries()).find_by_series(
+        "Kusuriya"
+    )
+    assert "Kusuriyasan" not in [entry.title for entry in series]
+    assert len(series) == 4
+
+
+def test_known_work_entries_from_seed_find_by_series_title_folding_to_nothing_gives_none() -> (
+    None
+):
+    assert (
+        KnownWorkEntriesFromSeed(_build_series_seed_entries()).find_by_series("!!")
+        == []
+    )

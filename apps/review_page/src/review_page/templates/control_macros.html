@@ -1,7 +1,8 @@
 {#
-  The page's shared parts. Every control on the page is one of these macros,
-  so each kind looks and behaves the same everywhere; their look is in
-  static/parts.css, on the same class names.
+  The macros for the page's controls: dropdowns, chips, pills, buttons and the
+  other controls every template shares. Every control on the page comes from
+  one of these macros, so each kind looks and behaves the same everywhere. The
+  styles are in static/review_page.css, under the same control- class names.
 #}
 
 {#
@@ -13,7 +14,7 @@
 {% macro dropdown(name, options, selected, label, is_changed=False, hx_vals=None, empty_label=None, is_invalid=False, empty_description="") -%}
 {% set chosen = namespace(description=empty_description) %}
 {% for option in options if option.value == selected %}{% set chosen.description = option.description %}{% endfor %}
-<span class="part-dropdown{% if is_changed %} is-changed{% endif %}{% if is_invalid %} is-invalid{% endif %}">
+<span class="control-dropdown{% if is_changed %} is-changed{% endif %}{% if is_invalid %} is-invalid{% endif %}">
   <select id="{{ element_id('choice', name, label) }}" name="{{ name }}" aria-label="{{ label }}"{% if is_invalid %} aria-invalid="true"{% endif %}
           {% if chosen.description %}title="{{ chosen.description }}"{% endif %}
           hx-post="/fragments/choice" hx-target="#case-panel" hx-swap="innerHTML"
@@ -29,23 +30,72 @@
     </option>
     {% endfor %}
   </select>
-  {% if is_changed %}<span class="part-changed-mark" title="{{ tooltips.CHANGED_CHOICE }}">•</span>{% endif %}
+  {% if is_changed %}<span class="control-changed-mark" title="{{ tooltips.CHANGED_CHOICE_MARK }}">•</span>{% endif %}
+</span>
+{%- endmacro %}
+
+{#
+  The seed entry an "other work" page moves to, chosen like the other dropdowns:
+  "new entry", each suggested entry by title, or "other entry", which shows a
+  box for a page key or address. The chosen entry's key shows below as a link
+  to its provider page. Choosing "other entry" posts nothing until
+  the box holds a key, so the box opens without a redraw. The server renders
+  the box hidden too, because Alpine does not apply x-show to a box that
+  htmx swaps in.
+#}
+{% macro named_entry_dropdown(row) -%}
+{% set label = "Seed entry for " ~ row.page_key %}
+{% set named_key = row.choices.named_entry_page_key or "" %}
+{% set suggested_keys = row.target_entry_options | map(attribute="entry_reference_page") | list %}
+{% set is_typing_key = named_key != "" and named_key not in suggested_keys %}
+<span class="control-dropdown control-named-entry" x-data="{ isTypingKey: {{ is_typing_key | tojson }} }">
+  <select id="{{ element_id('choice', 'named_entry', label) }}" name="named_entry" aria-label="{{ label }}"
+          title="{{ tooltips.TARGET_ENTRY_DROPDOWN }}"
+          @change="isTypingKey = $event.target.value === 'other entry'"
+          hx-post="/fragments/choice" hx-target="#case-panel" hx-swap="innerHTML"
+          hx-trigger="change[this.value !== 'other entry']"
+          hx-vals='{{ {"page_key": row.page_key, "work": "other work", "mark": row.choices.mark} | tojson }}'>
+    <option value=""{% if not named_key %} selected{% endif %}>new entry</option>
+    {% for entry in row.target_entry_options %}
+    <option value="{{ entry.entry_reference_page }}"{% if entry.entry_reference_page == named_key %} selected{% endif %}>{{ entry.title }}</option>
+    {% endfor %}
+    <option value="other entry"{% if is_typing_key %} selected{% endif %}>other entry…</option>
+  </select>
+  <input type="text" x-show="isTypingKey"{% if not is_typing_key %} style="display: none"{% endif %} id="{{ element_id('choice', 'named_entry_key', label) }}" name="named_entry"
+         value="{{ named_key if is_typing_key else '' }}" aria-label="{{ label }} (page key)"
+         title="{{ tooltips.TARGET_ENTRY_KEY_INPUT }}" placeholder="mal:anime:…"
+         autocomplete="off" spellcheck="false"
+         hx-post="/fragments/choice" hx-target="#case-panel" hx-swap="innerHTML" hx-trigger="change"
+         hx-vals='{{ {"page_key": row.page_key, "work": "other work", "mark": row.choices.mark} | tojson }}'>
+  {% if named_key %}{{ page_link(named_key, row.named_entry_address) }}{% endif %}
 </span>
 {%- endmacro %}
 
 {#
   A filter chip, on or off, with an optional count; description is its tooltip.
-  is_on draws the chip's state from the server too: htmx resets a redrawn
-  element's class from the new HTML, so a class set only in the browser would
-  be lost on the next redraw.
+  The label is the value with a capital first letter. is_on draws the chip's
+  state from the server too, because htmx resets a redrawn element's class from
+  the new HTML, and a class set only in the browser would be lost on the next
+  redraw.
 #}
-{% macro chip(label, list_name, value, count=None, description="", toggle="toggleFilter", is_on=False) -%}
-<button type="button" id="{{ element_id('chip', list_name, value) }}" class="part-chip{% if is_on %} is-on{% endif %}"{% if description %} title="{{ description }}"{% endif %}
+{% macro chip(list_name, value, count=None, description="", tab="cases", is_on=False) -%}
+<button type="button" id="{{ element_id('chip', list_name, value) }}" class="control-chip{% if is_on %} is-on{% endif %}"{% if description %} title="{{ description }}"{% endif %}
         :class="{ 'is-on': $store.review.{{ list_name }}.includes({{ value | tojson | forceescape }}) }"
         :aria-pressed="$store.review.{{ list_name }}.includes({{ value | tojson | forceescape }})"
-        @click="$store.review.{{ toggle }}('{{ list_name }}', {{ value | tojson | forceescape }})">
-  {{ label }}{% if count is not none %} <span class="part-chip-count">{{ count }}</span>{% endif %}
+        @click="$store.review.toggleFilter('{{ tab }}', '{{ list_name }}', {{ value | tojson | forceescape }})">
+  {{ capitalize_first_letter(value) }}{% if count is not none %} <span class="control-chip-count">({{ count }})</span>{% endif %}
 </button>
+{%- endmacro %}
+
+{#
+  A labelled group of filter chips, one per value. counts and descriptions are
+  keyed by value; chosen_values are the values whose chips are on.
+#}
+{% macro chip_group(group_label, list_name, values, counts, descriptions, chosen_values, tab="cases") -%}
+<div class="filter-group">
+  <span class="filter-group-label">{{ group_label }}</span>
+  {% for value in values %}{{ chip(list_name, value, counts.get(value, 0), descriptions[value], tab=tab, is_on=value in chosen_values) }}{% endfor %}
+</div>
 {%- endmacro %}
 
 {#
@@ -56,8 +106,8 @@
 {% macro store_dropdown(label, choices, store_field, choose) -%}
 {% set description_by_value = {} %}
 {% for value, choice_label, description in choices %}{% set _ = description_by_value.update({value: description}) %}{% endfor %}
-<label class="part-dropdown">
-  <span class="part-dropdown-label">{{ label }}</span>
+<label class="control-dropdown">
+  <span class="control-dropdown-label">{{ label }}</span>
   <select aria-label="{{ label }}" x-model="$store.review.{{ store_field }}"
           :title="{{ description_by_value | tojson | forceescape }}[$store.review.{{ store_field }}]"
           @change="$store.review.{{ choose }}($event.target.value)">
@@ -76,9 +126,9 @@
   choose is the store method called with a value.
 #}
 {% macro tabs(label, choices, store_field, choose) -%}
-<nav class="part-tabs" role="tablist" aria-label="{{ label }}">
+<nav class="control-tabs" role="tablist" aria-label="{{ label }}">
   {% for value, choice_label, description in choices %}
-  <button type="button" class="part-chip" role="tab" title="{{ description }}"
+  <button type="button" class="control-chip" role="tab" title="{{ description }}"
           :class="{ 'is-on': $store.review.{{ store_field }} === '{{ value }}' }"
           :aria-selected="$store.review.{{ store_field }} === '{{ value }}'"
           @click="$store.review.{{ choose }}('{{ value }}')">{{ choice_label }}</button>
@@ -88,25 +138,25 @@
 
 {# A small pill: New, Suggested; description is its tooltip. #}
 {% macro pill(text, tone, description="") -%}
-<span class="part-pill tone-{{ tone }}"{% if description %} title="{{ description }}"{% endif %}>{{ text }}</span>
+<span class="control-pill tone-{{ tone }}"{% if description %} title="{{ description }}"{% endif %}>{{ text }}</span>
 {%- endmacro %}
 
 {# A status: a coloured dot and a word, for a case's edit state. #}
 {% macro status(edit_state) -%}
-<span class="part-status state-{{ edit_state.name | lower }}" title="{{ edit_state.description }}"><span class="part-status-dot"></span>{{ edit_state.value }}</span>
+<span class="control-status state-{{ edit_state.name | lower }}" title="{{ edit_state.description }}"><span class="control-status-dot"></span>{{ edit_state.value }}</span>
 {%- endmacro %}
 
 {# A switch bound to a store flag; changing it redraws the given region. #}
 {% macro switch(label, flag_name, region) -%}
-<label class="part-switch">
+<label class="control-switch">
   <input type="checkbox" id="{{ element_id('switch', flag_name) }}" x-model="$store.review.{{ flag_name }}" @change="refreshRegions('{{ region }}')">
-  <span class="part-switch-track"></span>{{ label }}
+  <span class="control-switch-track"></span>{{ label }}
 </label>
 {%- endmacro %}
 
 {# A button. tone: main or secondary. hx_vals posts with the browser state; description is its tooltip. #}
 {% macro button(label, tone, is_enabled, hx_post=None, hx_vals=None, click=None, description="") -%}
-<button type="button" id="{{ element_id('button', label) }}" class="part-button tone-{{ tone }}"{% if description %} title="{{ description }}"{% endif %}
+<button type="button" id="{{ element_id('button', label) }}" class="control-button tone-{{ tone }}"{% if description %} title="{{ description }}"{% endif %}
         {% if not is_enabled %}disabled{% endif %}
         {% if hx_post %}hx-post="{{ hx_post }}" hx-swap="none"{% endif %}
         {% if hx_vals %}hx-vals='{{ hx_vals | tojson }}'{% endif %}
@@ -120,11 +170,11 @@
   the accessible name and tooltip say what it does.
 #}
 {% macro sidebar_button(flag_name, click) -%}
-<button type="button" class="part-button tone-secondary is-icon-only" @click="{{ click }}"
+<button type="button" class="control-button tone-secondary is-icon-only" @click="{{ click }}"
         aria-controls="case-list-panel" :aria-expanded="$store.review.{{ flag_name }}"
         :aria-label="$store.review.{{ flag_name }} ? {{ tooltips.HIDE_CASE_LIST | tojson | forceescape }} : {{ tooltips.SHOW_CASE_LIST | tojson | forceescape }}"
         :title="$store.review.{{ flag_name }} ? {{ tooltips.HIDE_CASE_LIST | tojson | forceescape }} : {{ tooltips.SHOW_CASE_LIST | tojson | forceescape }}">
-  <svg class="part-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"
+  <svg class="control-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"
        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
     <rect x="3" y="3" width="18" height="18" rx="2"></rect>
     <path d="M9 3v18"></path>
@@ -135,13 +185,26 @@
 {%- endmacro %}
 
 {#
+  A status icon: a 16 px line icon in its tone's colour, with its label as the
+  accessible name and tooltip. paths: the icon's SVG path data; tone: the
+  colour, as a tone- class.
+#}
+{% macro icon(label, paths, tone) -%}
+<svg class="control-icon tone-{{ tone }}" viewBox="0 0 24 24" width="16" height="16" role="img" aria-label="{{ label }}"
+     fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <title>{{ label }}</title>
+  {% for path in paths %}<path d="{{ path }}"></path>{% endfor %}
+</svg>
+{%- endmacro %}
+
+{#
   An icon button: a 16 px line icon in the button's text colour, with its
   label as the accessible name and tooltip. paths: the icon's SVG path data.
 #}
 {% macro icon_button(label, paths, is_enabled, click) -%}
-<button type="button" id="{{ element_id('icon', label, click) }}" class="part-button tone-secondary is-icon-only" aria-label="{{ label }}" title="{{ label }}"
+<button type="button" id="{{ element_id('icon', label, click) }}" class="control-button tone-secondary is-icon-only" aria-label="{{ label }}" title="{{ label }}"
         {% if not is_enabled %}disabled{% endif %} @click="{{ click }}">
-  <svg class="part-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"
+  <svg class="control-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"
        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
     {% for path in paths %}<path d="{{ path }}"></path>{% endfor %}
   </svg>
@@ -152,29 +215,30 @@
   A list's pager: how many rows show, then first, previous, next and last page.
   list_page: a page_state.ListPage; show_page: the store method opening a page.
 #}
-{% macro pager(list_page, show_page) -%}
+{% macro pager(list_page, tab) -%}
+{% set show_page = "$store.review.showPage('" ~ tab ~ "', " %}
 {% set is_first = list_page.page_number <= 1 %}
 {% set is_last = list_page.page_number >= list_page.page_count %}
 <div class="pager">
   <span>Viewing {{ list_page.first_row_number }}–{{ list_page.first_row_number + list_page.rows | length - 1 }} of {{ list_page.filtered_count }}</span>
   <span class="pager-buttons">
-    {{ icon_button(tooltips.FIRST_PAGE, ["m11 17-5-5 5-5", "m18 17-5-5 5-5"], not is_first, show_page ~ "(1)") }}
-    {{ icon_button(tooltips.PREVIOUS_PAGE, ["m15 18-6-6 6-6"], not is_first, show_page ~ "(" ~ (list_page.page_number - 1) ~ ")") }}
+    {{ icon_button(tooltips.FIRST_PAGE, ["m11 17-5-5 5-5", "m18 17-5-5 5-5"], not is_first, show_page ~ "1)") }}
+    {{ icon_button(tooltips.PREVIOUS_PAGE, ["m15 18-6-6 6-6"], not is_first, show_page ~ (list_page.page_number - 1) ~ ")") }}
     <span>{{ list_page.page_number }} / {{ list_page.page_count }}</span>
-    {{ icon_button(tooltips.NEXT_PAGE, ["m9 18 6-6-6-6"], not is_last, show_page ~ "(" ~ (list_page.page_number + 1) ~ ")") }}
-    {{ icon_button(tooltips.LAST_PAGE, ["m6 17 5-5-5-5", "m13 17 5-5-5-5"], not is_last, show_page ~ "(" ~ list_page.page_count ~ ")") }}
+    {{ icon_button(tooltips.NEXT_PAGE, ["m9 18 6-6-6-6"], not is_last, show_page ~ (list_page.page_number + 1) ~ ")") }}
+    {{ icon_button(tooltips.LAST_PAGE, ["m6 17 5-5-5-5", "m13 17 5-5-5-5"], not is_last, show_page ~ list_page.page_count ~ ")") }}
   </span>
 </div>
 {%- endmacro %}
 
 {# An error line: a broken rule or a failure the reviewer must act on. #}
 {% macro error_line(text) -%}
-<p class="part-error-line">{{ text }}</p>
+<p class="control-error-line">{{ text }}</p>
 {%- endmacro %}
 
 {# A note line: why a choice is greyed out. It explains, it does not warn, so it is muted. #}
 {% macro note_line(text) -%}
-<p class="part-note-line">{{ text }}</p>
+<p class="control-note-line">{{ text }}</p>
 {%- endmacro %}
 
 {# A page key that opens its provider page in a new tab; plain text without an address. #}

@@ -45,9 +45,9 @@ def test_prepare_split_work_pass_entry_with_open_first_pass_case_left_out(
     split_work_pass = prepare_split_work_pass(
         first_pass.corrections, first_pass.review_cases, works, store
     )
-    assert [entry.reference_page for entry in split_work_pass.known_work_entries] == [
-        "ann:anime:2"
-    ]
+    assert [
+        entry.reference_page_key for entry in split_work_pass.known_work_entries
+    ] == ["ann:anime:2"]
     assert split_work_pass.candidates == []
 
 
@@ -56,7 +56,7 @@ def test_prepare_split_work_pass_new_entry_of_first_pass_becomes_candidate(
 ) -> None:
     works = KnownWorkEntriesFromSeed([_seed_entry("Show", MAL, KITSU_ONE)])
     store.add_pages(
-        ProviderPage.from_canonical_record(
+        ProviderPage.read_canonical_record(
             KITSU_ONE, {"title": "Show", "type": "TV", "year": 2020}
         )
     )
@@ -72,7 +72,7 @@ def test_prepare_split_work_pass_new_entry_of_first_pass_becomes_candidate(
     ]
     split_work_pass = prepare_split_work_pass(first_pass_corrections, (), works, store)
     [candidates] = split_work_pass.candidates
-    assert [entry.reference_page for entry in candidates.entries] == [
+    assert [entry.reference_page_key for entry in candidates.entries] == [
         "mal:anime:1",
         "kitsu:anime:1",
     ]

@@ -14,7 +14,7 @@ from work_matching import WorkEntry
 
 
 def _entry(title: str, *addresses: str) -> WorkEntry:
-    return WorkEntry.from_seed_entry(
+    return WorkEntry.read_seed_entry(
         {"title": title, "type": "TV", "sources": list(addresses)}
     )
 
@@ -92,7 +92,7 @@ def test_count_corrections_counts_each_change_once() -> None:
 
 
 def test_count_corrected_entries_counts_removed_and_untyped_new_entries() -> None:
-    show = WorkEntry.from_seed_entry(
+    show = WorkEntry.read_seed_entry(
         {"title": "Show", "type": "TV", "sources": ["https://myanimelist.net/anime/1"]}
     )
     untyped_show = show.model_copy(update={"type": "UNKNOWN"})

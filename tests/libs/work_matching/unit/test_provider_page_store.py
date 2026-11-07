@@ -8,8 +8,8 @@ MAL = "https://myanimelist.net/anime/21"
 KITSU = "https://kitsu.app/anime/12"
 
 
-def _page(address: str, title: str) -> ProviderPage:
-    return ProviderPage.from_canonical_record(address, {"title": title, "year": 1999})
+def _build_page(address: str, title: str) -> ProviderPage:
+    return ProviderPage.read_canonical_record(address, {"title": title, "year": 1999})
 
 
 def test_provider_page_store_missing_file_starts_empty(tmp_path) -> None:
@@ -22,48 +22,48 @@ def test_provider_page_store_add_pages_read_back_after_reopening(
     tmp_path,
 ) -> None:
     path = tmp_path / "pages.jsonl"
-    pages = [_page(MAL, "One Piece"), _page(KITSU, "One Piece")]
+    pages = [_build_page(MAL, "One Piece"), _build_page(KITSU, "One Piece")]
     ProviderPageStore(path).add_pages(*pages)
-    reopened = ProviderPageStore(path)
-    assert [reopened.get_page(page.key) for page in pages] == pages
+    reopened_store = ProviderPageStore(path)
+    assert [reopened_store.get_page(page.key) for page in pages] == pages
 
 
 def test_provider_page_store_same_page_added_again_keeps_latest(tmp_path) -> None:
     path = tmp_path / "pages.jsonl"
     store = ProviderPageStore(path)
-    latest = _page(MAL, "One Piece")
-    store.add_pages(_page(MAL, "Old Title"))
-    store.add_pages(latest)
-    assert store.get_page("mal:anime:21") == latest
-    assert ProviderPageStore(path).get_page("mal:anime:21") == latest
+    latest_page = _build_page(MAL, "One Piece")
+    store.add_pages(_build_page(MAL, "Old Title"))
+    store.add_pages(latest_page)
+    assert store.get_page("mal:anime:21") == latest_page
+    assert ProviderPageStore(path).get_page("mal:anime:21") == latest_page
     assert len(store) == 1
 
 
 def test_provider_page_store_contains_page_key_after_add(tmp_path) -> None:
     store = ProviderPageStore(tmp_path / "pages.jsonl")
-    store.add_pages(_page(MAL, "One Piece"))
+    store.add_pages(_build_page(MAL, "One Piece"))
     assert "mal:anime:21" in store
     assert "kitsu:anime:12" not in store
 
 
 def test_provider_page_store_creates_missing_folder(tmp_path) -> None:
     path = tmp_path / "seed_cleaning" / "pages.jsonl"
-    ProviderPageStore(path).add_pages(_page(MAL, "One Piece"))
+    ProviderPageStore(path).add_pages(_build_page(MAL, "One Piece"))
     assert path.exists()
 
 
 def test_provider_page_store_partial_last_line_left_until_next_add(tmp_path) -> None:
     path = tmp_path / "pages.jsonl"
-    page = _page(MAL, "One Piece")
+    page = _build_page(MAL, "One Piece")
     ProviderPageStore(path).add_pages(page)
     with path.open("a", encoding="utf-8") as output:
         output.write('{"key":"kitsu:an')
-    written = path.read_bytes()
+    written_bytes = path.read_bytes()
     store = ProviderPageStore(path)
-    assert (path.read_bytes(), len(store)) == (written, 1)
-    store.add_pages(_page(KITSU, "One Piece"))
-    reopened = ProviderPageStore(path)
-    assert (len(reopened), reopened.get_page(page.key)) == (2, page)
+    assert (path.read_bytes(), len(store)) == (written_bytes, 1)
+    store.add_pages(_build_page(KITSU, "One Piece"))
+    reopened_store = ProviderPageStore(path)
+    assert (len(reopened_store), reopened_store.get_page(page.key)) == (2, page)
 
 
 def test_provider_page_store_broken_complete_line_raises_naming_file_and_line(
@@ -71,9 +71,9 @@ def test_provider_page_store_broken_complete_line_raises_naming_file_and_line(
 ) -> None:
     path = tmp_path / "pages.jsonl"
     path.write_text('{"key":"kitsu:an\n', encoding="utf-8")
-    with pytest.raises(ValidationError) as raised:
+    with pytest.raises(ValidationError) as raised_error:
         ProviderPageStore(path)
-    assert raised.value.__notes__ == [f"{path}, line 1"]
+    assert raised_error.value.__notes__ == [f"{path}, line 1"]
 
 
 def test_provider_page_store_add_pages_without_pages_creates_no_file(tmp_path) -> None:
@@ -85,7 +85,7 @@ def test_provider_page_store_add_pages_without_pages_creates_no_file(tmp_path) -
 def test_provider_page_store_has_page_searched_by_after_add(tmp_path) -> None:
     store = ProviderPageStore(tmp_path / "pages.jsonl")
     store.add_pages(
-        ProviderPage.from_canonical_record(
+        ProviderPage.read_canonical_record(
             "https://animeschedule.net/anime/one-piece",
             {"title": "One Piece"},
             searched_by_address=MAL,
@@ -99,15 +99,15 @@ def test_provider_page_store_get_pages_searched_by_gives_pages_after_reopening(
     tmp_path,
 ) -> None:
     path = tmp_path / "pages.jsonl"
-    found = ProviderPage.from_canonical_record(
+    found_page = ProviderPage.read_canonical_record(
         "https://animeschedule.net/anime/one-piece",
         {"title": "One Piece"},
         searched_by_address=MAL,
     )
-    ProviderPageStore(path).add_pages(found, _page(KITSU, "One Piece"))
-    reopened = ProviderPageStore(path)
-    assert reopened.get_pages_searched_by("mal:anime:21") == (found,)
-    assert reopened.get_pages_searched_by("kitsu:anime:12") == ()
+    ProviderPageStore(path).add_pages(found_page, _build_page(KITSU, "One Piece"))
+    reopened_store = ProviderPageStore(path)
+    assert reopened_store.get_pages_searched_by("mal:anime:21") == (found_page,)
+    assert reopened_store.get_pages_searched_by("kitsu:anime:12") == ()
 
 
 def test_provider_page_store_searched_page_added_through_second_search_keeps_both(
@@ -118,29 +118,31 @@ def test_provider_page_store_searched_page_added_through_second_search_keeps_bot
     store = ProviderPageStore(path)
     for searched_by_address in (MAL, "https://anilist.co/anime/210"):
         store.add_pages(
-            ProviderPage.from_canonical_record(
+            ProviderPage.read_canonical_record(
                 "https://animeschedule.net/anime/ranma",
                 record,
                 searched_by_address=searched_by_address,
             )
         )
-    reopened = ProviderPageStore(path).get_page("https://animeschedule.net/anime/ranma")
-    assert reopened is not None
-    assert reopened.searched_by == ("anilist:anime:210", "mal:anime:21")
+    reopened_page = ProviderPageStore(path).get_page(
+        "https://animeschedule.net/anime/ranma"
+    )
+    assert reopened_page is not None
+    assert reopened_page.searched_by == ("anilist:anime:210", "mal:anime:21")
 
 
 def test_get_entry_pages_gives_stored_pages_then_pages_found_through_them(
     tmp_path,
 ) -> None:
     store = ProviderPageStore(tmp_path / "pages.jsonl")
-    searched_page = ProviderPage.from_canonical_record(
+    searched_page = ProviderPage.read_canonical_record(
         "https://animeschedule.net/anime/one-piece",
         {"title": "One Piece", "sources": [MAL]},
         searched_by_address=MAL,
     )
-    mal_page = _page(MAL, "One Piece")
-    store.add_pages(searched_page, mal_page, _page(KITSU, "One Piece"))
-    entry = WorkEntry.from_seed_entry(
+    mal_page = _build_page(MAL, "One Piece")
+    store.add_pages(searched_page, mal_page, _build_page(KITSU, "One Piece"))
+    entry = WorkEntry.read_seed_entry(
         {
             "title": "One Piece",
             "type": "TV",
@@ -157,7 +159,7 @@ def test_provider_page_store_searched_page_added_twice_in_one_call_keeps_both_se
     record = {"title": "Ranma", "sources": [MAL, "https://anilist.co/anime/210"]}
     ProviderPageStore(path).add_pages(
         *(
-            ProviderPage.from_canonical_record(
+            ProviderPage.read_canonical_record(
                 "https://animeschedule.net/anime/ranma",
                 record,
                 searched_by_address=searched_by_address,
@@ -165,6 +167,8 @@ def test_provider_page_store_searched_page_added_twice_in_one_call_keeps_both_se
             for searched_by_address in (MAL, "https://anilist.co/anime/210")
         )
     )
-    reopened = ProviderPageStore(path).get_page("https://animeschedule.net/anime/ranma")
-    assert reopened is not None
-    assert reopened.searched_by == ("anilist:anime:210", "mal:anime:21")
+    reopened_page = ProviderPageStore(path).get_page(
+        "https://animeschedule.net/anime/ranma"
+    )
+    assert reopened_page is not None
+    assert reopened_page.searched_by == ("anilist:anime:210", "mal:anime:21")

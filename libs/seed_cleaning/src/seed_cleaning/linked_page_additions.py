@@ -62,9 +62,9 @@ from work_matching import (
     WorkEntry,
     build_page_address,
     decide_linked_page,
+    find_entry_episode_count,
     find_unheld_linked_page_keys,
-    get_entry_episode_count,
-    get_page_provider,
+    read_page_provider,
 )
 
 logger = logging.getLogger(__name__)
@@ -119,7 +119,7 @@ def find_entries_without_mal_page(entries: Iterable[WorkEntry]) -> list[WorkEntr
         entry
         for entry in entries
         if not any(
-            get_page_provider(key) == "mal" for key in entry.addresses_by_page_key
+            read_page_provider(key) == "mal" for key in entry.addresses_by_page_key
         )
     ]
 
@@ -159,8 +159,8 @@ def list_entries_with_placed_pages(
         if corrected.seed_entry_reference_page is not None
     }
     placed_entries = {
-        entry.reference_page: corrected_entries.get(
-            entry.reference_page, CorrectedEntry(entry.reference_page, entry)
+        entry.reference_page_key: corrected_entries.get(
+            entry.reference_page_key, CorrectedEntry(entry.reference_page_key, entry)
         )
         for entry in entries
     } | corrected_entries
@@ -203,7 +203,7 @@ def find_linking_seed_entries(
             entry, entry_pages, known_work_entries, FETCHED_PROVIDERS
         )
         entry_details = LinkingEntryDetails(
-            entry, get_entry_episode_count(entry, entry_pages), linked_page_keys
+            entry, find_entry_episode_count(entry, entry_pages), linked_page_keys
         )
         for key in linked_page_keys:
             linking_seed_entries_by_page_key[key].append(
@@ -302,7 +302,11 @@ def _place_linked_page(
         [entry] = decision.linking_entries
         reason = decision.reason.name
         return None, _PageAddition(
-            page_key, address, entry.reference_page, is_part_page=False, reason=reason
+            page_key,
+            address,
+            entry.reference_page_key,
+            is_part_page=False,
+            reason=reason,
         )
     entry_pages = (
         entry_page
@@ -310,7 +314,7 @@ def _place_linked_page(
         for entry_page in store.get_entry_pages(entry)
     )
     review_case = review_file.attach_kept_answer(
-        ReviewCase.from_linked_page(decision, [page, *entry_pages])
+        ReviewCase.build_linked_page_case(decision, [page, *entry_pages])
     )
     addition = review_case.accepted_answer
     if not isinstance(addition, LinkedPageAddition):
@@ -342,7 +346,7 @@ def _drop_conflicting_additions(
         The additions kept, and the sorted keys of the pages left out.
     """
     whole_page_counts = Counter(
-        (page_addition.entry_reference_page, get_page_provider(page_addition.page_key))
+        (page_addition.entry_reference_page, read_page_provider(page_addition.page_key))
         for page_addition in page_additions
         if not page_addition.is_part_page
     )
@@ -351,7 +355,7 @@ def _drop_conflicting_additions(
     for page_addition in page_additions:
         entry_provider = (
             page_addition.entry_reference_page,
-            get_page_provider(page_addition.page_key),
+            read_page_provider(page_addition.page_key),
         )
         if not page_addition.is_part_page and whole_page_counts[entry_provider] > 1:
             logger.warning(
@@ -385,7 +389,7 @@ def _build_addition_corrections(
     # Keyed by the corrected entry's reference page, which is unique: each page
     # belongs to one seed entry, and the corrections move a page, never copy it.
     linking_seed_entry_by_entry_reference_page = {
-        linking_seed_entry.entry_details.entry.reference_page: linking_seed_entry
+        linking_seed_entry.entry_details.entry.reference_page_key: linking_seed_entry
         for linking_seed_entries in linking_seed_entries_by_page_key.values()
         for linking_seed_entry in linking_seed_entries
     }

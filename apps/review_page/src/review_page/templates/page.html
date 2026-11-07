@@ -1,14 +1,14 @@
 {% extends "base.html" %}
-{% import "parts.html" as parts with context %}
+{% from "control_macros.html" import icon_button, sidebar_button, store_dropdown, tabs with context %}
 {% block body %}
 <header class="layout-toolbar">
   <h1>Seed review</h1>
-  {{ parts.tabs("View", [
+  {{ tabs("View", [
        ("cases", "Cases", tooltips.CASES_TAB),
        ("corrections", "Corrections", tooltips.CORRECTIONS_TAB),
      ], "tab", "setTab") }}
   <div id="toolbar" hx-post="/fragments/toolbar" hx-trigger="load, refresh-toolbar from:body"></div>
-  {{ parts.store_dropdown("Theme", [
+  {{ store_dropdown("Theme", [
        ("system", "System", theme_tooltips["system"]),
        ("light", "Light", theme_tooltips["light"]),
        ("dark", "Dark", theme_tooltips["dark"]),
@@ -18,7 +18,7 @@
 <template x-if="$store.review.notice">
   <div class="notice" role="status">
     <span x-text="$store.review.notice"></span>
-    <button type="button" class="part-button tone-secondary" @click="$store.review.notice = ''">Close</button>
+    <button type="button" class="control-button tone-secondary" @click="$store.review.notice = ''">Close</button>
   </div>
 </template>
 
@@ -33,15 +33,22 @@
   <section id="case-list-panel" class="layout-panel layout-list-panel"
            :aria-label="$store.review.tab === 'cases' ? 'Cases' : 'Corrected entries'">
     <div class="list-panel-top">
-      {{ parts.sidebar_button("is_sidebar_open", "$store.review.toggleSidebar()") }}
+      {{ sidebar_button("is_sidebar_open", "$store.review.toggleSidebar()") }}
       <input type="search" class="search-input" placeholder="Title or page key…"
              aria-label="Search cases" x-show="$store.review.tab === 'cases'"
              x-model="$store.review.search_text"
-             @input.debounce.400ms="$store.review.page_number = 1; refreshRegions('list')">
+             @input.debounce.400ms="$store.review.showPage('cases', 1)">
       <input type="search" class="search-input" placeholder="Title or page key…"
              aria-label="Search corrected entries" x-show="$store.review.tab === 'corrections'"
              x-model="$store.review.correction_search_text"
-             @input.debounce.400ms="$store.review.correction_page_number = 1; refreshRegions('correction-list')">
+             @input.debounce.400ms="$store.review.showPage('corrections', 1)">
+      {# Lucide's funnel-x icon (ISC licence): a funnel with a cross. #}
+      {% set reset_filters_icon_paths = [
+           "M12.531 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14v6a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341l.427-.473",
+           "m16.5 3.5 5 5",
+           "m21.5 3.5-5 5"] %}
+      <span x-show="$store.review.tab === 'cases'">{{ icon_button(tooltips.RESET_CASE_FILTERS, reset_filters_icon_paths, True, "$store.review.resetFilters('cases')") }}</span>
+      <span x-show="$store.review.tab === 'corrections'">{{ icon_button(tooltips.RESET_CORRECTION_FILTERS, reset_filters_icon_paths, True, "$store.review.resetFilters('corrections')") }}</span>
     </div>
     <div id="case-list" x-show="$store.review.tab === 'cases'"
          hx-post="/fragments/case-list" hx-trigger="load, refresh-list from:body"></div>
@@ -50,7 +57,7 @@
   </section>
   {# While the list is hidden, a slim strip keeps its button where it was. #}
   <div class="layout-panel layout-rail">
-    {{ parts.sidebar_button("is_sidebar_open", "$store.review.toggleSidebar()") }}
+    {{ sidebar_button("is_sidebar_open", "$store.review.toggleSidebar()") }}
   </div>
   <div class="layout-resizer" role="separator" aria-orientation="vertical" tabindex="0"
        aria-label="Resize the case list" aria-controls="case-list-panel"

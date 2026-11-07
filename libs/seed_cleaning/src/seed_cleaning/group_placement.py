@@ -50,6 +50,8 @@ from work_matching import (
     find_surviving_entries,
     list_split_work_review_reasons,
     place_pages_without_review,
+    resolve_named_entries,
+    suggest_target_entries,
 )
 
 
@@ -72,8 +74,8 @@ class _CorrectionNames:
     ) -> PageOrigin:
         """Return the seed entry listing a page of an entry, its address and whether added."""
         if self.corrected_seed is None:
-            return PageOrigin(entry.reference_page, address)
-        return self.corrected_seed.find_page_origin(entry.reference_page, page_key)
+            return PageOrigin(entry.reference_page_key, address)
+        return self.corrected_seed.find_page_origin(entry.reference_page_key, page_key)
 
     def find_entry_destination(self, reference_page: str) -> _PageDestination:
         """Return how a correction names the entry with this reference page."""
@@ -165,8 +167,11 @@ def _place_entry_group(
     }
     review_case = None
     if placements is None:
-        review_case = review_file.attach_kept_answer(
-            _build_review_case(entry_group, decisions, pages)
+        review_case = resolve_named_entries(
+            review_file.attach_kept_answer(
+                _build_review_case(entry_group, decisions, pages, known_work_entries)
+            ),
+            known_work_entries,
         )
         accepted_placements = review_case.accepted_answer
         if not isinstance(accepted_placements, dict):
@@ -182,7 +187,12 @@ def _place_entry_group(
         reason_by_page_key,
         find_surviving_entries(entries, placements, current_key_by_page_key),
         current_key_by_page_key,
-        _find_target_reference_pages(decisions),
+        _find_target_reference_pages(decisions)
+        | _find_named_target_reference_pages(
+            placements,
+            review_case.named_entry_reference_pages if review_case else {},
+            current_key_by_page_key,
+        ),
         correction_names,
     )
     return group_placement, review_case
@@ -192,9 +202,21 @@ def _build_review_case(
     entry_group: EntryGroup,
     decisions: Sequence[DoubledProviderDecision],
     pages: Sequence[ProviderPage],
+    known_work_entries: KnownWorkEntries,
 ) -> ReviewCase:
-    """Make an entry group's review case, with why its entries are grouped."""
-    return ReviewCase.from_entry_group(
+    """Make an entry group's review case, with why its entries are grouped.
+
+    Args:
+        entry_group: The group's entries and why they are grouped.
+        decisions: The doubled-provider decisions of the combined entry.
+        pages: The entries' fetched pages and the pages searched by them.
+        known_work_entries: The seed's entries, to suggest the entries a page
+            in ``other work`` could move to.
+
+    Returns:
+        The case, with its seed entries of the same series as suggestions.
+    """
+    review_case = ReviewCase.build_entry_group_case(
         entry_group.entries,
         decisions,
         list_split_work_review_reasons(
@@ -204,6 +226,13 @@ def _build_review_case(
         ),
         pages,
         candidate_evidence=entry_group.candidate_evidence,
+    )
+    return review_case.model_copy(
+        update={
+            "target_entry_suggestions": suggest_target_entries(
+                review_case, known_work_entries
+            )
+        }
     )
 
 
@@ -248,7 +277,7 @@ def _build_entry_corrections(
                 entry,
                 key,
                 address,
-                placed_page.placed_key,
+                placed_page.placed_page_key,
                 placed_page.placement,
                 group_placement,
             )
@@ -278,7 +307,7 @@ def _build_seed_correction(
         # The page stays in its entry; it still moves when that entry is not
         # the seed entry listing it, such as a page moved in by the first pass.
         entry_destination = correction_names.find_entry_destination(
-            entry.reference_page
+            entry.reference_page_key
         )
         destination = (
             _PageDestination(None, None)
@@ -300,6 +329,7 @@ def _build_seed_correction(
         renamed_to=current_key if is_renamed_page_listed else None,
         target_entry_reference_page=destination.target_entry_reference_page,
         new_entry_key=destination.new_entry_key,
+        named_entry_page_key=placement.named_entry_page_key,
         reason=group_placement.reason_by_page_key[current_key],
     )
 
@@ -344,7 +374,7 @@ def _find_page_destination(
     surviving_reference_page = group_placement.surviving_reference_page_by_work.get(
         placement.placement_word
     )
-    if surviving_reference_page == entry.reference_page:
+    if surviving_reference_page == entry.reference_page_key:
         return None
     if surviving_reference_page:
         return group_placement.correction_names.find_entry_destination(
@@ -352,7 +382,7 @@ def _find_page_destination(
         )
     return _PageDestination(
         None,
-        f"{group_placement.combined_entry.reference_page} {placement.placement_word}",
+        f"{group_placement.combined_entry.reference_page_key} {placement.placement_word}",
     )
 
 
@@ -367,7 +397,7 @@ def _find_other_work_destination(
         return group_placement.correction_names.find_entry_destination(
             move_target_reference_page
         )
-    return _PageDestination(None, f"{entry.reference_page} {page_key}")
+    return _PageDestination(None, f"{entry.reference_page_key} {page_key}")
 
 
 def _find_target_reference_pages(
@@ -388,8 +418,40 @@ def _find_target_reference_pages(
         seed entry it moves to; pages without a sure target are left out.
     """
     return {
-        key: unrelated_page.move_target_entry.reference_page
+        key: unrelated_page.move_target_entry.reference_page_key
         for decision in decisions
         for key, unrelated_page in decision.unrelated_pages.items()
         if unrelated_page.move_target_entry is not None
+    }
+
+
+def _find_named_target_reference_pages(
+    placements: Mapping[str, PagePlacement],
+    named_entry_reference_pages: Mapping[str, str],
+    current_key_by_page_key: Mapping[str, str],
+) -> dict[str, str]:
+    """Return the reference page each page an answer sends to a named seed entry moves to.
+
+    An answer's named entry replaces any target the links found, since a
+    person chose it.
+
+    Args:
+        placements: Each placed page's place, by the key the answer names it by.
+        named_entry_reference_pages: Each named page key, mapped to the reference
+            page of the seed entry holding it.
+        current_key_by_page_key: Each renamed page's current key, by the key an
+            entry lists it under.
+
+    Returns:
+        Each named page's current key, mapped to the reference page it moves to.
+    """
+    return {
+        current_key_by_page_key.get(page_key, page_key): reference_page
+        for page_key, placement in placements.items()
+        if placement.named_entry_page_key
+        and (
+            reference_page := named_entry_reference_pages.get(
+                placement.named_entry_page_key
+            )
+        )
     }

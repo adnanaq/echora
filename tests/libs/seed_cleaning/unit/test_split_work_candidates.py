@@ -116,7 +116,7 @@ def test_find_split_work_candidates_entries_joined_through_shared_match_form_one
         ]
     )
     [candidates] = find_split_work_candidates(works, NO_SPLIT_WORK_LINKS)
-    assert [entry.reference_page for entry in candidates.entries] == [
+    assert [entry.reference_page_key for entry in candidates.entries] == [
         "anilist:anime:1",
         "kitsu:anime:2",
         "mal:anime:3",

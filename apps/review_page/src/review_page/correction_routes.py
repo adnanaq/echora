@@ -1,9 +1,9 @@
-"""Serve the Corrections tab: the corrected entries, and one entry's pages.
+"""Serve HTTP routes for the Corrections tab list and entry detail panel.
 
-The routes work like the Cases tab's routes. Each route reads the source on
-every request and the browser's state from its form field, and returns an
-htmx fragment. The Corrections tab's routes only read, so they never take the
-review file's lock.
+Reads seed corrections, checked entries, and review cases from the
+``ReviewCaseSource`` on each request and renders htmx HTML fragments using the
+submitted ``BrowserState`` form field. Because these routes only read data,
+they never acquire the review file lock.
 """
 
 from fastapi import APIRouter, Request, Response
@@ -18,22 +18,24 @@ from review_page.correction_views import (
     filter_corrected_entry_rows,
 )
 from review_page.models import BrowserState, BrowserStateField
-from review_page.page_state import page_list_rows
-from review_page.review_case_messages import convert_message_to_case
-from review_page.review_case_source import ReviewCaseSource
-from review_page.run_summary import build_run_summary
-from work_matching import ReviewCase
+from review_page.page_state import paginate_rows
+from review_page.review_case_source import (
+    ReviewCaseSource,
+    load_cases,
+    load_last_run_summary,
+)
 
 
 class CorrectionRoutes:
-    """The Corrections tab's routes over one source; the instance keeps no request state."""
+    """Register and serve stateless HTTP routes for the Corrections tab."""
 
     def __init__(self, source: ReviewCaseSource, templates: Jinja2Templates) -> None:
-        """Register the tab's routes on a router.
+        """Register Corrections tab endpoints on a new router instance.
 
         Args:
-            source: Where corrections, checked entries and cases are read.
-            templates: The page's Jinja templates.
+            source: The review case source providing corrections, checked entries,
+                and review cases.
+            templates: The Jinja2 templates collection for rendering HTML fragments.
         """
         self._source = source
         self._templates = templates
@@ -50,28 +52,30 @@ class CorrectionRoutes:
     def render_correction_list(
         self, request: Request, browser_state: BrowserStateField = None
     ) -> Response:
-        """Return the change and source chips with their counts, and one page of entries.
+        """Render the Corrections tab filter chips, counts, and paginated entry list.
 
         Args:
-            request: The request being answered.
-            browser_state: The browser's state, as its JSON form field.
+            request: The incoming HTTP request.
+            browser_state: The serialized ``BrowserState`` JSON form field.
 
         Returns:
-            The Corrections list fragment.
+            The rendered correction list HTML fragment.
         """
-        state = BrowserState.from_form_field(browser_state)
+        state = BrowserState.parse_form_field(browser_state)
         all_rows = build_corrected_entry_rows(
             self._source.list_corrections(),
             self._source.list_checked_entries(),
-            self._load_cases(),
+            load_cases(self._source),
         )
         chip_counts = count_corrected_entry_rows(all_rows)
         return self._templates.TemplateResponse(
             request,
             "correction_list.html",
             {
-                "entry_page": page_list_rows(
-                    filter_corrected_entry_rows(all_rows, state.to_correction_filter()),
+                "entry_page": paginate_rows(
+                    filter_corrected_entry_rows(
+                        all_rows, state.build_correction_filter()
+                    ),
                     state.correction_page_number,
                 ),
                 "has_corrections": bool(all_rows),
@@ -91,24 +95,23 @@ class CorrectionRoutes:
     def render_correction_panel(
         self, request: Request, browser_state: BrowserStateField = None
     ) -> Response:
-        """Return the open entry's corrected pages, and the cases holding it.
+        """Render the detail panel for the selected corrected entry and its case links.
 
         Args:
-            request: The request being answered.
-            browser_state: The browser's state, as its JSON form field.
+            request: The incoming HTTP request.
+            browser_state: The serialized ``BrowserState`` JSON form field.
 
         Returns:
-            The open entry's panel fragment, or its empty state when no entry is
-            open.
+            The rendered correction panel HTML fragment, or its empty state when
+            no entry is selected.
         """
-        state = BrowserState.from_form_field(browser_state)
-        run_message = self._source.get_last_run_result()
+        state = BrowserState.parse_form_field(browser_state)
         panel = (
             build_correction_panel(
                 state.open_correction_entry,
                 self._source.list_corrections(),
                 self._source.list_checked_entries(),
-                self._load_cases(),
+                load_cases(self._source),
             )
             if state.open_correction_entry
             else None
@@ -118,18 +121,6 @@ class CorrectionRoutes:
             "correction_panel.html",
             {
                 "panel": panel,
-                "run_summary": None
-                if run_message is None
-                else build_run_summary(run_message),
+                "run_summary": load_last_run_summary(self._source),
             },
         )
-
-    def _load_cases(self) -> list[ReviewCase]:
-        """Read every case from the source, for titles and links.
-
-        Returns:
-            Every case, converted from its message to the library model.
-        """
-        return [
-            convert_message_to_case(message) for message in self._source.list_cases()
-        ]

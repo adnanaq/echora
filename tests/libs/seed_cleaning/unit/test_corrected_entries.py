@@ -39,7 +39,7 @@ def _seed_entry(title: str, *addresses: str) -> dict:
 
 
 def _page(address: str, *linked_addresses: str, **details) -> ProviderPage:
-    return ProviderPage.from_canonical_record(
+    return ProviderPage.read_canonical_record(
         address,
         {
             "title": "Show",
@@ -112,6 +112,34 @@ def test_build_corrected_entries_moved_page_leaves_entry_and_joins_seed_entry(
                 },
             ),
         ),
+    ]
+
+
+def test_build_corrected_entries_two_pages_moved_to_one_entry_both_join(
+    store, known_work_entries
+) -> None:
+    corrections = [
+        SeedCorrection(
+            entry_reference_page="mal:anime:1",
+            page_key=page_key,
+            address=address,
+            placement_word="other work",
+            target_entry_reference_page="mal:anime:9",
+            reason="review answer",
+        )
+        for page_key, address in (
+            ("kitsu:anime:1", KITSU_ONE),
+            ("kitsu:anime:2", KITSU_TWO),
+        )
+    ]
+    [source_entry, target_entry] = build_corrected_entries(
+        corrections, known_work_entries, store
+    )
+    assert list(source_entry.entry.addresses_by_page_key) == ["mal:anime:1"]
+    assert list(target_entry.entry.addresses_by_page_key) == [
+        "mal:anime:9",
+        "kitsu:anime:1",
+        "kitsu:anime:2",
     ]
 
 

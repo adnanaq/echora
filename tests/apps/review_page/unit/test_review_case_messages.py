@@ -5,7 +5,7 @@ from review_page.review_case_messages import (
     convert_case_to_message,
     convert_message_to_case,
 )
-from work_matching import LinkedPageDecision
+from work_matching import LinkedPageDecision, TargetEntrySuggestion
 
 
 @pytest.mark.parametrize(
@@ -91,3 +91,22 @@ def test_build_case_answer_seen_saved_answer_given_sets_it() -> None:
 def test_build_case_answer_without_seen_saved_answer_leaves_it_unset() -> None:
     case_answer = build_case_answer("split work: a", {"mal:anime:1": "work 1"})
     assert not case_answer.HasField("seen_saved_answer")
+
+
+def test_convert_message_to_case_round_trip_keeps_named_entries_and_suggestions(
+    review_cases,
+) -> None:
+    case = review_cases["gochuumon_movie"].model_copy(
+        update={
+            "answer": {"anidb:anime:19188": "other work mal:anime:21273"},
+            "named_entry_reference_pages": {"mal:anime:21273": "mal:anime:21273"},
+            "target_entry_suggestions": (
+                TargetEntrySuggestion(
+                    entry_reference_page="mal:anime:21273",
+                    title="Gochuumon wa Usagi desu ka?",
+                    providers=("anidb", "mal"),
+                ),
+            ),
+        }
+    )
+    assert convert_message_to_case(convert_case_to_message(case)) == case

@@ -1,16 +1,17 @@
-"""Hold every data shape the review page passes between its modules and templates.
+"""Hold data models exchanged across the review page modules and templates.
 
-The functions that build these models stay in the modules that own the
-rules: ``page_state``, ``case_views``, ``correction_views`` and
-``run_summary``. Keeping the shapes in one file shows every field the page
-reads in one place. Each section reads ``<area>: <what its models hold>``.
+The functions constructing these models reside within the modules that govern
+their business rules: ``page_state``, ``case_views``, ``correction_views``,
+and ``run_summary``. Consolidating models in this module exposes the schema
+and field contracts in a single location.
 
-- Case states: the edit and case states, and the change a saved answer makes.
-- Case list: list rows, filters, paging and the button states.
-- Case panel: the open case's entries, page rows and comparison rows.
-- Corrections tab: corrected entries, their filter and one entry's pages.
-- Run: the last run's summary as the page reads it.
-- Browser state: what the browser sends with each request.
+Each section groups related models:
+- Case states: lifecycle states, persisted states, and answer diff statuses.
+- Case list: list row projections, filters, pagination models, and button states.
+- Case panel: active case views, entry headers, page rows, and comparison rows.
+- Corrections tab: corrected entry rows, correction filters, and page panels.
+- Run: pipeline execution summaries and diff baselines.
+- Browser state: client-side staged edits and UI filter state.
 """
 
 import json
@@ -28,13 +29,18 @@ from work_matching import (
     ProviderPage,
     ReviewCase,
     ReviewCaseKind,
+    TargetEntrySuggestion,
 )
 
 # Case states.
 
 
 class SavedChange(StrEnum):
-    """How a case's saved answer differs from its original value."""
+    """Track differences between a case's saved answer and its baseline run answer.
+
+    Values denote whether a decision was newly recorded, modified from baseline,
+    cleared to empty, or left unchanged relative to the last pipeline run.
+    """
 
     UNCHANGED = "unchanged"
     ANSWERED = "answered"
@@ -43,7 +49,12 @@ class SavedChange(StrEnum):
 
 
 class CaseEditState(StrEnum):
-    """Where a case's answer stands between the reviewer's edits and the next Run."""
+    """Represent an answer's lifecycle between browser edits and the next pipeline run.
+
+    Values indicate whether the answer failed rule validation, holds unsaved
+    in-memory edits, is saved to disk waiting for the next run, or remains
+    identical to the baseline answer.
+    """
 
     REJECTED = "rejected"
     EDITED_NOT_SAVED = "edited, not saved"
@@ -52,12 +63,20 @@ class CaseEditState(StrEnum):
 
     @property
     def description(self) -> str:
-        """Return what the state means, as the page's tooltips show it."""
+        """Return the explanation text shown in review page tooltips.
+
+        Returns:
+            The human-readable description for the edit state.
+        """
         return EDIT_STATE_TOOLTIPS[self.value]
 
 
 class CaseState(StrEnum):
-    """A case's answer as the file holds it, as the state filter names it."""
+    """Represent the persistence and resolution state of a review case in storage.
+
+    Values indicate whether a case currently awaits an answer, holds a saved
+    answer, has pages modified by another review decision, or is newly surfaced.
+    """
 
     OPEN = "open"
     ANSWERED = "answered"
@@ -66,7 +85,11 @@ class CaseState(StrEnum):
 
     @property
     def description(self) -> str:
-        """Return what the state means, as the page's tooltips show it."""
+        """Return the explanation text shown in review page tooltips.
+
+        Returns:
+            The human-readable description for the case state.
+        """
         return CASE_STATE_TOOLTIPS[self.value]
 
 
@@ -75,26 +98,36 @@ class CaseState(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class CaseRow:
-    """One case as the case list shows it."""
+    """Represent a summary projection of a review case for the list view.
+
+    Carries unique identifiers, display titles, diff indicators, and state flags
+    used for filtering and rendering case list badges.
+    """
 
     case_name: str
     kind: ReviewCaseKind
     title: str
     saved_change: SavedChange
-    # Whether the file holds no answer for the case.
+    # Whether the review file currently holds no saved answer for the case.
     is_open: bool
-    # Whether the last run brought the case up for the first time.
+    # Whether the last pipeline run surfaced the case for the first time.
     is_new: bool
-    # Whether the case carries a suggested answer.
+    # Whether the case carries an automated suggested answer.
     has_suggestion: bool
-    # Whether the file keeps the case's answer although the last run no longer
-    # brought the case up, as when another answer changed its pages.
+    # Whether the review file retains a saved answer even though the last run
+    # no longer produced the case (for example, after an upstream answer merged its pages).
     is_answer_unused: bool = False
+    # Whether the last run applied the saved answer: the run used this answer,
+    # did not refuse it, and the case still came up.
+    is_answer_applied: bool = False
 
 
 @dataclass(frozen=True, slots=True)
 class CaseFilter:
-    """The filters chosen on the page; an empty group lets every case through."""
+    """Hold criteria selected in the review page to filter visible review cases.
+
+    Empty filter sets permit every case through without exclusion.
+    """
 
     kinds: frozenset[ReviewCaseKind] = frozenset()
     case_states: frozenset[str] = frozenset()
@@ -107,7 +140,11 @@ class CaseFilter:
 
 @dataclass(frozen=True, slots=True)
 class ListPage[Row]:
-    """One page of a filtered list: cases, or corrected entries."""
+    """Hold a paginated slice of filtered rows alongside navigation metadata.
+
+    Tracks the active page index, total page count, starting row offset,
+    and total matching row count across the active filter.
+    """
 
     rows: list[Row]
     page_number: int
@@ -119,7 +156,11 @@ class ListPage[Row]:
 
 @dataclass(frozen=True, slots=True)
 class CaseButtons:
-    """Which of one case's buttons are enabled."""
+    """Track enabled states for action buttons in the active case panel.
+
+    Controls whether Save, Accept suggestion, Reset to baseline, and
+    Save & Next buttons are enabled for the current review case.
+    """
 
     is_save_enabled: bool
     is_accept_enabled: bool
@@ -129,7 +170,11 @@ class CaseButtons:
 
 @dataclass(frozen=True, slots=True)
 class PageButtons:
-    """The page's Save all and Run buttons, with the counts they show."""
+    """Track toolbar execution buttons alongside staged edit and change counts.
+
+    Controls whether the Save All staged edits button and Run pipeline button
+    are enabled based on pending answer modifications.
+    """
 
     unsaved_count: int
     run_count: int
@@ -142,7 +187,10 @@ class PageButtons:
 
 
 class DetailColumn(StrEnum):
-    """A page detail shown in an entry group's page table, by its heading."""
+    """Identify metadata attribute columns shown in candidate page tables.
+
+    Values correspond to extracted anime attributes compared across pages.
+    """
 
     TITLES = "Titles"
     TYPE = "Type"
@@ -154,7 +202,10 @@ class DetailColumn(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class PageLink:
-    """A page key a page links to, with the provider address it opens."""
+    """Represent an external hyperlink from a provider page to a related page.
+
+    Holds the target page key and resolved provider web URL when recognized.
+    """
 
     page_key: str
     # None for a key that names no known provider's page; shown as text.
@@ -163,7 +214,11 @@ class PageLink:
 
 @dataclass(frozen=True, slots=True)
 class PageRowView:
-    """One page of an entry group's case, with its details and choices."""
+    """Represent a candidate provider page to be placed within a review case.
+
+    Contains extracted anime details, available work placement choices,
+    disabling constraint notes, and external navigation links.
+    """
 
     page_key: str
     address: str
@@ -171,20 +226,28 @@ class PageRowView:
     is_reference_page: bool
     details: dict[DetailColumn, str]
     choices: GroupPageChoices
-    # Whether the page's place differs from the case's original value.
+    # Whether the selected placement differs from the baseline run answer.
     is_changed: bool
-    # Why choices that other pages' places disable are not offered.
+    # Explanations for placement options disabled by multi-page rules on other rows.
     disabled_choice_notes: tuple[str, ...] = ()
-    # Whether a rejected save left this page, which the answer must place,
-    # without a place, so the reviewer sees which page the rule is about.
+    # Whether a rejected save left this required page without a selected placement.
     is_place_missing: bool = False
-    # The pages this page links to, so the Links column opens each one.
+    # External links to pages referenced by this provider page.
     linked_pages: tuple[PageLink, ...] = ()
+    # Candidate target seed entries available when selecting "other work".
+    target_entry_options: tuple[TargetEntrySuggestion, ...] = ()
+    # The provider address of the seed entry ``other work`` names, so its key
+    # under the dropdown opens it; None while no entry is named.
+    named_entry_address: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class ComparisonRowView:
-    """One detail of a linked-page case: the entry's value against the page's."""
+    """Represent a side-by-side metadata field comparison for a linked page.
+
+    Compares an attribute value from the existing work entry against the
+    corresponding value from the candidate linked page to assist review.
+    """
 
     label: str
     entry_value: str
@@ -194,7 +257,11 @@ class ComparisonRowView:
 
 @dataclass(frozen=True, slots=True)
 class EntryView:
-    """One entry of a case, as its heading shows it."""
+    """Represent a work entry header within an entry group case panel.
+
+    Displays work label designations (e.g. Work A, Work B), canonical titles,
+    synopsis summaries, and reference page keys.
+    """
 
     label: str
     title: str
@@ -204,7 +271,11 @@ class EntryView:
 
 @dataclass(frozen=True, slots=True)
 class CaseView:
-    """Everything the case panel shows for one case."""
+    """Aggregate all presentation data required to render an active case panel.
+
+    Combines case metadata, work entries, candidate provider page rows,
+    side-by-side attribute comparisons, evidence tables, and action buttons.
+    """
 
     case: ReviewCase
     # The title the case list shows, so the heading matches the list.
@@ -219,8 +290,10 @@ class CaseView:
     evidence_pages: tuple[ProviderPage, ...]
     linked_page_options: tuple[ChoiceOption, ...]
     comparison_rows: tuple[ComparisonRowView, ...]
-    # The linked page's address for a linked-page case, so its key opens it.
-    linked_page_address: str
+    # A linked-page case's entry reference page and linked page, so each key
+    # opens its provider page; None for entry group cases.
+    linking_entry_link: PageLink | None
+    linked_page_link: PageLink | None
     # Each placement word and its meaning, listed under an entry group's pages.
     choice_meanings: tuple[tuple[str, str], ...]
     buttons: CaseButtons
@@ -232,9 +305,13 @@ class CaseView:
 
 @dataclass(frozen=True, slots=True)
 class CorrectedEntryRow:
-    """One corrected entry as the Corrections list shows it."""
+    """Represent an entry modified during the last pipeline run in the list view.
 
-    reference_page: str
+    Holds the entry reference page, resolved title, distinct page change types,
+    and indicators of whether corrections stemmed from answers or rules.
+    """
+
+    entry_reference_page: str
     title: str
     # Every change the entry's pages make, UNCHANGED included.
     changes: frozenset[str]
@@ -248,7 +325,10 @@ class CorrectedEntryRow:
 
 @dataclass(frozen=True, slots=True)
 class CorrectionFilter:
-    """The Corrections tab's filters; an empty group lets every entry through."""
+    """Hold filtering criteria for visible corrected entries in the Corrections tab.
+
+    Filters entries by change types, decision sources, and free text search.
+    """
 
     changes: frozenset[str] = frozenset()
     sources: frozenset[str] = frozenset()
@@ -257,7 +337,11 @@ class CorrectionFilter:
 
 @dataclass(frozen=True, slots=True)
 class CorrectionRowView:
-    """One page of a corrected entry, as the entry's table shows it."""
+    """Represent one provider page placement within a corrected entry panel.
+
+    Shows page keys, URLs, change descriptions, work destinations, rule reasons,
+    and provenance flags indicating whether a change originated from an answer.
+    """
 
     page_key: str
     address: str
@@ -273,10 +357,14 @@ class CorrectionRowView:
 
 @dataclass(frozen=True, slots=True)
 class CorrectionPanelView:
-    """One corrected entry, as the Corrections panel shows it."""
+    """Aggregate data to render the detail panel of a corrected work entry.
 
-    reference_page: str
-    reference_address: str | None
+    Contains entry reference details, individual provider page placement rows,
+    and cross-links back to originating review cases.
+    """
+
+    entry_reference_page: str
+    entry_reference_address: str | None
     title: str
     rows: tuple[CorrectionRowView, ...]
     # Each case holding the entry: its name and its list title.
@@ -288,7 +376,11 @@ class CorrectionPanelView:
 
 @dataclass(frozen=True, slots=True)
 class RunSummary:
-    """What the last run did, as the run panel and the case states read it."""
+    """Aggregate execution statistics and outcome data from the last pipeline run.
+
+    Includes execution timestamps, correction category counts, rejected or
+    unused answer identifiers, and baseline answer snapshots for diffing.
+    """
 
     seed_file: str
     started_at: datetime
@@ -313,22 +405,17 @@ BrowserStateField = Annotated[str | None, Form()]
 
 
 class BrowserState(BaseModel):
-    """The reviewer's own state, as the browser keeps it and sends it.
+    """Represent the reviewer's staged browser state sent with each request.
 
-    The server keeps no state between requests. Everything that is the
-    reviewer's alone therefore lives in the browser, kept in localStorage by
-    Alpine's persist plugin, and comes with each request as one JSON form
-    field. Each item gives the rule, then the reason for it.
+    The server remains stateless across requests. Session state is retained in
+    the browser localStorage via Alpine.js and transmitted with each request
+    inside a JSON form field.
 
-    - Unsaved edits are answers by case name. The browser drops an edit equal
-      to the saved answer, so every edit here differs from the file.
-    - Rejected cases carry the sentences of the rules their last save broke,
-      so the list and the panel can show them until the case is edited or
-      saved.
-    - Each unsaved edit keeps the saved answer it started from, so a save made
-      meanwhile from another tab is noticed instead of replaced.
-    - A malformed field is read as an empty state rather than failing the
-      page, since localStorage can hold values an older page version wrote.
+    The state tracks:
+    - Staged unsaved edits mapped by case name.
+    - Base saved answers mapped by case name for optimistic concurrency checks.
+    - Rule rejection messages for cases that failed validation on last save.
+    - Active UI filters, pagination indices, and open case designations.
     """
 
     edits: dict[str, JsonValue] = {}
@@ -350,14 +437,15 @@ class BrowserState(BaseModel):
     open_correction_entry: str | None = None
 
     @classmethod
-    def from_form_field(cls, browser_state_json: str | None) -> BrowserState:
-        """Read the browser's state from its JSON form field.
+    def parse_form_field(cls, browser_state_json: str | None) -> BrowserState:
+        """Parse the browser state from a submitted JSON form field.
 
         Args:
-            browser_state_json: The ``browser_state`` field, or None when absent.
+            browser_state_json: The submitted ``browser_state`` string, or None.
 
         Returns:
-            The state; an empty one when the field is missing or malformed.
+            The parsed BrowserState model, or an empty default state when absent
+            or malformed.
         """
         if not browser_state_json:
             return cls()
@@ -366,11 +454,11 @@ class BrowserState(BaseModel):
         except json.JSONDecodeError, ValidationError:
             return cls()
 
-    def to_correction_filter(self) -> CorrectionFilter:
-        """Return the Corrections tab's filter from the chosen chips and search.
+    def build_correction_filter(self) -> CorrectionFilter:
+        """Build the filter criteria for the Corrections tab from staged choices.
 
         Returns:
-            The filter the chosen change and source chips and the search make.
+            The active CorrectionFilter criteria.
         """
         return CorrectionFilter(
             changes=frozenset(self.correction_changes),
@@ -378,12 +466,12 @@ class BrowserState(BaseModel):
             search_text=self.correction_search_text,
         )
 
-    def to_case_filter(self) -> CaseFilter:
-        """Return the list filter the state's chosen filters and edits make.
+    def build_case_filter(self) -> CaseFilter:
+        """Build the filter criteria for the Cases tab from staged choices.
 
         Returns:
-            The filter the chosen kind, case and edit chips, the search, and the
-            browser's unsaved and rejected cases make.
+            The active CaseFilter criteria combining kind, case, and edit filters
+            alongside staged edit names and search terms.
         """
         return CaseFilter(
             kinds=frozenset(self.kinds),

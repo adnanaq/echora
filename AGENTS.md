@@ -126,30 +126,39 @@ uv run ty check libs/http_cache/
 
 ### Code Quality
 
-- Start the very first sentence with an active imperative verb (e.g., "Check," "Report," "Calculate") to state exactly what the function does in a single line.
-- Always use plain language and avoid terse shorthands complex jargon and metaphorical language
-- Enforce a strict limit of one idea per sentence to avoid dense, run-on explanations
-- Do not make up the terms, instead use terms that are commonly used in the domain
-- Focus on making your code expressive and efficient
-- Use relevant data structures where needed
-- Avoid single-character variable or function names, do not use single-word function names.
-- Name variables, functions, constants and values after the domain thing they hold, using the terms the project already uses (its glossary, READMEs and models): `retry_delay_seconds`, `pages_by_provider`, `failed_requests`, not vague words such as `data`, `info`, `group`, `item`, `result` or `stuff`.
-- Functions and properties that answer yes or no start with `is_` (`is_expired`), or `has_` when they check for something (`has_errors`).
-- No articles (`a`, `an`, `the`), possessives (`its`, `their`) or hedging words in any name.
-- A name says why the thing exists, what it does and how it is used, so a reader needs no other context.
-- Functions and methods do something, so their names start with a verb: `fetch_entry_pages`, `build_corrected_entries`, `read_answer_placements`, not `entry_pages` or `corrected_entries`. A method returning a stored value starts with `get_` (`get_page`), one changing it with `set_`.
-- Classes, variables, fields and constants hold something, so their names are nouns describing it: `SeedCorrection`, `failed_pages`, `REFERENCE_ORDER`.
-- A name must not claim something false. It must not name an action the code does not take (`update_user` that inserts), and it must not reuse a word the project uses for something else: a field holding a reference page key is `entry_reference_page`, not `entry`, because `entry` means a `WorkEntry`; a field holding a page key is `page_key`, not `page`, because `page` means a `ProviderPage`.
-- One word for one idea, everywhere: if one class has `is_main_page`, no other has `is_main` for the same thing; do not call the same action `add` in one place and `insert` in another.
-- Names are easy to search for and to tell apart: no single letters (loop counters included), no abbreviations that read as another word, and no names differing only by a small suffix.
-- Leave the type out of a name: `pages`, not `pages_list` or `pages_dict`; the type annotation already says it.
-- Module and function docstrings open with full sentences saying what the code is for. They list the outcomes or rules it applies and give the reason for each, rather than internal shorthand.
-- Explicitly name the specific noun instead of using ambiguous pronouns like "they," "it," or "this" when explaining complex logic.
-- Separate the brief summary line from the rest of the documentation using a clear blank line before the extended description.
-- Use clean bulleted lists inside the extended description to break down multiple rules, conditions, or attributes instead of writing them in a single paragraph. Never use Markdown tables in docstrings or comments: they are shown as plain text, so the table never renders. Tables belong in `.md` files only. When each item has several parts, put one line above the list naming them, such as "Each item reads ``<check>: <outcome>. <reason>``."
-- Include standard Google Style section blocks titled exactly "Args:" and "Returns:" (or "Yields:") to explicitly detail data types and expected outputs.
-- Avoid writing conversational or narrative prose that sounds like a developer thinking out loud.
-- Prohibit passive introductory phrases like "This function is used to" or "A report is generated for."
+#### General Principles
+
+- Focus on making code expressive, cohesive, and efficient using appropriate data structures.
+- Always use plain language and established project glossary terms; avoid terse shorthands, complex jargon, metaphorical language, or made-up terminology.
+- Never introduce legacy aliases, dual keyword arguments, or backward-compatibility shims (`from_form_field = parse_form_field`, `page_list_rows = paginate_rows`). Refactor definitions, call sites, and test cases directly to avoid accumulating technical debt.
+
+#### Naming Conventions
+
+- **Domain alignment over vague words**: Name variables, functions, constants, and values after the specific domain concept or model they hold (`retry_delay_seconds`, `pages_by_provider`, `failed_requests`). Prohibit bare, generic placeholder names such as `data`, `info`, `group`, `item`, `result`, or `stuff` when a concrete domain noun applies, and keep names aligned with the value's actual domain type (e.g., `run_summary` or `last_run_summary` for a `RunSummary`, `last_run_result` for a `SeedCleaningRunResult`, and `check_result` for a `RuleCheckResult`—never a bare `result` or a mismatched name). In list comprehensions and loops, use domain nouns (`[check_case(case) for case in cases]`, not `for item in items`).
+- **No bare adjectives**: Never use bare adjectives as variable, parameter, or field names (e.g., `original`, `saved`, `unsaved`, `chosen`, `selected`). Always pair adjectives with the concrete domain noun they qualify (`original_answer`, `saved_answer`, `unsaved_answer`, `chosen_answer`).
+- **Functions and methods**: Every function or method name must have at least two words and start with an active verb (`fetch_entry_pages`, `build_corrected_entries`, `read_answer_placements`, `parse_form_field`, `paginate_rows`), never bare nouns (`entry_pages`, `entry_labels`, `from_form_field`). Choose verb prefixes consistently by operation kind:
+  - `get_` / `set_`: Methods on an object or source that directly retrieve or mutate a stored value (`get_page`, `get_case`, `set_page`). Never use `get_` on standalone functions or for computations/builders.
+  - `find_`: Searching or querying across a collection, sequence, or fallback chain where the target might not exist (`find_by_page_key`, `find_next_case_name`, `_find_page_address`).
+  - `resolve_`: Evaluating conditions, priorities, or rules to determine a state or classification (`resolve_saved_change`, `resolve_case_edit_state`).
+  - `build_`: Constructing a new model, view projection, or composite structure (`build_case_view`, `build_case_buttons`, `build_run_summary`).
+  - `read_` / `load_` / `fetch_`: Extracting a value from a message or payload (`read_case_answer`), loading from disk (`load_seed_entries`), or fetching over the network (`fetch_entry_pages`).
+  - `is_` / `has_`: Functions and properties answering yes or no start with `is_` (`is_expired`), or `has_` when checking for presence (`has_errors`).
+- **Classes**: Classes hold state or models, so their names are nouns describing what they represent (`SeedCorrection`, `failed_pages`, `REFERENCE_ORDER`). Name classes after domain concepts, models, and projections (`CaseView`, `TargetEntrySuggestion`), never transient UI widget mechanics or presentation templates.
+- **Accuracy and specificity**: A name says why the thing exists, what it does, and how it is used, so a reader needs no other context. Never claim an action the code does not take (`update_user` that inserts), and never reuse a domain word for something else: a field holding a reference page key is `entry_reference_page`, not `entry` (which means a `WorkEntry`); a field holding a page key is `page_key`, not `page` (which means a `ProviderPage`).
+- **Consistency and searchability**: One word for one idea everywhere (if one class has `is_main_page`, no other has `is_main` for the same concept; do not call the same action `add` in one place and `insert` in another). Avoid single-character names (loop counters included), abbreviations that read as another word, and names differing only by a small suffix.
+- **No articles, possessives, or embedded types**: Do not include articles (`a`, `an`, `the`), possessives (`its`, `their`), or hedging words. Leave the type out of names: `pages`, not `pages_list` or `pages_dict`; type annotations already specify data types.
+
+#### Docstring and Documentation Rules
+
+- **Module and package docstrings**: Every Python file, including package `__init__.py` files, must begin with a module docstring stating what the module or package provides.
+- **Active imperative opening**: Start the very first sentence with an active imperative verb (e.g., "Check," "Report," "Calculate") to state exactly what the function does in a single line. Prohibit passive introductory phrases like "This function is used to" or "A report is generated for."
+- **Natural, complete sentences**: Enforce a strict limit of one idea per sentence to avoid dense, run-on explanations, but ensure sentences remain complete, naturally connected, and grammatically sound. Do not produce staccato, telegraphic fragments or omit necessary conjunctions and transitions.
+- **Domain concepts over colloquial developer thoughts**: Avoid casual developer notes-to-self, narrative monologues, or conversational prose (e.g., avoid "another tab saved since, and that answer must not be replaced unseen"; write "Detects optimistic concurrency conflicts when another session modified storage concurrently"). Use standard domain and software engineering concepts.
+- **Explicit domain subjects without bare pronoun openers**: Automated docstring tests fail when sentences open with bare third-person pronouns (`It`, `They`, `Its`, `Their`). Explicitly state the domain subject (`The review case`, `The baseline answer`, `This validator`) rather than chopping sentences into staccato fragments to avoid pronouns.
+- **Formatting and section blocks**:
+  - Separate the brief summary line from the rest of the documentation using a clear blank line before the extended description.
+  - Include standard Google Style section blocks titled exactly "Args:" and "Returns:" (or "Yields:") to explicitly detail data types and expected outputs for all functions that accept arguments or return values.
+  - Use clean bulleted lists inside the extended description to break down multiple rules, conditions, or attributes instead of writing them in a single paragraph. Never use Markdown tables in docstrings or comments (they do not render in terminal help text; tables belong in `.md` files only). When each item has several parts, put one line above the list naming them, such as "Each item reads ``<check>: <outcome>. <reason>``."
 
 ### Service Health Checks
 
