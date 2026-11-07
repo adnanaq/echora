@@ -1,3 +1,4 @@
+import pytest
 from review_page.case_views import (
     build_case_rows,
     build_case_view,
@@ -216,6 +217,39 @@ def test_build_case_rows_reads_titles_kinds_and_new_cases(review_cases) -> None:
             SavedChange.UNCHANGED,
         ),
     ]
+
+
+NAMI_ANSWER = {"anilist:anime:102289": "skip"}
+
+
+@pytest.mark.parametrize(
+    ("original_answers", "rejected_answer_case_names", "is_answer_applied"),
+    [
+        ({"nami": NAMI_ANSWER}, (), True),
+        ({}, (), False),
+        ({"nami": NAMI_ANSWER}, ("nami",), False),
+        (None, (), False),
+    ],
+)
+def test_build_case_rows_answer_applied_only_when_last_run_used_answer(
+    review_cases, original_answers, rejected_answer_case_names, is_answer_applied
+) -> None:
+    case = review_cases["nami"].model_copy(update={"answer": NAMI_ANSWER})
+    case_name_by_label = {"nami": case.case_name}
+    [row] = build_case_rows(
+        [case],
+        original_answers=None
+        if original_answers is None
+        else {
+            case_name_by_label[label]: answer
+            for label, answer in original_answers.items()
+        },
+        new_case_names=(),
+        rejected_answer_case_names={
+            case_name_by_label[label] for label in rejected_answer_case_names
+        },
+    )
+    assert row.is_answer_applied is is_answer_applied
 
 
 def _mal_only_case(*mal_numbers: int) -> ReviewCase:

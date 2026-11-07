@@ -10,6 +10,7 @@ from review_page.models import (
 from review_page.page_state import (
     build_case_buttons,
     build_page_buttons,
+    count_applied_answer_rows_by_kind,
     count_case_rows,
     filter_case_rows,
     find_next_case_name,
@@ -36,6 +37,7 @@ def _row(case_name: str, **fields) -> CaseRow:
         is_open=fields.get("is_open", True),
         is_new=fields.get("is_new", False),
         has_suggestion=fields.get("has_suggestion", False),
+        is_answer_applied=fields.get("is_answer_applied", False),
     )
 
 
@@ -369,3 +371,18 @@ def test_case_state_description_every_state_has_meaning() -> None:
 
 def test_case_edit_state_description_every_state_has_meaning() -> None:
     assert all(state.description for state in CaseEditState)
+
+
+def test_count_applied_answer_rows_by_kind_counts_applied_rows_of_each_kind() -> None:
+    rows = [
+        _row("a", kind=ReviewCaseKind.SPLIT_WORK, is_open=False),
+        _row(
+            "b", kind=ReviewCaseKind.LINKED_PAGE, is_open=False, is_answer_applied=True
+        ),
+        _row("c", kind=ReviewCaseKind.LINKED_PAGE),
+    ]
+    assert count_applied_answer_rows_by_kind(rows) == {
+        ReviewCaseKind.DOUBLED_PROVIDER.value: 0,
+        ReviewCaseKind.SPLIT_WORK.value: 0,
+        ReviewCaseKind.LINKED_PAGE.value: 1,
+    }

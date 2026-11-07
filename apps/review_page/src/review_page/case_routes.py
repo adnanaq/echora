@@ -44,6 +44,7 @@ from review_page.models import (
 )
 from review_page.page_state import (
     build_page_buttons,
+    count_applied_answer_rows_by_kind,
     count_case_rows,
     filter_case_rows,
     find_next_case_name,
@@ -166,6 +167,7 @@ class CaseRoutes:
             {
                 "case_page": case_page,
                 "chip_counts": count_case_rows(all_rows, case_filter),
+                "applied_answer_counts": count_applied_answer_rows_by_kind(all_rows),
                 "kinds": list(ReviewCaseKind),
                 "case_states": list(CaseState),
                 "edit_states": list(CaseEditState),

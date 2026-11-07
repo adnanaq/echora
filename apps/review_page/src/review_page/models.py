@@ -117,6 +117,9 @@ class CaseRow:
     # Whether the review file retains a saved answer even though the last run
     # no longer produced the case (for example, after an upstream answer merged its pages).
     is_answer_unused: bool = False
+    # Whether the last run applied the saved answer: the run used this answer,
+    # did not refuse it, and the case still came up.
+    is_answer_applied: bool = False
 
 
 @dataclass(frozen=True, slots=True)

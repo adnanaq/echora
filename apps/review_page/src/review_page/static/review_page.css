@@ -43,6 +43,7 @@
   --color-rejected: #c62f2f;
   --color-unchanged: #626d7c;
   --color-new: #6b3fc6;
+  --color-applied: #1a7f37;
   --color-changed-cell: #fff4e0;
 }
 
@@ -64,6 +65,7 @@
   --color-rejected: #f07070;
   --color-unchanged: #949eac;
   --color-new: #a98bf0;
+  --color-applied: #4ac26b;
   --color-changed-cell: #3a3020;
 }
 
@@ -200,6 +202,7 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; }
 /* An icon-only button: a 16 px icon padded to the height of a text button. */
 .control-button.is-icon-only { display: inline-flex; align-items: center; justify-content: center; padding: calc(var(--space-1) + 2px); line-height: 0; }
 .control-icon { display: block; }
+.control-icon.tone-applied { color: var(--color-applied); }
 .control-button:disabled { cursor: not-allowed; color: var(--color-disabled); background: var(--color-surface); border-color: var(--color-control-border); }
 .control-button:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; }
 

@@ -1,8 +1,12 @@
-{% from "control_macros.html" import chip, pager, pill, status with context %}
+{% from "control_macros.html" import chip, icon, pager, pill, status with context %}
 {% set new_state = case_states | selectattr("name", "equalto", "NEW") | first %}
 <div class="filter-group">
   <span class="filter-group-label">Kind</span>
-  {% for kind in kinds %}{{ chip(kind.value[:1] | upper ~ kind.value[1:], "kinds", kind.value, chip_counts[kind.value], kind.description, is_on=kind in state.kinds) }}{% endfor %}
+  {% for kind in kinds %}
+  {% set applied_count = applied_answer_counts[kind.value] %}
+  {% set kind_count = chip_counts[kind.value] if applied_count == chip_counts[kind.value] else applied_count ~ "/" ~ chip_counts[kind.value] %}
+  {{ chip(kind.value[:1] | upper ~ kind.value[1:], "kinds", kind.value, kind_count, kind.description ~ " " ~ tooltips.APPLIED_ANSWER_KIND_COUNT, is_on=kind in state.kinds) }}
+  {% endfor %}
 </div>
 <div class="filter-group">
   <span class="filter-group-label">Case</span>
@@ -28,6 +32,7 @@
       <span class="case-row-meta">
         <span title="{{ row.kind.description }}">{{ row.kind.value }}</span>
         {{ status(row_edit_states[row.case_name]) }}
+        {% if row.is_answer_applied %}{{ icon(tooltips.APPLIED_ANSWER_ICON, ["M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z", "m9 12 2 2 4-4"], "applied") }}{% endif %}
         {% if row.is_open and row.has_suggestion %}{{ pill("Suggested", "suggested", tooltips.SUGGESTED_ANSWER_PILL) }}{% endif %}
       </span>
     </button>

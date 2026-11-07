@@ -171,6 +171,19 @@
 {%- endmacro %}
 
 {#
+  A status icon: a 16 px line icon in its tone's colour, with its label as the
+  accessible name and tooltip. paths: the icon's SVG path data; tone: the
+  colour, as a tone- class.
+#}
+{% macro icon(label, paths, tone) -%}
+<svg class="control-icon tone-{{ tone }}" viewBox="0 0 24 24" width="16" height="16" role="img" aria-label="{{ label }}"
+     fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <title>{{ label }}</title>
+  {% for path in paths %}<path d="{{ path }}"></path>{% endfor %}
+</svg>
+{%- endmacro %}
+
+{#
   An icon button: a 16 px line icon in the button's text colour, with its
   label as the accessible name and tooltip. paths: the icon's SVG path data.
 #}

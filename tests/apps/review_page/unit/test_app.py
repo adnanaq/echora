@@ -145,6 +145,49 @@ def test_case_panel_show_only_differences_hides_shared_columns(
     )
 
 
+def _render_case_list_with_nami_answer(client, source, review_cases, *, is_run_done):
+    case = review_cases["nami"].model_copy(
+        update={"answer": {"anilist:anime:102289": "skip"}}
+    )
+    source.cases[case.case_name] = case
+    source.run_result = json_format.ParseDict(
+        {
+            "started_at": "2026-11-01T00:00:00Z",
+            "finished_at": "2026-11-01T00:00:02Z",
+            "original_answers": {case.case_name: case.answer} if is_run_done else {},
+        },
+        review_cases_pb2.SeedCleaningRunResult(),
+    )
+    case_list = client.post("/fragments/case-list", data=_state()).text
+    linked_page_chip = case_list[case_list.index('id="chip-kinds-linked-page"') :]
+    return case_list, linked_page_chip[: linked_page_chip.index("</button>")]
+
+
+def test_case_list_every_answer_applied_shows_icon_and_plain_kind_total(
+    client, source, review_cases
+) -> None:
+    case_list, linked_page_chip = _render_case_list_with_nami_answer(
+        client, source, review_cases, is_run_done=True
+    )
+    assert (
+        case_list.count('class="control-icon tone-applied"'),
+        '<span class="control-chip-count">(1)</span>' in linked_page_chip,
+    ) == (1, True)
+
+
+def test_case_list_answer_saved_before_run_shows_no_icon(
+    client, source, review_cases
+) -> None:
+    case_list, linked_page_chip = _render_case_list_with_nami_answer(
+        client, source, review_cases, is_run_done=False
+    )
+    assert (
+        case_list.count('class="control-icon tone-applied"'),
+        '<span class="control-chip-count">(0/1)</span>' in linked_page_chip,
+        "saved, applies on Run" in case_list,
+    ) == (0, True, True)
+
+
 def test_case_panel_without_open_case_asks_to_choose(client) -> None:
     assert "Choose a case" in client.post("/fragments/case-panel", data=_state()).text
 
@@ -664,7 +707,7 @@ def test_case_list_chosen_chips_drawn_on(client) -> None:
 
 def test_case_list_chip_count_shown_in_brackets(client) -> None:
     case_list = client.post("/fragments/case-list", data=_state()).text
-    chip = case_list[case_list.index('id="chip-kinds-linked-page"') :]
+    chip = case_list[case_list.index('id="chip-case_states-open"') :]
     chip = chip[: chip.index("</button>")]
     assert re.search(r'<span class="control-chip-count">\(\d+\)</span>', chip)
 

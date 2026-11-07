@@ -52,6 +52,15 @@ class Tooltip(StrEnum):
     RESET_CASE_FILTERS = (
         "Clear all active filters and search terms to display every review case"
     )
+    APPLIED_ANSWER_ICON = (
+        "Applied: the last run applied this case's saved answer, so the case is "
+        "corrected. Every later run applies the saved answer again."
+    )
+    APPLIED_ANSWER_KIND_COUNT = (
+        "While some cases of this kind are unresolved, the count reads cases whose "
+        "answer the last run applied / all cases. Once every case is resolved, the "
+        "count shows the total alone."
+    )
     SUGGESTED_ANSWER_PILL = (
         "Matching rules have suggested an answer. "
         "The case opens on this suggestion, and Accept saves it."

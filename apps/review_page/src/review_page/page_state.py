@@ -266,6 +266,23 @@ def count_case_rows(rows: Sequence[CaseRow], case_filter: CaseFilter) -> dict[st
     return counts
 
 
+def count_applied_answer_rows_by_kind(rows: Sequence[CaseRow]) -> dict[str, int]:
+    """Count the case rows of each kind whose saved answer the last run applied.
+
+    Args:
+        rows: The full list of case rows before filtering.
+
+    Returns:
+        Each kind value mapped to its number of applied-answer rows; kinds
+        without any are mapped to 0.
+    """
+    applied_answer_counts = dict.fromkeys((kind.value for kind in ReviewCaseKind), 0)
+    for row in rows:
+        if row.is_answer_applied:
+            applied_answer_counts[row.kind.value] += 1
+    return applied_answer_counts
+
+
 def paginate_rows[Row](rows: Sequence[Row], page_number: int) -> ListPage[Row]:
     """Slice a sequence of rows into a single paginated page with navigation metadata.
 

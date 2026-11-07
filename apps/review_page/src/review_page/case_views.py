@@ -35,6 +35,7 @@ from review_page.models import (
     CaseView,
     PageRowView,
     RunSummary,
+    SavedChange,
 )
 from review_page.page_state import (
     build_case_buttons,
@@ -82,6 +83,7 @@ def build_case_rows(
     original_answers: Mapping[str, JsonValue] | None,
     new_case_names: Collection[str],
     unused_answer_case_names: Collection[str] = (),
+    rejected_answer_case_names: Collection[str] = (),
 ) -> list[CaseRow]:
     """Construct summary row display models for a sequence of review cases.
 
@@ -95,26 +97,38 @@ def build_case_rows(
         new_case_names: Identifiers of review cases introduced in the most recent run.
         unused_answer_case_names: Identifiers of previously saved answers that
             no longer correspond to any active case.
+        rejected_answer_case_names: Identifiers of cases whose saved answer the
+            most recent run refused.
 
     Returns:
         A list of CaseRow models populated with display metadata and change states.
     """
-    return [
-        CaseRow(
-            case_name=case.case_name,
-            kind=case.kind,
-            title=find_case_title(case),
-            saved_change=resolve_saved_change(
-                find_original_answer(case.case_name, case.answer, original_answers),
-                case.answer,
-            ),
-            is_open=case.answer in (None, {}),
-            is_new=case.case_name in new_case_names,
-            has_suggestion=bool(case.suggested_answer),
-            is_answer_unused=case.case_name in unused_answer_case_names,
+    rows: list[CaseRow] = []
+    for case in cases:
+        saved_change = resolve_saved_change(
+            find_original_answer(case.case_name, case.answer, original_answers),
+            case.answer,
         )
-        for case in cases
-    ]
+        is_open = case.answer in (None, {})
+        is_answer_unused = case.case_name in unused_answer_case_names
+        rows.append(
+            CaseRow(
+                case_name=case.case_name,
+                kind=case.kind,
+                title=find_case_title(case),
+                saved_change=saved_change,
+                is_open=is_open,
+                is_new=case.case_name in new_case_names,
+                has_suggestion=bool(case.suggested_answer),
+                is_answer_unused=is_answer_unused,
+                is_answer_applied=original_answers is not None
+                and not is_open
+                and saved_change is SavedChange.UNCHANGED
+                and not is_answer_unused
+                and case.case_name not in rejected_answer_case_names,
+            )
+        )
+    return rows
 
 
 def build_case_view(
@@ -313,4 +327,5 @@ def build_all_case_rows(
         original_answers=last_run_summary.original_answers,
         new_case_names=set(last_run_summary.new_case_names),
         unused_answer_case_names=set(last_run_summary.unused_answer_case_names),
+        rejected_answer_case_names=set(last_run_summary.rejected_answer_case_names),
     )
