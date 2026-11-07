@@ -21,13 +21,13 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from review_page.case_routes import CaseRoutes
 from review_page.correction_routes import CorrectionRoutes
-from review_page.file_review_case_source import UnreadableReviewFileError
 from review_page.htmx_responses import build_notice_response
 from review_page.models import (
     CaseEditState,
     CaseState,
 )
 from review_page.request_guards import add_request_guards
+from review_page.review_case_loader import UnreadableReviewFileError
 from review_page.review_case_source import (
     ReviewCaseSource,
 )

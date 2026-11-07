@@ -9,8 +9,8 @@ from review_page.app import create_app
 from review_page.file_review_case_source import (
     FileReviewCaseSource,
     RunSeedFileUnknownError,
-    UnreadableReviewFileError,
 )
+from review_page.review_case_loader import UnreadableReviewFileError
 from review_page.review_case_messages import convert_case_to_message
 from review_page.review_case_source import ReviewCaseSource
 from shared_proto.v1 import review_cases_pb2

@@ -4,9 +4,9 @@ Implements ``ReviewCaseSource`` over the local ``review.jsonl`` file, correction
 outputs, and the ``scripts/clean_seed.py`` subprocess.
 
 Each operational rule reads `<rule>: <reason>`:
-- Stateless file reads: Cases are parsed from ``review.jsonl`` on each call rather
-  than cached in memory so the server remains stateless and reflects external file
-  updates immediately.
+- File-backed reads: Cases come from ``review.jsonl`` through ``ReviewCaseLoader``,
+  which converts them once per file version and reads the file again whenever
+  it changes, so the page always shows what the file holds.
 - Pre-save rule validation: Every submitted answer is validated through
   ``answer_checks`` using domain placement rules before writing to disk.
 - Seed entry resolution: Answers referencing an external seed entry via
@@ -44,15 +44,15 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from google.protobuf import json_format
-from pydantic import JsonValue, ValidationError
+from pydantic import JsonValue
 from review_page.answer_checks import (
     check_case_answer,
     list_conflict_warnings,
     read_case_answer,
     read_seen_saved_answers,
 )
+from review_page.review_case_loader import ReviewCaseLoader
 from review_page.review_case_messages import (
-    convert_case_to_message,
     list_ordered_mappings,
 )
 from review_page.review_case_source import ReviewCaseSource
@@ -70,7 +70,6 @@ from seed_cleaning import (
 )
 from shared_proto.v1 import review_cases_pb2
 from work_matching import (
-    ReviewCase,
     ReviewFile,
     is_review_file_locked,
     list_named_entry_page_keys,
@@ -95,22 +94,6 @@ class RunSeedFileUnknownError(RuntimeError):
         super().__init__(
             "No seed file to clean: set REVIEW_PAGE_SEED_FILE, or run "
             "scripts/clean_seed.py once so its result names the file"
-        )
-
-
-class UnreadableReviewFileError(RuntimeError):
-    """Indicate that a line in the review file failed JSON or schema validation."""
-
-    def __init__(self, review_file_path: Path, line_number: int) -> None:
-        """Initialize the error with the corrupted file name and 1-based line number.
-
-        Args:
-            review_file_path: Path to the unreadable review JSONL file.
-            line_number: The 1-based line number where validation failed.
-        """
-        super().__init__(
-            f"Line {line_number} of {review_file_path.name} is not a valid review "
-            "case. Fix or remove that line, then reload the page."
         )
 
 
@@ -139,6 +122,7 @@ class FileReviewCaseSource(ReviewCaseSource):
         self._seed_file = seed_file
         self._python_executable = python_executable
         self._review_file_path = data_dir / REVIEW_FILE_NAME
+        self._review_case_loader = ReviewCaseLoader(self._review_file_path)
         self._run_lock = threading.RLock()
 
     def list_cases(self) -> list[review_cases_pb2.ReviewCase]:
@@ -147,7 +131,7 @@ class FileReviewCaseSource(ReviewCaseSource):
         Returns:
             All review cases converted to protobuf messages.
         """
-        return [convert_case_to_message(case) for case in self._read_cases()]
+        return list(self._review_case_loader.load_cases().case_messages)
 
     def get_case(self, case_name: str) -> review_cases_pb2.ReviewCase | None:
         """Read a single review case by name from the local review file.
@@ -158,10 +142,14 @@ class FileReviewCaseSource(ReviewCaseSource):
         Returns:
             The matching review case message, or None when absent from the file.
         """
-        case = next(
-            (case for case in self._read_cases() if case.case_name == case_name), None
+        return next(
+            (
+                case_message
+                for case_message in self._review_case_loader.load_cases().case_messages
+                if case_message.case_name == case_name
+            ),
+            None,
         )
-        return None if case is None else convert_case_to_message(case)
 
     def get_last_run_result(self) -> review_cases_pb2.SeedCleaningRunResult | None:
         """Read the ``SeedCleaningRunResult`` recorded by the most recent pipeline run.
@@ -191,7 +179,9 @@ class FileReviewCaseSource(ReviewCaseSource):
             SavedAnswerChangedError: Another session modified a case's saved
                 answer between validation and persistence.
         """
-        cases_by_name = {case.case_name: case for case in self._read_cases()}
+        cases_by_name = {
+            case.case_name: case for case in self._review_case_loader.load_cases().cases
+        }
         seen_saved_answers = read_seen_saved_answers(case_answers)
         answers_to_save: dict[str, JsonValue] = {}
         check_results: list[review_cases_pb2.RuleCheckResult] = []
@@ -312,30 +302,6 @@ class FileReviewCaseSource(ReviewCaseSource):
                     )
                 )
         return list(entries_by_reference_page.values())
-
-    def _read_cases(self) -> list[ReviewCase]:
-        """Parse all review cases from ``review.jsonl`` in file order.
-
-        Returns:
-            The parsed review case models, or an empty list when the file is absent.
-
-        Raises:
-            UnreadableReviewFileError: A line in the review file failed validation.
-        """
-        if not self._review_file_path.exists():
-            return []
-        cases: list[ReviewCase] = []
-        with self._review_file_path.open(encoding="utf-8") as review_file:
-            for line_number, line in enumerate(review_file, start=1):
-                if not line.strip():
-                    continue
-                try:
-                    cases.append(ReviewCase.model_validate_json(line))
-                except ValidationError as error:
-                    raise UnreadableReviewFileError(
-                        self._review_file_path, line_number
-                    ) from error
-        return cases
 
     def _read_run_state(self) -> review_cases_pb2.RunState:
         """Inspect the active run process or lock file and record completed exit codes.

@@ -333,8 +333,9 @@ implementation and the only module in `review_page` that imports
 ### Server and browser
 
 - **Server.** FastAPI with Jinja2 templates. The server holds no session state
-  between requests and reads local data files on each request so server restarts
-  never lose state.
+  between requests, so server restarts never lose state. The review cases are
+  converted once per version of `review.jsonl` (`ReviewCaseLoader`) and read
+  again whenever the file changes, so every page shows what the file holds.
 - **Fragments.** htmx updates individual page regions (toolbar, run panel, case
   list, case panel, corrections list, and correction panel). Interactive controls
   carry deterministic element IDs (`build_element_id`) to preserve focus across
@@ -390,6 +391,7 @@ directories including subprocess execution.
 | `htmx_responses.py`          | `build_event_response`, `build_notice_response`, `build_event_headers`: responses carrying `HX-Trigger` headers for Alpine.js.      |
 | `review_case_source.py`      | `ReviewCaseSource`: abstract interface for reading cases and corrections, saving answers, and managing pipeline runs.               |
 | `file_review_case_source.py` | `FileReviewCaseSource`: local file-backed `ReviewCaseSource` implementation and `seed_cleaning` protobuf converters.                |
+| `review_case_loader.py`      | `ReviewCaseLoader`: reads `review.jsonl` once per file version, keeping its cases and their messages until the file changes.        |
 | `seed_entries.py`            | `load_seed_entries`: loads and caches known seed entries from the active seed file when validating `other work` targets.            |
 | `answer_checks.py`           | Validates candidate answers against placement constraints and checks optimistic concurrency.                                        |
 | `review_case_messages.py`    | Conversions between `work_matching.ReviewCase` and its protobuf message, plus ordered mapping helpers.                              |

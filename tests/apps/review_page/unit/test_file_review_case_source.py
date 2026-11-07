@@ -14,8 +14,8 @@ from review_page.file_review_case_source import (
     RUN_LOG_LIMIT_BYTES,
     FileReviewCaseSource,
     RunSeedFileUnknownError,
-    UnreadableReviewFileError,
 )
+from review_page.review_case_loader import UnreadableReviewFileError
 from review_page.review_case_source import ANSWER_SAVED_ELSEWHERE_RULE_NAME
 from seed_cleaning import (
     REVIEW_ANSWER_REASON,
