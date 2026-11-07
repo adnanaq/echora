@@ -54,7 +54,7 @@ def hold_review_file_lock(
     """
     review_file_path = Path(review_file_path)
     review_file_path.parent.mkdir(parents=True, exist_ok=True)
-    review_file_lock = FileLock(_get_lock_path(review_file_path))
+    review_file_lock = FileLock(_build_lock_path(review_file_path))
     try:
         review_file_lock.acquire(timeout=seconds_to_wait)
     except Timeout as error:
@@ -84,6 +84,13 @@ def is_review_file_locked(review_file_path: str | Path) -> bool:
         return True
 
 
-def _get_lock_path(review_file_path: Path) -> Path:
-    """Return the lock file beside the review file: ``<review file>.lock``."""
+def _build_lock_path(review_file_path: Path) -> Path:
+    """Return the lock file beside the review file: ``<review file>.lock``.
+
+    Args:
+        review_file_path: Path to the review file.
+
+    Returns:
+        Path to the sibling ``.lock`` file.
+    """
     return review_file_path.with_name(f"{review_file_path.name}.lock")

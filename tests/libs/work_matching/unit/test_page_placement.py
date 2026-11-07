@@ -81,7 +81,7 @@ def test_place_pages_without_review_one_provider_needing_review_places_nothing(
     entry = work_entry(MAL, KITSU_ONE, KITSU_TWO, planet_one, planet_two)
     pages = [linked_page(KITSU_ONE, MAL), linked_page(KITSU_TWO, OTHER_MAL)]
     decisions = decide_doubled_providers(entry, pages, known_work_entries)
-    assert [decision.needs_review for decision in decisions] == [False, True]
+    assert [decision.is_review_needed for decision in decisions] == [False, True]
     assert place_pages_without_review(decisions) is None
 
 
@@ -204,16 +204,16 @@ def test_read_answer_placements_invalid_answer_gives_none(
 @pytest.mark.parametrize(
     ("answer", "broken_rules"),
     [
-        (None, (PlacementRule.ANSWER_NOT_PAGE_PLACES,)),
-        ("one work", (PlacementRule.ANSWER_NOT_PAGE_PLACES,)),
-        ({"kitsu:anime:1": "work 1"}, (PlacementRule.PAGE_WITHOUT_PLACE,)),
+        (None, (PlacementRule.INVALID_PLACEMENT_MAP,)),
+        ("one work", (PlacementRule.INVALID_PLACEMENT_MAP,)),
+        ({"kitsu:anime:1": "work 1"}, (PlacementRule.MISSING_REQUIRED_PLACEMENT,)),
         (
             {"kitsu:anime:1": "work 1", "kitsu:anime:2": "work 1"},
-            (PlacementRule.PROVIDER_PAGES_NOT_MARKED_ONCE,),
+            (PlacementRule.INVALID_PROVIDER_PAGE_MARKS,),
         ),
         (
             {"kitsu:anime:1": "work 1, part", "kitsu:anime:2": "work 1, main"},
-            (PlacementRule.PROVIDER_PAGES_NOT_MARKED_ONCE,),
+            (PlacementRule.INVALID_PROVIDER_PAGE_MARKS,),
         ),
         (
             {"kitsu:anime:1": "work 1, main", "kitsu:anime:2": "other work"},
@@ -221,11 +221,14 @@ def test_read_answer_placements_invalid_answer_gives_none(
         ),
         (
             {"kitsu:anime:1": "work 1", "kitsu:anime:2": "other work, main"},
-            (PlacementRule.PLACE_NOT_READABLE, PlacementRule.PAGE_WITHOUT_PLACE),
+            (
+                PlacementRule.INVALID_PAGE_PLACEMENT,
+                PlacementRule.MISSING_REQUIRED_PLACEMENT,
+            ),
         ),
         (
             {"kitsu:anime:1": "work 1", "kitsu:anime:2": "work 2"},
-            (PlacementRule.PAGE_WITHOUT_PLACE,),
+            (PlacementRule.MISSING_REQUIRED_PLACEMENT,),
         ),
         (
             {
@@ -233,11 +236,14 @@ def test_read_answer_placements_invalid_answer_gives_none(
                 "kitsu:anime:2": "other work",
                 "mal:anime:5": "work 1",
             },
-            (PlacementRule.PAGE_OUTSIDE_CASE,),
+            (PlacementRule.PAGE_NOT_IN_CASE,),
         ),
         (
             {"kitsu:anime:1": 1, "kitsu:anime:2": ["work 1"]},
-            (PlacementRule.PLACE_NOT_READABLE, PlacementRule.PAGE_WITHOUT_PLACE),
+            (
+                PlacementRule.INVALID_PAGE_PLACEMENT,
+                PlacementRule.MISSING_REQUIRED_PLACEMENT,
+            ),
         ),
         ({"kitsu:anime:1": "work 1", "kitsu:anime:2": "other work"}, ()),
     ],
@@ -324,7 +330,7 @@ def test_check_answer_placements_named_entry_not_in_seed_reports_rule(
         "kitsu:anime:2": "other work mal:anime:9",
     }
     assert check_answer_placements(answer, *shared_link[:2]).broken_rules == (
-        PlacementRule.NAMED_ENTRY_UNKNOWN,
+        PlacementRule.UNKNOWN_NAMED_ENTRY,
     )
 
 

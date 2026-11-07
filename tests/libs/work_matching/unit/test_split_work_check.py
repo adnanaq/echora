@@ -92,8 +92,8 @@ def test_list_split_work_review_reasons_only_dead_pages_nothing_checked(
 ) -> None:
     entries = [work_entry(MAL), work_entry(ANILIST)]
     pages = [
-        ProviderPage.from_dead_address(MAL),
-        ProviderPage.from_dead_address(ANILIST),
+        ProviderPage.build_dead_page(MAL),
+        ProviderPage.build_dead_page(ANILIST),
     ]
     assert SplitWorkReviewReason.NO_PAGE_CHECKED in list_split_work_review_reasons(
         entries, pages

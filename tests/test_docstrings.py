@@ -1,26 +1,32 @@
+"""Check docstring sections and subject naming across all apps and libraries."""
+
 import ast
 import re
 from pathlib import Path
 
 import pytest
 
-PAGE_SOURCES = (
-    Path(__file__).parents[4] / "apps" / "review_page" / "src" / "review_page"
-)
+REPO_ROOT = Path(__file__).parents[1]
+SOURCE_ROOTS = (REPO_ROOT / "apps", REPO_ROOT / "libs")
 BARE_PRONOUN_START = re.compile(r"(?:^|[.!?]\s+)(It|They|Its|Their)\s")
 SECTION_HEADINGS = ("Args:", "Returns:", "Raises:", "Yields:")
 
 
 def _list_docstrings() -> list[tuple[str, ast.AST, str]]:
     docstrings = []
-    for path in sorted(PAGE_SOURCES.rglob("*.py")):
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        for node in ast.walk(tree):
-            if isinstance(
-                node, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef
-            ) and (docstring := ast.get_docstring(node)):
-                name = getattr(node, "name", "<module>")
-                docstrings.append((f"{path.name}:{name}", node, docstring))
+    for source_root in SOURCE_ROOTS:
+        for path in sorted(source_root.glob("*/src/**/*.py")):
+            if "_pb2" in path.name:
+                continue
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            relative_path = path.relative_to(REPO_ROOT)
+            for node in ast.walk(tree):
+                if isinstance(
+                    node,
+                    ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef,
+                ) and (docstring := ast.get_docstring(node)):
+                    name = getattr(node, "name", "<module>")
+                    docstrings.append((f"{relative_path}:{name}", node, docstring))
     return docstrings
 
 
@@ -57,14 +63,15 @@ def _returns_value(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
 def test_function_docstring_has_args_and_returns(
     label: str, node: ast.FunctionDef, docstring: str
 ) -> None:
-    missing_sections = [
-        section
-        for section, is_needed in (
-            ("Args:", _has_parameters(node)),
-            ("Returns:", _returns_value(node)),
-        )
-        if is_needed and section not in docstring
-    ]
+    missing_sections = []
+    if _has_parameters(node) and "Args:" not in docstring:
+        missing_sections.append("Args:")
+    if (
+        _returns_value(node)
+        and "Returns:" not in docstring
+        and "Yields:" not in docstring
+    ):
+        missing_sections.append("Returns:")
     assert not missing_sections, label
 
 

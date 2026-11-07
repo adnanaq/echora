@@ -164,7 +164,7 @@ def test_file_review_case_source_save_answers_named_entry_outside_seed_not_saved
     )
     assert (result.is_saved, list(result.broken_rule_names)) == (
         False,
-        [PlacementRule.NAMED_ENTRY_UNKNOWN.name],
+        [PlacementRule.UNKNOWN_NAMED_ENTRY.name],
     )
 
 
@@ -181,8 +181,8 @@ def test_file_review_case_source_save_answers_rule_breaking_answer_not_saved(
         list(result.broken_rule_sentences),
     ) == (
         False,
-        [PlacementRule.PAGE_WITHOUT_PLACE.name],
-        [PlacementRule.PAGE_WITHOUT_PLACE.value],
+        [PlacementRule.MISSING_REQUIRED_PLACEMENT.name],
+        [PlacementRule.MISSING_REQUIRED_PLACEMENT.value],
     )
     assert (data_dir / "review.jsonl").read_text(encoding="utf-8") == "".join(
         review_case_lines

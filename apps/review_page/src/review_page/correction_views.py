@@ -307,11 +307,11 @@ def _map_entry_titles(
     title_by_reference_page: dict[str, str] = {}
     for case in cases:
         for entry in case.entries.values():
-            title_by_reference_page[entry.reference_page] = entry.title
+            title_by_reference_page[entry.reference_page_key] = entry.title
         for decision in case.decisions:
             if isinstance(decision, LinkedPageDecision):
                 for linking_entry in decision.linking_entries:
-                    title_by_reference_page[linking_entry.reference_page] = (
+                    title_by_reference_page[linking_entry.reference_page_key] = (
                         linking_entry.title
                     )
     for checked_entry in checked_entries:
@@ -332,8 +332,8 @@ def _list_case_entry_reference_pages(case: ReviewCase) -> list[str]:
     for decision in case.decisions:
         if isinstance(decision, LinkedPageDecision):
             reference_pages.extend(
-                entry.reference_page
+                entry.reference_page_key
                 for entry in decision.linking_entries
-                if entry.reference_page not in reference_pages
+                if entry.reference_page_key not in reference_pages
             )
     return reference_pages

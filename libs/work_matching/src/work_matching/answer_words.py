@@ -42,44 +42,65 @@ _NAMED_ENTRY_ANSWER: Final = re.compile(
 
 # One meaning for work 2 and every later work, so a legend can list them once.
 LATER_WORK_MEANING: Final = (
-    "The page belongs to a different work in this case, not the first one. "
-    "All pages set to the same number form one work. "
-    "Once any page uses work 2 or later, every page in the case needs a place."
+    "Assign the page to a separate work within this case. "
+    "Pages with the same work number are grouped into one work, and using "
+    "work 2 or higher requires placing every page in the case."
 )
 
 _MEANING_BY_WORD: Final[dict[str, str]] = {
     _FIRST_WORK: (
-        "The page belongs to the case's first work. The page stays in the entry "
-        "that survives as that work."
+        "Assign the page to the first work in this case. Pages in work 1 stay "
+        "in the surviving entry for that work."
     ),
     OTHER_WORK: (
-        "The page belongs to a work outside this case. If the page's links "
-        "point to that work's seed entry, the page moves there. Otherwise, the "
-        "page starts a new entry."
+        "Move the page out of this case because it belongs to a different "
+        "work. The page joins an existing seed entry if linked or selected, "
+        "or otherwise starts a new entry."
     ),
     NO_MARK: (
-        "No mark. Use no mark for a provider's only page in a work. Also use no "
-        "mark for the provider's other pages in a work where one page is 'main'."
+        "Treat the page as a full-work page. Leave pages unmarked when a "
+        "provider has only one page in the work, or when another page from "
+        "the same provider is marked 'main'."
     ),
     MAIN_MARK: (
-        "The work keeps two or more whole pages of this provider. Enrichment "
-        "fetches the page marked 'main'. The provider's other pages in the "
-        "work stay unmarked."
+        "Mark this page as the primary page to fetch when a work keeps "
+        "multiple full pages from the same provider. Leave the provider's "
+        "other pages in the work unmarked."
     ),
     PART_MARK: (
-        "The page covers only part of the work, such as one of two OVAs. "
-        "Enrichment combines the page with the work's other part pages."
+        "Mark this page as covering only part of the work (such as one season "
+        "or OVA). Enrichment combines all part pages for the work."
     ),
     WHOLE_PAGE_ANSWER: (
-        "Add the page to the linking entry. The entry must hold no page of the "
-        "page's provider."
+        "Add the linked page to the entry as a full-work page. Only allowed "
+        "when the entry does not already have a page from this provider."
     ),
     PART_PAGE_ANSWER: (
-        "Add the page as a part page of the linking entry's work. The entry may "
-        "already hold pages of the provider."
+        "Add the linked page as a partial page of the entry's work, even if "
+        "the entry already has a page from this provider."
     ),
-    SKIP_ANSWER: "Leave the page out. The linking entry stays as it is.",
+    SKIP_ANSWER: "Do not add the linked page. Leave the linking entry unchanged.",
 }
+
+
+# A page the answer leaves out has no place; the review page shows it as
+# "no place".
+NO_PLACE_MEANING: Final = (
+    "Leave the page unassigned for now. Pages marked with * must be assigned "
+    "before saving."
+)
+
+# Each placement word and its meaning, in the order a reviewer meets them, so
+# a page can list them once under an entry group's pages.
+PLACEMENT_WORD_MEANINGS: Final[tuple[tuple[str, str], ...]] = (
+    (_FIRST_WORK, _MEANING_BY_WORD[_FIRST_WORK]),
+    ("work 2, work 3, …", LATER_WORK_MEANING),
+    (OTHER_WORK, _MEANING_BY_WORD[OTHER_WORK]),
+    ("no place", NO_PLACE_MEANING),
+    ("— (no mark)", _MEANING_BY_WORD[NO_MARK]),
+    (MAIN_MARK, _MEANING_BY_WORD[MAIN_MARK]),
+    (PART_MARK, _MEANING_BY_WORD[PART_MARK]),
+)
 
 
 def describe_answer_word(answer_word: str) -> str:
@@ -97,34 +118,14 @@ def describe_answer_word(answer_word: str) -> str:
     if _LATER_WORK.fullmatch(answer_word):
         return LATER_WORK_MEANING
     if named_entry_answer := _NAMED_ENTRY_ANSWER.fullmatch(answer_word):
-        what_is_added = (
-            "as a part page of the work of"
+        addition_phrase = (
+            "as a partial page to"
             if named_entry_answer["addition"] == PART_PAGE_ANSWER
             else "to"
         )
         return (
-            f"Add the page {what_is_added} the entry whose reference page is "
-            f"{named_entry_answer['reference_page']}. Several entries link the "
-            "page, so the answer names one."
+            f"Add the linked page {addition_phrase} entry "
+            f"{named_entry_answer['reference_page']} (chosen from the "
+            "multiple entries that link this page)."
         )
     return ""
-
-
-# A page the answer leaves out has no place; the review page shows it as
-# "no place".
-NO_PLACE_MEANING: Final = (
-    "The page has no place yet. A page marked * needs a place before the "
-    "answer can be saved."
-)
-
-# Each placement word and its meaning, in the order a reviewer meets them, so
-# a page can list them once under an entry group's pages.
-PLACEMENT_WORD_MEANINGS: Final[tuple[tuple[str, str], ...]] = (
-    (_FIRST_WORK, _MEANING_BY_WORD[_FIRST_WORK]),
-    ("work 2, work 3, …", LATER_WORK_MEANING),
-    (OTHER_WORK, _MEANING_BY_WORD[OTHER_WORK]),
-    ("no place", NO_PLACE_MEANING),
-    ("— (no mark)", _MEANING_BY_WORD[NO_MARK]),
-    (MAIN_MARK, _MEANING_BY_WORD[MAIN_MARK]),
-    (PART_MARK, _MEANING_BY_WORD[PART_MARK]),
-)

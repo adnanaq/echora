@@ -68,11 +68,11 @@ def prepare_split_work_pass(
         if review_case.accepted_answer is None
         for reference_page in review_case.entries
     }
-    grouped_entries = KnownWorkEntriesFromSeed.from_work_entries(
+    grouped_entries = KnownWorkEntriesFromSeed.index_work_entries(
         entry
         for entry in corrected_seed.known_work_entries
         if corrected_seed.identity_by_reference_page[
-            entry.reference_page
+            entry.reference_page_key
         ].seed_entry_reference_page
         not in open_case_reference_pages
     )

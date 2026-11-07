@@ -1,22 +1,21 @@
-"""Find an entry's doubled providers: providers with two or more pages in the entry.
+"""Find an entry's doubled providers holding two or more distinct pages.
 
-Seed cleaning lists the entries to check with ``find_doubled_provider_page_keys``,
-and ``decide_doubled_providers`` decides exactly the providers it returns. The
-rules:
+Seed cleaning lists entries to check with ``find_doubled_provider_page_keys``,
+and ``decide_doubled_providers`` evaluates the providers returned by that lookup.
 
 Each item gives the rule, then the reason for it.
 
-- A provider is doubled when its pages carry more than one id. Two pages of one
-  provider with different ids are different pages.
-- Simkl and AnimeCountdown count as one provider, named ``simkl``. They number a
-  work the same, so a Simkl page and an AnimeCountdown page with the same number
-  are one page.
+- A provider is doubled when its pages carry more than one identifier. Two pages
+  of one provider with different identifiers represent distinct provider pages.
+- Simkl and AnimeCountdown count as one provider named ``simkl``. Both platforms
+  number a work identically, so a Simkl page and an AnimeCountdown page with the
+  same number refer to the same work.
 """
 
 from collections import defaultdict
 from collections.abc import Iterable
 
-from work_matching.provider_page_key import get_page_id, get_page_provider
+from work_matching.provider_page_key import read_page_id, read_page_provider
 
 # Simkl and AnimeCountdown number a work the same, so they are decided together,
 # under Simkl's name: a Simkl and an AnimeCountdown page with different numbers
@@ -29,12 +28,12 @@ def find_doubled_provider_page_keys(
 ) -> dict[str, tuple[str, ...]]:
     """Return the page keys of each doubled provider among these page keys.
 
-    A provider is doubled when its pages carry more than one id: two pages of
-    one provider with different ids are different pages. Pages of providers
-    decided together count as one provider (see ``get_decided_provider``), so a
-    Simkl page and an AnimeCountdown page with the same number are one page,
-    not a doubled provider. Seed cleaning lists the entries to check with this rule,
-    so it checks exactly the pages ``decide_doubled_providers`` decides.
+    A provider is doubled when its pages carry more than one identifier. Pages
+    of providers decided together count as one provider under
+    ``resolve_decided_provider``. A Simkl page and an AnimeCountdown page with
+    the same number therefore count as a single page rather than a doubled
+    provider. Seed cleaning uses this function so it checks the exact pages
+    that ``decide_doubled_providers`` evaluates.
 
     Args:
         page_keys: Page keys, such as the keys of an entry's pages.
@@ -44,36 +43,43 @@ def find_doubled_provider_page_keys(
         page keys in the order given.
     """
     page_keys_by_provider: defaultdict[str, list[str]] = defaultdict(list)
-    for key in page_keys:
-        if provider := get_decided_provider(key):
-            page_keys_by_provider[provider].append(key)
+    for page_key in page_keys:
+        if provider := resolve_decided_provider(page_key):
+            page_keys_by_provider[provider].append(page_key)
     return {
-        provider: tuple(page_keys)
-        for provider, page_keys in page_keys_by_provider.items()
-        if has_several_page_ids(page_keys)
+        provider: tuple(provider_page_keys)
+        for provider, provider_page_keys in page_keys_by_provider.items()
+        if has_several_page_ids(provider_page_keys)
     }
 
 
-def get_decided_provider(key: str) -> str | None:
-    """Return the provider whose decision a page key falls under, if any.
+def resolve_decided_provider(page_key: str) -> str | None:
+    """Resolve the provider name under which a page key is decided.
 
-    AnimeCountdown numbers a work the same as Simkl: an entry listing one lists
-    the other with the same number. So its pages fall under ``simkl``.
+    AnimeCountdown numbers works identically to Simkl, so AnimeCountdown pages
+    are grouped under ``simkl``.
 
     Args:
-        key: A page key, as ``get_page_key`` gives it.
+        page_key: A page key, as ``resolve_page_key`` gives it.
 
     Returns:
         The provider name, or None when the key is not a known provider's page.
     """
-    provider = get_page_provider(key)
+    provider = read_page_provider(page_key)
     return _PROVIDER_DECIDED_UNDER.get(provider, provider) if provider else None
 
 
 def has_several_page_ids(page_keys: Iterable[str]) -> bool:
-    """Report whether a decision group's page keys carry more than one id.
+    """Report whether a decision group's page keys carry more than one identifier.
 
-    Pages of one provider with different ids are different pages, and so are
-    pages of providers decided together, since they number a work the same.
+    Pages of one provider with different identifiers are distinct pages. Pages
+    of providers decided together follow the same rule because they share a
+    numbering scheme.
+
+    Args:
+        page_keys: Page keys belonging to one decided provider group.
+
+    Returns:
+        True when the page keys contain at least two distinct identifiers.
     """
-    return len(set(map(get_page_id, page_keys))) > 1
+    return len(set(map(read_page_id, page_keys))) > 1

@@ -1,4 +1,4 @@
-"""The lookup of known work entries backed by an anime-offline-database seed file."""
+"""Index known work entries backed by an anime-offline-database seed file."""
 
 import json
 from bisect import bisect_left
@@ -19,52 +19,33 @@ MIN_SERIES_ROOT_WORDS: Final = 3
 
 
 class KnownWorkEntriesFromSeed(KnownWorkEntries):
-    """Hold every seed entry as a known work entry, indexed by page key and title.
+    """Index every seed entry as a known work entry by page key and title.
 
     - Each page should belong to one entry. A page listed in more than one
-      entry is kept by the first and listed in ``page_keys_in_several_entries``,
-      so seed cleaning can report it.
+      entry is kept by the first and listed in ``multi_entry_page_keys``,
+      so seed cleaning can report the conflict.
     - The seed format allows an entry without pages. Such an entry cannot be
-      found, so its title is listed in ``titles_of_entries_without_pages``.
-    - Feed this the cleaned seed once there is one.
+      found, so the entry title is listed in ``pageless_entry_titles``.
     """
 
     def __init__(self, seed_entries: Iterable[dict[str, Any]]) -> None:
-        """Index every entry by its provider pages and by its title and type.
+        """Index every entry by provider pages and by title and type.
 
         Args:
             seed_entries: The ``data`` list of an anime-offline-database document.
         """
-        titles_of_entries_without_pages: list[str] = []
+        pageless_entry_titles: list[str] = []
         work_entries: list[WorkEntry] = []
         for seed_entry in seed_entries:
             if seed_entry["sources"]:
-                work_entries.append(WorkEntry.from_seed_entry(seed_entry))
+                work_entries.append(WorkEntry.read_seed_entry(seed_entry))
             else:
-                titles_of_entries_without_pages.append(seed_entry["title"])
+                pageless_entry_titles.append(seed_entry["title"])
         self._index_work_entries(work_entries)
-        self._titles_of_entries_without_pages = tuple(titles_of_entries_without_pages)
-
-    def __len__(self) -> int:
-        """Return how many work entries are known."""
-        return len(self._entries)
-
-    def __iter__(self) -> Iterator[WorkEntry]:
-        """Yield every known work entry in seed file order, so the seed is read once."""
-        return iter(self._entries)
-
-    @property
-    def page_keys_in_several_entries(self) -> frozenset[str]:
-        """Return the keys of pages found in more than one entry."""
-        return self._page_keys_in_several_entries
-
-    @property
-    def titles_of_entries_without_pages(self) -> tuple[str, ...]:
-        """Titles of the seed entries left out because they have no pages."""
-        return self._titles_of_entries_without_pages
+        self._pageless_entry_titles = tuple(pageless_entry_titles)
 
     @classmethod
-    def from_file(cls, path: str | Path) -> Self:
+    def load_seed_file(cls, path: str | Path) -> Self:
         """Load and index a seed file.
 
         Args:
@@ -77,36 +58,65 @@ class KnownWorkEntriesFromSeed(KnownWorkEntries):
             return cls(json.load(seed_file)["data"])
 
     @classmethod
-    def from_work_entries(cls, work_entries: Iterable[WorkEntry]) -> Self:
-        """Index work entries already built, such as seed entries as corrections leave them.
+    def index_work_entries(cls, work_entries: Iterable[WorkEntry]) -> Self:
+        """Index work entries already built, such as seed entries after corrections.
 
         Args:
             work_entries: The work entries, in the order they are iterated.
 
         Returns:
-            The lookup over exactly these entries; none is without pages, since a
-            work entry always holds one.
+            The lookup over these entries; none is without pages, since a
+            work entry always holds at least one page.
         """
         known_work_entries = cls.__new__(cls)
         known_work_entries._index_work_entries(work_entries)
-        known_work_entries._titles_of_entries_without_pages = ()
+        known_work_entries._pageless_entry_titles = ()
         return known_work_entries
 
-    def find_by_page_key(self, key: str) -> WorkEntry | None:
+    @property
+    def multi_entry_page_keys(self) -> frozenset[str]:
+        """Return the keys of pages found in more than one entry."""
+        return self._multi_entry_page_keys
+
+    @property
+    def pageless_entry_titles(self) -> tuple[str, ...]:
+        """Return the titles of the seed entries left out because they have no pages."""
+        return self._pageless_entry_titles
+
+    def __len__(self) -> int:
+        """Return how many work entries are known.
+
+        Returns:
+            The count of indexed work entries.
+        """
+        return len(self._entries)
+
+    def __iter__(self) -> Iterator[WorkEntry]:
+        """Yield every known work entry in seed file order, so the seed is read once.
+
+        Yields:
+            Each known ``WorkEntry`` in seed file order.
+        """
+        return iter(self._entries)
+
+    def find_by_page_key(self, page_key: str) -> WorkEntry | None:
         """Return the work entry holding the page with this key, or None.
 
         Args:
-            key: A page key, as ``get_page_key`` gives it.
+            page_key: A page key, as ``resolve_page_key`` gives it.
+
+        Returns:
+            The matching work entry, or None when no known entry holds the page.
         """
-        return self._entry_by_page_key.get(key)
+        return self._entry_by_page_key.get(page_key)
 
     def find_by_title(
         self, title: str, work_type: WorkType, year: int | None
     ) -> list[WorkEntry]:
-        """Return the work entries that look like this title, type and year.
+        """Return the work entries that look like this title, type, and year.
 
         Args:
-            title: A title, compared after case, punctuation, accents and
+            title: A title, compared after case, punctuation, accents, and
                 season wording are folded.
             work_type: The work's type; only work entries of this type are returned.
             year: The work's year. A work entry matches when the years are
@@ -130,12 +140,12 @@ class KnownWorkEntriesFromSeed(KnownWorkEntries):
         Each item gives the kind of title found, then how it is found.
 
         - Shorter titles: the title's word prefixes, looked up directly.
-        - Longer titles: they start with the title and a space, so they sit
+        - Longer titles: titles starting with the title and a space, which sit
           together in the sorted titles and are found with a binary search.
-        - Sibling titles: they start with the title's longest word prefix of
-          at least ``MIN_SERIES_ROOT_WORDS`` words that another title starts
+        - Sibling titles: titles starting with the title's longest word prefix
+          of at least ``MIN_SERIES_ROOT_WORDS`` words that another title starts
           with, such as two movies of one series. A shorter prefix, such as
-          ``Ano``, also starts unrelated titles, so it is not used.
+          ``Ano``, also starts unrelated titles, so that prefix is not used.
 
         Args:
             title: A title, folded like ``find_by_title``'s.
@@ -205,7 +215,10 @@ class KnownWorkEntriesFromSeed(KnownWorkEntries):
         """Index work entries by page key, by folded title and type, and by folded title.
 
         A page listed in more than one entry is kept by the first and reported
-        in ``page_keys_in_several_entries``.
+        in ``multi_entry_page_keys``.
+
+        Args:
+            work_entries: The work entries to index.
         """
         self._entries: list[WorkEntry] = []
         self._entry_by_page_key: dict[str, WorkEntry] = {}
@@ -215,20 +228,20 @@ class KnownWorkEntriesFromSeed(KnownWorkEntries):
         self._entries_by_folded_title: defaultdict[str, list[WorkEntry]] = defaultdict(
             list
         )
-        page_keys_in_several_entries: set[str] = set()
+        multi_entry_page_keys: set[str] = set()
         for work_entry in work_entries:
             self._entries.append(work_entry)
-            for key in work_entry.addresses_by_page_key:
+            for page_key in work_entry.addresses_by_page_key:
                 if (
-                    self._entry_by_page_key.setdefault(key, work_entry)
+                    self._entry_by_page_key.setdefault(page_key, work_entry)
                     is not work_entry
                 ):
-                    page_keys_in_several_entries.add(key)
+                    multi_entry_page_keys.add(page_key)
             folded_title = fold_title_for_comparison(work_entry.title)
             self._entries_by_title_and_type[folded_title, work_entry.type].append(
                 work_entry
             )
             self._entries_by_folded_title[folded_title].append(work_entry)
-        self._page_keys_in_several_entries = frozenset(page_keys_in_several_entries)
+        self._multi_entry_page_keys = frozenset(multi_entry_page_keys)
         # Sorted once, so ``find_by_series`` finds longer titles by binary search.
         self._sorted_folded_titles = sorted(self._entries_by_folded_title)

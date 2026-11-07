@@ -1,13 +1,13 @@
 import pytest
 from work_matching.doubled_provider_pages import (
     find_doubled_provider_page_keys,
-    get_decided_provider,
     has_several_page_ids,
+    resolve_decided_provider,
 )
 
 
 @pytest.mark.parametrize(
-    ("key", "provider"),
+    ("page_key", "provider"),
     [
         ("animecountdown:anime:5", "simkl"),
         ("simkl:anime:5", "simkl"),
@@ -15,10 +15,10 @@ from work_matching.doubled_provider_pages import (
         ("https://example.com/anime/1", None),
     ],
 )
-def test_get_decided_provider_animecountdown_counts_as_simkl(
-    key: str, provider: str | None
+def test_resolve_decided_provider_animecountdown_counts_as_simkl(
+    page_key: str, provider: str | None
 ) -> None:
-    assert get_decided_provider(key) == provider
+    assert resolve_decided_provider(page_key) == provider
 
 
 def test_find_doubled_provider_page_keys_provider_with_two_ids_listed() -> None:

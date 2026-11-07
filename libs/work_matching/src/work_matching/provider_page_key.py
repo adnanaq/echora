@@ -1,14 +1,15 @@
-"""Reduce a provider page address to a key naming the page, whatever its spelling.
+"""Reduce a provider page address to a canonical key regardless of URL spelling.
 
-Providers decorate the same page differently: MAL appends a title slug,
-AniSearch appends ``,slug``, MAL still links AniDB's old ``animedb.pl``
-address, and ANN keeps the id in the query. Two spellings of one page must give
-one key, so pages are compared by key, never by address. A page that has both
-a number and a slug, as on Kitsu, gets one key for each: telling them apart
-needs the provider, so the seed's number form is the one to record.
+Providers format the same page address in multiple ways across external links.
+MyAnimeList appends a title slug, AniSearch appends a comma-separated slug, and
+Anime News Network places the identifier in the query string. MyAnimeList also
+links to AniDB using legacy ``animedb.pl`` URLs. Comparing pages reliably
+requires reducing every spelling of a page to a single canonical key. When a
+provider such as Kitsu supports both numeric and slug identifiers for the same
+page, the seed's numeric identifier is recorded as the canonical form.
 
-Enrichment uses the same keys to merge provider records and to derive anime ids,
-so a change to a key changes those too.
+The enrichment pipeline uses these same keys to merge provider records and
+derive anime identifiers.
 """
 
 import re
@@ -97,16 +98,23 @@ REFERENCE_ORDER: tuple[str, ...] = (
 )
 
 
-def rank_by_provider_trust(key: str) -> int:
+def rank_by_provider_trust(page_key: str) -> int:
     """Rank a page by how far its provider is trusted to name a work, MAL first.
 
     Pages of providers outside ``REFERENCE_ORDER`` rank after all of them.
+
+    Args:
+        page_key: A page key, as ``resolve_page_key`` gives it.
+
+    Returns:
+        The zero-based position of the page's provider in ``REFERENCE_ORDER``,
+        or ``len(REFERENCE_ORDER)`` for unrecognised providers.
 
     Examples:
         >>> rank_by_provider_trust("mal:anime:1") < rank_by_provider_trust("ann:anime:1")
         True
     """
-    provider = get_page_provider(key)
+    provider = read_page_provider(page_key)
     return (
         REFERENCE_ORDER.index(provider)
         if provider in REFERENCE_ORDER
@@ -115,22 +123,24 @@ def rank_by_provider_trust(key: str) -> int:
 
 
 @lru_cache(maxsize=65536)
-def get_page_key(address: str) -> str:
-    """Return the key naming the page an address points to.
+def resolve_page_key(address: str) -> str:
+    """Return the canonical key naming the page an address points to.
+
+    Unrecognised URLs keep their path case because external hosts can serve
+    distinct pages at ``/Show`` and ``/show``.
 
     Args:
         address: A provider page address.
 
     Returns:
-        A ``provider:kind:id`` key when the address is recognised, otherwise the
-        address with its scheme and host in lower case, ``www.`` and any
-        trailing slash removed. The path keeps its case, since another site can
-        serve different pages at ``/Show`` and ``/show``.
+        A ``provider:kind:id`` key for recognised provider addresses, or the
+        normalised URL with a lowercase scheme and host, ``www.`` removed, and
+        any trailing slash stripped.
 
     Examples:
-        >>> get_page_key("https://myanimelist.net/anime/21/One_Piece")
+        >>> resolve_page_key("https://myanimelist.net/anime/21/One_Piece")
         'mal:anime:21'
-        >>> get_page_key("https://anidb.net/perl-bin/animedb.pl?show=anime&aid=69")
+        >>> resolve_page_key("https://anidb.net/perl-bin/animedb.pl?show=anime&aid=69")
         'anidb:anime:69'
     """
     scheme, scheme_separator, address_after_scheme = address.partition("://")
@@ -146,14 +156,14 @@ def get_page_key(address: str) -> str:
     return f"{scheme.lower()}://{host}/{path}".rstrip("/")
 
 
-def build_page_address(key: str) -> str | None:
-    """Return the address of the page a key names, spelled as the seed spells it.
+def build_page_address(page_key: str) -> str | None:
+    """Build the canonical seed URL for a recognised provider page key.
 
-    The reverse of ``get_page_key`` for recognised pages: a page key read from
-    another page's links is turned back into an address that can be fetched.
+    This function reverses ``resolve_page_key`` so a page key extracted from
+    cross-provider links can be fetched over HTTP.
 
     Args:
-        key: A page key, as ``get_page_key`` gives it.
+        page_key: A page key, as ``resolve_page_key`` gives it.
 
     Returns:
         The page address, or None when the key is not a known provider's page.
@@ -164,61 +174,80 @@ def build_page_address(key: str) -> str | None:
         >>> build_page_address("https://example.com/show") is None
         True
     """
-    provider = get_page_provider(key)
+    provider = read_page_provider(page_key)
     if provider is None:
         return None
-    _, page_kind, page_id = key.split(":", 2)
+    _, page_kind, page_id = page_key.split(":", 2)
     return _SEED_ADDRESS_BY_PROVIDER[provider].format(kind=page_kind, id=page_id)
 
 
-def get_page_provider(key: str) -> str | None:
+def read_page_provider(page_key: str) -> str | None:
     """Return the provider a page key belongs to, or None for an unrecognised address.
 
+    Args:
+        page_key: A page key, as ``resolve_page_key`` gives it.
+
+    Returns:
+        The provider name, or None when the key does not belong to a known
+        provider.
+
     Examples:
-        >>> get_page_provider("kitsu:anime:12")
+        >>> read_page_provider("kitsu:anime:12")
         'kitsu'
-        >>> get_page_provider("https://example.com/show") is None
+        >>> read_page_provider("https://example.com/show") is None
         True
     """
-    provider = key.partition(":")[0]
+    provider = page_key.partition(":")[0]
     return provider if provider in PROVIDERS else None
 
 
-def get_page_kind(key: str) -> str | None:
-    """Return the kind of page a page key names: anime or manga.
+def read_page_kind(page_key: str) -> str | None:
+    """Return the media kind (``anime`` or ``manga``) from a recognised page key.
 
     Args:
-        key: A page key, as ``get_page_key`` gives it.
+        page_key: A page key, as ``resolve_page_key`` gives it.
 
     Returns:
         ``anime`` or ``manga``, or None when the key is not a known provider's page.
 
     Examples:
-        >>> get_page_kind("anilist:manga:119534")
+        >>> read_page_kind("anilist:manga:119534")
         'manga'
-        >>> get_page_kind("https://example.com/show") is None
+        >>> read_page_kind("https://example.com/show") is None
         True
     """
-    return key.split(":", 2)[1] if get_page_provider(key) else None
+    return page_key.split(":", 2)[1] if read_page_provider(page_key) else None
 
 
-def get_page_id(key: str) -> str:
-    """Return the id part of a page key, or the key itself when it is unrecognised.
+def read_page_id(page_key: str) -> str:
+    """Return the identifier segment of a page key, or the key itself if unrecognised.
 
-    A key is ``provider:kind:id``, and everything after the kind is the id,
-    even a slug holding a colon.
+    A recognised key follows the ``provider:kind:id`` format where everything
+    after the second colon belongs to the identifier, including colons in slugs.
+
+    Args:
+        page_key: A page key, as ``resolve_page_key`` gives it.
+
+    Returns:
+        The identifier segment of a recognised page key, or ``page_key`` unchanged.
 
     Examples:
-        >>> get_page_id("mal:anime:21")
+        >>> read_page_id("mal:anime:21")
         '21'
     """
-    return key.split(":", 2)[2] if get_page_provider(key) else key
+    return page_key.split(":", 2)[2] if read_page_provider(page_key) else page_key
 
 
-def has_repeated_provider(keys: Iterable[str]) -> bool:
-    """Report whether two or more of the page keys belong to one provider.
+def has_repeated_provider(page_keys: Iterable[str]) -> bool:
+    """Report whether two or more page keys belong to the same provider.
 
-    Unrecognised keys belong to no provider, so they never count.
+    Unrecognised keys do not belong to any provider and are ignored.
+
+    Args:
+        page_keys: Page keys to inspect.
+
+    Returns:
+        True when at least two recognised keys share the same provider.
 
     Examples:
         >>> has_repeated_provider(["mal:anime:1", "kitsu:anime:1", "mal:anime:2"])
@@ -226,5 +255,5 @@ def has_repeated_provider(keys: Iterable[str]) -> bool:
         >>> has_repeated_provider(["mal:anime:1", "kitsu:anime:1"])
         False
     """
-    page_count_by_provider = Counter(filter(None, map(get_page_provider, keys)))
+    page_count_by_provider = Counter(filter(None, map(read_page_provider, page_keys)))
     return any(page_count > 1 for page_count in page_count_by_provider.values())

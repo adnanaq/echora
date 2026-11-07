@@ -23,7 +23,7 @@ from typing import Final
 from pydantic import JsonValue
 from work_matching.known_work_entries import KnownWorkEntries
 from work_matching.page_placement import read_placement
-from work_matching.provider_page_key import get_page_provider
+from work_matching.provider_page_key import read_page_provider
 from work_matching.review_cases import ReviewCase, TargetEntrySuggestion
 
 MAX_TARGET_ENTRY_SUGGESTIONS: Final = 12
@@ -42,10 +42,13 @@ def list_named_entry_page_keys(answer: JsonValue) -> list[str]:
         return []
     named_entry_page_keys = (
         placement.named_entry_page_key
-        for place_text in answer.values()
-        if isinstance(place_text, str) and (placement := read_placement(place_text))
+        for placement_text in answer.values()
+        if isinstance(placement_text, str)
+        and (placement := read_placement(placement_text))
     )
-    return list(dict.fromkeys(key for key in named_entry_page_keys if key))
+    return list(
+        dict.fromkeys(page_key for page_key in named_entry_page_keys if page_key)
+    )
 
 
 def resolve_named_entries(
@@ -66,7 +69,7 @@ def resolve_named_entries(
         seed entry holds, mapped to that entry's reference page.
     """
     named_entry_reference_pages = {
-        page_key: work_entry.reference_page
+        page_key: work_entry.reference_page_key
         for page_key in list_named_entry_page_keys(
             case.answer if answer is None else answer
         )
@@ -92,10 +95,10 @@ def suggest_target_entries(
         ``MAX_TARGET_ENTRY_SUGGESTIONS``.
     """
     series_entries = {
-        work_entry.reference_page: work_entry
+        work_entry.reference_page_key: work_entry
         for case_entry in case.entries.values()
         for work_entry in known_work_entries.find_by_series(case_entry.title)
-        if work_entry.reference_page not in case.entries
+        if work_entry.reference_page_key not in case.entries
     }
     return tuple(
         TargetEntrySuggestion(
@@ -106,7 +109,7 @@ def suggest_target_entries(
                     {
                         provider
                         for page_key in work_entry.addresses_by_page_key
-                        if (provider := get_page_provider(page_key))
+                        if (provider := read_page_provider(page_key))
                     }
                 )
             ),

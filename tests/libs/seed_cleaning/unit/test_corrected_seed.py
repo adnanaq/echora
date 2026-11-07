@@ -44,7 +44,7 @@ def test_build_corrected_seed_without_corrections_keeps_seed_entries(
     known_work_entries, store
 ) -> None:
     corrected_seed = build_corrected_seed([], known_work_entries, store)
-    assert [entry.reference_page for entry in corrected_seed.known_work_entries] == [
+    assert [entry.reference_page_key for entry in corrected_seed.known_work_entries] == [
         "ann:anime:24629",
         "mal:anime:43735",
         "mal:anime:9",
@@ -69,7 +69,7 @@ def test_build_corrected_seed_moved_page_keeps_entry_listing_it_as_origin(
         )
     ]
     corrected_seed = build_corrected_seed(corrections, known_work_entries, store)
-    assert [entry.reference_page for entry in corrected_seed.known_work_entries] == [
+    assert [entry.reference_page_key for entry in corrected_seed.known_work_entries] == [
         "mal:anime:43735",
         "mal:anime:9",
     ]

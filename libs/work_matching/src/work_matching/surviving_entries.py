@@ -1,4 +1,4 @@
-"""Surviving entries: which seed entry each work of a placement keeps.
+"""Find which seed entry each work of a placement keeps.
 
 When pages of one or more seed entries are placed into works, each work keeps
 at most one seed entry, and the other entries' pages in that work move into it.
@@ -39,7 +39,7 @@ from work_matching.work_entry import WorkEntry
 
 
 class _SurvivorCandidate(NamedTuple):
-    """An entry that may survive as a work, ordered so the survivor sorts first."""
+    """Hold an entry that may survive as a work, ordered so the survivor sorts first."""
 
     # False sorts first, so a whole reference page wins over a part page.
     is_part_page: bool
@@ -51,15 +51,15 @@ class _SurvivorCandidate(NamedTuple):
 def find_surviving_entries(
     entries: Iterable[WorkEntry],
     placements: Mapping[str, PagePlacement],
-    current_key_by_page_key: Mapping[str, str],
+    current_page_key_by_page_key: Mapping[str, str],
 ) -> dict[str, str]:
     """Find the seed entry each work keeps, by the rules in the module docstring.
 
     Args:
         entries: The seed entries whose pages are placed.
         placements: Each placed page's placement, by its page key.
-        current_key_by_page_key: Each renamed page's current key, by the key an
-            entry lists it under.
+        current_page_key_by_page_key: Each renamed page's current key, by the
+            key an entry lists it under.
 
     Returns:
         Each work's placement word (``work 1``, ``work 2`` and so on), mapped to the
@@ -69,15 +69,15 @@ def find_surviving_entries(
     candidates_by_work: defaultdict[str, list[_SurvivorCandidate]] = defaultdict(list)
     for entry in entries:
         placed_page = find_page_placement(
-            entry.reference_page, placements, current_key_by_page_key
+            entry.reference_page_key, placements, current_page_key_by_page_key
         )
         placement = placed_page.placement if placed_page else PagePlacement(FIRST_WORK)
         if placement.placement_word != OTHER_WORK:
             candidates_by_work[placement.placement_word].append(
                 _SurvivorCandidate(
                     placement.is_part_page,
-                    rank_by_provider_trust(entry.reference_page),
-                    entry.reference_page,
+                    rank_by_provider_trust(entry.reference_page_key),
+                    entry.reference_page_key,
                 )
             )
     return {

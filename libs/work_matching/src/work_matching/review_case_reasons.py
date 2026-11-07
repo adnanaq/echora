@@ -61,6 +61,12 @@ def _describe_decision(decision: DoubledProviderDecision) -> list[str]:
     Each sentence starts with the decision's provider. A case can hold one
     decision per doubled provider, often with the same reasons, and the
     provider tells the reviewer which pages each sentence is about.
+
+    Args:
+        decision: The doubled-provider decision.
+
+    Returns:
+        The provider-prefixed outcome and review reason sentences.
     """
     return [
         f"{decision.provider}: {sentence}"

@@ -76,7 +76,7 @@ def test_resolve_named_entries_key_in_no_seed_entry_left_unresolved(
     assert resolved_case.named_entry_reference_pages == {}
     assert resolved_case.accepted_answer is None
     assert resolved_case.list_broken_answer_rules(named_answer) == (
-        PlacementRule.NAMED_ENTRY_UNKNOWN,
+        PlacementRule.UNKNOWN_NAMED_ENTRY,
     )
 
 

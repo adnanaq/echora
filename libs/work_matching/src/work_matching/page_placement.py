@@ -9,9 +9,9 @@ Each item reads ``<place>: <meaning>``.
 
 - ``work 1``: the page belongs to the case's first work. The page stays in the
   entry that survives as that work (``find_surviving_entries``).
-- ``other work``: the page belongs to a work outside the entry. It joins that
-  work's seed entry when the move is sure (``UnrelatedPage.move_target_entry``),
-  and otherwise starts a new entry.
+- ``other work``: the page belongs to a work outside the entry. The page joins
+  that work's seed entry when the move is sure
+  (``UnrelatedPage.move_target_entry``), and otherwise starts a new entry.
 - ``other work <page key>``: the page belongs to the seed entry holding that
   page, such as ``other work mal:anime:62841``. A reviewer names the entry
   when no link ties the page to its work, as for pages of unfetched providers.
@@ -25,13 +25,13 @@ Each item reads ``<place>: <meaning>``.
   one of two OVAs, so enrichment combines it with the work's other part pages.
 
 The rules place an entry without a person only when no decision needs review
-(``DoubledProviderDecision.needs_review``). Every other entry goes to a person.
+(``DoubledProviderDecision.is_review_needed``). Every other entry goes to a person.
 
 A person's answer is valid when it follows these rules:
 
 Each item gives the rule, then the reason for it.
 
-- It places every doubled page. Each doubled page needs a place.
+- An answer places every doubled page. Each doubled page needs a place.
 - An answer using ``work 2`` or later places every page of the entry. Splitting
   the entry sends each page to one of the works.
 - In each work, a provider's two or more pages are either all ``, part``, or
@@ -62,11 +62,11 @@ from work_matching.doubled_provider_decision import (
     DoubledProviderDecision,
     DoubledProviderOutcome,
 )
-from work_matching.doubled_provider_pages import get_decided_provider
+from work_matching.doubled_provider_pages import resolve_decided_provider
 from work_matching.provider_page_key import (
     build_page_address,
-    get_page_key,
-    get_page_provider,
+    read_page_provider,
+    resolve_page_key,
 )
 from work_matching.work_entry import WorkEntry
 
@@ -106,9 +106,9 @@ class PagePlacement:
 
 
 class PlacedPage(NamedTuple):
-    """A page's placement, and the key it was placed under."""
+    """Hold a page's placement and the page key it was placed under."""
 
-    placed_key: str
+    placed_page_key: str
     placement: PagePlacement
 
 
@@ -130,7 +130,7 @@ class PlacementCheck:
 def find_page_placement(
     page_key: str,
     placements: Mapping[str, PagePlacement],
-    current_key_by_page_key: Mapping[str, str],
+    current_page_key_by_page_key: Mapping[str, str],
 ) -> PlacedPage | None:
     """Find a page's placement under its current key, else under the key listed.
 
@@ -141,16 +141,19 @@ def find_page_placement(
     Args:
         page_key: The key an entry lists the page under.
         placements: Each placed page's placement, by the key it was placed under.
-        current_key_by_page_key: Each renamed page's current key, by the key an
-            entry lists it under.
+        current_page_key_by_page_key: Each renamed page's current key, by the
+            key an entry lists it under.
 
     Returns:
         The placement and the key it was found under, or None when the page
         has no placement.
     """
-    for placed_key in (current_key_by_page_key.get(page_key, page_key), page_key):
-        if placed_key in placements:
-            return PlacedPage(placed_key, placements[placed_key])
+    for placed_page_key in (
+        current_page_key_by_page_key.get(page_key, page_key),
+        page_key,
+    ):
+        if placed_page_key in placements:
+            return PlacedPage(placed_page_key, placements[placed_page_key])
     return None
 
 
@@ -166,7 +169,7 @@ def place_pages_without_review(
         Each doubled page's place, by its current page key, or None when a
         person has to place the entry's pages.
     """
-    if any(decision.needs_review for decision in decisions):
+    if any(decision.is_review_needed for decision in decisions):
         return None
     placements: dict[str, PagePlacement] = {}
     for decision in decisions:
@@ -188,14 +191,21 @@ def list_placeable_page_keys(
 
     The doubled pages come first, named by their current key as the decisions
     name them; then the entry's other pages, named by the key the entry lists.
+
+    Args:
+        entry: The work entry whose pages may be placed.
+        decisions: The entry's doubled-provider decisions.
+
+    Returns:
+        The placeable page keys in order.
     """
     decided_providers = {decision.provider for decision in decisions}
     return (
-        *(key for decision in decisions for key in decision.page_keys),
+        *(page_key for decision in decisions for page_key in decision.page_keys),
         *(
-            key
-            for key in entry.addresses_by_page_key
-            if get_decided_provider(key) not in decided_providers
+            page_key
+            for page_key in entry.addresses_by_page_key
+            if resolve_decided_provider(page_key) not in decided_providers
         ),
     )
 
@@ -247,16 +257,16 @@ def check_answer_placements(
             for a group of entries, even without ``work 2`` or later.
         named_entry_reference_pages: Each page key named after ``other
             work``, mapped to the reference page of the seed entry holding
-            it. A named key missing here breaks ``NAMED_ENTRY_UNKNOWN``.
+            it. A named key missing here breaks ``UNKNOWN_NAMED_ENTRY``.
 
     Returns:
         The places that could be read, and the broken rules in check order.
     """
     if not isinstance(answer, dict):
-        return PlacementCheck({}, (PlacementRule.ANSWER_NOT_PAGE_PLACES,))
+        return PlacementCheck({}, (PlacementRule.INVALID_PLACEMENT_MAP,))
     placements = {
-        key: placement
-        for key, placement_text in answer.items()
+        page_key: placement
+        for page_key, placement_text in answer.items()
         if isinstance(placement_text, str)
         and (placement := read_placement(placement_text))
     }
@@ -267,7 +277,7 @@ def check_answer_placements(
     required_page_keys = (
         placeable_page_keys
         if is_mixed_entry_answer or is_every_page_required
-        else {key for decision in decisions for key in decision.page_keys}
+        else {page_key for decision in decisions for page_key in decision.page_keys}
     )
     named_entry_page_keys = {
         placement.named_entry_page_key
@@ -278,13 +288,13 @@ def check_answer_placements(
     broken_rules = [
         rule
         for rule, is_broken in (
-            (PlacementRule.PLACE_NOT_READABLE, len(placements) != len(answer)),
+            (PlacementRule.INVALID_PAGE_PLACEMENT, len(placements) != len(answer)),
             (
-                PlacementRule.PAGE_OUTSIDE_CASE,
+                PlacementRule.PAGE_NOT_IN_CASE,
                 bool(placements.keys() - placeable_page_keys),
             ),
             (
-                PlacementRule.PAGE_WITHOUT_PLACE,
+                PlacementRule.MISSING_REQUIRED_PLACEMENT,
                 bool(required_page_keys - placements.keys()),
             ),
             (
@@ -293,7 +303,7 @@ def check_answer_placements(
             ),
             (PlacementRule.NAMED_ENTRY_IN_CASE, bool(named_page_keys_in_case)),
             (
-                PlacementRule.NAMED_ENTRY_UNKNOWN,
+                PlacementRule.UNKNOWN_NAMED_ENTRY,
                 bool(
                     named_entry_page_keys
                     - named_page_keys_in_case
@@ -311,7 +321,7 @@ def read_placement(placement_text: str) -> PagePlacement | None:
     """Read one page's place as an answer writes it, or None for other text.
 
     ``other work`` may name a seed entry by one of its page keys. A named key
-    must be a provider page key that ``get_page_key`` gives back from its own
+    must be a provider page key that ``resolve_page_key`` gives back from its own
     address, so a key with a missing or malformed id makes the text
     unreadable.
 
@@ -336,19 +346,6 @@ def read_placement(placement_text: str) -> PagePlacement | None:
     )
 
 
-def _is_page_key(text: str) -> bool:
-    """Report whether text is a provider page key, by its round trip through an address.
-
-    Args:
-        text: The text an answer names after ``other work``.
-
-    Returns:
-        True when the text names a provider page and reads back unchanged.
-    """
-    address = build_page_address(text)
-    return address is not None and get_page_key(address) == text
-
-
 def write_placement(placement: PagePlacement) -> str:
     """Write one page's place as an answer writes it; ``read_placement`` reads it back.
 
@@ -363,6 +360,33 @@ def write_placement(placement: PagePlacement) -> str:
     mark = _MAIN_PAGE_MARK if placement.is_main_page else ""
     mark = PART_PAGE_MARK if placement.is_part_page else mark
     return placement.placement_word + mark
+
+
+def has_two_mal_pages(page_keys: Iterable[str]) -> bool:
+    """Report whether two or more of these page keys are MAL pages.
+
+    Args:
+        page_keys: The page keys to check.
+
+    Returns:
+        True when at least two page keys belong to MAL.
+    """
+    return (
+        sum(read_page_provider(page_key) == _MAL_PROVIDER for page_key in page_keys) > 1
+    )
+
+
+def _is_page_key(text: str) -> bool:
+    """Report whether text is a provider page key, by its round trip through an address.
+
+    Args:
+        text: The text an answer names after ``other work``.
+
+    Returns:
+        True when the text names a provider page and reads back unchanged.
+    """
+    address = build_page_address(text)
+    return address is not None and resolve_page_key(address) == text
 
 
 def _list_broken_mark_rules(
@@ -387,10 +411,10 @@ def _list_broken_mark_rules(
     placements_by_work_provider: defaultdict[
         tuple[str, str | None], list[PagePlacement]
     ] = defaultdict(list)
-    for key, placement in placements.items():
+    for page_key, placement in placements.items():
         if placement.placement_word != OTHER_WORK:
             placements_by_work_provider[
-                placement.placement_word, get_page_provider(key)
+                placement.placement_word, read_page_provider(page_key)
             ].append(placement)
     return list(
         dict.fromkeys(
@@ -402,17 +426,19 @@ def _list_broken_mark_rules(
 
 
 def _has_work_with_two_mal_pages(placements: dict[str, PagePlacement]) -> bool:
-    """Report whether any work, ``other work`` aside, holds two MAL pages."""
+    """Report whether any work, ``other work`` aside, holds two MAL pages.
+
+    Args:
+        placements: Each placed page's placement, by its page key.
+
+    Returns:
+        True when any numbered work holds two or more MAL pages.
+    """
     page_keys_by_work: defaultdict[str, set[str]] = defaultdict(set)
-    for key, placement in placements.items():
+    for page_key, placement in placements.items():
         if placement.placement_word != OTHER_WORK:
-            page_keys_by_work[placement.placement_word].add(key)
+            page_keys_by_work[placement.placement_word].add(page_key)
     return any(map(has_two_mal_pages, page_keys_by_work.values()))
-
-
-def has_two_mal_pages(page_keys: Iterable[str]) -> bool:
-    """Report whether two or more of these page keys are MAL pages."""
-    return sum(get_page_provider(key) == _MAL_PROVIDER for key in page_keys) > 1
 
 
 def _find_broken_mark_rule(
@@ -425,7 +451,7 @@ def _find_broken_mark_rule(
 
     Returns:
         ``SINGLE_PAGE_MARKED_MAIN`` for a lone page marked main;
-        ``PROVIDER_PAGES_NOT_MARKED_ONCE`` for several pages that are neither
+        ``INVALID_PROVIDER_PAGE_MARKS`` for several pages that are neither
         all parts nor one main page with no part; None otherwise.
     """
     main_page_count = sum(placement.is_main_page for placement in provider_placements)
@@ -436,4 +462,4 @@ def _find_broken_mark_rule(
         main_page_count == 1 and part_page_count == 0
     ):
         return None
-    return PlacementRule.PROVIDER_PAGES_NOT_MARKED_ONCE
+    return PlacementRule.INVALID_PROVIDER_PAGE_MARKS

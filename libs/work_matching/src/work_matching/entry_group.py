@@ -1,9 +1,9 @@
-"""Entry groups: seed entries whose pages one review case places together.
+"""Place, suggest, and validate pages for groups of seed entries.
 
 An entry group is one entry with doubled providers, or two or more entries that
-may be one split work, or both when they overlap. Its pages are placed together,
-because which works the group holds can only be told from all its pages at
-once. The rules:
+may be one split work, or both when they overlap. The group's pages are placed
+together, because which works the group holds can only be told from all its
+pages at once. The rules:
 
 - Combined entry: the group's pages are checked as one entry holding them all,
   so a provider listing a page in two of the entries is a doubled provider like
@@ -12,9 +12,9 @@ once. The rules:
 - Suggestion: pages linked with each other are suggested as one work, numbered
   by trust as for a single entry. A page no link reaches follows the other
   pages of its own entry, when all of them are suggested in one work: the
-  seed listing them together is the only thing known about such a page. It
-  gets no suggestion when its entry's suggested pages are in different works,
-  or when it is a doubled page, which the reviewer must judge.
+  seed listing them together is the only thing known about such a page. Such a
+  page gets no suggestion when its entry's suggested pages are in different
+  works, or when it is a doubled page, which the reviewer must judge.
 - MAL check: in a group of two or more entries, each suggestion is then kept,
   marked ``, part`` or left out by comparing its page with the MAL page of its
   suggested work (``mal_page_check``), because a link or a shared entry alone
@@ -71,8 +71,8 @@ def combine_group_entries(entries: Sequence[WorkEntry]) -> WorkEntry:
     most_trusted_entry = min(
         entries,
         key=lambda entry: (
-            rank_by_provider_trust(entry.reference_page),
-            entry.reference_page,
+            rank_by_provider_trust(entry.reference_page_key),
+            entry.reference_page_key,
         ),
     )
     addresses_by_page_key: dict[str, str] = {}
@@ -136,47 +136,11 @@ def list_mal_page_review_reasons(
     ).left_out_comparisons
 
 
-def _suggest_linked_group_placements(
-    entries: Sequence[WorkEntry],
-    decisions: Sequence[DoubledProviderDecision],
-    pages: Sequence[ProviderPage],
-) -> dict[str, str]:
-    """Suggest places from links and entries alone, before the MAL check."""
-    combined_entry = combine_group_entries(entries)
-    if len(entries) == 1:
-        return suggest_page_placements(combined_entry, decisions)
-    links = ProviderPageLinks(pages, combined_entry.addresses_by_page_key)
-    group_page_keys = frozenset(
-        map(links.get_current_key, combined_entry.addresses_by_page_key)
-    )
-    suggested_placements = suggest_page_placements(
-        combined_entry,
-        decisions,
-        [
-            (page_key, linked_page_key)
-            for page_key in sorted(group_page_keys)
-            for linked_page_key in sorted(
-                links.get_linked_page_keys(page_key) & group_page_keys
-            )
-        ],
-    )
-    doubled_page_keys = {key for decision in decisions for key in decision.page_keys}
-    for entry in entries:
-        suggested_placements |= _suggest_unlinked_entry_pages(
-            entry, suggested_placements, doubled_page_keys
-        )
-    return {
-        key: suggested_placements[key]
-        for key in combined_entry.addresses_by_page_key
-        if key in suggested_placements
-    }
-
-
 def read_group_answer_placements(
     answer: JsonValue,
     entries: Sequence[WorkEntry],
     decisions: Sequence[DoubledProviderDecision],
-    current_key_by_page_key: Mapping[str, str],
+    current_page_key_by_page_key: Mapping[str, str],
 ) -> dict[str, PagePlacement] | None:
     """Read a review answer for a group into each page's place, when it is valid.
 
@@ -184,15 +148,16 @@ def read_group_answer_placements(
         answer: The answer as written: each page key mapped to its place.
         entries: The group's entries.
         decisions: The doubled-provider decisions of the combined entry.
-        current_key_by_page_key: Each renamed page's current key, by the key an
-            entry lists it under, since a doubled page is placed under it.
+        current_page_key_by_page_key: Each renamed page's current key, by the
+            key an entry lists it under, since a doubled page is placed under
+            it.
 
     Returns:
         Each placed page's place, or None when the answer breaks a placement
         rule or a group rule in the module docstring.
     """
     placement_check = check_group_answer_placements(
-        answer, entries, decisions, current_key_by_page_key
+        answer, entries, decisions, current_page_key_by_page_key
     )
     return placement_check.placements if placement_check.is_valid else None
 
@@ -201,7 +166,7 @@ def check_group_answer_placements(
     answer: JsonValue,
     entries: Sequence[WorkEntry],
     decisions: Sequence[DoubledProviderDecision],
-    current_key_by_page_key: Mapping[str, str],
+    current_page_key_by_page_key: Mapping[str, str],
     *,
     named_entry_reference_pages: Mapping[str, str] | None = None,
 ) -> PlacementCheck:
@@ -215,8 +180,9 @@ def check_group_answer_placements(
         answer: The answer as written: each page key mapped to its place.
         entries: The group's entries.
         decisions: The doubled-provider decisions of the combined entry.
-        current_key_by_page_key: Each renamed page's current key, by the key an
-            entry lists it under, since a doubled page is placed under it.
+        current_page_key_by_page_key: Each renamed page's current key, by the
+            key an entry lists it under, since a doubled page is placed under
+            it.
         named_entry_reference_pages: Each page key named after ``other work``,
             mapped to the reference page of the seed entry holding it.
 
@@ -235,17 +201,65 @@ def check_group_answer_placements(
         return placement_check
     placements = placement_check.placements
     surviving_reference_page_by_work = find_surviving_entries(
-        entries, placements, current_key_by_page_key
+        entries, placements, current_page_key_by_page_key
     )
     if any(
         len(listing_reference_pages) > 1
         and placement_word not in surviving_reference_page_by_work
         for placement_word, listing_reference_pages in _list_entries_per_work(
-            entries, placements, current_key_by_page_key
+            entries, placements, current_page_key_by_page_key
         ).items()
     ):
         return PlacementCheck(placements, (PlacementRule.WORK_WITHOUT_REFERENCE_PAGE,))
     return placement_check
+
+
+def _suggest_linked_group_placements(
+    entries: Sequence[WorkEntry],
+    decisions: Sequence[DoubledProviderDecision],
+    pages: Sequence[ProviderPage],
+) -> dict[str, str]:
+    """Suggest places from links and entries alone, before the MAL check.
+
+    Args:
+        entries: The group's entries.
+        decisions: The doubled-provider decisions of the combined entry.
+        pages: Details of the group's fetched pages.
+
+    Returns:
+        The suggested placement text for each page key tied by links or by its
+        own entry's agreeing suggestions.
+    """
+    combined_entry = combine_group_entries(entries)
+    if len(entries) == 1:
+        return suggest_page_placements(combined_entry, decisions)
+    links = ProviderPageLinks(pages, combined_entry.addresses_by_page_key)
+    group_page_keys = frozenset(
+        map(links.get_current_page_key, combined_entry.addresses_by_page_key)
+    )
+    suggested_placements = suggest_page_placements(
+        combined_entry,
+        decisions,
+        [
+            (page_key, linked_page_key)
+            for page_key in sorted(group_page_keys)
+            for linked_page_key in sorted(
+                links.get_linked_page_keys(page_key) & group_page_keys
+            )
+        ],
+    )
+    doubled_page_keys = {
+        page_key for decision in decisions for page_key in decision.page_keys
+    }
+    for entry in entries:
+        suggested_placements |= _suggest_unlinked_entry_pages(
+            entry, suggested_placements, doubled_page_keys
+        )
+    return {
+        page_key: suggested_placements[page_key]
+        for page_key in combined_entry.addresses_by_page_key
+        if page_key in suggested_placements
+    }
 
 
 def _suggest_unlinked_entry_pages(
@@ -268,37 +282,47 @@ def _suggest_unlinked_entry_pages(
     """
     suggested_placement_words = {
         placement.placement_word
-        for key in entry.addresses_by_page_key
-        if key in suggested_placements
-        and (placement := read_placement(suggested_placements[key]))
+        for page_key in entry.addresses_by_page_key
+        if page_key in suggested_placements
+        and (placement := read_placement(suggested_placements[page_key]))
     }
     if len(suggested_placement_words) != 1 or OTHER_WORK in suggested_placement_words:
         return {}
     [placement_word] = suggested_placement_words
     return {
-        key: placement_word
-        for key in entry.addresses_by_page_key
-        if key not in suggested_placements and key not in doubled_page_keys
+        page_key: placement_word
+        for page_key in entry.addresses_by_page_key
+        if page_key not in suggested_placements and page_key not in doubled_page_keys
     }
 
 
 def _list_entries_per_work(
     entries: Sequence[WorkEntry],
     placements: dict[str, PagePlacement],
-    current_key_by_page_key: Mapping[str, str],
+    current_page_key_by_page_key: Mapping[str, str],
 ) -> dict[str, set[str]]:
     """Return the reference pages of the entries listing pages in each work.
 
     A renamed page counts for the entry listing it under its old key.
+
+    Args:
+        entries: The group's work entries.
+        placements: Each placed page's placement, by its page key.
+        current_page_key_by_page_key: Each renamed page's current key, by the
+            key an entry lists it under.
+
+    Returns:
+        Each numbered work's placement word mapped to the reference pages of
+        the entries that contribute pages to that work.
     """
     listing_reference_pages_by_work: dict[str, set[str]] = {}
     for entry in entries:
         for page_key in entry.addresses_by_page_key:
             placed_page = find_page_placement(
-                page_key, placements, current_key_by_page_key
+                page_key, placements, current_page_key_by_page_key
             )
             if placed_page and placed_page.placement.placement_word != OTHER_WORK:
                 listing_reference_pages_by_work.setdefault(
                     placed_page.placement.placement_word, set()
-                ).add(entry.reference_page)
+                ).add(entry.reference_page_key)
     return listing_reference_pages_by_work

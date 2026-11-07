@@ -39,7 +39,7 @@ def _seed_entry(title: str, *addresses: str) -> dict:
 
 
 def _page(address: str, *linked_addresses: str, **details) -> ProviderPage:
-    return ProviderPage.from_canonical_record(
+    return ProviderPage.read_canonical_record(
         address,
         {
             "title": "Show",

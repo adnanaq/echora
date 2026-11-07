@@ -24,23 +24,24 @@ def test_provider_page_links_renamed_page_answers_to_current_key(
 ) -> None:
     _, pages = matching_cases["cocoon"]
     links = ProviderPageLinks(pages)
-    old = "animeplanet:anime:cocoon-aru-natsu-no-shoujo-tachi-yori"
+    old_key = "animeplanet:anime:cocoon-aru-natsu-no-shoujo-tachi-yori"
     assert (
-        links.get_current_key(old) == "animeplanet:anime:cocoon-one-summer-of-girlhood"
+        links.get_current_page_key(old_key)
+        == "animeplanet:anime:cocoon-one-summer-of-girlhood"
     )
-    assert links.get_current_key("mal:anime:55779") == "mal:anime:55779"
+    assert links.get_current_page_key("mal:anime:55779") == "mal:anime:55779"
 
 
 def test_provider_page_links_link_to_renamed_page_reaches_current_key(
     linked_page,
 ) -> None:
-    renamed = linked_page(
+    renamed_page = linked_page(
         "https://anime-planet.com/anime/old", "https://anime-planet.com/anime/new"
     )
-    kitsu = linked_page(
+    kitsu_page = linked_page(
         "https://kitsu.app/anime/1", "https://anime-planet.com/anime/old"
     )
-    links = ProviderPageLinks([renamed, kitsu], ["animeplanet:anime:new"])
+    links = ProviderPageLinks([renamed_page, kitsu_page], ["animeplanet:anime:new"])
     assert links.get_linked_page_keys("animeplanet:anime:new") == frozenset(
         {"kitsu:anime:1"}
     )
@@ -49,14 +50,14 @@ def test_provider_page_links_link_to_renamed_page_reaches_current_key(
 def test_provider_page_links_page_linking_two_pages_of_one_provider_set_aside(
     linked_page,
 ) -> None:
-    anthology = linked_page(
+    anthology_page = linked_page(
         "https://anidb.net/anime/1",
         "https://myanimelist.net/anime/1",
         "https://myanimelist.net/anime/2",
     )
-    links = ProviderPageLinks([anthology], ["mal:anime:1", "mal:anime:2"])
+    links = ProviderPageLinks([anthology_page], ["mal:anime:1", "mal:anime:2"])
     assert links.get_linked_page_keys("mal:anime:1") == frozenset()
-    assert links.get_linking_multi_work_page_keys("mal:anime:1") == frozenset(
+    assert links.get_multi_work_link_page_keys("mal:anime:1") == frozenset(
         {"anidb:anime:1"}
     )
 
@@ -82,14 +83,14 @@ def test_provider_page_links_searched_page_links_count_for_searched_by_page(
 def test_provider_page_links_searched_page_naming_other_page_of_searched_by_provider_set_aside() -> (
     None
 ):
-    found = ProviderPage.from_canonical_record(
+    found_page = ProviderPage.read_canonical_record(
         "https://animeschedule.net/anime/islay",
         {"title": "Islay", "sources": ["https://myanimelist.net/anime/2"]},
         searched_by_address="https://myanimelist.net/anime/1",
     )
-    links = ProviderPageLinks([found], ["mal:anime:1", "mal:anime:2"])
+    links = ProviderPageLinks([found_page], ["mal:anime:1", "mal:anime:2"])
     assert links.get_linked_page_keys("mal:anime:1") == frozenset()
-    assert links.get_linking_multi_work_page_keys("mal:anime:2") == frozenset(
+    assert links.get_multi_work_link_page_keys("mal:anime:2") == frozenset(
         {"mal:anime:1"}
     )
 
@@ -97,16 +98,16 @@ def test_provider_page_links_searched_page_naming_other_page_of_searched_by_prov
 def test_provider_page_links_searched_page_with_renamed_searched_by_page_counts_for_current_key(
     linked_page,
 ) -> None:
-    renamed = linked_page(
+    renamed_page = linked_page(
         "https://anime-planet.com/anime/old", "https://anime-planet.com/anime/new"
     )
-    found = ProviderPage.from_canonical_record(
+    found_page = ProviderPage.read_canonical_record(
         "https://animeschedule.net/anime/show",
         {"title": "Show", "sources": ["https://myanimelist.net/anime/1"]},
         searched_by_address="https://anime-planet.com/anime/old",
     )
     links = ProviderPageLinks(
-        [renamed, found], ["animeplanet:anime:new", "mal:anime:1"]
+        [renamed_page, found_page], ["animeplanet:anime:new", "mal:anime:1"]
     )
     assert links.get_linked_page_keys("animeplanet:anime:new") == frozenset(
         {"mal:anime:1"}
@@ -126,19 +127,19 @@ def test_provider_page_links_link_to_own_provider_page_ignored() -> None:
 def test_provider_page_links_searched_page_counts_for_searched_by_page_not_given() -> (
     None
 ):
-    found = ProviderPage.from_canonical_record(
+    found_page = ProviderPage.read_canonical_record(
         "https://animeschedule.net/anime/show",
         {"title": "Show", "sources": ["https://anilist.co/anime/1"]},
         searched_by_address="https://myanimelist.net/anime/1",
     )
-    links = ProviderPageLinks([found], ["anilist:anime:1"])
+    links = ProviderPageLinks([found_page], ["anilist:anime:1"])
     assert links.get_linked_page_keys("mal:anime:1") == frozenset({"anilist:anime:1"})
 
 
 def test_provider_page_links_searched_page_through_two_searched_by_pages_links_each_with_other() -> (
     None
 ):
-    found = ProviderPage.from_canonical_record(
+    found_page = ProviderPage.read_canonical_record(
         "https://animeschedule.net/anime/ranma",
         {
             "title": "Ranma",
@@ -151,7 +152,7 @@ def test_provider_page_links_searched_page_through_two_searched_by_pages_links_e
         searched_by_address="https://myanimelist.net/anime/210",
     ).model_copy(update={"searched_by": ("anilist:anime:210", "mal:anime:210")})
     links = ProviderPageLinks(
-        [found], ["mal:anime:210", "anilist:anime:210", "anidb:anime:193"]
+        [found_page], ["mal:anime:210", "anilist:anime:210", "anidb:anime:193"]
     )
     assert links.get_linked_page_keys("mal:anime:210") == frozenset(
         {"anilist:anime:210", "anidb:anime:193"}
@@ -166,7 +167,8 @@ def test_provider_page_links_page_linked_with_several_mal_pages_ties_nothing(
 ) -> None:
     entries, pages = matching_cases["ajin_films"]
     links = ProviderPageLinks(
-        pages, [key for entry in entries for key in entry.addresses_by_page_key]
+        pages,
+        [page_key for entry in entries for page_key in entry.addresses_by_page_key],
     )
     assert links.get_linked_page_keys("anidb:anime:11265") == frozenset()
     assert links.get_linked_page_keys("mal:anime:30868") == frozenset(

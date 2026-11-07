@@ -74,8 +74,8 @@ class _CorrectionNames:
     ) -> PageOrigin:
         """Return the seed entry listing a page of an entry, its address and whether added."""
         if self.corrected_seed is None:
-            return PageOrigin(entry.reference_page, address)
-        return self.corrected_seed.find_page_origin(entry.reference_page, page_key)
+            return PageOrigin(entry.reference_page_key, address)
+        return self.corrected_seed.find_page_origin(entry.reference_page_key, page_key)
 
     def find_entry_destination(self, reference_page: str) -> _PageDestination:
         """Return how a correction names the entry with this reference page."""
@@ -216,7 +216,7 @@ def _build_review_case(
     Returns:
         The case, with its seed entries of the same series as suggestions.
     """
-    review_case = ReviewCase.from_entry_group(
+    review_case = ReviewCase.build_entry_group_case(
         entry_group.entries,
         decisions,
         list_split_work_review_reasons(
@@ -277,7 +277,7 @@ def _build_entry_corrections(
                 entry,
                 key,
                 address,
-                placed_page.placed_key,
+                placed_page.placed_page_key,
                 placed_page.placement,
                 group_placement,
             )
@@ -307,7 +307,7 @@ def _build_seed_correction(
         # The page stays in its entry; it still moves when that entry is not
         # the seed entry listing it, such as a page moved in by the first pass.
         entry_destination = correction_names.find_entry_destination(
-            entry.reference_page
+            entry.reference_page_key
         )
         destination = (
             _PageDestination(None, None)
@@ -373,7 +373,7 @@ def _find_page_destination(
     surviving_reference_page = group_placement.surviving_reference_page_by_work.get(
         placement.placement_word
     )
-    if surviving_reference_page == entry.reference_page:
+    if surviving_reference_page == entry.reference_page_key:
         return None
     if surviving_reference_page:
         return group_placement.correction_names.find_entry_destination(
@@ -381,7 +381,7 @@ def _find_page_destination(
         )
     return _PageDestination(
         None,
-        f"{group_placement.combined_entry.reference_page} {placement.placement_word}",
+        f"{group_placement.combined_entry.reference_page_key} {placement.placement_word}",
     )
 
 
@@ -396,7 +396,7 @@ def _find_other_work_destination(
         return group_placement.correction_names.find_entry_destination(
             move_target_reference_page
         )
-    return _PageDestination(None, f"{entry.reference_page} {page_key}")
+    return _PageDestination(None, f"{entry.reference_page_key} {page_key}")
 
 
 def _find_target_reference_pages(
@@ -417,7 +417,7 @@ def _find_target_reference_pages(
         seed entry it moves to; pages without a sure target are left out.
     """
     return {
-        key: unrelated_page.move_target_entry.reference_page
+        key: unrelated_page.move_target_entry.reference_page_key
         for decision in decisions
         for key, unrelated_page in decision.unrelated_pages.items()
         if unrelated_page.move_target_entry is not None

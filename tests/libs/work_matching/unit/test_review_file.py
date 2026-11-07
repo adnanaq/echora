@@ -62,9 +62,9 @@ def test_review_file_attach_kept_answer_answer_written_in_file_comes_back(
     path = tmp_path / "review.jsonl"
     ReviewFile(path).write_cases([doubled_case])
     answer = {SIGEWINNE: "work 1", VARESA: "other work"}
-    _answer_in_file(path, doubled_case.case_name, answer)
-    kept = ReviewFile(path).attach_kept_answer(doubled_case)
-    assert kept.accepted_answer == {
+    _write_answer_in_file(path, doubled_case.case_name, answer)
+    kept_case = ReviewFile(path).attach_kept_answer(doubled_case)
+    assert kept_case.accepted_answer == {
         SIGEWINNE: PagePlacement("work 1"),
         VARESA: PagePlacement("other work"),
     }
@@ -75,7 +75,7 @@ def test_review_file_attach_kept_answer_provider_gaining_page_reopens_case(
 ) -> None:
     path = tmp_path / "review.jsonl"
     ReviewFile(path).write_cases([doubled_case])
-    _answer_in_file(
+    _write_answer_in_file(
         path, doubled_case.case_name, {SIGEWINNE: "work 1", VARESA: "work 1"}
     )
     entries, pages = matching_cases["genshin_sigewinne"]
@@ -89,7 +89,7 @@ def test_review_file_attach_kept_answer_provider_gaining_page_reopens_case(
         }
     )
     decisions = decide_doubled_providers(entry, pages, KnownWorkEntriesFromSeed([]))
-    later_case = ReviewCase.from_entry_group([entry], decisions, (), pages)
+    later_case = ReviewCase.build_entry_group_case([entry], decisions, (), pages)
     assert later_case.case_name != doubled_case.case_name
     assert ReviewFile(path).attach_kept_answer(later_case).answer is None
 
@@ -99,7 +99,7 @@ def test_review_file_attach_kept_answer_doubled_pages_in_other_entry_reopens_cas
 ) -> None:
     path = tmp_path / "review.jsonl"
     ReviewFile(path).write_cases([doubled_case])
-    _answer_in_file(
+    _write_answer_in_file(
         path, doubled_case.case_name, {SIGEWINNE: "work 1", VARESA: "work 1"}
     )
     entries, pages = matching_cases["genshin_sigewinne"]
@@ -112,7 +112,7 @@ def test_review_file_attach_kept_answer_doubled_pages_in_other_entry_reopens_cas
     decisions = decide_doubled_providers(
         other_entry, pages, KnownWorkEntriesFromSeed([])
     )
-    moved_case = ReviewCase.from_entry_group([other_entry], decisions, (), pages)
+    moved_case = ReviewCase.build_entry_group_case([other_entry], decisions, (), pages)
     assert moved_case.case_name != doubled_case.case_name
     assert ReviewFile(path).attach_kept_answer(moved_case).answer is None
 
@@ -122,12 +122,12 @@ def test_review_file_write_cases_answer_without_case_kept_and_reported(
 ) -> None:
     path = tmp_path / "review.jsonl"
     ReviewFile(path).write_cases([doubled_case, split_case])
-    _answer_in_file(
+    _write_answer_in_file(
         path, doubled_case.case_name, {SIGEWINNE: "work 1", VARESA: "work 1"}
     )
-    unused = ReviewFile(path).write_cases([split_case])
+    unused_case_names = ReviewFile(path).write_cases([split_case])
     cases = [json.loads(line)["case_name"] for line in path.read_text().splitlines()]
-    assert (unused, cases) == (
+    assert (unused_case_names, cases) == (
         (doubled_case.case_name,),
         [split_case.case_name, doubled_case.case_name],
     )
@@ -138,7 +138,7 @@ def test_review_file_write_cases_invalid_answer_without_case_kept_unchanged(
 ) -> None:
     path = tmp_path / "review.jsonl"
     ReviewFile(path).write_cases([doubled_case, split_case])
-    _answer_in_file(path, doubled_case.case_name, "maybe")
+    _write_answer_in_file(path, doubled_case.case_name, "maybe")
     answered_line = next(
         line for line in path.read_text().splitlines(keepends=True) if "maybe" in line
     )
@@ -162,11 +162,11 @@ def test_review_file_write_cases_invalid_answer_kept_for_fixing(
 ) -> None:
     path = tmp_path / "review.jsonl"
     ReviewFile(path).write_cases([doubled_case])
-    _answer_in_file(path, doubled_case.case_name, {SIGEWINNE: "maybe"})
+    _write_answer_in_file(path, doubled_case.case_name, {SIGEWINNE: "maybe"})
     review = ReviewFile(path)
-    kept = review.attach_kept_answer(doubled_case)
-    review.write_cases([kept])
-    assert kept.accepted_answer is None
+    kept_case = review.attach_kept_answer(doubled_case)
+    review.write_cases([kept_case])
+    assert kept_case.accepted_answer is None
     assert json.loads(path.read_text())["answer"] == {SIGEWINNE: "maybe"}
 
 
@@ -184,14 +184,14 @@ def test_review_file_write_cases_failed_write_keeps_old_file(
 ) -> None:
     path = tmp_path / "review.jsonl"
     ReviewFile(path).write_cases([doubled_case])
-    written = path.read_text(encoding="utf-8")
+    written_text = path.read_text(encoding="utf-8")
     with (
         patch.object(file_replacement.os, "fsync", autospec=True, side_effect=OSError),
         pytest.raises(OSError),
     ):
         ReviewFile(path).write_cases([split_case])
     assert (path.read_text(encoding="utf-8"), list(tmp_path.iterdir())) == (
-        written,
+        written_text,
         [path],
     )
 
@@ -201,14 +201,14 @@ def test_review_file_blank_line_answers_read_and_line_not_written(
 ) -> None:
     path = tmp_path / "review.jsonl"
     ReviewFile(path).write_cases([doubled_case])
-    _answer_in_file(
+    _write_answer_in_file(
         path, doubled_case.case_name, {SIGEWINNE: "work 1", VARESA: "work 2"}
     )
     path.write_text("\n" + path.read_text(encoding="utf-8") + "\n", encoding="utf-8")
     review = ReviewFile(path)
-    kept = review.attach_kept_answer(doubled_case)
-    review.write_cases([kept])
-    assert kept.answer == {SIGEWINNE: "work 1", VARESA: "work 2"}
+    kept_case = review.attach_kept_answer(doubled_case)
+    review.write_cases([kept_case])
+    assert kept_case.answer == {SIGEWINNE: "work 1", VARESA: "work 2"}
     assert "" not in path.read_text(encoding="utf-8").splitlines()
 
 
@@ -223,7 +223,7 @@ def test_review_file_write_cases_answer_saved_after_opening_kept(
     path = tmp_path / "review.jsonl"
     ReviewFile(path).write_cases([doubled_case])
     review = ReviewFile(path)
-    _answer_in_file(
+    _write_answer_in_file(
         path, doubled_case.case_name, {SIGEWINNE: "work 1", VARESA: "work 1"}
     )
     review.write_cases([doubled_case])
@@ -276,7 +276,7 @@ def test_review_file_write_cases_answer_not_accepted_logs_warning(
 ) -> None:
     path = tmp_path / "review.jsonl"
     ReviewFile(path).write_cases([doubled_case])
-    _answer_in_file(path, doubled_case.case_name, {SIGEWINNE: "maybe"})
+    _write_answer_in_file(path, doubled_case.case_name, {SIGEWINNE: "maybe"})
     ReviewFile(path).write_cases([doubled_case])
     assert doubled_case.case_name in caplog.text
 
@@ -286,7 +286,7 @@ def test_review_file_case_answered_twice_logs_warning(
 ) -> None:
     path = tmp_path / "review.jsonl"
     ReviewFile(path).write_cases([doubled_case])
-    _answer_in_file(
+    _write_answer_in_file(
         path, doubled_case.case_name, {SIGEWINNE: "work 1", VARESA: "work 1"}
     )
     path.write_text(path.read_text(encoding="utf-8") * 2, encoding="utf-8")
@@ -300,9 +300,9 @@ def test_review_file_line_not_case_object_raises_naming_file_and_line(
 ) -> None:
     path = tmp_path / "review.jsonl"
     path.write_text(f"{line}\n", encoding="utf-8")
-    with pytest.raises(ValidationError) as raised:
+    with pytest.raises(ValidationError) as error_info:
         ReviewFile(path)
-    assert raised.value.__notes__ == [f"{path}, line 1"]
+    assert error_info.value.__notes__ == [f"{path}, line 1"]
 
 
 def test_review_file_broken_line_raises_naming_file_and_line(tmp_path) -> None:
@@ -310,12 +310,12 @@ def test_review_file_broken_line_raises_naming_file_and_line(tmp_path) -> None:
     path.write_text(
         '{"case_name": "split work: mal:anime:1"}\n{"case_name": \n', encoding="utf-8"
     )
-    with pytest.raises(ValidationError) as raised:
+    with pytest.raises(ValidationError) as error_info:
         ReviewFile(path)
-    assert raised.value.__notes__ == [f"{path}, line 2"]
+    assert error_info.value.__notes__ == [f"{path}, line 2"]
 
 
-def _answer_in_file(path, case_name: str, answer: object) -> None:
+def _write_answer_in_file(path, case_name: str, answer: object) -> None:
     lines = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
     for line in lines:
         if line["case_name"] == case_name:
@@ -408,12 +408,12 @@ def test_review_file_save_answers_seen_saved_answer_changed_raises_and_keeps_fil
     review_file = ReviewFile(review_file_path)
     review_file.save_answers({case_name: {"anilist:anime:102289": "skip"}})
     saved_text = review_file_path.read_text(encoding="utf-8")
-    with pytest.raises(SavedAnswerChangedError) as raised:
+    with pytest.raises(SavedAnswerChangedError) as error_info:
         review_file.save_answers(
             {case_name: {"anilist:anime:102289": "add"}},
             seen_saved_answers={case_name: None},
         )
-    assert raised.value.case_names == (case_name,)
+    assert error_info.value.case_names == (case_name,)
     assert review_file_path.read_text(encoding="utf-8") == saved_text
 
 

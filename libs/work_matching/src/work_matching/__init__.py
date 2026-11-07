@@ -1,7 +1,8 @@
 """Decide which provider pages belong to the same work.
 
-Seed cleaning uses this now; seed link filling and discovery will use it later.
-Terms are as in ``GLOSSARY.md``. This library imports nothing from enrichment.
+Seed cleaning uses this package now; seed link filling and discovery will use
+this package later. Terms are as in ``GLOSSARY.md``. This library imports
+nothing from enrichment.
 """
 
 from work_matching.answer_rules import LinkedPageAnswerRule, PlacementRule
@@ -21,7 +22,7 @@ from work_matching.doubled_provider_decision import (
 )
 from work_matching.doubled_provider_pages import (
     find_doubled_provider_page_keys,
-    get_decided_provider,
+    resolve_decided_provider,
 )
 from work_matching.entry_group import (
     check_group_answer_placements,
@@ -44,8 +45,8 @@ from work_matching.linked_page_check import (
     NoLinkingEntryError,
     check_linked_page_answer,
     decide_linked_page,
+    find_entry_episode_count,
     find_unheld_linked_page_keys,
-    get_entry_episode_count,
     read_linked_page_answer,
     suggest_linked_page_answer,
 )
@@ -58,8 +59,8 @@ from work_matching.named_entries import (
 from work_matching.page_details_comparison import (
     MalPageComparison,
     compare_page_with_mal_page,
-    get_seed_type,
     is_page_details_matching,
+    resolve_seed_type,
 )
 from work_matching.page_placement import (
     FIRST_WORK,
@@ -76,12 +77,12 @@ from work_matching.page_placement import (
     write_placement,
 )
 from work_matching.placement_suggestions import suggest_page_placements
-from work_matching.provider_page import ProviderPage, index_pages_by_current_key
+from work_matching.provider_page import ProviderPage, index_pages_by_current_page_key
 from work_matching.provider_page_key import (
     build_page_address,
-    get_page_key,
-    get_page_provider,
     rank_by_provider_trust,
+    read_page_provider,
+    resolve_page_key,
 )
 from work_matching.provider_page_links import ProviderPageLinks
 from work_matching.provider_page_store import ProviderPageStore
@@ -173,18 +174,14 @@ __all__ = [
     "describe_answer_word",
     "describe_case_reasons",
     "find_doubled_provider_page_keys",
+    "find_entry_episode_count",
     "find_linked_page_conflicts",
     "find_page_placement",
     "find_surviving_entries",
     "find_unheld_linked_page_keys",
     "fold_title_for_comparison",
-    "get_decided_provider",
-    "get_entry_episode_count",
-    "get_page_key",
-    "get_page_provider",
-    "get_seed_type",
     "hold_review_file_lock",
-    "index_pages_by_current_key",
+    "index_pages_by_current_page_key",
     "is_page_details_matching",
     "is_review_file_locked",
     "list_group_page_choices",
@@ -200,9 +197,13 @@ __all__ = [
     "read_answer_placements",
     "read_group_answer_placements",
     "read_linked_page_answer",
+    "read_page_provider",
     "read_placement",
     "replace_file_lines",
+    "resolve_decided_provider",
     "resolve_named_entries",
+    "resolve_page_key",
+    "resolve_seed_type",
     "suggest_group_page_placements",
     "suggest_linked_page_answer",
     "suggest_page_placements",

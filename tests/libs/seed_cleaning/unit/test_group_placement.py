@@ -34,7 +34,7 @@ def _seed_entry(title: str, *addresses: str) -> dict:
 
 
 def _page(address: str, *linked_addresses: str, **details) -> ProviderPage:
-    return ProviderPage.from_canonical_record(
+    return ProviderPage.read_canonical_record(
         address,
         {
             "title": "Show",
@@ -105,7 +105,7 @@ def test_correct_entry_groups_entry_without_review_moves_page_to_seed_entry(
 def test_correct_entry_groups_link_on_searched_page_settles_entry(
     entry, store, known_work_entries, review_file
 ) -> None:
-    found = ProviderPage.from_canonical_record(
+    found = ProviderPage.read_canonical_record(
         SCHEDULE,
         {"title": "Show", "sources": [SCHEDULE, KITSU_ONE]},
         searched_by_address=MAL,
@@ -723,7 +723,7 @@ def test_correct_entry_groups_answer_naming_entry_outside_seed_left_open(
     [case] = placed.review_cases
     assert placed.corrections == ()
     assert case.list_broken_answer_rules(case.answer) == (
-        PlacementRule.NAMED_ENTRY_UNKNOWN,
+        PlacementRule.UNKNOWN_NAMED_ENTRY,
     )
 
 
