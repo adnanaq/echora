@@ -57,16 +57,19 @@ def is_transient_service_error(
 
 
 def _find_status_code(error: Exception) -> int | None:
-    """Find the HTTP status code an error carries, under any of its usual names.
+    """Find the HTTP status code an error carries, under either of its usual names.
+
+    A ``code`` attribute is not read, because errors also use it for exit
+    codes and other numbers that are not HTTP statuses.
 
     Args:
         error: The error to inspect.
 
     Returns:
-        The value of ``status``, ``status_code`` or ``code``, in that order,
+        The value of ``status`` or ``status_code``, in that order,
         when one is an integer; otherwise None.
     """
-    for attribute_name in ("status", "status_code", "code"):
+    for attribute_name in ("status", "status_code"):
         status_code = getattr(error, attribute_name, None)
         if isinstance(status_code, int):
             return status_code

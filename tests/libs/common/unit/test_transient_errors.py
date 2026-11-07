@@ -14,6 +14,12 @@ class _StatusError(Exception):
         self.status = status
 
 
+class _ExitCodeError(Exception):
+    def __init__(self, code: int) -> None:
+        super().__init__("connection reset")
+        self.code = code
+
+
 class _BrokenResponseError(Exception):
     pass
 
@@ -26,6 +32,7 @@ class _BrokenResponseError(Exception):
         _StatusCodeError(504),
         _StatusError(429),
         Exception("temporary network unavailable"),
+        _ExitCodeError(1),
     ],
 )
 def test_is_transient_service_error_retryable_error_returns_true(error) -> None:
