@@ -16,7 +16,10 @@ from review_page.file_review_case_source import (
     RunSeedFileUnknownError,
 )
 from review_page.review_case_loader import UnreadableReviewFileError
-from review_page.review_case_source import ANSWER_SAVED_ELSEWHERE_RULE_NAME
+from review_page.review_case_source import (
+    ANSWER_SAVED_ELSEWHERE_RULE_NAME,
+    SeedFileUnavailableError,
+)
 from seed_cleaning import (
     REVIEW_ANSWER_REASON,
     SeedCleaningRunResult,
@@ -166,6 +169,23 @@ def test_file_review_case_source_save_answers_named_entry_outside_seed_not_saved
         False,
         [PlacementRule.UNKNOWN_NAMED_ENTRY.name],
     )
+
+
+@pytest.mark.parametrize(
+    "seed_file", [None, Path("assets/seed_data/missing_seed.json")]
+)
+def test_file_review_case_source_save_answers_named_entry_without_seed_file_raises(
+    data_dir, run_script, review_cases, review_case_lines, seed_file
+) -> None:
+    source = FileReviewCaseSource(data_dir, run_script, seed_file=seed_file)
+    case_name = review_cases["gochuumon_movie"].case_name
+    with pytest.raises(SeedFileUnavailableError):
+        source.save_answers(
+            [_case_answer(case_name, _gochuumon_named_answer("mal:anime:21273"))]
+        )
+    assert (data_dir / "review.jsonl").read_text(encoding="utf-8").splitlines(
+        keepends=True
+    ) == review_case_lines
 
 
 def test_file_review_case_source_save_answers_rule_breaking_answer_not_saved(

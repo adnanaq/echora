@@ -58,6 +58,7 @@ from review_page.review_case_messages import (
 from review_page.review_case_source import (
     ANSWER_SAVED_ELSEWHERE_RULE_NAME,
     ReviewCaseSource,
+    SeedFileUnavailableError,
     load_cases,
     load_last_run_summary,
 )
@@ -84,6 +85,7 @@ _SAVE_REFUSAL_NOTICES: Final[dict[type[Exception], str]] = {
         "A run changed the cases since the page loaded them; nothing was saved. "
         "Reload the page."
     ),
+    SeedFileUnavailableError: str(SeedFileUnavailableError()),
 }
 
 
@@ -305,6 +307,7 @@ class CaseRoutes:
         except (
             ReviewFileLockedError,
             SavedAnswerChangedError,
+            SeedFileUnavailableError,
             UnknownCaseError,
         ) as error:
             return build_notice_response(409, _SAVE_REFUSAL_NOTICES[type(error)])

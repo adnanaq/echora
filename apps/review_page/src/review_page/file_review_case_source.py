@@ -55,7 +55,7 @@ from review_page.review_case_loader import ReviewCaseLoader
 from review_page.review_case_messages import (
     list_ordered_mappings,
 )
-from review_page.review_case_source import ReviewCaseSource
+from review_page.review_case_source import ReviewCaseSource, SeedFileUnavailableError
 from review_page.seed_entries import load_seed_entries
 from seed_cleaning import (
     CORRECTIONS_FILE_NAME,
@@ -70,6 +70,7 @@ from seed_cleaning import (
 )
 from shared_proto.v1 import review_cases_pb2
 from work_matching import (
+    KnownWorkEntriesFromSeed,
     ReviewFile,
     is_review_file_locked,
     list_named_entry_page_keys,
@@ -178,6 +179,8 @@ class FileReviewCaseSource(ReviewCaseSource):
                 validation and persistence.
             SavedAnswerChangedError: Another session modified a case's saved
                 answer between validation and persistence.
+            SeedFileUnavailableError: An answer names a seed entry and the seed
+                file is missing or unknown.
         """
         cases_by_name = {
             case.case_name: case for case in self._review_case_loader.load_cases().cases
@@ -189,9 +192,7 @@ class FileReviewCaseSource(ReviewCaseSource):
             answer = read_case_answer(case_answer)
             case = cases_by_name.get(case_answer.case_name)
             if case is not None and list_named_entry_page_keys(answer):
-                case = resolve_named_entries(
-                    case, load_seed_entries(self._find_seed_file()), answer
-                )
+                case = resolve_named_entries(case, self._load_seed_entries(), answer)
             check_result = check_case_answer(
                 case, case_answer.case_name, answer, seen_saved_answers
             )
@@ -362,6 +363,20 @@ class FileReviewCaseSource(ReviewCaseSource):
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
             )
+
+    def _load_seed_entries(self) -> KnownWorkEntriesFromSeed:
+        """Load the seed entries that named entries are looked up in.
+
+        Returns:
+            The seed's work entries, loaded once per seed file version.
+
+        Raises:
+            SeedFileUnavailableError: The seed file is unknown or missing.
+        """
+        try:
+            return load_seed_entries(self._find_seed_file())
+        except (RunSeedFileUnknownError, FileNotFoundError) as error:
+            raise SeedFileUnavailableError from error
 
     def _find_seed_file(self) -> Path:
         """Resolve the seed file path from configuration or the previous run result.

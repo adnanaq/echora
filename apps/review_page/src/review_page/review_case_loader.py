@@ -43,7 +43,10 @@ class UnreadableReviewFileError(RuntimeError):
         """
         super().__init__(
             f"Line {line_number} of {review_file_path.name} is not a valid review "
-            "case. Fix or remove that line, then reload the page."
+            "case. When the file comes from an older version, run "
+            "scripts/clean_seed.py --no-fetch from the terminal, which rebuilds "
+            "the file and keeps its saved answers. Otherwise fix or remove that "
+            "line, then reload the page."
         )
 
 

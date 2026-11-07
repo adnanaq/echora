@@ -540,8 +540,14 @@ def test_answers_save_all_saves_every_edit(client, source, review_cases) -> None
     assert sorted(_events(response)["answerssaved"]["saved"]) == sorted(edits)
 
 
-def test_answers_while_run_holds_lock_answers_409(client, source, review_cases) -> None:
-    source.is_locked = True
+@pytest.mark.parametrize(
+    ("source_flag", "flag_value"),
+    [("is_locked", True), ("is_seed_file_readable", False)],
+)
+def test_answers_refused_by_source_answers_409_with_notice(
+    client, source, review_cases, source_flag, flag_value
+) -> None:
+    setattr(source, source_flag, flag_value)
     response = client.post(
         "/answers",
         data={

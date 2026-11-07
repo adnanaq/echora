@@ -36,6 +36,18 @@ from work_matching import ReviewCase
 ANSWER_SAVED_ELSEWHERE_RULE_NAME = "ANSWER_SAVED_ELSEWHERE"
 
 
+class SeedFileUnavailableError(RuntimeError):
+    """Report that the seed file an answer's named entries are checked against cannot be read."""
+
+    def __init__(self) -> None:
+        """Explain how to make a seed file available."""
+        super().__init__(
+            "The seed file that named entries are checked against is missing or "
+            "unknown, so nothing was saved. Set REVIEW_PAGE_SEED_FILE, or run "
+            "scripts/clean_seed.py once so its result names the file."
+        )
+
+
 class ReviewCaseSource(ABC):
     """Provide storage and execution operations for review cases, answers, and runs."""
 
@@ -89,6 +101,9 @@ class ReviewCaseSource(ABC):
                 validation and persistence, leaving storage unchanged.
             SavedAnswerChangedError: Another session modified a case's stored
                 answer between validation and persistence, leaving storage unchanged.
+            SeedFileUnavailableError: An answer names a seed entry and the seed
+                file to look it up in is missing or unknown, leaving storage
+                unchanged.
         """
 
     @abstractmethod
