@@ -209,7 +209,8 @@ message SeedCorrection {
   string entry_reference_page = 1;
   string page_key = 2;
   string address = 3;
-  string placement_word = 4;
+  // Unset for a dead page, which the run drops from every work.
+  optional string placement_word = 4;
   bool is_main_page = 5;
   optional string renamed_to = 6;
   optional string target_entry_reference_page = 7;
@@ -229,6 +230,8 @@ message SeedCorrection {
   // The page key an answer named after "other work". The page ends up
   // wherever that named page ends up.
   optional string named_entry_page_key = 16;
+  // Whether the provider says the page does not exist, so the run drops it.
+  bool is_dead_page = 17;
 }
 
 // An entry the last run checked, by its reference page, so corrections show

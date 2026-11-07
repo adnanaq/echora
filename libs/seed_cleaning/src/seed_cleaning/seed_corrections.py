@@ -16,6 +16,10 @@ rules:
 - Renamed pages: a page an entry lists under an old address records its
   current key, so the old address can be dropped (the rules send it to review
   otherwise).
+- Dead pages: a page the provider says does not exist is dropped from its
+  entry, and its correction records ``is_dead_page``. The run drops dead pages
+  before looking for doubled providers, so a dead page never makes a doubled
+  provider or reaches review (``dead_pages``).
 - Two passes: a second-pass correction stands in for the first pass's
   correction of the same page of the same seed entry (``merge_corrections``).
   The second pass places pages where the first pass left them, so its
@@ -43,6 +47,9 @@ from work_matching import ReviewCase, replace_file_lines
 
 # The reason recorded for a page placed by a review answer.
 REVIEW_ANSWER_REASON = "review answer"
+# The reason recorded for a page the run drops because its provider says the
+# page does not exist.
+DEAD_PAGE_REASON = "dead page"
 
 
 class SeedCorrection(BaseModel):
@@ -55,8 +62,9 @@ class SeedCorrection(BaseModel):
     # The page key and address as the seed entry lists them.
     page_key: str
     address: str
-    # The page's work in answer words: ``work 1``, ``work 2`` and so on or ``other work``.
-    placement_word: str
+    # The page's work in answer words: ``work 1``, ``work 2`` and so on or
+    # ``other work``. None for a dead page, which the run drops from every work.
+    placement_word: str | None
     # Whether enrichment fetches this page for its provider in its work.
     is_main_page: bool = False
     # The current page key, when the seed lists the page under an old address.
@@ -73,6 +81,9 @@ class SeedCorrection(BaseModel):
     # Whether the page is not in the seed and is added to the entry: a page the
     # entry's pages link that no seed entry holds.
     is_added_page: bool = False
+    # Whether the provider says the page does not exist, so the run drops it
+    # from its entry.
+    is_dead_page: bool = False
     # Whether the page covers only part of its work, such as one season of a
     # run MyAnimeList lists whole, so enrichment combines it with the work's
     # other part pages rather than taking it for the whole work.
@@ -82,7 +93,8 @@ class SeedCorrection(BaseModel):
     # old id must be replaced. Set after both passes (``mark_anime_id_pages``).
     is_anime_id_page: bool = False
     # Why the page is placed here: the doubled-provider decision's outcome name,
-    # the linked-page decision's reason name, or ``review answer``.
+    # the linked-page decision's reason name, ``review answer``, or
+    # ``dead page``.
     reason: str
 
 

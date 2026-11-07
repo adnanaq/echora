@@ -174,6 +174,9 @@ CORRECTION_CHANGE_TOOLTIPS: Final[dict[str, str]] = {
         "Show entries where the run dropped an old address because "
         "the entry already lists the current address"
     ),
+    "dead pages dropped": (
+        "Show entries where the run dropped a page its provider says no longer exists"
+    ),
     "pages moved to a seed entry": (
         "Show entries where the run moved a page to another seed entry"
     ),

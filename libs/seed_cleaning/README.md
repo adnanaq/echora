@@ -115,7 +115,7 @@ Fetch:
 
 First pass:
 
-3. **List the entries.** The entries with a doubled provider, and the entries without a MAL page. See [Entries to check](#entries-to-check).
+3. **Drop dead pages, then list the entries.** Every page its provider says does not exist is dropped from its entry, and the entries are checked without those pages, so a dead page never makes a doubled provider or reaches review. Then the entries with a doubled provider, and the entries without a MAL page, are listed. See [Entries to check](#entries-to-check).
 4. **Place the doubled-provider entries:** each entry is one group, placed by the rules or by one review case. See [Placing entry groups](#placing-entry-groups).
 5. **Decide the pages the placed entries and the entries without a MAL page link:** add, review, or leave out (not found, or already held under another address). See [Adding linked pages](#adding-linked-pages).
 
@@ -307,13 +307,14 @@ Each correction is a `SeedCorrection`:
 | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `entry_reference_page`        | The reference page of the seed entry that lists the page, or that an added page joins.                                                                                                                                                  |
 | `page_key`, `address`         | The page as the seed entry lists it; for an added page, its current key and the seed's spelling of it.                                                                                                                                  |
-| `placement_word`              | `work 1`, `work 2` and so on, or `other work`.                                                                                                                                                                                          |
+| `placement_word`              | `work 1`, `work 2` and so on, or `other work`, and `null` for a dead page.                                                                                                                                                                                                 |
 | `is_main_page`                | Whether enrichment fetches this page for its provider in its work.                                                                                                                                                                      |
 | `renamed_to`                  | The current page key, when the seed lists the page under an old address.                                                                                                                                                                |
 | `target_entry_reference_page` | The reference page of the seed entry the page joins: the target of an `other work` page (its sure move, or the entry an answer names), or the entry that survives as the page's work; `null` when the page stays or starts a new entry. |
 | `named_entry_page_key`        | The page key an answer named after `other work`, which the page follows wherever it ends up. `null` when no answer named a page.                                                                                                        |
 | `new_entry_key`               | The new entry the page starts or joins: pages with the same key form one new entry. `null` when the page stays or joins a seed entry.                                                                                                   |
 | `is_added_page`               | Whether the page is not in the seed and is added to the entry (see [Adding linked pages](#adding-linked-pages)).                                                                                                                        |
+| `is_dead_page`                | Whether the provider says the page does not exist, so the run drops it from its entry.                                                                                                                                                  |
 | `is_part_page`                | Whether the page covers only part of its work, so enrichment combines it with the work's other part pages: an answer's `, part`, or an added page's `add as part`.                                                                      |
 | `is_anime_id_page`            | Whether the anime id of the seed entry this added page ends in now comes from the page, so the search entry stored under the old id must be replaced (see the anime id rule under [Linked-page rules](#linked-page-rules)).             |
 | `reason`                      | Why the page is placed here: the doubled-provider decision's outcome by name (`SAME_PAGE`, `PAGES_OF_OTHER_WORKS`), the linked-page decision's reason by name, or `review answer`.                                                      |
@@ -355,6 +356,11 @@ The rules:
   seed, since an entry without pages is no work.
 - **Renamed pages.** The old address is dropped: the entry also lists the page
   under its current address, or the rules send the entry to review.
+- **Dead pages.** A page its provider says does not exist is dropped from its
+  entry, and its correction records `is_dead_page`, no `placement_word` and the
+  reason `dead page`. The fetch stores a page as dead only on that answer, never
+  on a failed request. An entry whose every page is dead is removed. A page the
+  provider deleted after its fetch stays until a new fetch of that page.
 - **Main page first**, because enrichment fetches the first address of each
   provider.
 
@@ -377,6 +383,7 @@ A page the rules keep in its entry, under the address it has now:
   "named_entry_page_key": null,
   "new_entry_key": null,
   "is_added_page": false,
+  "is_dead_page": false,
   "is_part_page": false,
   "is_anime_id_page": false,
   "reason": "SAME_PAGE"
@@ -398,6 +405,7 @@ one (`renamed_to`):
   "named_entry_page_key": null,
   "new_entry_key": null,
   "is_added_page": false,
+  "is_dead_page": false,
   "is_part_page": false,
   "is_anime_id_page": false,
   "reason": "SAME_PAGE"
@@ -418,6 +426,7 @@ A page the rules move to the seed entry its links name:
   "named_entry_page_key": null,
   "new_entry_key": null,
   "is_added_page": false,
+  "is_dead_page": false,
   "is_part_page": false,
   "is_anime_id_page": false,
   "reason": "PAGES_OF_OTHER_WORKS"
@@ -439,6 +448,7 @@ ANN-only entry merged into the MAL entry, which is then removed):
   "named_entry_page_key": null,
   "new_entry_key": null,
   "is_added_page": false,
+  "is_dead_page": false,
   "is_part_page": false,
   "is_anime_id_page": false,
   "reason": "review answer"
@@ -460,6 +470,7 @@ shared by every page with the same `new_entry_key`:
   "named_entry_page_key": null,
   "new_entry_key": "mal:anime:43735 work 2",
   "is_added_page": false,
+  "is_dead_page": false,
   "is_part_page": false,
   "is_anime_id_page": false,
   "reason": "review answer"
@@ -481,6 +492,7 @@ id now comes from it, since it is a MAL page:
   "named_entry_page_key": null,
   "new_entry_key": null,
   "is_added_page": true,
+  "is_dead_page": false,
   "is_part_page": false,
   "is_anime_id_page": true,
   "reason": "CHECKS_PASSED"
@@ -655,6 +667,7 @@ that folder unless `--store` names another file.
 
 | File                          | Holds                                                                                                                                                                                                           |
 | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `dead_pages.py`               | `list_dead_page_corrections`: the corrections dropping every dead page the seed lists.                                                                                                                          |
 | `doubled_provider_entries.py` | `find_doubled_provider_entries`: the entries holding a doubled provider.                                                                                                                                        |
 | `split_work_links.py`         | `SplitWorkLink`, `SplitWorkLinks`, `find_split_work_links`: the links tying entries, the entries linking each page, and the pages covering several works.                                                       |
 | `split_work_candidates.py`    | `SplitWorkCandidates` and `find_split_work_candidates`: the candidate groups by title, link and several-works page, with their evidence.                                                                        |

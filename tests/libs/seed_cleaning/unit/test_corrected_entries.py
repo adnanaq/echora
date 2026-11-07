@@ -189,6 +189,26 @@ def test_build_corrected_entries_renamed_old_address_dropped(
     ]
 
 
+def test_build_corrected_entries_dead_page_dropped(
+    entry, store, known_work_entries
+) -> None:
+    corrections = [
+        SeedCorrection(
+            entry_reference_page="mal:anime:1",
+            page_key="kitsu:anime:2",
+            address=KITSU_TWO,
+            placement_word=None,
+            is_dead_page=True,
+            reason="dead page",
+        )
+    ]
+    [corrected] = build_corrected_entries(corrections, known_work_entries, store)
+    assert list(corrected.entry.addresses_by_page_key) == [
+        "mal:anime:1",
+        "kitsu:anime:1",
+    ]
+
+
 def test_build_corrected_entries_main_page_listed_first(
     entry, store, known_work_entries
 ) -> None:

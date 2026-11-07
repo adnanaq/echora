@@ -1,3 +1,4 @@
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -163,6 +164,67 @@ def test_run_seed_cleaning_lists_answers_whose_case_is_gone(
     assert _run(seed_document, store, data_dir).unused_answer_case_names == (
         gone_case.case_name,
     )
+
+
+def test_run_seed_cleaning_dead_pages_dropped_before_any_case(
+    seed_document, store, data_dir
+) -> None:
+    seed_document["data"].append(_seed_entry("Lost", OTHER_MAL))
+    store.add_pages(
+        ProviderPage.build_dead_page(KITSU_TWO), ProviderPage.build_dead_page(OTHER_MAL)
+    )
+    result = _run(seed_document, store, data_dir)
+    dead_page_corrections = [
+        (correction["entry_reference_page"], correction["page_key"])
+        for correction in map(
+            json.loads,
+            (data_dir / "corrections.jsonl").read_text(encoding="utf-8").splitlines(),
+        )
+        if correction["is_dead_page"]
+    ]
+    assert result.case_names == ()
+    assert dead_page_corrections == [
+        ("mal:anime:1", "kitsu:anime:2"),
+        ("mal:anime:9", "mal:anime:9"),
+    ]
+    assert result.correction_counts["dead pages dropped"] == 2
+    assert result.corrected_entry_counts["entries removed, no page left"] == 1
+
+
+def test_run_seed_cleaning_dead_reference_page_corrections_name_seed_entry(
+    store, data_dir
+) -> None:
+    seed_document = {
+        "$schema": "https://example.com/refs/tags/2026-43/schemas/seed.json",
+        "data": [_seed_entry("Other", OTHER_MAL, OTHER_KITSU_ONE, OTHER_KITSU_TWO)],
+    }
+    store.add_pages(
+        ProviderPage.build_dead_page(OTHER_MAL),
+        _page(OTHER_KITSU_ONE),
+        _page(OTHER_KITSU_TWO),
+    )
+    [case_name] = _run(seed_document, store, data_dir).case_names
+    ReviewFile(data_dir / "review.jsonl").save_answers(
+        {case_name: {"kitsu:anime:91": "work 1", "kitsu:anime:92": "work 2"}}
+    )
+    result = _run(seed_document, store, data_dir)
+    assert result.rejected_answer_case_names == ()
+    assert [
+        (
+            correction["entry_reference_page"],
+            correction["page_key"],
+            correction["new_entry_key"],
+            correction["is_dead_page"],
+        )
+        for correction in map(
+            json.loads,
+            (data_dir / "corrections.jsonl").read_text(encoding="utf-8").splitlines(),
+        )
+    ] == [
+        ("mal:anime:9", "kitsu:anime:91", None, False),
+        ("mal:anime:9", "kitsu:anime:92", "kitsu:anime:91 work 2", False),
+        ("mal:anime:9", "mal:anime:9", None, True),
+    ]
 
 
 def test_run_seed_cleaning_review_file_locked_by_other_process_raises(

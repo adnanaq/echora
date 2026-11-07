@@ -34,6 +34,8 @@ from seed_cleaning.cleaning_report import (
     describe_linked_page_outcomes,
 )
 from seed_cleaning.corrected_entries import build_corrected_entries, mark_anime_id_pages
+from seed_cleaning.corrected_seed import CorrectedSeed, build_corrected_seed
+from seed_cleaning.dead_pages import list_dead_page_corrections
 from seed_cleaning.doubled_provider_entries import find_doubled_provider_entries
 from seed_cleaning.entry_groups import EntryGroup
 from seed_cleaning.group_placement import correct_entry_groups
@@ -215,10 +217,17 @@ def run_first_pass(
     store: ProviderPageStore,
     review_file: ReviewFile,
 ) -> tuple[PlacementCorrections, LinkedPageCorrections]:
-    """Place the entries with a doubled provider and add the pages entries link.
+    """Drop dead pages, place the entries with a doubled provider, and add linked pages.
 
-    Links are read from the doubled-provider entries and the entries without a
-    MAL page.
+    Each item is one step, in order.
+
+    - Every dead page the seed lists is dropped (``dead_pages``), and the
+      entries are checked as that leaves them, so a dead page never makes a
+      doubled provider or reaches review. Corrections still name the
+      downloaded seed's entries.
+    - The entries with a doubled provider are placed.
+    - Links are read from the doubled-provider entries and the entries without
+      a MAL page, and the pages they link are added.
 
     Args:
         known_work_entries: Every seed entry.
@@ -226,21 +235,34 @@ def run_first_pass(
         review_file: The review file, for the answers kept in it.
 
     Returns:
-        The doubled-provider corrections and cases, and the linked-page ones.
+        The dead-page and doubled-provider corrections with the doubled-provider
+        cases, and the linked-page corrections and cases.
     """
-    doubled_provider_entries = find_doubled_provider_entries(known_work_entries)
-    entries_without_mal_page = find_entries_without_mal_page(known_work_entries)
+    dead_page_corrections = list_dead_page_corrections(known_work_entries, store)
+    logger.info(f"Dead pages dropped: {len(dead_page_corrections)}")
+    live_seed = build_corrected_seed(dead_page_corrections, known_work_entries, store)
+    doubled_provider_entries = find_doubled_provider_entries(
+        live_seed.known_work_entries
+    )
+    entries_without_mal_page = find_entries_without_mal_page(
+        live_seed.known_work_entries
+    )
     logger.info(f"Entries without a MAL page: {len(entries_without_mal_page)}")
-    group_corrections = correct_entry_groups(
+    entry_group_corrections = correct_entry_groups(
         [EntryGroup((entry,)) for entry in doubled_provider_entries],
         store,
-        known_work_entries,
+        live_seed.known_work_entries,
         review_file,
+        live_seed,
     )
     linking_seed_entries_by_page_key = find_linking_seed_entries(
         list_entries_with_placed_pages(
-            [*doubled_provider_entries, *entries_without_mal_page],
-            group_corrections,
+            _find_seed_entries(
+                [*doubled_provider_entries, *entries_without_mal_page],
+                live_seed,
+                known_work_entries,
+            ),
+            entry_group_corrections,
             known_work_entries,
             store,
         ),
@@ -250,7 +272,42 @@ def run_first_pass(
     linked_page_corrections = correct_linked_pages(
         linking_seed_entries_by_page_key, store, known_work_entries, review_file
     )
+    group_corrections = PlacementCorrections(
+        (*dead_page_corrections, *entry_group_corrections.corrections),
+        entry_group_corrections.review_cases,
+    )
     return group_corrections, linked_page_corrections
+
+
+def _find_seed_entries(
+    live_entries: list[WorkEntry],
+    live_seed: CorrectedSeed,
+    known_work_entries: KnownWorkEntriesFromSeed,
+) -> list[WorkEntry]:
+    """Find the downloaded seed's entry each entry without dead pages stands for.
+
+    The linked-page pass names entries by the downloaded seed's reference
+    pages, so it reads the seed's own entries. A dead page links nothing, so
+    reading those entries with their dead pages changes no link.
+
+    Args:
+        live_entries: Entries of the seed without its dead pages.
+        live_seed: The seed without its dead pages, with each entry's identity.
+        known_work_entries: Every entry of the downloaded seed.
+
+    Returns:
+        The downloaded seed's entries, in the order given.
+    """
+    seed_entries = []
+    for live_entry in live_entries:
+        seed_reference_page = live_seed.identity_by_reference_page[
+            live_entry.reference_page_key
+        ].seed_entry_reference_page
+        if seed_reference_page and (
+            seed_entry := known_work_entries.find_by_page_key(seed_reference_page)
+        ):
+            seed_entries.append(seed_entry)
+    return seed_entries
 
 
 def run_second_pass(

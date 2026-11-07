@@ -59,6 +59,7 @@ CORRECTION_COUNT_NAMES = (
     "pages kept as main page",
     "pages kept as part page",
     "old addresses dropped",
+    "dead pages dropped",
     "pages moved to a seed entry",
     "pages moved to a new entry",
     "pages added",
@@ -80,6 +81,7 @@ def count_corrections(
     - Pages added, pages added as parts: a page the entry's pages link and no
       seed entry holds joins the entry.
     - Old addresses dropped: the entry also lists the page's current address.
+    - Dead pages dropped: the provider says the page does not exist.
     - Pages moved to a seed entry, pages moved to a new entry: the page
       belongs to another work.
     - Pages kept as main page: the page stays and is its provider's main
@@ -110,8 +112,9 @@ def find_correction_change(correction: SeedCorrection) -> str | None:
     """Return the change a correction makes, named as ``count_corrections`` counts it.
 
     The first matching change wins, in this order, so each correction has one:
-    added page (as a part or whole), old address dropped, moved to a seed entry,
-    moved to a new entry, kept as main page, kept as part page.
+    added page (as a part or whole), old address dropped, dead page dropped,
+    moved to a seed entry, moved to a new entry, kept as main page, kept as
+    part page.
 
     Args:
         correction: One seed correction.
@@ -123,6 +126,8 @@ def find_correction_change(correction: SeedCorrection) -> str | None:
         return "pages added as parts" if correction.is_part_page else "pages added"
     if correction.renamed_to:
         return "old addresses dropped"
+    if correction.is_dead_page:
+        return "dead pages dropped"
     if correction.target_entry_reference_page:
         return "pages moved to a seed entry"
     if correction.new_entry_key:
@@ -150,7 +155,7 @@ def count_corrected_entries(
     """
     corrected_entries = list(corrected_entries)
     return {
-        "entries removed, every page moved out": sum(
+        "entries removed, no page left": sum(
             corrected.entry is None for corrected in corrected_entries
         ),
         "new entries with an unknown type": sum(

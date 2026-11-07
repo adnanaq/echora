@@ -207,6 +207,32 @@ def test_build_correction_panel_answer_rows_show_mark_and_source(
     ) == ("work 1, main", "work 1, part", "Unchanged", "stays in this entry", True)
 
 
+def test_build_correction_panel_dead_page_row_says_dropped() -> None:
+    dead_page_correction = review_cases_pb2.SeedCorrection(
+        entry_reference_page="mal:anime:18841",
+        page_key="anilist:anime:18843",
+        address="https://anilist.co/anime/18843",
+        is_dead_page=True,
+        reason="dead page",
+        change="dead pages dropped",
+        reason_sentence="the provider says the page does not exist",
+    )
+    panel = build_correction_panel("mal:anime:18841", [dead_page_correction], [], [])
+    assert panel is not None
+    [row] = panel.rows
+    assert (
+        row.change_label,
+        row.place,
+        row.destination_label,
+        row.destination_address,
+    ) == (
+        "Dead pages dropped",
+        "—",
+        "dropped, since the provider no longer has it",
+        None,
+    )
+
+
 def test_build_correction_panel_lists_cases_holding_entry(review_cases) -> None:
     panel = build_correction_panel(
         "mal:anime:61115",

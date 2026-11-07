@@ -54,7 +54,7 @@ def test_build_entries_to_check_document_names_entries_by_reference_page() -> No
     ]
 
 
-def _correction(page_key: str, placement_word: str, **fields) -> SeedCorrection:
+def _correction(page_key: str, placement_word: str | None, **fields) -> SeedCorrection:
     return SeedCorrection(
         entry_reference_page="mal:anime:1",
         page_key=page_key,
@@ -77,11 +77,13 @@ def test_count_corrections_counts_each_change_once() -> None:
         _correction("kitsu:anime:5", "work 2", new_entry_key="mal:anime:1 work 2"),
         _correction("mal:anime:2", "work 1", is_added_page=True),
         _correction("anidb:anime:2", "work 1", is_added_page=True, is_part_page=True),
+        _correction("anilist:anime:9", None, is_dead_page=True),
     )
     assert count_corrections(corrections, ()) == {
         "pages kept as main page": 1,
         "pages kept as part page": 1,
         "old addresses dropped": 1,
+        "dead pages dropped": 1,
         "pages moved to a seed entry": 1,
         "pages moved to a new entry": 1,
         "pages added": 1,
@@ -104,7 +106,7 @@ def test_count_corrected_entries_counts_removed_and_untyped_new_entries() -> Non
             CorrectedEntry("mal:anime:2", untyped_show),
         ]
     ) == {
-        "entries removed, every page moved out": 1,
+        "entries removed, no page left": 1,
         "new entries with an unknown type": 1,
     }
 
@@ -134,6 +136,7 @@ def test_describe_linked_page_outcomes_counts_then_conflicting_pages_listed() ->
         ({"is_main_page": True}, "pages kept as main page"),
         ({"is_part_page": True}, "pages kept as part page"),
         ({"renamed_to": "kitsu:anime:2"}, "old addresses dropped"),
+        ({"is_dead_page": True}, "dead pages dropped"),
         ({"target_entry_reference_page": "mal:anime:9"}, "pages moved to a seed entry"),
         ({"new_entry_key": "mal:anime:1 work 2"}, "pages moved to a new entry"),
         ({"is_added_page": True}, "pages added"),

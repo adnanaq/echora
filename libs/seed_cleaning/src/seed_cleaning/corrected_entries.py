@@ -231,7 +231,8 @@ def _correct_seed_entry(
     """Return a seed entry as its corrections leave it.
 
     A page leaves the entry when its correction moves it to a seed entry or a
-    new entry, or when the entry also lists it under its current address.
+    new entry, when the entry also lists it under its current address, or when
+    its provider says the page does not exist.
 
     Args:
         entry: The seed entry.
@@ -250,6 +251,7 @@ def _correct_seed_entry(
         if correction.target_entry_reference_page
         or correction.new_entry_key
         or correction.renamed_to
+        or correction.is_dead_page
     }
     # An added page that also moves joins only the entry it moves to.
     joining_corrections = [
