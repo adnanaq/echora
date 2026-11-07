@@ -13,8 +13,7 @@ from work_matching.known_work_entries import KnownWorkEntries
 from work_matching.work_entry import WorkEntry, WorkType
 
 # The fewest words a title prefix shared by sibling titles of a series holds.
-# Measured on the review cases of a release: one or two words, such as "Ano"
-# or "Bucket no", also start unrelated titles; three words kept series.
+# One or two words, such as "Ano" or "Bucket no", also start unrelated titles.
 MIN_SERIES_ROOT_WORDS: Final = 3
 
 
