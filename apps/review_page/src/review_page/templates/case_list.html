@@ -1,21 +1,15 @@
-{% from "control_macros.html" import chip, icon, pager, pill, status with context %}
+{% from "control_macros.html" import chip, chip_group, icon, pager, pill, status with context %}
 {% set new_state = case_states | selectattr("name", "equalto", "NEW") | first %}
 <div class="filter-group">
   <span class="filter-group-label">Kind</span>
   {% for kind in kinds %}
   {% set applied_count = applied_answer_counts[kind.value] %}
   {% set kind_count = chip_counts[kind.value] if applied_count == chip_counts[kind.value] else applied_count ~ "/" ~ chip_counts[kind.value] %}
-  {{ chip(kind.value[:1] | upper ~ kind.value[1:], "kinds", kind.value, kind_count, kind.description ~ " " ~ tooltips.APPLIED_ANSWER_KIND_COUNT, is_on=kind in state.kinds) }}
+  {{ chip("kinds", kind.value, kind_count, kind.description ~ " " ~ tooltips.APPLIED_ANSWER_KIND_COUNT, is_on=kind in state.kinds) }}
   {% endfor %}
 </div>
-<div class="filter-group">
-  <span class="filter-group-label">Case</span>
-  {% for case_state in case_states %}{{ chip(case_state.value[:1] | upper ~ case_state.value[1:], "case_states", case_state.value, chip_counts[case_state.value], case_state.description, is_on=case_state in state.case_states) }}{% endfor %}
-</div>
-<div class="filter-group">
-  <span class="filter-group-label">Edits</span>
-  {% for edit_state in edit_states %}{{ chip(edit_state.value[:1] | upper ~ edit_state.value[1:], "edit_states", edit_state.value, chip_counts[edit_state.value], edit_state.description, is_on=edit_state in state.edit_states) }}{% endfor %}
-</div>
+{{ chip_group("Case", "case_states", case_states, chip_counts, case_state_tooltips, state.case_states) }}
+{{ chip_group("Edits", "edit_states", edit_states, chip_counts, edit_state_tooltips, state.edit_states) }}
 
 {% if case_page.rows %}
 <ul class="case-list">
@@ -38,7 +32,7 @@
   </li>
   {% endfor %}
 </ul>
-{{ pager(case_page, "$store.review.showPage") }}
+{{ pager(case_page, "cases") }}
 {% else %}
 <p class="empty-state">{% if not chip_counts["open"] %}The queue is clean: no case is open.{% else %}No case matches these filters.{% endif %}</p>
 {% endif %}

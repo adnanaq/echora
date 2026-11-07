@@ -19,10 +19,11 @@ from review_page.correction_views import (
 )
 from review_page.models import BrowserState, BrowserStateField
 from review_page.page_state import paginate_rows
-from review_page.review_case_messages import convert_message_to_case
-from review_page.review_case_source import ReviewCaseSource
-from review_page.run_summary import build_run_summary
-from work_matching import ReviewCase
+from review_page.review_case_source import (
+    ReviewCaseSource,
+    load_cases,
+    load_last_run_summary,
+)
 
 
 class CorrectionRoutes:
@@ -64,7 +65,7 @@ class CorrectionRoutes:
         all_rows = build_corrected_entry_rows(
             self._source.list_corrections(),
             self._source.list_checked_entries(),
-            self._load_cases(),
+            load_cases(self._source),
         )
         chip_counts = count_corrected_entry_rows(all_rows)
         return self._templates.TemplateResponse(
@@ -105,13 +106,12 @@ class CorrectionRoutes:
             no entry is selected.
         """
         state = BrowserState.parse_form_field(browser_state)
-        last_run_result = self._source.get_last_run_result()
         panel = (
             build_correction_panel(
                 state.open_correction_entry,
                 self._source.list_corrections(),
                 self._source.list_checked_entries(),
-                self._load_cases(),
+                load_cases(self._source),
             )
             if state.open_correction_entry
             else None
@@ -121,18 +121,6 @@ class CorrectionRoutes:
             "correction_panel.html",
             {
                 "panel": panel,
-                "run_summary": None
-                if last_run_result is None
-                else build_run_summary(last_run_result),
+                "run_summary": load_last_run_summary(self._source),
             },
         )
-
-    def _load_cases(self) -> list[ReviewCase]:
-        """Load all review cases from the source for resolving entry titles and links.
-
-        Returns:
-            All review cases converted from protobuf messages to domain models.
-        """
-        return [
-            convert_message_to_case(message) for message in self._source.list_cases()
-        ]

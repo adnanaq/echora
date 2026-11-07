@@ -35,7 +35,6 @@ from review_page.models import (
 )
 from work_matching import (
     GroupPageChoices,
-    LinkedPageDecision,
     PlacementRule,
     ProviderPage,
     ReviewCase,
@@ -196,8 +195,8 @@ def build_comparison_rows(
         A tuple of ComparisonRowView instances for each compared attribute,
         or an empty tuple for entry group cases.
     """
-    [decision] = case.decisions
-    if not isinstance(decision, LinkedPageDecision):
+    decision = case.linked_page_decision
+    if decision is None:
         return ()
     page = next(
         (page for page in case.pages if page.current_key == decision.page_key), None
@@ -262,11 +261,9 @@ def list_evidence_pages(
         page decisions, or work entries.
     """
     placed_page_keys = {row.page_key for row in page_rows}
-    linked_page_keys = {
-        decision.page_key
-        for decision in case.decisions
-        if isinstance(decision, LinkedPageDecision)
-    }
+    linked_page_keys = (
+        {case.linked_page_decision.page_key} if case.linked_page_decision else set()
+    )
     entry_page_keys = {
         key for entry in case.entries.values() for key in entry.addresses_by_page_key
     }
@@ -314,8 +311,8 @@ def build_linked_page_case_links(
         The linking entry's reference page link and the linked page link; both
         None for entry group cases.
     """
-    decision = case.decisions[0] if case.decisions else None
-    if not isinstance(decision, LinkedPageDecision):
+    decision = case.linked_page_decision
+    if decision is None:
         return None, None
     linking_entry = decision.linking_entries[0]
     return (

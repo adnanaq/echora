@@ -18,12 +18,19 @@ Each design rule reads `<rule>: <reason>`:
   saved answer observed when editing began, rejecting concurrent modifications
   with ``ANSWER_SAVED_ELSEWHERE_RULE_NAME`` so edits from another session are
   never overwritten silently.
+- Shared loaders: ``load_cases`` and ``load_last_run_summary`` convert the
+  source's messages into the models the routes use, so each route class reads
+  them the same way.
 """
 
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 
+from review_page.models import RunSummary
+from review_page.review_case_messages import convert_message_to_case
+from review_page.run_summary import build_run_summary
 from shared_proto.v1 import review_cases_pb2
+from work_matching import ReviewCase
 
 # Rule identifier returned when a case's saved answer changed after editing began.
 ANSWER_SAVED_ELSEWHERE_RULE_NAME = "ANSWER_SAVED_ELSEWHERE"
@@ -118,3 +125,28 @@ class ReviewCaseSource(ABC):
             One checked entry message per reference page key for resolving titles,
             or an empty list before the first run completes.
         """
+
+
+def load_cases(source: ReviewCaseSource) -> list[ReviewCase]:
+    """Load every review case from a source as case models.
+
+    Args:
+        source: The review case source to read.
+
+    Returns:
+        All review cases, in the source's order.
+    """
+    return [convert_message_to_case(message) for message in source.list_cases()]
+
+
+def load_last_run_summary(source: ReviewCaseSource) -> RunSummary | None:
+    """Load the summary of the last run from a source.
+
+    Args:
+        source: The review case source to read.
+
+    Returns:
+        The last run's summary, or None before the first run.
+    """
+    last_run_result = source.get_last_run_result()
+    return None if last_run_result is None else build_run_summary(last_run_result)

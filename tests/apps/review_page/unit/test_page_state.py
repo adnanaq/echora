@@ -10,10 +10,12 @@ from review_page.models import (
 from review_page.page_state import (
     build_case_buttons,
     build_page_buttons,
+    build_suggested_answer,
     count_applied_answer_rows_by_kind,
     count_case_rows,
     filter_case_rows,
     find_next_case_name,
+    is_answer_empty,
     is_suggestion_complete,
     paginate_rows,
     resolve_case_edit_state,
@@ -386,3 +388,20 @@ def test_count_applied_answer_rows_by_kind_counts_applied_rows_of_each_kind() ->
         ReviewCaseKind.SPLIT_WORK.value: 0,
         ReviewCaseKind.LINKED_PAGE.value: 1,
     }
+
+
+@pytest.mark.parametrize("answer", [None, {}])
+def test_is_answer_empty_missing_answer_returns_true(answer) -> None:
+    assert is_answer_empty(answer)
+
+
+def test_is_answer_empty_placed_answer_returns_false() -> None:
+    assert not is_answer_empty(ATASHINCHI_ANSWER)
+
+
+def test_build_suggested_answer_returns_independent_copy(review_cases) -> None:
+    case = review_cases["atashinchi_next"]
+    suggested_answer = build_suggested_answer(case)
+    suggested_answer["mal:anime:63013"] = "work 2"
+
+    assert case.suggested_answer["mal:anime:63013"] == "work 1"

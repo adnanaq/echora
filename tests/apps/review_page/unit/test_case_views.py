@@ -1,10 +1,19 @@
+from datetime import UTC, datetime
+
 import pytest
 from review_page.case_views import (
     build_case_rows,
     build_case_view,
     find_original_answer,
+    resolve_shown_answer,
 )
-from review_page.models import CaseEditState, DetailColumn, PageLink, SavedChange
+from review_page.models import (
+    CaseEditState,
+    DetailColumn,
+    PageLink,
+    RunSummary,
+    SavedChange,
+)
 from work_matching import (
     PART_MARK,
     KnownWorkEntriesFromSeed,
@@ -20,6 +29,8 @@ from work_matching import (
     resolve_page_key,
 )
 from work_matching.answer_words import LATER_WORK_MEANING
+
+NAMI_ANSWER = {"anilist:anime:102289": "skip"}
 
 ATASHINCHI_ANSWER = {
     "mal:anime:63013": "work 1",
@@ -193,20 +204,45 @@ def test_build_case_view_run_going_disables_buttons(review_cases) -> None:
     assert not view.buttons.is_accept_enabled
 
 
-def test_find_original_answer_no_run_result_uses_saved_answer() -> None:
-    assert find_original_answer("a", {"x": "work 1"}, None) == {"x": "work 1"}
+def _run_summary(**fields) -> RunSummary:
+    return RunSummary(
+        seed_file="assets/seed_data/seed.json",
+        started_at=datetime(2026, 11, 1, 13, 58, 37, tzinfo=UTC),
+        finished_at=datetime(2026, 11, 1, 13, 58, 39, tzinfo=UTC),
+        correction_counts={},
+        corrected_entry_counts={},
+        linked_page_counts={},
+        rejected_answer_case_names=fields.get("rejected_answer_case_names", ()),
+        conflicting_linked_page_keys=(),
+        unused_answer_case_names=fields.get("unused_answer_case_names", ()),
+        case_names=(),
+        new_case_names=fields.get("new_case_names", ()),
+        original_answers=fields.get("original_answers", {}),
+    )
 
 
-def test_find_original_answer_run_result_without_answer_gives_none() -> None:
-    assert find_original_answer("a", {"x": "work 1"}, {}) is None
+def test_find_original_answer_no_run_summary_uses_saved_answer(review_cases) -> None:
+    case = review_cases["nami"].model_copy(update={"answer": NAMI_ANSWER})
+    assert find_original_answer(case, None) == NAMI_ANSWER
+
+
+def test_find_original_answer_run_summary_without_answer_gives_none(
+    review_cases,
+) -> None:
+    case = review_cases["nami"].model_copy(update={"answer": NAMI_ANSWER})
+    assert find_original_answer(case, _run_summary()) is None
+
+
+def test_find_original_answer_run_summary_gives_run_answer(review_cases) -> None:
+    case = review_cases["nami"]
+    run_summary = _run_summary(original_answers={case.case_name: NAMI_ANSWER})
+    assert find_original_answer(case, run_summary) == NAMI_ANSWER
 
 
 def test_build_case_rows_reads_titles_kinds_and_new_cases(review_cases) -> None:
     cases = [review_cases["nami"], review_cases["atashinchi_next"]]
     rows = build_case_rows(
-        cases,
-        original_answers={},
-        new_case_names=frozenset({review_cases["nami"].case_name}),
+        cases, _run_summary(new_case_names=(review_cases["nami"].case_name,))
     )
     assert [(row.title, row.kind, row.is_new, row.saved_change) for row in rows] == [
         ("Nami", ReviewCaseKind.LINKED_PAGE, True, SavedChange.UNCHANGED),
@@ -217,9 +253,6 @@ def test_build_case_rows_reads_titles_kinds_and_new_cases(review_cases) -> None:
             SavedChange.UNCHANGED,
         ),
     ]
-
-
-NAMI_ANSWER = {"anilist:anime:102289": "skip"}
 
 
 @pytest.mark.parametrize(
@@ -236,19 +269,20 @@ def test_build_case_rows_answer_applied_only_when_last_run_used_answer(
 ) -> None:
     case = review_cases["nami"].model_copy(update={"answer": NAMI_ANSWER})
     case_name_by_label = {"nami": case.case_name}
-    [row] = build_case_rows(
-        [case],
-        original_answers=None
+    run_summary = (
+        None
         if original_answers is None
-        else {
-            case_name_by_label[label]: answer
-            for label, answer in original_answers.items()
-        },
-        new_case_names=(),
-        rejected_answer_case_names={
-            case_name_by_label[label] for label in rejected_answer_case_names
-        },
+        else _run_summary(
+            original_answers={
+                case_name_by_label[label]: answer
+                for label, answer in original_answers.items()
+            },
+            rejected_answer_case_names=tuple(
+                case_name_by_label[label] for label in rejected_answer_case_names
+            ),
+        )
     )
+    [row] = build_case_rows([case], run_summary)
     assert row.is_answer_applied is is_answer_applied
 
 
@@ -313,7 +347,7 @@ def test_build_case_view_rows_leave_lone_page_main_to_tooltip(review_cases) -> N
 
 def test_build_case_view_title_matches_list_title(review_cases) -> None:
     case = review_cases["atashinchi_next"]
-    [row] = build_case_rows([case], original_answers=None, new_case_names=())
+    [row] = build_case_rows([case], None)
     assert _view(case).title == row.title == "Atashin'chi Next 2nd Season"
 
 
@@ -359,9 +393,9 @@ def test_build_case_rows_marks_answers_last_run_left_unused(review_cases) -> Non
     cases = [review_cases["nami"], review_cases["atashinchi_next"]]
     rows = build_case_rows(
         cases,
-        original_answers={},
-        new_case_names=(),
-        unused_answer_case_names={review_cases["atashinchi_next"].case_name},
+        _run_summary(
+            unused_answer_case_names=(review_cases["atashinchi_next"].case_name,)
+        ),
     )
     assert [row.is_answer_unused for row in rows] == [False, True]
 
@@ -383,3 +417,27 @@ def test_build_case_view_linked_page_case_has_no_placement_legend(
     review_cases,
 ) -> None:
     assert _view(review_cases["nami"]).choice_meanings == ()
+
+
+def test_resolve_shown_answer_unsaved_edit_wins(review_cases) -> None:
+    case = review_cases["atashinchi_next"].model_copy(
+        update={"answer": ATASHINCHI_ANSWER}
+    )
+    edit = {**ATASHINCHI_ANSWER, "anidb:anime:19895": "work 2"}
+    assert resolve_shown_answer(case, edit) == edit
+
+
+def test_resolve_shown_answer_saved_answer_wins_over_suggestion(
+    review_cases,
+) -> None:
+    case = review_cases["atashinchi_next"].model_copy(
+        update={"answer": {**ATASHINCHI_ANSWER, "anidb:anime:19895": "work 2"}}
+    )
+    assert resolve_shown_answer(case, None) == case.answer
+
+
+def test_resolve_shown_answer_unanswered_case_returns_suggestion(
+    review_cases,
+) -> None:
+    case = review_cases["atashinchi_next"]
+    assert resolve_shown_answer(case, None) == dict(case.suggested_answer)

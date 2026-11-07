@@ -18,8 +18,7 @@ Each rule reads `<rule>: <reason>`:
   provider, while linked page cases display the linking seed entry title.
 """
 
-from collections.abc import Collection, Mapping, Sequence
-from typing import Any
+from collections.abc import Sequence
 
 from pydantic import JsonValue
 from review_page.case_panel_tables import (
@@ -39,11 +38,12 @@ from review_page.models import (
 )
 from review_page.page_state import (
     build_case_buttons,
+    build_suggested_answer,
+    is_answer_empty,
     resolve_case_edit_state,
     resolve_saved_change,
 )
 from work_matching import (
-    LinkedPageDecision,
     ReviewCase,
     ReviewCaseKind,
     combine_group_entries,
@@ -54,62 +54,50 @@ from work_matching.answer_words import PLACEMENT_WORD_MEANINGS
 
 
 def find_original_answer(
-    case_name: str,
-    saved_answer: JsonValue,
-    original_answers: Mapping[str, JsonValue] | None,
+    case: ReviewCase, last_run_summary: RunSummary | None
 ) -> JsonValue:
-    """Retrieve the baseline answer for a case from previous pipeline runs.
+    """Find a case's original answer: the answer the last run wrote.
 
-    Falls back to the current saved answer when no prior run summary exists,
-    treating the persisted answer as the baseline.
+    Before the first run, the saved answer is the original answer.
 
     Args:
-        case_name: The unique case identifier.
-        saved_answer: The answer currently persisted in review storage.
-        original_answers: The mapping of case identifiers to baseline answers
-            recorded by the last pipeline execution, or None if no run has occurred.
+        case: The review case with its saved answer.
+        last_run_summary: Summary of the last run, or None before the first run.
 
     Returns:
-        The baseline answer value for the case, or None if no answer existed.
+        The original answer, or None when the last run wrote no answer for the case.
     """
-    if original_answers is None:
-        return saved_answer
-    return original_answers.get(case_name)
+    if last_run_summary is None:
+        return case.answer
+    return last_run_summary.original_answers.get(case.case_name)
 
 
 def build_case_rows(
-    cases: Sequence[ReviewCase],
-    *,
-    original_answers: Mapping[str, JsonValue] | None,
-    new_case_names: Collection[str],
-    unused_answer_case_names: Collection[str] = (),
-    rejected_answer_case_names: Collection[str] = (),
+    cases: Sequence[ReviewCase], last_run_summary: RunSummary | None
 ) -> list[CaseRow]:
-    """Construct summary row display models for a sequence of review cases.
-
-    Determines change status, open/closed state, and novelty tags for each
-    case relative to recorded pipeline baseline answers.
+    """Build the case list rows, marking each case against the last run.
 
     Args:
-        cases: The review cases to display in the list.
-        original_answers: Mapping of case identifiers to baseline answers from
-            the previous pipeline run, or None if no prior run exists.
-        new_case_names: Identifiers of review cases introduced in the most recent run.
-        unused_answer_case_names: Identifiers of previously saved answers that
-            no longer correspond to any active case.
-        rejected_answer_case_names: Identifiers of cases whose saved answer the
-            most recent run refused.
+        cases: The review cases to list.
+        last_run_summary: Summary of the last run, or None before the first run.
 
     Returns:
-        A list of CaseRow models populated with display metadata and change states.
+        One CaseRow per case, with its change, open, new, unused-answer and
+        applied-answer marks.
     """
+    new_case_names = set(last_run_summary.new_case_names) if last_run_summary else set()
+    unused_answer_case_names = (
+        set(last_run_summary.unused_answer_case_names) if last_run_summary else set()
+    )
+    rejected_answer_case_names = (
+        set(last_run_summary.rejected_answer_case_names) if last_run_summary else set()
+    )
     rows: list[CaseRow] = []
     for case in cases:
         saved_change = resolve_saved_change(
-            find_original_answer(case.case_name, case.answer, original_answers),
-            case.answer,
+            find_original_answer(case, last_run_summary), case.answer
         )
-        is_open = case.answer in (None, {})
+        is_open = is_answer_empty(case.answer)
         is_answer_unused = case.case_name in unused_answer_case_names
         rows.append(
             CaseRow(
@@ -121,7 +109,7 @@ def build_case_rows(
                 is_new=case.case_name in new_case_names,
                 has_suggestion=bool(case.suggested_answer),
                 is_answer_unused=is_answer_unused,
-                is_answer_applied=original_answers is not None
+                is_answer_applied=last_run_summary is not None
                 and not is_open
                 and saved_change is SavedChange.UNCHANGED
                 and not is_answer_unused
@@ -156,8 +144,8 @@ def build_case_view(
     Returns:
         A CaseView model containing assembled tables, candidate rows, and action button states.
     """
-    is_suggestion_shown = unsaved_answer is None and case.answer in (None, {})
-    chosen_answer = _choose_shown_answer(case, unsaved_answer, is_suggestion_shown)
+    is_suggestion_shown = unsaved_answer is None and is_answer_empty(case.answer)
+    chosen_answer = resolve_shown_answer(case, unsaved_answer)
     is_linked_page = case.kind is ReviewCaseKind.LINKED_PAGE
     linking_entry_link, linked_page_link = build_linked_page_case_links(case)
     page_rows = (
@@ -201,25 +189,27 @@ def build_case_view(
     )
 
 
-def _choose_shown_answer(
-    case: ReviewCase, unsaved_answer: JsonValue, is_suggestion_shown: bool
-) -> JsonValue:
-    """Determine the active answer displayed initially in the case panel.
+def resolve_shown_answer(case: ReviewCase, unsaved_answer: JsonValue) -> JsonValue:
+    """Resolve the answer the case panel shows and a choice starts from.
 
-    Prefers unpersisted browser edits, then a copy of the suggested placements
-    when no answer has been saved yet, and otherwise the persisted answer.
+    Each answer is used when every answer above it is missing:
+
+    - The unsaved browser edit.
+    - The saved answer, when the saved answer places a page.
+    - An editable copy of the suggested placements.
 
     Args:
-        case: The review case with its persisted answer and suggestion.
-        unsaved_answer: The staged browser edit, or None if unedited.
-        is_suggestion_shown: Whether the panel should display suggested placements.
+        case: The review case with its saved answer and suggestion.
+        unsaved_answer: The unsaved browser edit, or None when the case is unedited.
 
     Returns:
-        The staged answer, a mutable copy of suggested placements, or the saved answer.
+        The first answer of the list above that is present.
     """
     if unsaved_answer is not None:
         return unsaved_answer
-    return _copy_suggested_answer(case) if is_suggestion_shown else case.answer
+    if not is_answer_empty(case.answer):
+        return case.answer
+    return build_suggested_answer(case)
 
 
 def _build_marked_page_rows(
@@ -244,8 +234,8 @@ def _build_marked_page_rows(
     """
     starting_answer = (
         original_answer
-        if original_answer not in (None, {}) or not case.suggested_answer
-        else _copy_suggested_answer(case)
+        if not is_answer_empty(original_answer) or not case.suggested_answer
+        else build_suggested_answer(case)
     )
     return build_page_rows(
         case, chosen_answer, starting_answer, is_rejected=is_rejected
@@ -264,68 +254,26 @@ def find_case_title(case: ReviewCase) -> str:
     Returns:
         The resolved title string for header and navigation display.
     """
-    if case.kind is ReviewCaseKind.LINKED_PAGE:
-        [decision] = case.decisions
-        if isinstance(decision, LinkedPageDecision):
-            return decision.linking_entries[0].title
+    decision = case.linked_page_decision
+    if decision is not None:
+        return decision.linking_entries[0].title
     return combine_group_entries(list(case.entries.values())).title
 
 
-def _copy_suggested_answer(case: ReviewCase) -> dict[str, JsonValue]:
-    """Create a mutable copy of a case's suggested placements.
-
-    Args:
-        case: The review case providing the suggested answer.
-
-    Returns:
-        A dictionary mapping page keys to suggested placement values.
-    """
-    return {page_key: place for page_key, place in case.suggested_answer.items()}
-
-
 def list_original_answers(
-    cases: list[ReviewCase], last_run_summary: RunSummary | None
-) -> dict[str, Any]:
-    """Extract baseline answers for all cases that have recorded historical values.
+    cases: Sequence[ReviewCase], last_run_summary: RunSummary | None
+) -> dict[str, JsonValue]:
+    """List the original answer of every case that has one.
 
     Args:
-        cases: The review cases to check for baseline answers.
-        last_run_summary: Summary of the previous pipeline run, or None if no run exists.
+        cases: The review cases to check for original answers.
+        last_run_summary: Summary of the last run, or None before the first run.
 
     Returns:
-        A dictionary mapping case identifiers to their baseline answer values.
+        Each case name mapped to its original answer; cases without one are left out.
     """
-    original_answers = last_run_summary.original_answers if last_run_summary else None
     return {
         case.case_name: original_answer
         for case in cases
-        if (
-            original_answer := find_original_answer(
-                case.case_name, case.answer, original_answers
-            )
-        )
+        if (original_answer := find_original_answer(case, last_run_summary))
     }
-
-
-def build_all_case_rows(
-    cases: Sequence[ReviewCase],
-    last_run_summary: RunSummary | None,
-) -> list[CaseRow]:
-    """Construct summary rows for all review cases using the latest pipeline run state.
-
-    Args:
-        cases: The complete list of review cases.
-        last_run_summary: Summary of the previous pipeline run, or None if no run exists.
-
-    Returns:
-        A list of CaseRow models with novelty and unused-answer tags applied.
-    """
-    if last_run_summary is None:
-        return build_case_rows(cases, original_answers=None, new_case_names=())
-    return build_case_rows(
-        cases,
-        original_answers=last_run_summary.original_answers,
-        new_case_names=set(last_run_summary.new_case_names),
-        unused_answer_case_names=set(last_run_summary.unused_answer_case_names),
-        rejected_answer_case_names=set(last_run_summary.rejected_answer_case_names),
-    )

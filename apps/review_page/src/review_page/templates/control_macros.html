@@ -73,17 +73,28 @@
 
 {#
   A filter chip, on or off, with an optional count; description is its tooltip.
-  is_on draws the chip's state from the server too: htmx resets a redrawn
-  element's class from the new HTML, so a class set only in the browser would
-  be lost on the next redraw.
+  The label is the value with a capital first letter. is_on draws the chip's
+  state from the server too: htmx resets a redrawn element's class from the new
+  HTML, so a class set only in the browser would be lost on the next redraw.
 #}
-{% macro chip(label, list_name, value, count=None, description="", toggle="toggleFilter", is_on=False) -%}
+{% macro chip(list_name, value, count=None, description="", tab="cases", is_on=False) -%}
 <button type="button" id="{{ element_id('chip', list_name, value) }}" class="control-chip{% if is_on %} is-on{% endif %}"{% if description %} title="{{ description }}"{% endif %}
         :class="{ 'is-on': $store.review.{{ list_name }}.includes({{ value | tojson | forceescape }}) }"
         :aria-pressed="$store.review.{{ list_name }}.includes({{ value | tojson | forceescape }})"
-        @click="$store.review.{{ toggle }}('{{ list_name }}', {{ value | tojson | forceescape }})">
-  {{ label }}{% if count is not none %} <span class="control-chip-count">({{ count }})</span>{% endif %}
+        @click="$store.review.toggleFilter('{{ tab }}', '{{ list_name }}', {{ value | tojson | forceescape }})">
+  {{ capitalize_first_letter(value) }}{% if count is not none %} <span class="control-chip-count">({{ count }})</span>{% endif %}
 </button>
+{%- endmacro %}
+
+{#
+  A labelled group of filter chips, one per value. counts and descriptions are
+  keyed by value; chosen_values are the values whose chips are on.
+#}
+{% macro chip_group(group_label, list_name, values, counts, descriptions, chosen_values, tab="cases") -%}
+<div class="filter-group">
+  <span class="filter-group-label">{{ group_label }}</span>
+  {% for value in values %}{{ chip(list_name, value, counts.get(value, 0), descriptions[value], tab=tab, is_on=value in chosen_values) }}{% endfor %}
+</div>
 {%- endmacro %}
 
 {#
@@ -203,17 +214,18 @@
   A list's pager: how many rows show, then first, previous, next and last page.
   list_page: a page_state.ListPage; show_page: the store method opening a page.
 #}
-{% macro pager(list_page, show_page) -%}
+{% macro pager(list_page, tab) -%}
+{% set show_page = "$store.review.showPage('" ~ tab ~ "', " %}
 {% set is_first = list_page.page_number <= 1 %}
 {% set is_last = list_page.page_number >= list_page.page_count %}
 <div class="pager">
   <span>Viewing {{ list_page.first_row_number }}–{{ list_page.first_row_number + list_page.rows | length - 1 }} of {{ list_page.filtered_count }}</span>
   <span class="pager-buttons">
-    {{ icon_button(tooltips.FIRST_PAGE, ["m11 17-5-5 5-5", "m18 17-5-5 5-5"], not is_first, show_page ~ "(1)") }}
-    {{ icon_button(tooltips.PREVIOUS_PAGE, ["m15 18-6-6 6-6"], not is_first, show_page ~ "(" ~ (list_page.page_number - 1) ~ ")") }}
+    {{ icon_button(tooltips.FIRST_PAGE, ["m11 17-5-5 5-5", "m18 17-5-5 5-5"], not is_first, show_page ~ "1)") }}
+    {{ icon_button(tooltips.PREVIOUS_PAGE, ["m15 18-6-6 6-6"], not is_first, show_page ~ (list_page.page_number - 1) ~ ")") }}
     <span>{{ list_page.page_number }} / {{ list_page.page_count }}</span>
-    {{ icon_button(tooltips.NEXT_PAGE, ["m9 18 6-6-6-6"], not is_last, show_page ~ "(" ~ (list_page.page_number + 1) ~ ")") }}
-    {{ icon_button(tooltips.LAST_PAGE, ["m6 17 5-5-5-5", "m13 17 5-5-5-5"], not is_last, show_page ~ "(" ~ list_page.page_count ~ ")") }}
+    {{ icon_button(tooltips.NEXT_PAGE, ["m9 18 6-6-6-6"], not is_last, show_page ~ (list_page.page_number + 1) ~ ")") }}
+    {{ icon_button(tooltips.LAST_PAGE, ["m6 17 5-5-5-5", "m13 17 5-5-5-5"], not is_last, show_page ~ list_page.page_count ~ ")") }}
   </span>
 </div>
 {%- endmacro %}

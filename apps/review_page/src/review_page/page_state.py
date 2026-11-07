@@ -93,15 +93,12 @@ def resolve_case_edit_state(
     Returns:
         The resolved CaseEditState enum member.
     """
-    if is_rejected:
-        return CaseEditState.REJECTED
-    if has_unsaved_edit and _normalize_answer(unsaved_answer) != _normalize_answer(
-        saved_answer
-    ):
-        return CaseEditState.EDITED_NOT_SAVED
-    if resolve_saved_change(original_answer, saved_answer) is not SavedChange.UNCHANGED:
-        return CaseEditState.SAVED_APPLIES_ON_RUN
-    return CaseEditState.UNCHANGED
+    return _resolve_edit_state(
+        is_rejected=is_rejected,
+        has_unsaved_change=has_unsaved_edit
+        and _normalize_answer(unsaved_answer) != _normalize_answer(saved_answer),
+        saved_change=resolve_saved_change(original_answer, saved_answer),
+    )
 
 
 def is_suggestion_complete(case: ReviewCase) -> bool:
@@ -125,10 +122,31 @@ def is_suggestion_complete(case: ReviewCase) -> bool:
         <= suggested_answer.keys()
     ):
         return False
-    suggested_answer_value: dict[str, JsonValue] = {
-        page_key: place for page_key, place in suggested_answer.items()
-    }
-    return not case.list_broken_answer_rules(suggested_answer_value)
+    return not case.list_broken_answer_rules(build_suggested_answer(case))
+
+
+def is_answer_empty(answer: JsonValue) -> bool:
+    """Check whether an answer places no page.
+
+    Args:
+        answer: The answer payload, or None.
+
+    Returns:
+        True when the answer is None or an empty mapping.
+    """
+    return answer in (None, {})
+
+
+def build_suggested_answer(case: ReviewCase) -> dict[str, JsonValue]:
+    """Build an editable answer from a case's suggested placements.
+
+    Args:
+        case: The review case carrying the suggested answer.
+
+    Returns:
+        A new mapping of page keys to suggested placement words.
+    """
+    return {page_key: place for page_key, place in case.suggested_answer.items()}
 
 
 def build_case_buttons(
@@ -156,9 +174,7 @@ def build_case_buttons(
     normalized_original, normalized_saved, normalized_chosen = map(
         _normalize_answer, (original_answer, saved_answer, chosen_answer)
     )
-    suggestion: JsonValue = _normalize_answer(
-        {page_key: place for page_key, place in case.suggested_answer.items()}
-    )
+    suggestion = _normalize_answer(build_suggested_answer(case))
     is_save_enabled = normalized_chosen != (
         normalized_saved if normalized_saved is not None else suggestion
     )
@@ -353,11 +369,32 @@ def resolve_row_edit_state(row: CaseRow, case_filter: CaseFilter) -> CaseEditSta
     Returns:
         The resolved CaseEditState enum member for the row.
     """
-    if row.case_name in case_filter.rejected_case_names:
+    return _resolve_edit_state(
+        is_rejected=row.case_name in case_filter.rejected_case_names,
+        has_unsaved_change=row.case_name in case_filter.unsaved_case_names,
+        saved_change=row.saved_change,
+    )
+
+
+def _resolve_edit_state(
+    *, is_rejected: bool, has_unsaved_change: bool, saved_change: SavedChange
+) -> CaseEditState:
+    """Resolve an edit state from its three conditions, in the order the module lists.
+
+    Args:
+        is_rejected: Whether the last save of the case failed validation.
+        has_unsaved_change: Whether the browser holds an answer that differs
+            from the saved answer.
+        saved_change: How the saved answer differs from the original answer.
+
+    Returns:
+        The first edit state whose condition holds, or UNCHANGED.
+    """
+    if is_rejected:
         return CaseEditState.REJECTED
-    if row.case_name in case_filter.unsaved_case_names:
+    if has_unsaved_change:
         return CaseEditState.EDITED_NOT_SAVED
-    if row.saved_change is not SavedChange.UNCHANGED:
+    if saved_change is not SavedChange.UNCHANGED:
         return CaseEditState.SAVED_APPLIES_ON_RUN
     return CaseEditState.UNCHANGED
 
@@ -371,4 +408,4 @@ def _normalize_answer(answer: JsonValue) -> JsonValue:
     Returns:
         None if the answer is None or an empty dictionary; otherwise the original payload.
     """
-    return None if answer in (None, {}) else answer
+    return None if is_answer_empty(answer) else answer

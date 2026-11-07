@@ -28,22 +28,22 @@ from fastapi import APIRouter, Form, Request, Response
 from fastapi.templating import Jinja2Templates
 from pydantic import JsonValue
 from review_page.case_views import (
-    build_all_case_rows,
+    build_case_rows,
     build_case_view,
     find_original_answer,
     list_original_answers,
+    resolve_shown_answer,
 )
 from review_page.correction_views import list_case_correction_links
 from review_page.htmx_responses import build_event_response, build_notice_response
 from review_page.models import (
     BrowserState,
     BrowserStateField,
-    CaseEditState,
-    CaseState,
     RunSummary,
 )
 from review_page.page_state import (
     build_page_buttons,
+    build_suggested_answer,
     count_applied_answer_rows_by_kind,
     count_case_rows,
     filter_case_rows,
@@ -58,8 +58,9 @@ from review_page.review_case_messages import (
 from review_page.review_case_source import (
     ANSWER_SAVED_ELSEWHERE_RULE_NAME,
     ReviewCaseSource,
+    load_cases,
+    load_last_run_summary,
 )
-from review_page.run_summary import build_run_summary
 from shared_proto.v1 import review_cases_pb2
 from work_matching import (
     OTHER_WORK,
@@ -121,7 +122,10 @@ class CaseRoutes:
             The rendered toolbar HTML fragment.
         """
         state = BrowserState.parse_form_field(browser_state)
-        cases, last_run_summary = self._load_cases(), self._load_last_run_summary()
+        cases, last_run_summary = (
+            load_cases(self._source),
+            load_last_run_summary(self._source),
+        )
         case_names = {case.case_name for case in cases}
         is_run_going = self._source.get_run_state().is_running
         page_buttons = build_page_buttons(
@@ -155,9 +159,12 @@ class CaseRoutes:
             The rendered case list HTML fragment.
         """
         state = BrowserState.parse_form_field(browser_state)
-        cases, last_run_summary = self._load_cases(), self._load_last_run_summary()
+        cases, last_run_summary = (
+            load_cases(self._source),
+            load_last_run_summary(self._source),
+        )
         case_filter = state.build_case_filter()
-        all_rows = build_all_case_rows(cases, last_run_summary)
+        all_rows = build_case_rows(cases, last_run_summary)
         case_page = paginate_rows(
             filter_case_rows(all_rows, case_filter), state.page_number
         )
@@ -168,9 +175,6 @@ class CaseRoutes:
                 "case_page": case_page,
                 "chip_counts": count_case_rows(all_rows, case_filter),
                 "applied_answer_counts": count_applied_answer_rows_by_kind(all_rows),
-                "kinds": list(ReviewCaseKind),
-                "case_states": list(CaseState),
-                "edit_states": list(CaseEditState),
                 "row_edit_states": {
                     row.case_name: resolve_row_edit_state(row, case_filter)
                     for row in case_page.rows
@@ -225,9 +229,7 @@ class CaseRoutes:
         case = self._load_case(state.open_case_name)
         if case is None:
             return self._render_case(request, state, None, None)
-        current_answer = state.edits.get(case.case_name)
-        if current_answer is None:
-            current_answer = _choose_shown_answer(case)
+        current_answer = resolve_shown_answer(case, state.edits.get(case.case_name))
         if case.kind is ReviewCaseKind.LINKED_PAGE:
             new_answer: dict[str, JsonValue] = (
                 {page_key: linked_answer} if linked_answer else {}
@@ -241,7 +243,7 @@ class CaseRoutes:
             )
         # An unanswered case starts on its suggestion, so choosing back to it
         # leaves nothing unsaved; Accept is the button that saves it.
-        is_unsaved = (new_answer or None) != (_choose_shown_answer(case) or None)
+        is_unsaved = (new_answer or None) != (resolve_shown_answer(case, None) or None)
         if is_unsaved:
             state.edits[case.case_name] = new_answer
         else:
@@ -284,8 +286,8 @@ class CaseRoutes:
             response when a concurrent run or save conflict prevents writing.
         """
         state = BrowserState.parse_form_field(browser_state)
-        cases_by_name = {case.case_name: case for case in self._load_cases()}
-        last_run_summary = self._load_last_run_summary()
+        cases_by_name = {case.case_name: case for case in load_cases(self._source)}
+        last_run_summary = load_last_run_summary(self._source)
         answers_by_case_name = _choose_answers_to_save(
             action, case_name, state, cases_by_name, last_run_summary
         )
@@ -311,7 +313,7 @@ class CaseRoutes:
             check_result.is_saved for check_result in check_results
         ):
             rows = filter_case_rows(
-                build_all_case_rows(list(cases_by_name.values()), last_run_summary),
+                build_case_rows(list(cases_by_name.values()), last_run_summary),
                 state.build_case_filter(),
             )
             next_case_name = find_next_case_name(rows, case_name)
@@ -342,14 +344,10 @@ class CaseRoutes:
             return self._templates.TemplateResponse(
                 request, "case_panel.html", {"view": None}
             )
-        last_run_summary = self._load_last_run_summary()
+        last_run_summary = load_last_run_summary(self._source)
         view = build_case_view(
             case,
-            original_answer=find_original_answer(
-                case.case_name,
-                case.answer,
-                last_run_summary.original_answers if last_run_summary else None,
-            ),
+            original_answer=find_original_answer(case, last_run_summary),
             unsaved_answer=state.edits.get(case.case_name),
             is_rejected=case.case_name in state.rejected,
             is_run_going=self._source.get_run_state().is_running,
@@ -369,16 +367,6 @@ class CaseRoutes:
             },
         )
 
-    def _load_cases(self) -> list[ReviewCase]:
-        """Load all review cases from the source as domain models.
-
-        Returns:
-            All review cases converted from protobuf messages to domain models.
-        """
-        return [
-            convert_message_to_case(message) for message in self._source.list_cases()
-        ]
-
     def _load_case(self, case_name: str | None) -> ReviewCase | None:
         """Load a single review case by name from the source.
 
@@ -390,30 +378,6 @@ class CaseRoutes:
         """
         message = self._source.get_case(case_name) if case_name else None
         return None if message is None else convert_message_to_case(message)
-
-    def _load_last_run_summary(self) -> RunSummary | None:
-        """Read the last pipeline run summary from the source.
-
-        Returns:
-            The last run's summary, or None before the first run.
-        """
-        last_run_result = self._source.get_last_run_result()
-        return None if last_run_result is None else build_run_summary(last_run_result)
-
-
-def _choose_shown_answer(case: ReviewCase) -> dict[str, Any] | Any:
-    """Select the initial answer displayed for a case before any browser edits.
-
-    Args:
-        case: The review case containing its saved answer and suggested answer.
-
-    Returns:
-        The persisted answer when present, or a mutable copy of the suggested
-        answer for an unanswered case.
-    """
-    if case.answer not in (None, {}):
-        return case.answer
-    return {page_key: place for page_key, place in case.suggested_answer.items()}
 
 
 def _write_work(work: str, named_entry: str) -> str | None:
@@ -462,17 +426,10 @@ def _choose_answers_to_save(
     if case is None:
         return {case_name: state.edits.get(case_name)}
     if action == "accept":
-        return {case_name: dict(case.suggested_answer)}
+        return {case_name: build_suggested_answer(case)}
     if action == "reset":
-        return {
-            case_name: find_original_answer(
-                case_name,
-                case.answer,
-                last_run_summary.original_answers if last_run_summary else None,
-            )
-        }
-    answer = state.edits.get(case_name)
-    return {case_name: answer if answer is not None else _choose_shown_answer(case)}
+        return {case_name: find_original_answer(case, last_run_summary)}
+    return {case_name: resolve_shown_answer(case, state.edits.get(case_name))}
 
 
 def _build_answers_saved_event(

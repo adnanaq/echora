@@ -31,6 +31,23 @@ function withoutKeys(mapping, keys) {
   return kept;
 }
 
+// The store fields and the region of each tab's list, so one filter, reset and
+// page function serves both tabs.
+const TAB_LISTS = {
+  cases: {
+    filterFields: ["kinds", "case_states", "edit_states"],
+    searchField: "search_text",
+    pageField: "page_number",
+    region: "list",
+  },
+  corrections: {
+    filterFields: ["correction_changes", "correction_sources"],
+    searchField: "correction_search_text",
+    pageField: "correction_page_number",
+    region: "correction-list",
+  },
+};
+
 // The stored values open tabs share, by their localStorage key.
 const SHARED_STORE_FIELDS = {
   review_page_edits: "edits",
@@ -119,53 +136,31 @@ document.addEventListener("alpine:init", () => {
       });
     },
 
-    toggleFilter(listName, value) {
+    toggleFilter(tab, listName, value) {
       const values = this[listName];
       this[listName] = values.includes(value)
         ? values.filter((chosen) => chosen !== value)
         : [...values, value];
-      this.page_number = 1;
-      refreshRegions("list");
+      this.showPage(tab, 1);
     },
 
-    resetFilters() {
-      this.kinds = [];
-      this.case_states = [];
-      this.edit_states = [];
-      this.search_text = "";
-      this.page_number = 1;
-      refreshRegions("list");
+    resetFilters(tab) {
+      const tabList = TAB_LISTS[tab];
+      for (const filterField of tabList.filterFields) {
+        this[filterField] = [];
+      }
+      this[tabList.searchField] = "";
+      this.showPage(tab, 1);
     },
 
-    showPage(pageNumber) {
-      this.page_number = pageNumber;
-      refreshRegions("list");
+    showPage(tab, pageNumber) {
+      const tabList = TAB_LISTS[tab];
+      this[tabList.pageField] = pageNumber;
+      refreshRegions(tabList.region);
     },
 
     setTab(tab) {
       this.tab = tab;
-    },
-
-    toggleCorrectionFilter(listName, value) {
-      const values = this[listName];
-      this[listName] = values.includes(value)
-        ? values.filter((chosen) => chosen !== value)
-        : [...values, value];
-      this.correction_page_number = 1;
-      refreshRegions("correction-list");
-    },
-
-    resetCorrectionFilters() {
-      this.correction_changes = [];
-      this.correction_sources = [];
-      this.correction_search_text = "";
-      this.correction_page_number = 1;
-      refreshRegions("correction-list");
-    },
-
-    showCorrectionPage(pageNumber) {
-      this.correction_page_number = pageNumber;
-      refreshRegions("correction-list");
     },
 
     openCorrection(referencePage) {

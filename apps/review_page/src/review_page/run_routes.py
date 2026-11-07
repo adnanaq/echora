@@ -19,8 +19,7 @@ from review_page.htmx_responses import (
     build_notice_response,
 )
 from review_page.models import BrowserState, BrowserStateField
-from review_page.review_case_source import ReviewCaseSource
-from review_page.run_summary import build_run_summary
+from review_page.review_case_source import ReviewCaseSource, load_last_run_summary
 
 
 class RunRoutes:
@@ -79,18 +78,13 @@ class RunRoutes:
         """
         state = BrowserState.parse_form_field(browser_state)
         run_state = self._source.get_run_state()
-        last_run_result = self._source.get_last_run_result()
         case_names = {case.case_name for case in self._source.list_cases()}
         response = self._templates.TemplateResponse(
             request,
             "run_panel.html",
             {
                 "run_state": run_state,
-                "run_summary": (
-                    None
-                    if last_run_result is None
-                    else build_run_summary(last_run_result)
-                ),
+                "run_summary": load_last_run_summary(self._source),
                 "gone_edit_case_names": sorted(set(state.edits) - case_names),
             },
         )

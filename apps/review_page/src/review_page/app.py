@@ -22,10 +22,6 @@ from fastapi.templating import Jinja2Templates
 from review_page.case_routes import CaseRoutes
 from review_page.correction_routes import CorrectionRoutes
 from review_page.htmx_responses import build_notice_response
-from review_page.models import (
-    CaseEditState,
-    CaseState,
-)
 from review_page.request_guards import add_request_guards
 from review_page.review_case_loader import UnreadableReviewFileError
 from review_page.review_case_source import (
@@ -33,9 +29,6 @@ from review_page.review_case_source import (
 )
 from review_page.run_routes import RunRoutes
 from review_page.template_functions import STATIC_DIR, add_template_functions
-from work_matching import (
-    ReviewCaseKind,
-)
 
 _PACKAGE_DIR = Path(__file__).parent
 
@@ -116,14 +109,6 @@ class PageRoutes:
             request: The incoming HTTP GET request.
 
         Returns:
-            The rendered ``page.html`` response populated with filter enum values.
+            The rendered ``page.html`` response.
         """
-        return self._templates.TemplateResponse(
-            request,
-            "page.html",
-            {
-                "kinds": list(ReviewCaseKind),
-                "case_states": list(CaseState),
-                "edit_states": list(CaseEditState),
-            },
-        )
+        return self._templates.TemplateResponse(request, "page.html")

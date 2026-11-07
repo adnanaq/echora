@@ -11,6 +11,10 @@ Each helper function reads `<helper>: <purpose>`:
 - ``element_id``: Builds deterministic HTML element IDs for controls inside
   htmx-swapped regions so htmx preserves keyboard focus and scroll position
   across redraws (https://htmx.org/attributes/hx-swap/).
+- ``capitalize_first_letter``: Turns a filter or change value into its label,
+  so a chip and a table cell show the same value the same way.
+- ``kinds``, ``case_states`` and ``edit_states``: The filter values every
+  template lists, in enum order, so no route passes them itself.
 """
 
 import hashlib
@@ -20,7 +24,16 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import Request
-from review_page.tooltips import CORRECTION_CHANGE_TOOLTIPS, THEME_TOOLTIPS, Tooltip
+from review_page.models import CaseEditState, CaseState
+from review_page.tooltips import (
+    CASE_STATE_TOOLTIPS,
+    CORRECTION_CHANGE_TOOLTIPS,
+    CORRECTION_SOURCE_TOOLTIPS,
+    EDIT_STATE_TOOLTIPS,
+    THEME_TOOLTIPS,
+    Tooltip,
+)
+from work_matching import ReviewCaseKind
 
 STATIC_DIR = Path(__file__).parent / "static"
 _NOT_ID_CHARACTERS = re.compile(r"[^A-Za-z0-9_-]+")
@@ -59,6 +72,21 @@ def build_element_id(*id_segments: object) -> str:
     return _NOT_ID_CHARACTERS.sub("-", joined_segments).strip("-")
 
 
+def capitalize_first_letter(text: str) -> str:
+    """Capitalize the first letter of a text and keep the rest as written.
+
+    ``str.capitalize`` is not used because it lowercases the rest, which
+    would change words such as ``Run`` inside a value.
+
+    Args:
+        text: The text to label, such as ``"edited, not saved"``.
+
+    Returns:
+        The text with its first character in upper case.
+    """
+    return text[:1].upper() + text[1:]
+
+
 def add_template_functions(request: Request) -> dict[str, Any]:
     """Provide template helper functions and tooltip dictionaries to every template context.
 
@@ -69,14 +97,21 @@ def add_template_functions(request: Request) -> dict[str, Any]:
         request: The active HTTP request being rendered.
 
     Returns:
-        A dictionary containing ``static_url``, ``element_id``, ``tooltips``,
-        ``correction_change_tooltips``, and ``theme_tooltips``.
+        A dictionary containing the helper functions, the filter values, and
+        the tooltip mappings, keyed by the names templates use.
     """
     del request  # Every template gets the same functions.
     return {
         "static_url": build_static_url,
         "element_id": build_element_id,
+        "capitalize_first_letter": capitalize_first_letter,
         "tooltips": Tooltip,
         "correction_change_tooltips": CORRECTION_CHANGE_TOOLTIPS,
+        "correction_source_tooltips": CORRECTION_SOURCE_TOOLTIPS,
+        "case_state_tooltips": CASE_STATE_TOOLTIPS,
+        "edit_state_tooltips": EDIT_STATE_TOOLTIPS,
+        "kinds": list(ReviewCaseKind),
+        "case_states": list(CaseState),
+        "edit_states": list(CaseEditState),
         "theme_tooltips": THEME_TOOLTIPS,
     }

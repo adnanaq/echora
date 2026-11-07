@@ -1,22 +1,9 @@
-{% from "control_macros.html" import chip, pager, pill with context %}
+{% from "control_macros.html" import chip_group, pager, pill with context %}
 {% if not has_corrections %}
 <p class="empty-state">No corrections yet: the last run corrected no entry, or no run has finished.</p>
 {% else %}
-<div class="filter-group">
-  <span class="filter-group-label">Change</span>
-  {% for value in change_values %}{{ chip(value[:1] | upper ~ value[1:], "correction_changes", value, chip_counts.get(value, 0),
-       correction_change_tooltips[value],
-       toggle="toggleCorrectionFilter", is_on=value in state.correction_changes) }}{% endfor %}
-</div>
-<div class="filter-group">
-  <span class="filter-group-label">Source</span>
-  {{ chip("Your answer", "correction_sources", "your answer", chip_counts["your answer"],
-                tooltips.ANSWER_SOURCE_CHIP, toggle="toggleCorrectionFilter",
-                is_on="your answer" in state.correction_sources) }}
-  {{ chip("Rules", "correction_sources", "rules", chip_counts["rules"],
-                tooltips.RULES_SOURCE_CHIP, toggle="toggleCorrectionFilter",
-                is_on="rules" in state.correction_sources) }}
-</div>
+{{ chip_group("Change", "correction_changes", change_values, chip_counts, correction_change_tooltips, state.correction_changes, tab="corrections") }}
+{{ chip_group("Source", "correction_sources", source_values, chip_counts, correction_source_tooltips, state.correction_sources, tab="corrections") }}
 
 {% if entry_page.rows %}
 <ul class="case-list">
@@ -36,7 +23,7 @@
   </li>
   {% endfor %}
 </ul>
-{{ pager(entry_page, "$store.review.showCorrectionPage") }}
+{{ pager(entry_page, "corrections") }}
 {% else %}
 <p class="empty-state">No corrected entry matches these filters.</p>
 {% endif %}

@@ -29,10 +29,11 @@ from review_page.models import (
     CorrectionPanelView,
     CorrectionRowView,
 )
+from review_page.template_functions import capitalize_first_letter
 from shared_proto.v1 import review_cases_pb2
 from work_matching import (
-    LinkedPageDecision,
     ReviewCase,
+    WorkEntry,
     build_page_address,
 )
 
@@ -221,7 +222,7 @@ def _build_correction_row(
     return CorrectionRowView(
         page_key=correction.page_key,
         address=correction.address,
-        change_label=change[:1].upper() + change[1:],
+        change_label=capitalize_first_letter(change),
         place=correction.placement_word + mark_suffix,
         destination_label=destination_label,
         destination_address=destination_address,
@@ -306,14 +307,8 @@ def _map_entry_titles(
     """
     title_by_reference_page: dict[str, str] = {}
     for case in cases:
-        for entry in case.entries.values():
+        for entry in _list_case_entries(case):
             title_by_reference_page[entry.reference_page_key] = entry.title
-        for decision in case.decisions:
-            if isinstance(decision, LinkedPageDecision):
-                for linking_entry in decision.linking_entries:
-                    title_by_reference_page[linking_entry.reference_page_key] = (
-                        linking_entry.title
-                    )
     for checked_entry in checked_entries:
         title_by_reference_page[checked_entry.reference_page] = checked_entry.title
     return title_by_reference_page
@@ -328,12 +323,21 @@ def _list_case_entry_reference_pages(case: ReviewCase) -> list[str]:
     Returns:
         A deduplicated list of entry reference page keys in the case's entry order.
     """
-    reference_pages = list(case.entries)
-    for decision in case.decisions:
-        if isinstance(decision, LinkedPageDecision):
-            reference_pages.extend(
-                entry.reference_page_key
-                for entry in decision.linking_entries
-                if entry.reference_page_key not in reference_pages
-            )
-    return reference_pages
+    return list(
+        dict.fromkeys(entry.reference_page_key for entry in _list_case_entries(case))
+    )
+
+
+def _list_case_entries(case: ReviewCase) -> list[WorkEntry]:
+    """List every seed entry a review case involves.
+
+    Args:
+        case: The review case to inspect.
+
+    Returns:
+        The case's entries, followed by the entries linking to its linked pages.
+    """
+    linking_entries = (
+        case.linked_page_decision.linking_entries if case.linked_page_decision else ()
+    )
+    return [*case.entries.values(), *linking_entries]

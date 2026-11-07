@@ -106,13 +106,6 @@ class Tooltip(StrEnum):
     )
 
     # Corrections tab.
-    ANSWER_SOURCE_CHIP = (
-        "Show entries containing at least one page placed by a reviewer's answer"
-    )
-    RULES_SOURCE_CHIP = (
-        "Show entries containing pages placed automatically by matching rules "
-        "without an answer"
-    )
     RESET_CORRECTION_FILTERS = (
         "Clear all active change and source filters and search terms to display "
         "every corrected entry"
@@ -197,6 +190,17 @@ CORRECTION_CHANGE_TOOLTIPS: Final[dict[str, str]] = {
 }
 
 # Keyed by the theme setting's values.
+# Keyed by the Corrections tab's source chip values.
+CORRECTION_SOURCE_TOOLTIPS: Final[dict[str, str]] = {
+    "your answer": (
+        "Show entries containing at least one page placed by a reviewer's answer"
+    ),
+    "rules": (
+        "Show entries containing pages placed automatically by matching rules "
+        "without an answer"
+    ),
+}
+
 THEME_TOOLTIPS: Final[dict[str, str]] = {
     "system": "Follow the operating system's light or dark mode setting",
     "light": "Always use the light color theme",
