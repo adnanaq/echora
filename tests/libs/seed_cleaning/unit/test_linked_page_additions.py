@@ -80,7 +80,9 @@ def review_file(tmp_path) -> ReviewFile:
 
 
 def _unchanged(known_work_entries: KnownWorkEntriesFromSeed) -> list[CorrectedEntry]:
-    return [CorrectedEntry(entry.reference_page_key, entry) for entry in known_work_entries]
+    return [
+        CorrectedEntry(entry.reference_page_key, entry) for entry in known_work_entries
+    ]
 
 
 def _correct(

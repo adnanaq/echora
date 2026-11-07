@@ -302,7 +302,11 @@ def _place_linked_page(
         [entry] = decision.linking_entries
         reason = decision.reason.name
         return None, _PageAddition(
-            page_key, address, entry.reference_page_key, is_part_page=False, reason=reason
+            page_key,
+            address,
+            entry.reference_page_key,
+            is_part_page=False,
+            reason=reason,
         )
     entry_pages = (
         entry_page

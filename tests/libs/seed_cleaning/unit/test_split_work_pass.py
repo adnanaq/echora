@@ -45,9 +45,9 @@ def test_prepare_split_work_pass_entry_with_open_first_pass_case_left_out(
     split_work_pass = prepare_split_work_pass(
         first_pass.corrections, first_pass.review_cases, works, store
     )
-    assert [entry.reference_page_key for entry in split_work_pass.known_work_entries] == [
-        "ann:anime:2"
-    ]
+    assert [
+        entry.reference_page_key for entry in split_work_pass.known_work_entries
+    ] == ["ann:anime:2"]
     assert split_work_pass.candidates == []
 
 
