@@ -117,7 +117,7 @@ def suggest_target_entries(
     )[:MAX_TARGET_ENTRY_SUGGESTIONS]
     return tuple(
         TargetEntrySuggestion(
-            reference_page=work_entry.reference_page_key,
+            entry_reference_page=work_entry.reference_page_key,
             title=work_entry.title,
             providers=tuple(
                 sorted(

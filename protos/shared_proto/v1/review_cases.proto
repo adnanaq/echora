@@ -147,7 +147,7 @@ message ReviewCase {
 
 // A seed entry offered as the place a page in "other work" moves to.
 message TargetEntrySuggestion {
-  string reference_page = 1;
+  string entry_reference_page = 1;
   string title = 2;
   // The providers the entry already holds pages of.
   repeated string providers = 3;
@@ -234,7 +234,7 @@ message SeedCorrection {
 // An entry the last run checked, by its reference page, so corrections show
 // its title.
 message CheckedEntry {
-  string reference_page = 1;
+  string entry_reference_page = 1;
   string title = 2;
   optional string type = 3;
   optional int32 year = 4;

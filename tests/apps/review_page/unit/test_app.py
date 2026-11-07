@@ -291,7 +291,7 @@ def test_choice_other_work_unreadable_named_entry_kept_as_written(
 
 
 GOCHUUMON_SERIES_SUGGESTION = TargetEntrySuggestion(
-    reference_page="mal:anime:21273",
+    entry_reference_page="mal:anime:21273",
     title="Gochuumon wa Usagi desu ka?",
     providers=("mal",),
 )

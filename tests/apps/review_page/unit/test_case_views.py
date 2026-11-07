@@ -139,12 +139,12 @@ def test_build_case_view_rows_offer_target_entries_lacking_page_provider(
         update={
             "target_entry_suggestions": (
                 TargetEntrySuggestion(
-                    reference_page="mal:anime:21273",
+                    entry_reference_page="mal:anime:21273",
                     title="Gochuumon wa Usagi desu ka?",
                     providers=("anidb", "mal"),
                 ),
                 TargetEntrySuggestion(
-                    reference_page="mal:anime:29787",
+                    entry_reference_page="mal:anime:29787",
                     title="Gochuumon wa Usagi desu ka??",
                     providers=("mal",),
                 ),
@@ -152,7 +152,7 @@ def test_build_case_view_rows_offer_target_entries_lacking_page_provider(
         }
     )
     options_by_page_key = {
-        row.page_key: [entry.reference_page for entry in row.target_entry_options]
+        row.page_key: [entry.entry_reference_page for entry in row.target_entry_options]
         for row in _view(case).page_rows
     }
     assert {

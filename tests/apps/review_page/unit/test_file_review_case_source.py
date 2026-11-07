@@ -599,7 +599,9 @@ def test_file_review_case_source_list_checked_entries_reads_both_passes(
         for group in document["split_work_candidates"]
         for entry in group["entries"]
     ]
-    entries = {entry.reference_page: entry for entry in source.list_checked_entries()}
+    entries = {
+        entry.entry_reference_page: entry for entry in source.list_checked_entries()
+    }
     first_split_entry = split_entries[0]
     first_split_message = entries[first_split_entry["reference_page"]]
     assert (

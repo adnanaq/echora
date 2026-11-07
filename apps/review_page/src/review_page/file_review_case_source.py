@@ -288,7 +288,7 @@ class FileReviewCaseSource(ReviewCaseSource):
         document = json.loads(entries_path.read_text(encoding="utf-8"))
         entries_by_reference_page = {
             entry["reference_page"]: review_cases_pb2.CheckedEntry(
-                reference_page=entry["reference_page"], title=entry["title"]
+                entry_reference_page=entry["reference_page"], title=entry["title"]
             )
             for entry in document.get("doubled_provider_entries", [])
         }
@@ -296,7 +296,7 @@ class FileReviewCaseSource(ReviewCaseSource):
             for entry in candidate["entries"]:
                 entries_by_reference_page[entry["reference_page"]] = (
                     review_cases_pb2.CheckedEntry(
-                        reference_page=entry["reference_page"],
+                        entry_reference_page=entry["reference_page"],
                         title=entry["title"],
                         type=entry.get("type"),
                         year=entry.get("year"),

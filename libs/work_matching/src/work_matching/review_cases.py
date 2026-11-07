@@ -104,7 +104,7 @@ class TargetEntrySuggestion(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    reference_page: str
+    entry_reference_page: str
     title: str
     # The providers the entry already holds pages of, so the page offers it
     # only for pages of other providers, never doubling one.

@@ -67,7 +67,7 @@ def build_corrected_entry_rows(
         )
     return [
         CorrectedEntryRow(
-            reference_page=reference_page,
+            entry_reference_page=reference_page,
             title=title_by_reference_page.get(reference_page, reference_page),
             changes=frozenset(map(_read_change, entry_corrections)),
             page_count=len(entry_corrections),
@@ -110,7 +110,7 @@ def filter_corrected_entry_rows(
         and (
             not search_text
             or search_text in row.title.casefold()
-            or search_text in row.reference_page
+            or search_text in row.entry_reference_page
             or any(search_text in page_key for page_key in row.page_keys)
         )
     ]
@@ -159,8 +159,8 @@ def build_correction_panel(
     if not entry_corrections:
         return None
     return CorrectionPanelView(
-        reference_page=reference_page,
-        reference_address=build_page_address(reference_page),
+        entry_reference_page=reference_page,
+        entry_reference_address=build_page_address(reference_page),
         title=_map_entry_titles(checked_entries, cases).get(
             reference_page, reference_page
         ),
@@ -310,7 +310,9 @@ def _map_entry_titles(
         for entry in _list_case_entries(case):
             title_by_reference_page[entry.reference_page_key] = entry.title
     for checked_entry in checked_entries:
-        title_by_reference_page[checked_entry.reference_page] = checked_entry.title
+        title_by_reference_page[checked_entry.entry_reference_page] = (
+            checked_entry.title
+        )
     return title_by_reference_page
 
 

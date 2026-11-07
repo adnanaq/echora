@@ -102,7 +102,7 @@ def test_convert_message_to_case_round_trip_keeps_named_entries_and_suggestions(
             "named_entry_reference_pages": {"mal:anime:21273": "mal:anime:21273"},
             "target_entry_suggestions": (
                 TargetEntrySuggestion(
-                    reference_page="mal:anime:21273",
+                    entry_reference_page="mal:anime:21273",
                     title="Gochuumon wa Usagi desu ka?",
                     providers=("anidb", "mal"),
                 ),

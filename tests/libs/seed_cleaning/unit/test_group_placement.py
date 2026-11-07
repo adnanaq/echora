@@ -736,6 +736,6 @@ def test_correct_entry_groups_case_suggests_series_entries(
         next(iter(series_works)), store, series_works, review_file
     ).review_cases
     assert [
-        (suggestion.reference_page, suggestion.title)
+        (suggestion.entry_reference_page, suggestion.title)
         for suggestion in case.target_entry_suggestions
     ] == [("mal:anime:9", "Show Movie")]

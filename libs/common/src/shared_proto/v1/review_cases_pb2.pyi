@@ -176,14 +176,14 @@ class ReviewCase(_message.Message):
     def __init__(self, case_name: _Optional[str] = ..., answer: _Optional[_Union[_struct_pb2.Value, _Mapping]] = ..., suggested_answer: _Optional[_Iterable[_Union[PagePlace, _Mapping]]] = ..., reasons: _Optional[_Iterable[str]] = ..., candidate_evidence: _Optional[_Iterable[str]] = ..., entries: _Optional[_Iterable[_Union[CaseEntry, _Mapping]]] = ..., doubled_provider_decisions: _Optional[_Iterable[_Union[DoubledProviderDecision, _Mapping]]] = ..., linked_page_decisions: _Optional[_Iterable[_Union[LinkedPageDecision, _Mapping]]] = ..., pages: _Optional[_Iterable[_Union[ProviderPage, _Mapping]]] = ..., named_entry_reference_pages: _Optional[_Mapping[str, str]] = ..., target_entry_suggestions: _Optional[_Iterable[_Union[TargetEntrySuggestion, _Mapping]]] = ...) -> None: ...
 
 class TargetEntrySuggestion(_message.Message):
-    __slots__ = ("reference_page", "title", "providers")
-    REFERENCE_PAGE_FIELD_NUMBER: _ClassVar[int]
+    __slots__ = ("entry_reference_page", "title", "providers")
+    ENTRY_REFERENCE_PAGE_FIELD_NUMBER: _ClassVar[int]
     TITLE_FIELD_NUMBER: _ClassVar[int]
     PROVIDERS_FIELD_NUMBER: _ClassVar[int]
-    reference_page: str
+    entry_reference_page: str
     title: str
     providers: _containers.RepeatedScalarFieldContainer[str]
-    def __init__(self, reference_page: _Optional[str] = ..., title: _Optional[str] = ..., providers: _Optional[_Iterable[str]] = ...) -> None: ...
+    def __init__(self, entry_reference_page: _Optional[str] = ..., title: _Optional[str] = ..., providers: _Optional[_Iterable[str]] = ...) -> None: ...
 
 class CaseAnswer(_message.Message):
     __slots__ = ("case_name", "answer", "seen_saved_answer")
@@ -289,16 +289,16 @@ class SeedCorrection(_message.Message):
     def __init__(self, entry_reference_page: _Optional[str] = ..., page_key: _Optional[str] = ..., address: _Optional[str] = ..., placement_word: _Optional[str] = ..., is_main_page: _Optional[bool] = ..., renamed_to: _Optional[str] = ..., target_entry_reference_page: _Optional[str] = ..., new_entry_key: _Optional[str] = ..., is_added_page: _Optional[bool] = ..., is_part_page: _Optional[bool] = ..., is_anime_id_page: _Optional[bool] = ..., reason: _Optional[str] = ..., change: _Optional[str] = ..., reason_sentence: _Optional[str] = ..., is_from_answer: _Optional[bool] = ..., named_entry_page_key: _Optional[str] = ...) -> None: ...
 
 class CheckedEntry(_message.Message):
-    __slots__ = ("reference_page", "title", "type", "year")
-    REFERENCE_PAGE_FIELD_NUMBER: _ClassVar[int]
+    __slots__ = ("entry_reference_page", "title", "type", "year")
+    ENTRY_REFERENCE_PAGE_FIELD_NUMBER: _ClassVar[int]
     TITLE_FIELD_NUMBER: _ClassVar[int]
     TYPE_FIELD_NUMBER: _ClassVar[int]
     YEAR_FIELD_NUMBER: _ClassVar[int]
-    reference_page: str
+    entry_reference_page: str
     title: str
     type: str
     year: int
-    def __init__(self, reference_page: _Optional[str] = ..., title: _Optional[str] = ..., type: _Optional[str] = ..., year: _Optional[int] = ...) -> None: ...
+    def __init__(self, entry_reference_page: _Optional[str] = ..., title: _Optional[str] = ..., type: _Optional[str] = ..., year: _Optional[int] = ...) -> None: ...
 
 class RunState(_message.Message):
     __slots__ = ("is_running", "last_exit_code")

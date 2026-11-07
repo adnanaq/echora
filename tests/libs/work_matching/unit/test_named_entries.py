@@ -94,7 +94,7 @@ def test_suggest_target_entries_lists_series_entries_outside_case(
 ) -> None:
     suggestions = suggest_target_entries(review_cases["gochuumon_movie"], series_seed)
     assert [
-        (suggestion.reference_page, suggestion.title, suggestion.providers)
+        (suggestion.entry_reference_page, suggestion.title, suggestion.providers)
         for suggestion in suggestions
     ] == [(SERIES_MAL, "Gochuumon wa Usagi desu ka?", ("anidb", "mal"))]
 

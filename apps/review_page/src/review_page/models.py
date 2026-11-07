@@ -311,7 +311,7 @@ class CorrectedEntryRow:
     and indicators of whether corrections stemmed from answers or rules.
     """
 
-    reference_page: str
+    entry_reference_page: str
     title: str
     # Every change the entry's pages make, UNCHANGED included.
     changes: frozenset[str]
@@ -363,8 +363,8 @@ class CorrectionPanelView:
     and cross-links back to originating review cases.
     """
 
-    reference_page: str
-    reference_address: str | None
+    entry_reference_page: str
+    entry_reference_address: str | None
     title: str
     rows: tuple[CorrectionRowView, ...]
     # Each case holding the entry: its name and its list title.

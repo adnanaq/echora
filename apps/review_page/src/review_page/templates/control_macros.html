@@ -46,7 +46,7 @@
 {% macro named_entry_dropdown(row) -%}
 {% set label = "Seed entry for " ~ row.page_key %}
 {% set named_key = row.choices.named_entry_page_key or "" %}
-{% set suggested_keys = row.target_entry_options | map(attribute="reference_page") | list %}
+{% set suggested_keys = row.target_entry_options | map(attribute="entry_reference_page") | list %}
 {% set is_typing_key = named_key != "" and named_key not in suggested_keys %}
 <span class="control-dropdown control-named-entry" x-data="{ isTypingKey: {{ is_typing_key | tojson }} }">
   <select id="{{ element_id('choice', 'named_entry', label) }}" name="named_entry" aria-label="{{ label }}"
@@ -57,7 +57,7 @@
           hx-vals='{{ {"page_key": row.page_key, "work": "other work", "mark": row.choices.mark} | tojson }}'>
     <option value=""{% if not named_key %} selected{% endif %}>new entry</option>
     {% for entry in row.target_entry_options %}
-    <option value="{{ entry.reference_page }}"{% if entry.reference_page == named_key %} selected{% endif %}>{{ entry.title }}</option>
+    <option value="{{ entry.entry_reference_page }}"{% if entry.entry_reference_page == named_key %} selected{% endif %}>{{ entry.title }}</option>
     {% endfor %}
     <option value="other entry"{% if is_typing_key %} selected{% endif %}>other entry…</option>
   </select>

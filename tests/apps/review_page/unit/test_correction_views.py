@@ -49,17 +49,19 @@ def test_build_corrected_entry_rows_one_row_per_entry_in_file_order(
         )
     )
     rows = _rows(correction_messages, checked_entry_messages)
-    assert [row.reference_page for row in rows] == reference_pages
+    assert [row.entry_reference_page for row in rows] == reference_pages
 
 
 def test_build_corrected_entry_rows_titles_from_checked_entries(
     correction_messages, checked_entry_messages
 ) -> None:
     title_by_reference_page = {
-        entry.reference_page: entry.title for entry in checked_entry_messages
+        entry.entry_reference_page: entry.title for entry in checked_entry_messages
     }
     rows = _rows(correction_messages, checked_entry_messages)
-    assert all(row.title == title_by_reference_page[row.reference_page] for row in rows)
+    assert all(
+        row.title == title_by_reference_page[row.entry_reference_page] for row in rows
+    )
 
 
 def test_build_corrected_entry_rows_unknown_entry_titled_from_case(
@@ -78,7 +80,7 @@ def test_build_corrected_entry_rows_counts_changed_pages_and_answer(
     correction_messages, checked_entry_messages
 ) -> None:
     rows = {
-        row.reference_page: row
+        row.entry_reference_page: row
         for row in _rows(correction_messages, checked_entry_messages)
     }
     answered = rows["mal:anime:57822"]
@@ -97,7 +99,7 @@ def test_filter_corrected_entry_rows_change_keeps_entries_with_change(
     kept = filter_corrected_entry_rows(
         rows, CorrectionFilter(changes=frozenset({"old addresses dropped"}))
     )
-    assert [row.reference_page for row in kept] == RENAMED_ENTRIES
+    assert [row.entry_reference_page for row in kept] == RENAMED_ENTRIES
 
 
 def test_filter_corrected_entry_rows_answer_source_keeps_answered_entry(
@@ -107,7 +109,7 @@ def test_filter_corrected_entry_rows_answer_source_keeps_answered_entry(
     kept = filter_corrected_entry_rows(
         rows, CorrectionFilter(sources=frozenset({ANSWER_SOURCE}))
     )
-    assert [row.reference_page for row in kept] == ["mal:anime:57822"]
+    assert [row.entry_reference_page for row in kept] == ["mal:anime:57822"]
 
 
 def test_filter_corrected_entry_rows_groups_narrow_each_other(
@@ -133,8 +135,8 @@ def test_filter_corrected_entry_rows_search_matches_page_key_and_title(
     )
     by_title = filter_corrected_entry_rows(rows, CorrectionFilter(search_text="orguss"))
     assert (
-        [row.reference_page for row in by_page_key],
-        [row.reference_page for row in by_title],
+        [row.entry_reference_page for row in by_page_key],
+        [row.entry_reference_page for row in by_title],
     ) == (["mal:anime:39476"], ["mal:anime:2090"])
 
 
