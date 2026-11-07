@@ -46,17 +46,18 @@ import re
 from collections.abc import Collection, Iterable
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Final
+from typing import Annotated, Final
 
-from pydantic import JsonValue
+from pydantic import BeforeValidator, JsonValue, PlainSerializer
 from work_matching.answer_rules import LinkedPageAnswerRule
+from work_matching.enum_names import read_member_by_name, write_member_name
 from work_matching.known_work_entries import KnownWorkEntries
 from work_matching.page_details_comparison import is_page_details_matching
 from work_matching.provider_page import ProviderPage
 from work_matching.provider_page_key import (
-    get_page_kind,
-    get_page_provider,
     rank_by_provider_trust,
+    read_page_kind,
+    read_page_provider,
 )
 from work_matching.work_entry import WorkEntry
 
@@ -74,7 +75,7 @@ _LINKED_PAGE_ANSWER_TEXT: Final = re.compile(
 
 
 class LinkedPageOutcome(StrEnum):
-    """What happens to a linked page."""
+    """Define what happens to a linked page."""
 
     ADD = "add"
     REVIEW = "review"
@@ -82,7 +83,7 @@ class LinkedPageOutcome(StrEnum):
 
 
 class LinkedPageReason(StrEnum):
-    """The rule deciding what happens to a linked page."""
+    """Define the rule deciding what happens to a linked page."""
 
     CHECKS_PASSED = (
         "the page exists, one entry links it, the entry holds no page of its "
@@ -90,13 +91,12 @@ class LinkedPageReason(StrEnum):
     )
     NOT_FOUND = "the provider says the page does not exist"
     HELD_UNDER_OTHER_ADDRESS = (
-        "the page is one a seed entry already holds, under another address"
+        "a seed entry already holds this page under a different address"
     )
     SEVERAL_ENTRIES = "two or more entries link the page"
     PROVIDER_IN_ENTRY = "the entry already holds a page of the page's provider"
     SEVERAL_PAGES_OF_PROVIDER = (
-        "the entry's pages link two or more pages of the page's provider that no "
-        "known work holds"
+        "the entry links to multiple unclaimed pages from this provider"
     )
     DETAILS_DIFFER = "the page's year or type differs from the entry's"
     EPISODE_COUNTS_DIFFER = "the page and the entry list different episode counts"
@@ -133,7 +133,7 @@ class LinkingEntryDetails:
     """
 
     entry: WorkEntry
-    # As ``get_entry_episode_count`` gives it.
+    # As ``find_entry_episode_count`` gives it.
     episode_count: int | None
     # Every page the entry's pages link that no known work holds, as
     # ``find_unheld_linked_page_keys`` gives them, so two of one provider are seen.
@@ -142,10 +142,16 @@ class LinkingEntryDetails:
 
 @dataclass(frozen=True, slots=True)
 class LinkedPageDecision:
-    """What happens to one linked page, and why."""
+    """Hold what happens to one linked page and why."""
 
     page_key: str
-    reason: LinkedPageReason
+    # Saved by member name (``enum_names``), so rewording a sentence keeps
+    # saved review cases readable.
+    reason: Annotated[
+        LinkedPageReason,
+        BeforeValidator(read_member_by_name(LinkedPageReason)),
+        PlainSerializer(write_member_name, return_type=str),
+    ]
     # Every entry linking the page, sorted by reference page.
     linking_entries: tuple[WorkEntry, ...]
     # The episode count of the one linking entry, for a reviewer and the
@@ -164,7 +170,7 @@ class LinkedPageDecision:
 
 @dataclass(frozen=True, slots=True)
 class LinkedPageAddition:
-    """An accepted addition: the entry a linked page joins, and whether as a part."""
+    """Hold an accepted addition: the entry a linked page joins, and whether as a part."""
 
     entry_reference_page: str
     is_part_page: bool
@@ -224,17 +230,17 @@ def find_unheld_linked_page_keys(
         linked_page_key
         for page in pages
         for linked_page_key in page.linked_page_keys
-        if get_page_provider(linked_page_key) in providers
-        and get_page_kind(linked_page_key) == "anime"
+        if read_page_provider(linked_page_key) in providers
+        and read_page_kind(linked_page_key) == "anime"
         and linked_page_key not in entry.addresses_by_page_key
         and known_work_entries.find_by_page_key(linked_page_key) is None
     )
 
 
-def get_entry_episode_count(
+def find_entry_episode_count(
     entry: WorkEntry, pages: Iterable[ProviderPage]
 ) -> int | None:
-    """Return the episode count of an entry's most trusted page that gives one.
+    """Find the episode count of an entry's most trusted page that gives one.
 
     The fetched pages are newer than the seed's own count. The most trusted
     provider, MAL first, decides how a work is divided, so that provider's
@@ -289,7 +295,7 @@ def decide_linked_page(
     """
     sorted_entry_details = sorted(
         linking_entry_details,
-        key=lambda entry_details: entry_details.entry.reference_page,
+        key=lambda entry_details: entry_details.entry.reference_page_key,
     )
     if not sorted_entry_details:
         raise NoLinkingEntryError(page.key)
@@ -388,7 +394,7 @@ def check_linked_page_answer(
     """
     if not isinstance(answer, dict) or answer.keys() != {decision.page_key}:
         return LinkedPageAnswerCheck(
-            None, (LinkedPageAnswerRule.ANSWER_NOT_PAGE_ANSWER,)
+            None, (LinkedPageAnswerRule.WRONG_LINKED_PAGE_KEY,)
         )
     answer_text = answer[decision.page_key]
     if answer_text == SKIP_ANSWER:
@@ -396,23 +402,27 @@ def check_linked_page_answer(
     if not isinstance(answer_text, str) or not (
         answer_match := _LINKED_PAGE_ANSWER_TEXT.fullmatch(answer_text)
     ):
-        return LinkedPageAnswerCheck(None, (LinkedPageAnswerRule.ANSWER_NOT_READABLE,))
+        return LinkedPageAnswerCheck(
+            None, (LinkedPageAnswerRule.INVALID_LINKED_PAGE_ANSWER,)
+        )
     named_reference_page = answer_match["entry_reference_page"]
     target_entry = _find_target_entry(decision, named_reference_page)
     if target_entry is None:
         return LinkedPageAnswerCheck(
             None,
             (
-                LinkedPageAnswerRule.ENTRY_NOT_NAMED
+                LinkedPageAnswerRule.MISSING_TARGET_ENTRY
                 if named_reference_page is None
-                else LinkedPageAnswerRule.ENTRY_NOT_LINKING,
+                else LinkedPageAnswerRule.TARGET_ENTRY_NOT_LINKING,
             ),
         )
     is_part_page = answer_match["addition"] == PART_PAGE_ANSWER
     if not is_part_page and target_entry.has_page_of_same_provider(decision.page_key):
-        return LinkedPageAnswerCheck(None, (LinkedPageAnswerRule.PROVIDER_IN_ENTRY,))
+        return LinkedPageAnswerCheck(
+            None, (LinkedPageAnswerRule.PROVIDER_ALREADY_IN_ENTRY,)
+        )
     return LinkedPageAnswerCheck(
-        LinkedPageAddition(target_entry.reference_page, is_part_page), ()
+        LinkedPageAddition(target_entry.reference_page_key, is_part_page), ()
     )
 
 
@@ -434,12 +444,12 @@ def _choose_single_entry_reason(
     """
     entry = entry_details.entry
     page_key = page.current_key
-    provider = get_page_provider(page_key)
+    provider = read_page_provider(page_key)
     if entry.has_page_of_same_provider(page_key):
         return LinkedPageReason.PROVIDER_IN_ENTRY
     if any(
-        key != page_key and get_page_provider(key) == provider
-        for key in entry_details.linked_page_keys
+        other_page_key != page_key and read_page_provider(other_page_key) == provider
+        for other_page_key in entry_details.linked_page_keys
     ):
         return LinkedPageReason.SEVERAL_PAGES_OF_PROVIDER
     if not is_page_details_matching(page, entry):
@@ -470,6 +480,10 @@ def _find_target_entry(
     if entry_reference_page is None:
         return entries[0] if len(entries) == 1 else None
     return next(
-        (entry for entry in entries if entry.reference_page == entry_reference_page),
+        (
+            entry
+            for entry in entries
+            if entry.reference_page_key == entry_reference_page
+        ),
         None,
     )

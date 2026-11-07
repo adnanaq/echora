@@ -93,9 +93,9 @@ message PagePlace {
 message DoubledProviderDecision {
   string provider = 1;
   repeated string page_keys = 2;
-  // The outcome's sentence.
+  // The outcome's member name, such as SAME_PAGE.
   string outcome = 3;
-  // Each review reason's sentence.
+  // Each review reason's member name.
   repeated string review_reasons = 4;
   // Each belonging page with the entry's pages linked with it, in order.
   repeated BelongingPage belonging_page_keys = 5;
@@ -112,7 +112,7 @@ message DoubledProviderDecision {
 // work_matching.LinkedPageDecision.
 message LinkedPageDecision {
   string page_key = 1;
-  // The reason's sentence.
+  // The reason's member name, such as CHECKS_PASSED.
   string reason = 2;
   repeated WorkEntry linking_entries = 3;
   optional int32 entry_episode_count = 4;
