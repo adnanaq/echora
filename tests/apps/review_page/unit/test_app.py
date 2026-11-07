@@ -6,6 +6,7 @@ from google.protobuf import json_format
 from jinja2 import Template
 from review_page.models import CaseEditState, CaseState
 from review_page.template_functions import build_element_id, build_static_url
+from review_page.tooltips import Tooltip
 from shared_proto.v1 import review_cases_pb2
 from work_matching import (
     PART_MARK,
@@ -186,6 +187,18 @@ def test_case_list_answer_saved_before_run_shows_no_icon(
         '<span class="control-chip-count">(0/1)</span>' in linked_page_chip,
         "saved, applies on Run" in case_list,
     ) == (0, True, True)
+
+
+def test_page_search_row_holds_reset_filter_icon_buttons(client) -> None:
+    page = client.get("/").text
+    search_row = page[page.index('class="list-panel-top"') :]
+    search_row = search_row[: search_row.index('id="case-list"')]
+    case_list = client.post("/fragments/case-list", data=_state()).text
+    assert (
+        f'aria-label="{Tooltip.RESET_CASE_FILTERS.value}"' in search_row,
+        f'aria-label="{Tooltip.RESET_CORRECTION_FILTERS.value}"' in search_row,
+        "Reset filters" in case_list,
+    ) == (True, True, False)
 
 
 def test_case_panel_without_open_case_asks_to_choose(client) -> None:

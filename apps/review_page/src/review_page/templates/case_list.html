@@ -15,7 +15,6 @@
 <div class="filter-group">
   <span class="filter-group-label">Edits</span>
   {% for edit_state in edit_states %}{{ chip(edit_state.value[:1] | upper ~ edit_state.value[1:], "edit_states", edit_state.value, chip_counts[edit_state.value], edit_state.description, is_on=edit_state in state.edit_states) }}{% endfor %}
-  <button type="button" id="reset-case-filters" class="control-chip" title="{{ tooltips.RESET_CASE_FILTERS }}" @click="$store.review.resetFilters()">Reset filters</button>
 </div>
 
 {% if case_page.rows %}

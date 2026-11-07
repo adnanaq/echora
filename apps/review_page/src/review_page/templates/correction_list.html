@@ -16,8 +16,6 @@
   {{ chip("Rules", "correction_sources", "rules", chip_counts["rules"],
                 tooltips.RULES_SOURCE_CHIP, toggle="toggleCorrectionFilter",
                 is_on="rules" in state.correction_sources) }}
-  <button type="button" id="reset-correction-filters" class="control-chip" title="{{ tooltips.RESET_CORRECTION_FILTERS }}"
-          @click="$store.review.resetCorrectionFilters()">Reset filters</button>
 </div>
 
 {% if entry_page.rows %}
