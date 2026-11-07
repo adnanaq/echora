@@ -54,7 +54,9 @@ function redrawAfterSharedChanges() {
 document.addEventListener("alpine:init", () => {
   Alpine.store("review", {
     edits: Alpine.$persist({}).as("review_page_edits"),
-    seen_saved_answers: Alpine.$persist({}).as("review_page_seen_saved_answers"),
+    seen_saved_answers: Alpine.$persist({}).as(
+      "review_page_seen_saved_answers",
+    ),
     rejected: Alpine.$persist({}).as("review_page_rejected"),
     kinds: Alpine.$persist([]).as("review_page_kinds"),
     case_states: Alpine.$persist([]).as("review_page_case_states"),
@@ -62,15 +64,27 @@ document.addEventListener("alpine:init", () => {
     search_text: Alpine.$persist("").as("review_page_search_text"),
     page_number: Alpine.$persist(1).as("review_page_page_number"),
     open_case_name: Alpine.$persist(null).as("review_page_open_case_name"),
-    show_only_differences: Alpine.$persist(false).as("review_page_show_only_differences"),
+    show_only_differences: Alpine.$persist(false).as(
+      "review_page_show_only_differences",
+    ),
     // The shown tab, "cases" or "corrections", and the Corrections tab's own
     // filters, search, page and open entry.
     tab: Alpine.$persist("cases").as("review_page_tab"),
-    correction_changes: Alpine.$persist([]).as("review_page_correction_changes"),
-    correction_sources: Alpine.$persist([]).as("review_page_correction_sources"),
-    correction_search_text: Alpine.$persist("").as("review_page_correction_search_text"),
-    correction_page_number: Alpine.$persist(1).as("review_page_correction_page_number"),
-    open_correction_entry: Alpine.$persist(null).as("review_page_open_correction_entry"),
+    correction_changes: Alpine.$persist([]).as(
+      "review_page_correction_changes",
+    ),
+    correction_sources: Alpine.$persist([]).as(
+      "review_page_correction_sources",
+    ),
+    correction_search_text: Alpine.$persist("").as(
+      "review_page_correction_search_text",
+    ),
+    correction_page_number: Alpine.$persist(1).as(
+      "review_page_correction_page_number",
+    ),
+    open_correction_entry: Alpine.$persist(null).as(
+      "review_page_open_correction_entry",
+    ),
     // "system", "light" or "dark"; base.html applies it before the first paint.
     theme: Alpine.$persist("system").as("review_page_theme"),
     // The case list's width in pixels, and whether it is shown.
@@ -186,7 +200,9 @@ document.addEventListener("alpine:init", () => {
     toggleSidebar() {
       this.is_sidebar_open = !this.is_sidebar_open;
       Alpine.nextTick(() => {
-        const shownButtonPlace = this.is_sidebar_open ? ".list-panel-top" : ".layout-rail";
+        const shownButtonPlace = this.is_sidebar_open
+          ? ".list-panel-top"
+          : ".layout-rail";
         document.querySelector(`${shownButtonPlace} .is-icon-only`)?.focus();
       });
     },
@@ -196,8 +212,13 @@ document.addEventListener("alpine:init", () => {
     setSidebarWidth(width) {
       const main = document.querySelector(".layout-main");
       const roomLeft = main ? main.clientWidth - 480 : this.SIDEBAR_MAX_WIDTH;
-      const widest = Math.max(this.SIDEBAR_MIN_WIDTH, Math.min(this.SIDEBAR_MAX_WIDTH, roomLeft));
-      this.sidebar_width = Math.round(Math.min(widest, Math.max(this.SIDEBAR_MIN_WIDTH, width)));
+      const widest = Math.max(
+        this.SIDEBAR_MIN_WIDTH,
+        Math.min(this.SIDEBAR_MAX_WIDTH, roomLeft),
+      );
+      this.sidebar_width = Math.round(
+        Math.min(widest, Math.max(this.SIDEBAR_MIN_WIDTH, width)),
+      );
     },
 
     // Follow the pointer until it is released; pointer capture keeps the drag
@@ -210,7 +231,8 @@ document.addEventListener("alpine:init", () => {
       const startWidth = this.sidebar_width;
       divider.setPointerCapture(event.pointerId);
       divider.classList.add("is-dragging");
-      const follow = (moveEvent) => this.setSidebarWidth(startWidth + moveEvent.clientX - startX);
+      const follow = (moveEvent) =>
+        this.setSidebarWidth(startWidth + moveEvent.clientX - startX);
       const stop = () => {
         divider.classList.remove("is-dragging");
         divider.removeEventListener("pointermove", follow);
@@ -263,7 +285,9 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     } else {
       store.edits = withoutKeys(store.edits, [caseName]);
-      store.seen_saved_answers = withoutKeys(store.seen_saved_answers, [caseName]);
+      store.seen_saved_answers = withoutKeys(store.seen_saved_answers, [
+        caseName,
+      ]);
     }
     store.rejected = withoutKeys(store.rejected, [caseName]);
     refreshRegions("toolbar", "list");
@@ -302,7 +326,14 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!wasRunning && store.is_running) {
       refreshRegions("run", "toolbar", "case");
     } else if (wasRunning && !store.is_running) {
-      refreshRegions("run", "toolbar", "list", "case", "correction-list", "correction");
+      refreshRegions(
+        "run",
+        "toolbar",
+        "list",
+        "case",
+        "correction-list",
+        "correction",
+      );
     }
   });
 
@@ -336,6 +367,17 @@ document.addEventListener("DOMContentLoaded", () => {
         JSON.parse(event.detail.xhr.responseText).notice || generalNotice;
     } catch {
       Alpine.store("review").notice = generalNotice;
+    }
+  });
+
+  // A server error page is swapped into its region so the error shows where
+  // it happened. A notice response is JSON, shown by the notice banner
+  // above, so its body is never swapped into a region.
+  document.body.addEventListener("htmx:beforeOnLoad", function (evt) {
+    const contentType = evt.detail.xhr.getResponseHeader("Content-Type") || "";
+    if (evt.detail.xhr.status === 500 && !contentType.includes("application/json")) {
+      evt.detail.shouldSwap = true;
+      evt.detail.isError = false;
     }
   });
 });
