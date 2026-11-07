@@ -86,6 +86,7 @@ from work_matching.placement_suggestions import suggest_page_placements
 from work_matching.provider_page import ProviderPage, index_pages_by_current_page_key
 from work_matching.provider_page_key import (
     build_page_address,
+    is_mal_page,
     rank_by_provider_trust,
     read_page_provider,
     resolve_page_key,
@@ -184,6 +185,7 @@ __all__ = [
     "fold_title_for_comparison",
     "hold_review_file_lock",
     "index_pages_by_current_page_key",
+    "is_mal_page",
     "is_page_details_matching",
     "is_review_file_locked",
     "list_group_page_choices",

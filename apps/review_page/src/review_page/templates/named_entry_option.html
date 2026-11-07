@@ -1,0 +1,14 @@
+{% from "control_macros.html" import error_line with context %}
+<p class="control-picker-group">Page key</p>
+{% if invalid_reason %}
+<div class="control-picker-option is-disabled" role="option" aria-disabled="true">
+  {{ error_line(invalid_reason.value) }}
+</div>
+{% else %}
+<button type="button" role="option" aria-selected="false" class="control-picker-option"
+        hx-post="/fragments/choice" hx-target="#case-panel" hx-swap="innerHTML"
+        hx-vals='{{ {"page_key": page_key, "work": "other work", "mark": mark, "named_entry": named_entry_page_key} | tojson }}'>
+  <span class="control-picker-option-title">Use {{ named_entry_page_key }}</span>
+  <span class="control-picker-option-key">The seed entry holding this page</span>
+</button>
+{% endif %}

@@ -26,7 +26,7 @@ Each design rule reads `<rule>: <reason>`:
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 
-from review_page.models import RunSummary
+from review_page.models import InvalidNamedPageKeyReason, RunSummary
 from review_page.review_case_messages import convert_message_to_case
 from review_page.run_summary import build_run_summary
 from shared_proto.v1 import review_cases_pb2
@@ -121,6 +121,23 @@ class ReviewCaseSource(ABC):
         Returns:
             The current run state message indicating active execution and the
             exit code of the most recent page-initiated run.
+        """
+
+    @abstractmethod
+    def find_invalid_named_page_keys(
+        self, page_keys: Sequence[str]
+    ) -> dict[str, InvalidNamedPageKeyReason]:
+        """Find the page keys an answer cannot name after ``other work``, and why.
+
+        A key cannot be used when its provider no longer has the page, or when
+        no seed entry holds it. Saving refuses such an answer, so the case
+        panel marks the row before the reviewer saves.
+
+        Args:
+            page_keys: The page keys an answer names after ``other work``.
+
+        Returns:
+            Each invalid key mapped to the reason it is invalid. Valid keys are left out.
         """
 
     @abstractmethod

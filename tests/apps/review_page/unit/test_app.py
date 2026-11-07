@@ -4,7 +4,7 @@ import re
 import pytest
 from google.protobuf import json_format
 from jinja2 import Template
-from review_page.models import CaseEditState, CaseState
+from review_page.models import CaseEditState, CaseState, InvalidNamedPageKeyReason
 from review_page.template_functions import build_element_id, build_static_url
 from review_page.tooltips import Tooltip
 from shared_proto.v1 import review_cases_pb2
@@ -312,29 +312,43 @@ def _render_other_work_panel(client, source, review_cases, place: str) -> str:
 
 
 def _cut_named_entry_controls(panel: str) -> str:
-    start = panel.index('class="control-dropdown control-named-entry"')
+    start = panel.index('class="control-picker')
     return panel[start : panel.index("</td>", start)]
 
 
-def test_case_panel_other_work_offers_new_entry_suggestions_and_other_entry(
+def _read_trigger_text(controls: str) -> str:
+    trigger_text = re.search(r'class="control-picker-text">([^<]*)<', controls)
+    assert trigger_text is not None
+    return trigger_text.group(1)
+
+
+def test_case_panel_other_work_offers_new_entry_and_suggestions(
     client, source, review_cases
 ) -> None:
     controls = _cut_named_entry_controls(
         _render_other_work_panel(client, source, review_cases, "other work")
     )
-    option_values = re.findall(r'<option value="([^"]*)"', controls)
     assert (
-        option_values,
-        "Gochuumon wa Usagi desu ka?" in controls,
-        re.search(r'<option value=""\s+selected', controls) is not None,
-        "isTypingKey: false" in controls,
+        _read_trigger_text(controls),
+        re.findall(r'"named_entry": "([^"]*)"', controls),
+        re.findall(r'class="control-picker-option-title">([^<]*)<', controls),
+        re.search(
+            r'aria-selected="true"\s+class="control-picker-option is-chosen"', controls
+        )
+        is not None,
         'style="display: none"' in controls,
-        'title="mal:anime' in controls,
         'class="page-key"' in controls,
-    ) == (["", "mal:anime:21273", "other entry"], True, True, True, True, False, False)
+    ) == (
+        "New entry",
+        ["mal:anime:21273"],
+        ["New entry", "Gochuumon wa Usagi desu ka?"],
+        True,
+        True,
+        False,
+    )
 
 
-def test_case_panel_other_work_suggested_entry_named_selects_suggestion(
+def test_case_panel_other_work_suggested_entry_named_shows_its_title(
     client, source, review_cases
 ) -> None:
     controls = _cut_named_entry_controls(
@@ -343,14 +357,13 @@ def test_case_panel_other_work_suggested_entry_named_selects_suggestion(
         )
     )
     assert (
-        re.search(r'<option value="mal:anime:21273"[^>]*\sselected', controls)
-        is not None,
-        "isTypingKey: false" in controls,
+        _read_trigger_text(controls),
+        controls.count("is-chosen"),
         '<a class="page-key" href="https://myanimelist.net/anime/21273"' in controls,
-    ) == (True, True, True)
+    ) == ("Gochuumon wa Usagi desu ka?", 1, True)
 
 
-def test_case_panel_other_work_unsuggested_entry_named_shows_key_box(
+def test_case_panel_other_work_typed_entry_named_shows_its_key(
     client, source, review_cases
 ) -> None:
     controls = _cut_named_entry_controls(
@@ -359,12 +372,44 @@ def test_case_panel_other_work_unsuggested_entry_named_shows_key_box(
         )
     )
     assert (
-        re.search(r'<option value="other entry"[^>]*\sselected', controls) is not None,
-        "isTypingKey: true" in controls,
-        'value="mal:anime:29787"' in controls,
-        'style="display: none"' in controls,
+        _read_trigger_text(controls),
+        "is-chosen" in controls,
         '<a class="page-key" href="https://myanimelist.net/anime/29787"' in controls,
-    ) == (True, True, True, False, True)
+    ) == ("Other entry", False, True)
+
+
+@pytest.mark.parametrize("invalid_reason", list(InvalidNamedPageKeyReason))
+def test_case_panel_other_work_invalid_named_key_marked_with_reason(
+    client, source, review_cases, invalid_reason
+) -> None:
+    source.invalid_named_page_key_reasons = {"mal:anime:29787": invalid_reason}
+    controls = _cut_named_entry_controls(
+        _render_other_work_panel(
+            client, source, review_cases, "other work mal:anime:29787"
+        )
+    )
+    assert (
+        'class="control-picker is-invalid"' in controls,
+        'aria-invalid="true"' in controls,
+        re.search(
+            rf'class="control-error-line">.*?{invalid_reason.value}</p>', controls
+        )
+        is not None,
+    ) == (True, True, True)
+
+
+def test_case_panel_other_work_valid_named_key_not_marked(
+    client, source, review_cases
+) -> None:
+    controls = _cut_named_entry_controls(
+        _render_other_work_panel(
+            client, source, review_cases, "other work mal:anime:29787"
+        )
+    )
+    assert ("is-invalid" in controls, "control-error-line" in controls) == (
+        False,
+        False,
+    )
 
 
 def test_choice_linked_page_answer_reported(client, review_cases) -> None:

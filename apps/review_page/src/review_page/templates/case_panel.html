@@ -1,4 +1,4 @@
-{% from "control_macros.html" import button, dropdown, error_line, named_entry_dropdown, note_line, page_link, pill, status, switch with context %}
+{% from "control_macros.html" import button, dropdown, error_line, named_entry_picker, note_line, page_link, pill, status, switch with context %}
 {% if view is none %}
 <p class="empty-state">Choose a case from the list.</p>
 {% else %}
@@ -70,12 +70,18 @@
       {% endif %}
       {% endfor %}
       <td class="choice-cell">
-        {{ dropdown("work", row.choices.work_options, row.choices.work, "Work of " ~ row.page_key,
-                          is_changed=row.is_changed, is_invalid=row.is_place_missing,
-                          hx_vals={"page_key": row.page_key, "mark": row.choices.mark}, empty_label="no place",
-                          empty_description=choice_meaning_by_word["no place"]) }}
-        {% if row.choices.work == "other work" %}{{ named_entry_dropdown(row) }}{% endif %}
-        {% for note in row.disabled_choice_notes %}{{ note_line(note) }}{% endfor %}
+        <div class="choice-stack">
+          {{ dropdown("work", row.choices.work_options, row.choices.work, "Work of " ~ row.page_key,
+                            is_changed=row.is_changed, is_invalid=row.is_place_missing,
+                            hx_vals={"page_key": row.page_key, "mark": row.choices.mark}, empty_label="no place",
+                            empty_description=choice_meaning_by_word["no place"]) }}
+          {% if row.choices.work == "other work" %}{{ named_entry_picker(row) }}{% endif %}
+        </div>
+        {% if row.choices.work == "other work" and row.choices.named_entry_page_key %}
+        <div>{{ page_link(row.choices.named_entry_page_key, row.named_entry_address) }}</div>{% endif %}
+        {% if row.named_entry_invalid_reason %}{{ error_line(row.named_entry_invalid_reason.value) }}{% endif %}
+        {% for work_word, mal_page in row.mal_pages_by_closed_work.items() %}
+        <p class="control-note-line">{{ work_word | capitalize }} already has a MAL page: {{ page_link(mal_page.page_key, mal_page.address) }}</p>{% endfor %}
       </td>
       <td class="choice-cell">
         {{ dropdown("mark", row.choices.mark_options, row.choices.mark, "Mark of " ~ row.page_key,

@@ -17,7 +17,6 @@ from review_page.models import (
 from work_matching import (
     PART_MARK,
     KnownWorkEntriesFromSeed,
-    PlacementRule,
     ReviewCase,
     ReviewCaseKind,
     TargetEntrySuggestion,
@@ -47,6 +46,9 @@ def _view(case, **options):
         is_rejected=options.get("is_rejected", False),
         is_run_going=options.get("is_run_going", False),
         show_only_differences=options.get("show_only_differences", False),
+        invalid_named_page_key_reasons=options.get(
+            "invalid_named_page_key_reasons", {}
+        ),
     )
 
 
@@ -304,16 +306,22 @@ def _mal_only_case(*mal_numbers: int) -> ReviewCase:
     return ReviewCase.build_entry_group_case(entries, decisions, [], [])
 
 
-def test_build_case_view_rows_join_works_one_rule_disables_into_one_note() -> None:
+def test_build_case_view_unplaced_rows_name_mal_page_holding_each_closed_work() -> None:
     view = _view(
         _mal_only_case(1, 2, 3),
         unsaved_answer={"mal:anime:1": "work 1", "mal:anime:2": "work 2"},
     )
-    notes = {row.page_key: row.disabled_choice_notes for row in view.page_rows}
-    assert notes["mal:anime:3"] == (
-        "work 1 and work 2 are not offered: "
-        f"{PlacementRule.WORK_WITH_TWO_MAL_PAGES.value}",
-    )
+    closed_works = {
+        row.page_key: row.mal_pages_by_closed_work for row in view.page_rows
+    }
+    assert closed_works == {
+        "mal:anime:1": {},
+        "mal:anime:2": {},
+        "mal:anime:3": {
+            "work 1": PageLink("mal:anime:1", "https://myanimelist.net/anime/1"),
+            "work 2": PageLink("mal:anime:2", "https://myanimelist.net/anime/2"),
+        },
+    }
 
 
 def test_build_case_view_rows_explain_choices_other_pages_disable() -> None:
@@ -334,15 +342,17 @@ def test_build_case_view_rows_explain_choices_other_pages_disable() -> None:
     )
     case = ReviewCase.build_entry_group_case(entries, decisions, [], [])
     view = _view(case, unsaved_answer={"mal:anime:1": "work 1"})
-    notes = {row.page_key: row.disabled_choice_notes for row in view.page_rows}
-    assert notes["mal:anime:2"] == (
-        f"work 1 is not offered: {PlacementRule.WORK_WITH_TWO_MAL_PAGES.value}",
-    )
+    closed_works = {
+        row.page_key: row.mal_pages_by_closed_work for row in view.page_rows
+    }
+    assert closed_works["mal:anime:2"] == {
+        "work 1": PageLink("mal:anime:1", "https://myanimelist.net/anime/1")
+    }
 
 
 def test_build_case_view_rows_leave_lone_page_main_to_tooltip(review_cases) -> None:
     view = _view(review_cases["atashinchi_next"])
-    assert all(row.disabled_choice_notes == () for row in view.page_rows)
+    assert all(row.mal_pages_by_closed_work == {} for row in view.page_rows)
 
 
 def test_build_case_view_title_matches_list_title(review_cases) -> None:

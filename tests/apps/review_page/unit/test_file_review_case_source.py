@@ -15,6 +15,7 @@ from review_page.file_review_case_source import (
     FileReviewCaseSource,
     RunSeedFileUnknownError,
 )
+from review_page.models import InvalidNamedPageKeyReason
 from review_page.review_case_loader import UnreadableReviewFileError
 from review_page.review_case_source import (
     ANSWER_SAVED_ELSEWHERE_RULE_NAME,
@@ -158,12 +159,33 @@ def test_file_review_case_source_save_answers_named_seed_entry_saved(
     assert (result.is_saved, list(result.broken_rule_names)) == (True, [])
 
 
+def _write_dead_page_correction(data_dir: Path, page_key: str) -> None:
+    (data_dir / "corrections.jsonl").write_text(
+        SeedCorrection(
+            entry_reference_page=page_key,
+            page_key=page_key,
+            address=f"https://myanimelist.net/anime/{page_key.rsplit(':', 1)[1]}",
+            placement_word=None,
+            is_dead_page=True,
+            reason="dead page",
+        ).model_dump_json()
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+@pytest.mark.parametrize(
+    ("named_entry_page_key", "dead_page_key"),
+    [("mal:anime:99999", None), ("mal:anime:21273", "mal:anime:21273")],
+)
 def test_file_review_case_source_save_answers_named_entry_outside_seed_not_saved(
-    seed_source, review_cases
+    seed_source, review_cases, data_dir, named_entry_page_key, dead_page_key
 ) -> None:
+    if dead_page_key:
+        _write_dead_page_correction(data_dir, dead_page_key)
     case_name = review_cases["gochuumon_movie"].case_name
     [result] = seed_source.save_answers(
-        [_case_answer(case_name, _gochuumon_named_answer("mal:anime:99999"))]
+        [_case_answer(case_name, _gochuumon_named_answer(named_entry_page_key))]
     )
     assert (result.is_saved, list(result.broken_rule_names)) == (
         False,
@@ -186,6 +208,19 @@ def test_file_review_case_source_save_answers_named_entry_without_seed_file_rais
     assert (data_dir / "review.jsonl").read_text(encoding="utf-8").splitlines(
         keepends=True
     ) == review_case_lines
+
+
+def test_file_review_case_source_find_invalid_named_page_keys_tells_dead_from_unknown(
+    seed_source, data_dir
+) -> None:
+    assert seed_source.find_invalid_named_page_keys(["mal:anime:21273"]) == {}
+    _write_dead_page_correction(data_dir, "mal:anime:21273")
+    assert seed_source.find_invalid_named_page_keys(
+        ["mal:anime:21273", "mal:anime:99999"]
+    ) == {
+        "mal:anime:21273": InvalidNamedPageKeyReason.DEAD_PAGE,
+        "mal:anime:99999": InvalidNamedPageKeyReason.UNKNOWN_PAGE,
+    }
 
 
 def test_file_review_case_source_save_answers_rule_breaking_answer_not_saved(

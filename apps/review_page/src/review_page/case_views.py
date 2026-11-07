@@ -18,7 +18,7 @@ Each rule reads `<rule>: <reason>`:
   provider, while linked page cases display the linking seed entry title.
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 from pydantic import JsonValue
 from review_page.case_panel_tables import (
@@ -32,6 +32,7 @@ from review_page.case_panel_tables import (
 from review_page.models import (
     CaseRow,
     CaseView,
+    InvalidNamedPageKeyReason,
     PageRowView,
     RunSummary,
     SavedChange,
@@ -127,6 +128,7 @@ def build_case_view(
     is_rejected: bool,
     is_run_going: bool,
     show_only_differences: bool,
+    invalid_named_page_key_reasons: Mapping[str, InvalidNamedPageKeyReason],
 ) -> CaseView:
     """Assemble the detailed inspection panel view for a selected review case.
 
@@ -140,6 +142,8 @@ def build_case_view(
         is_rejected: Whether the last save attempt failed validation rules.
         is_run_going: Whether a pipeline cleaning run is currently in progress.
         show_only_differences: Whether to hide metadata attributes identical across entries.
+        invalid_named_page_key_reasons: Each page key named after ``other work`` that
+            cannot be used, mapped to the reason it is invalid, so its row is marked.
 
     Returns:
         A CaseView model containing assembled tables, candidate rows, and action button states.
@@ -151,7 +155,13 @@ def build_case_view(
     page_rows = (
         ()
         if is_linked_page
-        else _build_marked_page_rows(case, chosen_answer, original_answer, is_rejected)
+        else _build_marked_page_rows(
+            case,
+            chosen_answer,
+            original_answer,
+            is_rejected=is_rejected,
+            invalid_named_page_key_reasons=invalid_named_page_key_reasons,
+        )
     )
     comparison_rows = (
         build_comparison_rows(case, show_only_differences) if is_linked_page else ()
@@ -216,7 +226,9 @@ def _build_marked_page_rows(
     case: ReviewCase,
     chosen_answer: JsonValue,
     original_answer: JsonValue,
+    *,
     is_rejected: bool,
+    invalid_named_page_key_reasons: Mapping[str, InvalidNamedPageKeyReason],
 ) -> tuple[PageRowView, ...]:
     """Build candidate page rows for an entry group case, marking altered placements.
 
@@ -228,6 +240,8 @@ def _build_marked_page_rows(
         chosen_answer: The active placement selections shown in the panel.
         original_answer: The baseline answer recorded by the previous pipeline run.
         is_rejected: Whether the last save attempt broke validation rules.
+        invalid_named_page_key_reasons: Each invalid page key named after
+            ``other work``, mapped to the reason it is invalid.
 
     Returns:
         A tuple of PageRowView models for placeable candidate pages.
@@ -238,7 +252,11 @@ def _build_marked_page_rows(
         else build_suggested_answer(case)
     )
     return build_page_rows(
-        case, chosen_answer, starting_answer, is_rejected=is_rejected
+        case,
+        chosen_answer,
+        starting_answer,
+        is_rejected=is_rejected,
+        invalid_named_page_key_reasons=invalid_named_page_key_reasons,
     )
 
 

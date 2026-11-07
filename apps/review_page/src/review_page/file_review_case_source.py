@@ -12,6 +12,9 @@ Each operational rule reads `<rule>: <reason>`:
 - Seed entry resolution: Answers referencing an external seed entry via
   ``other work`` are resolved against the active seed release via ``seed_entries``
   so unknown or conflicting target entries are rejected before saving.
+- Dead pages: A key whose page the last run dropped as dead names no entry,
+  as in the run, so saving refuses it. The dead keys come from the last run's
+  corrections, so the large page store is never loaded.
 - Atomic line updates: Validated answers are persisted together through
   ``ReviewFile.save_answers``, which acquires the review file lock and rewrites
   only modified lines.
@@ -51,6 +54,7 @@ from review_page.answer_checks import (
     read_case_answer,
     read_seen_saved_answers,
 )
+from review_page.models import InvalidNamedPageKeyReason
 from review_page.review_case_loader import ReviewCaseLoader
 from review_page.review_case_messages import (
     list_ordered_mappings,
@@ -71,6 +75,7 @@ from seed_cleaning import (
 from shared_proto.v1 import review_cases_pb2
 from work_matching import (
     KnownWorkEntriesFromSeed,
+    ReviewCase,
     ReviewFile,
     is_review_file_locked,
     list_named_entry_page_keys,
@@ -192,7 +197,7 @@ class FileReviewCaseSource(ReviewCaseSource):
             answer = read_case_answer(case_answer)
             case = cases_by_name.get(case_answer.case_name)
             if case is not None and list_named_entry_page_keys(answer):
-                case = resolve_named_entries(case, self._load_seed_entries(), answer)
+                case = self._resolve_live_named_entries(case, answer)
             check_result = check_case_answer(
                 case, case_answer.case_name, answer, seen_saved_answers
             )
@@ -253,6 +258,37 @@ class FileReviewCaseSource(ReviewCaseSource):
         """
         with self._run_lock:
             return self._read_run_state()
+
+    def find_invalid_named_page_keys(
+        self, page_keys: Sequence[str]
+    ) -> dict[str, InvalidNamedPageKeyReason]:
+        """Find the page keys an answer cannot name after ``other work``, and why.
+
+        Without a seed file, only dead keys are found, since unknown keys cannot
+        be told apart. Saving then refuses the answer with a notice instead.
+
+        Args:
+            page_keys: The page keys an answer names after ``other work``.
+
+        Returns:
+            Each invalid key mapped to the reason it is invalid. Valid keys are left out.
+        """
+        if not page_keys:
+            return {}
+        dead_page_keys = self._list_dead_page_keys()
+        try:
+            seed_entries: KnownWorkEntriesFromSeed | None = self._load_seed_entries()
+        except SeedFileUnavailableError:
+            seed_entries = None
+        invalid_reasons: dict[str, InvalidNamedPageKeyReason] = {}
+        for page_key in page_keys:
+            if page_key in dead_page_keys:
+                invalid_reasons[page_key] = InvalidNamedPageKeyReason.DEAD_PAGE
+            elif seed_entries is not None and not seed_entries.find_by_page_key(
+                page_key
+            ):
+                invalid_reasons[page_key] = InvalidNamedPageKeyReason.UNKNOWN_PAGE
+        return invalid_reasons
 
     def list_corrections(self) -> list[review_cases_pb2.SeedCorrection]:
         """Read all seed corrections from the last run with change labels and reasons.
@@ -363,6 +399,48 @@ class FileReviewCaseSource(ReviewCaseSource):
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
             )
+
+    def _resolve_live_named_entries(
+        self, case: ReviewCase, answer: JsonValue
+    ) -> ReviewCase:
+        """Resolve an answer's named keys against the seed without its dead pages.
+
+        Args:
+            case: The review case the answer is for.
+            answer: The answer as submitted.
+
+        Returns:
+            The case, each named key that a seed entry holds and that is not
+            dead mapped to that entry's reference page.
+
+        Raises:
+            SeedFileUnavailableError: The seed file is unknown or missing.
+        """
+        resolved_case = resolve_named_entries(case, self._load_seed_entries(), answer)
+        dead_page_keys = self._list_dead_page_keys()
+        return resolved_case.model_copy(
+            update={
+                "named_entry_reference_pages": {
+                    page_key: reference_page
+                    for page_key, reference_page in (
+                        resolved_case.named_entry_reference_pages.items()
+                    )
+                    if page_key not in dead_page_keys
+                }
+            }
+        )
+
+    def _list_dead_page_keys(self) -> set[str]:
+        """List the page keys the last run dropped because their provider no longer has them.
+
+        Returns:
+            The dead page keys, or none before the first run.
+        """
+        return {
+            correction.page_key
+            for correction in self.list_corrections()
+            if correction.is_dead_page
+        }
 
     def _load_seed_entries(self) -> KnownWorkEntriesFromSeed:
         """Load the seed entries that named entries are looked up in.

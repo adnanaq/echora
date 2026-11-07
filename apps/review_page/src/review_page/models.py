@@ -186,6 +186,15 @@ class PageButtons:
 # Case panel.
 
 
+class InvalidNamedPageKeyReason(StrEnum):
+    """Define why a page key named after ``other work`` cannot be used, as the row shows it."""
+
+    DEAD_PAGE = "Page removed by provider"
+    UNKNOWN_PAGE = "Not in the seed"
+    NOT_PAGE_KEY = "Not a page key or address"
+    IN_CASE = "Part of this case, so choose a work"
+
+
 class DetailColumn(StrEnum):
     """Identify metadata attribute columns shown in candidate page tables.
 
@@ -228,8 +237,8 @@ class PageRowView:
     choices: GroupPageChoices
     # Whether the selected placement differs from the baseline run answer.
     is_changed: bool
-    # Explanations for placement options disabled by multi-page rules on other rows.
-    disabled_choice_notes: tuple[str, ...] = ()
+    # The MAL page already in each work this MAL page cannot join, by work word.
+    mal_pages_by_closed_work: dict[str, PageLink] = field(default_factory=dict)
     # Whether a rejected save left this required page without a selected placement.
     is_place_missing: bool = False
     # External links to pages referenced by this provider page.
@@ -239,6 +248,8 @@ class PageRowView:
     # The provider address of the seed entry ``other work`` names, so its key
     # under the dropdown opens it; None while no entry is named.
     named_entry_address: str | None = None
+    # Why the page key named after "other work" cannot be used; None when it can.
+    named_entry_invalid_reason: InvalidNamedPageKeyReason | None = None
 
 
 @dataclass(frozen=True, slots=True)

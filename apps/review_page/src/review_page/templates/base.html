@@ -22,11 +22,13 @@
   <link rel="stylesheet" href="{{ static_url('review_page.css') }}">
   <script src="{{ static_url('vendor/htmx-2.0.11.min.js') }}"></script>
   {#
-    Deferred scripts run in this order. The persist plugin comes before
-    Alpine's core, as its documentation asks, and the page's store after the
-    plugin: both register on "alpine:init", and the store needs $persist.
+    Deferred scripts run in this order. The plugins come before Alpine's core,
+    as their documentation asks, and the page's store after the persist plugin,
+    because both register on "alpine:init" and the store needs $persist.
   #}
   <script defer src="{{ static_url('vendor/alpinejs-persist-3.17.5.min.js') }}"></script>
+  <script defer src="{{ static_url('vendor/alpinejs-anchor-3.17.5.min.js') }}"></script>
+  <script defer src="{{ static_url('vendor/alpinejs-focus-3.17.5.min.js') }}"></script>
   <script defer src="{{ static_url('review_page.js') }}"></script>
   <script defer src="{{ static_url('vendor/alpinejs-3.17.5.min.js') }}"></script>
 </head>

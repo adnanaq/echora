@@ -71,6 +71,7 @@ from work_matching import (
     SavedAnswerChangedError,
     UnknownCaseError,
     choose_group_page_place,
+    list_named_entry_page_keys,
     resolve_page_key,
 )
 
@@ -348,13 +349,17 @@ class CaseRoutes:
                 request, "case_panel.html", {"view": None}
             )
         last_run_summary = load_last_run_summary(self._source)
+        unsaved_answer = state.edits.get(case.case_name)
         view = build_case_view(
             case,
             original_answer=find_original_answer(case, last_run_summary),
-            unsaved_answer=state.edits.get(case.case_name),
+            unsaved_answer=unsaved_answer,
             is_rejected=case.case_name in state.rejected,
             is_run_going=self._source.get_run_state().is_running,
             show_only_differences=state.show_only_differences,
+            invalid_named_page_key_reasons=self._source.find_invalid_named_page_keys(
+                list_named_entry_page_keys(resolve_shown_answer(case, unsaved_answer))
+            ),
         )
         return self._templates.TemplateResponse(
             request,

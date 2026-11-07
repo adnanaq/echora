@@ -10,6 +10,7 @@ from review_page.file_review_case_source import (
     FileReviewCaseSource,
     RunSeedFileUnknownError,
 )
+from review_page.models import InvalidNamedPageKeyReason
 from review_page.review_case_loader import UnreadableReviewFileError
 from review_page.review_case_messages import convert_case_to_message
 from review_page.review_case_source import ReviewCaseSource, SeedFileUnavailableError
@@ -103,6 +104,7 @@ class FakeReviewCaseSource(ReviewCaseSource):
         self.run_result: review_cases_pb2.SeedCleaningRunResult | None = None
         self.corrections: list[review_cases_pb2.SeedCorrection] = []
         self.checked_entries: list[review_cases_pb2.CheckedEntry] = []
+        self.invalid_named_page_key_reasons: dict[str, InvalidNamedPageKeyReason] = {}
 
     def list_cases(self) -> list[review_cases_pb2.ReviewCase]:
         if self.is_review_file_unreadable:
@@ -115,6 +117,15 @@ class FakeReviewCaseSource(ReviewCaseSource):
 
     def get_last_run_result(self) -> review_cases_pb2.SeedCleaningRunResult | None:
         return self.run_result
+
+    def find_invalid_named_page_keys(
+        self, page_keys: Sequence[str]
+    ) -> dict[str, InvalidNamedPageKeyReason]:
+        return {
+            page_key: self.invalid_named_page_key_reasons[page_key]
+            for page_key in page_keys
+            if page_key in self.invalid_named_page_key_reasons
+        }
 
     def list_corrections(self) -> list[review_cases_pb2.SeedCorrection]:
         return list(self.corrections)

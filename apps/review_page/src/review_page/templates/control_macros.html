@@ -35,40 +35,63 @@
 {%- endmacro %}
 
 {#
-  The seed entry an "other work" page moves to, chosen like the other dropdowns:
-  "new entry", each suggested entry by title, or "other entry", which shows a
-  box for a page key or address. The chosen entry's key shows below as a link
-  to its provider page. Choosing "other entry" posts nothing until
-  the box holds a key, so the box opens without a redraw. The server renders
-  the box hidden too, because Alpine does not apply x-show to a box that
-  htmx swaps in.
+  The seed entry an "other work" page moves to, chosen in one picker. The
+  trigger names the choice: "New entry", the suggested entry's title, or
+  "Other entry" for a typed key, whose page key shows below as a link. The
+  panel holds a search box that filters the suggestions and also takes a page
+  key or provider address, which the server checks and offers as an option, or
+  shows disabled with the reason it cannot be used. A chosen key no entry can
+  take marks the trigger as invalid, with the reason below.
 #}
-{% macro named_entry_dropdown(row) -%}
+{% macro named_entry_picker(row) -%}
 {% set label = "Seed entry for " ~ row.page_key %}
 {% set named_key = row.choices.named_entry_page_key or "" %}
-{% set suggested_keys = row.target_entry_options | map(attribute="entry_reference_page") | list %}
-{% set is_typing_key = named_key != "" and named_key not in suggested_keys %}
-<span class="control-dropdown control-named-entry" x-data="{ isTypingKey: {{ is_typing_key | tojson }} }">
-  <select id="{{ element_id('choice', 'named_entry', label) }}" name="named_entry" aria-label="{{ label }}"
-          title="{{ tooltips.TARGET_ENTRY_DROPDOWN }}"
-          @change="isTypingKey = $event.target.value === 'other entry'"
-          hx-post="/fragments/choice" hx-target="#case-panel" hx-swap="innerHTML"
-          hx-trigger="change[this.value !== 'other entry']"
-          hx-vals='{{ {"page_key": row.page_key, "work": "other work", "mark": row.choices.mark} | tojson }}'>
-    <option value=""{% if not named_key %} selected{% endif %}>new entry</option>
-    {% for entry in row.target_entry_options %}
-    <option value="{{ entry.entry_reference_page }}"{% if entry.entry_reference_page == named_key %} selected{% endif %}>{{ entry.title }}</option>
-    {% endfor %}
-    <option value="other entry"{% if is_typing_key %} selected{% endif %}>other entry…</option>
-  </select>
-  <input type="text" x-show="isTypingKey"{% if not is_typing_key %} style="display: none"{% endif %} id="{{ element_id('choice', 'named_entry_key', label) }}" name="named_entry"
-         value="{{ named_key if is_typing_key else '' }}" aria-label="{{ label }} (page key)"
-         title="{{ tooltips.TARGET_ENTRY_KEY_INPUT }}" placeholder="mal:anime:…"
-         autocomplete="off" spellcheck="false"
-         hx-post="/fragments/choice" hx-target="#case-panel" hx-swap="innerHTML" hx-trigger="change"
-         hx-vals='{{ {"page_key": row.page_key, "work": "other work", "mark": row.choices.mark} | tojson }}'>
-  {% if named_key %}{{ page_link(named_key, row.named_entry_address) }}{% endif %}
-</span>
+{% set chosen = namespace(title="") %}
+{% for entry in row.target_entry_options if entry.entry_reference_page == named_key %}{% set chosen.title = entry.title %}{% endfor %}
+{% set trigger_text = chosen.title or ("Other entry" if named_key else "New entry") %}
+{% set choice_vals = {"page_key": row.page_key, "work": "other work", "mark": row.choices.mark} %}
+<div class="control-picker{% if row.named_entry_invalid_reason %} is-invalid{% endif %}" x-data="namedEntryPicker"
+     @keydown.escape="close()" @click.outside="close()">
+  <button type="button" x-ref="trigger" id="{{ element_id('choice', 'named_entry', label) }}" class="control-picker-trigger"
+          aria-label="{{ label }}" title="{{ tooltips.TARGET_ENTRY_DROPDOWN }}" aria-haspopup="listbox"
+          :aria-expanded="isOpen"{% if row.named_entry_invalid_reason %} aria-invalid="true"{% endif %} @click="toggle()">
+    <span class="control-picker-text">{{ trigger_text }}</span>
+    <svg class="control-picker-chevron" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false"
+         fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg>
+  </button>
+  <div class="control-picker-panel" x-show="isOpen" style="display: none" x-anchor.fixed.bottom-start.offset.4="$refs.trigger">
+    <input x-ref="search" type="text" name="query" class="control-picker-search" x-model="query"
+           aria-label="{{ label }} (search or page key)" title="{{ tooltips.TARGET_ENTRY_KEY_INPUT }}"
+           placeholder="Search or paste a page key…" autocomplete="off" spellcheck="false"
+           @keydown.down.prevent="$focus.within(listShownOptions()).first()"
+           @keydown.enter.prevent="listShownOptions()[0]?.click()"
+           hx-post="/fragments/named-entry-option" hx-trigger="input changed delay:300ms" hx-target="next .control-picker-typed"
+           hx-vals='{{ {"page_key": row.page_key, "mark": row.choices.mark, "case_name": view.case.case_name} | tojson }}'>
+    <div x-ref="options" class="control-picker-options" role="listbox" aria-label="{{ label }}"
+         @keydown.down.prevent="$focus.within(listShownOptions()).wrap().next()"
+         @keydown.up.prevent="$focus.within(listShownOptions()).wrap().previous()">
+      <button type="button" role="option" aria-selected="{{ (not named_key) | tojson }}"
+              class="control-picker-option{% if not named_key %} is-chosen{% endif %}" x-show="isShown('new entry')"
+              hx-post="/fragments/choice" hx-target="#case-panel" hx-swap="innerHTML"
+              hx-vals='{{ choice_vals | tojson }}'>
+        <span class="control-picker-option-title">New entry</span>
+      </button>
+      {% if row.target_entry_options %}{% set suggestion_texts = [] %}{% for entry in row.target_entry_options %}{% set _ = suggestion_texts.append(entry.title ~ ' ' ~ entry.entry_reference_page) %}{% endfor %}
+      <p class="control-picker-group" x-show="{{ suggestion_texts | tojson | forceescape }}.some((searchText) => isShown(searchText))">Suggested</p>{% endif %}
+      {% for entry in row.target_entry_options %}
+      <button type="button" role="option" aria-selected="{{ (entry.entry_reference_page == named_key) | tojson }}"
+              class="control-picker-option{% if entry.entry_reference_page == named_key %} is-chosen{% endif %}"
+              x-show="isShown({{ (entry.title ~ ' ' ~ entry.entry_reference_page) | tojson | forceescape }})"
+              hx-post="/fragments/choice" hx-target="#case-panel" hx-swap="innerHTML"
+              hx-vals='{{ {"page_key": row.page_key, "work": "other work", "mark": row.choices.mark, "named_entry": entry.entry_reference_page} | tojson }}'>
+        <span class="control-picker-option-title">{{ entry.title }}</span>
+        <span class="control-picker-option-key">{{ entry.entry_reference_page }}</span>
+      </button>
+      {% endfor %}
+      <div class="control-picker-typed"></div>
+    </div>
+  </div>
+</div>
 {%- endmacro %}
 
 {#
@@ -233,7 +256,7 @@
 
 {# An error line: a broken rule or a failure the reviewer must act on. #}
 {% macro error_line(text) -%}
-<p class="control-error-line">{{ text }}</p>
+<p class="control-error-line"><svg class="control-error-icon" viewBox="0 0 24 24" width="12" height="12" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="currentColor"></circle><path d="M12 7v6M12 16.5v.5" stroke="var(--color-surface)" stroke-width="2.4" stroke-linecap="round"></path></svg>{{ text }}</p>
 {%- endmacro %}
 
 {# A note line: why a choice is greyed out. It explains, it does not warn, so it is muted. #}

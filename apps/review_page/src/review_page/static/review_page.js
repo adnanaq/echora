@@ -251,6 +251,39 @@ document.addEventListener("alpine:init", () => {
       refreshRegions("toolbar", "list", "case");
     },
   });
+
+  // The picker for the seed entry an "other work" page moves to. The anchor
+  // plugin positions its panel and the focus plugin moves between its options
+  // (see vendor/README.md). The search box filters the suggested entries; a
+  // typed page key is checked by the server, which answers with an option or
+  // the reason the key cannot be used.
+  Alpine.data("namedEntryPicker", () => ({
+    isOpen: false,
+    query: "",
+
+    toggle() {
+      this.isOpen = !this.isOpen;
+      if (this.isOpen) this.$nextTick(() => this.$refs.search.focus());
+    },
+
+    close() {
+      this.isOpen = false;
+      this.query = "";
+    },
+
+    isShown(searchText) {
+      const query = this.query.trim().toLowerCase();
+      return query === "" || searchText.toLowerCase().includes(query);
+    },
+
+    // The focus plugin counts hidden buttons as focusable, so the arrow keys
+    // get only the options the search leaves visible.
+    listShownOptions() {
+      return [...this.$refs.options.querySelectorAll("button[role=option]")].filter(
+        (option) => option.checkVisibility(),
+      );
+    },
+  }));
 });
 
 document.addEventListener("DOMContentLoaded", () => {

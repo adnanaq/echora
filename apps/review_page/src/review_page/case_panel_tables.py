@@ -8,9 +8,8 @@ Key presentation and constraint rules include:
   provider page in deterministic ``list_placeable_case_page_keys`` order,
   annotating the entry label (Work A, Work B) and whether the page serves as
   that entry's reference page.
-- Constraint explanations: When placing one page disables choices on another
-  (such as assigning two MyAnimeList pages to the same work), the disabling
-  rule is displayed once beneath the dropdown with all disabled options.
+- Closed works: A work holds at most one MAL page, so a MAL page row without
+  a place names the other MAL page that already holds each work closed to it.
 - Merge targets: Rows offer candidate seed entries for "other work" movements
   only when the target entry does not already hold a page from that provider,
   preventing the move from introducing duplicate providers.
@@ -30,6 +29,7 @@ from review_page.models import (
     ComparisonRowView,
     DetailColumn,
     EntryView,
+    InvalidNamedPageKeyReason,
     PageLink,
     PageRowView,
 )
@@ -39,12 +39,10 @@ from work_matching import (
     ProviderPage,
     ReviewCase,
     build_page_address,
+    is_mal_page,
     list_group_page_choices,
     read_page_provider,
 )
-
-# Rules that disable a page's choice because of where other pages are placed.
-_RULES_FROM_OTHER_PAGES = frozenset({PlacementRule.WORK_WITH_TWO_MAL_PAGES})
 
 
 def build_page_rows(
@@ -53,6 +51,7 @@ def build_page_rows(
     original_answer: JsonValue = None,
     *,
     is_rejected: bool,
+    invalid_named_page_key_reasons: Mapping[str, InvalidNamedPageKeyReason],
 ) -> tuple[PageRowView, ...]:
     """Build candidate provider page rows with details, placement options, and flags.
 
@@ -61,6 +60,8 @@ def build_page_rows(
         chosen_answer: The placement mappings currently selected in the UI.
         original_answer: The baseline answer payload from the previous pipeline run.
         is_rejected: Whether the last save attempt failed constraint validation.
+        invalid_named_page_key_reasons: Each page key named after ``other work`` that
+            cannot be used, mapped to the reason it is invalid, so its row is marked.
 
     Returns:
         A tuple of PageRowView instances in deterministic placeable key order.
@@ -71,6 +72,12 @@ def build_page_rows(
         key: page for page in case.pages for key in (page.key, page.current_key)
     }
     entry_label_by_page_key, reference_page_keys = _label_entry_pages(case)
+    page_choices = list_group_page_choices(case, answer)
+    mal_page_keys_by_work = {
+        choices.work: choices.page_key
+        for choices in page_choices
+        if choices.work and is_mal_page(choices.page_key)
+    }
     return tuple(
         PageRowView(
             page_key=choices.page_key,
@@ -81,7 +88,9 @@ def build_page_rows(
             choices=choices,
             is_changed=answer.get(choices.page_key)
             != base_answer.get(choices.page_key),
-            disabled_choice_notes=_explain_disabled_choices(choices),
+            mal_pages_by_closed_work=_find_mal_pages_by_closed_work(
+                choices, mal_page_keys_by_work, case, pages_by_key
+            ),
             is_place_missing=is_rejected
             and choices.is_required
             and choices.work is None,
@@ -94,48 +103,49 @@ def build_page_rows(
             named_entry_address=build_page_address(choices.named_entry_page_key)
             if choices.named_entry_page_key
             else None,
+            named_entry_invalid_reason=invalid_named_page_key_reasons.get(
+                choices.named_entry_page_key or ""
+            ),
         )
-        for choices in list_group_page_choices(case, answer)
+        for choices in page_choices
     )
 
 
-def _explain_disabled_choices(choices: GroupPageChoices) -> tuple[str, ...]:
-    """Explain placement options disabled by placement constraints on other pages.
+def _find_mal_pages_by_closed_work(
+    choices: GroupPageChoices,
+    mal_page_keys_by_work: Mapping[str, str],
+    case: ReviewCase,
+    pages_by_key: Mapping[str, ProviderPage],
+) -> dict[str, PageLink]:
+    """Find the MAL page that closes each work to a page that has no place yet.
 
-    Aggregates choices disabled by multi-page rules (such as allowing only one
-    MyAnimeList page per work) into a single concise note per broken rule.
-
-    Args:
-        choices: Placement options for a single page, including any disabling rule.
-
-    Returns:
-        A tuple of explanatory notes, one per violated rule, listing all disabled options.
-    """
-    choices_by_rule: dict[PlacementRule, list[str]] = {}
-    for option in (*choices.work_options, *choices.mark_options):
-        if option.disabling_rule in _RULES_FROM_OTHER_PAGES:
-            choices_by_rule.setdefault(option.disabling_rule, []).append(
-                option.value or "—"
-            )
-    return tuple(
-        f"{_join_choice_names(names)} {'is' if len(names) == 1 else 'are'} not "
-        f"offered: {rule.value}"
-        for rule, names in choices_by_rule.items()
-    )
-
-
-def _join_choice_names(names: list[str]) -> str:
-    """Join option names into a natural grammatical list ("a, b and c").
+    A work holds at most one MAL page, so a MAL page cannot join a work that
+    another MAL page already holds. While the page has no place, the row names
+    that other page beside the closed work, so the reviewer knows which row to
+    change. Once the page has a place, the choice already keeps the rule, so
+    the row names nothing.
 
     Args:
-        names: One or more placement option names to join.
+        choices: Placement options for a single page, with each option's disabling rule.
+        mal_page_keys_by_work: The MAL page key placed in each work.
+        case: The review case, used to find the MAL page's address.
+        pages_by_key: Fetched provider pages by page key.
 
     Returns:
-        The option names joined with commas and a final "and".
+        The MAL page holding each work closed to this page, by work word, or
+        nothing when the page already has a place.
     """
-    if len(names) == 1:
-        return names[0]
-    return f"{', '.join(names[:-1])} and {names[-1]}"
+    if choices.work is not None:
+        return {}
+    return {
+        option.value: PageLink(
+            mal_page_key, _find_page_address(case, mal_page_key, pages_by_key)
+        )
+        for option in choices.work_options
+        if option.value is not None
+        and option.disabling_rule is PlacementRule.WORK_WITH_TWO_MAL_PAGES
+        and (mal_page_key := mal_page_keys_by_work.get(option.value)) is not None
+    }
 
 
 def _label_entry_pages(case: ReviewCase) -> tuple[dict[str, str], set[str]]:

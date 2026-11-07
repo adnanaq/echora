@@ -6,6 +6,7 @@ processors, exception handlers, and modular routers for the review interface.
 Module components include:
 - Shell routes: Serves the base single-page HTML layout and health endpoints.
 - Case routes: Handles case review interactions, pagination, choices, and saves.
+- Named entry routes: Checks a page key typed in the named entry picker.
 - Correction routes: Serves pipeline correction reports and entry filters.
 - Run routes: Triggers pipeline runs and streams background execution states.
 - Security guards: Validates host headers and enforces same-origin POST requests.
@@ -22,6 +23,7 @@ from fastapi.templating import Jinja2Templates
 from review_page.case_routes import CaseRoutes
 from review_page.correction_routes import CorrectionRoutes
 from review_page.htmx_responses import build_notice_response
+from review_page.named_entry_routes import NamedEntryRoutes
 from review_page.request_guards import add_request_guards
 from review_page.review_case_loader import UnreadableReviewFileError
 from review_page.review_case_source import (
@@ -53,6 +55,7 @@ def create_app(source: ReviewCaseSource) -> FastAPI:
     )
     app.include_router(PageRoutes(templates).router)
     app.include_router(CaseRoutes(source, templates).router)
+    app.include_router(NamedEntryRoutes(source, templates).router)
     app.include_router(CorrectionRoutes(source, templates).router)
     app.include_router(RunRoutes(source, templates).router)
     app.add_exception_handler(UnreadableReviewFileError, _report_unreadable_review_file)
