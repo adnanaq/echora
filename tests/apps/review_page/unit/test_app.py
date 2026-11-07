@@ -313,7 +313,7 @@ def _render_other_work_panel(client, source, review_cases, place: str) -> str:
 
 def _cut_named_entry_controls(panel: str) -> str:
     start = panel.index('class="control-dropdown control-named-entry"')
-    return panel[start : panel.index("</span>", panel.index("<input", start))]
+    return panel[start : panel.index("</td>", start)]
 
 
 def test_case_panel_other_work_offers_new_entry_suggestions_and_other_entry(
@@ -329,7 +329,9 @@ def test_case_panel_other_work_offers_new_entry_suggestions_and_other_entry(
         re.search(r'<option value=""\s+selected', controls) is not None,
         "isTypingKey: false" in controls,
         'style="display: none"' in controls,
-    ) == (["", "mal:anime:21273", "other entry"], True, True, True, True)
+        'title="mal:anime' in controls,
+        'class="page-key"' in controls,
+    ) == (["", "mal:anime:21273", "other entry"], True, True, True, True, False, False)
 
 
 def test_case_panel_other_work_suggested_entry_named_selects_suggestion(
@@ -344,7 +346,8 @@ def test_case_panel_other_work_suggested_entry_named_selects_suggestion(
         re.search(r'<option value="mal:anime:21273"[^>]*\sselected', controls)
         is not None,
         "isTypingKey: false" in controls,
-    ) == (True, True)
+        '<a class="page-key" href="https://myanimelist.net/anime/21273"' in controls,
+    ) == (True, True, True)
 
 
 def test_case_panel_other_work_unsuggested_entry_named_shows_key_box(
@@ -360,7 +363,8 @@ def test_case_panel_other_work_unsuggested_entry_named_shows_key_box(
         "isTypingKey: true" in controls,
         'value="mal:anime:29787"' in controls,
         'style="display: none"' in controls,
-    ) == (True, True, True, False)
+        '<a class="page-key" href="https://myanimelist.net/anime/29787"' in controls,
+    ) == (True, True, True, False, True)
 
 
 def test_choice_linked_page_answer_reported(client, review_cases) -> None:

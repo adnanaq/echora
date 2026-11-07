@@ -236,6 +236,9 @@ class PageRowView:
     linked_pages: tuple[PageLink, ...] = ()
     # Candidate target seed entries available when selecting "other work".
     target_entry_options: tuple[TargetEntrySuggestion, ...] = ()
+    # The provider address of the seed entry ``other work`` names, so its key
+    # under the dropdown opens it; None while no entry is named.
+    named_entry_address: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

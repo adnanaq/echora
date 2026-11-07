@@ -37,7 +37,8 @@
 {#
   The seed entry an "other work" page moves to, chosen like the other dropdowns:
   "new entry", each suggested entry by title, or "other entry", which shows a
-  box for a page key or address. Choosing "other entry" posts nothing until
+  box for a page key or address. The chosen entry's key shows below as a link
+  to its provider page. Choosing "other entry" posts nothing until
   the box holds a key, so the box opens without a redraw. The server renders
   the box hidden too, because Alpine does not apply x-show to a box that
   htmx swaps in.
@@ -56,7 +57,7 @@
           hx-vals='{{ {"page_key": row.page_key, "work": "other work", "mark": row.choices.mark} | tojson }}'>
     <option value=""{% if not named_key %} selected{% endif %}>new entry</option>
     {% for entry in row.target_entry_options %}
-    <option value="{{ entry.reference_page }}" title="{{ entry.reference_page }}"{% if entry.reference_page == named_key %} selected{% endif %}>{{ entry.title }}</option>
+    <option value="{{ entry.reference_page }}"{% if entry.reference_page == named_key %} selected{% endif %}>{{ entry.title }}</option>
     {% endfor %}
     <option value="other entry"{% if is_typing_key %} selected{% endif %}>other entry…</option>
   </select>
@@ -66,6 +67,7 @@
          autocomplete="off" spellcheck="false"
          hx-post="/fragments/choice" hx-target="#case-panel" hx-swap="innerHTML" hx-trigger="change"
          hx-vals='{{ {"page_key": row.page_key, "work": "other work", "mark": row.choices.mark} | tojson }}'>
+  {% if named_key %}{{ page_link(named_key, row.named_entry_address) }}{% endif %}
 </span>
 {%- endmacro %}
 

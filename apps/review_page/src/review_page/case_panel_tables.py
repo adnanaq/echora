@@ -92,6 +92,9 @@ def build_page_rows(
                 for suggestion in case.target_entry_suggestions
                 if read_page_provider(choices.page_key) not in suggestion.providers
             ),
+            named_entry_address=build_page_address(choices.named_entry_page_key)
+            if choices.named_entry_page_key
+            else None,
         )
         for choices in list_group_page_choices(case, answer)
     )
