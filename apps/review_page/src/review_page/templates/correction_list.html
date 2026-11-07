@@ -1,22 +1,22 @@
-{% import "parts.html" as parts with context %}
+{% from "control_macros.html" import chip, pager, pill with context %}
 {% if not has_corrections %}
 <p class="empty-state">No corrections yet: the last run corrected no entry, or no run has finished.</p>
 {% else %}
 <div class="filter-group">
   <span class="filter-group-label">Change</span>
-  {% for value in change_values %}{{ parts.chip(value[:1] | upper ~ value[1:], "correction_changes", value, chip_counts.get(value, 0),
+  {% for value in change_values %}{{ chip(value[:1] | upper ~ value[1:], "correction_changes", value, chip_counts.get(value, 0),
        correction_change_tooltips[value],
        toggle="toggleCorrectionFilter", is_on=value in state.correction_changes) }}{% endfor %}
 </div>
 <div class="filter-group">
   <span class="filter-group-label">Source</span>
-  {{ parts.chip("Your answer", "correction_sources", "your answer", chip_counts["your answer"],
+  {{ chip("Your answer", "correction_sources", "your answer", chip_counts["your answer"],
                 tooltips.ANSWER_SOURCE_CHIP, toggle="toggleCorrectionFilter",
                 is_on="your answer" in state.correction_sources) }}
-  {{ parts.chip("Rules", "correction_sources", "rules", chip_counts["rules"],
+  {{ chip("Rules", "correction_sources", "rules", chip_counts["rules"],
                 tooltips.RULES_SOURCE_CHIP, toggle="toggleCorrectionFilter",
                 is_on="rules" in state.correction_sources) }}
-  <button type="button" id="reset-correction-filters" class="part-chip" title="{{ tooltips.RESET_CORRECTION_FILTERS }}"
+  <button type="button" id="reset-correction-filters" class="control-chip" title="{{ tooltips.RESET_CORRECTION_FILTERS }}"
           @click="$store.review.resetCorrectionFilters()">Reset filters</button>
 </div>
 
@@ -28,7 +28,7 @@
             @click="$store.review.openCorrection({{ row.reference_page | tojson | forceescape }})">
       <span class="case-row-title">
         <strong>{{ row.title }}</strong>
-        {% if row.has_answer_correction %}{{ parts.pill("Your answer", "suggested", tooltips.ENTRY_FROM_ANSWER_PILL) }}{% endif %}
+        {% if row.has_answer_correction %}{{ pill("Your answer", "suggested", tooltips.ENTRY_FROM_ANSWER_PILL) }}{% endif %}
       </span>
       <span class="case-row-meta">
         <span class="page-key">{{ row.reference_page }}</span>
@@ -38,7 +38,7 @@
   </li>
   {% endfor %}
 </ul>
-{{ parts.pager(entry_page, "$store.review.showCorrectionPage") }}
+{{ pager(entry_page, "$store.review.showCorrectionPage") }}
 {% else %}
 <p class="empty-state">No corrected entry matches these filters.</p>
 {% endif %}

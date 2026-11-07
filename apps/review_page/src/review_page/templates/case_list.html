@@ -1,17 +1,17 @@
-{% import "parts.html" as parts with context %}
+{% from "control_macros.html" import chip, pager, pill, status with context %}
 {% set new_state = case_states | selectattr("name", "equalto", "NEW") | first %}
 <div class="filter-group">
   <span class="filter-group-label">Kind</span>
-  {% for kind in kinds %}{{ parts.chip(kind.value[:1] | upper ~ kind.value[1:], "kinds", kind.value, chip_counts[kind.value], kind.description, is_on=kind in state.kinds) }}{% endfor %}
+  {% for kind in kinds %}{{ chip(kind.value[:1] | upper ~ kind.value[1:], "kinds", kind.value, chip_counts[kind.value], kind.description, is_on=kind in state.kinds) }}{% endfor %}
 </div>
 <div class="filter-group">
   <span class="filter-group-label">Case</span>
-  {% for case_state in case_states %}{{ parts.chip(case_state.value[:1] | upper ~ case_state.value[1:], "case_states", case_state.value, chip_counts[case_state.value], case_state.description, is_on=case_state in state.case_states) }}{% endfor %}
+  {% for case_state in case_states %}{{ chip(case_state.value[:1] | upper ~ case_state.value[1:], "case_states", case_state.value, chip_counts[case_state.value], case_state.description, is_on=case_state in state.case_states) }}{% endfor %}
 </div>
 <div class="filter-group">
   <span class="filter-group-label">Edits</span>
-  {% for edit_state in edit_states %}{{ parts.chip(edit_state.value[:1] | upper ~ edit_state.value[1:], "edit_states", edit_state.value, chip_counts[edit_state.value], edit_state.description, is_on=edit_state in state.edit_states) }}{% endfor %}
-  <button type="button" id="reset-case-filters" class="part-chip" title="{{ tooltips.RESET_CASE_FILTERS }}" @click="$store.review.resetFilters()">Reset filters</button>
+  {% for edit_state in edit_states %}{{ chip(edit_state.value[:1] | upper ~ edit_state.value[1:], "edit_states", edit_state.value, chip_counts[edit_state.value], edit_state.description, is_on=edit_state in state.edit_states) }}{% endfor %}
+  <button type="button" id="reset-case-filters" class="control-chip" title="{{ tooltips.RESET_CASE_FILTERS }}" @click="$store.review.resetFilters()">Reset filters</button>
 </div>
 
 {% if case_page.rows %}
@@ -22,19 +22,19 @@
             @click="$store.review.openCase({{ row.case_name | tojson | forceescape }})">
       <span class="case-row-title">
         <strong>{{ row.title }}</strong>
-        {% if row.is_new %}{{ parts.pill("New", "new", new_state.description) }}{% endif %}
-        {% if row.is_answer_unused %}{{ parts.pill("No longer comes up", "unused", tooltips.UNUSED_ANSWER_PILL) }}{% endif %}
+        {% if row.is_new %}{{ pill("New", "new", new_state.description) }}{% endif %}
+        {% if row.is_answer_unused %}{{ pill("No longer comes up", "unused", tooltips.UNUSED_ANSWER_PILL) }}{% endif %}
       </span>
       <span class="case-row-meta">
         <span title="{{ row.kind.description }}">{{ row.kind.value }}</span>
-        {{ parts.status(row_edit_states[row.case_name]) }}
-        {% if row.is_open and row.has_suggestion %}{{ parts.pill("Suggested", "suggested", tooltips.SUGGESTED_ANSWER_PILL) }}{% endif %}
+        {{ status(row_edit_states[row.case_name]) }}
+        {% if row.is_open and row.has_suggestion %}{{ pill("Suggested", "suggested", tooltips.SUGGESTED_ANSWER_PILL) }}{% endif %}
       </span>
     </button>
   </li>
   {% endfor %}
 </ul>
-{{ parts.pager(case_page, "$store.review.showPage") }}
+{{ pager(case_page, "$store.review.showPage") }}
 {% else %}
 <p class="empty-state">{% if not chip_counts["open"] %}The queue is clean: no case is open.{% else %}No case matches these filters.{% endif %}</p>
 {% endif %}

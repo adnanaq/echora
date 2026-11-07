@@ -1,15 +1,15 @@
-{% import "parts.html" as parts with context %}
+{% from "control_macros.html" import button with context %}
 <div class="toolbar-actions">
   {% if buttons.unsaved_count %}
   <span>{{ buttons.unsaved_count }} unsaved case{{ "s" if buttons.unsaved_count != 1 }}</span>
-  {{ parts.button("Discard", "secondary", not is_run_going, click="$store.review.discardEdits()",
+  {{ button("Discard", "secondary", not is_run_going, click="$store.review.discardEdits()",
                   description=tooltips.DISCARD_EDITS) }}
   {% endif %}
-  {{ parts.button("Save all (" ~ buttons.unsaved_count ~ ")", "main", buttons.is_save_all_enabled,
+  {{ button("Save all (" ~ buttons.unsaved_count ~ ")", "main", buttons.is_save_all_enabled,
                   hx_post="/answers", hx_vals={"action": "save_all"},
                   description=tooltips.SAVE_ALL_ANSWERS) }}
   <span title="{{ tooltips.RUN_PIPELINE }}{% if buttons.run_changes %} {{ tooltips.RUN_CHANGES_PREFIX }} {% endif %}{% for change, count in buttons.run_changes.items() %}{{ count }} {{ change.value }}{% if not loop.last %}, {% endif %}{% endfor %}">
-    {{ parts.button("Run (" ~ buttons.run_count ~ ")", "main", buttons.is_run_enabled, hx_post="/run") }}
+    {{ button("Run (" ~ buttons.run_count ~ ")", "main", buttons.is_run_enabled, hx_post="/run") }}
   </span>
-  {% if is_run_going %}<span class="part-status state-saved_applies_on_run"><span class="part-status-dot"></span>Run going…</span>{% endif %}
+  {% if is_run_going %}<span class="control-status state-saved_applies_on_run"><span class="control-status-dot"></span>Run going…</span>{% endif %}
 </div>

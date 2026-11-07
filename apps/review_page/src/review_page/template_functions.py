@@ -35,7 +35,7 @@ def build_static_url(file_path: str) -> str:
 
     Args:
         file_path: Relative path to the asset inside the ``static`` directory,
-            such as ``parts.css``.
+            such as ``review_page.css``.
 
     Returns:
         The URL path ``/static/<file_path>?v=<first 12 SHA-256 hex digits>``.
@@ -44,19 +44,19 @@ def build_static_url(file_path: str) -> str:
     return f"/static/{file_path}?v={content_hash[:12]}"
 
 
-def build_element_id(*parts: object) -> str:
-    """Build a deterministic, HTML-safe element ID from descriptive component parts.
+def build_element_id(*id_segments: object) -> str:
+    """Build a deterministic, HTML-safe element ID from its segments.
 
     Args:
-        parts: Component segments identifying the control kind and target, such
+        id_segments: Segments naming the control kind and its target, such
             as ``("choice", "work", "Work of mal:anime:1")``.
 
     Returns:
         The segments joined by hyphens with any disallowed characters collapsed
         into single hyphens.
     """
-    joined_parts = "-".join(str(part) for part in parts)
-    return _NOT_ID_CHARACTERS.sub("-", joined_parts).strip("-")
+    joined_segments = "-".join(str(id_segment) for id_segment in id_segments)
+    return _NOT_ID_CHARACTERS.sub("-", joined_segments).strip("-")
 
 
 def add_template_functions(request: Request) -> dict[str, Any]:

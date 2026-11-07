@@ -20,4 +20,4 @@ def test_build_element_id_different_parts_give_different_ids() -> None:
 
 
 def test_build_static_url_carries_content_hash() -> None:
-    assert build_static_url("parts.css").startswith("/static/parts.css?v=")
+    assert build_static_url("review_page.css").startswith("/static/review_page.css?v=")

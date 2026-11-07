@@ -53,7 +53,7 @@ def test_add_request_guards_correction_fragment_without_htmx_header_answers_403(
 
 def test_add_request_guards_static_file_with_foreign_host_answers_400(client) -> None:
     response = client.get(
-        "/static/parts.css", headers={"Host": "attacker.example:8003"}
+        "/static/review_page.css", headers={"Host": "attacker.example:8003"}
     )
     assert response.status_code == 400
 

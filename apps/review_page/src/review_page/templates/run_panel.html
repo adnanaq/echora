@@ -1,7 +1,7 @@
-{% import "parts.html" as parts with context %}
+{% from "control_macros.html" import error_line with context %}
 {% if run_state.is_running %}
 <div class="layout-panel" hx-post="/fragments/run-panel" hx-trigger="every 2s" hx-target="#run-panel" hx-swap="innerHTML">
-  <p><span class="part-status state-saved_applies_on_run"><span class="part-status-dot"></span>Run going</span>
+  <p><span class="control-status state-saved_applies_on_run"><span class="control-status-dot"></span>Run going</span>
   — applying the saved answers. Cases can still be edited; every button waits until it ends.</p>
 </div>
 {% elif run_summary %}
@@ -34,5 +34,5 @@
   {% endif %}
 </details>
 {% elif run_state.HasField("last_exit_code") and run_state.last_exit_code != 0 %}
-<div class="layout-panel">{{ parts.error_line("The last run failed (exit code " ~ run_state.last_exit_code ~ "); see data/seed_cleaning/logs/review_page_runs.log.") }}</div>
+<div class="layout-panel">{{ error_line("The last run failed (exit code " ~ run_state.last_exit_code ~ "); see data/seed_cleaning/logs/review_page_runs.log.") }}</div>
 {% endif %}

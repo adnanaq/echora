@@ -1,4 +1,4 @@
-{% import "parts.html" as parts with context %}
+{% from "control_macros.html" import page_link, pill with context %}
 {% if panel is none %}
 <p class="empty-state">Choose an entry from the list.</p>
 {% else %}
@@ -6,7 +6,7 @@
   <h2>{{ panel.title }}</h2>
 </div>
 <p class="case-meta">
-  Reference page {{ parts.page_link(panel.reference_page, panel.reference_address) }}
+  Reference page {{ page_link(panel.reference_page, panel.reference_address) }}
   · {{ panel.rows | length }} page{{ "s" if panel.rows | length != 1 }} corrected
 </p>
 <p class="suggested-note">
@@ -41,12 +41,12 @@
   <tbody>
     {% for row in panel.rows %}
     <tr class="{% if row.change_label != 'Unchanged' %}is-changed{% endif %}">
-      <td>{{ parts.page_link(row.page_key, row.address) }}</td>
+      <td>{{ page_link(row.page_key, row.address) }}</td>
       <td>{{ row.change_label }}</td>
       <td>{% if row.destination_address %}<a href="{{ row.destination_address }}" target="_blank" rel="noopener">{{ row.destination_label }}</a>{% else %}{{ row.destination_label }}{% endif %}</td>
       <td><code>{{ row.place }}</code></td>
       <td>{{ row.reason_sentence }}</td>
-      <td>{% if row.is_from_answer %}{{ parts.pill("Your answer", "suggested", tooltips.PAGE_FROM_ANSWER_PILL) }}{% else %}Rules{% endif %}</td>
+      <td>{% if row.is_from_answer %}{{ pill("Your answer", "suggested", tooltips.PAGE_FROM_ANSWER_PILL) }}{% else %}Rules{% endif %}</td>
     </tr>
     {% endfor %}
   </tbody>
