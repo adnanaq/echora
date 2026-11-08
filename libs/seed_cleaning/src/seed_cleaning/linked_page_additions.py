@@ -71,7 +71,7 @@ logger = logging.getLogger(__name__)
 
 
 class _PageAddition(NamedTuple):
-    """Hold a linked page to add, the entry it joins, whether as a part, and why."""
+    """Hold a linked page to add, the entry it joins, whether as a partial source, and why."""
 
     # The page's current key and the address the seed spells it with, which
     # can differ from the link's own spelling, such as a Kitsu slug.
@@ -79,7 +79,7 @@ class _PageAddition(NamedTuple):
     address: str
     # The reference page of the work entry the page joins, as decided.
     entry_reference_page: str
-    is_part_page: bool
+    is_partial_source: bool
     # The decision's reason by name, or ``review answer``.
     reason: str
 
@@ -305,7 +305,7 @@ def _place_linked_page(
             page_key,
             address,
             entry.reference_page_key,
-            is_part_page=False,
+            is_partial_source=False,
             reason=reason,
         )
     entry_pages = (
@@ -323,7 +323,7 @@ def _place_linked_page(
         page_key,
         address,
         addition.entry_reference_page,
-        addition.is_part_page,
+        addition.is_partial_source,
         REVIEW_ANSWER_REASON,
     )
 
@@ -333,9 +333,9 @@ def _drop_conflicting_additions(
 ) -> tuple[list[_PageAddition], tuple[str, ...]]:
     """Leave out whole pages added two or more per provider to one entry.
 
-    A work holds one whole page of each provider but can hold several part
-    pages. Two whole pages of one provider joining one entry would make a
-    doubled provider. The rules never add two such pages, because an entry
+    A work holds one page of each provider among its sources, while partial
+    sources are never fetched and never conflict. Two whole pages of one
+    provider joining one entry would make a doubled provider. The rules never add two such pages, because an entry
     linking two of them sends both to review. Only answers can add two, so
     neither page is added and a warning names the entry.
 
@@ -348,7 +348,7 @@ def _drop_conflicting_additions(
     whole_page_counts = Counter(
         (page_addition.entry_reference_page, read_page_provider(page_addition.page_key))
         for page_addition in page_additions
-        if not page_addition.is_part_page
+        if not page_addition.is_partial_source
     )
     kept_additions: list[_PageAddition] = []
     conflicting_page_keys: list[str] = []
@@ -357,7 +357,10 @@ def _drop_conflicting_additions(
             page_addition.entry_reference_page,
             read_page_provider(page_addition.page_key),
         )
-        if not page_addition.is_part_page and whole_page_counts[entry_provider] > 1:
+        if (
+            not page_addition.is_partial_source
+            and whole_page_counts[entry_provider] > 1
+        ):
             logger.warning(
                 f"Not adding {page_addition.page_key}: answers add two or more "
                 f"pages of its provider to {page_addition.entry_reference_page}"
@@ -393,17 +396,23 @@ def _build_addition_corrections(
         for linking_seed_entries in linking_seed_entries_by_page_key.values()
         for linking_seed_entry in linking_seed_entries
     }
-    return [
-        SeedCorrection(
-            entry_reference_page=linking_seed_entry_by_entry_reference_page[
-                page_addition.entry_reference_page
-            ].seed_entry_reference_page,
-            page_key=page_addition.page_key,
-            address=page_addition.address,
-            placement_word=FIRST_WORK,
-            is_added_page=True,
-            is_part_page=page_addition.is_part_page,
-            reason=page_addition.reason,
+    corrections: list[SeedCorrection] = []
+    for page_addition in page_additions:
+        seed_entry_reference_page = linking_seed_entry_by_entry_reference_page[
+            page_addition.entry_reference_page
+        ].seed_entry_reference_page
+        corrections.append(
+            SeedCorrection(
+                entry_reference_page=seed_entry_reference_page,
+                page_key=page_addition.page_key,
+                address=page_addition.address,
+                # A partial source is no entry's source, so it has no work.
+                placement_word=None if page_addition.is_partial_source else FIRST_WORK,
+                is_added_page=True,
+                partial_entry_reference_pages=(seed_entry_reference_page,)
+                if page_addition.is_partial_source
+                else (),
+                reason=page_addition.reason,
+            )
         )
-        for page_addition in page_additions
-    ]
+    return corrections

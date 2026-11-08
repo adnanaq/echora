@@ -151,13 +151,13 @@ def test_correct_entry_groups_accepted_answer_gives_corrections(
     path = tmp_path / "review.jsonl"
     [case] = _correct(entry, store, known_work_entries, ReviewFile(path)).review_cases
     answered = case.model_copy(
-        update={"answer": {"kitsu:anime:1": "work 1", "kitsu:anime:2": "work 1, main"}}
+        update={"answer": {"kitsu:anime:1": "work 1", "kitsu:anime:2": "dropped"}}
     )
     path.write_text(answered.model_dump_json() + "\n", encoding="utf-8")
     result = _correct(entry, store, known_work_entries, ReviewFile(path))
     assert [case.answer for case in result.review_cases] == [answered.answer]
     assert [
-        (correction.page_key, correction.is_main_page, correction.reason)
+        (correction.page_key, correction.is_dropped_page, correction.reason)
         for correction in result.corrections
     ] == [
         ("kitsu:anime:1", False, "review answer"),
@@ -165,7 +165,7 @@ def test_correct_entry_groups_accepted_answer_gives_corrections(
     ]
 
 
-def test_correct_entry_groups_part_page_answer_marks_corrections_part(
+def test_correct_entry_groups_split_answer_records_partial_source(
     entry, store, known_work_entries, tmp_path
 ) -> None:
     store.add_pages(
@@ -175,23 +175,31 @@ def test_correct_entry_groups_part_page_answer_marks_corrections_part(
     [case] = _correct(entry, store, known_work_entries, ReviewFile(path)).review_cases
     answered = case.model_copy(
         update={
-            "answer": {"kitsu:anime:1": "work 1, part", "kitsu:anime:2": "work 1, part"}
+            "answer": {
+                "kitsu:anime:1": "work 1",
+                "kitsu:anime:2": "work 2",
+                "mal:anime:1": "work 1, partial in work 2",
+            }
         }
     )
     path.write_text(answered.model_dump_json() + "\n", encoding="utf-8")
     result = _correct(entry, store, known_work_entries, ReviewFile(path))
     assert (case.reasons, case.suggested_answer) == (
         ("PART_PAGES",),
-        {
-            "kitsu:anime:1": "work 1, part",
-            "kitsu:anime:2": "work 1, part",
-            "mal:anime:1": "work 1",
-        },
+        {"kitsu:anime:1": "work 1", "kitsu:anime:2": "work 2"},
     )
     assert [
-        (correction.page_key, correction.is_part_page)
+        (
+            correction.page_key,
+            correction.new_entry_key,
+            correction.partial_new_entry_keys,
+        )
         for correction in result.corrections
-    ] == [("kitsu:anime:1", True), ("kitsu:anime:2", True)]
+    ] == [
+        ("mal:anime:1", None, ("mal:anime:1 work 2",)),
+        ("kitsu:anime:1", None, ()),
+        ("kitsu:anime:2", "mal:anime:1 work 2", ()),
+    ]
 
 
 def test_correct_entry_groups_answer_places_renamed_single_page_by_listed_key(
@@ -458,7 +466,7 @@ def test_correct_entry_groups_later_work_without_survivor_named_by_group(
     ] == [("kitsu:anime:44979", "mal:anime:43735 work 2")]
 
 
-def test_correct_entry_groups_reference_page_marked_part_keeps_entry_whole(
+def test_correct_entry_groups_split_answer_gives_each_work_its_entry(
     store, tmp_path
 ) -> None:
     planet = "https://www.anime-planet.com/anime/show"
@@ -469,21 +477,27 @@ def test_correct_entry_groups_reference_page_marked_part_keeps_entry_whole(
     path = tmp_path / "review.jsonl"
     entry = next(iter(works))
     [case] = _correct(entry, store, works, ReviewFile(path)).review_cases
-    answer = dict.fromkeys(
-        ["kitsu:anime:1", "kitsu:anime:2", "mal:anime:1"], "work 1, part"
-    )
+    answer = {
+        "kitsu:anime:1": "work 1",
+        "kitsu:anime:2": "work 2",
+        "mal:anime:1": "work 1, partial in work 2",
+        "animeplanet:anime:show": "work 1",
+    }
     path.write_text(
         case.model_copy(update={"answer": answer}).model_dump_json() + "\n",
         encoding="utf-8",
     )
     corrections = _correct(entry, store, works, ReviewFile(path)).corrections
-    [corrected] = build_corrected_entries(corrections, works, store)
-    assert corrected.entry is not None
-    assert list(corrected.entry.addresses_by_page_key) == [
-        "mal:anime:1",
-        "kitsu:anime:1",
-        "kitsu:anime:2",
-        "animeplanet:anime:show",
+    assert [
+        (
+            list(corrected.entry.addresses_by_page_key),
+            list(corrected.entry.partial_addresses_by_page_key),
+        )
+        for corrected in build_corrected_entries(corrections, works, store)
+        if corrected.entry is not None
+    ] == [
+        (["mal:anime:1", "kitsu:anime:1", "animeplanet:anime:show"], []),
+        (["kitsu:anime:2"], ["mal:anime:1"]),
     ]
 
 
@@ -641,34 +655,33 @@ SAINT_SEIYA_SEED_ENTRIES = [
 ]
 
 
-def test_correct_entry_groups_answer_merging_parts_moves_part_pages_into_work(
+def test_correct_entry_groups_split_answer_keeps_parts_apart_with_partial_sources(
     store, tmp_path
 ) -> None:
     works = KnownWorkEntriesFromSeed(SAINT_SEIYA_SEED_ENTRIES)
     answer = {
-        "anidb:anime:13347": "work 1",
-        "anilist:anime:102427": "work 1, part",
-        "kitsu:anime:13695": "work 1",
-        "livechart:anime:2822": "work 1, main",
-        "mal:anime:36040": "work 1",
-        "anilist:anime:114448": "work 1, part",
-        "livechart:anime:9705": "work 1",
+        "anidb:anime:13347": "work 1, partial in work 2",
+        "anilist:anime:102427": "work 1",
+        "kitsu:anime:13695": "work 1, partial in work 2",
+        "livechart:anime:2822": "work 1",
+        "mal:anime:36040": "work 1, partial in work 2",
+        "anilist:anime:114448": "work 2",
+        "livechart:anime:9705": "work 2",
     }
     corrections = _answer_group_case(
         list(works), store, tmp_path / "review.jsonl", answer
     ).corrections
     assert {
         correction.page_key: (
-            correction.entry_reference_page,
             correction.target_entry_reference_page,
-            correction.is_part_page,
+            correction.partial_entry_reference_pages,
         )
         for correction in corrections
-        if correction.page_key.startswith(("anilist", "livechart:anime:9705"))
+        if correction.page_key.startswith(("anilist", "mal"))
     } == {
-        "anilist:anime:102427": ("mal:anime:36040", None, True),
-        "anilist:anime:114448": ("anilist:anime:114448", "mal:anime:36040", True),
-        "livechart:anime:9705": ("anilist:anime:114448", "mal:anime:36040", False),
+        "anilist:anime:102427": (None, ()),
+        "mal:anime:36040": (None, ("anilist:anime:114448",)),
+        "anilist:anime:114448": (None, ()),
     }
 
 
