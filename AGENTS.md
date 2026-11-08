@@ -131,6 +131,7 @@ uv run ty check libs/http_cache/
 - Focus on making code expressive, cohesive, and efficient using appropriate data structures.
 - Always use plain language and established project glossary terms; avoid terse shorthands, complex jargon, metaphorical language, or made-up terminology.
 - Never introduce legacy aliases, dual keyword arguments, or backward-compatibility shims (`from_form_field = parse_form_field`, `page_list_rows = paginate_rows`). Refactor definitions, call sites, and test cases directly to avoid accumulating technical debt.
+- A source file holds at most 500 lines and a function at most 50, not counting the module or function docstring. `tests/test_docstrings.py` checks both across `apps/`, `libs/` and `scripts/`.
 
 #### Naming Conventions
 
@@ -145,7 +146,7 @@ uv run ty check libs/http_cache/
   - `is_` / `has_`: Functions and properties answering yes or no start with `is_` (`is_expired`), or `has_` when checking for presence (`has_errors`).
 - **Classes**: Classes hold state or models, so their names are nouns describing what they represent (`SeedCorrection`, `failed_pages`, `REFERENCE_ORDER`). Name classes after domain concepts, models, and projections (`CaseView`, `TargetEntrySuggestion`), never transient UI widget mechanics or presentation templates.
 - **Accuracy and specificity**: A name says why the thing exists, what it does, and how it is used, so a reader needs no other context. Never claim an action the code does not take (`update_user` that inserts), and never reuse a domain word for something else: a field holding a reference page key is `entry_reference_page`, not `entry` (which means a `WorkEntry`); a field holding a page key is `page_key`, not `page` (which means a `ProviderPage`).
-- **Consistency and searchability**: One word for one idea everywhere (if one class has `is_main_page`, no other has `is_main` for the same concept; do not call the same action `add` in one place and `insert` in another). Avoid single-character names (loop counters included), abbreviations that read as another word, and names differing only by a small suffix.
+- **Consistency and searchability**: One word for one idea everywhere (if one class has `is_dead_page`, no other has `is_dead` for the same concept; do not call the same action `add` in one place and `insert` in another). Avoid single-character names (loop counters included), abbreviations that read as another word, and names differing only by a small suffix.
 - **No articles, possessives, or embedded types**: Do not include articles (`a`, `an`, `the`), possessives (`its`, `their`), or hedging words. Leave the type out of names: `pages`, not `pages_list` or `pages_dict`; type annotations already specify data types.
 
 #### Docstring and Documentation Rules
@@ -496,7 +497,7 @@ def test_encode_text_empty_string_returns_zero_embedding(): ...
 **Files**
 
 - One test file per source module, named after it: `qdrant_db/tracing.py` is tested by `tests/libs/qdrant_db/unit/test_tracing.py`. Add tests to the existing file rather than splitting it.
-- The 500-line limit applies to source files only; test files have no line limit.
+- The file and function line limits apply to source files only; test files have no line limit.
 - No comments or docstrings in test files; the test name says what it checks.
 
 **Saved pages** (crawler tests; AniSearch so far)
