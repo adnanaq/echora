@@ -78,6 +78,37 @@ SAINT_SEIYA_PARTS = (
             SAINT_SEIYA_PARTS,
             [],
         ),
+        (
+            _build_dated_page("kitsu:anime:43641", 6, "2019-07-20T00:00:00Z", None),
+            SAINT_SEIYA_PARTS,
+            ["anilist:anime:102427"],
+        ),
+        (
+            _build_dated_page(
+                "mal:anime:1", 6, "2019-07-18T00:00:00Z", "2019-08-22T00:00:00Z"
+            ),
+            (
+                _build_dated_page(
+                    "anilist:anime:1", 6, "2019-07-18T00:00:00Z", "2019-08-22T00:00:00Z"
+                ),
+                _build_dated_page(
+                    "anilist:anime:2", 6, "2019-07-18T00:00:00Z", "2019-08-22T00:00:00Z"
+                ),
+            ),
+            [],
+        ),
+        (
+            _build_dated_page("kitsu:anime:43641", 6, "2019-07-19T00:00:00Z", None),
+            (
+                ProviderPage(
+                    key="anilist:anime:3",
+                    address="https://example.org/anilist:anime:3",
+                    episode_count=6,
+                ),
+                *SAINT_SEIYA_PARTS,
+            ),
+            ["anilist:anime:102427"],
+        ),
     ],
 )
 def test_find_covered_part_pages_reads_episodes_and_air_dates(
