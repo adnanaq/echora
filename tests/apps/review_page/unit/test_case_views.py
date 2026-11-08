@@ -15,7 +15,6 @@ from review_page.models import (
     SavedChange,
 )
 from work_matching import (
-    PART_MARK,
     KnownWorkEntriesFromSeed,
     ReviewCase,
     ReviewCaseKind,
@@ -177,7 +176,7 @@ def test_build_case_view_linked_page_offers_answers(review_cases) -> None:
     view = _view(review_cases["nami"])
     assert [option.value for option in view.linked_page_options] == [
         "add",
-        "add as part",
+        "add as partial",
         "skip",
     ]
 
@@ -311,9 +310,7 @@ def test_build_case_view_unplaced_rows_name_mal_page_holding_each_closed_work() 
         _mal_only_case(1, 2, 3),
         unsaved_answer={"mal:anime:1": "work 1", "mal:anime:2": "work 2"},
     )
-    closed_works = {
-        row.page_key: row.mal_pages_by_closed_work for row in view.page_rows
-    }
+    closed_works = {row.page_key: row.pages_by_closed_work for row in view.page_rows}
     assert closed_works == {
         "mal:anime:1": {},
         "mal:anime:2": {},
@@ -342,9 +339,7 @@ def test_build_case_view_rows_explain_choices_other_pages_disable() -> None:
     )
     case = ReviewCase.build_entry_group_case(entries, decisions, [], [])
     view = _view(case, unsaved_answer={"mal:anime:1": "work 1"})
-    closed_works = {
-        row.page_key: row.mal_pages_by_closed_work for row in view.page_rows
-    }
+    closed_works = {row.page_key: row.pages_by_closed_work for row in view.page_rows}
     assert closed_works["mal:anime:2"] == {
         "work 1": PageLink("mal:anime:1", "https://myanimelist.net/anime/1")
     }
@@ -352,7 +347,7 @@ def test_build_case_view_rows_explain_choices_other_pages_disable() -> None:
 
 def test_build_case_view_rows_leave_lone_page_main_to_tooltip(review_cases) -> None:
     view = _view(review_cases["atashinchi_next"])
-    assert all(row.mal_pages_by_closed_work == {} for row in view.page_rows)
+    assert all(row.pages_by_closed_work == {} for row in view.page_rows)
 
 
 def test_build_case_view_title_matches_list_title(review_cases) -> None:
@@ -415,11 +410,11 @@ def test_build_case_view_group_case_explains_every_choice(review_cases) -> None:
     assert (
         meanings["work 1"],
         meanings["work 2, work 3, …"],
-        meanings["part"],
+        meanings["dropped"],
     ) == (
         describe_answer_word("work 1"),
         LATER_WORK_MEANING,
-        describe_answer_word(PART_MARK),
+        describe_answer_word("dropped"),
     )
 
 

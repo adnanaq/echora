@@ -35,13 +35,59 @@
 {%- endmacro %}
 
 {#
+  A searchable picker: a trigger that opens a panel anchored below it, with a
+  search box over the options the caller lists. The arrow keys move through
+  the options the search leaves visible, and Enter chooses the first one.
+  typed_option_vals, when given, sends the typed text to the server, which
+  answers with an option checked there. confirm_vals, when given, makes the
+  options checkboxes chosen together, sent by one button with these values.
+#}
+{% macro search_picker(label, picker_id, trigger_text, trigger_title, search_placeholder, search_title, typed_option_vals=None, is_invalid=False, confirm_vals=None, confirm_title="") -%}
+<div class="control-picker{% if is_invalid %} is-invalid{% endif %}" x-data="searchPicker"
+     @keydown.escape="close()" @click.outside="close()">
+  <button type="button" x-ref="trigger" id="{{ picker_id }}" class="control-picker-trigger"
+          aria-label="{{ label }}" title="{{ trigger_title }}" aria-haspopup="listbox"
+          :aria-expanded="isOpen"{% if is_invalid %} aria-invalid="true"{% endif %} @click="toggle()">
+    <span class="control-picker-text">{{ trigger_text }}</span>
+    <svg class="control-picker-chevron" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false"
+         fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg>
+  </button>
+  <div class="control-picker-panel" x-show="isOpen" style="display: none" x-anchor.fixed.bottom-start.offset.4="$refs.trigger">
+    <input x-ref="search" type="text" name="query" class="control-picker-search" x-model="query"
+           aria-label="{{ label }} (search)" title="{{ search_title }}"
+           placeholder="{{ search_placeholder }}" autocomplete="off" spellcheck="false"
+           @keydown.down.prevent="$focus.within(listShownOptions()).first()"
+           @keydown.enter.prevent="listShownOptions()[0]?.click()"
+           {% if typed_option_vals %}hx-post="/fragments/named-entry-option" hx-trigger="input changed delay:300ms" hx-target="next .control-picker-typed"
+           hx-vals='{{ typed_option_vals | tojson }}'{% endif %}>
+    <div x-ref="options" class="control-picker-options" role="listbox" aria-label="{{ label }}"
+         @keydown.down.prevent="$focus.within(listShownOptions()).wrap().next()"
+         @keydown.up.prevent="$focus.within(listShownOptions()).wrap().previous()">
+      {{ caller() }}
+      {% if typed_option_vals %}<div class="control-picker-typed"></div>{% endif %}
+    </div>
+    {% if confirm_vals %}
+    <div class="control-picker-footer">
+      <button type="button" class="control-button tone-main" title="{{ confirm_title }}"
+              :disabled="checkedValues.length === 0"
+              hx-post="/fragments/choice" hx-target="#case-panel" hx-swap="innerHTML"
+              hx-include="closest .control-picker-panel" hx-vals='{{ confirm_vals | tojson }}'>
+        Add <span x-show="checkedValues.length" x-text="checkedValues.length"></span>
+      </button>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{%- endmacro %}
+
+{#
   The seed entry an "other work" page moves to, chosen in one picker. The
   trigger names the choice: "New entry", the suggested entry's title, or
   "Other entry" for a typed key, whose page key shows below as a link. The
-  panel holds a search box that filters the suggestions and also takes a page
-  key or provider address, which the server checks and offers as an option, or
-  shows disabled with the reason it cannot be used. A chosen key no entry can
-  take marks the trigger as invalid, with the reason below.
+  search box filters the suggestions and also takes a page key or provider
+  address, which the server checks and offers as an option, or shows disabled
+  with the reason it cannot be used. A chosen key no entry can take marks the
+  trigger as invalid, with the reason below.
 #}
 {% macro named_entry_picker(row) -%}
 {% set label = "Seed entry for " ~ row.page_key %}
@@ -49,31 +95,14 @@
 {% set chosen = namespace(title="") %}
 {% for entry in row.target_entry_options if entry.entry_reference_page == named_key %}{% set chosen.title = entry.title %}{% endfor %}
 {% set trigger_text = chosen.title or ("Other entry" if named_key else "New entry") %}
-{% set choice_vals = {"page_key": row.page_key, "work": "other work", "mark": row.choices.mark} %}
-<div class="control-picker{% if row.named_entry_invalid_reason %} is-invalid{% endif %}" x-data="namedEntryPicker"
-     @keydown.escape="close()" @click.outside="close()">
-  <button type="button" x-ref="trigger" id="{{ element_id('choice', 'named_entry', label) }}" class="control-picker-trigger"
-          aria-label="{{ label }}" title="{{ tooltips.TARGET_ENTRY_DROPDOWN }}" aria-haspopup="listbox"
-          :aria-expanded="isOpen"{% if row.named_entry_invalid_reason %} aria-invalid="true"{% endif %} @click="toggle()">
-    <span class="control-picker-text">{{ trigger_text }}</span>
-    <svg class="control-picker-chevron" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false"
-         fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg>
-  </button>
-  <div class="control-picker-panel" x-show="isOpen" style="display: none" x-anchor.fixed.bottom-start.offset.4="$refs.trigger">
-    <input x-ref="search" type="text" name="query" class="control-picker-search" x-model="query"
-           aria-label="{{ label }} (search or page key)" title="{{ tooltips.TARGET_ENTRY_KEY_INPUT }}"
-           placeholder="Search or paste a page key…" autocomplete="off" spellcheck="false"
-           @keydown.down.prevent="$focus.within(listShownOptions()).first()"
-           @keydown.enter.prevent="listShownOptions()[0]?.click()"
-           hx-post="/fragments/named-entry-option" hx-trigger="input changed delay:300ms" hx-target="next .control-picker-typed"
-           hx-vals='{{ {"page_key": row.page_key, "mark": row.choices.mark, "case_name": view.case.case_name} | tojson }}'>
-    <div x-ref="options" class="control-picker-options" role="listbox" aria-label="{{ label }}"
-         @keydown.down.prevent="$focus.within(listShownOptions()).wrap().next()"
-         @keydown.up.prevent="$focus.within(listShownOptions()).wrap().previous()">
+{% call search_picker(label, element_id('choice', 'named_entry', label), trigger_text, tooltips.TARGET_ENTRY_DROPDOWN,
+                      "Search or paste a page key…", tooltips.TARGET_ENTRY_KEY_INPUT,
+                      typed_option_vals={"page_key": row.page_key, "case_name": view.case.case_name},
+                      is_invalid=row.named_entry_invalid_reason is not none) %}
       <button type="button" role="option" aria-selected="{{ (not named_key) | tojson }}"
               class="control-picker-option{% if not named_key %} is-chosen{% endif %}" x-show="isShown('new entry')"
               hx-post="/fragments/choice" hx-target="#case-panel" hx-swap="innerHTML"
-              hx-vals='{{ choice_vals | tojson }}'>
+              hx-vals='{{ {"page_key": row.page_key, "work": "other work"} | tojson }}'>
         <span class="control-picker-option-title">New entry</span>
       </button>
       {% if row.target_entry_options %}{% set suggestion_texts = [] %}{% for entry in row.target_entry_options %}{% set _ = suggestion_texts.append(entry.title ~ ' ' ~ entry.entry_reference_page) %}{% endfor %}
@@ -83,14 +112,65 @@
               class="control-picker-option{% if entry.entry_reference_page == named_key %} is-chosen{% endif %}"
               x-show="isShown({{ (entry.title ~ ' ' ~ entry.entry_reference_page) | tojson | forceescape }})"
               hx-post="/fragments/choice" hx-target="#case-panel" hx-swap="innerHTML"
-              hx-vals='{{ {"page_key": row.page_key, "work": "other work", "mark": row.choices.mark, "named_entry": entry.entry_reference_page} | tojson }}'>
+              hx-vals='{{ {"page_key": row.page_key, "work": "other work", "named_entry": entry.entry_reference_page} | tojson }}'>
         <span class="control-picker-option-title">{{ entry.title }}</span>
         <span class="control-picker-option-key">{{ entry.entry_reference_page }}</span>
       </button>
       {% endfor %}
-      <div class="control-picker-typed"></div>
-    </div>
-  </div>
+{% endcall %}
+{%- endmacro %}
+
+{#
+  A work's partial sources: each chosen page as a chip with a button taking it
+  off, then a picker adding pages that are a source of another work. Each
+  option shows the page key, then what tells the pages apart: the title, the
+  work the page is in, and its type, episodes and start date, or that the
+  page was not fetched. Each choice redraws the case panel, as the work
+  dropdown does.
+#}
+{% macro partial_sources_cell(work_choices, work_label, address_by_page_key, page_by_key, work_by_page_key) -%}
+{% set label = "Partial sources of " ~ work_label %}
+<div class="partial-source-list">
+  {% for page_key in work_choices.partial_source_page_keys %}
+  <span class="partial-source-chip">{{ page_link(page_key, address_by_page_key.get(page_key)) }}
+    <button type="button" class="partial-source-remove" aria-label="Take {{ page_key }} off {{ label | lower }}"
+            title="{{ tooltips.PARTIAL_SOURCE_REMOVE }}"
+            hx-post="/fragments/choice" hx-target="#case-panel" hx-swap="innerHTML"
+            hx-vals='{{ {"page_key": page_key, "partial_source_work": work_choices.work, "is_partial_source": "false"} | tojson }}'>
+      <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true" focusable="false" fill="none" stroke="currentColor"
+           stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"></path></svg>
+    </button>
+  </span>
+  {% endfor %}
+  {% if work_choices.page_key_options %}
+  {% call search_picker(label, element_id('choice', 'partial_source', label), "Add partial sources",
+                        tooltips.PARTIAL_SOURCE_PICKER, "Search pages…", tooltips.PARTIAL_SOURCE_SEARCH,
+                        confirm_vals={"partial_source_work": work_choices.work, "is_partial_source": "true"},
+                        confirm_title=tooltips.PARTIAL_SOURCE_ADD) %}
+      {% for page_key in work_choices.page_key_options %}
+      {% set page = page_by_key.get(page_key) %}
+      {% set page_facts = [] %}
+      {% if page and page.titles %}{% set _ = page_facts.append(page.titles[0]) %}{% endif %}
+      {% set _ = page_facts.append("in " ~ work_by_page_key.get(page_key, "")) %}
+      {% if page and page.titles %}
+        {% if page.type %}{% set _ = page_facts.append(page.type) %}{% endif %}
+        {% if page.episode_count is not none %}{% set _ = page_facts.append(page.episode_count ~ " eps") %}{% endif %}
+        {% if page.aired_from %}{% set _ = page_facts.append(page.aired_from.strftime("%Y-%m-%d")) %}{% endif %}
+      {% else %}{% set _ = page_facts.append("not fetched") %}{% endif %}
+      {% set page_description = page_facts | join(" · ") %}
+      <label role="option" class="control-picker-option control-picker-check"
+             x-show="isShown({{ (page_key ~ ' ' ~ page_description) | tojson | forceescape }})">
+        <input type="checkbox" name="partial_source_page_keys" value="{{ page_key }}" x-model="checkedValues">
+        <span class="control-picker-check-text">
+          <span class="control-picker-option-title page-key">{{ page_key }}</span>
+          <span class="control-picker-option-detail">{{ page_description }}</span>
+        </span>
+      </label>
+      {% endfor %}
+  {% endcall %}
+  {% elif not work_choices.partial_source_page_keys %}
+  {{ note_line(tooltips.PARTIAL_SOURCE_NEEDS_WORK) }}
+  {% endif %}
 </div>
 {%- endmacro %}
 

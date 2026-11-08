@@ -185,6 +185,7 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; }
 .control-picker-option.is-disabled { cursor: default; }
 .control-picker-option.is-disabled .control-picker-option-title { color: var(--color-muted); }
 .control-picker-option-key { color: var(--color-muted); font-family: var(--font-code); font-size: var(--size-small); }
+.control-picker-option-detail { color: var(--color-muted); font-size: var(--size-small); }
 .control-dropdown.is-changed select { border-color: var(--color-edited); }
 .control-dropdown.is-invalid select { border-color: var(--color-rejected); }
 .control-dropdown option:disabled { color: var(--color-disabled); }
@@ -278,6 +279,30 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; }
 .table-scroll { overflow-x: auto; }
 .case-buttons { display: flex; flex-wrap: wrap; gap: var(--space-2); justify-content: flex-end; margin-top: var(--space-4); }
 .suggested-note { color: var(--color-muted); font-size: var(--size-small); }
+/* Works: each work's partial sources as chips, then a picker adding one. The
+   picker trigger keeps the work dropdown's width, as on the page rows. */
+/* A long title wraps inside its column, so the partial sources keep their room. */
+.works-table td:first-child { width: 18rem; white-space: normal; }
+.partial-source-list { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); }
+.partial-source-list .control-picker { width: 12rem; min-width: 0; margin-top: 0; }
+.partial-source-chip {
+  display: inline-flex; align-items: center; gap: var(--space-1);
+  border: 1px solid var(--color-control-border); border-radius: var(--radius-pill);
+  padding: 1px var(--space-1) 1px var(--space-2); background: var(--color-surface);
+}
+.partial-source-remove {
+  display: inline-flex; padding: 2px; border: 0; border-radius: var(--radius-pill);
+  color: var(--color-muted); background: none; cursor: pointer;
+}
+.partial-source-remove:hover, .partial-source-remove:focus-visible { color: var(--color-text); background: var(--color-page); outline: none; }
+/* A picker adding several options: a checkbox per option, then one button. */
+.control-picker-check { flex-direction: row; align-items: flex-start; gap: var(--space-2); }
+.control-picker-check input { margin-top: 3px; }
+.control-picker-check-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.control-picker-footer {
+  display: flex; justify-content: flex-end; padding: var(--space-2);
+  border-top: 1px solid var(--color-border);
+}
 .choice-meanings { font-size: var(--size-small); margin: var(--space-2) 0; }
 .choice-meanings summary { cursor: pointer; color: var(--color-accent); }
 .choice-meanings dl, dl.choice-meanings { display: grid; grid-template-columns: max-content 1fr; gap: var(--space-1) var(--space-3); margin: var(--space-2) 0; }

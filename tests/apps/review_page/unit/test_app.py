@@ -9,7 +9,6 @@ from review_page.template_functions import build_element_id, build_static_url
 from review_page.tooltips import Tooltip
 from shared_proto.v1 import review_cases_pb2
 from work_matching import (
-    PART_MARK,
     ReviewCaseKind,
     TargetEntrySuggestion,
     describe_answer_word,
@@ -205,24 +204,33 @@ def test_case_panel_without_open_case_asks_to_choose(client) -> None:
     assert "Choose a case" in client.post("/fragments/case-panel", data=_state()).text
 
 
-def test_choice_part_spreads_and_reports_unsaved_answer(client, review_cases) -> None:
+def test_choice_keeps_partial_works_and_reports_unsaved_answer(
+    client, review_cases
+) -> None:
     case_name = review_cases["gochuumon_movie"].case_name
     response = client.post(
         "/fragments/choice",
         data={
             **_state(
                 open_case_name=case_name,
-                edits={case_name: dict.fromkeys(GOCHUUMON_DOUBLED_PAGES, "work 1")},
+                edits={
+                    case_name: {
+                        "anidb:anime:19188": "work 1, partial in work 2",
+                        "anidb:anime:19792": "work 2",
+                    }
+                },
             ),
-            "page_key": "anidb:anime:19792",
-            "work": "work 1",
-            "mark": "part",
+            "page_key": "anidb:anime:19188",
+            "work": "work 3",
         },
     )
     answer_changed = _events(response)["answerchanged"]
     assert answer_changed == {
         "case_name": case_name,
-        "answer": dict.fromkeys(GOCHUUMON_DOUBLED_PAGES, "work 1, part"),
+        "answer": {
+            "anidb:anime:19188": "work 3, partial in work 2",
+            "anidb:anime:19792": "work 2",
+        },
         "is_unsaved": True,
         "saved_answer": None,
     }
@@ -239,7 +247,6 @@ def test_choice_back_to_suggestion_reports_no_unsaved_edit(
             **_state(open_case_name=case.case_name, edits={case.case_name: changed}),
             "page_key": "anidb:anime:19895",
             "work": "work 1",
-            "mark": "",
         },
     )
     answer_changed = _events(response)["answerchanged"]
@@ -264,7 +271,6 @@ def test_choice_other_work_named_entry_written_as_page_key(
             **_state(open_case_name=case_name),
             "page_key": "anidb:anime:19188",
             "work": "other work",
-            "mark": "",
             "named_entry": named_entry,
         },
     )
@@ -282,7 +288,6 @@ def test_choice_other_work_unreadable_named_entry_kept_as_written(
             **_state(open_case_name=case_name),
             "page_key": "anidb:anime:19188",
             "work": "other work",
-            "mark": "",
             "named_entry": "Gochuumon",
         },
     )
@@ -691,7 +696,7 @@ def test_case_panel_dropdowns_explain_chosen_and_offered_choices(
     ).text
     assert (
         f'title="{escape(describe_answer_word("work 1"))}"' in panel,
-        f'title="{escape(describe_answer_word(PART_MARK))}"' in panel,
+        escape(describe_answer_word("dropped")) in panel,
         "What the choices mean" in panel,
     ) == (True, True, True)
 
@@ -705,7 +710,7 @@ def test_case_panel_linked_page_lists_what_each_answer_does(
     ).text
     assert all(
         escape(describe_answer_word(answer)) in panel
-        for answer in ("add", "add as part", "skip")
+        for answer in ("add", "add as partial", "skip")
     )
 
 
@@ -810,3 +815,90 @@ def test_case_list_unreadable_review_file_answers_notice_naming_line(
     response = client.post("/fragments/case-list", data=_state())
     assert response.status_code == 500
     assert "Line 2 of review.jsonl" in _events(response)["notice"]["text"]
+
+
+@pytest.mark.parametrize(
+    ("is_partial_source", "placement_text"),
+    [("true", "work 1, partial in work 2"), ("false", "work 1")],
+)
+def test_choice_partial_source_adds_or_removes_work(
+    client, review_cases, is_partial_source, placement_text
+) -> None:
+    case_name = review_cases["gochuumon_movie"].case_name
+    start_placement = (
+        "work 1" if is_partial_source == "true" else "work 1, partial in work 2"
+    )
+    response = client.post(
+        "/fragments/choice",
+        data={
+            **_state(
+                open_case_name=case_name,
+                edits={
+                    case_name: {
+                        "anidb:anime:19188": start_placement,
+                        "anidb:anime:19792": "work 2",
+                    }
+                },
+            ),
+            "page_key": "anidb:anime:19188",
+            "partial_source_work": "work 2",
+            "is_partial_source": is_partial_source,
+        },
+    )
+    assert (
+        _events(response)["answerchanged"]["answer"]["anidb:anime:19188"]
+        == placement_text
+    )
+
+
+def test_case_panel_works_section_shows_partial_sources_and_picker(
+    client, review_cases
+) -> None:
+    case_name = review_cases["gochuumon_movie"].case_name
+    panel = client.post(
+        "/fragments/case-panel",
+        data=_state(
+            open_case_name=case_name,
+            edits={
+                case_name: {
+                    "anidb:anime:19188": "work 1, partial in work 2",
+                    "anidb:anime:19792": "work 2",
+                }
+            },
+        ),
+    ).text
+    works_section = panel.split(">Works</h3>", 1)[1]
+    assert (
+        'class="partial-source-chip"' in works_section,
+        "anidb:anime:19188" in works_section.split("partial-source-chip", 2)[1],
+        "Add partial source" in works_section,
+        'page-key">anidb:anime:19792</span>' in works_section,
+        "in work 2" in works_section.split('page-key">anidb:anime:19792', 1)[1][:400],
+    ) == (True, True, True, True, True)
+
+
+def test_choice_partial_sources_adds_every_ticked_page(client, review_cases) -> None:
+    case_name = review_cases["gochuumon_movie"].case_name
+    response = client.post(
+        "/fragments/choice",
+        data={
+            **_state(
+                open_case_name=case_name,
+                edits={
+                    case_name: {
+                        "anidb:anime:19188": "work 1",
+                        "mal:anime:61115": "work 1",
+                        "anidb:anime:19792": "work 2",
+                    }
+                },
+            ),
+            "partial_source_work": "work 2",
+            "is_partial_source": "true",
+            "partial_source_page_keys": ["anidb:anime:19188", "mal:anime:61115"],
+        },
+    )
+    answer = _events(response)["answerchanged"]["answer"]
+    assert (answer["anidb:anime:19188"], answer["mal:anime:61115"]) == (
+        "work 1, partial in work 2",
+        "work 1, partial in work 2",
+    )

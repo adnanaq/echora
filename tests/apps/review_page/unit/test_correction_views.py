@@ -1,3 +1,4 @@
+import pytest
 from review_page.correction_views import (
     ANSWER_SOURCE,
     RULES_SOURCE,
@@ -84,12 +85,15 @@ def test_build_corrected_entry_rows_counts_changed_pages_and_answer(
         for row in _rows(correction_messages, checked_entry_messages)
     }
     answered = rows["mal:anime:57822"]
+    renamed = rows["mal:anime:2090"]
     assert (
         answered.page_count,
         answered.changed_page_count,
         answered.has_answer_correction,
-        rows["mal:anime:2090"].has_answer_correction,
-    ) == (13, 7, True, False)
+        renamed.page_count,
+        renamed.changed_page_count,
+        renamed.has_answer_correction,
+    ) == (13, 0, True, 2, 1, False)
 
 
 def test_filter_corrected_entry_rows_change_keeps_entries_with_change(
@@ -190,7 +194,7 @@ def test_build_correction_panel_renamed_page_links_current_address(
     )
 
 
-def test_build_correction_panel_answer_rows_show_mark_and_source(
+def test_build_correction_panel_answer_rows_show_place_and_source(
     correction_messages, checked_entry_messages
 ) -> None:
     panel = build_correction_panel(
@@ -204,33 +208,52 @@ def test_build_correction_panel_answer_rows_show_mark_and_source(
         rows["mal:anime:57822"].change_label,
         rows["mal:anime:57822"].destination_label,
         all(row.is_from_answer for row in panel.rows),
-    ) == ("work 1, main", "work 1, part", "Unchanged", "stays in this entry", True)
+    ) == ("work 1", "work 1", "Unchanged", "stays in this entry", True)
 
 
-def test_build_correction_panel_dead_page_row_says_dropped() -> None:
-    dead_page_correction = review_cases_pb2.SeedCorrection(
+@pytest.mark.parametrize(
+    ("correction_fields", "place", "destination_label"),
+    [
+        (
+            {"is_dead_page": True, "change": "dead pages dropped"},
+            "—",
+            "dropped, since the provider no longer has it",
+        ),
+        (
+            {
+                "placement_word": "dropped",
+                "is_dropped_page": True,
+                "change": "duplicate pages dropped",
+            },
+            "dropped",
+            "dropped, since it duplicates another page of its provider",
+        ),
+        (
+            {
+                "placement_word": "work 1",
+                "partial_new_entry_keys": ["mal:anime:18841 work 2"],
+                "change": "partial sources added",
+            },
+            "work 1, partial source of mal:anime:18841 work 2",
+            "stays in this entry",
+        ),
+    ],
+)
+def test_build_correction_panel_rows_describe_dropped_and_partial_pages(
+    correction_fields, place, destination_label
+) -> None:
+    correction = review_cases_pb2.SeedCorrection(
         entry_reference_page="mal:anime:18841",
         page_key="anilist:anime:18843",
         address="https://anilist.co/anime/18843",
-        is_dead_page=True,
-        reason="dead page",
-        change="dead pages dropped",
-        reason_sentence="the provider says the page does not exist",
+        reason="review answer",
+        reason_sentence="your answer",
+        **correction_fields,
     )
-    panel = build_correction_panel("mal:anime:18841", [dead_page_correction], [], [])
+    panel = build_correction_panel("mal:anime:18841", [correction], [], [])
     assert panel is not None
     [row] = panel.rows
-    assert (
-        row.change_label,
-        row.place,
-        row.destination_label,
-        row.destination_address,
-    ) == (
-        "Dead pages dropped",
-        "—",
-        "dropped, since the provider no longer has it",
-        None,
-    )
+    assert (row.place, row.destination_label) == (place, destination_label)
 
 
 def test_build_correction_panel_lists_cases_holding_entry(review_cases) -> None:

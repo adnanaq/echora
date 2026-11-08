@@ -217,15 +217,20 @@ def _build_correction_row(
     """
     change = _read_change(correction)
     destination_label, destination_address = _describe_destination(correction)
-    mark_suffix = ", main" if correction.is_main_page else ""
-    mark_suffix += ", part" if correction.is_part_page else ""
+    partial_targets = [
+        *correction.partial_entry_reference_pages,
+        *correction.partial_new_entry_keys,
+    ]
+    partial_suffix = (
+        f", partial source of {', '.join(partial_targets)}" if partial_targets else ""
+    )
     return CorrectionRowView(
         page_key=correction.page_key,
         address=correction.address,
         change_label=capitalize_first_letter(change),
-        place=correction.placement_word + mark_suffix
+        place=correction.placement_word + partial_suffix
         if correction.HasField("placement_word")
-        else "—",
+        else partial_suffix.removeprefix(", ") or "—",
         destination_label=destination_label,
         destination_address=destination_address,
         reason_sentence=correction.reason_sentence,
@@ -247,8 +252,16 @@ def _describe_destination(
     """
     if correction.is_dead_page:
         return "dropped, since the provider no longer has it", None
+    if correction.is_dropped_page:
+        return "dropped, since it duplicates another page of its provider", None
     if correction.is_added_page:
-        return "added to this entry", correction.address
+        return (
+            "added to this entry's partial sources"
+            if correction.partial_entry_reference_pages
+            and not correction.HasField("placement_word")
+            else "added to this entry",
+            correction.address,
+        )
     if correction.HasField("renamed_to"):
         return (
             f"current address {correction.renamed_to}",

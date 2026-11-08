@@ -30,6 +30,7 @@ from review_page.case_panel_tables import (
     list_shown_columns,
 )
 from review_page.models import (
+    CaseEditState,
     CaseRow,
     CaseView,
     InvalidNamedPageKeyReason,
@@ -47,9 +48,11 @@ from review_page.page_state import (
 from work_matching import (
     ReviewCase,
     ReviewCaseKind,
+    WorkPartialSources,
     combine_group_entries,
     describe_case_reasons,
     list_linked_page_options,
+    list_work_partial_sources,
 )
 from work_matching.answer_words import PLACEMENT_WORD_MEANINGS
 
@@ -148,46 +151,37 @@ def build_case_view(
     Returns:
         A CaseView model containing assembled tables, candidate rows, and action button states.
     """
-    is_suggestion_shown = unsaved_answer is None and is_answer_empty(case.answer)
     chosen_answer = resolve_shown_answer(case, unsaved_answer)
     is_linked_page = case.kind is ReviewCaseKind.LINKED_PAGE
     linking_entry_link, linked_page_link = build_linked_page_case_links(case)
-    page_rows = (
-        ()
-        if is_linked_page
-        else _build_marked_page_rows(
-            case,
-            chosen_answer,
-            original_answer,
-            is_rejected=is_rejected,
-            invalid_named_page_key_reasons=invalid_named_page_key_reasons,
-        )
-    )
-    comparison_rows = (
-        build_comparison_rows(case, show_only_differences) if is_linked_page else ()
+    page_rows, work_partial_sources = _build_group_case_tables(
+        case,
+        chosen_answer,
+        original_answer,
+        is_rejected=is_rejected,
+        invalid_named_page_key_reasons=invalid_named_page_key_reasons,
     )
     return CaseView(
         case=case,
         title=find_case_title(case),
-        edit_state=resolve_case_edit_state(
-            original_answer=original_answer,
-            saved_answer=case.answer,
-            unsaved_answer=unsaved_answer,
-            has_unsaved_edit=unsaved_answer is not None,
-            is_rejected=is_rejected,
+        edit_state=_resolve_edit_state(
+            case, original_answer, unsaved_answer, is_rejected=is_rejected
         ),
         chosen_answer=chosen_answer,
-        is_suggestion_shown=is_suggestion_shown and bool(case.suggested_answer),
+        is_suggestion_shown=_is_suggestion_shown(case, unsaved_answer),
         reason_sentences=describe_case_reasons(case),
         entries=build_entry_views(case),
         page_rows=page_rows,
+        work_partial_sources=work_partial_sources,
         shown_columns=list_shown_columns(page_rows, show_only_differences),
         evidence_pages=list_evidence_pages(case, page_rows),
         linked_page_options=list_linked_page_options(case) if is_linked_page else (),
         linking_entry_link=linking_entry_link,
         linked_page_link=linked_page_link,
         choice_meanings=() if is_linked_page else PLACEMENT_WORD_MEANINGS,
-        comparison_rows=comparison_rows,
+        comparison_rows=build_comparison_rows(case, show_only_differences)
+        if is_linked_page
+        else (),
         buttons=build_case_buttons(
             case,
             original_answer=original_answer,
@@ -220,6 +214,90 @@ def resolve_shown_answer(case: ReviewCase, unsaved_answer: JsonValue) -> JsonVal
     if not is_answer_empty(case.answer):
         return case.answer
     return build_suggested_answer(case)
+
+
+def _is_suggestion_shown(case: ReviewCase, unsaved_answer: JsonValue) -> bool:
+    """Report whether the case panel shows the run's suggestion as the answer.
+
+    Args:
+        case: The review case with its saved answer and suggestion.
+        unsaved_answer: The staged browser edit for this case, or None.
+
+    Returns:
+        True when the case has a suggestion and neither an edit nor a saved
+        answer places a page.
+    """
+    return (
+        unsaved_answer is None
+        and is_answer_empty(case.answer)
+        and bool(case.suggested_answer)
+    )
+
+
+def _resolve_edit_state(
+    case: ReviewCase,
+    original_answer: JsonValue,
+    unsaved_answer: JsonValue,
+    *,
+    is_rejected: bool,
+) -> CaseEditState:
+    """Resolve whether a case is unchanged, edited, saved or rejected.
+
+    Args:
+        case: The review case with its saved answer.
+        original_answer: The baseline answer recorded by the previous pipeline run.
+        unsaved_answer: The staged browser edit for this case, or None.
+        is_rejected: Whether the last save attempt failed validation rules.
+
+    Returns:
+        The case's edit state.
+    """
+    return resolve_case_edit_state(
+        original_answer=original_answer,
+        saved_answer=case.answer,
+        unsaved_answer=unsaved_answer,
+        has_unsaved_edit=unsaved_answer is not None,
+        is_rejected=is_rejected,
+    )
+
+
+def _build_group_case_tables(
+    case: ReviewCase,
+    chosen_answer: JsonValue,
+    original_answer: JsonValue,
+    *,
+    is_rejected: bool,
+    invalid_named_page_key_reasons: Mapping[str, InvalidNamedPageKeyReason],
+) -> tuple[tuple[PageRowView, ...], tuple[WorkPartialSources, ...]]:
+    """Build the pages table and the Works table of an entry group case.
+
+    A linked-page case has neither table, since the case compares one linked
+    page with one entry instead of placing pages.
+
+    Args:
+        case: The review case to present.
+        chosen_answer: The active placement selections shown in the panel.
+        original_answer: The baseline answer recorded by the previous pipeline run.
+        is_rejected: Whether the last save attempt broke validation rules.
+        invalid_named_page_key_reasons: Each invalid page key named after
+            ``other work``, mapped to the reason it is invalid.
+
+    Returns:
+        The page rows and each work's partial sources; both empty for a
+        linked-page case.
+    """
+    if case.kind is ReviewCaseKind.LINKED_PAGE:
+        return (), ()
+    page_rows = _build_marked_page_rows(
+        case,
+        chosen_answer,
+        original_answer,
+        is_rejected=is_rejected,
+        invalid_named_page_key_reasons=invalid_named_page_key_reasons,
+    )
+    return page_rows, list_work_partial_sources(
+        case, chosen_answer if isinstance(chosen_answer, dict) else {}
+    )
 
 
 def _build_marked_page_rows(

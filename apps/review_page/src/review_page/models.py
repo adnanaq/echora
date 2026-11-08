@@ -30,6 +30,7 @@ from work_matching import (
     ReviewCase,
     ReviewCaseKind,
     TargetEntrySuggestion,
+    WorkPartialSources,
 )
 
 # Case states.
@@ -237,8 +238,9 @@ class PageRowView:
     choices: GroupPageChoices
     # Whether the selected placement differs from the baseline run answer.
     is_changed: bool
-    # The MAL page already in each work this MAL page cannot join, by work word.
-    mal_pages_by_closed_work: dict[str, PageLink] = field(default_factory=dict)
+    # The page of the same provider already in each work this page cannot
+    # join, by work word.
+    pages_by_closed_work: dict[str, PageLink] = field(default_factory=dict)
     # Whether a rejected save left this required page without a selected placement.
     is_place_missing: bool = False
     # External links to pages referenced by this provider page.
@@ -297,6 +299,8 @@ class CaseView:
     reason_sentences: tuple[str, ...]
     entries: tuple[EntryView, ...]
     page_rows: tuple[PageRowView, ...]
+    # Each work's partial sources and the pages that can become one.
+    work_partial_sources: tuple[WorkPartialSources, ...]
     shown_columns: tuple[DetailColumn, ...]
     evidence_pages: tuple[ProviderPage, ...]
     linked_page_options: tuple[ChoiceOption, ...]
@@ -358,7 +362,7 @@ class CorrectionRowView:
     address: str
     # The change as the run summary names it, or "Unchanged".
     change_label: str
-    # The page's work and mark, as written in the answer: "work 1, part".
+    # The page's place, as written in the answer: "work 1, partial in work 2".
     place: str
     destination_label: str
     destination_address: str | None

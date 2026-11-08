@@ -11,7 +11,6 @@ from pathlib import Path
 import pytest
 from google.protobuf import json_format
 from review_page.file_review_case_source import (
-    RUN_LOG_LIMIT_BYTES,
     FileReviewCaseSource,
     RunSeedFileUnknownError,
 )
@@ -21,6 +20,7 @@ from review_page.review_case_source import (
     ANSWER_SAVED_ELSEWHERE_RULE_NAME,
     SeedFileUnavailableError,
 )
+from review_page.seed_cleaning_run_process import RUN_LOG_LIMIT_BYTES
 from seed_cleaning import (
     REVIEW_ANSWER_REASON,
     SeedCleaningRunResult,
@@ -220,6 +220,24 @@ def test_file_review_case_source_find_invalid_named_page_keys_tells_dead_from_un
     ) == {
         "mal:anime:21273": InvalidNamedPageKeyReason.DEAD_PAGE,
         "mal:anime:99999": InvalidNamedPageKeyReason.UNKNOWN_PAGE,
+    }
+
+
+def test_file_review_case_source_find_named_entries_gives_seed_entry_of_each_key(
+    seed_source,
+) -> None:
+    named_entries = seed_source.find_named_entries(
+        ["mal:anime:21273", "mal:anime:99999"]
+    )
+    assert {
+        page_key: json_format.MessageToDict(entry_message)
+        for page_key, entry_message in named_entries.items()
+    } == {
+        "mal:anime:21273": {
+            "entryReferencePage": "mal:anime:21273",
+            "title": "Gochuumon wa Usagi desu ka?",
+            "providers": ["mal"],
+        }
     }
 
 
@@ -550,6 +568,32 @@ def test_file_review_case_source_save_answers_conflicting_linked_pages_warns(
 def test_file_review_case_source_list_corrections_keeps_every_line(
     source, data_dir, correction_lines
 ) -> None:
+    correction_lines = [
+        *correction_lines,
+        json.dumps(
+            {
+                "entry_reference_page": "mal:anime:36040",
+                "page_key": "mal:anime:36040",
+                "address": "https://myanimelist.net/anime/36040",
+                "placement_word": "work 1",
+                "partial_entry_reference_pages": ["anilist:anime:114448"],
+                "partial_new_entry_keys": ["mal:anime:36040 work 3"],
+                "reason": "REVIEW_ANSWER",
+            }
+        )
+        + "\n",
+        json.dumps(
+            {
+                "entry_reference_page": "kitsu:anime:46351",
+                "page_key": "kitsu:anime:50917",
+                "address": "https://kitsu.app/anime/50917",
+                "placement_word": "dropped",
+                "is_dropped_page": True,
+                "reason": "REVIEW_ANSWER",
+            }
+        )
+        + "\n",
+    ]
     (data_dir / "corrections.jsonl").write_text(
         "".join(correction_lines), encoding="utf-8"
     )

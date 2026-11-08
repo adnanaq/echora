@@ -11,8 +11,9 @@
 //   an answer saved meanwhile from another tab.
 // - Open tabs share unsaved edits: a change in one reaches the others through
 //   the browser's `storage` event. Filters and the open case stay per tab.
-// - Every page asks for the run state every few seconds, so a run started
-//   from the terminal or another tab disables its buttons too.
+// - A visible page asks for the run state every few seconds, and once more
+//   when it is shown again, so a run started from the terminal or another tab
+//   disables its buttons too. A hidden page does not ask.
 // - The server decides every choice and rule. This script only stores what
 //   the server's events report and asks for the regions to redraw.
 
@@ -252,14 +253,16 @@ document.addEventListener("alpine:init", () => {
     },
   });
 
-  // The picker for the seed entry an "other work" page moves to. The anchor
-  // plugin positions its panel and the focus plugin moves between its options
-  // (see vendor/README.md). The search box filters the suggested entries; a
-  // typed page key is checked by the server, which answers with an option or
-  // the reason the key cannot be used.
-  Alpine.data("namedEntryPicker", () => ({
+  // A searchable picker, used for the seed entry an "other work" page moves to
+  // and for a work's partial sources. The anchor plugin positions its panel and
+  // the focus plugin moves between its options (see vendor/README.md). The
+  // search box filters the options; a typed page key is checked by the server,
+  // which answers with an option or the reason the key cannot be used.
+  Alpine.data("searchPicker", () => ({
     isOpen: false,
     query: "",
+    // The options ticked in a picker that adds several at once.
+    checkedValues: [],
 
     toggle() {
       this.isOpen = !this.isOpen;
@@ -277,11 +280,14 @@ document.addEventListener("alpine:init", () => {
     },
 
     // The focus plugin counts hidden buttons as focusable, so the arrow keys
-    // get only the options the search leaves visible.
+    // get only the options the search leaves visible: option buttons, or the
+    // checkboxes of a picker that adds several at once.
     listShownOptions() {
-      return [...this.$refs.options.querySelectorAll("button[role=option]")].filter(
-        (option) => option.checkVisibility(),
-      );
+      return [
+        ...this.$refs.options.querySelectorAll(
+          "button[role=option], [role=option] input[type=checkbox]",
+        ),
+      ].filter((option) => option.checkVisibility());
     },
   }));
 });

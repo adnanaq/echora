@@ -8,8 +8,9 @@ Key presentation and constraint rules include:
   provider page in deterministic ``list_placeable_case_page_keys`` order,
   annotating the entry label (Work A, Work B) and whether the page serves as
   that entry's reference page.
-- Closed works: A work holds at most one MAL page, so a MAL page row without
-  a place names the other MAL page that already holds each work closed to it.
+- Closed works: A work holds at most one page of each provider, so a row
+  without a place names the page of its provider already holding each work
+  closed to it.
 - Merge targets: Rows offer candidate seed entries for "other work" movements
   only when the target entry does not already hold a page from that provider,
   preventing the move from introducing duplicate providers.
@@ -38,8 +39,8 @@ from work_matching import (
     PlacementRule,
     ProviderPage,
     ReviewCase,
+    TargetEntrySuggestion,
     build_page_address,
-    is_mal_page,
     list_group_page_choices,
     read_page_provider,
 )
@@ -73,10 +74,10 @@ def build_page_rows(
     }
     entry_label_by_page_key, reference_page_keys = _label_entry_pages(case)
     page_choices = list_group_page_choices(case, answer)
-    mal_page_keys_by_work = {
-        choices.work: choices.page_key
+    page_key_by_work_provider = {
+        (choices.work, read_page_provider(choices.page_key)): choices.page_key
         for choices in page_choices
-        if choices.work and is_mal_page(choices.page_key)
+        if choices.work
     }
     return tuple(
         PageRowView(
@@ -88,18 +89,14 @@ def build_page_rows(
             choices=choices,
             is_changed=answer.get(choices.page_key)
             != base_answer.get(choices.page_key),
-            mal_pages_by_closed_work=_find_mal_pages_by_closed_work(
-                choices, mal_page_keys_by_work, case, pages_by_key
+            pages_by_closed_work=_find_pages_by_closed_work(
+                choices, page_key_by_work_provider, case, pages_by_key
             ),
             is_place_missing=is_rejected
             and choices.is_required
             and choices.work is None,
             linked_pages=_list_page_links(pages_by_key.get(choices.page_key)),
-            target_entry_options=tuple(
-                suggestion
-                for suggestion in case.target_entry_suggestions
-                if read_page_provider(choices.page_key) not in suggestion.providers
-            ),
+            target_entry_options=list_target_entry_options(case, choices.page_key),
             named_entry_address=build_page_address(choices.named_entry_page_key)
             if choices.named_entry_page_key
             else None,
@@ -111,40 +108,67 @@ def build_page_rows(
     )
 
 
-def _find_mal_pages_by_closed_work(
+def list_target_entry_options(
+    case: ReviewCase, page_key: str
+) -> tuple[TargetEntrySuggestion, ...]:
+    """List the suggested seed entries a page placed in ``other work`` can join.
+
+    An entry holding a page of the page's provider is left out, since the move
+    would give that entry two pages of one provider.
+
+    Args:
+        case: The review case with its suggested seed entries.
+        page_key: The page's key.
+
+    Returns:
+        The suggestions holding no page of the page's provider, in suggestion order.
+    """
+    return tuple(
+        suggestion
+        for suggestion in case.target_entry_suggestions
+        if read_page_provider(page_key) not in suggestion.providers
+    )
+
+
+def _find_pages_by_closed_work(
     choices: GroupPageChoices,
-    mal_page_keys_by_work: Mapping[str, str],
+    page_key_by_work_provider: Mapping[tuple[str, str | None], str],
     case: ReviewCase,
     pages_by_key: Mapping[str, ProviderPage],
 ) -> dict[str, PageLink]:
-    """Find the MAL page that closes each work to a page that has no place yet.
+    """Find the page of the same provider that closes each work to a page without a place.
 
-    A work holds at most one MAL page, so a MAL page cannot join a work that
-    another MAL page already holds. While the page has no place, the row names
-    that other page beside the closed work, so the reviewer knows which row to
-    change. Once the page has a place, the choice already keeps the rule, so
-    the row names nothing.
+    A work holds at most one page of each provider, so a page cannot join a
+    work that another page of its provider already holds. While the page has
+    no place, the row names that other page beside the closed work, so the
+    reviewer knows which row to change. Once the page has a place, the choice
+    already keeps the rule, so the row names nothing.
 
     Args:
         choices: Placement options for a single page, with each option's disabling rule.
-        mal_page_keys_by_work: The MAL page key placed in each work.
-        case: The review case, used to find the MAL page's address.
+        page_key_by_work_provider: The page key placed in each work, by the
+            work's word and the page's provider.
+        case: The review case, used to find the other page's address.
         pages_by_key: Fetched provider pages by page key.
 
     Returns:
-        The MAL page holding each work closed to this page, by work word, or
+        The page holding each work closed to this page, by work word, or
         nothing when the page already has a place.
     """
     if choices.work is not None:
         return {}
+    provider = read_page_provider(choices.page_key)
     return {
         option.value: PageLink(
-            mal_page_key, _find_page_address(case, mal_page_key, pages_by_key)
+            closing_page_key,
+            _find_page_address(case, closing_page_key, pages_by_key),
         )
         for option in choices.work_options
-        if option.value is not None
-        and option.disabling_rule is PlacementRule.WORK_WITH_TWO_MAL_PAGES
-        and (mal_page_key := mal_page_keys_by_work.get(option.value)) is not None
+        if option.disabling_rule is PlacementRule.WORK_WITH_TWO_PAGES_OF_ONE_PROVIDER
+        and (
+            closing_page_key := page_key_by_work_provider.get((option.value, provider))
+        )
+        is not None
     }
 
 
