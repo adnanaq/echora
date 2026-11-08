@@ -25,6 +25,11 @@ Each item gives the rule, then the reason for it.
   page, when it holds no MAL page and no title or link groups it. Under
   MAL's division the page belongs to none of those works, so a person
   decides whether the entry stays or merges into one of them.
+- Answered separations: two entries a first-pass answer separated, by moving
+  a page from one into the other, are never joined by their own title match
+  or link. A person has already said they are different works. A third entry
+  matching both can still bring them into one group, since that entry may be
+  one work with either of them.
 - Groups: entries joined through a shared title match, link or
   several-works page form one group, and the group keeps every match and
   link as its evidence.
@@ -38,20 +43,21 @@ Each item gives the rule, then the reason for it.
 
 import logging
 from collections import Counter, defaultdict
-from collections.abc import Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import NamedTuple
 
 from networkx.utils import UnionFind
 from pydantic import BaseModel, ConfigDict
-from seed_cleaning.split_work_links import SplitWorkLinks
+from seed_cleaning.split_work_links import SplitWorkLink, SplitWorkLinks
 from work_matching import KnownWorkEntriesFromSeed, WorkEntry, resolve_decided_provider
 
 logger = logging.getLogger(__name__)
 
 # Seasons in calendar order, so neighbouring seasons differ by one.
 _SEASON_ORDER = ("WINTER", "SPRING", "SUMMER", "FALL")
-# Entries sharing this provider are never one work: a work is what MAL lists.
+# Entries sharing this provider are never one work, since MAL lists them as
+# different works and a work is the finest split any provider lists.
 _MAL_PROVIDER = "mal"
 
 
@@ -76,7 +82,9 @@ class SplitWorkCandidates(BaseModel):
 
 
 def find_split_work_candidates(
-    known_work_entries: KnownWorkEntriesFromSeed, split_work_links: SplitWorkLinks
+    known_work_entries: KnownWorkEntriesFromSeed,
+    split_work_links: SplitWorkLinks,
+    separated_reference_page_pairs: Collection[frozenset[str]] = frozenset(),
 ) -> list[SplitWorkCandidates]:
     """Return every group of entries that may be one work split in several.
 
@@ -86,20 +94,36 @@ def find_split_work_candidates(
         known_work_entries: The entries to group, by page and by title.
         split_work_links: The links tying the entries, by their places in
             ``known_work_entries``.
+        separated_reference_page_pairs: The reference pages of each two
+            entries a first-pass answer separated, which their own title
+            match or link never joins.
 
     Returns:
         The kept groups, ordered by their first entry's place.
     """
     work_entries = list(known_work_entries)
-    title_pairs = _find_title_pairs(known_work_entries, work_entries)
+    title_pairs = [
+        pair
+        for pair in _find_title_pairs(known_work_entries, work_entries)
+        if not _is_separated_pair(pair, work_entries, separated_reference_page_pairs)
+    ]
+    links_by_entry_pair = {
+        pair: links
+        for pair, links in split_work_links.links_by_entry_pair.items()
+        if not _is_separated_pair(pair, work_entries, separated_reference_page_pairs)
+    }
     entry_groups = UnionFind()
-    for pair in [*title_pairs, *split_work_links.links_by_entry_pair]:
+    for pair in [*title_pairs, *links_by_entry_pair]:
         entry_groups.union(*pair)
     several_works_pages = _join_several_works_entries(
         known_work_entries, work_entries, split_work_links, entry_groups
     )
     evidence_by_group = _collect_group_evidence(
-        entry_groups, work_entries, title_pairs, split_work_links, several_works_pages
+        entry_groups,
+        work_entries,
+        title_pairs,
+        links_by_entry_pair,
+        several_works_pages,
     )
     candidates: list[SplitWorkCandidates] = []
     for positions in sorted(sorted(group) for group in entry_groups.to_sets()):
@@ -111,6 +135,28 @@ def find_split_work_candidates(
         ):
             candidates.append(built_candidates)
     return candidates
+
+
+def _is_separated_pair(
+    pair: tuple[int, int],
+    work_entries: Sequence[WorkEntry],
+    separated_reference_page_pairs: Collection[frozenset[str]],
+) -> bool:
+    """Report whether a first-pass answer separated the two entries of a pair.
+
+    Args:
+        pair: The places of two entries in ``work_entries``.
+        work_entries: The entries, by place.
+        separated_reference_page_pairs: The reference pages of each two
+            entries a first-pass answer separated.
+
+    Returns:
+        True when the two entries' reference pages are a separated pair.
+    """
+    return (
+        frozenset(work_entries[position].reference_page_key for position in pair)
+        in separated_reference_page_pairs
+    )
 
 
 class _SeveralWorksPage(NamedTuple):
@@ -181,7 +227,7 @@ def _collect_group_evidence(
     entry_groups: UnionFind,
     work_entries: list[WorkEntry],
     title_pairs: list[tuple[int, int]],
-    split_work_links: SplitWorkLinks,
+    links_by_entry_pair: Mapping[tuple[int, int], Sequence[SplitWorkLink]],
     several_works_pages: list[_SeveralWorksPage],
 ) -> defaultdict[int, _GroupEvidence]:
     """Collect every title match and link of each group, by the group's root place.
@@ -189,8 +235,8 @@ def _collect_group_evidence(
     Args:
         entry_groups: The groups, after every pair is joined.
         work_entries: The entries, by place.
-        title_pairs: The pairs that match by title.
-        split_work_links: The pairs tied by links, with their links.
+        title_pairs: The pairs joined by a title match.
+        links_by_entry_pair: The pairs joined by links, with their links.
         several_works_pages: The several-works pages joined to groups.
 
     Returns:
@@ -202,7 +248,7 @@ def _collect_group_evidence(
         evidence_by_group[entry_groups[first]].evidence.append(
             f"same title: {work_entries[first].title!r} and {work_entries[second].title!r}"
         )
-    for (first, _), links in split_work_links.links_by_entry_pair.items():
+    for (first, _), links in links_by_entry_pair.items():
         group_evidence = evidence_by_group[entry_groups[first]]
         for link in links:
             group_evidence.evidence.append(
