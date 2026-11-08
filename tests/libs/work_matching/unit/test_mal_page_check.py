@@ -25,7 +25,7 @@ def _build_detailed_page(
     )
 
 
-def test_check_with_mal_pages_part_page_marked_and_unfetched_page_left_out(
+def test_check_with_mal_pages_part_page_and_unfetched_page_left_out(
     work_entry,
 ) -> None:
     entries = [work_entry(AWARE_ANIDB, AWARE_ANISEARCH), work_entry(AWARE_MAL)]
@@ -43,8 +43,8 @@ def test_check_with_mal_pages_part_page_marked_and_unfetched_page_left_out(
         pages,
     )
     assert mal_page_check == (
-        {"anisearch:anime:11255": "work 1, part", "mal:anime:32956": "work 1"},
-        (MalPageComparison.DETAILS_UNKNOWN,),
+        {"mal:anime:32956": "work 1"},
+        (MalPageComparison.PART_OF_WORK, MalPageComparison.DETAILS_UNKNOWN),
     )
 
 

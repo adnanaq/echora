@@ -76,10 +76,6 @@ class Tooltip(StrEnum):
         "Select which work the provider page belongs to. "
         "All pages assigned the same number form one work."
     )
-    MARK_COLUMN = (
-        "Select how the page stands beside the provider's other pages in the work "
-        "(unmarked, main page, or part page)"
-    )
     NO_LINKED_PAGE_ANSWER = "No answer selected yet. The review case remains open."
     CHANGED_CHOICE_MARK = (
         "This placement differs from the baseline answer recorded by the previous run"
@@ -91,6 +87,22 @@ class Tooltip(StrEnum):
     TARGET_ENTRY_KEY_INPUT = (
         "Paste the target seed entry's page key or provider address, then press Enter."
     )
+    WORKS_SECTION = (
+        "A page covering several works is a source of one of them and a partial "
+        "source of the others. Enrichment never fetches a partial source."
+    )
+    PARTIAL_SOURCE_PICKER = (
+        "Add pages that are a source of another work and also cover this one"
+    )
+    PARTIAL_SOURCE_ADD = "Add the ticked pages as partial sources of this work"
+    PARTIAL_SOURCE_NEEDS_WORK = (
+        "Give a page of this case a work first; then it can be added here."
+    )
+    OUTSIDE_THIS_CASE = (
+        "A seed entry outside this case that a page of the case also covers"
+    )
+    PARTIAL_SOURCE_SEARCH = "Type part of a page key or title to filter the pages"
+    PARTIAL_SOURCE_REMOVE = "Stop listing this page as a partial source of the work"
     NOT_OFFERED_PREFIX = "Not offered:"
     RESET_ANSWER = (
         "Revert choices to the baseline answer recorded by the previous run, and "
@@ -122,8 +134,9 @@ class Tooltip(StrEnum):
         "Where the page is placed (this entry, another seed entry, a new entry, "
         "or its current address)"
     )
-    WORK_AND_MARK_COLUMN = (
-        "The assigned work number and mark written in the placement answer"
+    PLACE_COLUMN = (
+        "The page's place as the answer writes it, with the works it is a "
+        "partial source of"
     )
     REASON_COLUMN = "The matching rule or decision that determined this placement"
     SOURCE_COLUMN = (
@@ -164,11 +177,11 @@ CASE_STATE_TOOLTIPS: Final[dict[str, str]] = {
 
 # Keyed by the change names the run summary counts, and "unchanged".
 CORRECTION_CHANGE_TOOLTIPS: Final[dict[str, str]] = {
-    "pages kept as main page": (
-        "Show entries where the run kept a page as its provider's main page"
+    "partial sources added": (
+        "Show entries where a page also joined other entries as a partial source"
     ),
-    "pages kept as part page": (
-        "Show entries where the run kept a page as a part page"
+    "duplicate pages dropped": (
+        "Show entries where an answer dropped a duplicate page"
     ),
     "old addresses dropped": (
         "Show entries where the run dropped an old address because "
@@ -184,8 +197,8 @@ CORRECTION_CHANGE_TOOLTIPS: Final[dict[str, str]] = {
         "Show entries where the run moved a page to a new entry"
     ),
     "pages added": ("Show entries where the run added a discovered linked page"),
-    "pages added as parts": (
-        "Show entries where the run added a linked page as a part page"
+    "pages added as partial sources": (
+        "Show entries where the run added a linked page as a partial source"
     ),
     "unchanged": (
         "Show entries where the run left at least one provider page unchanged"

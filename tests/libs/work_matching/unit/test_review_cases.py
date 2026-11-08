@@ -98,7 +98,7 @@ def test_review_case_build_entry_group_case_single_entry_one_case_for_every_prov
     assert case.reasons == ("PART_PAGES", "UNDECIDED", "UNLINKED_PAGES")
 
 
-def test_review_case_build_entry_group_case_single_entry_suggests_linked_places(
+def test_review_case_build_entry_group_case_part_pages_suggest_one_work_per_part(
     matching_cases,
 ) -> None:
     entries, pages = matching_cases["ao_haru_ride_ova"]
@@ -106,8 +106,10 @@ def test_review_case_build_entry_group_case_single_entry_suggests_linked_places(
         entries[0], pages, KnownWorkEntriesFromSeed([])
     )
     case = ReviewCase.build_entry_group_case([entries[0]], decisions, (), pages)
-    assert case.suggested_answer["anilist:anime:20900"] == "work 1, part"
-    assert "animeplanet:anime:blue-spring-ride-unwritten" not in case.suggested_answer
+    assert case.suggested_answer == {
+        "anilist:anime:20837": "work 1",
+        "anilist:anime:20900": "work 2",
+    }
 
 
 def test_review_case_build_entry_group_case_unlinked_entries_suggest_nothing(
@@ -281,10 +283,10 @@ def test_review_case_build_entry_group_case_keeps_candidate_evidence(
             {SIGEWINNE: PagePlacement("work 1"), VARESA: PagePlacement("work 10")},
         ),
         (
-            {SIGEWINNE: "work 1, main", VARESA: "work 1"},
+            {SIGEWINNE: "work 1, partial in work 2", VARESA: "work 2"},
             {
-                SIGEWINNE: PagePlacement("work 1", is_main_page=True),
-                VARESA: PagePlacement("work 1"),
+                SIGEWINNE: PagePlacement("work 1", partial_works=("work 2",)),
+                VARESA: PagePlacement("work 2"),
             },
         ),
     ],
@@ -364,18 +366,18 @@ def test_review_case_build_linked_page_case_names_case_by_page_and_linking_entri
     ]
 
 
-def test_review_case_build_linked_page_case_suggests_part_for_fewer_episodes(
+def test_review_case_build_linked_page_case_fewer_episodes_suggests_nothing(
     linked_page_case,
 ) -> None:
-    assert linked_page_case.suggested_answer == {"mal:anime:65144": "add as part"}
+    assert linked_page_case.suggested_answer == {}
 
 
 @pytest.mark.parametrize(
     ("answer", "accepted_answer"),
     [
         (
-            {"mal:anime:65144": "add as part"},
-            LinkedPageAddition("anilist:anime:163794", is_part_page=True),
+            {"mal:anime:65144": "add as partial"},
+            LinkedPageAddition("anilist:anime:163794", is_partial_source=True),
         ),
         ({"mal:anime:65144": "skip"}, "skip"),
         ({"mal:anime:65144": "work 1"}, None),

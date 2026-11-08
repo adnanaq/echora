@@ -8,7 +8,8 @@ so each suggested page is compared with the MAL page of its suggested work
 Each item reads ``<comparison>: <suggestion>``.
 
 - ``SAME_WORK``: kept.
-- ``PART_OF_WORK``: kept, marked ``, part``.
+- ``PART_OF_WORK``: left out. The page lists a finer split than the MAL page,
+  so the page is a work of its own.
 - ``DETAILS_UNKNOWN``: kept for a page the seed lists in the MAL page's own
   entry, since keeping it there merges nothing; left out otherwise.
 - ``SEVERAL_WORKS`` or ``DETAILS_DIFFER``: left out.
@@ -18,10 +19,8 @@ Each item reads ``<comparison>: <suggestion>``.
 - ``other work``: kept unchecked. The page leaves the group, so it joins no
   work here.
 
-A doubled provider's pages in one work are marked ``, part`` only when all of
-them are parts, since an answer may not mix a provider's part and whole pages
-in one work (``page_placement``). Each comparison that left a page out is
-returned, so the review case can tell the reviewer why.
+Each comparison that left a page out is returned, so the review case can tell
+the reviewer why.
 """
 
 from collections.abc import Sequence
@@ -35,8 +34,6 @@ from work_matching.page_details_comparison import (
 )
 from work_matching.page_placement import (
     OTHER_WORK,
-    PART_PAGE_MARK,
-    build_page_keys_by_work_provider,
     read_placement,
 )
 from work_matching.provider_page import ProviderPage, index_pages_by_current_page_key
@@ -110,9 +107,6 @@ class _CheckedPage(NamedTuple):
     placement_text: str | None
     # Why the page's suggestion was left out; None when it was kept.
     left_out_comparison: MalPageComparison | None = None
-    # Whether the page is a doubled page found to be a part of its work. Its
-    # mark is set with its provider's other pages (``_mark_doubled_part_pages``).
-    is_doubled_part_page: bool = False
 
 
 class MalPageCheck(NamedTuple):
@@ -128,7 +122,7 @@ def check_with_mal_pages(
     suggested_placements: dict[str, str],
     pages: Sequence[ProviderPage],
 ) -> MalPageCheck:
-    """Keep, mark or leave out each suggested place by the rules in the module docstring.
+    """Keep or leave out each suggested place by the rules in the module docstring.
 
     Args:
         entries: The group's entries.
@@ -138,15 +132,13 @@ def check_with_mal_pages(
         pages: Details of the group's fetched pages.
 
     Returns:
-        The suggestions kept, with ``, part`` added where the page is a part,
-        and each comparison that left a page out.
+        The suggestions kept, and each comparison that left a page out.
     """
     group_details = _GroupMalPageDetails.build_group_mal_details(
         entries, decisions, suggested_placements, pages
     )
     checked_placements: dict[str, str] = {}
     left_out_comparisons: set[MalPageComparison] = set()
-    doubled_part_page_keys: set[str] = set()
     for page_key, suggested_placement_text in suggested_placements.items():
         checked_page = _check_page_placement(
             page_key, suggested_placement_text, group_details
@@ -156,10 +148,8 @@ def check_with_mal_pages(
         if checked_page.placement_text is None:
             continue
         checked_placements[page_key] = checked_page.placement_text
-        if checked_page.is_doubled_part_page:
-            doubled_part_page_keys.add(page_key)
     return MalPageCheck(
-        _mark_doubled_part_pages(checked_placements, doubled_part_page_keys),
+        checked_placements,
         tuple(
             comparison
             for comparison in MalPageComparison
@@ -184,9 +174,6 @@ def _check_page_placement(
         - A page in ``other work``, or the work's MAL page: its place, uncompared.
         - A page whose work holds no MAL page: left out, with ``NO_MAL_PAGE``.
         - A page the comparison leaves out: left out, with the comparison.
-        - A doubled page that is a part: its place unchanged, flagged so that
-          its provider's pages in the work are marked together.
-        - Any other part page: its place marked ``, part``.
         - Any other page: its place unchanged.
     """
     placement = read_placement(placement_text)
@@ -213,53 +200,7 @@ def _check_page_placement(
         == reference_page_by_page_key[mal_page_key],
     ):
         return _CheckedPage(None, comparison)
-    is_part_page = comparison is MalPageComparison.PART_OF_WORK
-    if links.get_current_page_key(page_key) in group_details.doubled_page_keys:
-        return _CheckedPage(placement_text, is_doubled_part_page=is_part_page)
-    if is_part_page:
-        return _CheckedPage(placement.placement_word + PART_PAGE_MARK)
     return _CheckedPage(placement_text)
-
-
-def _mark_doubled_part_pages(
-    placements: dict[str, str], doubled_part_page_keys: set[str]
-) -> dict[str, str]:
-    """Mark a doubled provider's pages ``, part`` when every one in a work is a part.
-
-    An answer may not mix a provider's part and whole pages in one work, so
-    the pages are marked only together.
-
-    Args:
-        placements: Each kept page's place.
-        doubled_part_page_keys: The doubled pages the MAL check found to be
-            parts of their work.
-
-    Returns:
-        The places, with every page of a doubled provider in a work marked
-        ``, part`` when all of them are parts and none carries a mark yet.
-    """
-    if not doubled_part_page_keys:
-        return placements
-    read_placements = {
-        page_key: placement
-        for page_key, placement_text in placements.items()
-        if (placement := read_placement(placement_text))
-    }
-    unmarked_part_page_keys = {
-        page_key
-        for page_key, placement in read_placements.items()
-        if page_key in doubled_part_page_keys
-        and not (placement.is_part_page or placement.is_main_page)
-    }
-    marked_placements = dict(placements)
-    for (placement_word, _), page_keys in build_page_keys_by_work_provider(
-        read_placements
-    ).items():
-        if len(page_keys) > 1 and unmarked_part_page_keys.issuperset(page_keys):
-            marked_placements |= dict.fromkeys(
-                page_keys, placement_word + PART_PAGE_MARK
-            )
-    return marked_placements
 
 
 def _is_suggestion_kept(
@@ -276,13 +217,12 @@ def _is_suggestion_kept(
             holding that MAL page.
 
     Returns:
-        True for the same work or a part, and for unknown details of a page
-        listed with the MAL page.
+        True for the same work, and for unknown details of a page listed with
+        the MAL page.
     """
-    return comparison in (
-        MalPageComparison.SAME_WORK,
-        MalPageComparison.PART_OF_WORK,
-    ) or (is_listed_with_mal_page and comparison is MalPageComparison.DETAILS_UNKNOWN)
+    return comparison is MalPageComparison.SAME_WORK or (
+        is_listed_with_mal_page and comparison is MalPageComparison.DETAILS_UNKNOWN
+    )
 
 
 def _compare_with_mal_page(

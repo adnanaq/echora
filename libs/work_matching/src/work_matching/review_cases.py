@@ -40,7 +40,8 @@ from collections.abc import Iterable, Sequence
 from enum import StrEnum
 from typing import Self
 
-from pydantic import BaseModel, ConfigDict, JsonValue
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
+from work_matching.answer_placement_check import PlacementCheck
 from work_matching.answer_rules import LinkedPageAnswerRule, PlacementRule
 from work_matching.entry_group import (
     check_group_answer_placements,
@@ -58,7 +59,7 @@ from work_matching.model_linked_page_decision import (
     LinkedPageDecision,
 )
 from work_matching.page_details_comparison import MalPageComparison
-from work_matching.page_placement import PagePlacement, PlacementCheck
+from work_matching.page_placement import PagePlacement
 from work_matching.provider_page import ProviderPage, index_pages_by_current_page_key
 from work_matching.split_work_check import SplitWorkReviewReason
 from work_matching.work_entry import WorkEntry
@@ -153,6 +154,13 @@ class ReviewCase(BaseModel):
     # Seed entries of the same series as the case's entries, offered as the
     # entry a page in ``other work`` moves to; never applied without an answer.
     target_entry_suggestions: tuple[TargetEntrySuggestion, ...] = ()
+    # The seed entries outside the case that a page of the case covers too,
+    # offered as works the page can be a partial source of
+    # (``find_covered_outside_entries``); never applied without an answer.
+    # Left out when empty, so cases without one are written as before.
+    covered_outside_entries: tuple[TargetEntrySuggestion, ...] = Field(
+        default=(), exclude_if=lambda covered_entries: not covered_entries
+    )
 
     @classmethod
     def build_entry_group_case(

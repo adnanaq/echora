@@ -7,13 +7,9 @@ search entries stored under that id stay valid. The rules:
 
 - Only an entry whose reference page is placed in the work can survive as that
   work. The reference page is the page the entry is known by.
-- An entry whose reference page is a whole page wins over one whose reference
-  page is a part page. A part entry stands for only part of the work, so a
-  whole entry names the work better. A part entry still survives when no
-  whole entry is placed in the work: building a new entry instead would lose
-  the entry's anime id and split a single entry's pages between two entries.
-- Among the entries left, the entry whose reference page has the most trusted
-  provider survives (MAL first), because that provider names the work best.
+- Among the entries placed in the work, the entry whose reference page has
+  the most trusted provider survives (MAL first), because that provider names
+  the work best.
   Two reference pages of the same provider are told apart by their page key,
   so every run picks the same entry.
 - A renamed reference page is looked up under its current key first, since a
@@ -30,7 +26,6 @@ from typing import NamedTuple
 
 from work_matching.page_placement import (
     FIRST_WORK,
-    OTHER_WORK,
     PagePlacement,
     find_page_placement,
 )
@@ -41,8 +36,6 @@ from work_matching.work_entry import WorkEntry
 class _SurvivorCandidate(NamedTuple):
     """Hold an entry that may survive as a work, ordered so the survivor sorts first."""
 
-    # False sorts first, so a whole reference page wins over a part page.
-    is_part_page: bool
     # How far the reference page's provider is trusted, MAL first.
     provider_rank: int
     reference_page: str
@@ -64,7 +57,8 @@ def find_surviving_entries(
     Returns:
         Each work's placement word (``work 1``, ``work 2`` and so on), mapped to the
         reference page of the entry the work keeps. A work without a
-        surviving entry is left out; ``other work`` is never included.
+        surviving entry is left out, and neither ``other work`` nor
+        ``dropped`` is ever included.
     """
     candidates_by_work: defaultdict[str, list[_SurvivorCandidate]] = defaultdict(list)
     for entry in entries:
@@ -72,10 +66,9 @@ def find_surviving_entries(
             entry.reference_page_key, placements, current_page_key_by_page_key
         )
         placement = placed_page.placement if placed_page else PagePlacement(FIRST_WORK)
-        if placement.placement_word != OTHER_WORK:
+        if placement.is_case_work:
             candidates_by_work[placement.placement_word].append(
                 _SurvivorCandidate(
-                    placement.is_part_page,
                     rank_by_provider_trust(entry.reference_page_key),
                     entry.reference_page_key,
                 )

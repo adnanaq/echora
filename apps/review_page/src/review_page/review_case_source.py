@@ -141,6 +141,24 @@ class ReviewCaseSource(ABC):
         """
 
     @abstractmethod
+    def find_named_entry_suggestions(
+        self, page_keys: Sequence[str]
+    ) -> dict[str, review_cases_pb2.TargetEntrySuggestion]:
+        """Find the seed entry holding each page key an answer can name after ``other work``.
+
+        The picker shows the entry a typed key or address names, so the
+        reviewer sees which work it is before choosing it.
+
+        Args:
+            page_keys: The page keys to look up.
+
+        Returns:
+            Each key a seed entry holds, mapped to that entry's reference page,
+            title and providers. Keys no seed entry holds are left out, and so
+            is every key when the seed file cannot be read.
+        """
+
+    @abstractmethod
     def list_corrections(self) -> list[review_cases_pb2.SeedCorrection]:
         """Retrieve all seed entry corrections produced by the most recent run.
 

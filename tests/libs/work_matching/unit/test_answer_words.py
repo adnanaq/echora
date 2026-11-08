@@ -4,12 +4,7 @@ from work_matching import (
     list_group_page_choices,
     list_linked_page_options,
 )
-from work_matching.answer_words import (
-    MAIN_MARK,
-    NO_MARK,
-    PART_MARK,
-    describe_answer_word,
-)
+from work_matching.answer_words import describe_answer_word
 
 
 @pytest.mark.parametrize(
@@ -19,11 +14,9 @@ from work_matching.answer_words import (
         "work 2",
         "work 12",
         "other work",
-        NO_MARK,
-        MAIN_MARK,
-        PART_MARK,
+        "dropped",
         "add",
-        "add as part",
+        "add as partial",
         "skip",
     ],
 )
@@ -36,7 +29,7 @@ def test_describe_answer_word_every_later_work_has_one_meaning() -> None:
 
 
 def test_describe_answer_word_named_entry_names_reference_page() -> None:
-    assert "mal:anime:1" in describe_answer_word("add as part to mal:anime:1")
+    assert "mal:anime:1" in describe_answer_word("add as partial to mal:anime:1")
 
 
 def test_describe_answer_word_unknown_word_has_no_meaning() -> None:
@@ -47,7 +40,7 @@ def test_choice_option_description_reads_answer_word_meaning(review_cases) -> No
     options = [
         option
         for choices in list_group_page_choices(review_cases["atashinchi_next"], {})
-        for option in (*choices.work_options, *choices.mark_options)
+        for option in choices.work_options
     ] + list(list_linked_page_options(review_cases["nami"]))
     assert all(
         option.description == describe_answer_word(option.value) for option in options

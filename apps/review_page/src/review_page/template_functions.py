@@ -33,7 +33,7 @@ from review_page.tooltips import (
     THEME_TOOLTIPS,
     Tooltip,
 )
-from work_matching import ReviewCaseKind
+from work_matching import ReviewCaseKind, build_page_address
 
 STATIC_DIR = Path(__file__).parent / "static"
 _NOT_ID_CHARACTERS = re.compile(r"[^A-Za-z0-9_-]+")
@@ -104,6 +104,7 @@ def add_template_functions(request: Request) -> dict[str, Any]:
     return {
         "static_url": build_static_url,
         "element_id": build_element_id,
+        "build_page_address": build_page_address,
         "capitalize_first_letter": capitalize_first_letter,
         "tooltips": Tooltip,
         "correction_change_tooltips": CORRECTION_CHANGE_TOOLTIPS,

@@ -134,6 +134,26 @@ def test_suggest_group_page_placements_unlinked_page_follows_agreeing_entry(
     }
 
 
+def test_suggest_group_page_placements_single_entry_suggests_pages_outside_question(
+    work_entry,
+) -> None:
+    entries = [work_entry(MAL, ANILIST, KITSU, ANN, SIMKL, "https://simkl.com/anime/2")]
+    pages = [
+        _build_season_page(MAL, ANILIST),
+        _build_season_page(ANILIST, MAL),
+        _build_season_page(KITSU, ANILIST, MAL),
+        _build_season_page(ANN),
+    ]
+    assert suggest_group_page_placements(
+        entries, _decide_group(entries, pages), pages
+    ) == {
+        "mal:anime:1": "work 1",
+        "anilist:anime:1": "work 1",
+        "kitsu:anime:1": "work 1",
+        "ann:anime:1": "work 1",
+    }
+
+
 def test_suggest_group_page_placements_unlinked_page_of_mixed_entry_left_out(
     linked_page, work_entry
 ) -> None:
@@ -228,14 +248,14 @@ def test_read_group_answer_placements_single_entry_needs_only_doubled_pages(
     entries = [work_entry(MAL, KITSU, "https://kitsu.app/anime/2")]
     pages = [linked_page(KITSU, MAL), linked_page("https://kitsu.app/anime/2", MAL)]
     answer: dict[str, JsonValue] = {
-        "kitsu:anime:1": "work 1, main",
-        "kitsu:anime:2": "work 1",
+        "kitsu:anime:1": "work 1",
+        "kitsu:anime:2": "dropped",
     }
     assert read_group_answer_placements(
         answer, entries, _decide_group(entries, pages), {}
     ) == {
-        "kitsu:anime:1": PagePlacement("work 1", is_main_page=True),
-        "kitsu:anime:2": PagePlacement("work 1"),
+        "kitsu:anime:1": PagePlacement("work 1"),
+        "kitsu:anime:2": PagePlacement("dropped"),
     }
 
 
@@ -253,19 +273,7 @@ def test_read_group_answer_placements_work_of_two_entries_without_reference_page
     assert read_group_answer_placements(answer, entries, decisions, {}) is None
 
 
-def test_read_group_answer_placements_part_reference_pages_only_accepted(
-    cue_like_group,
-) -> None:
-    entries, decisions = cue_like_group
-    answer: dict[str, JsonValue] = {
-        "ann:anime:1": "work 1, part",
-        "mal:anime:1": "work 1, part",
-        "kitsu:anime:1": "work 1",
-    }
-    assert read_group_answer_placements(answer, entries, decisions, {}) is not None
-
-
-def test_suggest_group_page_placements_shorter_run_marked_part_and_unfetched_page_left_out(
+def test_suggest_group_page_placements_shorter_run_and_unfetched_page_left_out(
     work_entry,
 ) -> None:
     entries = [
@@ -296,7 +304,6 @@ def test_suggest_group_page_placements_shorter_run_marked_part_and_unfetched_pag
     assert suggest_group_page_placements(
         entries, _decide_group(entries, pages), pages
     ) == {
-        "anisearch:anime:11255": "work 1, part",
         "mal:anime:32956": "work 1",
         "kitsu:anime:12168": "work 1",
     }
@@ -397,7 +404,7 @@ def test_suggest_group_page_placements_page_listed_with_mal_page_kept_when_count
     }
 
 
-def test_suggest_group_page_placements_doubled_pages_keep_decision_marks(
+def test_suggest_group_page_placements_part_pages_suggest_one_work_per_part(
     work_entry,
 ) -> None:
     entries = [
@@ -416,13 +423,13 @@ def test_suggest_group_page_placements_doubled_pages_keep_decision_marks(
         entries, _decide_group(entries, pages), pages
     ) == {
         "mal:anime:1": "work 1",
-        "anilist:anime:1": "work 1, part",
-        "kitsu:anime:2": "work 1, part",
-        "anilist:anime:2": "work 1, part",
+        "anilist:anime:1": "work 1",
+        "kitsu:anime:2": "work 2",
+        "anilist:anime:2": "work 2",
     }
 
 
-def test_suggest_group_page_placements_doubled_parts_of_mal_work_marked_part(
+def test_suggest_group_page_placements_pages_follow_arcs_and_shared_arc_left_out(
     matching_cases,
 ) -> None:
     entries, pages = matching_cases["douluo_dalu_arcs"]
@@ -433,11 +440,7 @@ def test_suggest_group_page_placements_doubled_parts_of_mal_work_marked_part(
         page_key: placement
         for page_key, placement in suggested_placements.items()
         if page_key.startswith("kitsu:")
-    } == {
-        "kitsu:anime:42037": "work 1, part",
-        "kitsu:anime:46536": "work 1, part",
-        "kitsu:anime:46535": "work 1, part",
-    }
+    } == {"kitsu:anime:42037": "work 1"}
 
 
 def test_suggest_group_page_placements_several_works_page_left_out_films_kept_apart(
@@ -493,9 +496,9 @@ def test_check_group_answer_placements_two_mal_pages_in_one_work_reports_rule(
 ) -> None:
     entries = [work_entry(MAL), work_entry(OTHER_MAL)]
     answer: dict[str, JsonValue] = {
-        "mal:anime:1": "work 1, part",
-        "mal:anime:2": "work 1, part",
+        "mal:anime:1": "work 1",
+        "mal:anime:2": "work 1",
     }
     assert check_group_answer_placements(
         answer, entries, _decide_group(entries, []), {}
-    ).broken_rules == (PlacementRule.WORK_WITH_TWO_MAL_PAGES,)
+    ).broken_rules == (PlacementRule.WORK_WITH_TWO_PAGES_OF_ONE_PROVIDER,)

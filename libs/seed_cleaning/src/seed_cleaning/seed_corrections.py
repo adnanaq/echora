@@ -11,8 +11,12 @@ rules:
   an entry that is itself being corrected.
 - Rebuilt every run: corrections come from this run's decisions and the kept
   answers, so the file always matches them and needs no clean-up.
-- Part pages: a page an answer marks ``, part`` is recorded as a part page, so
-  enrichment combines it with the work's other part pages.
+- Partial sources: a page an answer makes a partial source of other works
+  records the entries it joins as a partial source, besides its own place.
+  Enrichment never fetches a partial source, so the page's data never stands
+  for those works.
+- Dropped pages: a duplicate page an answer drops leaves its entry, and its
+  correction records ``is_dropped_page``. Only a review answer drops a page.
 - Renamed pages: a page an entry lists under an old address records its
   current key, so the old address can be dropped (the rules send it to review
   otherwise).
@@ -65,8 +69,6 @@ class SeedCorrection(BaseModel):
     # The page's work in answer words: ``work 1``, ``work 2`` and so on or
     # ``other work``. None for a dead page, which the run drops from every work.
     placement_word: str | None
-    # Whether enrichment fetches this page for its provider in its work.
-    is_main_page: bool = False
     # The current page key, when the seed lists the page under an old address.
     renamed_to: str | None = None
     # The reference page of the seed entry the page joins; None when the page
@@ -84,10 +86,14 @@ class SeedCorrection(BaseModel):
     # Whether the provider says the page does not exist, so the run drops it
     # from its entry.
     is_dead_page: bool = False
-    # Whether the page covers only part of its work, such as one season of a
-    # run MyAnimeList lists whole, so enrichment combines it with the work's
-    # other part pages rather than taking it for the whole work.
-    is_part_page: bool = False
+    # Whether an answer drops the page as a duplicate page, so it leaves its
+    # entry and joins no other.
+    is_dropped_page: bool = False
+    # The reference pages of the seed entries the page is a partial source of,
+    # as corrections name them.
+    partial_entry_reference_pages: tuple[str, ...] = ()
+    # The new entry keys of the new entries the page is a partial source of.
+    partial_new_entry_keys: tuple[str, ...] = ()
     # Whether the anime id of the seed entry this added page ends in now comes
     # from the page (MAL first), so the search entry stored under the entry's
     # old id must be replaced. Set after both passes (``mark_anime_id_pages``).

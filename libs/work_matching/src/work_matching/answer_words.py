@@ -11,9 +11,10 @@ word does. Each item reads ``<word>: <meaning>``.
 - ``work 2`` and later: the page belongs to another work in the case. Every
   page then needs a place.
 - ``other work``: the page belongs to a work outside the case.
-- no mark, ``main``, ``part``: how the page stands beside the provider's other
-  pages in its work.
-- ``add``, ``add as part``, ``add to <reference page>``, ``add as part to
+- ``dropped``: the page is a duplicate page, left out of every work entry.
+- ``, partial in`` and the works after it: the page covers those works too,
+  so the page is a partial source of each of them.
+- ``add``, ``add as partial``, ``add to <reference page>``, ``add as partial to
   <reference page>``, ``skip``: whether a linked page joins a linking entry.
 """
 
@@ -21,21 +22,15 @@ import re
 from typing import Final
 
 from work_matching.linked_page_check import (
-    PART_PAGE_ANSWER,
+    PARTIAL_SOURCE_ANSWER,
     SKIP_ANSWER,
     WHOLE_PAGE_ANSWER,
 )
-from work_matching.page_placement import (
-    FIRST_WORK,
-    MAIN_MARK,
-    NO_MARK,
-    OTHER_WORK,
-    PART_MARK,
-)
+from work_matching.page_placement import DROPPED, FIRST_WORK, OTHER_WORK
 
 _LATER_WORK: Final = re.compile(r"work ([2-9]|[1-9]\d+)")
 _NAMED_ENTRY_ANSWER: Final = re.compile(
-    rf"(?P<addition>{re.escape(PART_PAGE_ANSWER)}|{re.escape(WHOLE_PAGE_ANSWER)})"
+    rf"(?P<addition>{re.escape(PARTIAL_SOURCE_ANSWER)}|{re.escape(WHOLE_PAGE_ANSWER)})"
     r" to (?P<reference_page>.+)"
 )
 
@@ -56,27 +51,20 @@ _MEANING_BY_WORD: Final[dict[str, str]] = {
         "work. The page joins an existing seed entry if linked or selected, "
         "or otherwise starts a new entry."
     ),
-    NO_MARK: (
-        "Treat the page as a full-work page. Leave pages unmarked when a "
-        "provider has only one page in the work, or when another page from "
-        "the same provider is marked 'main'."
-    ),
-    MAIN_MARK: (
-        "Mark this page as the primary page to fetch when a work keeps "
-        "multiple full pages from the same provider. Leave the provider's "
-        "other pages in the work unmarked."
-    ),
-    PART_MARK: (
-        "Mark this page as covering only part of the work (such as one season "
-        "or OVA). Enrichment combines all part pages for the work."
+    DROPPED: (
+        "Leave the page out of every work because it duplicates another page "
+        "of its provider in this case. Allowed only while that other page has "
+        "a work."
     ),
     WHOLE_PAGE_ANSWER: (
         "Add the linked page to the entry as a full-work page. Only allowed "
         "when the entry does not already have a page from this provider."
     ),
-    PART_PAGE_ANSWER: (
-        "Add the linked page as a partial page of the entry's work, even if "
-        "the entry already has a page from this provider."
+    PARTIAL_SOURCE_ANSWER: (
+        "Add the linked page as a partial source of the entry, because it "
+        "covers the entry's work together with other works. Enrichment never "
+        "fetches a partial source, so the entry may already have a page from "
+        "this provider."
     ),
     SKIP_ANSWER: "Do not add the linked page. Leave the linking entry unchanged.",
 }
@@ -95,10 +83,8 @@ PLACEMENT_WORD_MEANINGS: Final[tuple[tuple[str, str], ...]] = (
     (FIRST_WORK, _MEANING_BY_WORD[FIRST_WORK]),
     ("work 2, work 3, …", LATER_WORK_MEANING),
     (OTHER_WORK, _MEANING_BY_WORD[OTHER_WORK]),
+    (DROPPED, _MEANING_BY_WORD[DROPPED]),
     ("no place", NO_PLACE_MEANING),
-    ("— (no mark)", _MEANING_BY_WORD[NO_MARK]),
-    (MAIN_MARK, _MEANING_BY_WORD[MAIN_MARK]),
-    (PART_MARK, _MEANING_BY_WORD[PART_MARK]),
 )
 
 
@@ -106,8 +92,8 @@ def describe_answer_word(answer_word: str) -> str:
     """Return what an answer word does, as the review page shows it.
 
     Args:
-        answer_word: A work, a mark or a linked-page answer, as written in an
-            answer: ``work 2``, ``part``, ``add as part to mal:anime:1``.
+        answer_word: A place or a linked-page answer, as written in an
+            answer: ``work 2``, ``dropped``, ``add as partial to mal:anime:1``.
 
     Returns:
         The word's meaning, or an empty string for a word no rule knows.
@@ -118,8 +104,8 @@ def describe_answer_word(answer_word: str) -> str:
         return LATER_WORK_MEANING
     if named_entry_answer := _NAMED_ENTRY_ANSWER.fullmatch(answer_word):
         addition_phrase = (
-            "as a partial page to"
-            if named_entry_answer["addition"] == PART_PAGE_ANSWER
+            "as a partial source to"
+            if named_entry_answer["addition"] == PARTIAL_SOURCE_ANSWER
             else "to"
         )
         return (

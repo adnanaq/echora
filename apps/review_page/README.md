@@ -38,7 +38,7 @@ alone, because the page reads and writes local files and starts local runs.
 ## Terms
 
 The matching terms (work, provider page, page key, reference page, doubled
-provider, split work, linked page, part page) are defined in the
+provider, split work, linked page, partial source) are defined in the
 [`work_matching` README](../../libs/work_matching/README.md#terms), and the
 seed cleaning terms (seed correction, review file, provider page store) in the
 [`seed_cleaning` README](../../libs/seed_cleaning/README.md#terms). The page
@@ -117,8 +117,8 @@ relative to the repository (`assets/seed_data/…`), not a full path.
    `data/seed_cleaning/`.
 2. Open the review page. The Cases tab lists every review case. Filter by case
    kind, case state, or edit state, and search by title or page key.
-3. Open a case and select a work and mark for each provider page, or select a
-   decision for a linked page. Choices are validated against placement rules as
+3. Open a case and select a work for each provider page, and the partial
+   sources of each work, or select a decision for a linked page. Choices are validated against placement rules as
    they are selected, and disallowed options are disabled with an explanation.
 4. Click Save (or Save & next, or Save all for all staged edits). Saves that
    violate a placement rule are rejected with the rule message, keeping the
@@ -170,19 +170,28 @@ starts from the original seed file and reapplies all saved answers.
 - **Case panel.** Displays the review reason sentences, work entry headers, and
   candidate provider page table. Each page row displays extracted metadata
   (titles, type, episode count, air dates, and external provider links) along
-  with Work and Mark dropdowns. Enabling "Show only differences" hides metadata
-  columns and comparison rows whose values are identical across all pages.
+  with a Work dropdown. Below the pages, the Works table lists each work in use,
+  and the seed entries of the same series outside the case, with their partial
+  sources. Enabling "Show only differences" hides metadata columns and
+  comparison rows whose values are identical across all pages.
 - **Choices.**
-  - Selecting `part` for one page marks the provider's other pages in that
-    work as parts as well. Selecting `main` leaves the other pages unmarked.
-  - Options disabled by another page's placement (such as assigning a second
-    MyAnimeList page to the same work) are greyed out, with one explanatory
-    note per rule displayed beneath the dropdown.
-  - Selecting `other work` displays an input box for the target seed entry.
-    The input offers candidate entries from the case that hold no page from
+  - A work already holding a page of the same provider is greyed out. While
+    the page has no place, a note beneath the dropdown names the page holding
+    each such work.
+  - `dropped` drops a duplicate page, and is offered only while another page
+    of the provider has a work.
+  - Selecting `other work` displays a searchable picker for the target seed
+    entry. It offers candidate entries from the case that hold no page from
     that provider, and also accepts a pasted page key or provider address
-    (normalized to its page key). Leaving the field empty assigns the page to
-    a new entry. Saving validates the named entry against the seed file, which
+    (normalized to its page key). A typed key shows the seed entry holding it,
+    by its title and reference page, unless the picker already shows that
+    entry as a suggestion. Choosing "New entry" assigns the page to a new
+    entry.
+  - In the Works table, each work's partial sources show as chips, removed
+    with their ×, and "Add partial source" opens a searchable picker of the
+    pages that are a source of another work. Each option shows the page key,
+    then the page's title, the work it is in, and its type, episodes and
+    start date, or that the page was not fetched. Saving validates the named entry against the seed file, which
     is loaded on first use and cached while its modification time and size
     remain unchanged.
   - "What the choices mean" beneath the table explains each placement value.
@@ -208,11 +217,12 @@ Displays entry modifications from the last pipeline run, one corrected entry at 
 
 - **List.** Lists each corrected entry with the number of modified pages and a
   "Your answer" badge when a reviewer's answer placed at least one page. Filter
-  by change category (pages moved, old addresses dropped, kept as main or part
-  page, unchanged) and by decision source (reviewer answer or matching rules).
+  by change category (pages moved, old addresses dropped, partial sources added,
+  duplicate pages dropped, unchanged) and by decision source (reviewer answer or matching rules).
 - **Entry panel.** Shows a table of the entry's provider pages: the change
   category, destination (target seed entry, linked page, new entry, current
-  address, or unchanged), assigned work and mark, rule explanation, and source.
+  address, or unchanged), the page's place with its partial sources, rule
+  explanation, and source.
 - **Cross-links.** A corrected entry links back to the review cases containing
   it, and a review case links to any corrections from the last run that
   modified its entries.
@@ -227,8 +237,10 @@ edit is left unsaved, ensuring a run never misses an in-memory edit. While a run
 active, the toolbar indicates "Run going" and action buttons are disabled. When the run ends,
 the summary, the lists, the original answers, and the Corrections tab refresh automatically.
 
-The page polls `/runs/state` every few seconds, so a pipeline run started from
-the terminal or another browser tab is tracked identically. A failed run
+While its tab is visible, the page asks `/run-state` every few seconds, and once
+more as soon as a hidden tab is shown again, so a pipeline run started from the
+terminal or another browser tab is tracked identically. A hidden tab does not
+ask. A failed run
 reports its exit code. Subprocess output is written to
 `data/seed_cleaning/logs/review_page_runs.log`, which rotates to
 `review_page_runs.log.1` once it exceeds 1 MB before starting a new run.
@@ -269,6 +281,7 @@ though its exit code will only be recorded in the run log.
   notice prompts a reload.
 - **Cross-site request protection.** External websites open in the same browser
   cannot submit answers or trigger runs (`request_guards.py`):
+
   - requests with a `Host` header other than `127.0.0.1`, `localhost`, or `[::1]`
     are rejected with HTTP 400 to prevent DNS rebinding;
   - `POST` requests without the `HX-Request: true` header sent by htmx are
@@ -326,6 +339,9 @@ implementation and the only module in `review_page` that imports
 `seed_cleaning`. `FileReviewCaseSource`:
 
 - reads and writes the local data files listed above;
+- starts runs and reports their state through `SeedCleaningRunProcess`
+  (`seed_cleaning_run_process.py`), which is given the paths it needs and
+  imports nothing from `seed_cleaning`;
 - converts `seed_cleaning` domain records into protobuf messages;
 - precomputes correction display labels, rule explanation sentences, and answer
   provenance flags so downstream views remain decoupled from `seed_cleaning`.
@@ -381,28 +397,29 @@ directories including subprocess execution.
 
 ## Files
 
-| File                         | Holds                                                                                                                               |
-| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `main.py`                    | Entry point that loads `Settings`, initializes `FileReviewCaseSource`, and starts the Uvicorn server.                               |
-| `app.py`                     | `create_app`, `PageRoutes`: configures FastAPI middleware, static mounts, exception handlers, `/health`, and the `/` shell route.   |
-| `case_routes.py`             | `CaseRoutes`: HTMX fragment routes for the Cases tab toolbar, list, case panel, interactive choices, and answer saves.              |
-| `correction_routes.py`       | `CorrectionRoutes`: HTMX fragment routes for the Corrections tab list and entry detail panel.                                       |
-| `run_routes.py`              | `RunRoutes`: endpoints for starting a pipeline run, polling `/runs/state`, and rendering the run summary panel.                     |
-| `htmx_responses.py`          | `build_event_response`, `build_notice_response`, `build_event_headers`: responses carrying `HX-Trigger` headers for Alpine.js.      |
-| `review_case_source.py`      | `ReviewCaseSource`: abstract interface for reading cases and corrections, saving answers, and managing pipeline runs.               |
-| `file_review_case_source.py` | `FileReviewCaseSource`: local file-backed `ReviewCaseSource` implementation and `seed_cleaning` protobuf converters.                |
-| `review_case_loader.py`      | `ReviewCaseLoader`: reads `review.jsonl` once per file version, keeping its cases and their messages until the file changes.        |
-| `seed_entries.py`            | `load_seed_entries`: loads and caches known seed entries from the active seed file when validating `other work` targets.            |
-| `answer_checks.py`           | Validates candidate answers against placement constraints and checks optimistic concurrency.                                        |
-| `review_case_messages.py`    | Conversions between `work_matching.ReviewCase` and its protobuf message, plus ordered mapping helpers.                              |
-| `run_summary.py`             | `build_run_summary`: parses the last run's `SeedCleaningRunResult` message into a `RunSummary` model.                               |
-| `models.py`                  | Domain models, row projections, filter criteria, and `BrowserState`.                                                                |
-| `page_state.py`              | `resolve_saved_change`, `resolve_case_edit_state`, `build_case_buttons`, `build_page_buttons`, `filter_case_rows`, `paginate_rows`. |
-| `case_views.py`              | Constructs case list summary rows and assembles the inspection panel view.                                                          |
-| `case_panel_tables.py`       | Builds entry views, candidate page rows (`build_page_rows`), comparison rows, visible columns, and evidence pages.                  |
-| `correction_views.py`        | Builds corrected entry list rows, filters and counts corrections, and assembles `CorrectionPanelView` detail panels.                |
-| `request_guards.py`          | `add_request_guards`, `refuse_post_from_other_sites`: host header and HTMX origin checks blocking cross-site requests.              |
-| `template_functions.py`      | `build_static_url`, `build_element_id`, `add_template_functions`: registers `static_url`, `element_id`, and `tooltips` in Jinja2.   |
-| `tooltips.py`                | `Tooltip` enum and tooltip mappings for edit states, case states, correction changes, and color themes.                             |
-| `templates/`                 | Jinja2 HTML templates for the page shell, HTMX fragments, and shared UI macros (`control_macros.html`).                             |
-| `static/`                    | Stylesheet (`review_page.css`), Alpine.js client store (`review_page.js`), and vendored frontend libraries (`vendor/`).             |
+| File                           | Holds                                                                                                                               |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `main.py`                      | Entry point that loads `Settings`, initializes `FileReviewCaseSource`, and starts the Uvicorn server.                               |
+| `app.py`                       | `create_app`, `PageRoutes`: configures FastAPI middleware, static mounts, exception handlers, `/health`, and the `/` shell route.   |
+| `case_routes.py`               | `CaseRoutes`: HTMX fragment routes for the Cases tab toolbar, list, case panel, interactive choices, and answer saves.              |
+| `correction_routes.py`         | `CorrectionRoutes`: HTMX fragment routes for the Corrections tab list and entry detail panel.                                       |
+| `run_routes.py`                | `RunRoutes`: endpoints for starting a pipeline run, polling `/run-state`, and rendering the run summary panel.                      |
+| `htmx_responses.py`            | `build_event_response`, `build_notice_response`, `build_event_headers`: responses carrying `HX-Trigger` headers for Alpine.js.      |
+| `review_case_source.py`        | `ReviewCaseSource`: abstract interface for reading cases and corrections, saving answers, and managing pipeline runs.               |
+| `file_review_case_source.py`   | `FileReviewCaseSource`: local file-backed `ReviewCaseSource` implementation and `seed_cleaning` protobuf converters.                |
+| `seed_cleaning_run_process.py` | `SeedCleaningRunProcess`: starts `clean_seed.py --no-fetch` in its own process group and tracks its process ID, exit code and log.  |
+| `review_case_loader.py`        | `ReviewCaseLoader`: reads `review.jsonl` once per file version, keeping its cases and their messages until the file changes.        |
+| `seed_entries.py`              | `load_seed_entries`: loads and caches known seed entries from the active seed file when validating `other work` targets.            |
+| `answer_checks.py`             | Validates candidate answers against placement constraints and checks optimistic concurrency.                                        |
+| `review_case_messages.py`      | Conversions between `work_matching.ReviewCase` and its protobuf message, plus ordered mapping helpers.                              |
+| `run_summary.py`               | `build_run_summary`: parses the last run's `SeedCleaningRunResult` message into a `RunSummary` model.                               |
+| `models.py`                    | Domain models, row projections, filter criteria, and `BrowserState`.                                                                |
+| `page_state.py`                | `resolve_saved_change`, `resolve_case_edit_state`, `build_case_buttons`, `build_page_buttons`, `filter_case_rows`, `paginate_rows`. |
+| `case_views.py`                | Constructs case list summary rows and assembles the inspection panel view.                                                          |
+| `case_panel_tables.py`         | Builds entry views, candidate page rows (`build_page_rows`), comparison rows, visible columns, and evidence pages.                  |
+| `correction_views.py`          | Builds corrected entry list rows, filters and counts corrections, and assembles `CorrectionPanelView` detail panels.                |
+| `request_guards.py`            | `add_request_guards`, `refuse_post_from_other_sites`: host header and HTMX origin checks blocking cross-site requests.              |
+| `template_functions.py`        | `build_static_url`, `build_element_id`, `add_template_functions`: registers `static_url`, `element_id`, and `tooltips` in Jinja2.   |
+| `tooltips.py`                  | `Tooltip` enum and tooltip mappings for edit states, case states, correction changes, and color themes.                             |
+| `templates/`                   | Jinja2 HTML templates for the page shell, HTMX fragments, and shared UI macros (`control_macros.html`).                             |
+| `static/`                      | Stylesheet (`review_page.css`), Alpine.js client store (`review_page.js`), and vendored frontend libraries (`vendor/`).             |

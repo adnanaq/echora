@@ -119,10 +119,11 @@ class LinkedPageDecision:
 
 @dataclass(frozen=True, slots=True)
 class LinkedPageAddition:
-    """Hold an accepted addition, which names the entry a linked page joins and whether as a part."""
+    """Hold an accepted addition, which names the entry a linked page joins and whether as a partial source."""
 
     entry_reference_page: str
-    is_part_page: bool
+    # Whether the page joins the entry's partial sources rather than its sources.
+    is_partial_source: bool
 
 
 @dataclass(frozen=True, slots=True)

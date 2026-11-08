@@ -1,7 +1,7 @@
 import pytest
 from seed_cleaning.entry_groups import EntryGroup
 from seed_cleaning.group_placement import correct_entry_groups
-from seed_cleaning.seed_corrections import SeedCorrection
+from seed_cleaning.seed_corrections import REVIEW_ANSWER_REASON, SeedCorrection
 from seed_cleaning.split_work_pass import prepare_split_work_pass
 from work_matching import (
     KnownWorkEntriesFromSeed,
@@ -51,34 +51,59 @@ def test_prepare_split_work_pass_entry_with_open_first_pass_case_left_out(
     assert split_work_pass.candidates == []
 
 
-def test_prepare_split_work_pass_new_entry_of_first_pass_becomes_candidate(
-    store,
-) -> None:
-    works = KnownWorkEntriesFromSeed([_seed_entry("Show", MAL, KITSU_ONE)])
-    store.add_pages(
-        ProviderPage.read_canonical_record(
-            KITSU_ONE, {"title": "Show", "type": "TV", "year": 2020}
-        )
-    )
-    first_pass_corrections = [
+def _split_kitsu_page_into_new_entry() -> list[SeedCorrection]:
+    return [
         SeedCorrection(
             entry_reference_page="mal:anime:1",
             page_key="kitsu:anime:1",
             address=KITSU_ONE,
             placement_word="work 2",
             new_entry_key="mal:anime:1 work 2",
-            reason="review answer",
+            reason=REVIEW_ANSWER_REASON,
         )
     ]
-    split_work_pass = prepare_split_work_pass(first_pass_corrections, (), works, store)
-    [candidates] = split_work_pass.candidates
-    assert [entry.reference_page_key for entry in candidates.entries] == [
-        "mal:anime:1",
-        "kitsu:anime:1",
-    ]
+
+
+def test_prepare_split_work_pass_entries_split_by_answer_not_grouped_together(
+    store,
+) -> None:
+    works = KnownWorkEntriesFromSeed([_seed_entry("Show", MAL, KITSU_ONE)])
+    store.add_pages(
+        ProviderPage.read_canonical_record(
+            KITSU_ONE,
+            {"title": "Show", "type": "TV", "year": 2020, "sources": [MAL]},
+        )
+    )
+    split_work_pass = prepare_split_work_pass(
+        _split_kitsu_page_into_new_entry(), (), works, store
+    )
     assert (
+        split_work_pass.candidates,
         split_work_pass.corrected_seed.identity_by_reference_page[
             "kitsu:anime:1"
-        ].new_entry_key
-        == "mal:anime:1 work 2"
+        ].new_entry_key,
+    ) == ([], "mal:anime:1 work 2")
+
+
+def test_prepare_split_work_pass_new_entry_of_first_pass_becomes_candidate(
+    store,
+) -> None:
+    works = KnownWorkEntriesFromSeed(
+        [
+            _seed_entry("Show", MAL, KITSU_ONE),
+            _seed_entry("Side Story", ANN),
+        ]
     )
+    store.add_pages(
+        ProviderPage.read_canonical_record(
+            KITSU_ONE, {"title": "Side Story", "type": "TV", "year": 2020}
+        )
+    )
+    split_work_pass = prepare_split_work_pass(
+        _split_kitsu_page_into_new_entry(), (), works, store
+    )
+    [candidates] = split_work_pass.candidates
+    assert [entry.reference_page_key for entry in candidates.entries] == [
+        "ann:anime:2",
+        "kitsu:anime:1",
+    ]

@@ -1,4 +1,9 @@
 {% from "control_macros.html" import error_line with context %}
+{#
+  The option for a typed page key or address. A found seed entry is hidden
+  while the picker shows the same entry as a suggestion for the typed text.
+#}
+<div{% if named_entry_suggestion %} x-show="!isSuggestionShown({{ named_entry_suggestion.entry_reference_page | tojson | forceescape }})"{% endif %}>
 <p class="control-picker-group">Page key</p>
 {% if invalid_reason %}
 <div class="control-picker-option is-disabled" role="option" aria-disabled="true">
@@ -7,8 +12,14 @@
 {% else %}
 <button type="button" role="option" aria-selected="false" class="control-picker-option"
         hx-post="/fragments/choice" hx-target="#case-panel" hx-swap="innerHTML"
-        hx-vals='{{ {"page_key": page_key, "work": "other work", "mark": mark, "named_entry": named_entry_page_key} | tojson }}'>
+        hx-vals='{{ {"page_key": page_key, "work": "other work", "named_entry": named_entry_page_key} | tojson }}'>
+  {% if named_entry_suggestion %}
+  <span class="control-picker-option-title">{{ named_entry_suggestion.title }}</span>
+  <span class="control-picker-option-key">{{ named_entry_page_key }}{% if named_entry_suggestion.entry_reference_page != named_entry_page_key %} · seed entry {{ named_entry_suggestion.entry_reference_page }}{% endif %}</span>
+  {% else %}
   <span class="control-picker-option-title">Use {{ named_entry_page_key }}</span>
   <span class="control-picker-option-key">The seed entry holding this page</span>
+  {% endif %}
 </button>
 {% endif %}
+</div>

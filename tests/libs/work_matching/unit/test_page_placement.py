@@ -1,14 +1,10 @@
 import pytest
-from pydantic import JsonValue
-from work_matching.answer_rules import PlacementRule
 from work_matching.doubled_provider_check import decide_doubled_providers
 from work_matching.known_work_entries_from_seed import KnownWorkEntriesFromSeed
 from work_matching.page_placement import (
     PagePlacement,
-    check_answer_placements,
     list_placeable_page_keys,
     place_pages_without_review,
-    read_answer_placements,
     read_placement,
     write_placement,
 )
@@ -29,17 +25,6 @@ def known_work_entries() -> KnownWorkEntriesFromSeed:
             {"title": "Other", "type": "TV", "sources": [OTHER_MAL]},
             {"title": "Third", "type": "TV", "sources": [OTHER_ANILIST]},
         ]
-    )
-
-
-@pytest.fixture
-def shared_link(linked_page, work_entry):
-    entry = work_entry(MAL, KITSU_ONE, KITSU_TWO)
-    pages = [linked_page(KITSU_ONE, MAL), linked_page(KITSU_TWO, MAL)]
-    return (
-        entry,
-        decide_doubled_providers(entry, pages, KnownWorkEntriesFromSeed([])),
-        pages,
     )
 
 
@@ -103,182 +88,6 @@ def test_list_placeable_page_keys_doubled_pages_first_then_other_pages(
     )
 
 
-@pytest.mark.parametrize(
-    ("answer", "placements"),
-    [
-        (
-            {"kitsu:anime:1": "work 1", "kitsu:anime:2": "other work"},
-            {"kitsu:anime:1": ENTRY, "kitsu:anime:2": OTHER_WORK},
-        ),
-        (
-            {"kitsu:anime:1": "work 1, part", "kitsu:anime:2": "work 1, part"},
-            {
-                "kitsu:anime:1": PagePlacement("work 1", is_part_page=True),
-                "kitsu:anime:2": PagePlacement("work 1", is_part_page=True),
-            },
-        ),
-        (
-            {"kitsu:anime:1": "work 1, part", "kitsu:anime:2": "other work"},
-            {
-                "kitsu:anime:1": PagePlacement("work 1", is_part_page=True),
-                "kitsu:anime:2": OTHER_WORK,
-            },
-        ),
-        (
-            {"kitsu:anime:1": "work 1, main", "kitsu:anime:2": "work 1"},
-            {
-                "kitsu:anime:1": PagePlacement("work 1", is_main_page=True),
-                "kitsu:anime:2": ENTRY,
-            },
-        ),
-        (
-            {
-                "kitsu:anime:1": "work 1",
-                "kitsu:anime:2": "other work",
-                "mal:anime:1": "other work",
-            },
-            {
-                "kitsu:anime:1": ENTRY,
-                "kitsu:anime:2": OTHER_WORK,
-                "mal:anime:1": OTHER_WORK,
-            },
-        ),
-        (
-            {
-                "kitsu:anime:1": "work 1",
-                "kitsu:anime:2": "work 2",
-                "mal:anime:1": "work 1",
-            },
-            {
-                "kitsu:anime:1": ENTRY,
-                "kitsu:anime:2": PagePlacement("work 2"),
-                "mal:anime:1": ENTRY,
-            },
-        ),
-    ],
-)
-def test_read_answer_placements_valid_answer_gives_placements(
-    shared_link, answer: JsonValue, placements: dict[str, PagePlacement]
-) -> None:
-    assert read_answer_placements(answer, *shared_link[:2]) == placements
-
-
-@pytest.mark.parametrize(
-    "answer",
-    [
-        None,
-        "one work",
-        {"kitsu:anime:1": "work 1"},
-        {"kitsu:anime:1": "work 1", "kitsu:anime:2": "work 1"},
-        {"kitsu:anime:1": "work 1, main", "kitsu:anime:2": "work 1, main"},
-        {"kitsu:anime:1": "work 1, main", "kitsu:anime:2": "other work"},
-        {"kitsu:anime:1": "work 1", "kitsu:anime:2": "other work, main"},
-        {"kitsu:anime:1": "work 1", "kitsu:anime:2": "other work, part"},
-        {"kitsu:anime:1": "work 1, part", "kitsu:anime:2": "work 1"},
-        {"kitsu:anime:1": "work 1, part", "kitsu:anime:2": "work 1, main"},
-        {"kitsu:anime:1": "work 1, main, part", "kitsu:anime:2": "work 1"},
-        {"kitsu:anime:1": "entry", "kitsu:anime:2": "other work"},
-        {"kitsu:anime:1": "work 0", "kitsu:anime:2": "other work"},
-        {"kitsu:anime:1": "work 1", "kitsu:anime:2": "work 2"},
-        {"kitsu:anime:1": "work 1", "kitsu:anime:2": "work 1", "mal:anime:1": "work 1"},
-        {
-            "kitsu:anime:1": "work 1",
-            "kitsu:anime:2": "work 01",
-            "mal:anime:1": "work 1",
-        },
-        {"kitsu:anime:1": "work 1", "kitsu:anime:2": "maybe"},
-        {
-            "kitsu:anime:1": "work 1",
-            "kitsu:anime:2": "other work",
-            "mal:anime:5": "work 1",
-        },
-        {"kitsu:anime:1": 1, "kitsu:anime:2": ["work 1"]},
-    ],
-)
-def test_read_answer_placements_invalid_answer_gives_none(
-    shared_link, answer: JsonValue
-) -> None:
-    assert read_answer_placements(answer, *shared_link[:2]) is None
-
-
-@pytest.mark.parametrize(
-    ("answer", "broken_rules"),
-    [
-        (None, (PlacementRule.INVALID_PLACEMENT_MAP,)),
-        ("one work", (PlacementRule.INVALID_PLACEMENT_MAP,)),
-        ({"kitsu:anime:1": "work 1"}, (PlacementRule.MISSING_REQUIRED_PLACEMENT,)),
-        (
-            {"kitsu:anime:1": "work 1", "kitsu:anime:2": "work 1"},
-            (PlacementRule.INVALID_PROVIDER_PAGE_MARKS,),
-        ),
-        (
-            {"kitsu:anime:1": "work 1, part", "kitsu:anime:2": "work 1, main"},
-            (PlacementRule.INVALID_PROVIDER_PAGE_MARKS,),
-        ),
-        (
-            {"kitsu:anime:1": "work 1, main", "kitsu:anime:2": "other work"},
-            (PlacementRule.SINGLE_PAGE_MARKED_MAIN,),
-        ),
-        (
-            {"kitsu:anime:1": "work 1", "kitsu:anime:2": "other work, main"},
-            (
-                PlacementRule.INVALID_PAGE_PLACEMENT,
-                PlacementRule.MISSING_REQUIRED_PLACEMENT,
-            ),
-        ),
-        (
-            {"kitsu:anime:1": "work 1", "kitsu:anime:2": "work 2"},
-            (PlacementRule.MISSING_REQUIRED_PLACEMENT,),
-        ),
-        (
-            {
-                "kitsu:anime:1": "work 1",
-                "kitsu:anime:2": "other work",
-                "mal:anime:5": "work 1",
-            },
-            (PlacementRule.PAGE_NOT_IN_CASE,),
-        ),
-        (
-            {"kitsu:anime:1": 1, "kitsu:anime:2": ["work 1"]},
-            (
-                PlacementRule.INVALID_PAGE_PLACEMENT,
-                PlacementRule.MISSING_REQUIRED_PLACEMENT,
-            ),
-        ),
-        ({"kitsu:anime:1": "work 1", "kitsu:anime:2": "other work"}, ()),
-    ],
-)
-def test_check_answer_placements_reports_broken_rules(
-    shared_link, answer: JsonValue, broken_rules: tuple[PlacementRule, ...]
-) -> None:
-    assert (
-        check_answer_placements(answer, *shared_link[:2]).broken_rules == broken_rules
-    )
-
-
-def test_check_answer_placements_two_mal_pages_in_one_work_reports_rule(
-    linked_apart,
-) -> None:
-    entry, decisions, _ = linked_apart
-    answer: dict[str, JsonValue] = dict.fromkeys(
-        list_placeable_page_keys(entry, decisions), "work 1, part"
-    )
-    assert check_answer_placements(answer, entry, decisions).broken_rules == (
-        PlacementRule.WORK_WITH_TWO_MAL_PAGES,
-    )
-
-
-def test_check_answer_placements_valid_answer_keeps_placements(shared_link) -> None:
-    answer: dict[str, JsonValue] = {
-        "kitsu:anime:1": "work 1, part",
-        "kitsu:anime:2": "work 1, part",
-    }
-    assert check_answer_placements(answer, *shared_link[:2]).placements == {
-        "kitsu:anime:1": PagePlacement("work 1", is_part_page=True),
-        "kitsu:anime:2": PagePlacement("work 1", is_part_page=True),
-    }
-
-
 def test_read_placement_other_work_naming_page_key_keeps_key() -> None:
     assert read_placement("other work mal:anime:62841") == PagePlacement(
         "other work", named_entry_page_key="mal:anime:62841"
@@ -286,7 +95,13 @@ def test_read_placement_other_work_naming_page_key_keeps_key() -> None:
 
 
 @pytest.mark.parametrize(
-    "placement_text", ["other work Kusuriya", "other work mal:anime:", "other work "]
+    "placement_text",
+    [
+        "other work Kusuriya",
+        "other work mal:anime:",
+        "other work ",
+        "work 1, partial in other work mal:anime:",
+    ],
 )
 def test_read_placement_other_work_naming_no_page_key_gives_none(
     placement_text: str,
@@ -296,53 +111,15 @@ def test_read_placement_other_work_naming_no_page_key_gives_none(
 
 @pytest.mark.parametrize(
     "placement_text",
-    ["work 1", "work 2, main", "work 3, part", "other work", "other work mal:anime:9"],
+    [
+        "work 1",
+        "work 2, partial in work 1, other work mal:anime:9",
+        "dropped",
+        "other work",
+        "other work mal:anime:9",
+    ],
 )
 def test_write_placement_gives_text_read(placement_text: str) -> None:
     placement = read_placement(placement_text)
     assert placement is not None
     assert write_placement(placement) == placement_text
-
-
-def test_check_answer_placements_named_entry_in_seed_keeps_placement(
-    shared_link,
-) -> None:
-    answer: JsonValue = {
-        "kitsu:anime:1": "work 1",
-        "kitsu:anime:2": "other work mal:anime:9",
-    }
-    placement_check = check_answer_placements(
-        answer,
-        *shared_link[:2],
-        named_entry_reference_pages={"mal:anime:9": "mal:anime:9"},
-    )
-    assert placement_check.broken_rules == ()
-    assert placement_check.placements["kitsu:anime:2"] == PagePlacement(
-        "other work", named_entry_page_key="mal:anime:9"
-    )
-
-
-def test_check_answer_placements_named_entry_not_in_seed_reports_rule(
-    shared_link,
-) -> None:
-    answer: JsonValue = {
-        "kitsu:anime:1": "work 1",
-        "kitsu:anime:2": "other work mal:anime:9",
-    }
-    assert check_answer_placements(answer, *shared_link[:2]).broken_rules == (
-        PlacementRule.UNKNOWN_NAMED_ENTRY,
-    )
-
-
-def test_check_answer_placements_named_entry_in_case_reports_rule(
-    shared_link,
-) -> None:
-    answer: JsonValue = {
-        "kitsu:anime:1": "work 1",
-        "kitsu:anime:2": "other work mal:anime:1",
-    }
-    assert check_answer_placements(
-        answer,
-        *shared_link[:2],
-        named_entry_reference_pages={"mal:anime:1": "mal:anime:1"},
-    ).broken_rules == (PlacementRule.NAMED_ENTRY_IN_CASE,)

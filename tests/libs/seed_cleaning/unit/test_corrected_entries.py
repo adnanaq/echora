@@ -189,17 +189,23 @@ def test_build_corrected_entries_renamed_old_address_dropped(
     ]
 
 
-def test_build_corrected_entries_dead_page_dropped(
-    entry, store, known_work_entries
+@pytest.mark.parametrize(
+    ("placement_word", "page_drop_fields"),
+    [
+        (None, {"is_dead_page": True, "reason": "dead page"}),
+        ("dropped", {"is_dropped_page": True, "reason": "review answer"}),
+    ],
+)
+def test_build_corrected_entries_dead_or_dropped_page_leaves_entry(
+    entry, store, known_work_entries, placement_word, page_drop_fields
 ) -> None:
     corrections = [
         SeedCorrection(
             entry_reference_page="mal:anime:1",
             page_key="kitsu:anime:2",
             address=KITSU_TWO,
-            placement_word=None,
-            is_dead_page=True,
-            reason="dead page",
+            placement_word=placement_word,
+            **page_drop_fields,
         )
     ]
     [corrected] = build_corrected_entries(corrections, known_work_entries, store)
@@ -209,25 +215,40 @@ def test_build_corrected_entries_dead_page_dropped(
     ]
 
 
-def test_build_corrected_entries_main_page_listed_first(
+def test_build_corrected_entries_partial_source_joins_other_entries_only(
     entry, store, known_work_entries
 ) -> None:
     corrections = [
         SeedCorrection(
             entry_reference_page="mal:anime:1",
-            page_key=key,
-            address=address,
+            page_key="kitsu:anime:1",
+            address=KITSU_ONE,
             placement_word="work 1",
-            is_main_page=key == "kitsu:anime:2",
+            partial_entry_reference_pages=("mal:anime:9",),
+            partial_new_entry_keys=("mal:anime:1 work 2",),
             reason="review answer",
-        )
-        for key, address in (("kitsu:anime:1", KITSU_ONE), ("kitsu:anime:2", KITSU_TWO))
+        ),
+        SeedCorrection(
+            entry_reference_page="mal:anime:1",
+            page_key="kitsu:anime:2",
+            address=KITSU_TWO,
+            placement_word="work 2",
+            new_entry_key="mal:anime:1 work 2",
+            reason="review answer",
+        ),
     ]
-    [corrected] = build_corrected_entries(corrections, known_work_entries, store)
-    assert list(corrected.entry.addresses_by_page_key) == [
-        "kitsu:anime:2",
-        "mal:anime:1",
-        "kitsu:anime:1",
+    corrected_entries = build_corrected_entries(corrections, known_work_entries, store)
+    assert [
+        (
+            list(corrected.entry.addresses_by_page_key),
+            corrected.entry.partial_addresses_by_page_key,
+        )
+        for corrected in corrected_entries
+        if corrected.entry is not None
+    ] == [
+        (["mal:anime:1", "kitsu:anime:1"], {}),
+        (["mal:anime:9"], {"kitsu:anime:1": KITSU_ONE}),
+        (["kitsu:anime:2"], {"kitsu:anime:1": KITSU_ONE}),
     ]
 
 
@@ -241,7 +262,6 @@ def test_build_corrected_entries_added_page_joins_entry(
             address="https://anilist.co/anime/9",
             placement_word="work 1",
             is_added_page=True,
-            is_part_page=True,
             reason="review answer",
         )
     ]
@@ -252,6 +272,30 @@ def test_build_corrected_entries_added_page_joins_entry(
     ) == (
         "mal:anime:9",
         {"mal:anime:9": TARGET_MAL, "anilist:anime:9": "https://anilist.co/anime/9"},
+    )
+
+
+def test_build_corrected_entries_added_partial_source_joins_partial_sources(
+    store, known_work_entries
+) -> None:
+    corrections = [
+        SeedCorrection(
+            entry_reference_page="mal:anime:9",
+            page_key="anilist:anime:9",
+            address="https://anilist.co/anime/9",
+            placement_word=None,
+            is_added_page=True,
+            partial_entry_reference_pages=("mal:anime:9",),
+            reason="review answer",
+        )
+    ]
+    [corrected] = build_corrected_entries(corrections, known_work_entries, store)
+    assert (
+        corrected.entry.addresses_by_page_key,
+        corrected.entry.partial_addresses_by_page_key,
+    ) == (
+        {"mal:anime:9": TARGET_MAL},
+        {"anilist:anime:9": "https://anilist.co/anime/9"},
     )
 
 

@@ -233,3 +233,21 @@ def linked_apart(linked_page, work_entry):
         decide_doubled_providers(entry, pages, KnownWorkEntriesFromSeed([])),
         pages,
     )
+
+
+@pytest.fixture
+def shared_link(linked_page, work_entry):
+    entry = work_entry(
+        "https://myanimelist.net/anime/1",
+        "https://kitsu.app/anime/1",
+        "https://kitsu.app/anime/2",
+    )
+    pages = [
+        linked_page("https://kitsu.app/anime/1", "https://myanimelist.net/anime/1"),
+        linked_page("https://kitsu.app/anime/2", "https://myanimelist.net/anime/1"),
+    ]
+    return (
+        entry,
+        decide_doubled_providers(entry, pages, KnownWorkEntriesFromSeed([])),
+        pages,
+    )

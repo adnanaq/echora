@@ -19,14 +19,23 @@ key>``. Each item gives the rule, then the reason for it.
   title is closer when it shares more leading words with a case entry's title.
   Titles are ranked across all the case's entries, so one entry's long series
   cannot crowd out another entry's close matches.
+- Of those suggestions, the entries a page of the case covers too are offered
+  as works the page can be a partial source of
+  (``find_covered_outside_entries``).
 """
 
+from collections.abc import Mapping, Sequence
 from typing import Final
 
 from pydantic import JsonValue
 from work_matching.comparable_title import fold_title_for_comparison
 from work_matching.known_work_entries import KnownWorkEntries
+from work_matching.page_details_comparison import (
+    MalPageComparison,
+    compare_page_with_mal_page,
+)
 from work_matching.page_placement import read_placement
+from work_matching.provider_page import ProviderPage
 from work_matching.provider_page_key import read_page_provider
 from work_matching.review_cases import ReviewCase, TargetEntrySuggestion
 from work_matching.work_entry import WorkEntry
@@ -37,6 +46,9 @@ MAX_TARGET_ENTRY_SUGGESTIONS: Final = 12
 def list_named_entry_page_keys(answer: JsonValue) -> list[str]:
     """List the page keys an answer names after ``other work``, in answer order.
 
+    A key is named after ``other work`` both as a page's place and among the
+    works a page is a partial source of.
+
     Args:
         answer: An answer as written in the review file, of any case kind.
 
@@ -46,10 +58,14 @@ def list_named_entry_page_keys(answer: JsonValue) -> list[str]:
     if not isinstance(answer, dict):
         return []
     named_entry_page_keys = (
-        placement.named_entry_page_key
+        named_entry_page_key
         for placement_text in answer.values()
         if isinstance(placement_text, str)
         and (placement := read_placement(placement_text))
+        for named_entry_page_key in (
+            placement.named_entry_page_key,
+            *placement.partial_named_entry_page_keys,
+        )
     )
     return list(
         dict.fromkeys(page_key for page_key in named_entry_page_keys if page_key)
@@ -115,21 +131,31 @@ def suggest_target_entries(
         series_entries.values(),
         key=lambda work_entry: -shared_word_counts[work_entry.reference_page_key],
     )[:MAX_TARGET_ENTRY_SUGGESTIONS]
-    return tuple(
-        TargetEntrySuggestion(
-            entry_reference_page=work_entry.reference_page_key,
-            title=work_entry.title,
-            providers=tuple(
-                sorted(
-                    {
-                        provider
-                        for page_key in work_entry.addresses_by_page_key
-                        if (provider := read_page_provider(page_key))
-                    }
-                )
-            ),
-        )
-        for work_entry in closest_entries
+    return tuple(map(build_target_entry_suggestion, closest_entries))
+
+
+def build_target_entry_suggestion(work_entry: WorkEntry) -> TargetEntrySuggestion:
+    """Build how a review case offers a seed entry a page can move to.
+
+    Args:
+        work_entry: The seed entry.
+
+    Returns:
+        The entry's reference page and title, with the providers it already
+        holds pages of, so a page of one of them is not offered the entry.
+    """
+    return TargetEntrySuggestion(
+        entry_reference_page=work_entry.reference_page_key,
+        title=work_entry.title,
+        providers=tuple(
+            sorted(
+                {
+                    provider
+                    for page_key in work_entry.addresses_by_page_key
+                    if (provider := read_page_provider(page_key))
+                }
+            )
+        ),
     )
 
 
@@ -153,3 +179,47 @@ def _count_shared_leading_words(first_title: str, second_title: str) -> int:
             break
         shared_word_count += 1
     return shared_word_count
+
+
+def find_covered_outside_entries(
+    case: ReviewCase,
+    entry_pages_by_reference_page: Mapping[str, Sequence[ProviderPage]],
+) -> tuple[TargetEntrySuggestion, ...]:
+    """Find the seed entries outside the case that a page of the case also covers.
+
+    A provider listing a run as one page covers seed entries that other
+    providers list apart, such as MAL's one page for a donghua's second season
+    that covers an AniList season the seed holds as its own entry. Such an
+    entry is offered as a work the page can be a partial source of. The rules:
+
+    - Only the case's suggested entries of the same series are checked, since
+      a page covers entries of its own series.
+    - The entry holds no page of the case page's provider. A provider listing
+      the entry apart does not cover it with another page.
+    - One of the entry's fetched pages is a part of the case page's work
+      (``compare_page_with_mal_page`` gives ``PART_OF_WORK``): the same type,
+      fewer episodes, and aired within the case page's run.
+
+    Args:
+        case: An entry group's review case, with its pages and suggestions.
+        entry_pages_by_reference_page: The fetched pages of each suggested
+            entry, by its reference page.
+
+    Returns:
+        The suggested entries a page of the case covers, in suggestion order.
+    """
+    case_pages = [page for page in case.pages if not page.is_dead]
+    return tuple(
+        suggestion
+        for suggestion in case.target_entry_suggestions
+        if any(
+            read_page_provider(case_page.key) not in suggestion.providers
+            and compare_page_with_mal_page(entry_page, case_page)
+            is MalPageComparison.PART_OF_WORK
+            for case_page in case_pages
+            for entry_page in entry_pages_by_reference_page.get(
+                suggestion.entry_reference_page, ()
+            )
+            if not entry_page.is_dead
+        )
+    )

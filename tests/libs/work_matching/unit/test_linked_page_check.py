@@ -413,18 +413,18 @@ def test_decide_linked_page_linking_entries_sorted_by_reference_page() -> None:
     ]
 
 
-def test_suggest_linked_page_answer_page_with_fewer_episodes_suggests_part() -> None:
-    page = BOXER_MAL_PAGE.model_copy(update={"episode_count": 1})
+def test_suggest_linked_page_answer_page_with_more_episodes_suggests_partial() -> None:
+    page = BOXER_MAL_PAGE.model_copy(update={"episode_count": 24})
     decision = _decide_page(
         page, _build_entry(BOXER_SEED_ENTRY), entry_episode_count=12
     )
     assert suggest_linked_page_answer(decision, page) == {
-        "mal:anime:65144": "add as part"
+        "mal:anime:65144": "add as partial"
     }
 
 
-def test_suggest_linked_page_answer_page_with_more_episodes_suggests_nothing() -> None:
-    page = BOXER_MAL_PAGE.model_copy(update={"episode_count": 24})
+def test_suggest_linked_page_answer_page_with_fewer_episodes_suggests_nothing() -> None:
+    page = BOXER_MAL_PAGE.model_copy(update={"episode_count": 1})
     decision = _decide_page(
         page, _build_entry(BOXER_SEED_ENTRY), entry_episode_count=12
     )
@@ -445,11 +445,14 @@ def test_suggest_linked_page_answer_several_entries_suggests_nothing() -> None:
 @pytest.mark.parametrize(
     ("answer_text", "expected"),
     [
-        ("add", LinkedPageAddition("anilist:anime:163794", is_part_page=False)),
-        ("add as part", LinkedPageAddition("anilist:anime:163794", is_part_page=True)),
+        ("add", LinkedPageAddition("anilist:anime:163794", is_partial_source=False)),
+        (
+            "add as partial",
+            LinkedPageAddition("anilist:anime:163794", is_partial_source=True),
+        ),
         (
             "add to anilist:anime:163794",
-            LinkedPageAddition("anilist:anime:163794", is_part_page=False),
+            LinkedPageAddition("anilist:anime:163794", is_partial_source=False),
         ),
         ("skip", SKIP_ANSWER),
         ("add to anilist:anime:1", None),
@@ -472,12 +475,12 @@ def test_read_linked_page_answer_one_linking_entry(
     [
         ("add", None),
         (
-            "add as part to anilist:anime:182615",
-            LinkedPageAddition("anilist:anime:182615", is_part_page=True),
+            "add as partial to anilist:anime:182615",
+            LinkedPageAddition("anilist:anime:182615", is_partial_source=True),
         ),
         (
             "add to anilist:anime:163794",
-            LinkedPageAddition("anilist:anime:163794", is_part_page=False),
+            LinkedPageAddition("anilist:anime:163794", is_partial_source=False),
         ),
     ],
 )
@@ -505,7 +508,7 @@ def test_read_linked_page_answer_add_to_entry_holding_provider_rejected() -> Non
     assert read_linked_page_answer({"anidb:anime:20000": "add"}, decision) is None
 
 
-def test_read_linked_page_answer_part_to_entry_holding_provider_accepted() -> None:
+def test_read_linked_page_answer_partial_to_entry_holding_provider_accepted() -> None:
     anidb_page = ProviderPage(
         key="anidb:anime:20000", address="https://anidb.net/anime/20000", type="MOVIE"
     )
@@ -513,8 +516,8 @@ def test_read_linked_page_answer_part_to_entry_holding_provider_accepted() -> No
         anidb_page, _build_entry(YAMATO_SEED_ENTRY), entry_episode_count=1
     )
     assert read_linked_page_answer(
-        {"anidb:anime:20000": "add as part"}, decision
-    ) == LinkedPageAddition("anilist:anime:182615", is_part_page=True)
+        {"anidb:anime:20000": "add as partial"}, decision
+    ) == LinkedPageAddition("anilist:anime:182615", is_partial_source=True)
 
 
 @pytest.mark.parametrize(

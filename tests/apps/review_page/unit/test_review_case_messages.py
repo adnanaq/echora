@@ -107,6 +107,13 @@ def test_convert_message_to_case_round_trip_keeps_named_entries_and_suggestions(
                     providers=("anidb", "mal"),
                 ),
             ),
+            "covered_outside_entries": (
+                TargetEntrySuggestion(
+                    entry_reference_page="anilist:anime:21273",
+                    title="Gochuumon wa Usagi desu ka? Season 1",
+                    providers=("anilist",),
+                ),
+            ),
         }
     )
     assert convert_message_to_case(convert_case_to_message(case)) == case

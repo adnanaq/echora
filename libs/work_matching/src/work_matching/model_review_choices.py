@@ -3,44 +3,29 @@
 ``review_choices`` builds these from the answer rules, so the page and a run
 never disagree. Each model reads ``<model>: <what it holds>``.
 
-- ``ChoiceRule``: a reason a choice is not offered that no answer rule states.
 - ``ChoiceOption``: one choice and the rule that disables it, if any.
 - ``GroupPageChoices``: one page of an entry group's case, with its current
-  place and the work and mark choices left.
+  place, the works it is a partial source of, and the work choices left.
+- ``WorkPartialSources``: one work of an entry group's case, with its partial
+  sources and the pages that can become one.
 - ``LinkedPageConflict``: linked-page answers adding whole pages of one
   provider to one entry.
 """
 
 from dataclasses import dataclass
-from enum import StrEnum
 
 from work_matching.answer_rules import LinkedPageAnswerRule, PlacementRule
 from work_matching.answer_words import describe_answer_word
-
-
-class ChoiceRule(StrEnum):
-    """Define a reason a choice is not offered that no answer rule states.
-
-    The answer rules (``PlacementRule``) check a whole answer when it is
-    saved. These reasons explain a single dropdown option to the reviewer.
-    """
-
-    MARK_WITHOUT_WORK = (
-        "choose a work for the page first, since a mark applies within a work"
-    )
-    MARK_IN_OTHER_WORK = (
-        "a page moved to another work cannot be marked 'main' or 'part' in this case"
-    )
 
 
 @dataclass(frozen=True, slots=True)
 class ChoiceOption:
     """Hold one choice a reviewer can make and the rule that disables it, if any."""
 
-    # The value as an answer writes it, such as ``work 2``, ``part`` or
+    # The value as an answer writes it, such as ``work 2``, ``dropped`` or
     # ``add to <entry>``.
     value: str
-    disabling_rule: PlacementRule | LinkedPageAnswerRule | ChoiceRule | None = None
+    disabling_rule: PlacementRule | LinkedPageAnswerRule | None = None
 
     @property
     def is_disabled(self) -> bool:
@@ -66,16 +51,29 @@ class GroupPageChoices:
     """Hold one page of an entry group's case, with its current place and the choices left."""
 
     page_key: str
-    # ``work N`` or ``other work``; None while the page has no place.
+    # ``work N``, ``other work`` or ``dropped``; None while the page has no place.
     work: str | None
     # The page key written after ``other work``; None when no entry is named.
     named_entry_page_key: str | None
-    # ``NO_MARK``, ``MAIN_MARK`` or ``PART_MARK``.
-    mark: str
+    # The works the page is also a partial source of, in answer words.
+    partial_works: tuple[str, ...]
     # Whether the answer must place this page to be saved.
     is_required: bool
     work_options: tuple[ChoiceOption, ...]
-    mark_options: tuple[ChoiceOption, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class WorkPartialSources:
+    """Hold one work of an entry group's case, with its partial sources and the pages that can be one."""
+
+    # ``work N`` for a work of the case, or ``other work <page key>`` for a
+    # seed entry outside the case.
+    work: str
+    # The pages that are partial sources of the work, in answer order.
+    partial_source_page_keys: tuple[str, ...]
+    # The pages that can become a partial source of the work: pages that are
+    # a source of another work of the case and not yet a partial source here.
+    page_key_options: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)

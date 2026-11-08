@@ -10,13 +10,16 @@ reason for it.
   is the first work.
 - A group holding two pages of one ``SEPARATE_WORKS`` decision is left out,
   because a page in it is linked with both works.
-- A group holding two MAL pages is left out, because no work holds two MAL
-  pages.
-- Pages of a ``PART_PAGES`` decision are suggested with ``, part``.
+- A provider with two pages in one group has those pages left out, because no
+  work holds two pages of one provider. The group's other pages keep their
+  work. The pages of a ``PART_PAGES`` or ``DUPLICATE_PAGES`` decision linked
+  with one page are such pages, so each part gets its own work
+  (``part_page_splits``) or a person drops a duplicate page.
 - Pages of a decision whose years or types differ (``DETAILS_DIFFER``) get no
   suggestion, because they may be different works.
 """
 
+from collections import Counter
 from collections.abc import Iterable, Sequence
 
 from networkx.utils import UnionFind
@@ -27,11 +30,9 @@ from work_matching.model_doubled_provider_decision import (
 )
 from work_matching.page_placement import (
     OTHER_WORK,
-    PART_PAGE_MARK,
-    has_two_mal_pages,
     list_placeable_page_keys,
 )
-from work_matching.provider_page_key import rank_by_provider_trust
+from work_matching.provider_page_key import rank_by_provider_trust, read_page_provider
 from work_matching.work_entry import WorkEntry
 
 
@@ -62,10 +63,6 @@ def suggest_page_placements(
         if DoubledProviderReviewReason.DETAILS_DIFFER in decision.review_reasons:
             for page_key in decision.belonging_page_keys:
                 suggested_placements.pop(page_key, None)
-        elif decision.outcome is DoubledProviderOutcome.PART_PAGES:
-            for page_key in decision.belonging_page_keys:
-                if page_key in suggested_placements:
-                    suggested_placements[page_key] += PART_PAGE_MARK
     suggested_placements |= {
         page_key: OTHER_WORK
         for decision in decisions
@@ -94,8 +91,8 @@ def _suggest_work_per_page(
     Returns:
         Each grouped page's work in answer words: ``work 1`` for the group
         holding the most trusted page, then ``work 2``, ``work 3`` and so on.
-        A group holding two pages of one ``SEPARATE_WORKS`` decision, or two
-        MAL pages, is left out.
+        A group holding two pages of one ``SEPARATE_WORKS`` decision is left
+        out, and so are a provider's pages when the group holds two of them.
     """
     linked_page_sets = _join_linked_pages(
         placeable_page_keys, decisions, linked_page_key_pairs
@@ -126,11 +123,20 @@ def _suggest_work_per_page(
     )
     suggested_placements: dict[str, str] = {}
     for work_number, work_page_keys in enumerate(work_page_keys_by_trust, start=1):
-        if not any(
+        if any(
             len(work_page_keys & decision_page_keys) > 1
             for decision_page_keys in separate_work_page_keys
-        ) and not has_two_mal_pages(work_page_keys):
-            suggested_placements |= dict.fromkeys(work_page_keys, f"work {work_number}")
+        ):
+            continue
+        provider_counts = Counter(map(read_page_provider, work_page_keys))
+        suggested_placements |= dict.fromkeys(
+            (
+                page_key
+                for page_key in work_page_keys
+                if provider_counts[read_page_provider(page_key)] == 1
+            ),
+            f"work {work_number}",
+        )
     return suggested_placements
 
 

@@ -309,7 +309,7 @@ def test_correct_linked_pages_page_needing_person_becomes_review_case(
     )
 
 
-def test_correct_linked_pages_kept_answer_adds_part_page(
+def test_correct_linked_pages_kept_answer_adds_partial_source(
     tmp_path, store, known_work_entries
 ) -> None:
     review_path = tmp_path / "review.jsonl"
@@ -317,7 +317,7 @@ def test_correct_linked_pages_kept_answer_adds_part_page(
         json.dumps(
             {
                 "case_name": "linked page: mal:anime:65144 from anilist:anime:163794",
-                "answer": {"mal:anime:65144": "add as part"},
+                "answer": {"mal:anime:65144": "add as partial"},
             }
         )
         + "\n",
@@ -332,9 +332,10 @@ def test_correct_linked_pages_kept_answer_adds_part_page(
     ).corrections
     assert (
         correction.is_added_page,
-        correction.is_part_page,
+        correction.placement_word,
+        correction.partial_entry_reference_pages,
         correction.reason,
-    ) == (True, True, "review answer")
+    ) == (True, None, ("anilist:anime:163794",), "review answer")
 
 
 def test_correct_linked_pages_answers_adding_two_pages_of_provider_add_neither(

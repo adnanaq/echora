@@ -116,6 +116,7 @@ def test_anime_minimal_fields_dump_defaults() -> None:
         "external_sources": [],
         "genres": [],
         "opening_themes": [],
+        "partial_sources": [],
         "related_anime": {},
         "related_source_material": {},
         "sources": [],

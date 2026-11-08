@@ -71,6 +71,7 @@ from work_matching import (
     SavedAnswerChangedError,
     UnknownCaseError,
     choose_group_page_place,
+    choose_partial_sources,
     list_named_entry_page_keys,
     resolve_page_key,
 )
@@ -209,9 +210,11 @@ class CaseRoutes:
         browser_state: BrowserStateField = None,
         page_key: Annotated[str, Form()] = "",
         work: Annotated[str, Form()] = "",
-        mark: Annotated[str, Form()] = "",
         linked_answer: Annotated[str, Form()] = "",
         named_entry: Annotated[str, Form()] = "",
+        partial_source_work: Annotated[str, Form()] = "",
+        is_partial_source: Annotated[bool, Form()] = False,
+        partial_source_page_keys: Annotated[list[str] | None, Form()] = None,
     ) -> Response:
         """Apply a placement choice to the open case and return the updated panel.
 
@@ -220,9 +223,14 @@ class CaseRoutes:
             browser_state: The serialized ``BrowserState`` JSON form field.
             page_key: The provider page key whose placement is being updated.
             work: The selected work placement word, or empty for no placement.
-            mark: The selected page mark (``main`` or ``part``), or empty.
             linked_answer: The selected decision word for a linked-page case.
             named_entry: The target seed entry page key or address for ``other work``.
+            partial_source_work: The work ``page_key`` becomes, or stops being, a
+                partial source of; empty when the choice is the page's place.
+            is_partial_source: Whether the page becomes a partial source of
+                ``partial_source_work`` or stops being one.
+            partial_source_page_keys: The pages chosen together in the partial
+                source picker, used in place of ``page_key`` when given.
 
         Returns:
             The redrawn case panel HTML fragment with an ``answerchanged`` event
@@ -237,21 +245,20 @@ class CaseRoutes:
             new_answer: dict[str, JsonValue] = (
                 {page_key: linked_answer} if linked_answer else {}
             )
+        elif partial_source_work:
+            new_answer = choose_partial_sources(
+                current_answer if isinstance(current_answer, dict) else {},
+                partial_source_page_keys or [page_key],
+                partial_source_work,
+                is_partial_source=is_partial_source,
+            )
         else:
             new_answer = choose_group_page_place(
                 current_answer if isinstance(current_answer, dict) else {},
                 page_key,
                 _write_work(work, named_entry),
-                mark,
             )
-        # An unanswered case starts on its suggestion, so choosing back to it
-        # leaves nothing unsaved; Accept is the button that saves it.
-        is_unsaved = (new_answer or None) != (resolve_shown_answer(case, None) or None)
-        if is_unsaved:
-            state.edits[case.case_name] = new_answer
-        else:
-            state.edits.pop(case.case_name, None)
-        state.rejected.pop(case.case_name, None)
+        is_unsaved = _record_answer_edit(state, case, new_answer)
         response = self._render_case(request, state, case.case_name, case)
         response.headers["HX-Trigger"] = json.dumps(
             {
@@ -477,3 +484,29 @@ def _build_answers_saved_event(
         ],
         "next_case_name": next_case_name,
     }
+
+
+def _record_answer_edit(
+    state: BrowserState, case: ReviewCase, new_answer: dict[str, JsonValue]
+) -> bool:
+    """Record a chosen answer as the case's unsaved edit, or clear the edit.
+
+    An unanswered case starts on its suggestion, so choosing back to the shown
+    answer leaves nothing unsaved, and Accept is the button that saves it. A
+    new choice also clears the case's last rejection.
+
+    Args:
+        state: The browser state, changed in place.
+        case: The open review case.
+        new_answer: The answer after the choice.
+
+    Returns:
+        True when the answer differs from what the case shows without edits.
+    """
+    is_unsaved = (new_answer or None) != (resolve_shown_answer(case, None) or None)
+    if is_unsaved:
+        state.edits[case.case_name] = new_answer
+    else:
+        state.edits.pop(case.case_name, None)
+    state.rejected.pop(case.case_name, None)
+    return is_unsaved

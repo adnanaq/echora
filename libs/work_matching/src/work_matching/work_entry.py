@@ -91,6 +91,13 @@ class WorkEntry(BaseModel):
     season: Annotated[Season | None, BeforeValidator(_read_known_season)] = None
     # Provider page key -> the address as the source wrote it, in source order.
     addresses_by_page_key: dict[str, str] = Field(min_length=1)
+    # The partial sources: pages covering this work together with other
+    # works, each a source of another entry. Enrichment never fetches them.
+    # Left out when empty, so entries without partial sources are written as
+    # before.
+    partial_addresses_by_page_key: dict[str, str] = Field(
+        default_factory=dict, exclude_if=lambda addresses: not addresses
+    )
 
     @property
     def reference_page_key(self) -> str:

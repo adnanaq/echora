@@ -127,13 +127,13 @@ def test_run_seed_cleaning_keeps_answers_as_written_as_originals(
     seed_document, store, data_dir
 ) -> None:
     _run(seed_document, store, data_dir)
-    answer = {"kitsu:anime:1": "work 1", "kitsu:anime:2": "work 1, main"}
+    answer = {"kitsu:anime:1": "work 1", "kitsu:anime:2": "dropped"}
     ReviewFile(data_dir / "review.jsonl").save_answers({DOUBLED_CASE_NAME: answer})
     result = _run(seed_document, store, data_dir)
     assert (
         result.original_answers,
         result.correction_counts["review cases answered"],
-        result.correction_counts["pages kept as main page"],
+        result.correction_counts["duplicate pages dropped"],
     ) == ({DOUBLED_CASE_NAME: answer}, 1, 1)
 
 

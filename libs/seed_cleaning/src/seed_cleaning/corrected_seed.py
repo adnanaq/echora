@@ -119,19 +119,38 @@ def _index_joining_corrections(
 
     A page joins the entry its correction moves it to, or, when added without
     a move, the entry it is added to.
+
+    Args:
+        corrections: The first pass's seed corrections.
+
+    Returns:
+        Each joining correction, by the entry the page joins and the page key.
     """
     joining_corrections: dict[tuple[EntryIdentity, str], SeedCorrection] = {}
     for correction in corrections:
-        if correction.target_entry_reference_page:
-            destination = EntryIdentity(correction.target_entry_reference_page, None)
-        elif correction.new_entry_key:
-            destination = EntryIdentity(None, correction.new_entry_key)
-        elif correction.is_added_page:
+        destination = find_move_destination(correction)
+        if destination is None and correction.is_added_page:
             destination = EntryIdentity(correction.entry_reference_page, None)
-        else:
-            continue
-        joining_corrections[destination, correction.page_key] = correction
+        if destination is not None:
+            joining_corrections[destination, correction.page_key] = correction
     return joining_corrections
+
+
+def find_move_destination(correction: SeedCorrection) -> EntryIdentity | None:
+    """Find the entry a correction moves its page to, as corrections name entries.
+
+    Args:
+        correction: A seed correction.
+
+    Returns:
+        The seed entry or the new entry the page moves to; None when the page
+        stays in the entry listing it.
+    """
+    if correction.target_entry_reference_page:
+        return EntryIdentity(correction.target_entry_reference_page, None)
+    if correction.new_entry_key:
+        return EntryIdentity(None, correction.new_entry_key)
+    return None
 
 
 def _find_origin(
