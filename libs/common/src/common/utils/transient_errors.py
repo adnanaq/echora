@@ -74,10 +74,10 @@ def _find_status_code(error: Exception) -> int | None:
 
     Returns:
         The value of ``status`` or ``status_code``, in that order,
-        when one is an integer; otherwise None.
+        when one is an integer other than a boolean; otherwise None.
     """
     for attribute_name in ("status", "status_code"):
         status_code = getattr(error, attribute_name, None)
-        if isinstance(status_code, int):
+        if isinstance(status_code, int) and not isinstance(status_code, bool):
             return status_code
     return None

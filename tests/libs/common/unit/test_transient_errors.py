@@ -54,6 +54,14 @@ def test_is_transient_service_error_lasting_error_returns_false(error) -> None:
     assert not is_transient_service_error(error)
 
 
+def test_is_transient_service_error_boolean_status_not_read_as_status() -> None:
+    error = _StatusError(500)
+    error.status = True
+    error.args = ("connection reset",)
+
+    assert is_transient_service_error(error)
+
+
 def test_is_transient_service_error_status_decides_over_message_words() -> None:
     error = _StatusCodeError(400)
     error.args = ("connection header invalid",)
