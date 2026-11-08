@@ -44,6 +44,7 @@ def test_is_transient_service_error_retryable_error_returns_true(error) -> None:
     [
         _StatusCodeError(422),
         _StatusError(400),
+        _StatusCodeError(409),
         Exception("invalid payload schema"),
     ],
 )

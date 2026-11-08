@@ -9,17 +9,18 @@ client. Each rule reads ``<error>: <outcome>. <reason>``.
   the server.
 - One of the caller's ``transient_error_types``: retried. The caller knows its
   client raises these for transient faults, such as a broken response.
-- HTTP status 408, 409, 425, 429 or 5xx (``RETRYABLE_HTTP_STATUS_CODES``):
+- HTTP status 408, 425, 429 or 5xx (``RETRYABLE_HTTP_STATUS_CODES``):
   retried. The server is busy, rate limiting, or briefly failing.
-- Any other status, such as 400 or 422: not retried. The request itself is
-  wrong, so sending it again gives the same answer.
+- Any other status, such as 400, 409 or 422: not retried. The request itself
+  is wrong, or conflicts with the stored state, such as a Qdrant collection
+  that already exists, so sending it again gives the same answer.
 - Message naming a timeout, connection, network, temporary or unavailable
   fault: retried. Some client errors carry no status, only this text.
 """
 
 from typing import Final
 
-RETRYABLE_HTTP_STATUS_CODES: Final = frozenset({408, 409, 425, 429, 500, 502, 503, 504})
+RETRYABLE_HTTP_STATUS_CODES: Final = frozenset({408, 425, 429, 500, 502, 503, 504})
 _TRANSIENT_MESSAGE_WORDS: Final = (
     "timeout",
     "connection",
