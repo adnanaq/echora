@@ -26,6 +26,10 @@ SIGEWINNE = "animeplanet:anime:genshin-impact-character-teaser-sigewinne-everyda
 VARESA = (
     "animeplanet:anime:genshin-impact-character-teaser-varesa-the-legend-of-a-warrior"
 )
+INVALID_ANSWERS = [
+    {SIGEWINNE: "maybe"},
+    {SIGEWINNE: "work 1, main", VARESA: "work 1, part"},
+]
 
 
 def test_review_file_attach_kept_answer_linked_page_answer_comes_back(
@@ -157,17 +161,18 @@ def test_review_file_write_cases_open_case_without_case_dropped(
     ] == [split_case.case_name]
 
 
+@pytest.mark.parametrize("invalid_answer", INVALID_ANSWERS)
 def test_review_file_write_cases_invalid_answer_kept_for_fixing(
-    tmp_path, doubled_case
+    tmp_path, doubled_case, invalid_answer
 ) -> None:
     path = tmp_path / "review.jsonl"
     ReviewFile(path).write_cases([doubled_case])
-    _write_answer_in_file(path, doubled_case.case_name, {SIGEWINNE: "maybe"})
+    _write_answer_in_file(path, doubled_case.case_name, invalid_answer)
     review = ReviewFile(path)
     kept_case = review.attach_kept_answer(doubled_case)
     review.write_cases([kept_case])
     assert kept_case.accepted_answer is None
-    assert json.loads(path.read_text())["answer"] == {SIGEWINNE: "maybe"}
+    assert json.loads(path.read_text())["answer"] == invalid_answer
 
 
 def test_review_file_write_cases_leaves_only_review_file(
@@ -271,12 +276,13 @@ def test_review_file_write_cases_new_file_gets_default_mode(
     assert path.stat().st_mode & 0o777 == reference.stat().st_mode & 0o777
 
 
+@pytest.mark.parametrize("invalid_answer", INVALID_ANSWERS)
 def test_review_file_write_cases_answer_not_accepted_logs_warning(
-    tmp_path, doubled_case, caplog
+    tmp_path, doubled_case, caplog, invalid_answer
 ) -> None:
     path = tmp_path / "review.jsonl"
     ReviewFile(path).write_cases([doubled_case])
-    _write_answer_in_file(path, doubled_case.case_name, {SIGEWINNE: "maybe"})
+    _write_answer_in_file(path, doubled_case.case_name, invalid_answer)
     ReviewFile(path).write_cases([doubled_case])
     assert doubled_case.case_name in caplog.text
 
