@@ -10,15 +10,21 @@ pages at once. The rules:
   any other. The combined entry takes its title, type, year and season from the
   entry with the most trusted reference page, the entry most likely to survive.
 - Suggestion: pages linked with each other are suggested as one work, numbered
-  by trust as for a single entry. A page no link reaches follows the other
-  pages of its own entry, when all of them are suggested in one work: the
-  seed listing them together is the only thing known about such a page. Such a
-  page gets no suggestion when its entry's suggested pages are in different
-  works, or when it is a doubled page, which the reviewer must judge.
-- MAL check: in a group of two or more entries, each suggestion is then kept,
-  marked ``, part`` or left out by comparing its page with the MAL page of its
-  suggested work (``mal_page_check``), because a link or a shared entry alone
-  has joined separate works.
+  by trust (``placement_suggestions``). A page no link reaches follows the
+  other pages of its own entry when all of them are suggested in one work,
+  because the seed listing them together is the only thing known about such a
+  page. Such a page gets no suggestion when its entry's suggested pages are in
+  different works, or when it is a doubled page, which the reviewer must
+  judge. These rules hold for a group of one entry too, so the reviewer only
+  answers the pages actually in question.
+- MAL check: in a group of two or more entries, each suggestion is then kept
+  or left out by comparing its page with the MAL page of its suggested work
+  (``mal_page_check``), because a link or a shared entry alone has joined
+  separate works.
+- Split works: when a provider lists the group's work as part pages, the
+  suggestion is one work per part instead (``part_page_splits``), keeping only
+  the link suggestions that send a page to ``other work``.
+- Duplicate pages get no suggestion, because only a review answer drops one.
 - Answers follow the placement rules of ``page_placement``. A group of two or
   more entries adds two rules:
 
@@ -35,6 +41,10 @@ Each item gives the rule, then the reason for it.
 from collections.abc import Iterable, Mapping, Sequence
 
 from pydantic import JsonValue
+from work_matching.answer_placement_check import (
+    PlacementCheck,
+    check_answer_placements,
+)
 from work_matching.answer_rules import PlacementRule
 from work_matching.mal_page_check import check_with_mal_pages
 from work_matching.model_doubled_provider_decision import DoubledProviderDecision
@@ -42,10 +52,14 @@ from work_matching.page_details_comparison import MalPageComparison
 from work_matching.page_placement import (
     OTHER_WORK,
     PagePlacement,
-    PlacementCheck,
-    check_answer_placements,
     find_page_placement,
+    list_placeable_page_keys,
     read_placement,
+)
+from work_matching.part_page_splits import (
+    find_splitting_decision,
+    list_duplicate_page_keys,
+    suggest_part_page_splits,
 )
 from work_matching.placement_suggestions import suggest_page_placements
 from work_matching.provider_page import ProviderPage
@@ -96,19 +110,37 @@ def suggest_group_page_placements(
         pages: Details of the group's fetched pages.
 
     Returns:
-        Each suggested page's place in answer words, as
-        ``suggest_page_placements`` gives them. A group of two or more entries
-        also joins pages linked with each other into one work, gives a page no
-        link reaches the work of its own entry's suggested pages, and then
-        keeps only the suggestions the MAL check in the module docstring keeps.
+        Each suggested page's place in answer words. A split work gets one work
+        per part, as ``suggest_part_page_splits`` gives them. Otherwise the
+        places are those ``suggest_page_placements`` gives for pages linked
+        with each other, and a page no link reaches gets the work of its own
+        entry's suggested pages. A group of two or more entries then keeps
+        only the suggestions the MAL check keeps.
+        Duplicate pages are never suggested.
     """
     pages = tuple(pages)
     suggested_placements = _suggest_linked_group_placements(entries, decisions, pages)
-    if len(entries) == 1:
-        return suggested_placements
-    return check_with_mal_pages(
-        entries, decisions, suggested_placements, pages
-    ).placements
+    splitting_decision = find_splitting_decision(decisions)
+    if splitting_decision is not None:
+        suggested_placements = {
+            page_key: placement_text
+            for page_key, placement_text in suggested_placements.items()
+            if placement_text == OTHER_WORK
+        } | suggest_part_page_splits(
+            list_placeable_page_keys(combine_group_entries(entries), decisions),
+            splitting_decision,
+            pages,
+        )
+    elif len(entries) > 1:
+        suggested_placements = check_with_mal_pages(
+            entries, decisions, suggested_placements, pages
+        ).placements
+    duplicate_page_keys = list_duplicate_page_keys(decisions)
+    return {
+        page_key: placement_text
+        for page_key, placement_text in suggested_placements.items()
+        if page_key not in duplicate_page_keys
+    }
 
 
 def list_mal_page_review_reasons(
@@ -231,8 +263,6 @@ def _suggest_linked_group_placements(
         own entry's agreeing suggestions.
     """
     combined_entry = combine_group_entries(entries)
-    if len(entries) == 1:
-        return suggest_page_placements(combined_entry, decisions)
     links = ProviderPageLinks(pages, combined_entry.addresses_by_page_key)
     group_page_keys = frozenset(
         map(links.get_current_page_key, combined_entry.addresses_by_page_key)

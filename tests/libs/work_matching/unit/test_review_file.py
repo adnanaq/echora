@@ -38,7 +38,7 @@ def test_review_file_attach_kept_answer_linked_page_answer_comes_back(
     ReviewFile(path).write_cases([answered_case])
     kept_case = ReviewFile(path).attach_kept_answer(linked_page_case)
     assert kept_case.accepted_answer == LinkedPageAddition(
-        "anilist:anime:163794", is_part_page=False
+        "anilist:anime:163794", is_partial_source=False
     )
 
 

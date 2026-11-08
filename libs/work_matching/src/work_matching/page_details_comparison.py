@@ -4,9 +4,11 @@ Providers name types more finely than the seed, and fill years in at different
 times, so a page is compared with an entry through the seed's coarser type, and
 a missing year or unknown type agrees with any.
 
-A page is also compared with the MAL page of the work it may join. A work is
-what MAL lists, so the episode counts and air dates of the two pages show
-whether the page is that whole work, one part of it, or several works.
+A page is also compared with the MAL page of the work it may join. The episode
+counts and air dates of the pages show whether the page is the same work,
+part of the work, covers several works, or neither. The part pages a page
+covers are found by ``covered_part_pages`` with the same episode and air date
+limits.
 """
 
 from datetime import datetime, timedelta
@@ -141,8 +143,8 @@ def compare_page_with_mal_page(
         return MalPageComparison.DETAILS_UNKNOWN
     if not _has_overlapping_air_dates(page, mal_page):
         return MalPageComparison.DETAILS_DIFFER
-    if _is_episode_count_matching(page.episode_count, mal_page.episode_count):
-        if not _is_air_date_matching(page.aired_from, mal_page.aired_from):
+    if is_episode_count_matching(page.episode_count, mal_page.episode_count):
+        if not is_air_date_matching(page.aired_from, mal_page.aired_from):
             return MalPageComparison.DETAILS_DIFFER
         return MalPageComparison.SAME_WORK
     if page.episode_count < mal_page.episode_count:
@@ -162,8 +164,8 @@ def _compare_fewer_episodes(
     Returns:
         The ``MalPageComparison`` classification for the shorter page.
     """
-    page_end_date = _resolve_last_air_date(page)
-    mal_end_date = _resolve_last_air_date(mal_page)
+    page_end_date = resolve_last_air_date(page)
+    mal_end_date = resolve_last_air_date(mal_page)
     if page.aired_from is None or mal_page.aired_from is None or mal_end_date is None:
         return MalPageComparison.DETAILS_UNKNOWN
     is_within_run = (
@@ -199,8 +201,8 @@ def _compare_more_episodes(
     Returns:
         The ``MalPageComparison`` classification for the longer page.
     """
-    page_end_date = _resolve_last_air_date(page)
-    mal_end_date = _resolve_last_air_date(mal_page)
+    page_end_date = resolve_last_air_date(page)
+    mal_end_date = resolve_last_air_date(mal_page)
     is_starting_earlier = _is_after_max_air_date_difference(
         mal_page.aired_from, page.aired_from
     )
@@ -212,7 +214,7 @@ def _compare_more_episodes(
     return MalPageComparison.DETAILS_DIFFER
 
 
-def _is_episode_count_matching(page_count: int, mal_count: int) -> bool:
+def is_episode_count_matching(page_count: int, mal_count: int) -> bool:
     """Report whether two episode counts differ by no more than recaps and specials.
 
     Args:
@@ -242,15 +244,15 @@ def _has_overlapping_air_dates(page: ProviderPage, mal_page: ProviderPage) -> bo
     """
     return not (
         _is_after_max_air_date_difference(
-            page.aired_from, _resolve_last_air_date(mal_page)
+            page.aired_from, resolve_last_air_date(mal_page)
         )
         or _is_after_max_air_date_difference(
-            mal_page.aired_from, _resolve_last_air_date(page)
+            mal_page.aired_from, resolve_last_air_date(page)
         )
     )
 
 
-def _is_air_date_matching(
+def is_air_date_matching(
     first_date: datetime | None, second_date: datetime | None
 ) -> bool:
     """Report whether two air dates are within 31 days or either is unknown.
@@ -288,7 +290,7 @@ def _is_after_max_air_date_difference(
     )
 
 
-def _resolve_last_air_date(page: ProviderPage) -> datetime | None:
+def resolve_last_air_date(page: ProviderPage) -> datetime | None:
     """Return a page's last air date, using the first air date for a single episode.
 
     A provider gives no end date for a single episode, which airs on one day.

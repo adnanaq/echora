@@ -50,20 +50,16 @@ def test_suggest_page_placements_unlinked_page_left_out(
         *matching_case_decisions("ao_haru_ride_ova")[:2]
     )
     assert suggestion == {
-        "anilist:anime:20837": "work 1, part",
-        "anilist:anime:20900": "work 1, part",
         "animeplanet:anime:blue-spring-ride-page-13": "work 1",
         "kitsu:anime:8488": "work 1",
         "mal:anime:24151": "work 1",
     }
 
 
-def test_suggest_page_placements_part_pages_marked_part(part_pages) -> None:
-    assert suggest_page_placements(*part_pages) == {
-        "kitsu:anime:1": "work 1, part",
-        "kitsu:anime:2": "work 1, part",
-        "mal:anime:1": "work 1",
-    }
+def test_suggest_page_placements_part_pages_left_out_of_linked_work(
+    part_pages,
+) -> None:
+    assert suggest_page_placements(*part_pages) == {"mal:anime:1": "work 1"}
 
 
 def test_suggest_page_placements_details_differ_pages_left_out(

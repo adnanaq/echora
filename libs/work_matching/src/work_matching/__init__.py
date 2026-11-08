@@ -5,6 +5,11 @@ this package later. Terms are as in ``GLOSSARY.md``. This library imports
 nothing from enrichment.
 """
 
+from work_matching.answer_placement_check import (
+    PlacementCheck,
+    check_answer_placements,
+    read_answer_placements,
+)
 from work_matching.answer_rules import LinkedPageAnswerRule, PlacementRule
 from work_matching.answer_words import describe_answer_word
 from work_matching.comparable_title import fold_title_for_comparison
@@ -49,12 +54,14 @@ from work_matching.model_linked_page_decision import (
 )
 from work_matching.model_review_choices import (
     ChoiceOption,
-    ChoiceRule,
     GroupPageChoices,
     LinkedPageConflict,
+    WorkPartialSources,
 )
 from work_matching.named_entries import (
     MAX_TARGET_ENTRY_SUGGESTIONS,
+    build_target_entry_suggestion,
+    find_covered_outside_entries,
     list_named_entry_page_keys,
     resolve_named_entries,
     suggest_target_entries,
@@ -66,19 +73,14 @@ from work_matching.page_details_comparison import (
     resolve_seed_type,
 )
 from work_matching.page_placement import (
+    DROPPED,
     FIRST_WORK,
-    MAIN_MARK,
-    NO_MARK,
     OTHER_WORK,
-    PART_MARK,
     PagePlacement,
     PlacedPage,
-    PlacementCheck,
-    check_answer_placements,
     find_page_placement,
     list_placeable_page_keys,
     place_pages_without_review,
-    read_answer_placements,
     read_placement,
     write_placement,
 )
@@ -97,11 +99,13 @@ from work_matching.review_case_reasons import describe_case_reasons
 from work_matching.review_cases import ReviewCase, ReviewCaseKind, TargetEntrySuggestion
 from work_matching.review_choices import (
     choose_group_page_place,
+    choose_partial_sources,
     find_linked_page_conflicts,
     list_group_page_choices,
     list_linked_page_options,
     list_placeable_case_page_keys,
     list_required_page_keys,
+    list_work_partial_sources,
 )
 from work_matching.review_file import (
     DuplicateCaseError,
@@ -123,14 +127,11 @@ from work_matching.work_entry import WorkEntry
 
 __all__ = [
     "FIRST_WORK",
-    "MAIN_MARK",
     "MAX_TARGET_ENTRY_SUGGESTIONS",
-    "NO_MARK",
+    "DROPPED",
     "OTHER_WORK",
-    "PART_MARK",
     "SKIP_ANSWER",
     "ChoiceOption",
-    "ChoiceRule",
     "DoubledProviderDecision",
     "DoubledProviderOutcome",
     "DoubledProviderReviewReason",
@@ -142,6 +143,7 @@ __all__ = [
     "LinkedPageAnswerCheck",
     "LinkedPageAnswerRule",
     "LinkedPageConflict",
+    "WorkPartialSources",
     "LinkedPageDecision",
     "LinkedPageOutcome",
     "LinkedPageReason",
@@ -170,6 +172,7 @@ __all__ = [
     "check_group_answer_placements",
     "check_linked_page_answer",
     "choose_group_page_place",
+    "choose_partial_sources",
     "combine_group_entries",
     "compare_page_with_mal_page",
     "decide_doubled_providers",
@@ -189,6 +192,7 @@ __all__ = [
     "is_page_details_matching",
     "is_review_file_locked",
     "list_group_page_choices",
+    "list_work_partial_sources",
     "list_linked_page_options",
     "list_mal_page_review_reasons",
     "list_named_entry_page_keys",
@@ -211,6 +215,8 @@ __all__ = [
     "suggest_group_page_placements",
     "suggest_linked_page_answer",
     "suggest_page_placements",
+    "build_target_entry_suggestion",
+    "find_covered_outside_entries",
     "suggest_target_entries",
     "write_placement",
 ]

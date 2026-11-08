@@ -15,16 +15,22 @@ Each item gives the rule, then the reason for it.
   sees every problem at once.
 - A move to another seed entry is checked here (``MOVE_NOT_SURE``). The decision
   then says by itself whether the rules can apply it.
+- A decision a person must check carries the pages matching the entry's title,
+  year and type, and season (``doubled_provider_matches``).
 """
 
 from collections.abc import Iterable, Mapping
 from dataclasses import replace
 
-from work_matching.comparable_title import fold_title_for_comparison
+from work_matching.doubled_provider_matches import (
+    find_fetched_pages,
+    find_season_matches,
+    find_title_matches,
+    find_year_type_matches,
+)
 from work_matching.doubled_provider_pages import (
     find_doubled_provider_page_keys,
     has_several_page_ids,
-    resolve_decided_provider,
 )
 from work_matching.known_work_entries import KnownWorkEntries
 from work_matching.model_doubled_provider_decision import (
@@ -130,11 +136,22 @@ class _EntryCheck:
         decision = replace(decision, review_reasons=self._list_review_reasons(decision))
         if not decision.is_review_needed:
             return decision
+        pages_by_current_page_key = self._pages_by_current_page_key
         return replace(
             decision,
-            title_matches=self._find_title_matches(provider, current_page_keys),
-            year_type_matches=self._find_year_type_matches(current_page_keys),
-            season_matches=self._find_season_matches(current_page_keys),
+            title_matches=find_title_matches(
+                self._entry,
+                self._entry_page_keys,
+                provider,
+                current_page_keys,
+                pages_by_current_page_key,
+            ),
+            year_type_matches=find_year_type_matches(
+                self._entry, current_page_keys, pages_by_current_page_key
+            ),
+            season_matches=find_season_matches(
+                self._entry, current_page_keys, pages_by_current_page_key
+            ),
         )
 
     def _sort_pages_by_links(
@@ -417,69 +434,6 @@ class _EntryCheck:
             }.values()
         )
 
-    def _find_title_matches(
-        self, provider: str, page_keys: tuple[str, ...]
-    ) -> tuple[str, ...]:
-        """Return the keys of the pages whose main title matches the entry's titles.
-
-        The entry's titles are its own title and the main titles of its pages
-        from other providers.
-
-        Args:
-            provider: The doubled provider being decided.
-            page_keys: The current keys of the provider's pages.
-
-        Returns:
-            The keys of the fetched pages whose main title matches the entry.
-        """
-        other_provider_page_keys = [
-            page_key
-            for page_key in self._entry_page_keys
-            if resolve_decided_provider(page_key) != provider
-        ]
-        entry_titles = {fold_title_for_comparison(self._entry.title)} | {
-            fold_title_for_comparison(page.titles[0])
-            for page in self._find_fetched_pages(other_provider_page_keys).values()
-            if page.titles
-        }
-        return tuple(
-            page_key
-            for page_key, page in self._find_fetched_pages(page_keys).items()
-            if page.titles and fold_title_for_comparison(page.titles[0]) in entry_titles
-        )
-
-    def _find_year_type_matches(self, page_keys: tuple[str, ...]) -> tuple[str, ...]:
-        """Return the keys of the pages whose year and type agree with the entry's.
-
-        Args:
-            page_keys: The current keys of one doubled provider's pages.
-
-        Returns:
-            The keys of the fetched pages that agree, in the order given.
-        """
-        return tuple(
-            page_key
-            for page_key, page in self._find_fetched_pages(page_keys).items()
-            if is_page_details_matching(page, self._entry)
-        )
-
-    def _find_season_matches(self, page_keys: tuple[str, ...]) -> tuple[str, ...]:
-        """Return the keys of the pages in the entry's season, or empty without a season.
-
-        Args:
-            page_keys: The current keys of one doubled provider's pages.
-
-        Returns:
-            The keys of the fetched pages matching the entry's season.
-        """
-        if not self._entry.season:
-            return ()
-        return tuple(
-            page_key
-            for page_key, page in self._find_fetched_pages(page_keys).items()
-            if page.season == self._entry.season
-        )
-
     def _is_each_page_whole_work(self, page_keys: list[str]) -> bool:
         """Report whether pages of one work each cover all of it, from their details.
 
@@ -495,7 +449,9 @@ class _EntryCheck:
         Returns:
             True when the details agree, so the pages are duplicates.
         """
-        fetched_pages = self._find_fetched_pages(page_keys).values()
+        fetched_pages = find_fetched_pages(
+            page_keys, self._pages_by_current_page_key
+        ).values()
         episode_counts = {
             page.episode_count
             for page in fetched_pages
@@ -519,22 +475,9 @@ class _EntryCheck:
         Returns:
             True when all known years and seed types agree.
         """
-        fetched_pages = self._find_fetched_pages(page_keys).values()
+        fetched_pages = find_fetched_pages(
+            page_keys, self._pages_by_current_page_key
+        ).values()
         return is_year_matching(
             *(page.year for page in fetched_pages)
         ) and is_type_matching(*map(resolve_seed_type, fetched_pages))
-
-    def _find_fetched_pages(self, page_keys: Iterable[str]) -> dict[str, ProviderPage]:
-        """Find the fetched details of these pages, leaving out pages never fetched.
-
-        Args:
-            page_keys: The current keys of the pages to look up.
-
-        Returns:
-            Each fetched page by its key, in the order given.
-        """
-        return {
-            page_key: page
-            for page_key in page_keys
-            if (page := self._pages_by_current_page_key.get(page_key))
-        }

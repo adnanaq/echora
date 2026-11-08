@@ -15,7 +15,8 @@ Each item reads ``<check>: <outcome>. <reason for the check>``.
 - Two or more entries link the page: review. The page has no single entry to
   join.
 - The entry holds a page of the page's provider: review. Adding the page would
-  make a doubled provider; the page may be a part page.
+  make a doubled provider; the page may cover the entry's work together with
+  other works.
 - The entry links two or more such pages of one provider: review. Adding each
   page would make a doubled provider.
 - The year or type differs from the entry's: review. The link may be a wrong
@@ -35,9 +36,11 @@ Each item reads ``<answer>: <effect>``.
 
 - ``add``: add the page to the one linking entry, which must hold no page of the
   page's provider.
-- ``add as part``: add the page as a part page of that entry's work; the entry
-  may already hold pages of the provider.
-- ``add to <reference page>``, ``add as part to <reference page>``: do the same
+- ``add as partial``: add the page as a partial source of that entry, because
+  the page covers the entry's work together with other works. The entry may
+  already hold a page of the provider, since enrichment never fetches a
+  partial source.
+- ``add to <reference page>``, ``add as partial to <reference page>``: do the same
   for the named linking entry; required when several entries link the page.
 - ``skip``: leave the page out.
 """
@@ -69,11 +72,11 @@ from work_matching.work_entry import WorkEntry
 # answers invalid.
 SKIP_ANSWER: Final = "skip"
 WHOLE_PAGE_ANSWER: Final = "add"
-PART_PAGE_ANSWER: Final = "add as part"
+PARTIAL_SOURCE_ANSWER: Final = "add as partial"
 # An answer adding the page, optionally naming the linking entry it joins. The
-# longer word comes first, so "add as part" is never read as "add".
+# longer word comes first, so "add as partial" is never read as "add".
 _LINKED_PAGE_ANSWER_TEXT: Final = re.compile(
-    rf"(?P<addition>{re.escape(PART_PAGE_ANSWER)}|{re.escape(WHOLE_PAGE_ANSWER)})"
+    rf"(?P<addition>{re.escape(PARTIAL_SOURCE_ANSWER)}|{re.escape(WHOLE_PAGE_ANSWER)})"
     r"(?: to (?P<entry_reference_page>\S+))?"
 )
 
@@ -212,15 +215,16 @@ def decide_linked_page(
 def suggest_linked_page_answer(
     decision: LinkedPageDecision, page: ProviderPage
 ) -> dict[str, str]:
-    """Suggest ``add as part`` for a page that looks like one season of its entry's work.
+    """Suggest ``add as partial`` for a page that looks like it covers several works.
 
     The suggestion needs all of these:
 
     - one entry links the page;
     - the page's year and type agree with the entry's;
-    - the page lists fewer episodes than the entry.
+    - the page lists more episodes than the entry.
 
-    Providers that divide a run into seasons list fewer episodes per page.
+    A provider that lists a run as one page lists more episodes than a provider
+    dividing it, so the page covers the entry's work together with other works.
     Without a suggestion, a person starts from the evidence alone.
 
     Args:
@@ -233,13 +237,13 @@ def suggest_linked_page_answer(
     if len(decision.linking_entries) != 1:
         return {}
     [entry] = decision.linking_entries
-    is_fewer_episodes = (
+    is_more_episodes = (
         page.episode_count is not None
         and decision.entry_episode_count is not None
-        and page.episode_count < decision.entry_episode_count
+        and page.episode_count > decision.entry_episode_count
     )
-    if is_fewer_episodes and is_page_details_matching(page, entry):
-        return {decision.page_key: PART_PAGE_ANSWER}
+    if is_more_episodes and is_page_details_matching(page, entry):
+        return {decision.page_key: PARTIAL_SOURCE_ANSWER}
     return {}
 
 
@@ -303,13 +307,15 @@ def check_linked_page_answer(
                 else LinkedPageAnswerRule.TARGET_ENTRY_NOT_LINKING,
             ),
         )
-    is_part_page = answer_match["addition"] == PART_PAGE_ANSWER
-    if not is_part_page and target_entry.has_page_of_same_provider(decision.page_key):
+    is_partial_source = answer_match["addition"] == PARTIAL_SOURCE_ANSWER
+    if not is_partial_source and target_entry.has_page_of_same_provider(
+        decision.page_key
+    ):
         return LinkedPageAnswerCheck(
             None, (LinkedPageAnswerRule.PROVIDER_ALREADY_IN_ENTRY,)
         )
     return LinkedPageAnswerCheck(
-        LinkedPageAddition(target_entry.reference_page_key, is_part_page), ()
+        LinkedPageAddition(target_entry.reference_page_key, is_partial_source), ()
     )
 
 
