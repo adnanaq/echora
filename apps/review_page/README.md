@@ -349,9 +349,12 @@ implementation and the only module in `review_page` that imports
 ### Server and browser
 
 - **Server.** FastAPI with Jinja2 templates. The server holds no session state
-  between requests, so server restarts never lose state. The review cases are
-  converted once per version of `review.jsonl` (`ReviewCaseLoader`) and read
-  again whenever the file changes, so every page shows what the file holds.
+  between requests, so server restarts never lose state. `review.jsonl` is read
+  again whenever it changes, so every page shows what the file holds, but only
+  its new or changed lines are parsed and converted (`ReviewCaseLoader`): a
+  save rewrites one line, and a run writes an unchanged case as the same text.
+  `load_cases` likewise converts only the case messages it has not converted
+  before.
 - **Fragments.** htmx updates individual page regions (toolbar, run panel, case
   list, case panel, corrections list, and correction panel). Interactive controls
   carry deterministic element IDs (`build_element_id`) to preserve focus across
@@ -408,7 +411,7 @@ directories including subprocess execution.
 | `review_case_source.py`        | `ReviewCaseSource`: abstract interface for reading cases and corrections, saving answers, and managing pipeline runs.               |
 | `file_review_case_source.py`   | `FileReviewCaseSource`: local file-backed `ReviewCaseSource` implementation and `seed_cleaning` protobuf converters.                |
 | `seed_cleaning_run_process.py` | `SeedCleaningRunProcess`: starts `clean_seed.py --no-fetch` in its own process group and tracks its process ID, exit code and log.  |
-| `review_case_loader.py`        | `ReviewCaseLoader`: reads `review.jsonl` once per file version, keeping its cases and their messages until the file changes.        |
+| `review_case_loader.py`        | `ReviewCaseLoader`: reads `review.jsonl` when it changes, parsing and converting only its new or changed lines.                     |
 | `seed_entries.py`              | `load_seed_entries`: loads and caches known seed entries from the active seed file when validating `other work` targets.            |
 | `answer_checks.py`             | Validates candidate answers against placement constraints and checks optimistic concurrency.                                        |
 | `review_case_messages.py`      | Conversions between `work_matching.ReviewCase` and its protobuf message, plus ordered mapping helpers.                              |
