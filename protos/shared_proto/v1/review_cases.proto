@@ -209,9 +209,6 @@ message SeedCleaningRunResult {
 // the source fills change and reason_sentence, so the page shows them without
 // knowing how a source decides them.
 message SeedCorrection {
-  // The main and part marks, replaced by partial sources and dropped pages.
-  reserved 5, 10;
-  reserved "is_main_page", "is_part_page";
   string entry_reference_page = 1;
   string page_key = 2;
   string address = 3;
