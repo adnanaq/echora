@@ -767,6 +767,55 @@ def test_correct_entry_groups_second_pass_answer_naming_moved_page_joins_its_new
     ] == [(None, "mal:anime:9 mal:anime:9")]
 
 
+def test_correct_entry_groups_second_pass_dropped_moved_in_page_goes_nowhere(
+    store, tmp_path
+) -> None:
+    works = KnownWorkEntriesFromSeed(
+        [
+            _seed_entry("Show", MAL, KITSU_ONE),
+            _seed_entry("Show Movie", TARGET_MAL, KITSU_TWO),
+        ]
+    )
+    corrected_seed = build_corrected_seed(
+        [
+            SeedCorrection(
+                entry_reference_page="mal:anime:9",
+                page_key="kitsu:anime:2",
+                address=KITSU_TWO,
+                placement_word="other work",
+                target_entry_reference_page="mal:anime:1",
+                reason="review answer",
+            )
+        ],
+        works,
+        store,
+    )
+    corrected_works = corrected_seed.known_work_entries
+    entry = corrected_works.find_by_page_key("mal:anime:1")
+    store.add_pages(_page(KITSU_ONE, MAL), _page(KITSU_TWO, MAL))
+    path = tmp_path / "review.jsonl"
+    [case] = correct_entry_groups(
+        [EntryGroup((entry,))], store, corrected_works, ReviewFile(path), corrected_seed
+    ).review_cases
+    answer = {"kitsu:anime:1": "work 1", "kitsu:anime:2": "dropped"}
+    path.write_text(
+        case.model_copy(update={"answer": answer}).model_dump_json() + "\n",
+        encoding="utf-8",
+    )
+    corrections = correct_entry_groups(
+        [EntryGroup((entry,))], store, corrected_works, ReviewFile(path), corrected_seed
+    ).corrections
+    assert [
+        (
+            correction.is_dropped_page,
+            correction.target_entry_reference_page,
+            correction.new_entry_key,
+        )
+        for correction in corrections
+        if correction.page_key == "kitsu:anime:2"
+    ] == [(True, None, None)]
+
+
 def test_correct_entry_groups_answer_naming_entry_outside_seed_left_open(
     series_works, store, tmp_path
 ) -> None:

@@ -105,8 +105,9 @@ def find_page_destination(
 ) -> PageDestination:
     """Find the entry a placed page ends up in, as its correction names it.
 
-    A page staying in its entry still moves when that entry is not the seed
-    entry listing the page, such as a page the first pass moved in.
+    A dropped page goes nowhere, since its correction takes it out of every
+    entry. A page staying in its entry still moves when that entry is not the
+    seed entry listing the page, such as a page the first pass moved in.
 
     Args:
         entry: The entry the page is listed in.
@@ -118,8 +119,11 @@ def find_page_destination(
 
     Returns:
         The seed entry the page joins, or the new entry key it shares; both
-        fields None when the page stays in the seed entry listing it.
+        fields None when the page is dropped or stays in the seed entry
+        listing it.
     """
+    if placement.placement_word == DROPPED:
+        return PageDestination(None, None)
     destination = _find_placed_page_destination(
         entry, page_key, placement, current_key, group_placement
     )
@@ -178,14 +182,12 @@ def _find_placed_page_destination(
 
     Returns:
         The seed entry the page joins, or the new entry key it shares; None
-        when the page is dropped or stays in its entry.
+        when the page stays in its entry.
     """
     if placement.placement_word == OTHER_WORK:
         return _find_other_work_destination(
             entry, page_key, current_key, group_placement
         )
-    if placement.placement_word == DROPPED:
-        return None
     surviving_reference_page = group_placement.surviving_reference_page_by_work.get(
         placement.placement_word
     )
