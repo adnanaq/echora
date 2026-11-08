@@ -27,6 +27,7 @@ from enrichment.sources.base.exceptions import (
     ServiceRateLimitedError,
 )
 from enrichment.sources.base.framework.repository import FileRepository, NullRepository
+from enrichment.sources.base.network_errors import is_aiohttp_network_error
 from http_cache import HTTPCacheManager, configure_cache
 from http_cache.aiohttp_adapter import CachedAiohttpSession
 
@@ -240,10 +241,7 @@ class AniListHelper(BaseEnrichmentHelper):
             operation=lambda: self._execute_request(query, variables),
             max_retries=3,
             retry_delay=1.0,
-            is_transient_error=lambda e: (
-                isinstance(e, (aiohttp.ClientError, json.JSONDecodeError, TimeoutError))
-                and not isinstance(e, aiohttp.ClientResponseError)
-            ),
+            is_transient_error=_is_transient_anilist_error,
         )
 
     def _get_media_query_fields(self) -> str:
@@ -638,3 +636,33 @@ async def main() -> int:
 
 if __name__ == "__main__":  # pragma: no cover
     sys.exit(asyncio.run(main()))
+
+
+def _is_transient_anilist_error(error: Exception) -> bool:
+    """Check whether an AniList request error is worth another attempt.
+
+    ``_execute_request`` wraps a failed request in ``ServiceNetworkError``, so
+    the error that decides is the one it wraps. Each rule reads
+    ``<error>: <outcome>``.
+
+    - A network error, a timeout, or a response body that is not valid JSON,
+      such as a response cut off on the way: retried.
+    - An HTTP 5xx response, which ``_execute_request`` passes on unwrapped:
+      retried, since the server is briefly failing.
+    - Any other error, such as a 4xx response, a GraphQL error, or a wrapped
+      error given only as text: not retried.
+
+    Args:
+        error: The error the request raised.
+
+    Returns:
+        True when another attempt can succeed.
+    """
+    if isinstance(error, aiohttp.ClientResponseError):
+        return error.status >= 500
+    cause = error.cause if isinstance(error, ServiceNetworkError) else error
+    if not isinstance(cause, Exception):
+        return False
+    return is_aiohttp_network_error(cause) or isinstance(
+        cause, (json.JSONDecodeError, TimeoutError)
+    )
