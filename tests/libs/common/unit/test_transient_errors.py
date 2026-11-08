@@ -46,6 +46,8 @@ def test_is_transient_service_error_retryable_error_returns_true(error) -> None:
         _StatusError(400),
         _StatusCodeError(409),
         Exception("invalid payload schema"),
+        ValueError("invalid connection string"),
+        KeyError("network"),
     ],
 )
 def test_is_transient_service_error_lasting_error_returns_false(error) -> None:

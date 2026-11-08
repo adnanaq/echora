@@ -16,11 +16,15 @@ client. Each rule reads ``<error>: <outcome>. <reason>``.
   that already exists, so sending it again gives the same answer.
 - Message naming a timeout, connection, network, temporary or unavailable
   fault: retried. Some client errors carry no status, only this text.
+- ``ValueError``, ``TypeError``, ``LookupError`` or ``AttributeError`` without
+  a status: not retried, whatever the message says. These report wrong input
+  or wrong code, such as an invalid connection string, which no retry fixes.
 """
 
 from typing import Final
 
 RETRYABLE_HTTP_STATUS_CODES: Final = frozenset({408, 425, 429, 500, 502, 503, 504})
+_WRONG_INPUT_ERROR_TYPES: Final = (ValueError, TypeError, LookupError, AttributeError)
 _TRANSIENT_MESSAGE_WORDS: Final = (
     "timeout",
     "connection",
@@ -53,6 +57,8 @@ def is_transient_service_error(
     status_code = _find_status_code(error)
     if status_code is not None:
         return status_code in RETRYABLE_HTTP_STATUS_CODES
+    if isinstance(error, _WRONG_INPUT_ERROR_TYPES):
+        return False
     error_message = str(error).lower()
     return any(word in error_message for word in _TRANSIENT_MESSAGE_WORDS)
 
