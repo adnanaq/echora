@@ -18,10 +18,9 @@ which keys a seed entry holds and which pages are dead. Each rule reads
 - A valid key's option shows the seed entry holding it: its title, and its
   reference page when the key is another page of the entry. The reviewer then
   sees which work a pasted address names before choosing it.
-- A key whose entry the picker already shows as a suggestion for the typed
-  text gets no option, so the entry is offered once. The picker shows a
-  suggestion when its title and reference page contain the typed text,
-  ignoring case.
+- The picker hides that option while it shows the same entry as a suggestion
+  for the typed text, so the entry is offered once. The picker decides this
+  itself, since only the picker's own search tells which suggestions are shown.
 """
 
 from typing import Annotated
@@ -29,7 +28,6 @@ from typing import Annotated
 from fastapi import APIRouter, Form, Request, Response
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
-from review_page.case_panel_tables import list_target_entry_options
 from review_page.models import InvalidNamedPageKeyReason
 from review_page.review_case_messages import convert_message_to_case
 from review_page.review_case_source import ReviewCaseSource
@@ -87,13 +85,11 @@ class NamedEntryRoutes:
         named_entry_page_key = resolve_page_key(typed_text)
         case = self._load_case(case_name)
         invalid_reason = self._find_invalid_reason(named_entry_page_key, case)
-        named_entry = (
-            None if invalid_reason else self._find_named_entry(named_entry_page_key)
+        named_entry_suggestion = (
+            None
+            if invalid_reason
+            else self._find_named_entry_suggestion(named_entry_page_key)
         )
-        if named_entry and _is_suggestion_shown(
-            named_entry, typed_text, page_key, case
-        ):
-            return HTMLResponse("")
         return self._templates.TemplateResponse(
             request,
             "named_entry_option.html",
@@ -101,7 +97,7 @@ class NamedEntryRoutes:
                 "page_key": page_key,
                 "named_entry_page_key": named_entry_page_key,
                 "invalid_reason": invalid_reason,
-                "named_entry": named_entry,
+                "named_entry_suggestion": named_entry_suggestion,
             },
         )
 
@@ -142,7 +138,7 @@ class NamedEntryRoutes:
             named_entry_page_key
         )
 
-    def _find_named_entry(
+    def _find_named_entry_suggestion(
         self, named_entry_page_key: str
     ) -> TargetEntrySuggestion | None:
         """Find the seed entry holding a typed key.
@@ -154,9 +150,9 @@ class NamedEntryRoutes:
             The seed entry's reference page, title and providers, or None when
             the source cannot tell, such as without a seed file.
         """
-        entry_message = self._source.find_named_entries([named_entry_page_key]).get(
-            named_entry_page_key
-        )
+        entry_message = self._source.find_named_entry_suggestions(
+            [named_entry_page_key]
+        ).get(named_entry_page_key)
         if entry_message is None:
             return None
         return TargetEntrySuggestion(
@@ -164,31 +160,3 @@ class NamedEntryRoutes:
             title=entry_message.title,
             providers=tuple(entry_message.providers),
         )
-
-
-def _is_suggestion_shown(
-    named_entry: TargetEntrySuggestion,
-    typed_text: str,
-    page_key: str,
-    case: ReviewCase | None,
-) -> bool:
-    """Report whether the picker already shows a seed entry as a suggestion for the typed text.
-
-    Args:
-        named_entry: The seed entry holding the typed key.
-        typed_text: The text typed in the picker's search box.
-        page_key: The page whose ``other work`` target is being chosen.
-        case: The open case with its suggestions, or None when unknown.
-
-    Returns:
-        True when the entry is one of the page's suggestions and its title and
-        reference page contain the typed text, ignoring case.
-    """
-    if case is None:
-        return False
-    return any(
-        suggestion.entry_reference_page == named_entry.entry_reference_page
-        and typed_text.lower()
-        in f"{suggestion.title} {suggestion.entry_reference_page}".lower()
-        for suggestion in list_target_entry_options(case, page_key)
-    )

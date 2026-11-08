@@ -223,15 +223,15 @@ def test_file_review_case_source_find_invalid_named_page_keys_tells_dead_from_un
     }
 
 
-def test_file_review_case_source_find_named_entries_gives_seed_entry_of_each_key(
+def test_file_review_case_source_find_named_entry_suggestions_gives_seed_entry_of_each_key(
     seed_source,
 ) -> None:
-    named_entries = seed_source.find_named_entries(
+    named_entry_suggestions = seed_source.find_named_entry_suggestions(
         ["mal:anime:21273", "mal:anime:99999"]
     )
     assert {
         page_key: json_format.MessageToDict(entry_message)
-        for page_key, entry_message in named_entries.items()
+        for page_key, entry_message in named_entry_suggestions.items()
     } == {
         "mal:anime:21273": {
             "entryReferencePage": "mal:anime:21273",

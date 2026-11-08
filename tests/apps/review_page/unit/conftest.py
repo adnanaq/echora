@@ -105,7 +105,9 @@ class FakeReviewCaseSource(ReviewCaseSource):
         self.corrections: list[review_cases_pb2.SeedCorrection] = []
         self.checked_entries: list[review_cases_pb2.CheckedEntry] = []
         self.invalid_named_page_key_reasons: dict[str, InvalidNamedPageKeyReason] = {}
-        self.named_entries: dict[str, review_cases_pb2.TargetEntrySuggestion] = {}
+        self.named_entry_suggestions: dict[
+            str, review_cases_pb2.TargetEntrySuggestion
+        ] = {}
 
     def list_cases(self) -> list[review_cases_pb2.ReviewCase]:
         if self.is_review_file_unreadable:
@@ -128,13 +130,13 @@ class FakeReviewCaseSource(ReviewCaseSource):
             if page_key in self.invalid_named_page_key_reasons
         }
 
-    def find_named_entries(
+    def find_named_entry_suggestions(
         self, page_keys: Sequence[str]
     ) -> dict[str, review_cases_pb2.TargetEntrySuggestion]:
         return {
-            page_key: self.named_entries[page_key]
+            page_key: self.named_entry_suggestions[page_key]
             for page_key in page_keys
-            if page_key in self.named_entries
+            if page_key in self.named_entry_suggestions
         }
 
     def list_corrections(self) -> list[review_cases_pb2.SeedCorrection]:

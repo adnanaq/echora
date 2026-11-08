@@ -279,6 +279,18 @@ document.addEventListener("alpine:init", () => {
       return query === "" || searchText.toLowerCase().includes(query);
     },
 
+    // A typed key's option names a seed entry, and stays hidden while the
+    // search shows the same entry as a suggestion, so the entry is offered once.
+    isSuggestionShown(entryReferencePage) {
+      return [
+        ...this.$refs.options.querySelectorAll("[data-entry-reference-page]"),
+      ].some(
+        (option) =>
+          option.dataset.entryReferencePage === entryReferencePage &&
+          this.isShown(option.dataset.searchText),
+      );
+    },
+
     // The focus plugin counts hidden buttons as focusable, so the arrow keys
     // get only the options the search leaves visible: option buttons, or the
     // checkboxes of a picker that adds several at once.

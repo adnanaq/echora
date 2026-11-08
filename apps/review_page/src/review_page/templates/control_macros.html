@@ -110,7 +110,9 @@
       {% for entry in row.target_entry_options %}
       <button type="button" role="option" aria-selected="{{ (entry.entry_reference_page == named_key) | tojson }}"
               class="control-picker-option{% if entry.entry_reference_page == named_key %} is-chosen{% endif %}"
-              x-show="isShown({{ (entry.title ~ ' ' ~ entry.entry_reference_page) | tojson | forceescape }})"
+              data-entry-reference-page="{{ entry.entry_reference_page }}"
+              data-search-text="{{ entry.title ~ ' ' ~ entry.entry_reference_page }}"
+              x-show="isShown($el.dataset.searchText)"
               hx-post="/fragments/choice" hx-target="#case-panel" hx-swap="innerHTML"
               hx-vals='{{ {"page_key": row.page_key, "work": "other work", "named_entry": entry.entry_reference_page} | tojson }}'>
         <span class="control-picker-option-title">{{ entry.title }}</span>

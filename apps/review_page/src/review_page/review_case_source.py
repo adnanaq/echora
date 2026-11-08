@@ -141,7 +141,7 @@ class ReviewCaseSource(ABC):
         """
 
     @abstractmethod
-    def find_named_entries(
+    def find_named_entry_suggestions(
         self, page_keys: Sequence[str]
     ) -> dict[str, review_cases_pb2.TargetEntrySuggestion]:
         """Find the seed entry holding each page key an answer can name after ``other work``.

@@ -261,7 +261,7 @@ class FileReviewCaseSource(ReviewCaseSource):
                 invalid_reasons[page_key] = InvalidNamedPageKeyReason.UNKNOWN_PAGE
         return invalid_reasons
 
-    def find_named_entries(
+    def find_named_entry_suggestions(
         self, page_keys: Sequence[str]
     ) -> dict[str, review_cases_pb2.TargetEntrySuggestion]:
         """Find the seed entry holding each page key, from the active seed file.

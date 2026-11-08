@@ -96,7 +96,7 @@ def build_page_rows(
             and choices.is_required
             and choices.work is None,
             linked_pages=_list_page_links(pages_by_key.get(choices.page_key)),
-            target_entry_options=list_target_entry_options(case, choices.page_key),
+            target_entry_options=_list_target_entry_options(case, choices.page_key),
             named_entry_address=build_page_address(choices.named_entry_page_key)
             if choices.named_entry_page_key
             else None,
@@ -108,7 +108,7 @@ def build_page_rows(
     )
 
 
-def list_target_entry_options(
+def _list_target_entry_options(
     case: ReviewCase, page_key: str
 ) -> tuple[TargetEntrySuggestion, ...]:
     """List the suggested seed entries a page placed in ``other work`` can join.
