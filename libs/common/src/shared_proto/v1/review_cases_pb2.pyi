@@ -255,7 +255,7 @@ class SeedCleaningRunResult(_message.Message):
     def __init__(self, seed_file: _Optional[str] = ..., started_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., finished_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., correction_counts: _Optional[_Iterable[_Union[NamedCount, _Mapping]]] = ..., corrected_entry_counts: _Optional[_Iterable[_Union[NamedCount, _Mapping]]] = ..., linked_page_counts: _Optional[_Iterable[_Union[NamedCount, _Mapping]]] = ..., rejected_answer_case_names: _Optional[_Iterable[str]] = ..., conflicting_linked_page_keys: _Optional[_Iterable[str]] = ..., unused_answer_case_names: _Optional[_Iterable[str]] = ..., case_names: _Optional[_Iterable[str]] = ..., new_case_names: _Optional[_Iterable[str]] = ..., original_answers: _Optional[_Mapping[str, _struct_pb2.Value]] = ...) -> None: ...
 
 class SeedCorrection(_message.Message):
-    __slots__ = ("entry_reference_page", "page_key", "address", "placement_word", "renamed_to", "target_entry_reference_page", "new_entry_key", "is_added_page", "is_anime_id_page", "reason", "change", "reason_sentence", "is_from_answer", "named_entry_page_key", "is_dead_page", "is_dropped_page", "partial_entry_reference_pages", "partial_new_entry_keys")
+    __slots__ = ("entry_reference_page", "page_key", "address", "placement_word", "renamed_to", "target_entry_reference_page", "new_entry_key", "is_added_page", "is_anime_id_page", "reason", "named_entry_page_key", "is_dead_page", "is_dropped_page", "partial_entry_reference_pages", "partial_new_entry_keys", "change", "reason_sentence", "is_from_answer")
     ENTRY_REFERENCE_PAGE_FIELD_NUMBER: _ClassVar[int]
     PAGE_KEY_FIELD_NUMBER: _ClassVar[int]
     ADDRESS_FIELD_NUMBER: _ClassVar[int]
@@ -266,14 +266,14 @@ class SeedCorrection(_message.Message):
     IS_ADDED_PAGE_FIELD_NUMBER: _ClassVar[int]
     IS_ANIME_ID_PAGE_FIELD_NUMBER: _ClassVar[int]
     REASON_FIELD_NUMBER: _ClassVar[int]
-    CHANGE_FIELD_NUMBER: _ClassVar[int]
-    REASON_SENTENCE_FIELD_NUMBER: _ClassVar[int]
-    IS_FROM_ANSWER_FIELD_NUMBER: _ClassVar[int]
     NAMED_ENTRY_PAGE_KEY_FIELD_NUMBER: _ClassVar[int]
     IS_DEAD_PAGE_FIELD_NUMBER: _ClassVar[int]
     IS_DROPPED_PAGE_FIELD_NUMBER: _ClassVar[int]
     PARTIAL_ENTRY_REFERENCE_PAGES_FIELD_NUMBER: _ClassVar[int]
     PARTIAL_NEW_ENTRY_KEYS_FIELD_NUMBER: _ClassVar[int]
+    CHANGE_FIELD_NUMBER: _ClassVar[int]
+    REASON_SENTENCE_FIELD_NUMBER: _ClassVar[int]
+    IS_FROM_ANSWER_FIELD_NUMBER: _ClassVar[int]
     entry_reference_page: str
     page_key: str
     address: str
@@ -284,15 +284,15 @@ class SeedCorrection(_message.Message):
     is_added_page: bool
     is_anime_id_page: bool
     reason: str
-    change: str
-    reason_sentence: str
-    is_from_answer: bool
     named_entry_page_key: str
     is_dead_page: bool
     is_dropped_page: bool
     partial_entry_reference_pages: _containers.RepeatedScalarFieldContainer[str]
     partial_new_entry_keys: _containers.RepeatedScalarFieldContainer[str]
-    def __init__(self, entry_reference_page: _Optional[str] = ..., page_key: _Optional[str] = ..., address: _Optional[str] = ..., placement_word: _Optional[str] = ..., renamed_to: _Optional[str] = ..., target_entry_reference_page: _Optional[str] = ..., new_entry_key: _Optional[str] = ..., is_added_page: _Optional[bool] = ..., is_anime_id_page: _Optional[bool] = ..., reason: _Optional[str] = ..., change: _Optional[str] = ..., reason_sentence: _Optional[str] = ..., is_from_answer: _Optional[bool] = ..., named_entry_page_key: _Optional[str] = ..., is_dead_page: _Optional[bool] = ..., is_dropped_page: _Optional[bool] = ..., partial_entry_reference_pages: _Optional[_Iterable[str]] = ..., partial_new_entry_keys: _Optional[_Iterable[str]] = ...) -> None: ...
+    change: str
+    reason_sentence: str
+    is_from_answer: bool
+    def __init__(self, entry_reference_page: _Optional[str] = ..., page_key: _Optional[str] = ..., address: _Optional[str] = ..., placement_word: _Optional[str] = ..., renamed_to: _Optional[str] = ..., target_entry_reference_page: _Optional[str] = ..., new_entry_key: _Optional[str] = ..., is_added_page: _Optional[bool] = ..., is_anime_id_page: _Optional[bool] = ..., reason: _Optional[str] = ..., named_entry_page_key: _Optional[str] = ..., is_dead_page: _Optional[bool] = ..., is_dropped_page: _Optional[bool] = ..., partial_entry_reference_pages: _Optional[_Iterable[str]] = ..., partial_new_entry_keys: _Optional[_Iterable[str]] = ..., change: _Optional[str] = ..., reason_sentence: _Optional[str] = ..., is_from_answer: _Optional[bool] = ...) -> None: ...
 
 class CheckedEntry(_message.Message):
     __slots__ = ("entry_reference_page", "title", "type", "year")
