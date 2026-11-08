@@ -189,7 +189,9 @@ starts from the original seed file and reapplies all saved answers.
     entry.
   - In the Works table, each work's partial sources show as chips, removed
     with their ×, and "Add partial source" opens a searchable picker of the
-    pages that are a source of another work. Saving validates the named entry against the seed file, which
+    pages that are a source of another work. Each option shows the page key,
+    then the page's title, the work it is in, and its type, episodes and
+    start date, or that the page was not fetched. Saving validates the named entry against the seed file, which
     is loaded on first use and cached while its modification time and size
     remain unchanged.
   - "What the choices mean" beneath the table explains each placement value.
