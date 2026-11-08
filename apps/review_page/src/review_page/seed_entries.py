@@ -13,12 +13,19 @@ Each caching rule reads `<rule>: <reason>`:
   in-memory lookup while a replaced seed file is reloaded automatically.
 - Single-release retention: Only the most recently loaded seed release is
   retained in the LRU cache so older releases are garbage-collected.
+- One load at a time: Requests run in the server's thread pool, and the cache
+  alone does not stop two requests that miss it together from both parsing
+  the file. A lock lets one request load the release while the others wait and
+  then share it.
 """
 
+import threading
 from functools import lru_cache
 from pathlib import Path
 
 from work_matching import KnownWorkEntriesFromSeed
+
+_SEED_LOAD_LOCK = threading.Lock()
 
 
 def load_seed_entries(seed_file: Path) -> KnownWorkEntriesFromSeed:
@@ -30,7 +37,8 @@ def load_seed_entries(seed_file: Path) -> KnownWorkEntriesFromSeed:
     Returns:
         The indexed lookup of known work entries from the seed file.
     """
-    return _load_seed_entries_at(seed_file, seed_file.stat().st_mtime_ns)
+    with _SEED_LOAD_LOCK:
+        return _load_seed_entries_at(seed_file, seed_file.stat().st_mtime_ns)
 
 
 @lru_cache(maxsize=1)
