@@ -103,6 +103,15 @@ def _list_source_files() -> list[Path]:
     return sorted(path for path in source_files if "_pb2" not in path.name)
 
 
+def _is_model_file(path: Path) -> bool:
+    return (
+        path.name == "models.py"
+        or path.name.startswith("model_")
+        or path.stem.endswith("_models")
+        or path.parent.name == "models"
+    )
+
+
 def _find_docstring_node(body: list[ast.stmt]) -> ast.Expr | None:
     if (
         body
@@ -145,7 +154,7 @@ def _list_function_line_counts() -> list:
 
 @pytest.mark.parametrize(
     "path",
-    _list_source_files(),
+    [path for path in _list_source_files() if not _is_model_file(path)],
     ids=lambda path: str(path.relative_to(REPO_ROOT)),
 )
 def test_source_file_within_line_limit(path: Path) -> None:

@@ -131,7 +131,7 @@ uv run ty check libs/http_cache/
 - Focus on making code expressive, cohesive, and efficient using appropriate data structures.
 - Always use plain language and established project glossary terms; avoid terse shorthands, complex jargon, metaphorical language, or made-up terminology.
 - Never introduce legacy aliases, dual keyword arguments, or backward-compatibility shims (`from_form_field = parse_form_field`, `page_list_rows = paginate_rows`). Refactor definitions, call sites, and test cases directly to avoid accumulating technical debt.
-- A source file holds at most 500 lines and a function at most 50, not counting the module or function docstring. `tests/test_docstrings.py` checks both across `apps/`, `libs/` and `scripts/`.
+- A source file holds at most 500 lines and a function at most 50, not counting the module or function docstring. Model files (`model_<concept>.py`, `<provider>_models.py`, `models.py` and files in a `models/` package) have no file limit, since a model's fields belong together, but their functions keep the 50-line limit. `tests/test_docstrings.py` checks both across `apps/`, `libs/` and `scripts/`.
 
 #### Naming Conventions
 
