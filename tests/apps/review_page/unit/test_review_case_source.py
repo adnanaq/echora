@@ -14,20 +14,20 @@ def test_load_cases_returns_source_cases_as_models(source) -> None:
     assert load_cases(source) == list(source.cases.values())
 
 
-def test_converted_review_cases_same_messages_reuse_models(review_cases) -> None:
+def test_converted_review_cases_converts_only_new_messages(review_cases) -> None:
     case_messages = [convert_case_to_message(case) for case in review_cases.values()]
     converted_review_cases = ConvertedReviewCases()
     first_cases = converted_review_cases.convert_cases(case_messages)
-    same_message_cases = converted_review_cases.convert_cases(list(case_messages))
-    new_message_cases = converted_review_cases.convert_cases(
-        [convert_case_to_message(case) for case in review_cases.values()]
+    new_case_message = convert_case_to_message(next(iter(review_cases.values())))
+    second_cases = converted_review_cases.convert_cases(
+        [new_case_message, *case_messages[1:]]
     )
     assert (
         first_cases == list(review_cases.values()),
-        all(map(operator.is_, first_cases, same_message_cases)),
-        any(map(operator.is_, first_cases, new_message_cases)),
-        new_message_cases == first_cases,
-    ) == (True, True, False, True)
+        second_cases[0] is first_cases[0],
+        all(map(operator.is_, first_cases[1:], second_cases[1:])),
+        second_cases == first_cases,
+    ) == (True, False, True, True)
 
 
 def test_load_last_run_summary_before_first_run_returns_none(source) -> None:

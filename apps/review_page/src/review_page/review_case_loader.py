@@ -1,4 +1,4 @@
-"""Load the review cases in ``review.jsonl``, converting them once per file version.
+"""Load the review cases in ``review.jsonl``, converting each line once.
 
 The case list, toolbar and Corrections tab need every case on every request.
 Each rule reads ``<rule>: <reason>``.
@@ -6,6 +6,12 @@ Each rule reads ``<rule>: <reason>``.
 - One conversion per file version: the cases and their messages are kept until
   the file changes, because parsing and converting every case is the slowest
   step of a request.
+- One conversion per line: a save rewrites only the line of the case it
+  changes, and a run writes an unchanged case as the same text. So a reload
+  reuses the case and message of every line whose text it has seen, and
+  parses and converts only new or changed lines. A case depends only on its
+  line, so the same text always gives the same case. Only the current
+  version's lines are kept.
 - Version by inode, modification time and size: saves and runs replace the file
   through ``replace_file_lines``, which gives it a new inode, so a change made
   within one clock tick is still noticed. A hand edit changes the time or size.
@@ -14,12 +20,13 @@ Each rule reads ``<rule>: <reason>``.
 - One reader at a time: a lock keeps two requests from parsing the same version
   twice.
 - Shared results: callers receive the kept tuples and must not change the
-  messages in them.
+  cases or messages in them, which later versions of the file can share.
 """
 
 import threading
 from dataclasses import dataclass
 from pathlib import Path
+from typing import NamedTuple
 
 from pydantic import ValidationError
 from review_page.review_case_messages import convert_case_to_message
@@ -59,6 +66,13 @@ class ReviewFileCases:
     case_messages: tuple[review_cases_pb2.ReviewCase, ...]
 
 
+class _ParsedReviewLine(NamedTuple):
+    """Hold one review file line's case and its message."""
+
+    case: ReviewCase
+    case_message: review_cases_pb2.ReviewCase
+
+
 class ReviewCaseLoader:
     """Load the review file's cases, loading again only when the file changes."""
 
@@ -72,6 +86,9 @@ class ReviewCaseLoader:
         self._read_lock = threading.Lock()
         self._read_version: ReviewFileVersion | None = None
         self._review_file_cases = ReviewFileCases(cases=(), case_messages=())
+        # The case and message of each line of the version read last, by the
+        # line's text, so an unchanged line is not parsed again.
+        self._parsed_line_by_text: dict[str, _ParsedReviewLine] = {}
 
     def load_cases(self) -> ReviewFileCases:
         """Load the review file's cases, reloading them only after the file changes.
@@ -88,13 +105,14 @@ class ReviewCaseLoader:
             file_version = self._find_file_version()
             if file_version is None:
                 self._read_version = None
+                self._parsed_line_by_text = {}
                 return ReviewFileCases(cases=(), case_messages=())
             if file_version != self._read_version:
-                cases = self._parse_cases()
+                parsed_lines = self._parse_lines()
                 self._review_file_cases = ReviewFileCases(
-                    cases=cases,
+                    cases=tuple(parsed_line.case for parsed_line in parsed_lines),
                     case_messages=tuple(
-                        convert_case_to_message(case) for case in cases
+                        parsed_line.case_message for parsed_line in parsed_lines
                     ),
                 )
                 self._read_version = file_version
@@ -112,24 +130,49 @@ class ReviewCaseLoader:
             return None
         return (file_status.st_ino, file_status.st_mtime_ns, file_status.st_size)
 
-    def _parse_cases(self) -> tuple[ReviewCase, ...]:
-        """Parse every case in the review file, in file order.
+    def _parse_lines(self) -> list[_ParsedReviewLine]:
+        """Parse every case in the review file, reusing the lines read before.
 
         Returns:
-            The parsed cases; blank lines are skipped.
+            Each case with its message, in file order; blank lines are skipped.
 
         Raises:
             UnreadableReviewFileError: A line is not a valid review case.
         """
-        cases: list[ReviewCase] = []
+        parsed_lines: list[_ParsedReviewLine] = []
+        parsed_line_by_text: dict[str, _ParsedReviewLine] = {}
         with self._review_file_path.open(encoding="utf-8") as review_file:
             for line_number, line in enumerate(review_file, start=1):
-                if not line.strip():
+                line_text = line.rstrip("\n")
+                if not line_text.strip():
                     continue
-                try:
-                    cases.append(ReviewCase.model_validate_json(line))
-                except ValidationError as error:
-                    raise UnreadableReviewFileError(
-                        self._review_file_path, line_number
-                    ) from error
-        return tuple(cases)
+                parsed_line = parsed_line_by_text.get(
+                    line_text
+                ) or self._parsed_line_by_text.get(line_text)
+                if parsed_line is None:
+                    parsed_line = self._parse_line(line_text, line_number)
+                parsed_line_by_text[line_text] = parsed_line
+                parsed_lines.append(parsed_line)
+        self._parsed_line_by_text = parsed_line_by_text
+        return parsed_lines
+
+    def _parse_line(self, line_text: str, line_number: int) -> _ParsedReviewLine:
+        """Parse one line of the review file into its case and message.
+
+        Args:
+            line_text: The line, without its line break.
+            line_number: The line's number in the file, counted from 1.
+
+        Returns:
+            The line's case and its message.
+
+        Raises:
+            UnreadableReviewFileError: The line is not a valid review case.
+        """
+        try:
+            case = ReviewCase.model_validate_json(line_text)
+        except ValidationError as error:
+            raise UnreadableReviewFileError(
+                self._review_file_path, line_number
+            ) from error
+        return _ParsedReviewLine(case, convert_case_to_message(case))

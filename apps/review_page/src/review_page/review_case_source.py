@@ -21,17 +21,19 @@ Each design rule reads `<rule>: <reason>`:
 - Shared loaders: ``load_cases`` and ``load_last_run_summary`` convert the
   source's messages into the models the routes use, so each route class reads
   them the same way.
-- One conversion per set of messages: converting every case takes about a
-  third of a second, and the toolbar, the case list and a save each need every
-  case. ``load_cases`` keeps the models it converted, and reuses them while the
-  source hands out the very same message objects, as a file-backed source does
-  until its file changes. Keeping the old messages keeps them alive, so a new
-  message can never be taken for one of them.
+- One conversion per message: converting every case takes about a third of a
+  second, and the toolbar, the case list and a save each need every case.
+  ``load_cases`` keeps the model it converted from each message, and reuses it
+  while the source hands out the very same message object, as a file-backed
+  source does for every case its file still holds unchanged. Keeping the
+  converted messages keeps them alive, so a new message can never be taken for
+  one of them, and only the messages of the last call are kept.
 """
 
 import threading
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
+from typing import NamedTuple
 
 from review_page.models import InvalidNamedPageKeyReason, RunSummary
 from review_page.review_case_messages import convert_message_to_case
@@ -184,19 +186,26 @@ class ReviewCaseSource(ABC):
         """
 
 
+class _ConvertedCase(NamedTuple):
+    """Hold one case message and the case model converted from it."""
+
+    case_message: review_cases_pb2.ReviewCase
+    case: ReviewCase
+
+
 class ConvertedReviewCases:
-    """Hold the case models converted from the last set of case messages."""
+    """Hold the case model converted from each case message of the last call."""
 
     def __init__(self) -> None:
         """Start with nothing converted."""
         self._conversion_lock = threading.Lock()
-        self._case_messages: tuple[review_cases_pb2.ReviewCase, ...] = ()
-        self._cases: tuple[ReviewCase, ...] = ()
+        # Each converted message and its model, by the message's identity.
+        self._converted_case_by_message_id: dict[int, _ConvertedCase] = {}
 
     def convert_cases(
         self, case_messages: Sequence[review_cases_pb2.ReviewCase]
     ) -> list[ReviewCase]:
-        """Convert case messages into case models, reusing the last conversion when unchanged.
+        """Convert case messages into case models, reusing the model of each message seen last time.
 
         Args:
             case_messages: The cases as the source hands them out.
@@ -206,10 +215,23 @@ class ConvertedReviewCases:
             models, which later requests share.
         """
         with self._conversion_lock:
-            if not _is_same_message_set(case_messages, self._case_messages):
-                self._cases = tuple(map(convert_message_to_case, case_messages))
-                self._case_messages = tuple(case_messages)
-            return list(self._cases)
+            converted_case_by_message_id: dict[int, _ConvertedCase] = {}
+            for case_message in case_messages:
+                converted_case = self._converted_case_by_message_id.get(
+                    id(case_message)
+                )
+                if converted_case is None or (
+                    converted_case.case_message is not case_message
+                ):
+                    converted_case = _ConvertedCase(
+                        case_message, convert_message_to_case(case_message)
+                    )
+                converted_case_by_message_id[id(case_message)] = converted_case
+            self._converted_case_by_message_id = converted_case_by_message_id
+            return [
+                converted_case_by_message_id[id(case_message)].case
+                for case_message in case_messages
+            ]
 
 
 _CONVERTED_REVIEW_CASES = ConvertedReviewCases()
@@ -225,27 +247,6 @@ def load_cases(source: ReviewCaseSource) -> list[ReviewCase]:
         All review cases, in the source's order.
     """
     return _CONVERTED_REVIEW_CASES.convert_cases(source.list_cases())
-
-
-def _is_same_message_set(
-    case_messages: Sequence[review_cases_pb2.ReviewCase],
-    kept_case_messages: Sequence[review_cases_pb2.ReviewCase],
-) -> bool:
-    """Report whether two sets of case messages are the very same message objects.
-
-    Args:
-        case_messages: The messages a source handed out now.
-        kept_case_messages: The messages converted last time.
-
-    Returns:
-        True when both hold the same objects in the same order.
-    """
-    return len(case_messages) == len(kept_case_messages) and all(
-        case_message is kept_case_message
-        for case_message, kept_case_message in zip(
-            case_messages, kept_case_messages, strict=True
-        )
-    )
 
 
 def load_last_run_summary(source: ReviewCaseSource) -> RunSummary | None:
