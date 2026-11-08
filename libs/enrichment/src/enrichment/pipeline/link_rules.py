@@ -286,6 +286,10 @@ def merge_sources(ranked: Ranked, offline_data: dict[str, Any] | None) -> list[s
     slug. These are work pages with no query strings, so length here tracks how
     much identity the URL states.
 
+    The entry's partial sources are left out. A fetched record links them, such
+    as one season's page linking the page covering the whole run, but they
+    cover other anime too, so they stay in the entry's partial sources.
+
     Args:
         ranked: Provider records in priority order.
         offline_data: The work's offline database entry, when one is known.
@@ -296,11 +300,18 @@ def merge_sources(ranked: Ranked, offline_data: dict[str, Any] | None) -> list[s
     best: dict[str, str] = {}
     lists = [record.get("sources") or [] for _, record in ranked]
     lists.append((offline_data or {}).get("sources") or [])
+    partial_source_keys = {
+        resolve_page_key(url)
+        for url in (offline_data or {}).get("partialSources") or []
+        if url
+    }
     for urls in lists:
         for url in urls:
             if not url:
                 continue
             key = resolve_page_key(url)
+            if key in partial_source_keys:
+                continue
             if len(url) > len(best.get(key, "")):
                 best[key] = url
     return [url for key, url in best.items() if not _superseded_by_number(key, best)]

@@ -237,7 +237,8 @@ def merge_provider_records(
     Args:
         records: Mapping of provider name to that provider's canonical record.
         offline_data: The work's offline database entry. Contributes its
-            ``sources`` only; every other field is the providers' to report.
+            ``sources`` and ``partialSources`` only; every other field is the
+            providers' to report.
         config: Supplies the weighted score baseline. Defaults to the
             values in code.
 
@@ -288,6 +289,9 @@ def merge_provider_records(
 
     merged["episode_count"] = merge_episode_count(ranked)
     merged["sources"] = merge_sources(ranked, offline_data)
+    partial_sources = (offline_data or {}).get("partialSources") or []
+    if partial_sources:
+        merged["partial_sources"] = list(partial_sources)
     merged.update(merge_categories(ranked))
 
     for field, values in (
