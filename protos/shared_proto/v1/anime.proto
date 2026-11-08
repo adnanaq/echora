@@ -459,6 +459,9 @@ message Anime {
   optional AnimeHiatus hiatus = 38;
   map<string, string> titles = 39;
   repeated CompanyEntry companies = 41;
+  // Provider pages covering this anime together with other anime, each a
+  // source of another anime; enrichment never fetches them for this one.
+  repeated string partial_sources = 42;
 }
 
 message AnimeRecord {
