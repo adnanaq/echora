@@ -90,7 +90,11 @@ class PagePlacement:
 
     @property
     def is_case_work(self) -> bool:
-        """Report whether the place is a work of the case, ``work 1`` or later."""
+        """Report whether the place is a work of the case, ``work 1`` or later.
+
+        Returns:
+            True unless the place is ``other work`` or ``dropped``.
+        """
         return self.placement_word not in (OTHER_WORK, DROPPED)
 
     @property
@@ -100,7 +104,12 @@ class PagePlacement:
 
     @property
     def partial_named_entry_page_keys(self) -> tuple[str, ...]:
-        """Return the page keys naming the outside seed entries the page is a partial source of."""
+        """Return the page keys naming the outside seed entries the page is a partial source of.
+
+        Returns:
+            The page key of each ``other work <page key>`` partial work, in
+            answer order.
+        """
         return tuple(
             partial_work.removeprefix(f"{OTHER_WORK} ")
             for partial_work in self.partial_works
