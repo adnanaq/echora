@@ -163,6 +163,13 @@ already groups it. Under MAL's division the page belongs to none of those
 works, so the reviewer decides whether the entry stays its own work or merges
 into one of them.
 
+Two entries a first-pass answer separated, by moving a page from one into the
+other, are never joined by their own title match or link. A part answered
+`work 2` becomes a new entry that links the entry it left, and grouping the
+two would ask the reviewer the same question again (_Cosmic Break_). A third
+entry matching both can still bring them into one group, since that entry may
+be one work with either of them.
+
 Entries joined through a shared match, link or several-works page form one
 group, which keeps every title match and link as its evidence
 (`candidate_evidence`), and is flagged when a page tying it is also linked from
