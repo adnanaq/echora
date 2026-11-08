@@ -1,3 +1,5 @@
+import os
+
 import pytest
 from review_page.review_case_loader import ReviewCaseLoader, UnreadableReviewFileError
 from work_matching import replace_file_lines
@@ -27,6 +29,21 @@ def test_load_cases_replaced_file_reads_new_cases(
         len(review_case_lines),
         1,
     )
+
+
+def test_load_cases_same_size_and_time_new_file_reads_new_cases(
+    review_file_path, review_case_lines
+) -> None:
+    reader = ReviewCaseLoader(review_file_path)
+    first_cases = reader.load_cases()
+    first_status = review_file_path.stat()
+    replace_file_lines(review_file_path, list(reversed(review_case_lines)))
+    os.utime(review_file_path, ns=(first_status.st_atime_ns, first_status.st_mtime_ns))
+    second_cases = reader.load_cases()
+    assert (
+        review_file_path.stat().st_size == first_status.st_size,
+        second_cases.cases == tuple(reversed(first_cases.cases)),
+    ) == (True, True)
 
 
 def test_load_cases_one_changed_line_parses_only_that_line(
