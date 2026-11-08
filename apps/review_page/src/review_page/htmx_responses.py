@@ -1,13 +1,14 @@
-"""Build the responses that hand the browser htmx events instead of HTML.
+"""Construct HTTP responses that trigger client-side htmx events.
 
-htmx reads the ``HX-Trigger`` header and fires each event it names on the
-page, where ``review_page.js`` handles it
-(https://htmx.org/headers/hx-trigger/). Each item gives the rule, then the
-reason for it.
+Populates the ``HX-Trigger`` response header so ``review_page.js`` can handle
+events in the browser (https://htmx.org/headers/hx-trigger/).
 
-- An event response has no content (204), so htmx swaps nothing.
-- A refusal also carries its notice in a JSON body, because htmx does not
-  handle response headers on error statuses the same way everywhere.
+Each response rule reads `<rule>: <reason>`:
+- Empty event responses: Successful event-only responses use HTTP 204 so htmx
+  dispatches the event without swapping any DOM region.
+- Refusal notices: Error responses include the notice text in both the JSON
+  response body and the ``HX-Trigger`` header so client error handlers can
+  read the message consistently across browsers.
 """
 
 import json
@@ -18,27 +19,27 @@ from fastapi.responses import JSONResponse
 
 
 def build_event_response(events: dict[str, Any]) -> Response:
-    """Return an empty response that fires these htmx events in the browser.
+    """Build an empty 204 response that triggers htmx events in the browser.
 
     Args:
-        events: Each event's name, mapped to the detail the browser handler reads.
+        events: Mapping of event names to detail payloads read by browser handlers.
 
     Returns:
-        A 204 response whose ``HX-Trigger`` header fires the events.
+        A 204 ``Response`` whose ``HX-Trigger`` header encodes the events.
     """
     return Response(status_code=204, headers=build_event_headers(events))
 
 
 def build_notice_response(status_code: int, notice: str) -> Response:
-    """Return a refusal the browser shows as a notice.
+    """Build an error response that displays a user-facing notice in the browser.
 
     Args:
-        status_code: The refusal's HTTP status, such as 409.
-        notice: The sentence the page shows.
+        status_code: The HTTP error status code, such as 409 or 500.
+        notice: The human-readable error message displayed in the notice banner.
 
     Returns:
-        A JSON response holding the notice, whose ``HX-Trigger`` header also
-        fires a ``notice`` event.
+        A ``JSONResponse`` containing the notice payload and an ``HX-Trigger``
+        header that dispatches a ``notice`` event.
     """
     return JSONResponse(
         {"notice": notice},
@@ -48,12 +49,12 @@ def build_notice_response(status_code: int, notice: str) -> Response:
 
 
 def build_event_headers(events: dict[str, Any]) -> dict[str, str]:
-    """Return the header that hands htmx the events to fire in the browser.
+    """Serialize a mapping of htmx event payloads into an ``HX-Trigger`` header dictionary.
 
     Args:
-        events: Each event's name, mapped to the detail the browser handler reads.
+        events: Mapping of event names to detail payloads read by browser handlers.
 
     Returns:
-        The ``HX-Trigger`` header, its value the events as JSON.
+        A single-entry dictionary mapping ``HX-Trigger`` to the JSON-encoded events.
     """
     return {"HX-Trigger": json.dumps(events)}

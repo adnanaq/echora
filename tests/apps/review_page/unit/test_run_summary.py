@@ -13,7 +13,7 @@ def _run_result() -> SeedCleaningRunResult:
         started_at=datetime(2026, 11, 1, 13, 58, 37, tzinfo=UTC),
         finished_at=datetime(2026, 11, 1, 13, 58, 39, tzinfo=UTC),
         correction_counts={"pages moved to a seed entry": 4, "review cases open": 0},
-        corrected_entry_counts={"entries removed, every page moved out": 0},
+        corrected_entry_counts={"entries removed, no page left": 0},
         linked_page_counts={"linked pages not found": 376},
         rejected_answer_case_names=("linked page: a",),
         conflicting_linked_page_keys=(),

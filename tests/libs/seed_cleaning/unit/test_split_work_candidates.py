@@ -90,9 +90,23 @@ def test_find_split_work_candidates_seasons_far_apart_not_grouped(seed_works) ->
     assert "gelpiyo" not in _candidates_by_title(seed_works)
 
 
-def test_find_split_work_candidates_entries_joined_through_shared_match_form_one_group() -> (
-    None
-):
+@pytest.mark.parametrize(
+    ("separated_reference_page_pairs", "grouped_page_keys"),
+    [
+        ((), ["anilist:anime:1", "kitsu:anime:2", "mal:anime:3"]),
+        (
+            (frozenset({"anilist:anime:1", "mal:anime:3"}),),
+            ["anilist:anime:1", "kitsu:anime:2", "mal:anime:3"],
+        ),
+        (
+            (frozenset({"anilist:anime:1", "kitsu:anime:2"}),),
+            ["kitsu:anime:2", "mal:anime:3"],
+        ),
+    ],
+)
+def test_find_split_work_candidates_entries_joined_through_shared_match_form_one_group(
+    separated_reference_page_pairs, grouped_page_keys
+) -> None:
     works = KnownWorkEntriesFromSeed(
         [
             {
@@ -115,12 +129,12 @@ def test_find_split_work_candidates_entries_joined_through_shared_match_form_one
             },
         ]
     )
-    [candidates] = find_split_work_candidates(works, NO_SPLIT_WORK_LINKS)
-    assert [entry.reference_page for entry in candidates.entries] == [
-        "anilist:anime:1",
-        "kitsu:anime:2",
-        "mal:anime:3",
-    ]
+    [candidates] = find_split_work_candidates(
+        works, NO_SPLIT_WORK_LINKS, separated_reference_page_pairs
+    )
+    assert [
+        entry.reference_page_key for entry in candidates.entries
+    ] == grouped_page_keys
 
 
 def test_find_split_work_candidates_single_entry_titles_give_nothing() -> None:

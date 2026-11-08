@@ -4,18 +4,20 @@ from work_matching.answer_rules import LinkedPageAnswerRule
 from work_matching.known_work_entries_from_seed import KnownWorkEntriesFromSeed
 from work_matching.linked_page_check import (
     SKIP_ANSWER,
+    NoLinkingEntryError,
+    check_linked_page_answer,
+    decide_linked_page,
+    find_entry_episode_count,
+    find_unheld_linked_page_keys,
+    read_linked_page_answer,
+    suggest_linked_page_answer,
+)
+from work_matching.model_linked_page_decision import (
     LinkedPageAddition,
     LinkedPageDecision,
     LinkedPageOutcome,
     LinkedPageReason,
     LinkingEntryDetails,
-    NoLinkingEntryError,
-    check_linked_page_answer,
-    decide_linked_page,
-    find_unheld_linked_page_keys,
-    get_entry_episode_count,
-    read_linked_page_answer,
-    suggest_linked_page_answer,
 )
 from work_matching.provider_page import ProviderPage
 from work_matching.work_entry import WorkEntry
@@ -116,11 +118,11 @@ def known_work_entries() -> KnownWorkEntriesFromSeed:
     )
 
 
-def _entry(seed_entry: dict) -> WorkEntry:
-    return WorkEntry.from_seed_entry(seed_entry)
+def _build_entry(seed_entry: dict) -> WorkEntry:
+    return WorkEntry.read_seed_entry(seed_entry)
 
 
-def _decide(
+def _decide_page(
     page: ProviderPage,
     *entries: WorkEntry,
     entry_episode_count: int | None,
@@ -150,9 +152,9 @@ def test_decide_linked_page_renamed_page_held_by_seed_entry_skipped(
         type="TV",
         renamed_to="kitsu:anime:40741",
     )
-    decision = _decide(
+    decision = _decide_page(
         kitsu_slug_page,
-        _entry(BOXER_SEED_ENTRY),
+        _build_entry(BOXER_SEED_ENTRY),
         entry_episode_count=12,
         known_work_entries=known_work_entries,
     )
@@ -170,8 +172,8 @@ def test_decide_linked_page_renamed_page_held_by_linking_entry_skipped() -> None
         type="TV",
         renamed_to="anilist:anime:163794",
     )
-    decision = _decide(
-        anilist_old_page, _entry(BOXER_SEED_ENTRY), entry_episode_count=12
+    decision = _decide_page(
+        anilist_old_page, _build_entry(BOXER_SEED_ENTRY), entry_episode_count=12
     )
     assert decision.reason is LinkedPageReason.HELD_UNDER_OTHER_ADDRESS
 
@@ -185,9 +187,9 @@ def test_decide_linked_page_renamed_page_not_held_decided_under_current_key(
         type="TV",
         renamed_to="kitsu:anime:51119",
     )
-    decision = _decide(
+    decision = _decide_page(
         kitsu_slug_page,
-        _entry(BOXER_SEED_ENTRY),
+        _build_entry(BOXER_SEED_ENTRY),
         entry_episode_count=12,
         known_work_entries=known_work_entries,
     )
@@ -201,7 +203,7 @@ def test_find_unheld_linked_page_keys_link_to_page_no_entry_holds_returned(
     known_work_entries,
 ) -> None:
     assert find_unheld_linked_page_keys(
-        _entry(MORI_NO_YOUSEI_SEED_ENTRY),
+        _build_entry(MORI_NO_YOUSEI_SEED_ENTRY),
         [MORI_NO_YOUSEI_KITSU_PAGE],
         known_work_entries,
         LINKED_PROVIDERS,
@@ -216,7 +218,10 @@ def test_find_unheld_linked_page_keys_page_held_by_seed_entry_left_out(
     )
     assert (
         find_unheld_linked_page_keys(
-            _entry(BOXER_SEED_ENTRY), [page], known_work_entries, LINKED_PROVIDERS
+            _build_entry(BOXER_SEED_ENTRY),
+            [page],
+            known_work_entries,
+            LINKED_PROVIDERS,
         )
         == frozenset()
     )
@@ -226,7 +231,7 @@ def test_find_unheld_linked_page_keys_provider_not_given_left_out(
     known_work_entries,
 ) -> None:
     assert find_unheld_linked_page_keys(
-        _entry(DOUKYUUSEI_SEED_ENTRY),
+        _build_entry(DOUKYUUSEI_SEED_ENTRY),
         [DOUKYUUSEI_MAL_PAGE],
         known_work_entries,
         LINKED_PROVIDERS,
@@ -238,14 +243,17 @@ def test_find_unheld_linked_page_keys_manga_page_left_out(known_work_entries) ->
         update={"linked_page_keys": ("anilist:manga:119534", "mal:anime:35362")}
     )
     assert find_unheld_linked_page_keys(
-        _entry(MORI_NO_YOUSEI_SEED_ENTRY), [page], known_work_entries, LINKED_PROVIDERS
+        _build_entry(MORI_NO_YOUSEI_SEED_ENTRY),
+        [page],
+        known_work_entries,
+        LINKED_PROVIDERS,
     ) == frozenset({"mal:anime:35362"})
 
 
 def test_find_unheld_linked_page_keys_link_to_entry_own_page_left_out(
     known_work_entries,
 ) -> None:
-    entry = WorkEntry.from_seed_entry(
+    entry = WorkEntry.read_seed_entry(
         {
             **BOXER_SEED_ENTRY,
             "sources": [
@@ -262,34 +270,34 @@ def test_find_unheld_linked_page_keys_link_to_entry_own_page_left_out(
     )
 
 
-def test_get_entry_episode_count_most_trusted_page_with_count_returned() -> None:
-    entry = _entry(YAMATO_SEED_ENTRY)
+def test_find_entry_episode_count_most_trusted_page_with_count_returned() -> None:
+    entry = _build_entry(YAMATO_SEED_ENTRY)
     anidb_page = ProviderPage(
         key="anidb:anime:18902",
         address="https://anidb.net/anime/18902",
         episode_count=2,
     )
-    assert get_entry_episode_count(entry, [anidb_page, YAMATO_ANILIST_PAGE]) == 1
+    assert find_entry_episode_count(entry, [anidb_page, YAMATO_ANILIST_PAGE]) == 1
 
 
-def test_get_entry_episode_count_trusted_page_without_count_skipped() -> None:
-    entry = _entry(YAMATO_SEED_ENTRY)
+def test_find_entry_episode_count_trusted_page_without_count_skipped() -> None:
+    entry = _build_entry(YAMATO_SEED_ENTRY)
     anidb_page = ProviderPage(
         key="anidb:anime:18902",
         address="https://anidb.net/anime/18902",
         episode_count=2,
     )
     anilist_page = YAMATO_ANILIST_PAGE.model_copy(update={"episode_count": None})
-    assert get_entry_episode_count(entry, [anilist_page, anidb_page]) == 2
+    assert find_entry_episode_count(entry, [anilist_page, anidb_page]) == 2
 
 
-def test_get_entry_episode_count_no_page_with_count_returns_none() -> None:
-    assert get_entry_episode_count(_entry(BOXER_SEED_ENTRY), []) is None
+def test_find_entry_episode_count_no_page_with_count_returns_none() -> None:
+    assert find_entry_episode_count(_build_entry(BOXER_SEED_ENTRY), []) is None
 
 
 def test_decide_linked_page_page_agreeing_with_entry_added() -> None:
-    decision = _decide(
-        YAMATO_MAL_PAGE, _entry(YAMATO_SEED_ENTRY), entry_episode_count=1
+    decision = _decide_page(
+        YAMATO_MAL_PAGE, _build_entry(YAMATO_SEED_ENTRY), entry_episode_count=1
     )
     assert (decision.reason, decision.outcome) == (
         LinkedPageReason.CHECKS_PASSED,
@@ -298,7 +306,9 @@ def test_decide_linked_page_page_agreeing_with_entry_added() -> None:
 
 
 def test_decide_linked_page_unknown_episode_count_does_not_stop_addition() -> None:
-    decision = _decide(BOXER_MAL_PAGE, _entry(BOXER_SEED_ENTRY), entry_episode_count=12)
+    decision = _decide_page(
+        BOXER_MAL_PAGE, _build_entry(BOXER_SEED_ENTRY), entry_episode_count=12
+    )
     assert decision.outcome is LinkedPageOutcome.ADD
 
 
@@ -308,9 +318,9 @@ def test_decide_linked_page_without_linking_entry_raises() -> None:
 
 
 def test_decide_linked_page_dead_page_skipped() -> None:
-    dead_page = ProviderPage.from_dead_address("https://myanimelist.net/anime/35362")
-    decision = _decide(
-        dead_page, _entry(MORI_NO_YOUSEI_SEED_ENTRY), entry_episode_count=None
+    dead_page = ProviderPage.build_dead_page("https://myanimelist.net/anime/35362")
+    decision = _decide_page(
+        dead_page, _build_entry(MORI_NO_YOUSEI_SEED_ENTRY), entry_episode_count=None
     )
     assert (decision.reason, decision.outcome) == (
         LinkedPageReason.NOT_FOUND,
@@ -319,10 +329,10 @@ def test_decide_linked_page_dead_page_skipped() -> None:
 
 
 def test_decide_linked_page_page_linked_from_two_entries_goes_to_review() -> None:
-    decision = _decide(
+    decision = _decide_page(
         BOXER_MAL_PAGE,
-        _entry(BOXER_SEED_ENTRY),
-        _entry(YAMATO_SEED_ENTRY),
+        _build_entry(BOXER_SEED_ENTRY),
+        _build_entry(YAMATO_SEED_ENTRY),
         entry_episode_count=None,
     )
     assert (decision.reason, decision.outcome) == (
@@ -335,16 +345,18 @@ def test_decide_linked_page_entry_holding_provider_goes_to_review() -> None:
     anidb_page = ProviderPage(
         key="anidb:anime:20000", address="https://anidb.net/anime/20000", type="MOVIE"
     )
-    decision = _decide(anidb_page, _entry(YAMATO_SEED_ENTRY), entry_episode_count=1)
+    decision = _decide_page(
+        anidb_page, _build_entry(YAMATO_SEED_ENTRY), entry_episode_count=1
+    )
     assert decision.reason is LinkedPageReason.PROVIDER_IN_ENTRY
 
 
 def test_decide_linked_page_entry_linking_two_pages_of_provider_goes_to_review() -> (
     None
 ):
-    decision = _decide(
+    decision = _decide_page(
         BOXER_MAL_PAGE,
-        _entry(BOXER_SEED_ENTRY),
+        _build_entry(BOXER_SEED_ENTRY),
         entry_episode_count=12,
         other_linked_page_keys=frozenset({"mal:anime:1", "anidb:anime:1"}),
     )
@@ -354,9 +366,9 @@ def test_decide_linked_page_entry_linking_two_pages_of_provider_goes_to_review()
 def test_decide_linked_page_other_linked_page_of_other_provider_does_not_stop_addition() -> (
     None
 ):
-    decision = _decide(
+    decision = _decide_page(
         BOXER_MAL_PAGE,
-        _entry(BOXER_SEED_ENTRY),
+        _build_entry(BOXER_SEED_ENTRY),
         entry_episode_count=12,
         other_linked_page_keys=frozenset({"anidb:anime:1"}),
     )
@@ -370,14 +382,16 @@ def test_decide_linked_page_year_differing_from_entry_goes_to_review() -> None:
         type="OVA",
         year=2001,
     )
-    decision = _decide(anidb_page, _entry(DOUKYUUSEI_SEED_ENTRY), entry_episode_count=4)
+    decision = _decide_page(
+        anidb_page, _build_entry(DOUKYUUSEI_SEED_ENTRY), entry_episode_count=4
+    )
     assert decision.reason is LinkedPageReason.DETAILS_DIFFER
 
 
 def test_decide_linked_page_episode_counts_differing_goes_to_review() -> None:
-    decision = _decide(
+    decision = _decide_page(
         BOXER_MAL_PAGE.model_copy(update={"episode_count": 1}),
-        _entry(BOXER_SEED_ENTRY),
+        _build_entry(BOXER_SEED_ENTRY),
         entry_episode_count=12,
     )
     assert (decision.reason, decision.entry_episode_count) == (
@@ -387,38 +401,42 @@ def test_decide_linked_page_episode_counts_differing_goes_to_review() -> None:
 
 
 def test_decide_linked_page_linking_entries_sorted_by_reference_page() -> None:
-    decision = _decide(
+    decision = _decide_page(
         BOXER_MAL_PAGE,
-        _entry(YAMATO_SEED_ENTRY),
-        _entry(BOXER_SEED_ENTRY),
+        _build_entry(YAMATO_SEED_ENTRY),
+        _build_entry(BOXER_SEED_ENTRY),
         entry_episode_count=None,
     )
-    assert [entry.reference_page for entry in decision.linking_entries] == [
+    assert [entry.reference_page_key for entry in decision.linking_entries] == [
         "anilist:anime:163794",
         "anilist:anime:182615",
     ]
 
 
-def test_suggest_linked_page_answer_page_with_fewer_episodes_suggests_part() -> None:
-    page = BOXER_MAL_PAGE.model_copy(update={"episode_count": 1})
-    decision = _decide(page, _entry(BOXER_SEED_ENTRY), entry_episode_count=12)
+def test_suggest_linked_page_answer_page_with_more_episodes_suggests_partial() -> None:
+    page = BOXER_MAL_PAGE.model_copy(update={"episode_count": 24})
+    decision = _decide_page(
+        page, _build_entry(BOXER_SEED_ENTRY), entry_episode_count=12
+    )
     assert suggest_linked_page_answer(decision, page) == {
-        "mal:anime:65144": "add as part"
+        "mal:anime:65144": "add as partial"
     }
 
 
-def test_suggest_linked_page_answer_page_with_more_episodes_suggests_nothing() -> None:
-    page = BOXER_MAL_PAGE.model_copy(update={"episode_count": 24})
-    decision = _decide(page, _entry(BOXER_SEED_ENTRY), entry_episode_count=12)
+def test_suggest_linked_page_answer_page_with_fewer_episodes_suggests_nothing() -> None:
+    page = BOXER_MAL_PAGE.model_copy(update={"episode_count": 1})
+    decision = _decide_page(
+        page, _build_entry(BOXER_SEED_ENTRY), entry_episode_count=12
+    )
     assert suggest_linked_page_answer(decision, page) == {}
 
 
 def test_suggest_linked_page_answer_several_entries_suggests_nothing() -> None:
     page = BOXER_MAL_PAGE.model_copy(update={"episode_count": 1})
-    decision = _decide(
+    decision = _decide_page(
         page,
-        _entry(BOXER_SEED_ENTRY),
-        _entry(YAMATO_SEED_ENTRY),
+        _build_entry(BOXER_SEED_ENTRY),
+        _build_entry(YAMATO_SEED_ENTRY),
         entry_episode_count=12,
     )
     assert suggest_linked_page_answer(decision, page) == {}
@@ -427,11 +445,14 @@ def test_suggest_linked_page_answer_several_entries_suggests_nothing() -> None:
 @pytest.mark.parametrize(
     ("answer_text", "expected"),
     [
-        ("add", LinkedPageAddition("anilist:anime:163794", is_part_page=False)),
-        ("add as part", LinkedPageAddition("anilist:anime:163794", is_part_page=True)),
+        ("add", LinkedPageAddition("anilist:anime:163794", is_partial_source=False)),
+        (
+            "add as partial",
+            LinkedPageAddition("anilist:anime:163794", is_partial_source=True),
+        ),
         (
             "add to anilist:anime:163794",
-            LinkedPageAddition("anilist:anime:163794", is_part_page=False),
+            LinkedPageAddition("anilist:anime:163794", is_partial_source=False),
         ),
         ("skip", SKIP_ANSWER),
         ("add to anilist:anime:1", None),
@@ -441,7 +462,9 @@ def test_suggest_linked_page_answer_several_entries_suggests_nothing() -> None:
 def test_read_linked_page_answer_one_linking_entry(
     answer_text: str, expected: object
 ) -> None:
-    decision = _decide(BOXER_MAL_PAGE, _entry(BOXER_SEED_ENTRY), entry_episode_count=12)
+    decision = _decide_page(
+        BOXER_MAL_PAGE, _build_entry(BOXER_SEED_ENTRY), entry_episode_count=12
+    )
     assert (
         read_linked_page_answer({"mal:anime:65144": answer_text}, decision) == expected
     )
@@ -452,22 +475,22 @@ def test_read_linked_page_answer_one_linking_entry(
     [
         ("add", None),
         (
-            "add as part to anilist:anime:182615",
-            LinkedPageAddition("anilist:anime:182615", is_part_page=True),
+            "add as partial to anilist:anime:182615",
+            LinkedPageAddition("anilist:anime:182615", is_partial_source=True),
         ),
         (
             "add to anilist:anime:163794",
-            LinkedPageAddition("anilist:anime:163794", is_part_page=False),
+            LinkedPageAddition("anilist:anime:163794", is_partial_source=False),
         ),
     ],
 )
 def test_read_linked_page_answer_several_linking_entries_needs_target(
     answer_text: str, expected: object
 ) -> None:
-    decision = _decide(
+    decision = _decide_page(
         BOXER_MAL_PAGE,
-        _entry(BOXER_SEED_ENTRY),
-        _entry(YAMATO_SEED_ENTRY),
+        _build_entry(BOXER_SEED_ENTRY),
+        _build_entry(YAMATO_SEED_ENTRY),
         entry_episode_count=None,
     )
     assert (
@@ -479,18 +502,22 @@ def test_read_linked_page_answer_add_to_entry_holding_provider_rejected() -> Non
     anidb_page = ProviderPage(
         key="anidb:anime:20000", address="https://anidb.net/anime/20000", type="MOVIE"
     )
-    decision = _decide(anidb_page, _entry(YAMATO_SEED_ENTRY), entry_episode_count=1)
+    decision = _decide_page(
+        anidb_page, _build_entry(YAMATO_SEED_ENTRY), entry_episode_count=1
+    )
     assert read_linked_page_answer({"anidb:anime:20000": "add"}, decision) is None
 
 
-def test_read_linked_page_answer_part_to_entry_holding_provider_accepted() -> None:
+def test_read_linked_page_answer_partial_to_entry_holding_provider_accepted() -> None:
     anidb_page = ProviderPage(
         key="anidb:anime:20000", address="https://anidb.net/anime/20000", type="MOVIE"
     )
-    decision = _decide(anidb_page, _entry(YAMATO_SEED_ENTRY), entry_episode_count=1)
+    decision = _decide_page(
+        anidb_page, _build_entry(YAMATO_SEED_ENTRY), entry_episode_count=1
+    )
     assert read_linked_page_answer(
-        {"anidb:anime:20000": "add as part"}, decision
-    ) == LinkedPageAddition("anilist:anime:182615", is_part_page=True)
+        {"anidb:anime:20000": "add as partial"}, decision
+    ) == LinkedPageAddition("anilist:anime:182615", is_partial_source=True)
 
 
 @pytest.mark.parametrize(
@@ -505,20 +532,25 @@ def test_read_linked_page_answer_part_to_entry_holding_provider_accepted() -> No
 def test_read_linked_page_answer_answer_not_naming_page_alone_rejected(
     answer: JsonValue,
 ) -> None:
-    decision = _decide(BOXER_MAL_PAGE, _entry(BOXER_SEED_ENTRY), entry_episode_count=12)
+    decision = _decide_page(
+        BOXER_MAL_PAGE, _build_entry(BOXER_SEED_ENTRY), entry_episode_count=12
+    )
     assert read_linked_page_answer(answer, decision) is None
 
 
 @pytest.mark.parametrize(
     ("answer", "broken_rules"),
     [
-        ("add", (LinkedPageAnswerRule.ANSWER_NOT_PAGE_ANSWER,)),
-        ({"mal:anime:1": "add"}, (LinkedPageAnswerRule.ANSWER_NOT_PAGE_ANSWER,)),
-        ({"mal:anime:65144": 1}, (LinkedPageAnswerRule.ANSWER_NOT_READABLE,)),
-        ({"mal:anime:65144": "move"}, (LinkedPageAnswerRule.ANSWER_NOT_READABLE,)),
+        ("add", (LinkedPageAnswerRule.WRONG_LINKED_PAGE_KEY,)),
+        ({"mal:anime:1": "add"}, (LinkedPageAnswerRule.WRONG_LINKED_PAGE_KEY,)),
+        ({"mal:anime:65144": 1}, (LinkedPageAnswerRule.INVALID_LINKED_PAGE_ANSWER,)),
+        (
+            {"mal:anime:65144": "move"},
+            (LinkedPageAnswerRule.INVALID_LINKED_PAGE_ANSWER,),
+        ),
         (
             {"mal:anime:65144": "add to anilist:anime:1"},
-            (LinkedPageAnswerRule.ENTRY_NOT_LINKING,),
+            (LinkedPageAnswerRule.TARGET_ENTRY_NOT_LINKING,),
         ),
         ({"mal:anime:65144": "add"}, ()),
         ({"mal:anime:65144": "skip"}, ()),
@@ -527,20 +559,22 @@ def test_read_linked_page_answer_answer_not_naming_page_alone_rejected(
 def test_check_linked_page_answer_one_linking_entry_reports_broken_rules(
     answer: JsonValue, broken_rules: tuple[LinkedPageAnswerRule, ...]
 ) -> None:
-    decision = _decide(BOXER_MAL_PAGE, _entry(BOXER_SEED_ENTRY), entry_episode_count=12)
+    decision = _decide_page(
+        BOXER_MAL_PAGE, _build_entry(BOXER_SEED_ENTRY), entry_episode_count=12
+    )
     assert check_linked_page_answer(answer, decision).broken_rules == broken_rules
 
 
 def test_check_linked_page_answer_several_entries_without_name_reports_rule() -> None:
-    decision = _decide(
+    decision = _decide_page(
         BOXER_MAL_PAGE,
-        _entry(BOXER_SEED_ENTRY),
-        _entry(YAMATO_SEED_ENTRY),
+        _build_entry(BOXER_SEED_ENTRY),
+        _build_entry(YAMATO_SEED_ENTRY),
         entry_episode_count=None,
     )
     assert check_linked_page_answer(
         {"mal:anime:65144": "add"}, decision
-    ).broken_rules == (LinkedPageAnswerRule.ENTRY_NOT_NAMED,)
+    ).broken_rules == (LinkedPageAnswerRule.MISSING_TARGET_ENTRY,)
 
 
 def test_check_linked_page_answer_whole_page_to_entry_holding_provider_reports_rule() -> (
@@ -549,7 +583,9 @@ def test_check_linked_page_answer_whole_page_to_entry_holding_provider_reports_r
     anidb_page = ProviderPage(
         key="anidb:anime:20000", address="https://anidb.net/anime/20000", type="MOVIE"
     )
-    decision = _decide(anidb_page, _entry(YAMATO_SEED_ENTRY), entry_episode_count=1)
+    decision = _decide_page(
+        anidb_page, _build_entry(YAMATO_SEED_ENTRY), entry_episode_count=1
+    )
     assert check_linked_page_answer(
         {"anidb:anime:20000": "add"}, decision
-    ).broken_rules == (LinkedPageAnswerRule.PROVIDER_IN_ENTRY,)
+    ).broken_rules == (LinkedPageAnswerRule.PROVIDER_ALREADY_IN_ENTRY,)

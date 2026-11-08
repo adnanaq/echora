@@ -144,7 +144,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "seed_file",
         nargs="?",
-        default="assets/seed_data/anime-offline-database.json",
+        default="assets/seed_data/anime-offline-database-minified.json",
         type=Path,
         help="The downloaded seed release (default: %(default)s)",
     )

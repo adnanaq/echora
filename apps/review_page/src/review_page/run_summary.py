@@ -1,10 +1,9 @@
-"""Read the last run's summary from its message, for the page's run panel and states.
+"""Convert pipeline run summary protobuf messages into domain summary models.
 
-The page reads the run only through the review case source's message
-(``SeedCleaningRunResult`` in ``shared_proto/v1/review_cases.proto``), never
-through the seed-cleaning library. A source for Discovery then replaces the
-file source without changing the page. ``RunSummary`` keeps the message's field
-names, so the templates read the same names whichever source wrote it.
+Decouples the review page from the ``seed_cleaning`` library by reading run
+outcomes exclusively from ``SeedCleaningRunResult`` protobuf messages defined in
+``shared_proto/v1/review_cases.proto``. ``RunSummary`` preserves the message
+field names so templates render summaries identically across storage backends.
 """
 
 from datetime import datetime
@@ -18,13 +17,14 @@ from shared_proto.v1 import review_cases_pb2
 
 
 def build_run_summary(message: review_cases_pb2.SeedCleaningRunResult) -> RunSummary:
-    """Read a run's summary from its message.
+    """Construct a ``RunSummary`` model from a pipeline run summary protobuf message.
 
     Args:
-        message: The last run's result, as the review case source gives it.
+        message: The last run summary message returned by the review case source.
 
     Returns:
-        The summary, with times as datetimes and counts in the run's order.
+        The parsed ``RunSummary`` with ISO timestamps converted to ``datetime``
+        instances and count mappings preserved in report order.
     """
     fields = join_ordered_mappings(convert_message_to_fields(message))
     return RunSummary(

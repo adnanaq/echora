@@ -38,7 +38,7 @@ discovery replaces the seed; `libs/work_matching` stays.
 ## Terms
 
 The matching terms (work, provider page, page key, current key, reference page,
-doubled provider, split work, linked page, part page) are defined in the
+doubled provider, split work, linked page, partial source) are defined in the
 `work_matching` README, under [Terms](../work_matching/README.md#terms). This library adds:
 
 | Term                         | Meaning                                                                                                                                                                               |
@@ -115,7 +115,7 @@ Fetch:
 
 First pass:
 
-3. **List the entries.** The entries with a doubled provider, and the entries without a MAL page. See [Entries to check](#entries-to-check).
+3. **Drop dead pages, then list the entries.** Every page its provider says does not exist is dropped from its entry, and the entries are checked without those pages, so a dead page never makes a doubled provider or reaches review. Then the entries with a doubled provider, and the entries without a MAL page, are listed. See [Entries to check](#entries-to-check).
 4. **Place the doubled-provider entries:** each entry is one group, placed by the rules or by one review case. See [Placing entry groups](#placing-entry-groups).
 5. **Decide the pages the placed entries and the entries without a MAL page link:** add, review, or leave out (not found, or already held under another address). See [Adding linked pages](#adding-linked-pages).
 
@@ -152,7 +152,7 @@ Two entries are also candidates when they are tied by a link
 | Link                                                                                                                    | Ties the entries | Why                                                                                                                                                      |
 | ----------------------------------------------------------------------------------------------------------------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | A fetched page of one entry, or a page searched by one of its pages (AnimeSchedule), links a page the other entry holds | yes              | Seasons and parts link the work's main entry even when their titles differ.                                                                              |
-| Both entries hold their own MAL page                                                                                    | no               | A work is what MAL lists, so two MAL pages are two works and a review would always answer "separate".                                                    |
+| Both entries hold their own MAL page                                                                                    | no               | A work holds one page of each provider, so two MAL pages are two works and a review would always answer "separate".                                      |
 | The linking page links two or more pages of one provider                                                                | no               | Such a page covers several works, such as an anthology.                                                                                                  |
 | The linked page is linked from two or more entries holding their own MAL page                                           | no               | Such a page covers several works, such as AniDB's single page for a series and its specials; tying through it would chain separate works into one group. |
 | The linking page is dead                                                                                                | no               | Its links cannot be read.                                                                                                                                |
@@ -162,6 +162,13 @@ forms a group with the MAL entries linking that page, when no title or link
 already groups it. Under MAL's division the page belongs to none of those
 works, so the reviewer decides whether the entry stays its own work or merges
 into one of them.
+
+Two entries a first-pass answer separated, by moving a page from one into the
+other, are never joined by their own title match or link. A part answered
+`work 2` becomes a new entry that links the entry it left, and grouping the
+two would ask the reviewer the same question again (_Cosmic Break_). A third
+entry matching both can still bring them into one group, since that entry may
+be one work with either of them.
 
 Entries joined through a shared match, link or several-works page form one
 group, which keeps every title match and link as its evidence
@@ -175,7 +182,7 @@ kept whatever they share, since the link is evidence enough to ask a person:
 | none             | kept                            | Nothing says the entries are different works.                                                                 |
 | one              | kept, marked with that provider | One provider listing the entries apart does not decide: such groups are sometimes one work and sometimes not. |
 | two or more      | dropped and logged              | Two providers each listing the entries apart points to different works.                                       |
-| MAL              | dropped and logged              | A work is what MAL lists, so entries holding different MAL pages are never one work.                          |
+| MAL              | dropped and logged              | A work holds one page of each provider, so entries holding different MAL pages are never one work.            |
 
 Title, type and year only find candidates, never decide that entries are one
 work: every candidate group goes to review (see
@@ -303,19 +310,22 @@ the final place.
 
 Each correction is a `SeedCorrection`:
 
-| Field                         | Holds                                                                                                                                                                                                                       |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `entry_reference_page`        | The reference page of the seed entry that lists the page, or that an added page joins.                                                                                                                                      |
-| `page_key`, `address`         | The page as the seed entry lists it; for an added page, its current key and the seed's spelling of it.                                                                                                                      |
-| `placement_word`              | `work 1`, `work 2` and so on, or `other work`.                                                                                                                                                                              |
-| `is_main_page`                | Whether enrichment fetches this page for its provider in its work.                                                                                                                                                          |
-| `renamed_to`                  | The current page key, when the seed lists the page under an old address.                                                                                                                                                    |
-| `target_entry_reference_page` | The reference page of the seed entry the page joins: the sure move target of an `other work` page, or the entry that survives as the page's work; `null` when the page stays or starts a new entry.                         |
-| `new_entry_key`               | The new entry the page starts or joins: pages with the same key form one new entry. `null` when the page stays or joins a seed entry.                                                                                       |
-| `is_added_page`               | Whether the page is not in the seed and is added to the entry (see [Adding linked pages](#adding-linked-pages)).                                                                                                            |
-| `is_part_page`                | Whether the page covers only part of its work, so enrichment combines it with the work's other part pages: an answer's `, part`, or an added page's `add as part`.                                                          |
-| `is_anime_id_page`            | Whether the anime id of the seed entry this added page ends in now comes from the page, so the search entry stored under the old id must be replaced (see the anime id rule under [Linked-page rules](#linked-page-rules)). |
-| `reason`                      | Why the page is placed here: the doubled-provider decision's outcome by name (`SAME_PAGE`, `PAGES_OF_OTHER_WORKS`), the linked-page decision's reason by name, or `review answer`.                                          |
+| Field                           | Holds                                                                                                                                                                                                                                   |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `entry_reference_page`          | The reference page of the seed entry that lists the page, or that an added page joins.                                                                                                                                                  |
+| `page_key`, `address`           | The page as the seed entry lists it; for an added page, its current key and the seed's spelling of it.                                                                                                                                  |
+| `placement_word`                | `work 1`, `work 2` and so on, `other work` or `dropped`; `null` for a dead page and for a page added only as a partial source.                                                                                                          |
+| `renamed_to`                    | The current page key, when the seed lists the page under an old address.                                                                                                                                                                |
+| `target_entry_reference_page`   | The reference page of the seed entry the page joins: the target of an `other work` page (its sure move, or the entry an answer names), or the entry that survives as the page's work; `null` when the page stays or starts a new entry. |
+| `named_entry_page_key`          | The page key an answer named after `other work`, which the page follows wherever it ends up. `null` when no answer named a page.                                                                                                        |
+| `new_entry_key`                 | The new entry the page starts or joins: pages with the same key form one new entry. `null` when the page stays or joins a seed entry.                                                                                                   |
+| `is_added_page`                 | Whether the page is not in the seed and is added to the entry (see [Adding linked pages](#adding-linked-pages)).                                                                                                                        |
+| `is_dead_page`                  | Whether the provider says the page does not exist, so the run drops it from its entry.                                                                                                                                                  |
+| `is_dropped_page`               | Whether an answer drops the page as a duplicate page, so it leaves its entry and joins no other.                                                                                                                                        |
+| `partial_entry_reference_pages` | The reference pages of the seed entries the page is a partial source of: the works it covers together with its own, from an answer's `, partial in`, or an added page's `add as partial`.                                               |
+| `partial_new_entry_keys`        | The new entry keys of the new entries the page is a partial source of.                                                                                                                                                                  |
+| `is_anime_id_page`              | Whether the anime id of the seed entry this added page ends in now comes from the page, so the search entry stored under the old id must be replaced (see the anime id rule under [Linked-page rules](#linked-page-rules)).             |
+| `reason`                        | Why the page is placed here: the doubled-provider decision's outcome by name (`SAME_PAGE`, `PAGES_OF_OTHER_WORKS`), the linked-page decision's reason by name, or `review answer`.                                                      |
 
 ### Correction rules
 
@@ -333,6 +343,20 @@ The rules:
   The rules and review answers use the same target, so neither makes a new
   doubled provider; a page an answer sends to another work without a sure
   target starts a new entry.
+- **Named moves.** An answer's `other work <page key>` sends the page to the
+  seed entry holding that key, and the correction records that entry as
+  `target_entry_reference_page` and the key as `named_entry_page_key`. The run
+  looks the key up in the seed while building the case; a key no seed entry
+  holds leaves the case open.
+- **Following the named page.** The page belongs with the page the answer
+  named, so it ends up wherever that page ends up. When the same run moves the
+  named page out of its seed entry, to another seed entry or to a new entry,
+  the page follows it (`follow_named_entry_pages`, run once both passes are
+  merged). Otherwise the page could be left in a seed entry that no longer
+  holds the named page, or alone in it.
+- **Target suggestions.** Each entry group's case lists the seed entries of
+  its series a page could join (`target_entry_suggestions`); a run never
+  applies them.
 - **Works.** A page in `work N` joins the entry that survives as that work
   (`find_surviving_entries`); without one, the pages in that work form one new
   entry.
@@ -340,8 +364,16 @@ The rules:
   seed, since an entry without pages is no work.
 - **Renamed pages.** The old address is dropped: the entry also lists the page
   under its current address, or the rules send the entry to review.
-- **Main page first**, because enrichment fetches the first address of each
-  provider.
+- **Dead pages.** A page its provider says does not exist is dropped from its
+  entry, and its correction records `is_dead_page`, no `placement_word` and the
+  reason `dead page`. The fetch stores a page as dead only on that answer, never
+  on a failed request. An entry whose every page is dead is removed. A page the
+  provider deleted after its fetch stays until a new fetch of that page.
+- **Partial sources.** A page an answer makes a partial source of other works
+  stays where its own place puts it and also joins each of those entries'
+  partial sources. A partial source is never among an entry's own pages.
+- **Dropped pages.** A duplicate page an answer drops leaves its entry, and its
+  correction records `is_dropped_page`. Only an answer drops a page.
 
 ### Lines of the corrections file
 
@@ -356,12 +388,15 @@ A page the rules keep in its entry, under the address it has now:
   "page_key": "animeplanet:anime:gate-keepers",
   "address": "https://anime-planet.com/anime/gate-keepers",
   "placement_word": "work 1",
-  "is_main_page": false,
   "renamed_to": null,
   "target_entry_reference_page": null,
+  "named_entry_page_key": null,
   "new_entry_key": null,
   "is_added_page": false,
-  "is_part_page": false,
+  "is_dead_page": false,
+  "is_dropped_page": false,
+  "partial_entry_reference_pages": [],
+  "partial_new_entry_keys": [],
   "is_anime_id_page": false,
   "reason": "SAME_PAGE"
 }
@@ -376,12 +411,15 @@ one (`renamed_to`):
   "page_key": "animeplanet:anime:gatekeepers",
   "address": "https://anime-planet.com/anime/gatekeepers",
   "placement_word": "work 1",
-  "is_main_page": false,
   "renamed_to": "animeplanet:anime:gate-keepers",
   "target_entry_reference_page": null,
+  "named_entry_page_key": null,
   "new_entry_key": null,
   "is_added_page": false,
-  "is_part_page": false,
+  "is_dead_page": false,
+  "is_dropped_page": false,
+  "partial_entry_reference_pages": [],
+  "partial_new_entry_keys": [],
   "is_anime_id_page": false,
   "reason": "SAME_PAGE"
 }
@@ -395,12 +433,15 @@ A page the rules move to the seed entry its links name:
   "page_key": "anilist:anime:199801",
   "address": "https://anilist.co/anime/199801",
   "placement_word": "other work",
-  "is_main_page": false,
   "renamed_to": null,
   "target_entry_reference_page": "mal:anime:62648",
+  "named_entry_page_key": null,
   "new_entry_key": null,
   "is_added_page": false,
-  "is_part_page": false,
+  "is_dead_page": false,
+  "is_dropped_page": false,
+  "partial_entry_reference_pages": [],
+  "partial_new_entry_keys": [],
   "is_anime_id_page": false,
   "reason": "PAGES_OF_OTHER_WORKS"
 }
@@ -415,12 +456,15 @@ ANN-only entry merged into the MAL entry, which is then removed):
   "page_key": "ann:anime:24629",
   "address": "https://animenewsnetwork.com/encyclopedia/anime.php?id=24629",
   "placement_word": "work 1",
-  "is_main_page": false,
   "renamed_to": null,
   "target_entry_reference_page": "mal:anime:43735",
+  "named_entry_page_key": null,
   "new_entry_key": null,
   "is_added_page": false,
-  "is_part_page": false,
+  "is_dead_page": false,
+  "is_dropped_page": false,
+  "partial_entry_reference_pages": [],
+  "partial_new_entry_keys": [],
   "is_anime_id_page": false,
   "reason": "review answer"
 }
@@ -435,12 +479,15 @@ shared by every page with the same `new_entry_key`:
   "page_key": "kitsu:anime:44979",
   "address": "https://kitsu.app/anime/44979",
   "placement_word": "work 2",
-  "is_main_page": false,
   "renamed_to": null,
   "target_entry_reference_page": null,
+  "named_entry_page_key": null,
   "new_entry_key": "mal:anime:43735 work 2",
   "is_added_page": false,
-  "is_part_page": false,
+  "is_dead_page": false,
+  "is_dropped_page": false,
+  "partial_entry_reference_pages": [],
+  "partial_new_entry_keys": [],
   "is_anime_id_page": false,
   "reason": "review answer"
 }
@@ -455,12 +502,15 @@ id now comes from it, since it is a MAL page:
   "page_key": "mal:anime:65144",
   "address": "https://myanimelist.net/anime/65144",
   "placement_word": "work 1",
-  "is_main_page": false,
   "renamed_to": null,
   "target_entry_reference_page": null,
+  "named_entry_page_key": null,
   "new_entry_key": null,
   "is_added_page": true,
-  "is_part_page": false,
+  "is_dead_page": false,
+  "is_dropped_page": false,
+  "partial_entry_reference_pages": [],
+  "partial_new_entry_keys": [],
   "is_anime_id_page": true,
   "reason": "CHECKS_PASSED"
 }
@@ -549,7 +599,7 @@ flowchart TD
     case --> answer{Valid answer kept?}
     answer -- no --> open[Case stays open; nothing added]
     answer -- skip --> skipped[Not added]
-    answer -- "add, add as part,<br/>or either to a named entry" --> conflict{Would two whole pages of one<br/>provider join the same entry?}
+    answer -- "add, add as partial,<br/>or either to a named entry" --> conflict{Would two whole pages of one<br/>provider join the same entry?}
     conflict -- yes --> neither[Neither page added;<br/>a warning names the entry]
     conflict -- no --> add
     add --> correction[Correction with is_added_page]
@@ -569,14 +619,14 @@ The table lists every scenario, with a real example where one is known.
 | The link spells a page a seed entry holds another way (an AnimeSchedule Kitsu slug for a page the seed lists by number)                                                                                         | `HELD_UNDER_OTHER_ADDRESS`: not added, no case.                                                                                |
 | One entry links it and every check passes (MAL 65144 _The Boxer_, linked from AniList 163794)                                                                                                                   | `CHECKS_PASSED`: added; here the entry's anime id now comes from the MAL page, so the correction is marked `is_anime_id_page`. |
 | Two or more entries link it                                                                                                                                                                                     | `SEVERAL_ENTRIES`: review; the answer names the entry with `add to <reference page>`.                                          |
-| The entry already holds a page of the provider                                                                                                                                                                  | `PROVIDER_IN_ENTRY`: review; `add as part` adds it as one part of the work.                                                    |
+| The entry already holds a page of the provider                                                                                                                                                                  | `PROVIDER_IN_ENTRY`: review; `add as partial` adds it as one part of the work.                                                 |
 | The entry links two unheld pages of one provider                                                                                                                                                                | `SEVERAL_PAGES_OF_PROVIDER`: review.                                                                                           |
 | Year or type differ from the entry's (AniList 102289, an ONA, linked from the _Nami_ movie entry)                                                                                                               | `DETAILS_DIFFER`: review.                                                                                                      |
-| Both episode counts known and different                                                                                                                                                                         | `EPISODE_COUNTS_DIFFER`: review; suggested `add as part` when the page lists fewer episodes and year and type agree.           |
+| Both episode counts known and different                                                                                                                                                                         | `EPISODE_COUNTS_DIFFER`: review; suggested `add as partial` when the page lists more episodes.                                 |
 | Answers add two whole pages of one provider to one entry                                                                                                                                                        | Neither is added, so no doubled provider is made; the run prints both pages.                                                   |
 | An added page's own links                                                                                                                                                                                       | Never followed: corrections are rebuilt from the downloaded seed on every run, so additions never chain.                       |
 | An answer that is not valid: `add` while the entry holds a page of the provider, `add` with no entry named when several link the page, `add to` an entry that does not link it, or an answer naming other pages | The case stays open; nothing is added.                                                                                         |
-| `add as part` while the entry holds a page of the provider                                                                                                                                                      | Accepted: a work can hold several part pages of one provider.                                                                  |
+| `add as partial` while the entry holds a page of the provider                                                                                                                                                   | Accepted: a partial source is never fetched, so it makes no doubled provider.                                                  |
 
 ## Running it
 
@@ -634,6 +684,7 @@ that folder unless `--store` names another file.
 
 | File                          | Holds                                                                                                                                                                                                           |
 | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `dead_pages.py`               | `list_dead_page_corrections`: the corrections dropping every dead page the seed lists.                                                                                                                          |
 | `doubled_provider_entries.py` | `find_doubled_provider_entries`: the entries holding a doubled provider.                                                                                                                                        |
 | `split_work_links.py`         | `SplitWorkLink`, `SplitWorkLinks`, `find_split_work_links`: the links tying entries, the entries linking each page, and the pages covering several works.                                                       |
 | `split_work_candidates.py`    | `SplitWorkCandidates` and `find_split_work_candidates`: the candidate groups by title, link and several-works page, with their evidence.                                                                        |
@@ -644,6 +695,7 @@ that folder unless `--store` names another file.
 | `split_work_pass.py`          | `prepare_split_work_pass`, `SplitWorkPass`: the second pass's entries and candidate groups.                                                                                                                     |
 | `cleaning_report.py`          | `build_entries_to_check_document`, `count_corrections`: what `entries_to_check.json` holds and the counts a run prints.                                                                                         |
 | `group_placement.py`          | `correct_entry_groups`: each entry group's pages placed, from the rules or a review answer.                                                                                                                     |
+| `page_destinations.py`        | `find_page_destination`, `GroupPlacement`: the entry each placed page ends up in, as its correction names it.                                                                                                   |
 | `seed_corrections.py`         | `SeedCorrection`, `PlacementCorrections`, `merge_corrections`, `write_corrections`: where each checked page ends up, the two passes merged, written to the corrections file.                                    |
 | `corrected_entries.py`        | `build_corrected_entries`, `CorrectedEntry`: the work entries the corrections change or create.                                                                                                                 |
 | `linked_page_additions.py`    | `find_entries_without_mal_page`, `list_entries_with_placed_pages`, `find_linking_seed_entries`, `correct_linked_pages`: the linked pages added as corrections.                                                  |

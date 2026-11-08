@@ -1,33 +1,34 @@
-"""Decide each case's state and which buttons are enabled, from answers alone.
+"""Evaluate review case lifecycle states, filter matches, and button permissions.
 
-The rules below decide what the review page shows and allows. The functions
-here depend on the answers alone, so the rules are tested without a browser.
-Each item gives the rule, then the reason for it.
+State resolution and button enablement rules evaluate exclusively from review
+answer payloads and case definitions, ensuring business rules can be verified
+independently of the web browser.
 
-- An answer with no pages counts as no answer, so a case whose choices are
-  all cleared is open again.
-- A case's original value is its answer as the last run wrote it. A saved
-  answer counts as answered, changed or cleared against the original value.
-  Only those cases count for Run, since a case saved back to its original
-  changes nothing.
-- A case's edit state reads in this order: rejected (its last save broke a
-  rule), edited and not saved, saved and applying on Run, unchanged.
-- An unanswered case starts on its suggestion, so the suggestion stands in
-  for a missing saved or original answer. An untouched suggestion is then
-  not an edit, and Accept is the button that saves it.
-- Buttons are enabled as follows:
-
-  - Save and Save & next: while the chosen answer differs from the saved one.
-  - Accept: while a complete suggestion differs from the saved answer.
-  - Reset: while the chosen or saved answer differs from the original.
-  - Save all: while any case has unsaved edits.
-  - Run: while saved answers differ from their originals and nothing is left
-    unsaved, so a Run never misses an edit.
-
-- While a run is going, every button is disabled, because the run rewrites
-  the cases.
-- Filters within one group (kinds, case states, edit states) widen the list;
-  filters in different groups narrow it.
+Key domain rules and behaviors include:
+- Answer normalization: An answer with no placed pages is treated as None,
+  reopening any case whose placements have all been removed.
+- Baseline comparison: The baseline answer corresponds to the decision recorded
+  by the previous clean-seed run. A saved answer is classified as answered,
+  modified, or cleared relative to that baseline. Only cases differing from
+  their baseline are staged for pipeline execution.
+- Edit state precedence: A case's edit state resolves in strict priority order:
+  1. Rejected: The most recent save attempt failed rule validation.
+  2. Edited not saved: The reviewer modified placements in the browser without saving.
+  3. Saved applies on run: The answer differs from baseline and is saved to disk.
+  4. Unchanged: The answer matches the baseline or has no edits.
+- Suggestions: An unanswered case displays suggested placements as its starting
+  point. An untouched suggestion does not count as an edit, and the Accept
+  button explicitly saves it.
+- Button enablement conditions:
+  - Save / Save & Next: Enabled when current panel choices differ from the saved answer.
+  - Accept: Enabled when a complete, valid suggestion exists and differs from the saved answer.
+  - Reset: Enabled when chosen or saved answers differ from the baseline run answer.
+  - Save All: Enabled on the toolbar whenever any cases contain unsaved browser edits.
+  - Run: Enabled only when saved answers differ from baseline and zero unsaved edits remain.
+  - In-flight execution: All buttons are disabled while a background pipeline run is active.
+- Filtering logic: Selecting multiple chips within one category (such as kinds)
+  widens the match with an OR condition, whereas selecting across different
+  categories narrows the match with an AND condition.
 """
 
 from collections.abc import Collection, Mapping, Sequence
@@ -48,64 +49,69 @@ from work_matching import ReviewCase, ReviewCaseKind, list_required_page_keys
 ROWS_PER_PAGE = 25
 
 
-def find_saved_change(original: JsonValue, saved: JsonValue) -> SavedChange:
-    """Return how a saved answer differs from the case's original value.
+def resolve_saved_change(
+    original_answer: JsonValue, saved_answer: JsonValue
+) -> SavedChange:
+    """Resolve the difference between a case's saved answer and its baseline answer.
 
     Args:
-        original: The case's answer as the last run wrote it.
-        saved: The case's answer in the file now.
+        original_answer: The baseline answer recorded by the last pipeline run.
+        saved_answer: The answer currently persisted in the local review file.
 
     Returns:
-        Unchanged, answered, changed or cleared.
+        The comparative change status: UNCHANGED, ANSWERED, CHANGED, or CLEARED.
     """
-    original, saved = _normalize_answer(original), _normalize_answer(saved)
-    if saved == original:
+    normalized_original = _normalize_answer(original_answer)
+    normalized_saved = _normalize_answer(saved_answer)
+    if normalized_saved == normalized_original:
         return SavedChange.UNCHANGED
-    if original is None:
+    if normalized_original is None:
         return SavedChange.ANSWERED
-    return SavedChange.CLEARED if saved is None else SavedChange.CHANGED
+    return SavedChange.CLEARED if normalized_saved is None else SavedChange.CHANGED
 
 
-def find_case_edit_state(
+def resolve_case_edit_state(
     *,
-    original: JsonValue,
-    saved: JsonValue,
-    unsaved: JsonValue,
+    original_answer: JsonValue,
+    saved_answer: JsonValue,
+    unsaved_answer: JsonValue,
     has_unsaved_edit: bool,
     is_rejected: bool,
 ) -> CaseEditState:
-    """Return a case's edit state, in the order the module docstring gives.
+    """Resolve a case's active edit state according to priority precedence rules.
+
+    Evaluates whether a case failed validation, holds in-memory browser edits,
+    carries saved changes awaiting a pipeline run, or matches baseline.
 
     Args:
-        original: The answer as the last run wrote it.
-        saved: The answer in the file now.
-        unsaved: The browser's unsaved answer, when it has one.
-        has_unsaved_edit: Whether the browser holds an unsaved answer.
-        is_rejected: Whether the case's last save broke a rule.
+        original_answer: The baseline answer from the last pipeline run.
+        saved_answer: The answer currently persisted in storage.
+        unsaved_answer: The in-memory staged answer in the browser, if any.
+        has_unsaved_edit: Whether the browser holds an unpersisted answer edit.
+        is_rejected: Whether the last save attempt for this case failed validation.
 
     Returns:
-        The case's one edit state.
+        The resolved CaseEditState enum member.
     """
-    if is_rejected:
-        return CaseEditState.REJECTED
-    if has_unsaved_edit and _normalize_answer(unsaved) != _normalize_answer(saved):
-        return CaseEditState.EDITED_NOT_SAVED
-    if find_saved_change(original, saved) is not SavedChange.UNCHANGED:
-        return CaseEditState.SAVED_APPLIES_ON_RUN
-    return CaseEditState.UNCHANGED
+    return _resolve_edit_state(
+        is_rejected=is_rejected,
+        has_unsaved_change=has_unsaved_edit
+        and _normalize_answer(unsaved_answer) != _normalize_answer(saved_answer),
+        saved_change=resolve_saved_change(original_answer, saved_answer),
+    )
 
 
 def is_suggestion_complete(case: ReviewCase) -> bool:
     """Report whether a case's suggested answer can be saved as it is.
 
-    The suggestion must place every page the answer must place and follow
-    every rule. Accept then never saves an answer the run refuses.
+    Verifies that the suggestion places every required provider page and satisfies
+    all domain rules so that accepting it will not trigger a rule rejection.
 
     Args:
-        case: The review case, with its suggestion.
+        case: The review case carrying the suggested answer to evaluate.
 
     Returns:
-        True when the suggestion can be saved unchanged.
+        True when the suggestion contains a complete, valid placement.
     """
     suggested_answer = case.suggested_answer
     if not suggested_answer:
@@ -116,70 +122,94 @@ def is_suggestion_complete(case: ReviewCase) -> bool:
         <= suggested_answer.keys()
     ):
         return False
-    suggested_answer_value: dict[str, JsonValue] = {
-        page_key: place for page_key, place in suggested_answer.items()
-    }
-    return not case.list_broken_answer_rules(suggested_answer_value)
+    return not case.list_broken_answer_rules(build_suggested_answer(case))
 
 
-def find_case_buttons(
-    case: ReviewCase,
-    *,
-    original: JsonValue,
-    saved: JsonValue,
-    chosen: JsonValue,
-    is_run_going: bool,
-) -> CaseButtons:
-    """Return which of a case's buttons are enabled, as the module docstring gives.
+def is_answer_empty(answer: JsonValue) -> bool:
+    """Check whether an answer places no page.
 
     Args:
-        case: The review case.
-        original: The answer as the last run wrote it.
-        saved: The answer in the file now.
-        chosen: The answer the case's choices show now.
-        is_run_going: Whether a run is rewriting the cases.
+        answer: The answer payload, or None.
 
     Returns:
-        Whether Save, Save & next, Accept and Reset are enabled.
+        True when the answer is None or an empty mapping.
+    """
+    return answer in (None, {})
+
+
+def build_suggested_answer(case: ReviewCase) -> dict[str, JsonValue]:
+    """Build an editable answer from a case's suggested placements.
+
+    Args:
+        case: The review case carrying the suggested answer.
+
+    Returns:
+        A new mapping of page keys to suggested placement words.
+    """
+    return {page_key: place for page_key, place in case.suggested_answer.items()}
+
+
+def build_case_buttons(
+    case: ReviewCase,
+    *,
+    original_answer: JsonValue,
+    saved_answer: JsonValue,
+    chosen_answer: JsonValue,
+    is_run_going: bool,
+) -> CaseButtons:
+    """Build the action button enablement model for the active case panel.
+
+    Args:
+        case: The review case under inspection.
+        original_answer: The baseline answer from the last pipeline run.
+        saved_answer: The answer currently persisted in storage.
+        chosen_answer: The placements currently selected in the browser panel.
+        is_run_going: Whether a pipeline run is currently in progress.
+
+    Returns:
+        A CaseButtons instance with booleans for Save, Save & Next, Accept, and Reset.
     """
     if is_run_going:
         return CaseButtons(False, False, False, False)
-    original, saved, chosen = map(_normalize_answer, (original, saved, chosen))
-    suggestion: JsonValue = _normalize_answer(
-        {page_key: place for page_key, place in case.suggested_answer.items()}
+    normalized_original, normalized_saved, normalized_chosen = map(
+        _normalize_answer, (original_answer, saved_answer, chosen_answer)
     )
-    is_save_enabled = chosen != (saved if saved is not None else suggestion)
+    suggestion = _normalize_answer(build_suggested_answer(case))
+    is_save_enabled = normalized_chosen != (
+        normalized_saved if normalized_saved is not None else suggestion
+    )
     return CaseButtons(
         is_save_enabled=is_save_enabled,
-        is_accept_enabled=is_suggestion_complete(case) and suggestion != saved,
-        is_reset_enabled=saved != original
-        or chosen != (original if original is not None else suggestion),
+        is_accept_enabled=is_suggestion_complete(case)
+        and suggestion != normalized_saved,
+        is_reset_enabled=normalized_saved != normalized_original
+        or normalized_chosen
+        != (normalized_original if normalized_original is not None else suggestion),
         is_save_and_next_enabled=is_save_enabled,
     )
 
 
-def find_page_buttons(
+def build_page_buttons(
     *,
     unsaved_case_names: Collection[str],
     original_answers: Mapping[str, JsonValue],
     saved_answers: Mapping[str, JsonValue],
     is_run_going: bool,
 ) -> PageButtons:
-    """Return the page's Save all and Run states, with their counts.
+    """Build the toolbar button state model and counts for staged and saved changes.
 
     Args:
-        unsaved_case_names: The cases with unsaved edits in the browser.
-        original_answers: Each answered case's answer as the last run wrote it.
-        saved_answers: Each answered case's answer in the file now.
-        is_run_going: Whether a run is rewriting the cases.
+        unsaved_case_names: Identifiers of cases with unpersisted browser edits.
+        original_answers: Baseline answers recorded by the last pipeline run.
+        saved_answers: Answers currently persisted on disk.
+        is_run_going: Whether a pipeline run is currently in progress.
 
     Returns:
-        Whether Save all and Run are enabled, the unsaved and changed counts,
-        and the saved changes by kind.
+        A PageButtons instance with execution counts and button enabled flags.
     """
     run_changes: dict[SavedChange, int] = {}
     for case_name in original_answers.keys() | saved_answers.keys():
-        saved_change = find_saved_change(
+        saved_change = resolve_saved_change(
             original_answers.get(case_name), saved_answers.get(case_name)
         )
         if saved_change is not SavedChange.UNCHANGED:
@@ -196,14 +226,14 @@ def find_page_buttons(
 
 
 def filter_case_rows(rows: Sequence[CaseRow], case_filter: CaseFilter) -> list[CaseRow]:
-    """Return the rows every chosen filter group lets through, in their order.
+    """Filter review case rows against selected chips and search text.
 
     Args:
-        rows: Every case's list row.
-        case_filter: The chosen filters and search.
+        rows: The complete list of case rows to filter.
+        case_filter: The active filter criteria including kinds, states, and search.
 
     Returns:
-        The matching rows.
+        The filtered subset of case rows matching all active criteria.
     """
     search_text = case_filter.search_text.strip().casefold()
     return [
@@ -212,11 +242,11 @@ def filter_case_rows(rows: Sequence[CaseRow], case_filter: CaseFilter) -> list[C
         if (not case_filter.kinds or row.kind in case_filter.kinds)
         and (
             not case_filter.case_states
-            or _find_case_states(row) & case_filter.case_states
+            or _resolve_case_states(row) & case_filter.case_states
         )
         and (
             not case_filter.edit_states
-            or find_row_edit_state(row, case_filter) in case_filter.edit_states
+            or resolve_row_edit_state(row, case_filter) in case_filter.edit_states
         )
         and (
             not search_text
@@ -227,14 +257,14 @@ def filter_case_rows(rows: Sequence[CaseRow], case_filter: CaseFilter) -> list[C
 
 
 def count_case_rows(rows: Sequence[CaseRow], case_filter: CaseFilter) -> dict[str, int]:
-    """Count the rows each filter chip would let through, over every row.
+    """Aggregate matching row counts for every filter chip across all case rows.
 
     Args:
-        rows: Every case's row, before filtering.
-        case_filter: The browser's unsaved and rejected cases, for edit states.
+        rows: The full list of case rows before filtering.
+        case_filter: The active filter providing unsaved and rejected case names.
 
     Returns:
-        Each kind, case state and edit state value mapped to its row count.
+        A dictionary mapping each kind, case state, and edit state value to its count.
     """
     counts = dict.fromkeys(
         [
@@ -246,21 +276,41 @@ def count_case_rows(rows: Sequence[CaseRow], case_filter: CaseFilter) -> dict[st
     )
     for row in rows:
         counts[row.kind.value] += 1
-        for case_state in _find_case_states(row):
+        for case_state in _resolve_case_states(row):
             counts[case_state] += 1
-        counts[find_row_edit_state(row, case_filter).value] += 1
+        counts[resolve_row_edit_state(row, case_filter).value] += 1
     return counts
 
 
-def page_list_rows[Row](rows: Sequence[Row], page_number: int) -> ListPage[Row]:
-    """Return one page of rows; a page past the end gives the last page.
+def count_applied_answer_rows_by_kind(rows: Sequence[CaseRow]) -> dict[str, int]:
+    """Count the case rows of each kind whose saved answer the last run applied.
 
     Args:
-        rows: The filtered rows.
-        page_number: The page asked for, counted from 1.
+        rows: The full list of case rows before filtering.
 
     Returns:
-        The page's rows, with the page number, page count and positions.
+        Each kind value mapped to its number of applied-answer rows; kinds
+        without any are mapped to 0.
+    """
+    applied_answer_counts = dict.fromkeys((kind.value for kind in ReviewCaseKind), 0)
+    for row in rows:
+        if row.is_answer_applied:
+            applied_answer_counts[row.kind.value] += 1
+    return applied_answer_counts
+
+
+def paginate_rows[Row](rows: Sequence[Row], page_number: int) -> ListPage[Row]:
+    """Slice a sequence of rows into a single paginated page with navigation metadata.
+
+    Clamps requested page indices to valid boundaries (between 1 and total pages).
+
+    Args:
+        rows: The full sequence of filtered rows to paginate.
+        page_number: The 1-based page index requested by the user.
+
+    Returns:
+        A ListPage model containing the sliced rows, active page index,
+        total page count, starting row offset, and total matching count.
     """
     page_count = max(1, -(-len(rows) // ROWS_PER_PAGE))
     page_number = min(max(page_number, 1), page_count)
@@ -275,15 +325,15 @@ def page_list_rows[Row](rows: Sequence[Row], page_number: int) -> ListPage[Row]:
 
 
 def find_next_case_name(rows: Sequence[CaseRow], case_name: str) -> str | None:
-    """Return the case after the given one in the filtered list.
+    """Locate the identifier of the case following the given case in the filtered list.
 
     Args:
-        rows: The filtered list's rows, in list order.
-        case_name: The case just saved.
+        rows: The sequence of visible case rows in display order.
+        case_name: The identifier of the case just reviewed or saved.
 
     Returns:
-        The case after the given one. The first case when the given one is
-        not in the list. None after the last case, or for an empty list.
+        The identifier of the next case, the first case if the given one is
+        no longer visible, or None if at the end of the list or if the list is empty.
     """
     case_names = [row.case_name for row in rows]
     if case_name not in case_names:
@@ -292,15 +342,14 @@ def find_next_case_name(rows: Sequence[CaseRow], case_name: str) -> str | None:
     return case_names[position + 1] if position + 1 < len(case_names) else None
 
 
-def _find_case_states(row: CaseRow) -> set[str]:
-    """Return every state filter value a row matches.
+def _resolve_case_states(row: CaseRow) -> set[str]:
+    """Resolve all case state filter values that apply to a given case row.
 
     Args:
-        row: One case's list row.
+        row: The case row being classified.
 
     Returns:
-        The case state values the row matches: open or answered, and changed
-        and new when they apply.
+        A set of state strings matching the row (e.g. 'open', 'answered', 'changed', 'new').
     """
     states = {CaseState.OPEN.value if row.is_open else CaseState.ANSWERED.value}
     if row.saved_change is not SavedChange.UNCHANGED:
@@ -310,32 +359,53 @@ def _find_case_states(row: CaseRow) -> set[str]:
     return states
 
 
-def find_row_edit_state(row: CaseRow, case_filter: CaseFilter) -> CaseEditState:
-    """Return a row's edit state from the browser's unsaved and rejected cases.
+def resolve_row_edit_state(row: CaseRow, case_filter: CaseFilter) -> CaseEditState:
+    """Resolve the edit state for a row using active browser state collections.
 
     Args:
-        row: One case's list row.
-        case_filter: The filter holding the browser's unsaved and rejected cases.
+        row: The case row being classified.
+        case_filter: Filter criteria holding browser unsaved and rejected case names.
 
     Returns:
-        The row's one edit state.
+        The resolved CaseEditState enum member for the row.
     """
-    if row.case_name in case_filter.rejected_case_names:
+    return _resolve_edit_state(
+        is_rejected=row.case_name in case_filter.rejected_case_names,
+        has_unsaved_change=row.case_name in case_filter.unsaved_case_names,
+        saved_change=row.saved_change,
+    )
+
+
+def _resolve_edit_state(
+    *, is_rejected: bool, has_unsaved_change: bool, saved_change: SavedChange
+) -> CaseEditState:
+    """Resolve an edit state from its three conditions, in the order the module lists.
+
+    Args:
+        is_rejected: Whether the last save of the case failed validation.
+        has_unsaved_change: Whether the browser holds an answer that differs
+            from the saved answer.
+        saved_change: How the saved answer differs from the original answer.
+
+    Returns:
+        The first edit state whose condition holds, or UNCHANGED.
+    """
+    if is_rejected:
         return CaseEditState.REJECTED
-    if row.case_name in case_filter.unsaved_case_names:
+    if has_unsaved_change:
         return CaseEditState.EDITED_NOT_SAVED
-    if row.saved_change is not SavedChange.UNCHANGED:
+    if saved_change is not SavedChange.UNCHANGED:
         return CaseEditState.SAVED_APPLIES_ON_RUN
     return CaseEditState.UNCHANGED
 
 
 def _normalize_answer(answer: JsonValue) -> JsonValue:
-    """Return None for an answer with no pages, so it counts as no answer.
+    """Normalize empty answer mappings or None to None to indicate no decision.
 
     Args:
-        answer: A case's answer, or None.
+        answer: The candidate answer payload, or None.
 
     Returns:
-        None for a missing or empty answer, else the answer.
+        None if the answer is None or an empty dictionary; otherwise the original payload.
     """
-    return None if answer in (None, {}) else answer
+    return None if is_answer_empty(answer) else answer

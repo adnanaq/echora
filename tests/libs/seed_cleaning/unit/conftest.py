@@ -8,4 +8,4 @@ _FIXTURES = Path(__file__).parent / "fixtures"
 
 @pytest.fixture(scope="session")
 def seed_works() -> KnownWorkEntriesFromSeed:
-    return KnownWorkEntriesFromSeed.from_file(_FIXTURES / "seed_entries.json")
+    return KnownWorkEntriesFromSeed.load_seed_file(_FIXTURES / "seed_entries.json")

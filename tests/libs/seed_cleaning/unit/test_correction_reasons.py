@@ -1,8 +1,13 @@
 from seed_cleaning.correction_reasons import (
     ANSWER_REASON_SENTENCE,
+    DEAD_PAGE_REASON_SENTENCE,
     describe_correction_reason,
 )
-from seed_cleaning.seed_corrections import REVIEW_ANSWER_REASON, SeedCorrection
+from seed_cleaning.seed_corrections import (
+    DEAD_PAGE_REASON,
+    REVIEW_ANSWER_REASON,
+    SeedCorrection,
+)
 from work_matching import DoubledProviderOutcome, LinkedPageReason
 
 
@@ -20,6 +25,12 @@ def _correction(reason: str, *, is_added_page: bool = False) -> SeedCorrection:
 def test_describe_correction_reason_answer_says_answer() -> None:
     assert describe_correction_reason(_correction(REVIEW_ANSWER_REASON)) == (
         ANSWER_REASON_SENTENCE
+    )
+
+
+def test_describe_correction_reason_dead_page_says_page_does_not_exist() -> None:
+    assert describe_correction_reason(_correction(DEAD_PAGE_REASON)) == (
+        DEAD_PAGE_REASON_SENTENCE
     )
 
 

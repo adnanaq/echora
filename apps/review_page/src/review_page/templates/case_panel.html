@@ -1,4 +1,4 @@
-{% import "parts.html" as parts with context %}
+{% from "control_macros.html" import button, dropdown, error_line, named_entry_picker, note_line, page_link, partial_sources_cell, pill, status, switch with context %}
 {% if view is none %}
 <p class="empty-state">Choose a case from the list.</p>
 {% else %}
@@ -7,12 +7,12 @@
 <div class="case-heading">
   <h2>{{ view.title }}</h2>
   <span>
-    {{ parts.status(view.edit_state) }}
-    {% if view.is_suggestion_shown %}{{ parts.pill("Suggested, not yet answered", "suggested", tooltips.SUGGESTED) }}{% endif %}
+    {{ status(view.edit_state) }}
+    {% if view.is_suggestion_shown %}{{ pill("Suggested, not yet answered", "suggested", tooltips.SUGGESTED_ANSWER_PILL) }}{% endif %}
   </span>
 </div>
 {% if is_answer_unused %}
-<p class="notice-line">{{ parts.pill("No longer comes up", "unused") }} {{ tooltips.ANSWER_UNUSED }} Answer the case that replaced it.</p>
+<p class="notice-line">{{ pill("No longer comes up", "unused") }} {{ tooltips.UNUSED_ANSWER_PILL }} Answer the case that replaced it.</p>
 {% endif %}
 {% if correction_links %}
 <p class="notice-line">
@@ -25,7 +25,7 @@
 <p class="case-meta">
   <span title="{{ case.kind.description }}">{{ case.kind.value }}</span> · {{ view.entries | length }} entr{{ "y" if view.entries | length == 1 else "ies" }}
   {% if view.page_rows %} · {{ view.page_rows | length }} pages to place{% endif %}
-  · {{ parts.switch("Show only differences", "show_only_differences", "case") }}
+  · {{ switch("Show only differences", "show_only_differences", "case") }}
 </p>
 
 {% if view.reason_sentences %}
@@ -54,31 +54,33 @@
       <th>Page</th><th>Entry</th>
       {% for column in view.shown_columns %}<th>{{ column.value }}</th>{% endfor %}
       <th title="{{ tooltips.WORK_COLUMN }}">Work</th>
-      <th title="{{ tooltips.MARK_COLUMN }}">Mark</th>
     </tr>
   </thead>
   <tbody>
     {% for row in view.page_rows %}
     <tr class="{% if row.is_changed %}is-changed{% endif %}">
-      <td>{{ parts.page_link(row.page_key, row.address) }}{% if row.choices.is_required %} *{% endif %}{% if row.is_place_missing %}{{ parts.error_line("needs a place") }}{% endif %}</td>
+      <td>{{ page_link(row.page_key, row.address) }}{% if row.choices.is_required %} *{% endif %}{% if row.is_place_missing %}{{ error_line("needs a place") }}{% endif %}</td>
       <td>{{ row.entry_label }}{% if row.is_reference_page %} (ref){% endif %}</td>
       {% for column in view.shown_columns %}
       {% if column.name == "LINKS" and row.linked_pages %}
-      <td class="links-cell">{% for link in row.linked_pages %}{{ parts.page_link(link.page_key, link.address) }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
+      <td class="links-cell">{% for link in row.linked_pages %}{{ page_link(link.page_key, link.address) }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
       {% else %}
       <td>{{ row.details[column] }}</td>
       {% endif %}
       {% endfor %}
       <td class="choice-cell">
-        {{ parts.dropdown("work", row.choices.work_options, row.choices.work, "Work of " ~ row.page_key,
-                          is_changed=row.is_changed, is_invalid=row.is_place_missing,
-                          hx_vals={"page_key": row.page_key, "mark": row.choices.mark}, empty_label="no place",
-                          empty_description=choice_meaning_by_word["no place"]) }}
-        {% for note in row.disabled_choice_notes %}{{ parts.note_line(note) }}{% endfor %}
-      </td>
-      <td class="choice-cell">
-        {{ parts.dropdown("mark", row.choices.mark_options, row.choices.mark, "Mark of " ~ row.page_key,
-                          hx_vals={"page_key": row.page_key, "work": row.choices.work or ""}) }}
+        <div class="choice-stack">
+          {{ dropdown("work", row.choices.work_options, row.choices.work, "Work of " ~ row.page_key,
+                            is_changed=row.is_changed, is_invalid=row.is_place_missing,
+                            hx_vals={"page_key": row.page_key}, empty_label="no place",
+                            empty_description=choice_meaning_by_word["no place"]) }}
+          {% if row.choices.work == "other work" %}{{ named_entry_picker(row) }}{% endif %}
+        </div>
+        {% if row.choices.work == "other work" and row.choices.named_entry_page_key %}
+        <div>{{ page_link(row.choices.named_entry_page_key, row.named_entry_address) }}</div>{% endif %}
+        {% if row.named_entry_invalid_reason %}{{ error_line(row.named_entry_invalid_reason.value) }}{% endif %}
+        {% for work_word, provider_page in row.pages_by_closed_work.items() %}
+        <p class="control-note-line">{{ work_word | capitalize }} already has a page from this provider: {{ page_link(provider_page.page_key, provider_page.address) }}</p>{% endfor %}
       </td>
     </tr>
     {% endfor %}
@@ -86,6 +88,35 @@
 </table>
 </div>
 <p class="suggested-note">* the answer must place this page.</p>
+{% if view.work_partial_sources %}
+{% set address_by_page_key = {} %}{% for row in view.page_rows %}{% set _ = address_by_page_key.update({row.page_key: row.address}) %}{% endfor %}
+{% set page_by_key = {} %}{% for page in case.pages %}{% set _ = page_by_key.update({page.key: page, page.current_key: page}) %}{% endfor %}
+{% set work_by_page_key = {} %}{% for row in view.page_rows %}{% set _ = work_by_page_key.update({row.page_key: row.choices.work}) %}{% endfor %}
+{% set title_by_entry_key = {} %}{% for entry in case.covered_outside_entries %}{% set _ = title_by_entry_key.update({"other work " ~ entry.entry_reference_page: entry.title}) %}{% endfor %}
+<h3 class="case-section-title" title="{{ tooltips.WORKS_SECTION }}">Works</h3>
+<div class="table-scroll">
+<table class="page-table works-table">
+  <thead><tr><th>Work</th><th>Partial sources</th></tr></thead>
+  <tbody>
+    {% for work_choices in view.work_partial_sources %}
+    {% if work_choices.work.startswith("other work ") %}
+    {% set entry_key = work_choices.work.removeprefix("other work ") %}
+    {% set work_label = title_by_entry_key.get(work_choices.work, entry_key) %}
+    <tr>
+      <td>{{ work_label }} {{ pill("outside this case", "suggested", tooltips.OUTSIDE_THIS_CASE) }}<br>{{ page_link(entry_key, build_page_address(entry_key)) }}</td>
+      <td>{{ partial_sources_cell(work_choices, work_label, address_by_page_key, page_by_key, work_by_page_key) }}</td>
+    </tr>
+    {% else %}
+    <tr>
+      <td>{{ work_choices.work | capitalize }}</td>
+      <td>{{ partial_sources_cell(work_choices, work_choices.work, address_by_page_key, page_by_key, work_by_page_key) }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
 <details class="choice-meanings">
   <summary>What the choices mean</summary>
   <dl>{% for word, meaning in view.choice_meanings %}<dt>{{ word }}</dt><dd>{{ meaning }}</dd>{% endfor %}</dl>
@@ -97,7 +128,7 @@
 <h3 class="case-section-title">Entry and linked page</h3>
 <div class="table-scroll">
 <table class="page-table">
-  <thead><tr><th></th><th>Entry "{{ decision.linking_entries[0].title }}"</th><th>Linked page {{ parts.page_link(decision.page_key, view.linked_page_address) }}</th></tr></thead>
+  <thead><tr><th></th><th>Entry "{{ decision.linking_entries[0].title }}"<br>{{ page_link(view.linking_entry_link.page_key, view.linking_entry_link.address) }}</th><th>Linked page<br>{{ page_link(view.linked_page_link.page_key, view.linked_page_link.address) }}</th></tr></thead>
   <tbody>
     {% for row in view.comparison_rows %}
     <tr class="{% if row.is_different %}is-changed{% endif %}"><td>{{ row.label }}</td><td>{{ row.entry_value }}</td><td>{{ row.page_value }}{% if row.is_different %} ≠{% endif %}</td></tr>
@@ -107,13 +138,13 @@
 </div>
 <h3 class="case-section-title">Answer</h3>
 {% set chosen = view.chosen_answer.get(decision.page_key, "") if view.chosen_answer is mapping else "" %}
-{{ parts.dropdown("linked_answer", view.linked_page_options, chosen, "Answer for " ~ decision.page_key,
+{{ dropdown("linked_answer", view.linked_page_options, chosen, "Answer for " ~ decision.page_key,
                   hx_vals={"page_key": decision.page_key}, empty_label="no answer",
                   empty_description=tooltips.NO_LINKED_PAGE_ANSWER) }}
 <dl class="choice-meanings answer-meanings">
   {% for option in view.linked_page_options %}
   <dt class="{% if option.value == chosen %}is-chosen{% endif %}{% if option.disabling_rule %} is-disabled{% endif %}">{{ option.value }}</dt>
-  <dd class="{% if option.value == chosen %}is-chosen{% endif %}{% if option.disabling_rule %} is-disabled{% endif %}">{{ option.description }}{% if option.disabling_rule %}{{ parts.note_line("Not offered: " ~ option.disabling_rule.value) }}{% endif %}</dd>
+  <dd class="{% if option.value == chosen %}is-chosen{% endif %}{% if option.disabling_rule %} is-disabled{% endif %}">{{ option.description }}{% if option.disabling_rule %}{{ note_line("Not offered: " ~ option.disabling_rule.value) }}{% endif %}</dd>
   {% endfor %}
 </dl>
 {% endif %}
@@ -125,16 +156,16 @@
 </ul>
 {% endif %}
 
-{% for sentence in rejected_sentences %}{{ parts.error_line("Rejected: " ~ sentence) }}{% endfor %}
+{% for sentence in rejected_sentences %}{{ error_line("Rejected: " ~ sentence) }}{% endfor %}
 
 <div class="case-buttons">
-  {{ parts.button("Reset", "secondary", view.buttons.is_reset_enabled, hx_post="/answers", hx_vals={"action": "reset", "case_name": case.case_name},
-                  description=tooltips.RESET) }}
-  {{ parts.button("Accept", "secondary", view.buttons.is_accept_enabled, hx_post="/answers", hx_vals={"action": "accept", "case_name": case.case_name},
-                  description=tooltips.ACCEPT) }}
-  {{ parts.button("Save", "main", view.buttons.is_save_enabled, hx_post="/answers", hx_vals={"action": "save", "case_name": case.case_name},
-                  description=tooltips.SAVE) }}
-  {{ parts.button("Save & next ▸", "main", view.buttons.is_save_and_next_enabled, hx_post="/answers", hx_vals={"action": "save_next", "case_name": case.case_name},
-                  description=tooltips.SAVE_AND_NEXT) }}
+  {{ button("Reset", "secondary", view.buttons.is_reset_enabled, hx_post="/answers", hx_vals={"action": "reset", "case_name": case.case_name},
+                  description=tooltips.RESET_ANSWER) }}
+  {{ button("Accept", "secondary", view.buttons.is_accept_enabled, hx_post="/answers", hx_vals={"action": "accept", "case_name": case.case_name},
+                  description=tooltips.ACCEPT_SUGGESTION) }}
+  {{ button("Save", "main", view.buttons.is_save_enabled, hx_post="/answers", hx_vals={"action": "save", "case_name": case.case_name},
+                  description=tooltips.SAVE_ANSWER) }}
+  {{ button("Save & next ▸", "main", view.buttons.is_save_and_next_enabled, hx_post="/answers", hx_vals={"action": "save_next", "case_name": case.case_name},
+                  description=tooltips.SAVE_ANSWER_AND_NEXT) }}
 </div>
 {% endif %}

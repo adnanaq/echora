@@ -616,6 +616,29 @@ async def test_fetch_all_characters_turned_off_skips_character_requests(
     ]
 
 
+@pytest.mark.parametrize(
+    ("failed_reply", "is_retried"),
+    [
+        (Reply(error=aiohttp.ClientConnectionError("connection refused")), True),
+        (Reply(error=TimeoutError("timed out")), True),
+        (Reply(error=json.JSONDecodeError("bad", "", 0)), True),
+        (Reply(status=502), True),
+        (Reply(status=400), False),
+    ],
+    ids=["connection", "timeout", "invalid_json", "server_error", "bad_request"],
+)
+async def test_make_request_failed_reply_retried_only_when_transient(
+    anilist_api, failed_reply: Reply, is_retried: bool
+) -> None:
+    anilist_api.queue.extend([failed_reply, Reply({"data": {"Media": ONE_PIECE}})])
+    helper = AniListHelper(get_cache())
+    if is_retried:
+        assert (await helper._make_request("query"))["Media"] == ONE_PIECE
+    else:
+        with pytest.raises(ServiceNetworkError):
+            await helper._make_request("query")
+
+
 async def test_fetch_all_without_anime_or_characters_returns_none(anilist_api) -> None:
     assert (
         await AniListHelper(get_cache()).fetch_all({"anilist_url": ONE_PIECE_URL}, {})
@@ -626,7 +649,9 @@ async def test_fetch_all_without_anime_or_characters_returns_none(anilist_api) -
 async def test_fetch_all_anime_request_failure_raises_network_error(
     anilist_api,
 ) -> None:
-    anilist_api.queue.append(Reply(error=aiohttp.ClientConnectionError("refused")))
+    anilist_api.queue.extend(
+        [Reply(error=aiohttp.ClientConnectionError("refused"))] * 4
+    )
     with pytest.raises(ServiceNetworkError):
         await AniListHelper(get_cache()).fetch_all(
             {"anilist_url": ONE_PIECE_URL}, {}, fetch_characters=False

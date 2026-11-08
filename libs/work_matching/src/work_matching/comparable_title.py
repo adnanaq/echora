@@ -41,10 +41,16 @@ def fold_title_for_comparison(title: str) -> str:
 
 @lru_cache(maxsize=4096)
 def _remove_accent(character: str) -> str:
-    """Return a Latin letter without its accents; any other character unchanged.
+    """Return a Latin letter without accents, or any other character unchanged.
 
     Only Latin letters lose their marks: the voiced mark of a Japanese kana
-    decomposes the same way, and dropping it would turn "ガ" into "カ".
+    decomposes the same way, and dropping that mark turns "ガ" into "カ".
+
+    Args:
+        character: A single character from a casefolded title.
+
+    Returns:
+        The unaccented Latin base letter, or ``character`` unchanged.
 
     Examples:
         >>> _remove_accent("é")

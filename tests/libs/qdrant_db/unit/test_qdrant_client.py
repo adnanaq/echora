@@ -4,6 +4,7 @@ import asyncio
 from typing import cast
 from unittest.mock import AsyncMock, create_autospec, patch
 
+import httpx
 import pydantic
 import pytest
 import pytest_asyncio
@@ -15,6 +16,10 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
     InMemorySpanExporter,
 )
 from qdrant_client import AsyncQdrantClient
+from qdrant_client.http.exceptions import (
+    ResponseHandlingException,
+    UnexpectedResponse,
+)
 from qdrant_client.http.models import (
     CollectionsResponse,
     QueryResponse,
@@ -422,6 +427,57 @@ async def test_add_documents_transient_failure_retries_and_succeeds(
 
     assert result.successful == 1
     assert async_client.upsert.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_add_documents_broken_response_retries_and_succeeds(
+    qdrant_client: QdrantClient,
+) -> None:
+    async_client = cast(AsyncMock, qdrant_client._async_client)
+    async_client.upsert.side_effect = [
+        ResponseHandlingException(ValueError("decode error")),
+        None,
+    ]
+
+    result = await qdrant_client.add_documents(
+        documents=[
+            VectorDocument(
+                id="anime-1",
+                vectors={"text_vector": [0.1] * 1024},
+                payload={},
+            )
+        ],
+        max_retries=1,
+        retry_delay=0.0,
+    )
+
+    assert result.successful == 1
+    assert async_client.upsert.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_add_documents_bad_request_raises_permanent_error_without_retry(
+    qdrant_client: QdrantClient,
+) -> None:
+    async_client = cast(AsyncMock, qdrant_client._async_client)
+    async_client.upsert.side_effect = UnexpectedResponse(
+        400, "Bad Request", b"", httpx.Headers()
+    )
+
+    with pytest.raises(PermanentQdrantError):
+        await qdrant_client.add_documents(
+            documents=[
+                VectorDocument(
+                    id="anime-1",
+                    vectors={"text_vector": [0.1] * 1024},
+                    payload={},
+                )
+            ],
+            max_retries=1,
+            retry_delay=0.0,
+        )
+
+    assert async_client.upsert.call_count == 1
 
 
 @pytest.mark.asyncio

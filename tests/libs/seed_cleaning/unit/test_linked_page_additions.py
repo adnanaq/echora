@@ -50,7 +50,7 @@ MORI_NO_YOUSEI_SEED_ENTRY = _seed_entry(
 
 
 def _page(address: str, *linked_addresses: str, **details) -> ProviderPage:
-    return ProviderPage.from_canonical_record(
+    return ProviderPage.read_canonical_record(
         address,
         {
             "title": "Show",
@@ -80,7 +80,9 @@ def review_file(tmp_path) -> ReviewFile:
 
 
 def _unchanged(known_work_entries: KnownWorkEntriesFromSeed) -> list[CorrectedEntry]:
-    return [CorrectedEntry(entry.reference_page, entry) for entry in known_work_entries]
+    return [
+        CorrectedEntry(entry.reference_page_key, entry) for entry in known_work_entries
+    ]
 
 
 def _correct(
@@ -155,7 +157,7 @@ def test_find_entries_without_mal_page_keeps_entries_lacking_mal(
 ) -> None:
     entries = [
         *known_work_entries,
-        WorkEntry.from_seed_entry(_seed_entry("Mal", "TV", YAMATO_MAL)),
+        WorkEntry.read_seed_entry(_seed_entry("Mal", "TV", YAMATO_MAL)),
     ]
     assert [entry.title for entry in find_entries_without_mal_page(entries)] == [
         "The Boxer",
@@ -167,7 +169,7 @@ def test_find_entries_without_mal_page_keeps_entries_lacking_mal(
 def test_list_entries_with_placed_pages_corrected_entry_replaces_seed_entry(
     store, known_work_entries, review_file
 ) -> None:
-    doubled_entry = WorkEntry.from_seed_entry(
+    doubled_entry = WorkEntry.read_seed_entry(
         _seed_entry("The Boxer", "TV", BOXER_ANILIST, "https://anilist.co/anime/9")
     )
     store.add_pages(
@@ -241,7 +243,7 @@ def test_find_linking_seed_entries_new_entry_links_nothing(
     store, known_work_entries
 ) -> None:
     store.add_pages(_page(BOXER_ANILIST, BOXER_MAL))
-    new_entry = CorrectedEntry(None, WorkEntry.from_seed_entry(BOXER_SEED_ENTRY))
+    new_entry = CorrectedEntry(None, WorkEntry.read_seed_entry(BOXER_SEED_ENTRY))
     assert find_linking_seed_entries([new_entry], store, known_work_entries) == {}
 
 
@@ -282,7 +284,7 @@ def test_correct_linked_pages_dead_page_not_added(
 ) -> None:
     store.add_pages(
         _page(MORI_NO_YOUSEI_KITSU, "https://myanimelist.net/anime/35362"),
-        ProviderPage.from_dead_address("https://myanimelist.net/anime/35362"),
+        ProviderPage.build_dead_page("https://myanimelist.net/anime/35362"),
     )
     linked_page_corrections = _correct(known_work_entries, store, review_file)
     assert (
@@ -307,7 +309,7 @@ def test_correct_linked_pages_page_needing_person_becomes_review_case(
     )
 
 
-def test_correct_linked_pages_kept_answer_adds_part_page(
+def test_correct_linked_pages_kept_answer_adds_partial_source(
     tmp_path, store, known_work_entries
 ) -> None:
     review_path = tmp_path / "review.jsonl"
@@ -315,7 +317,7 @@ def test_correct_linked_pages_kept_answer_adds_part_page(
         json.dumps(
             {
                 "case_name": "linked page: mal:anime:65144 from anilist:anime:163794",
-                "answer": {"mal:anime:65144": "add as part"},
+                "answer": {"mal:anime:65144": "add as partial"},
             }
         )
         + "\n",
@@ -330,9 +332,10 @@ def test_correct_linked_pages_kept_answer_adds_part_page(
     ).corrections
     assert (
         correction.is_added_page,
-        correction.is_part_page,
+        correction.placement_word,
+        correction.partial_entry_reference_pages,
         correction.reason,
-    ) == (True, True, "review answer")
+    ) == (True, None, ("anilist:anime:163794",), "review answer")
 
 
 def test_correct_linked_pages_answers_adding_two_pages_of_provider_add_neither(

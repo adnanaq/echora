@@ -1,16 +1,21 @@
-"""Check answers before the file source saves them, and warn on answers that conflict.
+"""Validate review answers before saving and detect conflicts between concurrent edits.
 
-Each item gives the rule, then the reason for it.
+Validates user decisions against placement constraints and ensures optimistic
+concurrency so edits from one browser session do not silently overwrite changes
+made in another session.
 
-- An answer is refused when its case is not in the review file: a run
-  dropped it after the page loaded it.
-- An answer is refused when its case's saved answer is not the one its edit
-  started from: another tab saved since, and that answer must not be replaced
-  unseen. Saving again without the seen answer replaces it on purpose.
-- An answer is refused when it breaks the run's rules, checked with
-  ``ReviewCase.list_broken_answer_rules``; clearing an answer always passes.
-- Two saved linked-page answers adding whole pages of one provider to one
-  entry are saved with a warning, because the run adds neither page.
+Refusal conditions and warnings include:
+- Unknown case: Rejects an answer if the review case no longer exists in
+  storage, such as when a background pipeline run resolved the ambiguity.
+- Concurrency conflict: Rejects an answer if the stored answer was modified
+  after the current edit began, preventing stale overwrites. Resubmitting
+  without the base revision explicitly forces the update.
+- Rule violations: Rejects an answer if placement decisions violate domain rules
+  (such as assigning two MyAnimeList pages to one work), checked via
+  ``ReviewCase.list_broken_answer_rules``. Clearing an answer always succeeds.
+- Provider conflicts: Generates a warning when multiple linked-page answers
+  attempt to attach pages from the same provider to one entry, which the
+  cleaning pipeline rejects.
 """
 
 from collections.abc import Mapping, Sequence
@@ -34,14 +39,14 @@ _ANSWER_SAVED_ELSEWHERE_SENTENCE = (
 def read_seen_saved_answers(
     case_answers: Sequence[review_cases_pb2.CaseAnswer],
 ) -> dict[str, JsonValue]:
-    """Return the saved answer each edit started from, for answers that carry one.
+    """Extract the base saved answers from submitted answer messages.
 
     Args:
-        case_answers: The answers to save.
+        case_answers: The sequence of case answer messages submitted for saving.
 
     Returns:
-        Each case's seen saved answer (None for none), by case name; answers
-        without one are left out and not checked.
+        A dictionary mapping each case name to the saved answer present when
+        the edit started. Cases omitting the base revision field are excluded.
     """
     return {
         case_answer.case_name: json_format.MessageToDict(case_answer.seen_saved_answer)
@@ -51,13 +56,13 @@ def read_seen_saved_answers(
 
 
 def read_case_answer(case_answer: review_cases_pb2.CaseAnswer) -> JsonValue:
-    """Return a case answer's JSON value, or None when it is unset.
+    """Extract the JSON payload of an answer from its protobuf message.
 
     Args:
         case_answer: The answer message to read.
 
     Returns:
-        The answer as a JSON value, or None when the message leaves it unset.
+        The answer dictionary or decision string, or None when the field is unset.
     """
     if not case_answer.HasField("answer"):
         return None
@@ -70,25 +75,22 @@ def check_case_answer(
     answer: JsonValue,
     seen_saved_answers: Mapping[str, JsonValue],
 ) -> review_cases_pb2.RuleCheckResult:
-    """Check one answer before saving it, and say why it is refused.
+    """Validate a candidate answer before persisting it to the review file.
 
-    Each item gives the refusal, then the reason for it.
-
-    - The case is not in the review file: a run dropped it after the page
-      loaded it.
-    - The case's saved answer is not the one the edit started from: another
-      tab saved since, and that answer must not be replaced unseen.
-    - The answer breaks the run's rules; clearing an answer always passes.
+    Checks whether the case exists, detects optimistic concurrency conflicts,
+    and verifies that page placements satisfy placement rules.
 
     Args:
-        case: The case as the review file holds it now, or None when absent.
-        case_name: The case the answer is for.
-        answer: The new answer; None clears it.
-        seen_saved_answers: The saved answer each edit started from, by case
-            name; cases left out are not checked.
+        case: The review case currently stored on disk, or None when absent.
+        case_name: The identifier of the review case being answered.
+        answer: The candidate answer payload; None indicates clearing the answer.
+        seen_saved_answers: The baseline saved answer for each case at the time
+            editing began, used to detect stale writes. Cases omitted from this
+            mapping bypass concurrency validation.
 
     Returns:
-        The result: saved, or the refusal's rule names and sentences.
+        The validation result indicating whether the answer is accepted or
+        listing the broken rule codes and human-readable explanation messages.
     """
     if case is None:
         return _refuse_answer(
@@ -112,15 +114,15 @@ def check_case_answer(
 def _refuse_answer(
     case_name: str, rule_name: str, rule_sentence: str
 ) -> review_cases_pb2.RuleCheckResult:
-    """Return a refused answer's result with its one rule.
+    """Construct a rejected validation result containing a single violation reason.
 
     Args:
-        case_name: The case whose answer is refused.
-        rule_name: The refusal's rule name.
-        rule_sentence: The refusal's rule as the reviewer reads it.
+        case_name: The identifier of the review case whose answer is rejected.
+        rule_name: The programmatic identifier of the broken constraint.
+        rule_sentence: The user-facing explanation sentence describing the refusal.
 
     Returns:
-        A result marked not saved, carrying the one rule.
+        A RuleCheckResult message marked as not saved with the given rule.
     """
     return review_cases_pb2.RuleCheckResult(
         case_name=case_name,
@@ -133,14 +135,15 @@ def _refuse_answer(
 def list_conflict_warnings(
     cases_by_name: Mapping[str, ReviewCase], saved_answers: Mapping[str, JsonValue]
 ) -> dict[str, list[str]]:
-    """Warn on saved linked-page answers that add a whole page beside another of its provider.
+    """Detect conflicting linked-page answers that attempt to add duplicate providers.
 
     Args:
-        cases_by_name: Every case in the file, before the save.
-        saved_answers: The answers just saved, by case name.
+        cases_by_name: The full mapping of stored review cases by case name.
+        saved_answers: The newly saved answers mapped by case name.
 
     Returns:
-        Each just-saved case in a conflict, mapped to its warnings.
+        A dictionary mapping affected case names to warning messages describing
+        conflicting cases that target the same work entry with the same provider.
     """
     linked_page_cases = [
         case.model_copy(

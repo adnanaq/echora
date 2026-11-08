@@ -7,8 +7,8 @@ def _entry_titled(seed_entries: list[dict], title: str) -> dict:
     return next(entry for entry in seed_entries if entry["title"] == title)
 
 
-def test_work_entry_from_seed_entry_reads_matching_fields(seed_entries) -> None:
-    work = WorkEntry.from_seed_entry(_entry_titled(seed_entries, "One Piece"))
+def test_work_entry_read_seed_entry_reads_matching_fields(seed_entries) -> None:
+    work = WorkEntry.read_seed_entry(_entry_titled(seed_entries, "One Piece"))
     assert (work.title, work.type, work.year, work.season) == (
         "One Piece",
         "TV",
@@ -17,8 +17,8 @@ def test_work_entry_from_seed_entry_reads_matching_fields(seed_entries) -> None:
     )
 
 
-def test_work_entry_from_seed_entry_keys_addresses_by_page_key(seed_entries) -> None:
-    work = WorkEntry.from_seed_entry(_entry_titled(seed_entries, "One Piece"))
+def test_work_entry_read_seed_entry_keys_addresses_by_page_key(seed_entries) -> None:
+    work = WorkEntry.read_seed_entry(_entry_titled(seed_entries, "One Piece"))
     assert (
         work.addresses_by_page_key["mal:anime:21"] == "https://myanimelist.net/anime/21"
     )
@@ -29,10 +29,10 @@ def test_work_entry_from_seed_entry_keys_addresses_by_page_key(seed_entries) -> 
     assert len(work.addresses_by_page_key) == 10
 
 
-def test_work_entry_from_seed_entry_undefined_season_and_missing_year_give_none(
+def test_work_entry_read_seed_entry_undefined_season_and_missing_year_give_none(
     seed_entries,
 ) -> None:
-    work = WorkEntry.from_seed_entry(
+    work = WorkEntry.read_seed_entry(
         _entry_titled(seed_entries, "2.5-jigen no Ririsa 2nd Season")
     )
     assert (work.year, work.season) == (None, None)
@@ -47,7 +47,7 @@ def test_work_entry_reference_page_follows_reference_order() -> None:
             "anilist:anime:2": "https://anilist.co/anime/2",
         },
     )
-    assert work.reference_page == "anilist:anime:2"
+    assert work.reference_page_key == "anilist:anime:2"
 
 
 def test_work_entry_reference_page_without_known_provider_takes_first_page() -> None:
@@ -56,7 +56,7 @@ def test_work_entry_reference_page_without_known_provider_takes_first_page() -> 
         type="TV",
         addresses_by_page_key={"https://example.com/a": "https://example.com/a"},
     )
-    assert work.reference_page == "https://example.com/a"
+    assert work.reference_page_key == "https://example.com/a"
 
 
 def test_work_entry_unknown_type_rejected() -> None:

@@ -1,7 +1,7 @@
 /*
- * The review page's look: one set of named values, and one rule per shared
- * part (templates/parts.html). Every part reads only these values, so the
- * page stays consistent and the theme changes in one place.
+ * The review page's styles: one set of named colours and sizes, the page
+ * layout, and one rule per control macro (templates/control_macros.html).
+ * Every rule reads only the named values, so the theme changes in one place.
  *
  * The light values are the default; the dark ones apply under
  * data-theme="dark", which the page sets from the reviewer's theme choice,
@@ -43,6 +43,7 @@
   --color-rejected: #c62f2f;
   --color-unchanged: #626d7c;
   --color-new: #6b3fc6;
+  --color-applied: #1a7f37;
   --color-changed-cell: #fff4e0;
 }
 
@@ -64,6 +65,7 @@
   --color-rejected: #f07070;
   --color-unchanged: #949eac;
   --color-new: #a98bf0;
+  --color-applied: #4ac26b;
   --color-changed-cell: #3a3020;
 }
 
@@ -101,7 +103,7 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; }
 }
 .layout-toolbar h1 { font-size: 16px; margin: 0; }
 /* Tabs sit beside the title; the toolbar's buttons go to the right. */
-.part-tabs { display: inline-flex; gap: var(--space-1); margin-right: auto; }
+.control-tabs { display: inline-flex; gap: var(--space-1); margin-right: auto; }
 /* A button that reads as a link: it moves to another tab rather than to an address. */
 .link-button { font: inherit; padding: 0; border: 0; background: none; color: var(--color-link); text-decoration: underline; cursor: pointer; }
 .link-button:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; }
@@ -131,69 +133,124 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; }
 @media (max-width: 900px) { .layout-case-panel { position: static; max-height: none; } }
 
 /* Dropdown */
-.part-dropdown { display: inline-flex; align-items: center; gap: var(--space-1); }
-.part-dropdown-label { color: var(--color-muted); font-size: var(--size-small); }
-.part-dropdown select {
+.control-dropdown { position: relative; display: inline-flex; align-items: center; gap: var(--space-1); }
+.control-dropdown-label { color: var(--color-muted); font-size: var(--size-small); }
+.control-dropdown select {
   font: inherit; color: var(--color-text); background: var(--color-surface);
   border: 1px solid var(--color-control-border); border-radius: var(--radius);
   padding: var(--space-1) var(--space-2); min-width: 110px;
 }
-.part-dropdown select:focus { outline: 2px solid var(--color-focus); outline-offset: 1px; }
-.part-dropdown.is-changed select { border-color: var(--color-edited); }
-.part-dropdown.is-invalid select { border-color: var(--color-rejected); border-width: 2px; }
-.part-dropdown option:disabled { color: var(--color-disabled); }
-.part-changed-mark { color: var(--color-edited); font-weight: 700; }
+.control-dropdown select:focus { outline: 2px solid var(--color-focus); outline-offset: 1px; }
+/* The work dropdown and the named entry picker under it form one column as
+   wide as the select. Notes and errors below the column wrap across the cell,
+   so a long note does not widen the picker. */
+.choice-stack { display: inline-flex; flex-direction: column; vertical-align: top; }
+/* The named entry picker: the seed entry an "other work" page moves to.
+   Width 0 with min-width 100% keeps a long title from widening the column,
+   so the title is cut short instead.
+   The panel is positioned by the anchor plugin, with fixed positioning. */
+.control-picker { width: 0; min-width: 100%; margin-top: var(--space-1); }
+.control-picker-trigger {
+  display: flex; align-items: center; gap: var(--space-1); width: 100%;
+  font: inherit; color: var(--color-text); background: var(--color-surface); text-align: left; cursor: pointer;
+  border: 1px solid var(--color-control-border); border-radius: var(--radius); padding: var(--space-1) var(--space-2);
+}
+.control-picker-trigger:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; }
+.control-picker-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.control-picker-chevron { flex: none; color: var(--color-muted); }
+.control-picker.is-invalid .control-picker-trigger { border-color: var(--color-rejected); }
+.control-picker-panel {
+  z-index: 20; width: 18rem; white-space: normal;
+  background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
+}
+.control-picker-search {
+  display: block; width: 100%; box-sizing: border-box; font: inherit; color: var(--color-text); background: transparent;
+  border: 0; border-bottom: 1px solid var(--color-border); border-radius: var(--radius) var(--radius) 0 0;
+  padding: var(--space-2) var(--space-3);
+}
+.control-picker-search:focus { outline: none; }
+.control-picker-options { max-height: 16rem; overflow-y: auto; padding: var(--space-1); }
+.control-picker-group {
+  margin: var(--space-2) var(--space-2) var(--space-1); color: var(--color-muted);
+  font-size: var(--size-small); text-transform: uppercase; letter-spacing: 0.04em;
+}
+.control-picker-option {
+  display: flex; flex-direction: column; gap: 2px; width: 100%; box-sizing: border-box;
+  font: inherit; color: var(--color-text); background: none; border: 0; border-radius: var(--radius);
+  padding: var(--space-1) var(--space-2); text-align: left; cursor: pointer;
+}
+.control-picker-option:hover, .control-picker-option:focus-visible { background: var(--color-page); outline: none; }
+.control-picker-option.is-chosen .control-picker-option-title { font-weight: 600; }
+.control-picker-option.is-disabled { cursor: default; }
+.control-picker-option.is-disabled .control-picker-option-title { color: var(--color-muted); }
+.control-picker-option-key { color: var(--color-muted); font-family: var(--font-code); font-size: var(--size-small); }
+.control-picker-option-detail { color: var(--color-muted); font-size: var(--size-small); }
+.control-dropdown.is-changed select { border-color: var(--color-edited); }
+.control-dropdown.is-invalid select { border-color: var(--color-rejected); }
+.control-dropdown option:disabled { color: var(--color-disabled); }
+/* The mark sits in the cell padding beside the select, so the dropdown is as
+   wide as its select and the named entry picker below lines up with it. */
+.control-changed-mark {
+  position: absolute; left: 100%; top: 50%; transform: translateY(-50%); margin-left: var(--space-1);
+  color: var(--color-edited); font-weight: 700;
+}
 
 /* Chip */
-.part-chip {
+.control-chip {
   font: inherit; font-size: var(--size-small); cursor: pointer;
   color: var(--color-text); background: var(--color-surface);
   border: 1px solid var(--color-control-border); border-radius: var(--radius-pill);
   padding: 2px var(--space-3);
 }
-.part-chip.is-on { color: var(--color-main-text); background: var(--color-main); border-color: var(--color-main); }
-.part-chip-count { opacity: 0.75; }
+.control-chip.is-on { color: var(--color-main-text); background: var(--color-main); border-color: var(--color-main); }
+.control-chip-count { opacity: 0.75; }
 /* On the main colour, a faded count falls under 4.5:1; keep it solid. */
-.part-chip.is-on .part-chip-count { opacity: 1; }
+.control-chip.is-on .control-chip-count { opacity: 1; }
 
 /* Pill */
-.part-pill { font-size: var(--size-small); border-radius: var(--radius-pill); padding: 0 var(--space-2); border: 1px solid currentColor; white-space: nowrap; }
-.part-pill.tone-new { color: var(--color-new); }
-.part-pill.tone-suggested { color: var(--color-muted); border-style: dashed; }
-.part-pill.tone-unused { color: var(--color-edited); }
+.control-pill { font-size: var(--size-small); border-radius: var(--radius-pill); padding: 0 var(--space-2); border: 1px solid currentColor; white-space: nowrap; }
+.control-pill.tone-new { color: var(--color-new); }
+.control-pill.tone-suggested { color: var(--color-muted); border-style: dashed; }
+.control-pill.tone-unused { color: var(--color-edited); }
 
 /* Status: a dot and a word */
-.part-status { display: inline-flex; align-items: center; gap: var(--space-1); font-size: var(--size-small); white-space: nowrap; }
-.part-status-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
-.part-status.state-edited_not_saved { color: var(--color-edited); }
-.part-status.state-saved_applies_on_run { color: var(--color-saved); }
-.part-status.state-rejected { color: var(--color-rejected); }
-.part-status.state-unchanged { color: var(--color-unchanged); }
+.control-status { display: inline-flex; align-items: center; gap: var(--space-1); font-size: var(--size-small); white-space: nowrap; }
+.control-status-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.control-status.state-edited_not_saved { color: var(--color-edited); }
+.control-status.state-saved_applies_on_run { color: var(--color-saved); }
+.control-status.state-rejected { color: var(--color-rejected); }
+.control-status.state-unchanged { color: var(--color-unchanged); }
 
 /* Switch */
-.part-switch { display: inline-flex; align-items: center; gap: var(--space-2); cursor: pointer; font-size: var(--size-small); }
-.part-switch input { position: absolute; opacity: 0; }
-.part-switch-track { width: 30px; height: 16px; border-radius: var(--radius-pill); background: var(--color-border); position: relative; }
-.part-switch-track::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--color-surface); transition: left 0.15s; }
-.part-switch input:checked + .part-switch-track { background: var(--color-main); }
-.part-switch input:checked + .part-switch-track::after { left: 16px; }
-.part-switch input:focus-visible + .part-switch-track { outline: 2px solid var(--color-focus); }
+.control-switch { display: inline-flex; align-items: center; gap: var(--space-2); cursor: pointer; font-size: var(--size-small); }
+.control-switch input { position: absolute; opacity: 0; }
+.control-switch-track { width: 30px; height: 16px; border-radius: var(--radius-pill); background: var(--color-border); position: relative; }
+.control-switch-track::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--color-surface); transition: left 0.15s; }
+.control-switch input:checked + .control-switch-track { background: var(--color-main); }
+.control-switch input:checked + .control-switch-track::after { left: 16px; }
+.control-switch input:focus-visible + .control-switch-track { outline: 2px solid var(--color-focus); }
 
 /* Buttons */
-.part-button { font: inherit; cursor: pointer; border-radius: var(--radius); padding: var(--space-1) var(--space-3); border: 1px solid var(--color-main); }
-.part-button.tone-main { color: var(--color-main-text); background: var(--color-main); }
-.part-button.tone-secondary { color: var(--color-accent); background: var(--color-surface); border-color: var(--color-accent); }
+.control-button { font: inherit; cursor: pointer; border-radius: var(--radius); padding: var(--space-1) var(--space-3); border: 1px solid var(--color-main); }
+.control-button.tone-main { color: var(--color-main-text); background: var(--color-main); }
+.control-button.tone-secondary { color: var(--color-accent); background: var(--color-surface); border-color: var(--color-accent); }
 /* An icon-only button: a 16 px icon padded to the height of a text button. */
-.part-button.is-icon-only { display: inline-flex; align-items: center; justify-content: center; padding: calc(var(--space-1) + 2px); line-height: 0; }
-.part-icon { display: block; }
-.part-button:disabled { cursor: not-allowed; color: var(--color-disabled); background: var(--color-surface); border-color: var(--color-control-border); }
-.part-button:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; }
+.control-button.is-icon-only { display: inline-flex; align-items: center; justify-content: center; padding: calc(var(--space-1) + 2px); line-height: 0; }
+.control-icon { display: block; }
+.control-icon.tone-applied { color: var(--color-applied); }
+.control-button:disabled { cursor: not-allowed; color: var(--color-disabled); background: var(--color-surface); border-color: var(--color-control-border); }
+.control-button:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; }
 
 /* Error line */
-.part-error-line { color: var(--color-rejected); font-size: var(--size-small); margin: var(--space-1) 0 0; }
-.part-note-line { color: var(--color-muted); font-size: var(--size-small); margin: var(--space-1) 0 0; }
+.control-error-line {
+  display: flex; align-items: center; gap: var(--space-1);
+  color: var(--color-rejected); font-size: var(--size-small); margin: var(--space-1) 0 0;
+}
+.control-error-icon { flex: none; }
+.control-note-line { color: var(--color-muted); font-size: var(--size-small); margin: var(--space-1) 0 0; }
 /* A note under a dropdown wraps within the column instead of widening the table. */
-.choice-cell .part-error-line, .choice-cell .part-note-line { max-width: 18rem; white-space: normal; }
+.choice-cell .control-error-line, .choice-cell .control-note-line { min-width: 12rem; max-width: 18rem; white-space: normal; }
 
 /* Filters, list and paging */
 .filter-group { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); margin-bottom: var(--space-2); }
@@ -222,6 +279,30 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; }
 .table-scroll { overflow-x: auto; }
 .case-buttons { display: flex; flex-wrap: wrap; gap: var(--space-2); justify-content: flex-end; margin-top: var(--space-4); }
 .suggested-note { color: var(--color-muted); font-size: var(--size-small); }
+/* Works: each work's partial sources as chips, then a picker adding one. The
+   picker trigger keeps the work dropdown's width, as on the page rows. */
+/* A long title wraps inside its column, so the partial sources keep their room. */
+.works-table td:first-child { width: 18rem; white-space: normal; }
+.partial-source-list { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); }
+.partial-source-list .control-picker { width: 12rem; min-width: 0; margin-top: 0; }
+.partial-source-chip {
+  display: inline-flex; align-items: center; gap: var(--space-1);
+  border: 1px solid var(--color-control-border); border-radius: var(--radius-pill);
+  padding: 1px var(--space-1) 1px var(--space-2); background: var(--color-surface);
+}
+.partial-source-remove {
+  display: inline-flex; padding: 2px; border: 0; border-radius: var(--radius-pill);
+  color: var(--color-muted); background: none; cursor: pointer;
+}
+.partial-source-remove:hover, .partial-source-remove:focus-visible { color: var(--color-text); background: var(--color-page); outline: none; }
+/* A picker adding several options: a checkbox per option, then one button. */
+.control-picker-check { flex-direction: row; align-items: flex-start; gap: var(--space-2); }
+.control-picker-check input { margin-top: 3px; }
+.control-picker-check-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.control-picker-footer {
+  display: flex; justify-content: flex-end; padding: var(--space-2);
+  border-top: 1px solid var(--color-border);
+}
 .choice-meanings { font-size: var(--size-small); margin: var(--space-2) 0; }
 .choice-meanings summary { cursor: pointer; color: var(--color-accent); }
 .choice-meanings dl, dl.choice-meanings { display: grid; grid-template-columns: max-content 1fr; gap: var(--space-1) var(--space-3); margin: var(--space-2) 0; }

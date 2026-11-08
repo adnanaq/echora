@@ -3,10 +3,12 @@ import re
 from pathlib import Path
 
 import pytest
+from review_page.correction_views import ANSWER_SOURCE, RULES_SOURCE
 from review_page.models import CaseEditState, CaseState
 from review_page.tooltips import (
     CASE_STATE_TOOLTIPS,
     CORRECTION_CHANGE_TOOLTIPS,
+    CORRECTION_SOURCE_TOOLTIPS,
     EDIT_STATE_TOOLTIPS,
     THEME_TOOLTIPS,
     Tooltip,
@@ -31,6 +33,10 @@ def test_correction_change_tooltips_cover_every_change_and_unchanged() -> None:
     assert set(CORRECTION_CHANGE_TOOLTIPS) == (
         set(CORRECTION_COUNT_NAMES) - CASE_COUNT_NAMES
     ) | {"unchanged"}
+
+
+def test_correction_source_tooltips_cover_every_source() -> None:
+    assert set(CORRECTION_SOURCE_TOOLTIPS) == {ANSWER_SOURCE, RULES_SOURCE}
 
 
 def test_theme_tooltips_cover_every_theme_choice() -> None:

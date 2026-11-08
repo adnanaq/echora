@@ -9,10 +9,11 @@ from review_page.app import create_app
 from review_page.file_review_case_source import (
     FileReviewCaseSource,
     RunSeedFileUnknownError,
-    UnreadableReviewFileError,
 )
+from review_page.models import InvalidNamedPageKeyReason
+from review_page.review_case_loader import UnreadableReviewFileError
 from review_page.review_case_messages import convert_case_to_message
-from review_page.review_case_source import ReviewCaseSource
+from review_page.review_case_source import ReviewCaseSource, SeedFileUnavailableError
 from shared_proto.v1 import review_cases_pb2
 from work_matching import (
     ReviewCase,
@@ -98,10 +99,15 @@ class FakeReviewCaseSource(ReviewCaseSource):
         self.is_answer_changed_during_save = False
         self.is_review_file_unreadable = False
         self.is_seed_file_known = True
+        self.is_seed_file_readable = True
         self.is_running = False
         self.run_result: review_cases_pb2.SeedCleaningRunResult | None = None
         self.corrections: list[review_cases_pb2.SeedCorrection] = []
         self.checked_entries: list[review_cases_pb2.CheckedEntry] = []
+        self.invalid_named_page_key_reasons: dict[str, InvalidNamedPageKeyReason] = {}
+        self.named_entry_suggestions: dict[
+            str, review_cases_pb2.TargetEntrySuggestion
+        ] = {}
 
     def list_cases(self) -> list[review_cases_pb2.ReviewCase]:
         if self.is_review_file_unreadable:
@@ -114,6 +120,24 @@ class FakeReviewCaseSource(ReviewCaseSource):
 
     def get_last_run_result(self) -> review_cases_pb2.SeedCleaningRunResult | None:
         return self.run_result
+
+    def find_invalid_named_page_keys(
+        self, page_keys: Sequence[str]
+    ) -> dict[str, InvalidNamedPageKeyReason]:
+        return {
+            page_key: self.invalid_named_page_key_reasons[page_key]
+            for page_key in page_keys
+            if page_key in self.invalid_named_page_key_reasons
+        }
+
+    def find_named_entry_suggestions(
+        self, page_keys: Sequence[str]
+    ) -> dict[str, review_cases_pb2.TargetEntrySuggestion]:
+        return {
+            page_key: self.named_entry_suggestions[page_key]
+            for page_key in page_keys
+            if page_key in self.named_entry_suggestions
+        }
 
     def list_corrections(self) -> list[review_cases_pb2.SeedCorrection]:
         return list(self.corrections)
@@ -130,6 +154,8 @@ class FakeReviewCaseSource(ReviewCaseSource):
             raise UnknownCaseError([answer.case_name for answer in case_answers])
         if self.is_answer_changed_during_save:
             raise SavedAnswerChangedError([answer.case_name for answer in case_answers])
+        if not self.is_seed_file_readable:
+            raise SeedFileUnavailableError
         seen_saved_answers = read_seen_saved_answers(case_answers)
         results = []
         for case_answer in case_answers:

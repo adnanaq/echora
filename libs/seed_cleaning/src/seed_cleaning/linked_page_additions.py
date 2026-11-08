@@ -62,16 +62,16 @@ from work_matching import (
     WorkEntry,
     build_page_address,
     decide_linked_page,
+    find_entry_episode_count,
     find_unheld_linked_page_keys,
-    get_entry_episode_count,
-    get_page_provider,
+    read_page_provider,
 )
 
 logger = logging.getLogger(__name__)
 
 
 class _PageAddition(NamedTuple):
-    """Hold a linked page to add, the entry it joins, whether as a part, and why."""
+    """Hold a linked page to add, the entry it joins, whether as a partial source, and why."""
 
     # The page's current key and the address the seed spells it with, which
     # can differ from the link's own spelling, such as a Kitsu slug.
@@ -79,7 +79,7 @@ class _PageAddition(NamedTuple):
     address: str
     # The reference page of the work entry the page joins, as decided.
     entry_reference_page: str
-    is_part_page: bool
+    is_partial_source: bool
     # The decision's reason by name, or ``review answer``.
     reason: str
 
@@ -119,7 +119,7 @@ def find_entries_without_mal_page(entries: Iterable[WorkEntry]) -> list[WorkEntr
         entry
         for entry in entries
         if not any(
-            get_page_provider(key) == "mal" for key in entry.addresses_by_page_key
+            read_page_provider(key) == "mal" for key in entry.addresses_by_page_key
         )
     ]
 
@@ -159,8 +159,8 @@ def list_entries_with_placed_pages(
         if corrected.seed_entry_reference_page is not None
     }
     placed_entries = {
-        entry.reference_page: corrected_entries.get(
-            entry.reference_page, CorrectedEntry(entry.reference_page, entry)
+        entry.reference_page_key: corrected_entries.get(
+            entry.reference_page_key, CorrectedEntry(entry.reference_page_key, entry)
         )
         for entry in entries
     } | corrected_entries
@@ -203,7 +203,7 @@ def find_linking_seed_entries(
             entry, entry_pages, known_work_entries, FETCHED_PROVIDERS
         )
         entry_details = LinkingEntryDetails(
-            entry, get_entry_episode_count(entry, entry_pages), linked_page_keys
+            entry, find_entry_episode_count(entry, entry_pages), linked_page_keys
         )
         for key in linked_page_keys:
             linking_seed_entries_by_page_key[key].append(
@@ -302,7 +302,11 @@ def _place_linked_page(
         [entry] = decision.linking_entries
         reason = decision.reason.name
         return None, _PageAddition(
-            page_key, address, entry.reference_page, is_part_page=False, reason=reason
+            page_key,
+            address,
+            entry.reference_page_key,
+            is_partial_source=False,
+            reason=reason,
         )
     entry_pages = (
         entry_page
@@ -310,7 +314,7 @@ def _place_linked_page(
         for entry_page in store.get_entry_pages(entry)
     )
     review_case = review_file.attach_kept_answer(
-        ReviewCase.from_linked_page(decision, [page, *entry_pages])
+        ReviewCase.build_linked_page_case(decision, [page, *entry_pages])
     )
     addition = review_case.accepted_answer
     if not isinstance(addition, LinkedPageAddition):
@@ -319,7 +323,7 @@ def _place_linked_page(
         page_key,
         address,
         addition.entry_reference_page,
-        addition.is_part_page,
+        addition.is_partial_source,
         REVIEW_ANSWER_REASON,
     )
 
@@ -329,9 +333,9 @@ def _drop_conflicting_additions(
 ) -> tuple[list[_PageAddition], tuple[str, ...]]:
     """Leave out whole pages added two or more per provider to one entry.
 
-    A work holds one whole page of each provider but can hold several part
-    pages. Two whole pages of one provider joining one entry would make a
-    doubled provider. The rules never add two such pages, because an entry
+    A work holds one page of each provider among its sources, while partial
+    sources are never fetched and never conflict. Two whole pages of one
+    provider joining one entry would make a doubled provider. The rules never add two such pages, because an entry
     linking two of them sends both to review. Only answers can add two, so
     neither page is added and a warning names the entry.
 
@@ -342,18 +346,21 @@ def _drop_conflicting_additions(
         The additions kept, and the sorted keys of the pages left out.
     """
     whole_page_counts = Counter(
-        (page_addition.entry_reference_page, get_page_provider(page_addition.page_key))
+        (page_addition.entry_reference_page, read_page_provider(page_addition.page_key))
         for page_addition in page_additions
-        if not page_addition.is_part_page
+        if not page_addition.is_partial_source
     )
     kept_additions: list[_PageAddition] = []
     conflicting_page_keys: list[str] = []
     for page_addition in page_additions:
         entry_provider = (
             page_addition.entry_reference_page,
-            get_page_provider(page_addition.page_key),
+            read_page_provider(page_addition.page_key),
         )
-        if not page_addition.is_part_page and whole_page_counts[entry_provider] > 1:
+        if (
+            not page_addition.is_partial_source
+            and whole_page_counts[entry_provider] > 1
+        ):
             logger.warning(
                 f"Not adding {page_addition.page_key}: answers add two or more "
                 f"pages of its provider to {page_addition.entry_reference_page}"
@@ -385,21 +392,27 @@ def _build_addition_corrections(
     # Keyed by the corrected entry's reference page, which is unique: each page
     # belongs to one seed entry, and the corrections move a page, never copy it.
     linking_seed_entry_by_entry_reference_page = {
-        linking_seed_entry.entry_details.entry.reference_page: linking_seed_entry
+        linking_seed_entry.entry_details.entry.reference_page_key: linking_seed_entry
         for linking_seed_entries in linking_seed_entries_by_page_key.values()
         for linking_seed_entry in linking_seed_entries
     }
-    return [
-        SeedCorrection(
-            entry_reference_page=linking_seed_entry_by_entry_reference_page[
-                page_addition.entry_reference_page
-            ].seed_entry_reference_page,
-            page_key=page_addition.page_key,
-            address=page_addition.address,
-            placement_word=FIRST_WORK,
-            is_added_page=True,
-            is_part_page=page_addition.is_part_page,
-            reason=page_addition.reason,
+    corrections: list[SeedCorrection] = []
+    for page_addition in page_additions:
+        seed_entry_reference_page = linking_seed_entry_by_entry_reference_page[
+            page_addition.entry_reference_page
+        ].seed_entry_reference_page
+        corrections.append(
+            SeedCorrection(
+                entry_reference_page=seed_entry_reference_page,
+                page_key=page_addition.page_key,
+                address=page_addition.address,
+                # A partial source is no entry's source, so it has no work.
+                placement_word=None if page_addition.is_partial_source else FIRST_WORK,
+                is_added_page=True,
+                partial_entry_reference_pages=(seed_entry_reference_page,)
+                if page_addition.is_partial_source
+                else (),
+                reason=page_addition.reason,
+            )
         )
-        for page_addition in page_additions
-    ]
+    return corrections

@@ -32,7 +32,7 @@ from work_matching import (
     KnownWorkEntriesFromSeed,
     ProviderPageStore,
     WorkEntry,
-    get_page_provider,
+    read_page_provider,
 )
 
 # Entries that each hold a page of this provider are never one work.
@@ -168,17 +168,17 @@ def _read_single_work_links(linked_page_keys: tuple[str, ...]) -> list[str]:
     A provider with two or more linked pages means the page covers several
     works, so none of that provider's links is kept.
     """
-    linked_pages_per_provider = Counter(map(get_page_provider, linked_page_keys))
+    linked_pages_per_provider = Counter(map(read_page_provider, linked_page_keys))
     return [
         key
         for key in linked_page_keys
-        if linked_pages_per_provider[get_page_provider(key)] == 1
+        if linked_pages_per_provider[read_page_provider(key)] == 1
     ]
 
 
 def _has_mal_page(work_entry: WorkEntry) -> bool:
     """Report whether an entry holds a MAL page."""
     return any(
-        get_page_provider(key) == _MAL_PROVIDER
+        read_page_provider(key) == _MAL_PROVIDER
         for key in work_entry.addresses_by_page_key
     )

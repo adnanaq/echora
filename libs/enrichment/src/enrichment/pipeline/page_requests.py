@@ -15,7 +15,12 @@ from dataclasses import dataclass
 from typing import NamedTuple
 
 from enrichment.pipeline.fetch_summary import FetchOutcome
-from work_matching import WorkEntry, build_page_address, get_page_key, get_page_provider
+from work_matching import (
+    WorkEntry,
+    build_page_address,
+    read_page_provider,
+    resolve_page_key,
+)
 
 
 class _EnrichmentHelper(NamedTuple):
@@ -55,7 +60,7 @@ class PageRequest:
     @property
     def label(self) -> str:
         """Name the request in the summary: its page key, or its search."""
-        key = get_page_key(self.address)
+        key = resolve_page_key(self.address)
         return f"{self.service} via {key}" if self.is_page_search else key
 
 
@@ -84,7 +89,7 @@ def build_page_request(
     Returns:
         The request, or None when the page's provider has no enrichment helper.
     """
-    helper = _HELPER_BY_PROVIDER.get(get_page_provider(key) or "")
+    helper = _HELPER_BY_PROVIDER.get(read_page_provider(key) or "")
     request_address = address or build_page_address(key)
     if helper is None or request_address is None:
         return None
@@ -124,7 +129,7 @@ def list_animeschedule_search_requests(entry: WorkEntry) -> list[PageRequest]:
         searched_by_addresses = [
             address
             for key, address in entry.addresses_by_page_key.items()
-            if get_page_provider(key) == provider
+            if read_page_provider(key) == provider
         ]
         if searched_by_addresses:
             return [

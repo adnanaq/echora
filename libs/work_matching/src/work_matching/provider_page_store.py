@@ -1,10 +1,8 @@
-"""Keep fetched provider pages' details in a file, so they outlast the cache.
+"""Persist fetched provider page details in a JSON Lines file across cache expirations.
 
 The HTTP and crawler caches drop a page after about a week. Seed cleaning and
 discovery read these details again on every seed release, long after that, so
 each fetched page's details are kept in a JSON Lines file, one page per line.
-
-A real line of the file is shown in the README, under "A stored page".
 """
 
 import logging
@@ -21,23 +19,26 @@ logger = logging.getLogger(__name__)
 class ProviderPageStore:
     """The details of fetched provider pages, by page key, kept in one JSON Lines file.
 
-    The rules for the file:
+    Each rule reads ``<rule>: <behavior>``:
 
-    - A page fetched again is added as a new line at the end of the file, and
-      the old line stays. When the file is read, the last line for a page key
-      is the one kept, so the newest details win.
-    - A searched page added again, searched by another page, keeps every page
-      it was searched by, so the order of searches changes nothing.
-    - Every complete line ends with a line break. A last line without one is a
-      partial line, left by a write that was interrupted. It is skipped when
-      the file is read, and cut off the file before the next pages are added.
-    - Opening the store only reads the file; only ``add_pages`` changes it.
-    - Only one process at a time may add pages, because adding does not lock
-      the file.
+    - Append-only updates: A page fetched again is added as a new line at the
+      end of the file, and the old line stays. When the file is read, the last
+      line for a page key is the one kept, so the newest details win.
+    - Cumulative search provenance: A searched page added again, searched by
+      another page, keeps every page that searched for the page, so the order
+      of searches changes nothing.
+    - Partial line recovery: Every complete line ends with a line break. A last
+      line without one is a partial line, left by an interrupted write. The
+      partial line is skipped when the file is read, and truncated from the file
+      before the next pages are added.
+    - Explicit writes: Opening the store only reads the file; only ``add_pages``
+      changes the file.
+    - Single-writer access: Only one process at a time may add pages, because
+      adding does not lock the file.
     """
 
     def __init__(self, path: str | Path) -> None:
-        """Open the store and read the pages already in its file, if there is one.
+        """Open the store and read the pages already in the store file, if present.
 
         Args:
             path: The JSON Lines file that holds the pages.
@@ -50,7 +51,7 @@ class ProviderPageStore:
         self._pages: dict[str, ProviderPage] = {}
         # The keys of the searched pages held for each page they were searched
         # by, so finding them takes one dictionary read, not a scan of every page.
-        self._searched_page_keys_by_searched_by_key: defaultdict[str, set[str]] = (
+        self._searched_page_keys_by_searched_by_page_key: defaultdict[str, set[str]] = (
             defaultdict(set)
         )
         # Where the partial last line starts in the file, in bytes, or None
@@ -60,38 +61,66 @@ class ProviderPageStore:
             self._read_pages()
 
     def __len__(self) -> int:
-        """Return how many pages the store holds."""
+        """Return how many pages the store holds.
+
+        Returns:
+            The count of stored provider pages.
+        """
         return len(self._pages)
 
-    def __contains__(self, key: object) -> bool:
-        """Report whether the store holds a page with this page key."""
-        return key in self._pages
+    def __contains__(self, page_key: object) -> bool:
+        """Report whether the store holds a page with this page key.
 
-    def get_page(self, key: str) -> ProviderPage | None:
-        """Return the details of the page with this page key, or None if not held."""
-        return self._pages.get(key)
+        Args:
+            page_key: The page key to check.
 
-    def has_page_searched_by(self, searched_by_key: str) -> bool:
+        Returns:
+            True when ``page_key`` is stored.
+        """
+        return page_key in self._pages
+
+    def get_page(self, page_key: str) -> ProviderPage | None:
+        """Return the details of the page with this page key, or None if not held.
+
+        Args:
+            page_key: The page key to look up.
+
+        Returns:
+            The stored provider page, or None when not in the store.
+        """
+        return self._pages.get(page_key)
+
+    def has_page_searched_by(self, searched_by_page_key: str) -> bool:
         """Report whether the store holds a page searched by this page.
 
         A searched page, such as AnimeSchedule's, is stored under its own key,
-        so this is how a fetcher tells that the search by a page was done.
+        so this method tells a fetcher whether the search by a page was done.
 
         Args:
-            searched_by_key: The page key of the page the search used.
-        """
-        return searched_by_key in self._searched_page_keys_by_searched_by_key
+            searched_by_page_key: The page key of the page the search used.
 
-    def get_pages_searched_by(self, searched_by_key: str) -> tuple[ProviderPage, ...]:
+        Returns:
+            True when at least one stored page was searched by ``searched_by_page_key``.
+        """
+        return searched_by_page_key in self._searched_page_keys_by_searched_by_page_key
+
+    def get_pages_searched_by(
+        self, searched_by_page_key: str
+    ) -> tuple[ProviderPage, ...]:
         """Return the pages searched by this page, sorted by page key.
 
         Args:
-            searched_by_key: The page key of the page the search used.
+            searched_by_page_key: The page key of the page the search used.
+
+        Returns:
+            The stored pages found by searching with ``searched_by_page_key``.
         """
         return tuple(
-            self._pages[key]
-            for key in sorted(
-                self._searched_page_keys_by_searched_by_key.get(searched_by_key, ())
+            self._pages[page_key]
+            for page_key in sorted(
+                self._searched_page_keys_by_searched_by_page_key.get(
+                    searched_by_page_key, ()
+                )
             )
         )
 
@@ -99,8 +128,8 @@ class ProviderPageStore:
         """Return an entry's stored pages, then the pages searched by them.
 
         The rules read an entry's links from both: a searched page, such as
-        AnimeSchedule's searched by MAL id, carries links the page it was
-        searched by lacks.
+        AnimeSchedule's searched by MAL ID, carries links that the page used for
+        the search lacks.
 
         Args:
             entry: The work entry whose pages to return.
@@ -112,32 +141,34 @@ class ProviderPageStore:
         return [
             *(
                 page
-                for key in entry.addresses_by_page_key
-                if (page := self.get_page(key))
+                for page_key in entry.addresses_by_page_key
+                if (page := self.get_page(page_key))
             ),
             *(
                 searched_page
-                for key in entry.addresses_by_page_key
-                for searched_page in self.get_pages_searched_by(key)
+                for page_key in entry.addresses_by_page_key
+                for searched_page in self.get_pages_searched_by(page_key)
             ),
         ]
 
     def add_pages(self, *pages: ProviderPage) -> None:
         """Add pages to the store and write them to the end of the file in one write.
 
-        A partial last line left by an interrupted write is cut off first, so
-        the new lines do not join onto it.
+        A partial last line left by an interrupted write is truncated first, so
+        the new lines do not join onto the partial line.
 
         Args:
             *pages: The pages to add. A page whose key the store already holds
-                replaces the details held for it, keeping the pages the held
-                page was searched by.
+                replaces the details held for that key, keeping the pages that
+                searched for the held page.
         """
-        pages_by_key: dict[str, ProviderPage] = {}
+        pages_by_page_key: dict[str, ProviderPage] = {}
         for page in pages:
-            earlier = pages_by_key.get(page.key) or self._pages.get(page.key)
-            pages_by_key[page.key] = _merge_searched_by_keys(earlier, page)
-        pages = tuple(pages_by_key.values())
+            earlier_page = pages_by_page_key.get(page.key) or self._pages.get(page.key)
+            pages_by_page_key[page.key] = _merge_searched_by_page_keys(
+                earlier_page, page
+            )
+        pages = tuple(pages_by_page_key.values())
         if not pages:
             return
         self._path.parent.mkdir(parents=True, exist_ok=True)
@@ -155,7 +186,7 @@ class ProviderPageStore:
         """Read every complete line, and note where a partial last line starts.
 
         Blank lines are skipped. The file is read as bytes, so the position of
-        a partial last line is known in bytes, which is what cutting the file
+        a partial last line is known in bytes, which is what truncating the file
         needs.
         """
         complete_lines_size = 0
@@ -173,10 +204,15 @@ class ProviderPageStore:
                     self._load_page_from_line(line, line_number)
 
     def _load_page_from_line(self, line: bytes, line_number: int) -> None:
-        """Turn one line of the file into a page and add it to the store.
+        """Turn one line of the file into a page and add the page to the store.
 
         Each line is one page's details saved as JSON. If an earlier line had
-        the same page key, this page replaces it, so the newest details win.
+        the same page key, this page replaces the earlier page, so the newest
+        details win.
+
+        Args:
+            line: Raw UTF-8 JSON line bytes from the store file.
+            line_number: The 1-based line number in the store file.
 
         Raises:
             ValidationError: If the line is not a valid page. The error's note
@@ -192,20 +228,35 @@ class ProviderPageStore:
         self._index_searched_pages(page)
 
     def _index_searched_pages(self, page: ProviderPage) -> None:
-        """Record a searched page under each page it was searched by."""
-        for searched_by_key in page.searched_by:
-            self._searched_page_keys_by_searched_by_key[searched_by_key].add(page.key)
+        """Record a searched page under each page that searched for the page.
+
+        Args:
+            page: The provider page to index by ``searched_by`` keys.
+        """
+        for searched_by_page_key in page.searched_by:
+            self._searched_page_keys_by_searched_by_page_key[searched_by_page_key].add(
+                page.key
+            )
 
 
-def _merge_searched_by_keys(
-    earlier: ProviderPage | None, page: ProviderPage
+def _merge_searched_by_page_keys(
+    earlier_page: ProviderPage | None, page: ProviderPage
 ) -> ProviderPage:
-    """Return the page with the earlier version's ``searched_by`` keys added to its own.
+    """Return the page with the earlier version's ``searched_by`` keys added.
 
-    The newer page's details win, but a searched page keeps every page it was
-    searched by, whichever version recorded it.
+    The newer page's details win, but a searched page keeps every page that
+    searched for the page, whichever version recorded the search.
+
+    Args:
+        earlier_page: Previously stored or queued version of the page, if any.
+        page: Newly added version of the page.
+
+    Returns:
+        The newly added page with the union of ``searched_by`` keys.
     """
-    if earlier is None or set(earlier.searched_by) <= set(page.searched_by):
+    if earlier_page is None or set(earlier_page.searched_by) <= set(page.searched_by):
         return page
-    searched_by_keys = tuple(sorted({*earlier.searched_by, *page.searched_by}))
-    return page.model_copy(update={"searched_by": searched_by_keys})
+    searched_by_page_keys = tuple(
+        sorted({*earlier_page.searched_by, *page.searched_by})
+    )
+    return page.model_copy(update={"searched_by": searched_by_page_keys})

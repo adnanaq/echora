@@ -30,7 +30,7 @@ def build_entries_to_check_document(
         "seed_schema": seed_schema,
         "doubled_provider_entries": [
             {
-                "reference_page": entry.reference_page,
+                "reference_page": entry.reference_page_key,
                 "title": entry.title,
                 "doubled_providers": find_doubled_provider_page_keys(
                     entry.addresses_by_page_key
@@ -44,7 +44,7 @@ def build_entries_to_check_document(
                 "candidate_evidence": list(group.candidate_evidence),
                 "has_shared_tying_link": group.has_shared_tying_link,
                 "entries": [
-                    {"reference_page": entry.reference_page}
+                    {"reference_page": entry.reference_page_key}
                     | entry.model_dump(mode="json")
                     for entry in group.entries
                 ],
@@ -56,13 +56,14 @@ def build_entries_to_check_document(
 
 # The counts ``count_corrections`` gives, in printed order.
 CORRECTION_COUNT_NAMES = (
-    "pages kept as main page",
-    "pages kept as part page",
+    "partial sources added",
+    "duplicate pages dropped",
     "old addresses dropped",
+    "dead pages dropped",
     "pages moved to a seed entry",
     "pages moved to a new entry",
     "pages added",
-    "pages added as parts",
+    "pages added as partial sources",
     "review cases answered",
     "review cases open",
 )
@@ -77,17 +78,18 @@ def count_corrections(
 
     Each item reads ``<count names>: <correction counted>``.
 
-    - Pages added, pages added as parts: a page the entry's pages link and no
-      seed entry holds joins the entry.
+    - Pages added, pages added as partial sources: a page the entry's pages
+      link and no seed entry holds joins the entry's own pages or its partial
+      sources.
     - Old addresses dropped: the entry also lists the page's current address.
+    - Dead pages dropped: the provider says the page does not exist.
+    - Duplicate pages dropped: an answer drops the page as a duplicate page.
     - Pages moved to a seed entry, pages moved to a new entry: the page
       belongs to another work.
-    - Pages kept as main page: the page stays and is its provider's main
-      page, so the page is listed first.
-    - Pages kept as part page: the page stays and covers part of its work, so
-      enrichment combines it with the work's other parts.
+    - Partial sources added: the page stays and also joins other entries as a
+      partial source, because it covers their works too.
 
-    A page that stays in its entry, neither main page nor part page, is not counted.
+    A page that stays in its entry and is no partial source is not counted.
 
     Args:
         corrections: Every seed correction of the run.
@@ -110,8 +112,9 @@ def find_correction_change(correction: SeedCorrection) -> str | None:
     """Return the change a correction makes, named as ``count_corrections`` counts it.
 
     The first matching change wins, in this order, so each correction has one:
-    added page (as a part or whole), old address dropped, moved to a seed entry,
-    moved to a new entry, kept as main page, kept as part page.
+    added page (as a partial source or a source), old address dropped, dead
+    page dropped, duplicate page dropped, moved to a seed entry, moved to a
+    new entry, partial source added.
 
     Args:
         correction: One seed correction.
@@ -119,18 +122,23 @@ def find_correction_change(correction: SeedCorrection) -> str | None:
     Returns:
         The count name, or None for a page that stays in its entry unchanged.
     """
+    is_partial_source = bool(
+        correction.partial_entry_reference_pages or correction.partial_new_entry_keys
+    )
     if correction.is_added_page:
-        return "pages added as parts" if correction.is_part_page else "pages added"
+        return "pages added as partial sources" if is_partial_source else "pages added"
     if correction.renamed_to:
         return "old addresses dropped"
+    if correction.is_dead_page:
+        return "dead pages dropped"
+    if correction.is_dropped_page:
+        return "duplicate pages dropped"
     if correction.target_entry_reference_page:
         return "pages moved to a seed entry"
     if correction.new_entry_key:
         return "pages moved to a new entry"
-    if correction.is_main_page:
-        return "pages kept as main page"
-    if correction.is_part_page:
-        return "pages kept as part page"
+    if is_partial_source:
+        return "partial sources added"
     return None
 
 
@@ -150,7 +158,7 @@ def count_corrected_entries(
     """
     corrected_entries = list(corrected_entries)
     return {
-        "entries removed, every page moved out": sum(
+        "entries removed, no page left": sum(
             corrected.entry is None for corrected in corrected_entries
         ),
         "new entries with an unknown type": sum(

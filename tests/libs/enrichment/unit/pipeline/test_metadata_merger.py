@@ -124,6 +124,36 @@ def test_sources_union_the_offline_seed_and_the_providers() -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    "seed_sources",
+    [
+        ["https://anidb.net/anime/16517"],
+        ["https://anidb.net/anime/16517", "https://myanimelist.net/anime/45447"],
+    ],
+)
+def test_merge_provider_records_partial_sources_kept_out_of_sources(
+    seed_sources: list[str],
+) -> None:
+    merged = merge_provider_records(
+        {
+            "anidb": {
+                "sources": [
+                    "https://anidb.net/anime/16517",
+                    "https://myanimelist.net/anime/45447",
+                ]
+            }
+        },
+        {
+            "sources": seed_sources,
+            "partialSources": ["https://myanimelist.net/anime/45447"],
+        },
+    )
+    assert (merged["sources"], merged["partial_sources"]) == (
+        ["https://anidb.net/anime/16517"],
+        ["https://myanimelist.net/anime/45447"],
+    )
+
+
 def test_merge_provider_records_kitsu_slug_beside_number_keeps_number() -> None:
     merged = merge_provider_records(
         {

@@ -981,6 +981,13 @@ class Anime(StrictFieldsModel):
     opening_themes: list[ThemeSong] = Field(
         default_factory=list, description="Opening theme songs"
     )
+    partial_sources: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Provider pages covering this anime together with other anime, "
+            "each a source of another anime; never fetched for this one"
+        ),
+    )
     related_anime: dict[AnimeRelationType, list[RelatedAnime]] = Field(
         default_factory=dict,
         description="Related anime grouped by relationship type (SEQUEL, PREQUEL, etc.)",

@@ -1,3 +1,4 @@
+import pytest
 from review_page.correction_views import (
     ANSWER_SOURCE,
     RULES_SOURCE,
@@ -49,17 +50,19 @@ def test_build_corrected_entry_rows_one_row_per_entry_in_file_order(
         )
     )
     rows = _rows(correction_messages, checked_entry_messages)
-    assert [row.reference_page for row in rows] == reference_pages
+    assert [row.entry_reference_page for row in rows] == reference_pages
 
 
 def test_build_corrected_entry_rows_titles_from_checked_entries(
     correction_messages, checked_entry_messages
 ) -> None:
     title_by_reference_page = {
-        entry.reference_page: entry.title for entry in checked_entry_messages
+        entry.entry_reference_page: entry.title for entry in checked_entry_messages
     }
     rows = _rows(correction_messages, checked_entry_messages)
-    assert all(row.title == title_by_reference_page[row.reference_page] for row in rows)
+    assert all(
+        row.title == title_by_reference_page[row.entry_reference_page] for row in rows
+    )
 
 
 def test_build_corrected_entry_rows_unknown_entry_titled_from_case(
@@ -78,16 +81,19 @@ def test_build_corrected_entry_rows_counts_changed_pages_and_answer(
     correction_messages, checked_entry_messages
 ) -> None:
     rows = {
-        row.reference_page: row
+        row.entry_reference_page: row
         for row in _rows(correction_messages, checked_entry_messages)
     }
     answered = rows["mal:anime:57822"]
+    renamed = rows["mal:anime:2090"]
     assert (
         answered.page_count,
         answered.changed_page_count,
         answered.has_answer_correction,
-        rows["mal:anime:2090"].has_answer_correction,
-    ) == (13, 7, True, False)
+        renamed.page_count,
+        renamed.changed_page_count,
+        renamed.has_answer_correction,
+    ) == (13, 0, True, 2, 1, False)
 
 
 def test_filter_corrected_entry_rows_change_keeps_entries_with_change(
@@ -97,7 +103,7 @@ def test_filter_corrected_entry_rows_change_keeps_entries_with_change(
     kept = filter_corrected_entry_rows(
         rows, CorrectionFilter(changes=frozenset({"old addresses dropped"}))
     )
-    assert [row.reference_page for row in kept] == RENAMED_ENTRIES
+    assert [row.entry_reference_page for row in kept] == RENAMED_ENTRIES
 
 
 def test_filter_corrected_entry_rows_answer_source_keeps_answered_entry(
@@ -107,7 +113,7 @@ def test_filter_corrected_entry_rows_answer_source_keeps_answered_entry(
     kept = filter_corrected_entry_rows(
         rows, CorrectionFilter(sources=frozenset({ANSWER_SOURCE}))
     )
-    assert [row.reference_page for row in kept] == ["mal:anime:57822"]
+    assert [row.entry_reference_page for row in kept] == ["mal:anime:57822"]
 
 
 def test_filter_corrected_entry_rows_groups_narrow_each_other(
@@ -133,8 +139,8 @@ def test_filter_corrected_entry_rows_search_matches_page_key_and_title(
     )
     by_title = filter_corrected_entry_rows(rows, CorrectionFilter(search_text="orguss"))
     assert (
-        [row.reference_page for row in by_page_key],
-        [row.reference_page for row in by_title],
+        [row.entry_reference_page for row in by_page_key],
+        [row.entry_reference_page for row in by_title],
     ) == (["mal:anime:39476"], ["mal:anime:2090"])
 
 
@@ -188,7 +194,7 @@ def test_build_correction_panel_renamed_page_links_current_address(
     )
 
 
-def test_build_correction_panel_answer_rows_show_mark_and_source(
+def test_build_correction_panel_answer_rows_show_place_and_source(
     correction_messages, checked_entry_messages
 ) -> None:
     panel = build_correction_panel(
@@ -202,7 +208,52 @@ def test_build_correction_panel_answer_rows_show_mark_and_source(
         rows["mal:anime:57822"].change_label,
         rows["mal:anime:57822"].destination_label,
         all(row.is_from_answer for row in panel.rows),
-    ) == ("work 1, main", "work 1, part", "Unchanged", "stays in this entry", True)
+    ) == ("work 1", "work 1", "Unchanged", "stays in this entry", True)
+
+
+@pytest.mark.parametrize(
+    ("correction_fields", "place", "destination_label"),
+    [
+        (
+            {"is_dead_page": True, "change": "dead pages dropped"},
+            "—",
+            "dropped, since the provider no longer has it",
+        ),
+        (
+            {
+                "placement_word": "dropped",
+                "is_dropped_page": True,
+                "change": "duplicate pages dropped",
+            },
+            "dropped",
+            "dropped, since it duplicates another page of its provider",
+        ),
+        (
+            {
+                "placement_word": "work 1",
+                "partial_new_entry_keys": ["mal:anime:18841 work 2"],
+                "change": "partial sources added",
+            },
+            "work 1, partial source of mal:anime:18841 work 2",
+            "stays in this entry",
+        ),
+    ],
+)
+def test_build_correction_panel_rows_describe_dropped_and_partial_pages(
+    correction_fields, place, destination_label
+) -> None:
+    correction = review_cases_pb2.SeedCorrection(
+        entry_reference_page="mal:anime:18841",
+        page_key="anilist:anime:18843",
+        address="https://anilist.co/anime/18843",
+        reason="review answer",
+        reason_sentence="your answer",
+        **correction_fields,
+    )
+    panel = build_correction_panel("mal:anime:18841", [correction], [], [])
+    assert panel is not None
+    [row] = panel.rows
+    assert (row.place, row.destination_label) == (place, destination_label)
 
 
 def test_build_correction_panel_lists_cases_holding_entry(review_cases) -> None:

@@ -1,37 +1,25 @@
-"""Convert review cases between the library model and protobuf messages.
+"""Convert review cases and answers between domain models and protobuf messages.
 
-The review case source hands the page protobuf messages
-(``shared_proto/v1/review_cases.proto``), so a gRPC source can replace the file
-source later. The rules and choices still run on the library models
-(``work_matching.ReviewCase``), so the page converts between them. A source
-converts its own records to messages with the same mapping helpers
-(``list_ordered_mappings``, ``join_ordered_mappings``). Each item gives the
-rule, then the reason for it.
+Translates between ``work_matching.ReviewCase`` domain models and protobuf
+messages defined in ``shared_proto/v1/review_cases.proto`` so the review page
+can evaluate placement rules in memory while exchanging protobuf messages with
+any ``ReviewCaseSource``.
 
-- Each message has the model's field names, so Google's
-  ``google.protobuf.json_format`` converts through the models' JSON form. No
-  field is copied by hand, and a field added to both is converted at once.
-- A case's decisions are the one difference. The model keeps one list of
-  either kind, and a message cannot repeat a union, so the list moves to the
-  field of the case's kind (``doubled_provider_decisions`` or
-  ``linked_page_decisions``).
-- The models' mappings are lists of pairs in the messages, because a proto map
-  keeps no order and these orders matter:
-
-  - an entry's addresses, since enrichment fetches each provider's first
-    address;
-  - a case's entries, named A, B and so on;
-  - suggestions, in answer page order;
-  - counts, in the order a run reports them.
-
-- ``_ORDERED_MAPPING_FIELDS`` names each field and its pair. A mapping becomes
-  its list and back in the same order. Only a lookup with no order, the run's
-  original answers by case name, stays a map.
-- Fields without a set value are written out, so a model's required fields
-  that are empty, such as a case with no reasons, survive the round trip.
-
-When the enrichment service serves cases over gRPC, this module moves to a
-library both import.
+Each conversion rule reads `<rule>: <reason>`:
+- Shared field names: Protobuf messages mirror the Pydantic model field names so
+  ``google.protobuf.json_format`` converts payloads directly without manual
+  field-by-field copying.
+- Kind-specific decision lists: Protobuf repeated fields cannot represent a
+  polymorphic union, so ``ReviewCase.decisions`` is stored in either
+  ``doubled_provider_decisions`` or ``linked_page_decisions`` according to the
+  case kind.
+- Ordered key-value pairs: Protobuf maps do not preserve insertion order, so
+  ordered mappings (entry page addresses, case entries, suggested placements,
+  and run summary counts) are serialized as repeated key-value pair messages
+  listed in ``_ORDERED_MAPPING_FIELDS``.
+- Explicit empty collections: ``always_print_fields_with_no_presence=True``
+  emits empty repeated and map fields so required Pydantic collection fields
+  survive round-trip conversion.
 """
 
 from collections.abc import Mapping
@@ -42,8 +30,8 @@ from shared_proto.v1 import review_cases_pb2
 from work_matching import ReviewCase, ReviewCaseKind
 
 _DOUBLED_PROVIDER_DECISIONS_FIELD = "doubled_provider_decisions"
-# Each model mapping kept as a list of pairs in the messages: the field name,
-# then the names of the pair's key and value fields.
+# Model mapping fields stored as repeated key-value pair messages in protobuf,
+# mapped to their (key_field_name, value_field_name) pair.
 _ORDERED_MAPPING_FIELDS: dict[str, tuple[str, str]] = {
     "addresses_by_page_key": ("page_key", "address"),
     "entries": ("reference_page", "entry"),
@@ -58,13 +46,14 @@ _LINKED_PAGE_DECISIONS_FIELD = "linked_page_decisions"
 
 
 def convert_case_to_message(case: ReviewCase) -> review_cases_pb2.ReviewCase:
-    """Convert a review case to its message.
+    """Convert a ``ReviewCase`` domain model into its protobuf message representation.
 
     Args:
-        case: The review case.
+        case: The domain review case model to serialize.
 
     Returns:
-        The message, with the decisions in the field of the case's kind.
+        The populated ``ReviewCase`` protobuf message with decisions routed to
+        the field matching ``case.kind``.
     """
     case_fields = case.model_dump(mode="json")
     decisions = case_fields.pop("decisions")
@@ -82,13 +71,13 @@ def convert_case_to_message(case: ReviewCase) -> review_cases_pb2.ReviewCase:
 
 
 def convert_message_to_case(message: review_cases_pb2.ReviewCase) -> ReviewCase:
-    """Convert a review case message back to the review case.
+    """Convert a ``ReviewCase`` protobuf message into a ``ReviewCase`` domain model.
 
     Args:
-        message: The review case message.
+        message: The protobuf review case message to deserialize.
 
     Returns:
-        The review case, with both decision fields joined into one list.
+        The validated ``ReviewCase`` domain model with decision lists merged.
     """
     case_fields = join_ordered_mappings(convert_message_to_fields(message))
     case_fields["decisions"] = [
@@ -104,16 +93,16 @@ def build_case_answer(
     *,
     seen_saved_answers: Mapping[str, Any] | None = None,
 ) -> review_cases_pb2.CaseAnswer:
-    """Build the message saving one case's answer; None clears the answer.
+    """Build a ``CaseAnswer`` protobuf message for saving or clearing a case's answer.
 
     Args:
-        case_name: The case.
-        answer: The answer as it would be written in the file, or None.
-        seen_saved_answers: The saved answer each edit started from, by case
-            name; the case's one, when present, is sent to be checked.
+        case_name: The unique identifier of the review case being answered.
+        answer: The answer payload to persist, or None to clear the saved answer.
+        seen_saved_answers: Optional mapping of case names to baseline saved
+            answers observed when editing started for concurrency checking.
 
     Returns:
-        The message, with the answer as a JSON value, or unset for None.
+        The constructed ``CaseAnswer`` protobuf message.
     """
     case_answer = review_cases_pb2.CaseAnswer(case_name=case_name)
     if answer not in (None, {}):
@@ -126,13 +115,15 @@ def build_case_answer(
 
 
 def convert_message_to_fields(message: Any) -> dict[str, Any]:
-    """Return a message's fields by their proto names, unset fields included.
+    """Convert a protobuf message to a dictionary keyed by proto field names.
+
+    Includes fields without explicit presence so empty collections are preserved.
 
     Args:
-        message: Any protobuf message.
+        message: The protobuf message to convert.
 
     Returns:
-        The message's fields as JSON values, keyed by their proto names.
+        A dictionary of JSON-compatible field values keyed by proto field names.
     """
     return json_format.MessageToDict(
         message,
@@ -142,17 +133,17 @@ def convert_message_to_fields(message: Any) -> dict[str, Any]:
 
 
 def list_ordered_mappings(fields: Any) -> Any:
-    """Turn every ordered mapping into its list of pairs, in the mapping's order.
+    """Recursively convert ordered mapping fields into lists of key-value pair dictionaries.
 
     Args:
-        fields: A model's JSON form, or any value inside it.
+        fields: A JSON-serialized model dictionary or nested value.
 
     Returns:
-        The same value, each field named in ``_ORDERED_MAPPING_FIELDS`` turned
-        from a mapping into its list of pairs.
+        The transformed structure with every field in ``_ORDERED_MAPPING_FIELDS``
+        converted from a mapping to a list of key-value dictionaries.
     """
     if isinstance(fields, list):
-        return [list_ordered_mappings(item) for item in fields]
+        return [list_ordered_mappings(field_value) for field_value in fields]
     if not isinstance(fields, dict):
         return fields
     listed_fields = {key: list_ordered_mappings(value) for key, value in fields.items()}
@@ -166,17 +157,17 @@ def list_ordered_mappings(fields: Any) -> Any:
 
 
 def join_ordered_mappings(fields: Any) -> Any:
-    """Turn every list of pairs back into its mapping, in the list's order.
+    """Recursively convert lists of key-value pair dictionaries back into ordered mappings.
 
     Args:
-        fields: A message's JSON form, or any value inside it.
+        fields: A JSON-serialized protobuf dictionary or nested value.
 
     Returns:
-        The same value, each field named in ``_ORDERED_MAPPING_FIELDS`` turned
-        from its list of pairs back into a mapping.
+        The transformed structure with every field in ``_ORDERED_MAPPING_FIELDS``
+        reconstructed as an ordered dictionary.
     """
     if isinstance(fields, list):
-        return [join_ordered_mappings(item) for item in fields]
+        return [join_ordered_mappings(field_value) for field_value in fields]
     if not isinstance(fields, dict):
         return fields
     joined_fields = {key: join_ordered_mappings(value) for key, value in fields.items()}

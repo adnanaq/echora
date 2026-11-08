@@ -93,9 +93,9 @@ message PagePlace {
 message DoubledProviderDecision {
   string provider = 1;
   repeated string page_keys = 2;
-  // The outcome's sentence.
+  // The outcome's member name, such as SAME_PAGE.
   string outcome = 3;
-  // Each review reason's sentence.
+  // Each review reason's member name.
   repeated string review_reasons = 4;
   // Each belonging page with the entry's pages linked with it, in order.
   repeated BelongingPage belonging_page_keys = 5;
@@ -112,7 +112,7 @@ message DoubledProviderDecision {
 // work_matching.LinkedPageDecision.
 message LinkedPageDecision {
   string page_key = 1;
-  // The reason's sentence.
+  // The reason's member name, such as CHECKS_PASSED.
   string reason = 2;
   repeated WorkEntry linking_entries = 3;
   optional int32 entry_episode_count = 4;
@@ -137,6 +137,23 @@ message ReviewCase {
   repeated DoubledProviderDecision doubled_provider_decisions = 7;
   repeated LinkedPageDecision linked_page_decisions = 8;
   repeated ProviderPage pages = 9;
+  // Each page key the answer names after "other work", mapped to the
+  // reference page of the seed entry holding it; a lookup, so a map.
+  map<string, string> named_entry_reference_pages = 10;
+  // Seed entries of the case's series, offered as the entry a page in
+  // "other work" moves to, closest titles first.
+  repeated TargetEntrySuggestion target_entry_suggestions = 11;
+  // Seed entries outside the case that a page of the case covers too,
+  // offered as works the page can be a partial source of.
+  repeated TargetEntrySuggestion covered_outside_entries = 12;
+}
+
+// A seed entry offered as the place a page in "other work" moves to.
+message TargetEntrySuggestion {
+  string entry_reference_page = 1;
+  string title = 2;
+  // The providers the entry already holds pages of.
+  repeated string providers = 3;
 }
 
 // An answer to save for one case; unset clears the case's answer.
@@ -188,36 +205,47 @@ message SeedCleaningRunResult {
 }
 
 // Where one checked page ends up after the last run, and why: one line of the
-// seed's corrections. Fields 1-12 are named as seed_cleaning.SeedCorrection;
-// the source fills change and reason_sentence, so the page shows them without
-// knowing how a source decides them.
+// seed's corrections. Fields 1-15 are named as seed_cleaning.SeedCorrection;
+// the source fills change, reason_sentence and is_from_answer, so the page
+// shows them without knowing how a source decides them.
 message SeedCorrection {
   string entry_reference_page = 1;
   string page_key = 2;
   string address = 3;
-  string placement_word = 4;
-  bool is_main_page = 5;
-  optional string renamed_to = 6;
-  optional string target_entry_reference_page = 7;
-  optional string new_entry_key = 8;
-  bool is_added_page = 9;
-  bool is_part_page = 10;
-  bool is_anime_id_page = 11;
+  // Unset for a dead page, which the run drops from every work, and for a page
+  // added only as a partial source.
+  optional string placement_word = 4;
+  optional string renamed_to = 5;
+  optional string target_entry_reference_page = 6;
+  optional string new_entry_key = 7;
+  bool is_added_page = 8;
+  bool is_anime_id_page = 9;
   // The reason's name, as the source keeps it.
-  string reason = 12;
+  string reason = 10;
+  // The page key an answer named after "other work". The page ends up
+  // wherever that named page ends up.
+  optional string named_entry_page_key = 11;
+  // Whether the provider says the page does not exist, so the run drops it.
+  bool is_dead_page = 12;
+  // Whether an answer drops the page as a duplicate page.
+  bool is_dropped_page = 13;
+  // The reference pages of the seed entries the page is a partial source of.
+  repeated string partial_entry_reference_pages = 14;
+  // The new entry keys of the new entries the page is a partial source of.
+  repeated string partial_new_entry_keys = 15;
   // What the correction changes, such as "pages moved to a seed entry";
   // unset for a page that stays in its entry unchanged.
-  optional string change = 13;
+  optional string change = 16;
   // The reason as the sentence a reviewer reads.
-  string reason_sentence = 14;
+  string reason_sentence = 17;
   // Whether a reviewer's answer placed the page, rather than the rules.
-  bool is_from_answer = 15;
+  bool is_from_answer = 18;
 }
 
 // An entry the last run checked, by its reference page, so corrections show
 // its title.
 message CheckedEntry {
-  string reference_page = 1;
+  string entry_reference_page = 1;
   string title = 2;
   optional string type = 3;
   optional int32 year = 4;

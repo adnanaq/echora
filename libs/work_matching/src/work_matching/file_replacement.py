@@ -44,6 +44,9 @@ def _sync_folder(folder: Path) -> None:
     """Write a folder's entries to disk, so a rename in it survives a power cut.
 
     Systems that cannot open a folder, such as Windows, are skipped.
+
+    Args:
+        folder: The directory whose directory entries must be flushed to disk.
     """
     if not hasattr(os, "O_DIRECTORY"):
         return

@@ -65,6 +65,7 @@ from seed_cleaning.seed_corrections import (
     REVIEW_ANSWER_REASON,
     PlacementCorrections,
     SeedCorrection,
+    follow_named_entry_pages,
     merge_corrections,
     write_corrections,
 )
@@ -136,6 +137,7 @@ __all__ = [
     "mark_anime_id_pages",
     "find_doubled_provider_entries",
     "find_split_work_candidates",
+    "follow_named_entry_pages",
     "merge_corrections",
     "prepare_split_work_pass",
     "write_corrections",

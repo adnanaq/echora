@@ -19,6 +19,7 @@ from enrichment.sources.base.base_helper import (
 )
 from enrichment.sources.base.exceptions import ServiceNetworkError, ServiceNotFoundError
 from enrichment.sources.base.framework.repository import FileRepository, NullRepository
+from enrichment.sources.base.network_errors import is_aiohttp_network_error
 from http_cache import HTTPCacheManager, configure_cache
 
 from .kitsu_mapper import (
@@ -220,10 +221,7 @@ class KitsuHelper(BaseEnrichmentHelper):
             operation=_execute,
             max_retries=3,
             retry_delay=1.0,
-            is_transient_error=lambda e: (
-                isinstance(e, aiohttp.ClientError)
-                and not isinstance(e, aiohttp.ClientResponseError)
-            ),
+            is_transient_error=is_aiohttp_network_error,
         )
 
     async def _fetch_all_pages(

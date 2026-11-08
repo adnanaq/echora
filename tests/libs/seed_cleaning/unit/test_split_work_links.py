@@ -15,7 +15,7 @@ def _seed_entry(title: str, *addresses: str) -> dict:
 
 
 def _page(address: str, *linked_addresses: str, **details) -> ProviderPage:
-    return ProviderPage.from_canonical_record(
+    return ProviderPage.read_canonical_record(
         address,
         {
             "title": "Show",
@@ -90,7 +90,7 @@ def test_find_split_work_links_dead_page_ties_nothing(tmp_path) -> None:
     works = KnownWorkEntriesFromSeed(
         [_seed_entry("Main", MAIN_MAL), _seed_entry("Season 2", SEASON_ANIDB)]
     )
-    store = _store(tmp_path, ProviderPage.from_dead_address(SEASON_ANIDB))
+    store = _store(tmp_path, ProviderPage.build_dead_page(SEASON_ANIDB))
     assert find_split_work_links(works, store).links_by_entry_pair == {}
 
 

@@ -1,4 +1,8 @@
-from review_page.template_functions import build_element_id, build_static_url
+from review_page.template_functions import (
+    build_element_id,
+    build_static_url,
+    capitalize_first_letter,
+)
 
 
 def test_build_element_id_same_parts_give_same_id() -> None:
@@ -20,4 +24,12 @@ def test_build_element_id_different_parts_give_different_ids() -> None:
 
 
 def test_build_static_url_carries_content_hash() -> None:
-    assert build_static_url("parts.css").startswith("/static/parts.css?v=")
+    assert build_static_url("review_page.css").startswith("/static/review_page.css?v=")
+
+
+def test_capitalize_first_letter_keeps_rest_as_written() -> None:
+    assert capitalize_first_letter("saved, applies on Run") == "Saved, applies on Run"
+
+
+def test_capitalize_first_letter_empty_text_returns_empty() -> None:
+    assert capitalize_first_letter("") == ""

@@ -11,29 +11,24 @@ Each item gives the rule, then the reason for it.
   (at most one work per page), and ``other work``. Works are numbered in
   use, so the next new work is always offered, and a case of 110 pages does
   not offer 110 works in every dropdown.
-- A ``work N`` already holding another MAL page is disabled for a MAL page.
-  A work is what MAL lists, so it holds one MAL page.
-- ``main`` is disabled for a provider's only page in its work: a main page
-  stands beside the provider's other pages there, so a lone page has none.
-- ``main`` and ``part`` stay offered while the provider's other pages in the
-  work carry the other mark. Choosing either changes those pages too (see
-  below), so the answer still keeps one main page or only part pages.
-- ``main`` and ``part`` are disabled for a page with no work yet, since a
-  mark says how the page stands within its work (``ChoiceRule``).
-- ``main`` and ``part`` are disabled for a page in ``other work``, since the
-  mark would belong to a work outside the case (``ChoiceRule``).
-- Choosing ``part`` makes the provider's other pages in that work ``part``
-  too; choosing ``main`` leaves them unmarked; taking ``part`` off one takes
-  it off all. A work's pages of one provider are all parts or none, so one
-  choice keeps them consistent.
-- After each choice, a provider's only page in a work loses ``main``, and a
-  page joining a work whose pages of its provider are parts becomes a part,
-  so a choice never leaves a mark the rules refuse.
+- A ``work N`` already holding another page of the page's provider is
+  disabled. A work is the finest split any provider lists, so it holds one
+  page of each provider.
+- ``dropped`` is disabled while no other page of the page's provider has a
+  work of the case, since dropping a duplicate page keeps the other page.
+- A page keeps the works it is a partial source of when its place changes,
+  except its new work. A partial work left without placed pages is taken off
+  every page, so a choice never leaves a partial source the rules refuse.
+- A work's partial sources are chosen per work. Any page that is a source of
+  another work of the case can be one. A work of the case is listed only when
+  the case has two or more, since a lone work has no other work's page to
+  take. A seed entry outside the case is listed when a page of the case
+  covers it (``covered_outside_entries``) or the answer names it.
 - Rules about the whole answer, such as every page needing a place, are not
-  used to disable choices. They are checked when the answer is saved, since
-  a reviewer fills the pages in one at a time.
-- A linked page's choices are ``add`` and ``add as part`` when one entry links
-  the page, and ``add to`` and ``add as part to`` each linking entry when
+  used to disable choices. Whole-answer rules are checked when the answer is
+  saved, since a reviewer fills the pages in one at a time.
+- A linked page's choices are ``add`` and ``add as partial`` when one entry
+  links the page, and ``add to`` and ``add as partial to`` each linking entry when
   several do, then ``skip``. Each is disabled with the rule
   ``check_linked_page_answer`` reports for it.
 - Two linked-page answers adding whole pages of one provider to one entry
@@ -41,98 +36,35 @@ Each item gives the rule, then the reason for it.
 """
 
 from collections import defaultdict
-from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
-from enum import StrEnum
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import replace
 
 from pydantic import JsonValue
-from work_matching.answer_rules import LinkedPageAnswerRule, PlacementRule
-from work_matching.answer_words import (
-    MAIN_MARK,
-    NO_MARK,
-    PART_MARK,
-    describe_answer_word,
-)
-from work_matching.doubled_provider_decision import DoubledProviderDecision
+from work_matching.answer_rules import PlacementRule
 from work_matching.entry_group import combine_group_entries
 from work_matching.linked_page_check import (
-    PART_PAGE_ANSWER,
+    PARTIAL_SOURCE_ANSWER,
     SKIP_ANSWER,
     WHOLE_PAGE_ANSWER,
-    LinkedPageAddition,
-    LinkedPageDecision,
     check_linked_page_answer,
 )
+from work_matching.model_linked_page_decision import LinkedPageAddition
+from work_matching.model_review_choices import (
+    ChoiceOption,
+    GroupPageChoices,
+    LinkedPageConflict,
+    WorkPartialSources,
+)
 from work_matching.page_placement import (
+    DROPPED,
     OTHER_WORK,
     PagePlacement,
     list_placeable_page_keys,
     read_placement,
+    write_placement,
 )
-from work_matching.provider_page_key import get_page_provider
+from work_matching.provider_page_key import read_page_provider
 from work_matching.review_cases import ReviewCase, ReviewCaseKind
-
-_MARKS = (NO_MARK, MAIN_MARK, PART_MARK)
-_MAL_PROVIDER = "mal"
-
-
-class ChoiceRule(StrEnum):
-    """A reason a choice is not offered that no answer rule states.
-
-    The answer rules (``PlacementRule``) check a whole answer when it is
-    saved. These reasons explain a single dropdown option to the reviewer.
-    """
-
-    MARK_WITHOUT_WORK = (
-        "choose a work for the page first, since a mark applies within a work"
-    )
-    MARK_IN_OTHER_WORK = (
-        "a page going to another work takes no mark here, since the mark would "
-        "belong to that other work"
-    )
-
-
-@dataclass(frozen=True, slots=True)
-class ChoiceOption:
-    """One choice a reviewer can make, and the rule that disables it, if any."""
-
-    # As written in the answer: ``work 2``, ``part``, ``add to <entry>``.
-    value: str
-    disabling_rule: PlacementRule | LinkedPageAnswerRule | ChoiceRule | None = None
-
-    @property
-    def is_disabled(self) -> bool:
-        """Report whether the choice is disabled by a rule."""
-        return self.disabling_rule is not None
-
-    @property
-    def description(self) -> str:
-        """Return what the choice does, as ``describe_answer_word`` says."""
-        return describe_answer_word(self.value)
-
-
-@dataclass(frozen=True, slots=True)
-class GroupPageChoices:
-    """One page of an entry group's case: its current place and the choices left."""
-
-    page_key: str
-    # ``work N`` or ``other work``; None while the page has no place.
-    work: str | None
-    # ``NO_MARK``, ``MAIN_MARK`` or ``PART_MARK``.
-    mark: str
-    # Whether the answer must place this page to be saved.
-    is_required: bool
-    work_options: tuple[ChoiceOption, ...]
-    mark_options: tuple[ChoiceOption, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class LinkedPageConflict:
-    """Linked-page answers adding whole pages of one provider to one entry."""
-
-    entry_reference_page: str
-    provider: str
-    case_names: tuple[str, ...]
 
 
 def list_placeable_case_page_keys(case: ReviewCase) -> tuple[str, ...]:
@@ -146,7 +78,8 @@ def list_placeable_case_page_keys(case: ReviewCase) -> tuple[str, ...]:
         ``list_placeable_page_keys`` orders them.
     """
     return list_placeable_page_keys(
-        combine_group_entries(list(case.entries.values())), _get_group_decisions(case)
+        combine_group_entries(list(case.entries.values())),
+        case.doubled_provider_decisions,
     )
 
 
@@ -164,13 +97,16 @@ def list_required_page_keys(
         ``work 2`` or later; otherwise only the doubled pages.
     """
     is_later_work_used = any(
-        (placement := _read_place(place_text)) is not None and placement.is_later_work
-        for place_text in answer.values()
+        (placement := _read_placement(placement_text)) is not None
+        and placement.is_later_work
+        for placement_text in answer.values()
     )
     if case.kind is ReviewCaseKind.SPLIT_WORK or is_later_work_used:
         return frozenset(list_placeable_case_page_keys(case))
     return frozenset(
-        key for decision in _get_group_decisions(case) for key in decision.page_keys
+        page_key
+        for decision in case.doubled_provider_decisions
+        for page_key in decision.page_keys
     )
 
 
@@ -194,7 +130,7 @@ def list_group_page_choices(
         (
             int(placement.placement_word.removeprefix("work "))
             for placement in placements.values()
-            if placement.placement_word != OTHER_WORK
+            if placement.is_case_work
         ),
         default=0,
     )
@@ -202,12 +138,14 @@ def list_group_page_choices(
     work_words = [
         *(f"work {number}" for number in range(1, offered_work_count + 1)),
         OTHER_WORK,
+        DROPPED,
     ]
     return tuple(
         GroupPageChoices(
             page_key=page_key,
             work=placement.placement_word if placement else None,
-            mark=_get_mark(placement),
+            named_entry_page_key=placement.named_entry_page_key if placement else None,
+            partial_works=placement.partial_works if placement else (),
             is_required=page_key in required_page_keys,
             work_options=tuple(
                 ChoiceOption(
@@ -216,12 +154,6 @@ def list_group_page_choices(
                 )
                 for work_word in work_words
             ),
-            mark_options=tuple(
-                ChoiceOption(
-                    mark, _find_mark_disabling_rule(page_key, mark, placements)
-                )
-                for mark in _MARKS
-            ),
         )
         for page_key in placeable_page_keys
         for placement in [placements.get(page_key)]
@@ -229,63 +161,192 @@ def list_group_page_choices(
 
 
 def choose_group_page_place(
-    answer: Mapping[str, JsonValue],
-    page_key: str,
-    work: str | None,
-    mark: str,
+    answer: Mapping[str, JsonValue], page_key: str, work: str | None
 ) -> dict[str, JsonValue]:
-    """Return the answer after one page's place is chosen, with marks kept consistent.
+    """Return the answer after one page's place is chosen, with partial works kept valid.
 
     Args:
         answer: The answer so far: page keys mapped to places.
         page_key: The page whose place is chosen.
-        work: ``work N`` or ``other work``; None removes the page's place.
-        mark: ``NO_MARK``, ``MAIN_MARK`` or ``PART_MARK``.
+        work: ``work N``, ``other work``, ``other work <page key>`` or
+            ``dropped``; None removes the page's place. Text that is not a
+            place is kept as written, so the answer's check reports it.
 
     Returns:
-        The new answer: the chosen place, then the mark changes the module
+        The new answer: the chosen place, keeping the partial works the module
         docstring lists. Places that could not be read are kept as written.
     """
+    chosen_placement = read_placement(work) if work is not None else None
+    if work is not None and chosen_placement is None:
+        return {**answer, page_key: work}
     placements = _read_placements(answer)
     previous_placement = placements.pop(page_key, None)
-    if work is not None:
-        is_marked_work = work != OTHER_WORK
-        placements[page_key] = PagePlacement(
-            work,
-            is_main_page=is_marked_work and mark == MAIN_MARK,
-            is_part_page=is_marked_work and mark == PART_MARK,
+    if chosen_placement is not None:
+        kept_partial_works = (
+            tuple(
+                partial_work
+                for partial_work in previous_placement.partial_works
+                if partial_work != chosen_placement.placement_word
+            )
+            if previous_placement is not None and chosen_placement.is_case_work
+            else ()
         )
-        _spread_mark(placements, page_key, mark, previous_placement)
-    _normalize_marks(placements)
-    return {
-        **{
-            key: place_text
-            for key, place_text in answer.items()
-            if key != page_key and key not in placements
+        placements[page_key] = replace(
+            chosen_placement, partial_works=kept_partial_works
+        )
+    _remove_empty_partial_works(placements)
+    return _write_answer(answer, page_key, placements)
+
+
+def list_work_partial_sources(
+    case: ReviewCase, answer: Mapping[str, JsonValue]
+) -> tuple[WorkPartialSources, ...]:
+    """List each work an entry group's pages can be partial sources of, with its choices.
+
+    Args:
+        case: A doubled-provider or split-work case.
+        answer: The answer so far: page keys mapped to places.
+
+    Returns:
+        The case's works in use, in number order, when there are two or more;
+        then the seed entries outside the case that a page of the case covers,
+        and any other entry the answer names as a partial work.
+    """
+    placements = _read_placements(answer)
+    case_work_words = sorted(
+        {
+            placement.placement_word
+            for placement in placements.values()
+            if placement.is_case_work
         },
-        **{key: _format_place(placement) for key, placement in placements.items()},
-    }
+        key=lambda work_word: int(work_word.removeprefix("work ")),
+    )
+    if len(case_work_words) < 2:
+        case_work_words = []
+    outside_work_words = dict.fromkeys(
+        [
+            *(
+                f"{OTHER_WORK} {covered_entry.entry_reference_page}"
+                for covered_entry in case.covered_outside_entries
+            ),
+            *(
+                partial_work
+                for placement in placements.values()
+                for partial_work in placement.partial_works
+                if partial_work.startswith(f"{OTHER_WORK} ")
+            ),
+        ]
+    )
+    return tuple(
+        WorkPartialSources(
+            work=work_word,
+            partial_source_page_keys=tuple(
+                page_key
+                for page_key, placement in placements.items()
+                if work_word in placement.partial_works
+            ),
+            page_key_options=tuple(
+                page_key
+                for page_key, placement in placements.items()
+                if placement.is_case_work
+                and placement.placement_word != work_word
+                and work_word not in placement.partial_works
+            ),
+        )
+        for work_word in (*case_work_words, *outside_work_words)
+    )
+
+
+def choose_partial_sources(
+    answer: Mapping[str, JsonValue],
+    page_keys: Sequence[str],
+    work: str,
+    *,
+    is_partial_source: bool,
+) -> dict[str, JsonValue]:
+    """Return the answer after pages are made, or stop being, partial sources of a work.
+
+    Args:
+        answer: The answer so far: page keys mapped to places.
+        page_keys: The pages whose partial works change, as chosen together.
+        work: ``work N`` or ``other work <page key>``.
+        is_partial_source: Whether the pages become partial sources of the
+            work, or stop being ones.
+
+    Returns:
+        The new answer. A page without a work of the case, or the work's own
+        page, is left as it is, since it cannot be a partial source there.
+    """
+    new_answer = {**answer}
+    for page_key in page_keys:
+        new_answer = _choose_partial_source(
+            new_answer, page_key, work, is_partial_source=is_partial_source
+        )
+    return new_answer
+
+
+def _choose_partial_source(
+    answer: Mapping[str, JsonValue],
+    page_key: str,
+    work: str,
+    *,
+    is_partial_source: bool,
+) -> dict[str, JsonValue]:
+    """Return the answer after a page is made, or stops being, a partial source of a work.
+
+    Args:
+        answer: The answer so far: page keys mapped to places.
+        page_key: The page whose partial works change.
+        work: ``work N`` or ``other work <page key>``.
+        is_partial_source: Whether the page becomes a partial source of the
+            work, or stops being one.
+
+    Returns:
+        The new answer. A page without a work of the case, or the work's own
+        page, is left as it is, since it cannot be a partial source there.
+    """
+    placements = _read_placements(answer)
+    placement = placements.get(page_key)
+    if (
+        placement is None
+        or not placement.is_case_work
+        or placement.placement_word == work
+    ):
+        return {**answer}
+    kept_partial_works = tuple(
+        partial_work for partial_work in placement.partial_works if partial_work != work
+    )
+    placements[page_key] = replace(
+        placement,
+        partial_works=(*kept_partial_works, work)
+        if is_partial_source
+        else kept_partial_works,
+    )
+    return _write_answer(answer, page_key, placements)
 
 
 def list_linked_page_options(case: ReviewCase) -> tuple[ChoiceOption, ...]:
     """List a linked-page case's answers, each with the rule that disables it.
 
     Args:
-        case: A linked-page case.
+        case: The review case; only a linked-page case has answers to list.
 
     Returns:
-        The additions the module docstring lists, then ``skip``.
+        The additions the module docstring lists, then ``skip``; empty for an
+        entry group case.
     """
-    decision = _get_linked_page_decision(case)
+    decision = case.linked_page_decision
+    if decision is None:
+        return ()
     if len(decision.linking_entries) == 1:
-        values = [WHOLE_PAGE_ANSWER, PART_PAGE_ANSWER]
+        values = [WHOLE_PAGE_ANSWER, PARTIAL_SOURCE_ANSWER]
     else:
         values = [
             value
             for entry in decision.linking_entries
             for value in (
-                f"{WHOLE_PAGE_ANSWER} to {entry.reference_page}",
-                f"{PART_PAGE_ANSWER} to {entry.reference_page}",
+                f"{WHOLE_PAGE_ANSWER} to {entry.reference_page_key}",
+                f"{PARTIAL_SOURCE_ANSWER} to {entry.reference_page_key}",
             )
         ]
     values.append(SKIP_ANSWER)
@@ -319,13 +380,14 @@ def find_linked_page_conflicts(
     """
     case_names_by_target: defaultdict[tuple[str, str], list[str]] = defaultdict(list)
     for case in cases:
-        if case.kind is not ReviewCaseKind.LINKED_PAGE:
+        decision = case.linked_page_decision
+        if decision is None:
             continue
         accepted_answer = case.accepted_answer
-        provider = get_page_provider(_get_linked_page_decision(case).page_key)
+        provider = read_page_provider(decision.page_key)
         if (
             isinstance(accepted_answer, LinkedPageAddition)
-            and not accepted_answer.is_part_page
+            and not accepted_answer.is_partial_source
             and provider is not None
         ):
             case_names_by_target[accepted_answer.entry_reference_page, provider].append(
@@ -341,141 +403,118 @@ def find_linked_page_conflicts(
 def _find_work_disabling_rule(
     page_key: str, work_word: str, placements: Mapping[str, PagePlacement]
 ) -> PlacementRule | None:
-    """Return the rule disabling a work for a page: a second MAL page in it."""
-    if work_word == OTHER_WORK or get_page_provider(page_key) != _MAL_PROVIDER:
+    """Return the rule disabling a work word for a page, as the module docstring lists.
+
+    Args:
+        page_key: The page key being evaluated.
+        work_word: The work option word being evaluated.
+        placements: The current placements by page key.
+
+    Returns:
+        ``WORK_WITH_TWO_PAGES_OF_ONE_PROVIDER`` for a work already holding
+        another page of the page's provider, ``DROPPED_PAGE_WITHOUT_KEPT_PAGE``
+        for ``dropped`` while no other page of that provider has a work, or
+        None when the choice is allowed.
+    """
+    if work_word == OTHER_WORK:
         return None
-    is_work_holding_other_mal_page = any(
-        key != page_key
-        and get_page_provider(key) == _MAL_PROVIDER
-        and placement.placement_word == work_word
-        for key, placement in placements.items()
-    )
+    provider = read_page_provider(page_key)
+    other_provider_placements = [
+        placement
+        for other_page_key, placement in placements.items()
+        if other_page_key != page_key
+        and provider is not None
+        and read_page_provider(other_page_key) == provider
+    ]
+    if work_word == DROPPED:
+        return (
+            None
+            if any(placement.is_case_work for placement in other_provider_placements)
+            else PlacementRule.DROPPED_PAGE_WITHOUT_KEPT_PAGE
+        )
     return (
-        PlacementRule.WORK_WITH_TWO_MAL_PAGES
-        if is_work_holding_other_mal_page
+        PlacementRule.WORK_WITH_TWO_PAGES_OF_ONE_PROVIDER
+        if any(
+            placement.placement_word == work_word
+            for placement in other_provider_placements
+        )
         else None
     )
 
 
-def _find_mark_disabling_rule(
-    page_key: str, mark: str, placements: Mapping[str, PagePlacement]
-) -> PlacementRule | ChoiceRule | None:
-    """Return the rule disabling a mark for a page, as the module docstring lists."""
-    if mark == NO_MARK:
-        return None
-    placement = placements.get(page_key)
-    if placement is None:
-        return ChoiceRule.MARK_WITHOUT_WORK
-    if placement.placement_word == OTHER_WORK:
-        return ChoiceRule.MARK_IN_OTHER_WORK
-    if mark == MAIN_MARK and not _list_provider_keys_in_work(placements, page_key):
-        return PlacementRule.SINGLE_PAGE_MARKED_MAIN
-    return None
+def _remove_empty_partial_works(placements: dict[str, PagePlacement]) -> None:
+    """Take works of the case that hold no placed page off every page's partial works.
 
-
-def _spread_mark(
-    placements: dict[str, PagePlacement],
-    page_key: str,
-    mark: str,
-    previous_placement: PagePlacement | None,
-) -> None:
-    """Change the marks of the page's provider pages in its work after its mark is chosen."""
-    placement = placements[page_key]
-    if placement.placement_word == OTHER_WORK:
-        return
-    was_part_in_same_work = (
-        previous_placement is not None
-        and previous_placement.is_part_page
-        and previous_placement.placement_word == placement.placement_word
-    )
-    if mark == PART_MARK:
-        other_mark = PART_MARK
-    elif mark == MAIN_MARK or was_part_in_same_work:
-        other_mark = NO_MARK
-    else:
-        return
-    for key in _list_provider_keys_in_work(placements, page_key):
-        placements[key] = PagePlacement(
-            placements[key].placement_word, is_part_page=other_mark == PART_MARK
+    Args:
+        placements: The current placements by page key, updated in place.
+    """
+    used_work_words = {
+        placement.placement_word
+        for placement in placements.values()
+        if placement.is_case_work
+    }
+    for page_key, placement in placements.items():
+        kept_partial_works = tuple(
+            partial_work
+            for partial_work in placement.partial_works
+            if partial_work in used_work_words
+            or partial_work.startswith(f"{OTHER_WORK} ")
         )
+        if kept_partial_works != placement.partial_works:
+            placements[page_key] = replace(placement, partial_works=kept_partial_works)
 
 
-def _normalize_marks(placements: dict[str, PagePlacement]) -> None:
-    """Make each work's pages of one provider all parts when any is, and drop a lone main."""
-    keys_by_work_provider: defaultdict[tuple[str, str | None], list[str]] = defaultdict(
-        list
-    )
-    for key, placement in placements.items():
-        if placement.placement_word != OTHER_WORK:
-            keys_by_work_provider[
-                placement.placement_word, get_page_provider(key)
-            ].append(key)
-    for keys in keys_by_work_provider.values():
-        if any(placements[key].is_part_page for key in keys):
-            for key in keys:
-                placements[key] = PagePlacement(
-                    placements[key].placement_word, is_part_page=True
-                )
-        elif len(keys) == 1 and placements[keys[0]].is_main_page:
-            placements[keys[0]] = PagePlacement(placements[keys[0]].placement_word)
+def _write_answer(
+    answer: Mapping[str, JsonValue],
+    page_key: str,
+    placements: Mapping[str, PagePlacement],
+) -> dict[str, JsonValue]:
+    """Write the placements back as an answer, keeping places that could not be read.
 
+    Args:
+        answer: The answer before the choice.
+        page_key: The page whose place was chosen, left out when it lost its place.
+        placements: The placements after the choice, by page key.
 
-def _list_provider_keys_in_work(
-    placements: Mapping[str, PagePlacement], page_key: str
-) -> list[str]:
-    """Return the other pages of the page's provider placed in the page's work."""
-    placement = placements[page_key]
-    provider = get_page_provider(page_key)
-    return [
-        key
-        for key, other in placements.items()
-        if key != page_key
-        and other.placement_word == placement.placement_word
-        and get_page_provider(key) == provider
-    ]
-
-
-def _read_placements(answer: Mapping[str, JsonValue]) -> dict[str, PagePlacement]:
-    """Read the answer's places that follow the answer words; others are left out."""
+    Returns:
+        The new answer: unreadable places as written, then every placement.
+    """
     return {
-        key: placement
-        for key, place_text in answer.items()
-        if (placement := _read_place(place_text)) is not None
+        **{
+            existing_page_key: placement_text
+            for existing_page_key, placement_text in answer.items()
+            if existing_page_key != page_key and existing_page_key not in placements
+        },
+        **{
+            placed_page_key: write_placement(placement)
+            for placed_page_key, placement in placements.items()
+        },
     }
 
 
-def _read_place(place_text: object) -> PagePlacement | None:
-    """Read one place as an answer writes it, or None for anything else."""
-    return read_placement(place_text) if isinstance(place_text, str) else None
+def _read_placements(answer: Mapping[str, JsonValue]) -> dict[str, PagePlacement]:
+    """Read the answer's places that follow the answer words; others are left out.
+
+    Args:
+        answer: The raw answer mapping page keys to placement strings.
+
+    Returns:
+        The readable placements by page key.
+    """
+    return {
+        page_key: placement
+        for page_key, placement_text in answer.items()
+        if (placement := _read_placement(placement_text)) is not None
+    }
 
 
-def _get_mark(placement: PagePlacement | None) -> str:
-    """Return a place's mark as a choice value."""
-    if placement is None:
-        return NO_MARK
-    if placement.is_main_page:
-        return MAIN_MARK
-    return PART_MARK if placement.is_part_page else NO_MARK
+def _read_placement(placement_text: object) -> PagePlacement | None:
+    """Read one place as an answer writes it, or None for anything else.
 
+    Args:
+        placement_text: The raw placement value.
 
-def _format_place(placement: PagePlacement) -> str:
-    """Write a place in the answer words: ``work 1``, ``work 1, part``, ``other work``."""
-    mark = _get_mark(placement)
-    return f"{placement.placement_word}, {mark}" if mark else placement.placement_word
-
-
-def _get_group_decisions(case: ReviewCase) -> tuple[DoubledProviderDecision, ...]:
-    """Return an entry group case's doubled-provider decisions."""
-    return tuple(
-        decision
-        for decision in case.decisions
-        if isinstance(decision, DoubledProviderDecision)
-    )
-
-
-def _get_linked_page_decision(case: ReviewCase) -> LinkedPageDecision:
-    """Return a linked-page case's one decision."""
-    [decision] = case.decisions
-    if not isinstance(decision, LinkedPageDecision):
-        raise TypeError(case.case_name)
-    return decision
+    Returns:
+        The parsed ``PagePlacement``, or None if not a valid placement string.
+    """
+    return read_placement(placement_text) if isinstance(placement_text, str) else None

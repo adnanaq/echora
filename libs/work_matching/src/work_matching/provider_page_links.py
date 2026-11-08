@@ -1,25 +1,28 @@
-"""Bidirectional links between candidate anime provider pages.
+"""Build bidirectional links between candidate anime provider pages.
 
 Cross-provider links are evaluated to determine whether candidate pages belong
 to the same work (such as deciding doubled providers in an entry, or checking
 whether candidate entries represent a split work).
 
-Key rules from the work matching glossary:
+Each rule reads ``<rule>: <behavior>``:
+
 - Bidirectional: A link between Page A and Page B ties them together symmetrically,
   whichever page holds the link.
 - Candidate scope: Only links between pages within the candidate set count;
   external links (such as sequels or spin-offs) are ignored.
-- Renamed pages: When a provider renames a page, its old address resolves to
-  its current key.
+- Renamed pages: When a provider renames a page, the old address resolves to
+  the current key.
 - Searched pages: A searched page (such as AnimeSchedule searched by MAL ID) is
-  credited to each page it was searched by: its links count as links of every
-  such page, except the link back to that page, which only shows how it was found.
-- Multi-work pages: A page naming multiple pages from the same provider (e.g. an
-  anthology) does not prove identity for any single work. Its links are set aside.
+  credited to each page that searched for the page: the links count as links of
+  every such page, except the link back to that page, which only shows how the
+  searched page was found.
+- Multi-work pages: A page naming multiple pages from the same provider (such
+  as an anthology) does not prove identity for any single work. Multi-work page
+  links are set aside.
 - Several-works pages: A page linked with two or more MAL pages, in either
-  direction, covers several works, since a work is what MAL lists (e.g. AniDB's
-  single page for three films MAL lists apart). Its links are set aside too, so
-  it ties none of those works together.
+  direction, covers several works, since a work is what MAL lists (such as
+  AniDB's single page for three films MAL lists apart). Several-works page
+  links are set aside too, tying none of those works together.
 """
 
 from collections import defaultdict
@@ -27,18 +30,18 @@ from collections.abc import Iterable
 from itertools import chain
 
 from work_matching.provider_page import ProviderPage
-from work_matching.provider_page_key import get_page_provider, has_repeated_provider
-
-# A work is what MAL lists, so a page linked with two of its pages covers
-# several works.
-_MAL_PROVIDER = "mal"
+from work_matching.provider_page_key import (
+    has_repeated_provider,
+    is_mal_page,
+    read_page_provider,
+)
 
 
 class ProviderPageLinks:
     """Undirected graph of links between candidate pages of a work or entry.
 
-    Renamed pages resolve to their current key, and searched pages fold into
-    the pages they were searched by. Multi-work pages (pages referencing
+    Renamed pages resolve to the current key, and searched pages fold into
+    the pages that searched for them. Multi-work pages (pages referencing
     multiple entries of one provider) and same-provider links are excluded from
     matching links.
     """
@@ -54,18 +57,18 @@ class ProviderPageLinks:
                 including pages from providers that were not fetched.
         """
         fetched_pages = tuple(pages)
-        self._current_key_by_renamed_key = {
+        self._current_page_key_by_renamed_page_key = {
             page.key: page.renamed_to for page in fetched_pages if page.renamed_to
         }
-        self._searched_by_keys_by_searched_page = {
-            page.key: tuple(map(self.get_current_key, page.searched_by))
+        self._searched_by_page_keys_by_searched_page_key = {
+            page.key: tuple(map(self.get_current_page_key, page.searched_by))
             for page in fetched_pages
             if page.searched_by
         }
-        candidate_keys = set(
+        candidate_page_keys = set(
             chain.from_iterable(
                 map(
-                    self._get_current_keys,
+                    self._get_current_page_keys,
                     chain(page_keys, (page.key for page in fetched_pages)),
                 )
             )
@@ -73,93 +76,125 @@ class ProviderPageLinks:
         self._linked_page_keys_by_page_key: defaultdict[str, set[str]] = defaultdict(
             set
         )
-        self._linking_multi_work_page_keys_by_page_key: defaultdict[str, set[str]] = (
+        self._multi_work_link_page_keys_by_page_key: defaultdict[str, set[str]] = (
             defaultdict(set)
         )
         for page in fetched_pages:
-            for source_key in self._get_current_keys(page.key):
-                self._add_links(page, source_key, candidate_keys)
-        self._set_aside_several_works_pages()
+            for source_page_key in self._get_current_page_keys(page.key):
+                self._add_links(page, source_page_key, candidate_page_keys)
+        self._remove_multi_mal_page_links()
 
-    def get_current_key(self, key: str) -> str:
-        """Return the current key a renamed page resolves to, or the key unchanged."""
-        return self._current_key_by_renamed_key.get(key, key)
+    def get_current_page_key(self, page_key: str) -> str:
+        """Return the current key a renamed page resolves to, or the key unchanged.
 
-    def get_linked_page_keys(self, key: str) -> frozenset[str]:
+        Args:
+            page_key: The page key to resolve.
+
+        Returns:
+            The current page key after following any provider rename.
+        """
+        return self._current_page_key_by_renamed_page_key.get(page_key, page_key)
+
+    def get_linked_page_keys(self, page_key: str) -> frozenset[str]:
         """Return the keys of candidate pages linked with a page, in either direction.
 
-        A searched page's key gives the pages linked with any page it was searched by.
+        A searched page's key gives the pages linked with any page that searched
+        for the searched page.
+
+        Args:
+            page_key: The page key whose linked candidate pages are requested.
+
+        Returns:
+            The keys of candidate pages linked with ``page_key``.
         """
         return frozenset(
             chain.from_iterable(
-                self._linked_page_keys_by_page_key.get(current_key, ())
-                for current_key in self._get_current_keys(key)
+                self._linked_page_keys_by_page_key.get(current_page_key, ())
+                for current_page_key in self._get_current_page_keys(page_key)
             )
         )
 
-    def get_linking_multi_work_page_keys(self, key: str) -> frozenset[str]:
-        """Return the keys of multi-work pages that linked to this page."""
+    def get_multi_work_link_page_keys(self, page_key: str) -> frozenset[str]:
+        """Return the keys of multi-work pages that link to this page.
+
+        Args:
+            page_key: The page key whose inbound multi-work links are requested.
+
+        Returns:
+            The keys of multi-work pages that reference ``page_key``.
+        """
         return frozenset(
             chain.from_iterable(
-                self._linking_multi_work_page_keys_by_page_key.get(current_key, ())
-                for current_key in self._get_current_keys(key)
+                self._multi_work_link_page_keys_by_page_key.get(current_page_key, ())
+                for current_page_key in self._get_current_page_keys(page_key)
             )
         )
 
     def _add_links(
-        self, page: ProviderPage, source_key: str, candidate_keys: set[str]
+        self, page: ProviderPage, source_page_key: str, candidate_page_keys: set[str]
     ) -> None:
-        """Record one page's links, as links of ``source_key``, within the candidates.
+        """Record one page's links, as links of ``source_page_key``, within the candidates.
 
-        ``source_key`` is the page's current key, or for a searched page one of
-        the pages it was searched by. A multi-work page's links are set apart
-        rather than recorded.
+        ``source_page_key`` is the page's current key, or for a searched page
+        one of the pages that searched for the page. A multi-work page's links
+        are recorded in ``_multi_work_link_page_keys_by_page_key`` rather than
+        added as bidirectional candidate links.
+
+        Args:
+            page: The fetched provider page whose links are inspected.
+            source_page_key: The current page key credited with the page's links.
+            candidate_page_keys: All candidate page keys in the entry or group.
         """
-        target_keys = {
-            self.get_current_key(linked_page_key)
+        target_page_keys = {
+            self.get_current_page_key(linked_page_key)
             for linked_page_key in page.linked_page_keys
-        } - {source_key}
-        referenced_keys = (
-            target_keys | {source_key} if page.searched_by else target_keys
+        } - {source_page_key}
+        referenced_page_keys = (
+            target_page_keys | {source_page_key}
+            if page.searched_by
+            else target_page_keys
         )
-        if has_repeated_provider(referenced_keys):
-            for target_key in target_keys & candidate_keys:
-                self._linking_multi_work_page_keys_by_page_key[target_key].add(
-                    source_key
+        if has_repeated_provider(referenced_page_keys):
+            for target_page_key in target_page_keys & candidate_page_keys:
+                self._multi_work_link_page_keys_by_page_key[target_page_key].add(
+                    source_page_key
                 )
             return
 
-        source_provider = get_page_provider(source_key)
-        for target_key in target_keys & candidate_keys:
-            if get_page_provider(target_key) != source_provider:
-                self._linked_page_keys_by_page_key[source_key].add(target_key)
-                self._linked_page_keys_by_page_key[target_key].add(source_key)
+        source_provider = read_page_provider(source_page_key)
+        for target_page_key in target_page_keys & candidate_page_keys:
+            if read_page_provider(target_page_key) != source_provider:
+                self._linked_page_keys_by_page_key[source_page_key].add(target_page_key)
+                self._linked_page_keys_by_page_key[target_page_key].add(source_page_key)
 
-    def _set_aside_several_works_pages(self) -> None:
+    def _remove_multi_mal_page_links(self) -> None:
         """Remove every link of a page linked with two or more MAL pages.
 
-        Such a page covers several works, so a link through it would tie
+        Such a page covers several works, so a link through that page would tie
         separate works together.
         """
-        several_works_page_keys = [
-            key
-            for key, linked_page_keys in self._linked_page_keys_by_page_key.items()
-            if sum(
-                get_page_provider(linked_key) == _MAL_PROVIDER
-                for linked_key in linked_page_keys
-            )
+        multi_mal_page_keys = [
+            page_key
+            for page_key, linked_page_keys in self._linked_page_keys_by_page_key.items()
+            if sum(is_mal_page(linked_page_key) for linked_page_key in linked_page_keys)
             > 1
         ]
-        for key in several_works_page_keys:
-            for linked_key in self._linked_page_keys_by_page_key.pop(key):
-                self._linked_page_keys_by_page_key[linked_key].discard(key)
+        for page_key in multi_mal_page_keys:
+            for linked_page_key in self._linked_page_keys_by_page_key.pop(page_key):
+                self._linked_page_keys_by_page_key[linked_page_key].discard(page_key)
 
-    def _get_current_keys(self, key: str) -> tuple[str, ...]:
+    def _get_current_page_keys(self, page_key: str) -> tuple[str, ...]:
         """Return the current keys a page key stands for.
 
-        A searched page stands for the pages it was searched by, and a renamed
-        page resolves to its current key.
+        A searched page stands for the pages that searched for the page, and a
+        renamed page resolves to the current key.
+
+        Args:
+            page_key: The page key to expand into current keys.
+
+        Returns:
+            The current keys represented by ``page_key``.
         """
-        return self._searched_by_keys_by_searched_page.get(key) or (
-            self.get_current_key(key),
+        return self._searched_by_page_keys_by_searched_page_key.get(page_key) or (
+            self.get_current_page_key(page_key),
         )

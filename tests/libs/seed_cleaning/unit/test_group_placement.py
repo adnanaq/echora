@@ -8,6 +8,7 @@ from seed_cleaning.group_placement import correct_entry_groups
 from seed_cleaning.seed_corrections import SeedCorrection
 from work_matching import (
     KnownWorkEntriesFromSeed,
+    PlacementRule,
     ProviderPage,
     ProviderPageStore,
     ReviewFile,
@@ -33,7 +34,7 @@ def _seed_entry(title: str, *addresses: str) -> dict:
 
 
 def _page(address: str, *linked_addresses: str, **details) -> ProviderPage:
-    return ProviderPage.from_canonical_record(
+    return ProviderPage.read_canonical_record(
         address,
         {
             "title": "Show",
@@ -104,7 +105,7 @@ def test_correct_entry_groups_entry_without_review_moves_page_to_seed_entry(
 def test_correct_entry_groups_link_on_searched_page_settles_entry(
     entry, store, known_work_entries, review_file
 ) -> None:
-    found = ProviderPage.from_canonical_record(
+    found = ProviderPage.read_canonical_record(
         SCHEDULE,
         {"title": "Show", "sources": [SCHEDULE, KITSU_ONE]},
         searched_by_address=MAL,
@@ -150,13 +151,13 @@ def test_correct_entry_groups_accepted_answer_gives_corrections(
     path = tmp_path / "review.jsonl"
     [case] = _correct(entry, store, known_work_entries, ReviewFile(path)).review_cases
     answered = case.model_copy(
-        update={"answer": {"kitsu:anime:1": "work 1", "kitsu:anime:2": "work 1, main"}}
+        update={"answer": {"kitsu:anime:1": "work 1", "kitsu:anime:2": "dropped"}}
     )
     path.write_text(answered.model_dump_json() + "\n", encoding="utf-8")
     result = _correct(entry, store, known_work_entries, ReviewFile(path))
     assert [case.answer for case in result.review_cases] == [answered.answer]
     assert [
-        (correction.page_key, correction.is_main_page, correction.reason)
+        (correction.page_key, correction.is_dropped_page, correction.reason)
         for correction in result.corrections
     ] == [
         ("kitsu:anime:1", False, "review answer"),
@@ -164,7 +165,7 @@ def test_correct_entry_groups_accepted_answer_gives_corrections(
     ]
 
 
-def test_correct_entry_groups_part_page_answer_marks_corrections_part(
+def test_correct_entry_groups_split_answer_records_partial_source(
     entry, store, known_work_entries, tmp_path
 ) -> None:
     store.add_pages(
@@ -174,23 +175,31 @@ def test_correct_entry_groups_part_page_answer_marks_corrections_part(
     [case] = _correct(entry, store, known_work_entries, ReviewFile(path)).review_cases
     answered = case.model_copy(
         update={
-            "answer": {"kitsu:anime:1": "work 1, part", "kitsu:anime:2": "work 1, part"}
+            "answer": {
+                "kitsu:anime:1": "work 1",
+                "kitsu:anime:2": "work 2",
+                "mal:anime:1": "work 1, partial in work 2",
+            }
         }
     )
     path.write_text(answered.model_dump_json() + "\n", encoding="utf-8")
     result = _correct(entry, store, known_work_entries, ReviewFile(path))
     assert (case.reasons, case.suggested_answer) == (
         ("PART_PAGES",),
-        {
-            "kitsu:anime:1": "work 1, part",
-            "kitsu:anime:2": "work 1, part",
-            "mal:anime:1": "work 1",
-        },
+        {"kitsu:anime:1": "work 1", "kitsu:anime:2": "work 2"},
     )
     assert [
-        (correction.page_key, correction.is_part_page)
+        (
+            correction.page_key,
+            correction.new_entry_key,
+            correction.partial_new_entry_keys,
+        )
         for correction in result.corrections
-    ] == [("kitsu:anime:1", True), ("kitsu:anime:2", True)]
+    ] == [
+        ("mal:anime:1", None, ("mal:anime:1 work 2",)),
+        ("kitsu:anime:1", None, ()),
+        ("kitsu:anime:2", "mal:anime:1 work 2", ()),
+    ]
 
 
 def test_correct_entry_groups_answer_places_renamed_single_page_by_listed_key(
@@ -457,7 +466,7 @@ def test_correct_entry_groups_later_work_without_survivor_named_by_group(
     ] == [("kitsu:anime:44979", "mal:anime:43735 work 2")]
 
 
-def test_correct_entry_groups_reference_page_marked_part_keeps_entry_whole(
+def test_correct_entry_groups_split_answer_gives_each_work_its_entry(
     store, tmp_path
 ) -> None:
     planet = "https://www.anime-planet.com/anime/show"
@@ -468,21 +477,27 @@ def test_correct_entry_groups_reference_page_marked_part_keeps_entry_whole(
     path = tmp_path / "review.jsonl"
     entry = next(iter(works))
     [case] = _correct(entry, store, works, ReviewFile(path)).review_cases
-    answer = dict.fromkeys(
-        ["kitsu:anime:1", "kitsu:anime:2", "mal:anime:1"], "work 1, part"
-    )
+    answer = {
+        "kitsu:anime:1": "work 1",
+        "kitsu:anime:2": "work 2",
+        "mal:anime:1": "work 1, partial in work 2",
+        "animeplanet:anime:show": "work 1",
+    }
     path.write_text(
         case.model_copy(update={"answer": answer}).model_dump_json() + "\n",
         encoding="utf-8",
     )
     corrections = _correct(entry, store, works, ReviewFile(path)).corrections
-    [corrected] = build_corrected_entries(corrections, works, store)
-    assert corrected.entry is not None
-    assert list(corrected.entry.addresses_by_page_key) == [
-        "mal:anime:1",
-        "kitsu:anime:1",
-        "kitsu:anime:2",
-        "animeplanet:anime:show",
+    assert [
+        (
+            list(corrected.entry.addresses_by_page_key),
+            list(corrected.entry.partial_addresses_by_page_key),
+        )
+        for corrected in build_corrected_entries(corrections, works, store)
+        if corrected.entry is not None
+    ] == [
+        (["mal:anime:1", "kitsu:anime:1", "animeplanet:anime:show"], []),
+        (["kitsu:anime:2"], ["mal:anime:1"]),
     ]
 
 
@@ -640,32 +655,188 @@ SAINT_SEIYA_SEED_ENTRIES = [
 ]
 
 
-def test_correct_entry_groups_answer_merging_parts_moves_part_pages_into_work(
+def test_correct_entry_groups_split_answer_keeps_parts_apart_with_partial_sources(
     store, tmp_path
 ) -> None:
     works = KnownWorkEntriesFromSeed(SAINT_SEIYA_SEED_ENTRIES)
     answer = {
-        "anidb:anime:13347": "work 1",
-        "anilist:anime:102427": "work 1, part",
-        "kitsu:anime:13695": "work 1",
-        "livechart:anime:2822": "work 1, main",
-        "mal:anime:36040": "work 1",
-        "anilist:anime:114448": "work 1, part",
-        "livechart:anime:9705": "work 1",
+        "anidb:anime:13347": "work 1, partial in work 2",
+        "anilist:anime:102427": "work 1",
+        "kitsu:anime:13695": "work 1, partial in work 2",
+        "livechart:anime:2822": "work 1",
+        "mal:anime:36040": "work 1, partial in work 2",
+        "anilist:anime:114448": "work 2",
+        "livechart:anime:9705": "work 2",
     }
     corrections = _answer_group_case(
         list(works), store, tmp_path / "review.jsonl", answer
     ).corrections
     assert {
         correction.page_key: (
-            correction.entry_reference_page,
             correction.target_entry_reference_page,
-            correction.is_part_page,
+            correction.partial_entry_reference_pages,
         )
         for correction in corrections
-        if correction.page_key.startswith(("anilist", "livechart:anime:9705"))
+        if correction.page_key.startswith(("anilist", "mal"))
     } == {
-        "anilist:anime:102427": ("mal:anime:36040", None, True),
-        "anilist:anime:114448": ("anilist:anime:114448", "mal:anime:36040", True),
-        "livechart:anime:9705": ("anilist:anime:114448", "mal:anime:36040", False),
+        "anilist:anime:102427": (None, ()),
+        "mal:anime:36040": (None, ("anilist:anime:114448",)),
+        "anilist:anime:114448": (None, ()),
     }
+
+
+@pytest.fixture
+def series_works() -> KnownWorkEntriesFromSeed:
+    return KnownWorkEntriesFromSeed(
+        [
+            _seed_entry("Show", MAL, KITSU_ONE, KITSU_TWO),
+            _seed_entry("Show Movie", TARGET_MAL),
+        ]
+    )
+
+
+def _answer_named_entry_case(works, store, path, named_page_key):
+    entry = next(iter(works))
+    store.add_pages(_page(KITSU_ONE, MAL), _page(KITSU_TWO, MAL))
+    [case] = _correct(entry, store, works, ReviewFile(path)).review_cases
+    answer = {
+        "kitsu:anime:1": "work 1",
+        "kitsu:anime:2": f"other work {named_page_key}",
+    }
+    path.write_text(
+        case.model_copy(update={"answer": answer}).model_dump_json() + "\n",
+        encoding="utf-8",
+    )
+    return _correct(entry, store, works, ReviewFile(path))
+
+
+def test_correct_entry_groups_answer_naming_seed_entry_moves_page_there(
+    series_works, store, tmp_path
+) -> None:
+    corrections = _answer_named_entry_case(
+        series_works, store, tmp_path / "review.jsonl", "mal:anime:9"
+    ).corrections
+    assert [
+        (
+            correction.placement_word,
+            correction.target_entry_reference_page,
+            correction.new_entry_key,
+            correction.named_entry_page_key,
+        )
+        for correction in corrections
+        if correction.page_key == "kitsu:anime:2"
+    ] == [("other work", "mal:anime:9", None, "mal:anime:9")]
+
+
+def test_correct_entry_groups_second_pass_answer_naming_moved_page_joins_its_new_entry(
+    series_works, store, tmp_path
+) -> None:
+    corrected_seed = build_corrected_seed(
+        [
+            SeedCorrection(
+                entry_reference_page="mal:anime:9",
+                page_key="mal:anime:9",
+                address=TARGET_MAL,
+                placement_word="other work",
+                new_entry_key="mal:anime:9 mal:anime:9",
+                reason="review answer",
+            )
+        ],
+        series_works,
+        store,
+    )
+    corrected_works = corrected_seed.known_work_entries
+    entry = corrected_works.find_by_page_key("mal:anime:1")
+    store.add_pages(_page(KITSU_ONE, MAL), _page(KITSU_TWO, MAL))
+    path = tmp_path / "review.jsonl"
+    [case] = correct_entry_groups(
+        [EntryGroup((entry,))], store, corrected_works, ReviewFile(path), corrected_seed
+    ).review_cases
+    answer = {"kitsu:anime:1": "work 1", "kitsu:anime:2": "other work mal:anime:9"}
+    path.write_text(
+        case.model_copy(update={"answer": answer}).model_dump_json() + "\n",
+        encoding="utf-8",
+    )
+    corrections = correct_entry_groups(
+        [EntryGroup((entry,))], store, corrected_works, ReviewFile(path), corrected_seed
+    ).corrections
+    assert [
+        (correction.target_entry_reference_page, correction.new_entry_key)
+        for correction in corrections
+        if correction.page_key == "kitsu:anime:2"
+    ] == [(None, "mal:anime:9 mal:anime:9")]
+
+
+def test_correct_entry_groups_second_pass_dropped_moved_in_page_goes_nowhere(
+    store, tmp_path
+) -> None:
+    works = KnownWorkEntriesFromSeed(
+        [
+            _seed_entry("Show", MAL, KITSU_ONE),
+            _seed_entry("Show Movie", TARGET_MAL, KITSU_TWO),
+        ]
+    )
+    corrected_seed = build_corrected_seed(
+        [
+            SeedCorrection(
+                entry_reference_page="mal:anime:9",
+                page_key="kitsu:anime:2",
+                address=KITSU_TWO,
+                placement_word="other work",
+                target_entry_reference_page="mal:anime:1",
+                reason="review answer",
+            )
+        ],
+        works,
+        store,
+    )
+    corrected_works = corrected_seed.known_work_entries
+    entry = corrected_works.find_by_page_key("mal:anime:1")
+    store.add_pages(_page(KITSU_ONE, MAL), _page(KITSU_TWO, MAL))
+    path = tmp_path / "review.jsonl"
+    [case] = correct_entry_groups(
+        [EntryGroup((entry,))], store, corrected_works, ReviewFile(path), corrected_seed
+    ).review_cases
+    answer = {"kitsu:anime:1": "work 1", "kitsu:anime:2": "dropped"}
+    path.write_text(
+        case.model_copy(update={"answer": answer}).model_dump_json() + "\n",
+        encoding="utf-8",
+    )
+    corrections = correct_entry_groups(
+        [EntryGroup((entry,))], store, corrected_works, ReviewFile(path), corrected_seed
+    ).corrections
+    assert [
+        (
+            correction.is_dropped_page,
+            correction.target_entry_reference_page,
+            correction.new_entry_key,
+        )
+        for correction in corrections
+        if correction.page_key == "kitsu:anime:2"
+    ] == [(True, None, None)]
+
+
+def test_correct_entry_groups_answer_naming_entry_outside_seed_left_open(
+    series_works, store, tmp_path
+) -> None:
+    placed = _answer_named_entry_case(
+        series_works, store, tmp_path / "review.jsonl", "mal:anime:77"
+    )
+    [case] = placed.review_cases
+    assert placed.corrections == ()
+    assert case.list_broken_answer_rules(case.answer) == (
+        PlacementRule.UNKNOWN_NAMED_ENTRY,
+    )
+
+
+def test_correct_entry_groups_case_suggests_series_entries(
+    series_works, store, review_file
+) -> None:
+    store.add_pages(_page(KITSU_ONE, MAL), _page(KITSU_TWO, MAL))
+    [case] = _correct(
+        next(iter(series_works)), store, series_works, review_file
+    ).review_cases
+    assert [
+        (suggestion.entry_reference_page, suggestion.title)
+        for suggestion in case.target_entry_suggestions
+    ] == [("mal:anime:9", "Show Movie")]

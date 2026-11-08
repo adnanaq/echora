@@ -487,6 +487,7 @@ uv run python script.py
 - Services in this repo:
   - `apps/vector_service` (gRPC on `:8001`)
   - `apps/enrichment_service` (gRPC on `:8002`)
+  - `apps/review_page` (HTTP on `127.0.0.1:8003`)
 - Active vector gRPC methods:
   - `VectorAdminService`: `Health`, `GetStats`
   - `VectorSearchService`: `Search`
@@ -495,6 +496,7 @@ uv run python script.py
 - Proto sources:
   - `protos/vector_service/v1/`
   - `protos/enrichment_service/v1/`
+  - `protos/shared_proto/v1/`
 - After any `.proto` change, regenerate checked-in stubs:
 
 ```bash
