@@ -28,8 +28,8 @@ _PROCESS_ID_FILE_NAME = "review_run.pid"
 _EXIT_CODE_FILE_NAME = "review_run.exit_code"
 _RUN_LOG_PATH = Path("logs") / "review_page_runs.log"
 # A run log past this size moves to ``review_page_runs.log.1`` before the next
-# run, replacing the older copy, so the logs never take more than about twice
-# this. One run writes a few kilobytes.
+# run, replacing the older copy, so the run logs never take more than about
+# twice this size on disk.
 RUN_LOG_LIMIT_BYTES = 1_000_000
 
 
@@ -72,7 +72,7 @@ class SeedCleaningRunProcess:
             The active run state marked as running.
         """
         with self._run_lock:
-            if self._inspect_run_state().is_running:
+            if self._resolve_run_state().is_running:
                 return review_cases_pb2.RunState(is_running=True)
             run_process = self._start_process(find_seed_file())
             (self._data_dir / _EXIT_CODE_FILE_NAME).unlink(missing_ok=True)
@@ -88,10 +88,10 @@ class SeedCleaningRunProcess:
             The current run state message with active status and last exit code.
         """
         with self._run_lock:
-            return self._inspect_run_state()
+            return self._resolve_run_state()
 
-    def _inspect_run_state(self) -> review_cases_pb2.RunState:
-        """Inspect the active run process or lock file and record completed exit codes.
+    def _resolve_run_state(self) -> review_cases_pb2.RunState:
+        """Resolve whether a run is active from its process or the lock file, and record its exit code.
 
         Assumes the caller holds ``self._run_lock``.
 
