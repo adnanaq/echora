@@ -89,16 +89,16 @@ class ReviewCaseKind(StrEnum):
 
 _DESCRIPTION_BY_CASE_KIND: dict[ReviewCaseKind, str] = {
     ReviewCaseKind.DOUBLED_PROVIDER: (
-        "An entry holds two or more pages of one provider. The answer places "
-        "each page in a work."
+        "A seed entry contains two or more pages from the same provider. "
+        "Assign each page to the work it belongs to."
     ),
     ReviewCaseKind.SPLIT_WORK: (
-        "Two or more seed entries may be one work split up. The answer says "
-        "which pages form each work."
+        "Two or more seed entries may represent parts of the same work. "
+        "Assign the pages that belong together to the same work."
     ),
     ReviewCaseKind.LINKED_PAGE: (
-        "An entry links a page no seed entry holds. The answer says whether the "
-        "page joins the entry."
+        "A seed entry links to a provider page that no entry currently holds. "
+        "Decide whether to add the linked page to the entry."
     ),
 }
 

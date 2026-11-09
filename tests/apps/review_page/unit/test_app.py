@@ -173,7 +173,8 @@ def test_case_list_every_answer_applied_shows_icon_and_plain_kind_total(
     assert (
         case_list.count('class="control-icon tone-applied"'),
         '<span class="control-chip-count">(1)</span>' in linked_page_chip,
-    ) == (1, True)
+        Tooltip.RESOLVED_CASE_KIND_COUNT.value in linked_page_chip,
+    ) == (1, True, True)
 
 
 def test_case_list_answer_saved_before_run_shows_no_icon(
@@ -185,8 +186,9 @@ def test_case_list_answer_saved_before_run_shows_no_icon(
     assert (
         case_list.count('class="control-icon tone-applied"'),
         '<span class="control-chip-count">(0/1)</span>' in linked_page_chip,
+        Tooltip.UNRESOLVED_CASE_KIND_COUNT.value in linked_page_chip,
         "saved, applies on Run" in case_list,
-    ) == (0, True, True)
+    ) == (0, True, True, True)
 
 
 def test_page_search_row_holds_reset_filter_icon_buttons(client) -> None:

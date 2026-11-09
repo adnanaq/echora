@@ -4,8 +4,10 @@
   <span class="filter-group-label">Kind</span>
   {% for kind in kinds %}
   {% set resolved_count = resolved_case_counts[kind.value] %}
-  {% set kind_count = chip_counts[kind.value] if resolved_count == chip_counts[kind.value] else resolved_count ~ "/" ~ chip_counts[kind.value] %}
-  {{ chip("kinds", kind.value, kind_count, kind.description ~ " " ~ tooltips.RESOLVED_CASE_KIND_COUNT, is_on=kind in state.kinds) }}
+  {% set total_count = chip_counts[kind.value] %}
+  {% set kind_count = total_count if resolved_count == total_count else resolved_count ~ "/" ~ total_count %}
+  {% set count_tooltip = tooltips.RESOLVED_CASE_KIND_COUNT if resolved_count == total_count else tooltips.UNRESOLVED_CASE_KIND_COUNT %}
+  {{ chip("kinds", kind.value, kind_count, kind.description ~ (" " ~ count_tooltip if total_count else ""), is_on=kind in state.kinds) }}
   {% endfor %}
 </div>
 {{ chip_group("Case", "case_states", case_states, chip_counts, case_state_tooltips, state.case_states) }}
