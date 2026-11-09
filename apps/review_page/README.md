@@ -33,7 +33,6 @@ alone, because the page reads and writes local files and starts local runs.
   - [Server and browser](#server-and-browser)
   - [Discovery and production](#discovery-and-production)
 - [Tests](#tests)
-- [Files](#files)
 
 ## Terms
 
@@ -150,20 +149,27 @@ Saved answers carry over to the new seed release by case name:
 - A case whose candidate pages are unchanged retains its saved answer, which the
   run applies automatically.
 - A case whose candidate pages changed in the new release receives a new case
-  name, appears as an open case, and is badged `New`.
-- The prior answer for a modified case remains in the review file without being
-  applied and is listed in the run summary under "Answers whose case no longer
-  comes up".
+  name, appears as an open case, and is badged `New` and `Previous answer`. It
+  carries the answer of the case it replaces. While the case still holds the
+  entries that answer saw, the run keeps applying it to the pages it placed,
+  and the case opens on it with the added pages marked `Added`. When the
+  release merged those entries or changed the case's kind, the previous answer
+  is shown but no longer applies.
+- An answer whose case no longer comes up and that no case carries remains in
+  the review file without being applied, is marked `Unused answer`, and is
+  listed in the run summary under "Unused answers".
 
-Saved answers are never deleted from the review file because every pipeline run
-starts from the original seed file and reapplies all saved answers.
+Saved answers are kept in the review file because every pipeline run starts
+from the original seed file and reapplies all saved answers. A previous answer
+is dropped once the case carrying it has a saved answer of its own.
 
 ## The page
 
 ### Cases tab
 
 - **List.** Displays one row per review case with its title, kind, edit state,
-  and status pills (`New`, `Suggested`, `No longer comes up`). Selecting
+  and status pills (`New`, `Suggested`, `Previous answer`, `No longer comes
+up`). Selecting
   multiple chips within the same filter category widens the match (logical OR),
   while combining different filter categories narrows the match (logical AND).
   Paginated at 25 rows per page.
@@ -206,10 +212,15 @@ starts from the original seed file and reapplies all saved answers.
   - Accept: enabled when a complete suggested answer differs from the saved answer.
   - Reset: enabled when the chosen or saved answer differs from the original answer.
   - Every button is disabled while a pipeline run is in progress.
-- **No longer comes up.** The review file retains the case's saved answer, but
-  the last pipeline run no longer produced the case because an upstream decision
-  modified its pages. The retained answer had no effect; answer the replacement
-  case instead.
+- **Previous answer.** The case replaces one answered before a seed release
+  changed its pages. The panel says whether that answer still applies, lists
+  the added pages, and marks them `Added` in the pages table; an answer that no
+  longer applies is shown above the table. The `Previous answer` filter lists
+  these cases.
+- **Unused answer.** The review file retains the case's saved answer, but
+  the last pipeline run produced no case that uses it, because a seed release
+  or another answer already settled those pages. The answer had no effect. No
+  action is needed; if a new case holds the same pages, answer that case.
 
 ### Corrections tab
 
@@ -224,8 +235,8 @@ Displays entry modifications from the last pipeline run, one corrected entry at 
   address, or unchanged), the page's place with its partial sources, rule
   explanation, and source.
 - **Cross-links.** A corrected entry links back to the review cases containing
-  it, and a review case links to any corrections from the last run that
-  modified its entries.
+  it, and a review case links to each of its entries the last run changed,
+  counting only the corrections that change the seed.
 
 Corrections reflect the last completed pipeline run; answers saved afterward
 take effect on the next Run.
@@ -397,32 +408,3 @@ checked entries (`tests/apps/review_page/unit/fixtures/`). Route handlers are
 tested with FastAPI's `TestClient` against an in-memory `ReviewCaseSource`
 test double, and `FileReviewCaseSource` is tested against temporary data
 directories including subprocess execution.
-
-## Files
-
-| File                           | Holds                                                                                                                               |
-| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `main.py`                      | Entry point that loads `Settings`, initializes `FileReviewCaseSource`, and starts the Uvicorn server.                               |
-| `app.py`                       | `create_app`, `PageRoutes`: configures FastAPI middleware, static mounts, exception handlers, `/health`, and the `/` shell route.   |
-| `case_routes.py`               | `CaseRoutes`: HTMX fragment routes for the Cases tab toolbar, list, case panel, interactive choices, and answer saves.              |
-| `correction_routes.py`         | `CorrectionRoutes`: HTMX fragment routes for the Corrections tab list and entry detail panel.                                       |
-| `run_routes.py`                | `RunRoutes`: endpoints for starting a pipeline run, polling `/run-state`, and rendering the run summary panel.                      |
-| `htmx_responses.py`            | `build_event_response`, `build_notice_response`, `build_event_headers`: responses carrying `HX-Trigger` headers for Alpine.js.      |
-| `review_case_source.py`        | `ReviewCaseSource`: abstract interface for reading cases and corrections, saving answers, and managing pipeline runs.               |
-| `file_review_case_source.py`   | `FileReviewCaseSource`: local file-backed `ReviewCaseSource` implementation and `seed_cleaning` protobuf converters.                |
-| `seed_cleaning_run_process.py` | `SeedCleaningRunProcess`: starts `clean_seed.py --no-fetch` in its own process group and tracks its process ID, exit code and log.  |
-| `review_case_loader.py`        | `ReviewCaseLoader`: reads `review.jsonl` when it changes, parsing and converting only its new or changed lines.                     |
-| `seed_entries.py`              | `load_seed_entries`: loads and caches known seed entries from the active seed file when validating `other work` targets.            |
-| `answer_checks.py`             | Validates candidate answers against placement constraints and checks optimistic concurrency.                                        |
-| `review_case_messages.py`      | Conversions between `work_matching.ReviewCase` and its protobuf message, plus ordered mapping helpers.                              |
-| `run_summary.py`               | `build_run_summary`: parses the last run's `SeedCleaningRunResult` message into a `RunSummary` model.                               |
-| `models.py`                    | Domain models, row projections, filter criteria, and `BrowserState`.                                                                |
-| `page_state.py`                | `resolve_saved_change`, `resolve_case_edit_state`, `build_case_buttons`, `build_page_buttons`, `filter_case_rows`, `paginate_rows`. |
-| `case_views.py`                | Constructs case list summary rows and assembles the inspection panel view.                                                          |
-| `case_panel_tables.py`         | Builds entry views, candidate page rows (`build_page_rows`), comparison rows, visible columns, and evidence pages.                  |
-| `correction_views.py`          | Builds corrected entry list rows, filters and counts corrections, and assembles `CorrectionPanelView` detail panels.                |
-| `request_guards.py`            | `add_request_guards`, `refuse_post_from_other_sites`: host header and HTMX origin checks blocking cross-site requests.              |
-| `template_functions.py`        | `build_static_url`, `build_element_id`, `add_template_functions`: registers `static_url`, `element_id`, and `tooltips` in Jinja2.   |
-| `tooltips.py`                  | `Tooltip` enum and tooltip mappings for edit states, case states, correction changes, and color themes.                             |
-| `templates/`                   | Jinja2 HTML templates for the page shell, HTMX fragments, and shared UI macros (`control_macros.html`).                             |
-| `static/`                      | Stylesheet (`review_page.css`), Alpine.js client store (`review_page.js`), and vendored frontend libraries (`vendor/`).             |

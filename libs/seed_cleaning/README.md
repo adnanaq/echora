@@ -33,7 +33,6 @@ discovery replaces the seed; `libs/work_matching` stays.
 - [Running it](#running-it)
   - [AniDB limits](#anidb-limits)
   - [Output files](#output-files)
-- [Files](#files)
 
 ## Terms
 
@@ -58,50 +57,56 @@ With `--no-fetch` it skips the fetch and works from the pages already stored.
 
 ```mermaid
 flowchart TD
-    seed[Downloaded seed release]
-    store[(Provider page store)]
-    answers[(review.jsonl answers<br/>kept from earlier runs)]
+    seed["Downloaded seed release"]
+    store[("Provider page store")]
+    answers[("review.jsonl answers kept from earlier runs")]
 
-    subgraph fetch[Fetch]
+    subgraph fetch["Fetch"]
         direction TB
-        fetch_seed[1. Fetch every seed entry's own pages]
-        fetch_linked[2. Fetch every page they link that no seed<br/>entry holds, then search AnimeSchedule<br/>and fetch the pages it finds add]
+        fetch_seed["1. Fetch every seed entry's own pages"]
+        fetch_linked["2. Fetch unheld linked pages, search AnimeSchedule, and fetch newly linked pages"]
         fetch_seed --> fetch_linked
     end
 
-    subgraph first[First pass]
+    subgraph first["First pass"]
         direction TB
-        list[3. List the entries with a doubled provider<br/>and the entries without a MAL page]
-        doubled[4. Place the doubled-provider entries]
-        decide[5. Decide each page those entries link]
+        list["3. List entries with a doubled provider and entries without a MAL page"]
+        doubled["4. Place doubled-provider entries by the rules, an answer, or a previous answer"]
+        decide["5. Decide each page those entries link"]
         list --> doubled --> decide
     end
 
-    subgraph second[Second pass]
+    subgraph second["Second pass"]
         direction TB
-        corrected[6. Build the corrected seed;<br/>leave out entries with an open case]
-        candidates[7. Find split-work candidates<br/>by title and link]
-        split[8. Place the candidate groups]
+        corrected["6. Build the corrected seed (excluding entries with an open case)"]
+        candidates["7. Find split-work candidates by title and link"]
+        split["8. Place candidate groups by an answer or a previous answer"]
         corrected --> candidates --> split
     end
 
     seed --> fetch --> first
-    first -- corrections and open cases --> second
-    fetch -. pages .-> store
-    store -. pages .-> first
-    store -. pages .-> second
-    answers -. read .-> first
-    answers -. read .-> second
-    first -- cases and corrections --> write
-    second -- candidates, cases and corrections --> write
-    write[9. Write entries_to_check.json, review.jsonl,<br/>corrections.jsonl and review_run.json]
+    first -- "corrections and open cases" --> second
+    fetch -. "pages" .-> store
+    store -. "pages" .-> first
+    store -. "pages" .-> second
+    answers -. "read" .-> first
+    answers -. "read" .-> second
+    answers -. "read" .-> write
+    first -- "cases and corrections" --> write
+    second -- "candidates, cases, and corrections" --> write
+    write["9. Attach remaining previous answers and write entries_to_check.json, review.jsonl, corrections.jsonl, and review_run.json"]
 ```
 
 Solid arrows give the order of the steps; dotted arrows are what the steps
 write to and read from the store and the review file:
 
 - Steps 1 and 2 add pages to the store; the passes only read it.
-- Steps 4, 5 and 8 read the answers kept in `review.jsonl`.
+- Steps 4, 5 and 8 read the answers kept in `review.jsonl`. Steps 4 and 8
+  also give a case a seed release renamed the answer of the case it replaces,
+  which keeps placing the pages it saw (see [Placing entry groups](#placing-entry-groups)).
+- Step 9 reads them once more, to show a previous answer neither pass took on
+  a case of another kind, such as a split-work group the release merged into
+  one entry with a doubled provider.
 - Step 6 reads the downloaded seed again, to rebuild the entries the first
   pass's corrections change.
 - Step 9 writes both passes' results: the first pass's cases and corrections,
@@ -337,6 +342,12 @@ The rules:
 - **Rebuilt every run** from this run's decisions and the kept answers, so the
   file always matches them and needs no clean-up.
 - **Pages without a place stay** as the seed lists them and get no correction.
+- **Previous answers.** A case a seed release renamed, with no answer of its
+  own, is placed by the answer of the case it replaces while it still holds the
+  entries that answer saw (`answer_placements`). Pages and entries the release
+  added stay as the seed lists them, and only entries that answer was given
+  for can be the entry a work keeps. The run counts these as "open cases
+  placed by a previous answer".
 - **Moves.** An `other work` page joins the seed entry its sure move names
   (`UnrelatedPage.move_target_entry`): its links name exactly one seed entry,
   that entry holds no page of the same provider, and their year and type agree.
@@ -583,28 +594,28 @@ decision in the middle is `decide_linked_page` (see
 
 ```mermaid
 flowchart TD
-    entries[Entries with a doubled provider<br/>and entries without a MAL page] --> placed{Does the entry have<br/>a case still open?}
-    placed -- yes --> left_out[Left out until answered]
-    placed -- no --> corrected[The entry as the first pass's corrections<br/>leave it; a removed or new entry is left out]
-    corrected --> links{Does a page link an anime page of a<br/>fetched provider that no seed entry holds?}
-    links -- no --> nothing[Nothing to add]
-    links -- yes --> fetch{Is the linked page stored?<br/>Step 2 fetched it earlier in the run}
-    fetch -- "its fetch failed, or the run<br/>used --no-fetch" --> waiting[Waiting: fetched on the next run that fetches]
-    fetch -- yes --> current[Grouped by its current key:<br/>every spelling decided once]
-    current --> decide{decide_linked_page}
-    decide -- NOT_FOUND --> skip_dead[Not added: the provider deleted the page]
-    decide -- HELD_UNDER_OTHER_ADDRESS --> skip_held[Not added: a seed entry holds it]
-    decide -- CHECKS_PASSED --> add[Added to the entry]
-    decide -- any review reason --> case[One linked-page case]
-    case --> answer{Valid answer kept?}
-    answer -- no --> open[Case stays open; nothing added]
-    answer -- skip --> skipped[Not added]
-    answer -- "add, add as partial,<br/>or either to a named entry" --> conflict{Would two whole pages of one<br/>provider join the same entry?}
-    conflict -- yes --> neither[Neither page added;<br/>a warning names the entry]
-    conflict -- no --> add
-    add --> correction[Correction with is_added_page]
-    correction --> anime_id{After both passes, does the anime id<br/>of the seed entry the page ends in<br/>come from this page?}
-    anime_id -- yes --> id_page[Correction marked is_anime_id_page]
+    entries["Entries with a doubled provider and entries without a MAL page"] --> placed{"Does the entry have an open case?"}
+    placed -- "yes" --> left_out["Leave out until answered"]
+    placed -- "no" --> corrected["Read the entry after first-pass corrections (excluding removed or new entries)"]
+    corrected --> links{"Does a page link an anime page of a fetched provider that no seed entry holds?"}
+    links -- "no" --> nothing["Nothing to add"]
+    links -- "yes" --> fetch{"Is the linked page stored from Step 2?"}
+    fetch -- "no (fetch failed or --no-fetch)" --> waiting["Wait for the next run that fetches"]
+    fetch -- "yes" --> current["Group by current page key so every spelling is decided once"]
+    current --> decide{"decide_linked_page"}
+    decide -- "NOT_FOUND" --> skip_dead["Skip: the provider deleted the page"]
+    decide -- "HELD_UNDER_OTHER_ADDRESS" --> skip_held["Skip: a seed entry already holds it"]
+    decide -- "CHECKS_PASSED" --> add["Add to the entry"]
+    decide -- "Needs review" --> case["Create one linked-page review case"]
+    case --> answer{"Does the review file have a valid answer?"}
+    answer -- "no" --> open["Leave the case open and add nothing"]
+    answer -- "skip" --> skipped["Skip the linked page"]
+    answer -- "add, add as partial, or either to a named entry" --> conflict{"Would two whole pages of one provider join the same entry?"}
+    conflict -- "yes" --> neither["Add neither page and log a warning"]
+    conflict -- "no" --> add
+    add --> correction["Write correction with is_added_page"]
+    correction --> anime_id{"After both passes, does the seed entry's anime ID come from this page?"}
+    anime_id -- "yes" --> id_page["Mark the correction is_anime_id_page"]
 ```
 
 The table lists every scenario, with a real example where one is known.
@@ -663,7 +674,7 @@ ANIDB_MIN_REQUEST_INTERVAL=8 uv run python scripts/clean_seed.py
 The run reports, to the terminal and to the release's log file, the fetch plan
 and progress per provider, a count per fetch outcome and the first failures,
 the entries found, the corrections by kind, the review cases open and
-answered, and the linked pages waiting, not found, or held under another
+answered, the open cases placed by a previous answer, and the linked pages waiting, not found, or held under another
 address.
 
 It writes to the data folder, `data/seed_cleaning/` unless `--data-dir` names
@@ -679,24 +690,3 @@ that folder unless `--store` names another file.
 | `review_run.json`               | At the end of the run (step 9). Rewritten each run.                                                                                                                   | What the run did (`SeedCleaningRunResult`): its seed file and times, the correction counts, the answers it rejected or found no case for, the case names and the new ones, and every answer as it wrote it.                          | The review page's run summary, each case's original value, and the seed file the page's Run reuses.                                              |
 | `not_listed_searches.jsonl`     | During the fetch, a line per AnimeSchedule search that finds nothing; never with `--no-fetch`. Rewritten without other releases' lines when a new release is fetched. | The page key each search was made by, and the release.                                                                                                                                                                               | Skipping those searches for the rest of the release.                                                                                             |
 | `logs/clean_seed_<release>.log` | Throughout the run, appended; one file per seed release, named after the release tag in the seed's `$schema`.                                                         | Everything the run reports, each run starting with a dated line naming the release and seed file.                                                                                                                                    | Reading what each release's runs did, and studying fetch failures to improve fetching. Earlier releases' logs are kept.                          |
-
-## Files
-
-| File                          | Holds                                                                                                                                                                                                           |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `dead_pages.py`               | `list_dead_page_corrections`: the corrections dropping every dead page the seed lists.                                                                                                                          |
-| `doubled_provider_entries.py` | `find_doubled_provider_entries`: the entries holding a doubled provider.                                                                                                                                        |
-| `split_work_links.py`         | `SplitWorkLink`, `SplitWorkLinks`, `find_split_work_links`: the links tying entries, the entries linking each page, and the pages covering several works.                                                       |
-| `split_work_candidates.py`    | `SplitWorkCandidates` and `find_split_work_candidates`: the candidate groups by title, link and several-works page, with their evidence.                                                                        |
-| `seed_fetch.py`               | `fetch_seed_and_linked_pages`, `list_unheld_linked_page_titles`, `SeedFetchSummary`, `read_seed_release_name`: the fetch step, and the release name that names the run's log.                                   |
-| `not_listed_searches.py`      | `NotListedSearchFile`: the AnimeSchedule searches that found nothing in one release.                                                                                                                            |
-| `entry_groups.py`             | `EntryGroup`: the entries one review case places, with why they are grouped.                                                                                                                                    |
-| `corrected_seed.py`           | `build_corrected_seed`, `CorrectedSeed`, `EntryIdentity`, `PageOrigin`: every entry as the first pass leaves it, and how corrections name its entries and pages.                                                |
-| `split_work_pass.py`          | `prepare_split_work_pass`, `SplitWorkPass`: the second pass's entries and candidate groups.                                                                                                                     |
-| `cleaning_report.py`          | `build_entries_to_check_document`, `count_corrections`: what `entries_to_check.json` holds and the counts a run prints.                                                                                         |
-| `group_placement.py`          | `correct_entry_groups`: each entry group's pages placed, from the rules or a review answer.                                                                                                                     |
-| `page_destinations.py`        | `find_page_destination`, `GroupPlacement`: the entry each placed page ends up in, as its correction names it.                                                                                                   |
-| `seed_corrections.py`         | `SeedCorrection`, `PlacementCorrections`, `merge_corrections`, `write_corrections`: where each checked page ends up, the two passes merged, written to the corrections file.                                    |
-| `corrected_entries.py`        | `build_corrected_entries`, `CorrectedEntry`: the work entries the corrections change or create.                                                                                                                 |
-| `linked_page_additions.py`    | `find_entries_without_mal_page`, `list_entries_with_placed_pages`, `find_linking_seed_entries`, `correct_linked_pages`: the linked pages added as corrections.                                                  |
-| `linked_page_groups.py`       | `LinkingSeedEntry`, `group_linked_pages_by_current_key`, `rename_linked_pages_to_current_keys`: the linked pages grouped by the current key their fetch reports, so the spellings of one page are decided once. |
