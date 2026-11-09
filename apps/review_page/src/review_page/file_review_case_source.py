@@ -445,8 +445,8 @@ def convert_correction_to_message(
         if value is not None
     }
     message = json_format.ParseDict(fields, review_cases_pb2.SeedCorrection())
-    if change := find_correction_change(correction):
-        message.change = change
+    if change_name := find_correction_change(correction):
+        message.change = change_name
     message.reason_sentence = describe_correction_reason(correction)
     message.is_from_answer = correction.reason == REVIEW_ANSWER_REASON
     return message

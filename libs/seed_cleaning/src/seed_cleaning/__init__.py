@@ -3,11 +3,11 @@
 Seed cleaning reads the downloaded seed release, never changes it, and lists
 the entries to check in two passes: entries with a doubled provider first, then
 groups of split-work candidates found on the entries as the first pass leaves
-them. It fetches their pages into the provider page store, where the work
-matching rules decide from their links, and records where each page of an entry
-group ends up as seed corrections. It also adds the pages entries link that no
-seed entry holds, once checked. The library is deleted once discovery replaces
-the seed.
+them. The library fetches their pages into the provider page store, where the
+work matching rules decide from their links, and records where each page of an
+entry group ends up as seed corrections. Seed cleaning also adds the pages
+entries link that no seed entry holds, once checked. The library is deleted once
+discovery replaces the seed.
 """
 
 from seed_cleaning.cleaning_report import (

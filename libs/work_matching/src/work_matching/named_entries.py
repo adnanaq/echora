@@ -159,28 +159,6 @@ def build_target_entry_suggestion(work_entry: WorkEntry) -> TargetEntrySuggestio
     )
 
 
-def _count_shared_leading_words(first_title: str, second_title: str) -> int:
-    """Count the leading words two titles share once folded for comparison.
-
-    Args:
-        first_title: A title, as written.
-        second_title: Another title, as written.
-
-    Returns:
-        How many words both folded titles start with, in the same order.
-    """
-    shared_word_count = 0
-    for first_word, second_word in zip(
-        fold_title_for_comparison(first_title).split(),
-        fold_title_for_comparison(second_title).split(),
-        strict=False,
-    ):
-        if first_word != second_word:
-            break
-        shared_word_count += 1
-    return shared_word_count
-
-
 def find_covered_outside_entries(
     case: ReviewCase,
     entry_pages_by_reference_page: Mapping[str, Sequence[ProviderPage]],
@@ -223,3 +201,25 @@ def find_covered_outside_entries(
             if not entry_page.is_dead
         )
     )
+
+
+def _count_shared_leading_words(first_title: str, second_title: str) -> int:
+    """Count the leading words two titles share once folded for comparison.
+
+    Args:
+        first_title: A title, as written.
+        second_title: Another title, as written.
+
+    Returns:
+        How many words both folded titles start with, in the same order.
+    """
+    shared_word_count = 0
+    for first_word, second_word in zip(
+        fold_title_for_comparison(first_title).split(),
+        fold_title_for_comparison(second_title).split(),
+        strict=False,
+    ):
+        if first_word != second_word:
+            break
+        shared_word_count += 1
+    return shared_word_count

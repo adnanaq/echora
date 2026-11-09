@@ -1,4 +1,4 @@
-"""Entry groups: the entries one review case places together, and why.
+"""Group the entries that one review case places together, along with their evidence.
 
 An entry group is what one review case places (``work_matching.entry_group``).
 Seed cleaning builds the groups in two passes:
@@ -22,7 +22,7 @@ from work_matching import WorkEntry
 
 
 class EntryGroup(NamedTuple):
-    """Entries one review case places, with why they are grouped."""
+    """Hold entries one review case places, with why they are grouped."""
 
     # In seed file order.
     entries: tuple[WorkEntry, ...]
@@ -35,7 +35,14 @@ class EntryGroup(NamedTuple):
 
     @classmethod
     def from_candidates(cls, candidates: SplitWorkCandidates) -> Self:
-        """Make the group of one set of split-work candidates, keeping its evidence."""
+        """Make the group of one set of split-work candidates, keeping its evidence.
+
+        Args:
+            candidates: One group of split-work candidate entries and evidence.
+
+        Returns:
+            The entry group built from ``candidates``.
+        """
         return cls(
             candidates.entries,
             candidates.candidate_evidence,

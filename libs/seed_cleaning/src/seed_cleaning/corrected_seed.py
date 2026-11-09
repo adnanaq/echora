@@ -1,4 +1,4 @@
-"""The corrected seed: every work entry as the first pass's corrections leave it.
+"""Build the corrected seed holding every work entry as the first pass leaves it.
 
 Split works are looked for in a second pass, over the entries the first pass
 leaves (doubled providers resolved, linked pages added), so a page moved or
@@ -29,7 +29,7 @@ from work_matching import KnownWorkEntriesFromSeed, ProviderPageStore, WorkEntry
 
 
 class EntryIdentity(NamedTuple):
-    """How seed corrections name an entry: by its seed entry or its new entry key."""
+    """Identify how seed corrections name an entry: by its seed entry or its new entry key."""
 
     # The reference page of the seed entry the entry stands in for; None for a
     # new entry.
@@ -40,7 +40,7 @@ class EntryIdentity(NamedTuple):
 
 
 class PageOrigin(NamedTuple):
-    """How seed corrections name a page: the entry listing it and its address."""
+    """Record how seed corrections name a page: the entry listing it and its address."""
 
     # The seed entry listing the page, or the seed entry it was added to.
     entry_reference_page: str
@@ -48,9 +48,25 @@ class PageOrigin(NamedTuple):
     is_added_page: bool = False
 
 
+class UnknownPageOriginError(LookupError):
+    """A page of a new entry has no correction bringing it in."""
+
+    def __init__(self, page_key: str, identity: EntryIdentity) -> None:
+        """Name the page and the new entry holding it.
+
+        Args:
+            page_key: The page key with no joining correction.
+            identity: The identity of the new entry holding the page.
+        """
+        super().__init__(
+            f"Page {page_key} of new entry {identity.new_entry_key} has no "
+            "correction bringing it in"
+        )
+
+
 @dataclass(frozen=True)
 class CorrectedSeed:
-    """Every work entry after the first pass, and how corrections name each one."""
+    """Hold every work entry after the first pass, and how corrections name each one."""
 
     known_work_entries: KnownWorkEntriesFromSeed
     # Each entry's identity, by the entry's reference page.
@@ -59,7 +75,16 @@ class CorrectedSeed:
     origin_by_entry_page: dict[tuple[str, str], PageOrigin]
 
     def find_page_origin(self, entry_reference_page: str, page_key: str) -> PageOrigin:
-        """Return the origin of one page of one entry of the corrected seed."""
+        """Return the origin of one page of one entry of the corrected seed.
+
+        Args:
+            entry_reference_page: The reference page of the entry in the
+                corrected seed.
+            page_key: The page key within that entry.
+
+        Returns:
+            The recorded ``PageOrigin`` for that entry and page.
+        """
         return self.origin_by_entry_page[entry_reference_page, page_key]
 
 
@@ -81,9 +106,9 @@ def build_corrected_seed(
     corrections = list(corrections)
     corrected_entries = build_corrected_entries(corrections, known_work_entries, store)
     corrected_entry_by_seed_reference_page = {
-        corrected.seed_entry_reference_page: corrected.entry
-        for corrected in corrected_entries
-        if corrected.seed_entry_reference_page is not None
+        corrected_entry.seed_entry_reference_page: corrected_entry.entry
+        for corrected_entry in corrected_entries
+        if corrected_entry.seed_entry_reference_page is not None
     }
     identified_entries: list[tuple[WorkEntry, EntryIdentity]] = []
     for seed_entry in known_work_entries:
@@ -92,9 +117,10 @@ def build_corrected_seed(
         if entry is not None:
             identified_entries.append((entry, EntryIdentity(reference_page, None)))
     identified_entries.extend(
-        (corrected.entry, EntryIdentity(None, corrected.new_entry_key))
-        for corrected in corrected_entries
-        if corrected.seed_entry_reference_page is None and corrected.entry is not None
+        (corrected_entry.entry, EntryIdentity(None, corrected_entry.new_entry_key))
+        for corrected_entry in corrected_entries
+        if corrected_entry.seed_entry_reference_page is None
+        and corrected_entry.entry is not None
     )
     joining_corrections = _index_joining_corrections(corrections)
     return CorrectedSeed(
@@ -110,6 +136,23 @@ def build_corrected_seed(
             for page_key, address in entry.addresses_by_page_key.items()
         },
     )
+
+
+def find_move_destination(correction: SeedCorrection) -> EntryIdentity | None:
+    """Find the entry a correction moves its page to, as corrections name entries.
+
+    Args:
+        correction: A seed correction.
+
+    Returns:
+        The seed entry or the new entry the page moves to; None when the page
+        stays in the entry listing it.
+    """
+    if correction.target_entry_reference_page:
+        return EntryIdentity(correction.target_entry_reference_page, None)
+    if correction.new_entry_key:
+        return EntryIdentity(None, correction.new_entry_key)
+    return None
 
 
 def _index_joining_corrections(
@@ -136,30 +179,27 @@ def _index_joining_corrections(
     return joining_corrections
 
 
-def find_move_destination(correction: SeedCorrection) -> EntryIdentity | None:
-    """Find the entry a correction moves its page to, as corrections name entries.
-
-    Args:
-        correction: A seed correction.
-
-    Returns:
-        The seed entry or the new entry the page moves to; None when the page
-        stays in the entry listing it.
-    """
-    if correction.target_entry_reference_page:
-        return EntryIdentity(correction.target_entry_reference_page, None)
-    if correction.new_entry_key:
-        return EntryIdentity(None, correction.new_entry_key)
-    return None
-
-
 def _find_origin(
     identity: EntryIdentity,
     page_key: str,
     address: str,
     joining_corrections: dict[tuple[EntryIdentity, str], SeedCorrection],
 ) -> PageOrigin:
-    """Return a page's origin: the correction that brought it in, else its own entry."""
+    """Return a page's origin: the correction that brought it in, else its own entry.
+
+    Args:
+        identity: The identity of the entry holding the page.
+        page_key: The page key within the entry.
+        address: The page's address on the entry.
+        joining_corrections: Corrections indexed by destination entry identity
+            and page key.
+
+    Returns:
+        The page's origin in the downloaded seed.
+
+    Raises:
+        UnknownPageOriginError: A page of a new entry has no joining correction.
+    """
     joining_correction = joining_corrections.get((identity, page_key))
     if joining_correction is not None:
         return PageOrigin(
@@ -170,14 +210,3 @@ def _find_origin(
     if identity.seed_entry_reference_page is None:
         raise UnknownPageOriginError(page_key, identity)
     return PageOrigin(identity.seed_entry_reference_page, address)
-
-
-class UnknownPageOriginError(LookupError):
-    """A page of a new entry has no correction bringing it in."""
-
-    def __init__(self, page_key: str, identity: EntryIdentity) -> None:
-        """Name the page and the new entry holding it."""
-        super().__init__(
-            f"Page {page_key} of new entry {identity.new_entry_key} has no "
-            "correction bringing it in"
-        )

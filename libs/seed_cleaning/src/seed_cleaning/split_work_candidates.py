@@ -62,7 +62,7 @@ _MAL_PROVIDER = "mal"
 
 
 class SplitWorkCandidates(BaseModel):
-    """Seed entries that may be one work, for a person to review as one group."""
+    """Hold seed entries that may be one work, for a person to review as one group."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -79,6 +79,24 @@ class SplitWorkCandidates(BaseModel):
     # Whether a page tying the entries is also linked from entries outside the
     # group, so its link is weaker evidence; the review case warns about it.
     has_shared_tying_link: bool = False
+
+
+class _SeveralWorksPage(NamedTuple):
+    """Hold a page covering several works, the entry holding it, and why it is grouped."""
+
+    holder_position: int
+    page_key: str
+    evidence: str
+
+
+@dataclass
+class _GroupEvidence:
+    """Hold why one group's entries are candidates."""
+
+    # Each shared title, then each link, as shown to the reviewer.
+    evidence: list[str] = field(default_factory=list)
+    # The pages the group's links point to.
+    linked_page_keys: set[str] = field(default_factory=set)
 
 
 def find_split_work_candidates(
@@ -126,7 +144,9 @@ def find_split_work_candidates(
         several_works_pages,
     )
     candidates: list[SplitWorkCandidates] = []
-    for positions in sorted(sorted(group) for group in entry_groups.to_sets()):
+    for positions in sorted(
+        sorted(group_positions) for group_positions in entry_groups.to_sets()
+    ):
         if built_candidates := _build_candidates(
             work_entries,
             positions,
@@ -157,14 +177,6 @@ def _is_separated_pair(
         frozenset(work_entries[position].reference_page_key for position in pair)
         in separated_reference_page_pairs
     )
-
-
-class _SeveralWorksPage(NamedTuple):
-    """A page covering several works, the entry holding it, and why it is grouped."""
-
-    holder_position: int
-    page_key: str
-    evidence: str
 
 
 def _join_several_works_entries(
@@ -213,16 +225,6 @@ def _join_several_works_entries(
     return several_works_pages
 
 
-@dataclass
-class _GroupEvidence:
-    """Why one group's entries are candidates."""
-
-    # Each shared title, then each link, as shown to the reviewer.
-    evidence: list[str] = field(default_factory=list)
-    # The pages the group's links point to.
-    linked_page_keys: set[str] = field(default_factory=set)
-
-
 def _collect_group_evidence(
     entry_groups: UnionFind,
     work_entries: list[WorkEntry],
@@ -244,12 +246,13 @@ def _collect_group_evidence(
         pages, by its root place.
     """
     evidence_by_group: defaultdict[int, _GroupEvidence] = defaultdict(_GroupEvidence)
-    for first, second in title_pairs:
-        evidence_by_group[entry_groups[first]].evidence.append(
-            f"same title: {work_entries[first].title!r} and {work_entries[second].title!r}"
+    for first_position, second_position in title_pairs:
+        evidence_by_group[entry_groups[first_position]].evidence.append(
+            f"same title: {work_entries[first_position].title!r} and "
+            f"{work_entries[second_position].title!r}"
         )
-    for (first, _), links in links_by_entry_pair.items():
-        group_evidence = evidence_by_group[entry_groups[first]]
+    for (first_position, _), links in links_by_entry_pair.items():
+        group_evidence = evidence_by_group[entry_groups[first_position]]
         for link in links:
             group_evidence.evidence.append(
                 f"{link.linking_page_key} links {link.linked_page_key}"
@@ -297,8 +300,8 @@ def _build_candidates(
         shared_provider=shared_providers[0] if len(shared_providers) == 1 else None,
         candidate_evidence=tuple(group_evidence.evidence),
         has_shared_tying_link=any(
-            linking_entries_by_page_key.get(key, frozenset()) - group_positions
-            for key in group_evidence.linked_page_keys
+            linking_entries_by_page_key.get(page_key, frozenset()) - group_positions
+            for page_key in group_evidence.linked_page_keys
         ),
     )
 
@@ -339,6 +342,14 @@ def _find_title_pairs(
 def _is_season_close(first_season: str | None, second_season: str | None) -> bool:
     """Report whether two seasons are equal, next to each other, or one is missing.
 
+    Args:
+        first_season: The first entry's season name, or None.
+        second_season: The second entry's season name, or None.
+
+    Returns:
+        True when either season is None or they are equal or adjacent in
+        calendar order.
+
     Examples:
         >>> _is_season_close("SUMMER", "FALL")
         True
@@ -355,7 +366,14 @@ def _is_season_close(first_season: str | None, second_season: str | None) -> boo
 
 
 def _find_shared_providers(entries: Sequence[WorkEntry]) -> list[str]:
-    """Return the providers with pages in two or more of the entries, sorted."""
+    """Return the providers with pages in two or more of the entries, sorted.
+
+    Args:
+        entries: The candidate entries in the group.
+
+    Returns:
+        Sorted provider names present in at least two entries.
+    """
     entry_count_by_provider = Counter(
         provider for entry in entries for provider in _list_entry_providers(entry)
     )
@@ -367,9 +385,16 @@ def _find_shared_providers(entries: Sequence[WorkEntry]) -> list[str]:
 
 
 def _list_entry_providers(entry: WorkEntry) -> set[str]:
-    """Return the providers an entry has pages from, Simkl and AnimeCountdown as one."""
+    """Return the providers an entry has pages from, Simkl and AnimeCountdown as one.
+
+    Args:
+        entry: The work entry to inspect.
+
+    Returns:
+        The set of decided provider names for the entry's pages.
+    """
     return {
         provider
-        for key in entry.addresses_by_page_key
-        if (provider := resolve_decided_provider(key))
+        for page_key in entry.addresses_by_page_key
+        if (provider := resolve_decided_provider(page_key))
     }

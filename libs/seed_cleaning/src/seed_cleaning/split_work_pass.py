@@ -40,7 +40,7 @@ from work_matching import KnownWorkEntriesFromSeed, ProviderPageStore, ReviewCas
 
 @dataclass(frozen=True)
 class SplitWorkPass:
-    """The second pass's entries and candidates, and how corrections name them."""
+    """Hold the second pass's entries and candidates, and how corrections name them."""
 
     # Every entry as the first pass leaves it, for naming pages and entries.
     corrected_seed: CorrectedSeed

@@ -54,36 +54,38 @@ def group_linked_pages_by_current_key(
         sorted keys of linked pages not fetched yet.
     """
     fetched_pages = {
-        key: page
-        for key in linking_seed_entries_by_page_key
-        if (page := store.get_page(key)) is not None
+        page_key: page
+        for page_key in linking_seed_entries_by_page_key
+        if (page := store.get_page(page_key)) is not None
     }
-    current_key_by_linked_page_key = {
-        key: page.current_key for key, page in fetched_pages.items()
+    current_page_key_by_linked_page_key = {
+        page_key: page.current_key for page_key, page in fetched_pages.items()
     }
     linking_seed_entries_by_current_key: defaultdict[
         str, dict[str, LinkingSeedEntry]
     ] = defaultdict(dict)
-    for key, current_key in current_key_by_linked_page_key.items():
-        for linking_seed_entry in linking_seed_entries_by_page_key[key]:
-            linking_seed_entries_by_current_key[current_key].setdefault(
+    for page_key, current_page_key in current_page_key_by_linked_page_key.items():
+        for linking_seed_entry in linking_seed_entries_by_page_key[page_key]:
+            linking_seed_entries_by_current_key[current_page_key].setdefault(
                 linking_seed_entry.seed_entry_reference_page,
                 rename_linked_pages_to_current_keys(
-                    linking_seed_entry, current_key_by_linked_page_key
+                    linking_seed_entry, current_page_key_by_linked_page_key
                 ),
             )
     linked_page_groups_by_current_key = {
-        current_key: (
-            store.get_page(current_key) or fetched_pages[linked_key],
-            tuple(linking_seed_entries_by_current_key[current_key].values()),
+        current_page_key: (
+            store.get_page(current_page_key) or fetched_pages[linked_page_key],
+            tuple(linking_seed_entries_by_current_key[current_page_key].values()),
         )
-        for linked_key, current_key in sorted(
-            current_key_by_linked_page_key.items(), key=itemgetter(1)
+        for linked_page_key, current_page_key in sorted(
+            current_page_key_by_linked_page_key.items(), key=itemgetter(1)
         )
     }
     waiting_page_keys = tuple(
         sorted(
-            key for key in linking_seed_entries_by_page_key if key not in fetched_pages
+            page_key
+            for page_key in linking_seed_entries_by_page_key
+            if page_key not in fetched_pages
         )
     )
     return linked_page_groups_by_current_key, waiting_page_keys
@@ -91,14 +93,14 @@ def group_linked_pages_by_current_key(
 
 def rename_linked_pages_to_current_keys(
     linking_seed_entry: LinkingSeedEntry,
-    current_key_by_linked_page_key: Mapping[str, str],
+    current_page_key_by_linked_page_key: Mapping[str, str],
 ) -> LinkingSeedEntry:
     """Rename a linking entry's other linked pages to their fetched current keys.
 
     Args:
         linking_seed_entry: An entry linking a page, with the linked pages as
             its links spell them.
-        current_key_by_linked_page_key: Each fetched linked page's current
+        current_page_key_by_linked_page_key: Each fetched linked page's current
             key, by the key its link spells; pages not fetched keep their
             spelling.
 
@@ -110,8 +112,10 @@ def rename_linked_pages_to_current_keys(
         entry_details=replace(
             linking_seed_entry.entry_details,
             linked_page_keys=frozenset(
-                current_key_by_linked_page_key.get(linked_key, linked_key)
-                for linked_key in linking_seed_entry.entry_details.linked_page_keys
+                current_page_key_by_linked_page_key.get(
+                    linked_page_key, linked_page_key
+                )
+                for linked_page_key in linking_seed_entry.entry_details.linked_page_keys
             ),
         ),
     )

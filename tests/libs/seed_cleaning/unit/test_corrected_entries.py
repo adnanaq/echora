@@ -29,7 +29,7 @@ KITSU_SIX = "https://kitsu.app/anime/6"
 ADDED_ANILIST = "https://anilist.co/anime/5"
 
 
-def _seed_entry(title: str, *addresses: str) -> dict:
+def _build_seed_entry(title: str, *addresses: str) -> dict:
     return {
         "title": title,
         "type": "TV",
@@ -38,7 +38,7 @@ def _seed_entry(title: str, *addresses: str) -> dict:
     }
 
 
-def _page(address: str, *linked_addresses: str, **details) -> ProviderPage:
+def _build_page(address: str, *linked_addresses: str, **details) -> ProviderPage:
     return ProviderPage.read_canonical_record(
         address,
         {
@@ -55,8 +55,8 @@ def _page(address: str, *linked_addresses: str, **details) -> ProviderPage:
 def known_work_entries() -> KnownWorkEntriesFromSeed:
     return KnownWorkEntriesFromSeed(
         [
-            _seed_entry("Show", MAL, KITSU_ONE, KITSU_TWO),
-            _seed_entry("Show Movie", TARGET_MAL),
+            _build_seed_entry("Show", MAL, KITSU_ONE, KITSU_TWO),
+            _build_seed_entry("Show Movie", TARGET_MAL),
         ]
     )
 
@@ -76,7 +76,7 @@ def review_file(tmp_path) -> ReviewFile:
     return ReviewFile(tmp_path / "review.jsonl")
 
 
-def _correct(entry, store, known_work_entries, review_file):
+def _correct_entry(entry, store, known_work_entries, review_file):
     return correct_entry_groups(
         [EntryGroup((entry,))], store, known_work_entries, review_file
     )
@@ -85,8 +85,10 @@ def _correct(entry, store, known_work_entries, review_file):
 def test_build_corrected_entries_moved_page_leaves_entry_and_joins_seed_entry(
     entry, store, known_work_entries, review_file
 ) -> None:
-    store.add_pages(_page(KITSU_ONE, MAL), _page(KITSU_TWO, TARGET_MAL))
-    corrections = _correct(entry, store, known_work_entries, review_file).corrections
+    store.add_pages(_build_page(KITSU_ONE, MAL), _build_page(KITSU_TWO, TARGET_MAL))
+    corrections = _correct_entry(
+        entry, store, known_work_entries, review_file
+    ).corrections
     assert build_corrected_entries(corrections, known_work_entries, store) == [
         CorrectedEntry(
             seed_entry_reference_page="mal:anime:1",
@@ -148,26 +150,26 @@ def test_build_corrected_entries_page_moved_into_entry_corrected_itself_joins_co
 ) -> None:
     works = KnownWorkEntriesFromSeed(
         [
-            _seed_entry("Show", MAL, KITSU_ONE, KITSU_TWO),
-            _seed_entry("Show Movie", TARGET_MAL, NEW_PLANET, OLD_PLANET),
+            _build_seed_entry("Show", MAL, KITSU_ONE, KITSU_TWO),
+            _build_seed_entry("Show Movie", TARGET_MAL, NEW_PLANET, OLD_PLANET),
         ]
     )
     store.add_pages(
-        _page(KITSU_ONE, MAL),
-        _page(KITSU_TWO, TARGET_MAL),
-        _page(OLD_PLANET, sources=[OLD_PLANET, NEW_PLANET]),
-        _page(NEW_PLANET),
+        _build_page(KITSU_ONE, MAL),
+        _build_page(KITSU_TWO, TARGET_MAL),
+        _build_page(OLD_PLANET, sources=[OLD_PLANET, NEW_PLANET]),
+        _build_page(NEW_PLANET),
     )
     corrections = correct_entry_groups(
         [EntryGroup((work,)) for work in works], store, works, review_file
     ).corrections
-    corrected = build_corrected_entries(corrections, works, store)
-    [target] = [
+    corrected_entries = build_corrected_entries(corrections, works, store)
+    [target_entry] = [
         corrected_entry.entry
-        for corrected_entry in corrected
+        for corrected_entry in corrected_entries
         if corrected_entry.seed_entry_reference_page == "mal:anime:9"
     ]
-    assert list(target.addresses_by_page_key) == [
+    assert list(target_entry.addresses_by_page_key) == [
         "mal:anime:9",
         "animeplanet:anime:new-name",
         "kitsu:anime:2",
@@ -177,13 +179,18 @@ def test_build_corrected_entries_page_moved_into_entry_corrected_itself_joins_co
 def test_build_corrected_entries_renamed_old_address_dropped(
     store, review_file
 ) -> None:
-    works = KnownWorkEntriesFromSeed([_seed_entry("Show", MAL, NEW_PLANET, OLD_PLANET)])
-    store.add_pages(
-        _page(OLD_PLANET, sources=[OLD_PLANET, NEW_PLANET]), _page(NEW_PLANET)
+    works = KnownWorkEntriesFromSeed(
+        [_build_seed_entry("Show", MAL, NEW_PLANET, OLD_PLANET)]
     )
-    corrections = _correct(next(iter(works)), store, works, review_file).corrections
-    [corrected] = build_corrected_entries(corrections, works, store)
-    assert list(corrected.entry.addresses_by_page_key) == [
+    store.add_pages(
+        _build_page(OLD_PLANET, sources=[OLD_PLANET, NEW_PLANET]),
+        _build_page(NEW_PLANET),
+    )
+    corrections = _correct_entry(
+        next(iter(works)), store, works, review_file
+    ).corrections
+    [corrected_entry] = build_corrected_entries(corrections, works, store)
+    assert list(corrected_entry.entry.addresses_by_page_key) == [
         "mal:anime:1",
         "animeplanet:anime:new-name",
     ]
@@ -208,8 +215,8 @@ def test_build_corrected_entries_dead_or_dropped_page_leaves_entry(
             **page_drop_fields,
         )
     ]
-    [corrected] = build_corrected_entries(corrections, known_work_entries, store)
-    assert list(corrected.entry.addresses_by_page_key) == [
+    [corrected_entry] = build_corrected_entries(corrections, known_work_entries, store)
+    assert list(corrected_entry.entry.addresses_by_page_key) == [
         "mal:anime:1",
         "kitsu:anime:1",
     ]
@@ -240,11 +247,11 @@ def test_build_corrected_entries_partial_source_joins_other_entries_only(
     corrected_entries = build_corrected_entries(corrections, known_work_entries, store)
     assert [
         (
-            list(corrected.entry.addresses_by_page_key),
-            corrected.entry.partial_addresses_by_page_key,
+            list(corrected_entry.entry.addresses_by_page_key),
+            corrected_entry.entry.partial_addresses_by_page_key,
         )
-        for corrected in corrected_entries
-        if corrected.entry is not None
+        for corrected_entry in corrected_entries
+        if corrected_entry.entry is not None
     ] == [
         (["mal:anime:1", "kitsu:anime:1"], {}),
         (["mal:anime:9"], {"kitsu:anime:1": KITSU_ONE}),
@@ -265,10 +272,10 @@ def test_build_corrected_entries_added_page_joins_entry(
             reason="review answer",
         )
     ]
-    [corrected] = build_corrected_entries(corrections, known_work_entries, store)
+    [corrected_entry] = build_corrected_entries(corrections, known_work_entries, store)
     assert (
-        corrected.seed_entry_reference_page,
-        corrected.entry.addresses_by_page_key,
+        corrected_entry.seed_entry_reference_page,
+        corrected_entry.entry.addresses_by_page_key,
     ) == (
         "mal:anime:9",
         {"mal:anime:9": TARGET_MAL, "anilist:anime:9": "https://anilist.co/anime/9"},
@@ -289,10 +296,10 @@ def test_build_corrected_entries_added_partial_source_joins_partial_sources(
             reason="review answer",
         )
     ]
-    [corrected] = build_corrected_entries(corrections, known_work_entries, store)
+    [corrected_entry] = build_corrected_entries(corrections, known_work_entries, store)
     assert (
-        corrected.entry.addresses_by_page_key,
-        corrected.entry.partial_addresses_by_page_key,
+        corrected_entry.entry.addresses_by_page_key,
+        corrected_entry.entry.partial_addresses_by_page_key,
     ) == (
         {"mal:anime:9": TARGET_MAL},
         {"anilist:anime:9": "https://anilist.co/anime/9"},
@@ -314,9 +321,13 @@ def test_build_corrected_entries_added_page_moved_joins_target_only(
         )
     ]
     assert {
-        corrected.seed_entry_reference_page: list(corrected.entry.addresses_by_page_key)
-        for corrected in build_corrected_entries(corrections, known_work_entries, store)
-        if corrected.entry is not None
+        corrected_entry.seed_entry_reference_page: list(
+            corrected_entry.entry.addresses_by_page_key
+        )
+        for corrected_entry in build_corrected_entries(
+            corrections, known_work_entries, store
+        )
+        if corrected_entry.entry is not None
     } == {
         "mal:anime:9": ["mal:anime:9"],
         "mal:anime:1": [
@@ -332,7 +343,7 @@ def test_build_corrected_entries_work_pages_become_new_entry_from_trusted_page(
     entry, store, known_work_entries
 ) -> None:
     store.add_pages(
-        _page(
+        _build_page(
             KITSU_TWO, title="Show: The Movie", type="MOVIE", year=2021, season="FALL"
         )
     )
@@ -409,7 +420,10 @@ CUE_KITSU = "https://kitsu.app/anime/44979"
 @pytest.fixture
 def split_work_entries() -> KnownWorkEntriesFromSeed:
     return KnownWorkEntriesFromSeed(
-        [_seed_entry("CUE!", CUE_ANN), _seed_entry("Cue!", CUE_MAL, CUE_KITSU)]
+        [
+            _build_seed_entry("CUE!", CUE_ANN),
+            _build_seed_entry("Cue!", CUE_MAL, CUE_KITSU),
+        ]
     )
 
 
@@ -456,9 +470,11 @@ def test_build_corrected_entries_pages_of_two_entries_with_one_new_entry_key_for
         ]
     ]
     new_entries = [
-        corrected.entry
-        for corrected in build_corrected_entries(corrections, split_work_entries, store)
-        if corrected.seed_entry_reference_page is None
+        corrected_entry.entry
+        for corrected_entry in build_corrected_entries(
+            corrections, split_work_entries, store
+        )
+        if corrected_entry.seed_entry_reference_page is None
     ]
     assert [
         list(new_entry.addresses_by_page_key)
@@ -479,9 +495,9 @@ def test_build_corrected_entries_later_work_page_without_move_stays(
             reason="review answer",
         )
     ]
-    [corrected] = build_corrected_entries(corrections, split_work_entries, store)
-    assert corrected.entry is not None
-    assert "kitsu:anime:44979" in corrected.entry.addresses_by_page_key
+    [corrected_entry] = build_corrected_entries(corrections, split_work_entries, store)
+    assert corrected_entry.entry is not None
+    assert "kitsu:anime:44979" in corrected_entry.entry.addresses_by_page_key
 
 
 def test_build_corrected_entries_new_entry_without_details_takes_most_trusted_entry_title(
@@ -502,9 +518,11 @@ def test_build_corrected_entries_new_entry_without_details_takes_most_trusted_en
         ]
     ]
     [new_entry] = [
-        corrected.entry
-        for corrected in build_corrected_entries(corrections, split_work_entries, store)
-        if corrected.seed_entry_reference_page is None
+        corrected_entry.entry
+        for corrected_entry in build_corrected_entries(
+            corrections, split_work_entries, store
+        )
+        if corrected_entry.seed_entry_reference_page is None
     ]
     assert new_entry is not None
     assert new_entry.title == "Cue!"
@@ -514,14 +532,14 @@ def test_build_corrected_entries_new_entry_without_details_takes_most_trusted_en
 def anime_id_entries() -> KnownWorkEntriesFromSeed:
     return KnownWorkEntriesFromSeed(
         [
-            _seed_entry("Show", KITSU_FIVE),
-            _seed_entry("Show Movie", TARGET_MAL),
-            _seed_entry("Show Special", KITSU_SIX),
+            _build_seed_entry("Show", KITSU_FIVE),
+            _build_seed_entry("Show Movie", TARGET_MAL),
+            _build_seed_entry("Show Special", KITSU_SIX),
         ]
     )
 
 
-def _added_page_correction(**placement) -> SeedCorrection:
+def _build_added_page_correction(**placement) -> SeedCorrection:
     return SeedCorrection(
         **{
             "entry_reference_page": "kitsu:anime:5",
@@ -535,7 +553,7 @@ def _added_page_correction(**placement) -> SeedCorrection:
     )
 
 
-def _mark(corrections, anime_id_entries, store) -> list[SeedCorrection]:
+def _mark_corrections(corrections, anime_id_entries, store) -> list[SeedCorrection]:
     return mark_anime_id_pages(
         corrections, build_corrected_entries(corrections, anime_id_entries, store)
     )
@@ -544,7 +562,9 @@ def _mark(corrections, anime_id_entries, store) -> list[SeedCorrection]:
 def test_mark_anime_id_pages_added_page_giving_entry_anime_id_marked(
     anime_id_entries, store
 ) -> None:
-    [correction] = _mark([_added_page_correction()], anime_id_entries, store)
+    [correction] = _mark_corrections(
+        [_build_added_page_correction()], anime_id_entries, store
+    )
     assert correction.is_anime_id_page
 
 
@@ -559,9 +579,12 @@ def test_mark_anime_id_pages_mal_page_moved_into_entry_unmarks_added_page(
         target_entry_reference_page="kitsu:anime:5",
         reason="review answer",
     )
-    corrections = [_added_page_correction(is_anime_id_page=True), moved_mal_correction]
-    assert _mark(corrections, anime_id_entries, store) == [
-        _added_page_correction(),
+    corrections = [
+        _build_added_page_correction(is_anime_id_page=True),
+        moved_mal_correction,
+    ]
+    assert _mark_corrections(corrections, anime_id_entries, store) == [
+        _build_added_page_correction(),
         moved_mal_correction,
     ]
 
@@ -569,8 +592,8 @@ def test_mark_anime_id_pages_mal_page_moved_into_entry_unmarks_added_page(
 def test_mark_anime_id_pages_added_page_moved_to_seed_entry_marked(
     anime_id_entries, store
 ) -> None:
-    [correction] = _mark(
-        [_added_page_correction(target_entry_reference_page="kitsu:anime:6")],
+    [correction] = _mark_corrections(
+        [_build_added_page_correction(target_entry_reference_page="kitsu:anime:6")],
         anime_id_entries,
         store,
     )
@@ -580,9 +603,9 @@ def test_mark_anime_id_pages_added_page_moved_to_seed_entry_marked(
 def test_mark_anime_id_pages_added_page_in_new_entry_not_marked(
     anime_id_entries, store
 ) -> None:
-    [correction] = _mark(
+    [correction] = _mark_corrections(
         [
-            _added_page_correction(
+            _build_added_page_correction(
                 new_entry_key="kitsu:anime:5 work 2", is_anime_id_page=True
             )
         ],
@@ -595,9 +618,9 @@ def test_mark_anime_id_pages_added_page_in_new_entry_not_marked(
 def test_mark_anime_id_pages_entry_holding_mal_page_leaves_added_page_unmarked(
     anime_id_entries, store
 ) -> None:
-    [correction] = _mark(
+    [correction] = _mark_corrections(
         [
-            _added_page_correction(
+            _build_added_page_correction(
                 entry_reference_page="mal:anime:9", is_anime_id_page=True
             )
         ],
@@ -607,7 +630,7 @@ def test_mark_anime_id_pages_entry_holding_mal_page_leaves_added_page_unmarked(
     assert not correction.is_anime_id_page
 
 
-def _moved_page_correction(target_entry_reference_page: str) -> SeedCorrection:
+def _build_moved_page_correction(target_entry_reference_page: str) -> SeedCorrection:
     return SeedCorrection(
         entry_reference_page="kitsu:anime:5",
         page_key="kitsu:anime:5",
@@ -618,12 +641,12 @@ def _moved_page_correction(target_entry_reference_page: str) -> SeedCorrection:
     )
 
 
-def _pages_by_entry(corrected_entries) -> dict:
+def _read_pages_by_entry(corrected_entries) -> dict:
     return {
-        (corrected.seed_entry_reference_page, corrected.new_entry_key): None
-        if corrected.entry is None
-        else list(corrected.entry.addresses_by_page_key)
-        for corrected in corrected_entries
+        (corrected_entry.seed_entry_reference_page, corrected_entry.new_entry_key): None
+        if corrected_entry.entry is None
+        else list(corrected_entry.entry.addresses_by_page_key)
+        for corrected_entry in corrected_entries
     }
 
 
@@ -631,10 +654,10 @@ def test_build_corrected_entries_page_moved_by_both_passes_ends_in_one_entry(
     anime_id_entries, store
 ) -> None:
     corrections = merge_corrections(
-        [_moved_page_correction("mal:anime:9")],
-        [_moved_page_correction("kitsu:anime:6")],
+        [_build_moved_page_correction("mal:anime:9")],
+        [_build_moved_page_correction("kitsu:anime:6")],
     )
-    pages_by_entry = _pages_by_entry(
+    pages_by_entry = _read_pages_by_entry(
         build_corrected_entries(corrections, anime_id_entries, store)
     )
     assert [
@@ -648,7 +671,7 @@ def test_build_corrected_entries_any_correction_order_gives_same_entries(
     anime_id_entries, store
 ) -> None:
     corrections = [
-        _added_page_correction(),
+        _build_added_page_correction(),
         SeedCorrection(
             entry_reference_page="mal:anime:9",
             page_key="mal:anime:9",
@@ -667,7 +690,7 @@ def test_build_corrected_entries_any_correction_order_gives_same_entries(
         ),
     ]
     entries_by_order = [
-        _pages_by_entry(build_corrected_entries(order, anime_id_entries, store))
+        _read_pages_by_entry(build_corrected_entries(order, anime_id_entries, store))
         for order in itertools.permutations(corrections)
     ]
     assert all(entries == entries_by_order[0] for entries in entries_by_order)

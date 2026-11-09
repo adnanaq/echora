@@ -16,7 +16,7 @@ from enum import Enum
 
 
 class UnknownMemberNameError(ValueError):
-    """A saved value names no member of the enum it is read as."""
+    """Report that a saved value names no member of the enum it is read as."""
 
     def __init__(self, stored_value: object, enum_type: type[Enum]) -> None:
         """Name the saved value and the member names it should be one of.

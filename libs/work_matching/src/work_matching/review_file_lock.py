@@ -22,7 +22,7 @@ from filelock import FileLock, Timeout
 
 
 class ReviewFileLockedError(RuntimeError):
-    """Another process holds the review file's lock, such as a running seed cleaning."""
+    """Report that another process holds the review file's lock, such as a running seed cleaning."""
 
     def __init__(self, review_file_path: Path) -> None:
         """Name the locked review file.

@@ -285,46 +285,6 @@ def choose_partial_sources(
     return new_answer
 
 
-def _choose_partial_source(
-    answer: Mapping[str, JsonValue],
-    page_key: str,
-    work: str,
-    *,
-    is_partial_source: bool,
-) -> dict[str, JsonValue]:
-    """Return the answer after a page is made, or stops being, a partial source of a work.
-
-    Args:
-        answer: The answer so far: page keys mapped to places.
-        page_key: The page whose partial works change.
-        work: ``work N`` or ``other work <page key>``.
-        is_partial_source: Whether the page becomes a partial source of the
-            work, or stops being one.
-
-    Returns:
-        The new answer. A page without a work of the case, or the work's own
-        page, is left as it is, since it cannot be a partial source there.
-    """
-    placements = _read_placements(answer)
-    placement = placements.get(page_key)
-    if (
-        placement is None
-        or not placement.is_case_work
-        or placement.placement_word == work
-    ):
-        return {**answer}
-    kept_partial_works = tuple(
-        partial_work for partial_work in placement.partial_works if partial_work != work
-    )
-    placements[page_key] = replace(
-        placement,
-        partial_works=(*kept_partial_works, work)
-        if is_partial_source
-        else kept_partial_works,
-    )
-    return _write_answer(answer, page_key, placements)
-
-
 def list_linked_page_options(case: ReviewCase) -> tuple[ChoiceOption, ...]:
     """List a linked-page case's answers, each with the rule that disables it.
 
@@ -398,6 +358,46 @@ def find_linked_page_conflicts(
         for (entry_reference_page, provider), case_names in case_names_by_target.items()
         if len(case_names) > 1
     )
+
+
+def _choose_partial_source(
+    answer: Mapping[str, JsonValue],
+    page_key: str,
+    work: str,
+    *,
+    is_partial_source: bool,
+) -> dict[str, JsonValue]:
+    """Return the answer after a page is made, or stops being, a partial source of a work.
+
+    Args:
+        answer: The answer so far: page keys mapped to places.
+        page_key: The page whose partial works change.
+        work: ``work N`` or ``other work <page key>``.
+        is_partial_source: Whether the page becomes a partial source of the
+            work, or stops being one.
+
+    Returns:
+        The new answer. A page without a work of the case, or the work's own
+        page, is left as it is, since it cannot be a partial source there.
+    """
+    placements = _read_placements(answer)
+    placement = placements.get(page_key)
+    if (
+        placement is None
+        or not placement.is_case_work
+        or placement.placement_word == work
+    ):
+        return {**answer}
+    kept_partial_works = tuple(
+        partial_work for partial_work in placement.partial_works if partial_work != work
+    )
+    placements[page_key] = replace(
+        placement,
+        partial_works=(*kept_partial_works, work)
+        if is_partial_source
+        else kept_partial_works,
+    )
+    return _write_answer(answer, page_key, placements)
 
 
 def _find_work_disabling_rule(

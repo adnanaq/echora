@@ -1,4 +1,4 @@
-"""Seed corrections: where each checked page ends up, written to one file.
+"""Record where each checked page ends up and write the corrections to a file.
 
 A correction records one page's final place, from the rules or from an accepted
 answer (``group_placement``); a correction can also add a page the seed lacks
@@ -57,7 +57,7 @@ DEAD_PAGE_REASON = "dead page"
 
 
 class SeedCorrection(BaseModel):
-    """Where one checked page ends up, and why."""
+    """Record where one checked page ends up, and why."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -106,7 +106,7 @@ class SeedCorrection(BaseModel):
 
 @dataclass(frozen=True)
 class PlacementCorrections:
-    """The corrections placing the pages of the entries checked, and their review cases."""
+    """Hold the corrections placing the pages of the entries checked, and their review cases."""
 
     corrections: tuple[SeedCorrection, ...]
     # Every case of this run, with its kept answer, for the review file.
@@ -118,6 +118,10 @@ def write_corrections(path: str | Path, corrections: Iterable[SeedCorrection]) -
 
     Lines are sorted by entry and page, so the same corrections always give the
     same file and two runs can be compared line by line.
+
+    Args:
+        path: The corrections JSON Lines file path.
+        corrections: The seed corrections to write.
     """
     replace_file_lines(
         path,

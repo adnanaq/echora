@@ -49,33 +49,6 @@ from work_matching.provider_page_links import ProviderPageLinks
 from work_matching.work_entry import WorkEntry, is_type_matching, is_year_matching
 
 
-def decide_doubled_providers(
-    entry: WorkEntry,
-    pages: Iterable[ProviderPage],
-    known_work_entries: KnownWorkEntries,
-) -> list[DoubledProviderDecision]:
-    """Decide every doubled provider of one entry.
-
-    Args:
-        entry: The work entry.
-        pages: Details of the entry's fetched pages, and of searched pages
-            searched by one of them (such as AnimeSchedule).
-        known_work_entries: The work entries already known, to identify the
-            entries an unrelated page links to.
-
-    Returns:
-        One decision per provider with two or more pages in the entry, in the
-        order the entry lists them.
-    """
-    entry_check = _EntryCheck(entry, pages, known_work_entries)
-    return [
-        entry_check.decide_provider(provider, list(page_keys))
-        for provider, page_keys in find_doubled_provider_page_keys(
-            entry.addresses_by_page_key
-        ).items()
-    ]
-
-
 class _EntryCheck:
     """Evaluate links and metadata for one entry's doubled provider pages."""
 
@@ -297,7 +270,7 @@ class _EntryCheck:
                 map(self._links.get_multi_work_link_page_keys, decision.page_keys)
             ),
             DoubledProviderReviewReason.DEAD_PAGE: any(
-                map(self._is_dead, decision.page_keys)
+                map(self._is_dead_page, decision.page_keys)
             ),
         }
         return tuple(
@@ -366,7 +339,7 @@ class _EntryCheck:
         )
         return other_work_entry if is_confirmed else None
 
-    def _is_dead(self, page_key: str) -> bool:
+    def _is_dead_page(self, page_key: str) -> bool:
         """Report whether a page was fetched and the provider no longer serves the page.
 
         Args:
@@ -481,3 +454,30 @@ class _EntryCheck:
         return is_year_matching(
             *(page.year for page in fetched_pages)
         ) and is_type_matching(*map(resolve_seed_type, fetched_pages))
+
+
+def decide_doubled_providers(
+    entry: WorkEntry,
+    pages: Iterable[ProviderPage],
+    known_work_entries: KnownWorkEntries,
+) -> list[DoubledProviderDecision]:
+    """Decide every doubled provider of one entry.
+
+    Args:
+        entry: The work entry.
+        pages: Details of the entry's fetched pages, and of searched pages
+            searched by one of them (such as AnimeSchedule).
+        known_work_entries: The work entries already known, to identify the
+            entries an unrelated page links to.
+
+    Returns:
+        One decision per provider with two or more pages in the entry, in the
+        order the entry lists them.
+    """
+    entry_check = _EntryCheck(entry, pages, known_work_entries)
+    return [
+        entry_check.decide_provider(provider, list(page_keys))
+        for provider, page_keys in find_doubled_provider_page_keys(
+            entry.addresses_by_page_key
+        ).items()
+    ]

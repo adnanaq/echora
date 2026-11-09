@@ -13,11 +13,11 @@ Each item gives the rule, then the reason for it.
   and later steps, such as discovery, read the same pages.
 - Linked pages are listed after the seed pages are stored, because their links
   are read from the stored pages.
-- AnimeSchedule is searched after the linked pages. Its searches are the slow
-  part (one per entry, about 12 hours over a release), and the passes need the
-  linked pages more. The pages AnimeSchedule finds link pages too, so the
-  linked pages are listed once more after the searches; nearly all are stored
-  by then.
+- AnimeSchedule is searched after the linked pages. AnimeSchedule searches are
+  the slow part (one per entry, about 12 hours over a release), and the passes
+  need the linked pages more. The pages AnimeSchedule finds link pages too, so
+  the linked pages are listed once more after the searches; nearly all are
+  stored by then.
 - A linked page is fetched once, with the title of the first entry in seed
   order linking it; some helpers search by title.
 """
@@ -43,7 +43,7 @@ _RELEASE_TAG_IN_SCHEMA_ADDRESS = re.compile(r"/refs/tags/([^/]+)/")
 
 @dataclass(frozen=True)
 class SeedFetchSummary:
-    """How fetching a seed release's pages and their linked pages went."""
+    """Summarize how fetching a seed release's pages and their linked pages went."""
 
     seed_page_summary: FetchSummary
     linked_page_summary: FetchSummary

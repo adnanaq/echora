@@ -38,7 +38,7 @@ from work_matching.provider_page_key import (
 
 
 class ProviderPageLinks:
-    """Undirected graph of links between candidate pages of a work or entry.
+    """Build an undirected graph of links between candidate pages of a work or entry.
 
     Renamed pages resolve to the current key, and searched pages fold into
     the pages that searched for them. Multi-work pages (pages referencing

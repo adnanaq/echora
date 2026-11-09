@@ -29,7 +29,7 @@ from work_matching import DROPPED, OTHER_WORK, PagePlacement, WorkEntry
 
 
 class PageDestination(NamedTuple):
-    """The entry a placed page ends up in; both fields None when the page stays."""
+    """Hold the entry a placed page ends up in; both fields None when the page stays."""
 
     target_entry_reference_page: str | None
     new_entry_key: str | None
@@ -37,7 +37,7 @@ class PageDestination(NamedTuple):
 
 @dataclass(frozen=True)
 class CorrectionNames:
-    """How corrections name pages and entries: by the seed, or by a corrected seed."""
+    """Resolve how corrections name pages and entries: by the seed, or by a corrected seed."""
 
     # None in the first pass, whose entries are the seed's own.
     corrected_seed: CorrectedSeed | None
@@ -77,7 +77,7 @@ class CorrectionNames:
 
 
 class GroupPlacement(NamedTuple):
-    """Where an entry group's pages go, and what the group's corrections read."""
+    """Hold where an entry group's pages go, and what the group's corrections read."""
 
     combined_entry: WorkEntry
     # Each placed page's placement, and why it is placed, by its key.
@@ -86,7 +86,7 @@ class GroupPlacement(NamedTuple):
     # Each work's surviving entry, as ``find_surviving_entries`` gives them.
     surviving_reference_page_by_work: Mapping[str, str]
     # Each renamed page's current key, by the key an entry lists it under.
-    current_key_by_page_key: Mapping[str, str]
+    current_page_key_by_page_key: Mapping[str, str]
     # The seed entry each unrelated page surely moves to, by its current key.
     target_reference_page_by_page_key: Mapping[str, str]
     # The reference page of the seed entry holding each page key an answer
@@ -99,7 +99,7 @@ def find_page_destination(
     entry: WorkEntry,
     page_key: str,
     placement: PagePlacement,
-    current_key: str,
+    current_page_key: str,
     origin: PageOrigin,
     group_placement: GroupPlacement,
 ) -> PageDestination:
@@ -113,7 +113,7 @@ def find_page_destination(
         entry: The entry the page is listed in.
         page_key: The key the entry lists the page under.
         placement: The page's placement.
-        current_key: The key the page was placed by.
+        current_page_key: The key the page was placed by.
         origin: The seed entry listing the page, and its address there.
         group_placement: Where the entry's group places its pages.
 
@@ -125,7 +125,7 @@ def find_page_destination(
     if placement.placement_word == DROPPED:
         return PageDestination(None, None)
     destination = _find_placed_page_destination(
-        entry, page_key, placement, current_key, group_placement
+        entry, page_key, placement, current_page_key, group_placement
     )
     if destination is not None:
         return destination
@@ -168,7 +168,7 @@ def _find_placed_page_destination(
     entry: WorkEntry,
     page_key: str,
     placement: PagePlacement,
-    current_key: str,
+    current_page_key: str,
     group_placement: GroupPlacement,
 ) -> PageDestination | None:
     """Find the entry a placement sends a page to, or None when the page stays in its entry.
@@ -177,7 +177,7 @@ def _find_placed_page_destination(
         entry: The entry the page is listed in.
         page_key: The key the entry lists the page under.
         placement: The page's placement.
-        current_key: The key the page was placed by.
+        current_page_key: The key the page was placed by.
         group_placement: Where the entry's group places its pages.
 
     Returns:
@@ -186,7 +186,7 @@ def _find_placed_page_destination(
     """
     if placement.placement_word == OTHER_WORK:
         return _find_other_work_destination(
-            entry, page_key, current_key, group_placement
+            entry, page_key, current_page_key, group_placement
         )
     surviving_reference_page = group_placement.surviving_reference_page_by_work.get(
         placement.placement_word
@@ -223,14 +223,17 @@ def _find_work_destination(
 
 
 def _find_other_work_destination(
-    entry: WorkEntry, page_key: str, current_key: str, group_placement: GroupPlacement
+    entry: WorkEntry,
+    page_key: str,
+    current_page_key: str,
+    group_placement: GroupPlacement,
 ) -> PageDestination:
     """Find where a page placed in ``other work`` goes: its sure move, or a new entry.
 
     Args:
         entry: The entry the page is listed in.
         page_key: The key the entry lists the page under.
-        current_key: The key the page was placed by.
+        current_page_key: The key the page was placed by.
         group_placement: Where the entry's group places its pages.
 
     Returns:
@@ -238,7 +241,7 @@ def _find_other_work_destination(
         one, the new entry keyed ``<entry reference page> <page key>``.
     """
     move_target_reference_page = group_placement.target_reference_page_by_page_key.get(
-        current_key
+        current_page_key
     )
     if move_target_reference_page:
         return group_placement.correction_names.find_entry_destination(

@@ -111,27 +111,6 @@ def check_case_answer(
     )
 
 
-def _refuse_answer(
-    case_name: str, rule_name: str, rule_sentence: str
-) -> review_cases_pb2.RuleCheckResult:
-    """Construct a rejected validation result containing a single violation reason.
-
-    Args:
-        case_name: The identifier of the review case whose answer is rejected.
-        rule_name: The programmatic identifier of the broken constraint.
-        rule_sentence: The user-facing explanation sentence describing the refusal.
-
-    Returns:
-        A RuleCheckResult message marked as not saved with the given rule.
-    """
-    return review_cases_pb2.RuleCheckResult(
-        case_name=case_name,
-        is_saved=False,
-        broken_rule_names=[rule_name],
-        broken_rule_sentences=[rule_sentence],
-    )
-
-
 def list_conflict_warnings(
     cases_by_name: Mapping[str, ReviewCase], saved_answers: Mapping[str, JsonValue]
 ) -> dict[str, list[str]]:
@@ -165,3 +144,24 @@ def list_conflict_warnings(
                     f"{other_case_names}"
                 )
     return warnings_by_case_name
+
+
+def _refuse_answer(
+    case_name: str, rule_name: str, rule_sentence: str
+) -> review_cases_pb2.RuleCheckResult:
+    """Construct a rejected validation result containing a single violation reason.
+
+    Args:
+        case_name: The identifier of the review case whose answer is rejected.
+        rule_name: The programmatic identifier of the broken constraint.
+        rule_sentence: The user-facing explanation sentence describing the refusal.
+
+    Returns:
+        A RuleCheckResult message marked as not saved with the given rule.
+    """
+    return review_cases_pb2.RuleCheckResult(
+        case_name=case_name,
+        is_saved=False,
+        broken_rule_names=[rule_name],
+        broken_rule_sentences=[rule_sentence],
+    )

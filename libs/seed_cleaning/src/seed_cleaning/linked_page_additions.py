@@ -119,7 +119,8 @@ def find_entries_without_mal_page(entries: Iterable[WorkEntry]) -> list[WorkEntr
         entry
         for entry in entries
         if not any(
-            read_page_provider(key) == "mal" for key in entry.addresses_by_page_key
+            read_page_provider(page_key) == "mal"
+            for page_key in entry.addresses_by_page_key
         )
     ]
 
@@ -152,11 +153,11 @@ def list_entries_with_placed_pages(
         for reference_page in review_case.entries
     }
     corrected_entries = {
-        corrected.seed_entry_reference_page: corrected
-        for corrected in build_corrected_entries(
+        corrected_entry.seed_entry_reference_page: corrected_entry
+        for corrected_entry in build_corrected_entries(
             group_corrections.corrections, known_work_entries, store
         )
-        if corrected.seed_entry_reference_page is not None
+        if corrected_entry.seed_entry_reference_page is not None
     }
     placed_entries = {
         entry.reference_page_key: corrected_entries.get(
@@ -192,10 +193,10 @@ def find_linking_seed_entries(
     linking_seed_entries_by_page_key: defaultdict[str, list[LinkingSeedEntry]] = (
         defaultdict(list)
     )
-    for corrected in entries:
+    for corrected_entry in entries:
         if (
-            corrected.seed_entry_reference_page is None
-            or (entry := corrected.entry) is None
+            corrected_entry.seed_entry_reference_page is None
+            or (entry := corrected_entry.entry) is None
         ):
             continue
         entry_pages = store.get_entry_pages(entry)
@@ -205,13 +206,15 @@ def find_linking_seed_entries(
         entry_details = LinkingEntryDetails(
             entry, find_entry_episode_count(entry, entry_pages), linked_page_keys
         )
-        for key in linked_page_keys:
-            linking_seed_entries_by_page_key[key].append(
-                LinkingSeedEntry(corrected.seed_entry_reference_page, entry_details)
+        for page_key in linked_page_keys:
+            linking_seed_entries_by_page_key[page_key].append(
+                LinkingSeedEntry(
+                    corrected_entry.seed_entry_reference_page, entry_details
+                )
             )
     return {
-        key: tuple(linking_seed_entries_by_page_key[key])
-        for key in sorted(linking_seed_entries_by_page_key)
+        page_key: tuple(linking_seed_entries_by_page_key[page_key])
+        for page_key in sorted(linking_seed_entries_by_page_key)
     }
 
 

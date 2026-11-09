@@ -24,6 +24,9 @@ def find_doubled_provider_entries(entries: Iterable[WorkEntry]) -> list[WorkEntr
 
     Args:
         entries: The entries to check, such as every entry of a seed file.
+
+    Returns:
+        The entries holding two or more pages of one provider, in order.
     """
     return [
         entry

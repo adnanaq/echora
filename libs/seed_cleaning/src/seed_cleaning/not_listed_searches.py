@@ -22,7 +22,7 @@ from work_matching import replace_file_lines
 
 
 class NotListedSearchFile:
-    """The searched-by page keys whose AnimeSchedule search found nothing in one release.
+    """Hold the searched-by page keys whose AnimeSchedule search found nothing in one release.
 
     Each line of the file reads ``{"release_name": ..., "searched_by": ...}``.
     """
@@ -52,11 +52,21 @@ class NotListedSearchFile:
         if len(self._searched_by_keys) != len(lines):
             replace_file_lines(
                 self._path,
-                (self._format_line(key) for key in sorted(self._searched_by_keys)),
+                (
+                    self._format_line(page_key)
+                    for page_key in sorted(self._searched_by_keys)
+                ),
             )
 
     def __contains__(self, searched_by_key: object) -> bool:
-        """Report whether this page's search found nothing in this release."""
+        """Report whether this page's search found nothing in this release.
+
+        Args:
+            searched_by_key: The page key to check.
+
+        Returns:
+            True if ``searched_by_key`` is recorded for this release.
+        """
         return searched_by_key in self._searched_by_keys
 
     def add(self, searched_by_key: str) -> None:
@@ -73,7 +83,14 @@ class NotListedSearchFile:
         self._searched_by_keys.add(searched_by_key)
 
     def _format_line(self, searched_by_key: str) -> str:
-        """Return the file line recording one search of this release."""
+        """Return the file line recording one search of this release.
+
+        Args:
+            searched_by_key: The page key AnimeSchedule was searched by.
+
+        Returns:
+            The JSON line ending with a newline.
+        """
         return (
             json.dumps(
                 {"release_name": self._release_name, "searched_by": searched_by_key}
