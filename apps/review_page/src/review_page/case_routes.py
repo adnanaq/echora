@@ -44,8 +44,8 @@ from review_page.models import (
 from review_page.page_state import (
     build_page_buttons,
     build_suggested_answer,
-    count_applied_answer_rows_by_kind,
     count_case_rows,
+    count_resolved_rows_by_kind,
     filter_case_rows,
     find_next_case_name,
     paginate_rows,
@@ -178,7 +178,7 @@ class CaseRoutes:
             {
                 "case_page": case_page,
                 "chip_counts": count_case_rows(all_rows, case_filter),
-                "applied_answer_counts": count_applied_answer_rows_by_kind(all_rows),
+                "resolved_case_counts": count_resolved_rows_by_kind(all_rows),
                 "row_edit_states": {
                     row.case_name: resolve_row_edit_state(row, case_filter)
                     for row in case_page.rows
@@ -357,7 +357,7 @@ class CaseRoutes:
             )
         last_run_summary = load_last_run_summary(self._source)
         unsaved_answer = state.edits.get(case.case_name)
-        view = build_case_view(
+        case_view = build_case_view(
             case,
             original_answer=find_original_answer(case, last_run_summary),
             unsaved_answer=unsaved_answer,
@@ -372,7 +372,7 @@ class CaseRoutes:
             request,
             "case_panel.html",
             {
-                "view": view,
+                "view": case_view,
                 "rejected_sentences": state.rejected.get(case.case_name, []),
                 "correction_links": list_case_correction_links(
                     case, self._source.list_corrections()

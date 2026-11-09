@@ -20,6 +20,7 @@ Each presentation rule reads `<rule>: <reason>`:
   entry so reviewers can navigate directly between a correction and its answer.
 """
 
+from collections import Counter
 from collections.abc import Sequence
 
 from review_page.case_views import find_case_title
@@ -69,7 +70,7 @@ def build_corrected_entry_rows(
         CorrectedEntryRow(
             entry_reference_page=reference_page,
             title=title_by_reference_page.get(reference_page, reference_page),
-            changes=frozenset(map(_read_change, entry_corrections)),
+            changes=frozenset(map(_read_change_name, entry_corrections)),
             page_count=len(entry_corrections),
             changed_page_count=sum(
                 correction.HasField("change") for correction in entry_corrections
@@ -176,30 +177,34 @@ def build_correction_panel(
 def list_case_correction_links(
     case: ReviewCase, corrections: Sequence[review_cases_pb2.SeedCorrection]
 ) -> tuple[tuple[str, str, int], ...]:
-    """List corrected entries belonging to a review case for cross-linking in the case panel.
+    """List the case's entries the last run changed, for cross-linking in the case panel.
+
+    Only corrections that change the seed are counted. A page an answer
+    places where it already is still gets a correction, but that correction
+    changes nothing, so counting it would overstate what the run did.
 
     Args:
         case: The active review case being inspected.
         corrections: All seed correction messages from the most recent run.
 
     Returns:
-        A tuple of ``(reference_page, title, correction_count)`` triples in the
-        case's entry order for entries that have corrections.
+        A tuple of ``(reference_page, title, change_count)`` triples in the
+        case's entry order, for entries with at least one change.
     """
     title_by_reference_page = _map_entry_titles((), (case,))
-    correction_counts: dict[str, int] = {}
-    for correction in corrections:
-        correction_counts[correction.entry_reference_page] = (
-            correction_counts.get(correction.entry_reference_page, 0) + 1
-        )
+    change_counts = Counter(
+        correction.entry_reference_page
+        for correction in corrections
+        if correction.HasField("change")
+    )
     return tuple(
         (
             reference_page,
             title_by_reference_page.get(reference_page, reference_page),
-            correction_counts[reference_page],
+            change_counts[reference_page],
         )
         for reference_page in _list_case_entry_reference_pages(case)
-        if reference_page in correction_counts
+        if change_counts[reference_page]
     )
 
 
@@ -215,7 +220,7 @@ def _build_correction_row(
         The populated ``CorrectionRowView`` with formatted change, placement,
         destination, and provenance fields.
     """
-    change = _read_change(correction)
+    change_name = _read_change_name(correction)
     destination_label, destination_address = _describe_destination(correction)
     partial_targets = [
         *correction.partial_entry_reference_pages,
@@ -227,7 +232,7 @@ def _build_correction_row(
     return CorrectionRowView(
         page_key=correction.page_key,
         address=correction.address,
-        change_label=capitalize_first_letter(change),
+        change_label=capitalize_first_letter(change_name),
         place=correction.placement_word + partial_suffix
         if correction.HasField("placement_word")
         else partial_suffix.removeprefix(", ") or "—",
@@ -277,7 +282,7 @@ def _describe_destination(
     return "stays in this entry", None
 
 
-def _read_change(correction: review_cases_pb2.SeedCorrection) -> str:
+def _read_change_name(correction: review_cases_pb2.SeedCorrection) -> str:
     """Read a correction's change category name, defaulting to ``UNCHANGED`` when unset.
 
     Args:

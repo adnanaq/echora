@@ -81,9 +81,9 @@ def test_correct_entry_groups_entry_without_review_moves_page_to_seed_entry(
     entry, store, known_work_entries, review_file
 ) -> None:
     store.add_pages(_page(KITSU_ONE, MAL), _page(KITSU_TWO, TARGET_MAL))
-    result = _correct(entry, store, known_work_entries, review_file)
-    assert result.review_cases == ()
-    assert result.corrections == (
+    placement_corrections = _correct(entry, store, known_work_entries, review_file)
+    assert placement_corrections.review_cases == ()
+    assert placement_corrections.corrections == (
         SeedCorrection(
             entry_reference_page="mal:anime:1",
             page_key="kitsu:anime:1",
@@ -105,14 +105,16 @@ def test_correct_entry_groups_entry_without_review_moves_page_to_seed_entry(
 def test_correct_entry_groups_link_on_searched_page_settles_entry(
     entry, store, known_work_entries, review_file
 ) -> None:
-    found = ProviderPage.read_canonical_record(
+    found_page = ProviderPage.read_canonical_record(
         SCHEDULE,
         {"title": "Show", "sources": [SCHEDULE, KITSU_ONE]},
         searched_by_address=MAL,
     )
-    store.add_pages(found, _page(KITSU_ONE), _page(KITSU_TWO, TARGET_MAL))
-    result = _correct(entry, store, known_work_entries, review_file)
-    assert [correction.placement_word for correction in result.corrections] == [
+    store.add_pages(found_page, _page(KITSU_ONE), _page(KITSU_TWO, TARGET_MAL))
+    placement_corrections = _correct(entry, store, known_work_entries, review_file)
+    assert [
+        correction.placement_word for correction in placement_corrections.corrections
+    ] == [
         "work 1",
         "other work",
     ]
@@ -125,10 +127,10 @@ def test_correct_entry_groups_renamed_page_points_to_current_page(
     store.add_pages(
         _page(OLD_PLANET, sources=[OLD_PLANET, NEW_PLANET]), _page(NEW_PLANET)
     )
-    result = _correct(next(iter(works)), store, works, review_file)
+    placement_corrections = _correct(next(iter(works)), store, works, review_file)
     assert [
         (correction.page_key, correction.renamed_to, correction.reason)
-        for correction in result.corrections
+        for correction in placement_corrections.corrections
     ] == [
         ("animeplanet:anime:new-name", None, "SAME_PAGE"),
         ("animeplanet:anime:old-name", "animeplanet:anime:new-name", "SAME_PAGE"),
@@ -139,9 +141,11 @@ def test_correct_entry_groups_duplicate_page_goes_to_review(
     entry, store, known_work_entries, review_file
 ) -> None:
     store.add_pages(_page(KITSU_ONE, MAL), _page(KITSU_TWO, MAL))
-    result = _correct(entry, store, known_work_entries, review_file)
-    assert result.corrections == ()
-    assert [case.reasons for case in result.review_cases] == [("DUPLICATE_PAGES",)]
+    placement_corrections = _correct(entry, store, known_work_entries, review_file)
+    assert placement_corrections.corrections == ()
+    assert [case.reasons for case in placement_corrections.review_cases] == [
+        ("DUPLICATE_PAGES",)
+    ]
 
 
 def test_correct_entry_groups_accepted_answer_gives_corrections(
@@ -150,15 +154,17 @@ def test_correct_entry_groups_accepted_answer_gives_corrections(
     store.add_pages(_page(KITSU_ONE, MAL), _page(KITSU_TWO, MAL))
     path = tmp_path / "review.jsonl"
     [case] = _correct(entry, store, known_work_entries, ReviewFile(path)).review_cases
-    answered = case.model_copy(
+    answered_case = case.model_copy(
         update={"answer": {"kitsu:anime:1": "work 1", "kitsu:anime:2": "dropped"}}
     )
-    path.write_text(answered.model_dump_json() + "\n", encoding="utf-8")
-    result = _correct(entry, store, known_work_entries, ReviewFile(path))
-    assert [case.answer for case in result.review_cases] == [answered.answer]
+    path.write_text(answered_case.model_dump_json() + "\n", encoding="utf-8")
+    placement_corrections = _correct(entry, store, known_work_entries, ReviewFile(path))
+    assert [case.answer for case in placement_corrections.review_cases] == [
+        answered_case.answer
+    ]
     assert [
         (correction.page_key, correction.is_dropped_page, correction.reason)
-        for correction in result.corrections
+        for correction in placement_corrections.corrections
     ] == [
         ("kitsu:anime:1", False, "review answer"),
         ("kitsu:anime:2", True, "review answer"),
@@ -173,7 +179,7 @@ def test_correct_entry_groups_split_answer_records_partial_source(
     )
     path = tmp_path / "review.jsonl"
     [case] = _correct(entry, store, known_work_entries, ReviewFile(path)).review_cases
-    answered = case.model_copy(
+    answered_case = case.model_copy(
         update={
             "answer": {
                 "kitsu:anime:1": "work 1",
@@ -182,8 +188,8 @@ def test_correct_entry_groups_split_answer_records_partial_source(
             }
         }
     )
-    path.write_text(answered.model_dump_json() + "\n", encoding="utf-8")
-    result = _correct(entry, store, known_work_entries, ReviewFile(path))
+    path.write_text(answered_case.model_dump_json() + "\n", encoding="utf-8")
+    placement_corrections = _correct(entry, store, known_work_entries, ReviewFile(path))
     assert (case.reasons, case.suggested_answer) == (
         ("PART_PAGES",),
         {"kitsu:anime:1": "work 1", "kitsu:anime:2": "work 2"},
@@ -194,7 +200,7 @@ def test_correct_entry_groups_split_answer_records_partial_source(
             correction.new_entry_key,
             correction.partial_new_entry_keys,
         )
-        for correction in result.corrections
+        for correction in placement_corrections.corrections
     ] == [
         ("mal:anime:1", None, ("mal:anime:1 work 2",)),
         ("kitsu:anime:1", None, ()),
@@ -282,8 +288,8 @@ def test_correct_entry_groups_answer_keeps_renamed_page_when_current_not_listed(
         encoding="utf-8",
     )
     corrections = _correct(entry, store, works, ReviewFile(path)).corrections
-    [corrected] = build_corrected_entries(corrections, works, store)[:1]
-    assert "animeplanet:anime:old-name" in corrected.entry.addresses_by_page_key
+    [corrected_entry] = build_corrected_entries(corrections, works, store)[:1]
+    assert "animeplanet:anime:old-name" in corrected_entry.entry.addresses_by_page_key
     assert [
         (correction.placement_word, correction.renamed_to)
         for correction in corrections
@@ -381,12 +387,13 @@ def test_correct_entry_groups_group_without_doubled_provider_goes_to_review(
     cue_entries, store, review_file
 ) -> None:
     store.add_pages(_page(CUE_MAL, CUE_ANN))
-    placed = correct_entry_groups(
+    placement_corrections = correct_entry_groups(
         [EntryGroup(tuple(cue_entries))], store, cue_entries, review_file
     )
-    assert placed.corrections == ()
+    assert placement_corrections.corrections == ()
     assert [
-        (case.case_name, case.suggested_answer) for case in placed.review_cases
+        (case.case_name, case.suggested_answer)
+        for case in placement_corrections.review_cases
     ] == [
         (
             "split work: ann:anime:24629 kitsu:anime:44979 mal:anime:43735",
@@ -421,10 +428,54 @@ def test_correct_entry_groups_accepted_merge_moves_pages_into_surviving_entry(
         ("kitsu:anime:44979", None, None),
     ]
     assert [
-        corrected.entry
-        for corrected in build_corrected_entries(corrections, cue_entries, store)
-        if corrected.seed_entry_reference_page == "ann:anime:24629"
+        corrected_entry.entry
+        for corrected_entry in build_corrected_entries(corrections, cue_entries, store)
+        if corrected_entry.seed_entry_reference_page == "ann:anime:24629"
     ] == [None]
+
+
+def test_correct_entry_groups_previous_answer_keeps_added_entry_out_of_works(
+    cue_entries, store, tmp_path
+) -> None:
+    review_file_path = tmp_path / "review.jsonl"
+    _answer_group_case(
+        list(cue_entries),
+        store,
+        review_file_path,
+        {
+            "ann:anime:24629": "work 1",
+            "mal:anime:43735": "work 2",
+            "kitsu:anime:44979": "work 2",
+        },
+    )
+    added_entry = next(
+        iter(
+            KnownWorkEntriesFromSeed(
+                [_seed_entry("Cue!", "https://anilist.co/anime/7")]
+            )
+        )
+    )
+    placement_corrections = correct_entry_groups(
+        [EntryGroup((*cue_entries, added_entry))],
+        store,
+        KnownWorkEntriesFromSeed([]),
+        ReviewFile(review_file_path),
+    )
+    [case] = placement_corrections.review_cases
+    assert case.previous_answer is not None
+    assert case.previous_answer.is_applied
+    assert [
+        (
+            correction.page_key,
+            correction.target_entry_reference_page,
+            correction.new_entry_key,
+        )
+        for correction in placement_corrections.corrections
+    ] == [
+        ("ann:anime:24629", None, None),
+        ("mal:anime:43735", None, None),
+        ("kitsu:anime:44979", None, None),
+    ]
 
 
 def test_correct_entry_groups_later_work_survived_by_other_entry_takes_page(
@@ -490,11 +541,11 @@ def test_correct_entry_groups_split_answer_gives_each_work_its_entry(
     corrections = _correct(entry, store, works, ReviewFile(path)).corrections
     assert [
         (
-            list(corrected.entry.addresses_by_page_key),
-            list(corrected.entry.partial_addresses_by_page_key),
+            list(corrected_entry.entry.addresses_by_page_key),
+            list(corrected_entry.entry.partial_addresses_by_page_key),
         )
-        for corrected in build_corrected_entries(corrections, works, store)
-        if corrected.entry is not None
+        for corrected_entry in build_corrected_entries(corrections, works, store)
+        if corrected_entry.entry is not None
     ] == [
         (["mal:anime:1", "kitsu:anime:1", "animeplanet:anime:show"], []),
         (["kitsu:anime:2"], ["mal:anime:1"]),
@@ -529,12 +580,12 @@ def test_correct_entry_groups_renamed_reference_page_in_later_work_keeps_entry(
     corrections = _correct(entry, store, works, ReviewFile(path)).corrections
     assert [
         (
-            corrected.seed_entry_reference_page,
+            corrected_entry.seed_entry_reference_page,
             None
-            if corrected.entry is None
-            else list(corrected.entry.addresses_by_page_key),
+            if corrected_entry.entry is None
+            else list(corrected_entry.entry.addresses_by_page_key),
         )
-        for corrected in build_corrected_entries(corrections, works, store)
+        for corrected_entry in build_corrected_entries(corrections, works, store)
     ] == [
         ("animeplanet:anime:old-name", ["animeplanet:anime:new-name", "ann:anime:2"]),
         (None, ["ann:anime:1", "simkl:anime:1"]),
@@ -556,23 +607,27 @@ def test_correct_entry_groups_answer_with_two_mal_pages_in_one_work_left_open(
         case.model_copy(update={"answer": answer}).model_dump_json() + "\n",
         encoding="utf-8",
     )
-    placed = correct_entry_groups(
+    placement_corrections = correct_entry_groups(
         [EntryGroup(tuple(works))], store, works, ReviewFile(path)
     )
-    assert placed.corrections == ()
-    assert [case.accepted_answer for case in placed.review_cases] == [None]
+    assert placement_corrections.corrections == ()
+    assert [case.accepted_answer for case in placement_corrections.review_cases] == [
+        None
+    ]
 
 
 def test_correct_entry_groups_group_case_carries_evidence_and_shared_link_warning(
     cue_entries, store, review_file
 ) -> None:
     store.add_pages(_page(CUE_MAL, CUE_ANN))
-    group = EntryGroup(
+    entry_group = EntryGroup(
         tuple(cue_entries),
         ("mal:anime:43735 links ann:anime:24629",),
         has_shared_tying_link=True,
     )
-    [case] = correct_entry_groups([group], store, cue_entries, review_file).review_cases
+    [case] = correct_entry_groups(
+        [entry_group], store, cue_entries, review_file
+    ).review_cases
     assert case.candidate_evidence == ("mal:anime:43735 links ann:anime:24629",)
     assert "LINK_SHARED_WITH_OTHER_ENTRIES" in case.reasons
 
@@ -593,8 +648,8 @@ def test_correct_entry_groups_corrected_seed_names_pages_by_origin_and_entries_b
     corrected_seed = build_corrected_seed(first_pass_corrections, cue_entries, store)
     corrected_entries = corrected_seed.known_work_entries
     group_entries = tuple(
-        corrected_entries.find_by_page_key(key)
-        for key in ("ann:anime:24629", "kitsu:anime:44979")
+        corrected_entries.find_by_page_key(page_key)
+        for page_key in ("ann:anime:24629", "kitsu:anime:44979")
     )
     path = tmp_path / "review.jsonl"
     [case] = correct_entry_groups(
@@ -819,11 +874,11 @@ def test_correct_entry_groups_second_pass_dropped_moved_in_page_goes_nowhere(
 def test_correct_entry_groups_answer_naming_entry_outside_seed_left_open(
     series_works, store, tmp_path
 ) -> None:
-    placed = _answer_named_entry_case(
+    placement_corrections = _answer_named_entry_case(
         series_works, store, tmp_path / "review.jsonl", "mal:anime:77"
     )
-    [case] = placed.review_cases
-    assert placed.corrections == ()
+    [case] = placement_corrections.review_cases
+    assert placement_corrections.corrections == ()
     assert case.list_broken_answer_rules(case.answer) == (
         PlacementRule.UNKNOWN_NAMED_ENTRY,
     )

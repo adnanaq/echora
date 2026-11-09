@@ -22,9 +22,16 @@ def build_entries_to_check_document(
     """Describe the entries to check for ``entries_to_check.json``.
 
     Each entry is named by its reference page, which stays the same across seed
-    releases while its position in the file does not. ``seed_schema`` is the
-    seed file's ``$schema``, whose address names the release, or None when the
-    file has none.
+    releases while its position in the file does not.
+
+    Args:
+        seed_schema: The seed file's ``$schema`` address naming the release, or
+            None when the file has none.
+        doubled_provider_entries: The seed entries holding a doubled provider.
+        candidate_groups: The split-work candidate groups found in the second pass.
+
+    Returns:
+        The JSON-serialisable dictionary for ``entries_to_check.json``.
     """
     return {
         "seed_schema": seed_schema,
@@ -40,16 +47,16 @@ def build_entries_to_check_document(
         ],
         "split_work_candidates": [
             {
-                "shared_provider": group.shared_provider,
-                "candidate_evidence": list(group.candidate_evidence),
-                "has_shared_tying_link": group.has_shared_tying_link,
+                "shared_provider": candidate_group.shared_provider,
+                "candidate_evidence": list(candidate_group.candidate_evidence),
+                "has_shared_tying_link": candidate_group.has_shared_tying_link,
                 "entries": [
                     {"reference_page": entry.reference_page_key}
                     | entry.model_dump(mode="json")
-                    for entry in group.entries
+                    for entry in candidate_group.entries
                 ],
             }
-            for group in candidate_groups
+            for candidate_group in candidate_groups
         ],
     }
 
@@ -66,6 +73,7 @@ CORRECTION_COUNT_NAMES = (
     "pages added as partial sources",
     "review cases answered",
     "review cases open",
+    "open cases placed by a previous answer",
 )
 
 
@@ -90,6 +98,9 @@ def count_corrections(
       partial source, because it covers their works too.
 
     A page that stays in its entry and is no partial source is not counted.
+    Open cases placed by a previous answer are open cases a seed release
+    renamed whose previous answer still places the pages it saw; they are
+    counted among the open cases too.
 
     Args:
         corrections: Every seed correction of the run.
@@ -100,11 +111,17 @@ def count_corrections(
     """
     counts = dict.fromkeys(CORRECTION_COUNT_NAMES, 0)
     for correction in corrections:
-        if change := find_correction_change(correction):
-            counts[change] += 1
+        if change_name := find_correction_change(correction):
+            counts[change_name] += 1
     for review_case in review_cases:
         is_answered = review_case.accepted_answer is not None
         counts["review cases answered" if is_answered else "review cases open"] += 1
+        if (
+            not is_answered
+            and review_case.previous_answer is not None
+            and review_case.previous_answer.is_applied
+        ):
+            counts["open cases placed by a previous answer"] += 1
     return counts
 
 
@@ -159,13 +176,13 @@ def count_corrected_entries(
     corrected_entries = list(corrected_entries)
     return {
         "entries removed, no page left": sum(
-            corrected.entry is None for corrected in corrected_entries
+            corrected_entry.entry is None for corrected_entry in corrected_entries
         ),
         "new entries with an unknown type": sum(
-            corrected.seed_entry_reference_page is None
-            and corrected.entry is not None
-            and corrected.entry.type == "UNKNOWN"
-            for corrected in corrected_entries
+            corrected_entry.seed_entry_reference_page is None
+            and corrected_entry.entry is not None
+            and corrected_entry.entry.type == "UNKNOWN"
+            for corrected_entry in corrected_entries
         ),
     }
 

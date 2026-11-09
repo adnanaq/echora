@@ -56,18 +56,36 @@ class Tooltip(StrEnum):
         "Applied: the last run applied this case's saved answer, so the case is "
         "corrected. Every later run applies the saved answer again."
     )
-    APPLIED_ANSWER_KIND_COUNT = (
-        "While some cases of this kind are unresolved, the count reads cases whose "
-        "answer the last run applied / all cases. Once every case is resolved, the "
-        "count shows the total alone."
+    RESOLVED_CASE_KIND_COUNT = (
+        "While some cases of this kind are unresolved, the count reads resolved "
+        "cases / all cases. A case is resolved when the last run applied its "
+        "answer, or when its answer is unused because the pages are already "
+        "settled. Once every case is resolved, the count shows the total alone."
     )
     SUGGESTED_ANSWER_PILL = (
         "Matching rules have suggested an answer. "
         "The case opens on this suggestion, and Accept saves it."
     )
+    PREVIOUS_ANSWER_PILL = (
+        "A seed release changed this case's pages, so the case replaces one "
+        "answered before. Answer it again with the added pages."
+    )
+    PREVIOUS_ANSWER_APPLIED = (
+        "The previous answer still places the pages it saw, and the case opens on "
+        "it. Place the added pages, then save."
+    )
+    PREVIOUS_ANSWER_NOT_APPLIED = (
+        "The release changed which entries this case holds, so the previous "
+        "answer no longer applies. It is shown below for reference."
+    )
+    ADDED_PAGE_PILL = "The seed release added this page since the previous answer"
     UNUSED_ANSWER_PILL = (
-        "The previous pipeline run resolved this case through other decisions. "
-        "This saved answer was not applied."
+        "The last run did not use this saved answer, because a seed release or "
+        "another answer already settled these pages and no case needs it. The "
+        "answer stays in the review file."
+    )
+    UNUSED_ANSWER_ACTION = (
+        "No action is needed. If a new case holds these pages, answer that case."
     )
 
     # Case panel.
@@ -173,6 +191,10 @@ CASE_STATE_TOOLTIPS: Final[dict[str, str]] = {
         "previous run. The next Run applies it."
     ),
     "new": "The latest pipeline run identified this review case for the first time",
+    "previous answer": (
+        "Open cases that replace a case answered before a seed release changed "
+        "its pages"
+    ),
 }
 
 # Keyed by the change names the run summary counts, and "unchanged".

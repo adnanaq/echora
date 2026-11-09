@@ -52,6 +52,7 @@ from work_matching.model_linked_page_decision import (
     LinkedPageReason,
     LinkingEntryDetails,
 )
+from work_matching.model_previous_answer import PreviousAnswer
 from work_matching.model_review_choices import (
     ChoiceOption,
     GroupPageChoices,
@@ -85,6 +86,10 @@ from work_matching.page_placement import (
     write_placement,
 )
 from work_matching.placement_suggestions import suggest_page_placements
+from work_matching.previous_answers import (
+    attach_previous_answers,
+    build_previous_answer,
+)
 from work_matching.provider_page import ProviderPage, index_pages_by_current_page_key
 from work_matching.provider_page_key import (
     build_page_address,
@@ -136,6 +141,7 @@ __all__ = [
     "DoubledProviderOutcome",
     "DoubledProviderReviewReason",
     "DuplicateCaseError",
+    "PreviousAnswer",
     "GroupPageChoices",
     "KnownWorkEntries",
     "KnownWorkEntriesFromSeed",
@@ -210,6 +216,8 @@ __all__ = [
     "replace_file_lines",
     "resolve_decided_provider",
     "resolve_named_entries",
+    "attach_previous_answers",
+    "build_previous_answer",
     "resolve_page_key",
     "resolve_seed_type",
     "suggest_group_page_placements",

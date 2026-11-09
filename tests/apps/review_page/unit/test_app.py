@@ -9,6 +9,7 @@ from review_page.template_functions import build_element_id, build_static_url
 from review_page.tooltips import Tooltip
 from shared_proto.v1 import review_cases_pb2
 from work_matching import (
+    PreviousAnswer,
     ReviewCaseKind,
     TargetEntrySuggestion,
     describe_answer_word,
@@ -124,7 +125,7 @@ def test_case_panel_shows_open_case_pages_and_choices(client, review_cases) -> N
         "/fragments/case-panel",
         data=_state(open_case_name=review_cases["atashinchi_next"].case_name),
     ).text
-    assert all(key in panel for key in ATASHINCHI_ANSWER)
+    assert all(page_key in panel for page_key in ATASHINCHI_ANSWER)
     assert 'name="work"' in panel
 
 
@@ -240,11 +241,14 @@ def test_choice_back_to_suggestion_reports_no_unsaved_edit(
     client, review_cases
 ) -> None:
     case = review_cases["atashinchi_next"]
-    changed = {**case.suggested_answer, "anidb:anime:19895": "work 2"}
+    changed_answer = {**case.suggested_answer, "anidb:anime:19895": "work 2"}
     response = client.post(
         "/fragments/choice",
         data={
-            **_state(open_case_name=case.case_name, edits={case.case_name: changed}),
+            **_state(
+                open_case_name=case.case_name,
+                edits={case.case_name: changed_answer},
+            ),
             "page_key": "anidb:anime:19895",
             "work": "work 1",
         },
@@ -681,10 +685,37 @@ def test_case_list_and_panel_mark_answer_last_run_left_unused(
     panel = client.post(
         "/fragments/case-panel", data=_state(open_case_name=case_name)
     ).text
-    assert (case_list.count("No longer comes up"), "No longer comes up" in panel) == (
+    assert (case_list.count("Unused answer"), "Unused answer" in panel) == (
         1,
         True,
     )
+
+
+def test_case_list_and_panel_show_previous_answer_not_applied_with_added_page(
+    client, source, review_cases
+) -> None:
+    case = review_cases["atashinchi_next"]
+    added_page_key = next(iter(sorted(case.entry_page_keys)))
+    source.cases[case.case_name] = case.model_copy(
+        update={
+            "answer": None,
+            "previous_answer": PreviousAnswer(
+                case_name="split work: mal:anime:1",
+                answer={"mal:anime:63013": "work 1"},
+                added_page_keys=(added_page_key,),
+                is_applied=False,
+            ),
+        }
+    )
+    case_list = client.post("/fragments/case-list", data=_state()).text
+    panel = client.post(
+        "/fragments/case-panel", data=_state(open_case_name=case.case_name)
+    ).text
+    assert "Previous answer" in case_list
+    assert escape(Tooltip.PREVIOUS_ANSWER_NOT_APPLIED) in panel
+    assert f"Added pages: {added_page_key}." in panel
+    assert "The previous answer placed mal:anime:63013 as work 1." in panel
+    assert escape(Tooltip.ADDED_PAGE_PILL) in panel
 
 
 def test_case_panel_dropdowns_explain_chosen_and_offered_choices(
@@ -765,16 +796,16 @@ def test_case_list_chosen_chips_drawn_on(client) -> None:
         "/fragments/case-list", data=_state(kinds=["linked page"], case_states=["open"])
     ).text
 
-    def chip_classes(chip_id: str) -> str:
+    def _read_chip_classes(chip_id: str) -> str:
         chip = case_list[case_list.index(f'id="{chip_id}"') :]
         return chip[
             chip.index('class="') + 7 : chip.index('"', chip.index('class="') + 7)
         ]
 
     assert (
-        chip_classes("chip-kinds-linked-page"),
-        chip_classes("chip-case_states-open"),
-        chip_classes("chip-kinds-split-work"),
+        _read_chip_classes("chip-kinds-linked-page"),
+        _read_chip_classes("chip-case_states-open"),
+        _read_chip_classes("chip-kinds-split-work"),
     ) == ("control-chip is-on", "control-chip is-on", "control-chip")
 
 

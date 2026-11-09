@@ -20,12 +20,12 @@ def _entry(title: str, *addresses: str) -> WorkEntry:
 
 
 def test_build_entries_to_check_document_names_entries_by_reference_page() -> None:
-    doubled = _entry(
+    doubled_entry = _entry(
         "Rock Star",
         "https://anilist.co/anime/120516",
         "https://anilist.co/anime/120517",
     )
-    group = SplitWorkCandidates(
+    candidate_group = SplitWorkCandidates(
         entries=(
             _entry("CUE!", "https://animenewsnetwork.com/encyclopedia/anime.php?id=1"),
             _entry("Cue!", "https://myanimelist.net/anime/43735"),
@@ -33,7 +33,9 @@ def test_build_entries_to_check_document_names_entries_by_reference_page() -> No
         shared_provider=None,
         candidate_evidence=("same title: 'CUE!' and 'Cue!'",),
     )
-    document = build_entries_to_check_document("seed-schema-url", [doubled], [group])
+    document = build_entries_to_check_document(
+        "seed-schema-url", [doubled_entry], [candidate_group]
+    )
     assert document["seed_schema"] == "seed-schema-url"
     assert document["doubled_provider_entries"] == [
         {
@@ -97,6 +99,7 @@ def test_count_corrections_counts_each_change_once() -> None:
         "pages added as partial sources": 1,
         "review cases answered": 0,
         "review cases open": 0,
+        "open cases placed by a previous answer": 0,
     }
 
 
@@ -137,7 +140,7 @@ def test_describe_linked_page_outcomes_counts_then_conflicting_pages_listed() ->
 
 
 @pytest.mark.parametrize(
-    ("fields", "change"),
+    ("fields", "change_name"),
     [
         ({}, None),
         ({"is_dropped_page": True}, "duplicate pages dropped"),
@@ -156,8 +159,8 @@ def test_describe_linked_page_outcomes_counts_then_conflicting_pages_listed() ->
         ),
     ],
 )
-def test_find_correction_change_names_change_counted(fields, change) -> None:
+def test_find_correction_change_names_change_counted(fields, change_name) -> None:
     assert (
         find_correction_change(_correction("kitsu:anime:1", "work 1", **fields))
-        == change
+        == change_name
     )

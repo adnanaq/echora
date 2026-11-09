@@ -3,9 +3,9 @@
 <div class="filter-group">
   <span class="filter-group-label">Kind</span>
   {% for kind in kinds %}
-  {% set applied_count = applied_answer_counts[kind.value] %}
-  {% set kind_count = chip_counts[kind.value] if applied_count == chip_counts[kind.value] else applied_count ~ "/" ~ chip_counts[kind.value] %}
-  {{ chip("kinds", kind.value, kind_count, kind.description ~ " " ~ tooltips.APPLIED_ANSWER_KIND_COUNT, is_on=kind in state.kinds) }}
+  {% set resolved_count = resolved_case_counts[kind.value] %}
+  {% set kind_count = chip_counts[kind.value] if resolved_count == chip_counts[kind.value] else resolved_count ~ "/" ~ chip_counts[kind.value] %}
+  {{ chip("kinds", kind.value, kind_count, kind.description ~ " " ~ tooltips.RESOLVED_CASE_KIND_COUNT, is_on=kind in state.kinds) }}
   {% endfor %}
 </div>
 {{ chip_group("Case", "case_states", case_states, chip_counts, case_state_tooltips, state.case_states) }}
@@ -20,7 +20,8 @@
       <span class="case-row-title">
         <strong>{{ row.title }}</strong>
         {% if row.is_new %}{{ pill("New", "new", new_state.description) }}{% endif %}
-        {% if row.is_answer_unused %}{{ pill("No longer comes up", "unused", tooltips.UNUSED_ANSWER_PILL) }}{% endif %}
+        {% if row.is_answer_unused %}{{ pill("Unused answer", "unused", tooltips.UNUSED_ANSWER_PILL) }}{% endif %}
+        {% if row.has_previous_answer %}{{ pill("Previous answer", "new", tooltips.PREVIOUS_ANSWER_PILL) }}{% endif %}
       </span>
       <span class="case-row-meta">
         <span title="{{ row.kind.description }}">{{ row.kind.value }}</span>

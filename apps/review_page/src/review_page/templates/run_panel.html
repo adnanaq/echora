@@ -25,7 +25,7 @@
   <ul class="case-list-plain">{% for key in run_summary.conflicting_linked_page_keys %}<li><code>{{ key }}</code></li>{% endfor %}</ul>
   {% endif %}
   {% if run_summary.unused_answer_case_names %}
-  <h3 class="case-section-title">Answers whose case no longer comes up</h3>
+  <h3 class="case-section-title">Unused answers</h3>
   <ul class="case-list-plain">{% for name in run_summary.unused_answer_case_names %}<li><code>{{ name }}</code></li>{% endfor %}</ul>
   {% endif %}
   {% if gone_edit_case_names %}

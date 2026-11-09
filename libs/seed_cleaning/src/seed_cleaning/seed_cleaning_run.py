@@ -21,12 +21,13 @@ Each item gives the rule, then the reason for it.
 
 import json
 import logging
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, JsonValue
+from seed_cleaning.answer_placements import attach_remaining_previous_answers
 from seed_cleaning.cleaning_report import (
     build_entries_to_check_document,
     count_corrected_entries,
@@ -75,7 +76,7 @@ _SECONDS_TO_WAIT_FOR_SAVE = 30.0
 
 
 class SeedCleaningRunResult(BaseModel):
-    """What one seed-cleaning run did, as the review page reads it."""
+    """Hold what one seed-cleaning run did, as the review page reads it."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -132,7 +133,7 @@ def run_seed_cleaning(
         ReviewFileLockedError: Another writer still held the review file's lock.
     """
     started_at = datetime.now(UTC)
-    previous_result = read_seed_cleaning_run_result(data_dir)
+    previous_run_result = read_seed_cleaning_run_result(data_dir)
     review_file_path = data_dir / REVIEW_FILE_NAME
     with hold_review_file_lock(
         review_file_path, seconds_to_wait=seconds_to_wait_for_lock
@@ -168,11 +169,13 @@ def run_seed_cleaning(
             merged_corrections, known_work_entries, store
         )
         corrections = mark_anime_id_pages(merged_corrections, corrected_entries)
-        review_cases = [*first_pass_cases, *split_work_corrections.review_cases]
+        review_cases = attach_remaining_previous_answers(
+            [*first_pass_cases, *split_work_corrections.review_cases], review_file
+        )
         unused_answer_case_names = review_file.write_cases(review_cases)
         write_corrections(data_dir / CORRECTIONS_FILE_NAME, corrections)
     case_names = tuple(sorted(case.case_name for case in review_cases))
-    result = SeedCleaningRunResult(
+    run_result = SeedCleaningRunResult(
         seed_file=str(seed_file),
         started_at=started_at,
         finished_at=datetime.now(UTC),
@@ -184,15 +187,15 @@ def run_seed_cleaning(
         unused_answer_case_names=unused_answer_case_names,
         case_names=case_names,
         new_case_names=()
-        if previous_result is None
-        else tuple(sorted(set(case_names) - set(previous_result.case_names))),
+        if previous_run_result is None
+        else tuple(sorted(set(case_names) - set(previous_run_result.case_names))),
         original_answers=review_file.get_answers(),
     )
     replace_file_lines(
-        data_dir / RUN_RESULT_FILE_NAME, [result.model_dump_json(indent=1) + "\n"]
+        data_dir / RUN_RESULT_FILE_NAME, [run_result.model_dump_json(indent=1) + "\n"]
     )
-    _log_result(result, linked_page_corrections)
-    return result
+    _log_run_result(run_result, linked_page_corrections)
+    return run_result
 
 
 def read_seed_cleaning_run_result(data_dir: Path) -> SeedCleaningRunResult | None:
@@ -279,6 +282,62 @@ def run_first_pass(
     return group_corrections, linked_page_corrections
 
 
+def run_second_pass(
+    split_work_pass: SplitWorkPass, store: ProviderPageStore, review_file: ReviewFile
+) -> PlacementCorrections:
+    """Place each group of split-work candidates.
+
+    Args:
+        split_work_pass: The second pass's entries and candidate groups.
+        store: The provider page store, holding every page the pass reads.
+        review_file: The review file, for the answers kept in it.
+
+    Returns:
+        The split-work corrections and cases.
+    """
+    return correct_entry_groups(
+        [
+            EntryGroup.from_candidates(candidate_group)
+            for candidate_group in split_work_pass.candidates
+        ],
+        store,
+        split_work_pass.known_work_entries,
+        review_file,
+        split_work_pass.corrected_seed,
+    )
+
+
+def write_entries_to_check(
+    seed_document: Mapping[str, Any],
+    doubled_provider_entries: list[WorkEntry],
+    candidate_groups: list[SplitWorkCandidates],
+    data_dir: Path,
+) -> None:
+    """Write ``entries_to_check.json`` and log how many entries each pass checks.
+
+    Args:
+        seed_document: The downloaded seed release, as read from its file.
+        doubled_provider_entries: The first pass's entries.
+        candidate_groups: The second pass's groups of split-work candidates.
+        data_dir: The folder ``entries_to_check.json`` is written to.
+    """
+    entries_to_check = build_entries_to_check_document(
+        seed_document.get("$schema"), doubled_provider_entries, candidate_groups
+    )
+    replace_file_lines(
+        data_dir / ENTRIES_TO_CHECK_FILE_NAME,
+        [json.dumps(entries_to_check, ensure_ascii=False, indent=1) + "\n"],
+    )
+    marked_group_count = sum(
+        candidate_group.shared_provider is not None
+        for candidate_group in candidate_groups
+    )
+    logger.info(f"Entries with a doubled provider: {len(doubled_provider_entries)}")
+    logger.info(
+        f"Split-work candidate groups: {len(candidate_groups)} ({marked_group_count} marked)"
+    )
+
+
 def _find_seed_entries(
     live_entries: list[WorkEntry],
     live_seed: CorrectedSeed,
@@ -310,62 +369,17 @@ def _find_seed_entries(
     return seed_entries
 
 
-def run_second_pass(
-    split_work_pass: SplitWorkPass, store: ProviderPageStore, review_file: ReviewFile
-) -> PlacementCorrections:
-    """Place each group of split-work candidates.
+def _list_rejected_answer_case_names(
+    review_cases: Iterable[ReviewCase],
+) -> tuple[str, ...]:
+    """Return the cases answered with an answer the rules refuse, sorted.
 
     Args:
-        split_work_pass: The second pass's entries and candidate groups.
-        store: The provider page store, holding every page the pass reads.
-        review_file: The review file, for the answers kept in it.
+        review_cases: Every review case of the run, with its kept answer.
 
     Returns:
-        The split-work corrections and cases.
+        Sorted case names whose answer was rejected by the answer rules.
     """
-    return correct_entry_groups(
-        [EntryGroup.from_candidates(group) for group in split_work_pass.candidates],
-        store,
-        split_work_pass.known_work_entries,
-        review_file,
-        split_work_pass.corrected_seed,
-    )
-
-
-def write_entries_to_check(
-    seed_document: Mapping[str, Any],
-    doubled_provider_entries: list[WorkEntry],
-    candidate_groups: list[SplitWorkCandidates],
-    data_dir: Path,
-) -> None:
-    """Write ``entries_to_check.json`` and log how many entries each pass checks.
-
-    Args:
-        seed_document: The downloaded seed release, as read from its file.
-        doubled_provider_entries: The first pass's entries.
-        candidate_groups: The second pass's groups of split-work candidates.
-        data_dir: The folder ``entries_to_check.json`` is written to.
-    """
-    entries_to_check = build_entries_to_check_document(
-        seed_document.get("$schema"), doubled_provider_entries, candidate_groups
-    )
-    replace_file_lines(
-        data_dir / ENTRIES_TO_CHECK_FILE_NAME,
-        [json.dumps(entries_to_check, ensure_ascii=False, indent=1) + "\n"],
-    )
-    marked_group_count = sum(
-        group.shared_provider is not None for group in candidate_groups
-    )
-    logger.info(f"Entries with a doubled provider: {len(doubled_provider_entries)}")
-    logger.info(
-        f"Split-work candidate groups: {len(candidate_groups)} ({marked_group_count} marked)"
-    )
-
-
-def _list_rejected_answer_case_names(
-    review_cases: list[ReviewCase],
-) -> tuple[str, ...]:
-    """Return the cases answered with an answer the rules refuse, sorted."""
     return tuple(
         sorted(
             case.case_name
@@ -378,7 +392,14 @@ def _list_rejected_answer_case_names(
 def _count_linked_pages_not_added(
     linked_page_corrections: LinkedPageCorrections,
 ) -> dict[str, int]:
-    """Count the linked pages waiting for a fetch, not found, and held elsewhere."""
+    """Count the linked pages waiting for a fetch, not found, and held elsewhere.
+
+    Args:
+        linked_page_corrections: The linked-page step's outcomes.
+
+    Returns:
+        Counts keyed by their printed description.
+    """
     return {
         "linked pages waiting for a fetch": len(
             linked_page_corrections.waiting_page_keys
@@ -390,15 +411,20 @@ def _count_linked_pages_not_added(
     }
 
 
-def _log_result(
-    result: SeedCleaningRunResult, linked_page_corrections: LinkedPageCorrections
+def _log_run_result(
+    run_result: SeedCleaningRunResult, linked_page_corrections: LinkedPageCorrections
 ) -> None:
-    """Log the run's counts, in the order and wording the run log has always used."""
-    for count_name, correction_count in result.correction_counts.items():
+    """Log the run's counts, in the order and wording the run log has always used.
+
+    Args:
+        run_result: The completed seed-cleaning run result.
+        linked_page_corrections: The linked-page step's outcomes.
+    """
+    for count_name, correction_count in run_result.correction_counts.items():
         logger.info(f"{count_name.capitalize()}: {correction_count}")
     for report_line in describe_linked_page_outcomes(linked_page_corrections):
         logger.info(report_line)
-    for case_name in result.unused_answer_case_names:
-        logger.info(f"Answer kept, its case no longer comes up: {case_name}")
-    for count_name, entry_count in result.corrected_entry_counts.items():
+    for case_name in run_result.unused_answer_case_names:
+        logger.info(f"Unused answer, kept but not applied: {case_name}")
+    for count_name, entry_count in run_result.corrected_entry_counts.items():
         logger.info(f"{count_name.capitalize()}: {entry_count}")

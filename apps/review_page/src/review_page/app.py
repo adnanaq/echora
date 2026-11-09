@@ -35,6 +35,42 @@ from review_page.template_functions import STATIC_DIR, add_template_functions
 _PACKAGE_DIR = Path(__file__).parent
 
 
+class PageRoutes:
+    """Register and serve routes for the main HTML shell and health check endpoint."""
+
+    def __init__(self, templates: Jinja2Templates) -> None:
+        """Register the root page shell and ``/health`` routes on a new router.
+
+        Args:
+            templates: The Jinja2 templates collection for rendering the page shell.
+        """
+        self._templates = templates
+        self.router = APIRouter()
+        self.router.add_api_route("/health", self.report_health, methods=["GET"])
+        self.router.add_api_route(
+            "/", self.render_page, methods=["GET"], response_class=HTMLResponse
+        )
+
+    def report_health(self) -> dict[str, str]:
+        """Report service readiness for container health probes.
+
+        Returns:
+            A status dictionary ``{"status": "ok"}``.
+        """
+        return {"status": "ok"}
+
+    def render_page(self, request: Request) -> Response:
+        """Render the top-level HTML shell that loads regional fragments via htmx.
+
+        Args:
+            request: The incoming HTTP GET request.
+
+        Returns:
+            The rendered ``page.html`` response.
+        """
+        return self._templates.TemplateResponse(request, "page.html")
+
+
 def create_app(source: ReviewCaseSource) -> FastAPI:
     """Construct the FastAPI application wired to the given review case source.
 
@@ -79,39 +115,3 @@ async def _report_unreadable_review_file(
     """
     del request  # Every request gets the same notice.
     return build_notice_response(500, str(error))
-
-
-class PageRoutes:
-    """Register and serve routes for the main HTML shell and health check endpoint."""
-
-    def __init__(self, templates: Jinja2Templates) -> None:
-        """Register the root page shell and ``/health`` routes on a new router.
-
-        Args:
-            templates: The Jinja2 templates collection for rendering the page shell.
-        """
-        self._templates = templates
-        self.router = APIRouter()
-        self.router.add_api_route("/health", self.report_health, methods=["GET"])
-        self.router.add_api_route(
-            "/", self.render_page, methods=["GET"], response_class=HTMLResponse
-        )
-
-    def report_health(self) -> dict[str, str]:
-        """Report service readiness for container health probes.
-
-        Returns:
-            A status dictionary ``{"status": "ok"}``.
-        """
-        return {"status": "ok"}
-
-    def render_page(self, request: Request) -> Response:
-        """Render the top-level HTML shell that loads regional fragments via htmx.
-
-        Args:
-            request: The incoming HTTP GET request.
-
-        Returns:
-            The rendered ``page.html`` response.
-        """
-        return self._templates.TemplateResponse(request, "page.html")

@@ -12,6 +12,7 @@ from work_matching.known_work_entries_from_seed import KnownWorkEntriesFromSeed
 from work_matching.model_linked_page_decision import (
     LinkedPageAddition,
 )
+from work_matching.model_previous_answer import PreviousAnswer
 from work_matching.page_placement import PagePlacement
 from work_matching.review_cases import ReviewCase
 from work_matching.review_file import (
@@ -135,6 +136,60 @@ def test_review_file_write_cases_answer_without_case_kept_and_reported(
         (doubled_case.case_name,),
         [split_case.case_name, doubled_case.case_name],
     )
+
+
+def test_review_file_list_kept_cases_returns_answered_cases(
+    tmp_path, doubled_case, split_case
+) -> None:
+    path = tmp_path / "review.jsonl"
+    ReviewFile(path).write_cases([doubled_case, split_case])
+    _write_answer_in_file(path, doubled_case.case_name, {SIGEWINNE: "work 1"})
+    [kept_case] = ReviewFile(path).list_kept_cases()
+    assert (kept_case.case_name, kept_case.entries) == (
+        doubled_case.case_name,
+        doubled_case.entries,
+    )
+
+
+def test_review_file_write_cases_previous_answer_kept_and_not_reported(
+    tmp_path, doubled_case, split_case
+) -> None:
+    path = tmp_path / "review.jsonl"
+    ReviewFile(path).write_cases([doubled_case])
+    answer = {SIGEWINNE: "work 1", VARESA: "work 1"}
+    _write_answer_in_file(path, doubled_case.case_name, answer)
+    carrying_case = split_case.model_copy(
+        update={
+            "previous_answer": PreviousAnswer(
+                case_name=doubled_case.case_name, answer=answer, is_applied=True
+            )
+        }
+    )
+    assert ReviewFile(path).write_cases([carrying_case]) == ()
+    assert [
+        json.loads(line)["case_name"] for line in path.read_text().splitlines()
+    ] == [split_case.case_name, doubled_case.case_name]
+
+
+def test_review_file_write_cases_previous_answer_dropped_once_case_answered(
+    tmp_path, doubled_case, split_case
+) -> None:
+    path = tmp_path / "review.jsonl"
+    ReviewFile(path).write_cases([doubled_case])
+    answer = {SIGEWINNE: "work 1", VARESA: "work 1"}
+    _write_answer_in_file(path, doubled_case.case_name, answer)
+    answered_case = split_case.model_copy(
+        update={
+            "answer": {"mal:anime:1": "work 1", "anilist:anime:1": "work 2"},
+            "previous_answer": PreviousAnswer(
+                case_name=doubled_case.case_name, answer=answer, is_applied=True
+            ),
+        }
+    )
+    assert ReviewFile(path).write_cases([answered_case]) == ()
+    assert [
+        json.loads(line)["case_name"] for line in path.read_text().splitlines()
+    ] == [split_case.case_name]
 
 
 def test_review_file_write_cases_invalid_answer_without_case_kept_unchanged(

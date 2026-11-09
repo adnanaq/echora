@@ -86,8 +86,8 @@ def build_case_rows(
         last_run_summary: Summary of the last run, or None before the first run.
 
     Returns:
-        One CaseRow per case, with its change, open, new, unused-answer and
-        applied-answer marks.
+        One CaseRow per case, with its change, open, new, unused-answer,
+        applied-answer and previous-answer marks.
     """
     new_case_names = set(last_run_summary.new_case_names) if last_run_summary else set()
     unused_answer_case_names = (
@@ -113,6 +113,7 @@ def build_case_rows(
                 is_new=case.case_name in new_case_names,
                 has_suggestion=bool(case.suggested_answer),
                 is_answer_unused=is_answer_unused,
+                has_previous_answer=is_open and case.previous_answer is not None,
                 is_answer_applied=last_run_summary is not None
                 and not is_open
                 and saved_change is SavedChange.UNCHANGED
@@ -214,6 +215,43 @@ def resolve_shown_answer(case: ReviewCase, unsaved_answer: JsonValue) -> JsonVal
     if not is_answer_empty(case.answer):
         return case.answer
     return build_suggested_answer(case)
+
+
+def find_case_title(case: ReviewCase) -> str:
+    """Derive the primary display title for a review case.
+
+    Selects the linking entry title for linked page cases and the combined
+    canonical title across member entries for split work or entry group cases.
+
+    Args:
+        case: The review case whose display title is needed.
+
+    Returns:
+        The resolved title string for header and navigation display.
+    """
+    decision = case.linked_page_decision
+    if decision is not None:
+        return decision.linking_entries[0].title
+    return combine_group_entries(list(case.entries.values())).title
+
+
+def list_original_answers(
+    cases: Sequence[ReviewCase], last_run_summary: RunSummary | None
+) -> dict[str, JsonValue]:
+    """List the original answer of every case that has one.
+
+    Args:
+        cases: The review cases to check for original answers.
+        last_run_summary: Summary of the last run, or None before the first run.
+
+    Returns:
+        Each case name mapped to its original answer; cases without one are left out.
+    """
+    return {
+        case.case_name: original_answer
+        for case in cases
+        if (original_answer := find_original_answer(case, last_run_summary))
+    }
 
 
 def _is_suggestion_shown(case: ReviewCase, unsaved_answer: JsonValue) -> bool:
@@ -336,40 +374,3 @@ def _build_marked_page_rows(
         is_rejected=is_rejected,
         invalid_named_page_key_reasons=invalid_named_page_key_reasons,
     )
-
-
-def find_case_title(case: ReviewCase) -> str:
-    """Derive the primary display title for a review case.
-
-    Selects the linking entry title for linked page cases and the combined
-    canonical title across member entries for split work or entry group cases.
-
-    Args:
-        case: The review case whose display title is needed.
-
-    Returns:
-        The resolved title string for header and navigation display.
-    """
-    decision = case.linked_page_decision
-    if decision is not None:
-        return decision.linking_entries[0].title
-    return combine_group_entries(list(case.entries.values())).title
-
-
-def list_original_answers(
-    cases: Sequence[ReviewCase], last_run_summary: RunSummary | None
-) -> dict[str, JsonValue]:
-    """List the original answer of every case that has one.
-
-    Args:
-        cases: The review cases to check for original answers.
-        last_run_summary: Summary of the last run, or None before the first run.
-
-    Returns:
-        Each case name mapped to its original answer; cases without one are left out.
-    """
-    return {
-        case.case_name: original_answer
-        for case in cases
-        if (original_answer := find_original_answer(case, last_run_summary))
-    }

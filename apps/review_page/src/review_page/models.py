@@ -83,6 +83,7 @@ class CaseState(StrEnum):
     ANSWERED = "answered"
     CHANGED = "changed"
     NEW = "new"
+    PREVIOUS_ANSWER = "previous answer"
 
     @property
     def description(self) -> str:
@@ -121,6 +122,9 @@ class CaseRow:
     # Whether the last run applied the saved answer: the run used this answer,
     # did not refuse it, and the case still came up.
     is_answer_applied: bool = False
+    # Whether the open case carries the answer of the case it replaced after a
+    # seed release changed its pages.
+    has_previous_answer: bool = False
 
 
 @dataclass(frozen=True, slots=True)

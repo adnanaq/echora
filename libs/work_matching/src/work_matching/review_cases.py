@@ -15,7 +15,9 @@ line, and the next run hands it back to the caller, who applies it. The rules:
   doubled pages and its reference page. A group's case (``split work``) names
   every page of its entries, since its answer places every page.
 - Changed pages: a case whose pages changed, or whose doubled pages moved to
-  another entry, gets a new name, so it is asked again.
+  another entry, gets a new name, so it is asked again. The answer of the case
+  it replaces comes with it (``previous_answers``), and keeps placing the pages
+  that answer placed while the case has the same entries.
 - Answers: an entry group's answer places pages with the words in
   ``page_placement`` (``work 1``, ``work 2`` and so on, ``other work``, ``, main`` and
   ``, part``); a linked page's answer uses the words in ``linked_page_check``
@@ -58,6 +60,7 @@ from work_matching.model_linked_page_decision import (
     LinkedPageAnswerCheck,
     LinkedPageDecision,
 )
+from work_matching.model_previous_answer import PreviousAnswer
 from work_matching.page_details_comparison import MalPageComparison
 from work_matching.page_placement import PagePlacement
 from work_matching.provider_page import ProviderPage, index_pages_by_current_page_key
@@ -160,6 +163,12 @@ class ReviewCase(BaseModel):
     # Left out when empty, so cases without one are written as before.
     covered_outside_entries: tuple[TargetEntrySuggestion, ...] = Field(
         default=(), exclude_if=lambda covered_entries: not covered_entries
+    )
+    # The answer of the answered case this case replaces, when a seed release
+    # changed the case's pages (``previous_answers``). Left out when None, so
+    # cases without one are written as before.
+    previous_answer: PreviousAnswer | None = Field(
+        default=None, exclude_if=lambda previous_answer: previous_answer is None
     )
 
     @classmethod
@@ -274,6 +283,19 @@ class ReviewCase(BaseModel):
         if len(self.entries) > 1:
             return ReviewCaseKind.SPLIT_WORK
         return ReviewCaseKind.DOUBLED_PROVIDER
+
+    @property
+    def entry_page_keys(self) -> frozenset[str]:
+        """Return every page key the case's entries list.
+
+        Returns:
+            The page keys of all the case's entries.
+        """
+        return frozenset(
+            page_key
+            for entry in self.entries.values()
+            for page_key in entry.addresses_by_page_key
+        )
 
     @property
     def linked_page_decision(self) -> LinkedPageDecision | None:

@@ -138,19 +138,42 @@ class ReviewFile:
             for case_name, (answer, _) in self._answers_and_lines_by_case_name.items()
         }
 
+    def list_kept_cases(self) -> tuple[ReviewCase, ...]:
+        """Return every answered case in the file as last read, its line read whole.
+
+        A run finds among them the previous case a renamed case replaces
+        (``previous_answers``), which needs each case's entries, not only its
+        answer.
+
+        Returns:
+            The answered cases, in the file's order.
+        """
+        return tuple(
+            ReviewCase.model_validate_json(line)
+            for _, line in self._answers_and_lines_by_case_name.values()
+        )
+
     def write_cases(self, cases: Iterable[ReviewCase]) -> tuple[str, ...]:
         """Write this run's cases, with their kept answers, in place of the file.
 
-        The answers are read again first, so one saved since the file was
-        opened is kept. A kept answer whose case is not among the cases is
-        written back as it was, never applied. An unanswered case that did not
-        come up is dropped.
+        Each item gives the rule, then the reason for it.
+
+        - The answers are read again first, so one saved since the file was
+          opened is kept.
+        - A kept answer whose case is not among the cases is written back as
+          it was, never applied by its own name, so no answer is lost.
+        - A kept answer a case carries as its previous answer is written back
+          too, since the next run reads it again, but it is not reported as
+          unused. Once that case has an accepted answer of its own, the
+          previous answer is dropped, since the new answer replaces it.
+        - An unanswered case that did not come up is dropped.
 
         Args:
-            cases: The review cases of this run.
+            cases: The review cases of this run, with their previous answers.
 
         Returns:
-            The case names of kept answers whose case did not come up.
+            The case names of kept answers whose case did not come up and that
+            no case carries as its previous answer.
 
         Raises:
             DuplicateCaseError: Two cases have the same case name.
@@ -172,20 +195,34 @@ class ReviewFile:
                 logger.warning(
                     f"Review case answer not accepted, left open: {case.case_name}"
                 )
-        unused_case_names = tuple(
-            sorted(
-                self._answers_and_lines_by_case_name.keys() - case_name_counts.keys()
-            )
+        previous_case_names = {
+            case.previous_answer.case_name
+            for case in cases_with_answers
+            if case.previous_answer is not None
+        }
+        replaced_case_names = {
+            case.previous_answer.case_name
+            for case in cases_with_answers
+            if case.previous_answer is not None and case.accepted_answer is not None
+        }
+        kept_case_names = sorted(
+            self._answers_and_lines_by_case_name.keys()
+            - case_name_counts.keys()
+            - replaced_case_names
         )
         replace_file_lines(
             self._path,
             [case.model_dump_json() + "\n" for case in cases_with_answers]
             + [
                 self._answers_and_lines_by_case_name[case_name][1]
-                for case_name in unused_case_names
+                for case_name in kept_case_names
             ],
         )
-        return unused_case_names
+        return tuple(
+            case_name
+            for case_name in kept_case_names
+            if case_name not in previous_case_names
+        )
 
     def save_answers(
         self,
