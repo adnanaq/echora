@@ -8,6 +8,12 @@ import pytest
 from pydantic import ValidationError
 from work_matching import file_replacement
 from work_matching.doubled_provider_check import decide_doubled_providers
+from work_matching.errors import (
+    DuplicateCaseError,
+    ReviewFileLockedError,
+    SavedAnswerChangedError,
+    UnknownCaseError,
+)
 from work_matching.known_work_entries_from_seed import KnownWorkEntriesFromSeed
 from work_matching.model_linked_page_decision import (
     LinkedPageAddition,
@@ -15,13 +21,7 @@ from work_matching.model_linked_page_decision import (
 from work_matching.model_previous_answer import PreviousAnswer
 from work_matching.page_placement import PagePlacement
 from work_matching.review_cases import ReviewCase
-from work_matching.review_file import (
-    DuplicateCaseError,
-    ReviewFile,
-    SavedAnswerChangedError,
-    UnknownCaseError,
-)
-from work_matching.review_file_lock import ReviewFileLockedError
+from work_matching.review_file import ReviewFile
 
 SIGEWINNE = "animeplanet:anime:genshin-impact-character-teaser-sigewinne-everyday-correspondence"
 VARESA = (

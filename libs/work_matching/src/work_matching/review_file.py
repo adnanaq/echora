@@ -21,6 +21,11 @@ from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 
 from pydantic import BaseModel, JsonValue, ValidationError
+from work_matching.errors import (
+    DuplicateCaseError,
+    SavedAnswerChangedError,
+    UnknownCaseError,
+)
 from work_matching.file_replacement import replace_file_lines
 from work_matching.review_cases import ReviewCase
 from work_matching.review_file_lock import hold_review_file_lock
@@ -37,48 +42,6 @@ class _KeptAnswer(BaseModel):
 
     case_name: str
     answer: JsonValue = None
-
-
-class DuplicateCaseError(ValueError):
-    """Two review cases written in one run have the same case name."""
-
-    def __init__(self, case_names: Iterable[str]) -> None:
-        """Name the cases written more than once.
-
-        Args:
-            case_names: The repeated case names.
-        """
-        super().__init__(f"Review cases given more than once: {', '.join(case_names)}")
-
-
-class UnknownCaseError(KeyError):
-    """Answers were given for case names the review file does not hold."""
-
-    def __init__(self, case_names: Iterable[str]) -> None:
-        """Name the cases the review file does not hold.
-
-        Args:
-            case_names: The unknown case names.
-        """
-        super().__init__(
-            f"Review cases not in the review file: {', '.join(case_names)}"
-        )
-
-
-class SavedAnswerChangedError(ValueError):
-    """Cases hold another saved answer than the one their edits started from."""
-
-    def __init__(self, case_names: Iterable[str]) -> None:
-        """Keep and name the cases whose saved answer changed.
-
-        Args:
-            case_names: The case names whose saved answers changed concurrently.
-        """
-        self.case_names = tuple(case_names)
-        super().__init__(
-            "Saved answers changed since their edits began: "
-            + ", ".join(self.case_names)
-        )
 
 
 class ReviewFile:

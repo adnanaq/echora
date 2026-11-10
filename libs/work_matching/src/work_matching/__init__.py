@@ -25,12 +25,21 @@ from work_matching.entry_group import (
     read_group_answer_placements,
     suggest_group_page_placements,
 )
+from work_matching.errors import (
+    DuplicateCaseError,
+    NoLinkingEntryError,
+    ReviewCaseNamesError,
+    ReviewFileLockedError,
+    SavedAnswerChangedError,
+    UnknownCaseError,
+    UnknownMemberNameError,
+    WorkMatchingError,
+)
 from work_matching.file_replacement import replace_file_lines
 from work_matching.known_work_entries import KnownWorkEntries
 from work_matching.known_work_entries_from_seed import KnownWorkEntriesFromSeed
 from work_matching.linked_page_check import (
     SKIP_ANSWER,
-    NoLinkingEntryError,
     check_linked_page_answer,
     decide_linked_page,
     find_entry_episode_count,
@@ -83,6 +92,7 @@ from work_matching.page_placement import (
     list_placeable_page_keys,
     place_pages_without_review,
     read_placement,
+    read_placements,
     write_placement,
 )
 from work_matching.placement_suggestions import suggest_page_placements
@@ -90,7 +100,11 @@ from work_matching.previous_answers import (
     attach_previous_answers,
     build_previous_answer,
 )
-from work_matching.provider_page import ProviderPage, index_pages_by_current_page_key
+from work_matching.provider_page import (
+    ProviderPage,
+    index_pages_by_any_key,
+    index_pages_by_current_page_key,
+)
 from work_matching.provider_page_key import (
     build_page_address,
     is_mal_page,
@@ -112,14 +126,8 @@ from work_matching.review_choices import (
     list_required_page_keys,
     list_work_partial_sources,
 )
-from work_matching.review_file import (
-    DuplicateCaseError,
-    ReviewFile,
-    SavedAnswerChangedError,
-    UnknownCaseError,
-)
+from work_matching.review_file import ReviewFile
 from work_matching.review_file_lock import (
-    ReviewFileLockedError,
     hold_review_file_lock,
     is_review_file_locked,
 )
@@ -165,14 +173,17 @@ __all__ = [
     "ProviderPageStore",
     "ReviewCase",
     "ReviewCaseKind",
+    "ReviewCaseNamesError",
     "ReviewFile",
     "ReviewFileLockedError",
     "SavedAnswerChangedError",
     "SplitWorkReviewReason",
     "TargetEntrySuggestion",
     "UnknownCaseError",
+    "UnknownMemberNameError",
     "UnrelatedPage",
     "WorkEntry",
+    "WorkMatchingError",
     "build_page_address",
     "check_answer_placements",
     "check_group_answer_placements",
@@ -193,6 +204,7 @@ __all__ = [
     "find_unheld_linked_page_keys",
     "fold_title_for_comparison",
     "hold_review_file_lock",
+    "index_pages_by_any_key",
     "index_pages_by_current_page_key",
     "is_mal_page",
     "is_page_details_matching",
@@ -213,6 +225,7 @@ __all__ = [
     "read_linked_page_answer",
     "read_page_provider",
     "read_placement",
+    "read_placements",
     "replace_file_lines",
     "resolve_decided_provider",
     "resolve_named_entries",

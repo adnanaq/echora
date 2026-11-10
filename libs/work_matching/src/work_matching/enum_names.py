@@ -14,22 +14,7 @@ reads. Each item reads ``<rule>: <reason>``.
 from collections.abc import Callable
 from enum import Enum
 
-
-class UnknownMemberNameError(ValueError):
-    """Report that a saved value names no member of the enum it is read as."""
-
-    def __init__(self, stored_value: object, enum_type: type[Enum]) -> None:
-        """Name the saved value and the member names it should be one of.
-
-        Args:
-            stored_value: The value as saved.
-            enum_type: The enum the value is read as.
-        """
-        member_names = ", ".join(enum_type.__members__)
-        super().__init__(
-            f"{stored_value!r} is not a {enum_type.__name__} name; "
-            f"expected one of {member_names}"
-        )
+from work_matching.errors import UnknownMemberNameError
 
 
 def read_member_by_name[EnumMember: Enum](

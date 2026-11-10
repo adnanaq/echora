@@ -51,6 +51,7 @@ from typing import Final
 
 from pydantic import JsonValue
 from work_matching.answer_rules import LinkedPageAnswerRule
+from work_matching.errors import NoLinkingEntryError
 from work_matching.known_work_entries import KnownWorkEntries
 from work_matching.model_linked_page_decision import (
     LinkedPageAddition,
@@ -79,22 +80,6 @@ _LINKED_PAGE_ANSWER_TEXT: Final = re.compile(
     rf"(?P<addition>{re.escape(PARTIAL_SOURCE_ANSWER)}|{re.escape(WHOLE_PAGE_ANSWER)})"
     r"(?: to (?P<entry_reference_page>\S+))?"
 )
-
-
-class NoLinkingEntryError(ValueError):
-    """Report a linked page given to decide without an entry linking it.
-
-    A linked page is found through an entry's links. A caller passing no entry
-    has lost track of where the linked page came from.
-    """
-
-    def __init__(self, page_key: str) -> None:
-        """Name the page given without a linking entry.
-
-        Args:
-            page_key: The key of the linked page.
-        """
-        super().__init__(f"No entry links the page to decide: {page_key}")
 
 
 def find_unheld_linked_page_keys(

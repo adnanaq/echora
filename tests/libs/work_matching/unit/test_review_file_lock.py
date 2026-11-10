@@ -4,8 +4,8 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from work_matching.errors import ReviewFileLockedError
 from work_matching.review_file_lock import (
-    ReviewFileLockedError,
     hold_review_file_lock,
     is_review_file_locked,
 )

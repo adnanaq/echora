@@ -19,20 +19,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from filelock import FileLock, Timeout
-
-
-class ReviewFileLockedError(RuntimeError):
-    """Report that another process holds the review file's lock, such as a running seed cleaning."""
-
-    def __init__(self, review_file_path: Path) -> None:
-        """Name the locked review file.
-
-        Args:
-            review_file_path: The review file whose lock is held.
-        """
-        super().__init__(
-            f"Another process is writing the review file: {review_file_path}"
-        )
+from work_matching.errors import ReviewFileLockedError
 
 
 @contextmanager

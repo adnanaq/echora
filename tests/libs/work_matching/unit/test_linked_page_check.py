@@ -1,10 +1,10 @@
 import pytest
 from pydantic import JsonValue
 from work_matching.answer_rules import LinkedPageAnswerRule
+from work_matching.errors import NoLinkingEntryError
 from work_matching.known_work_entries_from_seed import KnownWorkEntriesFromSeed
 from work_matching.linked_page_check import (
     SKIP_ANSWER,
-    NoLinkingEntryError,
     check_linked_page_answer,
     decide_linked_page,
     find_entry_episode_count,
