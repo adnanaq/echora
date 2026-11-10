@@ -1,22 +1,23 @@
-// The browser's part of the review page: the reviewer's own state, and the
-// server's events that change it.
+// Manage the reviewer's browser state and handle server events on the review page.
 //
 // - Unsaved edits, rejected saves, filters, the open case, the "Show only
 //   differences" switch, the theme and the case list's width and visibility
-//   are kept in localStorage by Alpine's persist plugin,
-//   so a reload, a Run or a server restart loses none of them. The server
-//   keeps no state; every htmx request sends this state as `browser_state`.
-// - Each unsaved edit keeps the saved answer it started from
+//   are kept in localStorage by Alpine's persist plugin, so a reload, a Run
+//   or a server restart loses none of them. The server keeps no session
+//   state, and every htmx request sends this state as `browser_state`.
+// - Each unsaved edit keeps the saved answer the edit started from
 //   (`seen_saved_answers`), so the server refuses a save that would replace
 //   an answer saved meanwhile from another tab.
-// - Open tabs share unsaved edits: a change in one reaches the others through
-//   the browser's `storage` event. Filters and the open case stay per tab.
+// - Open tabs share unsaved edits: a change in one tab reaches the other tabs
+//   through the browser's `storage` event. Filters and the open case stay per
+//   tab.
 // - A visible page asks for the run state every few seconds, and once more
-//   when it is shown again, so a run started from the terminal or another tab
-//   disables its buttons too. A hidden page does not ask.
+//   when the page is shown again, so a run started from the terminal or
+//   another tab disables the page's buttons too. A hidden page does not ask.
 // - The server decides every choice and rule. This script only stores what
 //   the server's events report and asks for the regions to redraw.
 
+// Trigger an htmx refresh event on the document body for each named region.
 function refreshRegions(...regions) {
   for (const region of regions) {
     htmx.trigger(document.body, "refresh-" + region);
@@ -24,12 +25,12 @@ function refreshRegions(...regions) {
 }
 
 // Return a copy of a mapping without the named keys.
-function withoutKeys(mapping, keys) {
-  const kept = { ...mapping };
+function omitKeys(mapping, keys) {
+  const keptEntries = { ...mapping };
   for (const key of keys) {
-    delete kept[key];
+    delete keptEntries[key];
   }
-  return kept;
+  return keptEntries;
 }
 
 // The store fields and the region of each tab's list, so one filter, reset and
@@ -57,10 +58,11 @@ const SHARED_STORE_FIELDS = {
 };
 
 // One save in another tab changes several shared values at once, each with
-// its own storage event; they are redrawn once, after the last one arrives.
+// its own storage event. Redraw the regions once after the last event arrives.
 const SHARED_CHANGE_SETTLE_MILLISECONDS = 50;
 let sharedChangeRedrawTimer = null;
 
+// Schedule a single redraw of the case regions after shared storage updates settle.
 function redrawAfterSharedChanges() {
   clearTimeout(sharedChangeRedrawTimer);
   sharedChangeRedrawTimer = setTimeout(
@@ -103,9 +105,10 @@ document.addEventListener("alpine:init", () => {
     open_correction_entry: Alpine.$persist(null).as(
       "review_page_open_correction_entry",
     ),
-    // "system", "light" or "dark"; base.html applies it before the first paint.
+    // Allowed values are "system", "light" or "dark". The inline script in
+    // base.html applies the theme before the first paint.
     theme: Alpine.$persist("system").as("review_page_theme"),
-    // The case list's width in pixels, and whether it is shown.
+    // The case list's width in pixels, and whether the list is shown.
     SIDEBAR_DEFAULT_WIDTH: 340,
     // The narrowest list still shows a row's widest common tag line, "doubled
     // provider · unchanged · Suggested" (268 px), with the row's padding
@@ -117,7 +120,7 @@ document.addEventListener("alpine:init", () => {
     is_running: false,
     notice: "",
 
-    toJson() {
+    serializeState() {
       return JSON.stringify({
         edits: this.edits,
         seen_saved_answers: this.seen_saved_answers,
@@ -140,7 +143,7 @@ document.addEventListener("alpine:init", () => {
     toggleFilter(tab, listName, value) {
       const values = this[listName];
       this[listName] = values.includes(value)
-        ? values.filter((chosen) => chosen !== value)
+        ? values.filter((chosenValue) => chosenValue !== value)
         : [...values, value];
       this.showPage(tab, 1);
     },
@@ -169,8 +172,8 @@ document.addEventListener("alpine:init", () => {
       refreshRegions("correction", "correction-list");
     },
 
-    // Move between the tabs: from a corrected entry to a case holding it,
-    // and from a case to its entry's corrections.
+    // Move between the tabs: from a corrected entry to a case holding that
+    // entry, and from a case to its entry's corrections.
     showCase(caseName) {
       this.tab = "cases";
       this.openCase(caseName);
@@ -186,13 +189,12 @@ document.addEventListener("alpine:init", () => {
       refreshRegions("case", "list");
     },
 
-    // The button that was pressed is hidden with the list, or with the strip,
-    // so keyboard focus moves to the button now shown.
-    // A width saved before the bounds changed is brought within them.
+    // Clamp any sidebar width stored before the bounds changed.
     init() {
       this.setSidebarWidth(this.sidebar_width);
     },
 
+    // Move keyboard focus to whichever sidebar toggle button remains visible.
     toggleSidebar() {
       this.is_sidebar_open = !this.is_sidebar_open;
       Alpine.nextTick(() => {
@@ -203,22 +205,24 @@ document.addEventListener("alpine:init", () => {
       });
     },
 
-    // Keep the width within its bounds, and leave the open case at least
-    // 480 px, so neither panel becomes unusable.
+    // Keep the width within bounds and leave the open case at least 480 px
+    // so neither panel becomes unusable.
     setSidebarWidth(width) {
-      const main = document.querySelector(".layout-main");
-      const roomLeft = main ? main.clientWidth - 480 : this.SIDEBAR_MAX_WIDTH;
-      const widest = Math.max(
+      const mainLayout = document.querySelector(".layout-main");
+      const roomLeft = mainLayout
+        ? mainLayout.clientWidth - 480
+        : this.SIDEBAR_MAX_WIDTH;
+      const maxSidebarWidth = Math.max(
         this.SIDEBAR_MIN_WIDTH,
         Math.min(this.SIDEBAR_MAX_WIDTH, roomLeft),
       );
       this.sidebar_width = Math.round(
-        Math.min(widest, Math.max(this.SIDEBAR_MIN_WIDTH, width)),
+        Math.min(maxSidebarWidth, Math.max(this.SIDEBAR_MIN_WIDTH, width)),
       );
     },
 
-    // Follow the pointer until it is released; pointer capture keeps the drag
-    // going when the pointer leaves the thin divider.
+    // Follow the pointer until release. Pointer capture keeps the drag active
+    // even when the pointer leaves the thin divider.
     startSidebarResize(event) {
       // The width moves by the distance dragged, so grabbing the divider
       // anywhere across its width never makes the list jump.
@@ -227,17 +231,17 @@ document.addEventListener("alpine:init", () => {
       const startWidth = this.sidebar_width;
       divider.setPointerCapture(event.pointerId);
       divider.classList.add("is-dragging");
-      const follow = (moveEvent) =>
+      const followPointer = (moveEvent) =>
         this.setSidebarWidth(startWidth + moveEvent.clientX - startX);
-      const stop = () => {
+      const stopResize = () => {
         divider.classList.remove("is-dragging");
-        divider.removeEventListener("pointermove", follow);
-        divider.removeEventListener("pointerup", stop);
-        divider.removeEventListener("pointercancel", stop);
+        divider.removeEventListener("pointermove", followPointer);
+        divider.removeEventListener("pointerup", stopResize);
+        divider.removeEventListener("pointercancel", stopResize);
       };
-      divider.addEventListener("pointermove", follow);
-      divider.addEventListener("pointerup", stop);
-      divider.addEventListener("pointercancel", stop);
+      divider.addEventListener("pointermove", followPointer);
+      divider.addEventListener("pointerup", stopResize);
+      divider.addEventListener("pointercancel", stopResize);
     },
 
     setTheme(choice) {
@@ -253,28 +257,28 @@ document.addEventListener("alpine:init", () => {
     },
   });
 
-  // A searchable picker, used for the seed entry an "other work" page moves to
-  // and for a work's partial sources. The anchor plugin positions its panel and
-  // the focus plugin moves between its options (see vendor/README.md). The
-  // search box filters the options; a typed page key is checked by the server,
-  // which answers with an option or the reason the key cannot be used.
+  // Provide a searchable picker for the seed entry an "other work" page moves
+  // to and for a work's partial sources. The anchor plugin positions the panel
+  // and the focus plugin moves between options (see vendor/README.md). The
+  // search box filters the options, while a typed page key is checked by the
+  // server, which answers with an option or the reason the key cannot be used.
   Alpine.data("searchPicker", () => ({
     isOpen: false,
     query: "",
     // The options ticked in a picker that adds several at once.
     checkedValues: [],
 
-    toggle() {
+    togglePicker() {
       this.isOpen = !this.isOpen;
       if (this.isOpen) this.$nextTick(() => this.$refs.search.focus());
     },
 
-    close() {
+    closePicker() {
       this.isOpen = false;
       this.query = "";
     },
 
-    isShown(searchText) {
+    isOptionShown(searchText) {
       const query = this.query.trim().toLowerCase();
       return query === "" || searchText.toLowerCase().includes(query);
     },
@@ -287,13 +291,13 @@ document.addEventListener("alpine:init", () => {
       ].some(
         (option) =>
           option.dataset.entryReferencePage === entryReferencePage &&
-          this.isShown(option.dataset.searchText),
+          this.isOptionShown(option.dataset.searchText),
       );
     },
 
     // The focus plugin counts hidden buttons as focusable, so the arrow keys
-    // get only the options the search leaves visible: option buttons, or the
-    // checkboxes of a picker that adds several at once.
+    // receive only the options the search leaves visible: option buttons, or
+    // the checkboxes of a picker that adds several at once.
     listShownOptions() {
       return [
         ...this.$refs.options.querySelectorAll(
@@ -322,7 +326,7 @@ document.addEventListener("DOMContentLoaded", () => {
     } = event.detail;
     if (isUnsaved) {
       store.edits = { ...store.edits, [caseName]: answer };
-      // The first change of an edit records the saved answer it started from.
+      // The first change of an edit records the saved answer the edit started from.
       if (!(caseName in store.seen_saved_answers)) {
         store.seen_saved_answers = {
           ...store.seen_saved_answers,
@@ -330,27 +334,30 @@ document.addEventListener("DOMContentLoaded", () => {
         };
       }
     } else {
-      store.edits = withoutKeys(store.edits, [caseName]);
-      store.seen_saved_answers = withoutKeys(store.seen_saved_answers, [
+      store.edits = omitKeys(store.edits, [caseName]);
+      store.seen_saved_answers = omitKeys(store.seen_saved_answers, [
         caseName,
       ]);
     }
-    store.rejected = withoutKeys(store.rejected, [caseName]);
+    store.rejected = omitKeys(store.rejected, [caseName]);
     refreshRegions("toolbar", "list");
   });
 
   body.addEventListener("answerssaved", (event) => {
     const store = Alpine.store("review");
-    const { saved, saved_elsewhere: savedElsewhere } = event.detail;
-    store.edits = withoutKeys(store.edits, saved);
+    const {
+      saved_cases: savedCases,
+      cases_saved_elsewhere: casesSavedElsewhere,
+    } = event.detail;
+    store.edits = omitKeys(store.edits, savedCases);
     // An edit refused because another tab saved meanwhile forgets the answer
-    // it started from, so saving it again replaces that answer on purpose.
-    store.seen_saved_answers = withoutKeys(store.seen_saved_answers, [
-      ...saved,
-      ...savedElsewhere,
+    // the edit started from, so saving again replaces that answer on purpose.
+    store.seen_saved_answers = omitKeys(store.seen_saved_answers, [
+      ...savedCases,
+      ...casesSavedElsewhere,
     ]);
     store.rejected = {
-      ...withoutKeys(store.rejected, saved),
+      ...omitKeys(store.rejected, savedCases),
       ...event.detail.rejected,
     };
     store.notice = event.detail.warnings.join(" ");
@@ -383,8 +390,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Another tab changed shared stored values: take them and redraw. Setting
-  // the same value back stores nothing new, so the tabs do not echo.
+  // Apply shared stored values changed by another tab and redraw. Setting the
+  // same value back stores nothing new, so the tabs do not echo.
   window.addEventListener("storage", (event) => {
     const field = SHARED_STORE_FIELDS[event.key];
     if (!field) {
@@ -416,14 +423,18 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // A server error page is swapped into its region so the error shows where
-  // it happened. A notice response is JSON, shown by the notice banner
+  // Swap a server error page into its region so the error shows where the
+  // failure happened. A notice response is JSON, shown by the notice banner
   // above, so its body is never swapped into a region.
-  document.body.addEventListener("htmx:beforeOnLoad", function (evt) {
-    const contentType = evt.detail.xhr.getResponseHeader("Content-Type") || "";
-    if (evt.detail.xhr.status === 500 && !contentType.includes("application/json")) {
-      evt.detail.shouldSwap = true;
-      evt.detail.isError = false;
+  body.addEventListener("htmx:beforeOnLoad", (event) => {
+    const contentType =
+      event.detail.xhr.getResponseHeader("Content-Type") || "";
+    if (
+      event.detail.xhr.status === 500 &&
+      !contentType.includes("application/json")
+    ) {
+      event.detail.shouldSwap = true;
+      event.detail.isError = false;
     }
   });
 });

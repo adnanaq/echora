@@ -448,7 +448,10 @@ def test_answers_save_valid_edit_reports_saved(client, source, review_cases) -> 
             "case_name": case_name,
         },
     )
-    assert (response.status_code, _events(response)["answerssaved"]["saved"]) == (
+    assert (
+        response.status_code,
+        _events(response)["answerssaved"]["saved_cases"],
+    ) == (
         204,
         [case_name],
     )
@@ -522,7 +525,10 @@ def test_answers_save_edit_after_other_tab_saved_reports_saved_elsewhere(
         },
     )
     answers_saved = _events(response)["answerssaved"]
-    assert (answers_saved["saved"], answers_saved["saved_elsewhere"]) == (
+    assert (
+        answers_saved["saved_cases"],
+        answers_saved["cases_saved_elsewhere"],
+    ) == (
         [],
         [case_name],
     )
@@ -544,7 +550,7 @@ def test_answers_save_edit_with_unchanged_seen_answer_saves(
             "case_name": case_name,
         },
     )
-    assert _events(response)["answerssaved"]["saved"] == [case_name]
+    assert _events(response)["answerssaved"]["saved_cases"] == [case_name]
     assert source.cases[case_name].answer == ATASHINCHI_ANSWER
 
 
@@ -593,7 +599,7 @@ def test_answers_save_all_saves_every_edit(client, source, review_cases) -> None
     response = client.post(
         "/answers", data={**_state(edits=edits), "action": "save_all"}
     )
-    assert sorted(_events(response)["answerssaved"]["saved"]) == sorted(edits)
+    assert sorted(_events(response)["answerssaved"]["saved_cases"]) == sorted(edits)
 
 
 @pytest.mark.parametrize(

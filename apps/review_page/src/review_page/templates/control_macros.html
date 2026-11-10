@@ -44,10 +44,10 @@
 #}
 {% macro search_picker(label, picker_id, trigger_text, trigger_title, search_placeholder, search_title, typed_option_vals=None, is_invalid=False, confirm_vals=None, confirm_title="") -%}
 <div class="control-picker{% if is_invalid %} is-invalid{% endif %}" x-data="searchPicker"
-     @keydown.escape="close()" @click.outside="close()">
+     @keydown.escape="closePicker()" @click.outside="closePicker()">
   <button type="button" x-ref="trigger" id="{{ picker_id }}" class="control-picker-trigger"
           aria-label="{{ label }}" title="{{ trigger_title }}" aria-haspopup="listbox"
-          :aria-expanded="isOpen"{% if is_invalid %} aria-invalid="true"{% endif %} @click="toggle()">
+          :aria-expanded="isOpen"{% if is_invalid %} aria-invalid="true"{% endif %} @click="togglePicker()">
     <span class="control-picker-text">{{ trigger_text }}</span>
     <svg class="control-picker-chevron" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false"
          fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg>
@@ -100,19 +100,19 @@
                       typed_option_vals={"page_key": row.page_key, "case_name": view.case.case_name},
                       is_invalid=row.named_entry_invalid_reason is not none) %}
       <button type="button" role="option" aria-selected="{{ (not named_key) | tojson }}"
-              class="control-picker-option{% if not named_key %} is-chosen{% endif %}" x-show="isShown('new entry')"
+              class="control-picker-option{% if not named_key %} is-chosen{% endif %}" x-show="isOptionShown('new entry')"
               hx-post="/fragments/choice" hx-target="#case-panel" hx-swap="innerHTML"
               hx-vals='{{ {"page_key": row.page_key, "work": "other work"} | tojson }}'>
         <span class="control-picker-option-title">New entry</span>
       </button>
       {% if row.target_entry_options %}{% set suggestion_texts = [] %}{% for entry in row.target_entry_options %}{% set _ = suggestion_texts.append(entry.title ~ ' ' ~ entry.entry_reference_page) %}{% endfor %}
-      <p class="control-picker-group" x-show="{{ suggestion_texts | tojson | forceescape }}.some((searchText) => isShown(searchText))">Suggested</p>{% endif %}
+      <p class="control-picker-group" x-show="{{ suggestion_texts | tojson | forceescape }}.some((searchText) => isOptionShown(searchText))">Suggested</p>{% endif %}
       {% for entry in row.target_entry_options %}
       <button type="button" role="option" aria-selected="{{ (entry.entry_reference_page == named_key) | tojson }}"
               class="control-picker-option{% if entry.entry_reference_page == named_key %} is-chosen{% endif %}"
               data-entry-reference-page="{{ entry.entry_reference_page }}"
               data-search-text="{{ entry.title ~ ' ' ~ entry.entry_reference_page }}"
-              x-show="isShown($el.dataset.searchText)"
+              x-show="isOptionShown($el.dataset.searchText)"
               hx-post="/fragments/choice" hx-target="#case-panel" hx-swap="innerHTML"
               hx-vals='{{ {"page_key": row.page_key, "work": "other work", "named_entry": entry.entry_reference_page} | tojson }}'>
         <span class="control-picker-option-title">{{ entry.title }}</span>
@@ -161,7 +161,7 @@
       {% else %}{% set _ = page_facts.append("not fetched") %}{% endif %}
       {% set page_description = page_facts | join(" · ") %}
       <label role="option" class="control-picker-option control-picker-check"
-             x-show="isShown({{ (page_key ~ ' ' ~ page_description) | tojson | forceescape }})">
+             x-show="isOptionShown({{ (page_key ~ ' ' ~ page_description) | tojson | forceescape }})">
         <input type="checkbox" name="partial_source_page_keys" value="{{ page_key }}" x-model="checkedValues">
         <span class="control-picker-check-text">
           <span class="control-picker-option-title page-key">{{ page_key }}</span>

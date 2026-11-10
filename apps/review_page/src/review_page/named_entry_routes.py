@@ -29,8 +29,7 @@ from fastapi import APIRouter, Form, Request, Response
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from review_page.models import InvalidNamedPageKeyReason
-from review_page.review_case_messages import convert_message_to_case
-from review_page.review_case_source import ReviewCaseSource
+from review_page.review_case_source import ReviewCaseSource, load_case
 from work_matching import (
     ReviewCase,
     TargetEntrySuggestion,
@@ -83,7 +82,7 @@ class NamedEntryRoutes:
         if not any(separator in typed_text for separator in (":", "/")):
             return HTMLResponse("")
         named_entry_page_key = resolve_page_key(typed_text)
-        case = self._load_case(case_name)
+        case = load_case(self._source, case_name)
         invalid_reason = self._find_invalid_reason(named_entry_page_key, case)
         named_entry_suggestion = (
             None
@@ -101,18 +100,6 @@ class NamedEntryRoutes:
             },
         )
 
-    def _load_case(self, case_name: str) -> ReviewCase | None:
-        """Load a case by its name.
-
-        Args:
-            case_name: The case identifier, or empty when none is known.
-
-        Returns:
-            The case, or None when the name is empty or unknown.
-        """
-        case_message = self._source.get_case(case_name) if case_name else None
-        return convert_message_to_case(case_message) if case_message else None
-
     def _find_invalid_reason(
         self, named_entry_page_key: str, case: ReviewCase | None
     ) -> InvalidNamedPageKeyReason | None:
@@ -127,12 +114,7 @@ class NamedEntryRoutes:
         """
         if read_page_provider(named_entry_page_key) is None:
             return InvalidNamedPageKeyReason.NOT_PAGE_KEY
-        case_page_keys = {
-            page_key
-            for entry in (case.entries.values() if case else ())
-            for page_key in entry.addresses_by_page_key
-        }
-        if named_entry_page_key in case_page_keys:
+        if case is not None and named_entry_page_key in case.entry_page_keys:
             return InvalidNamedPageKeyReason.IN_CASE
         return self._source.find_invalid_named_page_keys([named_entry_page_key]).get(
             named_entry_page_key

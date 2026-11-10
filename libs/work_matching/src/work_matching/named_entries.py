@@ -34,7 +34,7 @@ from work_matching.page_details_comparison import (
     MalPageComparison,
     compare_page_with_mal_page,
 )
-from work_matching.page_placement import read_placement
+from work_matching.page_placement import read_placements
 from work_matching.provider_page import ProviderPage
 from work_matching.provider_page_key import read_page_provider
 from work_matching.review_cases import ReviewCase, TargetEntrySuggestion
@@ -59,9 +59,7 @@ def list_named_entry_page_keys(answer: JsonValue) -> list[str]:
         return []
     named_entry_page_keys = (
         named_entry_page_key
-        for placement_text in answer.values()
-        if isinstance(placement_text, str)
-        and (placement := read_placement(placement_text))
+        for placement in read_placements(answer).values()
         for named_entry_page_key in (
             placement.named_entry_page_key,
             *placement.partial_named_entry_page_keys,

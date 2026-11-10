@@ -249,6 +249,21 @@ def load_cases(source: ReviewCaseSource) -> list[ReviewCase]:
     return _CONVERTED_REVIEW_CASES.convert_cases(source.list_cases())
 
 
+def load_case(source: ReviewCaseSource, case_name: str | None) -> ReviewCase | None:
+    """Load a single review case by name from a source as a case model.
+
+    Args:
+        source: The review case source to read.
+        case_name: The case identifier to look up, or None.
+
+    Returns:
+        The converted ``ReviewCase`` model, or None when ``case_name`` is empty
+        or absent from the source.
+    """
+    case_message = source.get_case(case_name) if case_name else None
+    return None if case_message is None else convert_message_to_case(case_message)
+
+
 def load_last_run_summary(source: ReviewCaseSource) -> RunSummary | None:
     """Load the summary of the last run from a source.
 

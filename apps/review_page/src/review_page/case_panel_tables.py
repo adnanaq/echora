@@ -41,6 +41,7 @@ from work_matching import (
     ReviewCase,
     TargetEntrySuggestion,
     build_page_address,
+    index_pages_by_any_key,
     list_group_page_choices,
     read_page_provider,
 )
@@ -69,11 +70,7 @@ def build_page_rows(
     """
     answer = chosen_answer if isinstance(chosen_answer, dict) else {}
     base_answer = original_answer if isinstance(original_answer, dict) else {}
-    pages_by_key = {
-        page_key: page
-        for page in case.pages
-        for page_key in (page.key, page.current_key)
-    }
+    pages_by_key = index_pages_by_any_key(case.pages)
     entry_label_by_page_key, reference_page_keys = _label_entry_pages(case)
     page_choices = list_group_page_choices(case, answer)
     page_key_by_work_provider = {
@@ -219,15 +216,10 @@ def list_evidence_pages(
     linked_page_keys = (
         {case.linked_page_decision.page_key} if case.linked_page_decision else set()
     )
-    entry_page_keys = {
-        page_key
-        for entry in case.entries.values()
-        for page_key in entry.addresses_by_page_key
-    }
     return tuple(
         page
         for page in case.pages
-        if page.key not in placed_page_keys | linked_page_keys | entry_page_keys
+        if page.key not in placed_page_keys | linked_page_keys | case.entry_page_keys
         and page.current_key not in placed_page_keys | linked_page_keys
     )
 

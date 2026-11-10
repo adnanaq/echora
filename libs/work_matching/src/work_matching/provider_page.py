@@ -165,6 +165,21 @@ def index_pages_by_current_page_key(
     return pages_by_current_page_key
 
 
+def index_pages_by_any_key(pages: Iterable[ProviderPage]) -> dict[str, ProviderPage]:
+    """Index pages by their current key and by the key they were stored under.
+
+    Args:
+        pages: Fetched provider pages to index.
+
+    Returns:
+        A dictionary mapping both ``page.key`` and ``page.current_key`` to each
+        ``ProviderPage`` so an entry's old address resolves its page.
+    """
+    return {
+        page_key: page for page in pages for page_key in (page.key, page.current_key)
+    }
+
+
 def _read_searched_by_page_keys(searched_by_address: str | None) -> tuple[str, ...]:
     """Resolve the searched-by page address into a singleton key tuple or empty tuple.
 

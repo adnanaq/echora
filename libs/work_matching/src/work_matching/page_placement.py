@@ -249,6 +249,23 @@ def read_placement(placement_text: str) -> PagePlacement | None:
     return placement
 
 
+def read_placements(answer: Mapping[str, object]) -> dict[str, PagePlacement]:
+    """Read the answer's places that follow the answer words; others are left out.
+
+    Args:
+        answer: The raw answer mapping page keys to placement strings.
+
+    Returns:
+        The readable placements by page key.
+    """
+    return {
+        page_key: placement
+        for page_key, placement_text in answer.items()
+        if isinstance(placement_text, str)
+        and (placement := read_placement(placement_text)) is not None
+    }
+
+
 def write_placement(placement: PagePlacement) -> str:
     """Write one page's place as an answer writes it; ``read_placement`` reads it back.
 

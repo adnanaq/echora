@@ -53,12 +53,12 @@ from review_page.page_state import (
 )
 from review_page.review_case_messages import (
     build_case_answer,
-    convert_message_to_case,
 )
 from review_page.review_case_source import (
     ANSWER_SAVED_ELSEWHERE_RULE_NAME,
     ReviewCaseSource,
     SeedFileUnavailableError,
+    load_case,
     load_cases,
     load_last_run_summary,
 )
@@ -237,7 +237,7 @@ class CaseRoutes:
             header carrying the updated answer and baseline saved answer.
         """
         state = BrowserState.parse_form_field(browser_state)
-        case = self._load_case(state.open_case_name)
+        case = load_case(self._source, state.open_case_name)
         if case is None:
             return self._render_case(request, state, None, None)
         current_answer = resolve_shown_answer(case, state.edits.get(case.case_name))
@@ -350,7 +350,7 @@ class CaseRoutes:
         Returns:
             The rendered ``case_panel.html`` response.
         """
-        case = case or self._load_case(case_name)
+        case = case or load_case(self._source, case_name)
         if case is None:
             return self._templates.TemplateResponse(
                 request, "case_panel.html", {"view": None}
@@ -381,18 +381,6 @@ class CaseRoutes:
                 and case.case_name in last_run_summary.unused_answer_case_names,
             },
         )
-
-    def _load_case(self, case_name: str | None) -> ReviewCase | None:
-        """Load a single review case by name from the source.
-
-        Args:
-            case_name: The case identifier to look up, or None.
-
-        Returns:
-            The converted ``ReviewCase`` domain model, or None when absent.
-        """
-        message = self._source.get_case(case_name) if case_name else None
-        return None if message is None else convert_message_to_case(message)
 
 
 def _write_work(work: str, named_entry: str) -> str | None:
@@ -458,11 +446,11 @@ def _build_answers_saved_event(
         next_case_name: The next case identifier to open for ``save_next``, or None.
 
     Returns:
-        A dictionary containing ``saved`` case names, ``rejected`` rule sentences,
-        ``saved_elsewhere`` case names, ``warnings``, and ``next_case_name``.
+        A dictionary containing ``saved_cases``, ``rejected`` rule sentences,
+        ``cases_saved_elsewhere``, ``warnings``, and ``next_case_name``.
     """
     return {
-        "saved": [
+        "saved_cases": [
             check_result.case_name
             for check_result in check_results
             if check_result.is_saved
@@ -472,7 +460,7 @@ def _build_answers_saved_event(
             for check_result in check_results
             if not check_result.is_saved
         },
-        "saved_elsewhere": [
+        "cases_saved_elsewhere": [
             check_result.case_name
             for check_result in check_results
             if ANSWER_SAVED_ELSEWHERE_RULE_NAME in check_result.broken_rule_names
