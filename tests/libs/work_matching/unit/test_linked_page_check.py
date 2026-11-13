@@ -1,6 +1,5 @@
 import pytest
 from pydantic import JsonValue
-from work_matching.answer_rules import LinkedPageAnswerRule
 from work_matching.errors import NoLinkingEntryError
 from work_matching.known_work_entries_from_seed import KnownWorkEntriesFromSeed
 from work_matching.linked_page_check import (
@@ -12,8 +11,9 @@ from work_matching.linked_page_check import (
     read_linked_page_answer,
     suggest_linked_page_answer,
 )
-from work_matching.model_linked_page_decision import (
+from work_matching.models import (
     LinkedPageAddition,
+    LinkedPageAnswerRule,
     LinkedPageDecision,
     LinkedPageOutcome,
     LinkedPageReason,

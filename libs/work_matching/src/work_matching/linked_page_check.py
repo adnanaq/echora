@@ -50,12 +50,17 @@ from collections.abc import Collection, Iterable
 from typing import Final
 
 from pydantic import JsonValue
-from work_matching.answer_rules import LinkedPageAnswerRule
+from work_matching.answer_words import (
+    PARTIAL_SOURCE_ANSWER,
+    SKIP_ANSWER,
+    WHOLE_PAGE_ANSWER,
+)
 from work_matching.errors import NoLinkingEntryError
 from work_matching.known_work_entries import KnownWorkEntries
-from work_matching.model_linked_page_decision import (
+from work_matching.models import (
     LinkedPageAddition,
     LinkedPageAnswerCheck,
+    LinkedPageAnswerRule,
     LinkedPageDecision,
     LinkedPageReason,
     LinkingEntryDetails,
@@ -69,11 +74,6 @@ from work_matching.provider_page_key import (
 )
 from work_matching.work_entry import WorkEntry
 
-# These words are written in review answers, so changing them would make kept
-# answers invalid.
-SKIP_ANSWER: Final = "skip"
-WHOLE_PAGE_ANSWER: Final = "add"
-PARTIAL_SOURCE_ANSWER: Final = "add as partial"
 # An answer adding the page, optionally naming the linking entry it joins. The
 # longer word comes first, so "add as partial" is never read as "add".
 _LINKED_PAGE_ANSWER_TEXT: Final = re.compile(

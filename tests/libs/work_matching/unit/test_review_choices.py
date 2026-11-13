@@ -1,11 +1,10 @@
 import dataclasses
 
 import pytest
-from work_matching.answer_rules import LinkedPageAnswerRule, PlacementRule
 from work_matching.doubled_provider_check import decide_doubled_providers
 from work_matching.entry_group import combine_group_entries
 from work_matching.known_work_entries_from_seed import KnownWorkEntriesFromSeed
-from work_matching.model_review_choices import WorkPartialSources
+from work_matching.models import LinkedPageAnswerRule, PlacementRule, WorkPartialSources
 from work_matching.review_cases import ReviewCase, TargetEntrySuggestion
 from work_matching.review_choices import (
     choose_group_page_place,

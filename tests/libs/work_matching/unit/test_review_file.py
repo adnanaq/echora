@@ -15,10 +15,10 @@ from work_matching.errors import (
     UnknownCaseError,
 )
 from work_matching.known_work_entries_from_seed import KnownWorkEntriesFromSeed
-from work_matching.model_linked_page_decision import (
+from work_matching.models import (
     LinkedPageAddition,
+    PreviousAnswer,
 )
-from work_matching.model_previous_answer import PreviousAnswer
 from work_matching.page_placement import PagePlacement
 from work_matching.review_cases import ReviewCase
 from work_matching.review_file import ReviewFile

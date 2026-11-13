@@ -10,7 +10,7 @@ from work_matching.errors import (
     UnknownMemberNameError,
     WorkMatchingError,
 )
-from work_matching.model_doubled_provider_decision import DoubledProviderOutcome
+from work_matching.models import DoubledProviderOutcome
 
 
 @pytest.mark.parametrize(

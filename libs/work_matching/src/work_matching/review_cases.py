@@ -44,7 +44,6 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 from work_matching.answer_placement_check import PlacementCheck
-from work_matching.answer_rules import LinkedPageAnswerRule, PlacementRule
 from work_matching.entry_group import (
     check_group_answer_placements,
     list_mal_page_review_reasons,
@@ -54,13 +53,15 @@ from work_matching.linked_page_check import (
     check_linked_page_answer,
     suggest_linked_page_answer,
 )
-from work_matching.model_doubled_provider_decision import DoubledProviderDecision
-from work_matching.model_linked_page_decision import (
+from work_matching.models import (
+    DoubledProviderDecision,
     LinkedPageAddition,
     LinkedPageAnswerCheck,
+    LinkedPageAnswerRule,
     LinkedPageDecision,
+    PlacementRule,
+    PreviousAnswer,
 )
-from work_matching.model_previous_answer import PreviousAnswer
 from work_matching.page_details_comparison import MalPageComparison
 from work_matching.page_placement import PagePlacement
 from work_matching.provider_page import ProviderPage, index_pages_by_current_page_key

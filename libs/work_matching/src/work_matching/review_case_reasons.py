@@ -17,7 +17,7 @@ is not enough. Each item gives the rule, then the reason for it.
   written, so a case is never hidden by its reasons.
 """
 
-from work_matching.model_doubled_provider_decision import DoubledProviderDecision
+from work_matching.models import DoubledProviderDecision
 from work_matching.page_details_comparison import MalPageComparison
 from work_matching.review_cases import ReviewCase
 from work_matching.split_work_check import SplitWorkReviewReason

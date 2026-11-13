@@ -1,9 +1,7 @@
 import pytest
-from work_matching.model_doubled_provider_decision import (
+from work_matching.models import (
     DoubledProviderOutcome,
     DoubledProviderReviewReason,
-)
-from work_matching.model_linked_page_decision import (
     LinkedPageReason,
 )
 from work_matching.page_details_comparison import MalPageComparison

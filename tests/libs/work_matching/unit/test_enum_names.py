@@ -1,10 +1,10 @@
 import pytest
 from work_matching.enum_names import read_member_by_name, write_member_name
-from work_matching.model_doubled_provider_decision import (
+from work_matching.models import (
     DoubledProviderOutcome,
     DoubledProviderReviewReason,
+    LinkedPageReason,
 )
-from work_matching.model_linked_page_decision import LinkedPageReason
 
 
 def test_write_member_name_gives_member_name() -> None:

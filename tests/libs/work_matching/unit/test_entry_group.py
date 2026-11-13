@@ -1,6 +1,5 @@
 import pytest
 from pydantic import JsonValue
-from work_matching.answer_rules import PlacementRule
 from work_matching.doubled_provider_check import decide_doubled_providers
 from work_matching.entry_group import (
     check_group_answer_placements,
@@ -10,6 +9,7 @@ from work_matching.entry_group import (
     suggest_group_page_placements,
 )
 from work_matching.known_work_entries_from_seed import KnownWorkEntriesFromSeed
+from work_matching.models import PlacementRule
 from work_matching.page_details_comparison import MalPageComparison
 from work_matching.page_placement import PagePlacement
 from work_matching.provider_page import ProviderPage

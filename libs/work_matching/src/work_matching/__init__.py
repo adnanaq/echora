@@ -10,7 +10,6 @@ from work_matching.answer_placement_check import (
     check_answer_placements,
     read_answer_placements,
 )
-from work_matching.answer_rules import LinkedPageAnswerRule, PlacementRule
 from work_matching.answer_words import describe_answer_word
 from work_matching.comparable_title import fold_title_for_comparison
 from work_matching.doubled_provider_check import decide_doubled_providers
@@ -47,25 +46,23 @@ from work_matching.linked_page_check import (
     read_linked_page_answer,
     suggest_linked_page_answer,
 )
-from work_matching.model_doubled_provider_decision import (
+from work_matching.models import (
+    ChoiceOption,
     DoubledProviderDecision,
     DoubledProviderOutcome,
     DoubledProviderReviewReason,
-    UnrelatedPage,
-)
-from work_matching.model_linked_page_decision import (
+    GroupPageChoices,
     LinkedPageAddition,
     LinkedPageAnswerCheck,
+    LinkedPageAnswerRule,
+    LinkedPageConflict,
     LinkedPageDecision,
     LinkedPageOutcome,
     LinkedPageReason,
     LinkingEntryDetails,
-)
-from work_matching.model_previous_answer import PreviousAnswer
-from work_matching.model_review_choices import (
-    ChoiceOption,
-    GroupPageChoices,
-    LinkedPageConflict,
+    PlacementRule,
+    PreviousAnswer,
+    UnrelatedPage,
     WorkPartialSources,
 )
 from work_matching.named_entries import (

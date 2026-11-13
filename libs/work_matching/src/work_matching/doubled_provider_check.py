@@ -33,7 +33,7 @@ from work_matching.doubled_provider_pages import (
     has_several_page_ids,
 )
 from work_matching.known_work_entries import KnownWorkEntries
-from work_matching.model_doubled_provider_decision import (
+from work_matching.models import (
     DoubledProviderDecision,
     DoubledProviderOutcome,
     DoubledProviderReviewReason,

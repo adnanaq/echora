@@ -1,5 +1,5 @@
 import pytest
-from work_matching.model_previous_answer import PreviousAnswer
+from work_matching.models import PreviousAnswer
 from work_matching.previous_answers import attach_previous_answers
 
 MAL_PAGE = "https://myanimelist.net/anime/1"

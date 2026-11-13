@@ -40,8 +40,9 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import NamedTuple
 
+from work_matching.answer_words import DROPPED, FIRST_WORK, OTHER_WORK
 from work_matching.doubled_provider_pages import resolve_decided_provider
-from work_matching.model_doubled_provider_decision import (
+from work_matching.models import (
     DoubledProviderDecision,
     DoubledProviderOutcome,
 )
@@ -52,11 +53,6 @@ from work_matching.provider_page_key import (
 )
 from work_matching.work_entry import WorkEntry
 
-# These words are written in review answers and in the corrections file, so
-# changing them would make kept answers invalid.
-FIRST_WORK = "work 1"
-OTHER_WORK = "other work"
-DROPPED = "dropped"
 # Written after ``work N``, before the works a page is a partial source of.
 PARTIAL_SOURCE_PREFIX = ", partial in "
 # A work a page can be a partial source of: a work of the case, or the seed

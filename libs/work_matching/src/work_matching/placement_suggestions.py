@@ -23,7 +23,7 @@ from collections import Counter
 from collections.abc import Iterable, Sequence
 
 from networkx.utils import UnionFind
-from work_matching.model_doubled_provider_decision import (
+from work_matching.models import (
     DoubledProviderDecision,
     DoubledProviderOutcome,
     DoubledProviderReviewReason,

@@ -4,7 +4,7 @@ import pytest
 from common.models.anime import AnimeType
 from work_matching.doubled_provider_check import decide_doubled_providers
 from work_matching.known_work_entries_from_seed import KnownWorkEntriesFromSeed
-from work_matching.model_doubled_provider_decision import (
+from work_matching.models import (
     DoubledProviderOutcome,
     DoubledProviderReviewReason,
     UnrelatedPage,

@@ -34,7 +34,7 @@ Each item gives the rule, then the reason for it.
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Sequence
 
-from work_matching.model_previous_answer import PreviousAnswer
+from work_matching.models import PreviousAnswer
 from work_matching.review_cases import ReviewCase, ReviewCaseKind
 
 
