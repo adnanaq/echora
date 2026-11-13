@@ -481,3 +481,59 @@ def _select_page_details(
         )
         if {current_page_key, page.key, *page.searched_by} & page_keys
     )
+
+
+# Every name that can follow an entry group's decisions in its reasons.
+_SENTENCE_BY_LATER_REASON_NAME: dict[str, str] = {
+    **{reason.name: reason.value for reason in SplitWorkReviewReason},
+    **{comparison.name: comparison.value for comparison in MalPageComparison},
+}
+
+
+def describe_case_reasons(case: ReviewCase) -> tuple[str, ...]:
+    """Return the sentence of each of a case's reasons, in the case's order.
+
+    Args:
+        case: The review case.
+
+    Returns:
+        One sentence per name in ``case.reasons``.
+    """
+    if case.linked_page_decision is not None:
+        decision_sentences = [case.linked_page_decision.reason.value]
+    else:
+        decision_sentences = [
+            sentence
+            for decision in case.doubled_provider_decisions
+            for sentence in _describe_decision(decision)
+        ]
+    later_reason_names = case.reasons[len(decision_sentences) :]
+    return (
+        *decision_sentences,
+        *(
+            _SENTENCE_BY_LATER_REASON_NAME.get(name, name)
+            for name in later_reason_names
+        ),
+    )
+
+
+def _describe_decision(decision: DoubledProviderDecision) -> list[str]:
+    """Return a doubled-provider decision's outcome and review reasons as sentences.
+
+    Each sentence starts with the decision's provider. A case can hold one
+    decision per doubled provider, often with the same reasons, and the
+    provider tells the reviewer which pages each sentence is about.
+
+    Args:
+        decision: The doubled-provider decision.
+
+    Returns:
+        The provider-prefixed outcome and review reason sentences.
+    """
+    return [
+        f"{decision.provider}: {sentence}"
+        for sentence in (
+            decision.outcome.value,
+            *(reason.value for reason in decision.review_reasons),
+        )
+    ]

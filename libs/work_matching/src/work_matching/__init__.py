@@ -13,13 +13,14 @@ from work_matching.answer_placement_check import (
 from work_matching.answer_words import describe_answer_word
 from work_matching.comparable_title import fold_title_for_comparison
 from work_matching.doubled_provider_check import decide_doubled_providers
-from work_matching.doubled_provider_pages import (
+from work_matching.doubled_provider_matches import (
     find_doubled_provider_page_keys,
     resolve_decided_provider,
 )
 from work_matching.entry_group import (
     check_group_answer_placements,
     combine_group_entries,
+    find_surviving_entries,
     list_mal_page_review_reasons,
     read_group_answer_placements,
     suggest_group_page_placements,
@@ -34,7 +35,6 @@ from work_matching.errors import (
     UnknownMemberNameError,
     WorkMatchingError,
 )
-from work_matching.file_replacement import replace_file_lines
 from work_matching.known_work_entries import KnownWorkEntries
 from work_matching.known_work_entries_from_seed import KnownWorkEntriesFromSeed
 from work_matching.linked_page_check import (
@@ -111,8 +111,12 @@ from work_matching.provider_page_key import (
 )
 from work_matching.provider_page_links import ProviderPageLinks
 from work_matching.provider_page_store import ProviderPageStore
-from work_matching.review_case_reasons import describe_case_reasons
-from work_matching.review_cases import ReviewCase, ReviewCaseKind, TargetEntrySuggestion
+from work_matching.review_cases import (
+    ReviewCase,
+    ReviewCaseKind,
+    TargetEntrySuggestion,
+    describe_case_reasons,
+)
 from work_matching.review_choices import (
     choose_group_page_place,
     choose_partial_sources,
@@ -123,16 +127,16 @@ from work_matching.review_choices import (
     list_required_page_keys,
     list_work_partial_sources,
 )
-from work_matching.review_file import ReviewFile
-from work_matching.review_file_lock import (
+from work_matching.review_file import (
+    ReviewFile,
     hold_review_file_lock,
     is_review_file_locked,
+    replace_file_lines,
 )
 from work_matching.split_work_check import (
     SplitWorkReviewReason,
     list_split_work_review_reasons,
 )
-from work_matching.surviving_entries import find_surviving_entries
 from work_matching.work_entry import WorkEntry
 
 __all__ = [

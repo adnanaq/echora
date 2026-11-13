@@ -4,6 +4,7 @@ from work_matching.doubled_provider_check import decide_doubled_providers
 from work_matching.entry_group import (
     check_group_answer_placements,
     combine_group_entries,
+    find_surviving_entries,
     list_mal_page_review_reasons,
     read_group_answer_placements,
     suggest_group_page_placements,
@@ -502,3 +503,90 @@ def test_check_group_answer_placements_two_mal_pages_in_one_work_reports_rule(
     assert check_group_answer_placements(
         answer, entries, _decide_group(entries, []), {}
     ).broken_rules == (PlacementRule.WORK_WITH_TWO_PAGES_OF_ONE_PROVIDER,)
+
+
+_SURVIVOR_OTHER_ANILIST = "https://anilist.co/anime/2"
+
+
+def test_find_surviving_entries_unplaced_reference_page_survives_as_first_work(
+    work_entry,
+) -> None:
+    assert find_surviving_entries([work_entry(MAL, ANILIST)], {}, {}) == {
+        "work 1": "mal:anime:1"
+    }
+
+
+def test_find_surviving_entries_most_trusted_reference_page_survives(
+    work_entry,
+) -> None:
+    entries = [work_entry(ANN), work_entry(ANILIST), work_entry(MAL)]
+    placements = {
+        "ann:anime:1": PagePlacement("work 1"),
+        "anilist:anime:1": PagePlacement("work 1"),
+        "mal:anime:1": PagePlacement("work 1"),
+    }
+    assert find_surviving_entries(entries, placements, {}) == {"work 1": "mal:anime:1"}
+
+
+def test_find_surviving_entries_same_provider_tie_broken_by_reference_page(
+    work_entry,
+) -> None:
+    entries = [work_entry(_SURVIVOR_OTHER_ANILIST), work_entry(ANILIST)]
+    placements = {
+        "anilist:anime:2": PagePlacement("work 1"),
+        "anilist:anime:1": PagePlacement("work 1"),
+    }
+    assert find_surviving_entries(entries, placements, {}) == {
+        "work 1": "anilist:anime:1"
+    }
+
+
+def test_find_surviving_entries_each_work_gets_own_survivor(work_entry) -> None:
+    entries = [work_entry(MAL), work_entry(OTHER_MAL), work_entry(ANILIST)]
+    placements = {
+        "mal:anime:1": PagePlacement("work 2"),
+        "mal:anime:2": PagePlacement("work 1"),
+        "anilist:anime:1": PagePlacement("work 2"),
+    }
+    assert find_surviving_entries(entries, placements, {}) == {
+        "work 1": "mal:anime:2",
+        "work 2": "mal:anime:1",
+    }
+
+
+def test_find_surviving_entries_work_without_reference_page_has_no_survivor(
+    work_entry,
+) -> None:
+    entries = [work_entry(MAL, _SURVIVOR_OTHER_ANILIST), work_entry(ANILIST)]
+    placements = {
+        "mal:anime:1": PagePlacement("work 1"),
+        "anilist:anime:2": PagePlacement("work 2"),
+        "anilist:anime:1": PagePlacement("other work"),
+    }
+    assert find_surviving_entries(entries, placements, {}) == {"work 1": "mal:anime:1"}
+
+
+def test_find_surviving_entries_two_entries_most_trusted_survives(
+    work_entry,
+) -> None:
+    entries = [work_entry(ANILIST), work_entry(MAL)]
+    placements = {
+        "anilist:anime:1": PagePlacement("work 1"),
+        "mal:anime:1": PagePlacement("work 1"),
+    }
+    assert find_surviving_entries(entries, placements, {}) == {"work 1": "mal:anime:1"}
+
+
+def test_find_surviving_entries_renamed_reference_page_found_by_current_key(
+    work_entry,
+) -> None:
+    entries = [work_entry("https://www.anime-planet.com/anime/old-name", ANN)]
+    placements = {
+        "animeplanet:anime:new-name": PagePlacement("work 2"),
+        "ann:anime:1": PagePlacement("work 1"),
+    }
+    assert find_surviving_entries(
+        entries,
+        placements,
+        {"animeplanet:anime:old-name": "animeplanet:anime:new-name"},
+    ) == {"work 2": "animeplanet:anime:old-name"}

@@ -2,11 +2,13 @@ import json
 import os
 import subprocess
 import sys
+from collections.abc import Iterator
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 from pydantic import ValidationError
-from work_matching import file_replacement
+from work_matching import review_file
 from work_matching.doubled_provider_check import decide_doubled_providers
 from work_matching.errors import (
     DuplicateCaseError,
@@ -21,7 +23,12 @@ from work_matching.models import (
 )
 from work_matching.page_placement import PagePlacement
 from work_matching.review_cases import ReviewCase
-from work_matching.review_file import ReviewFile
+from work_matching.review_file import (
+    ReviewFile,
+    hold_review_file_lock,
+    is_review_file_locked,
+    replace_file_lines,
+)
 
 SIGEWINNE = "animeplanet:anime:genshin-impact-character-teaser-sigewinne-everyday-correspondence"
 VARESA = (
@@ -246,7 +253,7 @@ def test_review_file_write_cases_failed_write_keeps_old_file(
     ReviewFile(path).write_cases([doubled_case])
     written_text = path.read_text(encoding="utf-8")
     with (
-        patch.object(file_replacement.os, "fsync", autospec=True, side_effect=OSError),
+        patch.object(review_file.os, "fsync", autospec=True, side_effect=OSError),
         pytest.raises(OSError),
     ):
         ReviewFile(path).write_cases([split_case])
@@ -294,7 +301,7 @@ def test_review_file_write_cases_answer_saved_after_opening_kept(
 
 
 def test_review_file_write_cases_syncs_file_and_folder(tmp_path, doubled_case) -> None:
-    with patch.object(file_replacement.os, "fsync", wraps=os.fsync) as fsync:
+    with patch.object(review_file.os, "fsync", wraps=os.fsync) as fsync:
         ReviewFile(tmp_path / "review.jsonl").write_cases([doubled_case])
     assert fsync.call_count == 2
 
@@ -302,7 +309,7 @@ def test_review_file_write_cases_syncs_file_and_folder(tmp_path, doubled_case) -
 def test_review_file_write_cases_system_without_folder_sync_writes_file(
     tmp_path, monkeypatch, doubled_case
 ) -> None:
-    monkeypatch.delattr(file_replacement.os, "O_DIRECTORY")
+    monkeypatch.delattr(review_file.os, "O_DIRECTORY")
     path = tmp_path / "review.jsonl"
     ReviewFile(path).write_cases([doubled_case])
     assert (
@@ -540,3 +547,119 @@ def test_review_file_save_answers_lock_held_by_other_process_raises(
     finally:
         holder.kill()
         holder.wait()
+
+
+def test_replace_file_lines_existing_file_holds_only_new_lines(tmp_path) -> None:
+    path = tmp_path / "corrections.jsonl"
+    path.write_text("old line\n", encoding="utf-8")
+    replace_file_lines(path, ["first\n", "second\n"])
+    assert path.read_text(encoding="utf-8") == "first\nsecond\n"
+
+
+def test_replace_file_lines_missing_folder_created(tmp_path) -> None:
+    path = tmp_path / "seed_cleaning" / "corrections.jsonl"
+    replace_file_lines(path, ["line\n"])
+    assert path.read_text(encoding="utf-8") == "line\n"
+
+
+def test_replace_file_lines_failed_write_keeps_old_file_and_removes_temporary_file(
+    tmp_path,
+) -> None:
+    path = tmp_path / "corrections.jsonl"
+    path.write_text("old line\n", encoding="utf-8")
+    with (
+        patch.object(review_file.os, "fsync", autospec=True, side_effect=OSError),
+        pytest.raises(OSError),
+    ):
+        replace_file_lines(path, ["new line\n"])
+    assert (path.read_text(encoding="utf-8"), list(tmp_path.iterdir())) == (
+        "old line\n",
+        [path],
+    )
+
+
+def test_replace_file_lines_existing_file_keeps_mode(tmp_path) -> None:
+    path = tmp_path / "corrections.jsonl"
+    path.write_text("old line\n", encoding="utf-8")
+    path.chmod(0o640)
+    replace_file_lines(path, ["new line\n"])
+    assert path.stat().st_mode & 0o777 == 0o640
+
+
+@pytest.fixture
+def empty_review_file_path(tmp_path) -> Path:
+    path = tmp_path / "review.jsonl"
+    path.write_text("", encoding="utf-8")
+    return path
+
+
+@pytest.fixture
+def lock_held_by_other_process(empty_review_file_path) -> Iterator[None]:
+    holder = subprocess.Popen(  # noqa: S603  (fixed test arguments)
+        [
+            sys.executable,
+            "-c",
+            "import sys, time, filelock\n"
+            "with filelock.FileLock(sys.argv[1]):\n"
+            "    print('held', flush=True); time.sleep(5)",
+            f"{empty_review_file_path}.lock",
+        ],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    assert holder.stdout is not None
+    assert holder.stdout.readline().strip() == "held"
+    yield
+    holder.kill()
+    holder.wait()
+
+
+def test_is_review_file_locked_free_file_reports_false(
+    empty_review_file_path,
+) -> None:
+    assert not is_review_file_locked(empty_review_file_path)
+
+
+def test_is_review_file_locked_held_by_other_process_reports_true(
+    empty_review_file_path, lock_held_by_other_process
+) -> None:
+    assert is_review_file_locked(empty_review_file_path)
+
+
+def test_hold_review_file_lock_held_by_other_process_raises(
+    empty_review_file_path, lock_held_by_other_process
+) -> None:
+    with (
+        pytest.raises(ReviewFileLockedError),
+        hold_review_file_lock(empty_review_file_path),
+    ):
+        pass
+
+
+def test_hold_review_file_lock_while_held_reports_locked_to_others(
+    empty_review_file_path,
+) -> None:
+    with hold_review_file_lock(empty_review_file_path):
+        checker = subprocess.run(  # noqa: S603  (fixed test arguments)
+            [
+                sys.executable,
+                "-c",
+                "import sys, filelock\n"
+                "try:\n"
+                "    filelock.FileLock(sys.argv[1]).acquire(timeout=0)\n"
+                "    print('free')\n"
+                "except filelock.Timeout:\n"
+                "    print('locked')",
+                f"{empty_review_file_path}.lock",
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    assert checker.stdout.strip() == "locked"
+
+
+def test_hold_review_file_lock_released_after_block(empty_review_file_path) -> None:
+    with hold_review_file_lock(empty_review_file_path):
+        pass
+    assert not is_review_file_locked(empty_review_file_path)

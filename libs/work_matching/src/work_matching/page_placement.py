@@ -41,7 +41,7 @@ from dataclasses import dataclass
 from typing import NamedTuple
 
 from work_matching.answer_words import DROPPED, FIRST_WORK, OTHER_WORK
-from work_matching.doubled_provider_pages import resolve_decided_provider
+from work_matching.doubled_provider_matches import resolve_decided_provider
 from work_matching.models import (
     DoubledProviderDecision,
     DoubledProviderOutcome,

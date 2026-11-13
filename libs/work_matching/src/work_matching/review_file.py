@@ -16,19 +16,22 @@ Each item gives the rule, then the reason for it.
 """
 
 import logging
+import os
+import shutil
 from collections import Counter
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from pathlib import Path
 
+from filelock import FileLock, Timeout
 from pydantic import BaseModel, JsonValue, ValidationError
 from work_matching.errors import (
     DuplicateCaseError,
+    ReviewFileLockedError,
     SavedAnswerChangedError,
     UnknownCaseError,
 )
-from work_matching.file_replacement import replace_file_lines
 from work_matching.review_cases import ReviewCase
-from work_matching.review_file_lock import hold_review_file_lock
 
 logger = logging.getLogger(__name__)
 
@@ -337,3 +340,105 @@ def _write_line_answer(line: str, answer: JsonValue) -> str:
     """
     case = ReviewCase.model_validate_json(line)
     return case.model_copy(update={"answer": answer}).model_dump_json() + "\n"
+
+
+def replace_file_lines(path: str | Path, lines: Iterable[str]) -> None:
+    """Write the lines in place of the file, in one step.
+
+    Args:
+        path: The file to replace; it and its folder are created if missing.
+        lines: The lines to write, each ending with its line break.
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = path.with_name(f".{path.name}.tmp")
+    try:
+        with temporary_path.open("w", encoding="utf-8") as temporary_file:
+            temporary_file.writelines(lines)
+            temporary_file.flush()
+            os.fsync(temporary_file.fileno())
+        if path.exists():
+            shutil.copymode(path, temporary_path)
+        temporary_path.replace(path)
+    except BaseException:
+        temporary_path.unlink(missing_ok=True)
+        raise
+    _sync_folder(path.parent)
+
+
+def _sync_folder(folder: Path) -> None:
+    """Write a folder's entries to disk, so a rename in it survives a power cut.
+
+    Systems that cannot open a folder, such as Windows, are skipped.
+
+    Args:
+        folder: The directory whose directory entries must be flushed to disk.
+    """
+    if not hasattr(os, "O_DIRECTORY"):
+        return
+    folder_descriptor = os.open(folder, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(folder_descriptor)
+    finally:
+        os.close(folder_descriptor)
+
+
+@contextmanager
+def hold_review_file_lock(
+    review_file_path: str | Path, *, seconds_to_wait: float = 0.0
+) -> Iterator[None]:
+    """Hold the review file's lock for the block, waiting at most the given time.
+
+    Args:
+        review_file_path: The review file to lock.
+        seconds_to_wait: How long to wait for another writer to finish; 0
+            gives up at once.
+
+    Yields:
+        Nothing; the lock is held while the block runs.
+
+    Raises:
+        ReviewFileLockedError: The lock was still held after the wait.
+    """
+    review_file_path = Path(review_file_path)
+    review_file_path.parent.mkdir(parents=True, exist_ok=True)
+    review_file_lock = FileLock(_build_lock_path(review_file_path))
+    try:
+        review_file_lock.acquire(timeout=seconds_to_wait)
+    except Timeout as error:
+        raise ReviewFileLockedError(review_file_path) from error
+    try:
+        yield
+    finally:
+        review_file_lock.release()
+
+
+def is_review_file_locked(review_file_path: str | Path) -> bool:
+    """Report whether another writer holds the review file's lock right now.
+
+    The lock is taken and released at once to find out, since only taking it
+    tells whether another process holds it.
+
+    Args:
+        review_file_path: The review file to check.
+
+    Returns:
+        True when another writer, such as a running seed cleaning, holds it.
+    """
+    try:
+        with hold_review_file_lock(review_file_path):
+            return False
+    except ReviewFileLockedError:
+        return True
+
+
+def _build_lock_path(review_file_path: Path) -> Path:
+    """Return the lock file beside the review file: ``<review file>.lock``.
+
+    Args:
+        review_file_path: Path to the review file.
+
+    Returns:
+        Path to the sibling ``.lock`` file.
+    """
+    return review_file_path.with_name(f"{review_file_path.name}.lock")

@@ -23,13 +23,11 @@ from collections.abc import Iterable, Mapping
 from dataclasses import replace
 
 from work_matching.doubled_provider_matches import (
+    find_doubled_provider_page_keys,
     find_fetched_pages,
     find_season_matches,
     find_title_matches,
     find_year_type_matches,
-)
-from work_matching.doubled_provider_pages import (
-    find_doubled_provider_page_keys,
     has_several_page_ids,
 )
 from work_matching.known_work_entries import KnownWorkEntries

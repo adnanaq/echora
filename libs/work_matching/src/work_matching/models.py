@@ -17,15 +17,60 @@ Each model group reads ``<group>: <purpose>``:
   offered by the review page.
 """
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from enum import StrEnum
+from enum import Enum, StrEnum
 from typing import Annotated
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, JsonValue, PlainSerializer
 from work_matching.answer_words import describe_answer_word
-from work_matching.enum_names import read_member_by_name, write_member_name
+from work_matching.errors import UnknownMemberNameError
 from work_matching.work_entry import WorkEntry
+
+
+def read_member_by_name[EnumMember: Enum](
+    enum_type: type[EnumMember],
+) -> Callable[[object], EnumMember]:
+    """Build a Pydantic before validator reading one enum's members by name.
+
+    Args:
+        enum_type: The enum whose members are stored by name.
+
+    Returns:
+        A function turning a stored name, or a member, into the member.
+    """
+
+    def read_member(stored_value: object) -> EnumMember:
+        """Return the member a stored name names.
+
+        Args:
+            stored_value: A member name as saved, or a member.
+
+        Returns:
+            The member.
+
+        Raises:
+            UnknownMemberNameError: The stored value names no member.
+        """
+        if isinstance(stored_value, enum_type):
+            return stored_value
+        if isinstance(stored_value, str) and stored_value in enum_type.__members__:
+            return enum_type[stored_value]
+        raise UnknownMemberNameError(stored_value, enum_type)
+
+    return read_member
+
+
+def write_member_name(member: Enum) -> str:
+    """Return the name a member is saved under.
+
+    Args:
+        member: The enum member to save.
+
+    Returns:
+        The member's name.
+    """
+    return member.name
 
 
 class PlacementRule(StrEnum):
