@@ -146,12 +146,15 @@ def list_ordered_mappings(fields: Any) -> Any:
         return [list_ordered_mappings(field_value) for field_value in fields]
     if not isinstance(fields, dict):
         return fields
-    listed_fields = {key: list_ordered_mappings(value) for key, value in fields.items()}
+    listed_fields = {
+        field_name: list_ordered_mappings(field_value)
+        for field_name, field_value in fields.items()
+    }
     for field_name, (key_name, value_name) in _ORDERED_MAPPING_FIELDS.items():
         if isinstance(listed_fields.get(field_name), dict):
             listed_fields[field_name] = [
-                {key_name: key, value_name: value}
-                for key, value in listed_fields[field_name].items()
+                {key_name: entry_key, value_name: entry_value}
+                for entry_key, entry_value in listed_fields[field_name].items()
             ]
     return listed_fields
 
@@ -170,7 +173,10 @@ def join_ordered_mappings(fields: Any) -> Any:
         return [join_ordered_mappings(field_value) for field_value in fields]
     if not isinstance(fields, dict):
         return fields
-    joined_fields = {key: join_ordered_mappings(value) for key, value in fields.items()}
+    joined_fields = {
+        field_name: join_ordered_mappings(field_value)
+        for field_name, field_value in fields.items()
+    }
     for field_name, (key_name, value_name) in _ORDERED_MAPPING_FIELDS.items():
         if isinstance(joined_fields.get(field_name), list):
             joined_fields[field_name] = {

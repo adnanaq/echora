@@ -27,7 +27,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import NamedTuple, Self
 
-from work_matching.model_doubled_provider_decision import DoubledProviderDecision
+from work_matching.models import DoubledProviderDecision
 from work_matching.page_details_comparison import (
     MalPageComparison,
     compare_page_with_mal_page,

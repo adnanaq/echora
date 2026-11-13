@@ -21,12 +21,14 @@ word does. Each item reads ``<word>: <meaning>``.
 import re
 from typing import Final
 
-from work_matching.linked_page_check import (
-    PARTIAL_SOURCE_ANSWER,
-    SKIP_ANSWER,
-    WHOLE_PAGE_ANSWER,
-)
-from work_matching.page_placement import DROPPED, FIRST_WORK, OTHER_WORK
+# These words are written in review answers and in the corrections file, so
+# changing them would make kept answers invalid.
+FIRST_WORK: Final = "work 1"
+OTHER_WORK: Final = "other work"
+DROPPED: Final = "dropped"
+SKIP_ANSWER: Final = "skip"
+WHOLE_PAGE_ANSWER: Final = "add"
+PARTIAL_SOURCE_ANSWER: Final = "add as partial"
 
 _LATER_WORK: Final = re.compile(r"work ([2-9]|[1-9]\d+)")
 _NAMED_ENTRY_ANSWER: Final = re.compile(

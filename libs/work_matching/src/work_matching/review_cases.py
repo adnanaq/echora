@@ -15,7 +15,9 @@ line, and the next run hands it back to the caller, who applies it. The rules:
   doubled pages and its reference page. A group's case (``split work``) names
   every page of its entries, since its answer places every page.
 - Changed pages: a case whose pages changed, or whose doubled pages moved to
-  another entry, gets a new name, so it is asked again.
+  another entry, gets a new name, so it is asked again. The answer of the case
+  it replaces comes with it (``previous_answers``), and keeps placing the pages
+  that answer placed while the case has the same entries.
 - Answers: an entry group's answer places pages with the words in
   ``page_placement`` (``work 1``, ``work 2`` and so on, ``other work``, ``, main`` and
   ``, part``); a linked page's answer uses the words in ``linked_page_check``
@@ -42,7 +44,6 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 from work_matching.answer_placement_check import PlacementCheck
-from work_matching.answer_rules import LinkedPageAnswerRule, PlacementRule
 from work_matching.entry_group import (
     check_group_answer_placements,
     list_mal_page_review_reasons,
@@ -52,11 +53,14 @@ from work_matching.linked_page_check import (
     check_linked_page_answer,
     suggest_linked_page_answer,
 )
-from work_matching.model_doubled_provider_decision import DoubledProviderDecision
-from work_matching.model_linked_page_decision import (
+from work_matching.models import (
+    DoubledProviderDecision,
     LinkedPageAddition,
     LinkedPageAnswerCheck,
+    LinkedPageAnswerRule,
     LinkedPageDecision,
+    PlacementRule,
+    PreviousAnswer,
 )
 from work_matching.page_details_comparison import MalPageComparison
 from work_matching.page_placement import PagePlacement
@@ -86,16 +90,16 @@ class ReviewCaseKind(StrEnum):
 
 _DESCRIPTION_BY_CASE_KIND: dict[ReviewCaseKind, str] = {
     ReviewCaseKind.DOUBLED_PROVIDER: (
-        "An entry holds two or more pages of one provider. The answer places "
-        "each page in a work."
+        "A seed entry contains two or more pages from the same provider. "
+        "Assign each page to the work it belongs to."
     ),
     ReviewCaseKind.SPLIT_WORK: (
-        "Two or more seed entries may be one work split up. The answer says "
-        "which pages form each work."
+        "Two or more seed entries may represent parts of the same work. "
+        "Assign the pages that belong together to the same work."
     ),
     ReviewCaseKind.LINKED_PAGE: (
-        "An entry links a page no seed entry holds. The answer says whether the "
-        "page joins the entry."
+        "A seed entry links to a provider page that no entry currently holds. "
+        "Decide whether to add the linked page to the entry."
     ),
 }
 
@@ -160,6 +164,12 @@ class ReviewCase(BaseModel):
     # Left out when empty, so cases without one are written as before.
     covered_outside_entries: tuple[TargetEntrySuggestion, ...] = Field(
         default=(), exclude_if=lambda covered_entries: not covered_entries
+    )
+    # The answer of the answered case this case replaces, when a seed release
+    # changed the case's pages (``previous_answers``). Left out when None, so
+    # cases without one are written as before.
+    previous_answer: PreviousAnswer | None = Field(
+        default=None, exclude_if=lambda previous_answer: previous_answer is None
     )
 
     @classmethod
@@ -274,6 +284,19 @@ class ReviewCase(BaseModel):
         if len(self.entries) > 1:
             return ReviewCaseKind.SPLIT_WORK
         return ReviewCaseKind.DOUBLED_PROVIDER
+
+    @property
+    def entry_page_keys(self) -> frozenset[str]:
+        """Return every page key the case's entries list.
+
+        Returns:
+            The page keys of all the case's entries.
+        """
+        return frozenset(
+            page_key
+            for entry in self.entries.values()
+            for page_key in entry.addresses_by_page_key
+        )
 
     @property
     def linked_page_decision(self) -> LinkedPageDecision | None:
@@ -458,3 +481,59 @@ def _select_page_details(
         )
         if {current_page_key, page.key, *page.searched_by} & page_keys
     )
+
+
+# Every name that can follow an entry group's decisions in its reasons.
+_SENTENCE_BY_LATER_REASON_NAME: dict[str, str] = {
+    **{reason.name: reason.value for reason in SplitWorkReviewReason},
+    **{comparison.name: comparison.value for comparison in MalPageComparison},
+}
+
+
+def describe_case_reasons(case: ReviewCase) -> tuple[str, ...]:
+    """Return the sentence of each of a case's reasons, in the case's order.
+
+    Args:
+        case: The review case.
+
+    Returns:
+        One sentence per name in ``case.reasons``.
+    """
+    if case.linked_page_decision is not None:
+        decision_sentences = [case.linked_page_decision.reason.value]
+    else:
+        decision_sentences = [
+            sentence
+            for decision in case.doubled_provider_decisions
+            for sentence in _describe_decision(decision)
+        ]
+    later_reason_names = case.reasons[len(decision_sentences) :]
+    return (
+        *decision_sentences,
+        *(
+            _SENTENCE_BY_LATER_REASON_NAME.get(name, name)
+            for name in later_reason_names
+        ),
+    )
+
+
+def _describe_decision(decision: DoubledProviderDecision) -> list[str]:
+    """Return a doubled-provider decision's outcome and review reasons as sentences.
+
+    Each sentence starts with the decision's provider. A case can hold one
+    decision per doubled provider, often with the same reasons, and the
+    provider tells the reviewer which pages each sentence is about.
+
+    Args:
+        decision: The doubled-provider decision.
+
+    Returns:
+        The provider-prefixed outcome and review reason sentences.
+    """
+    return [
+        f"{decision.provider}: {sentence}"
+        for sentence in (
+            decision.outcome.value,
+            *(reason.value for reason in decision.review_reasons),
+        )
+    ]

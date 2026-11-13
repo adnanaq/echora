@@ -23,12 +23,12 @@ class Tooltip(StrEnum):
     """Static tooltip text constants for buttons, columns, tabs, and navigation controls."""
 
     # Tabs and page layout.
-    CASES_TAB = "Answer the review cases, then Run"
+    CASES_TAB = "Review and answer open cases, then run seed cleaning"
     CORRECTIONS_TAB = "View changes made to seed entries by the previous run"
     HIDE_CASE_LIST = "Hide the case list"
     SHOW_CASE_LIST = "Show the case list"
     RESIZE_CASE_LIST = (
-        "Drag, or use the arrow keys, to change the case list's width. "
+        "Drag or use the arrow keys to resize the case list. "
         "Double-click to restore the default width."
     )
     FIRST_PAGE = "First page"
@@ -43,8 +43,8 @@ class Tooltip(StrEnum):
         "Edits that violate placement rules remain unsaved and are marked rejected."
     )
     RUN_PIPELINE = (
-        "Apply every saved answer to the seed database using cached provider pages "
-        "without network fetching. Run is enabled once all staged edits are saved."
+        "Apply all saved answers to the seed entries using cached provider pages. "
+        "Enabled once all unsaved edits are saved."
     )
     RUN_CHANGES_PREFIX = "Saved changes:"
 
@@ -53,68 +53,84 @@ class Tooltip(StrEnum):
         "Clear all active filters and search terms to display every review case"
     )
     APPLIED_ANSWER_ICON = (
-        "Applied: the last run applied this case's saved answer, so the case is "
-        "corrected. Every later run applies the saved answer again."
+        "Applied: the previous run applied this case's saved answer to the seed "
+        "entries. Every subsequent run reapplies the saved answer."
     )
-    APPLIED_ANSWER_KIND_COUNT = (
-        "While some cases of this kind are unresolved, the count reads cases whose "
-        "answer the last run applied / all cases. Once every case is resolved, the "
-        "count shows the total alone."
-    )
+    UNRESOLVED_CASE_KIND_COUNT = "The count shows resolved / total cases."
+    RESOLVED_CASE_KIND_COUNT = "All cases are resolved; the count shows the total."
     SUGGESTED_ANSWER_PILL = (
-        "Matching rules have suggested an answer. "
-        "The case opens on this suggestion, and Accept saves it."
+        "Matching rules suggested an answer for this case. "
+        "Select Accept to save the suggestion."
     )
+    PREVIOUS_ANSWER_PILL = (
+        "A seed release changed this case's pages after it was answered. "
+        "Answer the case again to place the added pages."
+    )
+    PREVIOUS_ANSWER_APPLIED = (
+        "The previous answer still places the pages it covered, and the case "
+        "opens with those placements. Place the added pages, then save."
+    )
+    PREVIOUS_ANSWER_NOT_APPLIED = (
+        "The seed release changed which entries this case holds, so the previous "
+        "answer no longer applies. The previous placements are shown below for "
+        "reference."
+    )
+    ADDED_PAGE_PILL = "The seed release added this page since the previous answer"
     UNUSED_ANSWER_PILL = (
-        "The previous pipeline run resolved this case through other decisions. "
-        "This saved answer was not applied."
+        "The previous run did not apply this saved answer because a seed release "
+        "or another answer already settled its pages. The answer remains saved in "
+        "the review file."
     )
+    UNUSED_ANSWER_ACTION = "No action is needed unless a new case includes these pages."
 
     # Case panel.
     SHOW_CORRECTIONS = "Open this entry on the Corrections tab"
     WORK_COLUMN = (
         "Select which work the provider page belongs to. "
-        "All pages assigned the same number form one work."
+        "All pages assigned the same work number form one work."
     )
-    NO_LINKED_PAGE_ANSWER = "No answer selected yet. The review case remains open."
+    NO_LINKED_PAGE_ANSWER = (
+        "Leave the case unanswered for now. The review case remains open."
+    )
     CHANGED_CHOICE_MARK = (
         "This placement differs from the baseline answer recorded by the previous run"
     )
     TARGET_ENTRY_DROPDOWN = (
-        "Select the seed entry the page moves to. New entry assigns the page to a "
-        "new work entry; other entry takes a page key or provider address."
+        "Select the seed entry that the page moves to. Choose New entry to create "
+        "a separate entry, or select an existing entry by title or page key."
     )
     TARGET_ENTRY_KEY_INPUT = (
-        "Paste the target seed entry's page key or provider address, then press Enter."
+        "Type or paste a seed entry's title, page key, or provider address"
     )
     WORKS_SECTION = (
-        "A page covering several works is a source of one of them and a partial "
-        "source of the others. Enrichment never fetches a partial source."
+        "A page that covers multiple works is a full source of one work and a "
+        "partial source of the others. Enrichment never fetches a partial source."
     )
     PARTIAL_SOURCE_PICKER = (
-        "Add pages that are a source of another work and also cover this one"
+        "Select pages from other works that also cover this work as partial sources"
     )
-    PARTIAL_SOURCE_ADD = "Add the ticked pages as partial sources of this work"
+    PARTIAL_SOURCE_ADD = "Add the selected pages as partial sources of this work"
     PARTIAL_SOURCE_NEEDS_WORK = (
-        "Give a page of this case a work first; then it can be added here."
+        "Assign a page in this case to a work first; then it can be added here."
     )
     OUTSIDE_THIS_CASE = (
-        "A seed entry outside this case that a page of the case also covers"
+        "This seed entry is outside the current case, and a page in this case "
+        "also covers it"
     )
-    PARTIAL_SOURCE_SEARCH = "Type part of a page key or title to filter the pages"
-    PARTIAL_SOURCE_REMOVE = "Stop listing this page as a partial source of the work"
+    PARTIAL_SOURCE_SEARCH = "Filter candidate pages by page key or title"
+    PARTIAL_SOURCE_REMOVE = "Remove this page as a partial source of the work"
     NOT_OFFERED_PREFIX = "Not offered:"
     RESET_ANSWER = (
-        "Revert choices to the baseline answer recorded by the previous run, and "
-        "save that answer"
+        "Restore the baseline answer from the previous run and save it to the "
+        "review file"
     )
-    ACCEPT_SUGGESTION = "Save the complete suggested answer to the review file"
+    ACCEPT_SUGGESTION = "Save the suggested answer to the review file"
     SAVE_ANSWER = (
-        "Validate the selected answer against placement rules and save it to the "
-        "review file. The next Run applies it."
+        "Validate the current answer against placement rules and save it to the "
+        "review file"
     )
     SAVE_ANSWER_AND_NEXT = (
-        "Save the active answer and open the next review case in the filtered list"
+        "Save the current answer and open the next review case in the filtered list"
     )
 
     # Corrections tab.
@@ -123,24 +139,26 @@ class Tooltip(StrEnum):
         "every corrected entry"
     )
     ENTRY_FROM_ANSWER_PILL = (
-        "A reviewer's answer placed at least one of this entry's pages"
+        "A reviewer's answer placed at least one page in this entry"
     )
     PAGE_FROM_ANSWER_PILL = "A reviewer's answer placed this page"
-    SHOW_CASE = "Open this case on the Cases tab"
+    SHOW_CASE = "Open this review case on the Cases tab"
     CHANGE_COLUMN = (
-        "The change applied to the page, matching the categories in the run summary"
+        "Shows the change applied to the page, matching the categories in the "
+        "run summary"
     )
     DESTINATION_COLUMN = (
-        "Where the page is placed (this entry, another seed entry, a new entry, "
-        "or its current address)"
+        "Shows where the page is placed (this entry, another seed entry, a new "
+        "entry, or its current address)"
     )
     PLACE_COLUMN = (
-        "The page's place as the answer writes it, with the works it is a "
-        "partial source of"
+        "Shows the placement recorded for the page, including any works it "
+        "covers as a partial source"
     )
-    REASON_COLUMN = "The matching rule or decision that determined this placement"
+    REASON_COLUMN = "Shows the matching rule or decision that determined this placement"
     SOURCE_COLUMN = (
-        "Whether the placement was determined by a reviewer's answer or by rules alone"
+        "Shows whether the placement came from a reviewer's answer or from "
+        "matching rules"
     )
 
 
@@ -151,28 +169,28 @@ EDIT_STATE_TOOLTIPS: Final[dict[str, str]] = {
         "Staged edits remain in this browser and are not saved."
     ),
     "edited, not saved": (
-        "The answer was changed in this browser and not saved yet. "
-        "Save or Save all writes the edits to the review file."
+        "The answer has unsaved edits in this browser. "
+        "Select Save or Save all to write them to the review file."
     ),
     "saved, applies on Run": (
-        "The answer is saved to the review file. "
-        "The next Run applies the saved answer to the seed database."
+        "The saved answer differs from the previous run. "
+        "Select Run to apply it to the seed entries."
     ),
     "unchanged": (
-        "The answer matches the baseline recorded by the previous run with no "
-        "pending changes"
+        "The answer matches the baseline from the previous run with no pending changes"
     ),
 }
 
 # Keyed by CaseState values.
 CASE_STATE_TOOLTIPS: Final[dict[str, str]] = {
-    "open": "The review file holds no answer for this case yet",
-    "answered": "The review file holds a saved answer for this case",
-    "changed": (
-        "The saved answer differs from the baseline answer recorded by the "
-        "previous run. The next Run applies it."
+    "open": "Show cases that are open and not resolved yet",
+    "answered": "Show cases that are resolved",
+    "changed": "Show cases whose saved answer changed since the last run",
+    "new": "Show cases that appeared for the first time in the latest run",
+    "previous answer": (
+        "Show open cases that replace a previously answered case after a seed "
+        "release changed its pages"
     ),
-    "new": "The latest pipeline run identified this review case for the first time",
 }
 
 # Keyed by the change names the run summary counts, and "unchanged".
@@ -184,11 +202,12 @@ CORRECTION_CHANGE_TOOLTIPS: Final[dict[str, str]] = {
         "Show entries where an answer dropped a duplicate page"
     ),
     "old addresses dropped": (
-        "Show entries where the run dropped an old address because "
-        "the entry already lists the current address"
+        "Show entries where the run dropped an outdated page address because "
+        "the entry already holds the current address"
     ),
     "dead pages dropped": (
-        "Show entries where the run dropped a page its provider says no longer exists"
+        "Show entries where the run dropped a page that no longer exists on its "
+        "provider"
     ),
     "pages moved to a seed entry": (
         "Show entries where the run moved a page to another seed entry"

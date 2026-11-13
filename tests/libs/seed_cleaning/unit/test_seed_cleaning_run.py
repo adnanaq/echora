@@ -5,21 +5,25 @@ from pathlib import Path
 
 import pytest
 from seed_cleaning.seed_cleaning_run import (
+    find_doubled_provider_entries,
     read_seed_cleaning_run_result,
     run_seed_cleaning,
 )
 from work_matching import (
     KnownWorkEntriesFromSeed,
+    PreviousAnswer,
     ProviderPage,
     ProviderPageStore,
     ReviewCase,
     ReviewFile,
     ReviewFileLockedError,
+    WorkEntry,
 )
 
 MAL = "https://myanimelist.net/anime/1"
 KITSU_ONE = "https://kitsu.app/anime/1"
 KITSU_TWO = "https://kitsu.app/anime/2"
+KITSU_THREE = "https://kitsu.app/anime/3"
 OTHER_MAL = "https://myanimelist.net/anime/9"
 OTHER_KITSU_ONE = "https://kitsu.app/anime/91"
 OTHER_KITSU_TWO = "https://kitsu.app/anime/92"
@@ -81,8 +85,11 @@ def _run(seed_document, store, data_dir, **options):
 def test_run_seed_cleaning_lists_cases_and_open_count(
     seed_document, store, data_dir
 ) -> None:
-    result = _run(seed_document, store, data_dir)
-    assert (result.case_names, result.correction_counts["review cases open"]) == (
+    run_result = _run(seed_document, store, data_dir)
+    assert (
+        run_result.case_names,
+        run_result.correction_counts["review cases open"],
+    ) == (
         (DOUBLED_CASE_NAME,),
         1,
     )
@@ -91,8 +98,8 @@ def test_run_seed_cleaning_lists_cases_and_open_count(
 def test_run_seed_cleaning_writes_result_file_read_back_unchanged(
     seed_document, store, data_dir
 ) -> None:
-    result = _run(seed_document, store, data_dir)
-    assert read_seed_cleaning_run_result(data_dir) == result
+    run_result = _run(seed_document, store, data_dir)
+    assert read_seed_cleaning_run_result(data_dir) == run_result
 
 
 def test_run_seed_cleaning_keeps_seed_file(seed_document, store, data_dir) -> None:
@@ -117,8 +124,8 @@ def test_run_seed_cleaning_case_missing_from_previous_run_marked_new(
     store.add_pages(
         _page(OTHER_KITSU_ONE, OTHER_MAL), _page(OTHER_KITSU_TWO, OTHER_MAL)
     )
-    result = _run(seed_document, store, data_dir)
-    assert result.new_case_names == (
+    run_result = _run(seed_document, store, data_dir)
+    assert run_result.new_case_names == (
         "doubled provider: kitsu:anime:91 kitsu:anime:92 in mal:anime:9",
     )
 
@@ -129,11 +136,11 @@ def test_run_seed_cleaning_keeps_answers_as_written_as_originals(
     _run(seed_document, store, data_dir)
     answer = {"kitsu:anime:1": "work 1", "kitsu:anime:2": "dropped"}
     ReviewFile(data_dir / "review.jsonl").save_answers({DOUBLED_CASE_NAME: answer})
-    result = _run(seed_document, store, data_dir)
+    run_result = _run(seed_document, store, data_dir)
     assert (
-        result.original_answers,
-        result.correction_counts["review cases answered"],
-        result.correction_counts["duplicate pages dropped"],
+        run_result.original_answers,
+        run_result.correction_counts["review cases answered"],
+        run_result.correction_counts["duplicate pages dropped"],
     ) == ({DOUBLED_CASE_NAME: answer}, 1, 1)
 
 
@@ -155,7 +162,22 @@ def test_run_seed_cleaning_lists_answers_whose_case_is_gone(
     _run(seed_document, store, data_dir)
     gone_case = ReviewCase.model_validate_json(
         (data_dir / "review.jsonl").read_text(encoding="utf-8")
-    ).model_copy(update={"case_name": "doubled provider: kitsu:anime:5 in mal:anime:5"})
+    ).model_copy(
+        update={
+            "case_name": "doubled provider: kitsu:anime:5 in mal:anime:5",
+            "entries": {
+                "mal:anime:5": WorkEntry(
+                    title="Gone",
+                    type="TV",
+                    year=2020,
+                    addresses_by_page_key={
+                        "mal:anime:5": "https://myanimelist.net/anime/5",
+                        "kitsu:anime:5": "https://kitsu.app/anime/5",
+                    },
+                )
+            },
+        }
+    )
     with (data_dir / "review.jsonl").open("a", encoding="utf-8") as review_file:
         review_file.write(gone_case.model_dump_json() + "\n")
     ReviewFile(data_dir / "review.jsonl").save_answers(
@@ -166,6 +188,39 @@ def test_run_seed_cleaning_lists_answers_whose_case_is_gone(
     )
 
 
+def test_run_seed_cleaning_release_adding_doubled_page_keeps_previous_answer_applied(
+    seed_document, store, data_dir
+) -> None:
+    _run(seed_document, store, data_dir)
+    answer = {"kitsu:anime:1": "work 1", "kitsu:anime:2": "dropped"}
+    ReviewFile(data_dir / "review.jsonl").save_answers({DOUBLED_CASE_NAME: answer})
+    seed_document["data"][0]["sources"].append(KITSU_THREE)
+    store.add_pages(_page(KITSU_THREE, MAL))
+    run_result = _run(seed_document, store, data_dir)
+    [carrying_case] = [
+        ReviewCase.model_validate_json(line)
+        for line in (data_dir / "review.jsonl").read_text(encoding="utf-8").splitlines()
+        if json.loads(line)["case_name"] != DOUBLED_CASE_NAME
+    ]
+    dropped_page_keys = [
+        correction["page_key"]
+        for correction in map(
+            json.loads,
+            (data_dir / "corrections.jsonl").read_text(encoding="utf-8").splitlines(),
+        )
+        if correction["is_dropped_page"]
+    ]
+    assert run_result.unused_answer_case_names == ()
+    assert run_result.correction_counts["open cases placed by a previous answer"] == 1
+    assert carrying_case.previous_answer == PreviousAnswer(
+        case_name=DOUBLED_CASE_NAME,
+        answer=answer,
+        added_page_keys=("kitsu:anime:3",),
+        is_applied=True,
+    )
+    assert dropped_page_keys == ["kitsu:anime:2"]
+
+
 def test_run_seed_cleaning_dead_pages_dropped_before_any_case(
     seed_document, store, data_dir
 ) -> None:
@@ -173,7 +228,7 @@ def test_run_seed_cleaning_dead_pages_dropped_before_any_case(
     store.add_pages(
         ProviderPage.build_dead_page(KITSU_TWO), ProviderPage.build_dead_page(OTHER_MAL)
     )
-    result = _run(seed_document, store, data_dir)
+    run_result = _run(seed_document, store, data_dir)
     dead_page_corrections = [
         (correction["entry_reference_page"], correction["page_key"])
         for correction in map(
@@ -182,13 +237,13 @@ def test_run_seed_cleaning_dead_pages_dropped_before_any_case(
         )
         if correction["is_dead_page"]
     ]
-    assert result.case_names == ()
+    assert run_result.case_names == ()
     assert dead_page_corrections == [
         ("mal:anime:1", "kitsu:anime:2"),
         ("mal:anime:9", "mal:anime:9"),
     ]
-    assert result.correction_counts["dead pages dropped"] == 2
-    assert result.corrected_entry_counts["entries removed, no page left"] == 1
+    assert run_result.correction_counts["dead pages dropped"] == 2
+    assert run_result.corrected_entry_counts["entries removed, no page left"] == 1
 
 
 def test_run_seed_cleaning_dead_reference_page_corrections_name_seed_entry(
@@ -207,8 +262,8 @@ def test_run_seed_cleaning_dead_reference_page_corrections_name_seed_entry(
     ReviewFile(data_dir / "review.jsonl").save_answers(
         {case_name: {"kitsu:anime:91": "work 1", "kitsu:anime:92": "work 2"}}
     )
-    result = _run(seed_document, store, data_dir)
-    assert result.rejected_answer_case_names == ()
+    run_result = _run(seed_document, store, data_dir)
+    assert run_result.rejected_answer_case_names == ()
     assert [
         (
             correction["entry_reference_page"],
@@ -255,3 +310,22 @@ def test_run_seed_cleaning_review_file_locked_by_other_process_raises(
 
 def test_read_seed_cleaning_run_result_no_run_yet_gives_none(data_dir) -> None:
     assert read_seed_cleaning_run_result(data_dir) is None
+
+
+def test_find_doubled_provider_entries_lists_entry_with_two_pages_of_one_provider(
+    seed_works,
+) -> None:
+    assert [entry.title for entry in find_doubled_provider_entries(seed_works)] == [
+        "Boku Dake no Rock Star"
+    ]
+
+
+def test_find_doubled_provider_entries_simkl_and_animecountdown_same_number_not_listed(
+    seed_works,
+) -> None:
+    cue = next(work for work in seed_works if work.title == "Cue!")
+    assert {
+        "simkl:anime:1467793",
+        "animecountdown:anime:1467793",
+    } <= cue.addresses_by_page_key.keys()
+    assert find_doubled_provider_entries([cue]) == []

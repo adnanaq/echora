@@ -35,7 +35,6 @@ from review_page.case_views import (
     resolve_shown_answer,
 )
 from review_page.correction_views import list_case_correction_links
-from review_page.htmx_responses import build_event_response, build_notice_response
 from review_page.models import (
     BrowserState,
     BrowserStateField,
@@ -44,24 +43,26 @@ from review_page.models import (
 from review_page.page_state import (
     build_page_buttons,
     build_suggested_answer,
-    count_applied_answer_rows_by_kind,
     count_case_rows,
+    count_resolved_rows_by_kind,
     filter_case_rows,
     find_next_case_name,
     paginate_rows,
     resolve_row_edit_state,
 )
+from review_page.request_guards import build_event_response, build_notice_response
 from review_page.review_case_messages import (
     build_case_answer,
-    convert_message_to_case,
 )
 from review_page.review_case_source import (
     ANSWER_SAVED_ELSEWHERE_RULE_NAME,
     ReviewCaseSource,
     SeedFileUnavailableError,
+    load_case,
     load_cases,
     load_last_run_summary,
 )
+from review_page.review_choices import choose_group_page_place, choose_partial_sources
 from shared_proto.v1 import review_cases_pb2
 from work_matching import (
     OTHER_WORK,
@@ -70,8 +71,6 @@ from work_matching import (
     ReviewFileLockedError,
     SavedAnswerChangedError,
     UnknownCaseError,
-    choose_group_page_place,
-    choose_partial_sources,
     list_named_entry_page_keys,
     resolve_page_key,
 )
@@ -178,7 +177,7 @@ class CaseRoutes:
             {
                 "case_page": case_page,
                 "chip_counts": count_case_rows(all_rows, case_filter),
-                "applied_answer_counts": count_applied_answer_rows_by_kind(all_rows),
+                "resolved_case_counts": count_resolved_rows_by_kind(all_rows),
                 "row_edit_states": {
                     row.case_name: resolve_row_edit_state(row, case_filter)
                     for row in case_page.rows
@@ -237,7 +236,7 @@ class CaseRoutes:
             header carrying the updated answer and baseline saved answer.
         """
         state = BrowserState.parse_form_field(browser_state)
-        case = self._load_case(state.open_case_name)
+        case = load_case(self._source, state.open_case_name)
         if case is None:
             return self._render_case(request, state, None, None)
         current_answer = resolve_shown_answer(case, state.edits.get(case.case_name))
@@ -350,14 +349,14 @@ class CaseRoutes:
         Returns:
             The rendered ``case_panel.html`` response.
         """
-        case = case or self._load_case(case_name)
+        case = case or load_case(self._source, case_name)
         if case is None:
             return self._templates.TemplateResponse(
                 request, "case_panel.html", {"view": None}
             )
         last_run_summary = load_last_run_summary(self._source)
         unsaved_answer = state.edits.get(case.case_name)
-        view = build_case_view(
+        case_view = build_case_view(
             case,
             original_answer=find_original_answer(case, last_run_summary),
             unsaved_answer=unsaved_answer,
@@ -372,7 +371,7 @@ class CaseRoutes:
             request,
             "case_panel.html",
             {
-                "view": view,
+                "view": case_view,
                 "rejected_sentences": state.rejected.get(case.case_name, []),
                 "correction_links": list_case_correction_links(
                     case, self._source.list_corrections()
@@ -381,18 +380,6 @@ class CaseRoutes:
                 and case.case_name in last_run_summary.unused_answer_case_names,
             },
         )
-
-    def _load_case(self, case_name: str | None) -> ReviewCase | None:
-        """Load a single review case by name from the source.
-
-        Args:
-            case_name: The case identifier to look up, or None.
-
-        Returns:
-            The converted ``ReviewCase`` domain model, or None when absent.
-        """
-        message = self._source.get_case(case_name) if case_name else None
-        return None if message is None else convert_message_to_case(message)
 
 
 def _write_work(work: str, named_entry: str) -> str | None:
@@ -458,11 +445,11 @@ def _build_answers_saved_event(
         next_case_name: The next case identifier to open for ``save_next``, or None.
 
     Returns:
-        A dictionary containing ``saved`` case names, ``rejected`` rule sentences,
-        ``saved_elsewhere`` case names, ``warnings``, and ``next_case_name``.
+        A dictionary containing ``saved_cases``, ``rejected`` rule sentences,
+        ``cases_saved_elsewhere``, ``warnings``, and ``next_case_name``.
     """
     return {
-        "saved": [
+        "saved_cases": [
             check_result.case_name
             for check_result in check_results
             if check_result.is_saved
@@ -472,7 +459,7 @@ def _build_answers_saved_event(
             for check_result in check_results
             if not check_result.is_saved
         },
-        "saved_elsewhere": [
+        "cases_saved_elsewhere": [
             check_result.case_name
             for check_result in check_results
             if ANSWER_SAVED_ELSEWHERE_RULE_NAME in check_result.broken_rule_names

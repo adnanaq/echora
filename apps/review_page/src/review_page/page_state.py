@@ -44,7 +44,8 @@ from review_page.models import (
     PageButtons,
     SavedChange,
 )
-from work_matching import ReviewCase, ReviewCaseKind, list_required_page_keys
+from review_page.review_choices import list_required_page_keys
+from work_matching import ReviewCase, ReviewCaseKind
 
 ROWS_PER_PAGE = 25
 
@@ -61,13 +62,15 @@ def resolve_saved_change(
     Returns:
         The comparative change status: UNCHANGED, ANSWERED, CHANGED, or CLEARED.
     """
-    normalized_original = _normalize_answer(original_answer)
-    normalized_saved = _normalize_answer(saved_answer)
-    if normalized_saved == normalized_original:
+    normalized_original_answer = _normalize_answer(original_answer)
+    normalized_saved_answer = _normalize_answer(saved_answer)
+    if normalized_saved_answer == normalized_original_answer:
         return SavedChange.UNCHANGED
-    if normalized_original is None:
+    if normalized_original_answer is None:
         return SavedChange.ANSWERED
-    return SavedChange.CLEARED if normalized_saved is None else SavedChange.CHANGED
+    return (
+        SavedChange.CLEARED if normalized_saved_answer is None else SavedChange.CHANGED
+    )
 
 
 def resolve_case_edit_state(
@@ -171,20 +174,28 @@ def build_case_buttons(
     """
     if is_run_going:
         return CaseButtons(False, False, False, False)
-    normalized_original, normalized_saved, normalized_chosen = map(
-        _normalize_answer, (original_answer, saved_answer, chosen_answer)
-    )
-    suggestion = _normalize_answer(build_suggested_answer(case))
-    is_save_enabled = normalized_chosen != (
-        normalized_saved if normalized_saved is not None else suggestion
+    (
+        normalized_original_answer,
+        normalized_saved_answer,
+        normalized_chosen_answer,
+    ) = map(_normalize_answer, (original_answer, saved_answer, chosen_answer))
+    normalized_suggestion = _normalize_answer(build_suggested_answer(case))
+    is_save_enabled = normalized_chosen_answer != (
+        normalized_saved_answer
+        if normalized_saved_answer is not None
+        else normalized_suggestion
     )
     return CaseButtons(
         is_save_enabled=is_save_enabled,
         is_accept_enabled=is_suggestion_complete(case)
-        and suggestion != normalized_saved,
-        is_reset_enabled=normalized_saved != normalized_original
-        or normalized_chosen
-        != (normalized_original if normalized_original is not None else suggestion),
+        and normalized_suggestion != normalized_saved_answer,
+        is_reset_enabled=normalized_saved_answer != normalized_original_answer
+        or normalized_chosen_answer
+        != (
+            normalized_original_answer
+            if normalized_original_answer is not None
+            else normalized_suggestion
+        ),
         is_save_and_next_enabled=is_save_enabled,
     )
 
@@ -282,21 +293,25 @@ def count_case_rows(rows: Sequence[CaseRow], case_filter: CaseFilter) -> dict[st
     return counts
 
 
-def count_applied_answer_rows_by_kind(rows: Sequence[CaseRow]) -> dict[str, int]:
-    """Count the case rows of each kind whose saved answer the last run applied.
+def count_resolved_rows_by_kind(rows: Sequence[CaseRow]) -> dict[str, int]:
+    """Count the resolved case rows of each kind.
+
+    A case is resolved when the last run applied its saved answer, or when its
+    answer is unused because a seed release or another answer already settled
+    its pages. Neither leaves anything to decide.
 
     Args:
         rows: The full list of case rows before filtering.
 
     Returns:
-        Each kind value mapped to its number of applied-answer rows; kinds
-        without any are mapped to 0.
+        Each kind value mapped to its number of resolved rows; kinds without
+        any are mapped to 0.
     """
-    applied_answer_counts = dict.fromkeys((kind.value for kind in ReviewCaseKind), 0)
+    resolved_case_counts = dict.fromkeys((kind.value for kind in ReviewCaseKind), 0)
     for row in rows:
-        if row.is_answer_applied:
-            applied_answer_counts[row.kind.value] += 1
-    return applied_answer_counts
+        if row.is_answer_applied or row.is_answer_unused:
+            resolved_case_counts[row.kind.value] += 1
+    return resolved_case_counts
 
 
 def paginate_rows[Row](rows: Sequence[Row], page_number: int) -> ListPage[Row]:
@@ -342,23 +357,6 @@ def find_next_case_name(rows: Sequence[CaseRow], case_name: str) -> str | None:
     return case_names[position + 1] if position + 1 < len(case_names) else None
 
 
-def _resolve_case_states(row: CaseRow) -> set[str]:
-    """Resolve all case state filter values that apply to a given case row.
-
-    Args:
-        row: The case row being classified.
-
-    Returns:
-        A set of state strings matching the row (e.g. 'open', 'answered', 'changed', 'new').
-    """
-    states = {CaseState.OPEN.value if row.is_open else CaseState.ANSWERED.value}
-    if row.saved_change is not SavedChange.UNCHANGED:
-        states.add(CaseState.CHANGED.value)
-    if row.is_new:
-        states.add(CaseState.NEW.value)
-    return states
-
-
 def resolve_row_edit_state(row: CaseRow, case_filter: CaseFilter) -> CaseEditState:
     """Resolve the edit state for a row using active browser state collections.
 
@@ -374,6 +372,26 @@ def resolve_row_edit_state(row: CaseRow, case_filter: CaseFilter) -> CaseEditSta
         has_unsaved_change=row.case_name in case_filter.unsaved_case_names,
         saved_change=row.saved_change,
     )
+
+
+def _resolve_case_states(row: CaseRow) -> set[str]:
+    """Resolve all case state filter values that apply to a given case row.
+
+    Args:
+        row: The case row being classified.
+
+    Returns:
+        A set of state strings matching the row (e.g. 'open', 'answered',
+        'changed', 'new', 'previous answer').
+    """
+    states = {CaseState.OPEN.value if row.is_open else CaseState.ANSWERED.value}
+    if row.saved_change is not SavedChange.UNCHANGED:
+        states.add(CaseState.CHANGED.value)
+    if row.is_new:
+        states.add(CaseState.NEW.value)
+    if row.has_previous_answer:
+        states.add(CaseState.PREVIOUS_ANSWER.value)
+    return states
 
 
 def _resolve_edit_state(

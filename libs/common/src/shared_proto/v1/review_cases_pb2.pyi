@@ -143,7 +143,7 @@ class LinkedPageDecision(_message.Message):
     def __init__(self, page_key: _Optional[str] = ..., reason: _Optional[str] = ..., linking_entries: _Optional[_Iterable[_Union[WorkEntry, _Mapping]]] = ..., entry_episode_count: _Optional[int] = ...) -> None: ...
 
 class ReviewCase(_message.Message):
-    __slots__ = ("case_name", "answer", "suggested_answer", "reasons", "candidate_evidence", "entries", "doubled_provider_decisions", "linked_page_decisions", "pages", "named_entry_reference_pages", "target_entry_suggestions", "covered_outside_entries")
+    __slots__ = ("case_name", "answer", "suggested_answer", "reasons", "candidate_evidence", "entries", "doubled_provider_decisions", "linked_page_decisions", "pages", "named_entry_reference_pages", "target_entry_suggestions", "covered_outside_entries", "previous_answer")
     class NamedEntryReferencePagesEntry(_message.Message):
         __slots__ = ("key", "value")
         KEY_FIELD_NUMBER: _ClassVar[int]
@@ -163,6 +163,7 @@ class ReviewCase(_message.Message):
     NAMED_ENTRY_REFERENCE_PAGES_FIELD_NUMBER: _ClassVar[int]
     TARGET_ENTRY_SUGGESTIONS_FIELD_NUMBER: _ClassVar[int]
     COVERED_OUTSIDE_ENTRIES_FIELD_NUMBER: _ClassVar[int]
+    PREVIOUS_ANSWER_FIELD_NUMBER: _ClassVar[int]
     case_name: str
     answer: _struct_pb2.Value
     suggested_answer: _containers.RepeatedCompositeFieldContainer[PagePlace]
@@ -175,7 +176,20 @@ class ReviewCase(_message.Message):
     named_entry_reference_pages: _containers.ScalarMap[str, str]
     target_entry_suggestions: _containers.RepeatedCompositeFieldContainer[TargetEntrySuggestion]
     covered_outside_entries: _containers.RepeatedCompositeFieldContainer[TargetEntrySuggestion]
-    def __init__(self, case_name: _Optional[str] = ..., answer: _Optional[_Union[_struct_pb2.Value, _Mapping]] = ..., suggested_answer: _Optional[_Iterable[_Union[PagePlace, _Mapping]]] = ..., reasons: _Optional[_Iterable[str]] = ..., candidate_evidence: _Optional[_Iterable[str]] = ..., entries: _Optional[_Iterable[_Union[CaseEntry, _Mapping]]] = ..., doubled_provider_decisions: _Optional[_Iterable[_Union[DoubledProviderDecision, _Mapping]]] = ..., linked_page_decisions: _Optional[_Iterable[_Union[LinkedPageDecision, _Mapping]]] = ..., pages: _Optional[_Iterable[_Union[ProviderPage, _Mapping]]] = ..., named_entry_reference_pages: _Optional[_Mapping[str, str]] = ..., target_entry_suggestions: _Optional[_Iterable[_Union[TargetEntrySuggestion, _Mapping]]] = ..., covered_outside_entries: _Optional[_Iterable[_Union[TargetEntrySuggestion, _Mapping]]] = ...) -> None: ...
+    previous_answer: PreviousAnswer
+    def __init__(self, case_name: _Optional[str] = ..., answer: _Optional[_Union[_struct_pb2.Value, _Mapping]] = ..., suggested_answer: _Optional[_Iterable[_Union[PagePlace, _Mapping]]] = ..., reasons: _Optional[_Iterable[str]] = ..., candidate_evidence: _Optional[_Iterable[str]] = ..., entries: _Optional[_Iterable[_Union[CaseEntry, _Mapping]]] = ..., doubled_provider_decisions: _Optional[_Iterable[_Union[DoubledProviderDecision, _Mapping]]] = ..., linked_page_decisions: _Optional[_Iterable[_Union[LinkedPageDecision, _Mapping]]] = ..., pages: _Optional[_Iterable[_Union[ProviderPage, _Mapping]]] = ..., named_entry_reference_pages: _Optional[_Mapping[str, str]] = ..., target_entry_suggestions: _Optional[_Iterable[_Union[TargetEntrySuggestion, _Mapping]]] = ..., covered_outside_entries: _Optional[_Iterable[_Union[TargetEntrySuggestion, _Mapping]]] = ..., previous_answer: _Optional[_Union[PreviousAnswer, _Mapping]] = ...) -> None: ...
+
+class PreviousAnswer(_message.Message):
+    __slots__ = ("case_name", "answer", "added_page_keys", "is_applied")
+    CASE_NAME_FIELD_NUMBER: _ClassVar[int]
+    ANSWER_FIELD_NUMBER: _ClassVar[int]
+    ADDED_PAGE_KEYS_FIELD_NUMBER: _ClassVar[int]
+    IS_APPLIED_FIELD_NUMBER: _ClassVar[int]
+    case_name: str
+    answer: _struct_pb2.Value
+    added_page_keys: _containers.RepeatedScalarFieldContainer[str]
+    is_applied: bool
+    def __init__(self, case_name: _Optional[str] = ..., answer: _Optional[_Union[_struct_pb2.Value, _Mapping]] = ..., added_page_keys: _Optional[_Iterable[str]] = ..., is_applied: _Optional[bool] = ...) -> None: ...
 
 class TargetEntrySuggestion(_message.Message):
     __slots__ = ("entry_reference_page", "title", "providers")

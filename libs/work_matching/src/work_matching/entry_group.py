@@ -38,18 +38,20 @@ Each item gives the rule, then the reason for it.
   and every merged entry would lose its anime id.
 """
 
+from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
+from typing import NamedTuple
 
 from pydantic import JsonValue
 from work_matching.answer_placement_check import (
     PlacementCheck,
     check_answer_placements,
 )
-from work_matching.answer_rules import PlacementRule
 from work_matching.mal_page_check import check_with_mal_pages
-from work_matching.model_doubled_provider_decision import DoubledProviderDecision
+from work_matching.models import DoubledProviderDecision, PlacementRule
 from work_matching.page_details_comparison import MalPageComparison
 from work_matching.page_placement import (
+    FIRST_WORK,
     OTHER_WORK,
     PagePlacement,
     find_page_placement,
@@ -65,7 +67,6 @@ from work_matching.placement_suggestions import suggest_page_placements
 from work_matching.provider_page import ProviderPage
 from work_matching.provider_page_key import rank_by_provider_trust
 from work_matching.provider_page_links import ProviderPageLinks
-from work_matching.surviving_entries import find_surviving_entries
 from work_matching.work_entry import WorkEntry
 
 
@@ -356,3 +357,49 @@ def _list_entries_per_work(
                     placed_page.placement.placement_word, set()
                 ).add(entry.reference_page_key)
     return listing_reference_pages_by_work
+
+
+class _SurvivorCandidate(NamedTuple):
+    """Hold an entry that may survive as a work, ordered so the survivor sorts first."""
+
+    # How far the reference page's provider is trusted, MAL first.
+    provider_rank: int
+    reference_page: str
+
+
+def find_surviving_entries(
+    entries: Iterable[WorkEntry],
+    placements: Mapping[str, PagePlacement],
+    current_page_key_by_page_key: Mapping[str, str],
+) -> dict[str, str]:
+    """Find the seed entry each work keeps.
+
+    Args:
+        entries: The seed entries whose pages are placed.
+        placements: Each placed page's placement, by its page key.
+        current_page_key_by_page_key: Each renamed page's current key, by the
+            key an entry lists it under.
+
+    Returns:
+        Each work's placement word (``work 1``, ``work 2`` and so on), mapped to the
+        reference page of the entry the work keeps. A work without a
+        surviving entry is left out, and neither ``other work`` nor
+        ``dropped`` is ever included.
+    """
+    candidates_by_work: defaultdict[str, list[_SurvivorCandidate]] = defaultdict(list)
+    for entry in entries:
+        placed_page = find_page_placement(
+            entry.reference_page_key, placements, current_page_key_by_page_key
+        )
+        placement = placed_page.placement if placed_page else PagePlacement(FIRST_WORK)
+        if placement.is_case_work:
+            candidates_by_work[placement.placement_word].append(
+                _SurvivorCandidate(
+                    rank_by_provider_trust(entry.reference_page_key),
+                    entry.reference_page_key,
+                )
+            )
+    return {
+        placement_word: min(candidates).reference_page
+        for placement_word, candidates in candidates_by_work.items()
+    }

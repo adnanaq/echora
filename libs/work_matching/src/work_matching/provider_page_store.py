@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class ProviderPageStore:
-    """The details of fetched provider pages, by page key, kept in one JSON Lines file.
+    """Store the details of fetched provider pages by page key in one JSON Lines file.
 
     Each rule reads ``<rule>: <behavior>``:
 

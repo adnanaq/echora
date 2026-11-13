@@ -40,7 +40,12 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import replace
 
 from pydantic import JsonValue
-from work_matching.answer_rules import PlacementRule
+from review_page.models import (
+    ChoiceOption,
+    GroupPageChoices,
+    LinkedPageConflict,
+    WorkPartialSources,
+)
 from work_matching.entry_group import combine_group_entries
 from work_matching.linked_page_check import (
     PARTIAL_SOURCE_ANSWER,
@@ -48,19 +53,14 @@ from work_matching.linked_page_check import (
     WHOLE_PAGE_ANSWER,
     check_linked_page_answer,
 )
-from work_matching.model_linked_page_decision import LinkedPageAddition
-from work_matching.model_review_choices import (
-    ChoiceOption,
-    GroupPageChoices,
-    LinkedPageConflict,
-    WorkPartialSources,
-)
+from work_matching.models import LinkedPageAddition, PlacementRule
 from work_matching.page_placement import (
     DROPPED,
     OTHER_WORK,
     PagePlacement,
     list_placeable_page_keys,
     read_placement,
+    read_placements,
     write_placement,
 )
 from work_matching.provider_page_key import read_page_provider
@@ -97,9 +97,7 @@ def list_required_page_keys(
         ``work 2`` or later; otherwise only the doubled pages.
     """
     is_later_work_used = any(
-        (placement := _read_placement(placement_text)) is not None
-        and placement.is_later_work
-        for placement_text in answer.values()
+        placement.is_later_work for placement in read_placements(answer).values()
     )
     if case.kind is ReviewCaseKind.SPLIT_WORK or is_later_work_used:
         return frozenset(list_placeable_case_page_keys(case))
@@ -123,7 +121,7 @@ def list_group_page_choices(
         One entry per placeable page, in ``list_placeable_case_page_keys``
         order, with each disabled choice's rule.
     """
-    placements = _read_placements(answer)
+    placements = read_placements(answer)
     placeable_page_keys = list_placeable_case_page_keys(case)
     required_page_keys = list_required_page_keys(case, answer)
     highest_work_number = max(
@@ -179,7 +177,7 @@ def choose_group_page_place(
     chosen_placement = read_placement(work) if work is not None else None
     if work is not None and chosen_placement is None:
         return {**answer, page_key: work}
-    placements = _read_placements(answer)
+    placements = read_placements(answer)
     previous_placement = placements.pop(page_key, None)
     if chosen_placement is not None:
         kept_partial_works = (
@@ -212,7 +210,7 @@ def list_work_partial_sources(
         then the seed entries outside the case that a page of the case covers,
         and any other entry the answer names as a partial work.
     """
-    placements = _read_placements(answer)
+    placements = read_placements(answer)
     case_work_words = sorted(
         {
             placement.placement_word
@@ -283,46 +281,6 @@ def choose_partial_sources(
             new_answer, page_key, work, is_partial_source=is_partial_source
         )
     return new_answer
-
-
-def _choose_partial_source(
-    answer: Mapping[str, JsonValue],
-    page_key: str,
-    work: str,
-    *,
-    is_partial_source: bool,
-) -> dict[str, JsonValue]:
-    """Return the answer after a page is made, or stops being, a partial source of a work.
-
-    Args:
-        answer: The answer so far: page keys mapped to places.
-        page_key: The page whose partial works change.
-        work: ``work N`` or ``other work <page key>``.
-        is_partial_source: Whether the page becomes a partial source of the
-            work, or stops being one.
-
-    Returns:
-        The new answer. A page without a work of the case, or the work's own
-        page, is left as it is, since it cannot be a partial source there.
-    """
-    placements = _read_placements(answer)
-    placement = placements.get(page_key)
-    if (
-        placement is None
-        or not placement.is_case_work
-        or placement.placement_word == work
-    ):
-        return {**answer}
-    kept_partial_works = tuple(
-        partial_work for partial_work in placement.partial_works if partial_work != work
-    )
-    placements[page_key] = replace(
-        placement,
-        partial_works=(*kept_partial_works, work)
-        if is_partial_source
-        else kept_partial_works,
-    )
-    return _write_answer(answer, page_key, placements)
 
 
 def list_linked_page_options(case: ReviewCase) -> tuple[ChoiceOption, ...]:
@@ -398,6 +356,46 @@ def find_linked_page_conflicts(
         for (entry_reference_page, provider), case_names in case_names_by_target.items()
         if len(case_names) > 1
     )
+
+
+def _choose_partial_source(
+    answer: Mapping[str, JsonValue],
+    page_key: str,
+    work: str,
+    *,
+    is_partial_source: bool,
+) -> dict[str, JsonValue]:
+    """Return the answer after a page is made, or stops being, a partial source of a work.
+
+    Args:
+        answer: The answer so far: page keys mapped to places.
+        page_key: The page whose partial works change.
+        work: ``work N`` or ``other work <page key>``.
+        is_partial_source: Whether the page becomes a partial source of the
+            work, or stops being one.
+
+    Returns:
+        The new answer. A page without a work of the case, or the work's own
+        page, is left as it is, since it cannot be a partial source there.
+    """
+    placements = read_placements(answer)
+    placement = placements.get(page_key)
+    if (
+        placement is None
+        or not placement.is_case_work
+        or placement.placement_word == work
+    ):
+        return {**answer}
+    kept_partial_works = tuple(
+        partial_work for partial_work in placement.partial_works if partial_work != work
+    )
+    placements[page_key] = replace(
+        placement,
+        partial_works=(*kept_partial_works, work)
+        if is_partial_source
+        else kept_partial_works,
+    )
+    return _write_answer(answer, page_key, placements)
 
 
 def _find_work_disabling_rule(
@@ -490,31 +488,3 @@ def _write_answer(
             for placed_page_key, placement in placements.items()
         },
     }
-
-
-def _read_placements(answer: Mapping[str, JsonValue]) -> dict[str, PagePlacement]:
-    """Read the answer's places that follow the answer words; others are left out.
-
-    Args:
-        answer: The raw answer mapping page keys to placement strings.
-
-    Returns:
-        The readable placements by page key.
-    """
-    return {
-        page_key: placement
-        for page_key, placement_text in answer.items()
-        if (placement := _read_placement(placement_text)) is not None
-    }
-
-
-def _read_placement(placement_text: object) -> PagePlacement | None:
-    """Read one place as an answer writes it, or None for anything else.
-
-    Args:
-        placement_text: The raw placement value.
-
-    Returns:
-        The parsed ``PagePlacement``, or None if not a valid placement string.
-    """
-    return read_placement(placement_text) if isinstance(placement_text, str) else None

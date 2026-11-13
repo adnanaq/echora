@@ -1,5 +1,4 @@
-from seed_cleaning.entry_groups import EntryGroup
-from seed_cleaning.split_work_candidates import SplitWorkCandidates
+from seed_cleaning.models import EntryGroup, SplitWorkCandidates
 from work_matching import WorkEntry
 
 

@@ -1,16 +1,23 @@
 import pytest
 from seed_cleaning.cleaning_report import (
+    ANSWER_REASON_SENTENCE,
+    DEAD_PAGE_REASON_SENTENCE,
     build_entries_to_check_document,
     count_corrected_entries,
     count_corrections,
+    describe_correction_reason,
     describe_linked_page_outcomes,
     find_correction_change,
 )
 from seed_cleaning.corrected_entries import CorrectedEntry
 from seed_cleaning.linked_page_additions import LinkedPageCorrections
-from seed_cleaning.seed_corrections import SeedCorrection
+from seed_cleaning.seed_corrections import (
+    DEAD_PAGE_REASON,
+    REVIEW_ANSWER_REASON,
+    SeedCorrection,
+)
 from seed_cleaning.split_work_candidates import SplitWorkCandidates
-from work_matching import WorkEntry
+from work_matching import DoubledProviderOutcome, LinkedPageReason, WorkEntry
 
 
 def _entry(title: str, *addresses: str) -> WorkEntry:
@@ -20,12 +27,12 @@ def _entry(title: str, *addresses: str) -> WorkEntry:
 
 
 def test_build_entries_to_check_document_names_entries_by_reference_page() -> None:
-    doubled = _entry(
+    doubled_entry = _entry(
         "Rock Star",
         "https://anilist.co/anime/120516",
         "https://anilist.co/anime/120517",
     )
-    group = SplitWorkCandidates(
+    candidate_group = SplitWorkCandidates(
         entries=(
             _entry("CUE!", "https://animenewsnetwork.com/encyclopedia/anime.php?id=1"),
             _entry("Cue!", "https://myanimelist.net/anime/43735"),
@@ -33,7 +40,9 @@ def test_build_entries_to_check_document_names_entries_by_reference_page() -> No
         shared_provider=None,
         candidate_evidence=("same title: 'CUE!' and 'Cue!'",),
     )
-    document = build_entries_to_check_document("seed-schema-url", [doubled], [group])
+    document = build_entries_to_check_document(
+        "seed-schema-url", [doubled_entry], [candidate_group]
+    )
     assert document["seed_schema"] == "seed-schema-url"
     assert document["doubled_provider_entries"] == [
         {
@@ -97,6 +106,7 @@ def test_count_corrections_counts_each_change_once() -> None:
         "pages added as partial sources": 1,
         "review cases answered": 0,
         "review cases open": 0,
+        "open cases placed by a previous answer": 0,
     }
 
 
@@ -137,7 +147,7 @@ def test_describe_linked_page_outcomes_counts_then_conflicting_pages_listed() ->
 
 
 @pytest.mark.parametrize(
-    ("fields", "change"),
+    ("fields", "change_name"),
     [
         ({}, None),
         ({"is_dropped_page": True}, "duplicate pages dropped"),
@@ -156,8 +166,50 @@ def test_describe_linked_page_outcomes_counts_then_conflicting_pages_listed() ->
         ),
     ],
 )
-def test_find_correction_change_names_change_counted(fields, change) -> None:
+def test_find_correction_change_names_change_counted(fields, change_name) -> None:
     assert (
         find_correction_change(_correction("kitsu:anime:1", "work 1", **fields))
-        == change
+        == change_name
     )
+
+
+def _reason_correction(reason: str, *, is_added_page: bool = False) -> SeedCorrection:
+    return SeedCorrection(
+        entry_reference_page="mal:anime:1",
+        page_key="kitsu:anime:1",
+        address="https://kitsu.app/anime/1",
+        placement_word="work 1",
+        is_added_page=is_added_page,
+        reason=reason,
+    )
+
+
+def test_describe_correction_reason_answer_says_answer() -> None:
+    assert describe_correction_reason(_reason_correction(REVIEW_ANSWER_REASON)) == (
+        ANSWER_REASON_SENTENCE
+    )
+
+
+def test_describe_correction_reason_dead_page_says_page_does_not_exist() -> None:
+    assert describe_correction_reason(_reason_correction(DEAD_PAGE_REASON)) == (
+        DEAD_PAGE_REASON_SENTENCE
+    )
+
+
+def test_describe_correction_reason_kept_page_gives_doubled_provider_outcome() -> None:
+    assert describe_correction_reason(_reason_correction("SAME_PAGE")) == (
+        DoubledProviderOutcome.SAME_PAGE.value
+    )
+
+
+def test_describe_correction_reason_added_page_gives_linked_page_reason() -> None:
+    assert (
+        describe_correction_reason(
+            _reason_correction("CHECKS_PASSED", is_added_page=True)
+        )
+        == LinkedPageReason.CHECKS_PASSED.value
+    )
+
+
+def test_describe_correction_reason_unknown_name_shown_as_written() -> None:
+    assert describe_correction_reason(_reason_correction("NEWER_RULE")) == "NEWER_RULE"

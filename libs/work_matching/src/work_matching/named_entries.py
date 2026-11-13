@@ -34,7 +34,7 @@ from work_matching.page_details_comparison import (
     MalPageComparison,
     compare_page_with_mal_page,
 )
-from work_matching.page_placement import read_placement
+from work_matching.page_placement import read_placements
 from work_matching.provider_page import ProviderPage
 from work_matching.provider_page_key import read_page_provider
 from work_matching.review_cases import ReviewCase, TargetEntrySuggestion
@@ -59,9 +59,7 @@ def list_named_entry_page_keys(answer: JsonValue) -> list[str]:
         return []
     named_entry_page_keys = (
         named_entry_page_key
-        for placement_text in answer.values()
-        if isinstance(placement_text, str)
-        and (placement := read_placement(placement_text))
+        for placement in read_placements(answer).values()
         for named_entry_page_key in (
             placement.named_entry_page_key,
             *placement.partial_named_entry_page_keys,
@@ -159,28 +157,6 @@ def build_target_entry_suggestion(work_entry: WorkEntry) -> TargetEntrySuggestio
     )
 
 
-def _count_shared_leading_words(first_title: str, second_title: str) -> int:
-    """Count the leading words two titles share once folded for comparison.
-
-    Args:
-        first_title: A title, as written.
-        second_title: Another title, as written.
-
-    Returns:
-        How many words both folded titles start with, in the same order.
-    """
-    shared_word_count = 0
-    for first_word, second_word in zip(
-        fold_title_for_comparison(first_title).split(),
-        fold_title_for_comparison(second_title).split(),
-        strict=False,
-    ):
-        if first_word != second_word:
-            break
-        shared_word_count += 1
-    return shared_word_count
-
-
 def find_covered_outside_entries(
     case: ReviewCase,
     entry_pages_by_reference_page: Mapping[str, Sequence[ProviderPage]],
@@ -223,3 +199,25 @@ def find_covered_outside_entries(
             if not entry_page.is_dead
         )
     )
+
+
+def _count_shared_leading_words(first_title: str, second_title: str) -> int:
+    """Count the leading words two titles share once folded for comparison.
+
+    Args:
+        first_title: A title, as written.
+        second_title: Another title, as written.
+
+    Returns:
+        How many words both folded titles start with, in the same order.
+    """
+    shared_word_count = 0
+    for first_word, second_word in zip(
+        fold_title_for_comparison(first_title).split(),
+        fold_title_for_comparison(second_title).split(),
+        strict=False,
+    ):
+        if first_word != second_word:
+            break
+        shared_word_count += 1
+    return shared_word_count

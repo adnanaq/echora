@@ -1,4 +1,4 @@
-"""Seed corrections: where each checked page ends up, written to one file.
+"""Record where each checked page ends up and write the corrections to a file.
 
 A correction records one page's final place, from the rules or from an accepted
 answer (``group_placement``); a correction can also add a page the seed lacks
@@ -43,11 +43,10 @@ the corrections file".
 """
 
 from collections.abc import Iterable
-from dataclasses import dataclass
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict
-from work_matching import ReviewCase, replace_file_lines
+from seed_cleaning.models import SeedCorrection
+from work_matching import ProviderPageStore, WorkEntry, replace_file_lines
 
 # The reason recorded for a page placed by a review answer.
 REVIEW_ANSWER_REASON = "review answer"
@@ -56,68 +55,15 @@ REVIEW_ANSWER_REASON = "review answer"
 DEAD_PAGE_REASON = "dead page"
 
 
-class SeedCorrection(BaseModel):
-    """Where one checked page ends up, and why."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    # The reference page of the seed entry that lists the page.
-    entry_reference_page: str
-    # The page key and address as the seed entry lists them.
-    page_key: str
-    address: str
-    # The page's work in answer words: ``work 1``, ``work 2`` and so on or
-    # ``other work``. None for a dead page, which the run drops from every work.
-    placement_word: str | None
-    # The current page key, when the seed lists the page under an old address.
-    renamed_to: str | None = None
-    # The reference page of the seed entry the page joins; None when the page
-    # stays or starts a new entry.
-    target_entry_reference_page: str | None = None
-    # The page key an answer named after ``other work``; the page ends up
-    # wherever that named page ends up. None when no answer named a page.
-    named_entry_page_key: str | None = None
-    # The new entry the page joins: pages with the same key form one new entry.
-    # None when the page stays or joins a seed entry.
-    new_entry_key: str | None = None
-    # Whether the page is not in the seed and is added to the entry: a page the
-    # entry's pages link that no seed entry holds.
-    is_added_page: bool = False
-    # Whether the provider says the page does not exist, so the run drops it
-    # from its entry.
-    is_dead_page: bool = False
-    # Whether an answer drops the page as a duplicate page, so it leaves its
-    # entry and joins no other.
-    is_dropped_page: bool = False
-    # The reference pages of the seed entries the page is a partial source of,
-    # as corrections name them.
-    partial_entry_reference_pages: tuple[str, ...] = ()
-    # The new entry keys of the new entries the page is a partial source of.
-    partial_new_entry_keys: tuple[str, ...] = ()
-    # Whether the anime id of the seed entry this added page ends in now comes
-    # from the page (MAL first), so the search entry stored under the entry's
-    # old id must be replaced. Set after both passes (``mark_anime_id_pages``).
-    is_anime_id_page: bool = False
-    # Why the page is placed here: the doubled-provider decision's outcome name,
-    # the linked-page decision's reason name, ``review answer``, or
-    # ``dead page``.
-    reason: str
-
-
-@dataclass(frozen=True)
-class PlacementCorrections:
-    """The corrections placing the pages of the entries checked, and their review cases."""
-
-    corrections: tuple[SeedCorrection, ...]
-    # Every case of this run, with its kept answer, for the review file.
-    review_cases: tuple[ReviewCase, ...]
-
-
 def write_corrections(path: str | Path, corrections: Iterable[SeedCorrection]) -> None:
     """Write the corrections in place of the corrections file, one per line.
 
     Lines are sorted by entry and page, so the same corrections always give the
     same file and two runs can be compared line by line.
+
+    Args:
+        path: The corrections JSON Lines file path.
+        corrections: The seed corrections to write.
     """
     replace_file_lines(
         path,
@@ -242,3 +188,30 @@ def _follow_named_entry_page(
             "new_entry_key": destination[1],
         }
     )
+
+
+def list_dead_page_corrections(
+    entries: Iterable[WorkEntry], store: ProviderPageStore
+) -> list[SeedCorrection]:
+    """List a correction dropping each dead page the entries list.
+
+    Args:
+        entries: The seed entries, such as every entry of the seed release.
+        store: The fetched pages, which record whether a page is dead.
+
+    Returns:
+        One correction per dead page, in entry order and then page order.
+    """
+    return [
+        SeedCorrection(
+            entry_reference_page=entry.reference_page_key,
+            page_key=page_key,
+            address=address,
+            placement_word=None,
+            is_dead_page=True,
+            reason=DEAD_PAGE_REASON,
+        )
+        for entry in entries
+        for page_key, address in entry.addresses_by_page_key.items()
+        if (page := store.get_page(page_key)) is not None and page.is_dead
+    ]

@@ -29,12 +29,12 @@ from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 
 from work_matching.covered_part_pages import find_covered_part_pages
-from work_matching.model_doubled_provider_decision import (
+from work_matching.models import (
     DoubledProviderDecision,
     DoubledProviderOutcome,
 )
 from work_matching.page_placement import PARTIAL_SOURCE_PREFIX
-from work_matching.provider_page import ProviderPage
+from work_matching.provider_page import ProviderPage, index_pages_by_any_key
 from work_matching.provider_page_key import read_page_provider
 
 
@@ -77,7 +77,7 @@ def suggest_part_page_splits(
         Each suggested page's place in answer words, by the rules in the
         module docstring, in answer page order.
     """
-    pages_by_key = _index_pages_by_any_key(pages)
+    pages_by_key = index_pages_by_any_key(pages)
     part_pages = sorted(
         (
             pages_by_key[page_key]
@@ -171,19 +171,3 @@ def _leave_out_shared_works(suggested_placements: Mapping[str, str]) -> dict[str
         for page_key, placement_text in suggested_placements.items()
         if page_key not in shared_work_page_keys
     }
-
-
-def _index_pages_by_any_key(pages: Iterable[ProviderPage]) -> dict[str, ProviderPage]:
-    """Index pages by their current key and by the key they were stored under.
-
-    Args:
-        pages: The fetched pages.
-
-    Returns:
-        Each page under both keys, so an entry's old address finds its page.
-    """
-    pages_by_key: dict[str, ProviderPage] = {}
-    for page in pages:
-        pages_by_key[page.key] = page
-        pages_by_key[page.current_key] = page
-    return pages_by_key

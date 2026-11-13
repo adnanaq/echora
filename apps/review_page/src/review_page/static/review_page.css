@@ -1,11 +1,11 @@
 /*
- * The review page's styles: one set of named colours and sizes, the page
+ * Style the review page with one set of named colours and sizes, the page
  * layout, and one rule per control macro (templates/control_macros.html).
  * Every rule reads only the named values, so the theme changes in one place.
  *
- * The light values are the default; the dark ones apply under
- * data-theme="dark", which the page sets from the reviewer's theme choice,
- * or from the system's for "System" (templates/base.html).
+ * The light values are the default, and the dark values apply under
+ * data-theme="dark", which the page sets from the reviewer's theme choice
+ * or from the operating system's setting for "System" (templates/base.html).
  */
 
 :root {
@@ -27,9 +27,10 @@
   --color-border: #d9dde3;
   --color-text: #1d2330;
   --color-muted: #5f6b7a;
-  /* Every text colour below reads at 4.5:1 or more on --color-surface, and on
-     --color-changed-cell where it is used there (WCAG AA); disabled text and
-     control borders at 3:1 or more. Measured, not guessed. */
+  /* Every text colour below reads at 4.5:1 or more on --color-surface and on
+     --color-changed-cell where used there (WCAG AA), while disabled text and
+     control borders read at 3:1 or more. Every ratio is measured rather than
+     guessed. */
   --color-main: #2853c8;
   --color-main-text: #ffffff;
   --color-accent: #2853c8;
@@ -102,9 +103,9 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; }
   background: var(--color-surface); border-bottom: 1px solid var(--color-border);
 }
 .layout-toolbar h1 { font-size: 16px; margin: 0; }
-/* Tabs sit beside the title; the toolbar's buttons go to the right. */
+/* Tabs sit beside the title, while the toolbar's buttons align to the right. */
 .control-tabs { display: inline-flex; gap: var(--space-1); margin-right: auto; }
-/* A button that reads as a link: it moves to another tab rather than to an address. */
+/* Style a button as a link when the action switches tabs rather than opening a URL. */
 .link-button { font: inherit; padding: 0; border: 0; background: none; color: var(--color-link); text-decoration: underline; cursor: pointer; }
 .link-button:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; }
 .toolbar-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
@@ -113,8 +114,8 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; }
 .layout-main.is-sidebar-closed { grid-template-columns: auto 1fr; }
 .layout-main.is-sidebar-closed > .layout-list-panel,
 .layout-main.is-sidebar-closed > .layout-resizer { display: none; }
-/* The strip holding the show button. It keeps the panel's padding, so the
-   button stays exactly where it was beside the search box. */
+/* The strip holding the show button keeps the panel's padding, so the button
+   stays in the same position beside the search box. */
 .layout-rail { display: none; align-self: start; }
 .layout-main.is-sidebar-closed > .layout-rail { display: block; }
 .list-panel-top { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2); }
@@ -205,7 +206,7 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; }
 }
 .control-chip.is-on { color: var(--color-main-text); background: var(--color-main); border-color: var(--color-main); }
 .control-chip-count { opacity: 0.75; }
-/* On the main colour, a faded count falls under 4.5:1; keep it solid. */
+/* On the main colour, a faded count falls under 4.5:1, so keep the count solid. */
 .control-chip.is-on .control-chip-count { opacity: 1; }
 
 /* Pill */

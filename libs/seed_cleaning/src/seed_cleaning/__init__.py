@@ -3,18 +3,20 @@
 Seed cleaning reads the downloaded seed release, never changes it, and lists
 the entries to check in two passes: entries with a doubled provider first, then
 groups of split-work candidates found on the entries as the first pass leaves
-them. It fetches their pages into the provider page store, where the work
-matching rules decide from their links, and records where each page of an entry
-group ends up as seed corrections. It also adds the pages entries link that no
-seed entry holds, once checked. The library is deleted once discovery replaces
-the seed.
+them. The library fetches their pages into the provider page store, where the
+work matching rules decide from their links, and records where each page of an
+entry group ends up as seed corrections. Seed cleaning also adds the pages
+entries link that no seed entry holds, once checked. The library is deleted once
+discovery replaces the seed.
 """
 
 from seed_cleaning.cleaning_report import (
+    ANSWER_REASON_SENTENCE,
     CORRECTION_COUNT_NAMES,
     build_entries_to_check_document,
     count_corrected_entries,
     count_corrections,
+    describe_correction_reason,
     describe_linked_page_outcomes,
     find_correction_change,
 )
@@ -30,26 +32,26 @@ from seed_cleaning.corrected_seed import (
     PageOrigin,
     UnknownPageOriginError,
     build_corrected_seed,
+    translate_corrected_seed_corrections,
 )
-from seed_cleaning.correction_reasons import (
-    ANSWER_REASON_SENTENCE,
-    describe_correction_reason,
-)
-from seed_cleaning.doubled_provider_entries import find_doubled_provider_entries
-from seed_cleaning.entry_groups import EntryGroup
 from seed_cleaning.group_placement import correct_entry_groups
 from seed_cleaning.linked_page_additions import (
-    LinkedPageCorrections,
     correct_linked_pages,
     find_entries_without_mal_page,
     find_linking_seed_entries,
+    group_linked_pages_by_current_key,
     list_entries_with_placed_pages,
+    rename_linked_pages_to_current_keys,
 )
-from seed_cleaning.linked_page_groups import (
+from seed_cleaning.models import (
+    EntryGroup,
+    LinkedPageCorrections,
     LinkedPageGroup,
     LinkingSeedEntry,
-    group_linked_pages_by_current_key,
-    rename_linked_pages_to_current_keys,
+    PlacementCorrections,
+    SeedCleaningRunResult,
+    SeedCorrection,
+    SeedFetchSummary,
 )
 from seed_cleaning.not_listed_searches import NotListedSearchFile
 from seed_cleaning.seed_cleaning_run import (
@@ -57,20 +59,17 @@ from seed_cleaning.seed_cleaning_run import (
     ENTRIES_TO_CHECK_FILE_NAME,
     REVIEW_FILE_NAME,
     RUN_RESULT_FILE_NAME,
-    SeedCleaningRunResult,
+    find_doubled_provider_entries,
     read_seed_cleaning_run_result,
     run_seed_cleaning,
 )
 from seed_cleaning.seed_corrections import (
     REVIEW_ANSWER_REASON,
-    PlacementCorrections,
-    SeedCorrection,
     follow_named_entry_pages,
     merge_corrections,
     write_corrections,
 )
 from seed_cleaning.seed_fetch import (
-    SeedFetchSummary,
     fetch_seed_and_linked_pages,
     list_unheld_linked_page_titles,
     read_seed_release_name,
@@ -128,6 +127,7 @@ __all__ = [
     "UnknownSeedEntryError",
     "correct_entry_groups",
     "build_corrected_seed",
+    "translate_corrected_seed_corrections",
     "find_split_work_links",
     "correct_linked_pages",
     "find_entries_without_mal_page",

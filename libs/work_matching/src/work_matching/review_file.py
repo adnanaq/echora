@@ -16,14 +16,22 @@ Each item gives the rule, then the reason for it.
 """
 
 import logging
+import os
+import shutil
 from collections import Counter
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from pathlib import Path
 
+from filelock import FileLock, Timeout
 from pydantic import BaseModel, JsonValue, ValidationError
-from work_matching.file_replacement import replace_file_lines
+from work_matching.errors import (
+    DuplicateCaseError,
+    ReviewFileLockedError,
+    SavedAnswerChangedError,
+    UnknownCaseError,
+)
 from work_matching.review_cases import ReviewCase
-from work_matching.review_file_lock import hold_review_file_lock
 
 logger = logging.getLogger(__name__)
 
@@ -37,48 +45,6 @@ class _KeptAnswer(BaseModel):
 
     case_name: str
     answer: JsonValue = None
-
-
-class DuplicateCaseError(ValueError):
-    """Two review cases written in one run have the same case name."""
-
-    def __init__(self, case_names: Iterable[str]) -> None:
-        """Name the cases written more than once.
-
-        Args:
-            case_names: The repeated case names.
-        """
-        super().__init__(f"Review cases given more than once: {', '.join(case_names)}")
-
-
-class UnknownCaseError(KeyError):
-    """Answers were given for case names the review file does not hold."""
-
-    def __init__(self, case_names: Iterable[str]) -> None:
-        """Name the cases the review file does not hold.
-
-        Args:
-            case_names: The unknown case names.
-        """
-        super().__init__(
-            f"Review cases not in the review file: {', '.join(case_names)}"
-        )
-
-
-class SavedAnswerChangedError(ValueError):
-    """Cases hold another saved answer than the one their edits started from."""
-
-    def __init__(self, case_names: Iterable[str]) -> None:
-        """Keep and name the cases whose saved answer changed.
-
-        Args:
-            case_names: The case names whose saved answers changed concurrently.
-        """
-        self.case_names = tuple(case_names)
-        super().__init__(
-            "Saved answers changed since their edits began: "
-            + ", ".join(self.case_names)
-        )
 
 
 class ReviewFile:
@@ -138,19 +104,42 @@ class ReviewFile:
             for case_name, (answer, _) in self._answers_and_lines_by_case_name.items()
         }
 
+    def list_kept_cases(self) -> tuple[ReviewCase, ...]:
+        """Return every answered case in the file as last read, its line read whole.
+
+        A run finds among them the previous case a renamed case replaces
+        (``previous_answers``), which needs each case's entries, not only its
+        answer.
+
+        Returns:
+            The answered cases, in the file's order.
+        """
+        return tuple(
+            ReviewCase.model_validate_json(line)
+            for _, line in self._answers_and_lines_by_case_name.values()
+        )
+
     def write_cases(self, cases: Iterable[ReviewCase]) -> tuple[str, ...]:
         """Write this run's cases, with their kept answers, in place of the file.
 
-        The answers are read again first, so one saved since the file was
-        opened is kept. A kept answer whose case is not among the cases is
-        written back as it was, never applied. An unanswered case that did not
-        come up is dropped.
+        Each item gives the rule, then the reason for it.
+
+        - The answers are read again first, so one saved since the file was
+          opened is kept.
+        - A kept answer whose case is not among the cases is written back as
+          it was, never applied by its own name, so no answer is lost.
+        - A kept answer a case carries as its previous answer is written back
+          too, since the next run reads it again, but it is not reported as
+          unused. Once that case has an accepted answer of its own, the
+          previous answer is dropped, since the new answer replaces it.
+        - An unanswered case that did not come up is dropped.
 
         Args:
-            cases: The review cases of this run.
+            cases: The review cases of this run, with their previous answers.
 
         Returns:
-            The case names of kept answers whose case did not come up.
+            The case names of kept answers whose case did not come up and that
+            no case carries as its previous answer.
 
         Raises:
             DuplicateCaseError: Two cases have the same case name.
@@ -172,20 +161,34 @@ class ReviewFile:
                 logger.warning(
                     f"Review case answer not accepted, left open: {case.case_name}"
                 )
-        unused_case_names = tuple(
-            sorted(
-                self._answers_and_lines_by_case_name.keys() - case_name_counts.keys()
-            )
+        previous_case_names = {
+            case.previous_answer.case_name
+            for case in cases_with_answers
+            if case.previous_answer is not None
+        }
+        replaced_case_names = {
+            case.previous_answer.case_name
+            for case in cases_with_answers
+            if case.previous_answer is not None and case.accepted_answer is not None
+        }
+        kept_case_names = sorted(
+            self._answers_and_lines_by_case_name.keys()
+            - case_name_counts.keys()
+            - replaced_case_names
         )
         replace_file_lines(
             self._path,
             [case.model_dump_json() + "\n" for case in cases_with_answers]
             + [
                 self._answers_and_lines_by_case_name[case_name][1]
-                for case_name in unused_case_names
+                for case_name in kept_case_names
             ],
         )
-        return unused_case_names
+        return tuple(
+            case_name
+            for case_name in kept_case_names
+            if case_name not in previous_case_names
+        )
 
     def save_answers(
         self,
@@ -337,3 +340,105 @@ def _write_line_answer(line: str, answer: JsonValue) -> str:
     """
     case = ReviewCase.model_validate_json(line)
     return case.model_copy(update={"answer": answer}).model_dump_json() + "\n"
+
+
+def replace_file_lines(path: str | Path, lines: Iterable[str]) -> None:
+    """Write the lines in place of the file, in one step.
+
+    Args:
+        path: The file to replace; it and its folder are created if missing.
+        lines: The lines to write, each ending with its line break.
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = path.with_name(f".{path.name}.tmp")
+    try:
+        with temporary_path.open("w", encoding="utf-8") as temporary_file:
+            temporary_file.writelines(lines)
+            temporary_file.flush()
+            os.fsync(temporary_file.fileno())
+        if path.exists():
+            shutil.copymode(path, temporary_path)
+        temporary_path.replace(path)
+    except BaseException:
+        temporary_path.unlink(missing_ok=True)
+        raise
+    _sync_folder(path.parent)
+
+
+def _sync_folder(folder: Path) -> None:
+    """Write a folder's entries to disk, so a rename in it survives a power cut.
+
+    Systems that cannot open a folder, such as Windows, are skipped.
+
+    Args:
+        folder: The directory whose directory entries must be flushed to disk.
+    """
+    if not hasattr(os, "O_DIRECTORY"):
+        return
+    folder_descriptor = os.open(folder, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(folder_descriptor)
+    finally:
+        os.close(folder_descriptor)
+
+
+@contextmanager
+def hold_review_file_lock(
+    review_file_path: str | Path, *, seconds_to_wait: float = 0.0
+) -> Iterator[None]:
+    """Hold the review file's lock for the block, waiting at most the given time.
+
+    Args:
+        review_file_path: The review file to lock.
+        seconds_to_wait: How long to wait for another writer to finish; 0
+            gives up at once.
+
+    Yields:
+        Nothing; the lock is held while the block runs.
+
+    Raises:
+        ReviewFileLockedError: The lock was still held after the wait.
+    """
+    review_file_path = Path(review_file_path)
+    review_file_path.parent.mkdir(parents=True, exist_ok=True)
+    review_file_lock = FileLock(_build_lock_path(review_file_path))
+    try:
+        review_file_lock.acquire(timeout=seconds_to_wait)
+    except Timeout as error:
+        raise ReviewFileLockedError(review_file_path) from error
+    try:
+        yield
+    finally:
+        review_file_lock.release()
+
+
+def is_review_file_locked(review_file_path: str | Path) -> bool:
+    """Report whether another writer holds the review file's lock right now.
+
+    The lock is taken and released at once to find out, since only taking it
+    tells whether another process holds it.
+
+    Args:
+        review_file_path: The review file to check.
+
+    Returns:
+        True when another writer, such as a running seed cleaning, holds it.
+    """
+    try:
+        with hold_review_file_lock(review_file_path):
+            return False
+    except ReviewFileLockedError:
+        return True
+
+
+def _build_lock_path(review_file_path: Path) -> Path:
+    """Return the lock file beside the review file: ``<review file>.lock``.
+
+    Args:
+        review_file_path: Path to the review file.
+
+    Returns:
+        Path to the sibling ``.lock`` file.
+    """
+    return review_file_path.with_name(f"{review_file_path.name}.lock")

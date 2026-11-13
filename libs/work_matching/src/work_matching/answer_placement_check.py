@@ -33,8 +33,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from pydantic import JsonValue
-from work_matching.answer_rules import PlacementRule
-from work_matching.model_doubled_provider_decision import DoubledProviderDecision
+from work_matching.models import DoubledProviderDecision, PlacementRule
 from work_matching.page_placement import (
     DROPPED,
     OTHER_WORK,
@@ -42,7 +41,7 @@ from work_matching.page_placement import (
     build_page_keys_by_work_provider,
     has_two_pages_of_one_provider,
     list_placeable_page_keys,
-    read_placement,
+    read_placements,
 )
 from work_matching.provider_page_key import read_page_provider
 from work_matching.work_entry import WorkEntry
@@ -117,12 +116,7 @@ def check_answer_placements(
     """
     if not isinstance(answer, dict):
         return PlacementCheck({}, (PlacementRule.INVALID_PLACEMENT_MAP,))
-    placements = {
-        page_key: placement
-        for page_key, placement_text in answer.items()
-        if isinstance(placement_text, str)
-        and (placement := read_placement(placement_text))
-    }
+    placements = read_placements(answer)
     placeable_page_keys = set(list_placeable_page_keys(entry, decisions))
     required_page_keys = _find_required_page_keys(
         placements, placeable_page_keys, decisions, is_every_page_required
