@@ -3,9 +3,8 @@ from seed_cleaning.corrected_entries import (
     build_corrected_entries,
 )
 from seed_cleaning.corrected_seed import build_corrected_seed
-from seed_cleaning.entry_groups import EntryGroup
 from seed_cleaning.group_placement import correct_entry_groups
-from seed_cleaning.seed_corrections import SeedCorrection
+from seed_cleaning.models import EntryGroup, SeedCorrection
 from work_matching import (
     KnownWorkEntriesFromSeed,
     PlacementRule,

@@ -5,7 +5,6 @@ import pytest
 from seed_cleaning.corrected_entries import (
     CorrectedEntry,
 )
-from seed_cleaning.entry_groups import EntryGroup
 from seed_cleaning.group_placement import correct_entry_groups
 from seed_cleaning.linked_page_additions import (
     LinkedPageCorrections,
@@ -14,7 +13,7 @@ from seed_cleaning.linked_page_additions import (
     find_linking_seed_entries,
     list_entries_with_placed_pages,
 )
-from seed_cleaning.seed_corrections import SeedCorrection
+from seed_cleaning.models import EntryGroup, SeedCorrection
 from work_matching import (
     KnownWorkEntriesFromSeed,
     ProviderPage,

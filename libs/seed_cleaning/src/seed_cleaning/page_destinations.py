@@ -20,79 +20,8 @@ Each item reads ``<placement>: <where the page goes>``.
   page an ``other work <page key>`` partial work names.
 """
 
-from collections.abc import Mapping
-from dataclasses import dataclass
-from typing import NamedTuple
-
-from seed_cleaning.corrected_seed import CorrectedSeed, PageOrigin
+from seed_cleaning.models import GroupPlacement, PageDestination, PageOrigin
 from work_matching import DROPPED, OTHER_WORK, PagePlacement, WorkEntry
-
-
-class PageDestination(NamedTuple):
-    """Hold the entry a placed page ends up in; both fields None when the page stays."""
-
-    target_entry_reference_page: str | None
-    new_entry_key: str | None
-
-
-@dataclass(frozen=True)
-class CorrectionNames:
-    """Resolve how corrections name pages and entries: by the seed, or by a corrected seed."""
-
-    # None in the first pass, whose entries are the seed's own.
-    corrected_seed: CorrectedSeed | None
-
-    def find_page_origin(
-        self, entry: WorkEntry, page_key: str, address: str
-    ) -> PageOrigin:
-        """Return the seed entry listing a page of an entry, its address and whether added.
-
-        Args:
-            entry: The entry listing the page in this pass.
-            page_key: The key the entry lists the page under.
-            address: The page's address in the entry.
-
-        Returns:
-            The page's origin in the downloaded seed.
-        """
-        if self.corrected_seed is None:
-            return PageOrigin(entry.reference_page_key, address)
-        return self.corrected_seed.find_page_origin(entry.reference_page_key, page_key)
-
-    def find_entry_destination(self, reference_page: str) -> PageDestination:
-        """Return how a correction names the entry with this reference page.
-
-        Args:
-            reference_page: The reference page of an entry of this pass.
-
-        Returns:
-            The seed entry the entry stands for, or its new entry key.
-        """
-        if self.corrected_seed is None:
-            return PageDestination(reference_page, None)
-        identity = self.corrected_seed.identity_by_reference_page[reference_page]
-        return PageDestination(
-            identity.seed_entry_reference_page, identity.new_entry_key
-        )
-
-
-class GroupPlacement(NamedTuple):
-    """Hold where an entry group's pages go, and what the group's corrections read."""
-
-    combined_entry: WorkEntry
-    # Each placed page's placement, and why it is placed, by its key.
-    placements: Mapping[str, PagePlacement]
-    reason_by_page_key: Mapping[str, str]
-    # Each work's surviving entry, as ``find_surviving_entries`` gives them.
-    surviving_reference_page_by_work: Mapping[str, str]
-    # Each renamed page's current key, by the key an entry lists it under.
-    current_page_key_by_page_key: Mapping[str, str]
-    # The seed entry each unrelated page surely moves to, by its current key.
-    target_reference_page_by_page_key: Mapping[str, str]
-    # The reference page of the seed entry holding each page key an answer
-    # names after ``other work``.
-    named_entry_reference_pages: Mapping[str, str]
-    correction_names: CorrectionNames
 
 
 def find_page_destination(

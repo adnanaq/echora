@@ -8,8 +8,8 @@ whichever answer applies.
 """
 
 from collections.abc import Mapping, Sequence
-from typing import NamedTuple
 
+from seed_cleaning.models import AnswerPlacements
 from work_matching import (
     KnownWorkEntries,
     PagePlacement,
@@ -18,17 +18,6 @@ from work_matching import (
     attach_previous_answers,
     resolve_named_entries,
 )
-
-
-class AnswerPlacements(NamedTuple):
-    """Hold the placements an answer gives, with the entries it was given for."""
-
-    placements: dict[str, PagePlacement]
-    named_entry_reference_pages: dict[str, str]
-    # The reference pages of the entries the answer was given for; only these
-    # can survive as a work, so an entry a previous answer never saw stays as
-    # the seed lists it.
-    answered_reference_pages: frozenset[str]
 
 
 def find_previous_cases(

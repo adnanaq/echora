@@ -14,7 +14,8 @@ rule can place it and no reviewer can decide anything about it. The rules:
 
 from collections.abc import Iterable
 
-from seed_cleaning.seed_corrections import DEAD_PAGE_REASON, SeedCorrection
+from seed_cleaning.models import SeedCorrection
+from seed_cleaning.seed_corrections import DEAD_PAGE_REASON
 from work_matching import ProviderPageStore, WorkEntry
 
 

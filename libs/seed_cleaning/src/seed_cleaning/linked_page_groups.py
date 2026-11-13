@@ -8,21 +8,11 @@ is decided.
 
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from operator import itemgetter
 
-from work_matching import LinkingEntryDetails, ProviderPage, ProviderPageStore
-
-
-@dataclass(frozen=True, slots=True)
-class LinkingSeedEntry:
-    """Hold an entry linking an unheld page, and the seed entry it stands for."""
-
-    # The reference page of the seed entry, which a correction names; the
-    # corrected entry's own reference page can differ after a page moved out.
-    seed_entry_reference_page: str
-    entry_details: LinkingEntryDetails
-
+from seed_cleaning.models import LinkingSeedEntry
+from work_matching import ProviderPage, ProviderPageStore
 
 # One linked page's details and every entry linking it, under any spelling.
 type LinkedPageGroup = tuple[ProviderPage, tuple[LinkingSeedEntry, ...]]

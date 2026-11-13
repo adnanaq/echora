@@ -35,23 +35,25 @@ from collections.abc import Iterable, Mapping, Sequence
 from typing import NamedTuple
 
 from seed_cleaning.answer_placements import (
-    AnswerPlacements,
     find_named_target_reference_pages,
     find_previous_cases,
     resolve_answer_placements,
 )
-from seed_cleaning.corrected_seed import CorrectedSeed
-from seed_cleaning.entry_groups import EntryGroup
-from seed_cleaning.page_destinations import (
+from seed_cleaning.models import (
+    AnswerPlacements,
+    CorrectedSeed,
     CorrectionNames,
+    EntryGroup,
     GroupPlacement,
+    PlacementCorrections,
+    SeedCorrection,
+)
+from seed_cleaning.page_destinations import (
     find_page_destination,
     find_partial_work_destination,
 )
 from seed_cleaning.seed_corrections import (
     REVIEW_ANSWER_REASON,
-    PlacementCorrections,
-    SeedCorrection,
 )
 from work_matching import (
     DROPPED,

@@ -26,7 +26,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, JsonValue
 from seed_cleaning.answer_placements import attach_remaining_previous_answers
 from seed_cleaning.cleaning_report import (
     build_entries_to_check_document,
@@ -35,25 +34,29 @@ from seed_cleaning.cleaning_report import (
     describe_linked_page_outcomes,
 )
 from seed_cleaning.corrected_entries import build_corrected_entries, mark_anime_id_pages
-from seed_cleaning.corrected_seed import CorrectedSeed, build_corrected_seed
+from seed_cleaning.corrected_seed import build_corrected_seed
 from seed_cleaning.dead_pages import list_dead_page_corrections
 from seed_cleaning.doubled_provider_entries import find_doubled_provider_entries
-from seed_cleaning.entry_groups import EntryGroup
 from seed_cleaning.group_placement import correct_entry_groups
 from seed_cleaning.linked_page_additions import (
-    LinkedPageCorrections,
     correct_linked_pages,
     find_entries_without_mal_page,
     find_linking_seed_entries,
     list_entries_with_placed_pages,
 )
-from seed_cleaning.seed_corrections import (
+from seed_cleaning.models import (
+    CorrectedSeed,
+    EntryGroup,
+    LinkedPageCorrections,
     PlacementCorrections,
+    SeedCleaningRunResult,
+    SplitWorkCandidates,
+)
+from seed_cleaning.seed_corrections import (
     follow_named_entry_pages,
     merge_corrections,
     write_corrections,
 )
-from seed_cleaning.split_work_candidates import SplitWorkCandidates
 from seed_cleaning.split_work_pass import SplitWorkPass, prepare_split_work_pass
 from work_matching import (
     KnownWorkEntriesFromSeed,
@@ -73,36 +76,6 @@ CORRECTIONS_FILE_NAME = "corrections.jsonl"
 ENTRIES_TO_CHECK_FILE_NAME = "entries_to_check.json"
 # How long a run waits for a review-page save to finish; saves take milliseconds.
 _SECONDS_TO_WAIT_FOR_SAVE = 30.0
-
-
-class SeedCleaningRunResult(BaseModel):
-    """Hold what one seed-cleaning run did, as the review page reads it."""
-
-    model_config = ConfigDict(frozen=True)
-
-    # The seed release file the run read, so a later run reads the same one.
-    seed_file: str
-    started_at: datetime
-    finished_at: datetime
-    # ``count_corrections`` by count name: pages moved, added, kept, cases.
-    correction_counts: dict[str, int]
-    # ``count_corrected_entries`` by count name: entries removed, new entries.
-    corrected_entry_counts: dict[str, int]
-    # Linked pages waiting for a fetch, not found, and held under another address.
-    linked_page_counts: dict[str, int]
-    # Cases whose answer the rules refused, so they stay open.
-    rejected_answer_case_names: tuple[str, ...]
-    # Linked pages answers add as whole pages beside another of their provider
-    # in one entry, so neither is added.
-    conflicting_linked_page_keys: tuple[str, ...]
-    # Kept answers whose case did not come up in this run.
-    unused_answer_case_names: tuple[str, ...]
-    # Every case of this run, sorted.
-    case_names: tuple[str, ...]
-    # Cases of this run that the previous run did not have, sorted.
-    new_case_names: tuple[str, ...]
-    # Every answer in the review file as this run wrote it, by case name.
-    original_answers: dict[str, JsonValue]
 
 
 def run_seed_cleaning(

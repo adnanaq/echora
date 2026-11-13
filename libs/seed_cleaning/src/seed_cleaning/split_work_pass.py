@@ -21,7 +21,6 @@ Each item gives the rule, then the reason for it.
 """
 
 from collections.abc import Iterable
-from dataclasses import dataclass
 
 from seed_cleaning.corrected_seed import (
     CorrectedSeed,
@@ -29,25 +28,13 @@ from seed_cleaning.corrected_seed import (
     build_corrected_seed,
     find_move_destination,
 )
-from seed_cleaning.seed_corrections import REVIEW_ANSWER_REASON, SeedCorrection
+from seed_cleaning.models import SeedCorrection, SplitWorkPass
+from seed_cleaning.seed_corrections import REVIEW_ANSWER_REASON
 from seed_cleaning.split_work_candidates import (
-    SplitWorkCandidates,
     find_split_work_candidates,
 )
 from seed_cleaning.split_work_links import find_split_work_links
 from work_matching import KnownWorkEntriesFromSeed, ProviderPageStore, ReviewCase
-
-
-@dataclass(frozen=True)
-class SplitWorkPass:
-    """Hold the second pass's entries and candidates, and how corrections name them."""
-
-    # Every entry as the first pass leaves it, for naming pages and entries.
-    corrected_seed: CorrectedSeed
-    # The entries the second pass groups: the corrected seed without the
-    # entries of open first-pass cases.
-    known_work_entries: KnownWorkEntriesFromSeed
-    candidates: list[SplitWorkCandidates]
 
 
 def prepare_split_work_pass(

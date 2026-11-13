@@ -26,11 +26,10 @@ module rebuilds each entry the corrections touch:
 import logging
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
 from typing import NamedTuple
 
 from enrichment.pipeline.link_rules import find_anime_id_page_key
-from seed_cleaning.seed_corrections import SeedCorrection
+from seed_cleaning.models import CorrectedEntry, SeedCorrection
 from work_matching import (
     KnownWorkEntries,
     ProviderPageStore,
@@ -40,21 +39,6 @@ from work_matching import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True)
-class CorrectedEntry:
-    """Hold a work entry after corrections, and the original seed entry it stands in for."""
-
-    # The reference page of the original seed entry this corrected entry takes
-    # the place of in the cleaned seed; None for a new entry, which takes the
-    # place of nothing.
-    seed_entry_reference_page: str | None
-    # None when every page of the seed entry left it: the entry is removed from
-    # the cleaned seed, since an entry without pages is no work.
-    entry: WorkEntry | None
-    # The key the corrections give a new entry's pages; None for a seed entry.
-    new_entry_key: str | None = None
 
 
 class UnknownSeedEntryError(LookupError):

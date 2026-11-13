@@ -26,8 +26,8 @@ from another work's entry may cover several works.
 """
 
 from collections import Counter, defaultdict
-from typing import NamedTuple
 
+from seed_cleaning.models import SplitWorkLink, SplitWorkLinks
 from work_matching import (
     KnownWorkEntriesFromSeed,
     ProviderPageStore,
@@ -37,27 +37,6 @@ from work_matching import (
 
 # Entries that each hold a page of this provider are never one work.
 _MAL_PROVIDER = "mal"
-
-
-class SplitWorkLink(NamedTuple):
-    """Record one link tying two entries: a page of one links a page the other holds."""
-
-    linking_page_key: str
-    linked_page_key: str
-
-
-class SplitWorkLinks(NamedTuple):
-    """Hold the links tying seed entries, by the entries' places in the seed."""
-
-    # Each tied pair of entries, by their places in the seed (the lower first),
-    # mapped to every link tying them.
-    links_by_entry_pair: dict[tuple[int, int], tuple[SplitWorkLink, ...]]
-    # Each linked page that ties entries, mapped to the places of every entry
-    # whose pages link it.
-    linking_entries_by_page_key: dict[str, frozenset[int]]
-    # Each page linked from two or more entries holding their own MAL page,
-    # which covers several works, mapped to the places of those entries.
-    mal_entries_by_several_works_page_key: dict[str, frozenset[int]] = {}
 
 
 def find_split_work_links(

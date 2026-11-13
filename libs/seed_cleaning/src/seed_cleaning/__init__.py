@@ -36,20 +36,26 @@ from seed_cleaning.correction_reasons import (
     describe_correction_reason,
 )
 from seed_cleaning.doubled_provider_entries import find_doubled_provider_entries
-from seed_cleaning.entry_groups import EntryGroup
 from seed_cleaning.group_placement import correct_entry_groups
 from seed_cleaning.linked_page_additions import (
-    LinkedPageCorrections,
     correct_linked_pages,
     find_entries_without_mal_page,
     find_linking_seed_entries,
     list_entries_with_placed_pages,
 )
 from seed_cleaning.linked_page_groups import (
-    LinkedPageGroup,
-    LinkingSeedEntry,
     group_linked_pages_by_current_key,
     rename_linked_pages_to_current_keys,
+)
+from seed_cleaning.models import (
+    EntryGroup,
+    LinkedPageCorrections,
+    LinkedPageGroup,
+    LinkingSeedEntry,
+    PlacementCorrections,
+    SeedCleaningRunResult,
+    SeedCorrection,
+    SeedFetchSummary,
 )
 from seed_cleaning.not_listed_searches import NotListedSearchFile
 from seed_cleaning.seed_cleaning_run import (
@@ -57,20 +63,16 @@ from seed_cleaning.seed_cleaning_run import (
     ENTRIES_TO_CHECK_FILE_NAME,
     REVIEW_FILE_NAME,
     RUN_RESULT_FILE_NAME,
-    SeedCleaningRunResult,
     read_seed_cleaning_run_result,
     run_seed_cleaning,
 )
 from seed_cleaning.seed_corrections import (
     REVIEW_ANSWER_REASON,
-    PlacementCorrections,
-    SeedCorrection,
     follow_named_entry_pages,
     merge_corrections,
     write_corrections,
 )
 from seed_cleaning.seed_fetch import (
-    SeedFetchSummary,
     fetch_seed_and_linked_pages,
     list_unheld_linked_page_titles,
     read_seed_release_name,

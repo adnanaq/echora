@@ -48,8 +48,7 @@ from dataclasses import dataclass, field
 from typing import NamedTuple
 
 from networkx.utils import UnionFind
-from pydantic import BaseModel, ConfigDict
-from seed_cleaning.split_work_links import SplitWorkLink, SplitWorkLinks
+from seed_cleaning.models import SplitWorkCandidates, SplitWorkLink, SplitWorkLinks
 from work_matching import KnownWorkEntriesFromSeed, WorkEntry, resolve_decided_provider
 
 logger = logging.getLogger(__name__)
@@ -59,26 +58,6 @@ _SEASON_ORDER = ("WINTER", "SPRING", "SUMMER", "FALL")
 # Entries sharing this provider are never one work, since MAL lists them as
 # different works and a work is the finest split any provider lists.
 _MAL_PROVIDER = "mal"
-
-
-class SplitWorkCandidates(BaseModel):
-    """Hold seed entries that may be one work, for a person to review as one group."""
-
-    model_config = ConfigDict(frozen=True)
-
-    # In seed file order.
-    entries: tuple[WorkEntry, ...]
-    # The one provider with pages in two or more of the entries, if any. That
-    # provider lists the entries as separate pages, which alone does not decide:
-    # such groups are sometimes one work and sometimes not.
-    shared_provider: str | None = None
-    # Why the entries are candidates, shown to the reviewer: each shared title
-    # (``same title: 'A' and 'B'``) and each link (``<page key> links <page
-    # key>``), titles first.
-    candidate_evidence: tuple[str, ...] = ()
-    # Whether a page tying the entries is also linked from entries outside the
-    # group, so its link is weaker evidence; the review case warns about it.
-    has_shared_tying_link: bool = False
 
 
 class _SeveralWorksPage(NamedTuple):

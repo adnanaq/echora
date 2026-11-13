@@ -18,10 +18,10 @@ so a correction is never hidden by its reason.
 
 from typing import Final
 
+from seed_cleaning.models import SeedCorrection
 from seed_cleaning.seed_corrections import (
     DEAD_PAGE_REASON,
     REVIEW_ANSWER_REASON,
-    SeedCorrection,
 )
 from work_matching import DoubledProviderOutcome, LinkedPageReason
 

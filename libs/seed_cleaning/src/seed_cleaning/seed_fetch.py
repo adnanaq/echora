@@ -24,12 +24,12 @@ Each item gives the rule, then the reason for it.
 
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
 from typing import Any
 
-from enrichment.pipeline.fetch_summary import FetchSummary, combine_fetch_summaries
+from enrichment.pipeline.fetch_summary import combine_fetch_summaries
 from enrichment.pipeline.page_requests import FETCHED_PROVIDERS
 from enrichment.pipeline.provider_page_fetcher import ProviderPageFetcher
+from seed_cleaning.models import SeedFetchSummary
 from work_matching import (
     KnownWorkEntriesFromSeed,
     ProviderPageStore,
@@ -39,15 +39,6 @@ from work_matching import (
 # The release tag in the seed's schema address, such as ``2026-43`` in
 # ``.../refs/tags/2026-43/schemas/...``.
 _RELEASE_TAG_IN_SCHEMA_ADDRESS = re.compile(r"/refs/tags/([^/]+)/")
-
-
-@dataclass(frozen=True)
-class SeedFetchSummary:
-    """Summarize how fetching a seed release's pages and their linked pages went."""
-
-    seed_page_summary: FetchSummary
-    linked_page_summary: FetchSummary
-    animeschedule_search_summary: FetchSummary
 
 
 async def fetch_seed_and_linked_pages(

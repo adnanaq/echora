@@ -30,22 +30,24 @@ Each item gives the rule, then the reason for it.
 import logging
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
 from typing import NamedTuple
 
 from enrichment.pipeline.page_requests import FETCHED_PROVIDERS
 from seed_cleaning.corrected_entries import (
-    CorrectedEntry,
     build_corrected_entries,
 )
 from seed_cleaning.linked_page_groups import (
-    LinkingSeedEntry,
     group_linked_pages_by_current_key,
+)
+from seed_cleaning.models import (
+    CorrectedEntry,
+    LinkedPageCorrections,
+    LinkingSeedEntry,
+    PlacementCorrections,
+    SeedCorrection,
 )
 from seed_cleaning.seed_corrections import (
     REVIEW_ANSWER_REASON,
-    PlacementCorrections,
-    SeedCorrection,
 )
 from work_matching import (
     FIRST_WORK,
@@ -82,25 +84,6 @@ class _PageAddition(NamedTuple):
     is_partial_source: bool
     # The decision's reason by name, or ``review answer``.
     reason: str
-
-
-@dataclass(frozen=True)
-class LinkedPageCorrections:
-    """Hold the added pages, the review cases, and the linked pages not added."""
-
-    corrections: tuple[SeedCorrection, ...]
-    # Every linked-page case of this run, with its kept answer, for the review file.
-    review_cases: tuple[ReviewCase, ...]
-    # Linked pages not fetched yet, or whose fetch failed, sorted.
-    waiting_page_keys: tuple[str, ...]
-    # Linked pages the provider says do not exist, sorted.
-    not_found_page_keys: tuple[str, ...]
-    # Linked pages a seed entry already holds under another address, by their
-    # current key, sorted.
-    held_page_keys: tuple[str, ...] = ()
-    # Linked pages answers add as whole pages next to another page of their
-    # provider in one entry, so none of them is added, sorted.
-    conflicting_page_keys: tuple[str, ...] = ()
 
 
 def find_entries_without_mal_page(entries: Iterable[WorkEntry]) -> list[WorkEntry]:

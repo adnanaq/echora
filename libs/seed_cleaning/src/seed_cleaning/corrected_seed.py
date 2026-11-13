@@ -20,32 +20,15 @@ entries left without pages are dropped, and new entries come last.
 """
 
 from collections.abc import Iterable
-from dataclasses import dataclass
-from typing import NamedTuple
 
 from seed_cleaning.corrected_entries import build_corrected_entries
-from seed_cleaning.seed_corrections import SeedCorrection
+from seed_cleaning.models import (
+    CorrectedSeed,
+    EntryIdentity,
+    PageOrigin,
+    SeedCorrection,
+)
 from work_matching import KnownWorkEntriesFromSeed, ProviderPageStore, WorkEntry
-
-
-class EntryIdentity(NamedTuple):
-    """Identify how seed corrections name an entry: by its seed entry or its new entry key."""
-
-    # The reference page of the seed entry the entry stands in for; None for a
-    # new entry.
-    seed_entry_reference_page: str | None
-    # The key a new entry's pages share in their corrections; None for a seed
-    # entry.
-    new_entry_key: str | None
-
-
-class PageOrigin(NamedTuple):
-    """Record how seed corrections name a page: the entry listing it and its address."""
-
-    # The seed entry listing the page, or the seed entry it was added to.
-    entry_reference_page: str
-    address: str
-    is_added_page: bool = False
 
 
 class UnknownPageOriginError(LookupError):
@@ -62,30 +45,6 @@ class UnknownPageOriginError(LookupError):
             f"Page {page_key} of new entry {identity.new_entry_key} has no "
             "correction bringing it in"
         )
-
-
-@dataclass(frozen=True)
-class CorrectedSeed:
-    """Hold every work entry after the first pass, and how corrections name each one."""
-
-    known_work_entries: KnownWorkEntriesFromSeed
-    # Each entry's identity, by the entry's reference page.
-    identity_by_reference_page: dict[str, EntryIdentity]
-    # Each page's origin, by the entry's reference page and the page key.
-    origin_by_entry_page: dict[tuple[str, str], PageOrigin]
-
-    def find_page_origin(self, entry_reference_page: str, page_key: str) -> PageOrigin:
-        """Return the origin of one page of one entry of the corrected seed.
-
-        Args:
-            entry_reference_page: The reference page of the entry in the
-                corrected seed.
-            page_key: The page key within that entry.
-
-        Returns:
-            The recorded ``PageOrigin`` for that entry and page.
-        """
-        return self.origin_by_entry_page[entry_reference_page, page_key]
 
 
 def build_corrected_seed(

@@ -7,10 +7,12 @@ corrections' counts; both are built here so they can be tested without a run.
 from collections.abc import Iterable
 from typing import Any
 
-from seed_cleaning.corrected_entries import CorrectedEntry
-from seed_cleaning.linked_page_additions import LinkedPageCorrections
-from seed_cleaning.seed_corrections import SeedCorrection
-from seed_cleaning.split_work_candidates import SplitWorkCandidates
+from seed_cleaning.models import (
+    CorrectedEntry,
+    LinkedPageCorrections,
+    SeedCorrection,
+    SplitWorkCandidates,
+)
 from work_matching import ReviewCase, WorkEntry, find_doubled_provider_page_keys
 
 
