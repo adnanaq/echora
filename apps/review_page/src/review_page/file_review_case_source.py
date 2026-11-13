@@ -10,8 +10,9 @@ Each operational rule reads `<rule>: <reason>`:
 - Pre-save rule validation: Every submitted answer is validated through
   ``answer_checks`` using domain placement rules before writing to disk.
 - Seed entry resolution: Answers referencing an external seed entry via
-  ``other work`` are resolved against the active seed release via ``seed_entries``
-  so unknown or conflicting target entries are rejected before saving.
+  ``other work`` are resolved against the active seed release, cached by file
+  path and modification timestamp, so unknown or conflicting target entries
+  are rejected before saving.
 - Dead pages: A key whose page the last run dropped as dead names no entry,
   as in the run, so saving refuses it. The dead keys come from the last run's
   corrections, so the large page store is never loaded.
@@ -31,7 +32,9 @@ Each operational rule reads `<rule>: <reason>`:
 
 import json
 import sys
+import threading
 from collections.abc import Sequence
+from functools import lru_cache
 from pathlib import Path
 
 from google.protobuf import json_format
@@ -49,7 +52,6 @@ from review_page.review_case_messages import (
 )
 from review_page.review_case_source import ReviewCaseSource, SeedFileUnavailableError
 from review_page.seed_cleaning_run_process import SeedCleaningRunProcess
-from review_page.seed_entries import load_seed_entries
 from seed_cleaning import (
     CORRECTIONS_FILE_NAME,
     ENTRIES_TO_CHECK_FILE_NAME,
@@ -450,3 +452,37 @@ def convert_correction_to_message(
     message.reason_sentence = describe_correction_reason(correction)
     message.is_from_answer = correction.reason == REVIEW_ANSWER_REASON
     return message
+
+
+_SEED_LOAD_LOCK = threading.Lock()
+
+
+def load_seed_entries(seed_file: Path) -> KnownWorkEntriesFromSeed:
+    """Load work entries from a seed file, reusing the cached lookup when unchanged.
+
+    Args:
+        seed_file: Path to the seed release JSON file.
+
+    Returns:
+        The indexed lookup of known work entries from the seed file.
+    """
+    with _SEED_LOAD_LOCK:
+        return _load_seed_entries_at(seed_file, seed_file.stat().st_mtime_ns)
+
+
+@lru_cache(maxsize=1)
+def _load_seed_entries_at(
+    seed_file: Path, modified_at_ns: int
+) -> KnownWorkEntriesFromSeed:
+    """Parse work entries from a seed file, cached by path and modification timestamp.
+
+    Args:
+        seed_file: Path to the seed release JSON file.
+        modified_at_ns: File modification time in nanoseconds used as part of
+            the cache key.
+
+    Returns:
+        The indexed lookup of known work entries from the seed file.
+    """
+    del modified_at_ns
+    return KnownWorkEntriesFromSeed.load_seed_file(seed_file)

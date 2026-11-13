@@ -13,12 +13,12 @@ Each route rule reads `<rule>: <reason>`:
 from fastapi import APIRouter, Request, Response
 from fastapi.templating import Jinja2Templates
 from review_page.file_review_case_source import RunSeedFileUnknownError
-from review_page.htmx_responses import (
+from review_page.models import BrowserState, BrowserStateField
+from review_page.request_guards import (
     build_event_headers,
     build_event_response,
     build_notice_response,
 )
-from review_page.models import BrowserState, BrowserStateField
 from review_page.review_case_source import ReviewCaseSource, load_last_run_summary
 
 
