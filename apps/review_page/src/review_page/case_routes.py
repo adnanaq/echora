@@ -20,7 +20,6 @@ Each route rule reads `<rule>: <reason>`:
   before validation are reported as rejected in ``answerssaved``.
 """
 
-import json
 from collections.abc import Sequence
 from typing import Annotated, Any, Final
 
@@ -50,7 +49,11 @@ from review_page.page_state import (
     paginate_rows,
     resolve_row_edit_state,
 )
-from review_page.request_guards import build_event_response, build_notice_response
+from review_page.request_guards import (
+    build_event_headers,
+    build_event_response,
+    build_notice_response,
+)
 from review_page.review_case_messages import (
     build_case_answer,
 )
@@ -201,7 +204,9 @@ class CaseRoutes:
             case is selected.
         """
         state = BrowserState.parse_form_field(browser_state)
-        return self._render_case(request, state, state.open_case_name, None)
+        return self._render_case(
+            request, state, load_case(self._source, state.open_case_name)
+        )
 
     def choose_answer(
         self,
@@ -238,7 +243,7 @@ class CaseRoutes:
         state = BrowserState.parse_form_field(browser_state)
         case = load_case(self._source, state.open_case_name)
         if case is None:
-            return self._render_case(request, state, None, None)
+            return self._render_case(request, state, None)
         current_answer = resolve_shown_answer(case, state.edits.get(case.case_name))
         if case.kind is ReviewCaseKind.LINKED_PAGE:
             new_answer: dict[str, JsonValue] = (
@@ -258,16 +263,18 @@ class CaseRoutes:
                 _write_work(work, named_entry),
             )
         is_unsaved = _record_answer_edit(state, case, new_answer)
-        response = self._render_case(request, state, case.case_name, case)
-        response.headers["HX-Trigger"] = json.dumps(
-            {
-                "answerchanged": {
-                    "case_name": case.case_name,
-                    "answer": new_answer,
-                    "is_unsaved": is_unsaved,
-                    "saved_answer": case.answer,
+        response = self._render_case(request, state, case)
+        response.headers.update(
+            build_event_headers(
+                {
+                    "answerchanged": {
+                        "case_name": case.case_name,
+                        "answer": new_answer,
+                        "is_unsaved": is_unsaved,
+                        "saved_answer": case.answer,
+                    }
                 }
-            }
+            )
         )
         return response
 
@@ -335,7 +342,6 @@ class CaseRoutes:
         self,
         request: Request,
         state: BrowserState,
-        case_name: str | None,
         case: ReviewCase | None,
     ) -> Response:
         """Render the case panel fragment for a given case or its empty state.
@@ -343,13 +349,11 @@ class CaseRoutes:
         Args:
             request: The incoming HTTP request.
             state: The parsed ``BrowserState`` from the request.
-            case_name: The case identifier to load when ``case`` is None.
-            case: A pre-loaded ``ReviewCase`` instance, or None to load by name.
+            case: The ``ReviewCase`` to render, or None for the empty state.
 
         Returns:
             The rendered ``case_panel.html`` response.
         """
-        case = case or load_case(self._source, case_name)
         if case is None:
             return self._templates.TemplateResponse(
                 request, "case_panel.html", {"view": None}

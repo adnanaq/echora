@@ -66,6 +66,7 @@ from work_matching import (
     decide_linked_page,
     find_entry_episode_count,
     find_unheld_linked_page_keys,
+    is_mal_page,
     read_page_provider,
 )
 
@@ -101,10 +102,7 @@ def find_entries_without_mal_page(entries: Iterable[WorkEntry]) -> list[WorkEntr
     return [
         entry
         for entry in entries
-        if not any(
-            read_page_provider(page_key) == "mal"
-            for page_key in entry.addresses_by_page_key
-        )
+        if not any(is_mal_page(page_key) for page_key in entry.addresses_by_page_key)
     ]
 
 

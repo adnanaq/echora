@@ -21,7 +21,7 @@ Each item gives the rule, then the reason for it.
 
 import json
 import logging
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -46,11 +46,13 @@ from seed_cleaning.linked_page_additions import (
     list_entries_with_placed_pages,
 )
 from seed_cleaning.models import (
+    CorrectedEntry,
     CorrectedSeed,
     EntryGroup,
     LinkedPageCorrections,
     PlacementCorrections,
     SeedCleaningRunResult,
+    SeedCorrection,
     SplitWorkCandidates,
 )
 from seed_cleaning.seed_corrections import (
@@ -136,20 +138,109 @@ def run_seed_cleaning(
             split_work_pass.candidates,
             data_dir,
         )
-        merged_corrections = follow_named_entry_pages(
-            merge_corrections(
-                first_pass_corrections, split_work_corrections.corrections
-            )
+        return _merge_and_write_outputs(
+            seed_file=seed_file,
+            started_at=started_at,
+            previous_run_result=previous_run_result,
+            first_pass_corrections=first_pass_corrections,
+            split_work_corrections=split_work_corrections,
+            linked_page_corrections=linked_page_corrections,
+            first_pass_cases=first_pass_cases,
+            known_work_entries=known_work_entries,
+            store=store,
+            review_file=review_file,
+            data_dir=data_dir,
         )
-        corrected_entries = build_corrected_entries(
-            merged_corrections, known_work_entries, store
-        )
-        corrections = mark_anime_id_pages(merged_corrections, corrected_entries)
-        review_cases = attach_remaining_previous_answers(
-            [*first_pass_cases, *split_work_corrections.review_cases], review_file
-        )
-        unused_answer_case_names = review_file.write_cases(review_cases)
-        write_corrections(data_dir / CORRECTIONS_FILE_NAME, corrections)
+
+
+def _merge_and_write_outputs(
+    *,
+    seed_file: Path,
+    started_at: datetime,
+    previous_run_result: SeedCleaningRunResult | None,
+    first_pass_corrections: Sequence[SeedCorrection],
+    split_work_corrections: PlacementCorrections,
+    linked_page_corrections: LinkedPageCorrections,
+    first_pass_cases: Sequence[ReviewCase],
+    known_work_entries: KnownWorkEntriesFromSeed,
+    store: ProviderPageStore,
+    review_file: ReviewFile,
+    data_dir: Path,
+) -> SeedCleaningRunResult:
+    """Merge pass corrections, write review/correction files, and record the run result.
+
+    Args:
+        seed_file: The seed release file, kept in the result.
+        started_at: UTC timestamp when the run began.
+        previous_run_result: Previous run result, or None on the first run.
+        first_pass_corrections: Corrections from the first pass.
+        split_work_corrections: Corrections and review cases from the second pass.
+        linked_page_corrections: Linked-page pass result and counts.
+        first_pass_cases: Review cases from the first pass.
+        known_work_entries: Every seed entry.
+        store: The provider page store.
+        review_file: The locked review file to write cases to.
+        data_dir: The folder output files are written to.
+
+    Returns:
+        The written ``SeedCleaningRunResult``.
+    """
+    merged_corrections = follow_named_entry_pages(
+        merge_corrections(first_pass_corrections, split_work_corrections.corrections)
+    )
+    corrected_entries = build_corrected_entries(
+        merged_corrections, known_work_entries, store
+    )
+    corrections = mark_anime_id_pages(merged_corrections, corrected_entries)
+    review_cases = attach_remaining_previous_answers(
+        [*first_pass_cases, *split_work_corrections.review_cases], review_file
+    )
+    unused_answer_case_names = review_file.write_cases(review_cases)
+    write_corrections(data_dir / CORRECTIONS_FILE_NAME, corrections)
+    return _write_run_result(
+        seed_file=seed_file,
+        started_at=started_at,
+        previous_run_result=previous_run_result,
+        corrections=corrections,
+        corrected_entries=corrected_entries,
+        linked_page_corrections=linked_page_corrections,
+        review_cases=review_cases,
+        unused_answer_case_names=unused_answer_case_names,
+        original_answers=review_file.get_answers(),
+        data_dir=data_dir,
+    )
+
+
+def _write_run_result(
+    *,
+    seed_file: Path,
+    started_at: datetime,
+    previous_run_result: SeedCleaningRunResult | None,
+    corrections: Sequence[SeedCorrection],
+    corrected_entries: Sequence[CorrectedEntry],
+    linked_page_corrections: LinkedPageCorrections,
+    review_cases: Sequence[ReviewCase],
+    unused_answer_case_names: tuple[str, ...],
+    original_answers: dict[str, Any],
+    data_dir: Path,
+) -> SeedCleaningRunResult:
+    """Build, write, and log the summary of a completed seed-cleaning run.
+
+    Args:
+        seed_file: The seed release file, kept in the result.
+        started_at: UTC timestamp when the run began.
+        previous_run_result: Previous run result, or None on the first run.
+        corrections: Final marked corrections written to ``corrections.jsonl``.
+        corrected_entries: Corrected entries built from ``corrections``.
+        linked_page_corrections: Linked-page pass result and counts.
+        review_cases: Review cases written to ``review.jsonl``.
+        unused_answer_case_names: Answered case names absent from this run.
+        original_answers: Answers present in ``review_file`` after writing cases.
+        data_dir: The folder ``review_run.json`` is written to.
+
+    Returns:
+        The written ``SeedCleaningRunResult``.
+    """
     case_names = tuple(sorted(case.case_name for case in review_cases))
     run_result = SeedCleaningRunResult(
         seed_file=str(seed_file),
@@ -165,7 +256,7 @@ def run_seed_cleaning(
         new_case_names=()
         if previous_run_result is None
         else tuple(sorted(set(case_names) - set(previous_run_result.case_names))),
-        original_answers=review_file.get_answers(),
+        original_answers=original_answers,
     )
     replace_file_lines(
         data_dir / RUN_RESULT_FILE_NAME, [run_result.model_dump_json(indent=1) + "\n"]

@@ -32,11 +32,9 @@ from work_matching import (
     KnownWorkEntriesFromSeed,
     ProviderPageStore,
     WorkEntry,
+    is_mal_page,
     read_page_provider,
 )
-
-# Entries that each hold a page of this provider are never one work.
-_MAL_PROVIDER = "mal"
 
 
 def find_split_work_links(
@@ -179,7 +177,4 @@ def _has_mal_page(work_entry: WorkEntry) -> bool:
     Returns:
         True if the entry lists a MAL page key.
     """
-    return any(
-        read_page_provider(page_key) == _MAL_PROVIDER
-        for page_key in work_entry.addresses_by_page_key
-    )
+    return any(is_mal_page(page_key) for page_key in work_entry.addresses_by_page_key)
