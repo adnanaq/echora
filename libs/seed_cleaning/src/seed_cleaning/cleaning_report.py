@@ -5,7 +5,7 @@ corrections' counts; both are built here so they can be tested without a run.
 """
 
 from collections.abc import Iterable
-from typing import Any
+from typing import Any, Final
 
 from seed_cleaning.models import (
     CorrectedEntry,
@@ -13,7 +13,20 @@ from seed_cleaning.models import (
     SeedCorrection,
     SplitWorkCandidates,
 )
-from work_matching import ReviewCase, WorkEntry, find_doubled_provider_page_keys
+from seed_cleaning.seed_corrections import (
+    DEAD_PAGE_REASON,
+    REVIEW_ANSWER_REASON,
+)
+from work_matching import (
+    DoubledProviderOutcome,
+    LinkedPageReason,
+    ReviewCase,
+    WorkEntry,
+    find_doubled_provider_page_keys,
+)
+
+ANSWER_REASON_SENTENCE: Final = "a reviewer's answer placed the page"
+DEAD_PAGE_REASON_SENTENCE: Final = "the provider says the page does not exist"
 
 
 def build_entries_to_check_document(
@@ -213,3 +226,24 @@ def describe_linked_page_outcomes(
             for page_key in linked_page_corrections.conflicting_page_keys
         ),
     ]
+
+
+def describe_correction_reason(correction: SeedCorrection) -> str:
+    """Return the sentence for why a correction places its page where it does.
+
+    Args:
+        correction: One seed correction.
+
+    Returns:
+        The reason's sentence, or the reason name when no rule knows it.
+    """
+    if correction.reason == REVIEW_ANSWER_REASON:
+        return ANSWER_REASON_SENTENCE
+    if correction.reason == DEAD_PAGE_REASON:
+        return DEAD_PAGE_REASON_SENTENCE
+    reason_enum = (
+        LinkedPageReason if correction.is_added_page else DoubledProviderOutcome
+    )
+    if correction.reason in reason_enum.__members__:
+        return reason_enum[correction.reason].value
+    return correction.reason

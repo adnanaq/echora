@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 from seed_cleaning.seed_cleaning_run import (
+    find_doubled_provider_entries,
     read_seed_cleaning_run_result,
     run_seed_cleaning,
 )
@@ -309,3 +310,22 @@ def test_run_seed_cleaning_review_file_locked_by_other_process_raises(
 
 def test_read_seed_cleaning_run_result_no_run_yet_gives_none(data_dir) -> None:
     assert read_seed_cleaning_run_result(data_dir) is None
+
+
+def test_find_doubled_provider_entries_lists_entry_with_two_pages_of_one_provider(
+    seed_works,
+) -> None:
+    assert [entry.title for entry in find_doubled_provider_entries(seed_works)] == [
+        "Boku Dake no Rock Star"
+    ]
+
+
+def test_find_doubled_provider_entries_simkl_and_animecountdown_same_number_not_listed(
+    seed_works,
+) -> None:
+    cue = next(work for work in seed_works if work.title == "Cue!")
+    assert {
+        "simkl:anime:1467793",
+        "animecountdown:anime:1467793",
+    } <= cue.addresses_by_page_key.keys()
+    assert find_doubled_provider_entries([cue]) == []

@@ -46,7 +46,7 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from seed_cleaning.models import SeedCorrection
-from work_matching import replace_file_lines
+from work_matching import ProviderPageStore, WorkEntry, replace_file_lines
 
 # The reason recorded for a page placed by a review answer.
 REVIEW_ANSWER_REASON = "review answer"
@@ -188,3 +188,30 @@ def _follow_named_entry_page(
             "new_entry_key": destination[1],
         }
     )
+
+
+def list_dead_page_corrections(
+    entries: Iterable[WorkEntry], store: ProviderPageStore
+) -> list[SeedCorrection]:
+    """List a correction dropping each dead page the entries list.
+
+    Args:
+        entries: The seed entries, such as every entry of the seed release.
+        store: The fetched pages, which record whether a page is dead.
+
+    Returns:
+        One correction per dead page, in entry order and then page order.
+    """
+    return [
+        SeedCorrection(
+            entry_reference_page=entry.reference_page_key,
+            page_key=page_key,
+            address=address,
+            placement_word=None,
+            is_dead_page=True,
+            reason=DEAD_PAGE_REASON,
+        )
+        for entry in entries
+        for page_key, address in entry.addresses_by_page_key.items()
+        if (page := store.get_page(page_key)) is not None and page.is_dead
+    ]

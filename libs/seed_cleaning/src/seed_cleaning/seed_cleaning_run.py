@@ -35,8 +35,6 @@ from seed_cleaning.cleaning_report import (
 )
 from seed_cleaning.corrected_entries import build_corrected_entries, mark_anime_id_pages
 from seed_cleaning.corrected_seed import build_corrected_seed
-from seed_cleaning.dead_pages import list_dead_page_corrections
-from seed_cleaning.doubled_provider_entries import find_doubled_provider_entries
 from seed_cleaning.group_placement import correct_entry_groups
 from seed_cleaning.linked_page_additions import (
     correct_linked_pages,
@@ -54,6 +52,7 @@ from seed_cleaning.models import (
 )
 from seed_cleaning.seed_corrections import (
     follow_named_entry_pages,
+    list_dead_page_corrections,
     merge_corrections,
     write_corrections,
 )
@@ -64,6 +63,7 @@ from work_matching import (
     ReviewCase,
     ReviewFile,
     WorkEntry,
+    find_doubled_provider_page_keys,
     hold_review_file_lock,
     replace_file_lines,
 )
@@ -401,3 +401,28 @@ def _log_run_result(
         logger.info(f"Unused answer, kept but not applied: {case_name}")
     for count_name, entry_count in run_result.corrected_entry_counts.items():
         logger.info(f"{count_name.capitalize()}: {entry_count}")
+
+
+def find_doubled_provider_entries(entries: Iterable[WorkEntry]) -> list[WorkEntry]:
+    """Return the entries holding a doubled provider, in the order given.
+
+    The rule is the doubled-provider rules' own
+    (``find_doubled_provider_page_keys``), so seed cleaning checks exactly the
+    pages ``decide_doubled_providers`` decides:
+
+    - two pages of one provider count only when their ids differ;
+    - Simkl and AnimeCountdown count as one provider, because they number a work
+      the same, so a Simkl page and an AnimeCountdown page with the same number
+      are one page.
+
+    Args:
+        entries: The entries to check, such as every entry of a seed file.
+
+    Returns:
+        The entries holding two or more pages of one provider, in order.
+    """
+    return [
+        entry
+        for entry in entries
+        if find_doubled_provider_page_keys(entry.addresses_by_page_key)
+    ]

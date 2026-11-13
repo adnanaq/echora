@@ -2,11 +2,14 @@ import json
 
 import pytest
 from seed_cleaning.seed_corrections import (
+    DEAD_PAGE_REASON,
     SeedCorrection,
     follow_named_entry_pages,
+    list_dead_page_corrections,
     merge_corrections,
     write_corrections,
 )
+from work_matching import KnownWorkEntriesFromSeed, ProviderPage, ProviderPageStore
 
 
 def _correction(entry_reference_page: str, page_key: str) -> SeedCorrection:
@@ -115,4 +118,28 @@ def test_follow_named_entry_pages_named_page_sent_to_named_page_followed_in_turn
         (None, "mal:anime:5 work 2"),
         (None, "mal:anime:5 work 2"),
         (None, "mal:anime:5 work 2"),
+    ]
+
+
+def test_list_dead_page_corrections_drops_only_dead_pages(tmp_path) -> None:
+    mal = "https://myanimelist.net/anime/1"
+    kitsu = "https://kitsu.app/anime/1"
+    unfetched_anidb = "https://anidb.net/anime/1"
+    works = KnownWorkEntriesFromSeed(
+        [{"title": "Show", "type": "TV", "sources": [mal, kitsu, unfetched_anidb]}]
+    )
+    store = ProviderPageStore(tmp_path / "provider_pages.jsonl")
+    store.add_pages(
+        ProviderPage.build_dead_page(kitsu),
+        ProviderPage.read_canonical_record(mal, {"title": "Show"}),
+    )
+    assert list_dead_page_corrections(works, store) == [
+        SeedCorrection(
+            entry_reference_page="mal:anime:1",
+            page_key="kitsu:anime:1",
+            address=kitsu,
+            placement_word=None,
+            is_dead_page=True,
+            reason=DEAD_PAGE_REASON,
+        )
     ]

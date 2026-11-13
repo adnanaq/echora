@@ -11,10 +11,12 @@ discovery replaces the seed.
 """
 
 from seed_cleaning.cleaning_report import (
+    ANSWER_REASON_SENTENCE,
     CORRECTION_COUNT_NAMES,
     build_entries_to_check_document,
     count_corrected_entries,
     count_corrections,
+    describe_correction_reason,
     describe_linked_page_outcomes,
     find_correction_change,
 )
@@ -31,20 +33,13 @@ from seed_cleaning.corrected_seed import (
     UnknownPageOriginError,
     build_corrected_seed,
 )
-from seed_cleaning.correction_reasons import (
-    ANSWER_REASON_SENTENCE,
-    describe_correction_reason,
-)
-from seed_cleaning.doubled_provider_entries import find_doubled_provider_entries
 from seed_cleaning.group_placement import correct_entry_groups
 from seed_cleaning.linked_page_additions import (
     correct_linked_pages,
     find_entries_without_mal_page,
     find_linking_seed_entries,
-    list_entries_with_placed_pages,
-)
-from seed_cleaning.linked_page_groups import (
     group_linked_pages_by_current_key,
+    list_entries_with_placed_pages,
     rename_linked_pages_to_current_keys,
 )
 from seed_cleaning.models import (
@@ -63,6 +58,7 @@ from seed_cleaning.seed_cleaning_run import (
     ENTRIES_TO_CHECK_FILE_NAME,
     REVIEW_FILE_NAME,
     RUN_RESULT_FILE_NAME,
+    find_doubled_provider_entries,
     read_seed_cleaning_run_result,
     run_seed_cleaning,
 )
