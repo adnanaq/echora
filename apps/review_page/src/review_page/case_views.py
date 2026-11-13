@@ -19,6 +19,7 @@ Each rule reads `<rule>: <reason>`:
 """
 
 from collections.abc import Mapping, Sequence
+from typing import NamedTuple
 
 from pydantic import JsonValue
 from review_page.case_panel_tables import (
@@ -30,10 +31,13 @@ from review_page.case_panel_tables import (
     list_shown_columns,
 )
 from review_page.models import (
-    CaseEditState,
     CaseRow,
     CaseView,
+    ChoiceOption,
+    ComparisonRowView,
+    DetailColumn,
     InvalidNamedPageKeyReason,
+    PageLink,
     PageRowView,
     RunSummary,
     SavedChange,
@@ -51,6 +55,7 @@ from review_page.review_choices import (
     list_work_partial_sources,
 )
 from work_matching import (
+    ProviderPage,
     ReviewCase,
     ReviewCaseKind,
     combine_group_entries,
@@ -154,42 +159,42 @@ def build_case_view(
     Returns:
         A CaseView model containing assembled tables, candidate rows, and action button states.
     """
-    chosen_answer = resolve_shown_answer(case, unsaved_answer)
-    is_linked_page = case.kind is ReviewCaseKind.LINKED_PAGE
-    linking_entry_link, linked_page_link = build_linked_page_case_links(case)
-    page_rows, work_partial_sources = _build_group_case_tables(
+    tables = _build_case_tables(
         case,
-        chosen_answer,
         original_answer,
-        is_rejected=is_rejected,
-        invalid_named_page_key_reasons=invalid_named_page_key_reasons,
+        unsaved_answer,
+        is_rejected,
+        show_only_differences,
+        invalid_named_page_key_reasons,
     )
     return CaseView(
         case=case,
         title=find_case_title(case),
-        edit_state=_resolve_edit_state(
-            case, original_answer, unsaved_answer, is_rejected=is_rejected
+        edit_state=resolve_case_edit_state(
+            original_answer=original_answer,
+            saved_answer=case.answer,
+            unsaved_answer=unsaved_answer,
+            has_unsaved_edit=unsaved_answer is not None,
+            is_rejected=is_rejected,
         ),
-        chosen_answer=chosen_answer,
+        chosen_answer=tables.chosen_answer,
         is_suggestion_shown=_is_suggestion_shown(case, unsaved_answer),
         reason_sentences=describe_case_reasons(case),
         entries=build_entry_views(case),
-        page_rows=page_rows,
-        work_partial_sources=work_partial_sources,
-        shown_columns=list_shown_columns(page_rows, show_only_differences),
-        evidence_pages=list_evidence_pages(case, page_rows),
-        linked_page_options=list_linked_page_options(case) if is_linked_page else (),
-        linking_entry_link=linking_entry_link,
-        linked_page_link=linked_page_link,
-        choice_meanings=() if is_linked_page else PLACEMENT_WORD_MEANINGS,
-        comparison_rows=build_comparison_rows(case, show_only_differences)
-        if is_linked_page
-        else (),
+        page_rows=tables.page_rows,
+        work_partial_sources=tables.work_partial_sources,
+        shown_columns=tables.shown_columns,
+        evidence_pages=tables.evidence_pages,
+        linked_page_options=tables.linked_page_options,
+        linking_entry_link=tables.linking_entry_link,
+        linked_page_link=tables.linked_page_link,
+        choice_meanings=tables.choice_meanings,
+        comparison_rows=tables.comparison_rows,
         buttons=build_case_buttons(
             case,
             original_answer=original_answer,
             saved_answer=case.answer,
-            chosen_answer=chosen_answer,
+            chosen_answer=tables.chosen_answer,
             is_run_going=is_run_going,
         ),
         show_only_differences=show_only_differences,
@@ -274,30 +279,78 @@ def _is_suggestion_shown(case: ReviewCase, unsaved_answer: JsonValue) -> bool:
     )
 
 
-def _resolve_edit_state(
+class _CaseTables(NamedTuple):
+    """Hold the table rows, links, and options built for a case panel."""
+
+    chosen_answer: JsonValue
+    page_rows: tuple[PageRowView, ...]
+    work_partial_sources: tuple[WorkPartialSources, ...]
+    shown_columns: tuple[DetailColumn, ...]
+    evidence_pages: tuple[ProviderPage, ...]
+    linking_entry_link: PageLink | None
+    linked_page_link: PageLink | None
+    linked_page_options: tuple[ChoiceOption, ...]
+    comparison_rows: tuple[ComparisonRowView, ...]
+    choice_meanings: tuple[tuple[str, str], ...]
+
+
+def _build_case_tables(
     case: ReviewCase,
     original_answer: JsonValue,
     unsaved_answer: JsonValue,
-    *,
     is_rejected: bool,
-) -> CaseEditState:
-    """Resolve whether a case is unchanged, edited, saved or rejected.
+    show_only_differences: bool,
+    invalid_named_page_key_reasons: Mapping[str, InvalidNamedPageKeyReason],
+) -> _CaseTables:
+    """Build all table rows, links, and options for a review case panel.
 
     Args:
-        case: The review case with its saved answer.
+        case: The review case to present.
         original_answer: The baseline answer recorded by the previous pipeline run.
-        unsaved_answer: The staged browser edit for this case, or None.
+        unsaved_answer: The staged browser edit for this case, if any.
         is_rejected: Whether the last save attempt failed validation rules.
+        show_only_differences: Whether to hide identical metadata attributes.
+        invalid_named_page_key_reasons: Each invalid page key named after
+            ``other work``, mapped to the reason it is invalid.
 
     Returns:
-        The case's edit state.
+        The assembled ``_CaseTables`` bundle for ``CaseView``.
     """
-    return resolve_case_edit_state(
-        original_answer=original_answer,
-        saved_answer=case.answer,
-        unsaved_answer=unsaved_answer,
-        has_unsaved_edit=unsaved_answer is not None,
+    chosen_answer = resolve_shown_answer(case, unsaved_answer)
+    linking_entry_link, linked_page_link = build_linked_page_case_links(case)
+    page_rows, work_partial_sources = _build_group_case_tables(
+        case,
+        chosen_answer,
+        original_answer,
         is_rejected=is_rejected,
+        invalid_named_page_key_reasons=invalid_named_page_key_reasons,
+    )
+    shown_columns = list_shown_columns(page_rows, show_only_differences)
+    evidence_pages = list_evidence_pages(case, page_rows)
+    if case.kind is ReviewCaseKind.LINKED_PAGE:
+        return _CaseTables(
+            chosen_answer,
+            page_rows,
+            work_partial_sources,
+            shown_columns,
+            evidence_pages,
+            linking_entry_link,
+            linked_page_link,
+            list_linked_page_options(case),
+            build_comparison_rows(case, show_only_differences),
+            (),
+        )
+    return _CaseTables(
+        chosen_answer,
+        page_rows,
+        work_partial_sources,
+        shown_columns,
+        evidence_pages,
+        linking_entry_link,
+        linked_page_link,
+        (),
+        (),
+        PLACEMENT_WORD_MEANINGS,
     )
 
 

@@ -335,11 +335,6 @@ class LinkedPageAnswerCheck:
     accepted_answer: LinkedPageAddition | str | None
     broken_rules: tuple[LinkedPageAnswerRule, ...]
 
-    @property
-    def is_valid(self) -> bool:
-        """Report whether the answer breaks no rule."""
-        return not self.broken_rules
-
 
 class PreviousAnswer(BaseModel):
     """Hold an answered case's answer, carried to the case that replaces it."""

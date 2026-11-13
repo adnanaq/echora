@@ -52,13 +52,11 @@ class _GroupMalPageDetails:
     mal_page_key_by_work: dict[str, str]
     # The reference page of the entry listing each page.
     reference_page_by_page_key: dict[str, str]
-    doubled_page_keys: frozenset[str]
 
     @classmethod
     def build_group_mal_details(
         cls,
         entries: Sequence[WorkEntry],
-        decisions: Sequence[DoubledProviderDecision],
         suggested_placements: dict[str, str],
         pages: Sequence[ProviderPage],
     ) -> Self:
@@ -66,7 +64,6 @@ class _GroupMalPageDetails:
 
         Args:
             entries: The group's work entries.
-            decisions: The doubled-provider decisions of the combined entry.
             suggested_placements: The suggested placements by page key.
             pages: Details of the group's fetched pages.
 
@@ -94,9 +91,6 @@ class _GroupMalPageDetails:
                 for entry in entries
                 for page_key in entry.addresses_by_page_key
             },
-            doubled_page_keys=frozenset(
-                page_key for decision in decisions for page_key in decision.page_keys
-            ),
         )
 
 
@@ -135,7 +129,7 @@ def check_with_mal_pages(
         The suggestions kept, and each comparison that left a page out.
     """
     group_details = _GroupMalPageDetails.build_group_mal_details(
-        entries, decisions, suggested_placements, pages
+        entries, suggested_placements, pages
     )
     checked_placements: dict[str, str] = {}
     left_out_comparisons: set[MalPageComparison] = set()

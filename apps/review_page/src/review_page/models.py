@@ -510,15 +510,6 @@ class ChoiceOption:
     disabling_rule: PlacementRule | LinkedPageAnswerRule | None = None
 
     @property
-    def is_disabled(self) -> bool:
-        """Report whether the choice is disabled by a rule.
-
-        Returns:
-            True when ``disabling_rule`` is set.
-        """
-        return self.disabling_rule is not None
-
-    @property
     def description(self) -> str:
         """Return what the choice does, as ``describe_answer_word`` says.
 
