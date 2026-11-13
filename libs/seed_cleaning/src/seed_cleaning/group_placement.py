@@ -41,8 +41,6 @@ from seed_cleaning.answer_placements import (
 )
 from seed_cleaning.models import (
     AnswerPlacements,
-    CorrectedSeed,
-    CorrectionNames,
     EntryGroup,
     GroupPlacement,
     PlacementCorrections,
@@ -97,7 +95,6 @@ def correct_entry_groups(
     store: ProviderPageStore,
     known_work_entries: KnownWorkEntries,
     review_file: ReviewFile,
-    corrected_seed: CorrectedSeed | None = None,
 ) -> PlacementCorrections:
     """Place the pages of each entry group, or ask a person.
 
@@ -111,9 +108,6 @@ def correct_entry_groups(
         known_work_entries: Every entry the groups' entries come from, to find
             the entries pages move to.
         review_file: The review file, for the answers kept in it.
-        corrected_seed: In the second pass, the corrected seed the groups'
-            entries come from, so corrections name the downloaded seed; None
-            in the first pass.
 
     Returns:
         The corrections from groups needing no review, from accepted answers
@@ -138,7 +132,6 @@ def correct_entry_groups(
         )
     }
     corrections: list[SeedCorrection] = []
-    correction_names = CorrectionNames(corrected_seed)
     for decided_group in decided_groups:
         review_case = (
             review_cases_by_name[decided_group.review_case.case_name]
@@ -148,7 +141,6 @@ def correct_entry_groups(
         group_placement = _place_entry_group(
             decided_group._replace(review_case=review_case),
             previous_cases_by_name,
-            correction_names,
         )
         if group_placement is not None:
             for entry in decided_group.entry_group.entries:
@@ -198,7 +190,6 @@ def _decide_entry_group(
 def _place_entry_group(
     decided_group: _DecidedEntryGroup,
     previous_cases_by_name: Mapping[str, ReviewCase],
-    correction_names: CorrectionNames,
 ) -> GroupPlacement | None:
     """Place one decided entry group's pages by the rules or by an answer.
 
@@ -207,7 +198,6 @@ def _place_entry_group(
             and the case's previous answer.
         previous_cases_by_name: The answered cases that did not come up, by
             case name, for the previous answer a case carries.
-        correction_names: How the group's corrections name pages and entries.
 
     Returns:
         The group's placement, or None while its review case is open with no
@@ -245,7 +235,6 @@ def _place_entry_group(
             current_page_key_by_page_key,
         ),
         answer_placements.named_entry_reference_pages,
-        correction_names,
     )
 
 
@@ -433,9 +422,8 @@ def _build_seed_correction(
     Returns:
         The correction naming where the page goes and why.
     """
-    origin = group_placement.correction_names.find_page_origin(entry, page_key, address)
     destination = find_page_destination(
-        entry, page_key, placement, current_page_key, origin, group_placement
+        entry, page_key, placement, current_page_key, group_placement
     )
     is_renamed_page_listed = (
         current_page_key != page_key
@@ -446,10 +434,10 @@ def _build_seed_correction(
         for partial_work in placement.partial_works
     ]
     return SeedCorrection(
-        entry_reference_page=origin.entry_reference_page,
+        entry_reference_page=entry.reference_page_key,
         page_key=page_key,
-        address=origin.address,
-        is_added_page=origin.is_added_page,
+        address=address,
+        is_added_page=False,
         placement_word=placement.placement_word,
         is_dropped_page=placement.placement_word == DROPPED,
         partial_entry_reference_pages=tuple(

@@ -32,6 +32,7 @@ from seed_cleaning.corrected_seed import (
     PageOrigin,
     UnknownPageOriginError,
     build_corrected_seed,
+    translate_corrected_seed_corrections,
 )
 from seed_cleaning.group_placement import correct_entry_groups
 from seed_cleaning.linked_page_additions import (
@@ -126,6 +127,7 @@ __all__ = [
     "UnknownSeedEntryError",
     "correct_entry_groups",
     "build_corrected_seed",
+    "translate_corrected_seed_corrections",
     "find_split_work_links",
     "correct_linked_pages",
     "find_entries_without_mal_page",

@@ -34,7 +34,10 @@ from seed_cleaning.cleaning_report import (
     describe_linked_page_outcomes,
 )
 from seed_cleaning.corrected_entries import build_corrected_entries, mark_anime_id_pages
-from seed_cleaning.corrected_seed import build_corrected_seed
+from seed_cleaning.corrected_seed import (
+    build_corrected_seed,
+    translate_corrected_seed_corrections,
+)
 from seed_cleaning.group_placement import correct_entry_groups
 from seed_cleaning.linked_page_additions import (
     correct_linked_pages,
@@ -229,7 +232,12 @@ def run_first_pass(
         store,
         live_seed.known_work_entries,
         review_file,
-        live_seed,
+    )
+    entry_group_corrections = PlacementCorrections(
+        translate_corrected_seed_corrections(
+            entry_group_corrections.corrections, live_seed
+        ),
+        entry_group_corrections.review_cases,
     )
     linking_seed_entries_by_page_key = find_linking_seed_entries(
         list_entries_with_placed_pages(
@@ -268,7 +276,7 @@ def run_second_pass(
     Returns:
         The split-work corrections and cases.
     """
-    return correct_entry_groups(
+    placement_corrections = correct_entry_groups(
         [
             EntryGroup.from_candidates(candidate_group)
             for candidate_group in split_work_pass.candidates
@@ -276,7 +284,12 @@ def run_second_pass(
         store,
         split_work_pass.known_work_entries,
         review_file,
-        split_work_pass.corrected_seed,
+    )
+    return PlacementCorrections(
+        translate_corrected_seed_corrections(
+            placement_corrections.corrections, split_work_pass.corrected_seed
+        ),
+        placement_corrections.review_cases,
     )
 
 

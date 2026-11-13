@@ -2,7 +2,10 @@ import pytest
 from seed_cleaning.corrected_entries import (
     build_corrected_entries,
 )
-from seed_cleaning.corrected_seed import build_corrected_seed
+from seed_cleaning.corrected_seed import (
+    build_corrected_seed,
+    translate_corrected_seed_corrections,
+)
 from seed_cleaning.group_placement import correct_entry_groups
 from seed_cleaning.models import EntryGroup, SeedCorrection
 from work_matching import (
@@ -656,20 +659,21 @@ def test_correct_entry_groups_corrected_seed_names_pages_by_origin_and_entries_b
         store,
         corrected_entries,
         ReviewFile(path),
-        corrected_seed,
     ).review_cases
     answer = {"ann:anime:24629": "work 1", "kitsu:anime:44979": "work 1"}
     path.write_text(
         case.model_copy(update={"answer": answer}).model_dump_json() + "\n",
         encoding="utf-8",
     )
-    corrections = correct_entry_groups(
-        [EntryGroup(group_entries)],
-        store,
-        corrected_entries,
-        ReviewFile(path),
+    corrections = translate_corrected_seed_corrections(
+        correct_entry_groups(
+            [EntryGroup(group_entries)],
+            store,
+            corrected_entries,
+            ReviewFile(path),
+        ).corrections,
         corrected_seed,
-    ).corrections
+    )
     assert [
         (
             correction.entry_reference_page,
@@ -804,16 +808,19 @@ def test_correct_entry_groups_second_pass_answer_naming_moved_page_joins_its_new
     store.add_pages(_page(KITSU_ONE, MAL), _page(KITSU_TWO, MAL))
     path = tmp_path / "review.jsonl"
     [case] = correct_entry_groups(
-        [EntryGroup((entry,))], store, corrected_works, ReviewFile(path), corrected_seed
+        [EntryGroup((entry,))], store, corrected_works, ReviewFile(path)
     ).review_cases
     answer = {"kitsu:anime:1": "work 1", "kitsu:anime:2": "other work mal:anime:9"}
     path.write_text(
         case.model_copy(update={"answer": answer}).model_dump_json() + "\n",
         encoding="utf-8",
     )
-    corrections = correct_entry_groups(
-        [EntryGroup((entry,))], store, corrected_works, ReviewFile(path), corrected_seed
-    ).corrections
+    corrections = translate_corrected_seed_corrections(
+        correct_entry_groups(
+            [EntryGroup((entry,))], store, corrected_works, ReviewFile(path)
+        ).corrections,
+        corrected_seed,
+    )
     assert [
         (correction.target_entry_reference_page, correction.new_entry_key)
         for correction in corrections
@@ -849,16 +856,19 @@ def test_correct_entry_groups_second_pass_dropped_moved_in_page_goes_nowhere(
     store.add_pages(_page(KITSU_ONE, MAL), _page(KITSU_TWO, MAL))
     path = tmp_path / "review.jsonl"
     [case] = correct_entry_groups(
-        [EntryGroup((entry,))], store, corrected_works, ReviewFile(path), corrected_seed
+        [EntryGroup((entry,))], store, corrected_works, ReviewFile(path)
     ).review_cases
     answer = {"kitsu:anime:1": "work 1", "kitsu:anime:2": "dropped"}
     path.write_text(
         case.model_copy(update={"answer": answer}).model_dump_json() + "\n",
         encoding="utf-8",
     )
-    corrections = correct_entry_groups(
-        [EntryGroup((entry,))], store, corrected_works, ReviewFile(path), corrected_seed
-    ).corrections
+    corrections = translate_corrected_seed_corrections(
+        correct_entry_groups(
+            [EntryGroup((entry,))], store, corrected_works, ReviewFile(path)
+        ).corrections,
+        corrected_seed,
+    )
     assert [
         (
             correction.is_dropped_page,

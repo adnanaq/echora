@@ -3,6 +3,7 @@ from seed_cleaning.corrected_seed import (
     EntryIdentity,
     PageOrigin,
     build_corrected_seed,
+    translate_corrected_seed_corrections,
 )
 from seed_cleaning.seed_corrections import SeedCorrection
 from work_matching import KnownWorkEntriesFromSeed, ProviderPageStore
@@ -118,3 +119,60 @@ def test_build_corrected_seed_added_page_marked_added(
     assert corrected_seed.find_page_origin(
         "mal:anime:9", "anilist:anime:9"
     ) == PageOrigin("mal:anime:9", ADDED_ANILIST, is_added_page=True)
+
+
+def test_translate_corrected_seed_corrections_rewrites_origins_and_destinations(
+    known_work_entries, store
+) -> None:
+    first_pass = [
+        _build_correction(
+            entry_reference_page="mal:anime:43735",
+            page_key="kitsu:anime:44979",
+            address=CUE_KITSU,
+            new_entry_key="mal:anime:43735 work 2",
+        ),
+        _build_correction(
+            entry_reference_page="mal:anime:9",
+            page_key="anilist:anime:9",
+            address=ADDED_ANILIST,
+            is_added_page=True,
+        ),
+    ]
+    corrected_seed = build_corrected_seed(first_pass, known_work_entries, store)
+    second_pass = [
+        _build_correction(
+            entry_reference_page="kitsu:anime:44979",
+            page_key="kitsu:anime:44979",
+            address=CUE_KITSU,
+            partial_entry_reference_pages=("mal:anime:9", "kitsu:anime:44979"),
+            partial_new_entry_keys=("ann:anime:24629 work 2",),
+        ),
+        _build_correction(
+            entry_reference_page="mal:anime:9",
+            page_key="anilist:anime:9",
+            address=ADDED_ANILIST,
+            target_entry_reference_page="mal:anime:9",
+        ),
+    ]
+    [staying_in_new_entry, staying_in_seed_entry] = (
+        translate_corrected_seed_corrections(second_pass, corrected_seed)
+    )
+    assert (
+        staying_in_new_entry.entry_reference_page,
+        staying_in_new_entry.target_entry_reference_page,
+        staying_in_new_entry.new_entry_key,
+        staying_in_new_entry.partial_entry_reference_pages,
+        staying_in_new_entry.partial_new_entry_keys,
+    ) == (
+        "mal:anime:43735",
+        None,
+        "mal:anime:43735 work 2",
+        ("mal:anime:9",),
+        ("ann:anime:24629 work 2", "mal:anime:43735 work 2"),
+    )
+    assert (
+        staying_in_seed_entry.entry_reference_page,
+        staying_in_seed_entry.is_added_page,
+        staying_in_seed_entry.target_entry_reference_page,
+        staying_in_seed_entry.new_entry_key,
+    ) == ("mal:anime:9", True, None, None)

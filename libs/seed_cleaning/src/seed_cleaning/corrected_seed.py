@@ -169,3 +169,120 @@ def _find_origin(
     if identity.seed_entry_reference_page is None:
         raise UnknownPageOriginError(page_key, identity)
     return PageOrigin(identity.seed_entry_reference_page, address)
+
+
+def translate_corrected_seed_corrections(
+    corrections: Iterable[SeedCorrection],
+    corrected_seed: CorrectedSeed,
+) -> tuple[SeedCorrection, ...]:
+    """Translate corrections written against a corrected seed to the downloaded seed.
+
+    Args:
+        corrections: Corrections produced by placing groups of ``corrected_seed``.
+        corrected_seed: The corrected seed holding each page's origin and each
+            entry's identity in the downloaded seed.
+
+    Returns:
+        The corrections rewritten to name pages by their origin and entries by
+        their downloaded-seed identity.
+    """
+    return tuple(
+        _translate_correction(correction, corrected_seed) for correction in corrections
+    )
+
+
+def _translate_correction(
+    correction: SeedCorrection,
+    corrected_seed: CorrectedSeed,
+) -> SeedCorrection:
+    """Translate one correction from corrected-seed names to downloaded-seed names.
+
+    Args:
+        correction: A correction written against an entry of ``corrected_seed``.
+        corrected_seed: The corrected seed holding each page's origin and each
+            entry's identity in the downloaded seed.
+
+    Returns:
+        The correction rewritten with downloaded-seed origin and destination names.
+    """
+    origin = corrected_seed.find_page_origin(
+        correction.entry_reference_page, correction.page_key
+    )
+    target_entry_reference_page, new_entry_key = _translate_primary_destination(
+        correction, origin, corrected_seed
+    )
+    partial_entry_reference_pages, partial_new_entry_keys = (
+        _translate_partial_destinations(correction, corrected_seed)
+    )
+    return correction.model_copy(
+        update={
+            "entry_reference_page": origin.entry_reference_page,
+            "address": origin.address,
+            "is_added_page": origin.is_added_page,
+            "target_entry_reference_page": target_entry_reference_page,
+            "new_entry_key": new_entry_key,
+            "partial_entry_reference_pages": partial_entry_reference_pages,
+            "partial_new_entry_keys": partial_new_entry_keys,
+        }
+    )
+
+
+def _translate_primary_destination(
+    correction: SeedCorrection,
+    origin: PageOrigin,
+    corrected_seed: CorrectedSeed,
+) -> tuple[str | None, str | None]:
+    """Translate a correction's primary destination to downloaded-seed names.
+
+    Args:
+        correction: The second-pass correction to translate.
+        origin: The page's downloaded-seed origin.
+        corrected_seed: The corrected seed holding each entry's identity.
+
+    Returns:
+        A ``(target_entry_reference_page, new_entry_key)`` pair, both None when
+        dropped or staying in ``origin.entry_reference_page``.
+    """
+    if correction.is_dropped_page:
+        return None, None
+    if correction.target_entry_reference_page is not None:
+        identity = corrected_seed.identity_by_reference_page[
+            correction.target_entry_reference_page
+        ]
+        destination = (identity.seed_entry_reference_page, identity.new_entry_key)
+    elif correction.new_entry_key is not None:
+        destination = (None, correction.new_entry_key)
+    else:
+        identity = corrected_seed.identity_by_reference_page[
+            correction.entry_reference_page
+        ]
+        destination = (identity.seed_entry_reference_page, identity.new_entry_key)
+    if destination == (origin.entry_reference_page, None):
+        return None, None
+    return destination
+
+
+def _translate_partial_destinations(
+    correction: SeedCorrection,
+    corrected_seed: CorrectedSeed,
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Translate a correction's partial destinations to downloaded-seed names.
+
+    Args:
+        correction: The second-pass correction whose partial destinations are
+            translated.
+        corrected_seed: The corrected seed holding each entry's identity.
+
+    Returns:
+        The translated ``(partial_entry_reference_pages, partial_new_entry_keys)``
+        tuples.
+    """
+    partial_entry_reference_pages: list[str] = []
+    partial_new_entry_keys = list(correction.partial_new_entry_keys)
+    for reference_page in correction.partial_entry_reference_pages:
+        identity = corrected_seed.identity_by_reference_page[reference_page]
+        if identity.seed_entry_reference_page is not None:
+            partial_entry_reference_pages.append(identity.seed_entry_reference_page)
+        if identity.new_entry_key is not None:
+            partial_new_entry_keys.append(identity.new_entry_key)
+    return tuple(partial_entry_reference_pages), tuple(partial_new_entry_keys)

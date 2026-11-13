@@ -20,7 +20,7 @@ Each item reads ``<placement>: <where the page goes>``.
   page an ``other work <page key>`` partial work names.
 """
 
-from seed_cleaning.models import GroupPlacement, PageDestination, PageOrigin
+from seed_cleaning.models import GroupPlacement, PageDestination
 from work_matching import DROPPED, OTHER_WORK, PagePlacement, WorkEntry
 
 
@@ -29,27 +29,23 @@ def find_page_destination(
     page_key: str,
     placement: PagePlacement,
     current_page_key: str,
-    origin: PageOrigin,
     group_placement: GroupPlacement,
 ) -> PageDestination:
     """Find the entry a placed page ends up in, as its correction names it.
 
     A dropped page goes nowhere, since its correction takes it out of every
-    entry. A page staying in its entry still moves when that entry is not the
-    seed entry listing the page, such as a page the first pass moved in.
+    entry.
 
     Args:
         entry: The entry the page is listed in.
         page_key: The key the entry lists the page under.
         placement: The page's placement.
         current_page_key: The key the page was placed by.
-        origin: The seed entry listing the page, and its address there.
         group_placement: Where the entry's group places its pages.
 
     Returns:
-        The seed entry the page joins, or the new entry key it shares; both
-        fields None when the page is dropped or stays in the seed entry
-        listing it.
+        The entry the page joins, or the new entry key it shares; both fields
+        None when the page is dropped or stays in the entry listing it.
     """
     if placement.placement_word == DROPPED:
         return PageDestination(None, None)
@@ -58,12 +54,7 @@ def find_page_destination(
     )
     if destination is not None:
         return destination
-    entry_destination = group_placement.correction_names.find_entry_destination(
-        entry.reference_page_key
-    )
-    if entry_destination == (origin.entry_reference_page, None):
-        return PageDestination(None, None)
-    return entry_destination
+    return PageDestination(None, None)
 
 
 def find_partial_work_destination(
@@ -74,21 +65,21 @@ def find_partial_work_destination(
     Each item reads ``<partial work>: <entry>``.
 
     - ``work N``: the entry that work becomes (``_find_work_destination``).
-    - ``other work <page key>``: the seed entry holding the named page. A run
-      reads answers only after their named keys are looked up, so the key is
-      always found.
+    - ``other work <page key>``: the entry holding the named page. A run reads
+      answers only after their named keys are looked up, so the key is always
+      found.
 
     Args:
         partial_work: The partial work in answer words.
         group_placement: Where the group places its pages.
 
     Returns:
-        The seed entry or the new entry the page is a partial source of.
+        The entry or the new entry the page is a partial source of.
     """
     named_page_key = partial_work.removeprefix(f"{OTHER_WORK} ")
     if named_page_key != partial_work:
-        return group_placement.correction_names.find_entry_destination(
-            group_placement.named_entry_reference_pages[named_page_key]
+        return PageDestination(
+            group_placement.named_entry_reference_pages[named_page_key], None
         )
     return _find_work_destination(partial_work, group_placement)
 
@@ -143,9 +134,7 @@ def _find_work_destination(
         work_word
     )
     if surviving_reference_page:
-        return group_placement.correction_names.find_entry_destination(
-            surviving_reference_page
-        )
+        return PageDestination(surviving_reference_page, None)
     return PageDestination(
         None, f"{group_placement.combined_entry.reference_page_key} {work_word}"
     )
@@ -166,14 +155,12 @@ def _find_other_work_destination(
         group_placement: Where the entry's group places its pages.
 
     Returns:
-        The seed entry of the page's sure move, as corrections name it; without
-        one, the new entry keyed ``<entry reference page> <page key>``.
+        The entry of the page's sure move; without one, the new entry keyed
+        ``<entry reference page> <page key>``.
     """
     move_target_reference_page = group_placement.target_reference_page_by_page_key.get(
         current_page_key
     )
     if move_target_reference_page:
-        return group_placement.correction_names.find_entry_destination(
-            move_target_reference_page
-        )
+        return PageDestination(move_target_reference_page, None)
     return PageDestination(None, f"{entry.reference_page_key} {page_key}")
