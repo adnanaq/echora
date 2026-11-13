@@ -37,6 +37,7 @@ from review_page.models import (
     PageRowView,
     RunSummary,
     SavedChange,
+    WorkPartialSources,
 )
 from review_page.page_state import (
     build_case_buttons,
@@ -45,14 +46,15 @@ from review_page.page_state import (
     resolve_case_edit_state,
     resolve_saved_change,
 )
+from review_page.review_choices import (
+    list_linked_page_options,
+    list_work_partial_sources,
+)
 from work_matching import (
     ReviewCase,
     ReviewCaseKind,
-    WorkPartialSources,
     combine_group_entries,
     describe_case_reasons,
-    list_linked_page_options,
-    list_work_partial_sources,
 )
 from work_matching.answer_words import PLACEMENT_WORD_MEANINGS
 

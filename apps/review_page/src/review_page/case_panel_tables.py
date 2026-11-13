@@ -30,19 +30,19 @@ from review_page.models import (
     ComparisonRowView,
     DetailColumn,
     EntryView,
+    GroupPageChoices,
     InvalidNamedPageKeyReason,
     PageLink,
     PageRowView,
 )
+from review_page.review_choices import list_group_page_choices
 from work_matching import (
-    GroupPageChoices,
     PlacementRule,
     ProviderPage,
     ReviewCase,
     TargetEntrySuggestion,
     build_page_address,
     index_pages_by_any_key,
-    list_group_page_choices,
     read_page_provider,
 )
 

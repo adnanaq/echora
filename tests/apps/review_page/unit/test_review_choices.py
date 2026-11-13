@@ -1,12 +1,9 @@
 import dataclasses
+from collections.abc import Callable
 
 import pytest
-from work_matching.doubled_provider_check import decide_doubled_providers
-from work_matching.entry_group import combine_group_entries
-from work_matching.known_work_entries_from_seed import KnownWorkEntriesFromSeed
-from work_matching.models import LinkedPageAnswerRule, PlacementRule, WorkPartialSources
-from work_matching.review_cases import ReviewCase, TargetEntrySuggestion
-from work_matching.review_choices import (
+from review_page.models import WorkPartialSources
+from review_page.review_choices import (
     choose_group_page_place,
     choose_partial_sources,
     find_linked_page_conflicts,
@@ -15,6 +12,14 @@ from work_matching.review_choices import (
     list_required_page_keys,
     list_work_partial_sources,
 )
+from work_matching.answer_words import describe_answer_word
+from work_matching.doubled_provider_check import decide_doubled_providers
+from work_matching.entry_group import combine_group_entries
+from work_matching.known_work_entries_from_seed import KnownWorkEntriesFromSeed
+from work_matching.models import LinkedPageAnswerRule, PlacementRule
+from work_matching.provider_page_key import resolve_page_key
+from work_matching.review_cases import ReviewCase, TargetEntrySuggestion
+from work_matching.work_entry import WorkEntry, WorkType
 
 MAL = "https://myanimelist.net/anime/1"
 OTHER_MAL = "https://myanimelist.net/anime/2"
@@ -30,6 +35,23 @@ def _index_choices_by_page_key(case, answer):
 
 def _read_disabling_rules(options):
     return {option.value: option.disabling_rule for option in options}
+
+
+@pytest.fixture(scope="module")
+def work_entry() -> Callable[..., WorkEntry]:
+    def build_work_entry(
+        *addresses: str, work_type: WorkType = "TV", year: int | None = 2020
+    ) -> WorkEntry:
+        return WorkEntry(
+            title="Test",
+            type=work_type,
+            year=year,
+            addresses_by_page_key={
+                resolve_page_key(address): address for address in addresses
+            },
+        )
+
+    return build_work_entry
 
 
 @pytest.fixture
@@ -379,3 +401,15 @@ def test_list_work_partial_sources_lone_work_hidden_and_covered_entry_listed(
     assert list_work_partial_sources(case, answer) == (
         WorkPartialSources("other work mal:anime:21273", (), ("anidb:anime:19188",)),
     )
+
+
+def test_choice_option_description_reads_answer_word_meaning(review_cases) -> None:
+    options = [
+        option
+        for choices in list_group_page_choices(review_cases["atashinchi_next"], {})
+        for option in choices.work_options
+    ] + list(list_linked_page_options(review_cases["nami"]))
+    assert all(
+        option.description == describe_answer_word(option.value) for option in options
+    )
+    assert all(option.description for option in options)

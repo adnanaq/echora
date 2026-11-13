@@ -40,6 +40,12 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import replace
 
 from pydantic import JsonValue
+from review_page.models import (
+    ChoiceOption,
+    GroupPageChoices,
+    LinkedPageConflict,
+    WorkPartialSources,
+)
 from work_matching.entry_group import combine_group_entries
 from work_matching.linked_page_check import (
     PARTIAL_SOURCE_ANSWER,
@@ -47,14 +53,7 @@ from work_matching.linked_page_check import (
     WHOLE_PAGE_ANSWER,
     check_linked_page_answer,
 )
-from work_matching.models import (
-    ChoiceOption,
-    GroupPageChoices,
-    LinkedPageAddition,
-    LinkedPageConflict,
-    PlacementRule,
-    WorkPartialSources,
-)
+from work_matching.models import LinkedPageAddition, PlacementRule
 from work_matching.page_placement import (
     DROPPED,
     OTHER_WORK,

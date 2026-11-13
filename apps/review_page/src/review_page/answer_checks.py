@@ -23,8 +23,9 @@ from collections.abc import Mapping, Sequence
 from google.protobuf import json_format
 from pydantic import JsonValue
 from review_page.review_case_source import ANSWER_SAVED_ELSEWHERE_RULE_NAME
+from review_page.review_choices import find_linked_page_conflicts
 from shared_proto.v1 import review_cases_pb2
-from work_matching import ReviewCase, ReviewCaseKind, find_linked_page_conflicts
+from work_matching import ReviewCase, ReviewCaseKind
 
 _UNKNOWN_CASE_RULE_NAME = "UNKNOWN_CASE"
 _UNKNOWN_CASE_SENTENCE = (

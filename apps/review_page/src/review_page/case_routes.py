@@ -35,7 +35,6 @@ from review_page.case_views import (
     resolve_shown_answer,
 )
 from review_page.correction_views import list_case_correction_links
-from review_page.htmx_responses import build_event_response, build_notice_response
 from review_page.models import (
     BrowserState,
     BrowserStateField,
@@ -51,6 +50,7 @@ from review_page.page_state import (
     paginate_rows,
     resolve_row_edit_state,
 )
+from review_page.request_guards import build_event_response, build_notice_response
 from review_page.review_case_messages import (
     build_case_answer,
 )
@@ -62,6 +62,7 @@ from review_page.review_case_source import (
     load_cases,
     load_last_run_summary,
 )
+from review_page.review_choices import choose_group_page_place, choose_partial_sources
 from shared_proto.v1 import review_cases_pb2
 from work_matching import (
     OTHER_WORK,
@@ -70,8 +71,6 @@ from work_matching import (
     ReviewFileLockedError,
     SavedAnswerChangedError,
     UnknownCaseError,
-    choose_group_page_place,
-    choose_partial_sources,
     list_named_entry_page_keys,
     resolve_page_key,
 )

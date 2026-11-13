@@ -24,14 +24,14 @@ from fastapi import Form
 from pydantic import BaseModel, JsonValue, ValidationError
 from review_page.tooltips import CASE_STATE_TOOLTIPS, EDIT_STATE_TOOLTIPS
 from work_matching import (
-    ChoiceOption,
-    GroupPageChoices,
+    LinkedPageAnswerRule,
+    PlacementRule,
     ProviderPage,
     ReviewCase,
     ReviewCaseKind,
     TargetEntrySuggestion,
-    WorkPartialSources,
 )
+from work_matching.answer_words import describe_answer_word
 
 # Case states.
 
@@ -500,3 +500,59 @@ class BrowserState(BaseModel):
             unsaved_case_names=frozenset(self.edits),
             rejected_case_names=frozenset(self.rejected),
         )
+
+
+@dataclass(frozen=True, slots=True)
+class ChoiceOption:
+    """Hold one choice a reviewer can make and the rule that disables it, if any."""
+
+    value: str
+    disabling_rule: PlacementRule | LinkedPageAnswerRule | None = None
+
+    @property
+    def is_disabled(self) -> bool:
+        """Report whether the choice is disabled by a rule.
+
+        Returns:
+            True when ``disabling_rule`` is set.
+        """
+        return self.disabling_rule is not None
+
+    @property
+    def description(self) -> str:
+        """Return what the choice does, as ``describe_answer_word`` says.
+
+        Returns:
+            The user-facing meaning of the choice value.
+        """
+        return describe_answer_word(self.value)
+
+
+@dataclass(frozen=True, slots=True)
+class GroupPageChoices:
+    """Hold one page of an entry group's case, with its current place and the choices left."""
+
+    page_key: str
+    work: str | None
+    named_entry_page_key: str | None
+    partial_works: tuple[str, ...]
+    is_required: bool
+    work_options: tuple[ChoiceOption, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class WorkPartialSources:
+    """Hold one work of an entry group's case, with its partial sources and the pages that can be one."""
+
+    work: str
+    partial_source_page_keys: tuple[str, ...]
+    page_key_options: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class LinkedPageConflict:
+    """Hold linked-page answers adding whole pages of one provider to one entry."""
+
+    entry_reference_page: str
+    provider: str
+    case_names: tuple[str, ...]

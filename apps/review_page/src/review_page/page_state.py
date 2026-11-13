@@ -44,7 +44,8 @@ from review_page.models import (
     PageButtons,
     SavedChange,
 )
-from work_matching import ReviewCase, ReviewCaseKind, list_required_page_keys
+from review_page.review_choices import list_required_page_keys
+from work_matching import ReviewCase, ReviewCaseKind
 
 ROWS_PER_PAGE = 25
 
