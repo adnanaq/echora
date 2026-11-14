@@ -221,6 +221,46 @@ def test_run_seed_cleaning_release_adding_doubled_page_keeps_previous_answer_app
     assert dropped_page_keys == ["kitsu:anime:2"]
 
 
+def test_run_seed_cleaning_release_merging_split_work_shows_previous_answer_not_applied(
+    seed_document, store, data_dir
+) -> None:
+    merged_entries = seed_document["data"]
+    seed_document["data"] = [
+        _seed_entry("Show", MAL, KITSU_ONE),
+        _seed_entry("Show", KITSU_TWO),
+    ]
+    [split_case_name] = _run(seed_document, store, data_dir).case_names
+    answer = {
+        "mal:anime:1": "work 1",
+        "kitsu:anime:1": "work 1",
+        "kitsu:anime:2": "work 2",
+    }
+    ReviewFile(data_dir / "review.jsonl").save_answers({split_case_name: answer})
+    seed_document["data"] = merged_entries
+    run_result = _run(seed_document, store, data_dir)
+    [doubled_case] = [
+        ReviewCase.model_validate_json(line)
+        for line in (data_dir / "review.jsonl").read_text(encoding="utf-8").splitlines()
+        if json.loads(line)["case_name"] == DOUBLED_CASE_NAME
+    ]
+    answer_reasons = [
+        correction["reason"]
+        for correction in map(
+            json.loads,
+            (data_dir / "corrections.jsonl").read_text(encoding="utf-8").splitlines(),
+        )
+        if correction["reason"] == "review answer"
+    ]
+    assert run_result.unused_answer_case_names == ()
+    assert doubled_case.previous_answer == PreviousAnswer(
+        case_name=split_case_name,
+        answer=answer,
+        added_page_keys=(),
+        is_applied=False,
+    )
+    assert answer_reasons == []
+
+
 def test_run_seed_cleaning_dead_pages_dropped_before_any_case(
     seed_document, store, data_dir
 ) -> None:
