@@ -35,6 +35,7 @@ from collections import Counter, defaultdict
 from collections.abc import Iterable, Sequence
 
 from work_matching.models import PreviousAnswer
+from work_matching.page_placement import write_placement
 from work_matching.review_cases import ReviewCase, ReviewCaseKind
 
 
@@ -115,13 +116,14 @@ def _attach_previous_answer(case: ReviewCase, previous_case: ReviewCase) -> Revi
         from that answer when the answer applies.
     """
     previous_answer = build_previous_answer(case, previous_case)
+    previous_placements = previous_case.accepted_answer
     suggested_answer = case.suggested_answer
-    if previous_answer.is_applied and isinstance(previous_case.answer, dict):
+    if previous_answer.is_applied and isinstance(previous_placements, dict):
         case_page_keys = case.entry_page_keys
         suggested_answer = suggested_answer | {
-            page_key: placement_word
-            for page_key, placement_word in previous_case.answer.items()
-            if page_key in case_page_keys and isinstance(placement_word, str)
+            page_key: write_placement(placement)
+            for page_key, placement in previous_placements.items()
+            if page_key in case_page_keys
         }
     return case.model_copy(
         update={
@@ -164,9 +166,11 @@ def _match_previous_case_names(
         for previous_case_names in matched_names_by_case_name.values()
         for previous_case_name in previous_case_names
     )
-    return {
-        case_name: previous_case_name
-        for case_name, previous_case_names in matched_names_by_case_name.items()
-        if len(previous_case_names) == 1
-        and match_counts[previous_case_name := next(iter(previous_case_names))] == 1
-    }
+    replaced_case_name_by_case_name = {}
+    for case_name, previous_case_names in matched_names_by_case_name.items():
+        if len(previous_case_names) != 1:
+            continue
+        [previous_case_name] = previous_case_names
+        if match_counts[previous_case_name] == 1:
+            replaced_case_name_by_case_name[case_name] = previous_case_name
+    return replaced_case_name_by_case_name
