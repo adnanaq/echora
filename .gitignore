@@ -6,6 +6,18 @@ __pycache__/
 # Unit test / coverage reports
 htmlcov/
 .coverage
+.hypothesis/
+.tox/
+
+# Build output and packaging
+build/
+dist/
+*.egg-info/
+node_modules/
+
+# Secrets and local instructions
+secrets/
+CLAUDE.local.md
 
 # Environments
 .env
