@@ -152,7 +152,7 @@ def _match_previous_case_names(
     for previous_case in previous_cases_by_name.values():
         for page_key in previous_case.entry_page_keys:
             previous_case_names_by_page_key[page_key].add(previous_case.case_name)
-    matched_names_by_case_name = {
+    previous_case_names_by_case_name = {
         case.case_name: {
             previous_case_name
             for page_key in case.entry_page_keys
@@ -161,16 +161,16 @@ def _match_previous_case_names(
         for case in cases
         if case.kind is not ReviewCaseKind.LINKED_PAGE
     }
-    match_counts = Counter(
+    case_count_by_previous_case_name = Counter(
         previous_case_name
-        for previous_case_names in matched_names_by_case_name.values()
+        for previous_case_names in previous_case_names_by_case_name.values()
         for previous_case_name in previous_case_names
     )
     replaced_case_name_by_case_name = {}
-    for case_name, previous_case_names in matched_names_by_case_name.items():
+    for case_name, previous_case_names in previous_case_names_by_case_name.items():
         if len(previous_case_names) != 1:
             continue
         [previous_case_name] = previous_case_names
-        if match_counts[previous_case_name] == 1:
+        if case_count_by_previous_case_name[previous_case_name] == 1:
             replaced_case_name_by_case_name[case_name] = previous_case_name
     return replaced_case_name_by_case_name
