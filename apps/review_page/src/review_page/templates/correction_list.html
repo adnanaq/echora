@@ -2,8 +2,10 @@
 {% if not has_corrections %}
 <p class="empty-state">No corrections yet: the last run corrected no entry, or no run has finished.</p>
 {% else %}
+<div x-show="$store.review.is_filter_panel_shown">
 {{ chip_group("Change", "correction_changes", change_values, chip_counts, correction_change_tooltips, state.correction_changes, tab="corrections") }}
 {{ chip_group("Source", "correction_sources", source_values, chip_counts, correction_source_tooltips, state.correction_sources, tab="corrections") }}
+</div>
 
 {% if entry_page.rows %}
 <ul class="case-list">

@@ -172,7 +172,9 @@ class CaseRoutes:
         case_filter = state.build_case_filter()
         all_rows = build_case_rows(cases, last_run_summary)
         case_page = paginate_rows(
-            filter_case_rows(all_rows, case_filter), state.page_number
+            filter_case_rows(all_rows, case_filter),
+            state.page_number,
+            lambda row: row.case_name == state.open_case_name,
         )
         return self._templates.TemplateResponse(
             request,

@@ -35,18 +35,23 @@ function omitKeys(mapping, keys) {
 
 // The store fields and the region of each tab's list, so one filter, reset and
 // page function serves both tabs.
+const FILTER_DOUBLE_CLICK_MILLISECONDS = 250;
+let filterToggleTimer = null;
+
 const TAB_LISTS = {
   cases: {
     filterFields: ["kinds", "case_states", "edit_states"],
     searchField: "search_text",
     pageField: "page_number",
     region: "list",
+    listElementId: "case-list",
   },
   corrections: {
     filterFields: ["correction_changes", "correction_sources"],
     searchField: "correction_search_text",
     pageField: "correction_page_number",
     region: "correction-list",
+    listElementId: "correction-list",
   },
 };
 
@@ -117,6 +122,9 @@ document.addEventListener("alpine:init", () => {
     SIDEBAR_MAX_WIDTH: 640,
     sidebar_width: Alpine.$persist(340).as("review_page_sidebar_width"),
     is_sidebar_open: Alpine.$persist(true).as("review_page_is_sidebar_open"),
+    is_filter_panel_shown: Alpine.$persist(true).as(
+      "review_page_is_filter_panel_shown",
+    ),
     is_running: false,
     notice: "",
 
@@ -154,7 +162,30 @@ document.addEventListener("alpine:init", () => {
         this[filterField] = [];
       }
       this[tabList.searchField] = "";
-      this.showPage(tab, 1);
+      document.getElementById(tabList.listElementId).addEventListener(
+        "htmx:afterSwap",
+        (swapEvent) =>
+          swapEvent.target
+            .querySelector(".case-row.is-open")
+            ?.scrollIntoView({ block: "nearest" }),
+        { once: true },
+      );
+      this.showPage(tab, null);
+    },
+
+    // A double click clears the filters; a single click, or a key press,
+    // shows or hides them once no second click follows.
+    pressFilterButton(tab, clickEvent) {
+      clearTimeout(filterToggleTimer);
+      if (clickEvent.detail >= 2) {
+        this.resetFilters(tab);
+      } else if (clickEvent.detail === 0) {
+        this.is_filter_panel_shown = !this.is_filter_panel_shown;
+      } else {
+        filterToggleTimer = setTimeout(() => {
+          this.is_filter_panel_shown = !this.is_filter_panel_shown;
+        }, FILTER_DOUBLE_CLICK_MILLISECONDS);
+      }
     },
 
     showPage(tab, pageNumber) {

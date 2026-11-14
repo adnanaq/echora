@@ -1,5 +1,6 @@
 {% from "control_macros.html" import chip, chip_group, icon, pager, pill, status with context %}
 {% set new_state = case_states | selectattr("name", "equalto", "NEW") | first %}
+<div x-show="$store.review.is_filter_panel_shown">
 <div class="filter-group">
   <span class="filter-group-label">Kind</span>
   {% for kind in kinds %}
@@ -12,6 +13,7 @@
 </div>
 {{ chip_group("Case", "case_states", case_states, chip_counts, case_state_tooltips, state.case_states) }}
 {{ chip_group("Edits", "edit_states", edit_states, chip_counts, edit_state_tooltips, state.edit_states) }}
+</div>
 
 {% if case_page.rows %}
 <ul class="case-list">

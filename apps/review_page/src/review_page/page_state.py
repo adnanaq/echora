@@ -31,7 +31,7 @@ Key domain rules and behaviors include:
   categories narrows the match with an AND condition.
 """
 
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 
 from pydantic import JsonValue
 from review_page.models import (
@@ -314,19 +314,34 @@ def count_resolved_rows_by_kind(rows: Sequence[CaseRow]) -> dict[str, int]:
     return resolved_case_counts
 
 
-def paginate_rows[Row](rows: Sequence[Row], page_number: int) -> ListPage[Row]:
+def paginate_rows[Row](
+    rows: Sequence[Row], page_number: int | None, is_open_row: Callable[[Row], bool]
+) -> ListPage[Row]:
     """Slice a sequence of rows into a single paginated page with navigation metadata.
 
     Clamps requested page indices to valid boundaries (between 1 and total pages).
+    Without a requested page, the page holding the open row is given, so
+    clearing the filters keeps the open case or entry in view.
 
     Args:
         rows: The full sequence of filtered rows to paginate.
-        page_number: The 1-based page index requested by the user.
+        page_number: The 1-based page index requested by the user, or None for
+            the page holding the open row.
+        is_open_row: Whether a row is the one open in the panel.
 
     Returns:
         A ListPage model containing the sliced rows, active page index,
         total page count, starting row offset, and total matching count.
     """
+    if page_number is None:
+        page_number = next(
+            (
+                row_index // ROWS_PER_PAGE + 1
+                for row_index, row in enumerate(rows)
+                if is_open_row(row)
+            ),
+            1,
+        )
     page_count = max(1, -(-len(rows) // ROWS_PER_PAGE))
     page_number = min(max(page_number, 1), page_count)
     first_index = (page_number - 1) * ROWS_PER_PAGE

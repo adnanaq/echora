@@ -323,7 +323,7 @@ def test_filter_case_rows_search_matches_title_and_case_name() -> None:
 
 def test_paginate_rows_gives_page_of_25_and_page_count() -> None:
     rows = [_row(str(number)) for number in range(60)]
-    case_page = paginate_rows(rows, page_number=3)
+    case_page = paginate_rows(rows, page_number=3, is_open_row=_is_row_named_40)
     assert (
         [row.case_name for row in case_page.rows],
         case_page.page_count,
@@ -333,7 +333,30 @@ def test_paginate_rows_gives_page_of_25_and_page_count() -> None:
 
 def test_paginate_rows_page_past_end_gives_last_page() -> None:
     rows = [_row(str(number)) for number in range(30)]
-    assert paginate_rows(rows, page_number=9).page_number == 2
+    assert (
+        paginate_rows(rows, page_number=9, is_open_row=_is_row_named_40).page_number
+        == 2
+    )
+
+
+def test_paginate_rows_no_page_number_gives_page_holding_open_row() -> None:
+    rows = [_row(str(number)) for number in range(60)]
+    assert (
+        paginate_rows(rows, page_number=None, is_open_row=_is_row_named_40).page_number
+        == 2
+    )
+
+
+def test_paginate_rows_no_page_number_without_open_row_gives_first_page() -> None:
+    rows = [_row(str(number)) for number in range(30)]
+    assert (
+        paginate_rows(rows, page_number=None, is_open_row=_is_row_named_40).page_number
+        == 1
+    )
+
+
+def _is_row_named_40(row: CaseRow) -> bool:
+    return row.case_name == "40"
 
 
 def test_find_next_case_name_gives_following_case_in_filtered_list() -> None:

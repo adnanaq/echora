@@ -49,8 +49,9 @@ class Tooltip(StrEnum):
     RUN_CHANGES_PREFIX = "Saved changes:"
 
     # Case list and its filters.
-    RESET_CASE_FILTERS = (
-        "Clear all active filters and search terms to display every review case"
+    CASE_FILTER_BUTTON = (
+        "Click to show or hide the filters, or double-click to clear every filter "
+        "and the search and show every review case"
     )
     APPLIED_ANSWER_ICON = (
         "Applied: the previous run applied this case's saved answer to the seed "
@@ -134,9 +135,9 @@ class Tooltip(StrEnum):
     )
 
     # Corrections tab.
-    RESET_CORRECTION_FILTERS = (
-        "Clear all active change and source filters and search terms to display "
-        "every corrected entry"
+    CORRECTION_FILTER_BUTTON = (
+        "Click to show or hide the filters, or double-click to clear every filter "
+        "and the search and show every corrected entry"
     )
     ENTRY_FROM_ANSWER_PILL = (
         "A reviewer's answer placed at least one page in this entry"

@@ -445,14 +445,14 @@ class BrowserState(BaseModel):
     case_states: list[CaseState] = []
     edit_states: list[CaseEditState] = []
     search_text: str = ""
-    page_number: int = 1
+    page_number: int | None = 1
     open_case_name: str | None = None
     show_only_differences: bool = False
     # The Corrections tab's own filters, search, page and open entry.
     correction_changes: list[str] = []
     correction_sources: list[str] = []
     correction_search_text: str = ""
-    correction_page_number: int = 1
+    correction_page_number: int | None = 1
     open_correction_entry: str | None = None
 
     @classmethod
