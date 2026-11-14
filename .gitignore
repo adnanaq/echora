@@ -6,8 +6,13 @@ __pycache__/
 # Unit test / coverage reports
 htmlcov/
 .coverage
+.coverage.*
 .hypothesis/
 .tox/
+.cache/
+.mypy_cache/
+.ipynb_checkpoints/
+*.log
 
 # Build output and packaging
 build/
