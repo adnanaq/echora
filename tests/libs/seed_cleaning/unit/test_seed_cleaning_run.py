@@ -221,6 +221,35 @@ def test_run_seed_cleaning_release_adding_doubled_page_keeps_previous_answer_app
     assert dropped_page_keys == ["kitsu:anime:2"]
 
 
+def test_run_seed_cleaning_previous_answer_naming_removed_page_places_remaining_pages(
+    seed_document, store, data_dir
+) -> None:
+    seed_document["data"][0]["sources"].append(KITSU_THREE)
+    store.add_pages(_page(KITSU_THREE, MAL))
+    [case_name] = _run(seed_document, store, data_dir).case_names
+    answer = {
+        "kitsu:anime:1": "work 1",
+        "kitsu:anime:2": "dropped",
+        "kitsu:anime:3": "dropped",
+    }
+    ReviewFile(data_dir / "review.jsonl").save_answers({case_name: answer})
+    seed_document["data"][0]["sources"].remove(KITSU_TWO)
+    run_result = _run(seed_document, store, data_dir)
+    answer_corrections = [
+        (correction["page_key"], correction["placement_word"])
+        for correction in map(
+            json.loads,
+            (data_dir / "corrections.jsonl").read_text(encoding="utf-8").splitlines(),
+        )
+        if correction["reason"] == "review answer"
+    ]
+    assert run_result.unused_answer_case_names == ()
+    assert answer_corrections == [
+        ("kitsu:anime:1", "work 1"),
+        ("kitsu:anime:3", "dropped"),
+    ]
+
+
 def test_run_seed_cleaning_release_merging_split_work_shows_previous_answer_not_applied(
     seed_document, store, data_dir
 ) -> None:
