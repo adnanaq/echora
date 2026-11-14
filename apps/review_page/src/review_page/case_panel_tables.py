@@ -30,18 +30,19 @@ from review_page.models import (
     ComparisonRowView,
     DetailColumn,
     EntryView,
+    GroupPageChoices,
     InvalidNamedPageKeyReason,
     PageLink,
     PageRowView,
 )
+from review_page.review_choices import list_group_page_choices
 from work_matching import (
-    GroupPageChoices,
     PlacementRule,
     ProviderPage,
     ReviewCase,
     TargetEntrySuggestion,
     build_page_address,
-    list_group_page_choices,
+    index_pages_by_any_key,
     read_page_provider,
 )
 
@@ -69,9 +70,7 @@ def build_page_rows(
     """
     answer = chosen_answer if isinstance(chosen_answer, dict) else {}
     base_answer = original_answer if isinstance(original_answer, dict) else {}
-    pages_by_key = {
-        key: page for page in case.pages for key in (page.key, page.current_key)
-    }
+    pages_by_key = index_pages_by_any_key(case.pages)
     entry_label_by_page_key, reference_page_keys = _label_entry_pages(case)
     page_choices = list_group_page_choices(case, answer)
     page_key_by_work_provider = {
@@ -106,87 +105,6 @@ def build_page_rows(
         )
         for choices in page_choices
     )
-
-
-def _list_target_entry_options(
-    case: ReviewCase, page_key: str
-) -> tuple[TargetEntrySuggestion, ...]:
-    """List the suggested seed entries a page placed in ``other work`` can join.
-
-    An entry holding a page of the page's provider is left out, since the move
-    would give that entry two pages of one provider.
-
-    Args:
-        case: The review case with its suggested seed entries.
-        page_key: The page's key.
-
-    Returns:
-        The suggestions holding no page of the page's provider, in suggestion order.
-    """
-    return tuple(
-        suggestion
-        for suggestion in case.target_entry_suggestions
-        if read_page_provider(page_key) not in suggestion.providers
-    )
-
-
-def _find_pages_by_closed_work(
-    choices: GroupPageChoices,
-    page_key_by_work_provider: Mapping[tuple[str, str | None], str],
-    case: ReviewCase,
-    pages_by_key: Mapping[str, ProviderPage],
-) -> dict[str, PageLink]:
-    """Find the page of the same provider that closes each work to a page without a place.
-
-    A work holds at most one page of each provider, so a page cannot join a
-    work that another page of its provider already holds. While the page has
-    no place, the row names that other page beside the closed work, so the
-    reviewer knows which row to change. Once the page has a place, the choice
-    already keeps the rule, so the row names nothing.
-
-    Args:
-        choices: Placement options for a single page, with each option's disabling rule.
-        page_key_by_work_provider: The page key placed in each work, by the
-            work's word and the page's provider.
-        case: The review case, used to find the other page's address.
-        pages_by_key: Fetched provider pages by page key.
-
-    Returns:
-        The page holding each work closed to this page, by work word, or
-        nothing when the page already has a place.
-    """
-    if choices.work is not None:
-        return {}
-    provider = read_page_provider(choices.page_key)
-    return {
-        option.value: PageLink(
-            closing_page_key,
-            _find_page_address(case, closing_page_key, pages_by_key),
-        )
-        for option in choices.work_options
-        if option.disabling_rule is PlacementRule.WORK_WITH_TWO_PAGES_OF_ONE_PROVIDER
-        and (
-            closing_page_key := page_key_by_work_provider.get((option.value, provider))
-        )
-        is not None
-    }
-
-
-def _label_entry_pages(case: ReviewCase) -> tuple[dict[str, str], set[str]]:
-    """Map each page key to its entry label (A, B, ...) and collect reference page keys.
-
-    Args:
-        case: The review case containing work entries.
-
-    Returns:
-        A tuple containing a dictionary mapping each page key to the label of
-        the first entry holding that page, and the set of reference page keys.
-    """
-    entry_label_by_page_key: dict[str, str] = {}
-    for label, entry in zip(_build_entry_labels(), case.entries.values(), strict=False):
-        for page_key in entry.addresses_by_page_key:
-            entry_label_by_page_key.setdefault(page_key, label)
-    return entry_label_by_page_key, set(case.entries)
 
 
 def build_entry_views(case: ReviewCase) -> tuple[EntryView, ...]:
@@ -298,39 +216,12 @@ def list_evidence_pages(
     linked_page_keys = (
         {case.linked_page_decision.page_key} if case.linked_page_decision else set()
     )
-    entry_page_keys = {
-        key for entry in case.entries.values() for key in entry.addresses_by_page_key
-    }
     return tuple(
         page
         for page in case.pages
-        if page.key not in placed_page_keys | linked_page_keys | entry_page_keys
+        if page.key not in placed_page_keys | linked_page_keys | case.entry_page_keys
         and page.current_key not in placed_page_keys | linked_page_keys
     )
-
-
-def _describe_page(page: ProviderPage | None) -> dict[DetailColumn, str]:
-    """Format a provider page's metadata attributes into table column strings.
-
-    Args:
-        page: The fetched provider page details, or None for an unfetched page.
-
-    Returns:
-        A dictionary mapping each DetailColumn to its formatted display string,
-        using an em dash for missing values.
-    """
-    if page is None:
-        return dict.fromkeys(DetailColumn, "—")
-    return {
-        DetailColumn.TITLES: ", ".join(page.titles) or "—",
-        DetailColumn.TYPE: _show_value(page.type),
-        DetailColumn.EPISODE_COUNT: _show_value(page.episode_count),
-        DetailColumn.AIRED_FROM: _show_value(
-            page.aired_from and page.aired_from.date()
-        ),
-        DetailColumn.AIRED_TO: _show_value(page.aired_to and page.aired_to.date()),
-        DetailColumn.LINKS: ", ".join(page.linked_page_keys) or "—",
-    }
 
 
 def build_linked_page_case_links(
@@ -361,6 +252,111 @@ def build_linked_page_case_links(
             ),
         ),
     )
+
+
+def _list_target_entry_options(
+    case: ReviewCase, page_key: str
+) -> tuple[TargetEntrySuggestion, ...]:
+    """List the suggested seed entries a page placed in ``other work`` can join.
+
+    An entry holding a page of the page's provider is left out, since the move
+    would give that entry two pages of one provider.
+
+    Args:
+        case: The review case with its suggested seed entries.
+        page_key: The page's key.
+
+    Returns:
+        The suggestions holding no page of the page's provider, in suggestion order.
+    """
+    return tuple(
+        suggestion
+        for suggestion in case.target_entry_suggestions
+        if read_page_provider(page_key) not in suggestion.providers
+    )
+
+
+def _find_pages_by_closed_work(
+    choices: GroupPageChoices,
+    page_key_by_work_provider: Mapping[tuple[str, str | None], str],
+    case: ReviewCase,
+    pages_by_key: Mapping[str, ProviderPage],
+) -> dict[str, PageLink]:
+    """Find the page of the same provider that closes each work to a page without a place.
+
+    A work holds at most one page of each provider, so a page cannot join a
+    work that another page of its provider already holds. While the page has
+    no place, the row names that other page beside the closed work, so the
+    reviewer knows which row to change. Once the page has a place, the choice
+    already keeps the rule, so the row names nothing.
+
+    Args:
+        choices: Placement options for a single page, with each option's disabling rule.
+        page_key_by_work_provider: The page key placed in each work, by the
+            work's word and the page's provider.
+        case: The review case, used to find the other page's address.
+        pages_by_key: Fetched provider pages by page key.
+
+    Returns:
+        The page holding each work closed to this page, by work word, or
+        nothing when the page already has a place.
+    """
+    if choices.work is not None:
+        return {}
+    provider = read_page_provider(choices.page_key)
+    return {
+        option.value: PageLink(
+            closing_page_key,
+            _find_page_address(case, closing_page_key, pages_by_key),
+        )
+        for option in choices.work_options
+        if option.disabling_rule is PlacementRule.WORK_WITH_TWO_PAGES_OF_ONE_PROVIDER
+        and (
+            closing_page_key := page_key_by_work_provider.get((option.value, provider))
+        )
+        is not None
+    }
+
+
+def _label_entry_pages(case: ReviewCase) -> tuple[dict[str, str], set[str]]:
+    """Map each page key to its entry label (A, B, ...) and collect reference page keys.
+
+    Args:
+        case: The review case containing work entries.
+
+    Returns:
+        A tuple containing a dictionary mapping each page key to the label of
+        the first entry holding that page, and the set of reference page keys.
+    """
+    entry_label_by_page_key: dict[str, str] = {}
+    for label, entry in zip(_build_entry_labels(), case.entries.values(), strict=False):
+        for page_key in entry.addresses_by_page_key:
+            entry_label_by_page_key.setdefault(page_key, label)
+    return entry_label_by_page_key, set(case.entries)
+
+
+def _describe_page(page: ProviderPage | None) -> dict[DetailColumn, str]:
+    """Format a provider page's metadata attributes into table column strings.
+
+    Args:
+        page: The fetched provider page details, or None for an unfetched page.
+
+    Returns:
+        A dictionary mapping each DetailColumn to its formatted display string,
+        using an em dash for missing values.
+    """
+    if page is None:
+        return dict.fromkeys(DetailColumn, "—")
+    return {
+        DetailColumn.TITLES: ", ".join(page.titles) or "—",
+        DetailColumn.TYPE: _show_value(page.type),
+        DetailColumn.EPISODE_COUNT: _show_value(page.episode_count),
+        DetailColumn.AIRED_FROM: _show_value(
+            page.aired_from and page.aired_from.date()
+        ),
+        DetailColumn.AIRED_TO: _show_value(page.aired_to and page.aired_to.date()),
+        DetailColumn.LINKS: ", ".join(page.linked_page_keys) or "—",
+    }
 
 
 def _list_page_links(page: ProviderPage | None) -> tuple[PageLink, ...]:

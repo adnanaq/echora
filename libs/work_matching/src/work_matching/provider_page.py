@@ -50,19 +50,6 @@ class ProviderPage(BaseModel):
     searched_by: tuple[str, ...] = ()
     is_dead: bool = False
 
-    @property
-    def current_key(self) -> str:
-        """Return the key the page is found under now.
-
-        A page reached through an old or alternate spelling of its address
-        resolves to the page at its current key. An example is a Kitsu page
-        linked by slug while the seed lists the page by number.
-
-        Returns:
-            The key the page was renamed to, or the page's own key.
-        """
-        return self.renamed_to or self.key
-
     @classmethod
     def read_canonical_record(
         cls,
@@ -139,6 +126,19 @@ class ProviderPage(BaseModel):
             searched_by=_read_searched_by_page_keys(searched_by_address),
         )
 
+    @property
+    def current_key(self) -> str:
+        """Return the key the page is found under now.
+
+        A page reached through an old or alternate spelling of its address
+        resolves to the page at its current key. An example is a Kitsu page
+        linked by slug while the seed lists the page by number.
+
+        Returns:
+            The key the page was renamed to, or the page's own key.
+        """
+        return self.renamed_to or self.key
+
 
 def index_pages_by_current_page_key(
     pages: Iterable[ProviderPage],
@@ -163,6 +163,21 @@ def index_pages_by_current_page_key(
         ):
             pages_by_current_page_key[current_page_key] = page
     return pages_by_current_page_key
+
+
+def index_pages_by_any_key(pages: Iterable[ProviderPage]) -> dict[str, ProviderPage]:
+    """Index pages by their current key and by the key they were stored under.
+
+    Args:
+        pages: Fetched provider pages to index.
+
+    Returns:
+        A dictionary mapping both ``page.key`` and ``page.current_key`` to each
+        ``ProviderPage`` so an entry's old address resolves its page.
+    """
+    return {
+        page_key: page for page in pages for page_key in (page.key, page.current_key)
+    }
 
 
 def _read_searched_by_page_keys(searched_by_address: str | None) -> tuple[str, ...]:

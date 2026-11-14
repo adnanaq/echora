@@ -18,7 +18,11 @@ from seed_cleaning import CORRECTION_COUNT_NAMES
 PAGE_SOURCES = (
     Path(__file__).parents[4] / "apps" / "review_page" / "src" / "review_page"
 )
-CASE_COUNT_NAMES = {"review cases answered", "review cases open"}
+CASE_COUNT_NAMES = {
+    "review cases answered",
+    "review cases open",
+    "open cases placed by a previous answer",
+}
 
 
 def test_edit_state_tooltips_cover_every_case_edit_state() -> None:
@@ -61,7 +65,7 @@ def test_rendered_fragments_have_no_empty_tooltip(
     source.checked_entries = list(checked_entry_messages)
     case_names = [case.case_name for case in review_cases.values()]
     state = {"edits": {case_names[0]: {}}}
-    rendered = [
+    rendered_fragments = [
         client.get("/").text,
         client.post(
             "/fragments/toolbar", data={"browser_state": json.dumps(state)}
@@ -87,4 +91,6 @@ def test_rendered_fragments_have_no_empty_tooltip(
             for correction in correction_messages
         ),
     ]
-    assert not [text for text in rendered if 'title=""' in text or "title=''" in text]
+    assert not [
+        text for text in rendered_fragments if 'title=""' in text or "title=''" in text
+    ]

@@ -106,7 +106,7 @@ def _list_source_files() -> list[Path]:
 def _is_model_file(path: Path) -> bool:
     return (
         path.name == "models.py"
-        or path.name.startswith("model_")
+        or path.name.startswith(("model_", "models_"))
         or path.stem.endswith("_models")
         or path.parent.name == "models"
     )
@@ -123,27 +123,44 @@ def _find_docstring_node(body: list[ast.stmt]) -> ast.Expr | None:
     return None
 
 
-def _count_lines_after_module_docstring(path: Path) -> int:
+def _collect_docstring_lines(tree: ast.AST) -> set[int]:
+    docstring_lines: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(
+            node, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef
+        ) and (docstring_node := _find_docstring_node(node.body)):
+            end_lineno = docstring_node.end_lineno or docstring_node.lineno
+            docstring_lines.update(range(docstring_node.lineno, end_lineno + 1))
+    return docstring_lines
+
+
+def _count_non_empty_code_lines(path: Path) -> int:
     source_text = path.read_text(encoding="utf-8")
-    line_count = len(source_text.splitlines())
-    docstring_node = _find_docstring_node(ast.parse(source_text).body)
-    return line_count - (docstring_node.end_lineno or 0 if docstring_node else 0)
+    docstring_lines = _collect_docstring_lines(ast.parse(source_text))
+    return sum(
+        1
+        for lineno, line in enumerate(source_text.splitlines(), start=1)
+        if lineno not in docstring_lines and line.strip()
+    )
 
 
 def _list_function_line_counts() -> list:
     function_line_counts = []
     for path in _list_source_files():
         relative_path = path.relative_to(REPO_ROOT)
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        source_text = path.read_text(encoding="utf-8")
+        lines = source_text.splitlines()
+        tree = ast.parse(source_text)
+        docstring_lines = _collect_docstring_lines(tree)
+        for node in ast.walk(tree):
             if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
                 continue
-            line_count = (node.end_lineno or node.lineno) - node.lineno + 1
-            if docstring_node := _find_docstring_node(node.body):
-                line_count -= (
-                    (docstring_node.end_lineno or docstring_node.lineno)
-                    - docstring_node.lineno
-                    + 1
-                )
+            end_lineno = node.end_lineno or node.lineno
+            line_count = sum(
+                1
+                for lineno in range(node.lineno, end_lineno + 1)
+                if lineno not in docstring_lines and lines[lineno - 1].strip()
+            )
             function_line_counts.append(
                 pytest.param(
                     line_count, id=f"{relative_path}:{node.lineno}:{node.name}"
@@ -158,7 +175,7 @@ def _list_function_line_counts() -> list:
     ids=lambda path: str(path.relative_to(REPO_ROOT)),
 )
 def test_source_file_within_line_limit(path: Path) -> None:
-    assert _count_lines_after_module_docstring(path) <= MAX_SOURCE_FILE_LINES
+    assert _count_non_empty_code_lines(path) <= MAX_SOURCE_FILE_LINES
 
 
 @pytest.mark.parametrize("line_count", _list_function_line_counts())

@@ -1,8 +1,8 @@
 import logging
 
 import pytest
+from seed_cleaning.models import SplitWorkLink, SplitWorkLinks
 from seed_cleaning.split_work_candidates import find_split_work_candidates
-from seed_cleaning.split_work_links import SplitWorkLink, SplitWorkLinks
 from work_matching import KnownWorkEntriesFromSeed
 
 NO_SPLIT_WORK_LINKS = SplitWorkLinks({}, {})

@@ -1,10 +1,47 @@
 import pytest
-from work_matching.enum_names import read_member_by_name, write_member_name
-from work_matching.model_doubled_provider_decision import (
+from work_matching.models import (
+    DoubledProviderDecision,
     DoubledProviderOutcome,
     DoubledProviderReviewReason,
+    LinkedPageReason,
+    read_member_by_name,
+    write_member_name,
 )
-from work_matching.model_linked_page_decision import LinkedPageReason
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        DoubledProviderOutcome.DUPLICATE_PAGES,
+        DoubledProviderOutcome.PART_PAGES,
+        DoubledProviderOutcome.SEPARATE_WORKS,
+        DoubledProviderOutcome.UNDECIDED,
+    ],
+)
+def test_doubled_provider_decision_is_review_needed_always_reviewed_outcome_true(
+    outcome: DoubledProviderOutcome,
+) -> None:
+    assert DoubledProviderDecision("mal", (), outcome).is_review_needed
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    [DoubledProviderOutcome.SAME_PAGE, DoubledProviderOutcome.PAGES_OF_OTHER_WORKS],
+)
+def test_doubled_provider_decision_is_review_needed_applied_outcome_without_reasons_false(
+    outcome: DoubledProviderOutcome,
+) -> None:
+    assert not DoubledProviderDecision("mal", (), outcome).is_review_needed
+
+
+@pytest.mark.parametrize("review_reason", list(DoubledProviderReviewReason))
+def test_doubled_provider_decision_is_review_needed_any_review_reason_true(
+    review_reason: DoubledProviderReviewReason,
+) -> None:
+    decision = DoubledProviderDecision(
+        "mal", (), DoubledProviderOutcome.PAGES_OF_OTHER_WORKS, (review_reason,)
+    )
+    assert decision.is_review_needed
 
 
 def test_write_member_name_gives_member_name() -> None:

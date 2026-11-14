@@ -77,6 +77,7 @@ class CorrectionRoutes:
                         all_rows, state.build_correction_filter()
                     ),
                     state.correction_page_number,
+                    lambda row: row.entry_reference_page == state.open_correction_entry,
                 ),
                 "has_corrections": bool(all_rows),
                 "chip_counts": chip_counts,

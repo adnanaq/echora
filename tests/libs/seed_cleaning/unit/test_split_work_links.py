@@ -1,4 +1,5 @@
-from seed_cleaning.split_work_links import SplitWorkLink, find_split_work_links
+from seed_cleaning.models import SplitWorkLink
+from seed_cleaning.split_work_links import find_split_work_links
 from work_matching import KnownWorkEntriesFromSeed, ProviderPage, ProviderPageStore
 
 MAIN_MAL = "https://myanimelist.net/anime/32956"

@@ -1,8 +1,8 @@
 """Check the suggested places of an entry group's pages against MAL pages.
 
 A link or a shared seed entry alone has joined separate works, such as a page
-covering three OVA series suggested as one of them. A work is what MAL lists,
-so each suggested page is compared with the MAL page of its suggested work
+covering three OVA series suggested as one of them. Every page MAL lists is a
+work of its own, so each suggested page is compared with the MAL page of its suggested work
 (``compare_page_with_mal_page``) before the suggestion reaches a reviewer.
 
 Each item reads ``<comparison>: <suggestion>``.
@@ -27,15 +27,13 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import NamedTuple, Self
 
-from work_matching.model_doubled_provider_decision import DoubledProviderDecision
+from work_matching.answer_words import OTHER_WORK
+from work_matching.models import DoubledProviderDecision
 from work_matching.page_details_comparison import (
     MalPageComparison,
     compare_page_with_mal_page,
 )
-from work_matching.page_placement import (
-    OTHER_WORK,
-    read_placement,
-)
+from work_matching.page_placement import read_placement
 from work_matching.provider_page import ProviderPage, index_pages_by_current_page_key
 from work_matching.provider_page_key import is_mal_page
 from work_matching.provider_page_links import ProviderPageLinks
@@ -52,13 +50,11 @@ class _GroupMalPageDetails:
     mal_page_key_by_work: dict[str, str]
     # The reference page of the entry listing each page.
     reference_page_by_page_key: dict[str, str]
-    doubled_page_keys: frozenset[str]
 
     @classmethod
     def build_group_mal_details(
         cls,
         entries: Sequence[WorkEntry],
-        decisions: Sequence[DoubledProviderDecision],
         suggested_placements: dict[str, str],
         pages: Sequence[ProviderPage],
     ) -> Self:
@@ -66,7 +62,6 @@ class _GroupMalPageDetails:
 
         Args:
             entries: The group's work entries.
-            decisions: The doubled-provider decisions of the combined entry.
             suggested_placements: The suggested placements by page key.
             pages: Details of the group's fetched pages.
 
@@ -94,9 +89,6 @@ class _GroupMalPageDetails:
                 for entry in entries
                 for page_key in entry.addresses_by_page_key
             },
-            doubled_page_keys=frozenset(
-                page_key for decision in decisions for page_key in decision.page_keys
-            ),
         )
 
 
@@ -135,7 +127,7 @@ def check_with_mal_pages(
         The suggestions kept, and each comparison that left a page out.
     """
     group_details = _GroupMalPageDetails.build_group_mal_details(
-        entries, decisions, suggested_placements, pages
+        entries, suggested_placements, pages
     )
     checked_placements: dict[str, str] = {}
     left_out_comparisons: set[MalPageComparison] = set()

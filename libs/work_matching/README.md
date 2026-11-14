@@ -60,7 +60,7 @@ Whatever the rules cannot settle becomes a review case, answered by a person
 
 | Term                   | Meaning                                                                                                                                                                                                                                                                                                                            |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Work**               | One real anime title as a whole: a single TV season, movie, OVA or special. A sequel season is a separate work.                                                                                                                                                                                                                    |
+| **Work**               | One real anime as a provider lists it on a page of its own, such as a TV season, movie, OVA, special or one part of a run. Every page MAL lists is a work of its own. When providers split a run differently, each split a provider lists is a work. A sequel season is a separate work. |
 | **Provider**           | A site that catalogues anime: MAL, AniList, Kitsu, AniDB, Anime-Planet, AniSearch, ANN, LiveChart, Simkl, AnimeCountdown. AnimeSchedule is fetched too, but the seed does not list it.                                                                                                                                             |
 | **Provider page**      | One page on a provider about one work, such as `https://myanimelist.net/anime/21`.                                                                                                                                                                                                                                                 |
 | **Page**               | Short for provider page. In code, `page` always holds a page's fetched details (`ProviderPage`) and `page_key` holds its key.                                                                                                                                                                                                      |
@@ -80,7 +80,7 @@ Whatever the rules cannot settle becomes a review case, answered by a person
 | **Duplicate page**     | A provider having more than one page for the same work, such as Kitsu's "Yume Mitsuya" and "Yume Juuya" pages for one short.                                                                                                                                                                                                       |
 | **Split work**         | One work spread over several seed entries, such as "CUE!" (only its ANN page) and "Cue!" (every other page).                                                                                                                                                                                                                       |
 | **Linked page**        | A page linked from an entry's pages that neither the entry nor any known work entry holds, such as a MAL page linked from an AniList page the seed lists alone.                                                                                                                                                                    |
-| **Partial source**     | A page covering a work together with other works, which is a source of one of them. MAL's single page for _Saint Seiya: Knights of the Zodiac_ is a source of the first part and a partial source of the second, which AniList lists apart. Enrichment never fetches a partial source.                                             |
+| **Partial source**     | A page of one work that also covers part of another work, or whose work another page covers only in part. Partial sources go both ways between works that overlap. MAL lists _Saint Seiya: Knights of the Zodiac_ on one page and AniList lists it as two parts, so the MAL page is a partial source of each part's work and each AniList page is a partial source of the MAL work. Enrichment never fetches a partial source. |
 | **Split**              | A work a provider lists as several pages, such as AniList's two parts of _Saint Seiya: Knights of the Zodiac_. Every split any provider makes is kept as its own work.                                                                                                                                                             |
 | **Renamed page**       | A page whose address changed; the old address redirects to the new one. Anime-Planet renames pages. The old and new address are one page.                                                                                                                                                                                          |
 | **Searched page**      | A page the seed does not list, found by searching its provider with one of the entry's page ids. AnimeSchedule is searched by MAL, AniList or AniDB id.                                                                                                                                                                            |
@@ -125,7 +125,7 @@ flowchart TD
 4. **Decide doubled providers and split works.** The caller groups the entries to check into entry groups. `decide_doubled_providers` decides each doubled provider of a group's combined entry (`combine_group_entries`), and `list_split_work_review_reasons` lists what speaks against a group of entries being one work. See [Doubled providers](#doubled-providers) and [Entry groups and split works](#entry-groups-and-split-works).
 5. **Place or review.** `place_pages_without_review` places every doubled page of a single entry when no decision needs review, and the caller applies the places. Otherwise the group becomes one review case in the `ReviewFile`; a group of two or more entries always does, and its suggested answer is checked against the MAL page of each work (see [Checking suggestions against MAL](#checking-suggestions-against-mal)). See [Placing pages](#placing-pages).
 6. **Add linked pages.** `find_unheld_linked_page_keys` lists the pages an entry's pages link that no known work holds. The caller fetches each, and its current key when the fetch reports another. `decide_linked_page` then adds the page, leaves it out, or makes a review case. See [Linked pages](#linked-pages).
-7. **Apply answers.** Once a person answers a case, the next run hands the answer back to the caller, who applies it like a decision of the rules. See [Review cases](#review-cases).
+7. **Apply answers.** Once a person answers a case, the next run hands the answer back to the caller, who applies it like a decision of the rules. A case a seed release renamed carries the answer of the case it replaces, which keeps placing the pages it saw until the case is answered again. See [Review cases](#review-cases) and [Previous answers](#previous-answers).
 
 ### Links decide; details only stop
 
@@ -356,7 +356,10 @@ flowchart TD
     rules --> moved["PAGES_OF_OTHER_WORKS: keep the belonging page and move other pages to their target entries"]
     needs -- "yes" --> entry_case["Create one doubled-provider review case for the entry"]
     entry_case --> answer{"Does the review file have a valid answer?"}
-    answer -- "no" --> open["Leave the case open and keep the entry unchanged"]
+    answer -- "no" --> previous{"Does a previous answer still apply?"}
+    previous -- "no" --> open["Leave the case open and keep the entry unchanged"]
+    previous -- "yes" --> previous_placed["Apply the previous answer to the pages it saw; added pages stay and the case stays open"]
+    previous_placed --> placed
     answer -- "yes" --> placed["Apply the answer's page placements"]
     placed --> stays["Placed in this entry's surviving work: keep the page in this entry"]
     placed --> joins["Placed in another entry's surviving work: move the page to that entry"]
@@ -450,7 +453,7 @@ A valid answer follows these rules:
 | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | It places every doubled page.                                                                   | Each doubled page needs a place.                                                                               |
 | An answer using `work 2` or later places every page of the entry.                               | Splitting the entry sends each page to one of the works; a page left out would stay in the entry otherwise.    |
-| No work holds two pages of one provider.                                                        | A work is the finest split any provider lists, so two pages of one provider are two works or a duplicate page. |
+| No work holds two pages of one provider.                                                        | A provider lists each work on a page of its own, so two pages of one provider are two works or a duplicate page. |
 | A dropped page has another page of its provider placed in a work of the case.                   | Dropping a duplicate page keeps the other page, so the provider is not lost.                                   |
 | A page is a partial source only of other works that hold placed pages.                          | A page is already a source of its own work, and an empty work becomes no work entry.                           |
 | A group of two or more entries places every page.                                               | Merging entries moves pages between them, so each page needs a place.                                          |
@@ -602,7 +605,10 @@ flowchart TD
     combined --> case["Create one split-work review case (always requires review)"]
     case --> suggestion["Build suggested placements from links and verify against each work's MAL page"]
     suggestion --> answer{"Does the review file have a valid answer?"}
-    answer -- "no" --> open["Leave the case open and keep all entries unchanged"]
+    answer -- "no" --> previous{"Does a previous answer still apply?"}
+    previous -- "no" --> open["Leave the case open and keep all entries unchanged"]
+    previous -- "yes" --> previous_placed["Apply the previous answer to the entries it saw; added pages and entries stay and the case stays open"]
+    previous_placed --> works
     answer -- "yes" --> works["Determine the surviving entry for each work"]
     works --> one["All pages in work 1: merge all entries into the surviving entry"]
     works --> separate["Each entry in its own work: keep all entries separate"]
@@ -617,7 +623,7 @@ The table lists every scenario, with a real example where one is known.
 | Entries with no link between them (_Welsh & Shedar_: an ANN-only entry and a Simkl entry)                                                           | Candidate group                                                                                                                     | `NOT_TIED_BY_LINKS`; no suggestion, since neither entry has a linked page                                                | The reviewer places every page; one work merges them, two works keep both.                                            |
 | One provider lists both entries (_Dirty Pair Flash_: ANN has a page in each)                                                                        | Candidate group marked with that provider                                                                                           | The shared provider is a doubled provider of the combined entry, here `UNDECIDED` with `UNLINKED_PAGES`                  | As above; the provider's pages may also be duplicate pages or splits of one work.                                     |
 | Two or more providers list the entries apart (_Hanasaka Jiisan_: AniDB and Simkl)                                                                   | Dropped and logged                                                                                                                  | No case                                                                                                                  | Nothing: two providers keeping them apart points to different works.                                                  |
-| The entries hold different MAL pages                                                                                                                | Dropped and logged                                                                                                                  | No case                                                                                                                  | Nothing: MAL lists them as two works, and a work is the finest split any provider lists.                              |
+| The entries hold different MAL pages                                                                                                                | Dropped and logged                                                                                                                  | No case                                                                                                                  | Nothing: every page MAL lists is a work of its own, so they are two works.                              |
 | A first-pass answer separated the entries (_Cosmic Break_: AniList's _CosmicBreak: Sacrifice_ answered `work 2`, linked with the MAL entry it left) | Not joined by their own title match or link                                                                                         | No case                                                                                                                  | Nothing: the answer already said they are different works.                                                            |
 | Seasons far apart (_Gelpiyo_: winter and fall)                                                                                                      | Not grouped                                                                                                                         | No case                                                                                                                  | Nothing.                                                                                                              |
 | An entry of the group also has a doubled provider (_Atashin'chi Next_)                                                                              | First pass: the entry's doubled-provider case                                                                                       | Its split-work case comes once the doubled-provider case is answered                                                     | Each answer places its own pages; the second pass sees the entry as the first answer left it.                         |
@@ -636,6 +642,8 @@ The table lists every scenario, with a real example where one is known.
 | A page no link reaches, in an entry whose suggested pages are in different works or include `other work`                                            |                                                                                                                                     | The page gets no suggestion                                                                                              | The reviewer places it.                                                                                               |
 | A doubled page no link reaches                                                                                                                      |                                                                                                                                     | No suggestion, even when its entry's other pages agree                                                                   | The reviewer judges it.                                                                                               |
 | A suggested work would hold two MAL pages                                                                                                           |                                                                                                                                     | That work gets no suggestion                                                                                             | The reviewer splits them.                                                                                             |
+| A seed release adds a page or an entry to an answered group (_Eat-Man: The Over Order_, with a new AniSearch-only entry)                            | Candidate group under a new case name                                                                                               | Open, carrying the previous answer and filled from it; the added pages are marked                                        | The previous answer keeps placing the entries it saw; the added entry stays as the seed lists it until answered.      |
+| A seed release merges entries an answer kept apart (_Oshiri Tantei 8th Season_, now one entry with two Simkl pages)                                 | Doubled-provider case, or no case when nothing is left to decide                                                                    | Shows the previous answer, which no longer applies                                                                       | Nothing until answered again: the release wins.                                                                       |
 
 ## Linked pages
 
@@ -881,9 +889,13 @@ file in one step, so an interrupted run leaves the old file:
 
 - a case named the same as before gets its kept answer back;
 - a case whose pages changed, or whose doubled pages moved to another entry, has
-  a new name, so it is asked again;
-- an answer whose case did not come up is kept as written, never applied, and
-  returned, so it can be reported;
+  a new name, so it is asked again, carrying the answer of the case it replaces
+  as its previous answer (`attach_previous_answers`, below);
+- an answer whose case did not come up is kept as written, never applied by
+  its own name, and returned, so it can be reported, unless a case carries it
+  as its previous answer;
+- a previous answer is dropped once the case carrying it has an accepted answer
+  of its own;
 - an unanswered case that did not come up is dropped.
 
 Only `answer` is kept from a line; anything else written in it is rebuilt. An
@@ -898,23 +910,42 @@ during the run can be lost.
 
 Applying answers is the caller's job: seed cleaning turns them into corrections.
 
+#### Previous answers
+
+A seed release that adds a page to an entry renames the entry's case, since a
+case is named by its pages. `attach_previous_answers` finds the answered case a
+renamed case replaces and records its answer on the case as `previous_answer`
+(`PreviousAnswer`):
+
+- the previous case is an answered case that did not come up, sharing a page
+  with the case, and each is the only match of the other;
+- the previous answer applies when the case is of the same kind, still holds
+  every entry the previous case held, and the answer was valid there; it then
+  fills the case's suggested answer for the pages it placed;
+- pages and entries the release added get no placement, so they stay as the
+  seed lists them, and the case stays open to be answered again;
+- when the release merged entries the answer saw, or the case changed kind,
+  the previous answer is shown but no longer applies, and the release wins until
+  a person answers again.
+
 The table lists every case the review file meets across runs.
 
-| Scenario                                                            | What happens                                                                                                |
-| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| A case comes up with the same name as before                        | It gets its kept answer back.                                                                               |
-| A provider gains a page, so the case's pages change                 | The case gets a new name and is asked again.                                                                |
-| A case's doubled pages move to another entry                        | The case gets a new name and is asked again.                                                                |
-| An answer whose case no longer comes up                             | Kept as written, never applied, and reported, so a seed release that brings the case back meets its answer. |
-| An unanswered case that no longer comes up                          | Dropped.                                                                                                    |
-| An answer that is not valid                                         | Kept in the file to correct, the case left open, and a warning logged.                                      |
-| A case answered on two lines                                        | The last line is kept, and a warning logged.                                                                |
-| An answer saved after the file was opened, before the run writes it | Kept: the answers are read again just before the write.                                                     |
-| A blank line                                                        | Skipped, and not written back.                                                                              |
-| A line that is not JSON, or not a case                              | The run stops, naming the file and line, so a person's edit is never overwritten unread.                    |
-| Two cases with the same name in one run                             | `DuplicateCaseError`.                                                                                       |
-| The write fails part way                                            | The old file stays as it was.                                                                               |
-| The file already exists                                             | The new file keeps its permissions; a new file gets the default ones.                                       |
+| Scenario                                                            | What happens                                                                                                    |
+| ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| A case comes up with the same name as before                        | It gets its kept answer back.                                                                                   |
+| A provider gains a page, so the case's pages change                 | The case gets a new name and is asked again; the answer of the case it replaces keeps placing the pages it saw. |
+| A case's doubled pages move to another entry                        | The case gets a new name and is asked again, showing the previous answer, which no longer applies.              |
+| An answer whose case no longer comes up                             | Kept as written, never applied, and reported, so a seed release that brings the case back meets its answer.     |
+| An answer a renamed case carries as its previous answer             | Kept and not reported; dropped once the renamed case has an accepted answer of its own.                         |
+| An unanswered case that no longer comes up                          | Dropped.                                                                                                        |
+| An answer that is not valid                                         | Kept in the file to correct, the case left open, and a warning logged.                                          |
+| A case answered on two lines                                        | The last line is kept, and a warning logged.                                                                    |
+| An answer saved after the file was opened, before the run writes it | Kept: the answers are read again just before the write.                                                         |
+| A blank line                                                        | Skipped, and not written back.                                                                                  |
+| A line that is not JSON, or not a case                              | The run stops, naming the file and line, so a person's edit is never overwritten unread.                        |
+| Two cases with the same name in one run                             | `DuplicateCaseError`.                                                                                           |
+| The write fails part way                                            | The old file stays as it was.                                                                                   |
+| The file already exists                                             | The new file keeps its permissions; a new file gets the default ones.                                           |
 
 ## Use
 
@@ -956,7 +987,7 @@ if placements is None:
         ReviewCase.build_entry_group_case([entry], decisions, (), pages)
     )
     placements = case.accepted_answer  # None while the case is open
-    unused = review.write_cases([case])
+    unused_answers_by_case_name = review.write_cases([case])
 ```
 
 ### Decide an entry's linked pages

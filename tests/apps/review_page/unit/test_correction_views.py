@@ -7,6 +7,7 @@ from review_page.correction_views import (
     build_correction_panel,
     count_corrected_entry_rows,
     filter_corrected_entry_rows,
+    list_case_correction_links,
 )
 from review_page.models import CorrectionFilter
 from shared_proto.v1 import review_cases_pb2
@@ -84,15 +85,15 @@ def test_build_corrected_entry_rows_counts_changed_pages_and_answer(
         row.entry_reference_page: row
         for row in _rows(correction_messages, checked_entry_messages)
     }
-    answered = rows["mal:anime:57822"]
-    renamed = rows["mal:anime:2090"]
+    answered_row = rows["mal:anime:57822"]
+    renamed_row = rows["mal:anime:2090"]
     assert (
-        answered.page_count,
-        answered.changed_page_count,
-        answered.has_answer_correction,
-        renamed.page_count,
-        renamed.changed_page_count,
-        renamed.has_answer_correction,
+        answered_row.page_count,
+        answered_row.changed_page_count,
+        answered_row.has_answer_correction,
+        renamed_row.page_count,
+        renamed_row.changed_page_count,
+        renamed_row.has_answer_correction,
     ) == (13, 0, True, 2, 1, False)
 
 
@@ -100,34 +101,34 @@ def test_filter_corrected_entry_rows_change_keeps_entries_with_change(
     correction_messages, checked_entry_messages
 ) -> None:
     rows = _rows(correction_messages, checked_entry_messages)
-    kept = filter_corrected_entry_rows(
+    kept_rows = filter_corrected_entry_rows(
         rows, CorrectionFilter(changes=frozenset({"old addresses dropped"}))
     )
-    assert [row.entry_reference_page for row in kept] == RENAMED_ENTRIES
+    assert [row.entry_reference_page for row in kept_rows] == RENAMED_ENTRIES
 
 
 def test_filter_corrected_entry_rows_answer_source_keeps_answered_entry(
     correction_messages, checked_entry_messages
 ) -> None:
     rows = _rows(correction_messages, checked_entry_messages)
-    kept = filter_corrected_entry_rows(
+    kept_rows = filter_corrected_entry_rows(
         rows, CorrectionFilter(sources=frozenset({ANSWER_SOURCE}))
     )
-    assert [row.entry_reference_page for row in kept] == ["mal:anime:57822"]
+    assert [row.entry_reference_page for row in kept_rows] == ["mal:anime:57822"]
 
 
 def test_filter_corrected_entry_rows_groups_narrow_each_other(
     correction_messages, checked_entry_messages
 ) -> None:
     rows = _rows(correction_messages, checked_entry_messages)
-    kept = filter_corrected_entry_rows(
+    kept_rows = filter_corrected_entry_rows(
         rows,
         CorrectionFilter(
             changes=frozenset({"old addresses dropped"}),
             sources=frozenset({ANSWER_SOURCE}),
         ),
     )
-    assert kept == []
+    assert kept_rows == []
 
 
 def test_filter_corrected_entry_rows_search_matches_page_key_and_title(
@@ -159,6 +160,25 @@ def test_count_corrected_entry_rows_counts_entries_per_chip(
     ) == (4, 6, 1, 10, 11)
 
 
+def test_list_case_correction_links_counts_only_changes(review_cases) -> None:
+    case = review_cases["gochuumon_movie"]
+    unchanged_corrections = [
+        review_cases_pb2.SeedCorrection(
+            entry_reference_page=reference_page,
+            page_key=reference_page,
+            placement_word="work 1",
+            reason="review answer",
+        )
+        for reference_page in case.entries
+    ]
+    links = list_case_correction_links(
+        case, [*unchanged_corrections, _gochuumon_correction()]
+    )
+    assert [
+        (reference_page, change_count) for reference_page, _, change_count in links
+    ] == [("mal:anime:61115", 1)]
+
+
 def test_build_correction_panel_moved_page_links_target_entry(
     correction_messages, checked_entry_messages
 ) -> None:
@@ -166,12 +186,12 @@ def test_build_correction_panel_moved_page_links_target_entry(
         "mal:anime:37196", correction_messages, checked_entry_messages, []
     )
     assert panel is not None
-    moved = {row.page_key: row for row in panel.rows}["anilist:anime:199801"]
+    moved_row = {row.page_key: row for row in panel.rows}["anilist:anime:199801"]
     assert (
-        moved.change_label,
-        moved.place,
-        moved.destination_label,
-        moved.destination_address,
+        moved_row.change_label,
+        moved_row.place,
+        moved_row.destination_label,
+        moved_row.destination_address,
     ) == (
         "Pages moved to a seed entry",
         "other work",
@@ -187,8 +207,10 @@ def test_build_correction_panel_renamed_page_links_current_address(
         "mal:anime:2090", correction_messages, checked_entry_messages, []
     )
     assert panel is not None
-    renamed = {row.page_key: row for row in panel.rows}["animeplanet:anime:orguss-02"]
-    assert (renamed.destination_label, renamed.destination_address) == (
+    renamed_row = {row.page_key: row for row in panel.rows}[
+        "animeplanet:anime:orguss-02"
+    ]
+    assert (renamed_row.destination_label, renamed_row.destination_address) == (
         "current address animeplanet:anime:super-dimension-century-orguss-02",
         "https://anime-planet.com/anime/super-dimension-century-orguss-02",
     )

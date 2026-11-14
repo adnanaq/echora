@@ -49,8 +49,8 @@
            "M12.531 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14v6a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341l.427-.473",
            "m16.5 3.5 5 5",
            "m21.5 3.5-5 5"] %}
-      <span x-show="$store.review.tab === 'cases'">{{ icon_button(tooltips.RESET_CASE_FILTERS, reset_filters_icon_paths, True, "$store.review.resetFilters('cases')") }}</span>
-      <span x-show="$store.review.tab === 'corrections'">{{ icon_button(tooltips.RESET_CORRECTION_FILTERS, reset_filters_icon_paths, True, "$store.review.resetFilters('corrections')") }}</span>
+      <span x-show="$store.review.tab === 'cases'">{{ icon_button(tooltips.CASE_FILTER_BUTTON, reset_filters_icon_paths, True, "$store.review.pressFilterButton('cases', $event)") }}</span>
+      <span x-show="$store.review.tab === 'corrections'">{{ icon_button(tooltips.CORRECTION_FILTER_BUTTON, reset_filters_icon_paths, True, "$store.review.pressFilterButton('corrections', $event)") }}</span>
     </div>
     <div id="case-list" x-show="$store.review.tab === 'cases'"
          hx-post="/fragments/case-list" hx-trigger="load, refresh-list from:body"></div>

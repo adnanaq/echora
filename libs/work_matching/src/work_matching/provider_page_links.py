@@ -20,7 +20,7 @@ Each rule reads ``<rule>: <behavior>``:
   as an anthology) does not prove identity for any single work. Multi-work page
   links are set aside.
 - Several-works pages: A page linked with two or more MAL pages, in either
-  direction, covers several works, since a work is what MAL lists (such as
+  direction, covers several works, since every page MAL lists is a work of its own (such as
   AniDB's single page for three films MAL lists apart). Several-works page
   links are set aside too, tying none of those works together.
 """
@@ -38,7 +38,7 @@ from work_matching.provider_page_key import (
 
 
 class ProviderPageLinks:
-    """Undirected graph of links between candidate pages of a work or entry.
+    """Build an undirected graph of links between candidate pages of a work or entry.
 
     Renamed pages resolve to the current key, and searched pages fold into
     the pages that searched for them. Multi-work pages (pages referencing

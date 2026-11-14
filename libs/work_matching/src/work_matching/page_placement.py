@@ -40,8 +40,9 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import NamedTuple
 
-from work_matching.doubled_provider_pages import resolve_decided_provider
-from work_matching.model_doubled_provider_decision import (
+from work_matching.answer_words import DROPPED, FIRST_WORK, OTHER_WORK
+from work_matching.doubled_provider_matches import resolve_decided_provider
+from work_matching.models import (
     DoubledProviderDecision,
     DoubledProviderOutcome,
 )
@@ -52,11 +53,6 @@ from work_matching.provider_page_key import (
 )
 from work_matching.work_entry import WorkEntry
 
-# These words are written in review answers and in the corrections file, so
-# changing them would make kept answers invalid.
-FIRST_WORK = "work 1"
-OTHER_WORK = "other work"
-DROPPED = "dropped"
 # Written after ``work N``, before the works a page is a partial source of.
 PARTIAL_SOURCE_PREFIX = ", partial in "
 # A work a page can be a partial source of: a work of the case, or the seed
@@ -247,6 +243,23 @@ def read_placement(placement_text: str) -> PagePlacement | None:
     if not all(map(_is_page_key, filter(None, named_page_keys))):
         return None
     return placement
+
+
+def read_placements(answer: Mapping[str, object]) -> dict[str, PagePlacement]:
+    """Read the answer's places that follow the answer words; others are left out.
+
+    Args:
+        answer: The raw answer mapping page keys to placement strings.
+
+    Returns:
+        The readable placements by page key.
+    """
+    return {
+        page_key: placement
+        for page_key, placement_text in answer.items()
+        if isinstance(placement_text, str)
+        and (placement := read_placement(placement_text)) is not None
+    }
 
 
 def write_placement(placement: PagePlacement) -> str:

@@ -1,6 +1,6 @@
 import pytest
-from work_matching.answer_rules import PlacementRule
 from work_matching.known_work_entries_from_seed import KnownWorkEntriesFromSeed
+from work_matching.models import PlacementRule
 from work_matching.named_entries import (
     MAX_TARGET_ENTRY_SUGGESTIONS,
     find_covered_outside_entries,

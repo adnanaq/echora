@@ -11,8 +11,8 @@ Each item gives the rule, then the reason for it.
 - An answer places every doubled page. Each doubled page needs a place.
 - An answer using ``work 2`` or later places every page of the entry. Splitting
   the entry sends each page to one of the works.
-- No work holds two pages of one provider. A work is the finest split any
-  provider lists, so two pages of one provider are two works or a duplicate
+- No work holds two pages of one provider. A provider lists each work on a
+  page of its own, so two pages of one provider are two works or a duplicate
   page.
 - A dropped page has another page of its provider placed in a work of the
   case. Dropping a duplicate page keeps the other page, so the provider is not
@@ -33,16 +33,14 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from pydantic import JsonValue
-from work_matching.answer_rules import PlacementRule
-from work_matching.model_doubled_provider_decision import DoubledProviderDecision
+from work_matching.answer_words import DROPPED, OTHER_WORK
+from work_matching.models import DoubledProviderDecision, PlacementRule
 from work_matching.page_placement import (
-    DROPPED,
-    OTHER_WORK,
     PagePlacement,
     build_page_keys_by_work_provider,
     has_two_pages_of_one_provider,
     list_placeable_page_keys,
-    read_placement,
+    read_placements,
 )
 from work_matching.provider_page_key import read_page_provider
 from work_matching.work_entry import WorkEntry
@@ -117,12 +115,7 @@ def check_answer_placements(
     """
     if not isinstance(answer, dict):
         return PlacementCheck({}, (PlacementRule.INVALID_PLACEMENT_MAP,))
-    placements = {
-        page_key: placement
-        for page_key, placement_text in answer.items()
-        if isinstance(placement_text, str)
-        and (placement := read_placement(placement_text))
-    }
+    placements = read_placements(answer)
     placeable_page_keys = set(list_placeable_page_keys(entry, decisions))
     required_page_keys = _find_required_page_keys(
         placements, placeable_page_keys, decisions, is_every_page_required

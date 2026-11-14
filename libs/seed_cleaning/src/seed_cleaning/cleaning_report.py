@@ -5,13 +5,28 @@ corrections' counts; both are built here so they can be tested without a run.
 """
 
 from collections.abc import Iterable
-from typing import Any
+from typing import Any, Final
 
-from seed_cleaning.corrected_entries import CorrectedEntry
-from seed_cleaning.linked_page_additions import LinkedPageCorrections
-from seed_cleaning.seed_corrections import SeedCorrection
-from seed_cleaning.split_work_candidates import SplitWorkCandidates
-from work_matching import ReviewCase, WorkEntry, find_doubled_provider_page_keys
+from seed_cleaning.models import (
+    CorrectedEntry,
+    LinkedPageCorrections,
+    SeedCorrection,
+    SplitWorkCandidates,
+)
+from seed_cleaning.seed_corrections import (
+    DEAD_PAGE_REASON,
+    REVIEW_ANSWER_REASON,
+)
+from work_matching import (
+    DoubledProviderOutcome,
+    LinkedPageReason,
+    ReviewCase,
+    WorkEntry,
+    find_doubled_provider_page_keys,
+)
+
+ANSWER_REASON_SENTENCE: Final = "a reviewer's answer placed the page"
+DEAD_PAGE_REASON_SENTENCE: Final = "the provider says the page does not exist"
 
 
 def build_entries_to_check_document(
@@ -22,9 +37,16 @@ def build_entries_to_check_document(
     """Describe the entries to check for ``entries_to_check.json``.
 
     Each entry is named by its reference page, which stays the same across seed
-    releases while its position in the file does not. ``seed_schema`` is the
-    seed file's ``$schema``, whose address names the release, or None when the
-    file has none.
+    releases while its position in the file does not.
+
+    Args:
+        seed_schema: The seed file's ``$schema`` address naming the release, or
+            None when the file has none.
+        doubled_provider_entries: The seed entries holding a doubled provider.
+        candidate_groups: The split-work candidate groups found in the second pass.
+
+    Returns:
+        The JSON-serialisable dictionary for ``entries_to_check.json``.
     """
     return {
         "seed_schema": seed_schema,
@@ -40,16 +62,16 @@ def build_entries_to_check_document(
         ],
         "split_work_candidates": [
             {
-                "shared_provider": group.shared_provider,
-                "candidate_evidence": list(group.candidate_evidence),
-                "has_shared_tying_link": group.has_shared_tying_link,
+                "shared_provider": candidate_group.shared_provider,
+                "candidate_evidence": list(candidate_group.candidate_evidence),
+                "has_shared_tying_link": candidate_group.has_shared_tying_link,
                 "entries": [
                     {"reference_page": entry.reference_page_key}
                     | entry.model_dump(mode="json")
-                    for entry in group.entries
+                    for entry in candidate_group.entries
                 ],
             }
-            for group in candidate_groups
+            for candidate_group in candidate_groups
         ],
     }
 
@@ -66,6 +88,7 @@ CORRECTION_COUNT_NAMES = (
     "pages added as partial sources",
     "review cases answered",
     "review cases open",
+    "open cases placed by a previous answer",
 )
 
 
@@ -90,6 +113,9 @@ def count_corrections(
       partial source, because it covers their works too.
 
     A page that stays in its entry and is no partial source is not counted.
+    Open cases placed by a previous answer are open cases a seed release
+    renamed whose previous answer still places the pages it saw; they are
+    counted among the open cases too.
 
     Args:
         corrections: Every seed correction of the run.
@@ -100,11 +126,17 @@ def count_corrections(
     """
     counts = dict.fromkeys(CORRECTION_COUNT_NAMES, 0)
     for correction in corrections:
-        if change := find_correction_change(correction):
-            counts[change] += 1
+        if change_name := find_correction_change(correction):
+            counts[change_name] += 1
     for review_case in review_cases:
         is_answered = review_case.accepted_answer is not None
         counts["review cases answered" if is_answered else "review cases open"] += 1
+        if (
+            not is_answered
+            and review_case.previous_answer is not None
+            and review_case.previous_answer.is_applied
+        ):
+            counts["open cases placed by a previous answer"] += 1
     return counts
 
 
@@ -159,13 +191,13 @@ def count_corrected_entries(
     corrected_entries = list(corrected_entries)
     return {
         "entries removed, no page left": sum(
-            corrected.entry is None for corrected in corrected_entries
+            corrected_entry.entry is None for corrected_entry in corrected_entries
         ),
         "new entries with an unknown type": sum(
-            corrected.seed_entry_reference_page is None
-            and corrected.entry is not None
-            and corrected.entry.type == "UNKNOWN"
-            for corrected in corrected_entries
+            corrected_entry.seed_entry_reference_page is None
+            and corrected_entry.entry is not None
+            and corrected_entry.entry.type == "UNKNOWN"
+            for corrected_entry in corrected_entries
         ),
     }
 
@@ -194,3 +226,24 @@ def describe_linked_page_outcomes(
             for page_key in linked_page_corrections.conflicting_page_keys
         ),
     ]
+
+
+def describe_correction_reason(correction: SeedCorrection) -> str:
+    """Return the sentence for why a correction places its page where it does.
+
+    Args:
+        correction: One seed correction.
+
+    Returns:
+        The reason's sentence, or the reason name when no rule knows it.
+    """
+    if correction.reason == REVIEW_ANSWER_REASON:
+        return ANSWER_REASON_SENTENCE
+    if correction.reason == DEAD_PAGE_REASON:
+        return DEAD_PAGE_REASON_SENTENCE
+    reason_enum = (
+        LinkedPageReason if correction.is_added_page else DoubledProviderOutcome
+    )
+    if correction.reason in reason_enum.__members__:
+        return reason_enum[correction.reason].value
+    return correction.reason

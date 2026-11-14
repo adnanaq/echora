@@ -9,15 +9,15 @@ Each item gives the rule, then the reason for it.
 - Two entries are tied when a fetched page of one, or a page searched by one of
   its pages, links a page the other holds. Searched pages count because their
   links, such as AnimeSchedule's, name the anime they were found for.
-- Entries that each hold their own MAL page are never tied. A work is what MAL
-  lists, so two MAL pages are two works, and a review would always answer
+- Entries that each hold their own MAL page are never tied. Every page MAL
+  lists is a work of its own, so two MAL pages are two works, and a review would always answer
   "separate".
 - A page linking two or more pages of one provider ties nothing. Such a page
   covers several works, such as an anthology, so its links do not show one work.
 - A page linked from two or more entries that each hold their own MAL page ties
   nothing. Such a page covers several works, such as an AniDB page holding a
   series and its specials, so tying through it would join separate works.
-- A dead page ties nothing. Its links cannot be read.
+- A dead page ties nothing. A dead page's links cannot be read.
 
 Which entries link each page is kept as well, so a review case can warn when a
 page tying its entries is also linked from entries outside it. Entries holding
@@ -26,38 +26,15 @@ from another work's entry may cover several works.
 """
 
 from collections import Counter, defaultdict
-from typing import NamedTuple
 
+from seed_cleaning.models import SplitWorkLink, SplitWorkLinks
 from work_matching import (
     KnownWorkEntriesFromSeed,
     ProviderPageStore,
     WorkEntry,
+    is_mal_page,
     read_page_provider,
 )
-
-# Entries that each hold a page of this provider are never one work.
-_MAL_PROVIDER = "mal"
-
-
-class SplitWorkLink(NamedTuple):
-    """One link tying two entries: a page of one links a page the other holds."""
-
-    linking_page_key: str
-    linked_page_key: str
-
-
-class SplitWorkLinks(NamedTuple):
-    """The links tying seed entries, by the entries' places in the seed."""
-
-    # Each tied pair of entries, by their places in the seed (the lower first),
-    # mapped to every link tying them.
-    links_by_entry_pair: dict[tuple[int, int], tuple[SplitWorkLink, ...]]
-    # Each linked page that ties entries, mapped to the places of every entry
-    # whose pages link it.
-    linking_entries_by_page_key: dict[str, frozenset[int]]
-    # Each page linked from two or more entries holding their own MAL page,
-    # which covers several works, mapped to the places of those entries.
-    mal_entries_by_several_works_page_key: dict[str, frozenset[int]] = {}
 
 
 def find_split_work_links(
@@ -100,8 +77,8 @@ def find_split_work_links(
             for pair, links in links_by_entry_pair.items()
         },
         {
-            key: frozenset(positions)
-            for key, positions in linking_entries_by_page_key.items()
+            page_key: frozenset(positions)
+            for page_key, positions in linking_entries_by_page_key.items()
         },
         mal_entries_by_several_works_page_key,
     )
@@ -148,7 +125,16 @@ def _find_entry_links(
 def _find_several_works_pages(
     linking_entries_by_page_key: dict[str, set[int]], holds_mal_page: list[bool]
 ) -> dict[str, frozenset[int]]:
-    """Return each page two or more entries holding a MAL page link, with those entries."""
+    """Return each page two or more entries holding a MAL page link, with those entries.
+
+    Args:
+        linking_entries_by_page_key: Positions of entries linking each page key.
+        holds_mal_page: Whether each entry position holds a MAL page.
+
+    Returns:
+        Page keys linked from at least two MAL-holding entries, mapped to those
+        entry positions.
+    """
     mal_entries_by_page_key = {
         page_key: frozenset(
             position for position in positions if holds_mal_page[position]
@@ -167,18 +153,28 @@ def _read_single_work_links(linked_page_keys: tuple[str, ...]) -> list[str]:
 
     A provider with two or more linked pages means the page covers several
     works, so none of that provider's links is kept.
+
+    Args:
+        linked_page_keys: The linked page keys extracted from a provider page.
+
+    Returns:
+        The linked page keys whose provider is linked only once on the page.
     """
     linked_pages_per_provider = Counter(map(read_page_provider, linked_page_keys))
     return [
-        key
-        for key in linked_page_keys
-        if linked_pages_per_provider[read_page_provider(key)] == 1
+        page_key
+        for page_key in linked_page_keys
+        if linked_pages_per_provider[read_page_provider(page_key)] == 1
     ]
 
 
 def _has_mal_page(work_entry: WorkEntry) -> bool:
-    """Report whether an entry holds a MAL page."""
-    return any(
-        read_page_provider(key) == _MAL_PROVIDER
-        for key in work_entry.addresses_by_page_key
-    )
+    """Report whether an entry holds a MAL page.
+
+    Args:
+        work_entry: The work entry to check.
+
+    Returns:
+        True if the entry lists a MAL page key.
+    """
+    return any(is_mal_page(page_key) for page_key in work_entry.addresses_by_page_key)

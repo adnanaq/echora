@@ -1,7 +1,7 @@
 import pytest
-from seed_cleaning.entry_groups import EntryGroup
 from seed_cleaning.group_placement import correct_entry_groups
-from seed_cleaning.seed_corrections import REVIEW_ANSWER_REASON, SeedCorrection
+from seed_cleaning.models import EntryGroup, SeedCorrection
+from seed_cleaning.seed_corrections import REVIEW_ANSWER_REASON
 from seed_cleaning.split_work_pass import prepare_split_work_pass
 from work_matching import (
     KnownWorkEntriesFromSeed,

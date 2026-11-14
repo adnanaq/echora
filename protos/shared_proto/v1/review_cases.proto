@@ -146,6 +146,22 @@ message ReviewCase {
   // Seed entries outside the case that a page of the case covers too,
   // offered as works the page can be a partial source of.
   repeated TargetEntrySuggestion covered_outside_entries = 12;
+  // The answer of the answered case this case replaces, when a seed release
+  // changed the case's pages; unset when there is none.
+  optional PreviousAnswer previous_answer = 13;
+}
+
+// The answer a case takes over from the case it replaces:
+// work_matching.PreviousAnswer.
+message PreviousAnswer {
+  // The name of the answered case this case replaces.
+  string case_name = 1;
+  // The answer as written for that case.
+  google.protobuf.Value answer = 2;
+  // The pages this case has that the previous case did not, sorted.
+  repeated string added_page_keys = 3;
+  // Whether the previous answer still places this case's pages.
+  bool is_applied = 4;
 }
 
 // A seed entry offered as the place a page in "other work" moves to.

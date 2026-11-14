@@ -13,7 +13,7 @@ from work_matching.work_entry import WorkEntry, WorkType
 
 @runtime_checkable
 class KnownWorkEntries(Protocol):
-    """Work entries already known, found by provider page or by title, type, and year.
+    """Provide work entries already known, found by provider page or by title, type, and year.
 
     An implementation provides ``find_by_page_key``, ``find_by_title``, and
     ``find_by_series``. A class subclassing this protocol inherits

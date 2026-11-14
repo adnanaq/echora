@@ -9,7 +9,7 @@ from work_matching.known_work_entries_from_seed import KnownWorkEntriesFromSeed
 from work_matching.linked_page_check import (
     decide_linked_page,
 )
-from work_matching.model_linked_page_decision import (
+from work_matching.models import (
     LinkingEntryDetails,
 )
 from work_matching.provider_page import ProviderPage

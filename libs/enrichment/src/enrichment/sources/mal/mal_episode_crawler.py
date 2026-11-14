@@ -24,11 +24,8 @@ from enrichment.sources.base.framework import (
     NullRepository,
 )
 from enrichment.sources.base.page_readiness import wait_for_page
-from enrichment.sources.mal.mal_base import (
-    MAL_DOMAIN,
-    parse_duration_seconds,
-    parse_iso_date,
-)
+from enrichment.sources.base.utils import parse_iso_date
+from enrichment.sources.mal.mal_base import MAL_DOMAIN, parse_duration_seconds
 from enrichment.sources.mal.mal_mapper import episode_from_mal
 from enrichment.sources.mal.mal_models import (
     EpisodeCharacterRef,

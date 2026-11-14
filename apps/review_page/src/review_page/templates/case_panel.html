@@ -12,13 +12,22 @@
   </span>
 </div>
 {% if is_answer_unused %}
-<p class="notice-line">{{ pill("No longer comes up", "unused") }} {{ tooltips.UNUSED_ANSWER_PILL }} Answer the case that replaced it.</p>
+<p class="notice-line">{{ pill("Unused answer", "unused") }} {{ tooltips.UNUSED_ANSWER_PILL }} {{ tooltips.UNUSED_ANSWER_ACTION }}</p>
+{% endif %}
+{% set previous_answer = case.previous_answer %}
+{% if previous_answer and not case.answer %}
+<p class="notice-line">{{ pill("Previous answer", "new", tooltips.PREVIOUS_ANSWER_PILL) }}
+  {{ tooltips.PREVIOUS_ANSWER_APPLIED if previous_answer.is_applied else tooltips.PREVIOUS_ANSWER_NOT_APPLIED }}
+  {% if previous_answer.added_page_keys %}Added pages: {{ previous_answer.added_page_keys | join(", ") }}.{% endif %}</p>
+{% if not previous_answer.is_applied and previous_answer.answer is mapping %}
+<p class="notice-line">The previous answer placed {% for page_key, placement_word in previous_answer.answer.items() %}{{ page_key }} as {{ placement_word }}{{ ", " if not loop.last else "." }}{% endfor %}</p>
+{% endif %}
 {% endif %}
 {% if correction_links %}
 <p class="notice-line">
-  {% for reference_page, entry_title, correction_count in correction_links %}
+  {% for reference_page, entry_title, change_count in correction_links %}
   <button type="button" id="{{ element_id('show-correction', reference_page) }}" class="link-button" title="{{ tooltips.SHOW_CORRECTIONS }}"
-          @click="$store.review.showCorrection({{ reference_page | tojson | forceescape }})">{{ correction_count }} correction{{ "s" if correction_count != 1 }} from the last run for {{ entry_title }}</button>{% if not loop.last %} · {% endif %}
+          @click="$store.review.showCorrection({{ reference_page | tojson | forceescape }})">{{ change_count }} change{{ "s" if change_count != 1 }} from the last run for {{ entry_title }}</button>{% if not loop.last %} · {% endif %}
   {% endfor %}
 </p>
 {% endif %}
@@ -59,7 +68,7 @@
   <tbody>
     {% for row in view.page_rows %}
     <tr class="{% if row.is_changed %}is-changed{% endif %}">
-      <td>{{ page_link(row.page_key, row.address) }}{% if row.choices.is_required %} *{% endif %}{% if row.is_place_missing %}{{ error_line("needs a place") }}{% endif %}</td>
+      <td>{{ page_link(row.page_key, row.address) }}{% if row.choices.is_required %} *{% endif %}{% if previous_answer and row.page_key in previous_answer.added_page_keys %} {{ pill("Added", "new", tooltips.ADDED_PAGE_PILL) }}{% endif %}{% if row.is_place_missing %}{{ error_line("needs a place") }}{% endif %}</td>
       <td>{{ row.entry_label }}{% if row.is_reference_page %} (ref){% endif %}</td>
       {% for column in view.shown_columns %}
       {% if column.name == "LINKS" and row.linked_pages %}

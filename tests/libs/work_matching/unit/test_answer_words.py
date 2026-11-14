@@ -1,9 +1,5 @@
 import pytest
-from work_matching import (
-    ReviewCaseKind,
-    list_group_page_choices,
-    list_linked_page_options,
-)
+from work_matching import ReviewCaseKind
 from work_matching.answer_words import describe_answer_word
 
 
@@ -34,18 +30,6 @@ def test_describe_answer_word_named_entry_names_reference_page() -> None:
 
 def test_describe_answer_word_unknown_word_has_no_meaning() -> None:
     assert describe_answer_word("merge everything") == ""
-
-
-def test_choice_option_description_reads_answer_word_meaning(review_cases) -> None:
-    options = [
-        option
-        for choices in list_group_page_choices(review_cases["atashinchi_next"], {})
-        for option in choices.work_options
-    ] + list(list_linked_page_options(review_cases["nami"]))
-    assert all(
-        option.description == describe_answer_word(option.value) for option in options
-    )
-    assert all(option.description for option in options)
 
 
 def test_review_case_kind_description_every_kind_has_meaning() -> None:

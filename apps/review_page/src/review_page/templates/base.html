@@ -32,7 +32,7 @@
   <script defer src="{{ static_url('review_page.js') }}"></script>
   <script defer src="{{ static_url('vendor/alpinejs-3.17.5.min.js') }}"></script>
 </head>
-<body x-data hx-vals='js:{browser_state: Alpine.store("review").toJson()}'>
+<body x-data hx-vals='js:{browser_state: Alpine.store("review").serializeState()}'>
   {% block body %}{% endblock %}
 </body>
 </html>

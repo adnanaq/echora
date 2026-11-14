@@ -11,8 +11,8 @@ from review_page.page_state import (
     build_case_buttons,
     build_page_buttons,
     build_suggested_answer,
-    count_applied_answer_rows_by_kind,
     count_case_rows,
+    count_resolved_rows_by_kind,
     filter_case_rows,
     find_next_case_name,
     is_answer_empty,
@@ -40,11 +40,12 @@ def _row(case_name: str, **fields) -> CaseRow:
         is_new=fields.get("is_new", False),
         has_suggestion=fields.get("has_suggestion", False),
         is_answer_applied=fields.get("is_answer_applied", False),
+        is_answer_unused=fields.get("is_answer_unused", False),
     )
 
 
 @pytest.mark.parametrize(
-    ("original", "saved", "saved_change"),
+    ("original_answer", "saved_answer", "saved_change"),
     [
         (None, None, SavedChange.UNCHANGED),
         (None, {}, SavedChange.UNCHANGED),
@@ -55,13 +56,13 @@ def _row(case_name: str, **fields) -> CaseRow:
     ],
 )
 def test_resolve_saved_change_compares_saved_answer_with_original(
-    original, saved, saved_change: SavedChange
+    original_answer, saved_answer, saved_change: SavedChange
 ) -> None:
-    assert resolve_saved_change(original, saved) is saved_change
+    assert resolve_saved_change(original_answer, saved_answer) is saved_change
 
 
 @pytest.mark.parametrize(
-    ("unsaved", "is_rejected", "edit_state"),
+    ("unsaved_answer", "is_rejected", "edit_state"),
     [
         ({"a": "work 2"}, False, CaseEditState.EDITED_NOT_SAVED),
         ({"a": "work 1"}, False, CaseEditState.SAVED_APPLIES_ON_RUN),
@@ -70,14 +71,14 @@ def test_resolve_saved_change_compares_saved_answer_with_original(
     ],
 )
 def test_resolve_case_edit_state_saved_change_and_unsaved_edit(
-    unsaved, is_rejected: bool, edit_state: CaseEditState
+    unsaved_answer, is_rejected: bool, edit_state: CaseEditState
 ) -> None:
     assert (
         resolve_case_edit_state(
             original_answer=None,
             saved_answer={"a": "work 1"},
-            unsaved_answer=unsaved,
-            has_unsaved_edit=unsaved is not None,
+            unsaved_answer=unsaved_answer,
+            has_unsaved_edit=unsaved_answer is not None,
             is_rejected=is_rejected,
         )
         is edit_state
@@ -288,25 +289,25 @@ def test_filter_case_rows_kind_and_state_both_apply() -> None:
         _row("b", kind=ReviewCaseKind.LINKED_PAGE, is_new=True),
         _row("c", kind=ReviewCaseKind.SPLIT_WORK),
     ]
-    filtered = filter_case_rows(
+    filtered_rows = filter_case_rows(
         rows,
         CaseFilter(
             kinds=frozenset({ReviewCaseKind.SPLIT_WORK}), case_states=frozenset({"new"})
         ),
     )
-    assert [row.case_name for row in filtered] == ["a"]
+    assert [row.case_name for row in filtered_rows] == ["a"]
 
 
 def test_filter_case_rows_edit_state_reads_browser_edits() -> None:
     rows = [_row("a"), _row("b"), _row("c")]
-    filtered = filter_case_rows(
+    filtered_rows = filter_case_rows(
         rows,
         CaseFilter(
             edit_states=frozenset({CaseEditState.EDITED_NOT_SAVED}),
             unsaved_case_names=frozenset({"b"}),
         ),
     )
-    assert [row.case_name for row in filtered] == ["b"]
+    assert [row.case_name for row in filtered_rows] == ["b"]
 
 
 def test_filter_case_rows_search_matches_title_and_case_name() -> None:
@@ -322,7 +323,7 @@ def test_filter_case_rows_search_matches_title_and_case_name() -> None:
 
 def test_paginate_rows_gives_page_of_25_and_page_count() -> None:
     rows = [_row(str(number)) for number in range(60)]
-    case_page = paginate_rows(rows, page_number=3)
+    case_page = paginate_rows(rows, page_number=3, is_open_row=_is_row_named_40)
     assert (
         [row.case_name for row in case_page.rows],
         case_page.page_count,
@@ -332,7 +333,30 @@ def test_paginate_rows_gives_page_of_25_and_page_count() -> None:
 
 def test_paginate_rows_page_past_end_gives_last_page() -> None:
     rows = [_row(str(number)) for number in range(30)]
-    assert paginate_rows(rows, page_number=9).page_number == 2
+    assert (
+        paginate_rows(rows, page_number=9, is_open_row=_is_row_named_40).page_number
+        == 2
+    )
+
+
+def test_paginate_rows_no_page_number_gives_page_holding_open_row() -> None:
+    rows = [_row(str(number)) for number in range(60)]
+    assert (
+        paginate_rows(rows, page_number=None, is_open_row=_is_row_named_40).page_number
+        == 2
+    )
+
+
+def test_paginate_rows_no_page_number_without_open_row_gives_first_page() -> None:
+    rows = [_row(str(number)) for number in range(30)]
+    assert (
+        paginate_rows(rows, page_number=None, is_open_row=_is_row_named_40).page_number
+        == 1
+    )
+
+
+def _is_row_named_40(row: CaseRow) -> bool:
+    return row.case_name == "40"
 
 
 def test_find_next_case_name_gives_following_case_in_filtered_list() -> None:
@@ -375,18 +399,21 @@ def test_case_edit_state_description_every_state_has_meaning() -> None:
     assert all(state.description for state in CaseEditState)
 
 
-def test_count_applied_answer_rows_by_kind_counts_applied_rows_of_each_kind() -> None:
+def test_count_resolved_rows_by_kind_counts_applied_and_unused_answers() -> None:
     rows = [
         _row("a", kind=ReviewCaseKind.SPLIT_WORK, is_open=False),
         _row(
             "b", kind=ReviewCaseKind.LINKED_PAGE, is_open=False, is_answer_applied=True
         ),
-        _row("c", kind=ReviewCaseKind.LINKED_PAGE),
+        _row(
+            "c", kind=ReviewCaseKind.LINKED_PAGE, is_open=False, is_answer_unused=True
+        ),
+        _row("d", kind=ReviewCaseKind.LINKED_PAGE),
     ]
-    assert count_applied_answer_rows_by_kind(rows) == {
+    assert count_resolved_rows_by_kind(rows) == {
         ReviewCaseKind.DOUBLED_PROVIDER.value: 0,
         ReviewCaseKind.SPLIT_WORK.value: 0,
-        ReviewCaseKind.LINKED_PAGE.value: 1,
+        ReviewCaseKind.LINKED_PAGE.value: 2,
     }
 
 

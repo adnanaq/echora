@@ -11,9 +11,15 @@ may be one split work (``entry_groups``). The rules:
   because a shared title never proves one work.
 - Works: each work keeps the entry that survives as it
   (``find_surviving_entries``). The other entries' pages in that work move
-  into it, and an entry left without pages is removed.
-- Unplaced pages stay: only the rules leave pages unplaced, and they keep the
-  entry as its first work.
+  into it, and an entry left without pages is removed. Only an entry the
+  answer was given for can survive, so an entry a previous answer never saw
+  stays as the seed lists it.
+- Unplaced pages stay. The rules and a previous answer can leave pages
+  unplaced, and such pages keep the entry as its first work.
+- Previous answers. A case a seed release renamed is placed by the answer of
+  the case it replaces while it has no answer of its own
+  (``answer_placements``). The pages that answer did not see stay unplaced, so
+  the case is asked again with them.
 - Destinations: the entry each placed page ends up in, as its correction
   names it, follows the rules of ``page_destinations``.
 - Second pass: groups of the second pass hold entries as the first pass left
@@ -26,19 +32,26 @@ may be one split work (``entry_groups``). The rules:
 """
 
 from collections.abc import Iterable, Mapping, Sequence
+from typing import NamedTuple
 
-from seed_cleaning.corrected_seed import CorrectedSeed
-from seed_cleaning.entry_groups import EntryGroup
-from seed_cleaning.page_destinations import (
-    CorrectionNames,
+from seed_cleaning.answer_placements import (
+    find_named_target_reference_pages,
+    find_previous_cases,
+    resolve_answer_placements,
+)
+from seed_cleaning.models import (
+    AnswerPlacements,
+    EntryGroup,
     GroupPlacement,
+    PlacementCorrections,
+    SeedCorrection,
+)
+from seed_cleaning.page_destinations import (
     find_page_destination,
     find_partial_work_destination,
 )
 from seed_cleaning.seed_corrections import (
     REVIEW_ANSWER_REASON,
-    PlacementCorrections,
-    SeedCorrection,
 )
 from work_matching import (
     DROPPED,
@@ -50,6 +63,7 @@ from work_matching import (
     ReviewCase,
     ReviewFile,
     WorkEntry,
+    attach_previous_answers,
     combine_group_entries,
     decide_doubled_providers,
     find_covered_outside_entries,
@@ -62,14 +76,31 @@ from work_matching import (
 )
 
 
+class _DecidedEntryGroup(NamedTuple):
+    """Hold an entry group as the rules leave it, before any answer places it."""
+
+    entry_group: EntryGroup
+    pages: list[ProviderPage]
+    combined_entry: WorkEntry
+    decisions: list[DoubledProviderDecision]
+    # The rules' placements, or None when the group goes to review.
+    rule_placements: dict[str, PagePlacement] | None
+    # The group's review case with its kept answer, or None when the rules
+    # placed the group.
+    review_case: ReviewCase | None
+
+
 def correct_entry_groups(
     entry_groups: Iterable[EntryGroup],
     store: ProviderPageStore,
     known_work_entries: KnownWorkEntries,
     review_file: ReviewFile,
-    corrected_seed: CorrectedSeed | None = None,
 ) -> PlacementCorrections:
     """Place the pages of each entry group, or ask a person.
+
+    Every group is decided before any answer is applied, because a case the
+    seed release renamed finds its previous answer only among all the pass's
+    cases (``attach_previous_answers``).
 
     Args:
         entry_groups: The entry groups, with why their entries are grouped.
@@ -77,89 +108,172 @@ def correct_entry_groups(
         known_work_entries: Every entry the groups' entries come from, to find
             the entries pages move to.
         review_file: The review file, for the answers kept in it.
-        corrected_seed: In the second pass, the corrected seed the groups'
-            entries come from, so corrections name the downloaded seed; None
-            in the first pass.
 
     Returns:
-        The corrections from groups needing no review and from accepted
-        answers, and every review case of this run.
+        The corrections from groups needing no review, from accepted answers
+        and from applied previous answers, and every review case of this run.
     """
-    corrections: list[SeedCorrection] = []
-    review_cases: list[ReviewCase] = []
-    correction_names = CorrectionNames(corrected_seed)
-    for entry_group in entry_groups:
-        group_placement, review_case = _place_entry_group(
-            entry_group, store, known_work_entries, review_file, correction_names
+    decided_groups = [
+        _decide_entry_group(entry_group, store, known_work_entries, review_file)
+        for entry_group in entry_groups
+    ]
+    review_cases = [
+        decided_group.review_case
+        for decided_group in decided_groups
+        if decided_group.review_case is not None
+    ]
+    previous_cases_by_name = find_previous_cases(
+        review_file, review_cases, known_work_entries
+    )
+    review_cases_by_name = {
+        review_case.case_name: review_case
+        for review_case in attach_previous_answers(
+            review_cases, previous_cases_by_name.values()
         )
-        if review_case is not None:
-            review_cases.append(review_case)
+    }
+    corrections: list[SeedCorrection] = []
+    for decided_group in decided_groups:
+        review_case = (
+            review_cases_by_name[decided_group.review_case.case_name]
+            if decided_group.review_case is not None
+            else None
+        )
+        group_placement = _place_entry_group(
+            decided_group._replace(review_case=review_case),
+            previous_cases_by_name,
+        )
         if group_placement is not None:
-            for entry in entry_group.entries:
+            for entry in decided_group.entry_group.entries:
                 corrections.extend(_build_entry_corrections(entry, group_placement))
-    return PlacementCorrections(tuple(corrections), tuple(review_cases))
+    return PlacementCorrections(
+        tuple(corrections), tuple(review_cases_by_name.values())
+    )
 
 
-def _place_entry_group(
+def _decide_entry_group(
     entry_group: EntryGroup,
     store: ProviderPageStore,
     known_work_entries: KnownWorkEntries,
     review_file: ReviewFile,
-    correction_names: CorrectionNames,
-) -> tuple[GroupPlacement | None, ReviewCase | None]:
-    """Place one entry group's pages by the rules, or by its accepted answer.
+) -> _DecidedEntryGroup:
+    """Decide one entry group by the rules, or build its review case.
 
     Args:
         entry_group: The group's entries and why they are grouped.
         store: The fetched pages, including pages searched by the entries' pages.
         known_work_entries: The seed's entries, to find the entries pages move to.
         review_file: The review file, for the answer kept for the group's case.
-        correction_names: How the group's corrections name pages and entries.
 
     Returns:
-        The group's placement, or None while its review case is open or its
-        answer is not valid; and its review case, or None when the rules
-        placed the group.
+        The group with its pages and decisions, and either the rules'
+        placements or its review case.
     """
     entries = entry_group.entries
-    pages = _get_group_pages(entries, store)
+    pages = _read_group_pages(entries, store)
     combined_entry = combine_group_entries(entries)
     decisions = decide_doubled_providers(combined_entry, pages, known_work_entries)
-    placements = place_pages_without_review(decisions) if len(entries) == 1 else None
-    reason_by_page_key = {
-        key: decision.outcome.name
-        for decision in decisions
-        for key in decision.page_keys
-    }
-    review_case = None
-    if placements is None:
-        review_case = _build_review_case(
+    rule_placements = (
+        place_pages_without_review(decisions) if len(entries) == 1 else None
+    )
+    review_case = (
+        _build_review_case(
             entry_group, decisions, pages, known_work_entries, store, review_file
         )
-        accepted_placements = review_case.accepted_answer
-        if not isinstance(accepted_placements, dict):
-            return None, review_case
-        placements = accepted_placements
-        reason_by_page_key = dict.fromkeys(placements, REVIEW_ANSWER_REASON)
-    current_key_by_page_key = {
-        page.key: page.renamed_to for page in pages if page.renamed_to
-    }
-    named_entry_reference_pages = (
-        review_case.named_entry_reference_pages if review_case else {}
+        if rule_placements is None
+        else None
     )
+    return _DecidedEntryGroup(
+        entry_group, pages, combined_entry, decisions, rule_placements, review_case
+    )
+
+
+def _place_entry_group(
+    decided_group: _DecidedEntryGroup,
+    previous_cases_by_name: Mapping[str, ReviewCase],
+) -> GroupPlacement | None:
+    """Place one decided entry group's pages by the rules or by an answer.
+
+    Args:
+        decided_group: The group as the rules leave it, with its review case
+            and the case's previous answer.
+        previous_cases_by_name: The answered cases that did not come up, by
+            case name, for the previous answer a case carries.
+
+    Returns:
+        The group's placement, or None while its review case is open with no
+        previous answer applied, or its answer is not valid.
+    """
+    resolved_placements = _resolve_group_placements(
+        decided_group, previous_cases_by_name
+    )
+    if resolved_placements is None:
+        return None
+    answer_placements, reason_by_page_key = resolved_placements
+    placements = answer_placements.placements
+    current_page_key_by_page_key = {
+        page.key: page.renamed_to for page in decided_group.pages if page.renamed_to
+    }
     return GroupPlacement(
-        combined_entry,
+        decided_group.combined_entry,
         placements,
         reason_by_page_key,
-        find_surviving_entries(entries, placements, current_key_by_page_key),
-        current_key_by_page_key,
-        _find_target_reference_pages(decisions)
-        | _find_named_target_reference_pages(
-            placements, named_entry_reference_pages, current_key_by_page_key
+        find_surviving_entries(
+            [
+                entry
+                for entry in decided_group.entry_group.entries
+                if entry.reference_page_key
+                in answer_placements.answered_reference_pages
+            ],
+            placements,
+            current_page_key_by_page_key,
         ),
-        named_entry_reference_pages,
-        correction_names,
-    ), review_case
+        current_page_key_by_page_key,
+        _find_target_reference_pages(decided_group.decisions)
+        | find_named_target_reference_pages(
+            placements,
+            answer_placements.named_entry_reference_pages,
+            current_page_key_by_page_key,
+        ),
+        answer_placements.named_entry_reference_pages,
+    )
+
+
+def _resolve_group_placements(
+    decided_group: _DecidedEntryGroup,
+    previous_cases_by_name: Mapping[str, ReviewCase],
+) -> tuple[AnswerPlacements, dict[str, str]] | None:
+    """Resolve the placements of one group, with why each page is placed there.
+
+    Args:
+        decided_group: The group as the rules leave it, with its review case.
+        previous_cases_by_name: The answered cases that did not come up, by
+            case name, for the previous answer a case carries.
+
+    Returns:
+        The rules' placements with each decision's outcome as the reason, or
+        an answer's placements with the review answer reason; None when no
+        answer places the group.
+    """
+    if decided_group.rule_placements is not None:
+        return AnswerPlacements(
+            decided_group.rule_placements,
+            {},
+            frozenset(
+                entry.reference_page_key for entry in decided_group.entry_group.entries
+            ),
+        ), {
+            page_key: decision.outcome.name
+            for decision in decided_group.decisions
+            for page_key in decision.page_keys
+        }
+    answer_placements = resolve_answer_placements(
+        decided_group.review_case, previous_cases_by_name
+    )
+    if answer_placements is None:
+        return None
+    return answer_placements, dict.fromkeys(
+        answer_placements.placements, REVIEW_ANSWER_REASON
+    )
 
 
 def _build_review_case(
@@ -225,10 +339,10 @@ def _build_review_case(
     )
 
 
-def _get_group_pages(
+def _read_group_pages(
     entries: Sequence[WorkEntry], store: ProviderPageStore
 ) -> list[ProviderPage]:
-    """Return the stored pages of a group's entries, each page once.
+    """Read the stored pages of a group's entries, each page once.
 
     Args:
         entries: The group's entries.
@@ -263,16 +377,18 @@ def _build_entry_corrections(
         One correction per placed page of the entry.
     """
     corrections: list[SeedCorrection] = []
-    for key, address in entry.addresses_by_page_key.items():
+    for page_key, address in entry.addresses_by_page_key.items():
         placed_page = find_page_placement(
-            key, group_placement.placements, group_placement.current_key_by_page_key
+            page_key,
+            group_placement.placements,
+            group_placement.current_page_key_by_page_key,
         )
         if placed_page is None:
             continue
         corrections.append(
             _build_seed_correction(
                 entry,
-                key,
+                page_key,
                 address,
                 placed_page.placed_page_key,
                 placed_page.placement,
@@ -286,7 +402,7 @@ def _build_seed_correction(
     entry: WorkEntry,
     page_key: str,
     address: str,
-    current_key: str,
+    current_page_key: str,
     placement: PagePlacement,
     group_placement: GroupPlacement,
 ) -> SeedCorrection:
@@ -299,30 +415,29 @@ def _build_seed_correction(
         entry: The entry the page is listed in.
         page_key: The key the entry lists the page under.
         address: The page's address in the entry.
-        current_key: The key the page was placed by.
+        current_page_key: The key the page was placed by.
         placement: The page's placement.
         group_placement: Where the entry's group places its pages.
 
     Returns:
         The correction naming where the page goes and why.
     """
-    origin = group_placement.correction_names.find_page_origin(entry, page_key, address)
     destination = find_page_destination(
-        entry, page_key, placement, current_key, origin, group_placement
+        entry, page_key, placement, current_page_key, group_placement
     )
     is_renamed_page_listed = (
-        current_key != page_key
-        and current_key in group_placement.combined_entry.addresses_by_page_key
+        current_page_key != page_key
+        and current_page_key in group_placement.combined_entry.addresses_by_page_key
     )
     partial_destinations = [
         find_partial_work_destination(partial_work, group_placement)
         for partial_work in placement.partial_works
     ]
     return SeedCorrection(
-        entry_reference_page=origin.entry_reference_page,
+        entry_reference_page=entry.reference_page_key,
         page_key=page_key,
-        address=origin.address,
-        is_added_page=origin.is_added_page,
+        address=address,
+        is_added_page=False,
         placement_word=placement.placement_word,
         is_dropped_page=placement.placement_word == DROPPED,
         partial_entry_reference_pages=tuple(
@@ -335,11 +450,11 @@ def _build_seed_correction(
             for partial_destination in partial_destinations
             if partial_destination.new_entry_key
         ),
-        renamed_to=current_key if is_renamed_page_listed else None,
+        renamed_to=current_page_key if is_renamed_page_listed else None,
         target_entry_reference_page=destination.target_entry_reference_page,
         new_entry_key=destination.new_entry_key,
         named_entry_page_key=placement.named_entry_page_key,
-        reason=group_placement.reason_by_page_key[current_key],
+        reason=group_placement.reason_by_page_key[current_page_key],
     )
 
 
@@ -361,40 +476,8 @@ def _find_target_reference_pages(
         seed entry it moves to; pages without a sure target are left out.
     """
     return {
-        key: unrelated_page.move_target_entry.reference_page_key
+        page_key: unrelated_page.move_target_entry.reference_page_key
         for decision in decisions
-        for key, unrelated_page in decision.unrelated_pages.items()
+        for page_key, unrelated_page in decision.unrelated_pages.items()
         if unrelated_page.move_target_entry is not None
-    }
-
-
-def _find_named_target_reference_pages(
-    placements: Mapping[str, PagePlacement],
-    named_entry_reference_pages: Mapping[str, str],
-    current_key_by_page_key: Mapping[str, str],
-) -> dict[str, str]:
-    """Return the reference page each page an answer sends to a named seed entry moves to.
-
-    An answer's named entry replaces any target the links found, since a
-    person chose it.
-
-    Args:
-        placements: Each placed page's place, by the key the answer names it by.
-        named_entry_reference_pages: Each named page key, mapped to the reference
-            page of the seed entry holding it.
-        current_key_by_page_key: Each renamed page's current key, by the key an
-            entry lists it under.
-
-    Returns:
-        Each named page's current key, mapped to the reference page it moves to.
-    """
-    return {
-        current_key_by_page_key.get(page_key, page_key): reference_page
-        for page_key, placement in placements.items()
-        if placement.named_entry_page_key
-        and (
-            reference_page := named_entry_reference_pages.get(
-                placement.named_entry_page_key
-            )
-        )
     }

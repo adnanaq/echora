@@ -5,7 +5,7 @@ from review_page.review_case_messages import (
     convert_case_to_message,
     convert_message_to_case,
 )
-from work_matching import LinkedPageDecision, TargetEntrySuggestion
+from work_matching import LinkedPageDecision, PreviousAnswer, TargetEntrySuggestion
 
 
 @pytest.mark.parametrize(
@@ -114,6 +114,22 @@ def test_convert_message_to_case_round_trip_keeps_named_entries_and_suggestions(
                     providers=("anilist",),
                 ),
             ),
+        }
+    )
+    assert convert_message_to_case(convert_case_to_message(case)) == case
+
+
+def test_convert_message_to_case_round_trip_keeps_previous_answer(
+    review_cases,
+) -> None:
+    case = review_cases["gochuumon_movie"].model_copy(
+        update={
+            "previous_answer": PreviousAnswer(
+                case_name="split work: mal:anime:61115",
+                answer={"mal:anime:61115": "work 1"},
+                added_page_keys=("anisearch:anime:22048",),
+                is_applied=True,
+            )
         }
     )
     assert convert_message_to_case(convert_case_to_message(case)) == case

@@ -4,7 +4,7 @@ from work_matching.answer_placement_check import (
     check_answer_placements,
     read_answer_placements,
 )
-from work_matching.answer_rules import PlacementRule
+from work_matching.models import PlacementRule
 from work_matching.page_placement import PagePlacement, list_placeable_page_keys
 
 ENTRY = PagePlacement("work 1")
