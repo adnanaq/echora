@@ -54,6 +54,7 @@ from seed_cleaning.models import (
     SeedCleaningRunResult,
     SeedCorrection,
     SplitWorkCandidates,
+    SplitWorkPass,
 )
 from seed_cleaning.seed_corrections import (
     follow_named_entry_pages,
@@ -61,7 +62,7 @@ from seed_cleaning.seed_corrections import (
     merge_corrections,
     write_corrections,
 )
-from seed_cleaning.split_work_pass import SplitWorkPass, prepare_split_work_pass
+from seed_cleaning.split_work_pass import prepare_split_work_pass
 from work_matching import (
     KnownWorkEntriesFromSeed,
     ProviderPageStore,

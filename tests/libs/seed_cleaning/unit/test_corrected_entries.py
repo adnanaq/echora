@@ -2,13 +2,12 @@ import itertools
 
 import pytest
 from seed_cleaning.corrected_entries import (
-    CorrectedEntry,
     UnknownSeedEntryError,
     build_corrected_entries,
     mark_anime_id_pages,
 )
 from seed_cleaning.group_placement import correct_entry_groups
-from seed_cleaning.models import EntryGroup, SeedCorrection
+from seed_cleaning.models import CorrectedEntry, EntryGroup, SeedCorrection
 from seed_cleaning.seed_corrections import merge_corrections
 from work_matching import (
     KnownWorkEntriesFromSeed,

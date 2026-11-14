@@ -46,17 +46,17 @@ from review_page.models import (
     LinkedPageConflict,
     WorkPartialSources,
 )
-from work_matching.entry_group import combine_group_entries
-from work_matching.linked_page_check import (
+from work_matching.answer_words import (
+    DROPPED,
+    OTHER_WORK,
     PARTIAL_SOURCE_ANSWER,
     SKIP_ANSWER,
     WHOLE_PAGE_ANSWER,
-    check_linked_page_answer,
 )
+from work_matching.entry_group import combine_group_entries
+from work_matching.linked_page_check import check_linked_page_answer
 from work_matching.models import LinkedPageAddition, PlacementRule
 from work_matching.page_placement import (
-    DROPPED,
-    OTHER_WORK,
     PagePlacement,
     list_placeable_page_keys,
     read_placement,

@@ -2,12 +2,8 @@ import json
 import logging
 
 import pytest
-from seed_cleaning.corrected_entries import (
-    CorrectedEntry,
-)
 from seed_cleaning.group_placement import correct_entry_groups
 from seed_cleaning.linked_page_additions import (
-    LinkedPageCorrections,
     correct_linked_pages,
     find_entries_without_mal_page,
     find_linking_seed_entries,
@@ -15,7 +11,13 @@ from seed_cleaning.linked_page_additions import (
     list_entries_with_placed_pages,
     rename_linked_pages_to_current_keys,
 )
-from seed_cleaning.models import EntryGroup, LinkingSeedEntry, SeedCorrection
+from seed_cleaning.models import (
+    CorrectedEntry,
+    EntryGroup,
+    LinkedPageCorrections,
+    LinkingSeedEntry,
+    SeedCorrection,
+)
 from work_matching import (
     KnownWorkEntriesFromSeed,
     LinkingEntryDetails,

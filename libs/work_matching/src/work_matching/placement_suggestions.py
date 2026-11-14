@@ -23,15 +23,13 @@ from collections import Counter
 from collections.abc import Iterable, Sequence
 
 from networkx.utils import UnionFind
+from work_matching.answer_words import OTHER_WORK
 from work_matching.models import (
     DoubledProviderDecision,
     DoubledProviderOutcome,
     DoubledProviderReviewReason,
 )
-from work_matching.page_placement import (
-    OTHER_WORK,
-    list_placeable_page_keys,
-)
+from work_matching.page_placement import list_placeable_page_keys
 from work_matching.provider_page_key import rank_by_provider_trust, read_page_provider
 from work_matching.work_entry import WorkEntry
 

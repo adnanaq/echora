@@ -1,11 +1,9 @@
 import pytest
 from seed_cleaning.corrected_seed import (
-    EntryIdentity,
-    PageOrigin,
     build_corrected_seed,
     translate_corrected_seed_corrections,
 )
-from seed_cleaning.seed_corrections import SeedCorrection
+from seed_cleaning.models import EntryIdentity, PageOrigin, SeedCorrection
 from work_matching import KnownWorkEntriesFromSeed, ProviderPageStore
 
 CUE_ANN = "https://animenewsnetwork.com/encyclopedia/anime.php?id=24629"

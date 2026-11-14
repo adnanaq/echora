@@ -1,9 +1,9 @@
 import json
 
 import pytest
+from seed_cleaning.models import SeedCorrection
 from seed_cleaning.seed_corrections import (
     DEAD_PAGE_REASON,
-    SeedCorrection,
     follow_named_entry_pages,
     list_dead_page_corrections,
     merge_corrections,

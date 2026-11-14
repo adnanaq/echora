@@ -22,13 +22,13 @@ Each item gives the rule, then the reason for it.
 
 from collections.abc import Iterable
 
-from seed_cleaning.corrected_seed import (
+from seed_cleaning.corrected_seed import build_corrected_seed, find_move_destination
+from seed_cleaning.models import (
     CorrectedSeed,
     EntryIdentity,
-    build_corrected_seed,
-    find_move_destination,
+    SeedCorrection,
+    SplitWorkPass,
 )
-from seed_cleaning.models import SeedCorrection, SplitWorkPass
 from seed_cleaning.seed_corrections import REVIEW_ANSWER_REASON
 from seed_cleaning.split_work_candidates import (
     find_split_work_candidates,

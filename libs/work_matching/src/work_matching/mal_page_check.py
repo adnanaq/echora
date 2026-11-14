@@ -27,15 +27,13 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import NamedTuple, Self
 
+from work_matching.answer_words import OTHER_WORK
 from work_matching.models import DoubledProviderDecision
 from work_matching.page_details_comparison import (
     MalPageComparison,
     compare_page_with_mal_page,
 )
-from work_matching.page_placement import (
-    OTHER_WORK,
-    read_placement,
-)
+from work_matching.page_placement import read_placement
 from work_matching.provider_page import ProviderPage, index_pages_by_current_page_key
 from work_matching.provider_page_key import is_mal_page
 from work_matching.provider_page_links import ProviderPageLinks

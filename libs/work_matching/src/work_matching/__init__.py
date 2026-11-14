@@ -10,7 +10,13 @@ from work_matching.answer_placement_check import (
     check_answer_placements,
     read_answer_placements,
 )
-from work_matching.answer_words import describe_answer_word
+from work_matching.answer_words import (
+    DROPPED,
+    FIRST_WORK,
+    OTHER_WORK,
+    SKIP_ANSWER,
+    describe_answer_word,
+)
 from work_matching.comparable_title import fold_title_for_comparison
 from work_matching.doubled_provider_check import decide_doubled_providers
 from work_matching.doubled_provider_matches import (
@@ -38,7 +44,6 @@ from work_matching.errors import (
 from work_matching.known_work_entries import KnownWorkEntries
 from work_matching.known_work_entries_from_seed import KnownWorkEntriesFromSeed
 from work_matching.linked_page_check import (
-    SKIP_ANSWER,
     check_linked_page_answer,
     decide_linked_page,
     find_entry_episode_count,
@@ -76,9 +81,6 @@ from work_matching.page_details_comparison import (
     resolve_seed_type,
 )
 from work_matching.page_placement import (
-    DROPPED,
-    FIRST_WORK,
-    OTHER_WORK,
     PagePlacement,
     PlacedPage,
     find_page_placement,

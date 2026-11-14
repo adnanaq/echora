@@ -9,14 +9,13 @@ from seed_cleaning.cleaning_report import (
     describe_linked_page_outcomes,
     find_correction_change,
 )
-from seed_cleaning.corrected_entries import CorrectedEntry
-from seed_cleaning.linked_page_additions import LinkedPageCorrections
-from seed_cleaning.seed_corrections import (
-    DEAD_PAGE_REASON,
-    REVIEW_ANSWER_REASON,
+from seed_cleaning.models import (
+    CorrectedEntry,
+    LinkedPageCorrections,
     SeedCorrection,
+    SplitWorkCandidates,
 )
-from seed_cleaning.split_work_candidates import SplitWorkCandidates
+from seed_cleaning.seed_corrections import DEAD_PAGE_REASON, REVIEW_ANSWER_REASON
 from work_matching import DoubledProviderOutcome, LinkedPageReason, WorkEntry
 
 

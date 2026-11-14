@@ -33,10 +33,9 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from pydantic import JsonValue
+from work_matching.answer_words import DROPPED, OTHER_WORK
 from work_matching.models import DoubledProviderDecision, PlacementRule
 from work_matching.page_placement import (
-    DROPPED,
-    OTHER_WORK,
     PagePlacement,
     build_page_keys_by_work_provider,
     has_two_pages_of_one_provider,
