@@ -31,7 +31,10 @@ def previous_case(build_split_case):
 def test_attach_previous_answers_entry_gaining_page_carries_applied_answer(
     build_split_case, previous_case
 ) -> None:
-    case = build_split_case((MAL_PAGE, ANISEARCH_PAGE), (ANILIST_PAGE,))
+    link_suggestion = {"anilist:anime:2": "work 1", "anisearch:anime:5": "work 1"}
+    case = build_split_case((MAL_PAGE, ANISEARCH_PAGE), (ANILIST_PAGE,)).model_copy(
+        update={"suggested_answer": link_suggestion}
+    )
     [carried_case] = attach_previous_answers([case], [previous_case])
     assert carried_case.previous_answer == PreviousAnswer(
         case_name=previous_case.case_name,
@@ -40,7 +43,7 @@ def test_attach_previous_answers_entry_gaining_page_carries_applied_answer(
         is_applied=True,
     )
     assert carried_case.answer is None
-    assert carried_case.suggested_answer.items() >= SEPARATE_WORKS.items()
+    assert carried_case.suggested_answer == link_suggestion | SEPARATE_WORKS
 
 
 def test_attach_previous_answers_merged_entries_carries_answer_not_applied(
