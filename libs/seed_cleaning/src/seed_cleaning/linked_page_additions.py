@@ -90,7 +90,7 @@ class _PageAddition(NamedTuple):
 def find_entries_without_mal_page(entries: Iterable[WorkEntry]) -> list[WorkEntry]:
     """Return the entries holding no MAL page, in the order given.
 
-    A work is what MAL lists. An entry's anime id comes from the entry's MAL
+    Every page MAL lists is a work of its own. An entry's anime id comes from the entry's MAL
     page first. A missing MAL page therefore matters most for these entries.
 
     Args:

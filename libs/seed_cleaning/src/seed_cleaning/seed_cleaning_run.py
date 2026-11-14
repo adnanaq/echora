@@ -5,7 +5,7 @@ the review page starts the same script with ``--no-fetch``. The run:
 
 Each item gives the rule, then the reason for it.
 
-- Holds the review file's lock (``work_matching.review_file_lock``) from reading
+- Holds the review file's lock (``work_matching.hold_review_file_lock``) from reading
   the answers to rewriting the file. A save in between would be read by
   neither the run nor the file, and so lost.
 - Runs the first pass (doubled providers and linked pages), then the second

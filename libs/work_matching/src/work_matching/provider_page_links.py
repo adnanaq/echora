@@ -20,7 +20,7 @@ Each rule reads ``<rule>: <behavior>``:
   as an anthology) does not prove identity for any single work. Multi-work page
   links are set aside.
 - Several-works pages: A page linked with two or more MAL pages, in either
-  direction, covers several works, since a work is what MAL lists (such as
+  direction, covers several works, since every page MAL lists is a work of its own (such as
   AniDB's single page for three films MAL lists apart). Several-works page
   links are set aside too, tying none of those works together.
 """

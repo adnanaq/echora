@@ -54,7 +54,7 @@ class ReviewFile:
     appended to. Only each line's case name and answer are read back; the rest
     of a line is rebuilt by the run, so anything else written in the line is not
     kept. One process at a time writes the file: ``save_answers`` holds the
-    file's lock (``review_file_lock``), and a run holds the lock around
+    file's lock (``hold_review_file_lock``), and a run holds the lock around
     ``write_cases``, so an answer is never saved between a run's read and
     rewrite.
     """

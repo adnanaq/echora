@@ -1,8 +1,8 @@
 """Check the suggested places of an entry group's pages against MAL pages.
 
 A link or a shared seed entry alone has joined separate works, such as a page
-covering three OVA series suggested as one of them. A work is what MAL lists,
-so each suggested page is compared with the MAL page of its suggested work
+covering three OVA series suggested as one of them. Every page MAL lists is a
+work of its own, so each suggested page is compared with the MAL page of its suggested work
 (``compare_page_with_mal_page``) before the suggestion reaches a reviewer.
 
 Each item reads ``<comparison>: <suggestion>``.

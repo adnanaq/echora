@@ -204,7 +204,8 @@ def read_page_provider(page_key: str) -> str | None:
 def is_mal_page(page_key: str) -> bool:
     """Check whether a page key is a MyAnimeList page.
 
-    A work is what MAL lists, so several rules treat MAL pages apart.
+    Every page MAL lists is a work of its own, so several rules treat MAL
+    pages apart.
 
     Args:
         page_key: A page key, as ``resolve_page_key`` gives it.

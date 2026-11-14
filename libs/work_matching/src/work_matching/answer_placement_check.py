@@ -11,8 +11,8 @@ Each item gives the rule, then the reason for it.
 - An answer places every doubled page. Each doubled page needs a place.
 - An answer using ``work 2`` or later places every page of the entry. Splitting
   the entry sends each page to one of the works.
-- No work holds two pages of one provider. A work is the finest split any
-  provider lists, so two pages of one provider are two works or a duplicate
+- No work holds two pages of one provider. A provider lists each work on a
+  page of its own, so two pages of one provider are two works or a duplicate
   page.
 - A dropped page has another page of its provider placed in a work of the
   case. Dropping a duplicate page keeps the other page, so the provider is not

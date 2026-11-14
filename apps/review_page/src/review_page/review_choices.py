@@ -12,8 +12,8 @@ Each item gives the rule, then the reason for it.
   use, so the next new work is always offered, and a case of 110 pages does
   not offer 110 works in every dropdown.
 - A ``work N`` already holding another page of the page's provider is
-  disabled. A work is the finest split any provider lists, so it holds one
-  page of each provider.
+  disabled. A provider lists each work on a page of its own, so a work holds
+  one page of each provider.
 - ``dropped`` is disabled while no other page of the page's provider has a
   work of the case, since dropping a duplicate page keeps the other page.
 - A page keeps the works it is a partial source of when its place changes,

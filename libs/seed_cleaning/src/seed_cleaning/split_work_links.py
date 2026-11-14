@@ -9,8 +9,8 @@ Each item gives the rule, then the reason for it.
 - Two entries are tied when a fetched page of one, or a page searched by one of
   its pages, links a page the other holds. Searched pages count because their
   links, such as AnimeSchedule's, name the anime they were found for.
-- Entries that each hold their own MAL page are never tied. A work is what MAL
-  lists, so two MAL pages are two works, and a review would always answer
+- Entries that each hold their own MAL page are never tied. Every page MAL
+  lists is a work of its own, so two MAL pages are two works, and a review would always answer
   "separate".
 - A page linking two or more pages of one provider ties nothing. Such a page
   covers several works, such as an anthology, so its links do not show one work.

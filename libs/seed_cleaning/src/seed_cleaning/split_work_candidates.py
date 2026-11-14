@@ -55,8 +55,8 @@ logger = logging.getLogger(__name__)
 
 # Seasons in calendar order, so neighbouring seasons differ by one.
 _SEASON_ORDER = ("WINTER", "SPRING", "SUMMER", "FALL")
-# Entries sharing this provider are never one work, since MAL lists them as
-# different works and a work is the finest split any provider lists.
+# Entries sharing this provider are never one work, since every page MAL
+# lists is a work of its own.
 _MAL_PROVIDER = "mal"
 
 
