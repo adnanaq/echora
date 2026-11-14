@@ -18,6 +18,7 @@ Each item gives the rule, then the reason for it.
 import logging
 import os
 import shutil
+import uuid
 from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
@@ -345,15 +346,19 @@ def _write_line_answer(line: str, answer: JsonValue) -> str:
 def replace_file_lines(path: str | Path, lines: Iterable[str]) -> None:
     """Write the lines in place of the file, in one step.
 
+    The lines go to a temporary file with a name of its own in the same
+    folder, which then replaces the file. Two writers replacing one file at
+    once therefore never write into the same temporary file.
+
     Args:
         path: The file to replace; it and its folder are created if missing.
         lines: The lines to write, each ending with its line break.
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary_path = path.with_name(f".{path.name}.tmp")
+    temporary_path = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
     try:
-        with temporary_path.open("w", encoding="utf-8") as temporary_file:
+        with temporary_path.open("x", encoding="utf-8") as temporary_file:
             temporary_file.writelines(lines)
             temporary_file.flush()
             os.fsync(temporary_file.fileno())
@@ -417,7 +422,10 @@ def is_review_file_locked(review_file_path: str | Path) -> bool:
     """Report whether another writer holds the review file's lock right now.
 
     The lock is taken and released at once to find out, since only taking it
-    tells whether another process holds it.
+    tells whether another process holds it. The answer can be out of date as
+    soon as it returns, so it only informs a display, such as the review
+    page's run panel. A writer takes the lock with ``hold_review_file_lock``
+    instead of checking first.
 
     Args:
         review_file_path: The review file to check.

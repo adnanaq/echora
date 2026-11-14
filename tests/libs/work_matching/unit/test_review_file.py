@@ -3,6 +3,7 @@ import os
 import subprocess
 import sys
 from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import patch
 
@@ -522,15 +523,17 @@ def test_review_file_save_answers_unknown_case_raises_and_keeps_file(
     assert review_file_path.read_text(encoding="utf-8") == "".join(review_case_lines)
 
 
-def test_review_file_save_answers_lock_held_by_other_process_raises(
-    review_file_path, review_cases
-) -> None:
+_PROCESS_TIMEOUT_SECONDS = 10
+
+
+@contextmanager
+def _hold_lock_in_other_process(review_file_path: Path) -> Iterator[None]:
     holder = subprocess.Popen(  # noqa: S603  (fixed test arguments)
         [
             sys.executable,
             "-c",
             "import sys, time, filelock\n"
-            "with filelock.FileLock(sys.argv[1]):\n"
+            f"with filelock.FileLock(sys.argv[1], timeout={_PROCESS_TIMEOUT_SECONDS}):\n"
             "    print('held', flush=True); time.sleep(5)",
             f"{review_file_path}.lock",
         ],
@@ -540,20 +543,32 @@ def test_review_file_save_answers_lock_held_by_other_process_raises(
     try:
         assert holder.stdout is not None
         assert holder.stdout.readline().strip() == "held"
-        with pytest.raises(ReviewFileLockedError):
-            ReviewFile(review_file_path).save_answers(
-                {review_cases["nami"].case_name: None}
-            )
+        yield
     finally:
         holder.kill()
-        holder.wait()
+        holder.wait(timeout=_PROCESS_TIMEOUT_SECONDS)
+
+
+def test_review_file_save_answers_lock_held_by_other_process_raises(
+    review_file_path, review_cases
+) -> None:
+    with (
+        _hold_lock_in_other_process(review_file_path),
+        pytest.raises(ReviewFileLockedError),
+    ):
+        ReviewFile(review_file_path).save_answers(
+            {review_cases["nami"].case_name: None}
+        )
 
 
 def test_replace_file_lines_existing_file_holds_only_new_lines(tmp_path) -> None:
     path = tmp_path / "corrections.jsonl"
     path.write_text("old line\n", encoding="utf-8")
+    other_writer_temporary_path = tmp_path / ".corrections.jsonl.tmp"
+    other_writer_temporary_path.write_text("other writer\n", encoding="utf-8")
     replace_file_lines(path, ["first\n", "second\n"])
     assert path.read_text(encoding="utf-8") == "first\nsecond\n"
+    assert other_writer_temporary_path.read_text(encoding="utf-8") == "other writer\n"
 
 
 def test_replace_file_lines_missing_folder_created(tmp_path) -> None:
@@ -595,23 +610,8 @@ def empty_review_file_path(tmp_path) -> Path:
 
 @pytest.fixture
 def lock_held_by_other_process(empty_review_file_path) -> Iterator[None]:
-    holder = subprocess.Popen(  # noqa: S603  (fixed test arguments)
-        [
-            sys.executable,
-            "-c",
-            "import sys, time, filelock\n"
-            "with filelock.FileLock(sys.argv[1]):\n"
-            "    print('held', flush=True); time.sleep(5)",
-            f"{empty_review_file_path}.lock",
-        ],
-        stdout=subprocess.PIPE,
-        text=True,
-    )
-    assert holder.stdout is not None
-    assert holder.stdout.readline().strip() == "held"
-    yield
-    holder.kill()
-    holder.wait()
+    with _hold_lock_in_other_process(empty_review_file_path):
+        yield
 
 
 def test_is_review_file_locked_free_file_reports_false(
@@ -655,6 +655,7 @@ def test_hold_review_file_lock_while_held_reports_locked_to_others(
             capture_output=True,
             text=True,
             check=True,
+            timeout=_PROCESS_TIMEOUT_SECONDS,
         )
     assert checker.stdout.strip() == "locked"
 
