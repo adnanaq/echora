@@ -1,0 +1,214 @@
+---
+title: Temporal Infrastructure
+date: 2026-02-19
+tags:
+  - infrastructure
+  - temporal
+  - scheduling
+  - durable-execution
+status: planned
+related:
+  - "[[update_service]]"
+  - "[[Architecture Index]]"
+---
+
+# Temporal Infrastructure
+
+## Overview
+
+Temporal is the **durable execution engine** that runs the [[update_service|Update Service]]. It keeps every workflow's state, resumes a workflow after a crash without repeating finished steps, holds thousands of timers (one per tracked episode) and keeps a history of every run.
+
+---
+
+## Why Temporal
+
+| Requirement | APScheduler | Temporal |
+|-------------|-------------|----------|
+| Thousands of timers and schedules, each at its own time | ❌ in-process only, no persistence | ✅ durable timers and the Schedules API |
+| Survive a process crash, resume mid-execution | ❌ | ✅ event history replay |
+| Retry with backoff | ⚠️ written by hand | ✅ declared per activity |
+| Share a provider's request rate across workers | ❌ | ✅ task queue rate limits, enforced on the server |
+| Put user requests ahead of background work | ❌ | ✅ task queue priority and fairness |
+| Horizontal scale | ❌ | ✅ add worker replicas |
+
+**Key guarantee**: if the Update Service worker crashes mid-workflow, Temporal replays the event history and resumes at the step that was running. Completed steps are not run again.
+
+---
+
+## Infrastructure Components
+
+### Temporal Server
+
+The Temporal Server keeps workflow state, timers and task queues, and dispatches tasks. It never runs workflow code; the workers do.
+
+- **Image:** `temporalio/server`, 1.30 or later. Pin the release current at setup time from the [release page](https://github.com/temporalio/temporal/releases), and use the `temporalio/admin-tools` image of the same version.
+- **Databases:** PostgreSQL, in the same cluster as the catalogue, with two databases of its own: `temporal` (executions and history) and `temporal_visibility` (what the UI lists and filters). No Elasticsearch is needed at this size.
+- **Deployment:** Docker containers in development and staging, Kubernetes in production with the official Helm chart (0.73.1 or later for server 1.30+).
+
+| Port | Purpose |
+|------|---------|
+| `7233` | gRPC frontend (workers and clients connect here) |
+| `8080` | Temporal Web UI |
+
+> [!warning] `temporalio/auto-setup` is deprecated
+> The `auto-setup` image, which created the schema and namespace inside the server container, [no longer receives updates](https://hub.docker.com/r/temporalio/auto-setup) and has no release past 1.29. The schema is now set up by a one-shot `admin-tools` container before the server starts, as Temporal's own [`samples-server` compose files](https://github.com/temporalio/samples-server) do.
+
+### Temporal Worker
+
+The Update Service, a Rust process built with the [Temporal Rust SDK](https://temporal.io/blog/build-durable-applications-rust-temporal-rust-sdk-now-generally-available), registers the workflow and activity implementations and polls the Temporal Server for tasks. Its activities call the Enrichment Service, the Agent Service and the PostgreSQL Service over gRPC with `tonic`.
+
+- **Task queues:** `update-service` for workflows and merges, one `provider-<name>` queue per provider, and `agent` for AI activities. See [[update_service#Temporal Worker Configuration|Update Service]].
+- **Scaling:** add worker replicas. Temporal spreads tasks across every worker polling a queue, and the rate limits below stay the same however many workers there are.
+
+---
+
+## Temporal Concepts in This System
+
+| Concept | Usage |
+|---------|-------|
+| **Workflow** | A durable, resumable run: one refresh of a work, an episode or a character, a sweep, a seed load, or one tracked episode. |
+| **Activity** | One step of a workflow, a gRPC call to another service. Retried on its own when it fails. |
+| **Timer** | A durable wait, such as a tracked episode sleeping until its air time. |
+| **Schedule** | A recurring start: the weekly sweep, the daily score refresh and the daily episode tracking. |
+| **Signal** | A message to a running workflow, such as `merge_requested` sent to a work's refresh after a synopsis is written. |
+| **Priority and fairness** | The order tasks leave a queue: user requests first, then episode tracking, then the sweep and the seed load sharing what is left. |
+| **Namespace** | All Echora workflows run in the `echora` namespace. |
+
+---
+
+## Namespace Configuration
+
+| Setting | Value |
+|---------|-------|
+| Namespace | `echora` |
+| Retention | 30 days (workflow history kept for debugging) |
+| Archival | Disabled; enable for long-term audit if needed |
+
+---
+
+## Task Queue Settings
+
+### Priority and fairness
+
+> **Linear:** ECHO-113
+
+[Task Queue Priority and Fairness](https://docs.temporal.io/develop/task-queue-priority-fairness) are generally available, for self-hosted servers too.
+
+- **Priority** is on by default. Each workflow or activity sets a priority key from 1 (first) to 5, and a task without one gets 3. Activities inherit their workflow's priority unless they set their own.
+- **Fairness** must be turned on in the dynamic config with `matching.enableFairness: true`, for the namespace or for the provider queues. Tasks then carry a fairness key and weight, and tasks of one priority are dispatched in proportion to their keys' weights.
+
+The keys the Update Service uses are listed in [[update_service#Provider rate limits|Update Service]].
+
+### Rate limits
+
+> **Linear:** ECHO-113
+
+Each provider queue's rate limit is set on the queue itself, not in each worker:
+
+```bash
+temporal task-queue config set \
+  --namespace echora \
+  --task-queue provider-anidb \
+  --task-queue-type activity \
+  --queue-rps-limit 0.16 \
+  --queue-rps-limit-reason "AniDB pacing"
+```
+
+A limit set this way takes precedence over `max_task_queue_activities_per_second` in the workers' options, so workers deployed with different values cannot fight over it. A per-fairness-key limit (`fairness-key-rps-limit-default`) can also cap the seed load's share of a provider. The limits live in a script beside the deployment, so they are versioned with it.
+
+### Worker Versioning
+
+> **Linear:** ECHO-95
+
+[Worker Versioning](https://temporal.io/blog/replay-2026-product-announcements) is generally available and replaces the older build-ID versioning. A running workflow stays on the worker version that started it, so a deploy never breaks a workflow in flight, and workflow code needs no patching branches for every change. The Rust SDK's worker options take a deployment-based versioning strategy (`WorkerVersioningStrategy::WorkerDeploymentBased`).
+
+---
+
+## Local Development
+
+> **Linear:** ECHO-95
+
+Local development uses the [Temporal CLI](https://docs.temporal.io/cli) dev server: one process with an in-memory or file database, the Web UI on port 8233, and no separate containers.
+
+```bash
+temporal server start-dev \
+  --namespace echora \
+  --db-filename .temporal/dev.db \
+  --dynamic-config-value matching.enableFairness=true
+```
+
+The Rust SDK's `testing` feature can also start and stop a dev server from tests.
+
+## Deployed Setup
+
+> **Linear:** Deployment project
+
+Staging and production run the server image against PostgreSQL, with the schema set up first:
+
+```yaml
+temporal-schema-setup:
+  image: temporalio/admin-tools:${TEMPORAL_VERSION}
+  restart: on-failure:6
+  depends_on:
+    postgres:
+      condition: service_healthy
+  environment:
+    - POSTGRES_SEEDS=postgres
+    - POSTGRES_USER=temporal
+  # temporal-sql-tool --plugin postgres12 creates and migrates
+  # the temporal and temporal_visibility databases; safe to rerun
+  command: ["/scripts/setup-postgres.sh"]
+
+temporal:
+  image: temporalio/server:${TEMPORAL_VERSION}
+  depends_on:
+    temporal-schema-setup:
+      condition: service_completed_successfully
+  environment:
+    - DB=postgres12
+    - DB_PORT=5432
+    - POSTGRES_SEEDS=postgres
+    - POSTGRES_USER=temporal
+    - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/echora.yaml
+  ports:
+    - "7233:7233"
+
+temporal-ui:
+  image: temporalio/ui:${TEMPORAL_UI_VERSION}
+  environment:
+    - TEMPORAL_ADDRESS=temporal:7233
+  ports:
+    - "8080:8080"
+```
+
+The password comes from the environment file, never from the compose file. The dynamic config file sets `matching.enableFairness`, and a one-shot `admin-tools` step after the server starts creates the `echora` namespace when it is missing and applies the task queue rate limits.
+
+---
+
+## Operational Notes
+
+- **Workflow determinism**: workflow code never reads the system clock, draws random numbers or does I/O. It uses the SDK's workflow time and runs every side effect as an activity.
+- **Activity retries and timeouts**: set per activity. Starting values are in [[update_service#Activity timeouts|Update Service]].
+- **Workflow timeouts**: long-running workflows, such as a seed load, continue as new instead of growing one history.
+- **Payload size**: activities pass only IDs, keys and flags, never page bodies or merged records. See [[update_service#Only references pass through Temporal|Update Service]].
+
+---
+
+## Writing Workflow Code
+
+Use the [Temporal Developer Skill](https://temporal.io/blog/introducing-temporal-developer-skill) when writing or reviewing workflow and activity code with a coding agent. It covers determinism rules, activity patterns, retry policies, error handling, testing, worker configuration and versioning.
+
+- **Install in Claude Code:** `/plugin marketplace add temporalio/agent-skills`, then install `temporal-developer` from the plugin manager and restart the session.
+- **Rust:** most of the skill applies to any language, but its SDK-specific guidance covers Python, TypeScript and Go. Check Rust specifics, such as `ActivityOptions`, `WorkerOptions` and `Priority`, against the [Rust SDK documentation](https://docs.rs/temporalio-sdk/latest/temporalio_sdk/).
+
+---
+
+## Related Documentation
+
+- [[update_service|Update Service]] — workflows and activities running on this infrastructure
+- [[postgres_integration_architecture_decision|PostgreSQL Service]] — the PostgreSQL cluster Temporal shares
+- [[Architecture Index|Architecture Index]] — service overview
+
+---
+
+**Status**: Planned | **Last Updated**: 2026-11-14
