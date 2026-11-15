@@ -69,15 +69,30 @@ if any page changed, the work's pages were relinked, or a merge was requested:
     returns                          the new episode and character IDs, and whether the
                                      provider synopses changed
 
-then:
+then, through start_workflows on the update-service queue:
   start RefreshEpisodeWorkflow for each new episode
   start RefreshCharacterWorkflow for each new character
   if the provider synopses changed: start SynopsisWorkflow
+
+before ending:
+  if merge_requested arrived during the merge, merge again
 ```
 
 An episode's or a character's refresh is the same with its own pages: `refresh_page` for each due page, then `LoadEpisode`, `MergeEpisode`, `SaveEpisode`, or `LoadCharacter`, `MergeCharacter`, `SaveCharacter`.
 
 A partial-source page is linked to a work but never merged into it, so a change to it starts no merge.
+
+### Starting other workflows
+
+> **Linear:** ECHO-111
+
+Workflows never start other workflows as child workflows. A `start_workflows` activity starts refreshes, tracked episodes and synopses as top-level workflows through the Temporal client, a batch of IDs per call, each with the `USE_EXISTING` conflict policy:
+
+- **`USE_EXISTING` needs the client.** Child workflows do not support a workflow ID conflict policy, so a second start for an entity already refreshing would fail instead of joining the running refresh.
+- **Nothing ends with its starter.** A child workflow's default parent close policy terminates it when the parent ends or continues as new, which would end a sweep's or a seed load's refreshes in flight. A workflow started through the client has no parent.
+- **No child limit.** A workflow can have at most 2,000 child workflows open, and each one adds events to its history. A long series such as One Piece lists more than 1,100 episodes. Starts made inside an activity add only that activity's input and result.
+
+The activity is safe to retry, since a start repeated with `USE_EXISTING` returns the workflow already running.
 
 ### Only references pass through Temporal
 
@@ -99,8 +114,8 @@ The same workflow serves two other cases:
 Only an entity's own refresh workflow merges and saves it. Temporal allows at most one open run per workflow ID, so two merges of one entity never overlap.
 
 - **Starting.** Refreshes start with the `USE_EXISTING` conflict policy. A second start for an entity already refreshing gets the running refresh back instead of an error, so fifty users opening the same old work start one refresh, not fifty.
-- **Asking for another merge.** A workflow that changes a work's inputs without fetching, such as `SynopsisWorkflow` after saving new text, sends the work's refresh a `merge_requested` signal with signal-with-start. If no refresh is running, the signal starts one. If one is running, it merges once more after its current merge, so it always merges the newest inputs.
-- **The version check.** Every load returns the entity's version, and every save writes only if the version still matches. A save that finds another change in between returns `ABORTED`, and Temporal retries the merge from the load. This catches anything outside the workflow, such as a seed load relinking pages.
+- **Asking for another merge.** A workflow that changes a work's inputs without fetching, such as `SynopsisWorkflow` after saving new text, sends the work's refresh a `merge_requested` signal with signal-with-start. If no refresh is running, the signal starts one. If one is running, the signal handler only sets a flag. After each merge, the workflow checks the flag and merges again while it is set, and checks it once more before it ends. A signal that arrives while the workflow is completing makes the server reject the completion and run the workflow again with the signal, so the final check sees it and no request is lost.
+- **The version check.** Every load returns the entity's version, and every save writes only if the version still matches. A save that finds another change in between returns `ABORTED`, and the merge activity loads, merges and saves again within the same attempt. This catches anything outside the workflow, such as a seed load relinking pages, a new AI-written synopsis or a new correction, since each of these increases the version.
 
 ### Provider rate limits
 
@@ -117,7 +132,7 @@ All triggers share these queues, so their order is set with Temporal's task queu
 | Weekly sweep, daily scores | 3 | `sweep` |
 | Seed load | 3 | `seed` |
 
-A lower priority key always goes first. Within priority 3, fairness shares each provider's rate between the weekly sweep and a seed load by their weights, so a 39,000-work seed load does not stop the sweep, and the sweep does not stop the seed load.
+A lower priority key always goes first. Within priority 3, the keys `sweep` and `seed` both have the weight 1.0, so when both have work waiting, each gets half of every provider's rate. A 39,000-work seed load therefore does not stop the sweep, and the sweep does not stop the seed load. The weights are set where each workflow starts, and can be changed without a deploy with `temporal task-queue config set --fairness-key-weight`.
 
 > [!warning] AniDB's daily limit is not handled yet
 > AniDB bans on daily request volume, about 200 requests a day in earlier runs. The design assumes no daily limit for now. A daily budget for AniDB, or a longer refresh interval for AniDB pages, is decided later.
@@ -131,8 +146,13 @@ Starting values, tuned once real runs are measured:
 | Activity | Start-to-close | Heartbeat | Retries |
 |---|---|---|---|
 | `refresh_page` | 5 minutes (browser-crawled pages are slow) | 1 minute | Exponential backoff, at most 5 attempts |
-| `merge_work`, `merge_episode`, `merge_character` | 2 minutes | — | Unlimited on `ABORTED`, else 5 attempts |
+| `merge_work`, `merge_episode`, `merge_character` | 2 minutes | — | At most 5 attempts; `ABORTED` is retried inside the attempt |
+| `start_workflows` | 1 minute | — | Exponential backoff, at most 5 attempts |
 | `write_synopsis` | 10 minutes | 1 minute | 3 attempts |
+
+- **Heartbeats during a gRPC call.** `refresh_page` and `write_synopsis` each wait on one long gRPC call. While it runs, the activity records a heartbeat every 20 seconds and watches `ctx.cancelled()`, with `tokio::select!` over the call, a heartbeat interval and the cancellation. Without this loop, Temporal would time the activity out after the 1-minute heartbeat timeout. With it, a crashed worker is noticed within a minute instead of after 5 or 10, and a cancelled workflow stops the call.
+- **`ABORTED` inside the merge.** A Temporal retry policy has one attempt limit for every error, so a version conflict cannot get its own limit there. The merge activity therefore loads, merges and saves again itself when `SaveWork` returns `ABORTED`, up to 10 times in one attempt. Conflicts last only as long as the other change, so this ends quickly, and the policy's 5 attempts count only other failures.
+- **Permanent errors are not retried.** An activity returns `ApplicationFailure::non_retryable` for a gRPC status that a retry cannot fix: `INVALID_ARGUMENT`, `NOT_FOUND`, `FAILED_PRECONDITION`, `PERMISSION_DENIED` and `UNIMPLEMENTED`. `UNAVAILABLE`, `DEADLINE_EXCEEDED`, `RESOURCE_EXHAUSTED` and `INTERNAL` stay retryable.
 
 ---
 
@@ -156,9 +176,10 @@ An entity a user opens is served from PostgreSQL at once, and its refresh runs b
 One scheduled `SweepWorkflow` covers the whole catalogue, instead of one schedule per entity. For each kind, it asks the PostgreSQL Service for the entities due (`ListDueWorks`, `ListDueEpisodes`, `ListDueCharacters`), a page at a time, and starts a refresh for each.
 
 - **Fixed cutoff.** A sweep reads every entity not refreshed before the time it started, paging by `(refreshed_at, id)`. An entity whose refresh fails is not picked again in the same sweep.
-- **Bounded.** The sweep keeps at most 500 starts pending, under Temporal's limit of 2,000 pending activities or child workflows per workflow, and continues as new between pages, so its own history stays small.
+- **Bounded.** The sweep starts a page of refreshes with `start_workflows`, each tagged with the search attribute `RefreshTrigger = 'sweep'`. Before the next page, it waits until fewer than `SWEEP_MAX_PENDING_STARTS` (500) of those are still running, counted with a visibility count query, so the queues never hold the whole catalogue at once. It continues as new between pages, so its own history stays small.
+- **One sweep at a time.** The schedules use the `Skip` overlap policy, Temporal's default, set explicitly. A sweep still running when the next one is due is not started a second time, and the next sweep picks up whatever is then due.
 
-The daily score refresh runs the same way.
+The daily score refresh runs the same way, paging through `ListScoreWorks`: works that are ongoing, or finished within the lookback. A finished work without an end date is left to the weekly sweep.
 
 ### Episode tracking
 
@@ -258,14 +279,17 @@ The workflows publish nothing themselves. After a save commits, the PostgreSQL S
 
 | Setting | Value |
 |---|---|
-| Task queues | `update-service` for workflows and merges, one `provider-<name>` queue per provider for `refresh_page`, `agent` for AI activities |
+| Task queues | `update-service` for workflows, merges and `start_workflows`, one `provider-<name>` queue per provider for `refresh_page`, `agent` for AI activities |
+| Workers | A Rust SDK worker polls one task queue, so `crates/update_service` runs one worker per queue in one process, sharing one client. Each registers only what its queue runs: the `update-service` worker the workflows and the merge and start activities, each provider worker `refresh_page`, and the `agent` worker `write_synopsis`. Every replica runs the same set, so all workers polling a queue register the same types. |
+| Schedules | Weekly sweep, daily scores and daily episode tracking, each with the `Skip` overlap policy |
+| Search attribute | `RefreshTrigger` (keyword: `user`, `episode`, `sweep`, `seed`), set on each refresh start, used to count the refreshes a sweep or seed load still has running |
 | Workflow types | `RefreshAnimeWorkflow`, `RefreshEpisodeWorkflow`, `RefreshCharacterWorkflow`, `SweepWorkflow` (weekly sweep, daily scores), `EpisodeTrackingWorkflow` (daily) with one `track-episode` workflow per episode, `SynopsisWorkflow`, `SeedReleaseWorkflow` (loads a cleaned seed, see [[ingestion_pipeline|Ingestion Pipeline]]) |
-| Workflow IDs | `refresh-anime-<id>`, `refresh-episode-<id>`, `refresh-character-<id>`, `track-episode-<anime_id>-<episode_number>`, `synopsis-anime-<id>`, all with conflict policy `USE_EXISTING` |
+| Workflow IDs | `refresh-anime-<id>`, `refresh-episode-<id>`, `refresh-character-<id>`, `track-episode-<anime_id>-<episode_number>`, `synopsis-anime-<id>`, all with conflict policy `USE_EXISTING`; `seed-release` with conflict policy `FAIL`, so a second seed load is refused while one runs |
 | Rate limit | A queue rate limit per provider queue, set with `temporal task-queue config set` from that provider's pacing |
 | Priority and fairness | Priority keys 1 to 3 and fairness keys as in [[#Provider rate limits]] |
 | Temporal namespace | `echora` |
 
-The workflows and activities live in `libs/rust/temporal_workflows/`, and `apps/update_service/` runs them as a Temporal worker. See [[temporal_infrastructure|Temporal Infrastructure]] for server setup, and its [[temporal_infrastructure#Writing Workflow Code|Writing Workflow Code]] section for the Temporal Developer Skill to use when building these workflows.
+The workflows and activities live in `crates/temporal_workflows/`, and `crates/update_service/` runs them as a Temporal worker. See [[temporal_infrastructure|Temporal Infrastructure]] for server setup, and its [[temporal_infrastructure#Writing Workflow Code|Writing Workflow Code]] section for the Temporal Developer Skill to use when building these workflows.
 
 ---
 
@@ -296,4 +320,4 @@ The workflows and activities live in `libs/rust/temporal_workflows/`, and `apps/
 
 ---
 
-**Status**: Planned | **Last Updated**: 2026-11-14
+**Status**: Planned | **Last Updated**: 2026-11-15

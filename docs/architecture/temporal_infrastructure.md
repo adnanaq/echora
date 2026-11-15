@@ -41,9 +41,9 @@ Temporal is the **durable execution engine** that runs the [[update_service|Upda
 
 The Temporal Server keeps workflow state, timers and task queues, and dispatches tasks. It never runs workflow code; the workers do.
 
-- **Image:** `temporalio/server`, 1.30 or later. Pin the release current at setup time from the [release page](https://github.com/temporalio/temporal/releases), and use the `temporalio/admin-tools` image of the same version.
-- **Databases:** PostgreSQL, in the same cluster as the catalogue, with two databases of its own: `temporal` (executions and history) and `temporal_visibility` (what the UI lists and filters). No Elasticsearch is needed at this size.
-- **Deployment:** Docker containers in development and staging, Kubernetes in production with the official Helm chart (0.73.1 or later for server 1.30+).
+- **Image:** `temporalio/server`, 1.31 or later, the first release with task queue priority and fairness generally available. Pin the release current at setup time from the [release page](https://github.com/temporalio/temporal/releases), and use the `temporalio/admin-tools` image of the same version.
+- **Databases:** PostgreSQL, with two databases of its own: `temporal` (executions and history) and `temporal_visibility` (what the UI lists and filters). In development they share the catalogue's cluster. In production they get a cluster of their own, or at least their own connection budget, since Temporal writes and vacuums heavily. No Elasticsearch is needed at this size.
+- **Deployment:** Docker containers in development and staging, Kubernetes in production with the official Helm chart, at a release that ships server 1.31 or later.
 
 | Port | Purpose |
 |------|---------|
@@ -69,7 +69,7 @@ The Update Service, a Rust process built with the [Temporal Rust SDK](https://te
 | **Workflow** | A durable, resumable run: one refresh of a work, an episode or a character, a sweep, a seed load, or one tracked episode. |
 | **Activity** | One step of a workflow, a gRPC call to another service. Retried on its own when it fails. |
 | **Timer** | A durable wait, such as a tracked episode sleeping until its air time. |
-| **Schedule** | A recurring start: the weekly sweep, the daily score refresh and the daily episode tracking. |
+| **Schedule** | A recurring start: the weekly sweep, the daily score refresh and the daily episode tracking, each with the `Skip` overlap policy so a run still going is never started twice. |
 | **Signal** | A message to a running workflow, such as `merge_requested` sent to a work's refresh after a synopsis is written. |
 | **Priority and fairness** | The order tasks leave a queue: user requests first, then episode tracking, then the sweep and the seed load sharing what is left. |
 | **Namespace** | All Echora workflows run in the `echora` namespace. |
@@ -83,6 +83,7 @@ The Update Service, a Rust process built with the [Temporal Rust SDK](https://te
 | Namespace | `echora` |
 | Retention | 30 days (workflow history kept for debugging) |
 | Archival | Disabled; enable for long-term audit if needed |
+| Search attribute | `RefreshTrigger`, a keyword, created with `temporal operator search-attribute create --namespace echora --name RefreshTrigger --type Keyword`, and with `--search-attribute RefreshTrigger=Keyword` on the dev server |
 
 ---
 
@@ -92,12 +93,30 @@ The Update Service, a Rust process built with the [Temporal Rust SDK](https://te
 
 > **Linear:** ECHO-113
 
-[Task Queue Priority and Fairness](https://docs.temporal.io/develop/task-queue-priority-fairness) are generally available, for self-hosted servers too.
+[Task Queue Priority and Fairness](https://docs.temporal.io/develop/task-queue-priority-fairness) are generally available from server [1.31.0](https://github.com/temporalio/temporal/releases/tag/v1.31.0), for self-hosted servers too. That release turns on the new matcher by default, so priority keys are respected without extra configuration.
 
 - **Priority** is on by default. Each workflow or activity sets a priority key from 1 (first) to 5, and a task without one gets 3. Activities inherit their workflow's priority unless they set their own.
 - **Fairness** must be turned on in the dynamic config with `matching.enableFairness: true`, for the namespace or for the provider queues. Tasks then carry a fairness key and weight, and tasks of one priority are dispatched in proportion to their keys' weights.
 
 The keys the Update Service uses are listed in [[update_service#Provider rate limits|Update Service]].
+
+### Partitions
+
+> **Linear:** ECHO-113
+
+A task queue has 4 partitions by default, and tasks are spread across them at random. Priority and fairness are exact only within one partition, so with several partitions a sweep task on a lightly loaded partition can go ahead of a user's task on a busy one. The provider queues carry less than one task a second, far below the roughly 400 a second that needs more than one partition, so each runs on a single partition:
+
+```yaml
+# dynamic config, one entry per provider queue
+matching.numTaskqueueReadPartitions:
+  - constraints: { namespace: 'echora', taskQueueName: 'provider-anidb' }
+    value: 1
+matching.numTaskqueueWritePartitions:
+  - constraints: { namespace: 'echora', taskQueueName: 'provider-anidb' }
+    value: 1
+```
+
+Read and write partitions are set to the same value. On a running server, lowering them changes the write partitions first and the read partitions after, so no task is left on a partition nobody reads. The `update-service` queue keeps the default.
 
 ### Rate limits
 
@@ -134,8 +153,13 @@ Local development uses the [Temporal CLI](https://docs.temporal.io/cli) dev serv
 temporal server start-dev \
   --namespace echora \
   --db-filename .temporal/dev.db \
-  --dynamic-config-value matching.enableFairness=true
+  --search-attribute RefreshTrigger=Keyword \
+  --dynamic-config-value matching.enableFairness=true \
+  --dynamic-config-value matching.numTaskqueueReadPartitions=1 \
+  --dynamic-config-value matching.numTaskqueueWritePartitions=1
 ```
+
+One partition for every queue is fine on a dev server, which runs a single process.
 
 The Rust SDK's `testing` feature can also start and stop a dev server from tests.
 
@@ -199,7 +223,14 @@ The password comes from the environment file, never from the compose file. The d
 Use the [Temporal Developer Skill](https://temporal.io/blog/introducing-temporal-developer-skill) when writing or reviewing workflow and activity code with a coding agent. It covers determinism rules, activity patterns, retry policies, error handling, testing, worker configuration and versioning.
 
 - **Install in Claude Code:** `/plugin marketplace add temporalio/agent-skills`, then install `temporal-developer` from the plugin manager and restart the session.
-- **Rust:** most of the skill applies to any language, but its SDK-specific guidance covers Python, TypeScript and Go. Check Rust specifics, such as `ActivityOptions`, `WorkerOptions` and `Priority`, against the [Rust SDK documentation](https://docs.rs/temporalio-sdk/latest/temporalio_sdk/).
+- **Rust:** the skill's Rust guidance is in Public Preview and leaves child workflows, Continue-as-New, cancellation and timers to the [Rust SDK documentation](https://docs.temporal.io/develop/rust) and [docs.rs](https://docs.rs/temporalio-sdk/latest/temporalio_sdk/). Check Rust specifics, such as `ActivityOptions`, `WorkerOptions` and `Priority`, there.
+
+The rules these workflows follow, each explained in [[update_service|Update Service]]:
+
+- Other workflows are started through the client in an activity, never as child workflows.
+- An activity waiting on a long gRPC call heartbeats while it waits.
+- A gRPC status a retry cannot fix is returned as a non-retryable failure.
+- A workflow checks for a pending `merge_requested` before it ends.
 
 ---
 
@@ -211,4 +242,4 @@ Use the [Temporal Developer Skill](https://temporal.io/blog/introducing-temporal
 
 ---
 
-**Status**: Planned | **Last Updated**: 2026-11-14
+**Status**: Planned | **Last Updated**: 2026-11-15

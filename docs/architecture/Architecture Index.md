@@ -39,7 +39,7 @@ The starting point for Echora's architecture documents. Each document describes 
 ### PostgreSQL Service
 🗄️ **[[postgres_integration_architecture_decision|PostgreSQL Service]]**
 
-Why one Rust service in this repository owns the database, what it does and does not do, its gRPC callers, its tech stack, and the Rust layout (`libs/rust/common`, `postgres_db`, `temporal_workflows`).
+Why one Rust service in this repository owns the database, what it does and does not do, its gRPC callers, its tech stack, and the Rust workspace in `crates/` (`common`, `postgres_db`, `temporal_workflows`, `postgres_service`, `update_service`).
 
 ### Database Schema
 🗄️ **[[Database Schema]]**
@@ -99,7 +99,7 @@ The review page moves to PostgreSQL once the approval queue is built. It then se
 | PostgreSQL 18 | Catalogue and Temporal databases | One cluster with the `echora`, `temporal` and `temporal_visibility` databases; the users service gets its own |
 | Qdrant | Vector database | `anime_database` collection, owned by the vector service |
 | NATS JetStream 2.14 | Event bus | `ANIME_EVENTS`, `ANIME_DLQ`, `NOTIFICATION_EVENTS` |
-| Temporal 1.30+ | Durable workflows | Refreshes, episode timers, sweeps, seed loads |
+| Temporal 1.31+ | Durable workflows | Refreshes, episode timers, sweeps, seed loads |
 | Redis | HTTP and result cache | Databases 0-15 for services, 16-31 for tests |
 
 ## Event Subjects
@@ -113,14 +113,6 @@ All published by the PostgreSQL Service outbox. See [[event_driven_architecture#
 | `anime.deleted`, `episode.deleted`, `character.deleted` | The entity is removed, such as a work merged into another | Vector Service |
 | `notification.episode.aired` | An episode is saved as aired for the first time | Notification Service |
 | `notification.anime.status.changed` | A work changes airing status | Notification Service |
-
----------|-----------|-----------|
-| `anime.created` | A work is saved for the first time | Vector Service, later "recently added" and new-anime notifications |
-| `anime.updated` | An existing work is saved with changes | Vector Service |
-| `anime.deleted` | A work is removed, such as when merged into another | Vector Service |
-| `character.updated` | A character is saved with changes | Vector Service |
-| `notification.episode.aired` | A saved work gains an episode | Notification Service |
-| `notification.anime.status.changed` | A saved work changes airing status | Notification Service |
 
 ---
 

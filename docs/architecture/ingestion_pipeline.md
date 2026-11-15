@@ -90,7 +90,7 @@ The details of each step are in the `libs/seed_cleaning` and `libs/work_matching
 
 > **Linear:** ECHO-107, ECHO-120
 
-A `SeedReleaseWorkflow` loads one cleaned seed file. The workflow receives only the file's path, never its contents, since a seed of tens of thousands of works is far beyond Temporal's 2 MB payload limit. An activity reads the file a page of lines at a time, and the worker and `clean_seed.py` share the folder it sits in.
+A `SeedReleaseWorkflow`, with the workflow ID `seed-release`, loads one cleaned seed file. Its conflict policy is `FAIL`, so a second load is refused while one runs. The workflow receives only the file's path, never its contents, since a seed of tens of thousands of works is far beyond Temporal's 2 MB payload limit. An activity reads the file a page of lines at a time, and the worker and `clean_seed.py` share the folder it sits in.
 
 For each page of lines:
 
@@ -99,11 +99,11 @@ For each page of lines:
    - **Every source page belongs to one stored work** → that work. If its partial-source pages differ, they are relinked.
    - **No source page is stored** → a new work. The activity gives it a UUIDv7, and `CreateWorks` creates it with its page links.
    - **Source pages belong to different stored works, or a stored page moved** → `RelinkPages` moves the pages, as seed cleaning and its review answers placed them. A work left with no source page is removed with `DeleteWork`.
-3. **Refresh what changed.** The workflow starts a `RefreshAnimeWorkflow` for each new work, and sends `merge_requested` to each relinked one.
+3. **Refresh what changed.** The workflow starts a `RefreshAnimeWorkflow` for each new work through the `start_workflows` activity, and sends `merge_requested` to each relinked one. See [[update_service#Starting other workflows|Update Service]].
 
 Unchanged works are left alone. The weekly sweep keeps them current.
 
-- **Bounded.** The workflow keeps at most `SWEEP_MAX_PENDING_STARTS` (500) refreshes pending, and continues as new between pages of lines, so its own history stays small.
+- **Bounded.** Before each page of lines, the workflow waits until fewer than `SWEEP_MAX_PENDING_STARTS` (500) of its refreshes are still running, counted by the search attribute `RefreshTrigger = 'seed'`. It continues as new between pages of lines, so its own history stays small.
 - **Shares the providers fairly.** Its refreshes run with priority 3 and the fairness key `seed`, so works users open still go first, and the weekly sweep keeps its share of every provider. See [[update_service#Provider rate limits|Update Service]].
 - **Safe to run again.** `CreateWorks` skips a work an earlier attempt already created, and every other write is safe to repeat, so a retried or repeated load changes nothing the second time.
 
@@ -158,4 +158,4 @@ Ingestion has no settings of its own. It uses the settings of the services it ru
 
 ---
 
-**Status**: Planned | **Last Updated**: 2026-11-14
+**Status**: Planned | **Last Updated**: 2026-11-15

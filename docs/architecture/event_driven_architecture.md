@@ -156,26 +156,30 @@ Consumers that only index the current state, such as the vector service, handle 
 
 `SaveWork`, `SaveEpisode` and `SaveCharacter` store the merged entity in its tables (see [[Database Schema]]) and write its outbox rows, all in one transaction.
 
-- **Version check.** The save writes only if the entity's version still equals `expected_version` from its load. Otherwise it returns `ABORTED`, and Temporal retries the merge from the load.
+- **Version check.** The save writes only if the entity's version still equals `expected_version` from its load. Otherwise it returns `ABORTED`, and the merge activity loads, merges and saves again.
 - **Change check.** The entity's `merged_record_hash` tells whether anything changed. When nothing did, the save writes nothing and sends nothing, and only records that the refresh finished.
 
 ```rust
-// PostgreSQL Service (Rust) — inside SaveWork, for an existing work
+// crates/postgres_db: save_work, for an existing work
+
+/// Subject of the notice for a changed work; the vector service consumes `anime.*`.
+const ANIME_UPDATED_SUBJECT: &str = "anime.updated";
+
 let mut transaction = pool.begin().await?;
 let record_hash = hash_merged_record(&merged_anime);
 
-let stored = sqlx::query!(
+let stored_work = sqlx::query!(
     "SELECT version, merged_record_hash FROM anime WHERE id = $1 FOR UPDATE",
     anime_id,
 )
 .fetch_one(&mut *transaction)
 .await?;
 
-if stored.version != expected_version {
-    return Err(Status::aborted("the work changed since it was loaded"));
+if stored_work.version != expected_version {
+    return Err(SaveError::version_conflict(anime_id, stored_work.version));
 }
 
-if stored.merged_record_hash.as_deref() == Some(record_hash.as_str()) {
+if stored_work.merged_record_hash.as_deref() == Some(record_hash.as_str()) {
     sqlx::query!("UPDATE anime SET refreshed_at = now() WHERE id = $1", anime_id)
         .execute(&mut *transaction)
         .await?;
@@ -191,7 +195,7 @@ if stored.merged_record_hash.as_deref() == Some(record_hash.as_str()) {
     let notice = CatalogueEvent { entity_id: anime_id.to_string(), version, ..Default::default() };
     sqlx::query!(
         "INSERT INTO outbox (subject, entity_id, version, payload) VALUES ($1, $2, $3, $4)",
-        "anime.updated", anime_id, version, notice.encode_to_vec(),
+        ANIME_UPDATED_SUBJECT, anime_id, version, notice.encode_to_vec(),
     )
     .execute(&mut *transaction)
     .await?;
@@ -200,7 +204,22 @@ if stored.merged_record_hash.as_deref() == Some(record_hash.as_str()) {
 transaction.commit().await?;
 ```
 
-`write_work_tables` upserts the work's columns and detail rows, creates the episodes and characters the merge gave new IDs, and resolves pending relations. A new work is inserted with version 1 the same way, and its outbox row is `anime.created`. An episode saved as aired for the first time, or a work whose status changed, adds a notification row in the same transaction.
+`save_work` returns a `SaveError`, an error struct whose kind stays private. `From<sqlx::Error>` lets `?` convert database errors, and a missing row becomes a not-found error. Callers ask `is_version_conflict()` or `is_not_found()`. The gRPC handler in `postgres_service` maps it to a status in one function, since Rust's orphan rule forbids `impl From<SaveError> for Status` in a crate that owns neither type:
+
+```rust
+// crates/postgres_service: the one place library errors become gRPC statuses
+fn to_status(error: &SaveError) -> Status {
+    if error.is_version_conflict() {
+        Status::aborted(error.to_string())
+    } else if error.is_not_found() {
+        Status::not_found(error.to_string())
+    } else {
+        Status::internal(error.to_string())
+    }
+}
+```
+
+`write_work_tables` upserts the work's columns and detail rows, sets `updated_at`, creates the episodes and characters the merge gave new IDs, and resolves pending relations. It sorts its keys and writes the shared tables (`genre`, `tag`, `company`, `character`, `graph_edge` and the others) in a fixed order, so two refreshes saving at once take their locks in the same order and cannot deadlock. A new work is inserted with version 1 the same way, and its outbox row is `anime.created`. An episode saved as aired for the first time, or a work whose status changed, adds a notification row in the same transaction.
 
 ### 2. The outbox relay publishes
 
@@ -213,53 +232,95 @@ A background task in the PostgreSQL Service publishes unpublished rows. It never
 3. **Mark.** One short statement sets `published_at` on every row NATS confirmed. A row that failed stays unpublished, and is claimed again once its claim runs out.
 
 ```rust
-// PostgreSQL Service (Rust) — outbox relay
-loop {
+// crates/postgres_db: outbox relay, run as a background task by postgres_service
+
+/// Rows claimed per batch, few enough to publish well within one claim.
+const RELAY_BATCH_SIZE: i64 = 100;
+/// How long a claim lasts, in seconds.
+///
+/// Longer than one batch takes to publish. A relay that stops mid-batch leaves its rows
+/// to be claimed again once this runs out, and JetStream drops the copies by `Nats-Msg-Id`.
+const RELAY_CLAIM_SECONDS: f64 = 30.0;
+/// Wait when no row is due, so an idle relay does not query PostgreSQL in a tight loop.
+const RELAY_IDLE_WAIT: Duration = Duration::from_secs(1);
+/// Wait after a failed batch, so a PostgreSQL or NATS outage is not retried in a tight loop.
+const RELAY_FAILURE_WAIT: Duration = Duration::from_secs(5);
+
+/// Publish outbox rows to NATS until the service stops.
+///
+/// A failed batch is logged and tried again after a pause, so one outage never stops
+/// the relay.
+pub async fn run_outbox_relay(pool: PgPool, jetstream: jetstream::Context) {
+    loop {
+        match relay_batch(&pool, &jetstream).await {
+            Ok(0) => tokio::time::sleep(RELAY_IDLE_WAIT).await,
+            Ok(_) => {}
+            Err(error) => {
+                event!(
+                    name: "outbox.relay.failed",
+                    Level::WARN,
+                    error.message = %error,
+                    "outbox batch failed: {{error.message}}",
+                );
+                tokio::time::sleep(RELAY_FAILURE_WAIT).await;
+            }
+        }
+    }
+}
+
+/// Claim, publish and mark one batch of outbox rows, returning how many were claimed.
+async fn relay_batch(pool: &PgPool, jetstream: &jetstream::Context) -> Result<usize, RelayError> {
     // 1. Claim, in one short statement
-    let rows = sqlx::query_as!(
+    let claimed_rows = sqlx::query_as!(
         OutboxRow,
         r#"
-        UPDATE outbox SET claimed_until = now() + interval '30 seconds'
+        UPDATE outbox SET claimed_until = now() + make_interval(secs => $2)
         WHERE id IN (
             SELECT id FROM outbox
             WHERE published_at IS NULL AND (claimed_until IS NULL OR claimed_until < now())
             ORDER BY id
-            LIMIT 100
+            LIMIT $1
             FOR UPDATE SKIP LOCKED
         )
         RETURNING id, subject, payload
         "#,
+        RELAY_BATCH_SIZE,
+        RELAY_CLAIM_SECONDS,
     )
-    .fetch_all(&pool)
+    .fetch_all(pool)
     .await?;
-
-    if rows.is_empty() {
-        tokio::time::sleep(Duration::from_secs(1)).await;
-        continue;
-    }
+    let claimed_count = claimed_rows.len();
 
     // 2. Publish outside any transaction, then wait for every confirmation
-    let mut confirmations = Vec::with_capacity(rows.len());
-    for row in &rows {
-        let mut headers = async_nats::HeaderMap::new();
-        headers.insert("Nats-Msg-Id", row.id.to_string().as_str());
-        headers.insert("Nats-Expected-Stream", stream_for(&row.subject));
+    let mut confirmations = Vec::with_capacity(claimed_count);
+    for row in claimed_rows {
+        let mut headers = HeaderMap::new();
+        headers.insert(header::NATS_MESSAGE_ID, row.id.to_string().as_str());
+        headers.insert(header::NATS_EXPECTED_STREAM, stream_for(&row.subject));
         let confirmation = jetstream
-            .publish_with_headers(row.subject.clone(), headers, row.payload.clone().into())
+            .publish_with_headers(row.subject, headers, row.payload.into())
             .await?;
         confirmations.push((row.id, confirmation));
     }
-    let mut published_ids = Vec::with_capacity(rows.len());
-    for (id, confirmation) in confirmations {
-        if confirmation.await.is_ok() {
-            published_ids.push(id);
+    let mut published_ids = Vec::with_capacity(claimed_count);
+    for (outbox_id, confirmation) in confirmations {
+        match confirmation.await {
+            Ok(_) => published_ids.push(outbox_id),
+            Err(error) => event!(
+                name: "outbox.publish.failed",
+                Level::WARN,
+                outbox.id = outbox_id,
+                error.message = %error,
+                "outbox row {{outbox.id}} was not confirmed: {{error.message}}",
+            ),
         }
     }
 
     // 3. Mark, in one short statement
     sqlx::query!("UPDATE outbox SET published_at = now() WHERE id = ANY($1)", &published_ids)
-        .execute(&pool)
+        .execute(pool)
         .await?;
+    Ok(claimed_count)
 }
 ```
 
@@ -405,28 +466,26 @@ Consumer: notification-consumer   (planned, Notification Service)
   Backoff:       [30s, 2m, 5m]
 ```
 
-The PostgreSQL Service creates the streams at startup, and updates their settings when they differ. Each consumer service creates its own durable consumers with `get_or_create_consumer`, which is safe to call on every start.
+The PostgreSQL Service creates the streams at startup, and updates their settings when they differ. Each consumer service creates its own durable consumers at startup with `nats-py`'s `add_consumer`. JetStream accepts a create whose settings match the existing consumer, so this is safe on every start.
 
 ## Error Handling
 
 ### Retries
 
-```rust
-use async_nats::jetstream::consumer::pull::Config;
+```python
+# Vector Service (Python), at startup
+from nats.js.api import ConsumerConfig
 
-Config {
-    durable_name: Some("vector-anime-consumer".to_string()),
-    filter_subject: "anime.*".to_string(),
-    max_deliver: 5,
-    // Replaces ack_wait: each entry is the deadline of one delivery
-    backoff: vec![
-        Duration::from_secs(120),
-        Duration::from_secs(300),
-        Duration::from_secs(900),
-        Duration::from_secs(1800),
-    ],
-    ..Default::default()
-}
+await js.add_consumer(
+    "ANIME_EVENTS",
+    ConsumerConfig(
+        durable_name="vector-anime-consumer",
+        filter_subject="anime.*",
+        max_deliver=5,  # must be greater than the number of backoff entries
+        # Replaces ack_wait: each entry, in seconds, is the deadline of one delivery
+        backoff=[120, 300, 900, 1800],
+    ),
+)
 ```
 
 Together the deliveries span about an hour, enough to ride out a restart of Qdrant or the PostgreSQL Service.

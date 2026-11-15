@@ -261,6 +261,7 @@ erDiagram
     smallint weekday
     time jp_time
     timestamptz next_episode_at
+    int next_episode_number
   }
   anime_hiatus {
     bigint id PK
@@ -521,9 +522,33 @@ WHERE to_anime_id IS NULL AND to_page_provider = 'anilist' AND to_page_address =
 
 The same pattern links an episode to a character that is not stored yet (`episode_character`). Source material needs no unresolved state: a related source work always carries a title and type, so `SaveWork` creates or finds its row through `source_material_xref` in the same transaction.
 
-**Resolving and removing edges:**
-- Any transaction that links a page as a source of a work resolves every unresolved edge pointing at that page, and writes their `graph_edge` rows.
-- `SaveWork` replaces the work's own outgoing edges with what the merge produced. An edge the work no longer lists is deleted with its `graph_edge` rows in both directions, unless the target work still asserts the inverse.
+**Who asserts an edge:**
+- `anime_relation` holds only what each work's own provider pages say, in one direction, from that work. When work A lists B as a sequel and B lists A as a prequel, there are two rows, one asserted by each work.
+- `SaveWork` replaces the work's own `anime_relation` rows with what the merge produced. It never touches rows another work asserted.
+- Both directions exist only in `graph_edge`. The `graph_edge` rows between two works are recomputed from both works' `anime_relation` rows and the inverse map whenever either work's relations change, so removing one work's assertion never removes an edge the other work still asserts.
+- Any transaction that links a page as a source of a work resolves every unresolved relation pointing at that page, and recomputes the `graph_edge` rows of each pair it resolves.
+
+---
+
+### 4. Writes and Deletes
+
+> **Linear:** ECHO-98, ECHO-102, ECHO-103, ECHO-104, ECHO-107, ECHO-108
+
+**Write order.** A save upserts rows in shared tables (`genre`, `tag`, `company`, `source_material`, `character`, `graph_edge`) inside one transaction. Each save sorts its keys and writes every table in a fixed order, so two refreshes saving at the same time take their locks in the same order and cannot deadlock.
+
+**Version.** An entity's `version` increases with every change to the entity or to what its merge reads: a save that changes it, a page relinked to or from a work (`CreateWorks`, `RelinkPages`), a new AI-written text (`SaveGeneratedText`), and a new correction. A merge that loaded before such a change then fails its version check and starts again from a fresh load. Versions only need to grow, so a version without an event of its own is fine.
+
+**Characters a save creates.** Before creating a character the merge gave a new ID, `SaveWork` looks up its page keys in `character_provider_page`. When any of them already belongs to a character, such as one another work's save created a moment earlier, it links that character instead and the new ID is dropped. A save therefore never fails on a character another work created, and never loops.
+
+**`updated_at`.** The save that changes a row sets `updated_at = now()` in the same statement. There is no trigger. Page opens are kept in their own tables (`anime_open`, `episode_open`, `character_open`), so a page view never rewrites an entity row.
+
+**Deleting an entity.** An entity is removed by setting `deleted_at`, never by deleting its row, so consumers can still read its version. Foreign keys with `ON DELETE CASCADE` do not fire on a soft delete, so the deleting transaction removes what hangs off the entity itself:
+
+- **A work** (`DeleteWork`, such as when merged into another): its page links are removed, so the surviving work can claim those pages as sources; its own `anime_relation` rows are deleted; relations other works assert towards it go back to unresolved, keeping their page key, so they resolve to whichever work next holds that page; and every `graph_edge` row from or to it is deleted.
+- **An episode or a character**: its page links and every `graph_edge` row from or to it are deleted.
+- The version increases once more, and the `deleted` event is written to the outbox.
+
+Every query that joins an entity filters out deleted rows.
 
 ---
 
@@ -636,6 +661,17 @@ CREATE TABLE graph_node_type (value text PRIMARY KEY);
 INSERT INTO graph_node_type VALUES
   ('anime'), ('character'), ('source_material'), ('company'), ('person');
 
+-- Edge types of graph_edge: the anime relation types, the company roles, and the
+-- edges between works, characters and source material. Types for people are added
+-- with the people tables.
+CREATE TABLE graph_edge_type (value text PRIMARY KEY);
+INSERT INTO graph_edge_type VALUES
+  ('ADAPTATION'), ('ALTERNATIVE_VERSION'), ('ALTERNATIVE_SETTING'), ('CHARACTER'),
+  ('CROSSOVER'), ('FULL_STORY'), ('OTHER'), ('PARENT_STORY'), ('PREQUEL'),
+  ('SEQUEL'), ('SIDE_STORY'), ('SPIN_OFF'), ('SUMMARY'),
+  ('STUDIO'), ('PRODUCER'), ('LICENSOR'), ('UNKNOWN'),
+  ('FEATURES'), ('APPEARS_IN'), ('ADAPTED_FROM'), ('WAS_ADAPTED_TO');
+
 -- Shared names, one row per distinct name
 CREATE TABLE genre (name text PRIMARY KEY);
 CREATE TABLE tag (name text PRIMARY KEY);
@@ -661,12 +697,12 @@ CREATE TABLE anime (
   rating              text NOT NULL DEFAULT 'UNKNOWN' REFERENCES anime_rating(value),
   season              text REFERENCES anime_season(value),
   source_material     text REFERENCES source_material_type(value),
-  year                smallint,
-  month               text,                             -- premiere month from AnimeSchedule
+  year                smallint CHECK (year >= 1900),
+  month               smallint CHECK (month BETWEEN 1 AND 12),  -- premiere month from AnimeSchedule
   episode_count       int NOT NULL DEFAULT 0 CHECK (episode_count >= 0),  -- the providers' total
   duration_seconds    int CHECK (duration_seconds >= 0),
   is_nsfw             boolean,
-  country_of_origin   char(2),                          -- ISO 3166-1 alpha-2
+  country_of_origin   text CHECK (char_length(country_of_origin) = 2),  -- ISO 3166-1 alpha-2
   synopsis            text,                             -- from a correction or the AI-written text only
   background          text,
   aired_from          timestamptz,
@@ -674,19 +710,31 @@ CREATE TABLE anime (
   score_weighted      numeric(4,2) CHECK (score_weighted BETWEEN 0 AND 10),
   score_mean          numeric(4,2) CHECK (score_mean BETWEEN 0 AND 10),
   score_median        numeric(4,2) CHECK (score_median BETWEEN 0 AND 10),
-  version             bigint NOT NULL DEFAULT 1,        -- increased by every save that changes the work; sent in events
+  version             bigint NOT NULL DEFAULT 1,        -- increased by every change to the work or its merge inputs; sent in events
   merged_record_hash  text,                             -- hash of the last saved merge; an unchanged merge is not saved
   refreshed_at        timestamptz,                      -- last finished refresh
-  last_opened_at      timestamptz,
-  open_count          bigint NOT NULL DEFAULT 0,
   deleted_at          timestamptz,                      -- set when the work is removed, e.g. merged into another
+  merged_into_anime_id uuid REFERENCES anime(id),       -- the work it was merged into, so its pages and links can redirect
   created_at          timestamptz NOT NULL DEFAULT now(),
-  updated_at          timestamptz NOT NULL DEFAULT now()
+  updated_at          timestamptz NOT NULL DEFAULT now()  -- set by the save that changes the row
 );
 
--- The weekly sweep pages through active works in this order
-CREATE INDEX anime_refresh_order_idx ON anime(refreshed_at NULLS FIRST, id)
+-- The weekly sweep pages through active works in this order. Never-refreshed works sort
+-- first as '-infinity', so the sort key has no NULL and keyset paging works on every page.
+CREATE INDEX anime_refresh_order_idx
+  ON anime((coalesce(refreshed_at, '-infinity'::timestamptz)), id)
   WHERE deleted_at IS NULL;
+
+-- The daily score refresh reads ongoing and recently finished works
+CREATE INDEX anime_score_sync_idx ON anime(status, aired_to)
+  WHERE deleted_at IS NULL AND status IN ('ONGOING', 'FINISHED');
+
+-- Page opens, kept apart so a page view never rewrites the wide anime row
+CREATE TABLE anime_open (
+  anime_id        uuid PRIMARY KEY REFERENCES anime(id) ON DELETE CASCADE,
+  last_opened_at  timestamptz NOT NULL,
+  open_count      bigint NOT NULL DEFAULT 0
+) WITH (fillfactor = 90);
 
 CREATE TABLE anime_title (
   anime_id  uuid NOT NULL REFERENCES anime(id) ON DELETE CASCADE,
@@ -707,11 +755,17 @@ CREATE TABLE anime_genre (
   PRIMARY KEY (anime_id, genre)
 );
 
+-- Works by genre
+CREATE INDEX anime_genre_genre_idx ON anime_genre(genre, anime_id);
+
 CREATE TABLE anime_tag (
   anime_id  uuid NOT NULL REFERENCES anime(id) ON DELETE CASCADE,
   tag       text NOT NULL REFERENCES tag(name),
   PRIMARY KEY (anime_id, tag)
 );
+
+-- Works by tag
+CREATE INDEX anime_tag_tag_idx ON anime_tag(tag, anime_id);
 
 CREATE TABLE anime_demographic (
   anime_id     uuid NOT NULL REFERENCES anime(id) ON DELETE CASCADE,
@@ -719,11 +773,17 @@ CREATE TABLE anime_demographic (
   PRIMARY KEY (anime_id, demographic)
 );
 
+-- Works by demographic
+CREATE INDEX anime_demographic_demographic_idx ON anime_demographic(demographic, anime_id);
+
 CREATE TABLE anime_content_warning (
   anime_id         uuid NOT NULL REFERENCES anime(id) ON DELETE CASCADE,
   content_warning  text NOT NULL REFERENCES content_warning(name),
   PRIMARY KEY (anime_id, content_warning)
 );
+
+-- Works by content warning
+CREATE INDEX anime_content_warning_content_warning_idx ON anime_content_warning(content_warning, anime_id);
 
 CREATE TABLE anime_theme (
   anime_id     uuid NOT NULL REFERENCES anime(id) ON DELETE CASCADE,
@@ -812,7 +872,7 @@ CREATE TABLE anime_contextual_rank (
   is_all_time  boolean,
   format       text,
   season       text REFERENCES anime_season(value),
-  year         smallint,
+  year         smallint CHECK (year >= 1900),
   PRIMARY KEY (anime_id, provider, context),
   FOREIGN KEY (anime_id, provider)
     REFERENCES anime_statistics(anime_id, provider) ON DELETE CASCADE
@@ -831,8 +891,14 @@ CREATE TABLE anime_broadcast (
   premiere_jp      timestamptz,
   premiere_sub     timestamptz,
   premiere_dub     timestamptz,
-  next_episode_at  timestamptz                                -- NULL when not airing
+  next_episode_at      timestamptz,                            -- NULL when not airing
+  next_episode_number  int CHECK (next_episode_number >= 0)    -- the episode airing at next_episode_at
 );
+
+-- Episode tracking finds works whose next episode airs soon
+CREATE INDEX anime_broadcast_next_episode_idx
+  ON anime_broadcast(next_episode_at)
+  WHERE next_episode_at IS NOT NULL;
 
 -- Every hiatus snapshot a work has had; a row is added when the snapshot changes
 CREATE TABLE anime_hiatus (
@@ -936,14 +1002,17 @@ CREATE TABLE anime_company (
 
 CREATE INDEX anime_company_company_idx ON anime_company(company_id);
 
--- Read-optimized projection of the junction tables for graph traversal.
--- The PostgreSQL Service writes it in the same transaction as the junction rows.
+-- Read-optimized projection of the junction tables for graph traversal, holding both
+-- directions of every edge. The PostgreSQL Service writes it in the same transaction as
+-- the junction rows; for anime relations it recomputes each pair from both works' rows.
+-- A reverse edge from a company has the company's role as its type, the same as the
+-- forward edge, so two roles of one company on one work stay two rows.
 CREATE TABLE graph_edge (
   from_id    uuid NOT NULL,
   from_type  text NOT NULL REFERENCES graph_node_type(value),
   to_id      uuid NOT NULL,
   to_type    text NOT NULL REFERENCES graph_node_type(value),
-  edge_type  text NOT NULL,
+  edge_type  text NOT NULL REFERENCES graph_edge_type(value),
   PRIMARY KEY (from_id, to_id, edge_type)
 );
 
@@ -971,15 +1040,20 @@ CREATE TABLE character (
   version              bigint NOT NULL DEFAULT 1,
   merged_record_hash   text,
   refreshed_at         timestamptz,
-  last_opened_at       timestamptz,
-  open_count           bigint NOT NULL DEFAULT 0,
   deleted_at           timestamptz,
   created_at           timestamptz NOT NULL DEFAULT now(),
-  updated_at           timestamptz NOT NULL DEFAULT now()
+  updated_at           timestamptz NOT NULL DEFAULT now()  -- set by the save that changes the row
 );
 
-CREATE INDEX character_refresh_order_idx ON character(refreshed_at NULLS FIRST, id)
+CREATE INDEX character_refresh_order_idx
+  ON character((coalesce(refreshed_at, '-infinity'::timestamptz)), id)
   WHERE deleted_at IS NULL;
+
+CREATE TABLE character_open (
+  character_id    uuid PRIMARY KEY REFERENCES character(id) ON DELETE CASCADE,
+  last_opened_at  timestamptz NOT NULL,
+  open_count      bigint NOT NULL DEFAULT 0
+) WITH (fillfactor = 90);
 
 -- Written from each work's character list; Character.roles and anime_ids are read from here
 CREATE TABLE anime_character (
@@ -1010,6 +1084,9 @@ CREATE TABLE character_trait (
   PRIMARY KEY (character_id, trait)
 );
 
+-- Characters by trait
+CREATE INDEX character_trait_trait_idx ON character_trait(trait, character_id);
+
 CREATE TABLE character_image (
   character_id  uuid NOT NULL REFERENCES character(id) ON DELETE CASCADE,
   url           text NOT NULL,
@@ -1033,6 +1110,8 @@ CREATE TABLE character_source_material (
   role                text NOT NULL REFERENCES character_role(value),
   PRIMARY KEY (character_id, source_material_id)
 );
+
+CREATE INDEX character_source_material_work_idx ON character_source_material(source_material_id);
 ```
 
 A character page's animeography only confirms links the works already make. `anime_character` is written from each work's own character list, so a character is linked to a work once that work is stored.
@@ -1062,13 +1141,21 @@ CREATE TABLE episode (
   version             bigint NOT NULL DEFAULT 1,
   merged_record_hash  text,
   refreshed_at        timestamptz,
-  last_opened_at      timestamptz,
-  open_count          bigint NOT NULL DEFAULT 0,
   deleted_at          timestamptz,
   created_at          timestamptz NOT NULL DEFAULT now(),
-  updated_at          timestamptz NOT NULL DEFAULT now(),
+  updated_at          timestamptz NOT NULL DEFAULT now(),  -- set by the save that changes the row
   UNIQUE (anime_id, episode_number)
 );
+
+CREATE INDEX episode_refresh_order_idx
+  ON episode((coalesce(refreshed_at, '-infinity'::timestamptz)), id)
+  WHERE deleted_at IS NULL;
+
+CREATE TABLE episode_open (
+  episode_id      uuid PRIMARY KEY REFERENCES episode(id) ON DELETE CASCADE,
+  last_opened_at  timestamptz NOT NULL,
+  open_count      bigint NOT NULL DEFAULT 0
+) WITH (fillfactor = 90);
 
 -- Episode tracking reads the episodes airing in the next week
 CREATE INDEX episode_aired_at_idx ON episode(aired_at) WHERE aired_at IS NOT NULL;
@@ -1106,6 +1193,11 @@ CREATE TABLE episode_character (
 CREATE INDEX episode_character_unresolved_idx
   ON episode_character(character_page_provider, character_page_address)
   WHERE character_id IS NULL;
+
+-- Character deletes set character_id to NULL without a full scan
+CREATE INDEX episode_character_character_idx
+  ON episode_character(character_id)
+  WHERE character_id IS NOT NULL;
 ```
 
 ---
@@ -1122,6 +1214,7 @@ CREATE TABLE provider_page (
   address     text NOT NULL,                 -- the page's address on that provider, e.g. '21'
   fetched_at  timestamptz NOT NULL,          -- an older fetch never replaces a newer one
   is_dead     boolean NOT NULL DEFAULT false,-- the provider no longer serves the page
+  responses_hash text NOT NULL,              -- hash of the uncompressed responses; StorePage compares it
   PRIMARY KEY (provider, page_kind, address)
 );
 
@@ -1138,6 +1231,9 @@ CREATE TABLE provider_page_response (
   FOREIGN KEY (provider, page_kind, address)
     REFERENCES provider_page(provider, page_kind, address) ON DELETE CASCADE
 );
+
+-- The body is already compressed, so TOAST stores it out of line without compressing again
+ALTER TABLE provider_page_response ALTER COLUMN body SET STORAGE EXTERNAL;
 
 -- Which work pages make up each work
 CREATE TABLE anime_provider_page (
@@ -1159,7 +1255,7 @@ CREATE UNIQUE INDEX anime_provider_page_one_source_uniq
 CREATE UNIQUE INDEX anime_provider_page_source_per_provider_uniq
   ON anime_provider_page(anime_id, provider) WHERE role = 'source';
 
-CREATE INDEX anime_provider_page_page_idx ON anime_provider_page(provider, address);
+CREATE INDEX anime_provider_page_page_idx ON anime_provider_page(provider, page_kind, address);
 
 -- Each episode page belongs to exactly one episode
 CREATE TABLE episode_provider_page (
@@ -1186,7 +1282,7 @@ CREATE TABLE character_provider_page (
 );
 ```
 
-- `StorePage` writes the page and its responses in one transaction, and only when its `fetched_at` is newer than the stored one, so a retried or late fetch never replaces newer data.
+- `StorePage` writes the page and its responses in one transaction, and only when its `fetched_at` is newer than the stored one, so a retried or late fetch never replaces newer data. It reports the page as changed when `responses_hash` differs, without reading the stored bodies.
 - `LoadWork`, `LoadEpisode` and `LoadCharacter` read an entity's pages and responses. The merge maps them in memory.
 - An entity's `sources` and `partial_sources` in the merged model come from these links.
 
@@ -1227,8 +1323,12 @@ CREATE TABLE anime_field_correction (
   UNIQUE (anime_id, field_path)
 );
 
--- episode_field_correction and character_field_correction have the same columns,
--- with episode_id and character_id in place of anime_id.
+CREATE INDEX anime_field_correction_approval_idx
+  ON anime_field_correction(approval_item_id)
+  WHERE approval_item_id IS NOT NULL;
+
+-- episode_field_correction and character_field_correction have the same columns and
+-- approval index, with episode_id and character_id in place of anime_id.
 
 -- Text written by the Agent Service, every version kept
 CREATE TABLE anime_generated_text (
@@ -1320,27 +1420,56 @@ Until then, those model fields are not stored.
 ```sql
 -- ListDueWorks: works the weekly sweep refreshes, with keyset paging and a fixed cutoff per sweep.
 -- Works first aired more than OLDER_AFTER_YEARS ago refresh only when opened.
+-- A never-refreshed work sorts as '-infinity', so no part of the sort key is NULL.
+-- The first page passes ('-infinity', the nil UUID) as the cursor.
 SELECT id, refreshed_at FROM anime
 WHERE deleted_at IS NULL
-  AND (refreshed_at IS NULL OR refreshed_at < $1)            -- the sweep's cutoff
-  AND (year IS NULL OR year > extract(year FROM now()) - $2) -- OLDER_AFTER_YEARS
-  AND (refreshed_at, id) > ($3, $4)                          -- the last row of the previous page
-ORDER BY refreshed_at NULLS FIRST, id
+  AND coalesce(refreshed_at, '-infinity') < $1                    -- the sweep's cutoff
+  AND (year IS NULL OR year > extract(year FROM now()) - $2)      -- OLDER_AFTER_YEARS
+  AND (coalesce(refreshed_at, '-infinity'), id) > ($3, $4)        -- the last row of the previous page
+ORDER BY coalesce(refreshed_at, '-infinity'), id
 LIMIT $5;
 
--- RecordOpen: count the open, and report whether the entity is due
-UPDATE anime
-SET last_opened_at = now(), open_count = open_count + 1
-WHERE id = $1
-RETURNING refreshed_at IS NULL OR refreshed_at < now() - make_interval(days => $2) AS is_due;
+-- RecordOpen: count the open in the narrow open table, and report whether the work is due
+INSERT INTO anime_open (anime_id, last_opened_at, open_count)
+VALUES ($1, now(), 1)
+ON CONFLICT (anime_id) DO UPDATE
+SET last_opened_at = now(), open_count = anime_open.open_count + 1;
 
--- ListUpcomingEpisodes: episodes of ongoing works airing in the next EPISODE_WINDOW_DAYS
-SELECT e.id, e.anime_id, e.episode_number, e.aired_at
+SELECT refreshed_at IS NULL OR refreshed_at < now() - make_interval(days => $2) AS is_due
+FROM anime
+WHERE id = $1 AND deleted_at IS NULL;
+
+-- ListUpcomingEpisodes: episodes of ongoing works airing in the next EPISODE_WINDOW_DAYS,
+-- both those the work lists and the next episode its broadcast names but no row holds yet
+SELECT e.id, e.anime_id, e.episode_number, e.aired_at AS expected_air_at
 FROM episode e
 JOIN anime a ON a.id = e.anime_id
-WHERE a.status IN ('ONGOING', 'UPCOMING') AND a.deleted_at IS NULL
+WHERE a.status IN ('ONGOING', 'UPCOMING') AND a.deleted_at IS NULL AND e.deleted_at IS NULL
   AND e.aired_at BETWEEN now() AND now() + make_interval(days => $1)
-ORDER BY e.aired_at;
+UNION ALL
+SELECT NULL, b.anime_id, b.next_episode_number, b.next_episode_at
+FROM anime_broadcast b
+JOIN anime a ON a.id = b.anime_id
+WHERE a.status IN ('ONGOING', 'UPCOMING') AND a.deleted_at IS NULL
+  AND b.next_episode_number IS NOT NULL
+  AND b.next_episode_at BETWEEN now() AND now() + make_interval(days => $1)
+  AND NOT EXISTS (
+    SELECT 1 FROM episode e
+    WHERE e.anime_id = b.anime_id AND e.episode_number = b.next_episode_number
+      AND e.deleted_at IS NULL
+  )
+ORDER BY expected_air_at;
+
+-- ListScoreWorks: works whose scores refresh daily, ongoing or finished within the lookback.
+-- A finished work with no end date is left out; its scores refresh in the weekly sweep.
+SELECT id FROM anime
+WHERE deleted_at IS NULL
+  AND (status = 'ONGOING'
+       OR (status = 'FINISHED' AND aired_to >= now() - make_interval(days => $1)))
+  AND id > $2                                                    -- keyset: the last id of the previous page
+ORDER BY id
+LIMIT $3;
 ```
 
 The same `RecordOpen` and due queries exist for `episode` and `character`. An episode is older when its work is, and a character when every work it appears in is.
@@ -1358,7 +1487,7 @@ ORDER BY aired_from;
 SELECT a.title, b.jp_time, b.sub_time, b.timezone
 FROM anime a
 JOIN anime_broadcast b ON b.anime_id = a.id
-WHERE a.status = 'ONGOING' AND b.weekday = 7;
+WHERE a.status = 'ONGOING' AND a.deleted_at IS NULL AND b.weekday = 7;
 
 -- The current hiatus of a work
 SELECT reason, hiatus_from, hiatus_until FROM anime_hiatus
@@ -1373,24 +1502,25 @@ LIMIT 1;
 -- All characters in a work
 SELECT c.* FROM character c
 JOIN anime_character ac ON ac.character_id = c.id
-WHERE ac.anime_id = $1
+WHERE ac.anime_id = $1 AND c.deleted_at IS NULL
 ORDER BY ac.billing_order;
 
 -- All works sharing a character
 SELECT a.* FROM anime a
 JOIN anime_character ac ON ac.anime_id = a.id
-WHERE ac.character_id = $1;
+WHERE ac.character_id = $1 AND a.deleted_at IS NULL;
 
--- Related works, with unresolved ones shown by their page
+-- Relations the work's own pages list, with unresolved ones shown by their page.
+-- The inverses other works assert are in graph_edge.
 SELECT r.relation_type, r.to_page_provider, r.to_page_address, t.id, t.title, t.type, t.year
 FROM anime_relation r
-LEFT JOIN anime t ON t.id = r.to_anime_id
+LEFT JOIN anime t ON t.id = r.to_anime_id AND t.deleted_at IS NULL
 WHERE r.from_anime_id = $1;
 
 -- Works by genre
 SELECT a.* FROM anime a
 JOIN anime_genre g ON g.anime_id = a.id
-WHERE g.genre = $1;
+WHERE g.genre = $1 AND a.deleted_at IS NULL;
 ```
 
 ---
@@ -1405,28 +1535,29 @@ WHERE g.genre = $1;
 All primitives share these safety invariants:
 - SQL is parameterized — no string interpolation from agent output
 - Hard caps enforced server-side: `max_hops ≤ 5`, `max_results ≤ 50`, `max_fanout_per_hop ≤ 50`
-- `statement_timeout` applied per query (2 seconds) as the hard backstop
+- A 2-second statement timeout as the hard backstop, set with `SET LOCAL statement_timeout = '2s'` inside the query's own transaction. A plain `SET` would stay on the pooled connection and limit every later query on it.
+- The primitives read `graph_edge`, the only table holding both directions of every edge, and skip deleted entities.
 - Cycle prevention via `visited` array in all recursive CTEs
 
 ### Edge Vocabulary (Allowlist)
 
-The `edge_types` field in `GraphIntent` accepts only values from this allowlist. The executor routes to the correct table based on type.
+The `edge_types` field in `GraphIntent` accepts only values from this allowlist. Direct edges are read from `graph_edge`; derived edges are joined from their junction tables.
 
 | Edge type | Category | Source table |
 |-----------|----------|-------------|
-| `SEQUEL` | Direct | `anime_relation` |
-| `PREQUEL` | Direct | `anime_relation` |
-| `SIDE_STORY` | Direct | `anime_relation` |
-| `PARENT_STORY` | Direct | `anime_relation` |
-| `ALTERNATIVE_VERSION` | Direct | `anime_relation` |
-| `ALTERNATIVE_SETTING` | Direct | `anime_relation` |
-| `CROSSOVER` | Direct | `anime_relation` |
-| `SUMMARY` | Direct | `anime_relation` |
-| `FULL_STORY` | Direct | `anime_relation` |
-| `CHARACTER` | Direct | `anime_relation` |
-| `SPIN_OFF` | Direct | `anime_relation` |
-| `ADAPTATION` | Direct | `anime_relation` |
-| `OTHER` | Direct | `anime_relation` |
+| `SEQUEL` | Direct | `graph_edge` |
+| `PREQUEL` | Direct | `graph_edge` |
+| `SIDE_STORY` | Direct | `graph_edge` |
+| `PARENT_STORY` | Direct | `graph_edge` |
+| `ALTERNATIVE_VERSION` | Direct | `graph_edge` |
+| `ALTERNATIVE_SETTING` | Direct | `graph_edge` |
+| `CROSSOVER` | Direct | `graph_edge` |
+| `SUMMARY` | Direct | `graph_edge` |
+| `FULL_STORY` | Direct | `graph_edge` |
+| `CHARACTER` | Direct | `graph_edge` |
+| `SPIN_OFF` | Direct | `graph_edge` |
+| `ADAPTATION` | Direct | `graph_edge` |
+| `OTHER` | Direct | `graph_edge` |
 | `same_studio` | Derived | `anime_company` (role = 'STUDIO') |
 | `co_appears` | Derived | `anime_character` |
 | `adapted_from` | Derived | `anime_source_material_relation` |
@@ -1440,14 +1571,14 @@ One-hop adjacency from a start node. No recursion.
 ```sql
 -- neighbors(start, edge_types, max_results)
 SELECT
-  ar.to_anime_id AS node_id,
+  ge.to_id AS node_id,
   a.title,
-  ar.relation_type
-FROM anime_relation ar
-JOIN anime a ON ar.to_anime_id = a.id
-WHERE ar.from_anime_id = $1
-  AND ar.to_anime_id IS NOT NULL
-  AND (cardinality($2::text[]) = 0 OR ar.relation_type = ANY($2))
+  ge.edge_type
+FROM graph_edge ge
+JOIN anime a ON a.id = ge.to_id AND a.deleted_at IS NULL
+WHERE ge.from_id = $1
+  AND ge.from_type = 'anime' AND ge.to_type = 'anime'
+  AND (cardinality($2::text[]) = 0 OR ge.edge_type = ANY($2))
 LIMIT $3;
 ```
 
@@ -1464,27 +1595,27 @@ Multi-hop expansion from a start node with depth and result caps.
 WITH RECURSIVE frontier(node_id, visited, depth) AS (
   -- Base: direct neighbors
   SELECT
-    to_anime_id,
-    ARRAY[from_anime_id],
+    to_id,
+    ARRAY[from_id],
     1
-  FROM anime_relation
-  WHERE from_anime_id = $1
-    AND to_anime_id IS NOT NULL
-    AND (cardinality($2::text[]) = 0 OR relation_type = ANY($2))
+  FROM graph_edge
+  WHERE from_id = $1
+    AND from_type = 'anime' AND to_type = 'anime'
+    AND (cardinality($2::text[]) = 0 OR edge_type = ANY($2))
 
   UNION ALL
 
   -- Recursive: expand each frontier node
   SELECT
-    ar.to_anime_id,
-    f.visited || ar.from_anime_id,
+    ge.to_id,
+    f.visited || ge.from_id,
     f.depth + 1
-  FROM anime_relation ar
-  JOIN frontier f ON ar.from_anime_id = f.node_id
-  WHERE ar.to_anime_id IS NOT NULL
-    AND NOT (ar.to_anime_id = ANY(f.visited))   -- cycle prevention
-    AND f.depth < $3                             -- max_hops cap
-    AND (cardinality($2::text[]) = 0 OR ar.relation_type = ANY($2))
+  FROM graph_edge ge
+  JOIN frontier f ON ge.from_id = f.node_id
+  WHERE ge.from_type = 'anime' AND ge.to_type = 'anime'
+    AND NOT (ge.to_id = ANY(f.visited || f.node_id))  -- cycle prevention
+    AND f.depth < $3                                  -- max_hops cap
+    AND (cardinality($2::text[]) = 0 OR ge.edge_type = ANY($2))
 )
 SELECT DISTINCT
   node_id,
@@ -1511,29 +1642,29 @@ Find the shortest explanation chain between two nodes.
 WITH RECURSIVE paths(node_id, visited, edge_path, depth) AS (
   -- Base: one-hop neighbors of start
   SELECT
-    to_anime_id,
-    ARRAY[from_anime_id]::uuid[],
-    ARRAY[relation_type],
+    to_id,
+    ARRAY[from_id]::uuid[],
+    ARRAY[edge_type],
     1
-  FROM anime_relation
-  WHERE from_anime_id = $1
-    AND to_anime_id IS NOT NULL
-    AND (cardinality($3::text[]) = 0 OR relation_type = ANY($3))
+  FROM graph_edge
+  WHERE from_id = $1
+    AND from_type = 'anime' AND to_type = 'anime'
+    AND (cardinality($3::text[]) = 0 OR edge_type = ANY($3))
 
   UNION ALL
 
   -- Recursive: extend each path one hop
   SELECT
-    ar.to_anime_id,
-    p.visited || ar.from_anime_id,
-    p.edge_path || ar.relation_type,
+    ge.to_id,
+    p.visited || ge.from_id,
+    p.edge_path || ge.edge_type,
     p.depth + 1
-  FROM anime_relation ar
-  JOIN paths p ON ar.from_anime_id = p.node_id
-  WHERE ar.to_anime_id IS NOT NULL
-    AND NOT (ar.from_anime_id = ANY(p.visited))  -- cycle prevention
-    AND p.depth < $4                              -- max_hops cap
-    AND (cardinality($3::text[]) = 0 OR ar.relation_type = ANY($3))
+  FROM graph_edge ge
+  JOIN paths p ON ge.from_id = p.node_id
+  WHERE ge.from_type = 'anime' AND ge.to_type = 'anime'
+    AND NOT (ge.to_id = ANY(p.visited || p.node_id))  -- cycle prevention
+    AND p.depth < $4                                  -- max_hops cap
+    AND (cardinality($3::text[]) = 0 OR ge.edge_type = ANY($3))
 )
 SELECT
   visited || node_id AS full_path,
@@ -1567,7 +1698,8 @@ SELECT
   a2.id, a2.title, a2.type, a2.status, a2.year,
   a2.score_weighted, a2.episode_count, a2.source_material, a2.rating
 FROM anime a1, anime a2
-WHERE a1.id = $1 AND a2.id = $2;
+WHERE a1.id = $1 AND a2.id = $2
+  AND a1.deleted_at IS NULL AND a2.deleted_at IS NULL;
 
 -- Query 2: shared characters
 SELECT c.id, c.name, ac1.role AS role_in_a, ac2.role AS role_in_b
@@ -1603,7 +1735,7 @@ The `path` and `k_hop` primitives can traverse `character_relation` edges for di
 Every field of the canonical models in `libs/common/src/common/models/anime.py` has one place. Fields marked *read* are not stored; they are read back from other tables.
 
 **`Anime`**
-- Scalars → columns of `anime`. `nsfw` → `is_nsfw`, `duration` → `duration_seconds`.
+- Scalars → columns of `anime`. `nsfw` → `is_nsfw`, `duration` → `duration_seconds`, `month` → a month number.
 - `id` → `anime.id`, assigned at the first merge.
 - `entity_type` → *read*, always `anime`.
 - `sources`, `partial_sources` → `anime_provider_page` with role `source` or `partial_source`.
@@ -1663,7 +1795,7 @@ Every field of the canonical models in `libs/common/src/common/models/anime.py` 
 
 ### Version Control
 
-Migrations are `sqlx` migration files in `libs/rust/postgres_db/migrations/`, the only place the schema is defined:
+Migrations are `sqlx` migration files in `crates/postgres_db/migrations/`, the only place the schema is defined:
 - Timestamped migration files
 - Version tracking in the database by `sqlx migrate`
 - Queries checked against the migrated schema at build time
@@ -1679,8 +1811,9 @@ ALTER TABLE anime ADD COLUMN is_adult boolean;
 
 **Adding an enum value**: one `INSERT` into its lookup table, in the same PR as the enum change.
 
-**Adding an index**: built concurrently.
+**Adding an index**: built concurrently. `CREATE INDEX CONCURRENTLY` cannot run inside a transaction, so its migration file starts with `sqlx`'s `-- no-transaction` line and holds only that statement.
 ```sql
+-- no-transaction
 CREATE INDEX CONCURRENTLY anime_year_idx ON anime(year);
 ```
 
@@ -1694,14 +1827,14 @@ These topics are unresolved design questions for the PostgreSQL graph layer. Ord
 
 ### 1. Edge Directionality — DECIDED ✅
 
-**Decision: Store both directions when a work is saved.**
+**Decision: `anime_relation` holds one direction per asserting work; `graph_edge` holds both directions.**
 
-When `SaveWork` writes `A → SEQUEL → B`, it also writes `B → PREQUEL → A` in the same transaction. Every graph hop is always a forward lookup: `WHERE from_anime_id = $node` — no union with reverse direction, no dual-branch CTE logic in the executor.
+When work A's pages say `A → SEQUEL → B`, `anime_relation` stores that one row, asserted by A. The inverse, `B → PREQUEL → A`, exists only in `graph_edge`. The `graph_edge` rows between A and B are recomputed from both works' `anime_relation` rows and the inversion map whenever either work's relations change. Every graph hop is a forward lookup on `graph_edge`: `WHERE from_id = $node`.
 
 **Rationale:**
-- Uniform query pattern across all four graph primitives (`neighbors`, `k_hop`, `path`, `compare`)
-- `anime_relation` is not a large table; ~2× row count is acceptable
-- Avoids complexity in the executor: no need to route by direction per edge type
+- `SaveWork` replaces only the rows its own work asserted, so it never removes an edge the other work still asserts.
+- Uniform query pattern across all four graph primitives (`neighbors`, `k_hop`, `path`, `compare`).
+- No union with the reverse direction and no per-direction routing in the executor.
 
 **Inversion map** (lives in the Rust application layer of the PostgreSQL service, not in a DB trigger):
 
@@ -1803,10 +1936,10 @@ Reads:   agent graph queries  → graph_edge only
 
 | Junction table | Forward edge | Reverse edge |
 |---|---|---|
-| `anime_relation` | anime → anime (relation_type) | handled by inversion map on save (point 1) |
-| `anime_character` | anime → character (`features`) | character → anime (`appears_in`) |
-| `anime_company` | anime → company (role) | company → anime (`produced`) |
-| `anime_source_material_relation` | anime → source_material (`adapted_from`) | source_material → anime (`was_adapted_to`) |
+| `anime_relation` | anime → anime (relation_type) | from the inversion map, recomputed per pair (point 1) |
+| `anime_character` | anime → character (`FEATURES`) | character → anime (`APPEARS_IN`) |
+| `anime_company` | anime → company (role) | company → anime (the same role) |
+| `anime_source_material_relation` | anime → source_material (`ADAPTED_FROM`) | source_material → anime (`WAS_ADAPTED_TO`) |
 | `anime_staff` *(future)* | anime → person (role) | person → anime (`worked_on`) |
 | `character_voice` *(future)* | character → person (`voiced_by`) | person → character (`voices`) |
 | `character_relation` *(future)* | character → character (relation_type) | handled by inversion map |
@@ -1829,9 +1962,9 @@ All four primitives (`neighbors`, `k_hop`, `path`, `compare`) use the same gener
 The PostgreSQL service is the single writer to all tables. Every junction table write happens inside a transaction that also writes the corresponding `graph_edge` rows. Either both commit or neither does — `graph_edge` is never out of sync with the junction tables.
 
 Each repository function writes to its junction table AND `graph_edge` in the same transaction:
-- `upsert_anime_relation` → writes `anime_relation` + forward edge + inverse edge (via inversion map from point 1)
-- `upsert_anime_character` → writes `anime_character` + `anime→character (features)` + `character→anime (appears_in)`
-- `upsert_anime_company` → writes `anime_company` + both directions
+- `upsert_anime_relation` → writes `anime_relation`, then recomputes the `graph_edge` rows of each affected pair from both works' rows (point 1)
+- `upsert_anime_character` → writes `anime_character` + `anime→character (FEATURES)` + `character→anime (APPEARS_IN)`
+- `upsert_anime_company` → writes `anime_company` + both directions, each with the role as its type
 - Same pattern for all future junction tables (`anime_staff`, `character_voice`, etc.)
 
 DB triggers were considered and rejected — same reason the inversion map lives in Rust, not in a trigger: logic stays in the application layer, explicit and testable.
@@ -1865,16 +1998,16 @@ anime_source_material_relation: uuid-aot → uuid-aot-manga (ADAPTATION)
 FROM             FROM_TYPE        TO               TO_TYPE          EDGE_TYPE
 uuid-aot         anime            uuid-aot-s2      anime            SEQUEL
 uuid-aot-s2      anime            uuid-aot         anime            PREQUEL          ← inverse (point 1)
-uuid-aot         anime            uuid-eren        character        features
-uuid-eren        character        uuid-aot         anime            appears_in       ← reverse
-uuid-aot         anime            uuid-levi        character        features
-uuid-levi        character        uuid-aot         anime            appears_in       ← reverse
+uuid-aot         anime            uuid-eren        character        FEATURES
+uuid-eren        character        uuid-aot         anime            APPEARS_IN       ← reverse
+uuid-aot         anime            uuid-levi        character        FEATURES
+uuid-levi        character        uuid-aot         anime            APPEARS_IN       ← reverse
 uuid-aot         anime            uuid-mappa       company          STUDIO
-uuid-mappa       company          uuid-aot         anime            produced         ← reverse
+uuid-mappa       company          uuid-aot         anime            STUDIO           ← reverse
 uuid-aot         anime            uuid-kodansha    company          PRODUCER
-uuid-kodansha    company          uuid-aot         anime            produced         ← reverse
-uuid-aot         anime            uuid-aot-manga   source_material  adapted_from
-uuid-aot-manga   source_material  uuid-aot         anime            was_adapted_to   ← reverse
+uuid-kodansha    company          uuid-aot         anime            PRODUCER         ← reverse
+uuid-aot         anime            uuid-aot-manga   source_material  ADAPTED_FROM
+uuid-aot-manga   source_material  uuid-aot         anime            WAS_ADAPTED_TO   ← reverse
 ```
 
 Sample agent queries now resolvable from `graph_edge` alone (all are simple `WHERE from_id = $node` lookups):
@@ -1883,17 +2016,17 @@ Sample agent queries now resolvable from `graph_edge` alone (all are simple `WHE
 SELECT to_id FROM graph_edge WHERE from_id = 'uuid-aot' AND edge_type = 'SEQUEL';
 
 -- "Which anime does Levi appear in?"
-SELECT to_id FROM graph_edge WHERE from_id = 'uuid-levi' AND edge_type = 'appears_in';
+SELECT to_id FROM graph_edge WHERE from_id = 'uuid-levi' AND edge_type = 'APPEARS_IN';
 
--- "What else did MAPPA produce?"
-SELECT to_id FROM graph_edge WHERE from_id = 'uuid-mappa' AND edge_type = 'produced';
+-- "What else did MAPPA animate?"
+SELECT to_id FROM graph_edge WHERE from_id = 'uuid-mappa' AND edge_type = 'STUDIO';
 
 -- "What anime share characters with AoT?" (2-hop via k_hop primitive)
 SELECT DISTINCT g2.to_id
 FROM graph_edge g1
 JOIN graph_edge g2 ON g1.to_id = g2.from_id AND g1.to_type = g2.from_type
-WHERE g1.from_id = 'uuid-aot' AND g1.edge_type = 'features'
-  AND g2.edge_type = 'appears_in' AND g2.to_id != 'uuid-aot';
+WHERE g1.from_id = 'uuid-aot' AND g1.edge_type = 'FEATURES'
+  AND g2.edge_type = 'APPEARS_IN' AND g2.to_id != 'uuid-aot';
 ```
 
 > [!note] Future tickets

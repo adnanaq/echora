@@ -304,7 +304,7 @@ A method for extracting character attributes follows the same shape and is defin
 
 ### PostgresService (planned)
 
-> **Linear:** ECHO-97, ECHO-98, ECHO-103, ECHO-104, ECHO-107, ECHO-108, ECHO-115
+> **Linear:** ECHO-97, ECHO-98, ECHO-103, ECHO-104, ECHO-107, ECHO-108, ECHO-115; Relationship traversal project for the traversal methods
 
 The PostgreSQL Service is the only owner of the database. It stores and returns data and never calls another service.
 
@@ -335,6 +335,7 @@ service PostgresService {
   rpc ListDueEpisodes(ListDueRequest) returns (ListDueResponse);
   rpc ListDueCharacters(ListDueRequest) returns (ListDueResponse);
   rpc ListUpcomingEpisodes(ListUpcomingEpisodesRequest) returns (ListUpcomingEpisodesResponse);
+  rpc ListScoreWorks(ListScoreWorksRequest) returns (ListScoreWorksResponse);
   rpc RecordOpen(RecordOpenRequest) returns (RecordOpenResponse);
 
   // AI-written text
@@ -346,6 +347,12 @@ service PostgresService {
   rpc GetEpisode(GetEntityRequest) returns (shared_proto.v1.Episode);
   rpc ListEpisodes(GetEntityRequest) returns (ListEpisodesResponse);
   rpc GetCharacter(GetEntityRequest) returns (shared_proto.v1.Character);
+
+  // Relationship traversal, for the Agent Service; messages defined with that project
+  rpc FindNeighbors(FindNeighborsRequest) returns (GraphResponse);
+  rpc FindReachable(FindReachableRequest) returns (GraphResponse);
+  rpc FindPath(FindPathRequest) returns (GraphResponse);
+  rpc CompareEntities(CompareEntitiesRequest) returns (CompareEntitiesResponse);
 }
 
 message StorePageRequest {
@@ -504,6 +511,16 @@ message UpcomingEpisode {
   google.protobuf.Timestamp expected_air_at = 4;
 }
 
+message ListScoreWorksRequest {
+  int32 lookback_days = 1;                   // finished works stay in for this many days after aired_to
+  int32 page_size = 2;
+  optional string after_id = 3;              // keyset: the last ID of the previous page
+}
+
+message ListScoreWorksResponse {
+  repeated string anime_ids = 1;
+}
+
 message RecordOpenRequest {
   shared_proto.v1.PageKind entity_kind = 1;
   string entity_id = 2;
@@ -544,11 +561,15 @@ message ListEpisodesResponse {
 ```
 
 - **Saves check the version.** `SaveWork`, `SaveEpisode`, `SaveCharacter` and `DeleteWork` write only when the stored version still equals `expected_version`. Otherwise they return `ABORTED`, and Temporal retries the activity from its load. A save that changes nothing writes nothing and sends nothing, and only records that the refresh finished.
-- **`SaveWork` creates what the work lists.** An episode or character the merge gave a new ID is created with its page links, and the response names it so the workflow can start its refresh. If another work's save created the same character first, the page link conflicts, the save returns `ABORTED`, and the retried merge finds the existing ID.
-- **`StorePage`** stores a page and its responses only when its `fetched_at` is newer than the stored one, so a retried or late fetch never replaces newer data.
-- **`CreateWorks` and `RelinkPages`** resolve every unresolved relation that points at a newly linked source page, in the same transaction.
+- **`SaveWork` creates what the work lists.** An episode or character the merge gave a new ID is created with its page links, and the response names it so the workflow can start its refresh. Before creating a character, it looks up the character's page keys. When one already belongs to a character, such as one another work's save created a moment earlier, it links that character and drops the new ID, so the save never fails on it.
+- **`StorePage`** stores a page and its responses only when its `fetched_at` is newer than the stored one, so a retried or late fetch never replaces newer data. It reports the page as changed when the hash of the responses differs, without reading the stored bodies.
+- **`CreateWorks` and `RelinkPages`** resolve every unresolved relation that points at a newly linked source page, in the same transaction. They also increase the version of every work that gains or loses a page, so a merge that loaded before the move starts again.
+- **`DeleteWork`** removes the work's page links, its own relations and every `graph_edge` row from or to it, and turns relations other works assert towards it back into unresolved ones, all in one transaction. A work merged into another keeps `merged_into_anime_id`, so its old links can redirect. See [[Database Schema#4. Writes and Deletes|Database Schema]].
+- **`RecordOpen`** writes to the narrow open tables, never to the entity's own row.
 - **`ListDueWorks`, `ListDueEpisodes` and `ListDueCharacters`** page by `(refreshed_at, id)` from a fixed cutoff, so a work that fails to refresh is not picked again in the same sweep.
-- **`LoadSynopsisSources`** and **`SaveGeneratedText`** serve the `SynopsisWorkflow`. A synopsis whose input hash already matches is not written again.
+- **`ListUpcomingEpisodes`** returns the listed episodes airing in the window, and also the next episode a work's broadcast announces before any provider lists it, with `episode_id` unset.
+- **`ListScoreWorks`** pages the works whose scores refresh daily, ongoing or finished within `lookback_days`. A finished work without an end date is left to the weekly sweep.
+- **`LoadSynopsisSources`** and **`SaveGeneratedText`** serve the `SynopsisWorkflow`. A synopsis whose input hash already matches is not written again. A new synopsis increases the work's version.
 - **The PostgreSQL proto imports the Agent Service's messages** for those two methods. If that dependency is unwanted, `WriteSynopsisRequest` and `WriteSynopsisResponse` move into `shared_proto.v1`.
 - Approval-queue writes and the backend's reads are defined when those features are designed.
 

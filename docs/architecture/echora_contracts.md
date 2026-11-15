@@ -67,16 +67,16 @@ from shared_proto.v1 import anime_pb2
 
 ### Rust crates in this repository
 
-Each Rust crate that needs gRPC types generates them from `protos/` in its own `build.rs` with `tonic-build`, at build time. Nothing is checked in or downloaded.
+Each Rust crate that needs gRPC types generates them from `protos/` in its own `build.rs` with `tonic-prost-build`, at build time. Since tonic 0.14, code generation lives in `tonic-prost-build` and the runtime codec in `tonic-prost`, and `tonic-build` no longer has `configure()` or `compile_protos()`. Nothing is checked in or downloaded.
 
 ```rust
-// libs/rust/postgres_db/build.rs
+// crates/postgres_service/build.rs, the crate that serves the gRPC handlers
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tonic_build::configure()
+    tonic_prost_build::configure()
         .build_client(false)
         .compile_protos(
-            &["../../../protos/postgres_service/v1/postgres_service.proto"],
-            &["../../../protos"],
+            &["../../protos/postgres_service/v1/postgres_service.proto"],
+            &["../../protos"],
         )?;
     Ok(())
 }
@@ -120,6 +120,7 @@ No service exchanges these messages across versions yet, so changes are made in 
 2. When a field is removed, delete it and renumber the message's fields from 1 without gaps. No numbers or names are reserved.
 3. Regenerate the stubs with `./pants run scripts/generate-proto.py`, and run `scripts/check_anime_model_proto_contract.py`.
 4. Add a migration when the field is stored in its own PostgreSQL column or table, and insert the new value into its lookup table when an enum gains one.
+5. Update [[Database Schema#Where Each Model Field Is Stored|Where Each Model Field Is Stored]] in the same PR. No check compares that map with `anime.py`, so the PR that changes the field keeps it current.
 
 ### Once in production
 
