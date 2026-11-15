@@ -16,7 +16,6 @@ from enrichment.sources.base.field_types import (
     strip_text_or_none,
 )
 from enrichment.sources.base.utils import (
-    month_name,
     parse_broadcast_string,
     parse_iso_date,
     parse_partial_date,
@@ -167,7 +166,7 @@ def _published_dates(published: object) -> dict[str, Any]:
         A month and year, or a year alone, fills only what it states:
 
         >>> _published_dates("Published: 11.2008")
-        {'start_date': None, 'end_date': None, 'start_year': 2008, 'start_month': 'November'}
+        {'start_date': None, 'end_date': None, 'start_year': 2008, 'start_month': 11}
         >>> _published_dates("Published: 2027 \u2011 ?")
         {'start_date': None, 'end_date': None, 'start_year': 2027, 'start_month': None}
     """
@@ -179,7 +178,7 @@ def _published_dates(published: object) -> dict[str, Any]:
         "start_date": start_date,
         "end_date": parse_iso_date(end_raw),
         "start_year": start_year,
-        "start_month": None if start_date else month_name(start_month),
+        "start_month": None if start_date else start_month,
     }
 
 
@@ -320,7 +319,7 @@ class AniSearchAnime(BaseModel):
     start_date: str | None = None  # only a full date
     end_date: str | None = None  # only a full date
     start_year: int | None = None  # stated even when the start has no day
-    start_month: str | None = None  # month name, only when the start has no day
+    start_month: int | None = None  # month number, only when the start has no day
     status: LabelledText = None  # "Upcoming", "On Hold", "Completed", etc.
 
     # ── Content ───────────────────────────────────────────────────────────

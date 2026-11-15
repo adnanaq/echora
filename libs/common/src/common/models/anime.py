@@ -15,6 +15,7 @@ from pydantic import (
 )
 
 ScoreOutOfTen = Annotated[float, Field(ge=0, le=10)]
+MonthNumber = Annotated[int, Field(ge=1, le=12)]
 
 
 # =============================================================================
@@ -617,6 +618,10 @@ class Broadcast(StrictFieldsModel):
     next_episode_at: datetime | None = Field(
         None, description="UTC datetime of next episode airing (from AniList)"
     )
+    next_episode_number: NonNegativeInt | None = Field(
+        None,
+        description="Number of the episode airing at next_episode_at (from AniList)",
+    )
 
 
 class AnimeHiatus(StrictFieldsModel):
@@ -937,7 +942,9 @@ class Anime(StrictFieldsModel):
         default=EntityType.ANIME,
         description="Entity type for vector search filtering",
     )
-    month: str | None = Field(None, description="Premiere month from AnimeSchedule")
+    month: MonthNumber | None = Field(
+        None, description="Premiere month number, 1 for January to 12 for December"
+    )
     nsfw: bool | None = Field(None, description="Not Safe For Work flag from Kitsu")
     rating: AnimeRating = Field(
         default=AnimeRating.UNKNOWN, description="Content rating (PG-13, R, etc.)"

@@ -270,7 +270,7 @@ def test_mal_anime_aired_without_day_gives_month_and_year() -> None:
     assert (anime.aired_from, anime.year, anime.month, anime.season) == (
         None,
         2026,
-        "April",
+        4,
         None,
     )
 

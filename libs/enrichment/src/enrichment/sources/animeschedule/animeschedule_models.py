@@ -2,10 +2,11 @@
 
 These mirror the JSON structure with camelCase → snake_case aliases. The
 models turn AnimeSchedule's values into field values (HTML descriptions into
-plain text, its "not set" date into None); mapping to the canonical Anime model
+plain text, its "not set" date into None, its month name into a number); mapping to the canonical Anime model
 lives in animeschedule_mapper.py.
 """
 
+import logging
 from typing import Annotated, Any
 
 from enrichment.sources.base.field_types import (
@@ -13,7 +14,10 @@ from enrichment.sources.base.field_types import (
     StrippedText,
     strip_text_or_none,
 )
+from enrichment.sources.base.utils import parse_month_name
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
+
+logger = logging.getLogger(__name__)
 
 _UNSET_DATE_PREFIX = "0001-01-01"
 
@@ -33,6 +37,36 @@ def _unset_date_to_none(value: object) -> object:
 
 
 AnimeScheduleDate = Annotated[str | None, BeforeValidator(_unset_date_to_none)]
+
+
+def _read_month_number(value: object) -> int | None:
+    """Turn AnimeSchedule's premiere month name ("October") into its number.
+
+    A value that names no month logs a warning and becomes None, so one odd
+    value does not reject the whole record.
+
+    Args:
+        value: The ``month`` value AnimeSchedule sent.
+
+    Returns:
+        The month number from 1 to 12, or ``None``.
+
+    Examples:
+        >>> _read_month_number("October")
+        10
+        >>> print(_read_month_number(""))
+        None
+    """
+    month_text = strip_text_or_none(value)
+    if month_text is None:
+        return None
+    month_number = parse_month_name(str(month_text))
+    if month_number is None:
+        logger.warning(f"AnimeSchedule month names no month: {month_text!r}")
+    return month_number
+
+
+AnimeScheduleMonth = Annotated[int | None, BeforeValidator(_read_month_number)]
 
 
 class AnimeScheduleStats(BaseModel):
@@ -116,7 +150,7 @@ class AnimeScheduleAnime(BaseModel):
     delayed_reason: StrippedText = Field(None, alias="delayedDesc")
 
     # ── Calendar ─────────────────────────────────────────────────────────
-    month: str | None = None
+    month: AnimeScheduleMonth = None
     year: int | None = None
     season: AnimeScheduleSeason | None = None
 

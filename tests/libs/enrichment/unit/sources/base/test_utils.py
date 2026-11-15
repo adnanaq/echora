@@ -3,9 +3,9 @@ from pathlib import Path
 
 import pytest
 from enrichment.sources.base.utils import (
-    month_name,
     parse_broadcast_string,
     parse_iso_date,
+    parse_month_name,
     parse_partial_date,
     sanitize_output_path,
     split_date_range,
@@ -171,12 +171,19 @@ def test_split_date_range_none_returns_empty_parts() -> None:
     assert split_date_range(None) == ("", "")
 
 
-def test_month_name_number_returns_english_name() -> None:
-    assert month_name(10) == "October"
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [("October", 10), ("oct", 10), ("Sept.", 9), (" May ", 5)],
+)
+def test_parse_month_name_full_or_short_name_returns_number(
+    text: str, expected: int
+) -> None:
+    assert parse_month_name(text) == expected
 
 
-def test_month_name_none_returns_none() -> None:
-    assert month_name(None) is None
+@pytest.mark.parametrize("text", [None, "", "Spring", "Mayday", "Oc"])
+def test_parse_month_name_text_without_month_returns_none(text: str | None) -> None:
+    assert parse_month_name(text) is None
 
 
 @pytest.fixture
@@ -210,13 +217,3 @@ def test_parse_iso_date_german_locale_reads_english_month_name() -> None:
 @pytest.mark.usefixtures("german_month_names")
 def test_parse_partial_date_german_locale_reads_english_month_name() -> None:
     assert parse_partial_date("Oct 1977") == (1977, 10)
-
-
-@pytest.mark.usefixtures("german_month_names")
-def test_month_name_german_locale_returns_english_name() -> None:
-    assert month_name(10) == "October"
-
-
-@pytest.mark.parametrize("month", [0, 13, -1])
-def test_month_name_out_of_range_returns_none(month: int) -> None:
-    assert month_name(month) is None

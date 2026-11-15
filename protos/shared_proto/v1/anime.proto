@@ -181,6 +181,7 @@ message Broadcast {
   optional google.protobuf.Timestamp premiere_sub = 10;
   optional google.protobuf.Timestamp premiere_dub = 11;
   optional google.protobuf.Timestamp next_episode_at = 12;
+  optional int32 next_episode_number = 13;
 }
 
 // Hiatus information — replaces the old DelayInformation message.
@@ -421,7 +422,7 @@ message Anime {
   int32 episode_count = 3;
   string id = 4;
   EntityType entity_type = 5;
-  optional string month = 6;
+  optional int32 month = 6;
   optional bool nsfw = 7;
   optional AnimeRating rating = 8;
   optional AnimeSeason season = 9;

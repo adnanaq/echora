@@ -417,23 +417,20 @@ def test_object_fields_merge_one_sub_field_at_a_time() -> None:
     ],
 )
 def test_month_falls_back_to_the_premiere_date(aired_from: str) -> None:
-    # AnimeSchedule is the only provider that names the month, so without a
-    # fallback the field empties whenever that one fetch fails. The month is
-    # Japan's: 15:00 UTC on 30 September is already 1 October in Tokyo.
     merged = merge_provider_records(
         {"mal": _record(aired_dates={"aired_from": aired_from})}
     )
-    assert merged["month"] == "October"
+    assert merged["month"] == 10
 
 
 def test_stated_month_beats_the_derived_one() -> None:
     merged = merge_provider_records(
         {
             "mal": _record(aired_dates={"aired_from": "1999-10-19T15:00:00Z"}),
-            "animeschedule": _record(month="October"),
+            "animeschedule": _record(month=10),
         }
     )
-    assert merged["month"] == "October"
+    assert merged["month"] == 10
 
 
 def test_images_union_each_category_separately() -> None:

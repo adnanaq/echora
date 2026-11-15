@@ -405,13 +405,13 @@ def merge_object(ranked: Ranked, field: str) -> dict[str, Any] | None:
     return merged or None
 
 
-def merge_month(ranked: Ranked, aired_dates: dict[str, Any] | None) -> str | None:
+def merge_month(ranked: Ranked, aired_dates: dict[str, Any] | None) -> int | None:
     """Resolve the premiere month, falling back to the premiere date.
 
-    AnimeSchedule is the only provider that names the month outright, but every
-    provider that reports ``aired_from`` states the same fact in a different
-    shape. Treating the field as AnimeSchedule's alone would leave it empty
-    whenever that one fetch fails, so the date is used as the second source.
+    AnimeSchedule always states the month, and MAL, AniList and AniSearch state
+    it when they know the month but not the day. Every provider that reports
+    ``aired_from`` states the same fact in a different shape, so the premiere
+    date is the fallback when no provider states the month.
 
     The date is read in Japan time. A premiere on the 1st is stored as 15:00
     UTC on the last day of the month before, so reading it in UTC names the
@@ -422,19 +422,19 @@ def merge_month(ranked: Ranked, aired_dates: dict[str, Any] | None) -> str | Non
         aired_dates: The already-merged ``aired_dates``, used as the fallback.
 
     Returns:
-        The English month name, or ``None`` when nothing states one.
+        The month number from 1 to 12, or ``None`` when nothing states one.
 
     Examples:
         A provider that names the month wins:
 
-        >>> merge_month([("animeschedule", {"month": "April"})], None)
-        'April'
+        >>> merge_month([("animeschedule", {"month": 4})], None)
+        4
 
         Otherwise the month comes from the premiere date in Japan time, so
         15:00 UTC on 31 March is April:
 
         >>> merge_month([("mal", {})], {"aired_from": "2024-03-31T15:00:00+00:00"})
-        'April'
+        4
         >>> print(merge_month([("mal", {})], None))
         None
     """
@@ -449,7 +449,7 @@ def merge_month(ranked: Ranked, aired_dates: dict[str, Any] | None) -> str | Non
     except ValueError:
         logger.warning(f"Cannot read a month from aired_from: {aired_from!r}")
         return None
-    return to_japan_time(premiere).strftime("%B")
+    return to_japan_time(premiere).month
 
 
 def merge_score(

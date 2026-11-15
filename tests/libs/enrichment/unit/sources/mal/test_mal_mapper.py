@@ -184,7 +184,7 @@ def test_anime_from_mal_without_dates_omits_aired_dates() -> None:
 
 
 def test_anime_from_mal_month_kept_when_stated() -> None:
-    assert anime_from_mal(_anime(month="October"))["month"] == "October"
+    assert anime_from_mal(_anime(month=10))["month"] == 10
 
 
 def test_anime_from_mal_without_month_omits_month() -> None:

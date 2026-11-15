@@ -9,26 +9,12 @@ import re
 from datetime import date
 from pathlib import Path
 
+from common.utils.datetime_utils import ENGLISH_MONTH_NAMES
+
 _DATE_RANGE_SEPARATOR = re.compile(r"\s+to\s+|\s*[–‑]\s*|\s+-\s+")
 _WHITESPACE = re.compile(r"\s+")
-# English month names, fixed rather than read from the process locale: provider
-# pages are in English whatever locale the service runs in.
-_MONTH_NAMES = (
-    "January",
-    "February",
-    "March",
-    "April",
-    "May",
-    "June",
-    "July",
-    "August",
-    "September",
-    "October",
-    "November",
-    "December",
-)
 _MONTH_NUMBERS = {
-    name[:3].lower(): number for number, name in enumerate(_MONTH_NAMES, start=1)
+    name[:3].lower(): number for number, name in enumerate(ENGLISH_MONTH_NAMES, start=1)
 }
 # "Oct 20, 1999", "Sept 5, 2020", "Sep. 5, 2020", "September 5, 2020"
 _MONTH_DAY_YEAR = re.compile(r"^([A-Za-z]{3})[a-z]*\.? (\d{1,2}), (\d{4})$")
@@ -270,25 +256,30 @@ def parse_partial_date(raw: str | None) -> tuple[int | None, int | None]:
     return None, None
 
 
-def month_name(month: int | None) -> str | None:
-    """Return the English month name for a month number, as ``Anime.month`` holds it.
+def parse_month_name(text: str | None) -> int | None:
+    """Read the month number from an English month name, full or short.
 
     Args:
-        month: Month number from 1 to 12, or ``None``.
+        text: A month name such as ``October``, ``Oct`` or ``Sept``, or ``None``.
 
     Returns:
-        The month name, or ``None`` when no month, or a number outside 1 to 12,
-        is given.
+        The month number from 1 to 12, or ``None`` when the text names no month.
 
     Examples:
-        >>> month_name(10)
-        'October'
-        >>> print(month_name(13))
+        >>> parse_month_name("October")
+        10
+        >>> parse_month_name("sept")
+        9
+        >>> print(parse_month_name("Spring"))
         None
-        >>> print(month_name(None))
+        >>> print(parse_month_name("Mayday"))
         None
     """
-    return _MONTH_NAMES[month - 1] if month and 1 <= month <= 12 else None
+    name = (text or "").strip().rstrip(".").lower()
+    number = _MONTH_NUMBERS.get(name[:3])
+    if number and ENGLISH_MONTH_NAMES[number - 1].lower().startswith(name):
+        return number
+    return None
 
 
 def parse_broadcast_string(

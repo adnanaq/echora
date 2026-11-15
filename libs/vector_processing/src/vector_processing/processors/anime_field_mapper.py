@@ -9,6 +9,7 @@ pipeline, determining what information is important for semantic search.
 import logging
 
 from common.models.anime import Anime, Character, CompanyRole, Episode
+from common.utils.datetime_utils import ENGLISH_MONTH_NAMES
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +125,7 @@ class AnimeFieldMapper:
         if anime.aired_dates and anime.aired_dates.aired_from:
             temp_parts.append(f"Aired: {anime.aired_dates.aired_from}")
         if anime.month:
-            temp_parts.append(f"Month: {anime.month}")
+            temp_parts.append(f"Month: {ENGLISH_MONTH_NAMES[anime.month - 1]}")
         if temp_parts:
             sections.append(" | ".join(temp_parts))
 

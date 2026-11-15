@@ -23,9 +23,13 @@ def _anime(**fields: object) -> AnimeScheduleAnime:
 
 def test_calendar_fields_reach_the_canonical_record() -> None:
     mapped = anime_from_animeschedule(_anime(season={"season": "Fall", "year": "1999"}))
-    assert mapped["month"] == "October"
+    assert mapped["month"] == 10
     assert mapped["year"] == 1999
     assert mapped["season"] == "FALL"
+
+
+def test_month_unknown_name_is_absent() -> None:
+    assert "month" not in anime_from_animeschedule(_anime(month="Spring"))
 
 
 def test_month_absent_when_the_api_omits_it() -> None:
