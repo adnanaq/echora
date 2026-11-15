@@ -57,7 +57,8 @@ logger = logging.getLogger(__name__)
 
 # External resource type → the platform and page kind its identifier names; the
 # page address itself comes from `page_link`. Types not listed are skipped; see
-# docs/anidb_type_mappings.md for the full list, including the ones left out.
+# the "AniDB IDs" section of docs/source_api_field_mappings.md for the full list,
+# including the ones left out.
 _RESOURCE_PAGES: dict[str, PageKind] = {
     "1": ("anime_news_network", None),
     "2": ("myanimelist", "anime"),
