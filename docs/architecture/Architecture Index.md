@@ -111,7 +111,7 @@ All published by the PostgreSQL Service outbox. See [[event_driven_architecture#
 | `anime.created`, `episode.created`, `character.created` | The entity is saved for the first time | Vector Service, later "recently added" and new-anime notifications |
 | `anime.updated`, `episode.updated`, `character.updated` | An existing entity is saved with changes | Vector Service |
 | `anime.deleted`, `episode.deleted`, `character.deleted` | The entity is removed, such as a work merged into another | Vector Service |
-| `notification.episode.aired` | An episode is saved as aired for the first time | Notification Service |
+| `notification.episode.aired` | Episode tracking confirmed an episode aired | Notification Service |
 | `notification.anime.status.changed` | A work changes airing status | Notification Service |
 
 ---
@@ -130,13 +130,13 @@ Frontend → Backend
 
 ### Opening a page
 ```
-Frontend → Backend → PostgreSQL Service (RecordOpen)
-  records the open and says whether the entity is due
-Backend → PostgreSQL Service (GetAnime, GetEpisode or GetCharacter)
-  returns the stored entity at once
+Frontend → Backend
+  reads the entity from its cache, else PostgreSQL Service (GetAnime, GetEpisode or GetCharacter)
+  returns the stored entity at once; the view writes nothing
   if due (next_refresh_at has passed), and the visitor is not a bot:
     Backend starts its refresh workflow (USE_EXISTING, priority 1), under a cap per minute
     the next view shows the refreshed data
+  the cache drops an entity when its catalogue event arrives, with a short expiry as a fallback
 ```
 
 ### Refresh

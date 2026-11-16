@@ -44,10 +44,10 @@ The hand-written Pydantic models in `libs/common/src/common/models/anime.py` are
 | `protos/shared_proto/v1/error.proto` | `ErrorDetails`, shared by every service's responses |
 | `protos/vector_service/v1/*.proto` | Vector search and admin services |
 | `protos/enrichment_service/v1/enrichment_service.proto` | Enrichment service |
-| `protos/shared_proto/v1/merge.proto` | Planned. Provider pages, corrections, generated text and entity references, see [[event_schema_specification]] |
-| `protos/events/v1/events.proto` | Planned. NATS events |
-| `protos/postgres_service/v1/postgres_service.proto` | Planned. PostgreSQL Service |
-| `protos/agent_service/v1/agent_service.proto` | Planned. Agent Service, for every AI call |
+| `protos/shared_proto/v1/merge.proto` | Planned. Provider pages, corrections, generated text and entity references, see [[event_schema_specification]] (ECHO-97) |
+| `protos/events/v1/events.proto` | Planned. NATS events (ECHO-90) |
+| `protos/postgres_service/v1/postgres_service.proto` | Planned. PostgreSQL Service (ECHO-97) |
+| `protos/agent_service/v1/agent_service.proto` | Planned. Agent Service, for every AI call (ECHO-91) |
 
 ## How Services Get the Types
 
@@ -67,7 +67,7 @@ from shared_proto.v1 import anime_pb2
 
 ### Rust crates in this repository
 
-Each Rust crate that needs gRPC types generates them from `protos/` in its own `build.rs` with `tonic-prost-build`, at build time. Since tonic 0.14, code generation lives in `tonic-prost-build` and the runtime codec in `tonic-prost`, and `tonic-build` no longer has `configure()` or `compile_protos()`. Nothing is checked in or downloaded.
+Each Rust crate that needs gRPC types generates them from `protos/` in its own `build.rs` with `tonic-prost-build`, at build time. Since tonic 0.14, code generation lives in `tonic-prost-build` and the runtime codec in `tonic-prost`, and `tonic-build` no longer has `configure()` or `compile_protos()`. Nothing is checked in or downloaded. (ECHO-97)
 
 ```rust
 // crates/postgres_service/build.rs, the crate that serves the gRPC handlers
@@ -88,8 +88,6 @@ A `proto-v*` tag runs `proto-release-assets.yml`, which publishes a GitHub Relea
 
 ## How Drift Is Caught
 
-> **Linear:** ECHO-93
-
 ```
 libs/common/src/common/models/anime.py   source of truth, hand-written
         mirrored by hand to
@@ -105,13 +103,15 @@ Python stubs (checked in)  ·  Rust code (build.rs)  ·  PostgreSQL columns (che
 | Proto style | `buf lint`, configured in `buf.yaml` |
 | Proto and checked-in Python stubs | `proto-stubs-check.yml` regenerates the stubs and fails on any `git diff` |
 | Proto and Rust code | Generated on every build, so it cannot be stale |
-| Proto and the PostgreSQL Service's mapping | The Rust build fails when the proto gains a field or an enum value the save does not handle (see below) |
-| Proto and PostgreSQL columns | `cargo sqlx prepare` fails when a query does not match the migrated schema |
-| `anime.py` enums and PostgreSQL lookup tables | A planned check compares every enum's values with the rows its lookup migration inserts, and fails on a value missing from either side. `sqlx` cannot catch this, since a missing lookup row only fails when a save uses it. |
+| Proto and the PostgreSQL Service's mapping | The Rust build fails when the proto gains a field or an enum value the save does not handle (see below) (ECHO-98) |
+| Proto and PostgreSQL columns | `cargo sqlx prepare` fails when a query does not match the migrated schema (ECHO-93) |
+| `anime.py` enums and PostgreSQL lookup tables | A planned check compares every enum's values with the rows its lookup migration inserts, and fails on a value missing from either side. `sqlx` cannot catch this, since a missing lookup row only fails when a save uses it. (ECHO-93) |
 
-`proto-stubs-check.yml` runs the first three on every PR that touches the protos, the models or the scripts. The lookup check runs on every PR that touches `anime.py` or the migrations.
+`proto-stubs-check.yml` runs the first three on every PR that touches the protos, the models or the scripts. The lookup check runs on every PR that touches `anime.py` or the migrations. (ECHO-93)
 
 ### The PostgreSQL Service's mapping
+
+> **Linear:** ECHO-98
 
 The PostgreSQL Service turns each proto message into columns and rows, and back. `build.rs` regenerates the Rust types from the protos on every build, so the types are never stale, but nothing would notice a mapping that silently skips a new field. The mapping is therefore written so that the compiler notices:
 
@@ -125,6 +125,8 @@ A field change then fails in this order: the contract script, if `anime.proto` w
 ## Changing a Field
 
 ### Messages PostgreSQL stores
+
+> **Linear:** ECHO-98
 
 Protobuf bytes name fields by number, so renumbering a field would make every stored value of that message read into the wrong field, with no error. From the first migration that stores protobuf bytes, the stored messages follow the production rules below, whatever the deployment stage:
 
@@ -155,7 +157,7 @@ Once services run different versions side by side, changes must keep old message
 
 ## Deploy Order
 
-> **Linear:** Deployment project
+> **Linear:** P-ECHO-21
 
 A change that crosses services is deployed in this order: database migrations, then the PostgreSQL Service, then the Enrichment Service, then the workers. Migrations run as a one-off job before the PostgreSQL Service rolls out, and only add (columns, tables, lookup values), so the old and new service both run against the new schema. Removals come in a later release, once nothing reads what is removed.
 
@@ -163,9 +165,11 @@ The order matters because the strict checks fail loudly in one direction only. A
 
 ## Versioning
 
-> **Linear:** Deployment project
+Proto releases are tagged by hand as `proto-v<N>`.
 
-Proto releases are tagged by hand as `proto-v<N>`. `buf breaking` is turned on with the first migration that stores protobuf bytes, for the stored messages, and for every message before the first production release.
+`buf breaking` is turned on for the stored messages with the first migration that stores protobuf bytes. (ECHO-98)
+
+`buf breaking` is turned on for every other message before the first production release. (P-ECHO-21)
 
 ## Related Documentation
 

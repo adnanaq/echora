@@ -25,7 +25,7 @@
 		{"id":"e-front-back","fromNode":"frontend","fromSide":"right","toNode":"backend","toSide":"left","label":"GraphQL or REST"},
 		{"id":"e-back-vector","fromNode":"backend","fromSide":"top","toNode":"vector","toSide":"top","label":"search (gRPC)"},
 		{"id":"e-back-agent","fromNode":"backend","fromSide":"right","toNode":"agent","toSide":"left","label":"natural-language search"},
-		{"id":"e-back-pg","fromNode":"backend","fromSide":"bottom","toNode":"pgservice","toSide":"top","label":"reads, RecordOpen (gRPC)"},
+		{"id":"e-back-pg","fromNode":"backend","fromSide":"bottom","toNode":"pgservice","toSide":"top","label":"reads (gRPC)"},
 		{"id":"e-back-temporal","fromNode":"backend","fromSide":"left","toNode":"temporal","toSide":"right","label":"start refresh on open"},
 		{"id":"e-back-users","fromNode":"backend","fromSide":"right","toNode":"users","toSide":"left","label":"accounts, lists"},
 		{"id":"e-temporal-update","fromNode":"temporal","fromSide":"right","toNode":"update","toSide":"left","label":"tasks"},

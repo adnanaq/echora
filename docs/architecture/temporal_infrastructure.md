@@ -41,9 +41,11 @@ Temporal is the **durable execution engine** that runs the [[update_service|Upda
 
 The Temporal Server keeps workflow state, timers and task queues, and dispatches tasks. It never runs workflow code; the workers do.
 
-- **Image:** `temporalio/server`, 1.31 or later, the first release with task queue priority and fairness generally available. Pin the release current at setup time from the [release page](https://github.com/temporalio/temporal/releases), and use the `temporalio/admin-tools` image of the same version.
-- **Databases:** PostgreSQL, with two databases of its own: `temporal` (executions and history) and `temporal_visibility` (what the UI lists and filters). In development they share the catalogue's cluster. In production they get a cluster of their own, or at least their own connection budget, since Temporal writes and vacuums heavily. No Elasticsearch is needed at this size.
-- **Deployment:** Docker containers in development and staging, Kubernetes in production with the official Helm chart, at a release that ships server 1.31 or later.
+- **Image:** `temporalio/server`, 1.31 or later, the first release with task queue priority and fairness generally available. Pin the release current at setup time from the [release page](https://github.com/temporalio/temporal/releases), and use the `temporalio/admin-tools` image of the same version. (ECHO-95)
+- **Databases:** PostgreSQL, with two databases of its own, `temporal` (executions and history) and `temporal_visibility` (what the UI lists and filters). No Elasticsearch is needed at this size.
+  - In development the CLI dev server keeps its own file database instead, see [[#Local Development]]. (ECHO-95)
+  - In production they get a cluster of their own, or at least their own connection budget, since Temporal writes and vacuums heavily. (P-ECHO-21)
+- **Deployment:** Docker containers in development and staging, Kubernetes in production with the official Helm chart, at a release that ships server 1.31 or later. (P-ECHO-21)
 
 | Port | Purpose |
 |------|---------|
@@ -51,14 +53,16 @@ The Temporal Server keeps workflow state, timers and task queues, and dispatches
 | `8080` | Temporal Web UI |
 
 > [!warning] `temporalio/auto-setup` is deprecated
-> The `auto-setup` image, which created the schema and namespace inside the server container, [no longer receives updates](https://hub.docker.com/r/temporalio/auto-setup) and has no release past 1.29. The schema is now set up by a one-shot `admin-tools` container before the server starts, as Temporal's own [`samples-server` compose files](https://github.com/temporalio/samples-server) do.
+> The `auto-setup` image, which created the schema and namespace inside the server container, [no longer receives updates](https://hub.docker.com/r/temporalio/auto-setup) and has no release past 1.29. The schema is now set up by a one-shot `admin-tools` container before the server starts, as Temporal's own [`samples-server` compose files](https://github.com/temporalio/samples-server) do. (P-ECHO-21)
 
 ### Temporal Worker
 
-The Update Service, a Rust process built with the [Temporal Rust SDK](https://temporal.io/blog/build-durable-applications-rust-temporal-rust-sdk-now-generally-available), registers the workflow and activity implementations and polls the Temporal Server for tasks. Its activities call the Enrichment Service, the Agent Service and the PostgreSQL Service over gRPC with `tonic`.
+The Update Service, a Rust process built with the [Temporal Rust SDK](https://temporal.io/blog/build-durable-applications-rust-temporal-rust-sdk-now-generally-available), registers the workflow and activity implementations and polls the Temporal Server for tasks. Its activities call the Enrichment Service, the Agent Service and the PostgreSQL Service over gRPC with `tonic`. (ECHO-95)
 
-- **Task queues:** `update-service` for workflows and merges, one `provider-<name>` queue per provider, and `agent` for AI activities. See [[update_service#Temporal Worker Configuration|Update Service]].
-- **Scaling:** add worker replicas. Temporal spreads tasks across every worker polling a queue, and the rate limits below stay the same however many workers there are.
+- **Task queues:** see [[update_service#Temporal Worker Configuration|Update Service]].
+  - `update-service` for workflows and merges, and `agent` for AI activities. (ECHO-95)
+  - One `provider-<name>` queue per provider. (ECHO-113)
+- **Scaling:** add worker replicas. Temporal spreads tasks across every worker polling a queue, and the rate limits below stay the same however many workers there are. (ECHO-95)
 
 ---
 
@@ -80,10 +84,10 @@ The Update Service, a Rust process built with the [Temporal Rust SDK](https://te
 
 | Setting | Value |
 |---------|-------|
-| Namespace | `echora` |
-| Retention | 7 days. A week of refreshes is hundreds of thousands of closed workflows, and a longer retention multiplies what the visibility database holds and what its count queries scan; measured at full volume before production |
+| Namespace | `echora` (ECHO-95) |
+| Retention | 7 days. A week of refreshes is hundreds of thousands of closed workflows, and a longer retention multiplies what the visibility database holds and what its count queries scan; measured at full volume before production (ECHO-95) |
 | Archival | Disabled; enable for long-term audit if needed |
-| Search attribute | `RefreshTrigger`, a keyword, created with `temporal operator search-attribute create --namespace echora --name RefreshTrigger --type Keyword`, and with `--search-attribute RefreshTrigger=Keyword` on the dev server |
+| Search attribute | `RefreshTrigger`, a keyword, created with `temporal operator search-attribute create --namespace echora --name RefreshTrigger --type Keyword`, and with `--search-attribute RefreshTrigger=Keyword` on the dev server (ECHO-95) |
 
 ---
 
@@ -166,11 +170,13 @@ temporal server start-dev \
 
 One partition for every queue is fine on a dev server, which runs a single process.
 
+When the services run in containers through `docker/docker-compose.dev.yml`, the same dev server runs there too, from the `temporalio/temporal` image with the same flags and a volume for its file database, so the containerized Update Service worker reaches it inside Compose. The CLI dev server stays for running the worker on the host. Both are for development only.
+
 The Rust SDK's `testing` feature can also start and stop a dev server from tests.
 
 ## Deployed Setup
 
-> **Linear:** Deployment project
+> **Linear:** P-ECHO-21
 
 Staging and production run the server image against PostgreSQL, with the schema set up first:
 
@@ -216,10 +222,12 @@ The password comes from the environment file, never from the compose file. The d
 
 ## Operational Notes
 
-- **Workflow determinism**: workflow code never reads the system clock, draws random numbers or does I/O. It uses the SDK's workflow time and runs every side effect as an activity.
-- **Activity retries and timeouts**: set per activity. Starting values are in [[update_service#Activity timeouts|Update Service]].
-- **Workflow timeouts**: long-running workflows, such as a seed load, continue as new instead of growing one history.
-- **Payload size**: activities pass only IDs, keys and flags, never page bodies or merged records. See [[update_service#Only references pass through Temporal|Update Service]].
+- **Workflow determinism**: workflow code never reads the system clock, draws random numbers or does I/O. It uses the SDK's workflow time and runs every side effect as an activity. (P-ECHO-12)
+- **Activity retries and timeouts**: set per activity. Starting values are in [[update_service#Activity timeouts|Update Service]]. (ECHO-111)
+- **Workflow timeouts**: long-running workflows continue as new instead of growing one history.
+  - The weekly sweep continues as new between pages. (ECHO-117)
+  - The seed load continues as new between batches. (ECHO-120)
+- **Payload size**: activities pass only IDs, keys and flags, never page bodies or merged records. See [[update_service#Only references pass through Temporal|Update Service]]. (ECHO-111)
 
 ---
 
@@ -232,10 +240,12 @@ Use the [Temporal Developer Skill](https://temporal.io/blog/introducing-temporal
 
 The rules these workflows follow, each explained in [[update_service|Update Service]]:
 
-- Other workflows are started through the client in an activity, never as child workflows.
+- Other workflows are started through the client in an activity, never as child workflows. (ECHO-111)
 - An activity waiting on a long gRPC call heartbeats while it waits.
-- A gRPC status a retry cannot fix is returned as a non-retryable failure.
-- A workflow checks for a pending `merge_requested` before it ends.
+  - `refresh_page` heartbeats while `FetchPage` runs. (ECHO-111)
+  - `write_synopsis` heartbeats while `WriteSynopsis` runs. (ECHO-115)
+- A gRPC status a retry cannot fix is returned as a non-retryable failure. (ECHO-111)
+- A workflow checks for a pending `merge_requested` before it ends. (ECHO-111)
 
 ---
 
