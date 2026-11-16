@@ -7,7 +7,6 @@ from enrichment.sources.anidb.anidb_mapper import (
 )
 from enrichment.sources.anidb.anidb_models import (
     AniDBAnime,
-    AniDBCategory,
     AniDBCharacter,
     AniDBCharacterPage,
     AniDBCreator,
@@ -16,6 +15,7 @@ from enrichment.sources.anidb.anidb_models import (
     AniDBRatings,
     AniDBRelatedAnime,
     AniDBSeiyuu,
+    AniDBTag,
 )
 
 CDN_BASE = "https://cdn-eu.anidb.net/images/main"
@@ -131,16 +131,14 @@ def test_anime_from_anidb_without_picture_gives_no_covers() -> None:
     assert _map(picture=None)["images"]["covers"] == []
 
 
-def test_anime_from_anidb_non_hentai_categories_added_to_tags_once() -> None:
+def test_anime_from_anidb_heading_tags_left_out_of_tags() -> None:
     result = _map(
-        tags=["Action"],
-        categories=[
-            AniDBCategory(name="Action", hentai=False),
-            AniDBCategory(name="Pirates", hentai=False),
-            AniDBCategory(name="Ecchi", hentai=True),
-        ],
+        tags=[
+            AniDBTag(id="2607", name="themes"),
+            AniDBTag(id="36", parent_id="2607", name="military"),
+        ]
     )
-    assert result["tags"] == ["Action", "Pirates"]
+    assert result["tags"] == ["military"]
 
 
 def test_anime_from_anidb_other_language_titles_become_titles() -> None:

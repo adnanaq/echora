@@ -1,9 +1,9 @@
 """Unit tests for anidb_models.py — Pydantic source model validation."""
 
 import pytest
+from enrichment.sources.anidb.anidb_heading_tags import HEADING_TAG_PATHS
 from enrichment.sources.anidb.anidb_models import (
     AniDBAnime,
-    AniDBCategory,
     AniDBCharacter,
     AniDBCharacterPage,
     AniDBCreator,
@@ -12,6 +12,7 @@ from enrichment.sources.anidb.anidb_models import (
     AniDBRatings,
     AniDBRelatedAnime,
     AniDBSeiyuu,
+    AniDBTag,
 )
 from pydantic import ValidationError
 
@@ -132,20 +133,29 @@ def test_related_anime_missing_id_raises() -> None:
 
 
 # =============================================================================
-# AniDBCategory
+# AniDBTag
 # =============================================================================
 
 
-def test_category_defaults() -> None:
-    c = AniDBCategory(name="Action")
-    assert c.hentai is False
-    assert c.weight == 0
-    assert c.id is None
+def test_build_path_follows_parent_chain_to_top_of_tree() -> None:
+    tags = [
+        AniDBTag(id="2610", name="setting"),
+        AniDBTag(id="2612", parent_id="2610", name="time"),
+        AniDBTag(id="2626", parent_id="2612", name="future"),
+    ]
+    tags_by_id = {tag.id: tag for tag in tags}
+    assert tags[2].build_path(tags_by_id) == "/setting/time/future"
 
 
-def test_category_hentai_flag() -> None:
-    c = AniDBCategory(name="Ecchi", hentai=True, weight=400)
-    assert c.hentai is True
+def test_build_path_missing_parent_ends_path_at_tag() -> None:
+    tag = AniDBTag(id="36", parent_id="2607", name="military")
+    assert tag.build_path({"36": tag}) == "/military"
+
+
+def test_build_path_parent_loop_stops() -> None:
+    first = AniDBTag(id="1", parent_id="2", name="first")
+    second = AniDBTag(id="2", parent_id="1", name="second")
+    assert first.build_path({"1": first, "2": second}) == "/second/first"
 
 
 # =============================================================================
@@ -209,7 +219,7 @@ def test_anime_instances_independent_lists() -> None:
     """Pydantic v2 must not share mutable list defaults between instances."""
     a = AniDBAnime(id=1)
     b = AniDBAnime(id=2)
-    a.tags.append("action")
+    a.tags.append(AniDBTag(id="1", name="action"))
     assert b.tags == []
 
 
@@ -337,3 +347,51 @@ def test_episode_length_text_parses_to_minutes_or_none(
     raw: str, expected: int | None
 ) -> None:
     assert AniDBEpisode.model_validate({"length": raw}).length == expected
+
+
+def test_content_tag_names_heading_tags_left_out() -> None:
+    anime = AniDBAnime(
+        id=1,
+        tags=[
+            AniDBTag(id="2607", name="themes"),
+            AniDBTag(id="36", parent_id="2607", name="military"),
+            AniDBTag(id="2610", name="setting"),
+            AniDBTag(id="2612", parent_id="2610", name="time"),
+            AniDBTag(id="2626", parent_id="2612", name="future"),
+        ],
+    )
+    assert anime.content_tag_names == ["military", "future"]
+
+
+def test_content_tag_names_parent_tag_not_heading_kept() -> None:
+    anime = AniDBAnime(
+        id=1,
+        tags=[
+            AniDBTag(id="2611", name="elements"),
+            AniDBTag(id="2616", parent_id="2611", name="comedy"),
+            AniDBTag(id="2633", parent_id="2616", name="slapstick"),
+        ],
+    )
+    assert anime.content_tag_names == ["comedy", "slapstick"]
+
+
+def test_content_tag_names_onepiece_drops_every_heading(
+    onepiece_anime: AniDBAnime,
+) -> None:
+    tags_by_id = {tag.id: tag for tag in onepiece_anime.tags}
+    heading_names = {
+        tag.name
+        for tag in onepiece_anime.tags
+        if tag.build_path(tags_by_id) in HEADING_TAG_PATHS
+    }
+    content_names = set(onepiece_anime.content_tag_names)
+    assert {
+        "themes",
+        "setting",
+        "elements",
+        "origin",
+        "maintenance tags",
+    } <= heading_names
+    assert content_names.isdisjoint(heading_names)
+    assert {"military", "action", "comedy", "fantasy", "time travel"} <= content_names
+    assert len(content_names) + len(heading_names) == len(onepiece_anime.tags)

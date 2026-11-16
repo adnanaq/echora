@@ -132,12 +132,7 @@ def anime_from_anidb(anime: AniDBAnime, *, anidb_url: str) -> dict[str, Any]:
     # ── Arrays ───────────────────────────────────────────────────────────────
     sources = [anidb_url]
     synonyms = anime.synonyms
-    tags = list(anime.tags)
-
-    # Append non-hentai category names to tags
-    for cat in anime.categories:
-        if not cat.hentai and cat.name not in tags:
-            tags.append(cat.name)
+    tags = anime.content_tag_names
 
     # ── Objects / Dicts ──────────────────────────────────────────────────────
     aired_from = normalize_to_utc(start_date)
