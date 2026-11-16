@@ -1693,7 +1693,7 @@ All primitives share these safety invariants:
 - Hard caps enforced server-side: `max_hops ≤ 5`, `max_results ≤ 50`, `max_fanout_per_hop ≤ 50`
 - A 2-second statement timeout as the hard backstop, set with `SET LOCAL statement_timeout = '2s'` inside the query's own transaction. A plain `SET` would stay on the pooled connection and limit every later query on it.
 - The primitives read `graph_edge`, the only table holding both directions of every edge, and skip deleted entities.
-- Cycle prevention via `visited` array in all recursive CTEs
+- Cycles are handled by PostgreSQL's own features, never a hand-written visited list: `k_hop` uses a recursive `UNION`, which discards rows that duplicate any earlier row, and `path` uses the `CYCLE` clause ([PostgreSQL 18, Recursive Queries](https://www.postgresql.org/docs/18/queries-with.html#QUERIES-WITH-RECURSIVE))
 
 ### Edge Vocabulary (Allowlist)
 
@@ -1748,37 +1748,26 @@ Multi-hop expansion from a start node with depth and result caps.
 
 ```sql
 -- k_hop(start, edge_types, max_hops, max_results)
-WITH RECURSIVE frontier(node_id, visited, depth) AS (
-  -- Base: direct neighbors
-  SELECT
-    to_id,
-    ARRAY[from_id],
-    1
-  FROM graph_edge
-  WHERE from_id = $1
-    AND from_type = 'anime' AND to_type = 'anime'
-    AND (cardinality($2::text[]) = 0 OR edge_type = ANY($2))
+-- UNION, not UNION ALL: PostgreSQL discards a row that duplicates any earlier row, so each
+-- (node, depth) pair is expanded once. The depth cap ends the recursion, and cycles need
+-- no tracking of their own.
+WITH RECURSIVE reached(node_id, depth) AS (
+  SELECT $1::uuid, 0
 
-  UNION ALL
+  UNION
 
-  -- Recursive: expand each frontier node
-  SELECT
-    ge.to_id,
-    f.visited || ge.from_id,
-    f.depth + 1
-  FROM graph_edge ge
-  JOIN frontier f ON ge.from_id = f.node_id
-  WHERE ge.from_type = 'anime' AND ge.to_type = 'anime'
-    AND NOT (ge.to_id = ANY(f.visited || f.node_id))  -- cycle prevention
-    AND f.depth < $3                                  -- max_hops cap
+  SELECT ge.to_id, r.depth + 1
+  FROM reached r
+  JOIN graph_edge ge ON ge.from_id = r.node_id
+  WHERE r.depth < $3                                  -- max_hops cap
+    AND ge.from_type = 'anime' AND ge.to_type = 'anime'
     AND (cardinality($2::text[]) = 0 OR ge.edge_type = ANY($2))
 )
-SELECT DISTINCT
-  node_id,
-  min(depth) AS min_depth
-FROM frontier
+SELECT node_id, min(depth) AS min_depth
+FROM reached
+WHERE node_id <> $1
 GROUP BY node_id
-ORDER BY min_depth
+ORDER BY min_depth, node_id
 LIMIT $4;  -- max_results cap
 ```
 
@@ -1795,48 +1784,34 @@ Find the shortest explanation chain between two nodes.
 
 ```sql
 -- path(start, end, edge_types, max_hops)
-WITH RECURSIVE paths(node_id, visited, edge_path, depth) AS (
-  -- Base: one-hop neighbors of start
-  SELECT
-    to_id,
-    ARRAY[from_id]::uuid[],
-    ARRAY[edge_type],
-    1
-  FROM graph_edge
-  WHERE from_id = $1
-    AND from_type = 'anime' AND to_type = 'anime'
-    AND (cardinality($3::text[]) = 0 OR edge_type = ANY($3))
+-- The CYCLE clause stops a path that returns to a work it already passed. Its tracking
+-- column is internal to PostgreSQL, so the works and edge types to return are kept in
+-- node_path and edge_path.
+WITH RECURSIVE paths(node_id, node_path, edge_path, depth) AS (
+  SELECT $1::uuid, ARRAY[$1::uuid], ARRAY[]::text[], 0
 
   UNION ALL
 
-  -- Recursive: extend each path one hop
-  SELECT
-    ge.to_id,
-    p.visited || ge.from_id,
-    p.edge_path || ge.edge_type,
-    p.depth + 1
-  FROM graph_edge ge
-  JOIN paths p ON ge.from_id = p.node_id
-  WHERE ge.from_type = 'anime' AND ge.to_type = 'anime'
-    AND NOT (ge.to_id = ANY(p.visited || p.node_id))  -- cycle prevention
-    AND p.depth < $4                                  -- max_hops cap
+  SELECT ge.to_id, p.node_path || ge.to_id, p.edge_path || ge.edge_type, p.depth + 1
+  FROM paths p
+  JOIN graph_edge ge ON ge.from_id = p.node_id
+  WHERE p.depth < $4                                  -- max_hops cap
+    AND p.node_id <> $2                               -- a path ends at the end node
+    AND ge.from_type = 'anime' AND ge.to_type = 'anime'
     AND (cardinality($3::text[]) = 0 OR ge.edge_type = ANY($3))
-)
-SELECT
-  visited || node_id AS full_path,
-  edge_path,
-  depth
+) CYCLE node_id SET is_cycle USING cycle_path
+SELECT node_path, edge_path, depth
 FROM paths
-WHERE node_id = $2   -- terminates at end node
+WHERE node_id = $2 AND NOT is_cycle
 ORDER BY depth
-LIMIT 10;            -- return up to 10 shortest paths
+LIMIT 10;            -- up to 10 shortest paths
 ```
 
 **Returns:** `GraphResult.paths` — ordered node/edge chains from start to end, shortest first.
 
 **Example:** "How is Attack on Titan related to Attack on Titan: Junior High?"
 → `path(start=AoT, end=Junior_High, edge_types=[], max_hops=3)`
-→ `full_path=[AoT_uuid, Junior_High_uuid]`, `edge_path=["SIDE_STORY"]`
+→ `node_path=[AoT_uuid, Junior_High_uuid]`, `edge_path=["SIDE_STORY"]`
 
 ---
 

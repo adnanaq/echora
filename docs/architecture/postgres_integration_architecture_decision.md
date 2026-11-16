@@ -76,7 +76,7 @@ The agent service will follow relations between works, such as sequels, shared s
 
 - **Fixed primitives.** `neighbors` (one hop), `k_hop` (several hops), `path` (how two works connect) and `compare` (what two works share).
 - **Fixed edge types.** The relation types from `AnimeRelationType`, plus derived edges for a shared studio, a shared character and a shared source work.
-- **Hard limits on the server.** At most 5 hops, 50 results and 50 neighbours per hop, a 2-second statement timeout, and a visited list that stops cycles. The timeout is set with `SET LOCAL` inside each query's own transaction, so it never stays on a pooled connection.
+- **Hard limits on the server.** At most 5 hops, 50 results and 50 neighbours per hop, a 2-second statement timeout, and PostgreSQL's own cycle handling, a recursive `UNION` or the `CYCLE` clause, never a hand-written visited list. The timeout is set with `SET LOCAL` inside each query's own transaction, so it never stays on a pooled connection.
 - **Empty is a valid answer.** No path between two works is a result, not an error.
 
 The SQL for each primitive is in [[Database Schema#Graph Query Primitives|Database Schema]].
