@@ -81,7 +81,7 @@ The Update Service, a Rust process built with the [Temporal Rust SDK](https://te
 | Setting | Value |
 |---------|-------|
 | Namespace | `echora` |
-| Retention | 30 days (workflow history kept for debugging) |
+| Retention | 7 days. A week of refreshes is hundreds of thousands of closed workflows, and a longer retention multiplies what the visibility database holds and what its count queries scan; measured at full volume before production |
 | Archival | Disabled; enable for long-term audit if needed |
 | Search attribute | `RefreshTrigger`, a keyword, created with `temporal operator search-attribute create --namespace echora --name RefreshTrigger --type Keyword`, and with `--search-attribute RefreshTrigger=Keyword` on the dev server |
 
@@ -129,8 +129,8 @@ temporal task-queue config set \
   --namespace echora \
   --task-queue provider-anidb \
   --task-queue-type activity \
-  --queue-rps-limit 0.16 \
-  --queue-rps-limit-reason "AniDB pacing"
+  --queue-rps-limit 0.00174 \
+  --queue-rps-limit-reason "AniDB daily budget: 150 a day"
 ```
 
 A limit set this way takes precedence over `max_task_queue_activities_per_second` in the workers' options, so workers deployed with different values cannot fight over it. A per-fairness-key limit (`fairness-key-rps-limit-default`) can also cap the seed load's share of a provider. The limits live in a script beside the deployment, so they are versioned with it.
@@ -139,7 +139,12 @@ A limit set this way takes precedence over `max_task_queue_activities_per_second
 
 > **Linear:** ECHO-95
 
-[Worker Versioning](https://temporal.io/blog/replay-2026-product-announcements) is generally available and replaces the older build-ID versioning. A running workflow stays on the worker version that started it, so a deploy never breaks a workflow in flight, and workflow code needs no patching branches for every change. The Rust SDK's worker options take a deployment-based versioning strategy (`WorkerVersioningStrategy::WorkerDeploymentBased`).
+[Worker Versioning](https://temporal.io/blog/replay-2026-product-announcements) is generally available and replaces the older build-ID versioning. A running workflow stays on the worker version that started it, so a deploy never breaks a workflow in flight, and workflow code needs no patching branches for every change. Each workflow type picks its behaviour by how long it runs:
+
+- **Pinned:** refreshes and `SynopsisWorkflow`, which finish in minutes, so an old worker version drains quickly.
+- **Moves to new code:** `SweepWorkflow`, `SeedReleaseWorkflow` and `BudgetedFetchWorkflow` continue as new between batches and take the new version there. Episode trackers, which live up to two weeks, use auto-upgrade, with patching where their steps change.
+
+A one-day spike with the Rust SDK proves each feature the workflows use before the Update Service is built: the `USE_EXISTING` conflict policy, signal-with-start, schedules, search attributes and visibility counts, priority and fairness keys, and Worker Versioning. The Rust SDK's worker options take a deployment-based versioning strategy (`WorkerVersioningStrategy::WorkerDeploymentBased`).
 
 ---
 

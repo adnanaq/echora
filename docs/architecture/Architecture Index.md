@@ -19,12 +19,12 @@ The starting point for Echora's architecture documents. Each document describes 
 ## How the System Fits Together
 
 - **One owner per store.** The PostgreSQL Service is the only way into PostgreSQL, and the vector service is the only way into Qdrant.
-- **Temporal orchestrates every write.** Workflows call each service over gRPC in order, retry failed steps and keep a history of every run. Services never call each other on their own.
+- **Temporal orchestrates every write.** Workflows call each service over gRPC in order, retry failed steps and keep a history of every run. No service writes through another on its own: every write is a workflow step. Reads go directly, such as the vector service reading an entity back after an event, or the backend calling search.
 - **NATS carries notices after a commit.** The PostgreSQL Service's outbox is the only publisher of catalogue events. Consumers read the current state back over gRPC.
 - **The backend is the frontend's only entry point.** It routes each request to the service that owns the data.
 - **Entities are built from provider pages.** Works, episodes and characters each have their own pages, refresh and events. Pages are stored as received, and each entity is mapped and merged from them, with approved corrections applied on top.
 - **Every field is a column or a table.** PostgreSQL holds no JSONB. The schema is normalized to fifth normal form.
-- **IDs are UUIDv7, assigned once at the first merge,** and never derived from provider URLs.
+- **IDs are UUIDv7, assigned once when an entity is first created,** and never derived from provider URLs.
 - **Echora writes its own synopses.** Provider synopses are never shown. The Agent Service writes each work's synopsis, and until it exists works show none.
 
 ---
@@ -98,7 +98,7 @@ The review page moves to PostgreSQL once the approval queue is built. It then se
 |-----------|---------|-------|
 | PostgreSQL 18 | Catalogue and Temporal databases | One cluster with the `echora`, `temporal` and `temporal_visibility` databases; the users service gets its own |
 | Qdrant | Vector database | `anime_database` collection, owned by the vector service |
-| NATS JetStream 2.14 | Event bus | `ANIME_EVENTS`, `ANIME_DLQ`, `NOTIFICATION_EVENTS` |
+| NATS JetStream 2.15 | Event bus | `ANIME_EVENTS`, `ANIME_DLQ`, `NOTIFICATION_EVENTS` |
 | Temporal 1.31+ | Durable workflows | Refreshes, episode timers, sweeps, seed loads |
 | Redis | HTTP and result cache | Databases 0-15 for services, 16-31 for tests |
 
@@ -131,9 +131,11 @@ Frontend → Backend
 ### Opening a page
 ```
 Frontend → Backend → PostgreSQL Service (RecordOpen)
-  records the open and returns the stored work, episode or character at once
-  if not refreshed for REFRESH_AFTER_DAYS:
-    Backend starts its refresh workflow (USE_EXISTING, priority 1)
+  records the open and says whether the entity is due
+Backend → PostgreSQL Service (GetAnime, GetEpisode or GetCharacter)
+  returns the stored entity at once
+  if due (next_refresh_at has passed), and the visitor is not a bot:
+    Backend starts its refresh workflow (USE_EXISTING, priority 1), under a cap per minute
     the next view shows the refreshed data
 ```
 

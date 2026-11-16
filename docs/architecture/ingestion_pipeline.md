@@ -27,7 +27,7 @@ Ingestion fills the catalogue from a seed release, the offline anime database. I
 
 There is no separate ingestion service and no separate enrichment path. A first enrichment is a refresh in which every page is due, so ingestion and updates share one code path, one set of provider rate limits and one history in Temporal. See [[update_service|Update Service]].
 
-Seed cleaning is temporary. Once discovery finds new works and pages directly from providers, the seed and `libs/seed_cleaning` are removed, and discovery feeds the same load step.
+Seed cleaning is temporary. Once discovery finds new works and pages directly from providers, the seed and `libs/seed_cleaning` are removed, and discovery feeds the same load step. `libs/work_matching`, which decides which pages belong to one work, stays: discovery uses the same rules.
 
 ```mermaid
 flowchart TD
@@ -90,20 +90,23 @@ The details of each step are in the `libs/seed_cleaning` and `libs/work_matching
 
 > **Linear:** ECHO-107, ECHO-120
 
-A `SeedReleaseWorkflow`, with the workflow ID `seed-release`, loads one cleaned seed file. Its conflict policy is `FAIL`, so a second load is refused while one runs. The workflow receives only the file's path, never its contents, since a seed of tens of thousands of works is far beyond Temporal's 2 MB payload limit. An activity reads the file a page of lines at a time, and the worker and `clean_seed.py` share the folder it sits in.
+A `SeedReleaseWorkflow`, with the workflow ID `seed-release`, loads one cleaned seed file. Its conflict policy is `FAIL`, so a second load is refused while one runs. The workflow receives only the file's path and its hash, never its contents, since a seed of tens of thousands of works is far beyond Temporal's 2 MB payload limit. Every activity that reads the file checks the hash and refuses a file that changed during the load. The worker and `clean_seed.py` share the folder it sits in.
 
-For each page of lines:
+**A release only adds and moves.** A work or a page missing from a new release is kept as it is: the seed is one source among several, and a page is found to be gone only when a refresh hears so from its provider (see [[update_service#How a Refresh Runs|Update Service]]). A release adds new works and pages, and moves a page when seed cleaning and its review answers place it in a different work.
 
-1. **Find what is already stored.** `PostgresService.FindEntitiesByPages` returns which of the lines' page keys already belong to a work, and in which role.
-2. **Decide per line:**
-   - **Every source page belongs to one stored work** → that work. If its partial-source pages differ, they are relinked.
-   - **No source page is stored** → a new work. The activity gives it a UUIDv7, and `CreateWorks` creates it with its page links.
-   - **Source pages belong to different stored works, or a stored page moved** → `RelinkPages` moves the pages, as seed cleaning and its review answers placed them. A work left with no source page is removed with `DeleteWork`.
-3. **Refresh what changed.** The workflow starts a `RefreshAnimeWorkflow` for each new work through the `start_workflows` activity, and sends `merge_requested` to each relinked one. See [[update_service#Starting other workflows|Update Service]].
+The load runs in two passes, so the order of lines in the file cannot change the result:
+
+1. **Plan.** One activity reads the whole file and `PostgresService.FindEntitiesByPages` for every page key, which returns each stored page's work, its role and the work's version. It decides per line and writes the plan to a file beside the cleaned seed. A plan for tens of thousands of works is far past Temporal's 2 MB payload limit, so only the plan's path and hash pass through Temporal, and the apply pass checks the hash:
+   - **Every source page belongs to one stored work** → that work. Partial-source pages the line adds are linked to it.
+   - **No source page is stored** → a new work, with a UUIDv7 and its page links.
+   - **Source pages belong to different stored works, or a stored page moved** → a move to the work seed cleaning placed it in. A work left with no source page by the moves was merged into another, and is deleted with `merged_into_anime_id` and the version from the plan.
+   - **A page the line no longer lists** stays with its work.
+2. **Apply, in a fixed order.** `CreateWorks` creates the new works with `merged_at` empty, their pages linked before they are fetched, hidden from reads until their first merge. `RelinkPages` then applies the moves in page-key order, so no page is ever linked as a source of two works at once. `DeleteWork` removes the works the moves emptied.
+3. **Refresh.** The workflow starts a `RefreshAnimeWorkflow` through `start_workflows` for every work that is new, gained or lost a page, **or is still unmerged**. The last case catches works an earlier, interrupted attempt created without starting their refresh. See [[update_service#Starting other workflows|Update Service]].
 
 Unchanged works are left alone. The weekly sweep keeps them current.
 
-- **Bounded.** Before each page of lines, the workflow waits until fewer than `SWEEP_MAX_PENDING_STARTS` (500) of its refreshes are still running, counted by the search attribute `RefreshTrigger = 'seed'`. It continues as new between pages of lines, so its own history stays small.
+- **Bounded.** Before each batch of refresh starts, the workflow waits until fewer than `SWEEP_MAX_PENDING_STARTS` (500) of its refreshes are still running, counted by the search attribute `RefreshTrigger = 'seed'`. It continues as new between batches, so its own history stays small.
 - **Shares the providers fairly.** Its refreshes run with priority 3 and the fairness key `seed`, so works users open still go first, and the weekly sweep keeps its share of every provider. See [[update_service#Provider rate limits|Update Service]].
 - **Safe to run again.** `CreateWorks` skips a work an earlier attempt already created, and every other write is safe to repeat, so a retried or repeated load changes nothing the second time.
 

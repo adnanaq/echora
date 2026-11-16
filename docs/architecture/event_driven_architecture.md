@@ -71,7 +71,7 @@ flowchart TD
 
 ### Reads after an event
 
-Each consumer pulls a notice, reads the current state back from the PostgreSQL Service and writes that. A delete is applied without reading back. A notice that fails five times becomes a dead-letter advisory.
+Each consumer pulls a notice, reads the current state back from the PostgreSQL Service and writes that. A delete is applied only when the read-back confirms the entity is gone. A notice that fails five times becomes a dead-letter advisory.
 
 ```mermaid
 flowchart TD
@@ -116,7 +116,15 @@ NATS JetStream carries the catalogue events. The reasons:
 
 Catalogue events are small notices kept for days, so the long retention and replay of a log such as Kafka buy nothing here. Kafka is worth adding only if a long-kept, replayable stream of every user action is wanted later, for recommendations or analytics, and then beside NATS, not instead of it.
 
-The server is pinned to the [2.14](https://nats.io/blog/nats-server-2.14-release/) line. Nothing here needs 2.14's new features, such as recurring message schedules and fast batch publishing, but it is the current line.
+The server is pinned to the [2.15](https://docs.nats.io/release-notes/upgrade-to-2.15) line, the latest. NATS ships a minor release about every six months and patches only the latest line and the one before it ([supported versions](https://docs.nats.io/release-notes/)), so the pin moves when 2.16 ships. Before that move, any permissions on `$JS.ACK.>` or `$JS.FC.>` subjects must change to the new format that 2.16 turns on by default.
+
+What newer releases offer, and what the design takes from them:
+
+- **Publishing one notice at a time, asynchronously.** NATS's [publishing guide](https://docs.nats.io/learn/jetstream/advanced-publishing) recommends one-at-a-time or async publishing unless messages must land together or throughput demands more. The relay publishes a batch asynchronously and waits for every confirmation. Atomic batches (2.12) are for messages that only make sense together, and each notice stands alone. Fast batch publishing (2.14) is for throughput far above ours. NATS's guide also notes that Rust reaches atomic batches through the Synadia Orbit libraries, not `async-nats` itself.
+- **Message schedules (2.12, recurring from 2.14)** are not used. Temporal already runs episode tracking and the sweep, with retries and history.
+- **Consumer reset (2.14)** moves a consumer back to an earlier sequence without recreating it (`reset_consumer` in `nats-py` 2.16). It can replay up to the 7 days the stream keeps. A full re-index reads PostgreSQL instead.
+- **Strict JetStream API (2.12)** rejects requests with unknown fields, so the clients stay on current releases: `async-nats` and `nats-py` 2.16 or later.
+- **A default limit of 1,000 consumers per stream (2.15)** is far above the few consumers each stream has.
 
 ## Thin Events
 
@@ -126,7 +134,7 @@ A consumer reads the current state back from the PostgreSQL Service over gRPC an
 
 - **Repeated deliveries are harmless.** Reading and writing the current state twice gives the same result.
 - **Order does not matter.** A late notice for version 4 still reads version 6, the current one.
-- **Skipped work is cheap to detect.** The vector service stores the version it indexed in each Qdrant point, and skips a notice whose version is not newer than that.
+- **Stale writes are refused.** The vector service stores the version it indexed in each Qdrant point, and every write is conditional on the stored version being older, so a late or slow notice cannot overwrite a newer one.
 - **Events stay small.** An entity's merged record never travels through NATS, and the event schema does not repeat the data model.
 
 The `version` is a counter on each work, episode and character that its save increases in the transaction that changes it.
@@ -135,7 +143,7 @@ The `version` is a counter on each work, episode and character that its save inc
 
 Events describe works, episodes and characters, never provider pages. Storing a page sends nothing. Only a save sends an event, after a merge.
 
-- **`created`** means the entity got its first row in PostgreSQL. A new anime listed by five providers never seen before is fetched page by page, merged once and saved once, so it sends one `anime.created`, then one `episode.created` and one `character.created` for each episode and character it lists.
+- **`created`** means the entity's first merge was saved. A work the seed load created has a row before that, with `merged_at` empty, and sends nothing until its first merge. A new anime listed by five providers never seen before is fetched page by page, merged once and saved once, so it sends one `anime.created`, then one `episode.created` and one `character.created` for each episode and character it lists.
 - **`updated`** means an existing entity was saved with changes, such as a refreshed page changing a field or a new provider page joining it.
 - **`deleted`** means the entity was removed, such as a work merged into another or a character no work links to any more. The row stays with `deleted_at` set, and the version increases once more.
 - A save that changes nothing sends no event.
@@ -157,19 +165,24 @@ Consumers that only index the current state, such as the vector service, handle 
 `SaveWork`, `SaveEpisode` and `SaveCharacter` store the merged entity in its tables (see [[Database Schema]]) and write its outbox rows, all in one transaction.
 
 - **Version check.** The save writes only if the entity's version still equals `expected_version` from its load. Otherwise it returns `ABORTED`, and the merge activity loads, merges and saves again.
-- **Change check.** The entity's `merged_record_hash` tells whether anything changed. When nothing did, the save writes nothing and sends nothing, and only records that the refresh finished.
+- **Change check.** The entity's `merged_record_hash` tells whether anything changed. When nothing did, the save writes nothing and sends nothing. The refresh's last call, `RecordRefresh`, records that it finished either way.
 
 ```rust
-// crates/postgres_db: save_work, for an existing work
+// crates/postgres_db: save_work
 
-/// Subject of the notice for a changed work; the vector service consumes `anime.*`.
+/// Subject of the notice for a work's first merge; the vector service consumes `anime.*`.
+const ANIME_CREATED_SUBJECT: &str = "anime.created";
+/// Subject of the notice for a later change to a work.
 const ANIME_UPDATED_SUBJECT: &str = "anime.updated";
+/// Format of `merged_record_hash`. Raising it makes every entity's next save count as a change.
+const HASH_FORMAT: i16 = 1;
 
 let mut transaction = pool.begin().await?;
-let record_hash = hash_merged_record(&merged_anime);
+// Canonical hash of everything the save writes: the work and its episode and character lists
+let record_hash = hash_merged_record(&merged_anime, &episodes, &characters);
 
 let stored_work = sqlx::query!(
-    "SELECT version, merged_record_hash FROM anime WHERE id = $1 FOR UPDATE",
+    "SELECT version, merged_record_hash, merged_at FROM anime WHERE id = $1 FOR UPDATE",
     anime_id,
 )
 .fetch_one(&mut *transaction)
@@ -179,23 +192,25 @@ if stored_work.version != expected_version {
     return Err(SaveError::version_conflict(anime_id, stored_work.version));
 }
 
-if stored_work.merged_record_hash.as_deref() == Some(record_hash.as_str()) {
-    sqlx::query!("UPDATE anime SET refreshed_at = now() WHERE id = $1", anime_id)
-        .execute(&mut *transaction)
-        .await?;
-} else {
+if stored_work.merged_record_hash.as_deref() != Some(record_hash.as_str()) {
     let version = expected_version + 1;
+    let subject = if stored_work.merged_at.is_none() {
+        ANIME_CREATED_SUBJECT
+    } else {
+        ANIME_UPDATED_SUBJECT
+    };
     write_work_tables(&mut transaction, anime_id, &merged_anime).await?;
     sqlx::query!(
-        "UPDATE anime SET version = $2, merged_record_hash = $3, refreshed_at = now() WHERE id = $1",
-        anime_id, version, record_hash,
+        "UPDATE anime SET version = $2, merged_record_hash = $3, hash_format = $4,
+                          merged_at = coalesce(merged_at, now()) WHERE id = $1",
+        anime_id, version, record_hash, HASH_FORMAT,
     )
     .execute(&mut *transaction)
     .await?;
     let notice = CatalogueEvent { entity_id: anime_id.to_string(), version, ..Default::default() };
     sqlx::query!(
         "INSERT INTO outbox (subject, entity_id, version, payload) VALUES ($1, $2, $3, $4)",
-        ANIME_UPDATED_SUBJECT, anime_id, version, notice.encode_to_vec(),
+        subject, anime_id, version, notice.encode_to_vec(),
     )
     .execute(&mut *transaction)
     .await?;
@@ -219,7 +234,7 @@ fn to_status(error: &SaveError) -> Status {
 }
 ```
 
-`write_work_tables` upserts the work's columns and detail rows, sets `updated_at`, creates the episodes and characters the merge gave new IDs, and resolves pending relations. It sorts its keys and writes the shared tables (`genre`, `tag`, `company`, `character`, `graph_edge` and the others) in a fixed order, so two refreshes saving at once take their locks in the same order and cannot deadlock. A new work is inserted with version 1 the same way, and its outbox row is `anime.created`. An episode saved as aired for the first time, or a work whose status changed, adds a notification row in the same transaction.
+`write_work_tables` upserts the work's columns and detail rows, sets `updated_at`, creates the episodes and characters the merge gave new IDs, and resolves pending relations. It sorts its keys and writes the shared tables (`genre`, `tag`, `company`, `character`, `graph_edge` and the others) in a fixed order, so two refreshes saving at once take their locks in the same order and cannot deadlock. A work the seed load created is merged for the first time the same way: `merged_at` is still empty, so the save sets it and its outbox row is `anime.created`. An episode saved as aired for the first time, or a work whose status changed, adds a notification row in the same transaction.
 
 ### 2. The outbox relay publishes
 
@@ -245,6 +260,9 @@ const RELAY_CLAIM_SECONDS: f64 = 30.0;
 const RELAY_IDLE_WAIT: Duration = Duration::from_secs(1);
 /// Wait after a failed batch, so a PostgreSQL or NATS outage is not retried in a tight loop.
 const RELAY_FAILURE_WAIT: Duration = Duration::from_secs(5);
+/// Failed sends after which a row is parked: taken out of the queue and alerted on, so a row
+/// that can never be sent, such as one whose subject no stream holds, cannot block the rest.
+const RELAY_MAX_FAILURES: i32 = 10;
 
 /// Publish outbox rows to NATS until the service stops.
 ///
@@ -277,12 +295,13 @@ async fn relay_batch(pool: &PgPool, jetstream: &jetstream::Context) -> Result<us
         UPDATE outbox SET claimed_until = now() + make_interval(secs => $2)
         WHERE id IN (
             SELECT id FROM outbox
-            WHERE published_at IS NULL AND (claimed_until IS NULL OR claimed_until < now())
+            WHERE published_at IS NULL AND parked_at IS NULL
+              AND (claimed_until IS NULL OR claimed_until < now())
             ORDER BY id
             LIMIT $1
             FOR UPDATE SKIP LOCKED
         )
-        RETURNING id, subject, payload
+        RETURNING id, subject, payload, traceparent
         "#,
         RELAY_BATCH_SIZE,
         RELAY_CLAIM_SECONDS,
@@ -292,40 +311,67 @@ async fn relay_batch(pool: &PgPool, jetstream: &jetstream::Context) -> Result<us
     let claimed_count = claimed_rows.len();
 
     // 2. Publish outside any transaction, then wait for every confirmation
+    // A failed send affects only its own row, never the rest of the batch.
     let mut confirmations = Vec::with_capacity(claimed_count);
+    let mut failed_ids = Vec::new();
     for row in claimed_rows {
         let mut headers = HeaderMap::new();
         headers.insert(header::NATS_MESSAGE_ID, row.id.to_string().as_str());
         headers.insert(header::NATS_EXPECTED_STREAM, stream_for(&row.subject));
-        let confirmation = jetstream
-            .publish_with_headers(row.subject, headers, row.payload.into())
-            .await?;
-        confirmations.push((row.id, confirmation));
+        headers.insert("traceparent", row.traceparent.as_str());
+        match jetstream.publish_with_headers(row.subject, headers, row.payload.into()).await {
+            Ok(confirmation) => confirmations.push((row.id, confirmation)),
+            Err(error) => {
+                log_publish_failure(row.id, &error);
+                failed_ids.push(row.id);
+            }
+        }
     }
     let mut published_ids = Vec::with_capacity(claimed_count);
     for (outbox_id, confirmation) in confirmations {
         match confirmation.await {
             Ok(_) => published_ids.push(outbox_id),
-            Err(error) => event!(
-                name: "outbox.publish.failed",
-                Level::WARN,
-                outbox.id = outbox_id,
-                error.message = %error,
-                "outbox row {{outbox.id}} was not confirmed: {{error.message}}",
-            ),
+            Err(error) => {
+                log_publish_failure(outbox_id, &error);
+                failed_ids.push(outbox_id);
+            }
         }
     }
 
-    // 3. Mark, in one short statement
+    // 3. Mark, in one short statement each: published rows, and failed rows,
+    //    which are parked after RELAY_MAX_FAILURES so they never block the rows behind them
     sqlx::query!("UPDATE outbox SET published_at = now() WHERE id = ANY($1)", &published_ids)
         .execute(pool)
         .await?;
+    sqlx::query!(
+        "UPDATE outbox SET publish_failures = publish_failures + 1,
+                parked_at = CASE WHEN publish_failures + 1 >= $2 THEN now() END
+         WHERE id = ANY($1)",
+        &failed_ids,
+        RELAY_MAX_FAILURES,
+    )
+    .execute(pool)
+    .await?;
     Ok(claimed_count)
+}
+
+/// Log one outbox row that NATS did not take or did not confirm.
+fn log_publish_failure(outbox_id: Uuid, error: &dyn std::error::Error) {
+    event!(
+        name: "outbox.publish.failed",
+        Level::WARN,
+        outbox.id = %outbox_id,
+        error.message = %error,
+        "outbox row {{outbox.id}} was not published: {{error.message}}",
+    );
 }
 ```
 
-- **The outbox row ID is the `Nats-Msg-Id`.** If the relay stops after publishing but before marking a row, the row is published again once its claim runs out, and JetStream drops the copy within the dupe window.
+- **The outbox row ID is the `Nats-Msg-Id`.** If the relay stops after publishing but before marking a row, the row is published again once its claim runs out, and JetStream drops the copy within the dupe window. The ID is a UUIDv7, never a sequence number, so a database restored to an earlier moment cannot reuse an ID that JetStream would drop as a duplicate.
 - **`Nats-Expected-Stream`** makes a publish fail when the subject is not bound to the expected stream, instead of losing the message.
+- **Failures stay with their row.** A row whose send fails counts one more failure, and after `RELAY_MAX_FAILURES` it is parked and raises an alert, so a row that can never be sent never blocks the rows behind it. Rows already sent in the same batch are still marked.
+- **The relay restarts.** The PostgreSQL Service supervises the relay task and starts it again if it ever exits, panic included, so publishing never stops silently.
+- **Traces continue.** Each outbox row keeps the `traceparent` of the save that wrote it, and the relay sends it as a NATS header, so one trace runs from the save to the vector service's write.
 - **Order.** Rows are published in `id` order within a batch, but a retried row can arrive after newer ones. Consumers do not rely on order, since every event carries a version.
 - Published rows older than the stream's retention are deleted by a daily job.
 
@@ -339,8 +385,8 @@ The vector service runs one pull consumer per entity kind and reads the current 
 # Vector Service (Python)
 async def consume_anime_events(js: JetStreamContext, postgres: PostgresServiceStub) -> None:
     """Index works in Qdrant from anime.created, anime.updated and anime.deleted notices."""
-    subscription = await js.pull_subscribe(
-        "anime.*", durable="vector-anime-consumer", stream="ANIME_EVENTS"
+    subscription = await js.pull_subscribe_bind(
+        durable="vector-anime-consumer", stream="ANIME_EVENTS"
     )
     while True:
         try:
@@ -356,6 +402,9 @@ async def index_anime_notice(message: Msg, postgres: PostgresServiceStub) -> Non
     try:
         await handle_anime_notice(message, postgres)
         await message.ack()
+    except DecodeError as error:
+        logger.error(f"[{message.subject}] Unreadable notice, terminating: {error}")
+        await message.term()
     except Exception as error:
         logger.error(f"[{message.subject}] Failed to index notice: {error}")
         await message.nak(delay=retry_delay_seconds(message.metadata.num_delivered))
@@ -365,15 +414,24 @@ async def index_anime_notice(message: Msg, postgres: PostgresServiceStub) -> Non
 
 `handle_anime_notice` reads the subject first:
 
-- `anime.created` and `anime.updated` read the work with `GetAnime`, then upsert its point when the stored version is older.
-- `anime.deleted` deletes the work's point when its stored version is older than the notice, without reading the work back.
+- `anime.created` and `anime.updated` read the work with `GetAnime`, which returns the work with its version, and write its point.
+- `anime.deleted` reads the work back too, and turns the point into a tombstone only when `GetAnime` answers `NOT_FOUND`, which it does for a deleted or never-merged work. A forged or mistaken delete notice therefore changes nothing. Any notice whose read-back answers `NOT_FOUND` makes the tombstone the same way, with the notice's version.
 
 The episode and character consumers work the same way with `GetEpisode` and `GetCharacter`.
 
 - **Progress.** Embedding a work's text and images can take longer than a delivery's deadline. `report_progress` calls `message.in_progress()` every 30 seconds, which tells JetStream the work is still running and restarts the deadline.
+- **Binding, not creating.** `pull_subscribe_bind` attaches to the consumer the service created at startup and fails if it is missing. `pull_subscribe` would quietly create one with default settings, without the backoff.
 - **Failures.** A failed notice is nak'd with a growing delay. A bare `nak()` would redeliver it at once and use up `max_deliver` in seconds.
+- **Notices that can never succeed** are terminated, not retried. A payload that is not a `CatalogueEvent` will fail on every delivery, so `term()` stops its delivery at once and JetStream sends a terminated advisory, which `ANIME_DLQ` keeps beside the max-delivery ones. NATS [recommends](https://docs.nats.io/learn/jetstream/acknowledgment) `term()` only when no later attempt can succeed, and a delayed nak otherwise.
 - **Batch size.** A fetch takes as many notices as the service embeds at once (`EMBED_MAX_CONCURRENCY`), so no fetched notice waits in memory while its deadline runs.
+- **Indexing apart from search.** The vector service runs as two roles of one image: search replicas, which run no consumers, and indexing replicas, which run the consumers and the comparison job. A seed load's flood of notices then never competes with searches for the models.
 - **Version in Qdrant.** Each point's payload stores the version it was indexed from. The payload has no version today, so it is added with the consumers.
+- **Conditional writes.** Every write uses Qdrant's [conditional update](https://qdrant.tech/documentation/manage-data/points/) (`update_filter`, from Qdrant 1.16; this repository runs 1.19.1): it applies only when the stored point's version is older than the one being written. Two replicas handling one entity in any order, or a slow embed finishing after a newer one, therefore end at the newest version.
+- **Tombstones.** A delete does not remove the point. It removes the point's vectors, so search can no longer find it, and keeps a payload with `deleted` and the version. A slow update that read the entity before it was deleted then finds the tombstone's newer version and is refused, where it would otherwise insert the point again. Tombstones older than 8 days, longer than the stream keeps any notice, are purged by the comparison job. That Qdrant keeps a point with no vectors is confirmed when the consumers are built.
+- **Reads skip tombstones.** Vector search cannot return a point without vectors, but `scroll` and `retrieve` in `libs/qdrant_db` read payloads and would. Every read therefore adds `must_not: deleted = true`, and `deleted` gets a payload index.
+- **The three write paths are tested separately.** A conditional write on a missing point inserts it, which is what `created` needs. On an existing point with an older version, it updates. On a tombstone with a newer version, it is refused.
+- **Embedding only what changed.** Most saves change only statistics, such as member counts, which the embedded text does not contain. Each point stores two hashes, each prefixed with the version of the model and of the text or image extraction that produced it: `text_embed_hash` over the embedded text, and `image_embed_hash` over the image URLs. The consumer runs BGE-M3 only when the text hash differs, downloads images and runs OpenCLIP only when the image hash differs, and otherwise updates the payload alone. A model or extraction upgrade changes the prefix, so every point is re-embedded on its next write without a separate migration.
+- **The comparison job.** A scheduled job in the vector service pages through `ListEntityVersions` and Qdrant side by side. It indexes every entity whose point is missing or holds a different version, older or newer, and tombstones every point whose entity is gone. It is how a missed delete, a dead-lettered notice or a database restore is repaired, and the same job rebuilds Qdrant from scratch.
 
 ## Subjects
 
@@ -431,7 +489,7 @@ Stream: ANIME_EVENTS
   Subjects:      anime.>, episode.>, character.>
   Storage:       File
   Retention:     7 days
-  Dupe window:   24h   # longer than any relay outage the outbox should recover from
+  Dupe window:   10m   # longer than a claim, so a relay retry is dropped; see below
 
 Consumer: vector-anime-consumer
   Filter:        anime.*
@@ -450,6 +508,7 @@ Consumer: vector-character-consumer
 
 Stream: ANIME_DLQ
   Subjects:      $JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.ANIME_EVENTS.*
+                 $JS.EVENT.ADVISORY.CONSUMER.MSG_TERMINATED.ANIME_EVENTS.*
   Storage:       File
   Retention:     30 days
 
@@ -466,7 +525,9 @@ Consumer: notification-consumer   (planned, Notification Service)
   Backoff:       [30s, 2m, 5m]
 ```
 
-The PostgreSQL Service creates the streams at startup, and updates their settings when they differ. Each consumer service creates its own durable consumers at startup with `nats-py`'s `add_consumer`. JetStream accepts a create whose settings match the existing consumer, so this is safe on every start.
+**Dupe window.** JetStream keeps every `Nats-Msg-Id` of the window in memory, at about 140 bytes each, and [does not reliably return that memory](https://www.synadia.com/insights/checks/nats-large-deduplication-window.md). A seed load can send close to a million notices in a day, so a 24-hour window would hold over 100 MB for nothing. The window only needs to outlast the relay's own retry: a row is published again no sooner than its 30-second claim runs out, so 10 minutes covers a relay restart with room to spare. A copy that arrives after a longer outage is harmless, since consumers skip a notice whose version they already indexed.
+
+The PostgreSQL Service creates the streams at startup, and updates their settings when they differ. Neither service waits for NATS to start: the PostgreSQL Service serves reads and saves without it, since rows wait in the outbox, and the vector service serves search without it. Both retry stream and consumer setup in the background until NATS answers. Each consumer service creates its own durable consumers at startup with `nats-py`'s `add_consumer`. JetStream accepts a create whose settings match the existing consumer, so this is safe on every start.
 
 ## Error Handling
 
@@ -494,7 +555,7 @@ Together the deliveries span about an hour, enough to ride out a restart of Qdra
 
 > **Linear:** ECHO-121
 
-After `max_deliver` attempts, the NATS server publishes an advisory to `$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.ANIME_EVENTS.<consumer>`, and the `ANIME_DLQ` stream keeps it. No application code copies the failed message anywhere.
+After `max_deliver` attempts, the NATS server publishes an advisory to `$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.ANIME_EVENTS.<consumer>`. A notice a consumer terminates gets one on `$JS.EVENT.ADVISORY.CONSUMER.MSG_TERMINATED.ANIME_EVENTS.<consumer>`. JetStream has [no built-in dead-letter queue](https://docs.nats.io/learn/monitoring/advisories-and-events), and an advisory nobody is subscribed to is lost, so the `ANIME_DLQ` stream captures both. No application code copies the failed message anywhere.
 
 - The original message stays in `ANIME_EVENTS` at its sequence number, which the advisory names in `stream_seq`.
 - `ANIME_DLQ` keeps advisories 30 days, longer than the 7 days of `ANIME_EVENTS`, so the advisory outlives the message. Inspect a failure within 7 days, or rely on the next notice for the same entity.
@@ -511,16 +572,23 @@ The `dlq-alert-consumer` pulls from `ANIME_DLQ` and sends an alert with the cons
 
 > **Linear:** ECHO-122
 
+NATS serves its numbers as JSON on the monitoring port, which Prometheus cannot read. [`prometheus-nats-exporter`](https://docs.nats.io/learn/monitoring/prometheus-and-dashboards) runs beside each server, reads port 8222 and serves Prometheus metrics on port 7777, such as `nats_consumer_num_pending` for consumer lag and `nats_consumer_num_redelivered`. Prometheus scrapes it like the other services, and Grafana charts it.
+
 ```bash
-curl http://localhost:8222/varz                               # server
-curl http://localhost:8222/jsz                                # JetStream
+prometheus-nats-exporter -varz -jsz=all -prefix nats -port 7777 http://localhost:8222
+
+curl http://localhost:8222/jsz                                # JetStream, as JSON
 docker exec echora-nats-box nats stream info ANIME_EVENTS     # stream
 docker exec echora-nats-box nats consumer report ANIME_EVENTS # consumer lag
 ```
 
 | Metric | Alert when |
 |--------|-----------|
-| Consumer lag | Over 1,000 pending messages |
+| Failed workflow runs (Temporal metrics) | Any refresh, tracker or sweep that fails |
+| Wait in a provider queue | Tasks waiting longer than a day, a sign of a ban or a rate set too low |
+| A provider marked blocked | Any |
+| Parked outbox rows | Any |
+| Age of the oldest pending notice | Over an hour. A count of pending messages rises on every sweep and says nothing; age shows a consumer falling behind |
 | Unpublished outbox rows | Oldest row older than 5 minutes |
 | Dead-letter advisories | Any |
 | Ack time | Over 5 s |
@@ -530,7 +598,7 @@ docker exec echora-nats-box nats consumer report ANIME_EVENTS # consumer lag
 ```yaml
 # docker/docker-compose.dev.yml addition
 nats:
-  image: nats:2.14
+  image: nats:2.15
   container_name: echora-nats
   command: ["-js", "-m", "8222", "-sd", "/data"]
   ports:
@@ -540,7 +608,7 @@ nats:
     - nats-data:/data
 
 nats-box:
-  image: natsio/nats-box:latest
+  image: natsio/nats-box:0.20.2
   container_name: echora-nats-box
   command: ["tail", "-f", "/dev/null"]
   depends_on:
@@ -549,7 +617,7 @@ nats-box:
 
 ```bash
 docker compose -f docker/docker-compose.dev.yml up -d nats nats-box
-curl http://localhost:8222/healthz
+curl "http://localhost:8222/healthz?js-enabled-only=true"   # also checks JetStream
 docker exec -it echora-nats-box nats stream ls
 docker exec -it echora-nats-box nats sub "anime.>"   # watch notices as they are sent
 ```
@@ -560,8 +628,11 @@ docker exec -it echora-nats-box nats sub "anime.>"   # watch notices as they are
 
 > [!warning] Checklist
 > - [ ] TLS on NATS connections
+> - [ ] One NATS account per service; only the PostgreSQL Service may publish `anime.>`, `episode.>`, `character.>` and `notification.>`
+> - [ ] Mutual TLS between services, with each server's interceptor allowing each caller only its methods (see [[postgres_integration_architecture_decision#Security|PostgreSQL Service]])
 > - [ ] A NATS cluster of 3 nodes, with streams replicated 3 times
-> - [ ] `ANIME_EVENTS` dupe window set to 24h
+> - [ ] `ANIME_EVENTS` dupe window set to 10 minutes
+> - [ ] `prometheus-nats-exporter` runs beside every NATS server
 > - [ ] `ANIME_DLQ` exists with 30-day retention, and `dlq-alert-consumer` is connected to alerting
 > - [ ] Every publish sets `Nats-Msg-Id` and `Nats-Expected-Stream`
 > - [ ] `NOTIFICATION_EVENTS` allows message TTL, and every notification sets `Nats-TTL`
@@ -572,15 +643,15 @@ docker exec -it echora-nats-box nats sub "anime.>"   # watch notices as they are
 # Three-node cluster
 services:
   nats-1:
-    image: nats:2.14
+    image: nats:2.15
     command: ["-js", "-sd", "/data", "-cluster_name", "echora", "-cluster", "nats://0.0.0.0:6222",
               "-routes", "nats://nats-2:6222,nats://nats-3:6222"]
   nats-2:
-    image: nats:2.14
+    image: nats:2.15
     command: ["-js", "-sd", "/data", "-cluster_name", "echora", "-cluster", "nats://0.0.0.0:6222",
               "-routes", "nats://nats-1:6222,nats://nats-3:6222"]
   nats-3:
-    image: nats:2.14
+    image: nats:2.15
     command: ["-js", "-sd", "/data", "-cluster_name", "echora", "-cluster", "nats://0.0.0.0:6222",
               "-routes", "nats://nats-1:6222,nats://nats-2:6222"]
 ```

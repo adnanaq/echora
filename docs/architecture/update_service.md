@@ -51,13 +51,27 @@ Each entity has one refresh workflow with a fixed ID:
 A work's refresh runs these activities:
 
 ```
-for each source page of the work that is due, on that provider's task queue:
-  refresh_page(page_key)
-    EnrichmentService.FetchPage      fetch the page's responses, as received
-    PostgresService.StorePage        store them with fetched_at; an older fetch is ignored
+list_pages(anime_id)
+  PostgresService.ListEntityPages    every page of the work with its role, fetched_at,
+                                     is_dead and last failure; never-fetched pages have
+                                     no fetched_at, so they are due
+
+for each source page that is due, or that a fetch_requested signal names,
+on that provider's task queue, all at once:
+  refresh_page(page_key, max_age)
+    EnrichmentService.FetchPage      fetch the page's responses, as received; the response
+                                     cache answers only with a response younger than max_age
+    PostgresService.StorePage        store them with fetched_at; an older fetch is ignored;
+                                     a page that failed every attempt records the failure
     returns                          the page key, and whether the page changed
 
-if any page changed, the work's pages were relinked, or a merge was requested:
+merge when every page has finished, or MERGE_FIRST_WAIT_MINUTES (10) after the first
+page was stored, whichever comes first, if a page changed, the work's pages were
+relinked, or a merge was requested:
+  match_characters(anime_id)
+    EnrichmentService.MatchCharacters  match only the cast entries not yet linked to a character;
+                                     entries already linked through character_provider_page stay
+                                     matched, so a long cast is matched once, then in small steps
   merge_work(anime_id)
     PostgresService.LoadWork         pages, corrections, AI text, known episodes and
                                      characters, and the work's version
@@ -69,16 +83,32 @@ if any page changed, the work's pages were relinked, or a merge was requested:
     returns                          the new episode and character IDs, and whether the
                                      provider synopses changed
 
-then, through start_workflows on the update-service queue:
-  start RefreshEpisodeWorkflow for each new episode
-  start RefreshCharacterWorkflow for each new character
-  if the provider synopses changed: start SynopsisWorkflow
+each page that finishes after that merge sets the merge flag again; pages that finish
+close together are merged once
 
-before ending:
-  if merge_requested arrived during the merge, merge again
+then, through start_workflows on the update-service queue:
+  start RefreshEpisodeWorkflow for each new or changed episode, after each merge
+  start RefreshCharacterWorkflow for each new or changed character, after each merge
+  start SynopsisWorkflow once every page has finished or failed, if any merge of this
+  refresh reported changed provider synopses
+
+before ending, while merge_requested or fetch_requested is set: fetch and merge again
+
+record_refresh(anime_id, outcome)
+  PostgresService.RecordRefresh      sets next_refresh_at: REFRESH_AFTER_DAYS ahead on success,
+                                     changed or not; the first failed page's retry time when
+                                     pages failed; a backoff when the refresh failed
 ```
 
-An episode's or a character's refresh is the same with its own pages: `refresh_page` for each due page, then `LoadEpisode`, `MergeEpisode`, `SaveEpisode`, or `LoadCharacter`, `MergeCharacter`, `SaveCharacter`.
+An episode's or a character's refresh is the same with its own pages: `ListEntityPages`, `refresh_page` for each due page, `LoadEpisode`, `MergeEpisode`, `SaveEpisode` or `LoadCharacter`, `MergeCharacter`, `SaveCharacter`, then `RecordRefresh`. An episode's load also returns its list entries, what each provider's work page says about it, since only MAL and aniSearch have a page per episode. The episode merges its own pages and those entries together, so an episode with no page of its own still merges.
+
+- **Due pages.** A page is due when it was never fetched, or was fetched longer than `REFRESH_AFTER_DAYS` ago, and is not dead. A page whose fetches keep failing waits `2^failures` hours, at most a week, before it is tried again, and `RecordRefresh` makes the work due again at that time, so a failed page is not left until the next weekly sweep.
+- **Requested pages.** A page a `fetch_requested` signal names is fetched when its `fetched_at` is older than the request's `max_age`, whatever `REFRESH_AFTER_DAYS` says. A `max_age` of 0 always fetches.
+- **The synopsis waits for the pages.** An early merge may hold only one or two fast providers, and the next merge, minutes later, would change the provider synopses again. `SynopsisWorkflow` therefore starts once every page of the refresh has finished or failed, so one refresh asks for at most one synopsis. Episode and character refreshes start after each merge, since a repeated start joins the one already running.
+- **The first merge does not wait for the slowest provider.** Every provider's page is valid input on its own, since every mapper sets a title, a type and a status, so the work can be saved with the pages that are in. A page that is still waiting, such as an AniDB page behind AniDB's slow queue, merges when it arrives, while the workflow is still open. Most works still merge once, since the fast providers arrive well within the wait.
+- **Merge version.** A refresh also merges, without fetching, when the entity was last merged by older mapping or merge code (`merge_version`), so a mapping fix reaches every entity, including those the sweep otherwise leaves alone.
+- **A page the provider says is gone stays.** `FetchPage` reports the provider's own "not found" as `is_not_found`, and `StorePage` marks the page missing, keeps its last data in the merge, and after two answers a day apart sends it for review as a `dead_page`. Only an approval, or the provider's `DEAD_PAGE_REVIEW` setting turned off once reviews keep confirming, marks it dead. Seed releases never remove pages.
+- **A failed page does not fail the refresh.** `refresh_page` records the failure through `StorePage` and returns, and the merge uses the pages that were stored. Only a failed merge or save fails the refresh, which `RecordRefresh` then records.
 
 A partial-source page is linked to a work but never merged into it, so a change to it starts no merge.
 
@@ -92,13 +122,15 @@ Workflows never start other workflows as child workflows. A `start_workflows` ac
 - **Nothing ends with its starter.** A child workflow's default parent close policy terminates it when the parent ends or continues as new, which would end a sweep's or a seed load's refreshes in flight. A workflow started through the client has no parent.
 - **No child limit.** A workflow can have at most 2,000 child workflows open, and each one adds events to its history. A long series such as One Piece lists more than 1,100 episodes. Starts made inside an activity add only that activity's input and result.
 
-The activity is safe to retry, since a start repeated with `USE_EXISTING` returns the workflow already running.
+The activity is safe to retry, since a start repeated with `USE_EXISTING` returns the workflow already running. A refresh started by another workflow carries its starter's `RefreshTrigger` and priority, so a seed load's episode refreshes count against the seed load's limit, and a user's request stays first.
 
 ### Only references pass through Temporal
 
 Temporal keeps every activity's input and result in the workflow's history. It warns when a single payload passes 512 KB, fails at 2 MB, and stops a workflow whose history reaches 50 MB. A raw provider page, such as the character list of a long series, can pass those sizes.
 
 So the large data never leaves an activity. `refresh_page` fetches and stores a page in one activity, and `merge_work` loads, merges and saves in another. Each returns only keys, IDs and flags. This is Temporal's claim check pattern, with PostgreSQL as the store the references point to.
+
+Inside an activity the pages still travel over gRPC, and they are large: the saved One Piece pages are 2.7 MB from AniDB and 1.8 MB from aniSearch's episode list, among others, past gRPC's 4 MB default for one message. The PostgreSQL Service, the Enrichment Service and the Update Service's clients therefore set their message limits explicitly to 64 MB, use gRPC's gzip compression, which shrinks HTML and XML several times over, and record the largest message size they handle as a metric. A merge needs every page in memory at once, so streaming one page per message would add code without lowering memory.
 
 When a MAL page shows a new episode, the refresh fetches that one page and merges the work again from what PostgreSQL already holds. No other provider is fetched, and nothing runs again from scratch.
 
@@ -114,6 +146,7 @@ The same workflow serves two other cases:
 Only an entity's own refresh workflow merges and saves it. Temporal allows at most one open run per workflow ID, so two merges of one entity never overlap.
 
 - **Starting.** Refreshes start with the `USE_EXISTING` conflict policy. A second start for an entity already refreshing gets the running refresh back instead of an error, so fifty users opening the same old work start one refresh, not fifty.
+- **Asking for specific pages.** A trigger that needs pages that are not due, such as episode tracking at air time or the daily score refresh, sends a `fetch_requested` signal with signal-with-start, naming the providers, a `max_age` and its priority. It starts the refresh when none is running, and a running refresh adds the pages to its work instead of dropping the request, as a plain `USE_EXISTING` start would. Later activities run at the highest priority the refresh has received, so a user's request is not stuck behind a seed load's.
 - **Asking for another merge.** A workflow that changes a work's inputs without fetching, such as `SynopsisWorkflow` after saving new text, sends the work's refresh a `merge_requested` signal with signal-with-start. If no refresh is running, the signal starts one. If one is running, the signal handler only sets a flag. After each merge, the workflow checks the flag and merges again while it is set, and checks it once more before it ends. A signal that arrives while the workflow is completing makes the server reject the completion and run the workflow again with the signal, so the final check sees it and no request is lost.
 - **The version check.** Every load returns the entity's version, and every save writes only if the version still matches. A save that finds another change in between returns `ABORTED`, and the merge activity loads, merges and saves again within the same attempt. This catches anything outside the workflow, such as a seed load relinking pages, a new AI-written synopsis or a new correction, since each of these increases the version.
 
@@ -131,11 +164,28 @@ All triggers share these queues, so their order is set with Temporal's task queu
 | Episode tracking at air time | 2 | `episode` |
 | Weekly sweep, daily scores | 3 | `sweep` |
 | Seed load | 3 | `seed` |
+| Re-merge after a merge-version raise | 4 | `remerge` |
 
 A lower priority key always goes first. Within priority 3, the keys `sweep` and `seed` both have the weight 1.0, so when both have work waiting, each gets half of every provider's rate. A 39,000-work seed load therefore does not stop the sweep, and the sweep does not stop the seed load. The weights are set where each workflow starts, and can be changed without a deploy with `temporal task-queue config set --fairness-key-weight`.
 
-> [!warning] AniDB's daily limit is not handled yet
-> AniDB bans on daily request volume, about 200 requests a day in earlier runs. The design assumes no daily limit for now. A daily budget for AniDB, or a longer refresh interval for AniDB pages, is decided later.
+### Providers with a daily budget
+
+> **Linear:** ECHO-119
+
+AniDB bans on daily request volume, about 200 requests a day in earlier runs, so it gets a budget of 150 a day. Its 16,370 work pages then take about 110 days to go round once, and a weekly cycle would add about 2,300 a day to a queue that drains 150. Work refreshes would stay open for months waiting on AniDB, and the sweep's limit of running refreshes would fill with them.
+
+So budgeted providers are fetched apart from work refreshes:
+
+- **Refreshes skip them.** A work's refresh fetches every due page except those of budgeted providers (`BUDGETED_PROVIDERS`, `anidb`), and merges with what the store already holds for them.
+- **One budgeted fetcher per provider.** A long-running `BudgetedFetchWorkflow` (`budgeted-fetch-anidb`) takes pages in due order from `ListDuePages`, fetches them through `refresh_page` on the provider's queue, and sends the page's work `merge_requested` when a page changed. It continues as new between batches.
+- **An even pace, not a burst.** The `provider-anidb` queue's rate limit is 150 a day, one request about every 10 minutes. Pages beyond the budget wait in the queue for the next free slot, and a day of bursts is what gets an IP banned.
+- **Visits first.** When a user opens a work whose AniDB page is due, the backend's refresh request reaches the fetcher as a `page_requested` signal, and that page goes to the front of its queue.
+
+In practice each AniDB page refreshes about every 110 days, which is what the budget allows. Another provider that gets a daily cap joins the same way.
+
+### One fetch process per provider
+
+Request pacing in `libs/enrichment` (`polite_http.py`) holds requests to a site apart across one process, not across processes, and a queue's rate limit counts pages, while one MAL page can be several requests. So each provider's pages are fetched by exactly one Enrichment process, and the queue's limit is set from that provider's pace divided by its requests per page. Merging holds no provider pacing, so merge processes scale freely. Fetching and merging run as two deployments of the Enrichment image: merges are CPU-heavy and would otherwise block the fetches' event loop, stalling heartbeats and health checks. The workers for browser-crawled providers (`provider-mal`, `provider-anime-planet`, `provider-anisearch`) cap how many activities they run at once, and the Enrichment Service sets its browser pool limit at startup, so slow crawls cannot pile up browsers until the process runs out of memory.
 
 ### Activity timeouts
 
@@ -146,13 +196,16 @@ Starting values, tuned once real runs are measured:
 | Activity | Start-to-close | Heartbeat | Retries |
 |---|---|---|---|
 | `refresh_page` | 5 minutes (browser-crawled pages are slow) | 1 minute | Exponential backoff, at most 5 attempts |
+| `list_pages`, `record_refresh` | 30 seconds | — | Exponential backoff, at most 5 attempts |
+| `match_characters` | 10 minutes | 1 minute | At most 5 attempts |
 | `merge_work`, `merge_episode`, `merge_character` | 2 minutes | — | At most 5 attempts; `ABORTED` is retried inside the attempt |
 | `start_workflows` | 1 minute | — | Exponential backoff, at most 5 attempts |
 | `write_synopsis` | 10 minutes | 1 minute | 3 attempts |
 
 - **Heartbeats during a gRPC call.** `refresh_page` and `write_synopsis` each wait on one long gRPC call. While it runs, the activity records a heartbeat every 20 seconds and watches `ctx.cancelled()`, with `tokio::select!` over the call, a heartbeat interval and the cancellation. Without this loop, Temporal would time the activity out after the 1-minute heartbeat timeout. With it, a crashed worker is noticed within a minute instead of after 5 or 10, and a cancelled workflow stops the call.
 - **`ABORTED` inside the merge.** A Temporal retry policy has one attempt limit for every error, so a version conflict cannot get its own limit there. The merge activity therefore loads, merges and saves again itself when `SaveWork` returns `ABORTED`, up to 10 times in one attempt. Conflicts last only as long as the other change, so this ends quickly, and the policy's 5 attempts count only other failures.
-- **Permanent errors are not retried.** An activity returns `ApplicationFailure::non_retryable` for a gRPC status that a retry cannot fix: `INVALID_ARGUMENT`, `NOT_FOUND`, `FAILED_PRECONDITION`, `PERMISSION_DENIED` and `UNIMPLEMENTED`. `UNAVAILABLE`, `DEADLINE_EXCEEDED`, `RESOURCE_EXHAUSTED` and `INTERNAL` stay retryable.
+- **Bans fail fast.** After a block, `polite_http` sends nothing more to that site from the process. A fetch then fails at once without a request, and is recorded as a page failure with backoff, so a ban is never pressed further. Workers also set their own `max_task_queue_activities_per_second` from the provider's pace, which applies when a queue has no limit set, such as in a new environment before the limit script ran.
+- **Permanent errors are not retried.** An activity returns `ApplicationFailure::non_retryable` for a gRPC status that a retry cannot fix: `INVALID_ARGUMENT`, `NOT_FOUND`, `FAILED_PRECONDITION`, `PERMISSION_DENIED`, `UNIMPLEMENTED`, and `RESOURCE_EXHAUSTED`, which our services return only for a message over the 64 MB limit. `UNAVAILABLE`, `DEADLINE_EXCEEDED` and `INTERNAL` stay retryable, and a provider's throttling arrives as `UNAVAILABLE`.
 
 ---
 
@@ -162,8 +215,9 @@ A work is **older** when it first aired more than `OLDER_AFTER_YEARS` (30) years
 
 | Trigger | Entities | When |
 |---|---|---|
-| Weekly sweep | Works, episodes and characters that are not older | Not refreshed for `REFRESH_AFTER_DAYS` (7) |
-| Opened by a user | Any work, episode or character | The user opens its page and it was not refreshed for `REFRESH_AFTER_DAYS` or more |
+| Weekly sweep | Works that are not older, with every provider's statistics; episodes and characters of ongoing and upcoming works | Due under `next_refresh_at`, `REFRESH_AFTER_DAYS` (7) after the last success |
+| Work's merge | Episodes and characters of finished works | The work's weekly merge changed what it says about them: a changed list entry, or a new or changed cast entry |
+| Opened by a user | Any work, episode or character | The user opens its page and it is due. Bots never start a refresh, and the backend caps refresh starts per minute |
 | Episode tracking | Episodes of ongoing and upcoming works | At each episode's expected air time, then 1, 3 and 7 days after it aired |
 | Daily scores | Ongoing works and works finished in the last 90 days | Once a day, the pages that report scores (MAL, AniList, Kitsu) |
 
@@ -175,11 +229,11 @@ An entity a user opens is served from PostgreSQL at once, and its refresh runs b
 
 One scheduled `SweepWorkflow` covers the whole catalogue, instead of one schedule per entity. For each kind, it asks the PostgreSQL Service for the entities due (`ListDueWorks`, `ListDueEpisodes`, `ListDueCharacters`), a page at a time, and starts a refresh for each.
 
-- **Fixed cutoff.** A sweep reads every entity not refreshed before the time it started, paging by `(refreshed_at, id)`. An entity whose refresh fails is not picked again in the same sweep.
+- **Fixed cutoff.** A sweep reads every entity whose `next_refresh_at` is before the time it started, paging by `(next_refresh_at, id)`. Every refresh that finishes, failed or not, moves `next_refresh_at` past that cutoff, so no entity is picked twice in one sweep.
 - **Bounded.** The sweep starts a page of refreshes with `start_workflows`, each tagged with the search attribute `RefreshTrigger = 'sweep'`. Before the next page, it waits until fewer than `SWEEP_MAX_PENDING_STARTS` (500) of those are still running, counted with a visibility count query, so the queues never hold the whole catalogue at once. It continues as new between pages, so its own history stays small.
 - **One sweep at a time.** The schedules use the `Skip` overlap policy, Temporal's default, set explicitly. A sweep still running when the next one is due is not started a second time, and the next sweep picks up whatever is then due.
 
-The daily score refresh runs the same way, paging through `ListScoreWorks`: works that are ongoing, or finished within the lookback. A finished work without an end date is left to the weekly sweep.
+The daily score refresh runs the same way, paging through `ListScoreWorks`: works that are ongoing, or finished within the lookback. A finished work without an end date is left to the weekly sweep. It sends each work's refresh a `fetch_requested` signal for the pages that report scores (MAL, AniList, Kitsu), with a `max_age` of a day, since those pages are not due yet.
 
 ### Episode tracking
 
@@ -188,8 +242,8 @@ The daily score refresh runs the same way, paging through `ListScoreWorks`: work
 An episode has little information before it airs, so it is not refreshed until then. Ongoing and upcoming works keep their episodes watched by their status and their episodes' expected air times:
 
 1. **The week it airs.** A daily `EpisodeTrackingWorkflow` asks for every episode expected in the next `EPISODE_WINDOW_DAYS` (7) days (`ListUpcomingEpisodes`) and starts a `track-episode-<anime_id>-<episode_number>` workflow for each, with `USE_EXISTING`.
-2. **At air time.** The tracking workflow sleeps on a durable Temporal timer until the expected air time. It then refreshes the work's pages that report episodes (MAL, AniList), which confirms the episode and creates it if the work did not list it yet, and refreshes the episode itself.
-3. **Not aired yet.** When the episode is not there, it waits `EPISODE_RETRY_WAIT_HOURS` (2) and tries again, up to `EPISODE_MAX_RETRIES` (3) times, then raises an alert and ends. The next daily run picks the episode up again with its new expected time.
+2. **At air time.** The tracking workflow sleeps on a durable Temporal timer until the expected air time. It then sends the work's refresh a `fetch_requested` signal for the pages that report episodes (MAL, AniList) with a `max_age` of 0, so the cache cannot answer, which confirms the episode and creates it if the work did not list it yet, and refreshes the episode itself the same way.
+3. **Not aired yet.** The tracker learns the outcome from PostgreSQL, not from the refresh: after `EPISODE_RETRY_WAIT_HOURS` (2) it reads whether the episode is stored as aired. Once it is, the tracker calls `MarkEpisodeAired`, which writes the aired notification once, even when no save changed anything. When it is not, it asks again, up to `EPISODE_MAX_RETRIES` (3) times, then raises an alert and ends. The next daily run picks the episode up again with its new expected time.
 4. **After airing.** Providers fill in titles, synopses and scores over the following days, so it refreshes the episode again 1, 3 and 7 days after it aired, then ends.
 
 When the expected air time changes, as with a delay or a hiatus, the tracking workflow sees the new time when it wakes and sleeps again until then. When a work's status becomes finished, it has no upcoming episodes, so no new tracking starts. A long-running series such as One Piece is never assumed finished.
@@ -210,6 +264,7 @@ A synopsis mostly changes before a work airs. An announced work has a line or tw
 
 - **Started by a merge.** `merge_work` reports when the provider synopses differ from the ones the current synopsis was written from, and the work's refresh then starts a `SynopsisWorkflow`. The saved synopsis keeps a hash of its inputs, so a refresh that changes no provider synopsis calls no AI.
 - **Only with enough to go on.** Below a minimum amount of provider text, nothing is written, and the next change tries again.
+- **Every attempt is remembered.** `SaveGeneratedText` records the input hash and outcome even when nothing was written, so a merge with the same provider synopses does not start the workflow again.
 - **One run per work.** The workflow ID is `synopsis-anime-<anime_id>`, with the `USE_EXISTING` conflict policy.
 
 ```
@@ -283,8 +338,8 @@ The workflows publish nothing themselves. After a save commits, the PostgreSQL S
 | Workers | A Rust SDK worker polls one task queue, so `crates/update_service` runs one worker per queue in one process, sharing one client. Each registers only what its queue runs: the `update-service` worker the workflows and the merge and start activities, each provider worker `refresh_page`, and the `agent` worker `write_synopsis`. Every replica runs the same set, so all workers polling a queue register the same types. |
 | Schedules | Weekly sweep, daily scores and daily episode tracking, each with the `Skip` overlap policy |
 | Search attribute | `RefreshTrigger` (keyword: `user`, `episode`, `sweep`, `seed`), set on each refresh start, used to count the refreshes a sweep or seed load still has running |
-| Workflow types | `RefreshAnimeWorkflow`, `RefreshEpisodeWorkflow`, `RefreshCharacterWorkflow`, `SweepWorkflow` (weekly sweep, daily scores), `EpisodeTrackingWorkflow` (daily) with one `track-episode` workflow per episode, `SynopsisWorkflow`, `SeedReleaseWorkflow` (loads a cleaned seed, see [[ingestion_pipeline|Ingestion Pipeline]]) |
-| Workflow IDs | `refresh-anime-<id>`, `refresh-episode-<id>`, `refresh-character-<id>`, `track-episode-<anime_id>-<episode_number>`, `synopsis-anime-<id>`, all with conflict policy `USE_EXISTING`; `seed-release` with conflict policy `FAIL`, so a second seed load is refused while one runs |
+| Workflow types | `RefreshAnimeWorkflow`, `RefreshEpisodeWorkflow`, `RefreshCharacterWorkflow`, `SweepWorkflow` (weekly sweep, daily scores), `EpisodeTrackingWorkflow` (daily) with one `track-episode` workflow per episode, `SynopsisWorkflow`, `SeedReleaseWorkflow` (loads a cleaned seed, see [[ingestion_pipeline|Ingestion Pipeline]]), `BudgetedFetchWorkflow` (one per budgeted provider) |
+| Workflow IDs | `refresh-anime-<id>`, `refresh-episode-<id>`, `refresh-character-<id>`, `track-episode-<anime_id>-<episode_number>`, `synopsis-anime-<id>`, `budgeted-fetch-<provider>`, all with conflict policy `USE_EXISTING`; `seed-release` with conflict policy `FAIL`, so a second seed load is refused while one runs |
 | Rate limit | A queue rate limit per provider queue, set with `temporal task-queue config set` from that provider's pacing |
 | Priority and fairness | Priority keys 1 to 3 and fairness keys as in [[#Provider rate limits]] |
 | Temporal namespace | `echora` |
@@ -300,6 +355,11 @@ The workflows and activities live in `crates/temporal_workflows/`, and `crates/u
 | `TEMPORAL_HOST` | `localhost:7233` | Temporal server address |
 | `TEMPORAL_NAMESPACE` | `echora` | Temporal namespace |
 | `REFRESH_AFTER_DAYS` | `7` | Age after which a work, episode or character counts as due, for the sweep and for opened pages |
+| `MERGE_VERSION` | — | Version of the mapping and merge code; raised with a fix that should reach every entity |
+| `DEAD_PAGE_REVIEW` | `true` per provider | Missing pages go to review before they are marked dead; turned off for a provider once reviews keep confirming |
+| `MERGE_FIRST_WAIT_MINUTES` | `10` | How long a refresh waits after its first stored page before merging without the pages still in flight |
+| `BUDGETED_PROVIDERS` | `anidb` | Providers fetched by a budgeted fetcher instead of by work refreshes |
+| `ANIDB_DAILY_BUDGET` | `150` | AniDB requests a day; the `provider-anidb` queue's rate limit is set from it |
 | `OLDER_AFTER_YEARS` | `30` | Works first aired longer ago than this, with their episodes and characters, refresh only when opened |
 | `EPISODE_WINDOW_DAYS` | `7` | How far ahead episode tracking starts |
 | `EPISODE_FOLLOW_UP_DAYS` | `1,3,7` | Days after airing that an episode is refreshed again |

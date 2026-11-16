@@ -479,7 +479,7 @@ Each entity is stored **once** under a UUIDv7 ID:
 - `source_material`: one row per source work (manga, light novel, visual novel, game, and so on)
 - `company`: one row per studio, producer or licensor
 
-**IDs are assigned once.** The first merge of a work, episode or character gives it a UUIDv7 (`uuid.uuid7()`, through `generate_entity_id` in `libs/common`), and every later merge receives that ID and keeps it. A work from the seed gets its ID when the seed load creates it. Rows the PostgreSQL Service creates by itself, `source_material` and `company`, get `DEFAULT uuidv7()`. An ID never changes, so nothing is derived from provider URLs.
+**IDs are assigned once,** when the entity is first created, as a UUIDv7 (`uuid.uuid7()`, through `generate_entity_id` in `libs/common`). A work from the seed gets its ID when the seed load creates it. An episode or character gets its ID from the merge of the work that first lists it. Every later merge receives that ID and keeps it. Rows the PostgreSQL Service creates by itself, `source_material` and `company`, get `DEFAULT uuidv7()`. An ID never changes, so nothing is derived from provider URLs.
 
 **Pages identify what arrives from outside.** A provider page is stored once under its page key: provider, page kind and address, such as `mal`, `anime`, `21`. When a seed release or discovery brings page keys, a key already linked as a source belongs to that entity. A key never seen before is a new entity, unless the matching rules or a review answer place it elsewhere. Inside the system, only the UUID is used.
 
@@ -526,6 +526,7 @@ The same pattern links an episode to a character that is not stored yet (`episod
 - `anime_relation` holds only what each work's own provider pages say, in one direction, from that work. When work A lists B as a sequel and B lists A as a prequel, there are two rows, one asserted by each work.
 - `SaveWork` replaces the work's own `anime_relation` rows with what the merge produced. It never touches rows another work asserted.
 - Both directions exist only in `graph_edge`. The `graph_edge` rows between two works are recomputed from both works' `anime_relation` rows and the inverse map whenever either work's relations change, so removing one work's assertion never removes an edge the other work still asserts.
+- Before recomputing a pair, the save takes a transaction-level advisory lock on that pair. `pg_advisory_xact_lock` takes a `bigint`, so the key is a 64-bit hash of the pair's two IDs in sorted order. A save that touches several pairs takes their locks in ascending order of those hashed keys, never of the raw IDs, since the hash does not keep the IDs' order. Two related works saving at once therefore recompute their pair one after the other, each reading the other's committed rows, and cannot deadlock. A hash collision only makes two unrelated pairs wait for each other.
 - Any transaction that links a page as a source of a work resolves every unresolved relation pointing at that page, and recomputes the `graph_edge` rows of each pair it resolves.
 
 ---
@@ -539,6 +540,26 @@ The same pattern links an episode to a character that is not stored yet (`episod
 **Version.** An entity's `version` increases with every change to the entity or to what its merge reads: a save that changes it, a page relinked to or from a work (`CreateWorks`, `RelinkPages`), a new AI-written text (`SaveGeneratedText`), and a new correction. A merge that loaded before such a change then fails its version check and starts again from a fresh load. Versions only need to grow, so a version without an event of its own is fine.
 
 **Characters a save creates.** Before creating a character the merge gave a new ID, `SaveWork` looks up its page keys in `character_provider_page`. When any of them already belongs to a character, such as one another work's save created a moment earlier, it links that character instead and the new ID is dropped. A save therefore never fails on a character another work created, and never loops.
+
+**Not yet merged.** A work exists before its first merge: the seed load creates it with its ID and page links, and nothing has been fetched. Its `merged_at` is NULL, so `title`, `type` and `status` may be empty, and a check constraint requires all three once `merged_at` is set. A linked page that was never fetched has a NULL `fetched_at` and `responses_hash`, which also makes it due. Every read for consumers and the backend (`Get*`, `ListEpisodes`, `ListScoreWorks`, `ListUpcomingEpisodes`, the graph primitives) reads the `*_visible` views, which skip rows whose `merged_at` is NULL. The due queries do not: an unmerged work has never been refreshed, so it is due. The save that first sets `merged_at` writes the `created` event; every later changing save writes `updated`. Episodes and characters a work's save creates follow the same rule: they exist from the work's lists, and their own first merge sets `merged_at`.
+
+**Recording a refresh.** `RecordRefresh`, the last activity of every refresh, sets `next_refresh_at`, the one column every due check reads:
+
+- **Every page fetched or not due:** `refreshed_at = now()`, `refresh_failures = 0`, and `next_refresh_at = now() + REFRESH_AFTER_DAYS`, whether the merge changed something, changed nothing or did not run.
+- **Some pages failed:** the same, except `next_refresh_at` is the earliest time a failed page may be tried again, `2^fetch_failures` hours after its failure, at most a week. A page that failed is not hidden until the next weekly sweep.
+- **The refresh failed:** `refresh_failed_at = now()`, one more `refresh_failures`, and `next_refresh_at = now() + 2^refresh_failures` hours, at most a week, so a work that keeps failing is not picked by every sweep and every open.
+
+The workflow passes `REFRESH_AFTER_DAYS` with the call, since the setting belongs to the Update Service. A page that fails every fetch attempt records `fetch_failed_at` and `fetch_failures` through `StorePage`, and the refresh goes on without it.
+
+**Visible rows.** Reads for consumers and the backend go through the `anime_visible`, `episode_visible` and `character_visible` views, which hold only merged, undeleted rows. Loads for merging, `ListEntityPages` and the due queries read the tables, since unmerged entities must be loaded and are due.
+
+**Purging deleted rows.** A deleted entity keeps its own row for good, with its ID, version, `deleted_at` and `merged_into_anime_id`, so old links and users' lists can be redirected. Its detail rows (titles, genres, images and the others) are purged 30 days after the delete by the cleanup job. Unique constraints that a deleted row could block, such as an episode's number, count only undeleted rows.
+
+**Missing and dead pages.** A seed release never removes a work or a page; it only adds them and moves pages between works. A page is found to be gone only by a refresh. When `FetchPage` reports the provider's own "not found" (not a block or an error), `StorePage` records `missing_since` and counts `missing_answers`, and keeps the page's last stored responses, which still take part in merges. After two such answers at least a day apart, with no successful fetch between them, the page becomes a `dead_page` approval item. A reviewer's approval sets `is_dead`, which takes the page out of merges and refreshes; a rejection clears the count. Once reviews of a provider's dead pages keep being confirmed, its `DEAD_PAGE_REVIEW` setting is turned off and two answers a day apart set `is_dead` directly. A successful fetch clears both `missing_since` and `missing_answers`, so two isolated answers months apart never add up to a review item.
+
+**The merge version.** Each entity stores the `merge_version` of the code that last merged it. The due queries also return entities whose `merge_version` is older than the current one, whatever their age, status or `next_refresh_at`, and their refresh merges them from stored pages without fetching. A mapping fix therefore reaches every entity, including finished works and those over 30 years old, with no separate workflow. Raising the version makes every entity due at once. Those re-merges fetch nothing, so they cannot use up any provider's rate, and they run at priority 4 with the fairness key `remerge`, below the sweep's priority 3, so the weekly refreshes go first.
+
+**The change hash.** `merged_record_hash` is computed over a canonical form of everything the save writes: the merged entity and its episode and character lists. Maps are encoded in key order (`prost` is configured to generate `BTreeMap` for map fields, since its default `HashMap` encodes in a different order on every run), and the merge returns every list sorted. `hash_format` records the form used, so changing it is a planned re-save of every entity, not an accident.
 
 **`updated_at`.** The save that changes a row sets `updated_at = now()` in the same statement. There is no trigger. Page opens are kept in their own tables (`anime_open`, `episode_open`, `character_open`), so a page view never rewrites an entity row.
 
@@ -637,7 +658,9 @@ INSERT INTO source_material_relation_type VALUES
 CREATE TABLE provider (value text PRIMARY KEY);
 INSERT INTO provider VALUES
   ('mal'), ('anilist'), ('kitsu'), ('anidb'), ('anime_planet'), ('anisearch'),
-  ('animeschedule'), ('syoboi');
+  ('animeschedule'), ('syoboi'),
+  ('ann'), ('livechart'), ('simkl'),   -- from the seed's links; fetched once their fetchers exist
+  ('animecountdown');                   -- link only, never fetched
 
 CREATE TABLE page_kind (value text PRIMARY KEY);
 INSERT INTO page_kind VALUES ('anime'), ('episode'), ('character');
@@ -652,7 +675,7 @@ CREATE TABLE theme_song_kind (value text PRIMARY KEY);
 INSERT INTO theme_song_kind VALUES ('opening'), ('ending');
 
 CREATE TABLE approval_kind (value text PRIMARY KEY);
-INSERT INTO approval_kind VALUES ('review_case'), ('risky_change'), ('suggested_edit');
+INSERT INTO approval_kind VALUES ('review_case'), ('risky_change'), ('suggested_edit'), ('dead_page');
 
 CREATE TABLE approval_status (value text PRIMARY KEY);
 INSERT INTO approval_status VALUES ('open'), ('approved'), ('rejected');
@@ -688,12 +711,12 @@ CREATE TABLE trait (name text PRIMARY KEY);
 
 ```sql
 CREATE TABLE anime (
-  id                  uuid PRIMARY KEY,                 -- UUIDv7, assigned at the first merge
-  title               text NOT NULL,
+  id                  uuid PRIMARY KEY,                 -- UUIDv7, assigned when the work is first created
+  title               text,                             -- set by the first merge; see merged_at
   title_english       text,
   title_japanese      text,
-  type                text NOT NULL REFERENCES anime_type(value),
-  status              text NOT NULL REFERENCES anime_status(value),
+  type                text REFERENCES anime_type(value),    -- set by the first merge
+  status              text REFERENCES anime_status(value),  -- set by the first merge
   rating              text NOT NULL DEFAULT 'UNKNOWN' REFERENCES anime_rating(value),
   season              text REFERENCES anime_season(value),
   source_material     text REFERENCES source_material_type(value),
@@ -711,19 +734,32 @@ CREATE TABLE anime (
   score_mean          numeric(4,2) CHECK (score_mean BETWEEN 0 AND 10),
   score_median        numeric(4,2) CHECK (score_median BETWEEN 0 AND 10),
   version             bigint NOT NULL DEFAULT 1,        -- increased by every change to the work or its merge inputs; sent in events
-  merged_record_hash  text,                             -- hash of the last saved merge; an unchanged merge is not saved
-  refreshed_at        timestamptz,                      -- last finished refresh
+  merged_record_hash  text,                             -- canonical hash of the last saved merge; an unchanged merge is not saved
+  hash_format         smallint,                         -- format of merged_record_hash; a new format re-saves once, by design
+  merge_version       int,                              -- version of the mapping and merge code of the last merge
+  merged_at           timestamptz,                      -- first merge; NULL while the work exists only as page links
+  refreshed_at        timestamptz,                      -- last refresh that succeeded, changed or not (RecordRefresh)
+  refresh_failed_at   timestamptz,                      -- last refresh that failed or left a page failed
+  next_refresh_at     timestamptz,                      -- when the work is due again; NULL means due now
+  refresh_failures    int NOT NULL DEFAULT 0 CHECK (refresh_failures >= 0),  -- failures since the last success
   deleted_at          timestamptz,                      -- set when the work is removed, e.g. merged into another
   merged_into_anime_id uuid REFERENCES anime(id),       -- the work it was merged into, so its pages and links can redirect
   created_at          timestamptz NOT NULL DEFAULT now(),
-  updated_at          timestamptz NOT NULL DEFAULT now()  -- set by the save that changes the row
+  updated_at          timestamptz NOT NULL DEFAULT now(),  -- set by the save that changes the row
+  CHECK (merged_at IS NULL OR (title IS NOT NULL AND type IS NOT NULL AND status IS NOT NULL))
 );
 
--- The weekly sweep pages through active works in this order. Never-refreshed works sort
+-- The weekly sweep pages through active works in this order. A work due now (NULL) sorts
 -- first as '-infinity', so the sort key has no NULL and keyset paging works on every page.
 CREATE INDEX anime_refresh_order_idx
-  ON anime((coalesce(refreshed_at, '-infinity'::timestamptz)), id)
+  ON anime((coalesce(next_refresh_at, '-infinity'::timestamptz)), id)
   WHERE deleted_at IS NULL;
+
+-- Every read for consumers and the backend goes through this view, never the table, so a
+-- forgotten filter cannot show a deleted work or one that exists only as page links.
+-- Loads for merging and the due queries read the table, since they need unmerged works.
+CREATE VIEW anime_visible AS
+  SELECT * FROM anime WHERE merged_at IS NOT NULL AND deleted_at IS NULL;
 
 -- The daily score refresh reads ongoing and recently finished works
 CREATE INDEX anime_score_sync_idx ON anime(status, aired_to)
@@ -1031,23 +1067,32 @@ CREATE INDEX graph_edge_to_idx   ON graph_edge(to_id,   to_type,   edge_type);
 
 ```sql
 CREATE TABLE character (
-  id                   uuid PRIMARY KEY,                -- UUIDv7, assigned at the first merge
-  name                 text NOT NULL,
+  id                   uuid PRIMARY KEY,                -- UUIDv7, assigned when the character is first created
+  name                 text NOT NULL,                   -- from the work's cast list until the first merge
   name_native          text,
   description          text,
   description_spoiler  text,                            -- Character.spoilers['description']
   favorites            int CHECK (favorites >= 0),
   version              bigint NOT NULL DEFAULT 1,
   merged_record_hash   text,
+  hash_format          smallint,
+  merge_version        int,
+  merged_at            timestamptz,                     -- first merge of its own pages
   refreshed_at         timestamptz,
+  refresh_failed_at    timestamptz,
+  next_refresh_at      timestamptz,                     -- when the character is due again; NULL means due now
+  refresh_failures     int NOT NULL DEFAULT 0 CHECK (refresh_failures >= 0),
   deleted_at           timestamptz,
   created_at           timestamptz NOT NULL DEFAULT now(),
   updated_at           timestamptz NOT NULL DEFAULT now()  -- set by the save that changes the row
 );
 
 CREATE INDEX character_refresh_order_idx
-  ON character((coalesce(refreshed_at, '-infinity'::timestamptz)), id)
+  ON character((coalesce(next_refresh_at, '-infinity'::timestamptz)), id)
   WHERE deleted_at IS NULL;
+
+CREATE VIEW character_visible AS
+  SELECT * FROM character WHERE merged_at IS NOT NULL AND deleted_at IS NULL;
 
 CREATE TABLE character_open (
   character_id    uuid PRIMARY KEY REFERENCES character(id) ON DELETE CASCADE,
@@ -1124,32 +1169,44 @@ A character page's animeography only confirms links the works already make. `ani
 
 ```sql
 CREATE TABLE episode (
-  id                  uuid PRIMARY KEY,                 -- UUIDv7, assigned at the first merge
+  id                  uuid PRIMARY KEY,                 -- UUIDv7, assigned when the episode is first created
   anime_id            uuid NOT NULL REFERENCES anime(id) ON DELETE CASCADE,
   episode_number      int NOT NULL CHECK (episode_number >= 0),
   season_number       int CHECK (season_number > 0),
-  title               text NOT NULL,
+  title               text,                             -- from the work's episode list until the first merge
   title_japanese      text,
   title_romaji        text,
   synopsis            text,
   description         text,
   aired_at            timestamptz,
+  aired_notified_at   timestamptz,                      -- when notification.episode.aired was written; written once
   duration_seconds    int CHECK (duration_seconds >= 0),
   is_filler           boolean NOT NULL DEFAULT false,
   is_recap            boolean NOT NULL DEFAULT false,
   score               numeric(5,2) CHECK (score >= 0),
   version             bigint NOT NULL DEFAULT 1,
   merged_record_hash  text,
+  hash_format         smallint,
+  merge_version       int,
+  merged_at           timestamptz,                      -- first merge of its own pages
   refreshed_at        timestamptz,
+  refresh_failed_at   timestamptz,
+  next_refresh_at     timestamptz,                      -- when the episode is due again; NULL means due now
+  refresh_failures    int NOT NULL DEFAULT 0 CHECK (refresh_failures >= 0),
   deleted_at          timestamptz,
   created_at          timestamptz NOT NULL DEFAULT now(),
-  updated_at          timestamptz NOT NULL DEFAULT now(),  -- set by the save that changes the row
-  UNIQUE (anime_id, episode_number)
+  updated_at          timestamptz NOT NULL DEFAULT now()   -- set by the save that changes the row
 );
 
+-- One undeleted episode per number: a removed episode does not block its number being listed again
+CREATE UNIQUE INDEX episode_number_uniq ON episode(anime_id, episode_number) WHERE deleted_at IS NULL;
+
 CREATE INDEX episode_refresh_order_idx
-  ON episode((coalesce(refreshed_at, '-infinity'::timestamptz)), id)
+  ON episode((coalesce(next_refresh_at, '-infinity'::timestamptz)), id)
   WHERE deleted_at IS NULL;
+
+CREATE VIEW episode_visible AS
+  SELECT * FROM episode WHERE merged_at IS NOT NULL AND deleted_at IS NULL;
 
 CREATE TABLE episode_open (
   episode_id      uuid PRIMARY KEY REFERENCES episode(id) ON DELETE CASCADE,
@@ -1212,10 +1269,15 @@ CREATE TABLE provider_page (
   provider    text NOT NULL REFERENCES provider(value),
   page_kind   text NOT NULL REFERENCES page_kind(value),
   address     text NOT NULL,                 -- the page's address on that provider, e.g. '21'
-  fetched_at  timestamptz NOT NULL,          -- an older fetch never replaces a newer one
-  is_dead     boolean NOT NULL DEFAULT false,-- the provider no longer serves the page
-  responses_hash text NOT NULL,              -- hash of the uncompressed responses; StorePage compares it
-  PRIMARY KEY (provider, page_kind, address)
+  fetched_at  timestamptz,                   -- NULL until first fetched; an older fetch never replaces a newer one
+  is_dead     boolean NOT NULL DEFAULT false,-- confirmed gone: by a reviewer, or automatically once the provider is trusted
+  missing_since timestamptz,                 -- first 'not found' answer; cleared when the page is found again
+  missing_answers int NOT NULL DEFAULT 0 CHECK (missing_answers >= 0),  -- 'not found' answers since then
+  responses_hash text,                       -- hash of the uncompressed responses; StorePage compares it
+  fetch_failed_at timestamptz,               -- last fetch that failed every attempt
+  fetch_failures  int NOT NULL DEFAULT 0 CHECK (fetch_failures >= 0),  -- failures since the last success
+  PRIMARY KEY (provider, page_kind, address),
+  CHECK ((fetched_at IS NULL) = (responses_hash IS NULL))
 );
 
 -- Every response that makes up a page, as received
@@ -1267,6 +1329,20 @@ CREATE TABLE episode_provider_page (
   UNIQUE (episode_id, provider),
   FOREIGN KEY (provider, page_kind, address)
     REFERENCES provider_page(provider, page_kind, address) ON DELETE RESTRICT
+);
+
+-- What one provider's work page says about an episode, sliced out by the work's merge.
+-- Input for the episode's merge, like a page: most providers list episodes only inside
+-- the work's responses. SaveWork replaces a work's rows; a changed row makes the episode due.
+CREATE TABLE episode_list_entry (
+  episode_id        uuid NOT NULL REFERENCES episode(id) ON DELETE CASCADE,
+  provider          text NOT NULL REFERENCES provider(value),
+  title             text,
+  aired_at          timestamptz,
+  duration_seconds  int CHECK (duration_seconds >= 0),
+  is_filler         boolean,
+  is_recap          boolean,
+  PRIMARY KEY (episode_id, provider)
 );
 
 -- Each character page belongs to exactly one character
@@ -1345,6 +1421,17 @@ CREATE TABLE anime_generated_text (
 CREATE INDEX anime_generated_text_latest_idx
   ON anime_generated_text(anime_id, field_path, written_at DESC);
 
+-- The last attempt to write a work's text, kept even when nothing was written (too little
+-- provider text, or every try refused), so the same inputs do not start the workflow again.
+CREATE TABLE anime_generated_text_attempt (
+  anime_id      uuid NOT NULL REFERENCES anime(id) ON DELETE CASCADE,
+  field_path    text NOT NULL,
+  input_hash    text NOT NULL,
+  outcome       text NOT NULL CHECK (outcome IN ('written', 'too_little_text', 'refused')),
+  attempted_at  timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (anime_id, field_path)
+);
+
 -- Web pages a generated text was written from
 CREATE TABLE anime_generated_text_source (
   generated_text_id  bigint NOT NULL REFERENCES anime_generated_text(id) ON DELETE CASCADE,
@@ -1354,17 +1441,20 @@ CREATE TABLE anime_generated_text_source (
 
 -- Every NATS event, written in the transaction of the change it reports
 CREATE TABLE outbox (
-  id             bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,  -- also the Nats-Msg-Id
+  id             uuid PRIMARY KEY DEFAULT uuidv7(),  -- also the Nats-Msg-Id; never reused, even after a restore
   subject        text NOT NULL,              -- 'anime.updated', 'episode.created', ...
   entity_id      uuid NOT NULL,
   version        bigint NOT NULL,
   payload        bytea NOT NULL,             -- serialized protobuf event
   created_at     timestamptz NOT NULL DEFAULT now(),
   claimed_until  timestamptz,                -- a relay is publishing the row until then
-  published_at   timestamptz
+  published_at   timestamptz,
+  publish_failures int NOT NULL DEFAULT 0,   -- failed sends; the row is parked after RELAY_MAX_FAILURES
+  parked_at      timestamptz,                -- taken out of the queue; alerted on, and sent again by hand once fixed
+  traceparent    text                        -- the save's trace context, sent as a NATS header
 );
 
-CREATE INDEX outbox_unpublished_idx ON outbox(id) WHERE published_at IS NULL;
+CREATE INDEX outbox_unpublished_idx ON outbox(id) WHERE published_at IS NULL AND parked_at IS NULL;
 ```
 
 - A correction holds one field's approved value. The load methods return an entity's corrections with its pages, and the merge applies them after merging, so a refresh never overwrites them.
@@ -1419,15 +1509,19 @@ Until then, those model fields are not stored.
 
 ```sql
 -- ListDueWorks: works the weekly sweep refreshes, with keyset paging and a fixed cutoff per sweep.
+-- next_refresh_at already holds every rule: the refresh interval after a success, the earliest
+-- retry of a failed page, and the backoff after a failed refresh. NULL means due now, and sorts
+-- as '-infinity', so no part of the sort key is NULL. Unmerged works are due, and are included.
 -- Works first aired more than OLDER_AFTER_YEARS ago refresh only when opened.
--- A never-refreshed work sorts as '-infinity', so no part of the sort key is NULL.
 -- The first page passes ('-infinity', the nil UUID) as the cursor.
-SELECT id, refreshed_at FROM anime
+-- A work merged by older code is due whatever its age, so a mapping fix reaches every work.
+SELECT id, next_refresh_at FROM anime
 WHERE deleted_at IS NULL
-  AND coalesce(refreshed_at, '-infinity') < $1                    -- the sweep's cutoff
-  AND (year IS NULL OR year > extract(year FROM now()) - $2)      -- OLDER_AFTER_YEARS
-  AND (coalesce(refreshed_at, '-infinity'), id) > ($3, $4)        -- the last row of the previous page
-ORDER BY coalesce(refreshed_at, '-infinity'), id
+  AND (   (coalesce(next_refresh_at, '-infinity') < $1             -- the sweep's cutoff
+           AND (year IS NULL OR year > extract(year FROM now()) - $2))  -- OLDER_AFTER_YEARS
+       OR coalesce(merge_version, 0) < $6)                         -- the current merge version
+  AND (coalesce(next_refresh_at, '-infinity'), id) > ($3, $4)     -- the last row of the previous page
+ORDER BY coalesce(next_refresh_at, '-infinity'), id
 LIMIT $5;
 
 -- RecordOpen: count the open in the narrow open table, and report whether the work is due
@@ -1436,7 +1530,7 @@ VALUES ($1, now(), 1)
 ON CONFLICT (anime_id) DO UPDATE
 SET last_opened_at = now(), open_count = anime_open.open_count + 1;
 
-SELECT refreshed_at IS NULL OR refreshed_at < now() - make_interval(days => $2) AS is_due
+SELECT next_refresh_at IS NULL OR next_refresh_at <= now() AS is_due
 FROM anime
 WHERE id = $1 AND deleted_at IS NULL;
 
@@ -1446,14 +1540,15 @@ SELECT e.id, e.anime_id, e.episode_number, e.aired_at AS expected_air_at
 FROM episode e
 JOIN anime a ON a.id = e.anime_id
 WHERE a.status IN ('ONGOING', 'UPCOMING') AND a.deleted_at IS NULL AND e.deleted_at IS NULL
-  AND e.aired_at BETWEEN now() AND now() + make_interval(days => $1)
+  AND e.aired_at BETWEEN now() - interval '24 hours' AND now() + make_interval(days => $1)
+  AND e.aired_notified_at IS NULL                                -- a delayed episode stays tracked
 UNION ALL
 SELECT NULL, b.anime_id, b.next_episode_number, b.next_episode_at
 FROM anime_broadcast b
 JOIN anime a ON a.id = b.anime_id
 WHERE a.status IN ('ONGOING', 'UPCOMING') AND a.deleted_at IS NULL
   AND b.next_episode_number IS NOT NULL
-  AND b.next_episode_at BETWEEN now() AND now() + make_interval(days => $1)
+  AND b.next_episode_at BETWEEN now() - interval '24 hours' AND now() + make_interval(days => $1)
   AND NOT EXISTS (
     SELECT 1 FROM episode e
     WHERE e.anime_id = b.anime_id AND e.episode_number = b.next_episode_number
@@ -1473,6 +1568,21 @@ LIMIT $3;
 ```
 
 The same `RecordOpen` and due queries exist for `episode` and `character`. An episode is older when its work is, and a character when every work it appears in is.
+
+```sql
+-- ListDuePages: the pages of one budgeted provider (AniDB) in due order, for the budgeted
+-- fetcher, with the work each page belongs to. Never-fetched pages come first.
+SELECT p.provider, p.page_kind, p.address, ap.anime_id
+FROM provider_page p
+JOIN anime_provider_page ap USING (provider, page_kind, address)
+WHERE p.provider = $1 AND NOT p.is_dead
+  AND (p.fetch_failed_at IS NULL
+       OR p.fetch_failed_at < now() - make_interval(hours => least(power(2, p.fetch_failures)::int, 168)))
+ORDER BY p.fetched_at NULLS FIRST, p.address
+LIMIT $2;
+```
+
+`ListDueEpisodes` and `ListDueCharacters` return only the episodes and characters of ongoing and upcoming works. A character shared by several works counts as ongoing when any of its undeleted works is ongoing or upcoming. Those of finished works refresh when a user opens them, or when the work's weekly merge changes what it says about them: a changed `episode_list_entry` row, or a character added to or changed in the work's cast, sets that entity's `next_refresh_at` to NULL in the same save, and `SaveWork` returns its ID so the work's refresh starts its refresh at once. The sweep does not pick up these entities, so the returned ID is what refreshes them. MAL alone lists about 420,000 episodes, and refreshing them all weekly at MAL's pace of one request every 1.5 seconds would need more than a day's capacity every day.
 
 ### Airing Schedule Queries
 
@@ -1526,6 +1636,9 @@ WHERE g.genre = $1 AND a.deleted_at IS NULL;
 ---
 
 ## Graph Query Primitives
+
+> [!note] The templates below are written for works only
+> `k_hop`, `path` and `compare` hardcode `from_type = 'anime' AND to_type = 'anime'`, and the WIP `compare` reads columns and a `character_relation` table the DDL does not have. The decided design is that every primitive takes any node type (see the WIP section). The templates are rewritten with the relationship traversal project.
 
 > **Linear:** Relationship traversal project
 
@@ -1736,7 +1849,7 @@ Every field of the canonical models in `libs/common/src/common/models/anime.py` 
 
 **`Anime`**
 - Scalars → columns of `anime`. `nsfw` → `is_nsfw`, `duration` → `duration_seconds`, `month` → a month number.
-- `id` → `anime.id`, assigned at the first merge.
+- `id` → `anime.id`, assigned when the work is first created.
 - `entity_type` → *read*, always `anime`.
 - `sources`, `partial_sources` → `anime_provider_page` with role `source` or `partial_source`.
 - `synopsis` → `anime.synopsis`, from a correction or `anime_generated_text` only.
@@ -1758,7 +1871,7 @@ Every field of the canonical models in `libs/common/src/common/models/anime.py` 
 
 **`Episode`**
 - Scalars → columns of `episode`. `aired` → `aired_at`, `filler` → `is_filler`, `recap` → `is_recap`, `duration` → `duration_seconds`.
-- `id` → `episode.id`, assigned at the first merge. `anime_id` → `episode.anime_id`.
+- `id` → `episode.id`, assigned when the episode is first created. `anime_id` → `episode.anime_id`.
 - `entity_type` → *read*, always `episode`.
 - `sources` → `episode_provider_page`.
 - `titles` → `episode_title`. `images` → `episode_image`. `streaming` → `episode_streaming`.
@@ -1767,7 +1880,7 @@ Every field of the canonical models in `libs/common/src/common/models/anime.py` 
 
 **`Character`**
 - Scalars → columns of `character`.
-- `id` → `character.id`, assigned at the first merge.
+- `id` → `character.id`, assigned when the character is first created.
 - `entity_type` → *read*, always `character`.
 - `sources` → `character_provider_page`.
 - `roles`, `anime_ids` → *read* from `anime_character`.

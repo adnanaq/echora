@@ -72,7 +72,7 @@ message CatalogueEvent {
 | `character.deleted` | A character is removed, such as an orphan or a merged duplicate | Vector Service |
 
 - **Version.** Each save that changes an entity increases its `version` in the same transaction. A consumer stores the version it last handled and skips any event whose version is not newer.
-- **Deletes.** A removed entity keeps its row with `deleted_at` set, and its `version` increases once more, so the delete event's version is newer than every update before it. A consumer handles a delete without reading the entity back.
+- **Deletes.** A removed entity keeps its row with `deleted_at` set, and its `version` increases once more, so the delete event's version is newer than every update before it. A consumer reads a deleted entity back like any other, and `Get*` answers `NOT_FOUND`, which confirms the delete.
 - **Removing an episode.** When an episode is removed and `episode.deleted` is sent, for example when a work's merge no longer lists it, is not decided yet. Decided in ECHO-103.
 
 ## Notification Events
@@ -149,15 +149,16 @@ message PageKey {
 message PageResponse {
   string request_name = 1;                   // e.g. 'main', 'characters', 'episodes_page_2'
   string content_type = 2;                   // 'application/json', 'text/html', 'application/xml'
-  bytes body = 3;
+  bytes body = 3;                            // exactly as the provider sent it; gRPC compresses it in transit
 }
 
-// A provider page as fetched and as PostgreSQL stores it. Nothing is mapped yet.
+// A provider page as fetched. PostgreSQL compresses the bodies at rest; on the wire they are as received.
 message StoredPage {
   PageKey page_key = 1;
   google.protobuf.Timestamp fetched_at = 2;
-  bool is_dead = 3;                          // the provider no longer serves the page
+  bool is_dead = 3;                          // confirmed gone: by a reviewer, or automatically once trusted
   repeated PageResponse responses = 4;
+  bool is_not_found = 5;                     // this fetch got the provider's own "not found"; StorePage records it, keeping the old responses
 }
 
 // An approved change to one field, applied after every merge.
@@ -181,6 +182,18 @@ message EpisodeReference {
   int32 episode_number = 2;
   string title = 3;
   repeated PageKey page_keys = 4;
+  repeated EpisodeListEntry list_entries = 5;  // what each provider's work page says about it
+}
+
+// One provider's facts about an episode, sliced out of the work's page by the work's merge.
+// Most providers list episodes only inside the work's responses.
+message EpisodeListEntry {
+  string provider = 1;                       // 'mal', 'anilist', ...
+  optional string title = 2;
+  optional google.protobuf.Timestamp aired_at = 3;
+  optional int32 duration_seconds = 4;
+  optional bool is_filler = 5;
+  optional bool is_recap = 6;
 }
 
 // A character a work lists, with its ID once assigned.
@@ -204,19 +217,26 @@ message CharacterReference {
 The enrichment service owns everything enrichment does. It holds no data between calls. A caller passes in what a method needs and stores what it returns.
 
 ```protobuf
+import "google/protobuf/duration.proto";
+
 service EnrichmentService {
   rpc Health(HealthRequest) returns (HealthResponse);                    // exists
-  rpc RunPipeline(RunPipelineRequest) returns (RunPipelineResponse);    // exists, replaced by the methods below
+  rpc RunPipeline(RunPipelineRequest) returns (RunPipelineResponse);    // exists, replaced by the methods below; removed before any shared deployment
   // Fetch one provider page, as received. Nothing is mapped.
   rpc FetchPage(FetchPageRequest) returns (FetchPageResponse);
   // Map a work's stored pages, merge them, then apply corrections and AI text.
   rpc MergeWork(MergeWorkRequest) returns (MergeWorkResponse);
   rpc MergeEpisode(MergeEpisodeRequest) returns (MergeEpisodeResponse);
   rpc MergeCharacter(MergeCharacterRequest) returns (MergeCharacterResponse);
+  // Match the cast entries of a work's pages that are not yet linked to a character.
+  // Its own call, so a cast of a thousand runs under its own timeout. Messages are defined
+  // with the character merge.
+  rpc MatchCharacters(MatchCharactersRequest) returns (MatchCharactersResponse);
 }
 
 message FetchPageRequest {
   shared_proto.v1.PageKey page_key = 1;
+  google.protobuf.Duration max_age = 2;      // the response cache answers only with a younger response; 0 always fetches
 }
 
 message FetchPageResponse {
@@ -244,6 +264,7 @@ message MergeEpisodeRequest {
   string anime_id = 2;
   repeated shared_proto.v1.StoredPage pages = 3;
   repeated shared_proto.v1.FieldCorrection corrections = 4;
+  repeated shared_proto.v1.EpisodeListEntry list_entries = 5;  // merged with the pages, so an episode with no page of its own still merges
 }
 
 message MergeEpisodeResponse {
@@ -275,8 +296,11 @@ The agent service holds every AI call. It stores nothing. A caller passes in the
 ```protobuf
 service AgentService {
   // Write a work's synopsis from its provider synopses and a web search.
-  rpc WriteSynopsis(WriteSynopsisRequest) returns (WriteSynopsisResponse);
+  rpc WriteSynopsis(shared_proto.v1.WriteSynopsisRequest) returns (shared_proto.v1.WriteSynopsisResponse);
 }
+
+// The two messages below live in shared_proto.v1, since the PostgreSQL Service also uses them,
+// and no service proto imports another service's proto.
 
 message WriteSynopsisRequest {
   string anime_id = 1;
@@ -331,22 +355,29 @@ service PostgresService {
   rpc DeleteWork(DeleteWorkRequest) returns (SaveEntityResponse);
 
   // What is due
+  rpc ListEntityPages(ListEntityPagesRequest) returns (ListEntityPagesResponse);
+  rpc RecordRefresh(RecordRefreshRequest) returns (RecordRefreshResponse);
   rpc ListDueWorks(ListDueRequest) returns (ListDueResponse);
   rpc ListDueEpisodes(ListDueRequest) returns (ListDueResponse);
   rpc ListDueCharacters(ListDueRequest) returns (ListDueResponse);
   rpc ListUpcomingEpisodes(ListUpcomingEpisodesRequest) returns (ListUpcomingEpisodesResponse);
   rpc ListScoreWorks(ListScoreWorksRequest) returns (ListScoreWorksResponse);
   rpc RecordOpen(RecordOpenRequest) returns (RecordOpenResponse);
+  rpc MarkEpisodeAired(MarkEpisodeAiredRequest) returns (MarkEpisodeAiredResponse);
 
   // AI-written text
   rpc LoadSynopsisSources(LoadSynopsisSourcesRequest) returns (LoadSynopsisSourcesResponse);
   rpc SaveGeneratedText(SaveGeneratedTextRequest) returns (SaveGeneratedTextResponse);
 
   // Reads, for event consumers and the backend
-  rpc GetAnime(GetEntityRequest) returns (shared_proto.v1.Anime);
-  rpc GetEpisode(GetEntityRequest) returns (shared_proto.v1.Episode);
+  rpc GetAnime(GetEntityRequest) returns (GetAnimeResponse);
+  rpc GetEpisode(GetEntityRequest) returns (GetEpisodeResponse);
   rpc ListEpisodes(GetEntityRequest) returns (ListEpisodesResponse);
-  rpc GetCharacter(GetEntityRequest) returns (shared_proto.v1.Character);
+  rpc GetCharacter(GetEntityRequest) returns (GetCharacterResponse);
+  rpc ListEntityVersions(ListEntityVersionsRequest) returns (ListEntityVersionsResponse);
+
+  // Budgeted providers
+  rpc ListDuePages(ListDuePagesRequest) returns (ListDuePagesResponse);
 
   // Relationship traversal, for the Agent Service; messages defined with that project
   rpc FindNeighbors(FindNeighborsRequest) returns (GraphResponse);
@@ -390,6 +421,8 @@ message SaveWorkResponse {
   int64 version = 2;
   repeated string created_episode_ids = 3;   // episodes to refresh next
   repeated string created_character_ids = 4; // characters to refresh next
+  repeated string changed_episode_ids = 5;   // existing episodes whose list entries changed
+  repeated string changed_character_ids = 6; // existing characters whose cast entry changed
 }
 
 message LoadEpisodeRequest {
@@ -401,6 +434,7 @@ message LoadEpisodeResponse {
   string anime_id = 2;
   repeated shared_proto.v1.StoredPage pages = 3;
   repeated shared_proto.v1.FieldCorrection corrections = 4;
+  repeated shared_proto.v1.EpisodeListEntry list_entries = 5;
 }
 
 message SaveEpisodeRequest {
@@ -480,11 +514,12 @@ message DeleteWorkRequest {
 }
 
 message ListDueRequest {
-  google.protobuf.Timestamp refreshed_before = 1;  // the sweep's fixed cutoff
+  google.protobuf.Timestamp due_before = 1;  // the sweep's fixed cutoff, compared with next_refresh_at
   int32 older_after_years = 2;               // entities older than this refresh only when opened
   int32 page_size = 3;
-  optional google.protobuf.Timestamp after_refreshed_at = 4;  // keyset: the last row of the previous page
+  optional google.protobuf.Timestamp after_next_refresh_at = 4;  // keyset: the last row of the previous page
   optional string after_id = 5;
+  int32 merge_version = 6;                   // the current merge code; entities merged by older code are due whatever their age
 }
 
 message ListDueResponse {
@@ -493,7 +528,7 @@ message ListDueResponse {
 
 message DueEntity {
   string entity_id = 1;
-  optional google.protobuf.Timestamp refreshed_at = 2;
+  optional google.protobuf.Timestamp next_refresh_at = 2;  // unset when due now
 }
 
 message ListUpcomingEpisodesRequest {
@@ -511,6 +546,40 @@ message UpcomingEpisode {
   google.protobuf.Timestamp expected_air_at = 4;
 }
 
+message ListEntityPagesRequest {
+  shared_proto.v1.PageKind entity_kind = 1;
+  string entity_id = 2;
+}
+
+message ListEntityPagesResponse {
+  repeated EntityPage pages = 1;
+}
+
+message EntityPage {
+  shared_proto.v1.PageKey page_key = 1;
+  bool is_partial_source = 2;
+  optional google.protobuf.Timestamp fetched_at = 3;       // unset when never fetched
+  bool is_dead = 4;
+  optional google.protobuf.Timestamp fetch_failed_at = 5;
+  int32 fetch_failures = 6;
+}
+
+message RecordRefreshRequest {
+  shared_proto.v1.PageKind entity_kind = 1;
+  string entity_id = 2;
+  RefreshOutcome outcome = 3;
+  google.protobuf.Duration refresh_after = 4;  // REFRESH_AFTER_DAYS, from the Update Service's settings
+}
+
+enum RefreshOutcome {
+  REFRESH_OUTCOME_UNSPECIFIED = 0;
+  REFRESH_OUTCOME_SUCCEEDED = 1;             // every page fetched or not due
+  REFRESH_OUTCOME_PAGES_FAILED = 2;          // merged, but some pages failed; due again when the first may retry
+  REFRESH_OUTCOME_FAILED = 3;                // the merge or save failed; due again after a backoff
+}
+
+message RecordRefreshResponse {}
+
 message ListScoreWorksRequest {
   int32 lookback_days = 1;                   // finished works stay in for this many days after aired_to
   int32 page_size = 2;
@@ -524,7 +593,6 @@ message ListScoreWorksResponse {
 message RecordOpenRequest {
   shared_proto.v1.PageKind entity_kind = 1;
   string entity_id = 2;
-  int32 refresh_after_days = 3;
 }
 
 message RecordOpenResponse {
@@ -536,15 +604,31 @@ message LoadSynopsisSourcesRequest {
 }
 
 message LoadSynopsisSourcesResponse {
-  agent_service.v1.WriteSynopsisRequest request = 1;  // ready to send to WriteSynopsis
+  shared_proto.v1.WriteSynopsisRequest request = 1;  // ready to send to WriteSynopsis
   string input_hash = 2;                     // hash of the provider synopses
 }
 
 message SaveGeneratedTextRequest {
   string anime_id = 1;
   string field_path = 2;                     // 'synopsis'
-  agent_service.v1.WriteSynopsisResponse written = 3;
+  optional shared_proto.v1.WriteSynopsisResponse written = 3;  // unset when nothing was written
   string input_hash = 4;
+  GeneratedTextOutcome outcome = 5;          // recorded even when nothing was written
+}
+
+enum GeneratedTextOutcome {
+  GENERATED_TEXT_OUTCOME_UNSPECIFIED = 0;
+  GENERATED_TEXT_OUTCOME_WRITTEN = 1;
+  GENERATED_TEXT_OUTCOME_TOO_LITTLE_TEXT = 2;
+  GENERATED_TEXT_OUTCOME_REFUSED = 3;        // every attempt was too close to a source
+}
+
+message MarkEpisodeAiredRequest {
+  string episode_id = 1;
+}
+
+message MarkEpisodeAiredResponse {
+  bool has_notified = 1;                     // false when it was already written, or the episode has not aired
 }
 
 message SaveGeneratedTextResponse {
@@ -555,22 +639,77 @@ message GetEntityRequest {
   string entity_id = 1;
 }
 
+message GetAnimeResponse {
+  shared_proto.v1.Anime anime = 1;
+  int64 version = 2;                         // the version the vector service stores in the point
+}
+
+message GetEpisodeResponse {
+  shared_proto.v1.Episode episode = 1;
+  int64 version = 2;
+}
+
+message GetCharacterResponse {
+  shared_proto.v1.Character character = 1;
+  int64 version = 2;
+}
+
 message ListEpisodesResponse {
-  repeated shared_proto.v1.Episode episodes = 1;
+  repeated GetEpisodeResponse episodes = 1;
+}
+
+message ListEntityVersionsRequest {
+  shared_proto.v1.PageKind entity_kind = 1;
+  int32 page_size = 2;
+  optional string after_id = 3;              // keyset: the last ID of the previous page
+}
+
+message ListEntityVersionsResponse {
+  repeated EntityVersion entities = 1;       // visible entities only, in ID order
+}
+
+message EntityVersion {
+  string entity_id = 1;
+  int64 version = 2;
+}
+
+message ListDuePagesRequest {
+  string provider = 1;                       // 'anidb'
+  int32 page_size = 2;
+}
+
+message ListDuePagesResponse {
+  repeated DuePage pages = 1;                // never-fetched first, then oldest fetch
+}
+
+message DuePage {
+  shared_proto.v1.PageKey page_key = 1;
+  string anime_id = 2;                       // the work to send merge_requested when the page changed
 }
 ```
 
-- **Saves check the version.** `SaveWork`, `SaveEpisode`, `SaveCharacter` and `DeleteWork` write only when the stored version still equals `expected_version`. Otherwise they return `ABORTED`, and Temporal retries the activity from its load. A save that changes nothing writes nothing and sends nothing, and only records that the refresh finished.
+- **Saves check the version.** `SaveWork`, `SaveEpisode`, `SaveCharacter` and `DeleteWork` write only when the stored version still equals `expected_version`. Otherwise they return `ABORTED`, and the merge activity loads, merges and saves again within the same attempt. A save that changes nothing writes nothing and sends nothing. `RecordRefresh`, the refresh's last call, records that it finished.
 - **`SaveWork` creates what the work lists.** An episode or character the merge gave a new ID is created with its page links, and the response names it so the workflow can start its refresh. Before creating a character, it looks up the character's page keys. When one already belongs to a character, such as one another work's save created a moment earlier, it links that character and drops the new ID, so the save never fails on it.
 - **`StorePage`** stores a page and its responses only when its `fetched_at` is newer than the stored one, so a retried or late fetch never replaces newer data. It reports the page as changed when the hash of the responses differs, without reading the stored bodies.
 - **`CreateWorks` and `RelinkPages`** resolve every unresolved relation that points at a newly linked source page, in the same transaction. They also increase the version of every work that gains or loses a page, so a merge that loaded before the move starts again.
+- **`Get*` answers `NOT_FOUND`** for an entity that is deleted or not merged yet, so consumers confirm deletes by reading back. Otherwise they return the entity with its version, which the vector service stores in the point.
+- **`ListEntityVersions`** pages through the visible entities of one kind with their versions, for the vector service's comparison job.
+- **`StorePage` records a missing page instead of deleting it.** A fetch with `is_not_found` sets `missing_since` and counts the answer, and keeps the stored responses. Two answers a day apart create a `dead_page` review item, or, once the provider is trusted, set `is_dead`. Seed releases never remove pages. See [[Database Schema#4. Writes and Deletes|Database Schema]].
+- **Addresses are checked.** `FetchPage` and `StorePage` refuse an address that does not match its provider's pattern with `INVALID_ARGUMENT`, before it reaches a URL.
+- **`MarkEpisodeAired`** writes `notification.episode.aired` once, when the episode's `aired_at` has passed and `aired_notified_at` is unset. The tracker calls it at air time, so the notification does not depend on a save changing something.
+- **`SaveGeneratedText` records every attempt**, written or not, so the same provider synopses do not start the synopsis workflow again.
+- **`ListDuePages`** lists one budgeted provider's pages in due order with their work, for the budgeted fetcher.
+- **`SaveWork` stores each episode's list entries** in `episode_list_entry`. An existing episode whose entries changed, or a character whose cast entry changed, is made due at once and returned in `changed_episode_ids` or `changed_character_ids`, so the refresh starts it.
+- **Works exist before their first merge.** `CreateWorks` writes the work's ID and page links with `merged_at` unset, and links pages that were never fetched. The `Get*` and listing methods skip such works, and the save that first sets `merged_at` writes `anime.created`. See [[Database Schema#4. Writes and Deletes|Database Schema]].
+- **`ListEntityPages` and `RecordRefresh`** give a refresh its due pages and record its outcome, including a refresh that changed nothing, one that left pages failed, and one that failed.
+- **Message size.** Every method that carries page bodies (`StorePage`, `LoadWork`, `MergeWork`, `MergeEpisode`, `MergeCharacter` and their loads) runs with a 64 MB limit, set on every server and every client: `max_decoding_message_size` and `max_encoding_message_size` in `tonic`, whose decoding limit defaults to 4 MB on both ends, and `grpc.max_receive_message_length` and `grpc.max_send_message_length` in `grpcio`. Messages are gzip-compressed. Our services return `RESOURCE_EXHAUSTED` only for a message over the limit, never for a passing condition, so it is not retried. A provider's throttling is returned as `UNAVAILABLE`.
 - **`DeleteWork`** removes the work's page links, its own relations and every `graph_edge` row from or to it, and turns relations other works assert towards it back into unresolved ones, all in one transaction. A work merged into another keeps `merged_into_anime_id`, so its old links can redirect. See [[Database Schema#4. Writes and Deletes|Database Schema]].
 - **`RecordOpen`** writes to the narrow open tables, never to the entity's own row.
-- **`ListDueWorks`, `ListDueEpisodes` and `ListDueCharacters`** page by `(refreshed_at, id)` from a fixed cutoff, so a work that fails to refresh is not picked again in the same sweep.
+- **`ListDueWorks`, `ListDueEpisodes` and `ListDueCharacters`** page by `(next_refresh_at, id)` from a fixed cutoff. `RecordRefresh` sets `next_refresh_at` past the cutoff for every refresh that finishes, so a sweep never picks the same entity twice. `RecordOpen` answers due when `next_refresh_at` has passed.
 - **`ListUpcomingEpisodes`** returns the listed episodes airing in the window, and also the next episode a work's broadcast announces before any provider lists it, with `episode_id` unset.
 - **`ListScoreWorks`** pages the works whose scores refresh daily, ongoing or finished within `lookback_days`. A finished work without an end date is left to the weekly sweep.
 - **`LoadSynopsisSources`** and **`SaveGeneratedText`** serve the `SynopsisWorkflow`. A synopsis whose input hash already matches is not written again. A new synopsis increases the work's version.
-- **The PostgreSQL proto imports the Agent Service's messages** for those two methods. If that dependency is unwanted, `WriteSynopsisRequest` and `WriteSynopsisResponse` move into `shared_proto.v1`.
+- **`WriteSynopsisRequest` and `WriteSynopsisResponse` live in `shared_proto.v1`**, since both the Agent Service and the PostgreSQL Service use them, so no service proto imports another's.
 - Approval-queue writes and the backend's reads are defined when those features are designed.
 
 ## Schema Evolution
@@ -580,7 +719,9 @@ message ListEpisodesResponse {
 
 `libs/common/src/common/models/anime.py` is the source of truth for the domain types. `protos/shared_proto/v1/anime.proto` mirrors it, and a change to one changes the other in the same PR. `scripts/check_anime_model_proto_contract.py` checks that they match.
 
-Before any service runs in production:
+Messages PostgreSQL stores follow the production rules below from the first migration that stores them: the messages of `anime.proto`, since a `FieldCorrection` value can be any of them, `FieldCorrection` itself, the approval queue's proposals and decisions, and `CatalogueEvent` in the outbox. Protobuf bytes name fields by number, so a renumbered field would silently read a stored value into the wrong field.
+
+Before any service runs in production, every other message may change in place:
 
 - **Removing a field** deletes it and renumbers the message's fields from 1 without gaps. No numbers or names are reserved.
 - **Adding or renaming a field** changes the model and the proto together, then regenerates the stubs.
@@ -593,7 +734,7 @@ Once services exchange these messages across versions in production:
 
 Thin events make this rarely matter for events. A domain field added to `Anime` changes no event message, since events carry only IDs and versions.
 
-Stored corrections and approval values are protobuf messages too, so the same rules keep old stored values readable.
+Stored corrections, approval values and outbox events are protobuf messages too, which is why they follow the production rules from the start.
 
 PostgreSQL migrations are written by hand. A model field without a database column is caught at build time, when `cargo sqlx prepare` checks the queries against the schema.
 

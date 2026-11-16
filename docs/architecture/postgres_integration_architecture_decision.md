@@ -45,7 +45,7 @@ The service exposes gRPC only. The planned methods are listed in [[event_schema_
 | Caller | Methods | Purpose |
 |---|---|---|
 | Update Service activities (Temporal) | `StorePage`, `LoadWork`, `SaveWork`, `ListDueWorks` | Refresh, first enrichment and page moves |
-| Vector Service | `GetAnime`, `ListEpisodes`, `GetCharacter` | Read the current state after an event |
+| Vector Service | `GetAnime`, `GetEpisode`, `GetCharacter`, `ListEntityVersions` | Read the current state after an event, and compare Qdrant with PostgreSQL |
 | Backend | Reads for pages the frontend shows, defined with the backend | Serve the frontend |
 | Agent Service (planned) | Relationship traversal | Answer questions that follow relations between works |
 
@@ -57,7 +57,7 @@ Temporal retries failed activities, and NATS delivers events at least once, so e
 
 - `StorePage` ignores a fetch older than the stored `fetched_at` of the same page.
 - `SaveWork` writes nothing, and sends nothing, when the work did not change.
-- Every insert is an upsert on a natural key, such as a page key or `(anime_id, episode_number)`.
+- Every write is safe to repeat: pages are upserted on their page key, entities are written by the ID the merge assigned, and detail rows are replaced per entity.
 
 ### Relationship traversal
 
@@ -115,8 +115,32 @@ echora/
 - **Settings.** `common` reads the same environment variable names as the Python `EnvSettings`, and each app defines its own settings struct from it.
 - **Ownership.** Only `postgres_service` depends on `postgres_db`, so no other crate reaches the database.
 - **Workspace.** The root `Cargo.toml` lists every crate and declares every dependency version, the crates' own versions and the lints once, in `[workspace.dependencies]` and `[workspace.lints]`. Each crate takes them with `workspace = true`. The edition is 2024, and the minimum Rust version is 1.92, which the Temporal Rust SDK needs.
-- **Checks.** CI runs `rustfmt`, clippy with the lint set of the Microsoft Rust guidelines (the `ms-rust` skill), `cargo-audit` for vulnerable dependencies and `cargo-udeps` for unused ones.
+- **Checks.** CI runs `rustfmt`, clippy with the lint set of the Microsoft Rust guidelines (the `ms-rust` skill) plus `wildcard_enum_match_arm`, `cargo-audit` for vulnerable dependencies and `cargo-udeps` for unused ones. See [[echora_contracts#The PostgreSQL Service's mapping|Schema Ownership & Contracts]] for why.
 - **Build.** Cargo builds and tests the Rust crates. Pants has no supported Rust backend, so Pants only wraps the Cargo builds to produce the Docker images, and Python targets stay as they are. `.sqlx/` holds the prepared query data, so builds without a database still check queries.
+
+## Security
+
+> **Linear:** Deployment project
+
+Nothing is authenticated in local development. Before any shared deployment:
+
+- **Mutual TLS between services.** Each service has a certificate, so a server knows which service is calling. This is the standard identity for service-to-service gRPC.
+- **One service, permissions per method.** `PostgresService` stays one service. An interceptor checks the caller's identity against a table of the methods each caller may use, keyed by the full method name (`/postgres_service.v1.PostgresService/DeleteWork`), and denies anything not in the table. A CI test compares the table with the proto, so a new method cannot ship without an entry. The backend, for example, gets reads and `RecordOpen`, and only the Update Service gets the saves, relinks and deletes. Splitting reads and writes into two services would give coarser rules for the same protection, at the cost of a second proto and client.
+- **NATS accounts.** One account per service, and only the PostgreSQL Service may publish catalogue and notification subjects. Consumers confirm a delete by reading back, so a forged delete changes nothing.
+- **`RunPipeline` is removed** from the Enrichment Service first. It accepts any file path from its caller.
+
+## Backups and Restore
+
+> **Linear:** Deployment project
+
+PostgreSQL holds the only copy of what cannot be fetched again: entity IDs, review answers, approved corrections and AI-written text.
+
+- **PostgreSQL** gets point-in-time recovery: a base backup plus continuous archiving of its write-ahead log, so it can be restored to any moment. The tool is chosen with the deployment.
+- **Qdrant needs no backup.** The vector service's comparison job rebuilds it from PostgreSQL (see [[event_driven_architecture#3. The vector service reacts|Event-Driven Architecture]]).
+- **NATS needs no backup.** It holds only notices, and PostgreSQL is current.
+- **Temporal's databases** can be lost. The Update Service creates its schedules and search attributes at startup if they are missing, and the next sweep picks up refreshes that were in flight.
+
+Restore order: PostgreSQL first, then start the services, then run the vector comparison job. After a restore to an earlier moment, Qdrant may hold versions newer than PostgreSQL. The job repairs every point whose version differs, not only older ones. Outbox IDs are UUIDv7, so rows written after a restore never reuse an ID that NATS's deduplication would drop.
 
 ## Database Layout
 
