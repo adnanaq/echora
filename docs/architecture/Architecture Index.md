@@ -44,7 +44,7 @@ Why one Rust service in this repository owns the database, what it does and does
 ### Database Schema
 🗄️ **[[Database Schema]]**
 
-The full DDL, normalized to fifth normal form with no JSONB: provider pages and their raw responses, the links from works, episodes and characters to their pages, every field of the canonical models, relations, corrections, AI-written text, the approval queue and the outbox. Also maps every model field to its table, and covers deduplication, refresh queries and the graph query primitives.
+The full DDL, normalized to fifth normal form with no JSONB: provider pages and their raw responses, the links from works, episodes and characters to their pages, every field of the canonical models, relations, corrections, AI-written text, the approval queue and the outbox. Also maps every model field to its table, and covers deduplication, refresh queries and the knowledge graph: its nodes, its one edge vocabulary, relation provenance, franchises and the graph reads.
 
 ### Update Service
 🔄 **[[update_service|Update Service]]**
@@ -186,8 +186,9 @@ Tracked in the Linear initiative "Catalogue platform". Cleanup issues follow the
 5. **Vector Service consumers** for the catalogue events, with the version stored in each point. ECHO-90, ECHO-106, ECHO-114, ECHO-121, ECHO-122
 6. **Backend**, once GraphQL or REST is decided. Backend project
 7. **Approval queue** in PostgreSQL, and the review page moved onto it. Approval queue project
-8. **Agent Service** for synopses, then the **Users Service** and **Notification Service**. ECHO-91, ECHO-96, ECHO-115; Users Service and Notification Service projects
-9. **People** (staff and voice actors), last. People project
+8. **Knowledge graph** reads and franchises, with franchise review on the approval queue. P-ECHO-22
+9. **Agent Service** for synopses, then the **Users Service** and **Notification Service**. ECHO-91, ECHO-96, ECHO-115; Users Service and Notification Service projects
+10. **People** (staff and voice actors), last. People project
 
 ## External Resources
 

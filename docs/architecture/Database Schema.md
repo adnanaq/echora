@@ -537,6 +537,7 @@ Source material needs no unresolved state: a related source work always carries 
 **Who asserts an edge:**
 - `anime_relation` holds only what each work's own provider pages say, in one direction, from that work. When work A lists B as a sequel and B lists A as a prequel, there are two rows, one asserted by each work. (ECHO-102)
 - `SaveWork` replaces the work's own `anime_relation` rows with what the merge produced. It never touches rows another work asserted. (ECHO-102)
+- `SaveWork` replaces the work's own `anime_relation_claim` rows with the providers' claims the merge passed on, so the provenance always matches the stored relations. (ECHO-102)
 - Both directions exist only in `graph_edge`. The `graph_edge` rows between two works are recomputed from both works' `anime_relation` rows and the inverse map whenever either work's relations change, so removing one work's assertion never removes an edge the other work still asserts. (ECHO-102)
 - Before recomputing a pair, the save takes a transaction-level advisory lock on that pair. `pg_advisory_xact_lock` takes a `bigint`, so the key is a 64-bit hash of the pair's two IDs in sorted order. A save that touches several pairs takes their locks in ascending order of those hashed keys, never of the raw IDs, since the hash does not keep the IDs' order. Two related works saving at once therefore recompute their pair one after the other, each reading the other's committed rows, and cannot deadlock. A hash collision only makes two unrelated pairs wait for each other. (ECHO-102)
 - Any transaction that links a page as a source of a work resolves every unresolved relation pointing at that page, and recomputes the `graph_edge` rows of each pair it resolves.
@@ -695,7 +696,7 @@ CREATE TABLE anime_relation_type (value text PRIMARY KEY);
 INSERT INTO anime_relation_type VALUES
   ('ADAPTATION'), ('ALTERNATIVE_VERSION'), ('ALTERNATIVE_SETTING'), ('CHARACTER'),
   ('CROSSOVER'), ('FULL_STORY'), ('OTHER'), ('PARENT_STORY'), ('PREQUEL'),
-  ('SEQUEL'), ('SIDE_STORY'), ('SPIN_OFF'), ('SUMMARY');
+  ('SAME_FRANCHISE'), ('SAME_SETTING'), ('SEQUEL'), ('SIDE_STORY'), ('SPIN_OFF'), ('SUMMARY');
 
 CREATE TABLE source_material_relation_type (value text PRIMARY KEY);
 INSERT INTO source_material_relation_type VALUES
@@ -740,7 +741,7 @@ CREATE TABLE graph_edge_type (value text PRIMARY KEY);
 INSERT INTO graph_edge_type VALUES
   ('ADAPTATION'), ('ALTERNATIVE_VERSION'), ('ALTERNATIVE_SETTING'), ('CHARACTER'),
   ('CROSSOVER'), ('FULL_STORY'), ('OTHER'), ('PARENT_STORY'), ('PREQUEL'),
-  ('SEQUEL'), ('SIDE_STORY'), ('SPIN_OFF'), ('SUMMARY'),
+  ('SAME_FRANCHISE'), ('SAME_SETTING'), ('SEQUEL'), ('SIDE_STORY'), ('SPIN_OFF'), ('SUMMARY'),
   ('STUDIO'), ('PRODUCER'), ('LICENSOR'), ('UNKNOWN'),
   ('FEATURES'), ('APPEARS_IN'), ('ADAPTED_FROM'), ('WAS_ADAPTED_TO');
 
@@ -1019,6 +1020,20 @@ CREATE INDEX anime_relation_unresolved_idx  -- (ECHO-102)
   ON anime_relation(to_page_provider, to_page_address)
   WHERE to_anime_id IS NULL;
 
+-- Each provider's own claim about a relation, before the merge picks one type per target.
+-- Read to count how many providers stand behind a relation and whether they agree on its type.
+CREATE TABLE anime_relation_claim (  -- (ECHO-102)
+  from_anime_id     uuid NOT NULL REFERENCES anime(id) ON DELETE CASCADE,
+  provider          text NOT NULL REFERENCES provider(value),   -- whose page states the relation
+  relation_type     text NOT NULL REFERENCES anime_relation_type(value),  -- the type that provider gave
+  to_page_provider  text NOT NULL,
+  to_page_address   text NOT NULL,
+  PRIMARY KEY (from_anime_id, provider, relation_type, to_page_provider, to_page_address)
+);
+
+CREATE INDEX anime_relation_claim_target_idx  -- (ECHO-102)
+  ON anime_relation_claim(to_page_provider, to_page_address);
+
 CREATE TABLE source_material (  -- (ECHO-102)
   id              uuid PRIMARY KEY DEFAULT uuidv7(),
   title           text NOT NULL,
@@ -1101,7 +1116,7 @@ CREATE INDEX graph_edge_to_idx   ON graph_edge(to_id,   to_type,   edge_type);  
 ```
 
 - **Orphans.** `character` and `company` rows are shared, so deleting a work never deletes them (`ON DELETE RESTRICT` on their links). A weekly job deletes characters and companies no work links to any more, and source material no work or character links to. (ECHO-116)
-- **`character_relation`** (direct character-to-character relations) is not part of the first migrations. Its design is still open, see [[#3. `character_relation` Table — IN DISCUSSION 🔄]]. (P-ECHO-22)
+- **`character_relation`** (direct character-to-character relations) is not part of the first migrations. Its design is still open, see [[#Open questions]]. (P-ECHO-22)
 
 ---
 
@@ -1678,186 +1693,198 @@ WHERE g.genre = $1 AND a.deleted_at IS NULL;
 
 ---
 
-## Graph Query Primitives
-
-> [!note] The templates below are written for works only
-> `k_hop`, `path` and `compare` hardcode `from_type = 'anime' AND to_type = 'anime'`, and the WIP `compare` reads columns and a `character_relation` table the DDL does not have. The decided design is that every primitive takes any node type (see the WIP section). The templates are rewritten with the relationship traversal project.
+## Knowledge Graph
 
 > **Linear:** P-ECHO-22
 
-> [!important] These are not regular queries
-> Graph primitives use recursive CTEs and are called by the planned **Agent Service** through the PostgreSQL Service's relationship traversal methods, during natural-language search. They cover relationship traversal, path-finding and comparison. Regular reads and writes are the other gRPC methods in [[event_schema_specification#PostgresService (planned)|Event Schema Specification]].
+The catalogue is a knowledge graph. Works, characters, companies and source material are its nodes, and the typed links between them are its edges. The graph stands on its own: the backend reads it for pages such as a franchise's watch order or a studio's other works, and the Agent Service, when it exists, reads it through the same methods.
 
-All primitives share these safety invariants:
-- SQL is parameterized — no string interpolation from agent output
-- Hard caps enforced server-side: `max_hops ≤ 5`, `max_results ≤ 50`, `max_fanout_per_hop ≤ 50`
-- A 2-second statement timeout as the hard backstop, set with `SET LOCAL statement_timeout = '2s'` inside the query's own transaction. A plain `SET` would stay on the pooled connection and limit every later query on it.
-- The primitives read `graph_edge`, the only table holding both directions of every edge, and skip deleted entities.
-- Cycles are handled by PostgreSQL's own features, never a hand-written visited list: `k_hop` uses a recursive `UNION`, which discards rows that duplicate any earlier row, and `path` uses the `CYCLE` clause ([PostgreSQL 18, Recursive Queries](https://www.postgresql.org/docs/18/queries-with.html#QUERIES-WITH-RECURSIVE))
+The graph lives inside PostgreSQL, in `graph_edge`, and is walked with recursive SQL.
 
-### Edge Vocabulary (Allowlist)
+- **SQL/PGQ is not available.** The SQL standard's property-graph queries (`GRAPH_TABLE`) were committed to PostgreSQL and then reverted before PostgreSQL 19, so the earliest release with them is PostgreSQL 20. The tables are shaped so they could be declared as a property graph then, without moving data: every node is an entity table with a key, and every edge has a source key, a destination key and a type.
+- **Apache AGE is not used.** It keeps its own graph storage beside the tables, so the data would be held twice, and its Cypher queries are strings `sqlx` cannot check at build time.
 
-The `edge_types` field in `GraphIntent` accepts only values from this allowlist. Direct edges are read from `graph_edge`; derived edges are joined from their junction tables.
+### Nodes
 
-| Edge type | Category | Source table |
-|-----------|----------|-------------|
-| `SEQUEL` | Direct | `graph_edge` |
-| `PREQUEL` | Direct | `graph_edge` |
-| `SIDE_STORY` | Direct | `graph_edge` |
-| `PARENT_STORY` | Direct | `graph_edge` |
-| `ALTERNATIVE_VERSION` | Direct | `graph_edge` |
-| `ALTERNATIVE_SETTING` | Direct | `graph_edge` |
-| `CROSSOVER` | Direct | `graph_edge` |
-| `SUMMARY` | Direct | `graph_edge` |
-| `FULL_STORY` | Direct | `graph_edge` |
-| `CHARACTER` | Direct | `graph_edge` |
-| `SPIN_OFF` | Direct | `graph_edge` |
-| `ADAPTATION` | Direct | `graph_edge` |
-| `OTHER` | Direct | `graph_edge` |
-| `same_studio` | Derived | `anime_company` (role = 'STUDIO') |
-| `co_appears` | Derived | `anime_character` |
-| `adapted_from` | Derived | `anime_source_material_relation` |
+| Node | Table | Notes |
+|---|---|---|
+| Work | `anime` | Merged from all its provider pages; provider pages are never nodes. |
+| Character | `character` | |
+| Company | `company` | Found or created through `company_xref`, never by name. |
+| Source material | `source_material` | Found or created through `source_material_xref`. |
+| Person | planned | Staff and voice actors, with the people tables (P-ECHO-20). |
+| Episode | planned | Through `episode_character`, once episodes are graph nodes. |
+| Franchise | planned | Computed from the links; see [[#Franchises]]. |
 
----
+Genres, tags, themes and demographics are **not** nodes. They are filters on works. A popular genre such as comedy is on about a third of all works, so a walk of two hops through genres reaches more than a third of the catalogue and every answer becomes "everything". Works that share tags with a work are found by `compare`, which is a join, not a walk.
 
-### Primitive 1: `neighbors`
+### Edges
 
-One-hop adjacency from a start node. No recursion.
+`graph_edge` holds every edge in both directions, and `graph_edge_type` is the one list of edge types. Nothing is derived at query time: a work's studio is a `STUDIO` edge to the company, so "works by the same studio" is two hops (work → company → work), and "works sharing a character" is `FEATURES` then `APPEARS_IN`.
+
+| From → to | Edge types | Reverse |
+|---|---|---|
+| Work → work | `SEQUEL`, `PREQUEL`, `SIDE_STORY`, `PARENT_STORY`, `SUMMARY`, `FULL_STORY`, `SAME_FRANCHISE`, `SAME_SETTING`, `ALTERNATIVE_VERSION`, `ALTERNATIVE_SETTING`, `SPIN_OFF`, `CROSSOVER`, `CHARACTER`, `ADAPTATION`, `OTHER` | From the inversion map below |
+| Work → character | `FEATURES` | `APPEARS_IN` |
+| Work → company | `STUDIO`, `PRODUCER`, `LICENSOR`, `UNKNOWN` (the company's role) | The same role |
+| Work → source material | `ADAPTED_FROM` | `WAS_ADAPTED_TO` |
+| Person edges | planned with the people tables | |
+| Character → character | planned, see [[#Open questions]] | |
+
+**Walk defaults.** A walk follows the work relations and `STUDIO` unless the caller names other types. `PRODUCER` and `LICENSOR` are followed only when asked: a large broadcaster or licensor is linked to more than a thousand works, so one hop through it reaches far beyond the work's neighbourhood.
+
+**Inversion map**, applied in the PostgreSQL Service (Rust), not in a trigger:
+
+| Category | Relation types | Behaviour |
+|---|---|---|
+| Strict inverses | `SEQUEL ↔ PREQUEL`, `SIDE_STORY ↔ PARENT_STORY`, `SUMMARY ↔ FULL_STORY` | Both edges; each gets the other's type |
+| Symmetric | `CROSSOVER`, `ALTERNATIVE_VERSION`, `ALTERNATIVE_SETTING`, `SAME_FRANCHISE`, `SAME_SETTING` | Both edges; the same type in both directions |
+| One-way inverse | `SPIN_OFF → PARENT_STORY` | The spin-off's work gets `PARENT_STORY` back; `PARENT_STORY` keeps `SIDE_STORY` as its own inverse, since a stored relation keeps the type its provider gave |
+| No inverse | `ADAPTATION`, `CHARACTER`, `OTHER` | One directed edge |
+
+Providers that state both directions confirm the `SPIN_OFF` inverse: AniList and AnimeSchedule pair `SPIN_OFF` with `PARENT_STORY` from the other work's side.
+
+**Who writes edges.** `anime_relation` holds only what each work's own merged record says, in one direction. Both directions exist only in `graph_edge`. The `graph_edge` rows between two works are recomputed from both works' `anime_relation` rows and the inversion map whenever either work's relations change, under the pair's advisory lock (see [[#2. Unresolved Edge Pattern]]). Every junction-table write and its `graph_edge` rows commit in one transaction; a periodic reconciliation job repairs any drift (ECHO-116).
+
+### Edge properties and provenance
+
+`graph_edge` holds the link and its type only. Everything else about an edge stays in the table it came from and is joined when asked:
+
+- a character's role and billing order in `anime_character`;
+- a company's role, which is the edge type itself;
+- each provider's own claim about a relation in `anime_relation_claim`.
+
+`anime_relation_claim` keeps, per work, which provider's page stated a relation and with which type, before the merge picks one type (see [[#Relations, Source Material and Companies]]). The number of providers behind an edge, and whether they agree on its type, are read from it. A relation one provider states can then be told apart from one six providers agree on, which matters for walks and for franchises.
+
+### Franchises
+
+A **story link** continues or retells the same story: `SEQUEL`, `PREQUEL`, `SIDE_STORY`, `PARENT_STORY`, `SUMMARY` and `FULL_STORY`.
+
+A franchise is built from the story links, `SAME_FRANCHISE` and `SAME_SETTING`, leaving out commercials and promotional videos (`CM`, `PV`), which providers mark as side stories of several franchises at once. `SAME_SETTING` belongs there because some franchises change their cast each season: Precure's seasons are linked to each other only as the same setting. The other relation types do not join franchises.
+
+**A work can belong to several franchises.** A crossover such as *Lupin III vs. Detective Conan* belongs to both, the way Wikidata's [media franchise (P8345)](https://www.wikidata.org/wiki/Property:P8345) property takes several values. Membership is therefore a table, not a column:
+
+- a franchise is a connected group of works under the rule above, computed by a job when relations change;
+- groups too large to be one franchise, where a crossover joins two of them, go to the approval queue, where a reviewer splits the group and marks its crossover works as members of both;
+- no automatic rule both separates crossovers and keeps large franchises whole: community detection splits crossovers apart, but it also cuts a franchise like Gundam into its sub-series.
+
+The franchise tables and the review item are designed with the knowledge graph project; the rule above is the input they are built from.
+
+### Reads
+
+Graph reads are `PostgresService` methods. Their messages are defined when the knowledge graph project starts.
+
+| Read | Method | Purpose |
+|---|---|---|
+| `neighbors` | `FindNeighbors` | One hop from a node |
+| `k_hop` | `FindReachable` | Every node within a number of hops, each with its shortest depth |
+| `path` | `FindPath` | How two nodes connect, shortest first |
+| `compare` | `CompareEntities` | What two nodes of the same type share and where they differ |
+
+Each read takes a start node with its type, the edge types to follow (the walk defaults when none are given), and **node filters** applied to the works it returns: work type, year range, status, and genre, tag or theme names, matched through `anime_genre`, `anime_tag` and `anime_theme`. A filter narrows the results; it does not block the walk from passing through a work.
+
+All reads share these rules:
+
+- SQL is parameterized; no input is spliced into the query text.
+- Hard caps on the server: at most 5 hops, 50 results and 50 neighbours per hop.
+- A 2-second statement timeout, set with `SET LOCAL statement_timeout = '2s'` inside the read's own transaction, so it never stays on a pooled connection.
+- Reads use `graph_edge`, which holds both directions of every edge, and skip deleted or unmerged entities through the `*_visible` views.
+- Cycles are handled by PostgreSQL itself, never by a hand-written visited list: `k_hop` uses a recursive `UNION`, which discards rows that repeat an earlier row, and `path` uses the `CYCLE` clause ([PostgreSQL 18, Recursive Queries](https://www.postgresql.org/docs/18/queries-with.html#QUERIES-WITH-RECURSIVE)).
+
+Named reads serve pages directly and are built on the same edges: a work's franchise with its watch order (story links ordered by air date), a work's cast with roles, a company's works by role, and a work's related works with how many providers state each relation.
+
+#### `neighbors`
 
 ```sql
--- neighbors(start, edge_types, max_results)
-SELECT
-  ge.to_id AS node_id,
-  a.title,
-  ge.edge_type
+-- FindNeighbors(start, start_type, edge_types, limit)
+SELECT ge.to_id, ge.to_type, ge.edge_type
 FROM graph_edge ge
-JOIN anime a ON a.id = ge.to_id AND a.deleted_at IS NULL
-WHERE ge.from_id = $1
-  AND ge.from_type = 'anime' AND ge.to_type = 'anime'
-  AND (cardinality($2::text[]) = 0 OR ge.edge_type = ANY($2))
-LIMIT $3;
+WHERE ge.from_id = $1 AND ge.from_type = $2
+  AND ge.edge_type = ANY($3)
+LIMIT $4;
 ```
 
-**Returns:** `GraphResult.node_ids` — immediate neighbors with relation type.
-
----
-
-### Primitive 2: `k_hop`
-
-Multi-hop expansion from a start node with depth and result caps.
+#### `k_hop`
 
 ```sql
--- k_hop(start, edge_types, max_hops, max_results)
--- UNION, not UNION ALL: PostgreSQL discards a row that duplicates any earlier row, so each
--- (node, depth) pair is expanded once. The depth cap ends the recursion, and cycles need
--- no tracking of their own.
-WITH RECURSIVE reached(node_id, depth) AS (
-  SELECT $1::uuid, 0
+-- FindReachable(start, start_type, edge_types, max_hops, limit)
+-- UNION, not UNION ALL: PostgreSQL discards a row that repeats an earlier row, so each
+-- (node, depth) pair is expanded once. The hop cap ends the recursion; cycles need no
+-- tracking of their own.
+WITH RECURSIVE reached(node_id, node_type, depth) AS (
+  SELECT $1::uuid, $2::text, 0
 
   UNION
 
-  SELECT ge.to_id, r.depth + 1
+  SELECT ge.to_id, ge.to_type, r.depth + 1
   FROM reached r
-  JOIN graph_edge ge ON ge.from_id = r.node_id
-  WHERE r.depth < $3                                  -- max_hops cap
-    AND ge.from_type = 'anime' AND ge.to_type = 'anime'
-    AND (cardinality($2::text[]) = 0 OR ge.edge_type = ANY($2))
+  JOIN graph_edge ge ON ge.from_id = r.node_id AND ge.from_type = r.node_type
+  WHERE r.depth < $4
+    AND ge.edge_type = ANY($3)
 )
-SELECT node_id, min(depth) AS min_depth
+SELECT node_id, node_type, min(depth) AS min_depth
 FROM reached
 WHERE node_id <> $1
-GROUP BY node_id
+GROUP BY node_id, node_type
 ORDER BY min_depth, node_id
-LIMIT $4;  -- max_results cap
+LIMIT $5;
 ```
 
-**Returns:** `GraphResult.node_ids` — all reachable nodes within `max_hops`, deduplicated, ordered by shallowest depth first.
+Node filters are applied to the returned works with a join on `anime_visible` and the category tables.
 
-> [!warning] Fanout safety
-> `LIMIT $max_results` + `statement_timeout` (2s) are the hard fanout backstops. The recursive CTE itself cannot efficiently enforce per-hop fanout limits without significant added complexity; rely on the DB-level timeout.
-
----
-
-### Primitive 3: `path`
-
-Find the shortest explanation chain between two nodes.
+#### `path`
 
 ```sql
--- path(start, end, edge_types, max_hops)
--- The CYCLE clause stops a path that returns to a work it already passed. Its tracking
--- column is internal to PostgreSQL, so the works and edge types to return are kept in
+-- FindPath(start, start_type, end, edge_types, max_hops)
+-- The CYCLE clause stops a path that returns to a node it already passed. Its tracking
+-- column is internal to PostgreSQL, so the nodes and edge types to return are kept in
 -- node_path and edge_path.
-WITH RECURSIVE paths(node_id, node_path, edge_path, depth) AS (
-  SELECT $1::uuid, ARRAY[$1::uuid], ARRAY[]::text[], 0
+WITH RECURSIVE paths(node_id, node_type, node_path, edge_path, depth) AS (
+  SELECT $1::uuid, $2::text, ARRAY[$1::uuid], ARRAY[]::text[], 0
 
   UNION ALL
 
-  SELECT ge.to_id, p.node_path || ge.to_id, p.edge_path || ge.edge_type, p.depth + 1
+  SELECT ge.to_id, ge.to_type, p.node_path || ge.to_id, p.edge_path || ge.edge_type, p.depth + 1
   FROM paths p
-  JOIN graph_edge ge ON ge.from_id = p.node_id
-  WHERE p.depth < $4                                  -- max_hops cap
-    AND p.node_id <> $2                               -- a path ends at the end node
-    AND ge.from_type = 'anime' AND ge.to_type = 'anime'
-    AND (cardinality($3::text[]) = 0 OR ge.edge_type = ANY($3))
+  JOIN graph_edge ge ON ge.from_id = p.node_id AND ge.from_type = p.node_type
+  WHERE p.depth < $5
+    AND p.node_id <> $3
+    AND ge.edge_type = ANY($4)
 ) CYCLE node_id SET is_cycle USING cycle_path
 SELECT node_path, edge_path, depth
 FROM paths
-WHERE node_id = $2 AND NOT is_cycle
+WHERE node_id = $3 AND NOT is_cycle
 ORDER BY depth
-LIMIT 10;            -- up to 10 shortest paths
+LIMIT 10;
 ```
 
-**Returns:** `GraphResult.paths` — ordered node/edge chains from start to end, shortest first.
+Both templates were run on PostgreSQL 18.7 against a graph with a cycle and two routes between two nodes.
 
-**Example:** "How is Attack on Titan related to Attack on Titan: Junior High?"
-→ `path(start=AoT, end=Junior_High, edge_types=[], max_hops=3)`
-→ `node_path=[AoT_uuid, Junior_High_uuid]`, `edge_path=["SIDE_STORY"]`
+#### `compare`
 
----
+`compare` takes two nodes of the same type and has two parts:
 
-### Primitive 4: `compare`
-
-Structured diff between two entities. Three sub-queries composed by the executor.
+- **Field differences**, per node type: for works, `type`, `year`, `season`, `status`, `rating`, `episode_count` and `source_material` from `anime_visible`; for source material, `type`, `status`, `chapters` and `volumes`. The service marks each field as the same or different.
+- **Shared links**, the same query for every node type:
 
 ```sql
--- compare(start, end)
-
--- Query 1: scalar field diff
-SELECT
-  a1.id, a1.title, a1.type, a1.status, a1.year,
-  a1.score_weighted, a1.episode_count, a1.source_material, a1.rating,
-  a2.id, a2.title, a2.type, a2.status, a2.year,
-  a2.score_weighted, a2.episode_count, a2.source_material, a2.rating
-FROM anime a1, anime a2
-WHERE a1.id = $1 AND a2.id = $2
-  AND a1.deleted_at IS NULL AND a2.deleted_at IS NULL;
-
--- Query 2: shared characters
-SELECT c.id, c.name, ac1.role AS role_in_a, ac2.role AS role_in_b
-FROM anime_character ac1
-JOIN anime_character ac2
-  ON ac1.character_id = ac2.character_id
-  AND ac2.anime_id = $2
-JOIN character c ON c.id = ac1.character_id
-WHERE ac1.anime_id = $1;
-
--- Query 3: shared studios
-SELECT co.id, co.name
-FROM anime_company acp1
-JOIN anime_company acp2
-  ON acp1.company_id = acp2.company_id
-  AND acp2.anime_id = $2
-JOIN company co ON co.id = acp1.company_id
-WHERE acp1.anime_id = $1 AND acp1.role = 'STUDIO';
+-- CompareEntities, shared links: nodes both start nodes link to with the same edge type
+SELECT g1.to_id, g1.to_type, g1.edge_type
+FROM graph_edge g1
+JOIN graph_edge g2
+  ON g1.to_id = g2.to_id AND g1.to_type = g2.to_type AND g1.edge_type = g2.edge_type
+WHERE g1.from_id = $1 AND g2.from_id = $2
+  AND g1.from_type = $3 AND g2.from_type = $3;
 ```
 
-**Returns:** `GraphResult.meta` — structured diff map (scalar differences, shared characters, shared studios) + `GraphResult.summary` — human-readable comparison for the Answer Agent.
+For works, shared genres, tags and themes come from the category tables by the same kind of join.
 
----
+### Open questions
 
-### `character_relation` in Graph Traversal
-
-The `path` and `k_hop` primitives can traverse `character_relation` edges for direct character-to-character queries (e.g. "how is Luffy related to Nami?"). Edge types from `character_relation_type` (`rivals`, `siblings`, `friends`, etc.) are part of the graph executor's allowlist alongside `anime_relation` types.
+- **Character-to-character relations.** Rivals, siblings, mentor and student. Providers barely supply them (AniList has a few types, MAL none), so they would be extracted by AI from character descriptions, and they change over a story. Whether to store one canonical relation per pair or relations per arc is undecided, so `character_relation` is not in the DDL yet.
+- **People.** `person`, `anime_staff`, `character_voice` and `source_material_creator`, with staff and voice actors from MAL, AniList and AniDB (P-ECHO-20). A producer can be a person (`anime_staff`) or a company (`anime_company`); both are kept.
+- **Episodes as nodes.** `episode_character` already links episodes to characters; episodes join the graph when an episode-level question needs them.
+- **Series inside a franchise.** Community detection finds sub-series such as Gundam's Universal Century and SEED lines. Whether they become a stored level below the franchise is decided with the franchise tables.
 
 ---
 
@@ -1946,387 +1973,6 @@ ALTER TABLE anime ADD COLUMN is_adult boolean;
 -- no-transaction
 CREATE INDEX CONCURRENTLY anime_year_idx ON anime(year);
 ```
-
----
-
-## WIP: Open Graph Query Discussions
-
-> **Linear:** P-ECHO-22
-
-These topics are unresolved design questions for the PostgreSQL graph layer. Ordered from most foundational to most expansive.
-
----
-
-### 1. Edge Directionality — DECIDED ✅
-
-**Decision: `anime_relation` holds one direction per asserting work; `graph_edge` holds both directions.**
-
-When work A's pages say `A → SEQUEL → B`, `anime_relation` stores that one row, asserted by A. The inverse, `B → PREQUEL → A`, exists only in `graph_edge`. The `graph_edge` rows between A and B are recomputed from both works' `anime_relation` rows and the inversion map whenever either work's relations change. Every graph hop is a forward lookup on `graph_edge`: `WHERE from_id = $node`.
-
-**Rationale:**
-- `SaveWork` replaces only the rows its own work asserted, so it never removes an edge the other work still asserts.
-- Uniform query pattern across all four graph primitives (`neighbors`, `k_hop`, `path`, `compare`).
-- No union with the reverse direction and no per-direction routing in the executor.
-
-**Inversion map** (lives in the Rust application layer of the PostgreSQL service, not in a DB trigger):
-
-| Category | Relation types | Behaviour |
-|---|---|---|
-| Strict inverses | `SEQUEL ↔ PREQUEL`, `SIDE_STORY ↔ PARENT_STORY`, `SUMMARY ↔ FULL_STORY` | Write both edges; each gets the other's type |
-| Symmetric | `CROSSOVER`, `ALTERNATIVE_VERSION`, `ALTERNATIVE_SETTING` | Write both edges; same type in both directions |
-| No inverse | `ADAPTATION`, `CHARACTER`, `OTHER` | Write single directed edge only |
-| TBD | `SPIN_OFF` | Inverse unclear — separate ticket to decide (`PARENT_STORY` or unidirectional) |
-
-> [!note] Future tickets
-> - Implement `inverse_relation()` in PostgreSQL service (Rust)
-> - Finalize `SPIN_OFF` inverse decision before implementation
-
----
-
-### 2. Derived Edge CTE Implementations — DECIDED ✅
-
-**Decision: Derived edges support `neighbors` (1-hop) only. Multi-hop mixing is composed at the executor application layer.**
-
-| Edge | Returns | Useful depth | SQL pattern |
-|---|---|---|---|
-| `same_studio` | anime → anime | 1-hop only | JOIN `anime_company` on `company_id` where `role = 'STUDIO'` |
-| `co_appears` | anime → anime | 1-hop only | JOIN `anime_character` on `character_id` |
-| `adapted_from` | anime → source_material | cross-entity — **moved to point 4** | — |
-
-**Why 1-hop only:** Both `same_studio` and `co_appears` expand rapidly at 2+ hops — most of the catalogue shares studios or characters transitively. Semantic value drops off immediately; all useful agent queries are 1-hop ("what else did this studio make?", "what other anime features this character?").
-
-**Multi-hop mixing** (e.g. "anime related to X that share a studio with Y") is handled at the `PostgresGraphExecutor` Rust layer — two separate queries chained:
-1. `k_hop` on `anime_relation` → set of anime IDs
-2. `same_studio` / `co_appears` JOIN against that set
-
-No unified recursive CTE is needed or appropriate here.
-
-**`adapted_from`** crosses entity types (anime → source_material) and belongs in point 4 (cross-entity traversal).
-
-> [!note] Future ticket
-> Implement `neighbors` SQL templates for `same_studio` and `co_appears` in the PostgreSQL service; remove `adapted_from` from the direct-edge allowlist and handle it via cross-entity routing (point 4).
-
----
-
-### 3. `character_relation` Table — IN DISCUSSION 🔄
-
-Character-to-character relationships (rivals, crewmates, siblings, mentor/student, etc.) for path queries like "find the connection between Character X and Character Y".
-
-**Core challenge: relationships are not static**
-
-Character relationships evolve across episodes and arcs — Naruto and Sasuke are rivals early on, enemies mid-series, and reconcile by the end. A simple `relation_type` column captures a canonical snapshot but loses the temporal dimension entirely. Fully modelling evolution would require episode/arc-scoped rows and continuous re-evaluation as new episodes air.
-
-**Data availability:**
-- MAL: no character relationship data exposed
-- AniList: basic types only (PARENT, SIBLING) — very limited coverage
-- AniDB: inconsistent coverage
-- Richer data (crewmate, rival, etc.) lives in fan wikis, not structured APIs
-
-**Two-layer approach under consideration:**
-
-| Layer | Technology | Scope |
-|---|---|---|
-| Structural (static) | PostgreSQL `character_relation` | One canonical relationship per pair, LLM-extracted from character descriptions or episode summaries when a work is saved |
-| Semantic/temporal | Qdrant vector search | Relationship evolution and narrative queries ("rivals who reconcile", "enemies who become allies") — embedded character + relationship descriptions |
-
-**LLM-assisted extraction** is the proposed mechanism for populating the static layer — LLM reads character descriptions or synopses and extracts the dominant/canonical relationship type. The temporal evolution layer (how the relationship changes across arcs) is an open question: whether LLM can reliably extract and maintain this continuously is to be validated.
-
-> [!note] Ongoing discussion
-> Decision deferred. Key open questions before DDL can be defined:
-> 1. Scope: static canonical only, or arc-scoped temporal rows?
-> 2. LLM extraction: validate feasibility for both static and temporal cases
-> 3. Schema: does `character_relation` need `episode_start`/`episode_end` or `arc_id` for temporal tracking?
-> 4. ERD addition: once schema is decided, add to ERD and DDL
-
----
-
-### 4. Cross-Entity Traversal (Non-Anime Start Nodes) — DECIDED ✅
-
-**Decision: Introduce a unified `graph_edge` table as a read-optimized graph projection layer.**
-
-All four primitives currently assume the start node is an anime UUID. The solution is not to write separate CTE variants per entity type — that explodes into an unmaintainable matrix of (entity type × primitive × edge type) combinations. Instead, all edges from all junction tables are materialized into a single `graph_edge` table, and all four primitives query that table exclusively.
-
-**No existing tables change.** Junction tables and entity tables remain the source of truth for writes, CRUD, and data integrity. `graph_edge` is additive — populated by the PostgreSQL service in the same transaction as junction table writes.
-
-```
-Writes:  SaveWork → junction tables (unchanged)
-                   → graph_edge (new, same transaction)
-
-Reads:   agent graph queries  → graph_edge only
-         gRPC reads            → entity tables (unchanged)
-```
-
-**Schema:** See [Complete DDL → Graph Projection Layer](#complete-ddl) above.
-
-> [!note] `from_type` and `to_type` reference the `graph_node_type` lookup table (value #17),
-> consistent with all other enum-like columns in this schema. Invalid node type strings are
-> rejected at the DB level. `'person'` is pre-seeded even though the `person` entity table
-> doesn't exist yet — `graph_edge` rows with `from_type = 'person'` will be inserted once
-> staff/VA tables are added (see point 6 below).
-
-**Populated from all junction tables — both directions:**
-
-| Junction table | Forward edge | Reverse edge |
-|---|---|---|
-| `anime_relation` | anime → anime (relation_type) | from the inversion map, recomputed per pair (point 1) |
-| `anime_character` | anime → character (`FEATURES`) | character → anime (`APPEARS_IN`) |
-| `anime_company` | anime → company (role) | company → anime (the same role) |
-| `anime_source_material_relation` | anime → source_material (`ADAPTED_FROM`) | source_material → anime (`WAS_ADAPTED_TO`) |
-| `anime_staff` *(future)* | anime → person (role) | person → anime (`worked_on`) |
-| `character_voice` *(future)* | character → person (`voiced_by`) | person → character (`voices`) |
-| `character_relation` *(future)* | character → character (relation_type) | handled by inversion map |
-| `source_material_creator` *(future)* | source_material → person (`created_by`) | person → source_material (`authored`) |
-
-**Full traversal matrix this enables:**
-
-| From | To | Hops |
-|---|---|---|
-| anime | anime / character / company / source_material / person | 1 |
-| character | anime / person (VA) / character | 1 |
-| company | anime | 1 — person / company | 2 via anime |
-| person | anime / character | 1 — person / company | 2 via anime |
-| source_material | anime / person (author) | 1 |
-
-All four primitives (`neighbors`, `k_hop`, `path`, `compare`) use the same generic CTE against `graph_edge` regardless of start node type. The executor passes `(node_id, node_type, edge_types)` — no per-entity CTE variants needed.
-
-**Sync strategy — application layer dual write:**
-
-The PostgreSQL service is the single writer to all tables. Every junction table write happens inside a transaction that also writes the corresponding `graph_edge` rows. Either both commit or neither does — `graph_edge` is never out of sync with the junction tables.
-
-Each repository function writes to its junction table AND `graph_edge` in the same transaction:
-- `upsert_anime_relation` → writes `anime_relation`, then recomputes the `graph_edge` rows of each affected pair from both works' rows (point 1)
-- `upsert_anime_character` → writes `anime_character` + `anime→character (FEATURES)` + `character→anime (APPEARS_IN)`
-- `upsert_anime_company` → writes `anime_company` + both directions, each with the role as its type
-- Same pattern for all future junction tables (`anime_staff`, `character_voice`, etc.)
-
-DB triggers were considered and rejected — same reason the inversion map lives in Rust, not in a trigger: logic stays in the application layer, explicit and testable.
-
-**Reconciliation job (safety net):** Runs periodically. Compares each junction table against `graph_edge` and inserts any missing rows. Handles edge cases where a migration or script wrote directly to a junction table bypassing the service.
-
-**Sample — save flow for a single anime (Attack on Titan):**
-
-When `SaveWork` saves a work, the PostgreSQL service writes to junction tables and `graph_edge` in one transaction:
-
-```
-SaveWork (uuid-aot):
-  related_anime:    [ { uuid-aot-s2, SEQUEL } ]
-  characters:       [ { uuid-eren, MAIN }, { uuid-levi, SUPPORTING } ]
-  companies:        [ { uuid-mappa, STUDIO }, { uuid-kodansha, PRODUCER } ]
-  source_material:  [ { uuid-aot-manga, ADAPTATION } ]
-```
-
-Junction tables written (source of truth, unchanged):
-```
-anime_relation:               uuid-aot → uuid-aot-s2      (SEQUEL)
-anime_character:              uuid-aot → uuid-eren         (MAIN)
-                              uuid-aot → uuid-levi         (SUPPORTING)
-anime_company:                uuid-aot → uuid-mappa        (STUDIO)
-                              uuid-aot → uuid-kodansha     (PRODUCER)
-anime_source_material_relation: uuid-aot → uuid-aot-manga (ADAPTATION)
-```
-
-`graph_edge` rows written in same transaction:
-```
-FROM             FROM_TYPE        TO               TO_TYPE          EDGE_TYPE
-uuid-aot         anime            uuid-aot-s2      anime            SEQUEL
-uuid-aot-s2      anime            uuid-aot         anime            PREQUEL          ← inverse (point 1)
-uuid-aot         anime            uuid-eren        character        FEATURES
-uuid-eren        character        uuid-aot         anime            APPEARS_IN       ← reverse
-uuid-aot         anime            uuid-levi        character        FEATURES
-uuid-levi        character        uuid-aot         anime            APPEARS_IN       ← reverse
-uuid-aot         anime            uuid-mappa       company          STUDIO
-uuid-mappa       company          uuid-aot         anime            STUDIO           ← reverse
-uuid-aot         anime            uuid-kodansha    company          PRODUCER
-uuid-kodansha    company          uuid-aot         anime            PRODUCER         ← reverse
-uuid-aot         anime            uuid-aot-manga   source_material  ADAPTED_FROM
-uuid-aot-manga   source_material  uuid-aot         anime            WAS_ADAPTED_TO   ← reverse
-```
-
-Sample agent queries now resolvable from `graph_edge` alone (all are simple `WHERE from_id = $node` lookups):
-```sql
--- "What are AoT's sequels?"
-SELECT to_id FROM graph_edge WHERE from_id = 'uuid-aot' AND edge_type = 'SEQUEL';
-
--- "Which anime does Levi appear in?"
-SELECT to_id FROM graph_edge WHERE from_id = 'uuid-levi' AND edge_type = 'APPEARS_IN';
-
--- "What else did MAPPA animate?"
-SELECT to_id FROM graph_edge WHERE from_id = 'uuid-mappa' AND edge_type = 'STUDIO';
-
--- "What anime share characters with AoT?" (2-hop via k_hop primitive)
-SELECT DISTINCT g2.to_id
-FROM graph_edge g1
-JOIN graph_edge g2 ON g1.to_id = g2.from_id AND g1.to_type = g2.from_type
-WHERE g1.from_id = 'uuid-aot' AND g1.edge_type = 'FEATURES'
-  AND g2.edge_type = 'APPEARS_IN' AND g2.to_id != 'uuid-aot';
-```
-
-> [!note] Future tickets
-> - DDL: ✅ `graph_edge` table, indexes, and `graph_node_type` lookup added to schema
-> - PostgreSQL service: implement dual-write in all junction table repository functions
-> - Extend edge allowlist to include cross-entity edge types (`features`, `voiced_by`, `adapted_from`, etc.)
-> - Reconciliation job: periodic drift detection and repair between junction tables and `graph_edge`
-> - `compare` primitive: implement per-entity-type dimension sets (see point 5)
-
----
-
-### 5. `compare` for Non-Anime Entities — DECIDED ✅
-
-**Decision: `compare` is two parts — scalar diff (per entity type, trivial) + shared connections (generic, `graph_edge` handles it out of the box for all entity types).**
-
-The current `compare` is hardcoded anime-vs-anime. With `graph_edge` (point 4), the shared connections dimension becomes a single generic query that works for any entity type immediately. The only custom work per entity type is the scalar diff — comparing the entity's own fields.
-
-**Constraint:** `compare` enforces same-type comparison only. Comparing an anime against a character has no semantic meaning.
-
----
-
-#### Part 1 — Scalar diff (per entity type, simple JOIN)
-
-```sql
--- anime vs anime
-SELECT a1.year, a2.year, a1.type, a2.type, a1.rating, a2.rating,
-       a1.episodes, a2.episodes, a1.season, a2.season, a1.source_material
-FROM anime a1, anime a2
-WHERE a1.id = $node_a AND a2.id = $node_b;
-
--- character vs character
-SELECT c1.gender, c2.gender, c1.archetype, c2.archetype
-FROM character c1, character c2
-WHERE c1.id = $node_a AND c2.id = $node_b;
-
--- company vs company
-SELECT co1.type, co2.type
-FROM company co1, company co2
-WHERE co1.id = $node_a AND co2.id = $node_b;
-
--- person vs person
-SELECT p1.primary_role, p2.primary_role
-FROM person p1, person p2
-WHERE p1.id = $node_a AND p2.id = $node_b;
-```
-
-The Rust service compares field values and marks each as `same` or `different`. ~10 lines per entity type.
-
----
-
-#### Part 2 — Shared connections (generic, same SQL for all entity types)
-
-```sql
-SELECT g1.to_id, g1.to_type, g1.edge_type
-FROM graph_edge g1
-JOIN graph_edge g2
-  ON g1.to_id    = g2.to_id
- AND g1.to_type  = g2.to_type
- AND g1.edge_type = g2.edge_type
-WHERE g1.from_id   = $node_a
-  AND g2.from_id   = $node_b
-  AND g1.from_type = $entity_type
-  AND g2.from_type = $entity_type;
-```
-
-No changes needed per entity type. This query works the moment `graph_edge` is populated.
-
----
-
-#### Dimensions per entity type
-
-| Entity | Scalar fields | Shared connections via graph_edge |
-|---|---|---|
-| anime | year, type, rating, episodes, season, source_material | characters, studios, producers, source_material, staff (future) |
-| character | gender, archetype | anime they both appear in, voice actor (future), direct relation (future) |
-| company | type | anime co-produced, staff who worked at both (future, 2-hop) |
-| person | primary_role | anime they both worked on, studios, characters voiced (future) |
-| source_material | type, status | anime adaptations, shared author |
-
----
-
-#### Sample — anime vs anime: Attack on Titan vs Demon Slayer
-
-Scalar diff:
-
-| Field | Attack on Titan | Demon Slayer | Match |
-|---|---|---|---|
-| type | TV | TV | ✅ same |
-| season | Spring | Spring | ✅ same |
-| source_material | MANGA | MANGA | ✅ same |
-| year | 2013 | 2019 | ❌ different |
-| rating | R-17+ | PG-13 | ❌ different |
-| episodes | 25 | 26 | ❌ different |
-
-Shared connections (graph_edge):
-
-| to_id | to_type | edge_type |
-|---|---|---|
-| uuid-mappa | company | STUDIO |
-| uuid-composer-xyz | person | music |
-
-Final response to agent:
-```json
-{
-  "scalar_diff": {
-    "same":      ["type", "season", "source_material"],
-    "different": {
-      "year":     { "a": 2013,    "b": 2019 },
-      "rating":   { "a": "R-17+", "b": "PG-13" },
-      "episodes": { "a": 25,      "b": 26 }
-    }
-  },
-  "shared_connections": {
-    "company": ["MAPPA"],
-    "person":  ["Yuki Kajiura (composer)"]
-  }
-}
-```
-
----
-
-#### Sample — character vs character: Eren Yeager vs Tanjiro Kamado
-
-Scalar diff:
-
-| Field | Eren | Tanjiro | Match |
-|---|---|---|---|
-| gender | Male | Male | ✅ same |
-| archetype | Anti-hero | Hero | ❌ different |
-
-Shared connections (graph_edge): none — no shared anime, no shared voice actor.
-
-```json
-{
-  "scalar_diff": {
-    "same":      ["gender"],
-    "different": { "archetype": { "a": "Anti-hero", "b": "Hero" } }
-  },
-  "shared_connections": {}
-}
-```
-
-> [!note] Future tickets
-> - Refactor current anime-vs-anime `compare` to query `graph_edge` instead of hardcoded joins
-> - Implement scalar diff for character, company, person, source_material entity types
-> - Shared connections query is already handled by `graph_edge` — no additional work needed for that dimension
-
----
-
-### 6. Person Entity & Staff/VA Schema — DEFERRED
-
-Source data for voice actors and staff (directors, writers, composers, animators, character designers) is available from MAL, AniList, and AniDB APIs but not yet ingested or modelled in the schema.
-
-**Missing tables:**
-
-| Table | Purpose |
-|---|---|
-| `person` | Unified entity for all individuals (VAs, directors, writers, composers, etc.) |
-| `anime_staff` | Junction: `anime ↔ person ↔ role` (director, writer, music, animation_director, etc.) |
-| `character_voice` | Junction: `character ↔ person ↔ anime ↔ language` (VA per character per anime) |
-| `source_material_creator` | Junction: `source_material ↔ person ↔ role` (author, illustrator, etc.) |
-
-**Note on producer:** Producer can be either an individual person (`anime_staff.role = 'producer'`) or a production committee company (`anime_company.role = 'PRODUCER'`) — both exist in practice and both are needed.
-
-**What this unlocks:** Once these tables are populated, ~35 of the advanced agent query types become solvable in PostgreSQL — staff-based discovery ("same director + composer combo"), VA-based connections ("characters voiced by the same person"), collaboration network analysis ("which teams consistently produce highly rated anime"), and cross-person path queries. No graph analytics engine needed; most reduce to JOIN + GROUP BY aggregations. True graph centrality (PageRank, betweenness) can be approximated via degree-count SQL queries.
-
-> [!note] Future ticket
-> Design DDL for `person`, `anime_staff`, `character_voice`, `source_material_creator`; add staff/VA processing for data from MAL, AniList, AniDB.
 
 ---
 

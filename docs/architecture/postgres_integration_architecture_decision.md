@@ -54,7 +54,8 @@ The service exposes gRPC only. The planned methods are listed in [[event_schema_
 | Update Service activities (Temporal) | `ListDueWorks` | Find the works the sweep refreshes (ECHO-108) |
 | Vector Service | `GetAnime`, `GetEpisode`, `GetCharacter`, `ListEntityVersions` | Read the current state after an event, and compare Qdrant with PostgreSQL (ECHO-108) |
 | Backend | Reads for pages the frontend shows, defined with the backend | Serve the frontend (P-ECHO-16) |
-| Agent Service (planned) | Relationship traversal | Answer questions that follow relations between works (P-ECHO-22) |
+| Backend | Knowledge graph reads (`FindNeighbors`, `FindReachable`, `FindPath`, `CompareEntities`) | Franchise pages, related works, a studio's other works (P-ECHO-22) |
+| Agent Service (planned) | The same knowledge graph reads | Answer questions that follow links between works (P-ECHO-22) |
 
 The frontend talks only to the backend, and the backend calls this service over gRPC. Whether the frontend uses GraphQL or REST is still open, and does not change this service either way. (P-ECHO-16)
 
@@ -68,18 +69,19 @@ Temporal retries failed activities, and NATS delivers events at least once, so e
   - Pages are upserted on their page key. (ECHO-97)
   - Entities are written by the ID the merge assigned, and detail rows are replaced per entity. (ECHO-98)
 
-### Relationship traversal
+### Knowledge graph
 
 > **Linear:** P-ECHO-22
 
-The agent service will follow relations between works, such as sequels, shared studios and shared characters, as part of natural-language search. The service answers these with recursive SQL queries over fixed templates, so callers never send SQL:
+Works, characters, companies and source material, and the typed links between them, form a knowledge graph in `graph_edge`. The service answers graph questions with fixed, parameterized recursive SQL, so callers never send SQL. The graph does not depend on any one caller: the backend reads it for pages, and the Agent Service will read it the same way.
 
-- **Fixed primitives.** `neighbors` (one hop), `k_hop` (several hops), `path` (how two works connect) and `compare` (what two works share).
-- **Fixed edge types.** The relation types from `AnimeRelationType`, plus derived edges for a shared studio, a shared character and a shared source work.
-- **Hard limits on the server.** At most 5 hops, 50 results and 50 neighbours per hop, a 2-second statement timeout, and PostgreSQL's own cycle handling, a recursive `UNION` or the `CYCLE` clause, never a hand-written visited list. The timeout is set with `SET LOCAL` inside each query's own transaction, so it never stays on a pooled connection.
-- **Empty is a valid answer.** No path between two works is a result, not an error.
+- **Fixed reads.** `neighbors` (one hop), `k_hop` (several hops), `path` (how two nodes connect) and `compare` (what two nodes share), for any node type.
+- **One edge vocabulary.** The `graph_edge_type` list: work relations, `FEATURES` and `APPEARS_IN` for characters, company roles, and `ADAPTED_FROM` for source material. Nothing is derived at query time.
+- **Node filters.** Work type, year, status, and genre, tag or theme names narrow the results. Genres, tags and themes are filters, not nodes.
+- **Hard limits on the server.** At most 5 hops, 50 results and 50 neighbours per hop, a 2-second statement timeout set with `SET LOCAL` inside each read's own transaction, and PostgreSQL's own cycle handling, a recursive `UNION` or the `CYCLE` clause.
+- **Empty is a valid answer.** No path between two nodes is a result, not an error.
 
-The SQL for each primitive is in [[Database Schema#Graph Query Primitives|Database Schema]].
+Nodes, edges, provenance, franchises and the SQL for each read are in [[Database Schema#Knowledge Graph|Database Schema]].
 
 ## Tech Stack
 

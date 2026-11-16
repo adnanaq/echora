@@ -210,6 +210,14 @@ message CharacterReference {  // (ECHO-105)
   int32 billing_order = 4;
   repeated PageKey page_keys = 5;
 }
+
+// One provider's own claim that the work relates to a target page, with the type that
+// provider gave, kept as provenance beside the single type the merge picks.
+message RelationClaim {  // (ECHO-102)
+  string provider = 1;                       // 'mal', 'anilist', ...
+  AnimeRelationType relation_type = 2;
+  PageKey target_page = 3;
+}
 ```
 
 `PageKey` holds the same three parts as the page key string `libs/work_matching` uses, `provider:kind:id` such as `mal:anime:21`, with `id` named `address`. Manga pages (`mal:manga:13`) are not fetched as provider pages; they identify source material through `source_material_xref`. (ECHO-97)
@@ -261,6 +269,7 @@ message MergeWorkResponse {  // (ECHO-105)
   shared_proto.v1.Anime anime = 1;
   repeated shared_proto.v1.EpisodeReference episodes = 2;     // every episode the pages list
   repeated shared_proto.v1.CharacterReference characters = 3; // every character the pages list
+  repeated shared_proto.v1.RelationClaim relation_claims = 4;  // each provider's relations, before the merge picks one type (ECHO-105)
 }
 
 message MergeEpisodeRequest {  // (ECHO-109)
@@ -382,7 +391,7 @@ service PostgresService {
   // Budgeted providers
   rpc ListDuePages(ListDuePagesRequest) returns (ListDuePagesResponse);  // (ECHO-108)
 
-  // Relationship traversal, for the Agent Service; messages defined with that project
+  // Knowledge graph reads, for the backend and the Agent Service; messages defined with that project
   rpc FindNeighbors(FindNeighborsRequest) returns (GraphResponse);  // (P-ECHO-22)
   rpc FindReachable(FindReachableRequest) returns (GraphResponse);  // (P-ECHO-22)
   rpc FindPath(FindPathRequest) returns (GraphResponse);  // (P-ECHO-22)
@@ -417,6 +426,7 @@ message SaveWorkRequest {  // (ECHO-98)
   shared_proto.v1.Anime anime = 3;
   repeated shared_proto.v1.EpisodeReference episodes = 4;
   repeated shared_proto.v1.CharacterReference characters = 5;
+  repeated shared_proto.v1.RelationClaim relation_claims = 6;  // stored in anime_relation_claim (ECHO-102)
 }
 
 message SaveWorkResponse {  // (ECHO-98)
