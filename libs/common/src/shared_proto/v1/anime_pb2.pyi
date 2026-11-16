@@ -121,6 +121,8 @@ class AnimeRelationType(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     ANIME_RELATION_TYPE_OTHER: _ClassVar[AnimeRelationType]
     ANIME_RELATION_TYPE_PARENT_STORY: _ClassVar[AnimeRelationType]
     ANIME_RELATION_TYPE_PREQUEL: _ClassVar[AnimeRelationType]
+    ANIME_RELATION_TYPE_SAME_FRANCHISE: _ClassVar[AnimeRelationType]
+    ANIME_RELATION_TYPE_SAME_SETTING: _ClassVar[AnimeRelationType]
     ANIME_RELATION_TYPE_SEQUEL: _ClassVar[AnimeRelationType]
     ANIME_RELATION_TYPE_SIDE_STORY: _ClassVar[AnimeRelationType]
     ANIME_RELATION_TYPE_SPIN_OFF: _ClassVar[AnimeRelationType]
@@ -224,6 +226,8 @@ ANIME_RELATION_TYPE_FULL_STORY: AnimeRelationType
 ANIME_RELATION_TYPE_OTHER: AnimeRelationType
 ANIME_RELATION_TYPE_PARENT_STORY: AnimeRelationType
 ANIME_RELATION_TYPE_PREQUEL: AnimeRelationType
+ANIME_RELATION_TYPE_SAME_FRANCHISE: AnimeRelationType
+ANIME_RELATION_TYPE_SAME_SETTING: AnimeRelationType
 ANIME_RELATION_TYPE_SEQUEL: AnimeRelationType
 ANIME_RELATION_TYPE_SIDE_STORY: AnimeRelationType
 ANIME_RELATION_TYPE_SPIN_OFF: AnimeRelationType

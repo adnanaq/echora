@@ -1078,6 +1078,9 @@ relation key**, carrying every source URL that mentioned it.
   survive only when every provider agrees there is nothing better. This is why
   AniDB's rank does not matter for relation type: it reports `UNKNOWN` for every
   observed relation, so the guard discards it whatever its position.
+- **General relations come second.** `SAME_FRANCHISE` says two works belong to one
+  franchise without saying how. A specific relation such as `SEQUEL` from any provider
+  beats it, whatever the provider's rank, and it beats `OTHER` and `UNKNOWN`.
 - **Ties** — `PROVIDER_PRIORITY`, concrete values only.
 - **`sources` and `images`** — union across providers, order-preserving.
 - **Scalars** — first non-null by priority.

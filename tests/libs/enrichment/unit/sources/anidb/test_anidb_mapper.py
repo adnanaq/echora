@@ -677,3 +677,15 @@ def test_character_from_anidb_one_piece_xml_main_character_has_role_and_voice_ac
     result = character_from_anidb(main_character)
     assert "MAIN" in result["roles"]
     assert result["voice_actors"]
+
+
+def test_anime_from_anidb_same_setting_relation_kept_apart_from_side_story() -> None:
+    result = _map(
+        related_anime=[
+            AniDBRelatedAnime(id=1, title="Other Cast", relation_type="Same Setting"),
+            AniDBRelatedAnime(id=2, title="Movie", relation_type="Side Story"),
+        ]
+    )
+    related = result["related_anime"]
+    assert [entry["title"] for entry in related["SAME_SETTING"]] == ["Other Cast"]
+    assert [entry["title"] for entry in related["SIDE_STORY"]] == ["Movie"]

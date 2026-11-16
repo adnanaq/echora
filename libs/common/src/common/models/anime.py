@@ -463,6 +463,12 @@ class AnimeRelationType(ProviderMappedEnum):
 
     ALTERNATIVE_VERSION = same story retold (e.g. TV vs. movie cut).
     ALTERNATIVE_SETTING = same characters, different universe / AU.
+    SAME_FRANCHISE = another entry of the same franchise, with no narrower relation stated.
+    SAME_SETTING = same universe, world or timeline, with different characters.
+
+    Anime-Planet lists a work's whole franchise and labels most entries only "Same Franchise",
+    or not at all; those are SAME_FRANCHISE, not side stories. AniDB's "Same Setting" and
+    aniSearch's "Shared Universe" are SAME_SETTING, as AniDB defines it.
     """
 
     ADAPTATION = "ADAPTATION"
@@ -478,6 +484,8 @@ class AnimeRelationType(ProviderMappedEnum):
     OTHER = "OTHER"
     PARENT_STORY = "PARENT_STORY"
     PREQUEL = "PREQUEL"
+    SAME_FRANCHISE = "SAME_FRANCHISE"
+    SAME_SETTING = "SAME_SETTING"
     SEQUEL = "SEQUEL"
     SIDE_STORY = "SIDE_STORY"
     SPIN_OFF = "SPIN_OFF"
@@ -527,7 +535,7 @@ class AnimeRelationType(ProviderMappedEnum):
             "spinoffs": cls.SPIN_OFF,
             "alternatives": cls.ALTERNATIVE_VERSION,
             # AnimePlanet subtypes (relation_subtype field from RelatedEntry__subtitle)
-            "same franchise": cls.SIDE_STORY,
+            "same franchise": cls.SAME_FRANCHISE,
             "other franchise": cls.OTHER,
             "omake": cls.SIDE_STORY,
             "remake": cls.ALTERNATIVE_VERSION,
@@ -535,7 +543,7 @@ class AnimeRelationType(ProviderMappedEnum):
             "condensed version": cls.SUMMARY,
             "recap": cls.SUMMARY,
             # AniDB
-            "same setting": cls.SIDE_STORY,
+            "same setting": cls.SAME_SETTING,
             # AniSearch
             "main story": cls.PARENT_STORY,
             "complete story": cls.FULL_STORY,
@@ -545,8 +553,8 @@ class AnimeRelationType(ProviderMappedEnum):
             "original": cls.PARENT_STORY,
             "full version": cls.FULL_STORY,
             "alternative environment": cls.ALTERNATIVE_SETTING,
-            "shared universe": cls.SIDE_STORY,
-            "same origin": cls.SIDE_STORY,
+            "shared universe": cls.SAME_SETTING,
+            "same origin": cls.SAME_SETTING,
             "?": cls.OTHER,
         }
 
