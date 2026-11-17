@@ -1,9 +1,9 @@
-"""AnimeFieldMapper for extracting and mapping anime data to semantic text.
+"""Extract and map anime domain data into semantic text.
 
-This module provides the AnimeFieldMapper class which converts raw model data
+This module provides the AnimeFieldMapper class, which converts raw model data
 (Anime, Character, Episode) into optimized text strings suitable for vector
-embedding. It serves as the "Content Strategist" in the vector processing
-pipeline, determining what information is important for semantic search.
+embedding. The mapper serves as the content strategist in the vector processing
+pipeline, determining which fields are important for semantic search.
 """
 
 import logging
@@ -46,9 +46,24 @@ class AnimeFieldMapper:
         Returns:
             A formatted string containing all relevant text fields for embedding.
         """
-        sections = []
+        sections = [
+            self._extract_anime_core_section(anime),
+            self._extract_anime_genre_section(anime),
+            self._extract_anime_metadata_section(anime),
+            self._extract_anime_production_section(anime),
+            *self._extract_anime_temporal_and_streaming_sections(anime),
+        ]
+        return " || ".join(filter(None, sections))
 
-        # 1. Core Content (Title + Synopsis)
+    def _extract_anime_core_section(self, anime: Anime) -> str:
+        """Extract core title, synopsis, and background text for an anime.
+
+        Args:
+            anime: Anime model instance to extract core text from.
+
+        Returns:
+            Pipe-delimited core identity and story fields.
+        """
         title_parts = [
             f"Title: {anime.title}" if anime.title else "",
             f"English: {anime.title_english}" if anime.title_english else "",
@@ -57,35 +72,46 @@ class AnimeFieldMapper:
             f"Story: {anime.synopsis}" if anime.synopsis else "",
             f"Production Background: {anime.background}" if anime.background else "",
         ]
-        sections.append(" | ".join(filter(None, title_parts)))
+        return " | ".join(filter(None, title_parts))
 
-        # 2. Genres, Demographics & Themes (with expansions for better semantic matching)
-        if anime.genres or anime.demographics or anime.tags or anime.themes:
-            genre_parts = []
-            if anime.genres:
-                genres = ", ".join(anime.genres)
-                # Expand demographic terms for broader search coverage
-                genres = genres.replace("Shounen", "Shonen (young male)")
-                genres = genres.replace("Shoujo", "Shojo (young female)")
-                genres = genres.replace("Seinen", "Seinen (adult male)")
-                genres = genres.replace("Josei", "Josei (adult female)")
-                genre_parts.append(f"Genres: {genres}")
+    def _extract_anime_genre_section(self, anime: Anime) -> str:
+        """Extract genres, demographics, tags, and themes for an anime.
 
-            if anime.demographics:
-                genre_parts.append(f"Demographics: {', '.join(anime.demographics)}")
+        Args:
+            anime: Anime model instance to extract classification text from.
 
-            if anime.tags:
-                genre_parts.append(f"Tags: {', '.join(anime.tags)}")
+        Returns:
+            Pipe-delimited classification fields with expanded demographic terms.
+        """
+        if not (anime.genres or anime.demographics or anime.tags or anime.themes):
+            return ""
+        genre_parts = []
+        if anime.genres:
+            genres = ", ".join(anime.genres)
+            # Expand demographic terms for broader search coverage
+            genres = genres.replace("Shounen", "Shonen (young male)")
+            genres = genres.replace("Shoujo", "Shojo (young female)")
+            genres = genres.replace("Seinen", "Seinen (adult male)")
+            genres = genres.replace("Josei", "Josei (adult female)")
+            genre_parts.append(f"Genres: {genres}")
+        if anime.demographics:
+            genre_parts.append(f"Demographics: {', '.join(anime.demographics)}")
+        if anime.tags:
+            genre_parts.append(f"Tags: {', '.join(anime.tags)}")
+        theme_names = [t.name for t in anime.themes if hasattr(t, "name") and t.name]
+        if theme_names:
+            genre_parts.append(f"Themes: {', '.join(theme_names)}")
+        return " | ".join(genre_parts)
 
-            theme_names = [
-                t.name for t in anime.themes if hasattr(t, "name") and t.name
-            ]
-            if theme_names:
-                genre_parts.append(f"Themes: {', '.join(theme_names)}")
+    def _extract_anime_metadata_section(self, anime: Anime) -> str:
+        """Extract format, status, year, and season metadata for an anime.
 
-            sections.append(" | ".join(genre_parts))
+        Args:
+            anime: Anime model instance to extract release metadata from.
 
-        # 3. Format & Temporal
+        Returns:
+            Pipe-delimited format and release metadata.
+        """
         meta_parts = []
         if anime.type and anime.type.value != "UNKNOWN":
             meta_parts.append(f"Type: {anime.type.value}")
@@ -95,13 +121,18 @@ class AnimeFieldMapper:
             meta_parts.append(f"Year: {anime.year}")
         if anime.season:
             meta_parts.append(f"Season: {anime.season.value}")
-        if meta_parts:
-            sections.append(" | ".join(meta_parts))
+        return " | ".join(meta_parts)
 
-        # 4. Production Companies
-        # One company can hold several roles, so it is listed under each. The
-        # text is what gets embedded, and a company that both animated and
-        # produced a work is relevant to a query about either.
+    def _extract_anime_production_section(self, anime: Anime) -> str:
+        """Extract studio, producer, and licensor credits for an anime.
+
+        Args:
+            anime: Anime model instance to extract production credits from.
+
+        Returns:
+            Pipe-delimited production credits grouped by company role.
+        """
+        # One company can hold several roles, so the company is listed under each.
         by_role: dict[CompanyRole, list[str]] = {}
         for company in anime.companies:
             if not company.name:
@@ -117,10 +148,18 @@ class AnimeFieldMapper:
             )
             if by_role.get(role)
         ]
-        if production_parts:
-            sections.append(" | ".join(production_parts))
+        return " | ".join(production_parts)
 
-        # 5. Temporal (detailed airing)
+    def _extract_anime_temporal_and_streaming_sections(self, anime: Anime) -> list[str]:
+        """Extract detailed airing date and streaming platform sections.
+
+        Args:
+            anime: Anime model instance to extract airing and streaming info from.
+
+        Returns:
+            List of non-empty temporal and streaming section strings.
+        """
+        sections: list[str] = []
         temp_parts = []
         if anime.aired_dates and anime.aired_dates.aired_from:
             temp_parts.append(f"Aired: {anime.aired_dates.aired_from}")
@@ -129,16 +168,15 @@ class AnimeFieldMapper:
         if temp_parts:
             sections.append(" | ".join(temp_parts))
 
-        # 6. Streaming
         if anime.streaming_sources:
-            stream_parts = []
-            for s in anime.streaming_sources:
-                if s.platform:
-                    stream_parts.append(f"Platform: {s.platform}")
+            stream_parts = [
+                f"Platform: {source.platform}"
+                for source in anime.streaming_sources
+                if source.platform
+            ]
             if stream_parts:
                 sections.append(" | ".join(stream_parts))
-
-        return " || ".join(filter(None, sections))
+        return sections
 
     def extract_character_text(self, character: Character) -> str:
         """Extract optimized text for a Character Point.

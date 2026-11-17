@@ -38,12 +38,16 @@ class EmbeddingCache:
         self._redis = redis
         self._ttl = ttl
 
-    @staticmethod
-    def _key(model_name: str, input_hash: str) -> str:
-        return f"emb:{model_name}:{input_hash}"
-
     async def get(self, model_name: str, input_hash: str) -> list[float] | None:
-        """Fetch a cached embedding. Returns None on miss or Redis error."""
+        """Fetch a cached embedding vector.
+
+        Args:
+            model_name: Name of the embedding model that produced the vector.
+            input_hash: SHA-256 hex digest of the model input.
+
+        Returns:
+            Cached embedding vector, or None on miss or Redis error.
+        """
         try:
             _start = time.perf_counter()
             raw = await self._redis.get(self._key(model_name, input_hash))
@@ -60,7 +64,13 @@ class EmbeddingCache:
     async def set(
         self, model_name: str, input_hash: str, embedding: list[float]
     ) -> None:
-        """Store an embedding. Silently ignores Redis errors."""
+        """Store an embedding vector with the configured TTL.
+
+        Args:
+            model_name: Name of the embedding model that produced the vector.
+            input_hash: SHA-256 hex digest of the model input.
+            embedding: Embedding vector to serialize and cache.
+        """
         try:
             key = self._key(model_name, input_hash)
             _start = time.perf_counter()
@@ -74,7 +84,15 @@ class EmbeddingCache:
     async def get_batch(
         self, model_name: str, input_hashes: list[str]
     ) -> list[list[float] | None]:
-        """MGET multiple embeddings. Returns list aligned with input_hashes."""
+        """Fetch multiple cached embeddings in a single MGET call.
+
+        Args:
+            model_name: Name of the embedding model that produced the vectors.
+            input_hashes: List of SHA-256 hex digests for the inputs.
+
+        Returns:
+            List of cached embedding vectors (or None on miss) aligned with input_hashes.
+        """
         if not input_hashes:
             return []
         try:
@@ -90,7 +108,12 @@ class EmbeddingCache:
             return [None] * len(input_hashes)
 
     async def set_batch(self, model_name: str, entries: dict[str, list[float]]) -> None:
-        """MSET multiple embeddings with per-key TTL."""
+        """Store multiple embeddings in a pipelined batch with per-key TTL.
+
+        Args:
+            model_name: Name of the embedding model that produced the vectors.
+            entries: Mapping from input hash to embedding vector.
+        """
         if not entries:
             return
         try:
@@ -112,3 +135,7 @@ class EmbeddingCache:
             await self._redis.aclose()
         except Exception:
             logger.warning("embedding cache close failed", exc_info=True)
+
+    @staticmethod
+    def _key(model_name: str, input_hash: str) -> str:
+        return f"emb:{model_name}:{input_hash}"

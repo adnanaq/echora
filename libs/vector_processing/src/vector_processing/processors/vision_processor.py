@@ -1,8 +1,8 @@
 """Vision processor for converting images to vector embeddings.
 
-This module provides the VisionProcessor class which serves as a pure compute
-engine for image embedding. It is strictly responsible for converting image
-files to embedding vectors using OpenCLIP models, with no domain-specific logic.
+This module provides the VisionProcessor class, which serves as a pure compute
+engine for image embedding. The processor converts image files into embedding
+vectors using OpenCLIP models with no domain-specific logic.
 """
 
 import asyncio
@@ -13,6 +13,7 @@ from typing import Any
 
 import aiohttp
 from common.config import EmbeddingConfig
+from common.utils.retry import retry_with_backoff
 from opentelemetry import metrics as otel_metrics
 from opentelemetry import trace as otel_trace
 
@@ -47,9 +48,9 @@ _embedding_cache_lookups = _meter.create_counter(
 class VisionProcessor:
     """Pure vision embedding processor with no domain-specific logic.
 
-    This class serves as the "Visual Compute Engine" in the vector processing
-    pipeline. It knows HOW to turn images into numbers but has no knowledge
-    of anime, characters, or any domain concepts.
+    This class serves as the visual compute engine in the vector processing
+    pipeline. The processor turns images into numbers with no knowledge of anime,
+    characters, or any domain concepts.
 
     Responsibilities:
         - Interface with VisionEmbeddingModels (OpenCLIP).
@@ -173,119 +174,180 @@ class VisionProcessor:
         if not image_urls:
             return []
 
-        total_urls = len(image_urls)
-
-        # Create shared session and semaphore for controlled concurrency
-        semaphore = asyncio.Semaphore(self.max_concurrent_downloads)
-        async with aiohttp.ClientSession() as session:
-            # Concurrent downloads with semaphore limiting and retry logic (I/O-bound)
-            async def download_single_with_retry(url: str) -> tuple[str, str | None]:
-                async with semaphore:
-                    for attempt in range(max_retries + 1):
-                        try:
-                            _dl_start = time.perf_counter()
-                            local_path = await self.downloader.download_and_cache_image(
-                                url, session=session
-                            )
-                            if local_path is None:
-                                raise RuntimeError(f"Download returned None for {url}")  # noqa: TRY003, TRY301
-                            _image_download_duration.record(
-                                time.perf_counter() - _dl_start
-                            )
-                        except Exception as e:
-                            if attempt < max_retries:
-                                # Exponential backoff: 0.5s, 1s, 2s, ...
-                                wait_time = 0.5 * (2**attempt)
-                                logger.debug(
-                                    f"Download attempt {attempt + 1}/{max_retries + 1} "
-                                    f"failed for {url}, retrying in {wait_time}s: {e}"
-                                )
-                                await asyncio.sleep(wait_time)
-                            else:
-                                logger.warning(
-                                    f"Failed to download {url} after {max_retries + 1} attempts: {e}"
-                                )
-                                _image_download_failures.add(1)
-                                return (url, None)
-                        else:
-                            return (url, local_path)
-                    return (
-                        url,
-                        None,
-                    )  # pragma: no cover - unreachable defensive fallback
-
-            download_results = await asyncio.gather(
-                *[download_single_with_retry(url) for url in image_urls]
-            )
-
-        # Filter successful downloads and compute metrics
-        local_paths = [path for _, path in download_results if path is not None]
-        successful_downloads = len(local_paths)
-        failed_downloads = total_urls - successful_downloads
-        success_rate = (
-            (successful_downloads / total_urls * 100) if total_urls > 0 else 0
-        )
-
-        # Log batch download metrics
-        logger.info(
-            f"Batch download complete: {successful_downloads}/{total_urls} successful "
-            f"({success_rate:.1f}% success rate), {failed_downloads} failed"
-        )
-
+        local_paths = await self._download_images_batch(image_urls, max_retries)
         if not local_paths:
             logger.warning("No images downloaded successfully in batch")
             return []
 
-        # Hash downloaded files and check cache
-        file_hashes: list[str | None] = []
-        cached_results: list[list[float] | None] = [None] * len(local_paths)
-        uncached_positions: list[int] = []
+        (
+            file_hashes,
+            cached_results,
+            uncached_positions,
+        ) = await self._lookup_cached_image_embeddings(local_paths)
 
-        if self._cache is not None:
-            for _, path in enumerate(local_paths):
-                try:
-                    file_hashes.append(await asyncio.to_thread(self._hash_file, path))
-                except Exception:
-                    file_hashes.append(None)
-
-            valid_hashes = [h for h in file_hashes if h is not None]
-            valid_hash_indices = [i for i, h in enumerate(file_hashes) if h is not None]
-
-            if valid_hashes:
-                batch_cached = await self._cache.get_batch(
-                    self.model.model_name, valid_hashes
-                )
-                for j, idx in enumerate(valid_hash_indices):
-                    cached_results[idx] = batch_cached[j]
-
-            uncached_positions = [
-                i for i in range(len(local_paths)) if cached_results[i] is None
-            ]
-            cache_hits = len(local_paths) - len(uncached_positions)
-            if cache_hits:
-                _embedding_cache_lookups.add(
-                    cache_hits, {"result": "hit", "modality": "image"}
-                )
-            if uncached_positions:
-                _embedding_cache_lookups.add(
-                    len(uncached_positions), {"result": "miss", "modality": "image"}
-                )
-        else:
-            uncached_positions = list(range(len(local_paths)))
-
-        # Collect results from cache hits
-        all_embeddings: list[list[float]] = []
         if not uncached_positions:
-            # All cache hits
             all_embeddings = [e for e in cached_results if e is not None]
             logger.info(
                 f"Batch encode: all {len(all_embeddings)} embeddings served from cache"
             )
             return all_embeddings
 
-        # Encode only uncached images
-        uncached_paths = [local_paths[i] for i in uncached_positions]
+        await self._encode_uncached_images(
+            local_paths, file_hashes, uncached_positions, cached_results
+        )
 
+        all_embeddings = [e for e in cached_results if e is not None]
+        logger.info(
+            f"Batch encoding complete: {len(all_embeddings)}/{len(image_urls)} images encoded successfully"
+        )
+        return all_embeddings
+
+    async def _download_images_batch(
+        self, image_urls: list[str], max_retries: int
+    ) -> list[str]:
+        """Download a batch of image URLs concurrently with retry backoff.
+
+        Args:
+            image_urls: Image URLs to download.
+            max_retries: Maximum retry attempts per failed download.
+
+        Returns:
+            List of local file paths for successfully downloaded images.
+        """
+        total_urls = len(image_urls)
+        semaphore = asyncio.Semaphore(self.max_concurrent_downloads)
+        async with aiohttp.ClientSession() as session:
+            download_results = await asyncio.gather(
+                *[
+                    self._download_single_image(session, semaphore, url, max_retries)
+                    for url in image_urls
+                ]
+            )
+
+        local_paths = [path for path in download_results if path is not None]
+        successful_downloads = len(local_paths)
+        failed_downloads = total_urls - successful_downloads
+        success_rate = (successful_downloads / total_urls * 100) if total_urls else 0
+        logger.info(
+            f"Batch download complete: {successful_downloads}/{total_urls} successful "
+            f"({success_rate:.1f}% success rate), {failed_downloads} failed"
+        )
+        return local_paths
+
+    async def _download_single_image(
+        self,
+        session: aiohttp.ClientSession,
+        semaphore: asyncio.Semaphore,
+        url: str,
+        max_retries: int,
+    ) -> str | None:
+        """Download a single image URL with semaphore control and exponential backoff.
+
+        Args:
+            session: Shared aiohttp client session.
+            semaphore: Concurrency limiter for downloads.
+            url: Source image URL.
+            max_retries: Maximum retry attempts after the initial attempt.
+
+        Returns:
+            Local file path on success, or None if all attempts failed.
+        """
+
+        async def _attempt_download() -> str:
+            _dl_start = time.perf_counter()
+            local_path = await self.downloader.download_and_cache_image(
+                url, session=session
+            )
+            if local_path is None:
+                raise RuntimeError(f"Download returned None for {url}")  # noqa: TRY003
+            _image_download_duration.record(time.perf_counter() - _dl_start)
+            return local_path
+
+        def _log_retry(
+            attempt: int, max_retries: int, error: Exception, delay: float
+        ) -> None:
+            logger.debug(
+                f"Download attempt {attempt}/{max_retries + 1} "
+                f"failed for {url}, retrying in {delay}s: {error}"
+            )
+
+        async with semaphore:
+            try:
+                return await retry_with_backoff(
+                    _attempt_download,
+                    is_transient_error=lambda _exc: True,
+                    max_retries=max_retries,
+                    retry_delay=0.5,
+                    on_retry=_log_retry,
+                )
+            except Exception as exc:
+                logger.warning(
+                    f"Failed to download {url} after {max_retries + 1} attempts: {exc}"
+                )
+                _image_download_failures.add(1)
+                return None
+
+    async def _lookup_cached_image_embeddings(
+        self, local_paths: list[str]
+    ) -> tuple[list[str | None], list[list[float] | None], list[int]]:
+        """Hash downloaded image files and query the embedding cache.
+
+        Args:
+            local_paths: Local file paths for downloaded images.
+
+        Returns:
+            Tuple of ``(file_hashes, cached_results, uncached_positions)``.
+        """
+        cached_results: list[list[float] | None] = [None] * len(local_paths)
+        if self._cache is None:
+            return [], cached_results, list(range(len(local_paths)))
+
+        file_hashes: list[str | None] = []
+        for path in local_paths:
+            try:
+                file_hashes.append(await asyncio.to_thread(self._hash_file, path))
+            except Exception:
+                file_hashes.append(None)
+
+        valid_hashes = [h for h in file_hashes if h is not None]
+        valid_hash_indices = [i for i, h in enumerate(file_hashes) if h is not None]
+        if valid_hashes:
+            batch_cached = await self._cache.get_batch(
+                self.model.model_name, valid_hashes
+            )
+            for j, idx in enumerate(valid_hash_indices):
+                cached_results[idx] = batch_cached[j]
+
+        uncached_positions = [
+            i for i in range(len(local_paths)) if cached_results[i] is None
+        ]
+        cache_hits = len(local_paths) - len(uncached_positions)
+        if cache_hits:
+            _embedding_cache_lookups.add(
+                cache_hits, {"result": "hit", "modality": "image"}
+            )
+        if uncached_positions:
+            _embedding_cache_lookups.add(
+                len(uncached_positions), {"result": "miss", "modality": "image"}
+            )
+        return file_hashes, cached_results, uncached_positions
+
+    async def _encode_uncached_images(
+        self,
+        local_paths: list[str],
+        file_hashes: list[str | None],
+        uncached_positions: list[int],
+        cached_results: list[list[float] | None],
+    ) -> None:
+        """Encode uncached images, update ``cached_results`` in place, and populate cache.
+
+        Args:
+            local_paths: Local file paths for downloaded images.
+            file_hashes: SHA-256 hex digests aligned with ``local_paths``.
+            uncached_positions: Indices in ``local_paths`` missing from cache.
+            cached_results: Mutable list of embeddings updated with new results.
+        """
+        uncached_paths = [local_paths[i] for i in uncached_positions]
         with _tracer.start_as_current_span(
             "vector_processing.vision.encode_batch",
             attributes={
@@ -305,9 +367,8 @@ class VisionProcessor:
                     )
             except Exception:
                 logger.exception("Batch encoding failed")
-                return [e for e in cached_results if e is not None]
+                return
 
-            # Merge newly encoded into cached_results and write to cache
             to_cache: dict[str, list[float]] = {}
             for j, pos in enumerate(uncached_positions):
                 cached_results[pos] = encoded_new[j]
@@ -318,15 +379,16 @@ class VisionProcessor:
             if self._cache is not None and to_cache:
                 await self._cache.set_batch(self.model.model_name, to_cache)
 
-        all_embeddings = [e for e in cached_results if e is not None]
-        logger.info(
-            f"Batch encoding complete: {len(all_embeddings)}/{total_urls} images encoded successfully"
-        )
-        return all_embeddings
-
     @staticmethod
     def _hash_file(path: str) -> str:
-        """Compute SHA-256 hex digest of a file's contents."""
+        """Compute SHA-256 hex digest of a file's contents.
+
+        Args:
+            path: Filesystem path to the file to hash.
+
+        Returns:
+            Hexadecimal SHA-256 digest string.
+        """
         h = hashlib.sha256()
         with open(path, "rb") as f:
             for chunk in iter(lambda: f.read(65536), b""):

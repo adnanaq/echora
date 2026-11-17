@@ -41,6 +41,25 @@ class FastEmbedModel(TextEmbeddingModel):
             )
             raise ImportError("FastEmbed dependencies missing") from e
 
+    @property
+    def embedding_size(self) -> int:
+        return self._embedding_size
+
+    @property
+    def model_name(self) -> str:
+        return self._model_name
+
+    @property
+    def max_length(self) -> int:
+        return 512  # FastEmbed default
+
+    @property
+    def supports_multilingual(self) -> bool:
+        return (
+            "multilingual" in self._model_name.lower()
+            or "m3" in self._model_name.lower()
+        )
+
     def encode(self, texts: list[str]) -> list[list[float]]:
         """Encode a list of texts into embeddings.
 
@@ -61,27 +80,15 @@ class FastEmbedModel(TextEmbeddingModel):
             # Re-raise to let caller handle encoding failures
             raise
 
-    @property
-    def embedding_size(self) -> int:
-        return self._embedding_size
-
-    @property
-    def model_name(self) -> str:
-        return self._model_name
-
-    @property
-    def max_length(self) -> int:
-        return 512  # FastEmbed default
-
-    @property
-    def supports_multilingual(self) -> bool:
-        return (
-            "multilingual" in self._model_name.lower()
-            or "m3" in self._model_name.lower()
-        )
-
     def _get_fastembed_embedding_size(self, model_name: str) -> int:
-        """Get embedding size for FastEmbed model."""
+        """Get embedding size for a FastEmbed model.
+
+        Args:
+            model_name: FastEmbed model identifier.
+
+        Returns:
+            Embedding vector dimensionality for the model.
+        """
         # Common FastEmbed model dimensions
         model_dimensions = {
             "BAAI/bge-small-en-v1.5": 384,
