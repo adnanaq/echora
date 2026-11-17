@@ -82,7 +82,7 @@ The Temporal server and its PostgreSQL databases, local development with the CLI
 | `apps/review_page` | Python | Built, local | Answering seed-cleaning review cases | HTTP on `127.0.0.1` |
 | PostgreSQL Service | Rust | Planned | The catalogue database's only owner | gRPC |
 | Update Service | Rust | Planned | Temporal workers for refreshes, episode tracking, sweeps, synopses and seed loads | Temporal worker |
-| Backend | Not decided | Planned | The frontend's single entry point | GraphQL or REST, not decided |
+| Backend | Rust | Planned | The frontend's single entry point | GraphQL |
 | Users Service | Not decided | Planned | Accounts, MAL and AniList logins, anime lists | gRPC |
 | Agent Service | Python | Planned | Every AI call: writing synopses, extracting character attributes, Jev scoring of review cases, search reasoning | gRPC |
 | Notification Service | Not decided | Planned | Episode and status notifications | NATS consumer |

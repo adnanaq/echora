@@ -32,7 +32,7 @@ The hand-written Pydantic models in `libs/common/src/common/models/anime.py` are
 | PostgreSQL Service | Rust | Consumer. Stores the shape and checks its SQL against it at build time |
 | Update Service | Rust | Consumer. Passes the messages between services |
 | Vector Service | Python | Consumer |
-| Backend | Not decided | Consumer |
+| Backend | Rust | Consumer |
 | Agent Service (planned) | Python | Consumer |
 
 ## Proto Files
@@ -159,7 +159,7 @@ Once services run different versions side by side, changes must keep old message
 
 > **Linear:** P-ECHO-21
 
-A change that crosses services is deployed in this order: database migrations, then the PostgreSQL Service, then the Enrichment Service, then the workers. Migrations run as a one-off job before the PostgreSQL Service rolls out, and only add (columns, tables, lookup values), so the old and new service both run against the new schema. Removals come in a later release, once nothing reads what is removed.
+A change that crosses services is deployed in this order: database migrations, then the PostgreSQL Service, then the Backend, Enrichment Service and workers. Migrations run as a one-off job before the PostgreSQL Service rolls out, and only add (columns, tables, lookup values), so the old and new service both run against the new schema. Removals come in a later release, once nothing reads what is removed.
 
 The order matters because the strict checks fail loudly in one direction only. An Enrichment Service deployed first can send an enum value the old PostgreSQL Service refuses, which fails those refreshes; a field the old service does not know is dropped without an error.
 

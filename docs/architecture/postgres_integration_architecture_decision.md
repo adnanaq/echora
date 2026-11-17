@@ -57,7 +57,7 @@ The service exposes gRPC only. The planned methods are listed in [[event_schema_
 | Backend | Knowledge graph reads (`FindNeighbors`, `FindReachable`, `FindPath`, `CompareEntities`) | Franchise pages, related works, a studio's other works (P-ECHO-22) |
 | Agent Service (planned) | The same knowledge graph reads | Answer questions that follow links between works (P-ECHO-22) |
 
-The frontend talks only to the backend, and the backend calls this service over gRPC. Whether the frontend uses GraphQL or REST is still open, and does not change this service either way. (P-ECHO-16)
+The frontend talks only to the backend (GraphQL), and the backend calls this service over gRPC. (P-ECHO-16)
 
 ### Writes are safe to repeat
 
