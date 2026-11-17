@@ -11,7 +11,7 @@ name: echora
 
 services:
   qdrant:
-    image: qdrant/qdrant:v1.19.1
+    image: qdrant/qdrant:v1.20.0
     container_name: echora-qdrant
     # The services reach Qdrant over echora-network; the host port is bound to
     # this machine only, for health checks and admin access over SSH.

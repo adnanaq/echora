@@ -8,8 +8,8 @@ dependencies = [
     "pydantic==2.13.5",
     "pydantic-settings==2.15.0",
     # Vector database
-    "qdrant-client==1.19.1",
-    # "qdrant-client[fastembed]==1.19.1",  # Uncomment to enable FastEmbed dense provider
+    "qdrant-client==1.20.0",
+    # "qdrant-client[fastembed]==1.20.0",  # Uncomment to enable FastEmbed dense provider
     # Embedding models
     "sentence-transformers==6.1.0",
     # FlagEmbedding 1.4.x calls AutoModel.from_pretrained(dtype=...), which

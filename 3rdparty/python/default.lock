@@ -45,7 +45,7 @@
 //     "pytest-regressions>=2.11.0",
 //     "pytest>=9.1.1",
 //     "python-multipart>=0.0.33",
-//     "qdrant-client==1.19.1",
+//     "qdrant-client==1.20.0",
 //     "ranx==0.3.21",
 //     "rapidfuzz>=3.14.6",
 //     "redis<9.0.0,>=8.1.0",
@@ -200,7 +200,7 @@
 //     "python-multipart==0.0.33",
 //     "pywin32==312; sys_platform == \"win32\"",
 //     "pyyaml==6.0.3",
-//     "qdrant-client==1.19.1",
+//     "qdrant-client==1.20.0",
 //     "ranx==0.3.21",
 //     "rapidfuzz==3.14.6",
 //     "redis==8.1.0",
@@ -405,7 +405,7 @@
     "python-multipart==0.0.33",
     "pywin32==312; sys_platform == \"win32\"",
     "pyyaml==6.0.3",
-    "qdrant-client==1.19.1",
+    "qdrant-client==1.20.0",
     "ranx==0.3.21",
     "rapidfuzz==3.14.6",
     "redis==8.1.0",
@@ -3572,14 +3572,14 @@
           "artifacts": [
             {
               "algorithm": "sha256",
-              "hash": "fca1a96c3f90f5fff853f6ee6877838a5768a04c963df9891a655a63313af8a0",
-              "url": "https://files.pythonhosted.org/packages/d0/9f/becebdda02beddd422587eba0d7dfac5b1f1e0aa1ada5bcf9b9e6f1c3717/qdrant_client-1.19.1-py3-none-any.whl"
+              "hash": "0ab261197a497d16f3bf8a663c22e994f485c9fd7212d3c8b07c1a9de32fc152",
+              "url": "https://files.pythonhosted.org/packages/63/f0/f37da771d09d779313ad470945600cb5d3e1a26864126def802a3254b536/qdrant_client-1.20.0-py3-none-any.whl"
             }
           ],
           "project_name": "qdrant-client",
           "requires_dists": [
-            "fastembed-gpu<0.9,>=0.8; extra == \"fastembed-gpu\"",
-            "fastembed<0.9,>=0.8; extra == \"fastembed\"",
+            "fastembed-gpu<0.10,>=0.9; extra == \"fastembed-gpu\"",
+            "fastembed<0.10,>=0.9; extra == \"fastembed\"",
             "grpcio>=1.41.0",
             "httpx[http2]>=0.20.0",
             "numpy<2.3.0,>=1.21; python_version == \"3.10\"",
@@ -3587,13 +3587,14 @@
             "numpy>=1.26; python_version == \"3.12\"",
             "numpy>=2.1.0; python_version == \"3.13\"",
             "numpy>=2.3.0; python_version >= \"3.14\"",
-            "portalocker<4.0,>=2.7.0",
+            "orjson>=3.9.15; extra == \"orjson\"",
+            "portalocker<5.0,>=2.7.0",
             "protobuf>=3.20.0",
             "pydantic!=2.0.*,!=2.1.*,!=2.2.0,>=1.10.8",
             "urllib3<3,>=1.26.14"
           ],
           "requires_python": ">=3.10",
-          "version": "1.19.1"
+          "version": "1.20.0"
         },
         {
           "artifacts": [
@@ -4783,7 +4784,7 @@
     "pytest-regressions>=2.11.0",
     "pytest>=9.1.1",
     "python-multipart>=0.0.33",
-    "qdrant-client==1.19.1",
+    "qdrant-client==1.20.0",
     "ranx==0.3.21",
     "rapidfuzz>=3.14.6",
     "redis<9.0.0,>=8.1.0",
