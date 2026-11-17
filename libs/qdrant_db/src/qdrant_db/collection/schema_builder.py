@@ -12,6 +12,7 @@ from common.config.qdrant_config import Priority
 from qdrant_client.models import (
     BinaryQuantization,
     BinaryQuantizationConfig,
+    Datatype,
     Distance,
     HnswConfigDiff,
     Modifier,
@@ -37,8 +38,17 @@ _DISTANCE_MAPPING = {
     "dot": Distance.DOT,
 }
 
+_DATATYPE_MAPPING = {
+    "float32": Datatype.FLOAT32,
+    "float16": Datatype.FLOAT16,
+    "uint8": Datatype.UINT8,
+    "turbo4": Datatype.TURBO4,
+    "turbo8": Datatype.TURBO8,
+    "turbo16": Datatype.TURBO16,
+}
 
-def get_vector_priority(config: QdrantConfig, vector_name: str) -> Priority:
+
+def resolve_vector_priority(config: QdrantConfig, vector_name: str) -> Priority:
     """Resolve priority bucket for a vector name.
 
     Args:
@@ -54,7 +64,7 @@ def get_vector_priority(config: QdrantConfig, vector_name: str) -> Priority:
     return "medium"
 
 
-def get_hnsw_config(config: QdrantConfig, priority: Priority) -> HnswConfigDiff:
+def build_hnsw_config(config: QdrantConfig, priority: Priority) -> HnswConfigDiff:
     """Build HNSW configuration for a priority class.
 
     Args:
@@ -68,7 +78,7 @@ def get_hnsw_config(config: QdrantConfig, priority: Priority) -> HnswConfigDiff:
     return HnswConfigDiff(ef_construct=settings.ef_construct, m=settings.m)
 
 
-def get_per_vector_quantization_config(
+def build_per_vector_quantization_config(
     config: QdrantConfig, priority: Priority
 ) -> QuantizationConfig:
     """Build per-vector quantization config for a priority class.
@@ -106,7 +116,7 @@ def build_vector_config(config: QdrantConfig) -> dict[str, VectorParams]:
 
     vector_params: dict[str, VectorParams] = {}
     for vector_name, dimension in config.vector_names.items():
-        priority = get_vector_priority(config, vector_name)
+        priority = resolve_vector_priority(config, vector_name)
         is_multivector = vector_name in multivector_names
         params_kwargs: dict[str, Any] = {
             "size": dimension,
@@ -115,13 +125,17 @@ def build_vector_config(config: QdrantConfig) -> dict[str, VectorParams]:
             # pre-compute valid neighbors for multivector. Disable it (m=0).
             "hnsw_config": HnswConfigDiff(m=0)
             if is_multivector
-            else get_hnsw_config(config, priority),
-            "quantization_config": get_per_vector_quantization_config(config, priority),
+            else build_hnsw_config(config, priority),
+            "quantization_config": build_per_vector_quantization_config(
+                config, priority
+            ),
         }
         if is_multivector:
             params_kwargs["multivector_config"] = MultiVectorConfig(
                 comparator=MultiVectorComparator.MAX_SIM
             )
+        if config.qdrant_vector_datatype is not None:
+            params_kwargs["datatype"] = _DATATYPE_MAPPING[config.qdrant_vector_datatype]
         vector_params[vector_name] = VectorParams(**params_kwargs)
 
     return vector_params

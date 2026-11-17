@@ -26,6 +26,10 @@ DistanceMetric = Annotated[Literal["cosine", "euclid", "dot"], BeforeValidator(_
 QuantizationType = Annotated[
     Literal["binary", "scalar", "product"], BeforeValidator(_lower)
 ]
+VectorDatatype = Annotated[
+    Literal["float32", "float16", "uint8", "turbo4", "turbo8", "turbo16"],
+    BeforeValidator(_lower),
+]
 SparseModifier = Annotated[Literal["none", "idf"], BeforeValidator(_lower)]
 Priority = Literal["high", "medium", "low"]
 
@@ -68,6 +72,13 @@ class QdrantConfig(EnvSettings):
     )
     qdrant_distance_metric: DistanceMetric = Field(
         default="cosine", description="Distance metric for similarity"
+    )
+    qdrant_vector_datatype: VectorDatatype | None = Field(
+        default=None,
+        description=(
+            "Optional Qdrant storage datatype for dense vectors "
+            "(float32, float16, uint8, turbo4, turbo8, turbo16)"
+        ),
     )
 
     # Vector Architecture & Dimensions
