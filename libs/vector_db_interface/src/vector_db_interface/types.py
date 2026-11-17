@@ -41,11 +41,9 @@ class SearchHit:
     Attributes:
         id: Point identifier.
         score: Vector similarity score from the search index.
-        reranking_score: Cross-encoder relevance score if reranking was applied.
         payload: Metadata fields stored alongside the vector.
     """
 
     id: str
     score: float
-    reranking_score: float | None = None
     payload: dict[str, Any] = field(default_factory=dict)
