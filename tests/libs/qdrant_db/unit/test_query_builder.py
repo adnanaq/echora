@@ -1,17 +1,25 @@
 from qdrant_client.models import (
     FieldCondition,
     Filter,
+    Fusion,
+    FusionQuery,
     MatchAny,
     MatchExcept,
     MatchValue,
     QuantizationSearchParams,
     Range,
+    RrfQuery,
     SearchParams,
     SparseVector,
 )
-from qdrant_db.contracts import SearchFilterCondition, SearchRequest, SparseVectorData
+from qdrant_db.qdrant_models import (
+    SearchFilterCondition,
+    SearchRequest,
+    SparseVectorPayload,
+)
 from qdrant_db.query_builder import (
     build_filter,
+    build_fusion_query,
     build_prefetch_queries,
     build_sparse_query,
     build_text_search_params,
@@ -152,7 +160,7 @@ def test_build_filter_mixed_clauses_fills_each_clause() -> None:
 
 
 def test_build_sparse_query_returns_sparse_vector() -> None:
-    sparse = SparseVectorData(indices=[0, 3], values=[0.8, 0.2])
+    sparse = SparseVectorPayload(indices=[0, 3], values=[0.8, 0.2])
     result = build_sparse_query(sparse)
     assert isinstance(result, SparseVector)
     assert result.indices == [0, 3]
@@ -314,3 +322,13 @@ def test_build_prefetch_queries_search_params_given_applies_to_text_branches_onl
         ("image_vec", None),
         ("sparse_vec", None),
     ]
+
+
+def test_build_fusion_query_dbsf_and_rrf_return_expected_models() -> None:
+    dbsf_query = build_fusion_query("dbsf", rrf_k=2)
+    rrf_query = build_fusion_query("rrf", rrf_k=10)
+
+    assert isinstance(dbsf_query, FusionQuery)
+    assert dbsf_query.fusion == Fusion.DBSF
+    assert isinstance(rrf_query, RrfQuery)
+    assert rrf_query.rrf.k == 10

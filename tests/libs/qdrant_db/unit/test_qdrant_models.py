@@ -1,20 +1,22 @@
 import pytest
 from pydantic import ValidationError
-from qdrant_db.contracts import (
-    BatchPayloadUpdateItem,
-    BatchVectorUpdateItem,
+from qdrant_db.qdrant_models import (
+    BatchPayloadUpdate,
+    BatchVectorUpdate,
+    SearchFilterCondition,
+    SearchRange,
     SearchRequest,
-    SparseVectorData,
+    SparseVectorPayload,
 )
 
 
 def test_batch_payload_update_item_empty_payload_fails() -> None:
     with pytest.raises(ValidationError):
-        BatchPayloadUpdateItem(point_id="p1", payload={})
+        BatchPayloadUpdate(point_id="p1", payload={})
 
 
 def test_batch_payload_update_item_payload_is_kept() -> None:
-    assert BatchPayloadUpdateItem(
+    assert BatchPayloadUpdate(
         point_id="p1", payload={"title": "One Piece"}
     ).payload == {"title": "One Piece"}
 
@@ -36,14 +38,14 @@ def test_batch_vector_update_item_invalid_dense_vector_fails(
     vector_data: object,
 ) -> None:
     with pytest.raises(ValidationError):
-        BatchVectorUpdateItem.model_validate(
+        BatchVectorUpdate.model_validate(
             {"point_id": "p1", "vector_name": "text_vector", "vector_data": vector_data}
         )
 
 
 @pytest.mark.parametrize("vector_data", [[0.1, 2], [[0.1, 0.2], [3, 0.4]]])
 def test_batch_vector_update_item_finite_numbers_are_kept(vector_data: list) -> None:
-    item = BatchVectorUpdateItem.model_validate(
+    item = BatchVectorUpdate.model_validate(
         {"point_id": "p1", "vector_name": "text_vector", "vector_data": vector_data}
     )
 
@@ -51,7 +53,7 @@ def test_batch_vector_update_item_finite_numbers_are_kept(vector_data: list) -> 
 
 
 def test_batch_vector_update_item_sparse_vector_is_kept() -> None:
-    item = BatchVectorUpdateItem.model_validate(
+    item = BatchVectorUpdate.model_validate(
         {
             "point_id": "p1",
             "vector_name": "text_sparse_vector",
@@ -59,7 +61,7 @@ def test_batch_vector_update_item_sparse_vector_is_kept() -> None:
         }
     )
 
-    assert item.vector_data == SparseVectorData(indices=[1, 5], values=[0.2, 0.4])
+    assert item.vector_data == SparseVectorPayload(indices=[1, 5], values=[0.2, 0.4])
 
 
 @pytest.mark.parametrize("field", ["text_embedding", "image_embedding"])
@@ -121,4 +123,24 @@ def test_sparse_vector_data_invalid_indices_raises_validation_error(
     indices: list[int], values: list[float], message: str
 ) -> None:
     with pytest.raises(ValidationError, match=message):
-        SparseVectorData(indices=indices, values=values)
+        SparseVectorPayload(indices=indices, values=values)
+
+
+def test_search_filter_condition_invalid_values_raise_validation_error() -> None:
+    with pytest.raises(ValidationError, match="must be scalar"):
+        SearchFilterCondition(field="title", operator="eq", value=["x"])
+    with pytest.raises(ValidationError, match="non-empty list"):
+        SearchFilterCondition(field="genre", operator="in", value=[])
+    with pytest.raises(ValidationError, match="must be scalar"):
+        SearchFilterCondition(field="genre", operator="in", value=[["x"]])
+    with pytest.raises(ValueError, match="Unsupported filter operator"):
+        SearchFilterCondition.model_construct(
+            field="title", operator="bad", value="x"
+        ).validate_value()
+
+
+def test_search_filter_condition_range_model_instance_is_kept() -> None:
+    range_value = SearchRange(gte=2000)
+    condition = SearchFilterCondition(field="year", operator="range", value=range_value)
+
+    assert condition.value is range_value

@@ -1,17 +1,11 @@
-"""Unit tests for VectorNormalizer and module-level guard functions."""
-
 import pytest
 from qdrant_client.models import SparseVector
-from qdrant_db.contracts import SparseVectorData
+from qdrant_db.qdrant_models import SparseVectorPayload
 from qdrant_db.errors import ValidationError
 from qdrant_db.normalizer import (
     VectorNormalizer,
     is_sparse_payload,
 )
-
-# ---------------------------------------------------------------------------
-# Module-level guards
-# ---------------------------------------------------------------------------
 
 
 def test_is_sparse_payload_returns_true_for_valid_dict() -> None:
@@ -30,11 +24,6 @@ def test_is_sparse_payload_returns_false_when_values_not_list() -> None:
     assert is_sparse_payload({"indices": [0], "values": "bad"}) is False
 
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-
 def _normalizer(
     sparse_names: set[str] | None = None,
     multivector: set[str] | None = None,
@@ -50,21 +39,16 @@ def _normalizer(
 SPARSE_DICT = {"indices": [0, 2], "values": [0.9, 0.4]}
 
 
-# ---------------------------------------------------------------------------
-# to_sparse_vector_data
-# ---------------------------------------------------------------------------
-
-
 def test_to_sparse_vector_data_passthrough_already_model() -> None:
     norm = _normalizer()
-    model = SparseVectorData(indices=[0], values=[1.0])
+    model = SparseVectorPayload(indices=[0], values=[1.0])
     assert norm.to_sparse_vector_data(model, "s") is model
 
 
 def test_to_sparse_vector_data_coerces_dict() -> None:
     norm = _normalizer()
     result = norm.to_sparse_vector_data(SPARSE_DICT, "s")
-    assert isinstance(result, SparseVectorData)
+    assert isinstance(result, SparseVectorPayload)
     assert result.indices == [0, 2]
     assert result.values == [0.9, 0.4]
 
@@ -83,12 +67,7 @@ def test_to_sparse_vector_data_raises_for_invalid_model() -> None:
         )
 
 
-# ---------------------------------------------------------------------------
-# normalize_vector_payload
-# ---------------------------------------------------------------------------
-
-
-def test_normalize_sparse_vector_returns_qdrant_sparse() -> None:
+def test_normalize_vector_payload_sparse_returns_qdrant_sparse() -> None:
     norm = _normalizer(sparse_names={"sparse_vector"})
     result = norm.normalize_vector_payload("sparse_vector", SPARSE_DICT)
     assert isinstance(result, SparseVector)
@@ -103,7 +82,9 @@ def test_normalize_sparse_vector_returns_qdrant_sparse() -> None:
         ("image_vector", [[0.1, 0.2, 0.3], [1, 0, -1]]),
     ],
 )
-def test_normalize_dense_vector_passthrough(vector_name: str, vec: list) -> None:
+def test_normalize_vector_payload_dense_passthrough(
+    vector_name: str, vec: list
+) -> None:
     norm = _normalizer(multivector={"image_vector"})
     result = norm.normalize_vector_payload(vector_name, vec)
     assert result is vec
@@ -133,3 +114,9 @@ def test_invalid_dense_payload_raises(
     norm = _normalizer(multivector={"image_vector"})
     with pytest.raises(ValidationError, match=error):
         norm.normalize_vector_payload(vector_name, vector_data)
+
+
+def test_normalize_vector_payload_unknown_vector_name_raises_validation_error() -> None:
+    norm = _normalizer()
+    with pytest.raises(ValidationError, match="Invalid vector name: unknown_vector"):
+        norm.normalize_vector_payload("unknown_vector", [0.1, 0.2])

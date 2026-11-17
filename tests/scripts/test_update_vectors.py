@@ -8,7 +8,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
-from qdrant_db.contracts import BatchOperationResult
+from qdrant_db.qdrant_models import BatchOperationSummary
 from qdrant_db.errors import PermanentQdrantError
 from update_vectors import update_vectors
 
@@ -49,7 +49,7 @@ def _embedding_manager() -> MagicMock:
 
 def _client_upserting_everything() -> MagicMock:
     async def upsert(documents, batch_size):
-        return BatchOperationResult(
+        return BatchOperationSummary(
             total=len(documents), successful=len(documents), failed=0
         )
 
@@ -110,7 +110,7 @@ async def test_failed_upsert_marks_batch_failed_and_continues(tmp_path: Path) ->
     client.add_documents = AsyncMock(
         side_effect=[
             PermanentQdrantError("Failed to upsert documents"),
-            BatchOperationResult(total=1, successful=1, failed=0),
+            BatchOperationSummary(total=1, successful=1, failed=0),
         ]
     )
 

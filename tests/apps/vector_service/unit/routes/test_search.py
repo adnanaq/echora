@@ -13,7 +13,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
 )
 from qdrant_client import AsyncQdrantClient
 from qdrant_db import QdrantClient
-from qdrant_db.contracts import SearchRange
+from qdrant_db.qdrant_models import SearchRange
 from vector_db_interface import SearchHit
 from vector_processing import (
     MultiVectorEmbeddingManager,
