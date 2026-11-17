@@ -293,7 +293,7 @@ This project supports both UV and Pants for development:
 ./pants test tests/libs/qdrant_db::
 
 # Run a specific test file
-./pants test tests/libs/qdrant_db/unit/test_qdrant_client.py
+./pants test tests/libs/qdrant_db/unit/test_client.py
 
 # Run integration tests only
 ./pants test :: -- -m integration
@@ -374,7 +374,7 @@ Shared models and configuration used across all libraries and the main applicati
 
 Qdrant vector database client with strict typed contracts and batch operations.
 
-- Async operations with typed request/response contracts (`SearchRequest`, `BatchOperationResult`)
+- Async operations with typed request/response models (`SearchRequest`, `BatchOperationSummary`)
 - Automatic retry with exponential backoff for transient failures
 - Multi-vector and hybrid (RRF/DBSF) search support
 - Collection lifecycle management with race-safe initialization
