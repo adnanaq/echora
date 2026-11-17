@@ -5,24 +5,30 @@ Stateless pure functions, no I/O, no async.
 
 from typing import Any, cast
 
+from qdrant_client.http.models import QueryResponse
 from qdrant_client.models import (
     FieldCondition,
     Filter,
+    Fusion,
+    FusionQuery,
     MatchAny,
     MatchExcept,
     MatchValue,
     Prefetch,
     QuantizationSearchParams,
     Range,
+    Rrf,
+    RrfQuery,
     SearchParams,
     SparseVector,
 )
-from qdrant_db.contracts import (
+from qdrant_db.qdrant_models import (
     SearchFilterCondition,
     SearchRange,
     SearchRequest,
-    SparseVectorData,
+    SparseVectorPayload,
 )
+from vector_db_interface import SearchHit
 
 
 def _build_field_condition(condition: SearchFilterCondition) -> FieldCondition:
@@ -102,7 +108,7 @@ def build_filter(filters: list[SearchFilterCondition]) -> Filter | None:
     )
 
 
-def build_sparse_query(sparse_embedding: SparseVectorData) -> SparseVector:
+def build_sparse_query(sparse_embedding: SparseVectorPayload) -> SparseVector:
     """Convert typed sparse contract model to a Qdrant sparse query payload.
 
     Args:
@@ -163,47 +169,97 @@ def build_prefetch_queries(
     Returns:
         List of prefetch query branches (one per active embedding signal).
     """
-    prefetch: list[Prefetch] = []
+    candidates: list[tuple[str, Any, SearchParams | None]] = []
 
     if request.text_embedding is not None:
-        prefetch.append(
-            Prefetch(
-                using=text_vector_name,
-                query=request.text_embedding,
-                limit=prefetch_limit,
-                filter=qdrant_filter,
-                params=text_search_params,
-            )
+        candidates.append(
+            (text_vector_name, request.text_embedding, text_search_params)
         )
         for expansion in request.expanded_text_embeddings or []:
-            prefetch.append(
-                Prefetch(
-                    using=text_vector_name,
-                    query=expansion,
-                    limit=prefetch_limit,
-                    filter=qdrant_filter,
-                    params=text_search_params,
-                )
-            )
+            candidates.append((text_vector_name, expansion, text_search_params))
 
     if request.image_embedding is not None:
-        prefetch.append(
-            Prefetch(
-                using=image_vector_name,
-                query=request.image_embedding,
-                limit=prefetch_limit,
-                filter=qdrant_filter,
-            )
-        )
+        candidates.append((image_vector_name, request.image_embedding, None))
 
     if request.sparse_embedding is not None:
-        prefetch.append(
-            Prefetch(
-                using=sparse_vector_name,
-                query=build_sparse_query(request.sparse_embedding),
-                limit=prefetch_limit,
-                filter=qdrant_filter,
-            )
+        candidates.append(
+            (sparse_vector_name, build_sparse_query(request.sparse_embedding), None)
         )
 
-    return prefetch
+    return [
+        Prefetch(
+            using=vector_name,
+            query=query,
+            limit=prefetch_limit,
+            filter=qdrant_filter,
+            params=search_params,
+        )
+        for vector_name, query, search_params in candidates
+    ]
+
+
+def collect_active_embeddings(
+    request: SearchRequest,
+    text_vector_name: str,
+    image_vector_name: str,
+    sparse_vector_name: str,
+) -> list[tuple[str, list[float] | SparseVector]]:
+    """Collect active query embedding signals from a search request.
+
+    Args:
+        request: Typed search request model.
+        text_vector_name: Named text vector field.
+        image_vector_name: Named image vector field.
+        sparse_vector_name: Named sparse vector field.
+
+    Returns:
+        List of ``(vector_name, query_vector)`` pairs for populated signals.
+    """
+    return [
+        (name, vec)
+        for name, vec in (
+            (text_vector_name, request.text_embedding),
+            (image_vector_name, request.image_embedding),
+            (
+                sparse_vector_name,
+                build_sparse_query(request.sparse_embedding)
+                if request.sparse_embedding
+                else None,
+            ),
+        )
+        if vec is not None
+    ]
+
+
+def build_fusion_query(fusion_method: str, rrf_k: int) -> FusionQuery | RrfQuery:
+    """Build Qdrant fusion query model for multi-branch prefetch search.
+
+    Args:
+        fusion_method: Fusion mode (``rrf`` or ``dbsf``).
+        rrf_k: Reciprocal rank fusion constant.
+
+    Returns:
+        Configured ``FusionQuery`` or ``RrfQuery`` model.
+    """
+    if fusion_method == "dbsf":
+        return FusionQuery(fusion=Fusion.DBSF)
+    return RrfQuery(rrf=Rrf(k=rrf_k))
+
+
+def build_search_hits(response: QueryResponse) -> list[SearchHit]:
+    """Normalize Qdrant points into search hits.
+
+    Args:
+        response: Raw Qdrant query response.
+
+    Returns:
+        List of normalized ``SearchHit`` models.
+    """
+    return [
+        SearchHit(
+            id=str(point.id),
+            payload=dict(point.payload) if point.payload else {},
+            score=float(point.score),
+        )
+        for point in response.points
+    ]

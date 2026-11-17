@@ -16,12 +16,12 @@ import grpc
 from common.grpc.error_details import build_error_details as error
 from observability import registry
 from opentelemetry import trace
-from qdrant_db.contracts import (
+from qdrant_db.qdrant_models import (
     FilterClause,
     FilterOperator,
     SearchFilterCondition,
     SearchRequest,
-    SparseVectorData,
+    SparseVectorPayload,
 )
 from vector_proto.v1 import vector_search_pb2
 
@@ -296,14 +296,14 @@ async def search(
         current_span.add_event("validation.complete")
 
         text_embedding: list[float] | None = None
-        sparse_embedding: SparseVectorData | None = None
+        sparse_embedding: SparseVectorPayload | None = None
         if query_text:
             (
                 text_embedding,
                 _sparse_dict,
             ) = await runtime.text_processor.encode_text_with_sparse(query_text)
             if _sparse_dict is not None:
-                sparse_embedding = SparseVectorData(**_sparse_dict)
+                sparse_embedding = SparseVectorPayload(**_sparse_dict)
             if not text_embedding:
                 return vector_search_pb2.SearchResponse(
                     error=error(

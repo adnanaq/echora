@@ -8,7 +8,7 @@ from typing import Any, TypeGuard, cast
 
 import pydantic
 from qdrant_client.models import SparseVector
-from qdrant_db.contracts import DenseVector, MultiVector, SparseVectorData
+from qdrant_db.qdrant_models import DenseVector, MultiVector, SparseVectorPayload
 from qdrant_db.errors import ValidationError
 
 _DENSE_VECTOR = pydantic.TypeAdapter(DenseVector)
@@ -53,7 +53,7 @@ class VectorNormalizer:
 
     def to_sparse_vector_data(
         self, vector_data: Any, vector_name: str
-    ) -> SparseVectorData:
+    ) -> SparseVectorPayload:
         """Validate and coerce sparse vector payload.
 
         Args:
@@ -66,10 +66,10 @@ class VectorNormalizer:
         Raises:
             ValidationError: If payload shape is invalid.
         """
-        if isinstance(vector_data, SparseVectorData):
+        if isinstance(vector_data, SparseVectorPayload):
             return vector_data
         try:
-            return SparseVectorData.model_validate(vector_data)
+            return SparseVectorPayload.model_validate(vector_data)
         except pydantic.ValidationError as error:
             raise ValidationError(
                 f"Invalid sparse vector payload for {vector_name}"

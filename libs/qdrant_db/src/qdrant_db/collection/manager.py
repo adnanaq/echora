@@ -108,12 +108,11 @@ class QdrantCollectionManager:
             ``True`` when collection is present, else ``False``.
         """
         try:
-            with qdrant_span("get_collections"):
-                collections = (await self._async_client.get_collections()).collections
+            with qdrant_span("collection_exists", self._collection_name):
+                return await self._async_client.collection_exists(self._collection_name)
         except Exception:
             logger.exception("Failed to check collection existence")
             return False
-        return any(col.name == self._collection_name for col in collections)
 
     async def clear_index(self) -> bool:
         """Delete and recreate the configured collection.
