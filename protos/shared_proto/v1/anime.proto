@@ -324,10 +324,6 @@ message ProductionStaff {
   map<string, StaffMemberList> roles = 1;
 }
 
-message StaffData {
-  ProductionStaff production_staff = 1;
-}
-
 message ContextualRank {
   int32 rank = 1;
   string context = 2;
@@ -459,7 +455,7 @@ message Anime {
   repeated ExternalLink external_sources = 33;
   AnimeImages images = 34;
   ScoreCalculations score = 35;
-  StaffData staff_data = 36;
+  ProductionStaff production_staff = 36;
   map<string, Statistics> statistics = 37;
   optional AnimeHiatus hiatus = 38;
   map<string, string> titles = 39;
