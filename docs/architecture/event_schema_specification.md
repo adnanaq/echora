@@ -72,7 +72,7 @@ message CatalogueEvent {  // (ECHO-90)
 
 - **Version.** Each save that changes an entity increases its `version` in the same transaction. A consumer stores the version it last handled and skips any event whose version is not newer. (ECHO-98)
 - **Deletes.** A removed entity keeps its row with `deleted_at` set, and its `version` increases once more, so the delete event's version is newer than every update before it.
-  - `DeleteWork` removes works this way. (ECHO-107)
+  - `DeleteAnime` removes works this way. (ECHO-107)
   - Episodes are removed this way. (ECHO-103)
   - Characters are removed this way. (ECHO-104)
   - A consumer reads a deleted entity back like any other, and `Get*` answers `NOT_FOUND`, which confirms the delete. (ECHO-114)
@@ -237,13 +237,16 @@ service EnrichmentService {
   // Fetch one provider page, as received. Nothing is mapped.
   rpc FetchPage(FetchPageRequest) returns (FetchPageResponse);  // (ECHO-99)
   // Map a work's stored pages, merge them, then apply corrections and AI text.
-  rpc MergeWork(MergeWorkRequest) returns (MergeWorkResponse);  // (ECHO-105)
+  rpc MergeAnime(MergeAnimeRequest) returns (MergeAnimeResponse);  // (ECHO-105)
   rpc MergeEpisode(MergeEpisodeRequest) returns (MergeEpisodeResponse);  // (ECHO-109)
   rpc MergeCharacter(MergeCharacterRequest) returns (MergeCharacterResponse);  // (ECHO-110)
   // Match the cast entries of a work's pages that are not yet linked to a character.
   // Its own call, so a cast of a thousand runs under its own timeout. Messages are defined
   // with the character merge.
   rpc MatchCharacters(MatchCharactersRequest) returns (MatchCharactersResponse);  // (ECHO-110)
+  // Find franchise links worth a reviewer's look. The links stream in; the candidates come back.
+  // Messages are defined with the knowledge graph project.
+  rpc FindFranchiseLinkCandidates(stream FindFranchiseLinkCandidatesRequest) returns (FindFranchiseLinkCandidatesResponse);  // (P-ECHO-22)
 }
 
 message FetchPageRequest {  // (ECHO-99)
@@ -255,7 +258,7 @@ message FetchPageResponse {  // (ECHO-99)
   shared_proto.v1.StoredPage page = 1;
 }
 
-message MergeWorkRequest {  // (ECHO-105)
+message MergeAnimeRequest {  // (ECHO-105)
   string anime_id = 1;                                        // the work's existing ID
   repeated shared_proto.v1.StoredPage source_pages = 2;
   repeated shared_proto.v1.PageKey partial_source_pages = 3;  // linked, not merged
@@ -265,7 +268,7 @@ message MergeWorkRequest {  // (ECHO-105)
   repeated shared_proto.v1.CharacterReference known_characters = 7;
 }
 
-message MergeWorkResponse {  // (ECHO-105)
+message MergeAnimeResponse {  // (ECHO-105)
   shared_proto.v1.Anime anime = 1;
   repeated shared_proto.v1.EpisodeReference episodes = 2;     // every episode the pages list
   repeated shared_proto.v1.CharacterReference characters = 3; // every character the pages list
@@ -295,7 +298,7 @@ message MergeCharacterResponse {  // (ECHO-110)
 }
 ```
 
-- **Mapping happens in the merge.** `MergeWork` runs each provider's mapper on the stored responses, merges the results with `merge_provider_records` from `libs/enrichment`, then applies the corrections and the generated text. (ECHO-105)
+- **Mapping happens in the merge.** `MergeAnime` runs each provider's mapper on the stored responses, merges the results with `merge_provider_records` from `libs/enrichment`, then applies the corrections and the generated text. (ECHO-105)
   - Nothing mapped is stored, because the fetchers return pages as received. AniList and Kitsu move first. (ECHO-89)
   - MAL, Anime-Planet and aniSearch follow. (ECHO-94)
   - AniDB, AnimeSchedule and Syoboi follow. (ECHO-99)
@@ -351,8 +354,8 @@ service PostgresService {
   rpc StorePage(StorePageRequest) returns (StorePageResponse);  // (ECHO-97)
 
   // Works
-  rpc LoadWork(LoadWorkRequest) returns (LoadWorkResponse);  // (ECHO-98)
-  rpc SaveWork(SaveWorkRequest) returns (SaveWorkResponse);  // (ECHO-98)
+  rpc LoadAnime(LoadAnimeRequest) returns (LoadAnimeResponse);  // (ECHO-98)
+  rpc SaveAnime(SaveAnimeRequest) returns (SaveAnimeResponse);  // (ECHO-98)
 
   // Episodes and characters
   rpc LoadEpisode(LoadEpisodeRequest) returns (LoadEpisodeResponse);  // (ECHO-103)
@@ -362,18 +365,18 @@ service PostgresService {
 
   // Seed load and review answers
   rpc FindEntitiesByPages(FindEntitiesByPagesRequest) returns (FindEntitiesByPagesResponse);  // (ECHO-107)
-  rpc CreateWorks(CreateWorksRequest) returns (CreateWorksResponse);  // (ECHO-107)
+  rpc CreateAnime(CreateAnimeRequest) returns (CreateAnimeResponse);  // (ECHO-107)
   rpc RelinkPages(RelinkPagesRequest) returns (RelinkPagesResponse);  // (ECHO-107)
-  rpc DeleteWork(DeleteWorkRequest) returns (SaveEntityResponse);  // (ECHO-107)
+  rpc DeleteAnime(DeleteAnimeRequest) returns (SaveEntityResponse);  // (ECHO-107)
 
   // What is due
   rpc ListEntityPages(ListEntityPagesRequest) returns (ListEntityPagesResponse);  // (ECHO-108)
   rpc RecordRefresh(RecordRefreshRequest) returns (RecordRefreshResponse);  // (ECHO-108)
-  rpc ListDueWorks(ListDueRequest) returns (ListDueResponse);  // (ECHO-108)
+  rpc ListDueAnime(ListDueRequest) returns (ListDueResponse);  // (ECHO-108)
   rpc ListDueEpisodes(ListDueRequest) returns (ListDueResponse);  // (ECHO-108)
   rpc ListDueCharacters(ListDueRequest) returns (ListDueResponse);  // (ECHO-108)
   rpc ListUpcomingEpisodes(ListUpcomingEpisodesRequest) returns (ListUpcomingEpisodesResponse);  // (ECHO-108)
-  rpc ListScoreWorks(ListScoreWorksRequest) returns (ListScoreWorksResponse);  // (ECHO-108)
+  rpc ListScoreAnime(ListScoreAnimeRequest) returns (ListScoreAnimeResponse);  // (ECHO-108)
   rpc ListRequestedMerges(ListRequestedMergesRequest) returns (ListRequestedMergesResponse);  // (ECHO-108)
   rpc MarkEpisodeAired(MarkEpisodeAiredRequest) returns (MarkEpisodeAiredResponse);  // (ECHO-103)
 
@@ -392,10 +395,18 @@ service PostgresService {
   rpc ListDuePages(ListDuePagesRequest) returns (ListDuePagesResponse);  // (ECHO-108)
 
   // Knowledge graph reads, for the backend and the Agent Service; messages defined with that project
-  rpc FindNeighbors(FindNeighborsRequest) returns (GraphResponse);  // (P-ECHO-22)
-  rpc FindReachable(FindReachableRequest) returns (GraphResponse);  // (P-ECHO-22)
-  rpc FindPath(FindPathRequest) returns (GraphResponse);  // (P-ECHO-22)
+  rpc FindNeighbors(FindNeighborsRequest) returns (GraphNodesResponse);  // (P-ECHO-22)
+  rpc FindReachable(FindReachableRequest) returns (GraphNodesResponse);  // (P-ECHO-22)
+  rpc FindPath(FindPathRequest) returns (GraphPathsResponse);  // (P-ECHO-22)
   rpc CompareEntities(CompareEntitiesRequest) returns (CompareEntitiesResponse);  // (P-ECHO-22)
+
+  // Franchise link check; messages defined with the knowledge graph project
+  rpc ListFranchiseLinks(ListFranchiseLinksRequest) returns (stream ListFranchiseLinksResponse);  // (P-ECHO-22)
+  rpc CreateLinkCheckApprovals(CreateLinkCheckApprovalsRequest) returns (CreateLinkCheckApprovalsResponse);  // (P-ECHO-22)
+
+  // Corrections kept in the repository; messages defined with the approval queue
+  rpc ExportCorrections(ExportCorrectionsRequest) returns (stream ExportCorrectionsResponse);  // (P-ECHO-15)
+  rpc ImportCorrections(stream ImportCorrectionsRequest) returns (ImportCorrectionsResponse);  // (P-ECHO-15)
 }
 
 message StorePageRequest {  // (ECHO-97)
@@ -406,12 +417,12 @@ message StorePageResponse {  // (ECHO-97)
   bool has_changed = 1;                      // false when the responses matched, or the fetch was older
 }
 
-message LoadWorkRequest {  // (ECHO-98)
+message LoadAnimeRequest {  // (ECHO-98)
   string anime_id = 1;
 }
 
-message LoadWorkResponse {  // (ECHO-98)
-  int64 version = 1;                         // passed back to SaveWork as expected_version
+message LoadAnimeResponse {  // (ECHO-98)
+  int64 version = 1;                         // passed back to SaveAnime as expected_version
   repeated shared_proto.v1.StoredPage source_pages = 2;
   repeated shared_proto.v1.PageKey partial_source_pages = 3;
   repeated shared_proto.v1.FieldCorrection corrections = 4;
@@ -420,7 +431,7 @@ message LoadWorkResponse {  // (ECHO-98)
   repeated shared_proto.v1.CharacterReference known_characters = 7;
 }
 
-message SaveWorkRequest {  // (ECHO-98)
+message SaveAnimeRequest {  // (ECHO-98)
   string anime_id = 1;
   int64 expected_version = 2;
   shared_proto.v1.Anime anime = 3;
@@ -429,7 +440,7 @@ message SaveWorkRequest {  // (ECHO-98)
   repeated shared_proto.v1.RelationClaim relation_claims = 6;  // stored in anime_relation_claim (ECHO-102)
 }
 
-message SaveWorkResponse {  // (ECHO-98)
+message SaveAnimeResponse {  // (ECHO-98)
   bool has_changed = 1;
   int64 version = 2;
   repeated string created_episode_ids = 3;   // episodes to refresh next (ECHO-103)
@@ -491,17 +502,17 @@ message PageOwner {  // (ECHO-107)
   bool is_partial_source = 3;
 }
 
-message CreateWorksRequest {  // (ECHO-107)
-  repeated NewWork works = 1;
+message CreateAnimeRequest {  // (ECHO-107)
+  repeated NewAnime works = 1;
 }
 
-message NewWork {  // (ECHO-107)
+message NewAnime {  // (ECHO-107)
   string anime_id = 1;                       // a new UUIDv7, assigned by the seed load
   repeated shared_proto.v1.PageKey source_pages = 2;
   repeated shared_proto.v1.PageKey partial_source_pages = 3;
 }
 
-message CreateWorksResponse {  // (ECHO-107)
+message CreateAnimeResponse {  // (ECHO-107)
   repeated string created_anime_ids = 1;     // works already created by an earlier attempt are left out
 }
 
@@ -520,7 +531,7 @@ message RelinkPagesResponse {  // (ECHO-107)
   repeated string affected_anime_ids = 1;    // works to merge again
 }
 
-message DeleteWorkRequest {  // (ECHO-107)
+message DeleteAnimeRequest {  // (ECHO-107)
   string anime_id = 1;
   int64 expected_version = 2;
   optional string merged_into_anime_id = 3;
@@ -593,13 +604,13 @@ enum RefreshOutcome {  // (ECHO-108)
 
 message RecordRefreshResponse {}  // (ECHO-108)
 
-message ListScoreWorksRequest {  // (ECHO-108)
+message ListScoreAnimeRequest {  // (ECHO-108)
   int32 lookback_days = 1;                   // finished works stay in for this many days after aired_to
   int32 page_size = 2;
   optional string after_id = 3;              // keyset: the last ID of the previous page
 }
 
-message ListScoreWorksResponse {  // (ECHO-108)
+message ListScoreAnimeResponse {  // (ECHO-108)
   repeated string anime_ids = 1;
 }
 
@@ -624,7 +635,7 @@ message LoadSynopsisSourcesResponse {  // (ECHO-115)
 message SaveGeneratedTextRequest {  // (ECHO-115)
   string anime_id = 1;
   string field_path = 2;                     // 'synopsis'
-  optional shared_proto.v1.WriteSynopsisResponse written = 3;  // unset when nothing was written
+  optional shared_proto.v1.WriteSynopsisResponse written_synopsis = 3;  // unset when nothing was written
   string input_hash = 4;
   GeneratedTextOutcome outcome = 5;          // recorded even when nothing was written
 }
@@ -705,18 +716,18 @@ message DuePage {  // (ECHO-108)
 ```
 
 - **Saves check the version.** A save writes only when the stored version still equals `expected_version`, and otherwise returns `ABORTED`.
-  - `SaveWork` checks it. (ECHO-98)
+  - `SaveAnime` checks it. (ECHO-98)
   - `SaveEpisode` checks it. (ECHO-103)
   - `SaveCharacter` checks it. (ECHO-104)
-  - `DeleteWork` checks it. (ECHO-107)
+  - `DeleteAnime` checks it. (ECHO-107)
   - On `ABORTED`, the merge activity loads, merges and saves again within the same attempt. (ECHO-111)
   - A save that changes nothing writes nothing and sends nothing. (ECHO-98)
   - `RecordRefresh`, the refresh's last call, records that it finished. (ECHO-108)
-- **`SaveWork` creates what the work lists.**
+- **`SaveAnime` creates what the work lists.**
   - An episode the merge gave a new ID is created with its page links, and the response names it so the workflow can start its refresh. (ECHO-103)
   - A character the merge gave a new ID is created the same way. Before creating it, the save looks up the character's page keys. When one already belongs to a character, such as one another work's save created a moment earlier, it links that character and drops the new ID, so the save never fails on it. (ECHO-104)
 - **`StorePage`** stores a page and its responses only when its `fetched_at` is newer than the stored one, so a retried or late fetch never replaces newer data. It reports the page as changed when the hash of the responses differs, without reading the stored bodies. (ECHO-97)
-- **`CreateWorks` and `RelinkPages`** resolve every unresolved relation that points at a newly linked source page, in the same transaction. They also increase the version of every work that gains or loses a page, so a merge that loaded before the move starts again. (ECHO-107)
+- **`CreateAnime` and `RelinkPages`** resolve every unresolved relation that points at a newly linked source page, in the same transaction. They also increase the version of every work that gains or loses a page, so a merge that loaded before the move starts again. (ECHO-107)
 - **`Get*` answers `NOT_FOUND`** for an entity that is deleted or not merged yet, so consumers confirm deletes by reading back. Otherwise they return the entity with its version, which the vector service stores in the point. (ECHO-108)
 - **`ListEntityVersions`** pages through the visible entities of one kind with their versions, for the vector service's comparison job. (ECHO-108)
 - **`StorePage` records a missing page instead of deleting it.** A fetch with `is_not_found` sets `missing_since` and counts the answer, and keeps the stored responses. Two answers a day apart create a `dead_page` review item, or, once the provider is trusted, set `is_dead`. Seed releases never remove pages. See [[Database Schema#4. Writes and Deletes|Database Schema]]. (ECHO-97)
@@ -726,27 +737,29 @@ message DuePage {  // (ECHO-108)
 - **`MarkEpisodeAired`** writes `notification.episode.aired` once, when the episode's `aired_at` has passed and `aired_notified_at` is unset. The tracker calls it at air time, so the notification does not depend on a save changing something. (ECHO-103)
 - **`SaveGeneratedText` records every attempt**, written or not, so the same provider synopses do not start the synopsis workflow again. (ECHO-115)
 - **`ListDuePages`** lists one budgeted provider's pages in due order with their work, for the budgeted fetcher. (ECHO-108)
-- **`SaveWork` stores each episode's list entries** in `episode_list_entry`.
+- **`SaveAnime` stores each episode's list entries** in `episode_list_entry`.
   - An existing episode whose entries changed is made due at once and returned in `changed_episode_ids`, so the refresh starts it. (ECHO-103)
   - A character whose cast entry changed is made due at once and returned in `changed_character_ids`. (ECHO-104)
 - **Works exist before their first merge.** See [[Database Schema#4. Writes and Deletes|Database Schema]].
-  - `CreateWorks` writes the work's ID and page links with `merged_at` unset, and links pages that were never fetched. (ECHO-107)
+  - `CreateAnime` writes the work's ID and page links with `merged_at` unset, and links pages that were never fetched. (ECHO-107)
   - The `Get*` and listing methods skip such works. (ECHO-108)
   - The save that first sets `merged_at` writes `anime.created`. (ECHO-98)
 - **`ListEntityPages` and `RecordRefresh`** give a refresh its due pages and record its outcome, including a refresh that changed nothing, one that left pages failed, and one that failed. (ECHO-108)
-- **Message size.** Every method that carries page bodies (`StorePage`, `LoadWork`, `MergeWork`, `MergeEpisode`, `MergeCharacter` and their loads) runs with a 64 MB limit, set on every server and every client: `max_decoding_message_size` and `max_encoding_message_size` in `tonic`, whose decoding limit defaults to 4 MB on both ends, and `grpc.max_receive_message_length` and `grpc.max_send_message_length` in `grpcio`. Messages are gzip-compressed.
+- **Message size.** Every method that carries page bodies (`StorePage`, `LoadAnime`, `MergeAnime`, `MergeEpisode`, `MergeCharacter` and their loads) runs with a 64 MB limit, set on every server and every client: `max_decoding_message_size` and `max_encoding_message_size` in `tonic`, whose decoding limit defaults to 4 MB on both ends, and `grpc.max_receive_message_length` and `grpc.max_send_message_length` in `grpcio`. Messages are gzip-compressed.
   - The PostgreSQL Service sets the limit and compression on its server. It returns `RESOURCE_EXHAUSTED` only for a message over the limit, never for a passing condition, so it is not retried. (ECHO-97)
   - The Enrichment Service sets them on its server, and returns a provider's throttling as `UNAVAILABLE`. (ECHO-99)
   - The Update Service sets them on its clients. (ECHO-111)
-- **`DeleteWork`** removes the work's page links, its own relations and every `graph_edge` row from or to it, and turns relations other works assert towards it back into unresolved ones, all in one transaction. A work merged into another keeps `merged_into_anime_id`, so its old links can redirect. See [[Database Schema#4. Writes and Deletes|Database Schema]]. (ECHO-107)
+- **`DeleteAnime`** removes the work's page links, its own relations and every `graph_edge` row from or to it, and turns relations other works assert towards it back into unresolved ones, all in one transaction. A work merged into another keeps `merged_into_anime_id`, so its old links can redirect. See [[Database Schema#4. Writes and Deletes|Database Schema]]. (ECHO-107)
 - **A page view writes nothing.** The backend decides from `next_refresh_at` in the `Get*` response whether an opened entity is due, so a view costs one read, and a cached one none. (ECHO-108)
 - **`ListRequestedMerges`** returns the entities whose `merge_requested_at` is set, through a partial index. The sweep starts their refreshes before paging the due queries. (ECHO-108)
 - **`DecideApproval`** (planned with the approval queue) records a reviewer's decision and, when approved, applies it in the same transaction: a correction, a page move, a dead page or a character merge. It sets `merge_requested_at` on every entity it touched, and refuses a correction whose field path the model does not have. (P-ECHO-15)
-- **`ListDueWorks`, `ListDueEpisodes` and `ListDueCharacters`** page by `(next_refresh_at, id)` from a fixed cutoff. `RecordRefresh` sets `next_refresh_at` past the cutoff for every refresh that finishes, so a sweep never picks the same entity twice. `RecordOpen` answers due when `next_refresh_at` has passed. (ECHO-108)
+- **`ListDueAnime`, `ListDueEpisodes` and `ListDueCharacters`** page by `(next_refresh_at, id)` from a fixed cutoff. `RecordRefresh` sets `next_refresh_at` past the cutoff for every refresh that finishes, so a sweep never picks the same entity twice. `RecordOpen` answers due when `next_refresh_at` has passed. (ECHO-108)
 - **`ListUpcomingEpisodes`** returns the listed episodes airing in the window, and also the next episode a work's broadcast announces before any provider lists it, with `episode_id` unset. (ECHO-108)
-- **`ListScoreWorks`** pages the works whose scores refresh daily, ongoing or finished within `lookback_days`. A finished work without an end date is left to the weekly sweep. (ECHO-108)
-- **`LoadSynopsisSources`** and **`SaveGeneratedText`** serve the `SynopsisWorkflow`. A synopsis whose input hash already matches is not written again. A new synopsis increases the work's version. (ECHO-115)
+- **`ListScoreAnime`** pages the works whose scores refresh daily, ongoing or finished within `lookback_days`. A finished work without an end date is left to the weekly sweep. (ECHO-108)
+- **`LoadSynopsisSources`** and **`SaveGeneratedText`** serve the `WriteSynopsisWorkflow`. A synopsis whose input hash already matches is not written again. A new synopsis increases the work's version. (ECHO-115)
 - **`WriteSynopsisRequest` and `WriteSynopsisResponse` live in `shared_proto.v1`**, since both the Agent Service and the PostgreSQL Service use them, so no service proto imports another's. (ECHO-91)
+- **`ListFranchiseLinks`** streams one row per pair of works joined by a franchise link, after the crossover rule, with whether a reviewer confirmed it. **`CreateLinkCheckApprovals`** writes a `link_check` approval request per candidate and skips a candidate that already has an open request. See [[Database Schema#Link check|Database Schema]]. (P-ECHO-22)
+- **`ExportCorrections`** streams every correction, crossover mark and confirmed link, for a file kept in the repository. **`ImportCorrections`** loads that file into a rebuilt database, skipping rows it already holds. (P-ECHO-15)
 - Approval-queue writes and the backend's reads are defined when those features are designed.
 
 ## Schema Evolution

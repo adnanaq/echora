@@ -39,7 +39,7 @@ The catalogue database is owned by one service, the **PostgreSQL Service**, writ
 ## What the Service Does Not Do
 
 - **It never calls another service.** Temporal workflows call it, and call the enrichment service between its steps. See [[update_service|Update Service]]. (ECHO-111)
-- **It holds no enrichment rules.** Merging pages and applying corrections happen in `EnrichmentService.MergeWork`. The service stores the result. (ECHO-105)
+- **It holds no enrichment rules.** Merging pages and applying corrections happen in `EnrichmentService.MergeAnime`. The service stores the result. (ECHO-105)
 - **It does not decide what is risky.** A change that needs review is sent to the approval queue by the workflow that found it, once "risky" is defined. The service only stores the queue. (P-ECHO-15)
 - **It does not hold user accounts or lists.** Those belong to the planned users service and its own database. (P-ECHO-17)
 
@@ -50,8 +50,8 @@ The service exposes gRPC only. The planned methods are listed in [[event_schema_
 | Caller | Methods | Purpose |
 |---|---|---|
 | Update Service activities (Temporal) | `StorePage` | Store each fetched page (ECHO-97) |
-| Update Service activities (Temporal) | `LoadWork`, `SaveWork` | Load, merge and save a work (ECHO-98) |
-| Update Service activities (Temporal) | `ListDueWorks` | Find the works the sweep refreshes (ECHO-108) |
+| Update Service activities (Temporal) | `LoadAnime`, `SaveAnime` | Load, merge and save a work (ECHO-98) |
+| Update Service activities (Temporal) | `ListDueAnime` | Find the works the sweep refreshes (ECHO-108) |
 | Vector Service | `GetAnime`, `GetEpisode`, `GetCharacter`, `ListEntityVersions` | Read the current state after an event, and compare Qdrant with PostgreSQL (ECHO-108) |
 | Backend | Reads for pages the frontend shows, defined with the backend | Serve the frontend (P-ECHO-16) |
 | Backend | Knowledge graph reads (`FindNeighbors`, `FindReachable`, `FindPath`, `CompareEntities`) | Franchise pages, related works, a studio's other works (P-ECHO-22) |
@@ -64,7 +64,7 @@ The frontend talks only to the backend, and the backend calls this service over 
 Temporal retries failed activities, and NATS delivers events at least once, so every write accepts being called twice:
 
 - `StorePage` ignores a fetch older than the stored `fetched_at` of the same page. (ECHO-97)
-- `SaveWork` writes nothing, and sends nothing, when the work did not change. (ECHO-98)
+- `SaveAnime` writes nothing, and sends nothing, when the work did not change. (ECHO-98)
 - Every other write is safe to repeat.
   - Pages are upserted on their page key. (ECHO-97)
   - Entities are written by the ID the merge assigned, and detail rows are replaced per entity. (ECHO-98)
@@ -135,7 +135,7 @@ echora/
 Nothing is authenticated in local development. Before any shared deployment:
 
 - **Mutual TLS between services.** Each service has a certificate, so a server knows which service is calling. This is the standard identity for service-to-service gRPC. (P-ECHO-21)
-- **One service, permissions per method.** `PostgresService` stays one service. An interceptor checks the caller's identity against a table of the methods each caller may use, keyed by the full method name (`/postgres_service.v1.PostgresService/DeleteWork`), and denies anything not in the table. A CI test compares the table with the proto, so a new method cannot ship without an entry. The backend, for example, gets reads only, and only the Update Service gets the saves, relinks and deletes. Splitting reads and writes into two services would give coarser rules for the same protection, at the cost of a second proto and client. (P-ECHO-21)
+- **One service, permissions per method.** `PostgresService` stays one service. An interceptor checks the caller's identity against a table of the methods each caller may use, keyed by the full method name (`/postgres_service.v1.PostgresService/DeleteAnime`), and denies anything not in the table. A CI test compares the table with the proto, so a new method cannot ship without an entry. The backend, for example, gets reads only, and only the Update Service gets the saves, relinks and deletes. Splitting reads and writes into two services would give coarser rules for the same protection, at the cost of a second proto and client. (P-ECHO-21)
 - **NATS accounts.** One account per service, and only the PostgreSQL Service may publish catalogue and notification subjects. Consumers confirm a delete by reading back, so a forged delete changes nothing. (P-ECHO-21)
 - **`RunPipeline` is removed** from the Enrichment Service first. It accepts any file path from its caller. (ECHO-123)
 

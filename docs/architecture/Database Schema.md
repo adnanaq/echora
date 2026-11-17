@@ -30,8 +30,8 @@ Every stage of enrichment is stored, so nothing has to be fetched again to rebui
 | Which pages make up an entity | `anime_provider_page`, `episode_provider_page`, `character_provider_page` | Merges, which link the pages they read (ECHO-97) |
 | Which pages make up an entity | `anime_provider_page` | Seed load and review answers, which create works and move pages (ECHO-107) |
 | Approved corrections | `anime_field_correction` and the episode and character ones | Approval queue (P-ECHO-15) |
-| AI-written text | `anime_generated_text` | `SynopsisWorkflow` (ECHO-115) |
-| The merged work, as users see it | `anime` and its detail tables | `SaveWork` (ECHO-98) |
+| AI-written text | `anime_generated_text` | `WriteSynopsisWorkflow` (ECHO-115) |
+| The merged work, as users see it | `anime` and its detail tables | `SaveAnime` (ECHO-98) |
 | The merged episode | `episode` and its detail tables | `SaveEpisode` (ECHO-103) |
 | The merged character | `character` and its detail tables | `SaveCharacter` (ECHO-104) |
 
@@ -57,7 +57,7 @@ erDiagram
   character ||--o{ character_provider_page : "built from"
   anime ||--o{ anime_field_correction : "corrected by"
   anime ||--o{ anime_generated_text : "written by AI"
-  approval_item ||--o{ anime_field_correction : "approved"
+  approval_request ||--o{ anime_field_correction : "approved"
 
   provider_page {
     text provider PK
@@ -115,7 +115,7 @@ erDiagram
     text field_path
     text text
   }
-  approval_item {
+  approval_request {
     bigint id PK
     text kind FK
     text status FK
@@ -532,17 +532,17 @@ WHERE to_anime_id IS NULL AND to_page_provider = 'anilist' AND to_page_address =
 
 The same pattern links an episode to a character that is not stored yet (`episode_character`). (ECHO-103)
 
-Source material needs no unresolved state: a related source work always carries a title and type, so `SaveWork` creates or finds its row through `source_material_xref` in the same transaction. (ECHO-102)
+Source material needs no unresolved state: a related source work always carries a title and type, so `SaveAnime` creates or finds its row through `source_material_xref` in the same transaction. (ECHO-102)
 
 **Who asserts an edge:**
 - `anime_relation` holds only what each work's own provider pages say, in one direction, from that work. When work A lists B as a sequel and B lists A as a prequel, there are two rows, one asserted by each work. (ECHO-102)
-- `SaveWork` replaces the work's own `anime_relation` rows with what the merge produced. It never touches rows another work asserted. (ECHO-102)
-- `SaveWork` replaces the work's own `anime_relation_claim` rows with the providers' claims the merge passed on, so the provenance always matches the stored relations. (ECHO-102)
+- `SaveAnime` replaces the work's own `anime_relation` rows with what the merge produced. It never touches rows another work asserted. (ECHO-102)
+- `SaveAnime` replaces the work's own `anime_relation_claim` rows with the providers' claims the merge passed on, so the provenance always matches the stored relations. (ECHO-102)
 - Both directions exist only in `graph_edge`. The `graph_edge` rows between two works are recomputed from both works' `anime_relation` rows and the inverse map whenever either work's relations change, so removing one work's assertion never removes an edge the other work still asserts. (ECHO-102)
 - Before recomputing a pair, the save takes a transaction-level advisory lock on that pair. `pg_advisory_xact_lock` takes a `bigint`, so the key is a 64-bit hash of the pair's two IDs in sorted order. A save that touches several pairs takes their locks in ascending order of those hashed keys, never of the raw IDs, since the hash does not keep the IDs' order. Two related works saving at once therefore recompute their pair one after the other, each reading the other's committed rows, and cannot deadlock. A hash collision only makes two unrelated pairs wait for each other. (ECHO-102)
 - Any transaction that links a page as a source of a work resolves every unresolved relation pointing at that page, and recomputes the `graph_edge` rows of each pair it resolves.
   - A save resolves them when it links a page. (ECHO-102)
-  - `CreateWorks` and `RelinkPages` resolve them when they link a page. (ECHO-107)
+  - `CreateAnime` and `RelinkPages` resolve them when they link a page. (ECHO-107)
 
 ---
 
@@ -553,16 +553,16 @@ Source material needs no unresolved state: a related source work always carries 
 **Version.** An entity's `version` increases with every change to the entity or to what its merge reads. A merge that loaded before such a change then fails its version check and starts again from a fresh load. Versions only need to grow, so a version without an event of its own is fine.
 
 - A save that changes the entity increases it, and so does a new correction. (ECHO-98)
-- A page relinked to or from a work, by `CreateWorks` or `RelinkPages`, increases the work's version. (ECHO-107)
+- A page relinked to or from a work, by `CreateAnime` or `RelinkPages`, increases the work's version. (ECHO-107)
 - A new AI-written text, saved by `SaveGeneratedText`, increases the work's version. (ECHO-115)
 
-**Characters a save creates.** Before creating a character the merge gave a new ID, `SaveWork` looks up its page keys in `character_provider_page`. When any of them already belongs to a character, such as one another work's save created a moment earlier, it links that character instead and the new ID is dropped. A save therefore never fails on a character another work created, and never loops. (ECHO-104)
+**Characters a save creates.** Before creating a character the merge gave a new ID, `SaveAnime` looks up its page keys in `character_provider_page`. When any of them already belongs to a character, such as one another work's save created a moment earlier, it links that character instead and the new ID is dropped. A save therefore never fails on a character another work created, and never loops. (ECHO-104)
 
 **Not yet merged.** A work exists before its first merge. Episodes and characters a work's save creates follow the same rule: they exist from the work's lists, and their own first merge sets `merged_at`.
 
 - The seed load creates the work with its ID and page links, and nothing has been fetched. A linked page that was never fetched has a NULL `fetched_at` and `responses_hash`, which also makes it due. (ECHO-107)
 - The work's `merged_at` is NULL, so `title`, `type` and `status` may be empty, and a check constraint requires all three once `merged_at` is set. The save that first sets `merged_at` writes the `created` event; every later changing save writes `updated`. (ECHO-98)
-- Every read for consumers and the backend (`Get*`, `ListEpisodes`, `ListScoreWorks`, `ListUpcomingEpisodes`, the graph primitives) reads the `*_visible` views, which skip rows whose `merged_at` is NULL. The due queries do not: an unmerged work has never been refreshed, so it is due. (ECHO-108)
+- Every read for consumers and the backend (`Get*`, `ListEpisodes`, `ListScoreAnime`, `ListUpcomingEpisodes`, the graph primitives) reads the `*_visible` views, which skip rows whose `merged_at` is NULL. The due queries do not: an unmerged work has never been refreshed, so it is due. (ECHO-108)
 
 **Recording a refresh.** `RecordRefresh`, the last activity of every refresh, sets `next_refresh_at`, the one column every due check reads:
 
@@ -583,7 +583,7 @@ A page that fails every fetch attempt records `fetch_failed_at` and `fetch_failu
 
 **Missing and dead pages.** A seed release never removes a work or a page; it only adds them and moves pages between works. A page is found to be gone only by a refresh. When `FetchPage` reports the provider's own "not found" (not a block or an error), `StorePage` records `missing_since` and counts `missing_answers`, and keeps the page's last stored responses, which still take part in merges. After two such answers at least a day apart, with no successful fetch between them, the page becomes a `dead_page` approval item. A reviewer's approval sets `is_dead`, which takes the page out of merges and refreshes; a rejection clears the count. Once reviews of a provider's dead pages keep being confirmed, its `DEAD_PAGE_REVIEW` setting is turned off and two answers a day apart set `is_dead` directly. A successful fetch clears both `missing_since` and `missing_answers`, so two isolated answers months apart never add up to a review item. (ECHO-97)
 
-**Merges the database requests.** A change made in the database that the next merge must see sets `merge_requested_at` on the entity in the same transaction: `CreateWorks`, `RelinkPages`, a new AI-written text, and an approved correction, dead page or character merge. The caller also sends the entity's refresh `merge_requested` at once, so the merge usually runs within seconds. The column guarantees it runs even when that signal is lost or nothing is refreshing the entity, such as a finished work's episode the sweep skips.
+**Merges the database requests.** A change made in the database that the next merge must see sets `merge_requested_at` on the entity in the same transaction: `CreateAnime`, `RelinkPages`, a new AI-written text, and an approved correction, dead page or character merge. The caller also sends the entity's refresh `merge_requested` at once, so the merge usually runs within seconds. The column guarantees it runs even when that signal is lost or nothing is refreshing the entity, such as a finished work's episode the sweep skips.
 
 - The save that follows clears the column, changed or not. (ECHO-98)
 - `ListRequestedMerges` returns such entities whatever their age, status or `next_refresh_at`. (ECHO-108)
@@ -611,7 +611,7 @@ A page view writes nothing: the backend decides whether an entity is due from th
 
 **Deleting an entity.** An entity is removed by setting `deleted_at`, never by deleting its row, so consumers can still read its version. Foreign keys with `ON DELETE CASCADE` do not fire on a soft delete, so the deleting transaction removes what hangs off the entity itself:
 
-- **A work** (`DeleteWork`, such as when merged into another): its page links are removed, so the surviving work can claim those pages as sources; its own `anime_relation` rows are deleted; relations other works assert towards it go back to unresolved, keeping their page key, so they resolve to whichever work next holds that page; and every `graph_edge` row from or to it is deleted. (ECHO-107)
+- **A work** (`DeleteAnime`, such as when merged into another): its page links are removed, so the surviving work can claim those pages as sources; its own `anime_relation` rows are deleted; relations other works assert towards it go back to unresolved, keeping their page key, so they resolve to whichever work next holds that page; and every `graph_edge` row from or to it is deleted. (ECHO-107)
 - **An episode**: its page links and every `graph_edge` row from or to it are deleted. (ECHO-103)
 - **A character**: its page links and every `graph_edge` row from or to it are deleted. (ECHO-104)
 - In every case the version increases once more, and the `deleted` event is written to the outbox, by the method that deletes the entity.
@@ -725,7 +725,8 @@ INSERT INTO theme_song_kind VALUES ('opening'), ('ending');
 
 CREATE TABLE approval_kind (value text PRIMARY KEY);
 INSERT INTO approval_kind VALUES ('review_case'), ('risky_change'), ('suggested_edit'), ('dead_page'),
-  ('character_match');  -- an uncertain cross-provider character match, or two stored characters that are one
+  ('character_match'),  -- an uncertain cross-provider character match, or two stored characters that are one
+  ('link_check');  -- franchise links the link check found worth a look
 
 CREATE TABLE approval_status (value text PRIMARY KEY);
 INSERT INTO approval_status VALUES ('open'), ('approved'), ('rejected');
@@ -1386,7 +1387,7 @@ CREATE TABLE episode_provider_page (  -- (ECHO-103)
 
 -- What one provider's work page says about an episode, sliced out by the work's merge.
 -- Input for the episode's merge, like a page: most providers list episodes only inside
--- the work's responses. SaveWork replaces a work's rows; a changed row makes the episode due.
+-- the work's responses. SaveAnime replaces a work's rows; a changed row makes the episode due.
 CREATE TABLE episode_list_entry (  -- (ECHO-103)
   episode_id        uuid NOT NULL REFERENCES episode(id) ON DELETE CASCADE,
   provider          text NOT NULL REFERENCES provider(value),
@@ -1413,7 +1414,7 @@ CREATE TABLE character_provider_page (  -- (ECHO-104)
 
 - `StorePage` writes the page and its responses in one transaction, and only when its `fetched_at` is newer than the stored one, so a retried or late fetch never replaces newer data. It reports the page as changed when `responses_hash` differs, without reading the stored bodies. (ECHO-97)
 - Each load reads an entity's pages and responses, and the merge maps them in memory.
-  - `LoadWork` for a work. (ECHO-98)
+  - `LoadAnime` for a work. (ECHO-98)
   - `LoadEpisode` for an episode. (ECHO-103)
   - `LoadCharacter` for a character. (ECHO-104)
 - An entity's `sources` and `partial_sources` in the merged model come from these links. (ECHO-105)
@@ -1424,7 +1425,7 @@ CREATE TABLE character_provider_page (  -- (ECHO-104)
 
 ```sql
 -- One approval queue for review cases, risky changes and suggested edits
-CREATE TABLE approval_item (  -- (P-ECHO-15)
+CREATE TABLE approval_request (  -- (P-ECHO-15)
   id                bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   kind              text NOT NULL REFERENCES approval_kind(value),
   proposal_message  text NOT NULL,             -- protobuf message name of the proposal
@@ -1438,7 +1439,7 @@ CREATE TABLE approval_item (  -- (P-ECHO-15)
   decision          bytea                      -- the answer given, kept as history
 );
 
-CREATE INDEX approval_item_open_idx ON approval_item(created_at) WHERE status = 'open';  -- (P-ECHO-15)
+CREATE INDEX approval_request_open_idx ON approval_request(created_at) WHERE status = 'open';  -- (P-ECHO-15)
 
 -- Approved corrections, applied after every merge. One table per entity, each with a real foreign key.
 CREATE TABLE anime_field_correction (  -- (ECHO-98)
@@ -1447,18 +1448,58 @@ CREATE TABLE anime_field_correction (  -- (ECHO-98)
   field_path        text NOT NULL,             -- e.g. 'episode_count', 'broadcast.jp_time'
   value_message     text NOT NULL,             -- protobuf message name of the value
   value             bytea NOT NULL,            -- the value as that protobuf message
-  approval_item_id  bigint REFERENCES approval_item(id) ON DELETE SET NULL,
+  approval_request_id  bigint REFERENCES approval_request(id) ON DELETE SET NULL,
   approved_by       text NOT NULL,
   approved_at       timestamptz NOT NULL DEFAULT now(),
   UNIQUE (anime_id, field_path)
 );
 
 CREATE INDEX anime_field_correction_approval_idx  -- (ECHO-98)
-  ON anime_field_correction(approval_item_id)
-  WHERE approval_item_id IS NOT NULL;
+  ON anime_field_correction(approval_request_id)
+  WHERE approval_request_id IS NOT NULL;
 
 -- episode_field_correction (ECHO-103) and character_field_correction (ECHO-104) have the same columns and
 -- approval index, with episode_id and character_id in place of anime_id.
+
+-- A correction to one link between works. Keyed on page keys, never on work IDs or titles, so it
+-- survives refreshes, and merges or splits of works.
+CREATE TABLE anime_relation_correction (  -- (P-ECHO-22)
+  id                  bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  from_page_provider  text NOT NULL,   -- for ignore_claim, the page whose claim is ignored;
+  from_page_address   text NOT NULL,   -- for set_type, any source page of the work the link starts from
+  to_page_provider    text NOT NULL,
+  to_page_address     text NOT NULL,
+  action              text NOT NULL CHECK (action IN ('ignore_claim', 'set_type')),
+  relation_type       text REFERENCES anime_relation_type(value),           -- the type set_type gives
+  seen_relation_type  text NOT NULL REFERENCES anime_relation_type(value),  -- the type the reviewer saw
+  approval_request_id    bigint REFERENCES approval_request(id) ON DELETE SET NULL,
+  approved_by         text NOT NULL,
+  approved_at         timestamptz NOT NULL DEFAULT now(),
+  CHECK ((action = 'set_type') = (relation_type IS NOT NULL)),
+  UNIQUE (from_page_provider, from_page_address, to_page_provider, to_page_address, action)
+);
+
+-- A work a reviewer marked as a crossover, for crossovers the Crossover tag misses
+CREATE TABLE anime_crossover_mark (  -- (P-ECHO-22)
+  page_provider     text NOT NULL,   -- a source page of the crossover work
+  page_address      text NOT NULL,
+  approval_request_id  bigint REFERENCES approval_request(id) ON DELETE SET NULL,
+  approved_by       text NOT NULL,
+  approved_at       timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (page_provider, page_address)
+);
+
+-- A franchise link a reviewer confirmed, so the link check never raises it again
+CREATE TABLE confirmed_franchise_link (  -- (P-ECHO-22)
+  first_page_provider   text NOT NULL,   -- a source page of each work; the pair is stored
+  first_page_address    text NOT NULL,   -- with the smaller page key first
+  second_page_provider  text NOT NULL,
+  second_page_address   text NOT NULL,
+  approval_request_id      bigint REFERENCES approval_request(id) ON DELETE SET NULL,
+  approved_by           text NOT NULL,
+  approved_at           timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (first_page_provider, first_page_address, second_page_provider, second_page_address)
+);
 
 -- Text written by the Agent Service, every version kept
 CREATE TABLE anime_generated_text (  -- (ECHO-115)
@@ -1516,6 +1557,10 @@ CREATE INDEX outbox_unpublished_idx ON outbox(id) WHERE published_at IS NULL AND
 - `anime.synopsis` is set only from an approved correction or the latest `anime_generated_text` row, never from a provider. (ECHO-105)
 - Provider synopses stay in the stored page responses as input for writing. See [[update_service#AI-Written Synopsis|Update Service]]. (ECHO-115)
 - The protobuf messages of proposals and decisions per approval kind are defined with the multi-user review page. (P-ECHO-15)
+- A correction can be made without review: `approval_request_id` stays empty and `approved_by` names who made it. (P-ECHO-15)
+- `LoadAnime` returns the work's relation corrections with its other corrections. `MergeAnime` drops the ignored claims before it picks each link's type, then applies `set_type`, so a refresh never brings a corrected link back. (P-ECHO-22)
+- The daily cleanup job reports a relation correction whose pages no longer give that link, and sends one back to review when the provider's claim changed type since `seen_relation_type`. (P-ECHO-22)
+- `ExportCorrections` writes every correction, crossover mark and confirmed link to a file in the repository, and `ImportCorrections` loads that file into a rebuilt database. The decisions are then kept in git history as well as in backups. (P-ECHO-15)
 - The outbox relay is described in [[event_driven_architecture#2. The outbox relay publishes|Event-Driven Architecture]]. (ECHO-106)
 
 ---
@@ -1527,7 +1572,7 @@ CREATE INDEX outbox_unpublished_idx ON outbox(id) WHERE published_at IS NULL AND
 Voice actors, production staff and episode staff are people shared across works. They are the last part of the schema to be built, after everything else works:
 
 - `person`, with `person_xref` from `StaffMember.staff_ids` and the voice actor's profile URLs
-- `anime_staff (anime_id, person_id, role)` from `staff_data.production_staff`
+- `anime_staff (anime_id, person_id, role)` from `Anime.production_staff`
 - `character_voice (character_id, person_id, language)` from `Character.voice_actors`
 - `episode_staff (episode_id, person_id, role)` and `episode_character_voice` from `Episode.staff` and `EpisodeCharacter.voice_actors`
 
@@ -1564,31 +1609,31 @@ Until then, those model fields are not stored.
 > **Linear:** ECHO-108
 
 ```sql
--- ListDueWorks: works the weekly sweep refreshes, with keyset paging and a fixed cutoff per sweep.
+-- ListDueAnime: works the weekly sweep refreshes, with keyset paging and a fixed cutoff per sweep.
 -- next_refresh_at already holds every rule: the refresh interval after a success, the earliest
 -- retry of a failed page, and the backoff after a failed refresh. NULL means due now, and sorts
 -- as '-infinity', so no part of the sort key is NULL. Unmerged works are due, and are included.
--- Works first aired more than OLDER_AFTER_YEARS ago refresh only when opened.
+-- Works first aired more than ON_DEMAND_REFRESH_AGE_YEARS ago refresh only when opened.
 -- The first page passes ('-infinity', the nil UUID) as the cursor.
 -- A work merged by older code is due whatever its age, so a mapping fix reaches every work.
 SELECT id, next_refresh_at FROM anime
 WHERE deleted_at IS NULL
   AND (   (coalesce(next_refresh_at, '-infinity') < $1             -- the sweep's cutoff
-           AND (year IS NULL OR year > extract(year FROM now()) - $2))  -- OLDER_AFTER_YEARS
+           AND (year IS NULL OR year > extract(year FROM now()) - $2))  -- ON_DEMAND_REFRESH_AGE_YEARS
        OR coalesce(merge_version, 0) < $6)                         -- the current merge version
   AND (coalesce(next_refresh_at, '-infinity'), id) > ($3, $4)     -- the last row of the previous page
 ORDER BY coalesce(next_refresh_at, '-infinity'), id
 LIMIT $5;
 
 -- ListRequestedMerges: works whose merge a change in the database requested, read through
--- anime_merge_requested_idx before the sweep pages ListDueWorks. Kept out of ListDueWorks, since
+-- anime_merge_requested_idx before the sweep pages ListDueAnime. Kept out of ListDueAnime, since
 -- such a work can sit anywhere in the refresh order, and an OR there would walk the whole order index.
 SELECT id FROM anime
 WHERE merge_requested_at IS NOT NULL AND deleted_at IS NULL
 ORDER BY merge_requested_at
 LIMIT $1;
 
--- ListUpcomingEpisodes: episodes of ongoing works airing in the next EPISODE_WINDOW_DAYS,
+-- ListUpcomingEpisodes: episodes of ongoing works airing in the next EPISODE_TRACKING_WINDOW_DAYS,
 -- both those the work lists and the next episode its broadcast names but no row holds yet
 SELECT e.id, e.anime_id, e.episode_number, e.aired_at AS expected_air_at
 FROM episode e
@@ -1610,7 +1655,7 @@ WHERE a.status IN ('ONGOING', 'UPCOMING') AND a.deleted_at IS NULL
   )
 ORDER BY expected_air_at;
 
--- ListScoreWorks: works whose scores refresh daily, ongoing or finished within the lookback.
+-- ListScoreAnime: works whose scores refresh daily, ongoing or finished within the lookback.
 -- A finished work with no end date is left out; its scores refresh in the weekly sweep.
 SELECT id FROM anime
 WHERE deleted_at IS NULL
@@ -1636,7 +1681,7 @@ ORDER BY p.fetched_at NULLS FIRST, p.address
 LIMIT $2;
 ```
 
-`ListDueEpisodes` and `ListDueCharacters` return only the episodes and characters of ongoing and upcoming works. A character shared by several works counts as ongoing when any of its undeleted works is ongoing or upcoming. Those of finished works refresh when a user opens them, or when the work's weekly merge changes what it says about them: a changed `episode_list_entry` row, or a character added to or changed in the work's cast, sets that entity's `next_refresh_at` to NULL in the same save, and `SaveWork` returns its ID so the work's refresh starts its refresh at once. The sweep does not pick up these entities, so the returned ID is what refreshes them. MAL alone lists about 420,000 episodes, and refreshing them all weekly at MAL's pace of one request every 1.5 seconds would need more than a day's capacity every day.
+`ListDueEpisodes` and `ListDueCharacters` return only the episodes and characters of ongoing and upcoming works. A character shared by several works counts as ongoing when any of its undeleted works is ongoing or upcoming. Those of finished works refresh when a user opens them, or when the work's weekly merge changes what it says about them: a changed `episode_list_entry` row, or a character added to or changed in the work's cast, sets that entity's `next_refresh_at` to NULL in the same save, and `SaveAnime` returns its ID so the work's refresh starts its refresh at once. The sweep does not pick up these entities, so the returned ID is what refreshes them. MAL alone lists about 420,000 episodes, and refreshing them all weekly at MAL's pace of one request every 1.5 seconds would need more than a day's capacity every day.
 
 ### Airing Schedule Queries
 
@@ -1762,13 +1807,223 @@ A **story link** continues or retells the same story: `SEQUEL`, `PREQUEL`, `SIDE
 
 A franchise is built from the story links, `SAME_FRANCHISE` and `SAME_SETTING`, leaving out commercials and promotional videos (`CM`, `PV`), which providers mark as side stories of several franchises at once. `SAME_SETTING` belongs there because some franchises change their cast each season: Precure's seasons are linked to each other only as the same setting. The other relation types do not join franchises.
 
-**A work can belong to several franchises.** A crossover such as *Lupin III vs. Detective Conan* belongs to both, the way Wikidata's [media franchise (P8345)](https://www.wikidata.org/wiki/Property:P8345) property takes several values. Membership is therefore a table, not a column:
+**A work can belong to several franchises.** A crossover such as *Lupin III vs. Detective Conan* belongs to both, the way Wikidata's [media franchise (P8345)](https://www.wikidata.org/wiki/Property:P8345) property takes several values. Membership is therefore a table, not a column. (P-ECHO-22)
 
-- a franchise is a connected group of works under the rule above, computed by a job when relations change;
-- groups too large to be one franchise, where a crossover joins two of them, go to the approval queue, where a reviewer splits the group and marks its crossover works as members of both;
-- no automatic rule both separates crossovers and keeps large franchises whole: community detection splits crossovers apart, but it also cuts a franchise like Gundam into its sub-series.
+- A franchise is a connected group of works joined by franchise links under the rule above, computed by a job when relations change. (P-ECHO-22)
+- A **crossover work** joins nothing. It is a member of every franchise its links reach, so a crossover never merges two franchises into one. (P-ECHO-22)
+- A work is a crossover work when it carries the `Crossover` tag, which AniList gives, or when a reviewer marked it in `anime_crossover_mark`. A link also joins nothing when any provider's claim calls it `CROSSOVER`. (P-ECHO-22)
+- The franchise tables are designed with the knowledge graph project; the rules above are their input. (P-ECHO-22)
 
-The franchise tables and the review item are designed with the knowledge graph project; the rule above is the input they are built from.
+#### Wrong franchise links
+
+> **Linear:** P-ECHO-22
+
+Most links that join two franchises are true, because a crossover really does link to both series. The crossover rule handles those. The links that wrongly join franchises fall into a few kinds, each fixed by a correction:
+
+- **Films shown together in cinemas**, such as *Patlabor the Movie* with *SD Gundam no Gyakushuu*. The link is a real fact but not a story link, so a `set_type` correction makes it `OTHER`.
+- **Parodies**, such as *Channel 5.5* parodying Kindaichi, Ghost in the Shell and Nodame Cantabile. A `set_type` correction makes the link `OTHER`. A `Parody` tag cannot decide it, since a parody series such as Gintama has its own franchise.
+- **Errors in a provider's own list**, such as Anime-Planet listing *Devilman Crybaby* in Mazinger Z's "Same Franchise" tab. An `ignore_claim` correction drops that provider's claim, and the other providers' claims about the pair still count.
+- **A page that bundles several works**, such as MAL's single entry for every *Doraemon (2005)* special, one of which is a joint Crayon Shin-chan broadcast. An `ignore_claim` correction drops the bundle's claim.
+- **Promos typed as another format.** AniList has no PV format, so it files promos as ONA or Special. Most such works are a promo the seed lists twice, which seed cleaning resolves; a true bundle gets a type correction. A work typed PV or CM joins no franchise.
+
+No automatic signal tells these apart from true links. Provider disagreement, links only Anime-Planet states, links Anime-Planet lists only one way, and Wikidata's franchise property were each tested against verified links and rejected. Wikidata is right where it has an answer, but it has one for few works. So a check lists candidates and a reviewer decides.
+
+#### Link check
+
+> **Linear:** P-ECHO-22
+
+The `CheckFranchiseLinksWorkflow` runs the check and sends each candidate to the approval queue as a `link_check` item (see [[update_service#Franchise Link Check|Update Service]]). It finds two kinds of candidate:
+
+- **Single join.** A franchise link that alone holds two parts of a group together, each part with at least `LINK_CHECK_MIN_SIDE` (3) works. Candidates are listed with the largest smaller part first, which puts the links joining two whole franchises at the top and plain sequel chains lower.
+- **Sub-group pair.** Inside a group of more than `LINK_CHECK_LARGE_COMPONENT` (30) works, two sub-groups found by Louvain community detection and every link between them, as one item. This finds errors made of several links, such as a provider listing one franchise's works in another's tab, which no single link holds together. It is weaker than the single join. Louvain can put two wrongly joined franchises into one sub-group, as it did with Devilman and Cyborg 009, and the links between them are then not raised. Lowering the threshold below 30 raised many more pairs without finding more of the known errors.
+
+A link a reviewer confirmed is in `confirmed_franchise_link` and is never raised again, and a corrected link no longer joins anything. The reviewer answers each link of an item in one of four ways:
+
+- confirmed;
+- not a franchise link (`set_type` to `OTHER`);
+- ignore one provider's claim (`ignore_claim`);
+- one of its works is a crossover (`anime_crossover_mark`).
+
+`DecideApproval` writes the matching row and sets `merge_requested_at` on both works, so the next requested-merge pass merges them again.
+
+The check does not find a wrong link inside one franchise, such as a side story attached to the wrong series of the same franchise, because such a link joins nothing that should stay apart.
+
+`ListFranchiseLinks` streams one row per pair of works joined by a franchise link, after the crossover rule:
+
+```sql
+-- ListFranchiseLinks: franchise links between works, one row per pair, crossovers left out.
+-- A link counts when either direction carries a franchise type: a SPIN_OFF gets PARENT_STORY back,
+-- and only PARENT_STORY joins, so the pair is read from both directions and merged.
+WITH crossover_work AS (
+  SELECT anime_id FROM anime_tag WHERE tag = 'Crossover'
+  UNION
+  SELECT page.anime_id
+  FROM anime_crossover_mark mark
+  JOIN anime_provider_page page
+    ON page.provider = mark.page_provider AND page.address = mark.page_address AND page.role = 'source'
+), franchise_pair AS (
+  SELECT DISTINCT least(ge.from_id, ge.to_id) AS first_anime_id, greatest(ge.from_id, ge.to_id) AS second_anime_id
+  FROM graph_edge ge
+  WHERE ge.from_type = 'anime' AND ge.to_type = 'anime'
+    AND ge.edge_type IN ('SEQUEL', 'PREQUEL', 'SIDE_STORY', 'PARENT_STORY', 'SUMMARY', 'FULL_STORY',
+                         'SAME_FRANCHISE', 'SAME_SETTING')
+)
+SELECT pair.first_anime_id,
+       pair.second_anime_id,
+       EXISTS (
+         SELECT 1
+         FROM confirmed_franchise_link confirmed
+         JOIN anime_provider_page first_page
+           ON first_page.provider = confirmed.first_page_provider AND first_page.address = confirmed.first_page_address
+         JOIN anime_provider_page second_page
+           ON second_page.provider = confirmed.second_page_provider AND second_page.address = confirmed.second_page_address
+         WHERE first_page.role = 'source' AND second_page.role = 'source'
+           AND ((first_page.anime_id = pair.first_anime_id AND second_page.anime_id = pair.second_anime_id)
+             OR (first_page.anime_id = pair.second_anime_id AND second_page.anime_id = pair.first_anime_id))
+       ) AS is_confirmed
+FROM franchise_pair pair
+JOIN anime_visible first_work ON first_work.id = pair.first_anime_id
+JOIN anime_visible second_work ON second_work.id = pair.second_anime_id
+WHERE first_work.type NOT IN ('CM', 'PV') AND second_work.type NOT IN ('CM', 'PV')
+  AND pair.first_anime_id NOT IN (SELECT anime_id FROM crossover_work)
+  AND pair.second_anime_id NOT IN (SELECT anime_id FROM crossover_work)
+  AND NOT EXISTS (
+    SELECT 1
+    FROM anime_relation_claim claim
+    JOIN anime_provider_page target
+      ON target.provider = claim.to_page_provider AND target.address = claim.to_page_address AND target.role = 'source'
+    WHERE claim.relation_type = 'CROSSOVER'
+      AND ((claim.from_anime_id = pair.first_anime_id AND target.anime_id = pair.second_anime_id)
+        OR (claim.from_anime_id = pair.second_anime_id AND target.anime_id = pair.first_anime_id))
+  );
+```
+
+`EnrichmentService.FindFranchiseLinkCandidates` runs the check on those rows with networkx's built-in graph functions ([`bridges`](https://networkx.org/documentation/stable/reference/algorithms/generated/networkx.algorithms.bridges.bridges.html), [`bridge_components`](https://networkx.org/documentation/stable/reference/algorithms/generated/networkx.algorithms.connectivity.edge_kcomponents.bridge_components.html), [`louvain_communities`](https://networkx.org/documentation/stable/reference/algorithms/generated/networkx.algorithms.community.louvain.louvain_communities.html)). Over the whole enriched catalogue it took about a second. On that catalogue the single join found every wrong link verified so far that one link causes, and the sub-group pair found most of those several links cause. The logic, as tested:
+
+```python
+"""Find franchise links worth a reviewer's look, in one pass over the franchise links."""
+
+from collections import defaultdict
+from collections.abc import Iterable
+from dataclasses import dataclass
+from uuid import UUID
+
+import networkx
+from networkx.algorithms.connectivity import bridge_components
+
+
+@dataclass(frozen=True)
+class FranchiseLink:
+    """One row of ListFranchiseLinks."""
+
+    first_anime_id: UUID
+    second_anime_id: UUID
+    is_confirmed: bool
+
+
+@dataclass(frozen=True)
+class SingleJoinCandidate:
+    """A link that alone holds two parts of a group together."""
+
+    link: FranchiseLink
+    smaller_side_size: int
+
+
+@dataclass(frozen=True)
+class SubCommunityPairCandidate:
+    """Two sub-communities of a large component and the links between them."""
+
+    first_sub_community: frozenset[UUID]
+    second_sub_community: frozenset[UUID]
+    links: tuple[FranchiseLink, ...]
+
+
+def build_franchise_graph(links: Iterable[FranchiseLink]) -> tuple[networkx.Graph, dict[frozenset[UUID], FranchiseLink]]:
+    """Build the undirected graph of franchise links, and look up each link by its pair of works.
+
+    Links are added in sorted order, since Louvain's sub-groups depend on the order of the graph's
+    edges as well as on its seed.
+    """
+    graph = networkx.Graph()
+    links_by_pair = {}
+    for link in sorted(links, key=lambda link: (link.first_anime_id, link.second_anime_id)):
+        graph.add_edge(link.first_anime_id, link.second_anime_id)
+        links_by_pair[frozenset((link.first_anime_id, link.second_anime_id))] = link
+    return graph, links_by_pair
+
+
+def find_single_joins(
+    graph: networkx.Graph, links_by_pair: dict[frozenset[UUID], FranchiseLink], min_side_size: int
+) -> list[SingleJoinCandidate]:
+    """Find every bridge whose smaller side has at least min_side_size works.
+
+    The graph's 2-edge-connected blocks, joined by its bridges, form a forest (the bridge tree).
+    Weighting each block by its number of works, one post-order walk per tree gives the size of
+    the part below every bridge, so no bridge needs the graph copied or searched again.
+    """
+    blocks = [frozenset(block) for block in bridge_components(graph)]
+    block_of_work = {work_id: number for number, block in enumerate(blocks) for work_id in block}
+    bridge_tree = networkx.Graph()
+    bridge_tree.add_nodes_from(range(len(blocks)))
+    bridge_of_blocks = {}
+    for first_anime_id, second_anime_id in networkx.bridges(graph):
+        block_pair = frozenset((block_of_work[first_anime_id], block_of_work[second_anime_id]))
+        bridge_tree.add_edge(*block_pair)
+        bridge_of_blocks[block_pair] = links_by_pair[frozenset((first_anime_id, second_anime_id))]
+    candidates = []
+    for tree_blocks in networkx.connected_components(bridge_tree):
+        root = next(iter(tree_blocks))
+        tree_size = sum(len(blocks[number]) for number in tree_blocks)
+        parent_of_block = networkx.dfs_predecessors(bridge_tree, root)
+        size_below = defaultdict(int)
+        for number in networkx.dfs_postorder_nodes(bridge_tree, root):
+            size_below[number] += len(blocks[number])
+            if number not in parent_of_block:
+                continue
+            size_below[parent_of_block[number]] += size_below[number]
+            smaller_side_size = min(size_below[number], tree_size - size_below[number])
+            link = bridge_of_blocks[frozenset((number, parent_of_block[number]))]
+            if smaller_side_size >= min_side_size and not link.is_confirmed:
+                candidates.append(SingleJoinCandidate(link, smaller_side_size))
+    return sorted(candidates, key=lambda candidate: candidate.smaller_side_size, reverse=True)
+
+
+def find_sub_community_pairs(
+    graph: networkx.Graph, links_by_pair: dict[frozenset[UUID], FranchiseLink], large_component_size: int
+) -> list[SubCommunityPairCandidate]:
+    """Find, inside every component over large_component_size works, the links between Louvain sub-communities.
+
+    The seed is fixed and the graph is built in sorted order, so the same links give the same
+    sub-communities on every run.
+    """
+    candidates = []
+    for franchise_component in networkx.connected_components(graph):
+        if len(franchise_component) <= large_component_size:
+            continue
+        component_graph = graph.subgraph(franchise_component)
+        sub_communities = [frozenset(members) for members in networkx.community.louvain_communities(component_graph, seed=1)]
+        sub_community_of_work = {work_id: number for number, members in enumerate(sub_communities) for work_id in members}
+        links_between = defaultdict(list)
+        for first_anime_id, second_anime_id in component_graph.edges():
+            first_number, second_number = sub_community_of_work[first_anime_id], sub_community_of_work[second_anime_id]
+            link = links_by_pair[frozenset((first_anime_id, second_anime_id))]
+            if first_number != second_number and not link.is_confirmed:
+                links_between[(min(first_number, second_number), max(first_number, second_number))].append(link)
+        for (first_number, second_number), links in links_between.items():
+            candidates.append(SubCommunityPairCandidate(sub_communities[first_number], sub_communities[second_number], tuple(links)))
+    return candidates
+
+
+def find_franchise_link_candidates(
+    links: Iterable[FranchiseLink], min_side_size: int, large_component_size: int
+) -> tuple[list[SingleJoinCandidate], list[SubCommunityPairCandidate]]:
+    """Find both kinds of candidate, leaving out links a reviewer already confirmed."""
+    graph, links_by_pair = build_franchise_graph(links)
+    return (
+        find_single_joins(graph, links_by_pair, min_side_size),
+        find_sub_community_pairs(graph, links_by_pair, large_component_size),
+    )
+```
 
 ### Reads
 
@@ -1789,7 +2044,8 @@ All reads share these rules:
 - Hard caps on the server: at most 5 hops, 50 results and 50 neighbours per hop.
 - A 2-second statement timeout, set with `SET LOCAL statement_timeout = '2s'` inside the read's own transaction, so it never stays on a pooled connection.
 - Reads use `graph_edge`, which holds both directions of every edge, and skip deleted or unmerged entities through the `*_visible` views.
-- Cycles are handled by PostgreSQL itself, never by a hand-written visited list: `k_hop` uses a recursive `UNION`, which discards rows that repeat an earlier row, and `path` uses the `CYCLE` clause ([PostgreSQL 18, Recursive Queries](https://www.postgresql.org/docs/18/queries-with.html#QUERIES-WITH-RECURSIVE)).
+- Cycles are handled by PostgreSQL itself, never by a hand-written visited list. `k_hop` and `path` both use a recursive `UNION`, which discards rows that repeat an earlier result row, so each node is expanded once per depth ([PostgreSQL 18, Recursive Queries](https://www.postgresql.org/docs/18/queries-with.html#QUERIES-WITH-RECURSIVE)).
+- `path` does not use the `CYCLE` clause. `CYCLE` stops a path from returning to a node, but the query still follows every path that repeats no node, and inside a large franchise that number grows too fast to finish.
 
 Named reads serve pages directly and are built on the same edges: a work's franchise with its watch order (story links ordered by air date), a work's cast with roles, a company's works by role, and a work's related works with how many providers state each relation.
 
@@ -1811,19 +2067,19 @@ LIMIT $4;
 -- UNION, not UNION ALL: PostgreSQL discards a row that repeats an earlier row, so each
 -- (node, depth) pair is expanded once. The hop cap ends the recursion; cycles need no
 -- tracking of their own.
-WITH RECURSIVE reached(node_id, node_type, depth) AS (
+WITH RECURSIVE reached_nodes(node_id, node_type, depth) AS (
   SELECT $1::uuid, $2::text, 0
 
   UNION
 
   SELECT ge.to_id, ge.to_type, r.depth + 1
-  FROM reached r
+  FROM reached_nodes r
   JOIN graph_edge ge ON ge.from_id = r.node_id AND ge.from_type = r.node_type
   WHERE r.depth < $4
     AND ge.edge_type = ANY($3)
 )
 SELECT node_id, node_type, min(depth) AS min_depth
-FROM reached
+FROM reached_nodes
 WHERE node_id <> $1
 GROUP BY node_id, node_type
 ORDER BY min_depth, node_id
@@ -1834,31 +2090,46 @@ Node filters are applied to the returned works with a join on `anime_visible` an
 
 #### `path`
 
+`path` returns the shortest routes between two nodes in two steps. It first finds each node's shortest distance from the start, the same way `k_hop` does. It then walks back from the end, following only edges into a node one step closer to the start. The walk back can never loop, and it lists only shortest routes.
+
 ```sql
--- FindPath(start, start_type, end, edge_types, max_hops)
--- The CYCLE clause stops a path that returns to a node it already passed. Its tracking
--- column is internal to PostgreSQL, so the nodes and edge types to return are kept in
--- node_path and edge_path.
-WITH RECURSIVE paths(node_id, node_type, node_path, edge_path, depth) AS (
-  SELECT $1::uuid, $2::text, ARRAY[$1::uuid], ARRAY[]::text[], 0
+-- FindPath(start, start_type, end, end_type, edge_types, max_hops)
+WITH RECURSIVE reached_nodes(node_id, node_type, depth) AS (
+  SELECT $1::uuid, $2::text, 0
+
+  UNION
+
+  SELECT ge.to_id, ge.to_type, r.depth + 1
+  FROM reached_nodes r
+  JOIN graph_edge ge ON ge.from_id = r.node_id AND ge.from_type = r.node_type
+  WHERE r.depth < $6
+    AND NOT (r.node_id = $3 AND r.node_type = $4)   -- stop expanding at the end node
+    AND ge.edge_type = ANY($5)
+), shortest_depths AS (
+  SELECT node_id, node_type, min(depth) AS depth
+  FROM reached_nodes
+  GROUP BY node_id, node_type
+), reverse_paths(node_id, node_type, depth, node_path, edge_path) AS (
+  SELECT s.node_id, s.node_type, s.depth, ARRAY[s.node_id], ARRAY[]::text[]
+  FROM shortest_depths s
+  WHERE s.node_id = $3 AND s.node_type = $4
 
   UNION ALL
 
-  SELECT ge.to_id, ge.to_type, p.node_path || ge.to_id, p.edge_path || ge.edge_type, p.depth + 1
-  FROM paths p
-  JOIN graph_edge ge ON ge.from_id = p.node_id AND ge.from_type = p.node_type
-  WHERE p.depth < $5
-    AND p.node_id <> $3
-    AND ge.edge_type = ANY($4)
-) CYCLE node_id SET is_cycle USING cycle_path
-SELECT node_path, edge_path, depth
-FROM paths
-WHERE node_id = $3 AND NOT is_cycle
-ORDER BY depth
+  -- Each step goes to a node exactly one hop closer to the start, so the depth falls to 0
+  SELECT ge.from_id, ge.from_type, b.depth - 1, ge.from_id || b.node_path, ge.edge_type || b.edge_path
+  FROM reverse_paths b
+  JOIN graph_edge ge ON ge.to_id = b.node_id AND ge.to_type = b.node_type AND ge.edge_type = ANY($5)
+  JOIN shortest_depths s ON s.node_id = ge.from_id AND s.node_type = ge.from_type AND s.depth = b.depth - 1
+  WHERE b.depth > 0
+)
+SELECT node_path, edge_path, cardinality(edge_path) AS hops
+FROM reverse_paths
+WHERE depth = 0
 LIMIT 10;
 ```
 
-Both templates were run on PostgreSQL 18.7 against a graph with a cycle and two routes between two nodes.
+The walk back reads `graph_edge_to_idx`. Both templates were run on PostgreSQL 18.7 over the whole enriched catalogue: `path` finds routes of up to five hops inside the largest franchises in tens of milliseconds, where a `CYCLE` version did not finish in ten minutes.
 
 #### `compare`
 
@@ -1912,7 +2183,7 @@ Every field of the canonical models in `libs/common/src/common/models/anime.py` 
 - `broadcast` → `anime_broadcast`. `hiatus` → `anime_hiatus`, a row per change.
 - `related_anime` → `anime_relation`, by the target's page until resolved.
 - `related_source_material` → `source_material`, `source_material_xref`, `source_material_image`, `anime_source_material_relation`.
-- `staff_data` → people tables, planned last.
+- `production_staff` → people tables, planned last.
 
 **`Episode`**
 - Scalars → columns of `episode`. `aired` → `aired_at`, `filler` → `is_filler`, `recap` → `is_recap`, `duration` → `duration_seconds`.

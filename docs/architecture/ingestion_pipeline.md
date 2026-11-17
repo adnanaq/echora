@@ -40,7 +40,7 @@ flowchart TD
     answers to review cases"]
     cleaned["Cleaned seed
     release plus corrections"]
-    seedwf["2. SeedReleaseWorkflow
+    seedwf["2. LoadSeedReleaseWorkflow
     create works, relink moved pages"]
     links[("PostgreSQL
     works and page links")]
@@ -88,7 +88,7 @@ The details of each step are in the `libs/seed_cleaning` and `libs/work_matching
 
 ## 2. Load the Works
 
-A `SeedReleaseWorkflow`, with the workflow ID `seed-release`, loads one cleaned seed file. Its conflict policy is `FAIL`, so a second load is refused while one runs. The workflow receives only the file's path and its hash, never its contents, since a seed of tens of thousands of works is far beyond Temporal's 2 MB payload limit. Every activity that reads the file checks the hash and refuses a file that changed during the load. The worker and `clean_seed.py` share the folder it sits in. (ECHO-120)
+A `LoadSeedReleaseWorkflow`, with the workflow ID `seed-release`, loads one cleaned seed file. Its conflict policy is `FAIL`, so a second load is refused while one runs. The workflow receives only the file's path and its hash, never its contents, since a seed of tens of thousands of works is far beyond Temporal's 2 MB payload limit. Every activity that reads the file checks the hash and refuses a file that changed during the load. The worker and `clean_seed.py` share the folder it sits in. (ECHO-120)
 
 **A release only adds and moves.**
 
@@ -107,20 +107,20 @@ The load runs in two passes, so the order of lines in the file cannot change the
    - **Source pages belong to different stored works, or a stored page moved** → a move to the work seed cleaning placed it in. A work left with no source page by the moves was merged into another, and is deleted with `merged_into_anime_id` and the version from the plan. (ECHO-120)
    - **A page the line no longer lists** stays with its work. (ECHO-120)
 2. **Apply, in a fixed order.** The workflow applies the plan in the order below, so no page is ever linked as a source of two works at once. (ECHO-120)
-   - `CreateWorks` creates the new works with `merged_at` empty, their pages linked before they are fetched, hidden from reads until their first merge. (ECHO-107)
+   - `CreateAnime` creates the new works with `merged_at` empty, their pages linked before they are fetched, hidden from reads until their first merge. (ECHO-107)
    - `RelinkPages` then applies the moves in page-key order. (ECHO-107)
-   - `DeleteWork` removes the works the moves emptied. (ECHO-107)
-3. **Refresh.** The workflow starts a `RefreshAnimeWorkflow` through `start_workflows` for every work that is new, gained or lost a page, **or is still unmerged**. The last case catches works an earlier, interrupted attempt created without starting their refresh. See [[update_service#Starting other workflows|Update Service]]. (ECHO-120)
+   - `DeleteAnime` removes the works the moves emptied. (ECHO-107)
+3. **Refresh.** The workflow starts a `RefreshAnimeWorkflow` through `start_entity_workflows` for every work that is new, gained or lost a page, **or is still unmerged**. The last case catches works an earlier, interrupted attempt created without starting their refresh. See [[update_service#Starting other workflows|Update Service]]. (ECHO-120)
 
 The load leaves unchanged works alone. (ECHO-120)
 
 The weekly sweep keeps them current. (ECHO-117)
 
-- **Bounded.** Before each batch of refresh starts, the workflow waits until fewer than `SWEEP_MAX_PENDING_STARTS` (500) of its refreshes are still running, counted by the search attribute `RefreshTrigger = 'seed'`. It continues as new between batches, so its own history stays small. (ECHO-120)
+- **Bounded.** Before each batch of refresh starts, the workflow waits until fewer than `MAX_PENDING_BULK_REFRESHES` (500) of its refreshes are still running, counted by the search attribute `RefreshTrigger = 'seed'`. It continues as new between batches, so its own history stays small. (ECHO-120)
 - **Shares the providers fairly.** Its refreshes run with priority 3 and the fairness key `seed`. (ECHO-120)
   - The provider queues order work by priority and fairness, so works users open still go first, and the weekly sweep keeps its share of every provider. See [[update_service#Provider rate limits|Update Service]]. (ECHO-113)
 - **Safe to run again.** A retried or repeated load changes nothing the second time. (ECHO-120)
-  - `CreateWorks` skips a work an earlier attempt already created, and the other seed-load writes are safe to repeat. (ECHO-107)
+  - `CreateAnime` skips a work an earlier attempt already created, and the other seed-load writes are safe to repeat. (ECHO-107)
 
 ---
 
@@ -131,13 +131,13 @@ The `RefreshAnimeWorkflow` of a new work finds every page due, since none has be
 1. `refresh_page` runs once per page, on that provider's task queue. (ECHO-111)
    - `EnrichmentService.FetchPage` fetches the page. (ECHO-99)
    - `PostgresService.StorePage` stores it. (ECHO-97)
-2. `merge_work` runs once. (ECHO-111)
-   - `PostgresService.LoadWork` loads the work's pages. (ECHO-98)
-   - `EnrichmentService.MergeWork` merges them, and gives each episode and character the pages list a UUIDv7. (ECHO-105)
-   - `PostgresService.SaveWork` saves the work. (ECHO-98)
+2. `merge_anime` runs once. (ECHO-111)
+   - `PostgresService.LoadAnime` loads the work's pages. (ECHO-98)
+   - `EnrichmentService.MergeAnime` merges them, and gives each episode and character the pages list a UUIDv7. (ECHO-105)
+   - `PostgresService.SaveAnime` saves the work. (ECHO-98)
    - The same save creates the new episodes. (ECHO-103)
    - The same save creates the new characters. (ECHO-104)
-3. `SaveWork` saves the work and writes `anime.created` to the outbox in the same transaction. (ECHO-98)
+3. `SaveAnime` saves the work and writes `anime.created` to the outbox in the same transaction. (ECHO-98)
    - The vector service indexes the work from that event. (ECHO-114)
 4. The workflow starts a `RefreshEpisodeWorkflow` and a `RefreshCharacterWorkflow` for each new episode and character, which fetch their own pages and send `episode.created` and `character.created`. (ECHO-112)
 
@@ -151,7 +151,7 @@ What exists today, and what the plan above still needs:
 
 - **The cleaned seed is built only in memory, and only after the first pass.** `build_corrected_seed` in `libs/seed_cleaning` applies the first pass's corrections so the second pass can group split works. A cleaned seed with every correction applied, written to `cleaned_seed.jsonl`, is still to be added. (ECHO-92)
 - **Enrichment reads the raw seed.** `scripts/run_enrichment.py` reads `assets/seed_data/anime-offline-database.json` directly, one entry at a time, and writes per-agent folders under `temp/`. The script is removed once the new methods replace it. (ECHO-123)
-  - The merge (`merge_provider_records`) has no command-line entry point, derives the work's ID from its source URLs, reads `sources` from the offline database entry and merges provider synopses. All three change when `MergeWork` is built. (ECHO-105)
+  - The merge (`merge_provider_records`) has no command-line entry point, derives the work's ID from its source URLs, reads `sources` from the offline database entry and merges provider synopses. All three change when `MergeAnime` is built. (ECHO-105)
 - **Pages are fetched twice.** Seed cleaning fetches pages for their details (titles, type, links, episode counts) and keeps them in `data/seed_cleaning/provider_pages.jsonl`. Enrichment fetches the same pages again for their full responses. The shared HTTP cache serves the second fetch while its entries last, and the planned `StorePage` makes PostgreSQL the one page store. (ECHO-97)
 - **The planned methods do not exist yet.** `EnrichmentService` has only `Health` and `RunPipeline`.
   - `FetchPage` and the merge methods are planned. (P-ECHO-11)
@@ -168,7 +168,7 @@ What exists today, and what the plan above still needs:
 Ingestion has no settings of its own. It uses the settings of the services it runs through:
 
 - seed cleaning's command-line options and `--data-dir`, in the `libs/seed_cleaning` README,
-- the Temporal, refresh and `SWEEP_MAX_PENDING_STARTS` settings in [[update_service#Configuration|Update Service]],
+- the Temporal, refresh and `MAX_PENDING_BULK_REFRESHES` settings in [[update_service#Configuration|Update Service]],
 - the enrichment settings in `libs/common/src/common/config/`.
 
 ---

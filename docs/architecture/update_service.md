@@ -70,13 +70,13 @@ relinked, or a merge was requested:
     EnrichmentService.MatchCharacters  match only the cast entries not yet linked to a character;
                                      entries already linked through character_provider_page stay
                                      matched, so a long cast is matched once, then in small steps
-  merge_work(anime_id)
-    PostgresService.LoadWork         pages, corrections, AI text, known episodes and
+  merge_anime(anime_id)
+    PostgresService.LoadAnime         pages, corrections, AI text, known episodes and
                                      characters, and the work's version
-    EnrichmentService.MergeWork      map the pages, merge them, apply corrections and AI text;
+    EnrichmentService.MergeAnime      map the pages, merge them, apply corrections and AI text;
                                      known episodes and characters keep their IDs, new ones
                                      get a UUIDv7
-    PostgresService.SaveWork         save if the version still matches; the same transaction
+    PostgresService.SaveAnime         save if the version still matches; the same transaction
                                      creates new episodes and characters and writes the outbox rows
     returns                          the new episode and character IDs, and whether the
                                      provider synopses changed
@@ -84,10 +84,10 @@ relinked, or a merge was requested:
 each page that finishes after that merge sets the merge flag again; pages that finish
 close together are merged once
 
-then, through start_workflows on the update-service queue:
+then, through start_entity_workflows on the update-service queue:
   start RefreshEpisodeWorkflow for each new or changed episode, after each merge
   start RefreshCharacterWorkflow for each new or changed character, after each merge
-  start SynopsisWorkflow once every page has finished or failed, if any merge of this
+  start WriteSynopsisWorkflow once every page has finished or failed, if any merge of this
   refresh reported changed provider synopses
 
 before ending, while merge_requested or fetch_requested is set: fetch and merge again
@@ -106,7 +106,7 @@ The episode merges its own pages and those entries together, so an episode with 
 
 - **Due pages.** A page is due when it was never fetched, or was fetched longer than `REFRESH_AFTER_DAYS` ago, and is not dead. A page whose fetches keep failing waits `2^failures` hours, at most a week, before it is tried again, and `RecordRefresh` makes the work due again at that time, so a failed page is not left until the next weekly sweep. (ECHO-111)
 - **Requested pages.** A page a `fetch_requested` signal names is fetched when its `fetched_at` is older than the request's `max_age`, whatever `REFRESH_AFTER_DAYS` says. A `max_age` of 0 always fetches. (ECHO-111)
-- **The synopsis waits for the pages.** An early merge may hold only one or two fast providers, and the next merge, minutes later, would change the provider synopses again. `SynopsisWorkflow` therefore starts once every page of the refresh has finished or failed, so one refresh asks for at most one synopsis. Episode and character refreshes start after each merge, since a repeated start joins the one already running. (ECHO-111)
+- **The synopsis waits for the pages.** An early merge may hold only one or two fast providers, and the next merge, minutes later, would change the provider synopses again. `WriteSynopsisWorkflow` therefore starts once every page of the refresh has finished or failed, so one refresh asks for at most one synopsis. Episode and character refreshes start after each merge, since a repeated start joins the one already running. (ECHO-111)
 - **The first merge does not wait for the slowest provider.** Every provider's page is valid input on its own, since every mapper sets a title, a type and a status, so the work can be saved with the pages that are in. A page that is still waiting, such as an AniDB page behind AniDB's slow queue, merges when it arrives, while the workflow is still open. Most works still merge once, since the fast providers arrive well within the wait. (ECHO-111)
 - **Requested merges.** A change made in the database, such as an approved correction, a page move or new AI-written text, needs a merge even when nothing is refreshing the entity.
   - The change sets `merge_requested_at`, and the save that follows clears it. (ECHO-98)
@@ -125,7 +125,7 @@ A partial-source page is linked to a work but never merged into it, so a change 
 
 > **Linear:** ECHO-111
 
-Workflows never start other workflows as child workflows. A `start_workflows` activity starts refreshes, tracked episodes and synopses as top-level workflows through the Temporal client, a batch of IDs per call, each with the `USE_EXISTING` conflict policy:
+Workflows never start other workflows as child workflows. A `start_entity_workflows` activity starts refreshes, tracked episodes and synopses as top-level workflows through the Temporal client, a batch of IDs per call, each with the `USE_EXISTING` conflict policy:
 
 - **`USE_EXISTING` needs the client.** Child workflows do not support a workflow ID conflict policy, so a second start for an entity already refreshing would fail instead of joining the running refresh.
 - **Nothing ends with its starter.** A child workflow's default parent close policy terminates it when the parent ends or continues as new, which would end a sweep's or a seed load's refreshes in flight. A workflow started through the client has no parent.
@@ -137,7 +137,7 @@ The activity is safe to retry, since a start repeated with `USE_EXISTING` return
 
 Temporal keeps every activity's input and result in the workflow's history. It warns when a single payload passes 512 KB, fails at 2 MB, and stops a workflow whose history reaches 50 MB. A raw provider page, such as the character list of a long series, can pass those sizes.
 
-So the large data never leaves an activity. `refresh_page` fetches and stores a page in one activity, and `merge_work` loads, merges and saves in another. Each returns only keys, IDs and flags. This is Temporal's claim check pattern, with PostgreSQL as the store the references point to. (ECHO-111)
+So the large data never leaves an activity. `refresh_page` fetches and stores a page in one activity, and `merge_anime` loads, merges and saves in another. Each returns only keys, IDs and flags. This is Temporal's claim check pattern, with PostgreSQL as the store the references point to. (ECHO-111)
 
 Inside an activity the pages still travel over gRPC, and they are large. The saved One Piece pages are 2.7 MB from AniDB and 1.8 MB from aniSearch's episode list, among others, past gRPC's 4 MB default for one message. A merge needs every page in memory at once, so streaming one page per message would add code without lowering memory. So each side sets its message limit explicitly to 64 MB, uses gRPC's gzip compression, which shrinks HTML and XML several times over, and records the largest message size it handles as a metric:
 
@@ -162,7 +162,7 @@ Only an entity's own refresh workflow merges and saves it. Temporal allows at mo
 
 - **Starting.** Refreshes start with the `USE_EXISTING` conflict policy. A second start for an entity already refreshing gets the running refresh back instead of an error, so fifty users opening the same old work start one refresh, not fifty.
 - **Asking for specific pages.** A trigger that needs pages that are not due, such as episode tracking at air time or the daily score refresh, sends a `fetch_requested` signal with signal-with-start, naming the providers, a `max_age` and its priority. It starts the refresh when none is running, and a running refresh adds the pages to its work instead of dropping the request, as a plain `USE_EXISTING` start would. Later activities run at the highest priority the refresh has received, so a user's request is not stuck behind a seed load's.
-- **Asking for another merge.** A workflow that changes a work's inputs without fetching, such as `SynopsisWorkflow` after saving new text, sends the work's refresh a `merge_requested` signal with signal-with-start. If no refresh is running, the signal starts one. If one is running, the signal handler only sets a flag. After each merge, the workflow checks the flag and merges again while it is set, and checks it once more before it ends. A signal that arrives while the workflow is completing makes the server reject the completion and run the workflow again with the signal, so the final check sees it and no request is lost.
+- **Asking for another merge.** A workflow that changes a work's inputs without fetching, such as `WriteSynopsisWorkflow` after saving new text, sends the work's refresh a `merge_requested` signal with signal-with-start. If no refresh is running, the signal starts one. If one is running, the signal handler only sets a flag. After each merge, the workflow checks the flag and merges again while it is set, and checks it once more before it ends. A signal that arrives while the workflow is completing makes the server reject the completion and run the workflow again with the signal, so the final check sees it and no request is lost.
 - **The version check.** Every load returns the entity's version, and every save writes only if the version still matches. A save that finds another change in between returns `ABORTED`, and the merge activity loads, merges and saves again within the same attempt. This catches anything outside the workflow, such as a seed load relinking pages, a new AI-written synopsis or a new correction, since each of these increases the version.
 
 ### Provider rate limits
@@ -191,7 +191,7 @@ AniDB bans on daily request volume, about 200 requests a day in earlier runs, so
 So budgeted providers are fetched apart from work refreshes:
 
 - **Refreshes skip them.** A work's refresh fetches every due page except those of budgeted providers (`BUDGETED_PROVIDERS`, `anidb`), and merges with what the store already holds for them. (ECHO-117)
-- **One budgeted fetcher per provider.** A long-running `BudgetedFetchWorkflow` (`budgeted-fetch-anidb`) takes pages in due order from `ListDuePages`, fetches them through `refresh_page` on the provider's queue, and sends the page's work `merge_requested` when a page changed. It continues as new between batches. (ECHO-119)
+- **One budgeted fetcher per provider.** A long-running `FetchBudgetedPagesWorkflow` (`budgeted-fetch-anidb`) takes pages in due order from `ListDuePages`, fetches them through `refresh_page` on the provider's queue, and sends the page's work `merge_requested` when a page changed. It continues as new between batches. (ECHO-119)
 - **An even pace, not a burst.** The `provider-anidb` queue's rate limit is 150 a day, one request about every 10 minutes. Pages beyond the budget wait in the queue for the next free slot, and a day of bursts is what gets an IP banned. (ECHO-113)
 - **Visits first.**
   - When a user opens a work whose AniDB page is due, the backend's refresh request reaches the fetcher as a `page_requested` signal. (P-ECHO-16)
@@ -214,15 +214,15 @@ Starting values, tuned once real runs are measured:
 | `refresh_page` | 5 minutes (browser-crawled pages are slow) | 1 minute | Exponential backoff, at most 5 attempts (ECHO-111) |
 | `list_pages`, `record_refresh` | 30 seconds | — | Exponential backoff, at most 5 attempts (ECHO-111) |
 | `match_characters` | 10 minutes | 1 minute | At most 5 attempts (ECHO-111) |
-| `merge_work` | 2 minutes | — | At most 5 attempts; `ABORTED` is retried inside the attempt (ECHO-111) |
+| `merge_anime` | 2 minutes | — | At most 5 attempts; `ABORTED` is retried inside the attempt (ECHO-111) |
 | `merge_episode`, `merge_character` | 2 minutes | — | At most 5 attempts; `ABORTED` is retried inside the attempt (ECHO-112) |
-| `start_workflows` | 1 minute | — | Exponential backoff, at most 5 attempts (ECHO-111) |
+| `start_entity_workflows` | 1 minute | — | Exponential backoff, at most 5 attempts (ECHO-111) |
 | `write_synopsis` | 10 minutes | 1 minute | 3 attempts (ECHO-115) |
 
 - **Heartbeats during a gRPC call.** `refresh_page` and `write_synopsis` each wait on one long gRPC call. While it runs, the activity records a heartbeat every 20 seconds and watches `ctx.cancelled()`, with `tokio::select!` over the call, a heartbeat interval and the cancellation. Without this loop, Temporal would time the activity out after the 1-minute heartbeat timeout. With it, a crashed worker is noticed within a minute instead of after 5 or 10, and a cancelled workflow stops the call.
   - `refresh_page` runs this loop. (ECHO-111)
   - `write_synopsis` runs this loop. (ECHO-115)
-- **`ABORTED` inside the merge.** A Temporal retry policy has one attempt limit for every error, so a version conflict cannot get its own limit there. The merge activity therefore loads, merges and saves again itself when `SaveWork` returns `ABORTED`, up to 10 times in one attempt. Conflicts last only as long as the other change, so this ends quickly, and the policy's 5 attempts count only other failures. (ECHO-111)
+- **`ABORTED` inside the merge.** A Temporal retry policy has one attempt limit for every error, so a version conflict cannot get its own limit there. The merge activity therefore loads, merges and saves again itself when `SaveAnime` returns `ABORTED`, up to 10 times in one attempt. Conflicts last only as long as the other change, so this ends quickly, and the policy's 5 attempts count only other failures. (ECHO-111)
 - **Bans fail fast.** After a block, `polite_http` sends nothing more to that site from the process. A fetch then fails at once without a request, and is recorded as a page failure with backoff, so a ban is never pressed further. Workers also set their own `max_task_queue_activities_per_second` from the provider's pace, which applies when a queue has no limit set, such as in a new environment before the limit script ran. (ECHO-111)
 - **Permanent errors are not retried.** An activity returns `ApplicationFailure::non_retryable` for a gRPC status that a retry cannot fix: `INVALID_ARGUMENT`, `NOT_FOUND`, `FAILED_PRECONDITION`, `PERMISSION_DENIED`, `UNIMPLEMENTED`, and `RESOURCE_EXHAUSTED`, which our services return only for a message over the 64 MB limit. `UNAVAILABLE`, `DEADLINE_EXCEEDED` and `INTERNAL` stay retryable, and a provider's throttling arrives as `UNAVAILABLE`. (ECHO-111)
 
@@ -230,7 +230,7 @@ Starting values, tuned once real runs are measured:
 
 ## What Triggers a Refresh
 
-A work is **older** when it first aired more than `OLDER_AFTER_YEARS` (30) years ago. An older work, and its episodes and characters, refresh only when a user opens their page. A work with no known year counts as not older. A character counts as older only when every work it appears in is older. (ECHO-117)
+A work is **older** when it first aired more than `ON_DEMAND_REFRESH_AGE_YEARS` (30) years ago. An older work, and its episodes and characters, refresh only when a user opens their page. A work with no known year counts as not older. A character counts as older only when every work it appears in is older. (ECHO-117)
 
 | Trigger | Entities | When |
 |---|---|---|
@@ -247,15 +247,15 @@ An entity a user opens is served from PostgreSQL at once, and its refresh runs b
 
 > **Linear:** ECHO-117
 
-One scheduled `SweepWorkflow` covers the whole catalogue, instead of one schedule per entity. For each kind, it asks the PostgreSQL Service for the entities due (`ListDueWorks`, `ListDueEpisodes`, `ListDueCharacters`), a page at a time, and starts a refresh for each.
+One scheduled `SweepCatalogueWorkflow` covers the whole catalogue, instead of one schedule per entity. For each kind, it asks the PostgreSQL Service for the entities due (`ListDueAnime`, `ListDueEpisodes`, `ListDueCharacters`), a page at a time, and starts a refresh for each.
 
 - **Fixed cutoff.** A sweep reads every entity whose `next_refresh_at` is before the time it started, paging by `(next_refresh_at, id)`. Every refresh that finishes, failed or not, moves `next_refresh_at` past that cutoff, so no entity is picked twice in one sweep.
-- **Bounded.** The sweep starts a page of refreshes with `start_workflows`, each tagged with the search attribute `RefreshTrigger = 'sweep'`. Before the next page, it waits until fewer than `SWEEP_MAX_PENDING_STARTS` (500) of those are still running, counted with a visibility count query, so the queues never hold the whole catalogue at once. It continues as new between pages, so its own history stays small.
+- **Bounded.** The sweep starts a page of refreshes with `start_entity_workflows`, each tagged with the search attribute `RefreshTrigger = 'sweep'`. Before the next page, it waits until fewer than `MAX_PENDING_BULK_REFRESHES` (500) of those are still running, counted with a visibility count query, so the queues never hold the whole catalogue at once. It continues as new between pages, so its own history stays small.
 - **One sweep at a time.** The schedules use the `Skip` overlap policy, Temporal's default, set explicitly. A sweep still running when the next one is due is not started a second time, and the next sweep picks up whatever is then due.
 
 Requested merges have their own schedule, every 15 minutes, since a reviewer's approval should not wait a week. It reads `ListRequestedMerges` for each kind and sends each entity's refresh `merge_requested` with signal-with-start (`USE_EXISTING`, priority 2, fairness key `review`). A caller that changed the entity usually sent the signal already, so this pass only catches signals that were lost, or changes no caller signals.
 
-The daily score refresh runs the same way, paging through `ListScoreWorks`: works that are ongoing, or finished within the lookback. A finished work without an end date is left to the weekly sweep. It sends each work's refresh a `fetch_requested` signal for the pages that report scores (MAL, AniList, Kitsu), with a `max_age` of a day, since those pages are not due yet.
+The daily score refresh runs the same way, paging through `ListScoreAnime`: works that are ongoing, or finished within the lookback. A finished work without an end date is left to the weekly sweep. It sends each work's refresh a `fetch_requested` signal for the pages that report scores (MAL, AniList, Kitsu), with a `max_age` of a day, since those pages are not due yet.
 
 ### Episode tracking
 
@@ -263,7 +263,7 @@ The daily score refresh runs the same way, paging through `ListScoreWorks`: work
 
 An episode has little information before it airs, so it is not refreshed until then. Ongoing and upcoming works keep their episodes watched by their status and their episodes' expected air times:
 
-1. **The week it airs.** A daily `EpisodeTrackingWorkflow` asks for every episode expected in the next `EPISODE_WINDOW_DAYS` (7) days (`ListUpcomingEpisodes`) and starts a `track-episode-<anime_id>-<episode_number>` workflow for each, with `USE_EXISTING`.
+1. **The week it airs.** A daily `TrackEpisodesWorkflow` asks for every episode expected in the next `EPISODE_TRACKING_WINDOW_DAYS` (7) days (`ListUpcomingEpisodes`) and starts a `track-episode-<anime_id>-<episode_number>` workflow for each, with `USE_EXISTING`.
 2. **At air time.** The tracking workflow sleeps on a durable Temporal timer until the expected air time. It then sends the work's refresh a `fetch_requested` signal for the pages that report episodes (MAL, AniList) with a `max_age` of 0, so the cache cannot answer, which confirms the episode and creates it if the work did not list it yet, and refreshes the episode itself the same way.
 3. **Not aired yet.** The tracker learns the outcome from PostgreSQL, not from the refresh: after `EPISODE_RETRY_WAIT_HOURS` (2) it reads whether the episode is stored as aired. Once it is, the tracker calls `MarkEpisodeAired`, which writes the aired notification once, even when no save changed anything. When it is not, it asks again, up to `EPISODE_MAX_RETRIES` (3) times, then raises an alert and ends. The next daily run picks the episode up again with its new expected time.
 4. **After airing.** Providers fill in titles, synopses and scores over the following days, so it refreshes the episode again 1, 3 and 7 days after it aired, then ends.
@@ -283,29 +283,29 @@ Provider synopses are still fetched and kept in the stored pages, as the input f
 A synopsis mostly changes before a work airs. An announced work has a line or two at most, and providers fill in a full synopsis around the first episodes. After that it rarely changes, so a work needs one or two writes over its life. (P-ECHO-14)
 
 - **Started by a merge.**
-  - `merge_work` reports when the provider synopses differ from the ones the current synopsis was written from. (ECHO-105)
-  - The work's refresh then starts a `SynopsisWorkflow`. (ECHO-111)
+  - `merge_anime` reports when the provider synopses differ from the ones the current synopsis was written from. (ECHO-105)
+  - The work's refresh then starts a `WriteSynopsisWorkflow`. (ECHO-111)
   - The saved synopsis keeps a hash of its inputs, so a refresh that changes no provider synopsis calls no AI. (ECHO-115)
 - **Only with enough to go on.** Below a minimum amount of provider text, nothing is written, and the next change tries again. (ECHO-115)
 - **Every attempt is remembered.** `SaveGeneratedText` records the input hash and outcome even when nothing was written, so a merge with the same provider synopses does not start the workflow again. (ECHO-115)
 - **One run per work.** The workflow ID is `synopsis-anime-<anime_id>`, with the `USE_EXISTING` conflict policy. (ECHO-115)
 
 ```
-SynopsisWorkflow                          (ECHO-115)
-  write_synopsis, on the agent task queue:
+WriteSynopsisWorkflow                          (ECHO-115)
+  write_synopsis, on the agent-service task queue:
     PostgresService.LoadSynopsisSources   provider synopses, title, type, year, status
     AgentService.WriteSynopsis            web search, then write the synopsis
     PostgresService.SaveGeneratedText     text, sources, model, prompt version, input hash
   signal-with-start refresh-anime-<anime_id> with merge_requested
                                           the work's own refresh merges and saves it,
-                                          and SaveWork sends anime.updated
+                                          and SaveAnime sends anime.updated
 ```
 
 ### What a work shows
 
 > **Linear:** ECHO-105
 
-`MergeWork` sets the synopsis from, in order:
+`MergeAnime` sets the synopsis from, in order:
 
 1. an approved correction of the field,
 2. the latest AI-written synopsis,
@@ -317,7 +317,7 @@ The merge never falls back to a provider's synopsis.
 
 - **Written, not copied.** The Agent Service rejects text too close to any provider synopsis or fetched web page, and writes again. (ECHO-96)
 - **Sources kept.** The web pages used are stored with the text. (ECHO-115)
-- **Rate limited.** The agent task queue has its own activity rate limit, so a seed load does not exceed the model's or the search API's limits. (ECHO-115)
+- **Rate limited.** The agent-service task queue has its own activity rate limit, so a seed load does not exceed the model's or the search API's limits. (ECHO-115)
 
 ### Still open
 
@@ -325,11 +325,26 @@ The merge never falls back to a provider's synopsis.
 - Whether every written synopsis goes to the approval queue, a sample does, or none. (ECHO-115)
 - How close to a source counts as copied. (ECHO-96)
 - The minimum amount of provider text. (ECHO-115)
-- How `merge_work` reports that the provider synopses changed: no field in `MergeWorkResponse` or `SaveWorkResponse` carries it yet. (ECHO-105)
+- How `merge_anime` reports that the provider synopses changed: no field in `MergeAnimeResponse` or `SaveAnimeResponse` carries it yet. (ECHO-105)
 
 Character attributes are planned the same way: the Agent Service extracts typed values from provider descriptions and web results, a disagreement it cannot settle becomes an approval item, and a value is extracted again only when its sources change. (P-ECHO-19)
 
 ---
+
+## Franchise Link Check
+
+> **Linear:** P-ECHO-22
+
+A scheduled `CheckFranchiseLinksWorkflow` looks for franchise links a reviewer should check, and sends them to the approval queue. What it looks for, and why no rule can decide the links on its own, is in [[Database Schema#Link check|Database Schema]].
+
+- **When.** Weekly, and after each seed release, with the `Skip` overlap policy like the sweep, so only one check runs at a time.
+- **One activity.** `check_franchise_links` runs on the `update-service` queue and makes three calls:
+  1. it streams every franchise link from `PostgresService.ListFranchiseLinks`;
+  2. it streams them on into `EnrichmentService.FindFranchiseLinkCandidates`, which runs the check in Python;
+  3. it sends the candidates to `PostgresService.CreateLinkCheckApprovals`, which writes one `link_check` approval request per candidate and skips any candidate that already has an open request.
+- **The links never enter Temporal.** Every franchise link in the catalogue is too much for one payload, and Temporal keeps every activity input and result in the workflow's history. So the links move between the two services inside the one activity, which returns only the number of items it created, as `refresh_page` does with pages (see [[#Only references pass through Temporal]]).
+- **Heartbeats.** The activity records a heartbeat while its calls run, the same way `refresh_page` does, so a crashed worker is noticed within a minute.
+- **Answers need no workflow of their own.** `DecideApproval` writes the reviewer's correction, crossover mark or confirmation and sets `merge_requested_at` on both works. The requested-merge schedule then merges them again, and the franchises are computed again from the corrected links.
 
 ## Providers Fetched
 
@@ -360,12 +375,12 @@ The workflows publish nothing themselves. After a save commits, the PostgreSQL S
 
 | Setting | Value |
 |---|---|
-| Task queues | `update-service` for workflows, merges and `start_workflows`, one `provider-<name>` queue per provider for `refresh_page`, `agent` for AI activities (ECHO-95) |
-| Workers | A Rust SDK worker polls one task queue, so `crates/update_service` runs one worker per queue in one process, sharing one client. Each registers only what its queue runs: the `update-service` worker the workflows and the merge and start activities, each provider worker `refresh_page`, and the `agent` worker `write_synopsis`. Every replica runs the same set, so all workers polling a queue register the same types. (ECHO-95) |
+| Task queues | `update-service` for workflows, merges and `start_entity_workflows`, one `provider-<name>` queue per provider for `refresh_page`, `agent-service` for AI activities (ECHO-95) |
+| Workers | A Rust SDK worker polls one task queue, so `crates/update_service` runs one worker per queue in one process, sharing one client. Each registers only what its queue runs: the `update-service` worker the workflows and the merge and start activities, each provider worker `refresh_page`, and the `agent-service` worker `write_synopsis`. Every replica runs the same set, so all workers polling a queue register the same types. (ECHO-95) |
 | Schedules | Weekly sweep and daily scores, each with the `Skip` overlap policy (ECHO-117) |
 | Schedules | Daily episode tracking, with the `Skip` overlap policy (ECHO-118) |
 | Search attribute | `RefreshTrigger` (keyword: `user`, `episode`, `sweep`, `seed`), set on each refresh start, used to count the refreshes a sweep or seed load still has running (ECHO-95) |
-| Workflow types | `RefreshAnimeWorkflow`, `RefreshEpisodeWorkflow`, `RefreshCharacterWorkflow`, `SweepWorkflow` (weekly sweep, daily scores), `EpisodeTrackingWorkflow` (daily) with one `track-episode` workflow per episode, `SynopsisWorkflow`, `SeedReleaseWorkflow` (loads a cleaned seed, see [[ingestion_pipeline|Ingestion Pipeline]]), `BudgetedFetchWorkflow` (one per budgeted provider) (ECHO-95) |
+| Workflow types | `RefreshAnimeWorkflow`, `RefreshEpisodeWorkflow`, `RefreshCharacterWorkflow`, `SweepCatalogueWorkflow` (weekly sweep, daily scores), `TrackEpisodesWorkflow` (daily) with one `track-episode` workflow per episode, `WriteSynopsisWorkflow`, `LoadSeedReleaseWorkflow` (loads a cleaned seed, see [[ingestion_pipeline|Ingestion Pipeline]]), `FetchBudgetedPagesWorkflow` (one per budgeted provider) (ECHO-95) |
 | Workflow IDs | `refresh-anime-<id>`, `refresh-episode-<id>`, `refresh-character-<id>`, `track-episode-<anime_id>-<episode_number>`, `synopsis-anime-<id>`, `budgeted-fetch-<provider>`, all with conflict policy `USE_EXISTING`; `seed-release` with conflict policy `FAIL`, so a second seed load is refused while one runs (ECHO-95) |
 | Rate limit | A queue rate limit per provider queue, set with `temporal task-queue config set` from that provider's pacing (ECHO-113) |
 | Priority and fairness | Priority keys 1 to 3 and fairness keys as in [[#Provider rate limits]] (ECHO-113) |
@@ -387,14 +402,14 @@ The workflows and activities live in `crates/temporal_workflows/`, and `crates/u
 | `MERGE_FIRST_WAIT_MINUTES` | `10` | How long a refresh waits after its first stored page before merging without the pages still in flight (ECHO-111) |
 | `BUDGETED_PROVIDERS` | `anidb` | Providers fetched by a budgeted fetcher instead of by work refreshes (ECHO-119) |
 | `ANIDB_DAILY_BUDGET` | `150` | AniDB requests a day; the `provider-anidb` queue's rate limit is set from it (ECHO-113) |
-| `OLDER_AFTER_YEARS` | `30` | Works first aired longer ago than this, with their episodes and characters, refresh only when opened (ECHO-117) |
-| `EPISODE_WINDOW_DAYS` | `7` | How far ahead episode tracking starts (ECHO-118) |
+| `ON_DEMAND_REFRESH_AGE_YEARS` | `30` | Works first aired longer ago than this, with their episodes and characters, refresh only when opened (ECHO-117) |
+| `EPISODE_TRACKING_WINDOW_DAYS` | `7` | How far ahead episode tracking starts (ECHO-118) |
 | `EPISODE_FOLLOW_UP_DAYS` | `1,3,7` | Days after airing that an episode is refreshed again (ECHO-118) |
 | `EPISODE_MAX_RETRIES` | `3` | Tries at air time before an alert is raised (ECHO-118) |
 | `EPISODE_RETRY_WAIT_HOURS` | `2` | Wait between tries at air time (ECHO-118) |
 | `SCORE_SYNC_HOUR` | `6` | UTC hour of the daily score refresh (ECHO-117) |
 | `SCORE_SYNC_LOOKBACK_DAYS` | `90` | Days after a work finishes that its scores keep refreshing (ECHO-117) |
-| `SWEEP_MAX_PENDING_STARTS` | `500` | Refreshes a sweep or seed load keeps pending at once (ECHO-117) |
+| `MAX_PENDING_BULK_REFRESHES` | `500` | Refreshes a sweep or seed load keeps pending at once (ECHO-117) |
 
 ---
 
