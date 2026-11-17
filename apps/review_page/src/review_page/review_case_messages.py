@@ -34,6 +34,7 @@ _DOUBLED_PROVIDER_DECISIONS_FIELD = "doubled_provider_decisions"
 # mapped to their (key_field_name, value_field_name) pair.
 _ORDERED_MAPPING_FIELDS: dict[str, tuple[str, str]] = {
     "addresses_by_page_key": ("page_key", "address"),
+    "partial_addresses_by_page_key": ("page_key", "address"),
     "entries": ("reference_page", "entry"),
     "suggested_answer": ("page_key", "place"),
     "belonging_page_keys": ("page_key", "linked_page_keys"),
