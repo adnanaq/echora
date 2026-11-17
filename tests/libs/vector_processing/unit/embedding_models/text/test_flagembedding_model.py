@@ -1,4 +1,6 @@
-from unittest.mock import create_autospec, patch
+import builtins
+import sys
+from unittest.mock import MagicMock, create_autospec, patch
 
 import pytest
 import torch
@@ -109,6 +111,22 @@ def _load_with(device: str, module: torch.nn.Module | None) -> None:
     bge_m3.model = module
     bge_m3.tokenizer = FakeTokenizer()
     with patch("FlagEmbedding.BGEM3FlagModel", autospec=True, return_value=bge_m3):
+        FlagEmbeddingModel("BAAI/bge-m3")
+
+
+def test_flag_embedding_model_import_error():
+    real_import = builtins.__import__
+
+    def failing_import(name, *args, **kwargs):
+        if name == "FlagEmbedding":
+            raise ImportError("no FlagEmbedding")
+        return real_import(name, *args, **kwargs)
+
+    with (
+        patch.dict(sys.modules, {"FlagEmbedding": None}),
+        patch("builtins.__import__", side_effect=failing_import),
+        pytest.raises(ImportError, match="FlagEmbedding not installed"),
+    ):
         FlagEmbeddingModel("BAAI/bge-m3")
 
 
@@ -264,3 +282,44 @@ def test_encode_with_sparse_token_budget_keeps_vectors_in_input_order():
 def test_flag_embedding_model_init_negative_token_budget_raises_value_error():
     with pytest.raises(ValueError, match="max_tokens_per_pass"):
         _model_with(FakeEncoder(), max_tokens_per_pass=-1)
+
+
+def test_flag_embedding_model_properties_info_and_chunk_size_one_oom():
+    model = _model_with(FakeEncoder(), chunk_size=1)
+    assert model.embedding_size == 1024
+    assert model.model_name == "BAAI/bge-m3"
+    assert model.max_length == 8192
+    assert model.supports_sparse is True
+    assert model.supports_multilingual is True
+    assert model.get_model_info()["supports_sparse"] is True
+
+    with patch.object(model, "_run_model", side_effect=torch.OutOfMemoryError("oom")):
+        with pytest.raises(torch.OutOfMemoryError):
+            model.encode(["hello"])
+
+
+def test_flag_embedding_model_init_requires_model_and_tokenizer():
+    fake_raw = MagicMock()
+    fake_raw.model = None
+    fake_raw.tokenizer = None
+    with (
+        patch("FlagEmbedding.BGEM3FlagModel", return_value=fake_raw),
+        pytest.raises(RuntimeError, match="FlagEmbedding loaded no model"),
+    ):
+        FlagEmbeddingModel("BAAI/bge-m3")
+
+
+def test_flag_embedding_model_import_error():
+    real_import = builtins.__import__
+
+    def failing_import(name, *args, **kwargs):
+        if name == "FlagEmbedding":
+            raise ImportError("no FlagEmbedding")
+        return real_import(name, *args, **kwargs)
+
+    with (
+        patch.dict(sys.modules, {"FlagEmbedding": None}),
+        patch("builtins.__import__", side_effect=failing_import),
+        pytest.raises(ImportError, match="FlagEmbedding not installed"),
+    ):
+        FlagEmbeddingModel("BAAI/bge-m3")

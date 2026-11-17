@@ -661,3 +661,45 @@ class TestEncodeTextsBatchWithCache:
         assert result[1] == cached_emb  # cache hit
         assert result[2] == [0.0] * 1024  # whitespace → zero vector
         text_model.encode.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_encode_text_with_sparse_blank_and_error(
+        self, text_model, embedding_config
+    ):
+        processor = TextProcessor(model=text_model, config=embedding_config)
+
+        dense, sparse = await processor.encode_text_with_sparse("   ")
+        assert dense == [0.0] * 1024
+        assert sparse is None
+
+        text_model.encode_with_sparse.side_effect = RuntimeError("sparse error")
+        assert await processor.encode_text_with_sparse("hello") == (None, None)
+
+    @pytest.mark.asyncio
+    async def test_encode_texts_batch_with_sparse_edge_cases(
+        self, text_model, embedding_config
+    ):
+        processor = TextProcessor(model=text_model, config=embedding_config)
+
+        (
+            dense_all_blank,
+            sparse_all_blank,
+        ) = await processor.encode_texts_batch_with_sparse(["  ", ""])
+        assert dense_all_blank == [[0.0] * 1024, [0.0] * 1024]
+        assert sparse_all_blank == [None, None]
+
+        text_model.encode_with_sparse.return_value = (
+            [[0.3] * 1024],
+            [{"indices": [1], "values": [0.9]}],
+        )
+        dense_mixed, sparse_mixed = await processor.encode_texts_batch_with_sparse(
+            ["", "hello"]
+        )
+        assert dense_mixed == [[0.0] * 1024, [0.3] * 1024]
+        assert sparse_mixed == [None, {"indices": [1], "values": [0.9]}]
+
+        text_model.encode_with_sparse.side_effect = RuntimeError("batch sparse error")
+        assert await processor.encode_texts_batch_with_sparse(["hello"]) == (
+            [None],
+            [None],
+        )

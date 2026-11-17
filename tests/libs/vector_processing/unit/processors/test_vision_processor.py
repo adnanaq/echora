@@ -1155,3 +1155,26 @@ class TestEncodeImagesBatchWithCache:
         vision_model.encode_image.assert_called_once_with(
             ["/cache/img1.jpg", "/cache/img2.jpg"]
         )
+
+    @pytest.mark.asyncio
+    async def test_hash_file_reads_bytes_and_batch_handles_hash_error(
+        self, vision_model, embedding_config, mock_embedding_cache, tmp_path
+    ):
+        sample_file = tmp_path / "img.bin"
+        sample_file.write_bytes(b"hello-world")
+        digest = VisionProcessor._hash_file(str(sample_file))
+        assert len(digest) == 64
+
+        image_downloader = AsyncMock()
+        image_downloader.download_and_cache_image.return_value = "/nonexistent/img.jpg"
+        vision_model.encode_image.return_value = [[0.4] * 768]
+
+        processor = VisionProcessor(
+            model=vision_model,
+            downloader=image_downloader,
+            config=embedding_config,
+            embedding_cache=mock_embedding_cache,
+        )
+
+        result = await processor.encode_images_batch(["http://example.com/1.jpg"])
+        assert result == [[0.4] * 768]
