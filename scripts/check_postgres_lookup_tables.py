@@ -1,9 +1,9 @@
 """Verify that PostgreSQL lookup table migrations match canonical anime enums."""
 
-from enum import StrEnum
-from pathlib import Path
 import re
 import sys
+from enum import StrEnum
+from pathlib import Path
 
 from common.models.anime import (
     AnimeRating,
@@ -36,8 +36,13 @@ _SQL_TOKEN_PATTERN = re.compile(
     r"'(?:[^']|'')*'|--[^\n]*|/\*.*?\*/",
     re.DOTALL,
 )
-_INSERT_PATTERN = re.compile(
-    r"INSERT\s+INTO\s+(?P<table>[a-z_]+)(?:\s*\([^)]*\))?\s+VALUES\s*(?P<values>.*?);",
+_SQL_VALUE_BODY = r"(?:[^;']|'(?:[^']|'')*')*"
+_STATEMENT_PATTERN = re.compile(
+    rf"(?:"
+    rf"INSERT\s+INTO\s+(?P<insert_table>[a-z_]+)(?:\s*\([^)]*\))?\s+VALUES\s*(?P<insert_values>{_SQL_VALUE_BODY})"
+    rf"|DELETE\s+FROM\s+(?P<delete_table>[a-z_]+)(?:\s+WHERE\s+(?P<delete_where>{_SQL_VALUE_BODY}))?"
+    rf"|TRUNCATE(?:\s+TABLE)?\s+(?P<truncate_table>[a-z_]+)"
+    rf")\s*;",
     re.IGNORECASE | re.DOTALL,
 )
 _STRING_LITERAL_PATTERN = re.compile(r"'((?:[^']|'')*)'")
@@ -60,36 +65,61 @@ def strip_sql_comments(sql_text: str) -> str:
     return _SQL_TOKEN_PATTERN.sub(_replace_token, sql_text)
 
 
-def extract_inserted_values(migrations_dir: Path) -> dict[str, set[str]]:
-    """Collect inserted lookup values per table across all SQL migrations.
+def _parse_string_literals(sql_fragment: str) -> set[str]:
+    """Decode single-quoted SQL string literals from a statement fragment.
+
+    Args:
+        sql_fragment: SQL fragment containing single-quoted string literals.
+
+    Returns:
+        Set of decoded string values with escaped quotes unescaped.
+    """
+    return {
+        literal.replace("''", "'")
+        for literal in _STRING_LITERAL_PATTERN.findall(sql_fragment)
+    }
+
+
+def extract_lookup_values(migrations_dir: Path) -> dict[str, set[str]]:
+    """Compute final lookup values per table after replaying SQL migrations.
 
     Args:
         migrations_dir: Directory containing timestamped ``sqlx`` SQL files.
 
     Returns:
-        Mapping from lookup table name to the set of inserted string values.
+        Mapping from lookup table name to the set of active string values.
     """
-    inserted_by_table: dict[str, set[str]] = {}
+    values_by_table: dict[str, set[str]] = {}
     for migration_path in sorted(migrations_dir.glob("*.sql")):
         cleaned_sql = strip_sql_comments(migration_path.read_text(encoding="utf-8"))
-        for match in _INSERT_PATTERN.finditer(cleaned_sql):
-            table_name = match.group("table").lower()
-            raw_values = match.group("values")
-            literals = {
-                literal.replace("''", "'")
-                for literal in _STRING_LITERAL_PATTERN.findall(raw_values)
-            }
-            inserted_by_table.setdefault(table_name, set()).update(literals)
-    return inserted_by_table
+        for match in _STATEMENT_PATTERN.finditer(cleaned_sql):
+            if match.group("insert_table"):
+                table_name = match.group("insert_table").lower()
+                values_by_table.setdefault(table_name, set()).update(
+                    _parse_string_literals(match.group("insert_values"))
+                )
+            elif match.group("delete_table"):
+                table_name = match.group("delete_table").lower()
+                delete_where = match.group("delete_where")
+                if delete_where is None:
+                    values_by_table.setdefault(table_name, set()).clear()
+                else:
+                    values_by_table.setdefault(table_name, set()).difference_update(
+                        _parse_string_literals(delete_where)
+                    )
+            elif match.group("truncate_table"):
+                table_name = match.group("truncate_table").lower()
+                values_by_table.setdefault(table_name, set()).clear()
+    return values_by_table
 
 
 def find_lookup_mismatches(
-    inserted_by_table: dict[str, set[str]],
+    values_by_table: dict[str, set[str]],
 ) -> list[str]:
     """Compare canonical ``anime.py`` enum values against migration seed rows.
 
     Args:
-        inserted_by_table: Lookup values parsed from migration SQL files.
+        values_by_table: Final lookup values parsed from migration SQL files.
 
     Returns:
         Human-readable mismatch descriptions; empty when every table matches.
@@ -97,7 +127,7 @@ def find_lookup_mismatches(
     mismatches: list[str] = []
     for table_name, enum_class in ENUM_TABLE_MAP.items():
         enum_values = {member.value for member in enum_class}
-        migration_values = inserted_by_table.get(table_name, set())
+        migration_values = values_by_table.get(table_name, set())
         missing_in_migration = sorted(enum_values - migration_values)
         extra_in_migration = sorted(migration_values - enum_values)
         if missing_in_migration:
@@ -117,8 +147,8 @@ def main() -> int:
     Returns:
         Zero when all lookup tables match; one when drift is detected.
     """
-    inserted_by_table = extract_inserted_values(MIGRATIONS_DIR)
-    mismatches = find_lookup_mismatches(inserted_by_table)
+    values_by_table = extract_lookup_values(MIGRATIONS_DIR)
+    mismatches = find_lookup_mismatches(values_by_table)
     if mismatches:
         for mismatch in mismatches:
             print(f"ERROR: {mismatch}", file=sys.stderr)
