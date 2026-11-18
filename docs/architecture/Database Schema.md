@@ -633,8 +633,8 @@ Every table is in fifth normal form:
 |----------|-----------|
 | **No JSONB** | Every field of the canonical models has a column or a table, so every value is typed, constrained and queryable. |
 | **No denormalized copies of other entities** | A related work's title, type and year are read from its own row through the link. An unresolved link shows only the link until the target is stored. |
-| **Lookup tables instead of CHECK constraints** | Enum-like columns use single-column lookup tables seeded from the enums in `anime.py`, so valid values are visible in SQL and new ones need no DDL change. (ECHO-93) |
-| **Shared name tables** | Genres, tags, demographics, content warnings and character traits are rows in `genre`, `tag`, `demographic`, `content_warning` and `trait`, linked per entity, so each name is stored once. (ECHO-93) |
+| ~~**Lookup tables instead of CHECK constraints**~~ | ~~Enum-like columns use single-column lookup tables seeded from the enums in `anime.py`, so valid values are visible in SQL and new ones need no DDL change. (ECHO-93)~~ |
+| ~~**Shared name tables**~~ | ~~Genres, tags, demographics, content warnings and character traits are rows in `genre`, `tag`, `demographic`, `content_warning` and `trait`, linked per entity, so each name is stored once. (ECHO-93)~~ |
 | **`episode_count` is the provider's total** | It is the number of episodes providers report for the work, which can be ahead of the episodes stored. It is not a count of `episode` rows. |
 | **`score_weighted`, `score_mean`, `score_median` are columns** | `ScoreCalculations` has exactly three values, each depending only on the work. |
 | **Hiatus history** | Each change of the hiatus snapshot adds a row to `anime_hiatus`, so the frontend can show a work's pauses. The current hiatus is the latest row. (ECHO-101) |
@@ -655,7 +655,7 @@ Every table is in fifth normal form:
 
 > **Linear:** ECHO-93
 
-Each lookup is seeded from its enum in `libs/common/src/common/models/anime.py`, and CI checks that the two match (see [[echora_contracts]]).
+~~Each lookup is seeded from its enum in `libs/common/src/common/models/anime.py`, and CI checks that the two match (see [[echora_contracts]]).~~
 
 ```sql
 -- Enums of the canonical models
@@ -2223,10 +2223,10 @@ Every field of the canonical models in `libs/common/src/common/models/anime.py` 
 
 ### Version Control
 
-Migrations are `sqlx` migration files in `crates/postgres_db/migrations/`, the only place the schema is defined:
-- Timestamped migration files
-- Version tracking in the database by `sqlx migrate`
-- Queries checked against the migrated schema at build time
+~~Migrations are `sqlx` migration files in `crates/postgres_db/migrations/`, the only place the schema is defined:~~
+- ~~Timestamped migration files~~
+- ~~Version tracking in the database by `sqlx migrate`~~
+- ~~Queries checked against the migrated schema at build time~~
 
 ### Schema Evolution
 

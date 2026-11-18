@@ -1,0 +1,8 @@
+# Accepted advisories for cargo-audit.
+[advisories]
+ignore = [
+    # Transitive uncompiled SQLite/MySQL crates resolved in Cargo.lock via sqlx-macros-core;
+    # postgres_db only enables the PostgreSQL driver and never compiles or links sqlite/mysql.
+    "RUSTSEC-2026-0459",
+    "RUSTSEC-2023-0071",
+]

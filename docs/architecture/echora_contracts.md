@@ -104,10 +104,10 @@ Python stubs (checked in)  ·  Rust code (build.rs)  ·  PostgreSQL columns (che
 | Proto and checked-in Python stubs | `proto-stubs-check.yml` regenerates the stubs and fails on any `git diff` |
 | Proto and Rust code | Generated on every build, so it cannot be stale |
 | Proto and the PostgreSQL Service's mapping | The Rust build fails when the proto gains a field or an enum value the save does not handle (see below) (ECHO-98) |
-| Proto and PostgreSQL columns | `cargo sqlx prepare` fails when a query does not match the migrated schema (ECHO-93) |
-| `anime.py` enums and PostgreSQL lookup tables | A planned check compares every enum's values with the rows its lookup migration inserts, and fails on a value missing from either side. `sqlx` cannot catch this, since a missing lookup row only fails when a save uses it. (ECHO-93) |
+| ~~Proto and PostgreSQL columns~~ | ~~`cargo sqlx prepare` fails when a query does not match the migrated schema (ECHO-93)~~ |
+| ~~`anime.py` enums and PostgreSQL lookup tables~~ | ~~A planned check compares every enum's values with the rows its lookup migration inserts, and fails on a value missing from either side. `sqlx` cannot catch this, since a missing lookup row only fails when a save uses it. (ECHO-93)~~ |
 
-`proto-stubs-check.yml` runs the first three on every PR that touches the protos, the models or the scripts. The lookup check runs on every PR that touches `anime.py` or the migrations. (ECHO-93)
+`proto-stubs-check.yml` runs the first three on every PR that touches the protos, the models or the scripts. ~~The lookup check runs on every PR that touches `anime.py` or the migrations. (ECHO-93)~~
 
 ### The PostgreSQL Service's mapping
 
