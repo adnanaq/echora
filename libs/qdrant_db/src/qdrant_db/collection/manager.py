@@ -5,8 +5,9 @@ import logging
 from common.config import QdrantConfig
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.http.exceptions import UnexpectedResponse
-from qdrant_client.models import PayloadSchemaType
+from qdrant_client.models import Datatype, PayloadSchemaType, VectorParams
 from qdrant_db.collection.schema_builder import (
+    _DATATYPE_MAPPING,
     _DISTANCE_MAPPING,
     build_optimizers_config,
     build_quantization_config,
@@ -60,7 +61,10 @@ class QdrantCollectionManager:
                         wal_config=build_wal_config(self._config),
                     )
             except UnexpectedResponse as exc:
-                if exc.status_code == 400 and b"already exists" in exc.content.lower():
+                if (
+                    exc.status_code in (400, 409)
+                    and b"already exists" in exc.content.lower()
+                ):
                     # Concurrent instance created the collection between our existence
                     # check and create — validate compatibility and proceed.
                     logger.info(
@@ -157,7 +161,7 @@ class QdrantCollectionManager:
 
         Raises:
             CollectionCompatibilityError: If vector names, dimensions, distance
-                metric, or multivector mode do not match expectations.
+                metric, datatype, or multivector mode do not match expectations.
         """
         with qdrant_span("get_collection", self._collection_name):
             collection_info = await self._async_client.get_collection(
@@ -171,28 +175,22 @@ class QdrantCollectionManager:
             )
 
         expected_distance = _DISTANCE_MAPPING[self._config.qdrant_distance_metric]
+        expected_datatype = (
+            _DATATYPE_MAPPING[self._config.qdrant_vector_datatype]
+            if self._config.qdrant_vector_datatype is not None
+            else Datatype.FLOAT32
+        )
         expected_multivectors = set(self._config.multivector_vectors)
 
         for vector_name, expected_dim in self._config.vector_names.items():
-            vector_params = existing_vectors.get(vector_name)
-            if vector_params is None:
-                raise CollectionCompatibilityError(
-                    f"Collection missing required vector: {vector_name}"
-                )
-            if vector_params.size != expected_dim:
-                raise CollectionCompatibilityError(
-                    f"Vector {vector_name} size mismatch: expected {expected_dim}, got {vector_params.size}"
-                )
-            if vector_params.distance != expected_distance:
-                raise CollectionCompatibilityError(
-                    f"Vector {vector_name} distance mismatch: expected {expected_distance}, got {vector_params.distance}"
-                )
-            has_multivector = vector_params.multivector_config is not None
-            expects_multivector = vector_name in expected_multivectors
-            if has_multivector != expects_multivector:
-                raise CollectionCompatibilityError(
-                    f"Vector {vector_name} multivector mismatch: expected {expects_multivector}, got {has_multivector}"
-                )
+            self._validate_vector_params(
+                vector_name=vector_name,
+                vector_params=existing_vectors.get(vector_name),
+                expected_dim=expected_dim,
+                expected_distance=expected_distance,
+                expected_datatype=expected_datatype,
+                expects_multivector=vector_name in expected_multivectors,
+            )
 
         existing_sparse_vectors = getattr(
             collection_info.config.params, "sparse_vectors", None
@@ -208,4 +206,50 @@ class QdrantCollectionManager:
             raise CollectionCompatibilityError(
                 "Collection missing required sparse vectors: "
                 + ", ".join(sorted(missing_sparse_vectors))
+            )
+
+    def _validate_vector_params(
+        self,
+        vector_name: str,
+        vector_params: VectorParams | None,
+        expected_dim: int,
+        expected_distance: object,
+        expected_datatype: Datatype,
+        expects_multivector: bool,
+    ) -> None:
+        """Validate one named dense vector against expected schema parameters.
+
+        Args:
+            vector_name: Named vector field.
+            vector_params: Existing vector parameters from Qdrant, if present.
+            expected_dim: Expected vector dimension.
+            expected_distance: Expected Qdrant distance metric.
+            expected_datatype: Expected Qdrant vector storage datatype.
+            expects_multivector: Whether multivector mode is expected.
+
+        Raises:
+            CollectionCompatibilityError: If the vector is missing or mismatches
+                size, distance, datatype, or multivector mode.
+        """
+        if vector_params is None:
+            raise CollectionCompatibilityError(
+                f"Collection missing required vector: {vector_name}"
+            )
+        if vector_params.size != expected_dim:
+            raise CollectionCompatibilityError(
+                f"Vector {vector_name} size mismatch: expected {expected_dim}, got {vector_params.size}"
+            )
+        if vector_params.distance != expected_distance:
+            raise CollectionCompatibilityError(
+                f"Vector {vector_name} distance mismatch: expected {expected_distance}, got {vector_params.distance}"
+            )
+        stored_datatype = vector_params.datatype or Datatype.FLOAT32
+        if stored_datatype != expected_datatype:
+            raise CollectionCompatibilityError(
+                f"Vector {vector_name} datatype mismatch: expected {expected_datatype}, got {stored_datatype}"
+            )
+        has_multivector = vector_params.multivector_config is not None
+        if has_multivector != expects_multivector:
+            raise CollectionCompatibilityError(
+                f"Vector {vector_name} multivector mismatch: expected {expects_multivector}, got {has_multivector}"
             )

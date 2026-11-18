@@ -14,8 +14,8 @@ from qdrant_client import AsyncQdrantClient
 from qdrant_client.http.models import CollectionsResponse, CountResult
 from qdrant_db import QdrantClient
 from qdrant_db.collection.manager import QdrantCollectionManager
-from qdrant_db.qdrant_models import BatchPayloadUpdate, BatchVectorUpdate
 from qdrant_db.errors import PermanentQdrantError
+from qdrant_db.qdrant_models import BatchPayloadUpdate, BatchVectorUpdate
 from qdrant_db.tracing import qdrant_span
 from vector_db_interface import VectorDocument
 

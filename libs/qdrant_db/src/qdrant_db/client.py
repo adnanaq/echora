@@ -21,6 +21,11 @@ from qdrant_client.models import (
     SparseVector,
 )
 from qdrant_db.collection.manager import QdrantCollectionManager
+from qdrant_db.errors import (
+    PermanentQdrantError,
+    ValidationError,
+)
+from qdrant_db.normalizer import VectorNormalizer
 from qdrant_db.qdrant_models import (
     BatchOperationSummary,
     BatchPayloadUpdate,
@@ -30,11 +35,6 @@ from qdrant_db.qdrant_models import (
     SearchFilterCondition,
     SearchRequest,
 )
-from qdrant_db.errors import (
-    PermanentQdrantError,
-    ValidationError,
-)
-from qdrant_db.normalizer import VectorNormalizer
 from qdrant_db.query_builder import (
     build_filter,
     build_fusion_query,
@@ -108,6 +108,7 @@ class QdrantClient(VectorDBClient):
             sparse_vector_names=self._sparse_vector_names,
             multivector_vectors=set(config.multivector_vectors),
             vector_names=config.vector_names,
+            vector_datatype=config.qdrant_vector_datatype,
         )
         self._collection_manager = QdrantCollectionManager(
             config=config,
@@ -286,9 +287,11 @@ class QdrantClient(VectorDBClient):
     ) -> BatchOperationSummary:
         """Upsert documents in batches with per-batch retry.
 
-        Each batch is retried independently on transient failures. Because
-        upserts are idempotent, re-running a failed call safely recovers from
-        any partial commit.
+        Each batch is retried independently on transient failures. A later batch
+        failure does not roll back earlier successful batches. Replaying a failed
+        call is safe only when overwriting current point values is acceptable,
+        because replay may overwrite updates written concurrently by another
+        writer.
 
         Args:
             documents: Documents with vectors and payloads to upsert.
@@ -507,16 +510,7 @@ class QdrantClient(VectorDBClient):
         Raises:
             ValidationError: If request implies invalid fusion combination.
         """
-        filter_conditions = list(request.filters)
-        if request.entity_type:
-            filter_conditions.append(
-                SearchFilterCondition(
-                    field="entity_type",
-                    operator="eq",
-                    value=request.entity_type,
-                )
-            )
-        qdrant_filter = build_filter(filter_conditions)
+        qdrant_filter = build_filter(request.filters, entity_type=request.entity_type)
         active_embeddings = collect_active_embeddings(
             request=request,
             text_vector_name=self._text_vector_name,
@@ -535,6 +529,15 @@ class QdrantClient(VectorDBClient):
                 with_payload=request.with_payload,
             )
 
+        sparse_query = next(
+            (
+                vector_data
+                for vector_name, vector_data in active_embeddings
+                if vector_name == self._primary_sparse_vector_name
+                and isinstance(vector_data, SparseVector)
+            ),
+            None,
+        )
         prefetch_queries = build_prefetch_queries(
             request=request,
             text_vector_name=self._text_vector_name,
@@ -543,6 +546,7 @@ class QdrantClient(VectorDBClient):
             qdrant_filter=qdrant_filter,
             prefetch_limit=request.limit * self._prefetch_limit_multiplier,
             text_search_params=self._text_search_params,
+            sparse_query=sparse_query,
         )
         if len(prefetch_queries) < 2:
             raise ValidationError(

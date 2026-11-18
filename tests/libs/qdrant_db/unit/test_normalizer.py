@@ -1,11 +1,11 @@
 import pytest
 from qdrant_client.models import SparseVector
-from qdrant_db.qdrant_models import SparseVectorPayload
 from qdrant_db.errors import ValidationError
 from qdrant_db.normalizer import (
     VectorNormalizer,
     is_sparse_payload,
 )
+from qdrant_db.qdrant_models import SparseVectorPayload
 
 
 def test_is_sparse_payload_returns_true_for_valid_dict() -> None:
@@ -120,3 +120,40 @@ def test_normalize_vector_payload_unknown_vector_name_raises_validation_error() 
     norm = _normalizer()
     with pytest.raises(ValidationError, match="Invalid vector name: unknown_vector"):
         norm.normalize_vector_payload("unknown_vector", [0.1, 0.2])
+
+
+def test_normalize_vector_payload_uint8_accepts_integers_in_range() -> None:
+    norm = VectorNormalizer(
+        sparse_vector_names=set(),
+        multivector_vectors=set(),
+        vector_names={"text_vector": 4},
+        vector_datatype="uint8",
+    )
+    assert norm.normalize_vector_payload("text_vector", [0, 128, 255, 1]) == [
+        0,
+        128,
+        255,
+        1,
+    ]
+
+
+@pytest.mark.parametrize(
+    "vector_data",
+    [
+        [-1, 0, 1, 2],
+        [0, 256, 1, 2],
+        [0.5, 1, 2, 3],
+        [True, 1, 2, 3],
+    ],
+)
+def test_normalize_vector_payload_uint8_rejects_invalid_elements(
+    vector_data: list[int | float | bool],
+) -> None:
+    norm = VectorNormalizer(
+        sparse_vector_names=set(),
+        multivector_vectors=set(),
+        vector_names={"text_vector": 4},
+        vector_datatype="uint8",
+    )
+    with pytest.raises(ValidationError, match="integers in \\[0, 255\\]"):
+        norm.normalize_vector_payload("text_vector", vector_data)

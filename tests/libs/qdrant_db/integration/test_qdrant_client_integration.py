@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 import pytest
 from qdrant_db import QdrantClient
+from qdrant_db.errors import DuplicateUpdateError, PermanentQdrantError, ValidationError
 from qdrant_db.qdrant_models import (
     BatchPayloadUpdate,
     BatchVectorUpdate,
@@ -10,7 +11,6 @@ from qdrant_db.qdrant_models import (
     SearchRequest,
     SparseVectorPayload,
 )
-from qdrant_db.errors import DuplicateUpdateError, PermanentQdrantError, ValidationError
 from vector_db_interface import VectorDocument
 
 pytestmark = pytest.mark.integration

@@ -32,6 +32,7 @@ from qdrant_client.models import (
 )
 from qdrant_db import QdrantClient
 from qdrant_db.collection.manager import QdrantCollectionManager
+from qdrant_db.errors import DuplicateUpdateError, PermanentQdrantError
 from qdrant_db.qdrant_models import (
     BatchPayloadUpdate,
     BatchVectorUpdate,
@@ -39,7 +40,6 @@ from qdrant_db.qdrant_models import (
     SearchRequest,
     SparseVectorPayload,
 )
-from qdrant_db.errors import DuplicateUpdateError, PermanentQdrantError
 from vector_db_interface import VectorDocument
 
 
@@ -935,15 +935,22 @@ async def test_search_expansion_without_primary_embedding_raises_validation_erro
 async def test_lifecycle_delegates_forward_to_collection_manager(
     qdrant_client: QdrantClient,
 ) -> None:
-    async_client = cast(AsyncMock, qdrant_client._async_client)
-    async_client.collection_exists.return_value = False
-    async_client.delete_collection.return_value = True
-    async_client.create_collection.return_value = True
+    collection_manager = create_autospec(QdrantCollectionManager, instance=True)
+    collection_manager.collection_exists.return_value = False
+    collection_manager.delete_collection.return_value = True
+    collection_manager.clear_index.return_value = True
+    collection_manager.setup_payload_indexes.return_value = None
+    qdrant_client._collection_manager = collection_manager
 
     assert await qdrant_client.collection_exists() is False
     assert await qdrant_client.delete_collection() is True
     assert await qdrant_client.clear_index() is True
     await qdrant_client.setup_payload_indexes()
+
+    collection_manager.collection_exists.assert_awaited_once_with()
+    collection_manager.delete_collection.assert_awaited_once_with()
+    collection_manager.clear_index.assert_awaited_once_with()
+    collection_manager.setup_payload_indexes.assert_awaited_once_with()
 
 
 @pytest.mark.asyncio

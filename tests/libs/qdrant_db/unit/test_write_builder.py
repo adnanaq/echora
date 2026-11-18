@@ -6,12 +6,12 @@ from qdrant_client.models import (
     SetPayloadOperation,
     SparseVector,
 )
+from qdrant_db.errors import DuplicateUpdateError
+from qdrant_db.normalizer import VectorNormalizer
 from qdrant_db.qdrant_models import (
     BatchPayloadUpdate,
     BatchVectorUpdate,
 )
-from qdrant_db.errors import DuplicateUpdateError
-from qdrant_db.normalizer import VectorNormalizer
 from qdrant_db.write_builder import (
     build_payload_operations,
     deduplicate_updates,

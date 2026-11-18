@@ -86,9 +86,10 @@ def _collection_info(
 async def test_collection_exists_present_returns_true() -> None:
     async_client = _make_async_client()
     async_client.collection_exists.return_value = True
-    manager = _make_manager(async_client)
+    manager = _make_manager(async_client, collection_name="expected_collection")
 
     assert await manager.collection_exists() is True
+    async_client.collection_exists.assert_awaited_once_with("expected_collection")
 
 
 @pytest.mark.asyncio
@@ -170,9 +171,10 @@ async def test_initialize_collection_existing_compatible_skips_create() -> None:
 
 
 @pytest.mark.asyncio
-async def test_initialize_collection_concurrent_already_exists_validates_schema() -> (
-    None
-):
+@pytest.mark.parametrize("status_code", [400, 409])
+async def test_initialize_collection_concurrent_already_exists_validates_schema(
+    status_code: int,
+) -> None:
     settings = get_settings()
     config = settings.qdrant.model_copy(
         deep=True,
@@ -185,8 +187,8 @@ async def test_initialize_collection_concurrent_already_exists_validates_schema(
     async_client = _make_async_client()
     async_client.collection_exists.return_value = False
     async_client.create_collection.side_effect = UnexpectedResponse(
-        status_code=400,
-        reason_phrase="Bad Request",
+        status_code=status_code,
+        reason_phrase="Already Exists",
         content=b'{"status":{"error":"already exists"}}',
         headers={},
     )
@@ -284,7 +286,9 @@ async def test_validate_compatibility_distance_mismatch_raises_compatibility_err
     None
 ):
     settings = get_settings()
-    config = settings.qdrant
+    config = settings.qdrant.model_copy(
+        deep=True, update={"qdrant_distance_metric": "cosine"}
+    )
     async_client = _make_async_client()
     vectors = {
         name: _make_vector_params(size=dim, distance=Distance.EUCLID)
@@ -296,6 +300,33 @@ async def test_validate_compatibility_distance_mismatch_raises_compatibility_err
     )
 
     with pytest.raises(CollectionCompatibilityError, match="distance mismatch"):
+        await manager._validate_compatibility()
+
+
+@pytest.mark.asyncio
+async def test_validate_compatibility_datatype_mismatch_raises_compatibility_error() -> (
+    None
+):
+    settings = get_settings()
+    config = settings.qdrant.model_copy(
+        deep=True,
+        update={
+            "qdrant_distance_metric": "cosine",
+            "qdrant_vector_datatype": "float16",
+            "multivector_vectors": [],
+        },
+    )
+    async_client = _make_async_client()
+    vectors = {
+        name: _make_vector_params(size=dim, distance=Distance.COSINE)
+        for name, dim in config.vector_names.items()
+    }
+    async_client.get_collection.return_value = _collection_info(vectors=vectors)
+    manager = QdrantCollectionManager(
+        config=config, async_client=async_client, collection_name="test_collection"
+    )
+
+    with pytest.raises(CollectionCompatibilityError, match="datatype mismatch"):
         await manager._validate_compatibility()
 
 

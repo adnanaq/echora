@@ -72,7 +72,10 @@ def _build_field_condition(condition: SearchFilterCondition) -> FieldCondition:
     )
 
 
-def build_filter(filters: list[SearchFilterCondition]) -> Filter | None:
+def build_filter(
+    filters: list[SearchFilterCondition],
+    entity_type: str | None = None,
+) -> Filter | None:
     """Convert contract filter conditions into a Qdrant filter model.
 
     Conditions are grouped by their ``clause`` field into ``must`` (AND),
@@ -81,18 +84,28 @@ def build_filter(filters: list[SearchFilterCondition]) -> Filter | None:
 
     Args:
         filters: Typed filter conditions.
+        entity_type: Optional entity type filter appended as an ``eq`` condition.
 
     Returns:
         Qdrant filter model or ``None`` when no filters are provided.
     """
-    if not filters:
+    all_filters = list(filters)
+    if entity_type:
+        all_filters.append(
+            SearchFilterCondition(
+                field="entity_type",
+                operator="eq",
+                value=entity_type,
+            )
+        )
+    if not all_filters:
         return None
 
     must: list[FieldCondition] = []
     must_not: list[FieldCondition] = []
     should: list[FieldCondition] = []
 
-    for condition in filters:
+    for condition in all_filters:
         fc = _build_field_condition(condition)
         if condition.clause == "must_not":
             must_not.append(fc)
@@ -154,6 +167,7 @@ def build_prefetch_queries(
     qdrant_filter: Filter | None,
     prefetch_limit: int,
     text_search_params: SearchParams | None = None,
+    sparse_query: SparseVector | None = None,
 ) -> list[Prefetch]:
     """Assemble prefetch branches for fusion search.
 
@@ -165,6 +179,7 @@ def build_prefetch_queries(
         qdrant_filter: Optional pre-built Qdrant filter.
         prefetch_limit: Candidate pool size per branch fed into fusion.
         text_search_params: Search parameters for the dense text branches.
+        sparse_query: Pre-built sparse query vector to reuse when available.
 
     Returns:
         List of prefetch query branches (one per active embedding signal).
@@ -183,7 +198,11 @@ def build_prefetch_queries(
 
     if request.sparse_embedding is not None:
         candidates.append(
-            (sparse_vector_name, build_sparse_query(request.sparse_embedding), None)
+            (
+                sparse_vector_name,
+                sparse_query or build_sparse_query(request.sparse_embedding),
+                None,
+            )
         )
 
     return [

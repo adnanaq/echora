@@ -18,6 +18,11 @@ DenseVector = Annotated[list[VectorElement], Strict(), Field(min_length=1)]
 # Several dense vectors under one name, such as one per image; at least one.
 MultiVector = Annotated[list[DenseVector], Strict(), Field(min_length=1)]
 
+# Unsigned 8-bit integer vector contracts used when qdrant_vector_datatype == "uint8".
+Uint8VectorElement = Annotated[int, Strict(), Field(ge=0, le=255)]
+Uint8DenseVector = Annotated[list[Uint8VectorElement], Strict(), Field(min_length=1)]
+Uint8MultiVector = Annotated[list[Uint8DenseVector], Strict(), Field(min_length=1)]
+
 
 def _is_scalar_filter_value(value: Any) -> bool:
     """Return whether value is an allowed scalar for filtering.
