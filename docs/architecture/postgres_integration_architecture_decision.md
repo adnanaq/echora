@@ -64,6 +64,7 @@ The frontend talks only to the backend (GraphQL), and the backend calls this ser
 Temporal retries failed activities, and NATS delivers events at least once, so every write accepts being called twice:
 
 - `StorePage` ignores a fetch older than the stored `fetched_at` of the same page. (ECHO-97)
+- ~~When `StorePage` changes a stored page (`has_changed`), it bumps `version` and sets `merge_requested_at` on any linked `source` work so stale in-flight merges fail the version check and trigger a re-merge. (ECHO-98)~~
 - `SaveAnime` writes nothing, and sends nothing, when the work did not change. (ECHO-98)
 - Every other write is safe to repeat.
   - Pages are upserted on their page key. (ECHO-97)
@@ -88,7 +89,7 @@ Nodes, edges, provenance, franchises and the SQL for each read are in [[Database
 | Concern | Crate |
 |---|---|
 | ~~Database access and migrations~~ | ~~`sqlx` (Postgres, compile-time checked queries, `sqlx migrate`) (ECHO-93)~~ |
-| gRPC server and generated code | `tonic` and `prost` (ECHO-97) |
+| ~~gRPC server and generated code~~ | ~~`tonic` and `prost` (ECHO-97)~~ |
 | ~~Async runtime~~ | ~~`tokio` (ECHO-87)~~ |
 | NATS | `async-nats` (ECHO-106) |
 | ~~Errors in libraries~~ | ~~Error structs with a private kind, `is_…` methods such as `is_version_conflict()`, and `From` conversions so `?` works (ECHO-87)~~ |
@@ -122,9 +123,9 @@ echora/
     └── update_service/              # main.rs: Temporal worker running temporal_workflows (ECHO-95)
 ```
 
-- **Generated gRPC code.** Each crate that needs gRPC types generates them from `protos/` in its own `build.rs`, the way `scripts/generate-proto.py` does for Python. The services exchange bytes, never Rust types, so no shared crate is needed. (ECHO-97)
+- ~~**Generated gRPC code.** Each crate that needs gRPC types generates them from `protos/` in its own `build.rs`, the way `scripts/generate-proto.py` does for Python. The services exchange bytes, never Rust types, so no shared crate is needed. (ECHO-97)~~
 - ~~**Settings.** `common` reads the same environment variable names as the Python `EnvSettings`, and each app defines its own settings struct from it. (ECHO-87)~~
-- **Ownership.** Only `postgres_service` depends on `postgres_db`, so no other crate reaches the database. (ECHO-87)
+- ~~**Ownership.** Only `postgres_service` depends on `postgres_db`, so no other crate reaches the database. (ECHO-87)~~
 - ~~**Workspace.** The root `Cargo.toml` lists every crate and declares every dependency version, the crates' own versions and the lints once, in `[workspace.dependencies]` and `[workspace.lints]`. Each crate takes them with `workspace = true`. The edition is 2024, and the minimum Rust version is 1.92, which the Temporal Rust SDK needs. (ECHO-87)~~
 - ~~**Checks.** CI runs `rustfmt`, clippy with the lint set of the Microsoft Rust guidelines (the `ms-rust` skill) plus `wildcard_enum_match_arm`, `cargo-audit` for vulnerable dependencies and `cargo-udeps` for unused ones. See [[echora_contracts#The PostgreSQL Service's mapping|Schema Ownership & Contracts]] for why. (ECHO-87)~~
 - ~~**Build.** Cargo builds and tests the Rust crates. Pants has no supported Rust backend, so Pants only wraps the Cargo builds to produce the Docker images, and Python targets stay as they are. (ECHO-87)~~

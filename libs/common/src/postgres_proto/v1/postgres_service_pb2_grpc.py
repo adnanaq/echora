@@ -40,6 +40,16 @@ class PostgresServiceStub:
                 request_serializer=v1_dot_postgres__service__pb2.StorePageRequest.SerializeToString,
                 response_deserializer=v1_dot_postgres__service__pb2.StorePageResponse.FromString,
                 _registered_method=True)
+        self.LoadAnime = channel.unary_unary(
+                '/postgres_service.v1.PostgresService/LoadAnime',
+                request_serializer=v1_dot_postgres__service__pb2.LoadAnimeRequest.SerializeToString,
+                response_deserializer=v1_dot_postgres__service__pb2.LoadAnimeResponse.FromString,
+                _registered_method=True)
+        self.SaveAnime = channel.unary_unary(
+                '/postgres_service.v1.PostgresService/SaveAnime',
+                request_serializer=v1_dot_postgres__service__pb2.SaveAnimeRequest.SerializeToString,
+                response_deserializer=v1_dot_postgres__service__pb2.SaveAnimeResponse.FromString,
+                _registered_method=True)
 
 
 class PostgresServiceServicer:
@@ -53,6 +63,21 @@ class PostgresServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def LoadAnime(self, request, context):
+        """Load a work's linked pages, corrections, and current version for merging.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SaveAnime(self, request, context):
+        """Save a merged work's scalar `anime` columns with optimistic version checking and transactional outbox.
+        Child collections on `Anime` are hashed into `merged_record_hash` and persisted by follow-up work.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_PostgresServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -60,6 +85,16 @@ def add_PostgresServiceServicer_to_server(servicer, server):
                     servicer.StorePage,
                     request_deserializer=v1_dot_postgres__service__pb2.StorePageRequest.FromString,
                     response_serializer=v1_dot_postgres__service__pb2.StorePageResponse.SerializeToString,
+            ),
+            'LoadAnime': grpc.unary_unary_rpc_method_handler(
+                    servicer.LoadAnime,
+                    request_deserializer=v1_dot_postgres__service__pb2.LoadAnimeRequest.FromString,
+                    response_serializer=v1_dot_postgres__service__pb2.LoadAnimeResponse.SerializeToString,
+            ),
+            'SaveAnime': grpc.unary_unary_rpc_method_handler(
+                    servicer.SaveAnime,
+                    request_deserializer=v1_dot_postgres__service__pb2.SaveAnimeRequest.FromString,
+                    response_serializer=v1_dot_postgres__service__pb2.SaveAnimeResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -90,6 +125,60 @@ class PostgresService:
             '/postgres_service.v1.PostgresService/StorePage',
             v1_dot_postgres__service__pb2.StorePageRequest.SerializeToString,
             v1_dot_postgres__service__pb2.StorePageResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def LoadAnime(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/postgres_service.v1.PostgresService/LoadAnime',
+            v1_dot_postgres__service__pb2.LoadAnimeRequest.SerializeToString,
+            v1_dot_postgres__service__pb2.LoadAnimeResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SaveAnime(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/postgres_service.v1.PostgresService/SaveAnime',
+            v1_dot_postgres__service__pb2.SaveAnimeRequest.SerializeToString,
+            v1_dot_postgres__service__pb2.SaveAnimeResponse.FromString,
             options,
             channel_credentials,
             insecure,

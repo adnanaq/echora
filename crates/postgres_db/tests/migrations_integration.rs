@@ -6,9 +6,10 @@ use std::env;
 
 use chrono::{Duration, Utc};
 use postgres_db::{
-    Error, PageKeyInput, PageKind, PageResponseInput, StorePageInput, connect_pool, run_migrations,
-    store_page,
+    ANIME_HASH_FORMAT_V1, Error, PageKeyInput, PageKind, PageResponseInput, SaveAnimeInput,
+    StorePageInput, connect_pool, load_anime, run_migrations, save_anime, store_page,
 };
+use uuid::Uuid;
 
 #[tokio::test]
 async fn lookup_and_name_tables_migrate_and_seed_expected_rows() -> Result<(), Error> {
@@ -435,6 +436,383 @@ async fn store_page_ignores_stale_success_after_not_found() -> Result<(), Error>
     .fetch_one(&pool)
     .await?;
     assert_eq!(missing_answers, 2);
+
+    Ok(())
+}
+
+#[tokio::test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "End-to-end load, save, visibility, conflict, and outbox test"
+)]
+async fn load_and_save_anime_enforce_versions_hashes_visibility_and_outbox() -> Result<(), Error> {
+    let Ok(database_url) = env::var("DATABASE_URL") else {
+        return Ok(());
+    };
+
+    let pool = connect_pool(&database_url, 2).await?;
+    run_migrations(&pool).await?;
+
+    let anime_id = Uuid::now_v7();
+    let source_address = "999999010";
+    let partial_address = "999999011";
+
+    store_page(
+        &pool,
+        StorePageInput {
+            page_key: PageKeyInput {
+                provider: "mal".to_owned(),
+                page_kind: PageKind::Anime,
+                address: source_address.to_owned(),
+            },
+            fetched_at: Utc::now(),
+            is_dead: false,
+            responses: vec![PageResponseInput {
+                request_name: "main".to_owned(),
+                content_type: "application/json".to_owned(),
+                body: br#"{"mal_id":999999010}"#.to_vec(),
+            }],
+            is_not_found: false,
+            dead_page_review: false,
+        },
+    )
+    .await?;
+
+    store_page(
+        &pool,
+        StorePageInput {
+            page_key: PageKeyInput {
+                provider: "anilist".to_owned(),
+                page_kind: PageKind::Anime,
+                address: partial_address.to_owned(),
+            },
+            fetched_at: Utc::now(),
+            is_dead: false,
+            responses: Vec::new(),
+            is_not_found: false,
+            dead_page_review: false,
+        },
+    )
+    .await?;
+
+    sqlx::query!(
+        "INSERT INTO anime (id, merge_requested_at) VALUES ($1, now())",
+        anime_id
+    )
+    .execute(&pool)
+    .await?;
+
+    // Unmerged works must not appear in anime_visible.
+    let visible_before = sqlx::query_scalar!(
+        "SELECT EXISTS(SELECT 1 FROM anime_visible WHERE id = $1)",
+        anime_id
+    )
+    .fetch_one(&pool)
+    .await?;
+    assert_eq!(visible_before, Some(false));
+
+    sqlx::query!(
+        "INSERT INTO anime_provider_page (anime_id, provider, page_kind, address, role)
+         VALUES ($1, 'mal', 'anime', $2, 'source'),
+                ($1, 'anilist', 'anime', $3, 'partial_source')",
+        anime_id,
+        source_address,
+        partial_address,
+    )
+    .execute(&pool)
+    .await?;
+
+    sqlx::query!(
+        "INSERT INTO anime_field_correction (anime_id, field_path, value_message, value, approved_by)
+         VALUES ($1, 'episode_count', 'type.googleapis.com/google.protobuf.Int32Value', $2, 'reviewer')",
+        anime_id,
+        &b"\x08\x4a"[..],
+    )
+    .execute(&pool)
+    .await?;
+
+    let loaded_anime = load_anime(&pool, anime_id).await?;
+    assert_eq!(loaded_anime.version, 1);
+    assert_eq!(loaded_anime.source_pages.len(), 1);
+    assert_eq!(
+        loaded_anime.source_pages[0].responses[0].body,
+        br#"{"mal_id":999999010}"#
+    );
+    assert_eq!(loaded_anime.partial_source_pages.len(), 1);
+    assert_eq!(
+        loaded_anime.partial_source_pages[0].address,
+        partial_address
+    );
+    assert_eq!(loaded_anime.corrections.len(), 1);
+    assert_eq!(loaded_anime.corrections[0].field_path, "episode_count");
+
+    let first_input = SaveAnimeInput {
+        anime_id,
+        expected_version: 1,
+        title: "Monster".to_owned(),
+        title_english: Some("Monster".to_owned()),
+        title_japanese: Some("モンスター".to_owned()),
+        anime_type: "TV".to_owned(),
+        status: "ONGOING".to_owned(),
+        rating: "R - 17+ (violence & profanity)".to_owned(),
+        season: Some("SPRING".to_owned()),
+        source_material: Some("MANGA".to_owned()),
+        year: Some(2004),
+        month: Some(4),
+        episode_count: 74,
+        duration_seconds: Some(1440),
+        is_nsfw: Some(false),
+        country_of_origin: Some("JP".to_owned()),
+        synopsis: None,
+        background: None,
+        aired_from: None,
+        aired_to: None,
+        score_weighted: Some(8.88),
+        score_mean: Some(8.80),
+        score_median: Some(9.00),
+        merged_record_hash: "hash-v1".to_owned(),
+        hash_format: ANIME_HASH_FORMAT_V1,
+        merge_version: 1,
+        traceparent: Some("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01".to_owned()),
+    };
+
+    let first_save = save_anime(&pool, &first_input).await?;
+    assert!(first_save.has_changed);
+    assert_eq!(first_save.version, 2);
+
+    // Merged work is now visible and merge_requested_at is cleared.
+    let visible_after = sqlx::query_scalar!(
+        "SELECT EXISTS(SELECT 1 FROM anime_visible WHERE id = $1)",
+        anime_id
+    )
+    .fetch_one(&pool)
+    .await?;
+    assert_eq!(visible_after, Some(true));
+
+    let merge_requested = sqlx::query_scalar!(
+        "SELECT merge_requested_at FROM anime WHERE id = $1",
+        anime_id
+    )
+    .fetch_one(&pool)
+    .await?;
+    assert!(merge_requested.is_none());
+
+    // First save emits anime.created.
+    let created_subjects: Vec<String> = sqlx::query_scalar!(
+        "SELECT subject FROM outbox WHERE entity_id = $1 ORDER BY created_at",
+        anime_id
+    )
+    .fetch_all(&pool)
+    .await?;
+    assert_eq!(created_subjects, vec!["anime.created"]);
+
+    // Unchanged hash clears merge_requested_at, keeps version, and emits nothing.
+    sqlx::query!(
+        "UPDATE anime SET merge_requested_at = now() WHERE id = $1",
+        anime_id
+    )
+    .execute(&pool)
+    .await?;
+
+    let noop_input = SaveAnimeInput {
+        expected_version: 2,
+        ..first_input.clone()
+    };
+    let noop_save = save_anime(&pool, &noop_input).await?;
+    assert!(!noop_save.has_changed);
+    assert_eq!(noop_save.version, 2);
+
+    let merge_requested_after_noop = sqlx::query_scalar!(
+        "SELECT merge_requested_at FROM anime WHERE id = $1",
+        anime_id
+    )
+    .fetch_one(&pool)
+    .await?;
+    assert!(merge_requested_after_noop.is_none());
+
+    // Stale expected_version returns version conflict (ABORTED).
+    let Err(conflict_err) = save_anime(&pool, &first_input).await else {
+        panic!("stale expected_version must fail");
+    };
+    assert!(conflict_err.is_version_conflict());
+
+    // Status change writes both anime.updated and notification.anime.status.changed.
+    let status_change_input = SaveAnimeInput {
+        expected_version: 2,
+        status: "FINISHED".to_owned(),
+        merged_record_hash: "hash-v2".to_owned(),
+        ..first_input
+    };
+    let second_save = save_anime(&pool, &status_change_input).await?;
+    assert!(second_save.has_changed);
+    assert_eq!(second_save.version, 3);
+
+    let all_subjects: Vec<String> = sqlx::query_scalar!(
+        "SELECT subject FROM outbox WHERE entity_id = $1 ORDER BY id",
+        anime_id
+    )
+    .fetch_all(&pool)
+    .await?;
+    assert_eq!(
+        all_subjects,
+        vec![
+            "anime.created",
+            "anime.updated",
+            "notification.anime.status.changed"
+        ]
+    );
+
+    sqlx::query!("DELETE FROM outbox WHERE entity_id = $1", anime_id)
+        .execute(&pool)
+        .await?;
+    sqlx::query!("DELETE FROM anime WHERE id = $1", anime_id)
+        .execute(&pool)
+        .await?;
+    sqlx::query!(
+        "DELETE FROM provider_page WHERE provider = 'mal' AND page_kind = 'anime' AND address = $1",
+        source_address
+    )
+    .execute(&pool)
+    .await?;
+    sqlx::query!(
+        "DELETE FROM provider_page WHERE provider = 'anilist' AND page_kind = 'anime' AND address = $1",
+        partial_address
+    )
+    .execute(&pool)
+    .await?;
+
+    Ok(())
+}
+
+#[tokio::test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "End-to-end concurrent store_page and stale save test"
+)]
+async fn store_page_bumps_linked_anime_version_and_blocks_stale_save() -> Result<(), Error> {
+    let Ok(database_url) = env::var("DATABASE_URL") else {
+        return Ok(());
+    };
+
+    let pool = connect_pool(&database_url, 2).await?;
+    run_migrations(&pool).await?;
+
+    let anime_id = Uuid::now_v7();
+    let page_address = "999999012";
+    let page_key = PageKeyInput {
+        provider: "mal".to_owned(),
+        page_kind: PageKind::Anime,
+        address: page_address.to_owned(),
+    };
+    let t0 = Utc::now();
+
+    store_page(
+        &pool,
+        StorePageInput {
+            page_key: page_key.clone(),
+            fetched_at: t0,
+            is_dead: false,
+            responses: vec![PageResponseInput {
+                request_name: "main".to_owned(),
+                content_type: "application/json".to_owned(),
+                body: br#"{"mal_id":999999012,"title":"V1"}"#.to_vec(),
+            }],
+            is_not_found: false,
+            dead_page_review: false,
+        },
+    )
+    .await?;
+
+    sqlx::query!("INSERT INTO anime (id) VALUES ($1)", anime_id)
+        .execute(&pool)
+        .await?;
+    sqlx::query!(
+        "INSERT INTO anime_provider_page (anime_id, provider, page_kind, address, role)
+         VALUES ($1, 'mal', 'anime', $2, 'source')",
+        anime_id,
+        page_address
+    )
+    .execute(&pool)
+    .await?;
+
+    let loaded_anime = load_anime(&pool, anime_id).await?;
+    assert_eq!(loaded_anime.version, 1);
+
+    // A newer page store commits while the caller is merging V1.
+    let updated_page = store_page(
+        &pool,
+        StorePageInput {
+            page_key,
+            fetched_at: t0 + Duration::minutes(5),
+            is_dead: false,
+            responses: vec![PageResponseInput {
+                request_name: "main".to_owned(),
+                content_type: "application/json".to_owned(),
+                body: br#"{"mal_id":999999012,"title":"V2"}"#.to_vec(),
+            }],
+            is_not_found: false,
+            dead_page_review: false,
+        },
+    )
+    .await?;
+    assert!(updated_page.has_changed);
+
+    let (bumped_version, merge_requested_at): (i64, Option<chrono::DateTime<Utc>>) =
+        sqlx::query_as("SELECT version, merge_requested_at FROM anime WHERE id = $1")
+            .bind(anime_id)
+            .fetch_one(&pool)
+            .await?;
+    assert_eq!(bumped_version, 2);
+    assert!(merge_requested_at.is_some());
+
+    // The delayed save from V1 (expected_version = 1) must fail with version conflict.
+    let Err(stale_err) = save_anime(
+        &pool,
+        &SaveAnimeInput {
+            anime_id,
+            expected_version: loaded_anime.version,
+            title: "V1".to_owned(),
+            title_english: None,
+            title_japanese: None,
+            anime_type: "TV".to_owned(),
+            status: "FINISHED".to_owned(),
+            rating: "UNKNOWN".to_owned(),
+            season: None,
+            year: None,
+            month: None,
+            episode_count: 1,
+            duration_seconds: None,
+            synopsis: None,
+            background: None,
+            source_material: None,
+            country_of_origin: None,
+            is_nsfw: Some(false),
+            aired_from: None,
+            aired_to: None,
+            score_weighted: None,
+            score_mean: None,
+            score_median: None,
+            merged_record_hash: "hash-v1".to_owned(),
+            hash_format: 1,
+            merge_version: 1,
+            traceparent: None,
+        },
+    )
+    .await
+    else {
+        panic!("stale save after concurrent store_page must fail");
+    };
+    assert!(stale_err.is_version_conflict());
+
+    sqlx::query!("DELETE FROM anime WHERE id = $1", anime_id)
+        .execute(&pool)
+        .await?;
+    sqlx::query!(
+        "DELETE FROM provider_page WHERE provider = 'mal' AND page_kind = 'anime' AND address = $1",
+        page_address
+    )
+    .execute(&pool)
+    .await?;
 
     Ok(())
 }

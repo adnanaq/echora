@@ -30,7 +30,7 @@ The domain types (`Anime`, `Episode`, `Character` and their enums) are defined o
 | `protos/shared_proto/v1/anime.proto` | `shared_proto.v1` | Exists |
 | `protos/shared_proto/v1/merge.proto` | `shared_proto.v1` | ~~Planned (ECHO-97)~~ Exists |
 | `protos/enrichment_service/v1/enrichment_service.proto` | `enrichment_service.v1` | Exists, new methods planned, see [[#EnrichmentService (planned methods)]] |
-| `protos/events/v1/events.proto` | `events.v1` | Planned (ECHO-90) |
+| `protos/events/v1/events.proto` | `events.v1` | ~~Planned (ECHO-90)~~ Exists (`CatalogueEvent`, `AnimeStatusChangedNotification`; `EpisodeAiredNotification` planned `ECHO-103`) |
 | `protos/postgres_service/v1/postgres_service.proto` | `postgres_service.v1` | ~~Planned (ECHO-97)~~ Exists |
 | `protos/agent_service/v1/agent_service.proto` | `agent_service.v1` | Planned (ECHO-91) |
 
@@ -716,12 +716,12 @@ message DuePage {  // (ECHO-108)
 ```
 
 - **Saves check the version.** A save writes only when the stored version still equals `expected_version`, and otherwise returns `ABORTED`.
-  - `SaveAnime` checks it. (ECHO-98)
+  - ~~`SaveAnime` checks it. (ECHO-98)~~
   - `SaveEpisode` checks it. (ECHO-103)
   - `SaveCharacter` checks it. (ECHO-104)
   - `DeleteAnime` checks it. (ECHO-107)
   - On `ABORTED`, the merge activity loads, merges and saves again within the same attempt. (ECHO-111)
-  - A save that changes nothing writes nothing and sends nothing. (ECHO-98)
+  - ~~A save that changes nothing writes nothing and sends nothing. (ECHO-98)~~
   - `RecordRefresh`, the refresh's last call, records that it finished. (ECHO-108)
 - **`SaveAnime` creates what the work lists.**
   - An episode the merge gave a new ID is created with its page links, and the response names it so the workflow can start its refresh. (ECHO-103)
@@ -743,7 +743,7 @@ message DuePage {  // (ECHO-108)
 - **Works exist before their first merge.** See [[Database Schema#4. Writes and Deletes|Database Schema]].
   - `CreateAnime` writes the work's ID and page links with `merged_at` unset, and links pages that were never fetched. (ECHO-107)
   - The `Get*` and listing methods skip such works. (ECHO-108)
-  - The save that first sets `merged_at` writes `anime.created`. (ECHO-98)
+  - ~~The save that first sets `merged_at` writes `anime.created`. (ECHO-98)~~
 - **`ListEntityPages` and `RecordRefresh`** give a refresh its due pages and record its outcome, including a refresh that changed nothing, one that left pages failed, and one that failed. (ECHO-108)
 - **Message size.** Every method that carries page bodies (`StorePage`, `LoadAnime`, `MergeAnime`, `MergeEpisode`, `MergeCharacter` and their loads) runs with a 64 MB limit, set on every server and every client: `max_decoding_message_size` and `max_encoding_message_size` in `tonic`, whose decoding limit defaults to 4 MB on both ends, and `grpc.max_receive_message_length` and `grpc.max_send_message_length` in `grpcio`. Messages are gzip-compressed.
   - ~~The PostgreSQL Service sets the limit and compression on its server. It returns `RESOURCE_EXHAUSTED` only for a message over the limit, never for a passing condition, so it is not retried. (ECHO-97)~~

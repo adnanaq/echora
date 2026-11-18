@@ -14,8 +14,9 @@ chrono = { workspace = true, features = ["clock", "std"] }
 flate2 = { workspace = true, features = ["rust_backend"] }
 prost = { workspace = true }
 sha2 = { workspace = true, features = ["std"] }
-sqlx = { workspace = true, features = ["runtime-tokio", "tls-rustls", "postgres", "migrate", "macros", "chrono"] }
+sqlx = { workspace = true, features = ["runtime-tokio", "tls-rustls", "postgres", "migrate", "macros", "chrono", "uuid"] }
 tracing.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

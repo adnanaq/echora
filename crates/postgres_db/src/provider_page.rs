@@ -123,8 +123,11 @@ struct ExistingPageRow {
     fetch_failed_at: Option<DateTime<Utc>>,
 }
 
-fn is_stale_observation(existing: Option<&ExistingPageRow>, fetched_at: DateTime<Utc>) -> bool {
-    existing
+fn is_stale_observation(
+    existing_page: Option<&ExistingPageRow>,
+    fetched_at: DateTime<Utc>,
+) -> bool {
+    existing_page
         .and_then(|row| {
             [
                 row.fetched_at,
@@ -231,18 +234,49 @@ pub async fn store_page(pool: &PgPool, input: StorePageInput) -> Result<StorePag
     }
 
     let mut tx = pool.begin().await?;
-    let existing = lock_existing_page(&mut tx, &input.page_key).await?;
+    let existing_page = lock_existing_page(&mut tx, &input.page_key).await?;
 
     let outcome = if input.is_not_found {
-        handle_not_found(&mut tx, &input, existing.as_ref()).await?
+        handle_not_found(&mut tx, &input, existing_page.as_ref()).await?
     } else if input.responses.is_empty() && !input.is_dead {
-        handle_fetch_failure(&mut tx, &input, existing.as_ref()).await?
+        handle_fetch_failure(&mut tx, &input, existing_page.as_ref()).await?
     } else {
-        handle_success(&mut tx, &input, existing.as_ref()).await?
+        handle_success(&mut tx, &input, existing_page.as_ref()).await?
     };
+
+    if outcome.has_changed {
+        notify_linked_source_works(&mut tx, &input.page_key).await?;
+    }
 
     tx.commit().await?;
     Ok(outcome)
+}
+
+async fn notify_linked_source_works(
+    tx: &mut Transaction<'_, Postgres>,
+    page_key: &PageKeyInput,
+) -> Result<(), Error> {
+    sqlx::query!(
+        r#"
+        UPDATE anime
+        SET version = version + 1,
+            merge_requested_at = COALESCE(merge_requested_at, now())
+        WHERE id IN (
+            SELECT anime_id
+            FROM anime_provider_page
+            WHERE provider = $1 AND page_kind = $2 AND address = $3 AND role = 'source'
+            ORDER BY anime_id
+        )
+          AND deleted_at IS NULL
+        "#,
+        page_key.provider,
+        page_key.page_kind.as_str(),
+        page_key.address,
+    )
+    .execute(&mut **tx)
+    .await?;
+
+    Ok(())
 }
 
 async fn lock_existing_page(
@@ -278,23 +312,23 @@ async fn lock_existing_page(
 async fn handle_not_found(
     tx: &mut Transaction<'_, Postgres>,
     input: &StorePageInput,
-    existing: Option<&ExistingPageRow>,
+    existing_page: Option<&ExistingPageRow>,
 ) -> Result<StorePageOutcome, Error> {
-    if is_stale_observation(existing, input.fetched_at) {
+    if is_stale_observation(existing_page, input.fetched_at) {
         return Ok(StorePageOutcome { has_changed: false });
     }
 
-    let missing_since = existing
+    let missing_since = existing_page
         .and_then(|row| row.missing_since)
         .unwrap_or(input.fetched_at);
-    let next_answers = existing.map_or(1, |row| row.missing_answers.saturating_add(1));
+    let next_answers = existing_page.map_or(1, |row| row.missing_answers.saturating_add(1));
     let elapsed = input.fetched_at.signed_duration_since(missing_since);
     let reached_dead_threshold = next_answers >= 2 && elapsed >= Duration::days(1);
 
     let next_is_dead = if reached_dead_threshold && !input.dead_page_review {
         true
     } else {
-        existing.is_some_and(|row| row.is_dead) || input.is_dead
+        existing_page.is_some_and(|row| row.is_dead) || input.is_dead
     };
 
     let page_key = &input.page_key;
@@ -323,7 +357,7 @@ async fn handle_not_found(
         enqueue_dead_page_approval(tx, page_key).await?;
     }
 
-    let was_dead = existing.is_some_and(|row| row.is_dead);
+    let was_dead = existing_page.is_some_and(|row| row.is_dead);
     Ok(StorePageOutcome {
         has_changed: next_is_dead != was_dead,
     })
@@ -384,9 +418,9 @@ async fn close_open_dead_page_approval(
 async fn handle_fetch_failure(
     tx: &mut Transaction<'_, Postgres>,
     input: &StorePageInput,
-    existing: Option<&ExistingPageRow>,
+    existing_page: Option<&ExistingPageRow>,
 ) -> Result<StorePageOutcome, Error> {
-    if is_stale_observation(existing, input.fetched_at) {
+    if is_stale_observation(existing_page, input.fetched_at) {
         return Ok(StorePageOutcome { has_changed: false });
     }
 
@@ -413,16 +447,16 @@ async fn handle_fetch_failure(
 async fn handle_success(
     tx: &mut Transaction<'_, Postgres>,
     input: &StorePageInput,
-    existing: Option<&ExistingPageRow>,
+    existing_page: Option<&ExistingPageRow>,
 ) -> Result<StorePageOutcome, Error> {
-    if is_stale_observation(existing, input.fetched_at) {
+    if is_stale_observation(existing_page, input.fetched_at) {
         return Ok(StorePageOutcome { has_changed: false });
     }
 
     let new_hash = compute_responses_hash(&input.responses);
     let responses_changed =
-        existing.and_then(|row| row.responses_hash.as_deref()) != Some(new_hash.as_str());
-    let dead_changed = existing.is_some_and(|row| row.is_dead) != input.is_dead;
+        existing_page.and_then(|row| row.responses_hash.as_deref()) != Some(new_hash.as_str());
+    let dead_changed = existing_page.is_some_and(|row| row.is_dead) != input.is_dead;
 
     let page_key = &input.page_key;
     sqlx::query!(
@@ -451,7 +485,7 @@ async fn handle_success(
     .execute(&mut **tx)
     .await?;
 
-    if existing.is_some_and(|row| row.missing_since.is_some()) {
+    if existing_page.is_some_and(|row| row.missing_since.is_some()) {
         close_open_dead_page_approval(tx, page_key).await?;
     }
 

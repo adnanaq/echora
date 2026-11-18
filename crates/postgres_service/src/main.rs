@@ -2,6 +2,7 @@
 
 // Rust guideline compliant 2026-10-09
 
+mod anime_mapping;
 mod service;
 
 use anyhow::Context as _;

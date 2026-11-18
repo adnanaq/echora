@@ -498,12 +498,13 @@ uv run python script.py
 - Active enrichment gRPC methods:
   - `EnrichmentService`: `Health`, `RunPipeline`
 - Active PostgreSQL gRPC methods:
-  - `PostgresService`: `StorePage`
+  - `PostgresService`: `StorePage`, `LoadAnime`, `SaveAnime`
 - Proto sources:
   - `protos/vector_service/v1/`
   - `protos/enrichment_service/v1/`
   - `protos/postgres_service/v1/`
   - `protos/shared_proto/v1/`
+  - `protos/events/v1/`
 - After any `.proto` change, regenerate checked-in stubs:
 
 ```bash

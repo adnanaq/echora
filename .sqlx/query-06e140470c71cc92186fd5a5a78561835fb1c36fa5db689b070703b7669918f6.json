@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO anime_field_correction (anime_id, field_path, value_message, value, approved_by)\n         VALUES ($1, 'episode_count', 'type.googleapis.com/google.protobuf.Int32Value', $2, 'reviewer')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Bytea"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "06e140470c71cc92186fd5a5a78561835fb1c36fa5db689b070703b7669918f6"
+}

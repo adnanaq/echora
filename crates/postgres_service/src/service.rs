@@ -7,11 +7,17 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use chrono::{DateTime, Utc};
 use opentelemetry::global;
 use opentelemetry::metrics::Gauge;
-use postgres_db::{PageKeyInput, PageKind, PageResponseInput, PgPool, StorePageInput, store_page};
+use postgres_db::{
+    PageKeyInput, PageKind, PageResponseInput, PgPool, StorePageInput, load_anime, save_anime,
+    store_page,
+};
 use prost::Message as _;
 use tonic::{Request, Response, Status};
+use uuid::Uuid;
 
-#[allow(clippy::all, clippy::pedantic, missing_docs)]
+use crate::anime_mapping::build_save_anime_input;
+
+#[allow(clippy::all, clippy::pedantic, missing_docs, dead_code)]
 pub mod shared_proto {
     pub mod v1 {
         tonic::include_proto!("shared_proto.v1");
@@ -26,8 +32,14 @@ pub mod postgres_service_proto {
 }
 
 use postgres_service_proto::v1::postgres_service_server::PostgresService;
-use postgres_service_proto::v1::{StorePageRequest, StorePageResponse};
-use shared_proto::v1::PageKind as ProtoPageKind;
+use postgres_service_proto::v1::{
+    LoadAnimeRequest, LoadAnimeResponse, SaveAnimeRequest, SaveAnimeResponse, StorePageRequest,
+    StorePageResponse,
+};
+use shared_proto::v1::{
+    FieldCorrection as ProtoFieldCorrection, PageKey as ProtoPageKey, PageKind as ProtoPageKind,
+    PageResponse as ProtoPageResponse, StoredPage as ProtoStoredPage,
+};
 
 /// Maximum gRPC message size (64 MiB) for RPCs carrying raw provider page bodies.
 pub const MAX_PAGE_MESSAGE_BYTES: usize = 64 * 1024 * 1024;
@@ -147,6 +159,120 @@ impl PostgresService for PostgresGrpcService {
         Ok(Response::new(StorePageResponse {
             has_changed: outcome.has_changed,
         }))
+    }
+
+    async fn load_anime(
+        &self,
+        request: Request<LoadAnimeRequest>,
+    ) -> Result<Response<LoadAnimeResponse>, Status> {
+        let anime_id = Uuid::parse_str(&request.into_inner().anime_id)
+            .map_err(|err| Status::invalid_argument(format!("invalid anime_id UUID: {err}")))?;
+
+        let outcome = load_anime(&self.pool, anime_id)
+            .await
+            .map_err(|err| map_db_error(&err))?;
+
+        let source_pages = outcome
+            .source_pages
+            .into_iter()
+            .map(|page| ProtoStoredPage {
+                page_key: Some(to_proto_page_key(page.page_key)),
+                fetched_at: Some(to_proto_timestamp(page.fetched_at)),
+                is_dead: page.is_dead,
+                responses: page
+                    .responses
+                    .into_iter()
+                    .map(|resp| ProtoPageResponse {
+                        request_name: resp.request_name,
+                        content_type: resp.content_type,
+                        body: resp.body,
+                    })
+                    .collect(),
+                is_not_found: page.is_not_found,
+            })
+            .collect();
+
+        let partial_source_pages = outcome
+            .partial_source_pages
+            .into_iter()
+            .map(to_proto_page_key)
+            .collect();
+
+        let corrections = outcome
+            .corrections
+            .into_iter()
+            .map(|corr| ProtoFieldCorrection {
+                field_path: corr.field_path,
+                value: Some(prost_types::Any {
+                    type_url: corr.value_message,
+                    value: corr.value,
+                }),
+                approved_by: corr.approved_by,
+                approved_at: Some(to_proto_timestamp(corr.approved_at)),
+            })
+            .collect();
+
+        let response = LoadAnimeResponse {
+            version: outcome.version,
+            source_pages,
+            partial_source_pages,
+            corrections,
+        };
+        self.record_message_size(response.encoded_len() as u64);
+
+        Ok(Response::new(response))
+    }
+
+    async fn save_anime(
+        &self,
+        request: Request<SaveAnimeRequest>,
+    ) -> Result<Response<SaveAnimeResponse>, Status> {
+        let traceparent = request
+            .metadata()
+            .get("traceparent")
+            .and_then(|val| val.to_str().ok())
+            .map(str::to_owned);
+        let req = request.into_inner();
+        let anime = req
+            .anime
+            .ok_or_else(|| Status::invalid_argument("anime must be provided"))?;
+
+        let input = build_save_anime_input(
+            &req.anime_id,
+            req.expected_version,
+            req.merge_version,
+            anime,
+            traceparent,
+        )?;
+
+        let outcome = save_anime(&self.pool, &input)
+            .await
+            .map_err(|err| map_db_error(&err))?;
+
+        Ok(Response::new(SaveAnimeResponse {
+            has_changed: outcome.has_changed,
+            version: outcome.version,
+        }))
+    }
+}
+
+fn to_proto_page_key(key: PageKeyInput) -> ProtoPageKey {
+    let page_kind = match key.page_kind {
+        PageKind::Anime => ProtoPageKind::Anime,
+        PageKind::Episode => ProtoPageKind::Episode,
+        PageKind::Character => ProtoPageKind::Character,
+    };
+    ProtoPageKey {
+        provider: key.provider,
+        page_kind: page_kind as i32,
+        address: key.address,
+    }
+}
+
+fn to_proto_timestamp(ts: DateTime<Utc>) -> prost_types::Timestamp {
+    prost_types::Timestamp {
+        seconds: ts.timestamp(),
+        nanos: i32::try_from(ts.timestamp_subsec_nanos()).unwrap_or(0),
     }
 }
 
