@@ -263,7 +263,7 @@ def test_build_anime_from_raw_month_and_year_aired_sets_year_and_month_without_d
     None
 ):
     anime = _build({"aired_raw": "Oct 1977"})
-    assert (anime.year, anime.month, anime.aired_from) == (1977, "October", None)
+    assert (anime.year, anime.month, anime.aired_from) == (1977, 10, None)
 
 
 def test_build_anime_from_raw_year_only_aired_sets_year_without_date_or_month() -> None:

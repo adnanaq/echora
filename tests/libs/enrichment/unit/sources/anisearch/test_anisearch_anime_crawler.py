@@ -345,14 +345,14 @@ def test_build_anime_from_raw_without_published_date_gives_no_dates(
 @pytest.mark.parametrize(
     ("published", "expected"),
     [
-        ("Published: 11.2008 ‑ ?", (None, None, 2008, "November")),
-        ("Published: 01.2027 ‑ ?", (None, None, 2027, "January")),
+        ("Published: 11.2008 ‑ ?", (None, None, 2008, 11)),
+        ("Published: 01.2027 ‑ ?", (None, None, 2027, 1)),
         ("Published: 2027 ‑ ?", (None, None, 2027, None)),
         ("Published: 1983", (None, None, 1983, None)),
         ("Published: ?", (None, None, None, None)),
         ("Published: 20.10.1999 ‑ ?", ("1999-10-20", None, 1999, None)),
         ("Published: 20.10.1999‑31.03.2002", ("1999-10-20", "2002-03-31", 1999, None)),
-        ("Published: 05.2001 ‑ 31.03.2002", (None, "2002-03-31", 2001, "May")),
+        ("Published: 05.2001 ‑ 31.03.2002", (None, "2002-03-31", 2001, 5)),
     ],
 )
 def test_build_anime_from_raw_published_date_keeps_only_stated_precision(

@@ -277,8 +277,8 @@ def merge_provider_records(
         if value is not None:
             merged[field] = value
 
-    # After aired_dates: the premiere date is the fallback when AnimeSchedule,
-    # the only provider that names the month, is missing.
+    # After aired_dates: the premiere date is the fallback when no provider
+    # states the month.
     month = merge_month(ranked, merged.get("aired_dates"))
     if month is not None:
         merged["month"] = month

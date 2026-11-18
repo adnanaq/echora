@@ -115,8 +115,7 @@ Helm was chosen as the single manifest management tool because:
 
 ## Full Service & Infrastructure Inventory
 
-Source of truth: `echora/docs/Architecture Index.md` (main repo, latest as of
-2026-02-19).
+Source of truth: `echora/docs/architecture/Architecture Index.md` (main repo).
 
 ### Application Services
 
@@ -1712,15 +1711,12 @@ cloud cluster via the deploy repo.
 
 ### Main repo (echora) — canonical architecture docs
 
-- `docs/Architecture Index.md` — master navigation hub for all architecture docs
-- `docs/event_driven_architecture.md` — NATS JetStream, event flows, outbox/SAGA pattern
-- `docs/event_schema_specification.md` — all protobuf event definitions + gRPC services
-- `docs/Database Schema.md` — PostgreSQL DDL, ER diagram, ingestion state tables
-- `docs/postgres_integration_architecture_decision.md` — PostgreSQL Service dual API design
-- `docs/ingestion_pipeline.md` — 5-stage enrichment, entry_key, trigger modes
-- `docs/update_service.md` — Temporal workflows, source adapter pattern, SAGA
-- `docs/temporal_infrastructure.md` — Temporal server setup, dev/prod deployment
-- `docs/n8n_orchestration.md` — orchestration control plane, stage-6 review gate
-- `docs/command_api.md` — n8n → internal gRPC bridge, idempotency, auth
-- `docs/event_adapter.md` — NATS → n8n webhook bridge, redaction policy
-- `docs/echora_contracts.md` — schema ownership, proto toolchain, CI pipeline
+- `docs/architecture/Architecture Index.md` — starting point for the architecture docs
+- `docs/architecture/postgres_integration_architecture_decision.md` — the Rust PostgreSQL Service, the only owner of the catalogue database
+- `docs/architecture/Database Schema.md` — PostgreSQL tables, queries and the graph query primitives
+- `docs/architecture/update_service.md` — Rust Temporal workflows that refresh works, episodes and characters
+- `docs/architecture/ingestion_pipeline.md` — cleaning and loading a seed release
+- `docs/architecture/event_driven_architecture.md` — NATS JetStream, thin events and the transactional outbox
+- `docs/architecture/event_schema_specification.md` — event messages and gRPC methods
+- `docs/architecture/temporal_infrastructure.md` — Temporal server, priority, fairness and rate limits
+- `docs/architecture/echora_contracts.md` — schema ownership, generated code and drift checks

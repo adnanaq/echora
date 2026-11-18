@@ -57,7 +57,8 @@ logger = logging.getLogger(__name__)
 
 # External resource type → the platform and page kind its identifier names; the
 # page address itself comes from `page_link`. Types not listed are skipped; see
-# docs/anidb_type_mappings.md for the full list, including the ones left out.
+# the "AniDB IDs" section of docs/source_api_field_mappings.md for the full list,
+# including the ones left out.
 _RESOURCE_PAGES: dict[str, PageKind] = {
     "1": ("anime_news_network", None),
     "2": ("myanimelist", "anime"),
@@ -131,12 +132,7 @@ def anime_from_anidb(anime: AniDBAnime, *, anidb_url: str) -> dict[str, Any]:
     # ── Arrays ───────────────────────────────────────────────────────────────
     sources = [anidb_url]
     synonyms = anime.synonyms
-    tags = list(anime.tags)
-
-    # Append non-hentai category names to tags
-    for cat in anime.categories:
-        if not cat.hentai and cat.name not in tags:
-            tags.append(cat.name)
+    tags = anime.content_tag_names
 
     # ── Objects / Dicts ──────────────────────────────────────────────────────
     aired_from = normalize_to_utc(start_date)

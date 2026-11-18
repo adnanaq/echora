@@ -159,7 +159,7 @@ def test_anime_from_anilist_month_without_day_sets_month_without_aired_dates() -
     result = anime_from_anilist(
         _anime(startDate={"year": 1977, "month": 10, "day": None})
     )
-    assert result["month"] == "October"
+    assert result["month"] == 10
     assert "aired_dates" not in result
 
 
@@ -530,7 +530,9 @@ def test_anime_from_anilist_without_rankings_omits_contextual_ranks() -> None:
     assert "contextual_ranks" not in statistics
 
 
-def test_anime_from_anilist_next_airing_episode_gives_broadcast_time_in_utc() -> None:
+def test_anime_from_anilist_next_airing_episode_gives_broadcast_time_and_number() -> (
+    None
+):
     result = anime_from_anilist(
         _anime(
             nextAiringEpisode={
@@ -541,6 +543,7 @@ def test_anime_from_anilist_next_airing_episode_gives_broadcast_time_in_utc() ->
         )
     )
     assert result["broadcast"]["next_episode_at"] == "2025-04-05T15:00:00Z"
+    assert result["broadcast"]["next_episode_number"] == 1110
 
 
 def test_anime_from_anilist_without_next_airing_episode_omits_broadcast() -> None:

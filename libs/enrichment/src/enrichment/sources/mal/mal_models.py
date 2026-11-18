@@ -15,7 +15,6 @@ from enrichment.sources.base.field_types import (
     strip_text_or_none,
 )
 from enrichment.sources.base.utils import (
-    month_name,
     parse_broadcast_string,
     parse_iso_date,
     parse_partial_date,
@@ -89,7 +88,7 @@ def _aired_and_premiered(aired: object, premiered: object) -> dict[str, Any]:
         An announced title without a day keeps its year and month:
 
         >>> _aired_and_premiered("Jul 2025", None)
-        {'aired_from': None, 'aired_to': None, 'season': None, 'year': 2025, 'month': 'July'}
+        {'aired_from': None, 'aired_to': None, 'season': None, 'year': 2025, 'month': 7}
         >>> _aired_and_premiered("Not available", None)
         {'aired_from': None, 'aired_to': None, 'season': None, 'year': None, 'month': None}
     """
@@ -103,7 +102,7 @@ def _aired_and_premiered(aired: object, premiered: object) -> dict[str, Any]:
         "aired_to": aired_to,
         "season": season,
         "year": aired_year if year is None else year,
-        "month": month_name(aired_month) if aired_from is None else None,
+        "month": aired_month if aired_from is None else None,
     }
 
 
@@ -215,7 +214,8 @@ class MalAnime(BaseModel):
     season: str | None = None  # Raw: "fall", "spring", etc. (lowercased)
     aired_from: str | None = None  # ISO date string parsed from "Oct 20, 1999 to ?"
     aired_to: str | None = None  # ISO date string; None if ongoing
-    month: str | None = None  # Premiere month name, set only when "Aired" gives no day
+    # Premiere month number, set only when "Aired" gives no day
+    month: int | None = None
     broadcast_day: str | None = None  # "Sundays"
     broadcast_time: str | None = None  # "23:15"
     broadcast_timezone: str | None = None  # "JST"

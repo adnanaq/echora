@@ -111,9 +111,11 @@ enum CompanyRole {
   COMPANY_ROLE_UNKNOWN = 4;
 }
 
-// Relation type between two anime entries (13 types).
+// Relation type between two anime entries (15 types).
 // ALTERNATIVE_VERSION = same story retold (e.g. TV vs. movie cut).
 // ALTERNATIVE_SETTING = same characters, different universe / AU.
+// SAME_FRANCHISE = another entry of the same franchise, with no narrower relation stated.
+// SAME_SETTING = same universe, world or timeline, with different characters.
 enum AnimeRelationType {
   ANIME_RELATION_TYPE_UNSPECIFIED = 0;
   ANIME_RELATION_TYPE_ADAPTATION = 1;
@@ -125,10 +127,12 @@ enum AnimeRelationType {
   ANIME_RELATION_TYPE_OTHER = 7;
   ANIME_RELATION_TYPE_PARENT_STORY = 8;
   ANIME_RELATION_TYPE_PREQUEL = 9;
-  ANIME_RELATION_TYPE_SEQUEL = 10;
-  ANIME_RELATION_TYPE_SIDE_STORY = 11;
-  ANIME_RELATION_TYPE_SPIN_OFF = 12;
-  ANIME_RELATION_TYPE_SUMMARY = 13;
+  ANIME_RELATION_TYPE_SAME_FRANCHISE = 10;
+  ANIME_RELATION_TYPE_SAME_SETTING = 11;
+  ANIME_RELATION_TYPE_SEQUEL = 12;
+  ANIME_RELATION_TYPE_SIDE_STORY = 13;
+  ANIME_RELATION_TYPE_SPIN_OFF = 14;
+  ANIME_RELATION_TYPE_SUMMARY = 15;
 }
 
 // Relation type between an anime and its source material.
@@ -181,6 +185,7 @@ message Broadcast {
   optional google.protobuf.Timestamp premiere_sub = 10;
   optional google.protobuf.Timestamp premiere_dub = 11;
   optional google.protobuf.Timestamp next_episode_at = 12;
+  optional int32 next_episode_number = 13;
 }
 
 // Hiatus information — replaces the old DelayInformation message.
@@ -319,10 +324,6 @@ message ProductionStaff {
   map<string, StaffMemberList> roles = 1;
 }
 
-message StaffData {
-  ProductionStaff production_staff = 1;
-}
-
 message ContextualRank {
   int32 rank = 1;
   string context = 2;
@@ -421,7 +422,7 @@ message Anime {
   int32 episode_count = 3;
   string id = 4;
   EntityType entity_type = 5;
-  optional string month = 6;
+  optional int32 month = 6;
   optional bool nsfw = 7;
   optional AnimeRating rating = 8;
   optional AnimeSeason season = 9;
@@ -454,7 +455,7 @@ message Anime {
   repeated ExternalLink external_sources = 33;
   AnimeImages images = 34;
   ScoreCalculations score = 35;
-  StaffData staff_data = 36;
+  ProductionStaff production_staff = 36;
   map<string, Statistics> statistics = 37;
   optional AnimeHiatus hiatus = 38;
   map<string, string> titles = 39;

@@ -15,6 +15,7 @@ from pydantic import (
 )
 
 ScoreOutOfTen = Annotated[float, Field(ge=0, le=10)]
+MonthNumber = Annotated[int, Field(ge=1, le=12)]
 
 
 # =============================================================================
@@ -462,6 +463,12 @@ class AnimeRelationType(ProviderMappedEnum):
 
     ALTERNATIVE_VERSION = same story retold (e.g. TV vs. movie cut).
     ALTERNATIVE_SETTING = same characters, different universe / AU.
+    SAME_FRANCHISE = another entry of the same franchise, with no narrower relation stated.
+    SAME_SETTING = same universe, world or timeline, with different characters.
+
+    Anime-Planet lists a work's whole franchise and labels most entries only "Same Franchise",
+    or not at all; those are SAME_FRANCHISE, not side stories. AniDB's "Same Setting" and
+    aniSearch's "Shared Universe" are SAME_SETTING, as AniDB defines it.
     """
 
     ADAPTATION = "ADAPTATION"
@@ -477,6 +484,8 @@ class AnimeRelationType(ProviderMappedEnum):
     OTHER = "OTHER"
     PARENT_STORY = "PARENT_STORY"
     PREQUEL = "PREQUEL"
+    SAME_FRANCHISE = "SAME_FRANCHISE"
+    SAME_SETTING = "SAME_SETTING"
     SEQUEL = "SEQUEL"
     SIDE_STORY = "SIDE_STORY"
     SPIN_OFF = "SPIN_OFF"
@@ -526,7 +535,7 @@ class AnimeRelationType(ProviderMappedEnum):
             "spinoffs": cls.SPIN_OFF,
             "alternatives": cls.ALTERNATIVE_VERSION,
             # AnimePlanet subtypes (relation_subtype field from RelatedEntry__subtitle)
-            "same franchise": cls.SIDE_STORY,
+            "same franchise": cls.SAME_FRANCHISE,
             "other franchise": cls.OTHER,
             "omake": cls.SIDE_STORY,
             "remake": cls.ALTERNATIVE_VERSION,
@@ -534,7 +543,7 @@ class AnimeRelationType(ProviderMappedEnum):
             "condensed version": cls.SUMMARY,
             "recap": cls.SUMMARY,
             # AniDB
-            "same setting": cls.SIDE_STORY,
+            "same setting": cls.SAME_SETTING,
             # AniSearch
             "main story": cls.PARENT_STORY,
             "complete story": cls.FULL_STORY,
@@ -544,8 +553,8 @@ class AnimeRelationType(ProviderMappedEnum):
             "original": cls.PARENT_STORY,
             "full version": cls.FULL_STORY,
             "alternative environment": cls.ALTERNATIVE_SETTING,
-            "shared universe": cls.SIDE_STORY,
-            "same origin": cls.SIDE_STORY,
+            "shared universe": cls.SAME_SETTING,
+            "same origin": cls.SAME_SETTING,
             "?": cls.OTHER,
         }
 
@@ -616,6 +625,10 @@ class Broadcast(StrictFieldsModel):
     # Next episode (from AniList)
     next_episode_at: datetime | None = Field(
         None, description="UTC datetime of next episode airing (from AniList)"
+    )
+    next_episode_number: NonNegativeInt | None = Field(
+        None,
+        description="Number of the episode airing at next_episode_at (from AniList)",
     )
 
 
@@ -845,14 +858,6 @@ class ProductionStaff(BaseModel):
         return {role: staff for role, staff in self.__pydantic_extra__.items() if staff}
 
 
-class StaffData(StrictFieldsModel):
-    """Comprehensive staff data structure"""
-
-    production_staff: ProductionStaff = Field(
-        default_factory=ProductionStaff, description="Production staff by role"
-    )
-
-
 class ContextualRank(StrictFieldsModel):
     """Contextual ranking information from platforms like AniList"""
 
@@ -937,7 +942,9 @@ class Anime(StrictFieldsModel):
         default=EntityType.ANIME,
         description="Entity type for vector search filtering",
     )
-    month: str | None = Field(None, description="Premiere month from AnimeSchedule")
+    month: MonthNumber | None = Field(
+        None, description="Premiere month number, 1 for January to 12 for December"
+    )
     nsfw: bool | None = Field(None, description="Not Safe For Work flag from Kitsu")
     rating: AnimeRating = Field(
         default=AnimeRating.UNKNOWN, description="Content rating (PG-13, R, etc.)"
@@ -1031,8 +1038,8 @@ class Anime(StrictFieldsModel):
     score: ScoreCalculations | None = Field(
         None, description="Aggregated score calculations from all platforms"
     )
-    staff_data: StaffData | None = Field(
-        None, description="Comprehensive staff data with multi-source integration"
+    production_staff: ProductionStaff | None = Field(
+        None, description="Production staff organized by role"
     )
     statistics: dict[str, Statistics] = Field(
         default_factory=dict,

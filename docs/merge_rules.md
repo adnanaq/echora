@@ -120,7 +120,7 @@ Disagreement on a field expected to be uniform is **logged**, because for those 
 | `related_anime`, `related_source_material` | See [Relationships](#relationships) |
 | `id` | Assigned at merge time, deterministic from the work's identity |
 | `score` | Computed from provider scores and vote counts — mean, median and a confidence-adjusted figure. See [Score](#score) |
-| `staff_data` | Computed. No provider supplies it |
+| `production_staff` | Computed. No provider supplies it |
 | `companies` | One list carrying roles, since a company can hold two on one anime. See [Companies](#companies) |
 
 Coverage note: AniDB supplies neither `genres` nor `duration`. AniDB is the only source of `titles`, and carries by far the most `tags` (122 against AniList's 32).
@@ -1078,6 +1078,9 @@ relation key**, carrying every source URL that mentioned it.
   survive only when every provider agrees there is nothing better. This is why
   AniDB's rank does not matter for relation type: it reports `UNKNOWN` for every
   observed relation, so the guard discards it whatever its position.
+- **General relations come second.** `SAME_FRANCHISE` says two works belong to one
+  franchise without saying how. A specific relation such as `SEQUEL` from any provider
+  beats it, whatever the provider's rank, and it beats `OTHER` and `UNKNOWN`.
 - **Ties** — `PROVIDER_PRIORITY`, concrete values only.
 - **`sources` and `images`** — union across providers, order-preserving.
 - **Scalars** — first non-null by priority.

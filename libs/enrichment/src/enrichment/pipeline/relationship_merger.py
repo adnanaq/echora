@@ -104,6 +104,10 @@ PROVIDER_FILES: dict[str, str] = {
     "kitsu": "kitsu_anime.jsonl",
 }
 
+# Relation types that name a link without saying how the works relate. A specific
+# relation from any provider beats them, but they still beat OTHER and UNKNOWN.
+_GENERAL_RELATIONS: frozenset[str] = frozenset({AnimeRelationType.SAME_FRANCHISE.value})
+
 # Values that carry no information and must never beat a concrete value.
 _SENTINELS: frozenset[str] = frozenset(
     {
@@ -528,6 +532,12 @@ def _pick_relation(
 ) -> str:
     """Choose the relation group a merged work belongs to.
 
+    Relation types are ranked in three tiers, each searched in source priority order:
+
+    - a specific relation, such as ``SEQUEL`` or ``SIDE_STORY``;
+    - a general relation (``SAME_FRANCHISE``), which names a link without saying how;
+    - ``OTHER`` or ``UNKNOWN``, which carry no information.
+
     The winning key is normalised through the enum so a provider's casing never
     reaches the output; ``validate`` requires canonical keys.
 
@@ -536,12 +546,12 @@ def _pick_relation(
         relation_enum: Relation type enum for this field.
 
     Returns:
-        The winning relation key; a concrete relation always beats ``OTHER``.
+        The winning relation key.
     """
-    for _, relation, _ in members:
-        if is_signal(relation):
-            return relation_enum(relation).value
-    return relation_enum(members[0][1]).value
+    relations = [relation_enum(relation).value for _, relation, _ in members]
+    specific = [r for r in relations if is_signal(r) and r not in _GENERAL_RELATIONS]
+    general = [r for r in relations if r in _GENERAL_RELATIONS]
+    return (specific or general or relations)[0]
 
 
 def _union(members: list[tuple[int, str, dict[str, Any]]], field: str) -> list[str]:

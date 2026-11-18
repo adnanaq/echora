@@ -121,6 +121,8 @@ class AnimeRelationType(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     ANIME_RELATION_TYPE_OTHER: _ClassVar[AnimeRelationType]
     ANIME_RELATION_TYPE_PARENT_STORY: _ClassVar[AnimeRelationType]
     ANIME_RELATION_TYPE_PREQUEL: _ClassVar[AnimeRelationType]
+    ANIME_RELATION_TYPE_SAME_FRANCHISE: _ClassVar[AnimeRelationType]
+    ANIME_RELATION_TYPE_SAME_SETTING: _ClassVar[AnimeRelationType]
     ANIME_RELATION_TYPE_SEQUEL: _ClassVar[AnimeRelationType]
     ANIME_RELATION_TYPE_SIDE_STORY: _ClassVar[AnimeRelationType]
     ANIME_RELATION_TYPE_SPIN_OFF: _ClassVar[AnimeRelationType]
@@ -224,6 +226,8 @@ ANIME_RELATION_TYPE_FULL_STORY: AnimeRelationType
 ANIME_RELATION_TYPE_OTHER: AnimeRelationType
 ANIME_RELATION_TYPE_PARENT_STORY: AnimeRelationType
 ANIME_RELATION_TYPE_PREQUEL: AnimeRelationType
+ANIME_RELATION_TYPE_SAME_FRANCHISE: AnimeRelationType
+ANIME_RELATION_TYPE_SAME_SETTING: AnimeRelationType
 ANIME_RELATION_TYPE_SEQUEL: AnimeRelationType
 ANIME_RELATION_TYPE_SIDE_STORY: AnimeRelationType
 ANIME_RELATION_TYPE_SPIN_OFF: AnimeRelationType
@@ -259,7 +263,7 @@ class AiredDates(_message.Message):
     def __init__(self, aired_from: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., aired_to: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...
 
 class Broadcast(_message.Message):
-    __slots__ = ("day", "time", "timezone", "jp_time", "sub_time", "dub_time", "sub_delay_days", "dub_delay_days", "premiere_jp", "premiere_sub", "premiere_dub", "next_episode_at")
+    __slots__ = ("day", "time", "timezone", "jp_time", "sub_time", "dub_time", "sub_delay_days", "dub_delay_days", "premiere_jp", "premiere_sub", "premiere_dub", "next_episode_at", "next_episode_number")
     DAY_FIELD_NUMBER: _ClassVar[int]
     TIME_FIELD_NUMBER: _ClassVar[int]
     TIMEZONE_FIELD_NUMBER: _ClassVar[int]
@@ -272,6 +276,7 @@ class Broadcast(_message.Message):
     PREMIERE_SUB_FIELD_NUMBER: _ClassVar[int]
     PREMIERE_DUB_FIELD_NUMBER: _ClassVar[int]
     NEXT_EPISODE_AT_FIELD_NUMBER: _ClassVar[int]
+    NEXT_EPISODE_NUMBER_FIELD_NUMBER: _ClassVar[int]
     day: str
     time: str
     timezone: str
@@ -284,7 +289,8 @@ class Broadcast(_message.Message):
     premiere_sub: _timestamp_pb2.Timestamp
     premiere_dub: _timestamp_pb2.Timestamp
     next_episode_at: _timestamp_pb2.Timestamp
-    def __init__(self, day: _Optional[str] = ..., time: _Optional[str] = ..., timezone: _Optional[str] = ..., jp_time: _Optional[str] = ..., sub_time: _Optional[str] = ..., dub_time: _Optional[str] = ..., sub_delay_days: _Optional[int] = ..., dub_delay_days: _Optional[int] = ..., premiere_jp: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., premiere_sub: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., premiere_dub: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., next_episode_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...
+    next_episode_number: int
+    def __init__(self, day: _Optional[str] = ..., time: _Optional[str] = ..., timezone: _Optional[str] = ..., jp_time: _Optional[str] = ..., sub_time: _Optional[str] = ..., dub_time: _Optional[str] = ..., sub_delay_days: _Optional[int] = ..., dub_delay_days: _Optional[int] = ..., premiere_jp: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., premiere_sub: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., premiere_dub: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., next_episode_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., next_episode_number: _Optional[int] = ...) -> None: ...
 
 class AnimeHiatus(_message.Message):
     __slots__ = ("reason", "hiatus_from", "hiatus_until")
@@ -518,12 +524,6 @@ class ProductionStaff(_message.Message):
     roles: _containers.MessageMap[str, StaffMemberList]
     def __init__(self, roles: _Optional[_Mapping[str, StaffMemberList]] = ...) -> None: ...
 
-class StaffData(_message.Message):
-    __slots__ = ("production_staff",)
-    PRODUCTION_STAFF_FIELD_NUMBER: _ClassVar[int]
-    production_staff: ProductionStaff
-    def __init__(self, production_staff: _Optional[_Union[ProductionStaff, _Mapping]] = ...) -> None: ...
-
 class ContextualRank(_message.Message):
     __slots__ = ("rank", "context", "format", "year", "season", "all_time")
     RANK_FIELD_NUMBER: _ClassVar[int]
@@ -705,7 +705,7 @@ class Episode(_message.Message):
     def __init__(self, aired: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., anime_id: _Optional[str] = ..., description: _Optional[str] = ..., duration: _Optional[int] = ..., episode_number: _Optional[int] = ..., filler: _Optional[bool] = ..., id: _Optional[str] = ..., entity_type: _Optional[_Union[EntityType, str]] = ..., recap: _Optional[bool] = ..., score: _Optional[float] = ..., season_number: _Optional[int] = ..., synopsis: _Optional[str] = ..., title: _Optional[str] = ..., title_japanese: _Optional[str] = ..., title_romaji: _Optional[str] = ..., images: _Optional[_Iterable[str]] = ..., streaming: _Optional[_Mapping[str, str]] = ..., sources: _Optional[_Iterable[str]] = ..., characters: _Optional[_Iterable[_Union[EpisodeCharacter, _Mapping]]] = ..., staff: _Optional[_Iterable[_Union[EpisodeStaff, _Mapping]]] = ..., titles: _Optional[_Mapping[str, str]] = ...) -> None: ...
 
 class Anime(_message.Message):
-    __slots__ = ("background", "country_of_origin", "duration", "episode_count", "id", "entity_type", "month", "nsfw", "rating", "season", "source_material", "status", "synopsis", "title", "title_english", "title_japanese", "type", "year", "content_warnings", "demographics", "ending_themes", "genres", "opening_themes", "related_anime", "related_source_material", "sources", "streaming_sources", "synonyms", "tags", "themes", "trailers", "aired_dates", "broadcast", "external_sources", "images", "score", "staff_data", "statistics", "hiatus", "titles", "companies", "partial_sources")
+    __slots__ = ("background", "country_of_origin", "duration", "episode_count", "id", "entity_type", "month", "nsfw", "rating", "season", "source_material", "status", "synopsis", "title", "title_english", "title_japanese", "type", "year", "content_warnings", "demographics", "ending_themes", "genres", "opening_themes", "related_anime", "related_source_material", "sources", "streaming_sources", "synonyms", "tags", "themes", "trailers", "aired_dates", "broadcast", "external_sources", "images", "score", "production_staff", "statistics", "hiatus", "titles", "companies", "partial_sources")
     class RelatedAnimeEntry(_message.Message):
         __slots__ = ("key", "value")
         KEY_FIELD_NUMBER: _ClassVar[int]
@@ -770,7 +770,7 @@ class Anime(_message.Message):
     EXTERNAL_SOURCES_FIELD_NUMBER: _ClassVar[int]
     IMAGES_FIELD_NUMBER: _ClassVar[int]
     SCORE_FIELD_NUMBER: _ClassVar[int]
-    STAFF_DATA_FIELD_NUMBER: _ClassVar[int]
+    PRODUCTION_STAFF_FIELD_NUMBER: _ClassVar[int]
     STATISTICS_FIELD_NUMBER: _ClassVar[int]
     HIATUS_FIELD_NUMBER: _ClassVar[int]
     TITLES_FIELD_NUMBER: _ClassVar[int]
@@ -782,7 +782,7 @@ class Anime(_message.Message):
     episode_count: int
     id: str
     entity_type: EntityType
-    month: str
+    month: int
     nsfw: bool
     rating: AnimeRating
     season: AnimeSeason
@@ -812,13 +812,13 @@ class Anime(_message.Message):
     external_sources: _containers.RepeatedCompositeFieldContainer[ExternalLink]
     images: AnimeImages
     score: ScoreCalculations
-    staff_data: StaffData
+    production_staff: ProductionStaff
     statistics: _containers.MessageMap[str, Statistics]
     hiatus: AnimeHiatus
     titles: _containers.ScalarMap[str, str]
     companies: _containers.RepeatedCompositeFieldContainer[CompanyEntry]
     partial_sources: _containers.RepeatedScalarFieldContainer[str]
-    def __init__(self, background: _Optional[str] = ..., country_of_origin: _Optional[str] = ..., duration: _Optional[int] = ..., episode_count: _Optional[int] = ..., id: _Optional[str] = ..., entity_type: _Optional[_Union[EntityType, str]] = ..., month: _Optional[str] = ..., nsfw: _Optional[bool] = ..., rating: _Optional[_Union[AnimeRating, str]] = ..., season: _Optional[_Union[AnimeSeason, str]] = ..., source_material: _Optional[_Union[SourceMaterialType, str]] = ..., status: _Optional[_Union[AnimeStatus, str]] = ..., synopsis: _Optional[str] = ..., title: _Optional[str] = ..., title_english: _Optional[str] = ..., title_japanese: _Optional[str] = ..., type: _Optional[_Union[AnimeType, str]] = ..., year: _Optional[int] = ..., content_warnings: _Optional[_Iterable[str]] = ..., demographics: _Optional[_Iterable[str]] = ..., ending_themes: _Optional[_Iterable[_Union[ThemeSong, _Mapping]]] = ..., genres: _Optional[_Iterable[str]] = ..., opening_themes: _Optional[_Iterable[_Union[ThemeSong, _Mapping]]] = ..., related_anime: _Optional[_Mapping[str, RelatedAnimeList]] = ..., related_source_material: _Optional[_Mapping[str, RelatedSourceMaterialList]] = ..., sources: _Optional[_Iterable[str]] = ..., streaming_sources: _Optional[_Iterable[_Union[StreamingEntry, _Mapping]]] = ..., synonyms: _Optional[_Iterable[str]] = ..., tags: _Optional[_Iterable[str]] = ..., themes: _Optional[_Iterable[_Union[ThemeEntry, _Mapping]]] = ..., trailers: _Optional[_Iterable[_Union[TrailerEntry, _Mapping]]] = ..., aired_dates: _Optional[_Union[AiredDates, _Mapping]] = ..., broadcast: _Optional[_Union[Broadcast, _Mapping]] = ..., external_sources: _Optional[_Iterable[_Union[ExternalLink, _Mapping]]] = ..., images: _Optional[_Union[AnimeImages, _Mapping]] = ..., score: _Optional[_Union[ScoreCalculations, _Mapping]] = ..., staff_data: _Optional[_Union[StaffData, _Mapping]] = ..., statistics: _Optional[_Mapping[str, Statistics]] = ..., hiatus: _Optional[_Union[AnimeHiatus, _Mapping]] = ..., titles: _Optional[_Mapping[str, str]] = ..., companies: _Optional[_Iterable[_Union[CompanyEntry, _Mapping]]] = ..., partial_sources: _Optional[_Iterable[str]] = ...) -> None: ...
+    def __init__(self, background: _Optional[str] = ..., country_of_origin: _Optional[str] = ..., duration: _Optional[int] = ..., episode_count: _Optional[int] = ..., id: _Optional[str] = ..., entity_type: _Optional[_Union[EntityType, str]] = ..., month: _Optional[int] = ..., nsfw: _Optional[bool] = ..., rating: _Optional[_Union[AnimeRating, str]] = ..., season: _Optional[_Union[AnimeSeason, str]] = ..., source_material: _Optional[_Union[SourceMaterialType, str]] = ..., status: _Optional[_Union[AnimeStatus, str]] = ..., synopsis: _Optional[str] = ..., title: _Optional[str] = ..., title_english: _Optional[str] = ..., title_japanese: _Optional[str] = ..., type: _Optional[_Union[AnimeType, str]] = ..., year: _Optional[int] = ..., content_warnings: _Optional[_Iterable[str]] = ..., demographics: _Optional[_Iterable[str]] = ..., ending_themes: _Optional[_Iterable[_Union[ThemeSong, _Mapping]]] = ..., genres: _Optional[_Iterable[str]] = ..., opening_themes: _Optional[_Iterable[_Union[ThemeSong, _Mapping]]] = ..., related_anime: _Optional[_Mapping[str, RelatedAnimeList]] = ..., related_source_material: _Optional[_Mapping[str, RelatedSourceMaterialList]] = ..., sources: _Optional[_Iterable[str]] = ..., streaming_sources: _Optional[_Iterable[_Union[StreamingEntry, _Mapping]]] = ..., synonyms: _Optional[_Iterable[str]] = ..., tags: _Optional[_Iterable[str]] = ..., themes: _Optional[_Iterable[_Union[ThemeEntry, _Mapping]]] = ..., trailers: _Optional[_Iterable[_Union[TrailerEntry, _Mapping]]] = ..., aired_dates: _Optional[_Union[AiredDates, _Mapping]] = ..., broadcast: _Optional[_Union[Broadcast, _Mapping]] = ..., external_sources: _Optional[_Iterable[_Union[ExternalLink, _Mapping]]] = ..., images: _Optional[_Union[AnimeImages, _Mapping]] = ..., score: _Optional[_Union[ScoreCalculations, _Mapping]] = ..., production_staff: _Optional[_Union[ProductionStaff, _Mapping]] = ..., statistics: _Optional[_Mapping[str, Statistics]] = ..., hiatus: _Optional[_Union[AnimeHiatus, _Mapping]] = ..., titles: _Optional[_Mapping[str, str]] = ..., companies: _Optional[_Iterable[_Union[CompanyEntry, _Mapping]]] = ..., partial_sources: _Optional[_Iterable[str]] = ...) -> None: ...
 
 class AnimeRecord(_message.Message):
     __slots__ = ("anime", "characters", "episodes")

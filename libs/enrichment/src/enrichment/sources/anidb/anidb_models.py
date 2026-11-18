@@ -7,6 +7,7 @@ XML tag names are used where no canonical equivalent exists.
 
 from typing import Annotated, Self
 
+from enrichment.sources.anidb.anidb_heading_tags import HEADING_TAG_PATHS
 from enrichment.sources.base.field_types import strip_text_or_none
 from pydantic import BaseModel, BeforeValidator, ConfigDict, model_validator
 
@@ -162,13 +163,39 @@ class AniDBRelatedAnime(BaseModel):
     title: str | None = None
 
 
-class AniDBCategory(BaseModel):
+class AniDBTag(BaseModel):
+    """One ``<tag>`` of an anime: its id, its parent in AniDB's tag tree, and its name."""
+
     model_config = ConfigDict(extra="forbid")
 
-    id: str | None = None
+    id: str
+    parent_id: str | None = (
+        None  # <tag parentid>; absent on the tree's top-level branches
+    )
     name: str
-    weight: Count = 0
-    hentai: bool = False
+
+    def build_path(self, tags_by_id: dict[str, AniDBTag]) -> str:
+        """Build the tag's path in AniDB's tag tree, such as ``/setting/time``.
+
+        AniDB lists every ancestor of an applied tag in the same response, so the parents
+        are looked up in that response's tags.
+
+        Args:
+            tags_by_id: Every tag of the same response, keyed by id.
+
+        Returns:
+            The names from the top of the tree down to this tag, each after a ``/``. A parent
+            missing from the response ends the path there.
+        """
+        names = [self.name]
+        visited_ids = {self.id}
+        parent_id = self.parent_id
+        while parent_id in tags_by_id and parent_id not in visited_ids:
+            visited_ids.add(parent_id)
+            parent = tags_by_id[parent_id]
+            names.append(parent.name)
+            parent_id = parent.parent_id
+        return "/" + "/".join(reversed(names))
 
 
 class AniDBRatings(BaseModel):
@@ -221,16 +248,32 @@ class AniDBAnime(BaseModel):
     ] = {}  # type="official" other langs → canonical Anime.titles
 
     # Array elements
-    categories: list[AniDBCategory] = []
     characters: list[AniDBCharacter] = []
     creators: list[AniDBCreator] = []
     episodes: list[AniDBEpisode] = []
     related_anime: list[AniDBRelatedAnime] = []
     resources: list[AniDBExternalResource] = []
-    tags: list[str] = []
+    tags: list[AniDBTag] = []
 
     # Object fields
     ratings: AniDBRatings | None = None
+
+    @property
+    def content_tag_names(self) -> list[str]:
+        """Return the names of the tags that describe the anime, leaving out heading tags.
+
+        Heading tags are the branches of AniDB's tag tree, such as ``themes`` or
+        ``maintenance tags``, listed in ``HEADING_TAG_PATHS``.
+
+        Returns:
+            The tag names in response order, without heading tags.
+        """
+        tags_by_id = {tag.id: tag for tag in self.tags}
+        return [
+            tag.name
+            for tag in self.tags
+            if tag.build_path(tags_by_id) not in HEADING_TAG_PATHS
+        ]
 
 
 # =============================================================================

@@ -1,7 +1,7 @@
 """Unit tests for anidb_xml_parser.py — parse_anime_xml and all private parsers."""
 
 import pytest
-from enrichment.sources.anidb.anidb_models import AniDBAnime
+from enrichment.sources.anidb.anidb_models import AniDBAnime, AniDBTag
 from enrichment.sources.anidb.anidb_xml_parser import parse_anime_xml
 
 # =============================================================================
@@ -163,51 +163,6 @@ def test_parse_official_title_other_langs() -> None:
     result = parse_anime_xml(xml)
     assert result.title_others["de"] == "Dandadan DE"
     assert result.title_others["ko"] == "단다단"
-
-
-# =============================================================================
-# parse_anime_xml — categories
-# =============================================================================
-
-
-def test_parse_categories_count(onepiece_anime: AniDBAnime) -> None:
-    # One Piece has no categories in this fixture (empty <categories>)
-    assert isinstance(onepiece_anime.categories, list)
-
-
-def test_parse_categories_fields() -> None:
-    xml = _anime("""
-        <categories>
-            <category id="1" weight="600" hentai="false">
-                <name>Action</name>
-            </category>
-            <category id="2" weight="100" hentai="true">
-                <name>Ecchi</name>
-            </category>
-        </categories>
-    """)
-    result = parse_anime_xml(xml)
-    assert len(result.categories) == 2
-    assert result.categories[0].name == "Action"
-    assert result.categories[0].hentai is False
-    assert result.categories[1].hentai is True
-
-
-def test_parse_category_without_name_skipped() -> None:
-    xml = _anime("""
-        <categories>
-            <category id="1" weight="100"></category>
-            <category id="2" weight="200"><name>Valid</name></category>
-        </categories>
-    """)
-    result = parse_anime_xml(xml)
-    assert len(result.categories) == 1
-    assert result.categories[0].name == "Valid"
-
-
-def test_parse_categories_absent() -> None:
-    result = parse_anime_xml(_anime(""))
-    assert result.categories == []
 
 
 # =============================================================================
@@ -581,12 +536,15 @@ def test_parse_tags_empty_filtered() -> None:
         <tags>
             <tag id="1" weight="100"><name>action</name></tag>
             <tag id="2" weight="0"><name></name></tag>
-            <tag id="3" weight="50"><name>adventure</name></tag>
+            <tag weight="50"><name>no id</name></tag>
+            <tag id="3" parentid="1" weight="50"><name>slapstick</name></tag>
         </tags>
     """)
     result = parse_anime_xml(xml)
-    assert result.tags == ["action", "adventure"]
-    assert "" not in result.tags
+    assert result.tags == [
+        AniDBTag(id="1", name="action"),
+        AniDBTag(id="3", parent_id="1", name="slapstick"),
+    ]
 
 
 def test_parse_tags_absent() -> None:

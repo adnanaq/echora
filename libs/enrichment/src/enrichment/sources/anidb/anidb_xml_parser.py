@@ -16,7 +16,6 @@ from xml.etree.ElementTree import Element
 import defusedxml.ElementTree as ET
 from enrichment.sources.anidb.anidb_models import (
     AniDBAnime,
-    AniDBCategory,
     AniDBCharacter,
     AniDBCreator,
     AniDBEpisode,
@@ -24,6 +23,7 @@ from enrichment.sources.anidb.anidb_models import (
     AniDBRatings,
     AniDBRelatedAnime,
     AniDBSeiyuu,
+    AniDBTag,
 )
 
 logger = logging.getLogger(__name__)
@@ -80,7 +80,6 @@ def parse_anime_xml(xml_content: str) -> AniDBAnime:
             "picture": _text(root, "picture"),
             "url": _text(root, "url"),
             **_parse_titles(root),
-            "categories": _parse_categories(root),
             "characters": _parse_characters(root),
             "creators": _parse_creators(root),
             "episodes": _parse_episodes(root),
@@ -155,40 +154,6 @@ def _parse_titles(root: Element) -> _TitlesDict:
 # =============================================================================
 # ARRAY PARSERS
 # =============================================================================
-
-
-def _parse_categories(root: Element) -> list[AniDBCategory]:
-    """Extract categories from the ``<categories>`` element.
-
-    Each ``<category>`` must have a ``<name>`` child element; entries without
-    one are skipped.
-
-    Args:
-        root: Root ``<anime>`` XML element.
-
-    Returns:
-        List of AniDBCategory models. Empty list if element is absent.
-    """
-    categories_elem = root.find("categories")
-    if categories_elem is None:
-        return []
-
-    result = []
-    for category in categories_elem.findall("category"):
-        name_elem = category.find("name")
-        if name_elem is None or not name_elem.text:
-            continue
-        result.append(
-            AniDBCategory.model_validate(
-                {
-                    "id": category.get("id"),
-                    "name": name_elem.text,
-                    "weight": category.get("weight"),
-                    "hentai": category.get("hentai", "false").lower() == "true",
-                }
-            )
-        )
-    return result
 
 
 def _parse_characters(root: Element) -> list[AniDBCharacter]:
@@ -409,25 +374,28 @@ def _parse_resources(root: Element) -> list[AniDBExternalResource]:
     return result
 
 
-def _parse_tags(root: Element) -> list[str]:
-    """Extract tag name strings from the ``<tags>`` element.
+def _parse_tags(root: Element) -> list[AniDBTag]:
+    """Extract each ``<tag>`` of the ``<tags>`` element with its id, parent id and name.
 
-    Only the ``<name>`` child text of each ``<tag>`` is collected; weight,
-    id, and hentai attributes are ignored here (categories cover hentai).
+    The ``parentid`` attribute places the tag in AniDB's tag tree, which the model uses to
+    tell heading tags from tags that describe the anime. A tag without an id or a name is
+    skipped.
 
     Args:
         root: Root ``<anime>`` XML element.
 
     Returns:
-        List of tag name strings. Empty list if element is absent.
+        The tags in document order. Empty list if the element is absent.
     """
     tags_elem = root.find("tags")
     if tags_elem is None:
         return []
     return [
-        name_elem.text
+        AniDBTag(id=tag_id, parent_id=tag.get("parentid"), name=name_elem.text)
         for tag in tags_elem.findall("tag")
-        if (name_elem := tag.find("name")) is not None and name_elem.text
+        if (tag_id := tag.get("id"))
+        and (name_elem := tag.find("name")) is not None
+        and name_elem.text
     ]
 
 

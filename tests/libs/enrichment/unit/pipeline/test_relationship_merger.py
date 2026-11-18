@@ -341,3 +341,23 @@ def test_validate_reports_an_entry_the_models_reject() -> None:
     assert len(errors) == 2
     assert any("SIDE_STORY/'X'" in error for error in errors)
     assert any("ADAPTATION/'Y'" in error for error in errors)
+
+
+def test_merge_relation_field_specific_relation_beats_higher_ranked_same_franchise() -> (
+    None
+):
+    per_provider = {
+        "anime_planet": {"SAME_FRANCHISE": [_entry("Work", _url(1))]},
+        "kitsu": {"SEQUEL": [_entry("Work", _url(1))]},
+    }
+    merged = merge_relation_field(per_provider, is_source_material=False)
+    assert list(merged) == ["SEQUEL"]
+
+
+def test_merge_relation_field_same_franchise_beats_higher_ranked_other() -> None:
+    per_provider = {
+        "mal": {"OTHER": [_entry("Work", _url(1))]},
+        "anime_planet": {"SAME_FRANCHISE": [_entry("Work", _url(1))]},
+    }
+    merged = merge_relation_field(per_provider, is_source_material=False)
+    assert list(merged) == ["SAME_FRANCHISE"]

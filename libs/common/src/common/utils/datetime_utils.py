@@ -4,6 +4,23 @@ from datetime import UTC, datetime, time, timedelta, timezone
 
 from common.models.anime import AnimeSeason, AnimeStatus
 
+# English month names, fixed rather than read from the process locale: provider
+# pages are in English whatever locale the service runs in.
+ENGLISH_MONTH_NAMES = (
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+)
+
 # Japan keeps no daylight saving, so a fixed offset is exact all year.
 JAPAN_TIME = timezone(timedelta(hours=9), "JST")
 

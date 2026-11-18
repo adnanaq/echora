@@ -38,6 +38,7 @@ message WorkEntry {
   // Each page of the entry, in the entry's order. A list, not a map: a proto
   // map keeps no order, and enrichment fetches each provider's first address.
   repeated PageAddress addresses_by_page_key = 5;
+  repeated PageAddress partial_addresses_by_page_key = 6;
 }
 
 // One entry of a case, by its reference page.

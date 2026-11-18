@@ -141,10 +141,8 @@ def test_anime_from_anisearch_year_only_start_sets_year_without_season_month_or_
 
 
 def test_anime_from_anisearch_month_and_year_start_sets_year_and_month() -> None:
-    mapped = anime_from_anisearch(
-        AniSearchAnime(start_year=2008, start_month="November")
-    )
-    assert (mapped["year"], mapped["month"]) == (2008, "November")
+    mapped = anime_from_anisearch(AniSearchAnime(start_year=2008, start_month=11))
+    assert (mapped["year"], mapped["month"]) == (2008, 11)
     assert "aired_dates" not in mapped
 
 

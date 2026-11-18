@@ -323,17 +323,17 @@ def test_anime_from_animeplanet_related_anime_grouped_by_relation_with_full_urls
     assert related["SEQUEL"][0]["sources"] == [
         "https://www.anime-planet.com/anime/sequel"
     ]
-    assert related["SIDE_STORY"][0]["type"] == "TV SPECIAL"
+    assert related["SAME_FRANCHISE"][0]["type"] == "TV SPECIAL"
     assert related["OTHER"][0]["sources"] == [
         "https://www.anime-planet.com/anime/crossover"
     ]
 
 
-def test_anime_from_animeplanet_related_anime_without_relation_counts_as_side_story() -> (
+def test_anime_from_animeplanet_related_anime_without_relation_counts_as_same_franchise() -> (
     None
 ):
     mapped = anime_from_animeplanet(_anime(related_anime=[_related("Film")]))
-    assert mapped["related_anime"]["SIDE_STORY"][0]["title"] == "Film"
+    assert mapped["related_anime"]["SAME_FRANCHISE"][0]["title"] == "Film"
 
 
 def test_anime_from_animeplanet_related_anime_episode_count_kept_when_stated() -> None:
@@ -346,7 +346,7 @@ def test_anime_from_animeplanet_related_anime_episode_count_kept_when_stated() -
         )
     )
     by_title = {
-        entry["title"]: entry for entry in mapped["related_anime"]["SIDE_STORY"]
+        entry["title"]: entry for entry in mapped["related_anime"]["SAME_FRANCHISE"]
     }
     assert by_title["Special"]["episode_count"] == 3
     assert "episode_count" not in by_title["Film"]
@@ -557,3 +557,18 @@ def test_character_from_animeplanet_voice_actors_named_by_language_without_repea
     assert mapped["voice_actors"][0]["sources"] == [
         "https://www.anime-planet.com/people/mayumi-tanaka"
     ]
+
+
+def test_anime_from_animeplanet_side_story_label_kept_as_side_story() -> None:
+    mapped = anime_from_animeplanet(
+        _anime(
+            related_anime=[
+                _related("Bonus", relation_subtype="Omake"),
+                _related("Spin", relation_subtype="Side Story"),
+                _related("Franchise", relation_subtype="Same Franchise"),
+            ]
+        )
+    )
+    related = mapped["related_anime"]
+    assert [entry["title"] for entry in related["SIDE_STORY"]] == ["Bonus", "Spin"]
+    assert [entry["title"] for entry in related["SAME_FRANCHISE"]] == ["Franchise"]

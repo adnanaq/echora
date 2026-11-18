@@ -45,7 +45,6 @@ from enrichment.sources.anilist.anilist_character_models import (
 )
 from enrichment.sources.base.companies import companies_from_roles
 from enrichment.sources.base.external_links import external_link
-from enrichment.sources.base.utils import month_name
 from enrichment.utils.text_utils import normalize_score
 
 # AniList relation types that represent the anime being the SOURCE of a relation
@@ -180,7 +179,7 @@ def anime_from_anilist(anime: AniListAnime) -> dict[str, Any]:
         if aired_from or aired_to
         else None
     )
-    month = month_name(start.month) if start and start.month and not start.day else None
+    month = start.month if start and start.month and not start.day else None
     country_of_origin = anime.country_of_origin
 
     # ── Sources ───────────────────────────────────────────────────────────────
@@ -280,7 +279,8 @@ def anime_from_anilist(anime: AniListAnime) -> dict[str, Any]:
         broadcast = Broadcast(
             next_episode_at=datetime.fromtimestamp(
                 anime.next_airing_episode.airing_at, tz=UTC
-            )
+            ),
+            next_episode_number=anime.next_airing_episode.episode,
         )
 
     # ── Relations ─────────────────────────────────────────────────────────────

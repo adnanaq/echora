@@ -7,7 +7,6 @@ from enrichment.sources.anidb.anidb_mapper import (
 )
 from enrichment.sources.anidb.anidb_models import (
     AniDBAnime,
-    AniDBCategory,
     AniDBCharacter,
     AniDBCharacterPage,
     AniDBCreator,
@@ -16,6 +15,7 @@ from enrichment.sources.anidb.anidb_models import (
     AniDBRatings,
     AniDBRelatedAnime,
     AniDBSeiyuu,
+    AniDBTag,
 )
 
 CDN_BASE = "https://cdn-eu.anidb.net/images/main"
@@ -131,16 +131,14 @@ def test_anime_from_anidb_without_picture_gives_no_covers() -> None:
     assert _map(picture=None)["images"]["covers"] == []
 
 
-def test_anime_from_anidb_non_hentai_categories_added_to_tags_once() -> None:
+def test_anime_from_anidb_heading_tags_left_out_of_tags() -> None:
     result = _map(
-        tags=["Action"],
-        categories=[
-            AniDBCategory(name="Action", hentai=False),
-            AniDBCategory(name="Pirates", hentai=False),
-            AniDBCategory(name="Ecchi", hentai=True),
-        ],
+        tags=[
+            AniDBTag(id="2607", name="themes"),
+            AniDBTag(id="36", parent_id="2607", name="military"),
+        ]
     )
-    assert result["tags"] == ["Action", "Pirates"]
+    assert result["tags"] == ["military"]
 
 
 def test_anime_from_anidb_other_language_titles_become_titles() -> None:
@@ -679,3 +677,15 @@ def test_character_from_anidb_one_piece_xml_main_character_has_role_and_voice_ac
     result = character_from_anidb(main_character)
     assert "MAIN" in result["roles"]
     assert result["voice_actors"]
+
+
+def test_anime_from_anidb_same_setting_relation_kept_apart_from_side_story() -> None:
+    result = _map(
+        related_anime=[
+            AniDBRelatedAnime(id=1, title="Other Cast", relation_type="Same Setting"),
+            AniDBRelatedAnime(id=2, title="Movie", relation_type="Side Story"),
+        ]
+    )
+    related = result["related_anime"]
+    assert [entry["title"] for entry in related["SAME_SETTING"]] == ["Other Cast"]
+    assert [entry["title"] for entry in related["SIDE_STORY"]] == ["Movie"]

@@ -19,18 +19,20 @@ class PageAddress(_message.Message):
     def __init__(self, page_key: _Optional[str] = ..., address: _Optional[str] = ...) -> None: ...
 
 class WorkEntry(_message.Message):
-    __slots__ = ("title", "type", "year", "season", "addresses_by_page_key")
+    __slots__ = ("title", "type", "year", "season", "addresses_by_page_key", "partial_addresses_by_page_key")
     TITLE_FIELD_NUMBER: _ClassVar[int]
     TYPE_FIELD_NUMBER: _ClassVar[int]
     YEAR_FIELD_NUMBER: _ClassVar[int]
     SEASON_FIELD_NUMBER: _ClassVar[int]
     ADDRESSES_BY_PAGE_KEY_FIELD_NUMBER: _ClassVar[int]
+    PARTIAL_ADDRESSES_BY_PAGE_KEY_FIELD_NUMBER: _ClassVar[int]
     title: str
     type: str
     year: int
     season: str
     addresses_by_page_key: _containers.RepeatedCompositeFieldContainer[PageAddress]
-    def __init__(self, title: _Optional[str] = ..., type: _Optional[str] = ..., year: _Optional[int] = ..., season: _Optional[str] = ..., addresses_by_page_key: _Optional[_Iterable[_Union[PageAddress, _Mapping]]] = ...) -> None: ...
+    partial_addresses_by_page_key: _containers.RepeatedCompositeFieldContainer[PageAddress]
+    def __init__(self, title: _Optional[str] = ..., type: _Optional[str] = ..., year: _Optional[int] = ..., season: _Optional[str] = ..., addresses_by_page_key: _Optional[_Iterable[_Union[PageAddress, _Mapping]]] = ..., partial_addresses_by_page_key: _Optional[_Iterable[_Union[PageAddress, _Mapping]]] = ...) -> None: ...
 
 class CaseEntry(_message.Message):
     __slots__ = ("reference_page", "entry")
