@@ -2,5 +2,5 @@
 
 files(
     name="sources",
-    sources=["Cargo.toml", "src/**/*.rs", "migrations/**/*.sql"],
+    sources=["Cargo.toml", "build.rs", "src/**/*.rs", "migrations/**/*.sql"],
 )

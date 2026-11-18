@@ -32,11 +32,32 @@ ENUM_TABLE_MAP: dict[str, type[StrEnum]] = {
     "source_material_relation_type": SourceMaterialRelationType,
 }
 
+_SQL_TOKEN_PATTERN = re.compile(
+    r"'(?:[^']|'')*'|--[^\n]*|/\*.*?\*/",
+    re.DOTALL,
+)
 _INSERT_PATTERN = re.compile(
-    r"INSERT\s+INTO\s+(?P<table>[a-z_]+)\s+VALUES\s*(?P<values>.*?);",
+    r"INSERT\s+INTO\s+(?P<table>[a-z_]+)(?:\s*\([^)]*\))?\s+VALUES\s*(?P<values>.*?);",
     re.IGNORECASE | re.DOTALL,
 )
 _STRING_LITERAL_PATTERN = re.compile(r"'((?:[^']|'')*)'")
+
+
+def strip_sql_comments(sql_text: str) -> str:
+    """Remove line and block SQL comments while preserving string literals.
+
+    Args:
+        sql_text: Raw SQL migration file contents.
+
+    Returns:
+        SQL text with comments replaced by spaces and string literals intact.
+    """
+
+    def _replace_token(match: re.Match[str]) -> str:
+        token = match.group(0)
+        return token if token.startswith("'") else " "
+
+    return _SQL_TOKEN_PATTERN.sub(_replace_token, sql_text)
 
 
 def extract_inserted_values(migrations_dir: Path) -> dict[str, set[str]]:
@@ -50,8 +71,8 @@ def extract_inserted_values(migrations_dir: Path) -> dict[str, set[str]]:
     """
     inserted_by_table: dict[str, set[str]] = {}
     for migration_path in sorted(migrations_dir.glob("*.sql")):
-        sql_text = migration_path.read_text(encoding="utf-8")
-        for match in _INSERT_PATTERN.finditer(sql_text):
+        cleaned_sql = strip_sql_comments(migration_path.read_text(encoding="utf-8"))
+        for match in _INSERT_PATTERN.finditer(cleaned_sql):
             table_name = match.group("table").lower()
             raw_values = match.group("values")
             literals = {
