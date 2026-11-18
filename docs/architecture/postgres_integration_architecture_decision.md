@@ -87,7 +87,7 @@ Nodes, edges, provenance, franchises and the SQL for each read are in [[Database
 
 | Concern | Crate |
 |---|---|
-| Database access and migrations | `sqlx` (Postgres, compile-time checked queries, `sqlx migrate`) (ECHO-93) |
+| ~~Database access and migrations~~ | ~~`sqlx` (Postgres, compile-time checked queries, `sqlx migrate`) (ECHO-93)~~ |
 | gRPC server and generated code | `tonic` and `prost` (ECHO-97) |
 | ~~Async runtime~~ | ~~`tokio` (ECHO-87)~~ |
 | NATS | `async-nats` (ECHO-106) |
@@ -100,7 +100,7 @@ Nodes, edges, provenance, franchises and the SQL for each read are in [[Database
 
 ~~Rust code follows the Microsoft Pragmatic Rust Guidelines, through the `ms-rust` skill. Each finished file carries its compliance comment, `// Rust guideline compliant <date>`. (ECHO-87)~~
 
-`sqlx` is chosen over Diesel because the service is mostly hand-written SQL, including recursive queries, and `sqlx` checks plain SQL without a query DSL. Crate versions are pinned in `Cargo.lock` when the crate is created. (ECHO-93)
+~~`sqlx` is chosen over Diesel because the service is mostly hand-written SQL, including recursive queries, and `sqlx` checks plain SQL without a query DSL. Crate versions are pinned in `Cargo.lock` when the crate is created. (ECHO-93)~~
 
 ## Repository Layout
 
@@ -128,7 +128,7 @@ echora/
 - ~~**Workspace.** The root `Cargo.toml` lists every crate and declares every dependency version, the crates' own versions and the lints once, in `[workspace.dependencies]` and `[workspace.lints]`. Each crate takes them with `workspace = true`. The edition is 2024, and the minimum Rust version is 1.92, which the Temporal Rust SDK needs. (ECHO-87)~~
 - ~~**Checks.** CI runs `rustfmt`, clippy with the lint set of the Microsoft Rust guidelines (the `ms-rust` skill) plus `wildcard_enum_match_arm`, `cargo-audit` for vulnerable dependencies and `cargo-udeps` for unused ones. See [[echora_contracts#The PostgreSQL Service's mapping|Schema Ownership & Contracts]] for why. (ECHO-87)~~
 - ~~**Build.** Cargo builds and tests the Rust crates. Pants has no supported Rust backend, so Pants only wraps the Cargo builds to produce the Docker images, and Python targets stay as they are. (ECHO-87)~~
-  - `.sqlx/` holds the prepared query data, so builds without a database still check queries. (ECHO-93)
+  - ~~`.sqlx/` holds the prepared query data, so builds without a database still check queries. (ECHO-93)~~
 
 ## Security
 
@@ -158,7 +158,7 @@ Outbox IDs are UUIDv7, so rows written after a restore never reuse an ID that NA
 
 ## Database Layout
 
-- In development, one PostgreSQL cluster holds the catalogue database, `echora`. (ECHO-93)
+- ~~In development, one PostgreSQL cluster holds the catalogue database, `echora`. (ECHO-93)~~
 - In development, Temporal runs as the CLI dev server with its own file database, so it needs no PostgreSQL. (ECHO-95)
 - In production, Temporal's databases get a cluster of their own, or at least their own connection budget. Temporal writes and vacuums heavily, and its spikes must not slow the catalogue's queries or trip the 2-second graph timeout. (P-ECHO-21)
 - The users service gets its own database when it is built, so catalogue and user data never share an owner. (P-ECHO-17)
