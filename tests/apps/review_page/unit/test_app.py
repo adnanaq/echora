@@ -956,7 +956,7 @@ def test_choice_with_unknown_open_case_renders_empty_panel(client) -> None:
         },
     )
     assert response.status_code == 200
-    assert "Select a case to inspect" in response.text or response.text.strip() != ""
+    assert '<p class="empty-state">Choose a case from the list.</p>' in response.text
 
 
 def test_choose_answers_to_save_unknown_case_keeps_staged_edit() -> None:
