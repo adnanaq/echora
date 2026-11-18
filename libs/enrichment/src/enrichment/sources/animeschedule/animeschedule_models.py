@@ -2,8 +2,8 @@
 
 These mirror the JSON structure with camelCase → snake_case aliases. The
 models turn AnimeSchedule's values into field values (HTML descriptions into
-plain text, its "not set" date into None, its month name into a number); mapping to the canonical Anime model
-lives in animeschedule_mapper.py.
+plain text, its "not set" date into None, its month name into a number);
+mapping to the canonical Anime model lives in animeschedule_mapper.py.
 """
 
 import logging
