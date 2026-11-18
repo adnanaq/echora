@@ -180,6 +180,13 @@ struct ProtoAnimeStatusChangedNotification {
 /// Returns [`Error::is_not_found`] when `anime_id` does not exist or is
 /// deleted, or a database error when any query or decompression fails.
 pub async fn load_anime(pool: &PgPool, anime_id: Uuid) -> Result<LoadAnimeOutcome, Error> {
+    let mut tx = pool.begin().await?;
+    // Read version, linked page metadata, response bodies, and corrections from
+    // one consistent snapshot so concurrent store_page calls cannot mix fields.
+    sqlx::query!("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        .execute(&mut *tx)
+        .await?;
+
     let version = sqlx::query_scalar!(
         r#"
         SELECT version
@@ -188,12 +195,13 @@ pub async fn load_anime(pool: &PgPool, anime_id: Uuid) -> Result<LoadAnimeOutcom
         "#,
         anime_id
     )
-    .fetch_optional(pool)
+    .fetch_optional(&mut *tx)
     .await?
     .ok_or_else(Error::not_found)?;
 
-    let (source_pages, partial_source_pages) = load_linked_pages(pool, anime_id).await?;
-    let corrections = load_anime_corrections(pool, anime_id).await?;
+    let (source_pages, partial_source_pages) = load_linked_pages(&mut tx, anime_id).await?;
+    let corrections = load_anime_corrections(&mut tx, anime_id).await?;
+    tx.commit().await?;
 
     Ok(LoadAnimeOutcome {
         version,
@@ -204,7 +212,7 @@ pub async fn load_anime(pool: &PgPool, anime_id: Uuid) -> Result<LoadAnimeOutcom
 }
 
 async fn load_linked_pages(
-    pool: &PgPool,
+    tx: &mut Transaction<'_, Postgres>,
     anime_id: Uuid,
 ) -> Result<(Vec<LoadedSourcePage>, Vec<PageKeyInput>), Error> {
     let linked_rows = sqlx::query!(
@@ -227,10 +235,10 @@ async fn load_linked_pages(
         "#,
         anime_id
     )
-    .fetch_all(pool)
+    .fetch_all(&mut **tx)
     .await?;
 
-    let mut responses_by_page = load_source_responses_by_page(pool, anime_id).await?;
+    let mut responses_by_page = load_source_responses_by_page(tx, anime_id).await?;
     let mut source_pages = Vec::new();
     let mut partial_source_pages = Vec::new();
 
@@ -261,7 +269,7 @@ async fn load_linked_pages(
 }
 
 async fn load_source_responses_by_page(
-    pool: &PgPool,
+    tx: &mut Transaction<'_, Postgres>,
     anime_id: Uuid,
 ) -> Result<HashMap<(String, String, String), Vec<PageResponseInput>>, Error> {
     let response_rows = sqlx::query!(
@@ -283,7 +291,7 @@ async fn load_source_responses_by_page(
         "#,
         anime_id
     )
-    .fetch_all(pool)
+    .fetch_all(&mut **tx)
     .await?;
 
     let mut responses_by_page: HashMap<(String, String, String), Vec<PageResponseInput>> =
@@ -303,7 +311,7 @@ async fn load_source_responses_by_page(
 }
 
 async fn load_anime_corrections(
-    pool: &PgPool,
+    tx: &mut Transaction<'_, Postgres>,
     anime_id: Uuid,
 ) -> Result<Vec<FieldCorrectionRecord>, Error> {
     let correction_rows = sqlx::query!(
@@ -315,7 +323,7 @@ async fn load_anime_corrections(
         "#,
         anime_id
     )
-    .fetch_all(pool)
+    .fetch_all(&mut **tx)
     .await?;
 
     Ok(correction_rows
@@ -361,7 +369,7 @@ async fn save_anime_in_tx(
     tx: &mut Transaction<'_, Postgres>,
     input: &SaveAnimeInput,
 ) -> Result<SaveAnimeOutcome, Error> {
-    let existing = sqlx::query!(
+    let existing_anime = sqlx::query!(
         r#"
         SELECT
             version,
@@ -379,25 +387,36 @@ async fn save_anime_in_tx(
     .await?
     .ok_or_else(Error::not_found)?;
 
-    if existing.version != input.expected_version {
+    if existing_anime.version != input.expected_version {
         return Err(Error::version_conflict(format!(
             "expected version {}, stored version {}",
-            input.expected_version, existing.version
+            input.expected_version, existing_anime.version
         )));
     }
 
-    if existing.merged_record_hash.as_deref() == Some(input.merged_record_hash.as_str())
-        && existing.hash_format == Some(input.hash_format)
+    if existing_anime.merged_record_hash.as_deref() == Some(input.merged_record_hash.as_str())
+        && existing_anime.hash_format == Some(input.hash_format)
     {
+        sqlx::query!(
+            r#"
+            UPDATE anime
+            SET merge_requested_at = NULL
+            WHERE id = $1 AND merge_requested_at IS NOT NULL
+            "#,
+            input.anime_id
+        )
+        .execute(&mut **tx)
+        .await?;
+
         return Ok(SaveAnimeOutcome {
             has_changed: false,
-            version: existing.version,
+            version: existing_anime.version,
         });
     }
 
-    let next_version = existing.version + 1;
+    let next_version = existing_anime.version + 1;
     let now = Utc::now();
-    let is_first_merge = existing.merged_at.is_none();
+    let is_first_merge = existing_anime.merged_at.is_none();
 
     update_anime_row(tx, input, next_version, now).await?;
     emit_anime_outbox_events(
@@ -406,7 +425,7 @@ async fn save_anime_in_tx(
         next_version,
         now,
         is_first_merge,
-        existing.status.as_deref(),
+        existing_anime.status.as_deref(),
     )
     .await?;
 
@@ -620,8 +639,8 @@ fn validate_save_input(input: &SaveAnimeInput) -> Result<(), Error> {
     Ok(())
 }
 
-fn parse_page_kind(raw: &str) -> Result<PageKind, Error> {
-    match raw {
+fn parse_page_kind(page_kind_text: &str) -> Result<PageKind, Error> {
+    match page_kind_text {
         "anime" => Ok(PageKind::Anime),
         "episode" => Ok(PageKind::Episode),
         "character" => Ok(PageKind::Character),

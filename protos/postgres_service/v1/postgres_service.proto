@@ -13,7 +13,8 @@ service PostgresService {
   // Load a work's linked pages, corrections, and current version for merging.
   rpc LoadAnime(LoadAnimeRequest) returns (LoadAnimeResponse);
 
-  // Save a merged work with optimistic version checking and transactional outbox.
+  // Save a merged work's scalar `anime` columns with optimistic version checking and transactional outbox.
+  // Child collections on `Anime` are hashed into `merged_record_hash` and persisted by follow-up work.
   rpc SaveAnime(SaveAnimeRequest) returns (SaveAnimeResponse);
 }
 

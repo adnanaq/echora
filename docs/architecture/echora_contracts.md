@@ -44,9 +44,9 @@ The hand-written Pydantic models in `libs/common/src/common/models/anime.py` are
 | `protos/shared_proto/v1/error.proto` | `ErrorDetails`, shared by every service's responses |
 | `protos/vector_service/v1/*.proto` | Vector search and admin services |
 | `protos/enrichment_service/v1/enrichment_service.proto` | Enrichment service |
-| `protos/shared_proto/v1/merge.proto` | Planned. Provider pages, corrections, generated text and entity references, see [[event_schema_specification]] (ECHO-97) |
-| `protos/events/v1/events.proto` | Planned. NATS events (ECHO-90) |
-| `protos/postgres_service/v1/postgres_service.proto` | Planned. PostgreSQL Service (ECHO-97) |
+| `protos/shared_proto/v1/merge.proto` | ~~Planned (ECHO-97).~~ Provider pages and corrections exist (ECHO-97, ECHO-98); generated text and entity references planned, see [[event_schema_specification]] |
+| `protos/events/v1/events.proto` | `CatalogueEvent` and `AnimeStatusChangedNotification` exist (ECHO-98); NATS events planned (ECHO-90) |
+| `protos/postgres_service/v1/postgres_service.proto` | ~~Planned (ECHO-97).~~ Exists (`StorePage`, `LoadAnime`, `SaveAnime`); remaining RPCs planned |
 | `protos/agent_service/v1/agent_service.proto` | Planned. Agent Service, for every AI call (ECHO-91) |
 
 ## How Services Get the Types

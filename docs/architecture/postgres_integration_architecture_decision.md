@@ -88,7 +88,7 @@ Nodes, edges, provenance, franchises and the SQL for each read are in [[Database
 | Concern | Crate |
 |---|---|
 | ~~Database access and migrations~~ | ~~`sqlx` (Postgres, compile-time checked queries, `sqlx migrate`) (ECHO-93)~~ |
-| gRPC server and generated code | `tonic` and `prost` (ECHO-97) |
+| ~~gRPC server and generated code~~ | ~~`tonic` and `prost` (ECHO-97)~~ |
 | ~~Async runtime~~ | ~~`tokio` (ECHO-87)~~ |
 | NATS | `async-nats` (ECHO-106) |
 | ~~Errors in libraries~~ | ~~Error structs with a private kind, `is_…` methods such as `is_version_conflict()`, and `From` conversions so `?` works (ECHO-87)~~ |

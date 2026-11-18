@@ -177,8 +177,8 @@ fn load_optional_dotenv(path: &Path) -> Result<HashMap<String, String>, Error> {
     match dotenvy::from_path_iter(path) {
         Ok(iter) => {
             let mut values = HashMap::new();
-            for item in iter {
-                let (key, value) = item?;
+            for env_entry in iter {
+                let (key, value) = env_entry?;
                 values.insert(key, value);
             }
             Ok(values)
@@ -192,15 +192,15 @@ fn parse_bool<F>(lookup: &F, name: &'static str, default: bool) -> Result<bool, 
 where
     F: Fn(&str) -> Option<String>,
 {
-    let Some(raw) = lookup(name) else {
+    let Some(env_value) = lookup(name) else {
         return Ok(default);
     };
-    match raw.trim().to_ascii_lowercase().as_str() {
+    match env_value.trim().to_ascii_lowercase().as_str() {
         "1" | "true" | "yes" | "on" => Ok(true),
         "0" | "false" | "no" | "off" => Ok(false),
         _ => Err(Error::invalid_env(
             name,
-            format!("expected boolean, got {raw:?}"),
+            format!("expected boolean, got {env_value:?}"),
         )),
     }
 }
@@ -209,13 +209,13 @@ fn parse_port<F>(lookup: &F, name: &'static str, default: u16) -> Result<u16, Er
 where
     F: Fn(&str) -> Option<String>,
 {
-    let Some(raw) = lookup(name) else {
+    let Some(env_value) = lookup(name) else {
         return Ok(default);
     };
-    let port: u16 = raw
+    let port: u16 = env_value
         .trim()
         .parse()
-        .map_err(|err| Error::invalid_env(name, format!("invalid port {raw:?}: {err}")))?;
+        .map_err(|err| Error::invalid_env(name, format!("invalid port {env_value:?}: {err}")))?;
     if port == 0 {
         return Err(Error::invalid_env(name, "port must be between 1 and 65535"));
     }
@@ -226,15 +226,15 @@ fn parse_log_level<F>(lookup: &F, name: &'static str, default: &str) -> Result<S
 where
     F: Fn(&str) -> Option<String>,
 {
-    let Some(raw) = lookup(name) else {
+    let Some(env_value) = lookup(name) else {
         return Ok(default.to_owned());
     };
-    let normalized = raw.trim().to_ascii_uppercase();
-    match normalized.as_str() {
-        "DEBUG" | "INFO" | "WARNING" | "ERROR" | "CRITICAL" => Ok(normalized),
+    let normalized_level = env_value.trim().to_ascii_uppercase();
+    match normalized_level.as_str() {
+        "DEBUG" | "INFO" | "WARNING" | "ERROR" | "CRITICAL" => Ok(normalized_level),
         _ => Err(Error::invalid_env(
             name,
-            format!("expected DEBUG, INFO, WARNING, ERROR, or CRITICAL, got {raw:?}"),
+            format!("expected DEBUG, INFO, WARNING, ERROR, or CRITICAL, got {env_value:?}"),
         )),
     }
 }

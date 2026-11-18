@@ -71,7 +71,8 @@ class PostgresServiceServicer:
         raise NotImplementedError('Method not implemented!')
 
     def SaveAnime(self, request, context):
-        """Save a merged work with optimistic version checking and transactional outbox.
+        """Save a merged work's scalar `anime` columns with optimistic version checking and transactional outbox.
+        Child collections on `Anime` are hashed into `merged_record_hash` and persisted by follow-up work.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')

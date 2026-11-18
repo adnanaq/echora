@@ -531,17 +531,20 @@ async fn load_and_save_anime_enforce_versions_hashes_visibility_and_outbox() -> 
     .execute(&pool)
     .await?;
 
-    let loaded = load_anime(&pool, anime_id).await?;
-    assert_eq!(loaded.version, 1);
-    assert_eq!(loaded.source_pages.len(), 1);
+    let loaded_anime = load_anime(&pool, anime_id).await?;
+    assert_eq!(loaded_anime.version, 1);
+    assert_eq!(loaded_anime.source_pages.len(), 1);
     assert_eq!(
-        loaded.source_pages[0].responses[0].body,
+        loaded_anime.source_pages[0].responses[0].body,
         br#"{"mal_id":999999010}"#
     );
-    assert_eq!(loaded.partial_source_pages.len(), 1);
-    assert_eq!(loaded.partial_source_pages[0].address, partial_address);
-    assert_eq!(loaded.corrections.len(), 1);
-    assert_eq!(loaded.corrections[0].field_path, "episode_count");
+    assert_eq!(loaded_anime.partial_source_pages.len(), 1);
+    assert_eq!(
+        loaded_anime.partial_source_pages[0].address,
+        partial_address
+    );
+    assert_eq!(loaded_anime.corrections.len(), 1);
+    assert_eq!(loaded_anime.corrections[0].field_path, "episode_count");
 
     let first_input = SaveAnimeInput {
         anime_id,
@@ -603,7 +606,14 @@ async fn load_and_save_anime_enforce_versions_hashes_visibility_and_outbox() -> 
     .await?;
     assert_eq!(created_subjects, vec!["anime.created"]);
 
-    // Unchanged hash writes nothing and emits nothing.
+    // Unchanged hash clears merge_requested_at, keeps version, and emits nothing.
+    sqlx::query!(
+        "UPDATE anime SET merge_requested_at = now() WHERE id = $1",
+        anime_id
+    )
+    .execute(&pool)
+    .await?;
+
     let noop_input = SaveAnimeInput {
         expected_version: 2,
         ..first_input.clone()
@@ -611,6 +621,14 @@ async fn load_and_save_anime_enforce_versions_hashes_visibility_and_outbox() -> 
     let noop_save = save_anime(&pool, &noop_input).await?;
     assert!(!noop_save.has_changed);
     assert_eq!(noop_save.version, 2);
+
+    let merge_requested_after_noop = sqlx::query_scalar!(
+        "SELECT merge_requested_at FROM anime WHERE id = $1",
+        anime_id
+    )
+    .fetch_one(&pool)
+    .await?;
+    assert!(merge_requested_after_noop.is_none());
 
     // Stale expected_version returns version conflict (ABORTED).
     let Err(conflict_err) = save_anime(&pool, &first_input).await else {

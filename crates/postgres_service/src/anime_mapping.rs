@@ -15,9 +15,10 @@ use crate::service::shared_proto::v1::{
 
 /// Maps a `shared_proto.v1.Anime` and save metadata into [`SaveAnimeInput`].
 ///
-/// Destructures every field of [`Anime`] without `..` and matches every proto
-/// enum exhaustively without `_` so proto changes fail compilation until
-/// handled.
+/// Computes `merged_record_hash` over the full canonical `Anime` message, while
+/// persisting only the scalar `anime` table columns in this stage. Destructures
+/// every field of [`Anime`] without `..` and matches every proto enum
+/// exhaustively without `_` so proto changes fail compilation until handled.
 ///
 /// # Errors
 ///
@@ -88,7 +89,7 @@ pub fn build_save_anime_input(
     let anime_type = map_anime_type(r#type)?.to_owned();
     let status_str = map_anime_status(status)?.to_owned();
     let rating_str = match rating {
-        Some(raw) => map_anime_rating(raw)?.to_owned(),
+        Some(rating_number) => map_anime_rating(rating_number)?.to_owned(),
         None => "UNKNOWN".to_owned(),
     };
     let season_str = season.map(map_anime_season).transpose()?.map(str::to_owned);
@@ -195,13 +196,13 @@ fn parse_proto_timestamp(
         .ok_or_else(|| Status::invalid_argument(format!("{field_name} is out of range")))
 }
 
-fn validate_entity_type(raw: i32) -> Result<(), Status> {
-    let Ok(variant) = EntityType::try_from(raw) else {
+fn validate_entity_type(enum_number: i32) -> Result<(), Status> {
+    let Ok(entity_type) = EntityType::try_from(enum_number) else {
         return Err(Status::invalid_argument(format!(
-            "unknown EntityType number {raw}"
+            "unknown EntityType number {enum_number}"
         )));
     };
-    match variant {
+    match entity_type {
         EntityType::Unspecified | EntityType::Anime => Ok(()),
         EntityType::Character | EntityType::Episode => Err(Status::invalid_argument(
             "SaveAnime requires an ANIME entity_type",
@@ -209,13 +210,13 @@ fn validate_entity_type(raw: i32) -> Result<(), Status> {
     }
 }
 
-fn map_anime_type(raw: i32) -> Result<&'static str, Status> {
-    let Ok(variant) = AnimeType::try_from(raw) else {
+fn map_anime_type(enum_number: i32) -> Result<&'static str, Status> {
+    let Ok(anime_type) = AnimeType::try_from(enum_number) else {
         return Err(Status::invalid_argument(format!(
-            "unknown AnimeType number {raw}"
+            "unknown AnimeType number {enum_number}"
         )));
     };
-    match variant {
+    match anime_type {
         AnimeType::Unspecified => Err(Status::invalid_argument("anime.type must be specified")),
         AnimeType::Movie => Ok("MOVIE"),
         AnimeType::Ona => Ok("ONA"),
@@ -232,13 +233,13 @@ fn map_anime_type(raw: i32) -> Result<&'static str, Status> {
     }
 }
 
-fn map_anime_status(raw: i32) -> Result<&'static str, Status> {
-    let Ok(variant) = AnimeStatus::try_from(raw) else {
+fn map_anime_status(enum_number: i32) -> Result<&'static str, Status> {
+    let Ok(anime_status) = AnimeStatus::try_from(enum_number) else {
         return Err(Status::invalid_argument(format!(
-            "unknown AnimeStatus number {raw}"
+            "unknown AnimeStatus number {enum_number}"
         )));
     };
-    match variant {
+    match anime_status {
         AnimeStatus::Unspecified => Err(Status::invalid_argument("anime.status must be specified")),
         AnimeStatus::Finished => Ok("FINISHED"),
         AnimeStatus::Upcoming => Ok("UPCOMING"),
@@ -248,13 +249,13 @@ fn map_anime_status(raw: i32) -> Result<&'static str, Status> {
     }
 }
 
-fn map_anime_rating(raw: i32) -> Result<&'static str, Status> {
-    let Ok(variant) = AnimeRating::try_from(raw) else {
+fn map_anime_rating(enum_number: i32) -> Result<&'static str, Status> {
+    let Ok(anime_rating) = AnimeRating::try_from(enum_number) else {
         return Err(Status::invalid_argument(format!(
-            "unknown AnimeRating number {raw}"
+            "unknown AnimeRating number {enum_number}"
         )));
     };
-    match variant {
+    match anime_rating {
         AnimeRating::Unspecified | AnimeRating::Unknown => Ok("UNKNOWN"),
         AnimeRating::G => Ok("G - All Ages"),
         AnimeRating::Pg => Ok("PG - Children"),
@@ -265,13 +266,13 @@ fn map_anime_rating(raw: i32) -> Result<&'static str, Status> {
     }
 }
 
-fn map_anime_season(raw: i32) -> Result<&'static str, Status> {
-    let Ok(variant) = AnimeSeason::try_from(raw) else {
+fn map_anime_season(enum_number: i32) -> Result<&'static str, Status> {
+    let Ok(anime_season) = AnimeSeason::try_from(enum_number) else {
         return Err(Status::invalid_argument(format!(
-            "unknown AnimeSeason number {raw}"
+            "unknown AnimeSeason number {enum_number}"
         )));
     };
-    match variant {
+    match anime_season {
         AnimeSeason::Unspecified => Err(Status::invalid_argument(
             "anime.season must be specified when set",
         )),
@@ -282,13 +283,13 @@ fn map_anime_season(raw: i32) -> Result<&'static str, Status> {
     }
 }
 
-fn map_source_material_type(raw: i32) -> Result<&'static str, Status> {
-    let Ok(variant) = SourceMaterialType::try_from(raw) else {
+fn map_source_material_type(enum_number: i32) -> Result<&'static str, Status> {
+    let Ok(source_material) = SourceMaterialType::try_from(enum_number) else {
         return Err(Status::invalid_argument(format!(
-            "unknown SourceMaterialType number {raw}"
+            "unknown SourceMaterialType number {enum_number}"
         )));
     };
-    match variant {
+    match source_material {
         SourceMaterialType::Unspecified => Err(Status::invalid_argument(
             "anime.source_material must be specified when set",
         )),
