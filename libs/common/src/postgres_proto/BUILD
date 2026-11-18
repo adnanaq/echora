@@ -2,5 +2,5 @@
 
 python_sources(
     name="proto",
-    sources=["**/*.py"],
+    sources=["**/*.py", "**/*.pyi"],
 )
