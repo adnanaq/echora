@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package events.v1;
+
+import "google/protobuf/timestamp.proto";
+import "shared_proto/v1/anime.proto";
+
+// Thin notice emitted when a work, episode, or character is created, updated, or deleted.
+message CatalogueEvent {
+  string event_id = 1;
+  google.protobuf.Timestamp saved_at = 2;
+  string entity_id = 3;
+  int64 version = 4;
+  optional string anime_id = 5;
+}
+
+// Notification emitted when an anime changes airing status.
+message AnimeStatusChangedNotification {
+  string event_id = 1;
+  google.protobuf.Timestamp saved_at = 2;
+  string anime_id = 3;
+  string anime_title = 4;
+  shared_proto.v1.AnimeStatus previous_status = 5;
+  shared_proto.v1.AnimeStatus current_status = 6;
+}

@@ -1,5 +1,6 @@
 import datetime
 
+from google.protobuf import any_pb2 as _any_pb2
 from google.protobuf import timestamp_pb2 as _timestamp_pb2
 from google.protobuf.internal import containers as _containers
 from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
@@ -54,3 +55,15 @@ class StoredPage(_message.Message):
     responses: _containers.RepeatedCompositeFieldContainer[PageResponse]
     is_not_found: bool
     def __init__(self, page_key: _Optional[_Union[PageKey, _Mapping]] = ..., fetched_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., is_dead: _Optional[bool] = ..., responses: _Optional[_Iterable[_Union[PageResponse, _Mapping]]] = ..., is_not_found: _Optional[bool] = ...) -> None: ...
+
+class FieldCorrection(_message.Message):
+    __slots__ = ("field_path", "value", "approved_by", "approved_at")
+    FIELD_PATH_FIELD_NUMBER: _ClassVar[int]
+    VALUE_FIELD_NUMBER: _ClassVar[int]
+    APPROVED_BY_FIELD_NUMBER: _ClassVar[int]
+    APPROVED_AT_FIELD_NUMBER: _ClassVar[int]
+    field_path: str
+    value: _any_pb2.Any
+    approved_by: str
+    approved_at: _timestamp_pb2.Timestamp
+    def __init__(self, field_path: _Optional[str] = ..., value: _Optional[_Union[_any_pb2.Any, _Mapping]] = ..., approved_by: _Optional[str] = ..., approved_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...

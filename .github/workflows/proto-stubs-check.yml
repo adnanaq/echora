@@ -58,6 +58,14 @@ jobs:
       - name: Lint proto files
         run: buf lint
 
+      - name: Check wire compatibility of stored protos
+        if: github.event_name == 'pull_request'
+        run: |
+          buf breaking --against ".git#branch=${{ github.event.pull_request.base.ref }}" \
+            --path protos/shared_proto/v1/anime.proto \
+            --path protos/shared_proto/v1/merge.proto \
+            --path protos/events/v1/events.proto
+
       - name: Restore Pants cache
         uses: actions/cache@v5
         with:

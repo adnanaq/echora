@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package shared_proto.v1;
 
+import "google/protobuf/any.proto";
 import "google/protobuf/timestamp.proto";
 
 // Kind of provider page stored or merged.
@@ -33,4 +34,12 @@ message StoredPage {
   bool is_dead = 3;
   repeated PageResponse responses = 4;
   bool is_not_found = 5;
+}
+
+// Approved override for one entity field, applied after every merge.
+message FieldCorrection {
+  string field_path = 1;
+  google.protobuf.Any value = 2;
+  string approved_by = 3;
+  google.protobuf.Timestamp approved_at = 4;
 }

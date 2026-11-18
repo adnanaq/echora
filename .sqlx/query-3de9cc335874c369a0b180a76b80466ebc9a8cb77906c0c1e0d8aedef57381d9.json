@@ -1,0 +1,46 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT field_path, value_message, value, approved_by, approved_at\n        FROM anime_field_correction\n        WHERE anime_id = $1\n        ORDER BY field_path\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "field_path",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "value_message",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "value",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 3,
+        "name": "approved_by",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "approved_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "3de9cc335874c369a0b180a76b80466ebc9a8cb77906c0c1e0d8aedef57381d9"
+}
