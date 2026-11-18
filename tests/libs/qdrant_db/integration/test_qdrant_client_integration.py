@@ -3,14 +3,14 @@ from unittest.mock import patch
 
 import pytest
 from qdrant_db import QdrantClient
-from qdrant_db.contracts import (
-    BatchPayloadUpdateItem,
-    BatchVectorUpdateItem,
+from qdrant_db.errors import DuplicateUpdateError, PermanentQdrantError, ValidationError
+from qdrant_db.qdrant_models import (
+    BatchPayloadUpdate,
+    BatchVectorUpdate,
     SearchFilterCondition,
     SearchRequest,
-    SparseVectorData,
+    SparseVectorPayload,
 )
-from qdrant_db.errors import DuplicateUpdateError, PermanentQdrantError, ValidationError
 from vector_db_interface import VectorDocument
 
 pytestmark = pytest.mark.integration
@@ -28,7 +28,7 @@ def _make_doc(
     title: str,
     text_vector: list[float] | None = None,
     image_vector: list[list[float]] | None = None,
-    sparse: SparseVectorData | None = None,
+    sparse: SparseVectorPayload | None = None,
     year: int | None = None,
 ) -> VectorDocument:
     vectors: dict[
@@ -103,7 +103,7 @@ async def test_update_vectors_dense_vector_reports_success(
 
     result = await client.update_vectors(
         [
-            BatchVectorUpdateItem(
+            BatchVectorUpdate(
                 point_id=doc_id,
                 vector_name="text_vector",
                 vector_data=_one_hot(3, 1024),
@@ -127,7 +127,7 @@ async def test_update_vectors_image_multivector_reports_success(
 
     result = await client.update_vectors(
         [
-            BatchVectorUpdateItem(
+            BatchVectorUpdate(
                 point_id=doc_id,
                 vector_name="image_vector",
                 vector_data=[_one_hot(0, 768), _one_hot(5, 768)],
@@ -151,7 +151,7 @@ async def test_update_vectors_unknown_vector_name_raises_validation_error(
     with pytest.raises(ValidationError, match="Invalid vector name"):
         await client.update_vectors(
             [
-                BatchVectorUpdateItem(
+                BatchVectorUpdate(
                     point_id=doc_id,
                     vector_name="does_not_exist",
                     vector_data=[0.1] * 1024,
@@ -178,7 +178,7 @@ async def test_update_vectors_wrong_dimension_raises_validation_error(
     with pytest.raises(ValidationError, match=error):
         await client.update_vectors(
             [
-                BatchVectorUpdateItem(
+                BatchVectorUpdate(
                     point_id=doc_id,
                     vector_name="text_vector",
                     vector_data=vector_data,
@@ -192,7 +192,7 @@ async def test_update_vectors_sparse_vector_reports_success(
     client: QdrantClient,
 ) -> None:
     doc_id = str(uuid.uuid4())
-    sparse = SparseVectorData(indices=[1, 2, 3], values=[0.2, 0.4, 0.6])
+    sparse = SparseVectorPayload(indices=[1, 2, 3], values=[0.2, 0.4, 0.6])
     await client.add_documents(
         [_make_doc(doc_id=doc_id, title="Sparse Update", sparse=sparse)],
         batch_size=1,
@@ -200,10 +200,10 @@ async def test_update_vectors_sparse_vector_reports_success(
 
     result = await client.update_vectors(
         [
-            BatchVectorUpdateItem(
+            BatchVectorUpdate(
                 point_id=doc_id,
                 vector_name="text_sparse_vector",
-                vector_data=SparseVectorData(indices=[10, 20], values=[0.8, 0.5]),
+                vector_data=SparseVectorPayload(indices=[10, 20], values=[0.8, 0.5]),
             )
         ]
     )
@@ -220,12 +220,12 @@ async def test_update_vectors_last_wins_duplicate_keeps_one_update(
 
     result = await client.update_vectors(
         updates=[
-            BatchVectorUpdateItem(
+            BatchVectorUpdate(
                 point_id=doc_id,
                 vector_name="text_vector",
                 vector_data=_one_hot(1, 1024),
             ),
-            BatchVectorUpdateItem(
+            BatchVectorUpdate(
                 point_id=doc_id,
                 vector_name="text_vector",
                 vector_data=_one_hot(2, 1024),
@@ -249,12 +249,12 @@ async def test_update_vectors_fail_policy_duplicate_raises(
     with pytest.raises(DuplicateUpdateError):
         await client.update_vectors(
             updates=[
-                BatchVectorUpdateItem(
+                BatchVectorUpdate(
                     point_id=doc_id,
                     vector_name="text_vector",
                     vector_data=_one_hot(1, 1024),
                 ),
-                BatchVectorUpdateItem(
+                BatchVectorUpdate(
                     point_id=doc_id,
                     vector_name="text_vector",
                     vector_data=_one_hot(2, 1024),
@@ -288,7 +288,7 @@ async def test_update_vectors_transient_error_retries_and_succeeds(
     ):
         result = await client.update_vectors(
             [
-                BatchVectorUpdateItem(
+                BatchVectorUpdate(
                     point_id=doc_id,
                     vector_name="text_vector",
                     vector_data=_one_hot(4, 1024),
@@ -326,7 +326,7 @@ async def test_update_vectors_permanent_error_raises_without_retry(
         ):
             await client.update_vectors(
                 [
-                    BatchVectorUpdateItem(
+                    BatchVectorUpdate(
                         point_id=doc_id,
                         vector_name="text_vector",
                         vector_data=_one_hot(5, 1024),
@@ -363,7 +363,7 @@ async def test_update_vectors_repeated_transient_error_raises_after_retries(
         ):
             await client.update_vectors(
                 [
-                    BatchVectorUpdateItem(
+                    BatchVectorUpdate(
                         point_id=doc_id,
                         vector_name="text_vector",
                         vector_data=_one_hot(6, 1024),
@@ -386,14 +386,14 @@ async def test_update_payload_overwrite_after_merge_stores_overwritten_payload(
     )
 
     merge_result = await client.update_payload(
-        [BatchPayloadUpdateItem(point_id=doc_id, payload={"tag": "action"})],
+        [BatchPayloadUpdate(point_id=doc_id, payload={"tag": "action"})],
         mode="merge",
     )
     assert merge_result.successful == 1
 
     overwrite_result = await client.update_payload(
         [
-            BatchPayloadUpdateItem(
+            BatchPayloadUpdate(
                 point_id=doc_id,
                 payload={"title": "Overwritten", "entity_type": "anime"},
             )
@@ -431,7 +431,7 @@ async def test_search_dense_embedding_returns_nearest_point_first(
 @pytest.mark.asyncio
 async def test_search_sparse_embedding_returns_added_point(client: QdrantClient):
     test_id = str(uuid.uuid4())
-    sparse_vector = SparseVectorData(
+    sparse_vector = SparseVectorPayload(
         indices=[10, 25, 103, 567], values=[0.7, 0.3, 0.5, 0.2]
     )
     document = _make_doc(
@@ -450,7 +450,7 @@ async def test_search_sparse_embedding_returns_added_point(client: QdrantClient)
 
 @pytest.mark.asyncio
 async def test_add_documents_sparse_vector_reports_success(client: QdrantClient):
-    sparse = SparseVectorData(indices=[1, 5, 10], values=[0.5, 0.3, 0.2])
+    sparse = SparseVectorPayload(indices=[1, 5, 10], values=[0.5, 0.3, 0.2])
 
     result = await client.add_documents(
         [_make_doc(doc_id=str(uuid.uuid4()), title="Valid Sparse", sparse=sparse)],
@@ -464,7 +464,7 @@ async def test_add_documents_sparse_vector_reports_success(client: QdrantClient)
 async def test_search_rrf_fusion_returns_at_most_limit(client: QdrantClient):
     test_docs = []
     for i in range(5):
-        sparse_vec = SparseVectorData(
+        sparse_vec = SparseVectorPayload(
             indices=[i * 10, i * 10 + 5, i * 10 + 8], values=[0.8, 0.5, 0.3]
         )
         test_docs.append(
@@ -480,7 +480,9 @@ async def test_search_rrf_fusion_returns_at_most_limit(client: QdrantClient):
 
     request = SearchRequest(
         text_embedding=[0.11] * 1024,
-        sparse_embedding=SparseVectorData(indices=[10, 15, 18], values=[0.7, 0.4, 0.3]),
+        sparse_embedding=SparseVectorPayload(
+            indices=[10, 15, 18], values=[0.7, 0.4, 0.3]
+        ),
         fusion_method="rrf",
         limit=3,
     )
@@ -492,7 +494,7 @@ async def test_search_rrf_fusion_returns_at_most_limit(client: QdrantClient):
 @pytest.mark.asyncio
 async def test_search_dbsf_fusion_returns_points(client: QdrantClient):
     test_id = str(uuid.uuid4())
-    sparse_vec = SparseVectorData(indices=[5, 10, 15], values=[0.9, 0.6, 0.4])
+    sparse_vec = SparseVectorPayload(indices=[5, 10, 15], values=[0.9, 0.6, 0.4])
     await client.add_documents(
         [
             _make_doc(
@@ -507,7 +509,7 @@ async def test_search_dbsf_fusion_returns_points(client: QdrantClient):
 
     request = SearchRequest(
         text_embedding=[0.21] * 1024,
-        sparse_embedding=SparseVectorData(indices=[5, 10], values=[0.8, 0.5]),
+        sparse_embedding=SparseVectorPayload(indices=[5, 10], values=[0.8, 0.5]),
         fusion_method="dbsf",
         limit=5,
     )
@@ -518,18 +520,18 @@ async def test_search_dbsf_fusion_returns_points(client: QdrantClient):
 @pytest.mark.asyncio
 async def test_update_vectors_new_sparse_vector_finds_point_by_it(client: QdrantClient):
     test_id = str(uuid.uuid4())
-    initial_sparse = SparseVectorData(indices=[1, 2, 3], values=[0.5, 0.5, 0.5])
+    initial_sparse = SparseVectorPayload(indices=[1, 2, 3], values=[0.5, 0.5, 0.5])
     await client.add_documents(
         [_make_doc(doc_id=test_id, title="Sparse Update Test", sparse=initial_sparse)],
         batch_size=1,
     )
 
-    updated_sparse = SparseVectorData(
+    updated_sparse = SparseVectorPayload(
         indices=[5, 10, 15, 20], values=[0.9, 0.7, 0.5, 0.3]
     )
     result = await client.update_vectors(
         [
-            BatchVectorUpdateItem(
+            BatchVectorUpdate(
                 point_id=test_id,
                 vector_name="text_sparse_vector",
                 vector_data=updated_sparse,
@@ -555,7 +557,7 @@ async def test_search_sparse_keyword_query_returns_points(client: QdrantClient):
     }
     for genre, indices in keywords_map.items():
         doc_id = str(uuid.uuid4())
-        sparse = SparseVectorData(indices=indices, values=[1.0, 0.8, 0.6])
+        sparse = SparseVectorPayload(indices=indices, values=[1.0, 0.8, 0.6])
         docs.append(
             (
                 doc_id,
@@ -565,7 +567,7 @@ async def test_search_sparse_keyword_query_returns_points(client: QdrantClient):
         )
     await client.add_documents([d[1] for d in docs], batch_size=3)
 
-    action_query = SparseVectorData(indices=[100, 101], values=[1.0, 0.9])
+    action_query = SparseVectorPayload(indices=[100, 101], values=[1.0, 0.9])
     results = await client.search(SearchRequest(sparse_embedding=action_query, limit=5))
     assert len(results) > 0
 
@@ -573,7 +575,7 @@ async def test_search_sparse_keyword_query_returns_points(client: QdrantClient):
 @pytest.mark.asyncio
 async def test_search_unmatched_sparse_indices_returns_list(client: QdrantClient):
     request = SearchRequest(
-        sparse_embedding=SparseVectorData(
+        sparse_embedding=SparseVectorPayload(
             indices=[9999, 9998, 9997], values=[1.0, 1.0, 1.0]
         ),
         limit=5,
@@ -599,7 +601,7 @@ async def test_search_sparse_query_with_year_filter_returns_that_year(
 ):
     docs = []
     for year in [2020, 2021, 2022]:
-        sparse = SparseVectorData(indices=[50, 51, 52], values=[0.8, 0.6, 0.4])
+        sparse = SparseVectorPayload(indices=[50, 51, 52], values=[0.8, 0.6, 0.4])
         docs.append(
             _make_doc(
                 doc_id=str(uuid.uuid4()),
@@ -611,7 +613,7 @@ async def test_search_sparse_query_with_year_filter_returns_that_year(
     await client.add_documents(docs, batch_size=3)
 
     request = SearchRequest(
-        sparse_embedding=SparseVectorData(indices=[50, 51], values=[0.9, 0.7]),
+        sparse_embedding=SparseVectorPayload(indices=[50, 51], values=[0.9, 0.7]),
         filters=[SearchFilterCondition(field="year", operator="eq", value=2021)],
         limit=5,
     )
@@ -641,7 +643,7 @@ async def test_add_documents_sparse_vector_as_dict_is_searchable(client: QdrantC
 
     results = await client.search(
         SearchRequest(
-            sparse_embedding=SparseVectorData(
+            sparse_embedding=SparseVectorPayload(
                 indices=[1, 2, 3], values=[1.0, 0.9, 0.8]
             ),
             limit=5,

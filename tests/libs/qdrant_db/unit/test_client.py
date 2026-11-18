@@ -1,5 +1,3 @@
-"""Unit tests for strict-contract QdrantClient."""
-
 import asyncio
 from typing import cast
 from unittest.mock import AsyncMock, create_autospec, patch
@@ -21,7 +19,6 @@ from qdrant_client.http.exceptions import (
     UnexpectedResponse,
 )
 from qdrant_client.http.models import (
-    CollectionsResponse,
     QueryResponse,
     Record,
     ScoredPoint,
@@ -35,14 +32,14 @@ from qdrant_client.models import (
 )
 from qdrant_db import QdrantClient
 from qdrant_db.collection.manager import QdrantCollectionManager
-from qdrant_db.contracts import (
-    BatchPayloadUpdateItem,
-    BatchVectorUpdateItem,
+from qdrant_db.errors import DuplicateUpdateError, PermanentQdrantError
+from qdrant_db.qdrant_models import (
+    BatchPayloadUpdate,
+    BatchVectorUpdate,
     SearchFilterCondition,
     SearchRequest,
-    SparseVectorData,
+    SparseVectorPayload,
 )
-from qdrant_db.errors import DuplicateUpdateError, PermanentQdrantError
 from vector_db_interface import VectorDocument
 
 
@@ -142,7 +139,7 @@ async def test_search_sparse_only_returns_hits_from_query_points(
     )
 
     request = SearchRequest(
-        sparse_embedding=SparseVectorData(indices=[1, 5], values=[0.7, 0.3]),
+        sparse_embedding=SparseVectorPayload(indices=[1, 5], values=[0.7, 0.3]),
         limit=5,
     )
     results = await sparse_qdrant_client.search(request)
@@ -163,7 +160,7 @@ async def test_search_text_and_sparse_sends_two_prefetch_branches(
 
     request = SearchRequest(
         text_embedding=[0.1] * 1024,
-        sparse_embedding=SparseVectorData(indices=[1, 4], values=[0.9, 0.2]),
+        sparse_embedding=SparseVectorPayload(indices=[1, 4], values=[0.9, 0.2]),
         limit=10,
     )
     await sparse_qdrant_client.search(request)
@@ -210,12 +207,12 @@ async def test_update_vectors_duplicate_with_last_wins_keeps_last_update(
 
     result = await qdrant_client.update_vectors(
         updates=[
-            BatchVectorUpdateItem(
+            BatchVectorUpdate(
                 point_id="550e8400-e29b-41d4-a716-446655440000",
                 vector_name="text_vector",
                 vector_data=[0.1] * 1024,
             ),
-            BatchVectorUpdateItem(
+            BatchVectorUpdate(
                 point_id="550e8400-e29b-41d4-a716-446655440000",
                 vector_name="text_vector",
                 vector_data=[0.2] * 1024,
@@ -237,12 +234,12 @@ async def test_update_vectors_duplicate_with_fail_policy_raises_duplicate_update
     with pytest.raises(DuplicateUpdateError):
         await qdrant_client.update_vectors(
             updates=[
-                BatchVectorUpdateItem(
+                BatchVectorUpdate(
                     point_id="550e8400-e29b-41d4-a716-446655440000",
                     vector_name="text_vector",
                     vector_data=[0.1] * 1024,
                 ),
-                BatchVectorUpdateItem(
+                BatchVectorUpdate(
                     point_id="550e8400-e29b-41d4-a716-446655440000",
                     vector_name="text_vector",
                     vector_data=[0.2] * 1024,
@@ -261,7 +258,7 @@ async def test_update_payload_merge_uses_set_payload_operation(
 
     result = await qdrant_client.update_payload(
         updates=[
-            BatchPayloadUpdateItem(
+            BatchPayloadUpdate(
                 point_id="550e8400-e29b-41d4-a716-446655440000",
                 payload={"title": "A"},
             )
@@ -282,7 +279,7 @@ async def test_update_payload_unknown_mode_raises_validation_error(
 ) -> None:
     with pytest.raises(pydantic.ValidationError, match="mode"):
         await qdrant_client.update_payload(
-            updates=[BatchPayloadUpdateItem(point_id="p1", payload={"title": "A"})],
+            updates=[BatchPayloadUpdate(point_id="p1", payload={"title": "A"})],
             mode="replace",  # ty: ignore[invalid-argument-type]
         )
 
@@ -296,7 +293,7 @@ async def test_update_payload_overwrite_uses_overwrite_operation(
 
     result = await qdrant_client.update_payload(
         updates=[
-            BatchPayloadUpdateItem(
+            BatchPayloadUpdate(
                 point_id="550e8400-e29b-41d4-a716-446655440000",
                 payload={"title": "A"},
             )
@@ -323,7 +320,7 @@ def test_search_request_without_embedding_raises_value_error() -> None:
 
 def test_search_request_sparse_embedding_only_is_accepted() -> None:
     request = SearchRequest(
-        sparse_embedding=SparseVectorData(indices=[1], values=[0.2]), limit=5
+        sparse_embedding=SparseVectorPayload(indices=[1], values=[0.2]), limit=5
     )
     assert request.sparse_embedding is not None
     assert request.sparse_embedding.indices == [1]
@@ -332,7 +329,7 @@ def test_search_request_sparse_embedding_only_is_accepted() -> None:
 def test_search_request_sparse_length_mismatch_raises_value_error() -> None:
     with pytest.raises(ValueError):
         SearchRequest(
-            sparse_embedding=SparseVectorData(indices=[1, 2], values=[0.2]),
+            sparse_embedding=SparseVectorPayload(indices=[1, 2], values=[0.2]),
             limit=5,
         )
 
@@ -350,7 +347,7 @@ async def test_initialize_collection_missing_collection_creates_it_with_sparse_v
         },
     )
     async_client = create_autospec(AsyncQdrantClient, instance=True)
-    async_client.get_collections.return_value = CollectionsResponse(collections=[])
+    async_client.collection_exists.return_value = False
     async_client.create_collection.return_value = True
 
     client = QdrantClient(config=sparse_config, async_qdrant_client=async_client)
@@ -379,7 +376,7 @@ async def test_search_telemetry_raises_still_returns_hits(
         ]
     )
 
-    from qdrant_db.contracts import SearchRequest
+    from qdrant_db.qdrant_models import SearchRequest
 
     results = await qdrant_client.search(
         SearchRequest(text_embedding=[0.1] * 1024, limit=1)
@@ -410,7 +407,6 @@ async def test_add_documents_transient_failure_retries_and_succeeds(
     qdrant_client: QdrantClient,
 ) -> None:
     async_client = cast(AsyncMock, qdrant_client._async_client)
-    # First call raises a transient error; second succeeds.
     async_client.upsert.side_effect = [ConnectionError("temporary"), None]
 
     result = await qdrant_client.add_documents(
@@ -559,7 +555,7 @@ async def test_search_fusion_forwards_payload_choice(
     await sparse_qdrant_client.search(
         SearchRequest(
             text_embedding=[0.1] * 1024,
-            sparse_embedding=SparseVectorData(indices=[1, 4], values=[0.9, 0.2]),
+            sparse_embedding=SparseVectorPayload(indices=[1, 4], values=[0.9, 0.2]),
             limit=10,
             with_payload=with_payload,
         )
@@ -624,7 +620,7 @@ async def test_update_vectors_sparse_data_converts_to_sparse_vector(
 
     result = await sparse_qdrant_client.update_vectors(
         updates=[
-            BatchVectorUpdateItem(
+            BatchVectorUpdate(
                 point_id="550e8400-e29b-41d4-a716-446655440000",
                 vector_name="text_sparse_vector",
                 vector_data={"indices": [1, 3], "values": [0.8, 0.6]},
@@ -687,7 +683,7 @@ async def batching_client() -> QdrantClient:
 def _hybrid_request(point_id: int) -> SearchRequest:
     return SearchRequest(
         text_embedding=[0.1] * 1024,
-        sparse_embedding=SparseVectorData(indices=[point_id], values=[1.0]),
+        sparse_embedding=SparseVectorPayload(indices=[point_id], values=[1.0]),
         limit=10,
         with_payload=False,
     )
@@ -819,7 +815,7 @@ async def test_search_hybrid_sends_search_params_on_dense_branch_only(
     await tuned_search_client.search(
         SearchRequest(
             text_embedding=[0.1] * 1024,
-            sparse_embedding=SparseVectorData(indices=[1], values=[0.9]),
+            sparse_embedding=SparseVectorPayload(indices=[1], values=[0.9]),
             limit=10,
         )
     )
@@ -857,7 +853,7 @@ async def test_search_default_settings_sends_no_search_params(
     await sparse_qdrant_client.search(
         SearchRequest(
             text_embedding=[0.1] * 1024,
-            sparse_embedding=SparseVectorData(indices=[1], values=[0.9]),
+            sparse_embedding=SparseVectorPayload(indices=[1], values=[0.9]),
             limit=10,
         )
     )
@@ -865,3 +861,113 @@ async def test_search_default_settings_sends_no_search_params(
     call = async_client.query_points.call_args.kwargs
     assert call["search_params"] is None
     assert all(branch.params is None for branch in call["prefetch"])
+
+
+def test_qdrant_client_properties_expose_configured_settings(
+    qdrant_client: QdrantClient,
+) -> None:
+    config = qdrant_client.config
+    assert qdrant_client.collection_name == config.qdrant_collection_name
+    assert (
+        qdrant_client.vector_size
+        == config.vector_names[config.primary_text_vector_name]
+    )
+    assert qdrant_client.indexed_fields == frozenset(
+        config.qdrant_indexed_payload_fields.keys()
+    )
+    assert (
+        qdrant_client.image_vector_size
+        == config.vector_names[config.primary_image_vector_name]
+    )
+    assert qdrant_client.distance_metric == config.qdrant_distance_metric
+    assert qdrant_client.connection_url == config.qdrant_url
+    assert qdrant_client.text_vector_name == config.primary_text_vector_name
+    assert qdrant_client.image_vector_name == config.primary_image_vector_name
+    assert qdrant_client.sparse_vector_name == config.primary_sparse_vector_name
+
+
+@pytest.mark.asyncio
+async def test_health_check_client_error_returns_false(
+    qdrant_client: QdrantClient,
+) -> None:
+    async_client = cast(AsyncMock, qdrant_client._async_client)
+    async_client.get_collections.side_effect = RuntimeError("down")
+
+    assert await qdrant_client.health_check() is False
+
+
+@pytest.mark.asyncio
+async def test_empty_batch_operations_return_zero_summaries(
+    qdrant_client: QdrantClient,
+) -> None:
+    add_summary = await qdrant_client.add_documents([])
+    vec_summary = await qdrant_client.update_vectors([])
+    payload_summary = await qdrant_client.update_payload([])
+
+    assert (add_summary.total, vec_summary.total, payload_summary.total) == (0, 0, 0)
+
+
+@pytest.mark.asyncio
+async def test_search_expansion_without_primary_embedding_raises_validation_error(
+    qdrant_client: QdrantClient,
+) -> None:
+    from qdrant_db.errors import ValidationError as QdrantValidationError
+
+    request = SearchRequest.model_construct(
+        text_embedding=None,
+        image_embedding=None,
+        sparse_embedding=None,
+        expanded_text_embeddings=[[0.1] * 1024],
+        entity_type=None,
+        limit=5,
+        score_threshold=None,
+        filters=[],
+        fusion_method="rrf",
+        with_payload=True,
+        query_text=None,
+    )
+
+    with pytest.raises(QdrantValidationError, match="at least two embeddings"):
+        await qdrant_client.search(request)
+
+
+@pytest.mark.asyncio
+async def test_lifecycle_delegates_forward_to_collection_manager(
+    qdrant_client: QdrantClient,
+) -> None:
+    collection_manager = create_autospec(QdrantCollectionManager, instance=True)
+    collection_manager.collection_exists.return_value = False
+    collection_manager.delete_collection.return_value = True
+    collection_manager.clear_index.return_value = True
+    collection_manager.setup_payload_indexes.return_value = None
+    qdrant_client._collection_manager = collection_manager
+
+    assert await qdrant_client.collection_exists() is False
+    assert await qdrant_client.delete_collection() is True
+    assert await qdrant_client.clear_index() is True
+    await qdrant_client.setup_payload_indexes()
+
+    collection_manager.collection_exists.assert_awaited_once_with()
+    collection_manager.delete_collection.assert_awaited_once_with()
+    collection_manager.clear_index.assert_awaited_once_with()
+    collection_manager.setup_payload_indexes.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
+async def test_search_error_records_db_errors_telemetry_and_reraises(
+    qdrant_client: QdrantClient,
+) -> None:
+    error_counter = create_autospec(Counter, instance=True)
+    duration_histogram = create_autospec(Histogram, instance=True)
+    qdrant_client._telemetry = type(
+        "Telemetry",
+        (),
+        {"DB_ERRORS": error_counter, "DB_QUERY_DURATION": duration_histogram},
+    )()
+    async_client = cast(AsyncMock, qdrant_client._async_client)
+    async_client.query_points.side_effect = RuntimeError("search failed")
+
+    with pytest.raises(RuntimeError, match="search failed"):
+        await qdrant_client.search(SearchRequest(text_embedding=[0.1] * 1024, limit=5))
+
+    error_counter.add.assert_called_once_with(1, {"operation": "search_single_vector"})

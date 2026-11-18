@@ -17,7 +17,7 @@ class EmbeddingConfig(EnvSettings):
         default="BAAI/bge-m3", description="Modern text embedding model name"
     )
     bge_model_version: str = Field(
-        default="m3", description="BGE model version: v1.5, m3, reranker"
+        default="m3", description="BGE model version: v1.5, m3"
     )
     bge_model_size: str = Field(
         default="base", description="BGE model size: small, base, large"
@@ -109,27 +109,6 @@ class EmbeddingConfig(EnvSettings):
         ),
     )
 
-    # ==================== Reranking Configuration ====================
-
-    reranking_enabled: bool = Field(
-        default=False,
-        description="Enable cross-encoder reranking for search results",
-    )
-    reranking_provider: str = Field(
-        default="sentence-transformers",
-        description="Reranking provider (currently only sentence-transformers)",
-    )
-    reranking_model: str = Field(
-        default="BAAI/bge-reranker-v2-m3",
-        description="Cross-encoder model for reranking",
-    )
-    reranking_batch_size: int = Field(
-        default=32,
-        ge=1,
-        le=256,
-        description="Batch size for reranking inference",
-    )
-
     @field_validator("text_embedding_provider")
     @classmethod
     def validate_text_provider(cls, v: str) -> str:
@@ -161,7 +140,7 @@ class EmbeddingConfig(EnvSettings):
     @classmethod
     def validate_bge_model_version(cls, v: str) -> str:
         """Validate BGE model version."""
-        valid_versions = ["v1.5", "m3", "reranker"]
+        valid_versions = ["v1.5", "m3"]
         if v.lower() not in valid_versions:
             raise ValueError(f"BGE model version must be one of: {valid_versions}")
         return v.lower()
@@ -173,13 +152,4 @@ class EmbeddingConfig(EnvSettings):
         valid_sizes = ["small", "base", "large"]
         if v.lower() not in valid_sizes:
             raise ValueError(f"BGE model size must be one of: {valid_sizes}")
-        return v.lower()
-
-    @field_validator("reranking_provider")
-    @classmethod
-    def validate_reranking_provider(cls, v: str) -> str:
-        """Validate reranking provider."""
-        valid = ["sentence-transformers"]
-        if v.lower() not in valid:
-            raise ValueError(f"reranking_provider must be one of: {valid}")
         return v.lower()

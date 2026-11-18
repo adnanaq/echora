@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 from qdrant_db import QdrantClient
-from qdrant_db.contracts import SearchFilterCondition, SearchRange
+from qdrant_db.qdrant_models import SearchFilterCondition, SearchRange
 
 
 def _to_search_filter_conditions(

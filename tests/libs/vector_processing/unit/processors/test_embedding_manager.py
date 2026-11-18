@@ -1,4 +1,4 @@
-from unittest.mock import create_autospec
+from unittest.mock import create_autospec, patch
 
 import pytest
 from common.models.anime import (
@@ -233,3 +233,51 @@ async def test_process_anime_vectors_character_anime_ids_include_current_anime_o
     record = AnimeRecord(anime=_anime(), characters=[character])
 
     assert _character_anime_ids(await manager.process_anime_vectors(record)) == expected
+
+
+async def test_process_anime_batch_handles_record_and_outer_errors(
+    manager, monkeypatch
+):
+    full_record = _full_record()
+    with patch.object(
+        manager,
+        "process_anime_vectors",
+        side_effect=[
+            RuntimeError("record failed"),
+            [VectorDocument(id="ok", vectors={"text_vector": [0.1]}, payload={})],
+        ],
+    ):
+        docs = await manager.process_anime_batch([full_record, full_record])
+    assert [doc.id for doc in docs] == ["ok"]
+
+    def failing_gather(*coros, **kwargs):
+        for coro in coros:
+            coro.close()
+        raise RuntimeError("gather failed")
+
+    with patch("asyncio.gather", side_effect=failing_gather):
+        assert await manager.process_anime_batch([full_record]) == []
+
+
+async def test_fallback_zero_vector_skips_empty_points_and_stats_error(manager):
+    manager.text_processor.encode_text_with_sparse.return_value = (None, None)
+    manager.text_processor.get_zero_embedding.return_value = [0.0] * 1024
+    manager.text_processor.encode_texts_batch_with_sparse.side_effect = None
+    manager.text_processor.encode_texts_batch_with_sparse.return_value = (
+        [None],
+        [None],
+    )
+
+    docs = await manager.process_anime_vectors(_full_record())
+    assert len(docs) == 1
+    assert docs[0].vectors["text_vector"] == [0.0] * 1024
+
+    manager.text_processor.get_model_info.return_value = {"name": "t"}
+    manager.vision_processor.get_model_info.return_value = {"name": "v"}
+    assert manager.get_embedding_stats() == {
+        "text_processor": {"name": "t"},
+        "vision_processor": {"name": "v"},
+    }
+
+    manager.text_processor.get_model_info.side_effect = RuntimeError("stats boom")
+    assert manager.get_embedding_stats() == {"error": "stats boom"}

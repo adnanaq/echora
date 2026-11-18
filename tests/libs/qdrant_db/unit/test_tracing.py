@@ -14,8 +14,8 @@ from qdrant_client import AsyncQdrantClient
 from qdrant_client.http.models import CollectionsResponse, CountResult
 from qdrant_db import QdrantClient
 from qdrant_db.collection.manager import QdrantCollectionManager
-from qdrant_db.contracts import BatchPayloadUpdateItem, BatchVectorUpdateItem
 from qdrant_db.errors import PermanentQdrantError
+from qdrant_db.qdrant_models import BatchPayloadUpdate, BatchVectorUpdate
 from qdrant_db.tracing import qdrant_span
 from vector_db_interface import VectorDocument
 
@@ -40,6 +40,7 @@ def _manager(async_client: AsyncQdrantClient) -> QdrantCollectionManager:
 
 def _async_client() -> AsyncQdrantClient:
     async_client = create_autospec(AsyncQdrantClient, instance=True)
+    async_client.collection_exists.return_value = False
     async_client.get_collections.return_value = CollectionsResponse(collections=[])
     async_client.get_collection.return_value = SimpleNamespace(model_dump=lambda: {})
     async_client.count.return_value = CountResult(count=0)
@@ -119,7 +120,7 @@ CLIENT_CALLS: list[
         "update_vectors",
         lambda client: client.update_vectors(
             [
-                BatchVectorUpdateItem(
+                BatchVectorUpdate(
                     point_id="point-1",
                     vector_name="text_vector",
                     vector_data=[0.1] * 1024,
@@ -131,7 +132,7 @@ CLIENT_CALLS: list[
     (
         "update_payload",
         lambda client: client.update_payload(
-            [BatchPayloadUpdateItem(point_id="point-1", key="title", payload={"a": 1})]
+            [BatchPayloadUpdate(point_id="point-1", key="title", payload={"a": 1})]
         ),
         ["qdrant.batch_update_points"],
     ),
@@ -201,7 +202,7 @@ MANAGER_CALLS: list[
     (
         "collection_exists",
         lambda manager: manager.collection_exists(),
-        ["qdrant.get_collections"],
+        ["qdrant.collection_exists"],
     ),
     (
         "delete_collection",
@@ -211,7 +212,7 @@ MANAGER_CALLS: list[
     (
         "initialize_collection",
         lambda manager: manager.initialize_collection(),
-        ["qdrant.get_collections", "qdrant.create_collection"],
+        ["qdrant.collection_exists", "qdrant.create_collection"],
     ),
 ]
 

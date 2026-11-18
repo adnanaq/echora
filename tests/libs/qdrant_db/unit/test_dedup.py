@@ -1,5 +1,3 @@
-"""Unit tests for deduplication utility helpers."""
-
 from dataclasses import dataclass
 
 import pytest
@@ -8,14 +6,11 @@ from qdrant_db.utils.dedup import DuplicateKeyError, deduplicate_items
 
 @dataclass(frozen=True)
 class _Item:
-    """Simple test item used for deduplication behavior checks."""
-
     key: str
     value: int
 
 
-def test_deduplicate_items_rejects_invalid_policy() -> None:
-    """Invalid dedup policy must raise a validation error."""
+def test_deduplicate_items_invalid_policy_raises_value_error() -> None:
     with pytest.raises(ValueError, match="dedup_policy must be one of"):
         deduplicate_items(
             items=[_Item(key="a", value=1)],
@@ -24,8 +19,7 @@ def test_deduplicate_items_rejects_invalid_policy() -> None:
         )
 
 
-def test_deduplicate_items_fail_policy_without_duplicates() -> None:
-    """Fail policy should return all items unchanged when keys are unique."""
+def test_deduplicate_items_fail_policy_without_duplicates_returns_all_items() -> None:
     items = [_Item(key="a", value=1), _Item(key="b", value=2)]
     deduplicated, duplicates_removed = deduplicate_items(
         items=items,
@@ -37,8 +31,9 @@ def test_deduplicate_items_fail_policy_without_duplicates() -> None:
     assert duplicates_removed == 0
 
 
-def test_deduplicate_items_fail_policy_raises_on_duplicate() -> None:
-    """Fail policy should raise DuplicateKeyError on repeated keys."""
+def test_deduplicate_items_fail_policy_with_duplicate_raises_duplicate_key_error() -> (
+    None
+):
     items = [_Item(key="a", value=1), _Item(key="a", value=2)]
 
     with pytest.raises(DuplicateKeyError, match="Duplicate key found") as exc_info:
@@ -49,8 +44,7 @@ def test_deduplicate_items_fail_policy_raises_on_duplicate() -> None:
     assert exc_info.value.key == "a"
 
 
-def test_deduplicate_items_last_wins_keeps_latest_and_order() -> None:
-    """Last-wins policy keeps latest values and reinserts in latest-order."""
+def test_deduplicate_items_last_wins_keeps_latest_values_and_order() -> None:
     items = [
         _Item(key="a", value=1),
         _Item(key="b", value=10),
@@ -73,8 +67,7 @@ def test_deduplicate_items_last_wins_keeps_latest_and_order() -> None:
     assert duplicates_removed == 2
 
 
-def test_deduplicate_items_last_wins_with_empty_input() -> None:
-    """Empty input should return empty output and zero duplicates removed."""
+def test_deduplicate_items_last_wins_empty_input_returns_empty_and_zero() -> None:
     deduplicated, duplicates_removed = deduplicate_items(
         items=[],
         key_fn=lambda item: item,

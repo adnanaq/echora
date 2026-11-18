@@ -1,10 +1,9 @@
-"""Unit tests for schema_builder pure functions."""
-
 from unittest.mock import patch
 
 from common.config import QdrantConfig
 from qdrant_client.models import (
     BinaryQuantization,
+    Datatype,
     Distance,
     HnswConfigDiff,
     Modifier,
@@ -15,19 +14,18 @@ from qdrant_client.models import (
     WalConfigDiff,
 )
 from qdrant_db.collection.schema_builder import (
+    build_hnsw_config,
     build_optimizers_config,
+    build_per_vector_quantization_config,
     build_quantization_config,
     build_sparse_vector_config,
     build_vector_config,
     build_wal_config,
-    get_hnsw_config,
-    get_per_vector_quantization_config,
-    get_vector_priority,
+    resolve_vector_priority,
 )
 
 
 def _base_config(**overrides: object) -> QdrantConfig:
-    """Minimal valid QdrantConfig for schema builder tests."""
     defaults: dict[str, object] = {
         "vector_names": {"text_vector": 1024, "image_vector": 768},
         "multivector_vectors": ["image_vector"],
@@ -55,23 +53,18 @@ def _base_config(**overrides: object) -> QdrantConfig:
     return QdrantConfig.model_validate(defaults)
 
 
-# ---------------------------------------------------------------------------
-# get_vector_priority
-# ---------------------------------------------------------------------------
-
-
-def test_get_vector_priority_returns_correct_bucket() -> None:
+def test_resolve_vector_priority_returns_correct_bucket() -> None:
     config = _base_config()
-    assert get_vector_priority(config, "text_vector") == "high"
-    assert get_vector_priority(config, "image_vector") == "high"
+    assert resolve_vector_priority(config, "text_vector") == "high"
+    assert resolve_vector_priority(config, "image_vector") == "high"
 
 
-def test_get_vector_priority_defaults_to_medium_for_unknown() -> None:
+def test_resolve_vector_priority_defaults_to_medium_for_unknown() -> None:
     config = _base_config()
-    assert get_vector_priority(config, "nonexistent_vector") == "medium"
+    assert resolve_vector_priority(config, "nonexistent_vector") == "medium"
 
 
-def test_get_vector_priority_low_bucket() -> None:
+def test_resolve_vector_priority_low_bucket() -> None:
     config = _base_config(
         vector_priorities={
             "high": [],
@@ -79,51 +72,36 @@ def test_get_vector_priority_low_bucket() -> None:
             "low": ["text_vector", "image_vector"],
         }
     )
-    assert get_vector_priority(config, "text_vector") == "low"
+    assert resolve_vector_priority(config, "text_vector") == "low"
 
 
-# ---------------------------------------------------------------------------
-# get_hnsw_config
-# ---------------------------------------------------------------------------
-
-
-def test_get_hnsw_config_high_priority() -> None:
+def test_build_hnsw_config_high_priority() -> None:
     config = _base_config()
-    result = get_hnsw_config(config, "high")
+    result = build_hnsw_config(config, "high")
     assert isinstance(result, HnswConfigDiff)
     assert result.ef_construct == 256
     assert result.m == 64
 
 
-def test_get_hnsw_config_medium_priority() -> None:
+def test_build_hnsw_config_medium_priority() -> None:
     config = _base_config()
-    result = get_hnsw_config(config, "medium")
+    result = build_hnsw_config(config, "medium")
     assert result.ef_construct == 200
     assert result.m == 48
 
 
-# ---------------------------------------------------------------------------
-# get_per_vector_quantization_config
-# ---------------------------------------------------------------------------
-
-
-def test_get_per_vector_quantization_config_scalar() -> None:
+def test_build_per_vector_quantization_config_scalar() -> None:
     config = _base_config()
-    result = get_per_vector_quantization_config(config, "high")
+    result = build_per_vector_quantization_config(config, "high")
     assert isinstance(result, ScalarQuantization)
     assert result.scalar.always_ram is True
 
 
-def test_get_per_vector_quantization_config_binary() -> None:
+def test_build_per_vector_quantization_config_binary() -> None:
     config = _base_config()
-    result = get_per_vector_quantization_config(config, "low")
+    result = build_per_vector_quantization_config(config, "low")
     assert isinstance(result, BinaryQuantization)
     assert result.binary.always_ram is False
-
-
-# ---------------------------------------------------------------------------
-# build_vector_config
-# ---------------------------------------------------------------------------
 
 
 def test_build_vector_config_returns_all_named_vectors() -> None:
@@ -166,11 +144,6 @@ def test_build_vector_config_hnsw_config_applied() -> None:
     assert result["text_vector"].hnsw_config.ef_construct == 256
 
 
-# ---------------------------------------------------------------------------
-# build_sparse_vector_config
-# ---------------------------------------------------------------------------
-
-
 def test_build_sparse_vector_config_returns_configured_names() -> None:
     config = _base_config()
     result = build_sparse_vector_config(config)
@@ -205,11 +178,6 @@ def test_build_sparse_vector_config_no_modifier_when_none() -> None:
     result = build_sparse_vector_config(config)
     assert result is not None
     assert result["text_sparse_vector"].modifier is None
-
-
-# ---------------------------------------------------------------------------
-# build_quantization_config
-# ---------------------------------------------------------------------------
 
 
 def test_build_quantization_config_disabled_returns_none() -> None:
@@ -283,11 +251,6 @@ def test_build_quantization_config_exception_returns_none() -> None:
     assert result is None
 
 
-# ---------------------------------------------------------------------------
-# build_optimizers_config
-# ---------------------------------------------------------------------------
-
-
 def test_build_optimizers_config_returns_diff() -> None:
     config = _base_config(memory_mapping_threshold_mb=50)
     result = build_optimizers_config(config)
@@ -320,11 +283,6 @@ def test_build_optimizers_config_exception_returns_none() -> None:
     assert result is None
 
 
-# ---------------------------------------------------------------------------
-# build_wal_config
-# ---------------------------------------------------------------------------
-
-
 def test_build_wal_config_disabled_returns_none() -> None:
     config = _base_config(qdrant_enable_wal=False)
     assert build_wal_config(config) is None
@@ -347,3 +305,12 @@ def test_build_wal_config_enabled_returns_diff() -> None:
         side_effect=RuntimeError("boom"),
     ):
         assert build_wal_config(config) is None
+
+
+def test_build_vector_config_turbo_datatype_sets_expected_qdrant_datatype() -> None:
+    config = _base_config(qdrant_vector_datatype="turbo8")
+
+    vectors = build_vector_config(config)
+
+    assert vectors["text_vector"].datatype == Datatype.TURBO8
+    assert vectors["image_vector"].datatype == Datatype.TURBO8

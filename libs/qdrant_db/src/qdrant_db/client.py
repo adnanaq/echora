@@ -11,71 +11,50 @@ from typing import Any, Protocol, cast
 
 from common.config import QdrantConfig
 from common.utils.request_batcher import RequestBatcher
-from common.utils.transient_errors import is_transient_service_error
 from pydantic import PositiveInt, SkipValidation, validate_call
 from qdrant_client import AsyncQdrantClient
-from qdrant_client.http.exceptions import ResponseHandlingException
-from qdrant_client.http.models import QueryResponse
 from qdrant_client.models import (
     Filter,
-    Fusion,
-    FusionQuery,
-    OverwritePayloadOperation,
     PointStruct,
-    PointVectors,
     Prefetch,
     QueryRequest,
-    Rrf,
-    RrfQuery,
-    SetPayload,
-    SetPayloadOperation,
     SparseVector,
 )
 from qdrant_db.collection.manager import QdrantCollectionManager
-from qdrant_db.contracts import (
-    BatchOperationResult,
-    BatchPayloadUpdateItem,
-    BatchVectorUpdateItem,
-    DedupPolicy,
-    PayloadUpdateMode,
-    SearchFilterCondition,
-    SearchRequest,
-)
 from qdrant_db.errors import (
-    DuplicateUpdateError,
     PermanentQdrantError,
     ValidationError,
 )
 from qdrant_db.normalizer import VectorNormalizer
+from qdrant_db.qdrant_models import (
+    BatchOperationSummary,
+    BatchPayloadUpdate,
+    BatchVectorUpdate,
+    DeduplicationPolicy,
+    PayloadUpdateMode,
+    SearchFilterCondition,
+    SearchRequest,
+)
 from qdrant_db.query_builder import (
     build_filter,
+    build_fusion_query,
     build_prefetch_queries,
-    build_sparse_query,
+    build_search_hits,
     build_text_search_params,
+    collect_active_embeddings,
 )
-from qdrant_db.tracing import qdrant_span
-from qdrant_db.utils import DuplicateKeyError, deduplicate_items, retry_with_backoff
+from qdrant_db.tracing import emit_telemetry, qdrant_span
+from qdrant_db.utils import retry_with_backoff
+from qdrant_db.write_builder import (
+    build_payload_operations,
+    deduplicate_updates,
+    group_vector_updates,
+    is_transient_qdrant_error,
+    normalize_document_vectors,
+)
 from vector_db_interface import SearchHit, VectorDBClient, VectorDocument
 
 logger = logging.getLogger(__name__)
-
-
-def _is_transient_qdrant_error(error: Exception) -> bool:
-    """Check whether a Qdrant client error is worth another attempt.
-
-    The general rules of ``is_transient_service_error`` apply, and
-    ``ResponseHandlingException`` is retried as well, because Qdrant's client
-    raises it when a response arrives broken, which is usually a network fault.
-
-    Args:
-        error: The error the Qdrant operation raised.
-
-    Returns:
-        True when the error is transient.
-    """
-    return is_transient_service_error(
-        error, transient_error_types=(ResponseHandlingException,)
-    )
 
 
 class _Telemetry(Protocol):
@@ -129,6 +108,7 @@ class QdrantClient(VectorDBClient):
             sparse_vector_names=self._sparse_vector_names,
             multivector_vectors=set(config.multivector_vectors),
             vector_names=config.vector_names,
+            vector_datatype=config.qdrant_vector_datatype,
         )
         self._collection_manager = QdrantCollectionManager(
             config=config,
@@ -304,16 +284,17 @@ class QdrantClient(VectorDBClient):
         batch_size: PositiveInt = 100,
         max_retries: int = 3,
         retry_delay: float = 1.0,
-    ) -> BatchOperationResult:
+    ) -> BatchOperationSummary:
         """Upsert documents in batches with per-batch retry.
 
-        Each batch is retried independently on transient failures. If a batch
-        fails permanently after all retries, earlier batches are already
-        committed to Qdrant. Because upserts are idempotent, re-running the
-        full call is safe to recover from a partial commit.
+        Each batch is retried independently on transient failures. A later batch
+        failure does not roll back earlier successful batches. Replaying a failed
+        call is safe only when overwriting current point values is acceptable,
+        because replay may overwrite updates written concurrently by another
+        writer.
 
         Args:
-            documents: Documents with vectors/payload to upsert.
+            documents: Documents with vectors and payloads to upsert.
             batch_size: Number of points per upsert request.
             max_retries: Retry attempts per batch for transient failures.
             retry_delay: Initial backoff delay in seconds (doubles each retry).
@@ -322,33 +303,20 @@ class QdrantClient(VectorDBClient):
             Batch operation summary.
 
         Raises:
-            pydantic.ValidationError: If ``batch_size`` is not a whole number
-                of at least 1.
+            pydantic.ValidationError: If ``batch_size`` is less than 1.
             PermanentQdrantError: If any batch fails after all retries.
         """
         if not documents:
-            return BatchOperationResult(total=0, successful=0, failed=0)
-
-        def _normalize_point_vectors(
-            vectors: dict[str, Any],
-        ) -> dict[str, list[float] | list[list[float]] | SparseVector]:
-            normalized_vectors: dict[
-                str, list[float] | list[list[float]] | SparseVector
-            ] = {}
-            for vector_name, vector_data in vectors.items():
-                normalized_vectors[vector_name] = (
-                    self._normalizer.normalize_vector_payload(
-                        vector_name=vector_name,
-                        vector_data=vector_data,
-                    )
-                )
-            return normalized_vectors
+            return BatchOperationSummary(total=0, successful=0, failed=0)
 
         for start in range(0, len(documents), batch_size):
             batch_points = [
                 PointStruct(
                     id=doc.id,
-                    vector=cast(dict[str, Any], _normalize_point_vectors(doc.vectors)),
+                    vector=cast(
+                        dict[str, Any],
+                        normalize_document_vectors(self._normalizer, doc.vectors),
+                    ),
                     payload=doc.payload,
                 )
                 for doc in documents[start : start + batch_size]
@@ -362,17 +330,11 @@ class QdrantClient(VectorDBClient):
                         wait=True,
                     )
 
-            try:
-                await retry_with_backoff(
-                    operation=_upsert,
-                    is_transient_error=_is_transient_qdrant_error,
-                    max_retries=max_retries,
-                    retry_delay=retry_delay,
-                )
-            except Exception as error:
-                raise PermanentQdrantError("Failed to upsert documents") from error
+            await self._run_retried_operation(
+                _upsert, "Failed to upsert documents", max_retries, retry_delay
+            )
 
-        return BatchOperationResult(
+        return BatchOperationSummary(
             total=len(documents),
             successful=len(documents),
             failed=0,
@@ -380,11 +342,11 @@ class QdrantClient(VectorDBClient):
 
     async def update_vectors(  # ty: ignore[invalid-method-override]
         self,
-        updates: list[BatchVectorUpdateItem],
-        dedup_policy: DedupPolicy = "last-wins",
+        updates: list[BatchVectorUpdate],
+        dedup_policy: DeduplicationPolicy = "last-wins",
         max_retries: int = 3,
         retry_delay: float = 1.0,
-    ) -> BatchOperationResult:
+    ) -> BatchOperationSummary:
         """Batch update point vectors with deduplication and retries.
 
         Args:
@@ -402,35 +364,17 @@ class QdrantClient(VectorDBClient):
             PermanentQdrantError: If Qdrant update fails.
         """
         if not updates:
-            return BatchOperationResult(total=0, successful=0, failed=0)
+            return BatchOperationSummary(total=0, successful=0, failed=0)
 
-        try:
-            deduplicated_updates, duplicates_removed = deduplicate_items(
-                items=updates,
-                key_fn=lambda item: (item.point_id, item.vector_name),
-                dedup_policy=dedup_policy,
-            )
-        except DuplicateKeyError as error:
-            key = cast(tuple[str, str], error.key)
-            raise DuplicateUpdateError(
+        deduplicated_updates, duplicates_removed = deduplicate_updates(
+            updates=updates,
+            key_fn=lambda item: (item.point_id, item.vector_name),
+            dedup_policy=dedup_policy,
+            duplicate_message=lambda key: (
                 f"Duplicate update found for ({key[0]}, {key[1]})"
-            ) from error
-
-        grouped: dict[
-            str, dict[str, list[float] | list[list[float]] | SparseVector]
-        ] = {}
-        for update in deduplicated_updates:
-            grouped.setdefault(update.point_id, {})[update.vector_name] = (
-                self._normalizer.normalize_vector_payload(
-                    vector_name=update.vector_name,
-                    vector_data=update.vector_data,
-                )
-            )
-
-        point_updates = [
-            PointVectors(id=point_id, vector=cast(dict[str, Any], vectors))
-            for point_id, vectors in grouped.items()
-        ]
+            ),
+        )
+        point_updates = group_vector_updates(self._normalizer, deduplicated_updates)
 
         async def _perform_update() -> None:
             with qdrant_span("update_vectors", self.collection_name):
@@ -440,18 +384,15 @@ class QdrantClient(VectorDBClient):
                     wait=True,
                 )
 
-        try:
-            await retry_with_backoff(
-                operation=_perform_update,
-                is_transient_error=_is_transient_qdrant_error,
-                max_retries=max_retries,
-                retry_delay=retry_delay,
-            )
-        except Exception as error:
-            raise PermanentQdrantError("Failed to batch update vectors") from error
+        await self._run_retried_operation(
+            _perform_update,
+            "Failed to batch update vectors",
+            max_retries,
+            retry_delay,
+        )
 
         total = len(deduplicated_updates)
-        return BatchOperationResult(
+        return BatchOperationSummary(
             total=total,
             successful=total,
             failed=0,
@@ -461,12 +402,12 @@ class QdrantClient(VectorDBClient):
     @validate_call
     async def update_payload(  # ty: ignore[invalid-method-override]
         self,
-        updates: list[BatchPayloadUpdateItem],
+        updates: list[BatchPayloadUpdate],
         mode: PayloadUpdateMode = "merge",
-        dedup_policy: DedupPolicy = "last-wins",
+        dedup_policy: DeduplicationPolicy = "last-wins",
         max_retries: int = 3,
         retry_delay: float = 1.0,
-    ) -> BatchOperationResult:
+    ) -> BatchOperationSummary:
         """Batch update payload fields for points.
 
         Args:
@@ -480,42 +421,26 @@ class QdrantClient(VectorDBClient):
             Batch operation summary.
 
         Raises:
-            pydantic.ValidationError: If ``mode`` or ``dedup_policy`` is not
-                one of its allowed values.
+            pydantic.ValidationError: If ``mode`` or ``dedup_policy`` is invalid.
             DuplicateUpdateError: If duplicates exist under ``fail`` policy.
             PermanentQdrantError: If Qdrant batch update fails.
         """
         if not updates:
-            return BatchOperationResult(total=0, successful=0, failed=0)
+            return BatchOperationSummary(total=0, successful=0, failed=0)
 
-        try:
-            deduplicated_updates, duplicates_removed = deduplicate_items(
-                items=updates,
-                key_fn=(
-                    (lambda item: (item.point_id, item.key))
-                    if mode == "merge"
-                    else (lambda item: item.point_id)
-                ),
-                dedup_policy=dedup_policy,
-            )
-        except DuplicateKeyError as error:
-            raise DuplicateUpdateError(
-                f"Duplicate payload update found for key={error.key}"
-            ) from error
-
-        operations: list[SetPayloadOperation | OverwritePayloadOperation] = []
-        for update in deduplicated_updates:
-            payload_update = SetPayload(
-                payload=update.payload,
-                points=[update.point_id],
-                key=update.key if mode == "merge" else None,
-            )
-            if mode == "merge":
-                operations.append(SetPayloadOperation(set_payload=payload_update))
-            else:
-                operations.append(
-                    OverwritePayloadOperation(overwrite_payload=payload_update)
-                )
+        deduplicated_updates, duplicates_removed = deduplicate_updates(
+            updates=updates,
+            key_fn=(
+                (lambda item: (item.point_id, item.key))
+                if mode == "merge"
+                else (lambda item: item.point_id)
+            ),
+            dedup_policy=dedup_policy,
+            duplicate_message=lambda key: (
+                f"Duplicate payload update found for key={key}"
+            ),
+        )
+        operations = build_payload_operations(deduplicated_updates, mode)
 
         async def _perform_update() -> None:
             with qdrant_span("batch_update_points", self.collection_name):
@@ -525,18 +450,15 @@ class QdrantClient(VectorDBClient):
                     wait=True,
                 )
 
-        try:
-            await retry_with_backoff(
-                operation=_perform_update,
-                is_transient_error=_is_transient_qdrant_error,
-                max_retries=max_retries,
-                retry_delay=retry_delay,
-            )
-        except Exception as error:
-            raise PermanentQdrantError("Failed to batch update payload") from error
+        await self._run_retried_operation(
+            _perform_update,
+            "Failed to batch update payload",
+            max_retries,
+            retry_delay,
+        )
 
         total = len(deduplicated_updates)
-        return BatchOperationResult(
+        return BatchOperationSummary(
             total=total,
             successful=total,
             failed=0,
@@ -568,40 +490,179 @@ class QdrantClient(VectorDBClient):
         if not points:
             return None
         point = points[0]
-        result: dict[str, Any] = {
+        point_record: dict[str, Any] = {
             "id": str(point.id),
             "payload": dict(point.payload) if point.payload else {},
         }
         if with_vectors:
-            result["vector"] = point.vector
-        return result
+            point_record["vector"] = point.vector
+        return point_record
+
+    async def search(self, request: SearchRequest) -> list[SearchHit]:
+        """Execute strict-contract search request.
+
+        Args:
+            request: Typed search request model.
+
+        Returns:
+            List of normalized search hits with vector similarity scores.
+
+        Raises:
+            ValidationError: If request implies invalid fusion combination.
+        """
+        qdrant_filter = build_filter(request.filters, entity_type=request.entity_type)
+        active_embeddings = collect_active_embeddings(
+            request=request,
+            text_vector_name=self._text_vector_name,
+            image_vector_name=self._image_vector_name,
+            sparse_vector_name=self._primary_sparse_vector_name,
+        )
+
+        if len(active_embeddings) == 1 and not request.expanded_text_embeddings:
+            vector_name, vector_data = active_embeddings[0]
+            return await self._search_single_vector(
+                vector_name=vector_name,
+                vector_data=vector_data,
+                limit=request.limit,
+                filters=qdrant_filter,
+                score_threshold=request.score_threshold,
+                with_payload=request.with_payload,
+            )
+
+        sparse_query = next(
+            (
+                vector_data
+                for vector_name, vector_data in active_embeddings
+                if vector_name == self._primary_sparse_vector_name
+                and isinstance(vector_data, SparseVector)
+            ),
+            None,
+        )
+        prefetch_queries = build_prefetch_queries(
+            request=request,
+            text_vector_name=self._text_vector_name,
+            image_vector_name=self._image_vector_name,
+            sparse_vector_name=self._primary_sparse_vector_name,
+            qdrant_filter=qdrant_filter,
+            prefetch_limit=request.limit * self._prefetch_limit_multiplier,
+            text_search_params=self._text_search_params,
+            sparse_query=sparse_query,
+        )
+        if len(prefetch_queries) < 2:
+            raise ValidationError(
+                "Fusion search requires at least two embeddings from text/image/sparse"
+            )
+
+        return await self._search_fusion(
+            prefetch_queries=prefetch_queries,
+            limit=request.limit,
+            fusion_method=request.fusion_method,
+            score_threshold=request.score_threshold,
+            with_payload=request.with_payload,
+        )
 
     async def clear_index(self) -> bool:
-        """Delete and recreate the collection, returning ``True`` on success."""
+        """Delete and recreate the collection.
+
+        Returns:
+            ``True`` when both delete and create succeed.
+        """
         return await self._collection_manager.clear_index()
 
     async def delete_collection(self) -> bool:
-        """Delete the collection, returning ``True`` on success."""
+        """Delete the collection.
+
+        Returns:
+            ``True`` when deletion succeeds, else ``False``.
+        """
         return await self._collection_manager.delete_collection()
 
     async def collection_exists(self) -> bool:
-        """Return ``True`` when the configured collection is present."""
+        """Check whether the configured collection exists.
+
+        Returns:
+            ``True`` when the configured collection is present.
+        """
         return await self._collection_manager.collection_exists()
 
     async def create_collection(self) -> bool:
-        """Ensure the collection exists and is compatible, returning ``True`` on success."""
+        """Ensure the collection exists and is compatible.
+
+        Returns:
+            ``True`` when collection initialization succeeds.
+        """
         return await self._collection_manager.create_collection()
 
     async def setup_payload_indexes(self) -> None:
         """Create configured payload indexes for filterable metadata fields."""
         await self._collection_manager.setup_payload_indexes()
 
-    def _emit_telemetry(self, emit: Any, operation: str) -> None:
-        # Telemetry must never mask real exceptions or fail search paths.
+    async def close(self) -> None:
+        """Stop the query batcher when query batching is enabled."""
+        if self._query_batcher is not None:
+            await self._query_batcher.close()
+
+    async def _run_retried_operation(
+        self,
+        operation: Any,
+        error_message: str,
+        max_retries: int,
+        retry_delay: float,
+    ) -> None:
+        """Execute an async Qdrant write operation with transient-error retries.
+
+        Args:
+            operation: Zero-argument async callable performing the Qdrant call.
+            error_message: Message used when wrapping non-recoverable failures.
+            max_retries: Retry attempts for transient failures.
+            retry_delay: Initial backoff delay in seconds.
+
+        Raises:
+            PermanentQdrantError: If retries are exhausted or a permanent error occurs.
+        """
         try:
-            emit()
+            await retry_with_backoff(
+                operation=operation,
+                is_transient_error=is_transient_qdrant_error,
+                max_retries=max_retries,
+                retry_delay=retry_delay,
+            )
+        except Exception as error:
+            raise PermanentQdrantError(error_message) from error
+
+    async def _execute_timed_query(
+        self, operation_name: str, query_request: QueryRequest
+    ) -> list[SearchHit]:
+        """Run a Qdrant query while recording duration and error telemetry.
+
+        Args:
+            operation_name: Telemetry operation label.
+            query_request: Prepared Qdrant query request.
+
+        Returns:
+            List of normalized search hits.
+        """
+        start_time = time.perf_counter()
+        try:
+            hits = await self._run_query(query_request)
+            if self._telemetry:
+                elapsed = time.perf_counter() - start_time
+                telemetry = self._telemetry
+                emit_telemetry(
+                    lambda: telemetry.DB_QUERY_DURATION.record(
+                        elapsed, {"operation": operation_name}
+                    ),
+                    f"{operation_name}.duration",
+                )
         except Exception:
-            logger.debug(f"Telemetry emission failed for {operation}", exc_info=True)
+            if self._telemetry:
+                telemetry = self._telemetry
+                emit_telemetry(
+                    lambda: telemetry.DB_ERRORS.add(1, {"operation": operation_name}),
+                    f"{operation_name}.error",
+                )
+            raise
+        return hits
 
     async def _search_single_vector(
         self,
@@ -625,44 +686,23 @@ class QdrantClient(VectorDBClient):
         Returns:
             List of normalized search hits.
         """
-        _start = time.perf_counter()
-        try:
-            hits = await self._run_query(
-                QueryRequest(
-                    query=vector_data,
-                    using=vector_name,
-                    params=(
-                        self._text_search_params
-                        if vector_name == self._text_vector_name
-                        else None
-                    ),
-                    limit=limit,
-                    with_payload=with_payload,
-                    with_vector=False,
-                    filter=filters,
-                    score_threshold=score_threshold,
-                )
-            )
-            if self._telemetry:
-                _elapsed = time.perf_counter() - _start
-                _tel = self._telemetry
-                self._emit_telemetry(
-                    lambda: _tel.DB_QUERY_DURATION.record(
-                        _elapsed, {"operation": "search_single_vector"}
-                    ),
-                    "search_single_vector.duration",
-                )
-        except Exception:
-            if self._telemetry:
-                _tel = self._telemetry
-                self._emit_telemetry(
-                    lambda: _tel.DB_ERRORS.add(
-                        1, {"operation": "search_single_vector"}
-                    ),
-                    "search_single_vector.error",
-                )
-            raise
-        return hits
+        return await self._execute_timed_query(
+            "search_single_vector",
+            QueryRequest(
+                query=vector_data,
+                using=vector_name,
+                params=(
+                    self._text_search_params
+                    if vector_name == self._text_vector_name
+                    else None
+                ),
+                limit=limit,
+                with_payload=with_payload,
+                with_vector=False,
+                filter=filters,
+                score_threshold=score_threshold,
+            ),
+        )
 
     async def _search_fusion(
         self,
@@ -672,7 +712,7 @@ class QdrantClient(VectorDBClient):
         score_threshold: float | None = None,
         with_payload: bool = True,
     ) -> list[SearchHit]:
-        """Run fused multi-query search using Query API prefetch + fusion.
+        """Run fused multi-query search using Query API prefetch and fusion.
 
         Args:
             prefetch_queries: Prepared prefetch branches for each query signal.
@@ -684,44 +724,27 @@ class QdrantClient(VectorDBClient):
         Returns:
             List of normalized search hits.
         """
-        if fusion_method == "dbsf":
-            query = FusionQuery(fusion=Fusion.DBSF)
-        else:
-            query = RrfQuery(rrf=Rrf(k=self._rrf_k))
-
-        _start = time.perf_counter()
-        try:
-            hits = await self._run_query(
-                QueryRequest(
-                    prefetch=prefetch_queries,
-                    query=query,
-                    limit=limit,
-                    with_payload=with_payload,
-                    with_vector=False,
-                    score_threshold=score_threshold,
-                )
-            )
-            if self._telemetry:
-                _elapsed = time.perf_counter() - _start
-                _tel = self._telemetry
-                self._emit_telemetry(
-                    lambda: _tel.DB_QUERY_DURATION.record(
-                        _elapsed, {"operation": "search_fusion"}
-                    ),
-                    "search_fusion.duration",
-                )
-        except Exception:
-            if self._telemetry:
-                _tel = self._telemetry
-                self._emit_telemetry(
-                    lambda: _tel.DB_ERRORS.add(1, {"operation": "search_fusion"}),
-                    "search_fusion.error",
-                )
-            raise
-        return hits
+        return await self._execute_timed_query(
+            "search_fusion",
+            QueryRequest(
+                prefetch=prefetch_queries,
+                query=build_fusion_query(fusion_method, self._rrf_k),
+                limit=limit,
+                with_payload=with_payload,
+                with_vector=False,
+                score_threshold=score_threshold,
+            ),
+        )
 
     async def _run_query(self, request: QueryRequest) -> list[SearchHit]:
-        """Send one query, through the batcher when query batching is on."""
+        """Send one query, through the batcher when query batching is on.
+
+        Args:
+            request: Prepared Qdrant query request.
+
+        Returns:
+            List of normalized search hits.
+        """
         if self._query_batcher is not None:
             return await self._query_batcher.submit(request)
         with qdrant_span("query_points", self.collection_name):
@@ -739,106 +762,21 @@ class QdrantClient(VectorDBClient):
                 with_vectors=False,
                 score_threshold=request.score_threshold,
             )
-        return self._hits(response)
+        return build_search_hits(response)
 
     async def _query_batch(self, requests: list[QueryRequest]) -> list[list[SearchHit]]:
-        """Send concurrent searches in one ``query_batch_points`` call."""
+        """Send concurrent searches in one ``query_batch_points`` call.
+
+        Args:
+            requests: Batch of prepared Qdrant query requests.
+
+        Returns:
+            List of normalized search hit lists aligned with ``requests``.
+        """
         with qdrant_span("query_batch_points", self.collection_name) as span:
             if len(requests) > 1:
                 span.set_attribute("db.operation.batch.size", len(requests))
             responses = await self._async_client.query_batch_points(
                 collection_name=self.collection_name, requests=requests
             )
-        return [self._hits(response) for response in responses]
-
-    def _hits(self, response: QueryResponse) -> list[SearchHit]:
-        """Normalize Qdrant points into search hits."""
-        return [
-            SearchHit(
-                id=str(point.id),
-                payload=dict(point.payload) if point.payload else {},
-                score=float(point.score),
-            )
-            for point in response.points
-        ]
-
-    async def search(self, request: SearchRequest) -> list[SearchHit]:
-        """Execute strict-contract search request.
-
-        Returns raw vector search results with vector similarity scores only.
-        Reranking should be applied at the application layer if needed.
-
-        Args:
-            request: Typed search request model.
-
-        Returns:
-            List of normalized search hits with vector similarity scores.
-
-        Raises:
-            ValidationError: If request implies invalid fusion combination.
-        """
-        filter_conditions = list(request.filters)
-        if request.entity_type:
-            filter_conditions.append(
-                SearchFilterCondition(
-                    field="entity_type",
-                    operator="eq",
-                    value=request.entity_type,
-                )
-            )
-        qdrant_filter = build_filter(filter_conditions)
-
-        active_embeddings: list[tuple[str, list[float] | SparseVector]] = [
-            (name, vec)
-            for name, vec in (
-                (self._text_vector_name, request.text_embedding),
-                (self._image_vector_name, request.image_embedding),
-                (
-                    self._primary_sparse_vector_name,
-                    build_sparse_query(request.sparse_embedding)
-                    if request.sparse_embedding
-                    else None,
-                ),
-            )
-            if vec is not None
-        ]
-
-        has_expansions = bool(request.expanded_text_embeddings)
-        if len(active_embeddings) == 1 and not has_expansions:
-            vector_name, vector_data = active_embeddings[0]
-            return await self._search_single_vector(
-                vector_name=vector_name,
-                vector_data=vector_data,
-                limit=request.limit,
-                filters=qdrant_filter,
-                score_threshold=request.score_threshold,
-                with_payload=request.with_payload,
-            )
-
-        prefetch_queries = build_prefetch_queries(
-            request=request,
-            text_vector_name=self._text_vector_name,
-            image_vector_name=self._image_vector_name,
-            sparse_vector_name=self._primary_sparse_vector_name,
-            qdrant_filter=qdrant_filter,
-            prefetch_limit=request.limit * self._prefetch_limit_multiplier,
-            text_search_params=self._text_search_params,
-        )
-
-        if len(prefetch_queries) < 2:
-            raise ValidationError(
-                "Fusion search requires at least two embeddings from text/image/sparse"
-            )
-
-        return await self._search_fusion(
-            prefetch_queries=prefetch_queries,
-            limit=request.limit,
-            fusion_method=request.fusion_method,
-            score_threshold=request.score_threshold,
-            with_payload=request.with_payload,
-        )
-
-    async def close(self) -> None:
-        """Stop the query batcher, if query batching is on."""
-        if self._query_batcher is not None:
-            await self._query_batcher.close()
+        return [build_search_hits(response) for response in responses]

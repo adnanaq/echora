@@ -8,11 +8,19 @@ from typing import Any, TypeGuard, cast
 
 import pydantic
 from qdrant_client.models import SparseVector
-from qdrant_db.contracts import DenseVector, MultiVector, SparseVectorData
 from qdrant_db.errors import ValidationError
+from qdrant_db.qdrant_models import (
+    DenseVector,
+    MultiVector,
+    SparseVectorPayload,
+    Uint8DenseVector,
+    Uint8MultiVector,
+)
 
 _DENSE_VECTOR = pydantic.TypeAdapter(DenseVector)
 _MULTI_VECTOR = pydantic.TypeAdapter(MultiVector)
+_UINT8_DENSE_VECTOR = pydantic.TypeAdapter(Uint8DenseVector)
+_UINT8_MULTI_VECTOR = pydantic.TypeAdapter(Uint8MultiVector)
 
 
 def is_sparse_payload(vector: Any) -> TypeGuard[dict[str, list[int] | list[float]]]:
@@ -39,6 +47,7 @@ class VectorNormalizer:
         sparse_vector_names: set[str],
         multivector_vectors: set[str],
         vector_names: dict[str, int],
+        vector_datatype: str | None = None,
     ) -> None:
         """Initialize normalizer with collection vector schema.
 
@@ -46,14 +55,16 @@ class VectorNormalizer:
             sparse_vector_names: Set of vector names configured as sparse.
             multivector_vectors: Set of vector names configured as multivector.
             vector_names: Mapping of vector name to expected dimension size.
+            vector_datatype: Configured Qdrant storage datatype for dense vectors.
         """
         self._sparse_vector_names = sparse_vector_names
         self._multivector_vectors = multivector_vectors
         self._vector_names = vector_names
+        self._vector_datatype = vector_datatype
 
     def to_sparse_vector_data(
         self, vector_data: Any, vector_name: str
-    ) -> SparseVectorData:
+    ) -> SparseVectorPayload:
         """Validate and coerce sparse vector payload.
 
         Args:
@@ -66,10 +77,10 @@ class VectorNormalizer:
         Raises:
             ValidationError: If payload shape is invalid.
         """
-        if isinstance(vector_data, SparseVectorData):
+        if isinstance(vector_data, SparseVectorPayload):
             return vector_data
         try:
-            return SparseVectorData.model_validate(vector_data)
+            return SparseVectorPayload.model_validate(vector_data)
         except pydantic.ValidationError as error:
             raise ValidationError(
                 f"Invalid sparse vector payload for {vector_name}"
@@ -123,14 +134,19 @@ class VectorNormalizer:
                 or a row has a size other than the configured dimension.
         """
         is_multivector = vector_name in self._multivector_vectors
-        contract = _MULTI_VECTOR if is_multivector else _DENSE_VECTOR
+        is_uint8 = self._vector_datatype == "uint8"
+        if is_uint8:
+            contract = _UINT8_MULTI_VECTOR if is_multivector else _UINT8_DENSE_VECTOR
+        else:
+            contract = _MULTI_VECTOR if is_multivector else _DENSE_VECTOR
         try:
             contract.validate_python(vector_data)
         except pydantic.ValidationError as error:
+            element_desc = "integers in [0, 255]" if is_uint8 else "finite numbers"
             shape = (
-                "a non-empty list of rows of finite numbers"
+                f"a non-empty list of rows of {element_desc}"
                 if is_multivector
-                else "a list of finite numbers"
+                else f"a list of {element_desc}"
             )
             raise ValidationError(f"Vector {vector_name} must be {shape}") from error
         expected = self._vector_names[vector_name]

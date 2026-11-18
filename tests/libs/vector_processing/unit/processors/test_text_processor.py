@@ -661,3 +661,100 @@ class TestEncodeTextsBatchWithCache:
         assert result[1] == cached_emb  # cache hit
         assert result[2] == [0.0] * 1024  # whitespace → zero vector
         text_model.encode.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_encode_text_with_sparse_blank_and_error(
+        self, text_model, embedding_config
+    ):
+        processor = TextProcessor(model=text_model, config=embedding_config)
+
+        dense, sparse = await processor.encode_text_with_sparse("   ")
+        assert dense == [0.0] * 1024
+        assert sparse is None
+
+        text_model.encode_with_sparse.side_effect = RuntimeError("sparse error")
+        assert await processor.encode_text_with_sparse("hello") == (None, None)
+
+    @pytest.mark.asyncio
+    async def test_encode_texts_batch_with_sparse_edge_cases(
+        self, text_model, embedding_config
+    ):
+        processor = TextProcessor(model=text_model, config=embedding_config)
+
+        (
+            dense_all_blank,
+            sparse_all_blank,
+        ) = await processor.encode_texts_batch_with_sparse(["  ", ""])
+        assert dense_all_blank == [[0.0] * 1024, [0.0] * 1024]
+        assert sparse_all_blank == [None, None]
+
+        text_model.encode_with_sparse.return_value = (
+            [[0.3] * 1024],
+            [{"indices": [1], "values": [0.9]}],
+        )
+        dense_mixed, sparse_mixed = await processor.encode_texts_batch_with_sparse(
+            ["", "hello"]
+        )
+        assert dense_mixed == [[0.0] * 1024, [0.3] * 1024]
+        assert sparse_mixed == [None, {"indices": [1], "values": [0.9]}]
+
+        text_model.encode_with_sparse.side_effect = RuntimeError("batch sparse error")
+        assert await processor.encode_texts_batch_with_sparse(["hello"]) == (
+            [None],
+            [None],
+        )
+
+    @pytest.mark.asyncio
+    async def test_encode_texts_batch_preserves_zero_and_cached_vectors_when_miss_fails(
+        self, text_model, embedding_config, embedding_cache
+    ):
+        cached_emb = [0.5] * 1024
+        embedding_cache.get_batch.return_value = [cached_emb, None]
+        text_model.encode.side_effect = RuntimeError("miss inference error")
+
+        processor = TextProcessor(
+            model=text_model,
+            config=embedding_config,
+            embedding_cache=embedding_cache,
+        )
+
+        result = await processor.encode_texts_batch(["", "hit", "miss"])
+        assert result == [[0.0] * 1024, cached_emb, None]
+
+    @pytest.mark.asyncio
+    async def test_encode_text_cancellation_keeps_semaphore_held_until_thread_exits(
+        self, text_model, embedding_config
+    ):
+        import asyncio
+        import threading
+
+        embedding_config.embed_max_concurrency = 1
+        started = threading.Event()
+        release = threading.Event()
+        call_count = 0
+
+        def slow_encode(texts):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                started.set()
+                release.wait(timeout=2.0)
+            return [[0.1] * 1024 for _ in texts]
+
+        text_model.encode.side_effect = slow_encode
+        processor = TextProcessor(model=text_model, config=embedding_config)
+
+        first_task = asyncio.create_task(processor.encode_text("first"))
+        await asyncio.to_thread(started.wait, 2.0)
+        first_task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await first_task
+        assert processor._semaphore.locked()
+
+        second_task = asyncio.create_task(processor.encode_text("second"))
+        await asyncio.sleep(0.05)
+        assert call_count == 1
+
+        release.set()
+        assert await asyncio.wait_for(second_task, timeout=2.0) == [0.1] * 1024
+        assert call_count == 2

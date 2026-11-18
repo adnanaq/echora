@@ -6,10 +6,13 @@ not wrap the async client's ``query_points`` or ``query_batch_points``, and it
 ends the spans of the async calls it does wrap before they finish.
 """
 
+import logging
 from contextlib import AbstractContextManager
+from typing import Any
 
 from opentelemetry import trace
 
+_logger = logging.getLogger(__name__)
 _tracer = trace.get_tracer("echora.qdrant_db")
 
 
@@ -34,3 +37,17 @@ def qdrant_span(
     return _tracer.start_as_current_span(
         f"qdrant.{operation}", kind=trace.SpanKind.CLIENT, attributes=attributes
     )
+
+
+def emit_telemetry(emit: Any, operation: str) -> None:
+    """Emit a telemetry metric safely without breaking search calls.
+
+    Args:
+        emit: Zero-argument callable recording the metric.
+        operation: Operation label for debug logging on failure.
+    """
+    # Telemetry must never mask real exceptions or fail search paths.
+    try:
+        emit()
+    except Exception:
+        _logger.debug(f"Telemetry emission failed for {operation}", exc_info=True)

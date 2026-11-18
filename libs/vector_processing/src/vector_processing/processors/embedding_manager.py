@@ -195,63 +195,92 @@ class MultiVectorEmbeddingManager:
         if not record.characters:
             return []
 
-        anime_id = record.anime.id
-        documents: list[VectorDocument] = []
-
-        texts_to_embed: list[str] = []
-        valid_characters = []
-
-        for char in record.characters:
-            # Use field_mapper directly
-            full_text = self.field_mapper.extract_character_text(char)
-            texts_to_embed.append(full_text)
-            valid_characters.append(char)
-
-        # Batch Embed text (dense + sparse in one pass when supported)
+        characters = list(record.characters)
+        anime_id = cast(str, record.anime.id)
+        texts_to_embed = [
+            self.field_mapper.extract_character_text(character)
+            for character in characters
+        ]
         (
             embeddings_batch,
             sparse_embeddings_batch,
         ) = await self.text_processor.encode_texts_batch_with_sparse(texts_to_embed)
 
-        for i, char in enumerate(valid_characters):
-            text_embedding = embeddings_batch[i]
+        documents: list[VectorDocument] = []
+        for character, text_embedding, sparse_embedding in zip(
+            characters,
+            embeddings_batch,
+            sparse_embeddings_batch,
+            strict=True,
+        ):
             if not text_embedding:
                 continue
-
-            char_id = char.id
-            if not char_id:
-                seed = f"{anime_id}_{char.name}"
-                char_id = generate_deterministic_id(seed)
-
-            vectors: dict[str, list[float] | list[list[float]] | SparseVectorData] = {
-                "text_vector": text_embedding
-            }
-            sparse_embedding = sparse_embeddings_batch[i]
-            if sparse_embedding:
-                vectors[self.sparse_vector_name] = sparse_embedding
-
-            # Generate Image Vector (multivector matrix) for character
-            image_urls = self.field_mapper.extract_character_image_urls(char)
-            if image_urls:
-                image_matrix = await self.vision_processor.encode_images_batch(
-                    image_urls
-                )
-                if image_matrix:
-                    vectors["image_vector"] = image_matrix
-
-            payload = char.model_dump(exclude_none=True)
-            payload["entity_type"] = "character"
-            # Merge anime_ids: preserve existing anime relationships
-            existing_anime_ids = payload.get("anime_ids") or []
-            if anime_id not in existing_anime_ids:
-                existing_anime_ids.append(anime_id)
-            payload["anime_ids"] = existing_anime_ids
-
             documents.append(
-                VectorDocument(id=char_id, vectors=vectors, payload=payload)
+                await self._build_character_document(
+                    anime_id, character, text_embedding, sparse_embedding
+                )
             )
 
         return documents
+
+    async def _build_character_document(
+        self,
+        anime_id: str,
+        character: Any,
+        text_embedding: list[float],
+        sparse_embedding: SparseVectorData | None,
+    ) -> VectorDocument:
+        """Build a VectorDocument for a single character entity.
+
+        Args:
+            anime_id: Parent anime identifier.
+            character: Character model instance.
+            text_embedding: Dense text embedding vector for the character.
+            sparse_embedding: Optional sparse lexical vector for the character.
+
+        Returns:
+            Populated VectorDocument for the character point.
+        """
+        char_id = character.id or generate_deterministic_id(
+            f"{anime_id}_{character.name}"
+        )
+        vectors = self._build_text_vectors(text_embedding, sparse_embedding)
+
+        image_urls = self.field_mapper.extract_character_image_urls(character)
+        if image_urls:
+            image_matrix = await self.vision_processor.encode_images_batch(image_urls)
+            if image_matrix:
+                vectors["image_vector"] = image_matrix
+
+        payload = character.model_dump(exclude_none=True)
+        payload["entity_type"] = "character"
+        existing_anime_ids = payload.get("anime_ids") or []
+        if anime_id not in existing_anime_ids:
+            existing_anime_ids.append(anime_id)
+        payload["anime_ids"] = existing_anime_ids
+
+        return VectorDocument(id=char_id, vectors=vectors, payload=payload)
+
+    def _build_text_vectors(
+        self,
+        text_embedding: list[float],
+        sparse_embedding: SparseVectorData | None,
+    ) -> dict[str, list[float] | list[list[float]] | SparseVectorData]:
+        """Build the vector dictionary with dense and optional sparse embeddings.
+
+        Args:
+            text_embedding: Dense text embedding vector.
+            sparse_embedding: Optional sparse lexical vector.
+
+        Returns:
+            Vector dictionary keyed by Qdrant named vector names.
+        """
+        vectors: dict[str, list[float] | list[list[float]] | SparseVectorData] = {
+            "text_vector": text_embedding
+        }
+        if sparse_embedding:
+            vectors[self.sparse_vector_name] = sparse_embedding
+        return vectors
 
     async def _create_episode_points(self, record: AnimeRecord) -> list[VectorDocument]:
         """Create Episode VectorDocuments linked to this anime.
@@ -300,12 +329,7 @@ class MultiVectorEmbeddingManager:
             payload["entity_type"] = "episode"
             payload["anime_id"] = anime_id
 
-            vectors: dict[str, list[float] | list[list[float]] | SparseVectorData] = {
-                "text_vector": embedding
-            }
-            sparse_embedding = sparse_embeddings_batch[i]
-            if sparse_embedding:
-                vectors[self.sparse_vector_name] = sparse_embedding
+            vectors = self._build_text_vectors(embedding, sparse_embeddings_batch[i])
 
             documents.append(
                 VectorDocument(

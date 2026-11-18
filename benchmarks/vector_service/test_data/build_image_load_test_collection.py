@@ -31,10 +31,10 @@ import numpy as np
 from common.config.qdrant_config import QdrantConfig
 from qdrant_client import QdrantClient, models
 from qdrant_db.collection.schema_builder import (
+    build_hnsw_config,
     build_optimizers_config,
+    build_per_vector_quantization_config,
     build_vector_config,
-    get_hnsw_config,
-    get_per_vector_quantization_config,
 )
 
 from benchmarks.vector_service.toolkit.settings import load_environment
@@ -102,8 +102,8 @@ def vectors_config(
         vectors[average_vector] = models.VectorParams(
             size=config.vector_names[image_vector],
             distance=models.Distance.COSINE,
-            hnsw_config=get_hnsw_config(config, "high"),
-            quantization_config=get_per_vector_quantization_config(config, "high"),
+            hnsw_config=build_hnsw_config(config, "high"),
+            quantization_config=build_per_vector_quantization_config(config, "high"),
         )
     return vectors
 

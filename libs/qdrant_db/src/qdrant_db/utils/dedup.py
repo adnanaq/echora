@@ -3,7 +3,7 @@
 from collections.abc import Callable, Hashable
 from typing import TypeVar
 
-from qdrant_db.contracts import DedupPolicy
+from qdrant_db.qdrant_models import DeduplicationPolicy
 
 T = TypeVar("T")
 K = TypeVar("K", bound=Hashable)
@@ -20,7 +20,7 @@ class DuplicateKeyError(ValueError):
 def deduplicate_items(
     items: list[T],
     key_fn: Callable[[T], K],
-    dedup_policy: DedupPolicy = "last-wins",
+    dedup_policy: DeduplicationPolicy = "last-wins",
 ) -> tuple[list[T], int]:
     """Deduplicate items using configured duplicate policy.
 

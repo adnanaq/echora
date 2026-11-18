@@ -5,7 +5,7 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, Strict, model_validator
 from vector_db_interface.types import SearchHit as SearchHit
 
-DedupPolicy = Literal["last-wins", "fail"]
+DeduplicationPolicy = Literal["last-wins", "fail"]
 PayloadUpdateMode = Literal["merge", "overwrite"]
 FusionMethod = Literal["rrf", "dbsf"]
 FilterOperator = Literal["eq", "ne", "in", "not_in", "range"]
@@ -17,6 +17,11 @@ VectorElement = Annotated[float, Strict(), Field(allow_inf_nan=False)]
 DenseVector = Annotated[list[VectorElement], Strict(), Field(min_length=1)]
 # Several dense vectors under one name, such as one per image; at least one.
 MultiVector = Annotated[list[DenseVector], Strict(), Field(min_length=1)]
+
+# Unsigned 8-bit integer vector contracts used when qdrant_vector_datatype == "uint8".
+Uint8VectorElement = Annotated[int, Strict(), Field(ge=0, le=255)]
+Uint8DenseVector = Annotated[list[Uint8VectorElement], Strict(), Field(min_length=1)]
+Uint8MultiVector = Annotated[list[Uint8DenseVector], Strict(), Field(min_length=1)]
 
 
 def _is_scalar_filter_value(value: Any) -> bool:
@@ -107,7 +112,7 @@ class SearchFilterCondition(BaseModel):
         raise ValueError(f"Unsupported filter operator: {self.operator}")
 
 
-class SparseVectorData(BaseModel):
+class SparseVectorPayload(BaseModel):
     """Sparse vector represented by index/value pairs for keyword-based search.
 
     Sparse vectors are used for keyword/term-based search in Qdrant, typically
@@ -131,15 +136,15 @@ class SparseVectorData(BaseModel):
 
     Examples:
         Create a sparse vector for keyword search:
-            >>> sparse = SparseVectorData(
+            >>> sparse = SparseVectorPayload(
             ...     indices=[42, 108, 555],
             ...     values=[0.8, 0.5, 0.3]
             ... )
 
         Use in search request:
-            >>> from qdrant_db.contracts import SearchRequest
+            >>> from qdrant_db.qdrant_models import SearchRequest
             >>> request = SearchRequest(
-            ...     sparse_embedding=SparseVectorData(
+            ...     sparse_embedding=SparseVectorPayload(
             ...         indices=[10, 20, 30],
             ...         values=[0.9, 0.6, 0.4]
             ...     ),
@@ -148,7 +153,7 @@ class SparseVectorData(BaseModel):
 
         Convert from dict format:
             >>> data = {"indices": [1, 5, 10], "values": [0.5, 0.3, 0.2]}
-            >>> sparse = SparseVectorData(**data)
+            >>> sparse = SparseVectorPayload(**data)
 
     Note:
         The qdrant-client library accepts invalid sparse vectors (duplicates,
@@ -158,7 +163,7 @@ class SparseVectorData(BaseModel):
 
     See Also:
         - SearchRequest: For using sparse vectors in search queries
-        - BatchVectorUpdateItem: For batch vector updates including sparse vectors
+        - BatchVectorUpdate: For batch vector updates including sparse vectors
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -167,7 +172,7 @@ class SparseVectorData(BaseModel):
     values: list[float] = Field(min_length=1)
 
     @model_validator(mode="after")
-    def validate_sparse_shape(self) -> SparseVectorData:
+    def validate_sparse_shape(self) -> SparseVectorPayload:
         """Validate sparse vector indices/values alignment and constraints.
 
         This validator ensures that sparse vector data conforms to Qdrant's
@@ -183,7 +188,7 @@ class SparseVectorData(BaseModel):
             validation here prevents runtime errors when data reaches the server.
 
         Returns:
-            SparseVectorData: The validated sparse vector instance.
+            SparseVectorPayload: The validated sparse vector instance.
 
         Raises:
             ValueError: If indices and values lengths don't match.
@@ -193,14 +198,14 @@ class SparseVectorData(BaseModel):
 
         Examples:
             Valid sparse vector:
-                >>> SparseVectorData(indices=[1, 5, 10], values=[0.5, 0.3, 0.2])
+                >>> SparseVectorPayload(indices=[1, 5, 10], values=[0.5, 0.3, 0.2])
 
             Invalid - duplicate indices:
-                >>> SparseVectorData(indices=[1, 1, 2], values=[0.5, 0.3, 0.2])
+                >>> SparseVectorPayload(indices=[1, 1, 2], values=[0.5, 0.3, 0.2])
                 ValueError: indices must be unique (no duplicates)
 
             Invalid - exceeds u32 max:
-                >>> SparseVectorData(indices=[4294967296], values=[0.5])
+                >>> SparseVectorPayload(indices=[4294967296], values=[0.5])
                 ValueError: indices must not exceed u32 maximum (4,294,967,295)
         """
         if len(self.indices) != len(self.values):
@@ -221,7 +226,7 @@ class SearchRequest(BaseModel):
 
     text_embedding: DenseVector | None = None
     image_embedding: DenseVector | None = None
-    sparse_embedding: SparseVectorData | None = None
+    sparse_embedding: SparseVectorPayload | None = None
     expanded_text_embeddings: list[DenseVector] | None = Field(
         default=None,
         description=(
@@ -282,17 +287,23 @@ class SearchRequest(BaseModel):
         return self
 
 
-class BatchVectorUpdateItem(BaseModel):
+class BatchVectorUpdate(BaseModel):
     """Single vector update request."""
 
     model_config = ConfigDict(extra="forbid")
 
     point_id: str = Field(min_length=1)
     vector_name: str = Field(min_length=1)
-    vector_data: DenseVector | MultiVector | SparseVectorData
+    vector_data: (
+        Uint8DenseVector
+        | Uint8MultiVector
+        | DenseVector
+        | MultiVector
+        | SparseVectorPayload
+    )
 
 
-class BatchPayloadUpdateItem(BaseModel):
+class BatchPayloadUpdate(BaseModel):
     """Single payload update request for a batch payload operation.
 
     Attributes:
@@ -322,7 +333,7 @@ class OperationErrorDetail(BaseModel):
     message: str
 
 
-class BatchOperationResult(BaseModel):
+class BatchOperationSummary(BaseModel):
     """Normalized result summary for a batch write operation.
 
     Attributes:

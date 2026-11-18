@@ -1,8 +1,8 @@
 """Text embedding processor for converting text to vector embeddings.
 
-This module provides the TextProcessor class which serves as a pure compute
-engine for text embedding. It is strictly responsible for converting strings
-to embedding vectors using configured ML models, with no domain-specific logic.
+This module provides the TextProcessor class, which serves as a pure compute
+engine for text embedding. The processor converts strings into embedding
+vectors using configured ML models with no domain-specific logic.
 """
 
 import asyncio
@@ -13,34 +13,28 @@ from typing import Any, cast
 
 from common.config import EmbeddingConfig
 from common.utils.request_batcher import RequestBatcher
-from opentelemetry import metrics as otel_metrics
-from opentelemetry import trace as otel_trace
 from vector_db_interface import SparseVectorData
 
 from ..cache import EmbeddingCache
 from ..embedding_models.text.base import TextEmbeddingModel
+from .inference_pipeline import (
+    _embedding_cache_lookups,
+    _embedding_duration,
+    _tracer,
+    fetch_cached_embeddings,
+    run_cached_batch_inference,
+    run_cached_single_inference,
+)
 
 logger = logging.getLogger(__name__)
-
-_tracer = otel_trace.get_tracer("echora.vector_processing")
-_meter = otel_metrics.get_meter("echora.vector_processing")
-_embedding_duration = _meter.create_histogram(
-    "echora_embedding_duration_seconds",
-    unit="s",
-    description="Embedding model inference duration in seconds",
-)
-_embedding_cache_lookups = _meter.create_counter(
-    "echora_embedding_cache_total",
-    description="Embedding cache lookups by result (hit/miss) and modality",
-)
 
 
 class TextProcessor:
     """Pure text embedding processor with no domain-specific logic.
 
-    This class serves as the "Text Compute Engine" in the vector processing
-    pipeline. It knows HOW to turn text into numbers but has no knowledge
-    of anime, characters, or any domain concepts.
+    This class serves as the text compute engine in the vector processing
+    pipeline. The processor turns text into numbers with no knowledge of anime,
+    characters, or any domain concepts.
 
     Responsibilities:
         - Interface with TextEmbeddingModels (FastEmbed, BGE, etc.).
@@ -113,31 +107,22 @@ class TextProcessor:
                 return cached
             _embedding_cache_lookups.add(1, {"result": "miss", "modality": "text"})
 
-        with _tracer.start_as_current_span(
-            "vector_processing.text.encode",
-            attributes={
+        return await run_cached_single_inference(
+            single_input=text,
+            input_hash=text_hash,
+            encode_fn=self.model.encode,
+            cache=self._cache,
+            model_name=self.model.model_name,
+            semaphore=self._semaphore,
+            span_name="vector_processing.text.encode",
+            span_attributes={
                 "embedding.model": self.model.model_name,
                 "embedding.input_length": len(text),
                 "embedding.sparse": False,
             },
-        ):
-            try:
-                async with self._semaphore:
-                    _start = time.perf_counter()
-                    embeddings = await asyncio.to_thread(self.model.encode, [text])
-                    _embedding_duration.record(
-                        time.perf_counter() - _start, {"modality": "text"}
-                    )
-            except Exception:
-                logger.exception("Text encoding failed")
-                return None
-            else:
-                if not embeddings:
-                    return None
-                result = embeddings[0]
-                if self._cache is not None:
-                    await self._cache.set(self.model.model_name, text_hash, result)
-                return result
+            modality="text",
+            failure_message="Text encoding failed",
+        )
 
     async def encode_texts_batch(self, texts: list[str]) -> list[list[float] | None]:
         """Encode multiple texts in a single batch call.
@@ -158,94 +143,41 @@ class TextProcessor:
             in the same order as the input texts. Empty or whitespace-only
             strings return zero vectors to maintain consistency with encode_text.
         """
-        # Pre-process texts to identify empty/whitespace entries
         zero_embedding = self.get_zero_embedding()
-        valid_indices: list[int] = []
-        valid_texts: list[str] = []
+        valid_indices, valid_texts = self._filter_non_empty_texts(texts)
 
-        for i, text in enumerate(texts):
-            if text and text.strip():
-                valid_indices.append(i)
-                valid_texts.append(text)
-
-        # If all texts are empty, return independent zero vectors for all
         if not valid_texts:
             return [zero_embedding.copy() for _ in texts]
 
-        # Compute hashes for valid texts and check cache
         valid_hashes = [hashlib.sha256(t.encode()).hexdigest() for t in valid_texts]
-        cached_embeddings: list[list[float] | None] = [None] * len(valid_texts)
-        uncached_positions: list[int] = []  # indices into valid_texts
+        cached_embeddings, uncached_positions = await fetch_cached_embeddings(
+            self._cache, self.model.model_name, valid_hashes, modality="text"
+        )
 
-        if self._cache is not None:
-            cached_embeddings = await self._cache.get_batch(
-                self.model.model_name, valid_hashes
-            )
-            uncached_positions = [
-                i for i, emb in enumerate(cached_embeddings) if emb is None
-            ]
-            cache_hits = len(valid_texts) - len(uncached_positions)
-            if cache_hits:
-                _embedding_cache_lookups.add(
-                    cache_hits, {"result": "hit", "modality": "text"}
-                )
-            if uncached_positions:
-                _embedding_cache_lookups.add(
-                    len(uncached_positions), {"result": "miss", "modality": "text"}
-                )
-        else:
-            uncached_positions = list(range(len(valid_texts)))
-
-        # Encode only uncached texts
         if uncached_positions:
-            uncached_texts = [valid_texts[i] for i in uncached_positions]
-
-            with _tracer.start_as_current_span(
-                "vector_processing.text.encode_batch",
-                attributes={
+            await run_cached_batch_inference(
+                inputs=valid_texts,
+                input_hashes=valid_hashes,
+                cached_embeddings=cached_embeddings,
+                uncached_positions=uncached_positions,
+                encode_fn=self.model.encode,
+                cache=self._cache,
+                model_name=self.model.model_name,
+                semaphore=self._semaphore,
+                span_name="vector_processing.text.encode_batch",
+                span_attributes={
                     "embedding.model": self.model.model_name,
-                    "embedding.batch_size": len(uncached_texts),
+                    "embedding.batch_size": len(uncached_positions),
                     "embedding.cache_hits": len(valid_texts) - len(uncached_positions),
                     "embedding.sparse": False,
                 },
-            ):
-                try:
-                    async with self._semaphore:
-                        _start = time.perf_counter()
-                        encoded_new = await asyncio.to_thread(
-                            self.model.encode, uncached_texts
-                        )
-                        _embedding_duration.record(
-                            time.perf_counter() - _start, {"modality": "text"}
-                        )
-                except Exception:
-                    logger.exception("Batch text encoding failed")
-                    return [None] * len(texts)
+                modality="text",
+                failure_message="Batch text encoding failed",
+            )
 
-                # Merge newly encoded into cached_embeddings and prepare cache writes
-                to_cache: dict[str, list[float]] = {}
-                for j, pos in enumerate(uncached_positions):
-                    embedding = cast(list[float] | None, encoded_new[j])
-                    cached_embeddings[pos] = embedding
-                    if embedding is not None:
-                        to_cache[valid_hashes[pos]] = embedding
-
-                if self._cache is not None and to_cache:
-                    await self._cache.set_batch(self.model.model_name, to_cache)
-
-        # Reconstruct result list with zero vectors for empty inputs
-        result: list[list[float] | None] = []
-        valid_idx = 0
-        valid_index_set = set(valid_indices)
-
-        for i in range(len(texts)):
-            if i in valid_index_set:
-                result.append(cached_embeddings[valid_idx])
-                valid_idx += 1
-            else:
-                result.append(zero_embedding.copy())
-
-        return result
+        return self._align_embeddings_with_inputs(
+            len(texts), valid_indices, cached_embeddings, zero_embedding
+        )
 
     async def encode_text_with_sparse(
         self, text: str
@@ -384,9 +316,63 @@ class TextProcessor:
         """
         return self.model.get_model_info()
 
+    @staticmethod
+    def _filter_non_empty_texts(texts: list[str]) -> tuple[list[int], list[str]]:
+        """Collect indices and values of non-empty, non-whitespace texts.
+
+        Args:
+            texts: Raw input strings.
+
+        Returns:
+            Tuple of ``(valid_indices, valid_texts)``.
+        """
+        valid_indices: list[int] = []
+        valid_texts: list[str] = []
+        for idx, text in enumerate(texts):
+            if text and text.strip():
+                valid_indices.append(idx)
+                valid_texts.append(text)
+        return valid_indices, valid_texts
+
+    @staticmethod
+    def _align_embeddings_with_inputs(
+        total_count: int,
+        valid_indices: list[int],
+        valid_embeddings: list[list[float] | None],
+        zero_embedding: list[float],
+    ) -> list[list[float] | None]:
+        """Reconstruct a batch result list, inserting zero vectors for blank inputs.
+
+        Args:
+            total_count: Total number of original input texts.
+            valid_indices: Original indices corresponding to ``valid_embeddings``.
+            valid_embeddings: Encoded embeddings for non-empty inputs.
+            zero_embedding: Zero vector copied for blank inputs.
+
+        Returns:
+            List of embeddings aligned with the original input sequence.
+        """
+        aligned: list[list[float] | None] = []
+        valid_cursor = 0
+        valid_index_set = set(valid_indices)
+        for idx in range(total_count):
+            if idx in valid_index_set:
+                aligned.append(valid_embeddings[valid_cursor])
+                valid_cursor += 1
+            else:
+                aligned.append(zero_embedding.copy())
+        return aligned
+
     async def _encode_texts_as_pairs(
         self, texts: list[str]
     ) -> list[tuple[list[float] | None, SparseVectorData | None]]:
-        """Encode a batch and pair each text's dense and sparse vectors."""
+        """Encode a batch and pair each text's dense and sparse vectors.
+
+        Args:
+            texts: Input text strings to encode.
+
+        Returns:
+            List of ``(dense_vector, sparse_vector)`` tuples aligned with ``texts``.
+        """
         dense, sparse = await self.encode_texts_batch_with_sparse(texts)
         return list(zip(dense, sparse, strict=True))
