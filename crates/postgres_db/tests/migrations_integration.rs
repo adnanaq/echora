@@ -226,9 +226,10 @@ async fn store_page_tracks_failures_and_dead_page_reviews() -> Result<(), Error>
     )
     .await?;
 
+    let expected_proposal = postgres_db::encode_page_key_proposal(&page_key);
     let approval_count = sqlx::query_scalar!(
         "SELECT COUNT(*) FROM approval_request WHERE kind = 'dead_page' AND status = 'open' AND proposal = $1",
-        b"mal:anime:999999002" as &[u8]
+        expected_proposal.as_slice()
     )
     .fetch_one(&pool)
     .await?;
@@ -255,6 +256,72 @@ async fn store_page_tracks_failures_and_dead_page_reviews() -> Result<(), Error>
     .fetch_one(&pool)
     .await?;
     assert!(is_dead);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn store_page_ignores_stale_success_after_not_found() -> Result<(), Error> {
+    let Ok(database_url) = env::var("DATABASE_URL") else {
+        return Ok(());
+    };
+
+    let pool = connect_pool(&database_url, 2).await?;
+    run_migrations(&pool).await?;
+
+    let test_address = "999999003";
+    sqlx::query!(
+        "DELETE FROM provider_page WHERE provider = 'mal' AND page_kind = 'anime' AND address = $1",
+        test_address
+    )
+    .execute(&pool)
+    .await?;
+
+    let t0 = Utc::now();
+    let page_key = PageKeyInput {
+        provider: "mal".to_owned(),
+        page_kind: PageKind::Anime,
+        address: test_address.to_owned(),
+    };
+
+    store_page(
+        &pool,
+        StorePageInput {
+            page_key: page_key.clone(),
+            fetched_at: t0 + Duration::minutes(20),
+            is_dead: false,
+            responses: Vec::new(),
+            is_not_found: true,
+            dead_page_review: false,
+        },
+    )
+    .await?;
+
+    let stale_fetch_outcome = store_page(
+        &pool,
+        StorePageInput {
+            page_key,
+            fetched_at: t0 + Duration::minutes(10),
+            is_dead: false,
+            responses: vec![PageResponseInput {
+                request_name: "main".to_owned(),
+                content_type: "application/json".to_owned(),
+                body: br#"{"id":999999003}"#.to_vec(),
+            }],
+            is_not_found: false,
+            dead_page_review: false,
+        },
+    )
+    .await?;
+    assert!(!stale_fetch_outcome.has_changed);
+
+    let missing_answers = sqlx::query_scalar!(
+        "SELECT missing_answers FROM provider_page WHERE provider = 'mal' AND page_kind = 'anime' AND address = $1",
+        test_address
+    )
+    .fetch_one(&pool)
+    .await?;
+    assert_eq!(missing_answers, 1);
 
     Ok(())
 }
