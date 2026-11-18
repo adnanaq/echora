@@ -13,26 +13,20 @@ from typing import Any, cast
 
 from common.config import EmbeddingConfig
 from common.utils.request_batcher import RequestBatcher
-from opentelemetry import metrics as otel_metrics
-from opentelemetry import trace as otel_trace
 from vector_db_interface import SparseVectorData
 
 from ..cache import EmbeddingCache
 from ..embedding_models.text.base import TextEmbeddingModel
+from .inference_pipeline import (
+    _embedding_cache_lookups,
+    _embedding_duration,
+    _tracer,
+    fetch_cached_embeddings,
+    run_cached_batch_inference,
+    run_cached_single_inference,
+)
 
 logger = logging.getLogger(__name__)
-
-_tracer = otel_trace.get_tracer("echora.vector_processing")
-_meter = otel_metrics.get_meter("echora.vector_processing")
-_embedding_duration = _meter.create_histogram(
-    "echora_embedding_duration_seconds",
-    unit="s",
-    description="Embedding model inference duration in seconds",
-)
-_embedding_cache_lookups = _meter.create_counter(
-    "echora_embedding_cache_total",
-    description="Embedding cache lookups by result (hit/miss) and modality",
-)
 
 
 class TextProcessor:
@@ -113,31 +107,22 @@ class TextProcessor:
                 return cached
             _embedding_cache_lookups.add(1, {"result": "miss", "modality": "text"})
 
-        with _tracer.start_as_current_span(
-            "vector_processing.text.encode",
-            attributes={
+        return await run_cached_single_inference(
+            single_input=text,
+            input_hash=text_hash,
+            encode_fn=self.model.encode,
+            cache=self._cache,
+            model_name=self.model.model_name,
+            semaphore=self._semaphore,
+            span_name="vector_processing.text.encode",
+            span_attributes={
                 "embedding.model": self.model.model_name,
                 "embedding.input_length": len(text),
                 "embedding.sparse": False,
             },
-        ):
-            try:
-                async with self._semaphore:
-                    _start = time.perf_counter()
-                    embeddings = await asyncio.to_thread(self.model.encode, [text])
-                    _embedding_duration.record(
-                        time.perf_counter() - _start, {"modality": "text"}
-                    )
-            except Exception:
-                logger.exception("Text encoding failed")
-                return None
-            else:
-                if not embeddings:
-                    return None
-                result = embeddings[0]
-                if self._cache is not None:
-                    await self._cache.set(self.model.model_name, text_hash, result)
-                return result
+            modality="text",
+            failure_message="Text encoding failed",
+        )
 
     async def encode_texts_batch(self, texts: list[str]) -> list[list[float] | None]:
         """Encode multiple texts in a single batch call.
@@ -165,13 +150,29 @@ class TextProcessor:
             return [zero_embedding.copy() for _ in texts]
 
         valid_hashes = [hashlib.sha256(t.encode()).hexdigest() for t in valid_texts]
-        cached_embeddings, uncached_positions = await self._fetch_cached_embeddings(
-            valid_texts, valid_hashes
+        cached_embeddings, uncached_positions = await fetch_cached_embeddings(
+            self._cache, self.model.model_name, valid_hashes, modality="text"
         )
 
         if uncached_positions:
-            succeeded = await self._encode_uncached_texts(
-                valid_texts, valid_hashes, uncached_positions, cached_embeddings
+            succeeded = await run_cached_batch_inference(
+                inputs=valid_texts,
+                input_hashes=valid_hashes,
+                cached_embeddings=cached_embeddings,
+                uncached_positions=uncached_positions,
+                encode_fn=self.model.encode,
+                cache=self._cache,
+                model_name=self.model.model_name,
+                semaphore=self._semaphore,
+                span_name="vector_processing.text.encode_batch",
+                span_attributes={
+                    "embedding.model": self.model.model_name,
+                    "embedding.batch_size": len(uncached_positions),
+                    "embedding.cache_hits": len(valid_texts) - len(uncached_positions),
+                    "embedding.sparse": False,
+                },
+                modality="text",
+                failure_message="Batch text encoding failed",
             )
             if not succeeded:
                 return [None] * len(texts)
@@ -363,91 +364,6 @@ class TextProcessor:
             else:
                 aligned.append(zero_embedding.copy())
         return aligned
-
-    async def _fetch_cached_embeddings(
-        self, valid_texts: list[str], valid_hashes: list[str]
-    ) -> tuple[list[list[float] | None], list[int]]:
-        """Look up cached embeddings and identify uncached positions.
-
-        Args:
-            valid_texts: Non-empty input texts.
-            valid_hashes: SHA-256 hex digests aligned with ``valid_texts``.
-
-        Returns:
-            Tuple of ``(cached_embeddings, uncached_positions)``.
-        """
-        if self._cache is None:
-            return [None] * len(valid_texts), list(range(len(valid_texts)))
-
-        cached_embeddings = await self._cache.get_batch(
-            self.model.model_name, valid_hashes
-        )
-        uncached_positions = [
-            idx for idx, emb in enumerate(cached_embeddings) if emb is None
-        ]
-        cache_hits = len(valid_texts) - len(uncached_positions)
-        if cache_hits:
-            _embedding_cache_lookups.add(
-                cache_hits, {"result": "hit", "modality": "text"}
-            )
-        if uncached_positions:
-            _embedding_cache_lookups.add(
-                len(uncached_positions), {"result": "miss", "modality": "text"}
-            )
-        return cached_embeddings, uncached_positions
-
-    async def _encode_uncached_texts(
-        self,
-        valid_texts: list[str],
-        valid_hashes: list[str],
-        uncached_positions: list[int],
-        cached_embeddings: list[list[float] | None],
-    ) -> bool:
-        """Encode uncached texts, update ``cached_embeddings`` in place, and populate cache.
-
-        Args:
-            valid_texts: Non-empty input texts.
-            valid_hashes: SHA-256 hex digests aligned with ``valid_texts``.
-            uncached_positions: Indices in ``valid_texts`` missing from cache.
-            cached_embeddings: Mutable list of embeddings updated with new results.
-
-        Returns:
-            True if encoding succeeded, False if model inference raised an error.
-        """
-        uncached_texts = [valid_texts[idx] for idx in uncached_positions]
-        with _tracer.start_as_current_span(
-            "vector_processing.text.encode_batch",
-            attributes={
-                "embedding.model": self.model.model_name,
-                "embedding.batch_size": len(uncached_texts),
-                "embedding.cache_hits": len(valid_texts) - len(uncached_positions),
-                "embedding.sparse": False,
-            },
-        ):
-            try:
-                async with self._semaphore:
-                    _start = time.perf_counter()
-                    encoded_new = await asyncio.to_thread(
-                        self.model.encode, uncached_texts
-                    )
-                    _embedding_duration.record(
-                        time.perf_counter() - _start, {"modality": "text"}
-                    )
-            except Exception:
-                logger.exception("Batch text encoding failed")
-                return False
-
-            to_cache: dict[str, list[float]] = {}
-            for encoded_idx, pos in enumerate(uncached_positions):
-                embedding = cast(list[float] | None, encoded_new[encoded_idx])
-                cached_embeddings[pos] = embedding
-                if embedding is not None:
-                    to_cache[valid_hashes[pos]] = embedding
-
-            if self._cache is not None and to_cache:
-                await self._cache.set_batch(self.model.model_name, to_cache)
-
-        return True
 
     async def _encode_texts_as_pairs(
         self, texts: list[str]

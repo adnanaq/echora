@@ -15,21 +15,20 @@ import aiohttp
 from common.config import EmbeddingConfig
 from common.utils.retry import retry_with_backoff
 from opentelemetry import metrics as otel_metrics
-from opentelemetry import trace as otel_trace
 
 from ..cache import EmbeddingCache
 from ..embedding_models.vision.base import VisionEmbeddingModel
 from ..utils.image_downloader import ImageDownloader
+from .inference_pipeline import (
+    _embedding_cache_lookups,
+    fetch_cached_embeddings,
+    run_cached_batch_inference,
+    run_cached_single_inference,
+)
 
 logger = logging.getLogger(__name__)
 
-_tracer = otel_trace.get_tracer("echora.vector_processing")
 _meter = otel_metrics.get_meter("echora.vector_processing")
-_embedding_duration = _meter.create_histogram(
-    "echora_embedding_duration_seconds",
-    unit="s",
-    description="Embedding model inference duration in seconds",
-)
 _image_download_duration = _meter.create_histogram(
     "echora_image_download_duration_seconds",
     unit="s",
@@ -38,10 +37,6 @@ _image_download_duration = _meter.create_histogram(
 _image_download_failures = _meter.create_counter(
     "echora_image_download_failures_total",
     description="Total image download failures after all retries",
-)
-_embedding_cache_lookups = _meter.create_counter(
-    "echora_embedding_cache_total",
-    description="Embedding cache lookups by result (hit/miss) and modality",
 )
 
 
@@ -129,29 +124,18 @@ class VisionProcessor:
             except Exception:
                 logger.debug("Failed to hash image for cache lookup", exc_info=True)
 
-        with _tracer.start_as_current_span(
-            "vector_processing.vision.encode",
-            attributes={"embedding.model": self.model.model_name},
-        ):
-            try:
-                async with self._semaphore:
-                    _start = time.perf_counter()
-                    embeddings = await asyncio.to_thread(
-                        self.model.encode_image, [image_path]
-                    )
-                    _embedding_duration.record(
-                        time.perf_counter() - _start, {"modality": "image"}
-                    )
-            except Exception:
-                logger.exception("Image encoding failed")
-                return None
-            else:
-                if embeddings:
-                    result = embeddings[0]
-                    if self._cache is not None and file_hash is not None:
-                        await self._cache.set(self.model.model_name, file_hash, result)
-                    return result
-                return None
+        return await run_cached_single_inference(
+            single_input=image_path,
+            input_hash=file_hash,
+            encode_fn=self.model.encode_image,
+            cache=self._cache,
+            model_name=self.model.model_name,
+            semaphore=self._semaphore,
+            span_name="vector_processing.vision.encode",
+            span_attributes={"embedding.model": self.model.model_name},
+            modality="image",
+            failure_message="Image encoding failed",
+        )
 
     async def encode_images_batch(
         self, image_urls: list[str], max_retries: int = 2
@@ -179,11 +163,14 @@ class VisionProcessor:
             logger.warning("No images downloaded successfully in batch")
             return []
 
-        (
-            file_hashes,
-            cached_results,
-            uncached_positions,
-        ) = await self._lookup_cached_image_embeddings(local_paths)
+        file_hashes = await self._hash_local_files(local_paths)
+        if self._cache is not None:
+            cached_results, uncached_positions = await fetch_cached_embeddings(
+                self._cache, self.model.model_name, file_hashes, modality="image"
+            )
+        else:
+            cached_results = [None] * len(local_paths)
+            uncached_positions = list(range(len(local_paths)))
 
         if not uncached_positions:
             all_embeddings = [e for e in cached_results if e is not None]
@@ -192,8 +179,23 @@ class VisionProcessor:
             )
             return all_embeddings
 
-        await self._encode_uncached_images(
-            local_paths, file_hashes, uncached_positions, cached_results
+        await run_cached_batch_inference(
+            inputs=local_paths,
+            input_hashes=file_hashes,
+            cached_embeddings=cached_results,
+            uncached_positions=uncached_positions,
+            encode_fn=self.model.encode_image,
+            cache=self._cache,
+            model_name=self.model.model_name,
+            semaphore=self._semaphore,
+            span_name="vector_processing.vision.encode_batch",
+            span_attributes={
+                "embedding.model": self.model.model_name,
+                "embedding.batch_size": len(uncached_positions),
+                "embedding.cache_hits": len(local_paths) - len(uncached_positions),
+            },
+            modality="image",
+            failure_message="Batch encoding failed",
         )
 
         all_embeddings = [e for e in cached_results if e is not None]
@@ -287,20 +289,18 @@ class VisionProcessor:
                 _image_download_failures.add(1)
                 return None
 
-    async def _lookup_cached_image_embeddings(
-        self, local_paths: list[str]
-    ) -> tuple[list[str | None], list[list[float] | None], list[int]]:
-        """Hash downloaded image files and query the embedding cache.
+    async def _hash_local_files(self, local_paths: list[str]) -> list[str | None]:
+        """Compute SHA-256 hashes for local image files when caching is enabled.
 
         Args:
             local_paths: Local file paths for downloaded images.
 
         Returns:
-            Tuple of ``(file_hashes, cached_results, uncached_positions)``.
+            List of SHA-256 hex digests (or ``None`` on error), or empty list
+            when caching is disabled.
         """
-        cached_results: list[list[float] | None] = [None] * len(local_paths)
         if self._cache is None:
-            return [], cached_results, list(range(len(local_paths)))
+            return []
 
         file_hashes: list[str | None] = []
         for path in local_paths:
@@ -308,76 +308,7 @@ class VisionProcessor:
                 file_hashes.append(await asyncio.to_thread(self._hash_file, path))
             except Exception:
                 file_hashes.append(None)
-
-        valid_hashes = [h for h in file_hashes if h is not None]
-        valid_hash_indices = [i for i, h in enumerate(file_hashes) if h is not None]
-        if valid_hashes:
-            batch_cached = await self._cache.get_batch(
-                self.model.model_name, valid_hashes
-            )
-            for j, idx in enumerate(valid_hash_indices):
-                cached_results[idx] = batch_cached[j]
-
-        uncached_positions = [
-            i for i in range(len(local_paths)) if cached_results[i] is None
-        ]
-        cache_hits = len(local_paths) - len(uncached_positions)
-        if cache_hits:
-            _embedding_cache_lookups.add(
-                cache_hits, {"result": "hit", "modality": "image"}
-            )
-        if uncached_positions:
-            _embedding_cache_lookups.add(
-                len(uncached_positions), {"result": "miss", "modality": "image"}
-            )
-        return file_hashes, cached_results, uncached_positions
-
-    async def _encode_uncached_images(
-        self,
-        local_paths: list[str],
-        file_hashes: list[str | None],
-        uncached_positions: list[int],
-        cached_results: list[list[float] | None],
-    ) -> None:
-        """Encode uncached images, update ``cached_results`` in place, and populate cache.
-
-        Args:
-            local_paths: Local file paths for downloaded images.
-            file_hashes: SHA-256 hex digests aligned with ``local_paths``.
-            uncached_positions: Indices in ``local_paths`` missing from cache.
-            cached_results: Mutable list of embeddings updated with new results.
-        """
-        uncached_paths = [local_paths[i] for i in uncached_positions]
-        with _tracer.start_as_current_span(
-            "vector_processing.vision.encode_batch",
-            attributes={
-                "embedding.model": self.model.model_name,
-                "embedding.batch_size": len(uncached_paths),
-                "embedding.cache_hits": len(local_paths) - len(uncached_positions),
-            },
-        ):
-            try:
-                async with self._semaphore:
-                    _start = time.perf_counter()
-                    encoded_new = await asyncio.to_thread(
-                        self.model.encode_image, uncached_paths
-                    )
-                    _embedding_duration.record(
-                        time.perf_counter() - _start, {"modality": "image"}
-                    )
-            except Exception:
-                logger.exception("Batch encoding failed")
-                return
-
-            to_cache: dict[str, list[float]] = {}
-            for j, pos in enumerate(uncached_positions):
-                cached_results[pos] = encoded_new[j]
-                file_hash = file_hashes[pos] if pos < len(file_hashes) else None
-                if self._cache is not None and file_hash is not None:
-                    to_cache[file_hash] = encoded_new[j]
-
-            if self._cache is not None and to_cache:
-                await self._cache.set_batch(self.model.model_name, to_cache)
+        return file_hashes
 
     @staticmethod
     def _hash_file(path: str) -> str:
