@@ -2,10 +2,18 @@
 
 // Rust guideline compliant 2026-10-09
 
+mod service;
+
+use anyhow::Context as _;
 use common::{CommonSettings, init_telemetry};
 use mimalloc::MiMalloc;
+use postgres_db::{connect_pool, run_migrations};
+use tonic::codec::CompressionEncoding;
 use tonic::transport::Server;
 use tracing::Level;
+
+use service::postgres_service_proto::v1::postgres_service_server::PostgresServiceServer;
+use service::{MAX_PAGE_MESSAGE_BYTES, PostgresGrpcService};
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
@@ -15,11 +23,22 @@ async fn main() -> anyhow::Result<()> {
     let settings = CommonSettings::from_env()?;
     let _telemetry_guard = init_telemetry("postgres-service", &settings)?;
     let listen_addr = settings.postgres_service_addr()?;
+    let database_url =
+        std::env::var("DATABASE_URL").context("DATABASE_URL must be set for postgres_service")?;
+
+    let pool = connect_pool(&database_url, 10).await?;
+    run_migrations(&pool).await?;
 
     let (health_reporter, health_service) = tonic_health::server::health_reporter();
     health_reporter
         .set_serving::<tonic_health::pb::health_server::HealthServer<tonic_health::server::HealthReporter>>()
         .await;
+
+    let grpc_service = PostgresServiceServer::new(PostgresGrpcService::new(pool))
+        .max_decoding_message_size(MAX_PAGE_MESSAGE_BYTES)
+        .max_encoding_message_size(MAX_PAGE_MESSAGE_BYTES)
+        .accept_compressed(CompressionEncoding::Gzip)
+        .send_compressed(CompressionEncoding::Gzip);
 
     tracing::event!(
         name: "postgres_service.server.starting",
@@ -30,6 +49,7 @@ async fn main() -> anyhow::Result<()> {
 
     Server::builder()
         .add_service(health_service)
+        .add_service(grpc_service)
         .serve_with_shutdown(listen_addr, wait_for_shutdown())
         .await?;
 
@@ -61,7 +81,6 @@ async fn wait_for_shutdown() {
                     error.message = %err,
                     "failed to install SIGTERM handler: {{error.message}}",
                 );
-                std::future::pending::<()>().await;
             }
         }
     };

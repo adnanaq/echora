@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package postgres_service.v1;
+
+import "shared_proto/v1/merge.proto";
+
+// Owns the PostgreSQL catalogue database and stores fetched provider pages.
+service PostgresService {
+  // Store a fetched provider page and its raw responses.
+  rpc StorePage(StorePageRequest) returns (StorePageResponse);
+}
+
+// Request carrying a fetched provider page to store.
+message StorePageRequest {
+  shared_proto.v1.StoredPage page = 1;
+}
+
+// Result reporting whether stored page responses changed.
+message StorePageResponse {
+  bool has_changed = 1;
+}
