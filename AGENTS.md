@@ -120,6 +120,13 @@ uv run ty check libs/http_cache/
 
 # Format, lint, and check (recommended before commits)
 ./pants fmt lint check ::
+
+# Rust workspace (crates/) — .cargo/config.toml sets target-cpu=x86-64-v3; /target/ is gitignored
+cargo fmt --all
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+cargo run -p postgres_service                        # gRPC on :8004
+./pants package crates/postgres_service:postgres-service-image
 ```
 
 **MANDATORY**: All code must pass ty type checking before commits.
@@ -163,15 +170,16 @@ uv run ty check libs/http_cache/
 
 ### Service Health Checks
 
-The vector and enrichment services are gRPC only — they expose no HTTP
-endpoints, so `curl` will not reach them. The review page is HTTP, on
+The vector, enrichment, and PostgreSQL services are gRPC only — they expose no
+HTTP endpoints, so `curl` will not reach them. The review page is HTTP, on
 `127.0.0.1:8003` only.
 
 ```bash
-# Service health (grpc_health_probe ships in both images)
+# Service health (grpc_health_probe ships in the images)
 docker exec echora-dev-vector-service     grpc_health_probe -addr=localhost:8001
 docker exec echora-dev-enrichment-service grpc_health_probe -addr=localhost:8002
 docker inspect -f '{{.State.Health.Status}}' echora-dev-review-page   # GET /health
+docker exec echora-dev-postgres-service   grpc_health_probe -addr=localhost:8004
 
 # Qdrant health (plain HTTP)
 curl http://localhost:6333/healthz
@@ -215,7 +223,7 @@ echora/
 │   └── work_matching/             # Which provider pages belong to the same work
 │
 ├── tests/                         # Test suite (mirrors libs/)
-├── crates/                        # Planned Rust workspace (common, postgres_db, postgres_service, temporal_workflows, update_service, backend)
+├── crates/                        # Rust workspace (active: common, postgres_service; planned: postgres_db, temporal_workflows, update_service, backend)
 ├── data/                          # Data files & Qdrant storage
 ├── docker/                        # Docker Compose configurations
 └── scripts/                       # Utility scripts
