@@ -119,6 +119,26 @@ class FlagEmbeddingModel(TextEmbeddingModel):
             f"Initialized FlagEmbeddingModel: {model_name} on {device} (fp16={use_fp16}, max_length={max_length}, chunk_size={chunk_size}, max_tokens_per_pass={max_tokens_per_pass})"
         )
 
+    @property
+    def embedding_size(self) -> int:
+        return _BGE_M3_DENSE_DIM
+
+    @property
+    def model_name(self) -> str:
+        return self._model_name
+
+    @property
+    def max_length(self) -> int:
+        return self._max_length
+
+    @property
+    def supports_sparse(self) -> bool:
+        return True
+
+    @property
+    def supports_multilingual(self) -> bool:
+        return True
+
     def encode(self, texts: list[str]) -> list[list[float]]:
         """Encode texts to dense vectors (sparse output discarded).
 
@@ -152,26 +172,6 @@ class FlagEmbeddingModel(TextEmbeddingModel):
         ]
         return dense.tolist(), sparse
 
-    @property
-    def embedding_size(self) -> int:
-        return _BGE_M3_DENSE_DIM
-
-    @property
-    def model_name(self) -> str:
-        return self._model_name
-
-    @property
-    def max_length(self) -> int:
-        return self._max_length
-
-    @property
-    def supports_sparse(self) -> bool:
-        return True
-
-    @property
-    def supports_multilingual(self) -> bool:
-        return True
-
     def get_model_info(self) -> dict[str, Any]:
         """Return model metadata including sparse support flag.
 
@@ -203,6 +203,13 @@ class FlagEmbeddingModel(TextEmbeddingModel):
 
         Sorting by length keeps padding small, as FlagEmbedding does. Results
         are returned in input order.
+
+        Args:
+            texts: Input text strings to encode.
+            return_sparse: Whether to compute and return per-token lexical weights.
+
+        Returns:
+            Tuple of dense embedding array and list of token-weight mappings.
         """
         import torch
 
@@ -245,10 +252,19 @@ class FlagEmbeddingModel(TextEmbeddingModel):
         start: int,
         chunk_size: int,
     ) -> int:
-        """Where the chunk starting at ``start`` ends, in the length-sorted order.
+        """Compute the exclusive end index for the current length-sorted chunk.
 
         The first text is the chunk's longest, so the chunk's padded size is
-        its text count times that text's length.
+        the text count multiplied by that text's token length.
+
+        Args:
+            examples: Tokenized input dictionaries per text.
+            order: Indices sorting examples from longest to shortest.
+            start: Starting position within ``order``.
+            chunk_size: Maximum number of texts allowed in a chunk.
+
+        Returns:
+            Exclusive end index within ``order`` for the chunk.
         """
         end = min(start + chunk_size, len(order))
         if not self._max_tokens_per_pass:
@@ -260,7 +276,15 @@ class FlagEmbeddingModel(TextEmbeddingModel):
     def _run_model(
         self, chunk: list[dict[str, Any]], *, return_sparse: bool
     ) -> tuple[np.ndarray, list[dict[int, float]]]:
-        """Run one padded chunk through the model; return dense rows and token weights."""
+        """Run one padded chunk through the model and extract dense and sparse outputs.
+
+        Args:
+            chunk: List of tokenized example dictionaries for the chunk.
+            return_sparse: Whether to extract lexical token weights alongside dense vectors.
+
+        Returns:
+            Tuple of dense embedding array and list of token-weight mappings.
+        """
         import torch
         from FlagEmbedding.utils.tokenizer_compat import pad_with_compat
 
@@ -293,7 +317,15 @@ class FlagEmbeddingModel(TextEmbeddingModel):
     def _token_weights(
         self, weights: np.ndarray, token_ids: list[int]
     ) -> dict[int, float]:
-        """Keep each non-special token's highest positive weight, as FlagEmbedding does."""
+        """Keep each non-special token's highest positive weight.
+
+        Args:
+            weights: Array of token weights aligned with ``token_ids``.
+            token_ids: Vocabulary token IDs for the input sequence.
+
+        Returns:
+            Mapping from non-special token ID to its maximum positive weight.
+        """
         result: dict[int, float] = {}
         for weight, token_id in zip(weights, token_ids, strict=True):
             if token_id in self._special_token_ids or weight <= 0:
