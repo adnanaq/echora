@@ -24,6 +24,8 @@ from review_page.review_case_source import (
     load_cases,
     load_last_run_summary,
 )
+from shared_proto.v1 import review_cases_pb2
+from work_matching import ReviewCase
 
 
 class CorrectionRoutes:
@@ -62,11 +64,8 @@ class CorrectionRoutes:
             The rendered correction list HTML fragment.
         """
         state = BrowserState.parse_form_field(browser_state)
-        all_rows = build_corrected_entry_rows(
-            self._source.list_corrections(),
-            self._source.list_checked_entries(),
-            load_cases(self._source),
-        )
+        corrections, checked_entries, cases = self._load_correction_context()
+        all_rows = build_corrected_entry_rows(corrections, checked_entries, cases)
         chip_counts = count_corrected_entry_rows(all_rows)
         return self._templates.TemplateResponse(
             request,
@@ -107,16 +106,16 @@ class CorrectionRoutes:
             no entry is selected.
         """
         state = BrowserState.parse_form_field(browser_state)
-        panel = (
-            build_correction_panel(
+        if state.open_correction_entry:
+            corrections, checked_entries, cases = self._load_correction_context()
+            panel = build_correction_panel(
                 state.open_correction_entry,
-                self._source.list_corrections(),
-                self._source.list_checked_entries(),
-                load_cases(self._source),
+                corrections,
+                checked_entries,
+                cases,
             )
-            if state.open_correction_entry
-            else None
-        )
+        else:
+            panel = None
         return self._templates.TemplateResponse(
             request,
             "correction_panel.html",
@@ -124,4 +123,22 @@ class CorrectionRoutes:
                 "panel": panel,
                 "run_summary": load_last_run_summary(self._source),
             },
+        )
+
+    def _load_correction_context(
+        self,
+    ) -> tuple[
+        list[review_cases_pb2.SeedCorrection],
+        list[review_cases_pb2.CheckedEntry],
+        list[ReviewCase],
+    ]:
+        """Load corrections, checked entries, and review cases from the source.
+
+        Returns:
+            Tuple of ``(corrections, checked_entries, cases)``.
+        """
+        return (
+            self._source.list_corrections(),
+            self._source.list_checked_entries(),
+            load_cases(self._source),
         )
