@@ -1,6 +1,7 @@
 import pytest
 from pydantic import JsonValue
 from review_page.models import (
+    BrowserState,
     CaseEditState,
     CaseFilter,
     CaseRow,
@@ -432,3 +433,8 @@ def test_build_suggested_answer_returns_independent_copy(review_cases) -> None:
     suggested_answer["mal:anime:63013"] = "work 2"
 
     assert case.suggested_answer["mal:anime:63013"] == "work 1"
+
+
+def test_browser_state_parse_form_field_empty_returns_default() -> None:
+    assert BrowserState.parse_form_field(None) == BrowserState()
+    assert BrowserState.parse_form_field("") == BrowserState()

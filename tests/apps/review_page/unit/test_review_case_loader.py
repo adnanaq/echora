@@ -1,7 +1,8 @@
 import os
 
 import pytest
-from review_page.review_case_loader import ReviewCaseLoader, UnreadableReviewFileError
+from review_page.errors import UnreadableReviewFileError
+from review_page.review_case_loader import ReviewCaseLoader
 from work_matching import replace_file_lines
 
 
@@ -96,3 +97,11 @@ def test_load_cases_broken_line_raises_error_naming_line(
     replace_file_lines(review_file_path, [review_case_lines[0], "{not json}\n"])
     with pytest.raises(UnreadableReviewFileError, match="Line 2 of review.jsonl"):
         ReviewCaseLoader(review_file_path).load_cases()
+
+
+def test_load_cases_skips_blank_lines(review_file_path, review_case_lines) -> None:
+    replace_file_lines(
+        review_file_path, [review_case_lines[0], "\n", review_case_lines[1]]
+    )
+    loaded = ReviewCaseLoader(review_file_path).load_cases()
+    assert len(loaded.cases) == 2
