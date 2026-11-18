@@ -159,6 +159,14 @@ async fn store_page_tracks_failures_and_dead_page_reviews() -> Result<(), Error>
     run_migrations(&pool).await?;
 
     let test_address = "999999002";
+    let t0 = Utc::now();
+    let page_key = PageKeyInput {
+        provider: "mal".to_owned(),
+        page_kind: PageKind::Anime,
+        address: test_address.to_owned(),
+    };
+    let expected_proposal = postgres_db::encode_page_key_proposal(&page_key);
+
     sqlx::query!(
         "DELETE FROM provider_page WHERE provider = 'mal' AND page_kind = 'anime' AND address = $1",
         test_address
@@ -167,17 +175,10 @@ async fn store_page_tracks_failures_and_dead_page_reviews() -> Result<(), Error>
     .await?;
     sqlx::query!(
         "DELETE FROM approval_request WHERE kind = 'dead_page' AND proposal = $1",
-        b"mal:anime:999999002" as &[u8]
+        expected_proposal.as_slice()
     )
     .execute(&pool)
     .await?;
-
-    let t0 = Utc::now();
-    let page_key = PageKeyInput {
-        provider: "mal".to_owned(),
-        page_kind: PageKind::Anime,
-        address: test_address.to_owned(),
-    };
 
     let failed = store_page(
         &pool,
@@ -226,7 +227,6 @@ async fn store_page_tracks_failures_and_dead_page_reviews() -> Result<(), Error>
     )
     .await?;
 
-    let expected_proposal = postgres_db::encode_page_key_proposal(&page_key);
     let approval_count = sqlx::query_scalar!(
         "SELECT COUNT(*) FROM approval_request WHERE kind = 'dead_page' AND status = 'open' AND proposal = $1",
         expected_proposal.as_slice()
@@ -238,7 +238,7 @@ async fn store_page_tracks_failures_and_dead_page_reviews() -> Result<(), Error>
     let direct = store_page(
         &pool,
         StorePageInput {
-            page_key,
+            page_key: page_key.clone(),
             fetched_at: t0 + Duration::days(3),
             is_dead: false,
             responses: Vec::new(),
@@ -256,6 +256,91 @@ async fn store_page_tracks_failures_and_dead_page_reviews() -> Result<(), Error>
     .fetch_one(&pool)
     .await?;
     assert!(is_dead);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn store_page_closes_open_dead_page_approval_on_recovery() -> Result<(), Error> {
+    let Ok(database_url) = env::var("DATABASE_URL") else {
+        return Ok(());
+    };
+
+    let pool = connect_pool(&database_url, 2).await?;
+    run_migrations(&pool).await?;
+
+    let test_address = "999999004";
+    let t0 = Utc::now();
+    let page_key = PageKeyInput {
+        provider: "mal".to_owned(),
+        page_kind: PageKind::Anime,
+        address: test_address.to_owned(),
+    };
+    let expected_proposal = postgres_db::encode_page_key_proposal(&page_key);
+
+    sqlx::query!(
+        "DELETE FROM provider_page WHERE provider = 'mal' AND page_kind = 'anime' AND address = $1",
+        test_address
+    )
+    .execute(&pool)
+    .await?;
+    sqlx::query!(
+        "DELETE FROM approval_request WHERE kind = 'dead_page' AND proposal = $1",
+        expected_proposal.as_slice()
+    )
+    .execute(&pool)
+    .await?;
+
+    store_page(
+        &pool,
+        StorePageInput {
+            page_key: page_key.clone(),
+            fetched_at: t0,
+            is_dead: false,
+            responses: Vec::new(),
+            is_not_found: true,
+            dead_page_review: true,
+        },
+    )
+    .await?;
+    store_page(
+        &pool,
+        StorePageInput {
+            page_key: page_key.clone(),
+            fetched_at: t0 + Duration::days(2),
+            is_dead: false,
+            responses: Vec::new(),
+            is_not_found: true,
+            dead_page_review: true,
+        },
+    )
+    .await?;
+
+    let recovered = store_page(
+        &pool,
+        StorePageInput {
+            page_key,
+            fetched_at: t0 + Duration::days(3),
+            is_dead: false,
+            responses: vec![PageResponseInput {
+                request_name: "main".to_owned(),
+                content_type: "application/json".to_owned(),
+                body: br#"{"id":999999004}"#.to_vec(),
+            }],
+            is_not_found: false,
+            dead_page_review: true,
+        },
+    )
+    .await?;
+    assert!(recovered.has_changed);
+
+    let open_approvals_after_recovery = sqlx::query_scalar!(
+        "SELECT COUNT(*) FROM approval_request WHERE kind = 'dead_page' AND status = 'open' AND proposal = $1",
+        expected_proposal.as_slice()
+    )
+    .fetch_one(&pool)
+    .await?;
+    assert_eq!(open_approvals_after_recovery, Some(0));
 
     Ok(())
 }
@@ -288,7 +373,7 @@ async fn store_page_ignores_stale_success_after_not_found() -> Result<(), Error>
         &pool,
         StorePageInput {
             page_key: page_key.clone(),
-            fetched_at: t0 + Duration::minutes(20),
+            fetched_at: t0,
             is_dead: false,
             responses: Vec::new(),
             is_not_found: true,
@@ -297,11 +382,39 @@ async fn store_page_ignores_stale_success_after_not_found() -> Result<(), Error>
     )
     .await?;
 
+    store_page(
+        &pool,
+        StorePageInput {
+            page_key: page_key.clone(),
+            fetched_at: t0 + Duration::days(2),
+            is_dead: false,
+            responses: Vec::new(),
+            is_not_found: true,
+            dead_page_review: false,
+        },
+    )
+    .await?;
+
+    // Replaying the T0+2d not-found must not increment missing_answers again.
+    store_page(
+        &pool,
+        StorePageInput {
+            page_key: page_key.clone(),
+            fetched_at: t0 + Duration::days(2),
+            is_dead: false,
+            responses: Vec::new(),
+            is_not_found: true,
+            dead_page_review: false,
+        },
+    )
+    .await?;
+
+    // A delayed success between T0 and T0+2d must not revive the dead page.
     let stale_fetch_outcome = store_page(
         &pool,
         StorePageInput {
             page_key,
-            fetched_at: t0 + Duration::minutes(10),
+            fetched_at: t0 + Duration::days(1),
             is_dead: false,
             responses: vec![PageResponseInput {
                 request_name: "main".to_owned(),
@@ -321,7 +434,7 @@ async fn store_page_ignores_stale_success_after_not_found() -> Result<(), Error>
     )
     .fetch_one(&pool)
     .await?;
-    assert_eq!(missing_answers, 1);
+    assert_eq!(missing_answers, 2);
 
     Ok(())
 }
