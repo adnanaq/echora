@@ -1,5 +1,5 @@
-from pathlib import Path
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -8,14 +8,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 import check_postgres_lookup_tables  # noqa: E402
 from check_postgres_lookup_tables import (  # noqa: E402
     ENUM_TABLE_MAP,
-    extract_inserted_values,
+    extract_lookup_values,
     find_lookup_mismatches,
     main,
     strip_sql_comments,
 )
 
 
-def test_extract_inserted_values_handles_column_lists_quotes_and_comments(
+def test_extract_lookup_values_handles_column_lists_quotes_and_comments(
     tmp_path: Path,
 ) -> None:
     sql_file = tmp_path / "001_test.sql"
@@ -29,11 +29,42 @@ def test_extract_inserted_values_handles_column_lists_quotes_and_comments(
         encoding="utf-8",
     )
 
-    inserted = extract_inserted_values(tmp_path)
+    lookup_values = extract_lookup_values(tmp_path)
 
-    assert inserted["anime_type"] == {"TV", "--literal", "O'Brien"}
-    assert inserted["anime_status"] == {"FINISHED"}
+    assert lookup_values["anime_type"] == {"TV", "--literal", "O'Brien"}
+    assert lookup_values["anime_status"] == {"FINISHED"}
     assert "--literal" in strip_sql_comments("SELECT '--literal'; -- comment")
+
+
+def test_extract_lookup_values_applies_deletes_and_truncates_in_order(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "001_seed.sql").write_text(
+        """
+        INSERT INTO anime_type VALUES ('TV'), ('MOVIE'), ('OVA');
+        INSERT INTO anime_status VALUES ('FINISHED'), ('ONGOING');
+        INSERT INTO anime_rating VALUES ('G'), ('PG');
+        """,
+        encoding="utf-8",
+    )
+    (tmp_path / "002_prune.sql").write_text(
+        """
+        DELETE FROM anime_type WHERE code = 'TV';
+        DELETE FROM anime_type WHERE code IN ('OVA');
+        INSERT INTO anime_type VALUES ('SPECIAL'), ('TV');
+        DELETE FROM anime_type WHERE code = 'TV';
+        DELETE FROM anime_status;
+        TRUNCATE TABLE anime_rating;
+        INSERT INTO anime_rating VALUES ('R');
+        """,
+        encoding="utf-8",
+    )
+
+    lookup_values = extract_lookup_values(tmp_path)
+
+    assert lookup_values["anime_type"] == {"MOVIE", "SPECIAL"}
+    assert lookup_values["anime_status"] == set()
+    assert lookup_values["anime_rating"] == {"R"}
 
 
 def test_find_lookup_mismatches_detects_missing_and_extra_values() -> None:
