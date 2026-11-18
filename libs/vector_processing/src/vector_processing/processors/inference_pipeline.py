@@ -65,13 +65,14 @@ async def fetch_cached_embeddings(
         idx for idx in range(total_inputs) if cached_embeddings[idx] is None
     ]
     cache_hits = total_inputs - len(uncached_positions)
+    cache_misses = len(valid_hashes) - cache_hits
     if cache_hits:
         _embedding_cache_lookups.add(
             cache_hits, {"result": "hit", "modality": modality}
         )
-    if uncached_positions:
+    if cache_misses:
         _embedding_cache_lookups.add(
-            len(uncached_positions), {"result": "miss", "modality": modality}
+            cache_misses, {"result": "miss", "modality": modality}
         )
     return cached_embeddings, uncached_positions
 
@@ -200,14 +201,18 @@ async def _run_guarded_thread[InputItem, OutputT](
         Value returned by ``encode_fn``.
     """
 
+    await semaphore.acquire()
+
     async def _worker() -> OutputT:
-        async with semaphore:
+        try:
             start_time = time.perf_counter()
             encoded = await asyncio.to_thread(encode_fn, inputs)
             _embedding_duration.record(
                 time.perf_counter() - start_time, {"modality": modality}
             )
             return encoded
+        finally:
+            semaphore.release()
 
     worker_task = asyncio.create_task(_worker())
     worker_task.add_done_callback(_consume_worker_exception)

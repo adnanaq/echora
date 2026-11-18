@@ -1168,7 +1168,7 @@ class TestEncodeImagesBatchWithCache:
         assert digest == hashlib.sha256(b"hello-world").hexdigest()
 
         image_downloader = AsyncMock()
-        image_downloader.download_and_cache_image.return_value = "/nonexistent/img.jpg"
+        image_downloader.download_and_cache_image.return_value = "/cache/img.jpg"
         vision_model.encode_image.return_value = [[0.4] * 768]
 
         processor = VisionProcessor(
@@ -1178,7 +1178,10 @@ class TestEncodeImagesBatchWithCache:
             embedding_cache=mock_embedding_cache,
         )
 
-        result = await processor.encode_images_batch(["http://example.com/1.jpg"])
+        with patch.object(
+            VisionProcessor, "_hash_file", side_effect=OSError("unreadable")
+        ):
+            result = await processor.encode_images_batch(["http://example.com/1.jpg"])
         assert result == [[0.4] * 768]
 
     @pytest.mark.asyncio
@@ -1190,11 +1193,15 @@ class TestEncodeImagesBatchWithCache:
             "/cache/good.jpg",
             "/cache/corrupt.jpg",
         ]
-        vision_model.encode_image.side_effect = [
-            RuntimeError("corrupt image in batch"),
-            [[0.4] * 768],
-            RuntimeError("cannot decode corrupt.jpg"),
-        ]
+
+        def encode_by_path(paths):
+            if "/cache/corrupt.jpg" in paths:
+                raise RuntimeError("cannot decode corrupt.jpg")
+            if paths == ["/cache/good.jpg"]:
+                return [[0.4] * 768]
+            raise AssertionError(f"Unexpected paths: {paths}")
+
+        vision_model.encode_image.side_effect = encode_by_path
 
         processor = VisionProcessor(
             model=vision_model,

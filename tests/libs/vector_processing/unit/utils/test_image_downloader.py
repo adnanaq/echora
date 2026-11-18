@@ -150,6 +150,7 @@ def test_clear_cache_all_by_age_and_error(tmp_path):
     all_result = downloader.clear_cache()
     assert all_result["removed_files"] == 1
     assert all_result["remaining_files"] == 0
+    assert not fresh_file.exists()
 
     with patch.object(Path, "glob", side_effect=OSError("clear error")):
         error_result = downloader.clear_cache()

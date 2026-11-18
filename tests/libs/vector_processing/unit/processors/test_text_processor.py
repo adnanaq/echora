@@ -751,9 +751,10 @@ class TestEncodeTextsBatchWithCache:
             await first_task
 
         second_task = asyncio.create_task(processor.encode_text("second"))
-        await asyncio.sleep(0.05)
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
         assert call_count == 1
 
         release.set()
-        assert await second_task == [0.1] * 1024
+        assert await asyncio.wait_for(second_task, timeout=2.0) == [0.1] * 1024
         assert call_count == 2
