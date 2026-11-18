@@ -124,7 +124,7 @@ class AnimeFieldMapper:
         temp_parts = []
         if anime.aired_dates and anime.aired_dates.aired_from:
             temp_parts.append(f"Aired: {anime.aired_dates.aired_from}")
-        if anime.month:
+        if anime.month is not None and 1 <= anime.month <= 12:
             temp_parts.append(f"Month: {ENGLISH_MONTH_NAMES[anime.month - 1]}")
         if temp_parts:
             sections.append(" | ".join(temp_parts))
