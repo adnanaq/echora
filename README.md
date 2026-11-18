@@ -177,7 +177,7 @@ uv sync
 .venv/bin/python --version        # Python 3.14.x
 
 # 2. Start only the backing services
-docker compose -f docker/docker-compose.dev.yml up -d qdrant redis
+docker compose -f docker/docker-compose.dev.yml up -d qdrant redis postgres
 
 # 3. Run a service
 ./pants run apps/vector_service:vector_service        # gRPC on :8001
@@ -497,9 +497,12 @@ uv run python script.py
   - `VectorSearchService`: `Search`
 - Active enrichment gRPC methods:
   - `EnrichmentService`: `Health`, `RunPipeline`
+- Active PostgreSQL gRPC methods:
+  - `PostgresService`: `StorePage`
 - Proto sources:
   - `protos/vector_service/v1/`
   - `protos/enrichment_service/v1/`
+  - `protos/postgres_service/v1/`
   - `protos/shared_proto/v1/`
 - After any `.proto` change, regenerate checked-in stubs:
 

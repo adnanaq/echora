@@ -28,10 +28,10 @@ The domain types (`Anime`, `Episode`, `Character` and their enums) are defined o
 | File | Package | Status |
 |---|---|---|
 | `protos/shared_proto/v1/anime.proto` | `shared_proto.v1` | Exists |
-| `protos/shared_proto/v1/merge.proto` | `shared_proto.v1` | Planned (ECHO-97) |
+| `protos/shared_proto/v1/merge.proto` | `shared_proto.v1` | ~~Planned (ECHO-97)~~ Exists |
 | `protos/enrichment_service/v1/enrichment_service.proto` | `enrichment_service.v1` | Exists, new methods planned, see [[#EnrichmentService (planned methods)]] |
 | `protos/events/v1/events.proto` | `events.v1` | Planned (ECHO-90) |
-| `protos/postgres_service/v1/postgres_service.proto` | `postgres_service.v1` | Planned (ECHO-97) |
+| `protos/postgres_service/v1/postgres_service.proto` | `postgres_service.v1` | ~~Planned (ECHO-97)~~ Exists |
 | `protos/agent_service/v1/agent_service.proto` | `agent_service.v1` | Planned (ECHO-91) |
 
 ## Catalogue Events
@@ -726,14 +726,14 @@ message DuePage {  // (ECHO-108)
 - **`SaveAnime` creates what the work lists.**
   - An episode the merge gave a new ID is created with its page links, and the response names it so the workflow can start its refresh. (ECHO-103)
   - A character the merge gave a new ID is created the same way. Before creating it, the save looks up the character's page keys. When one already belongs to a character, such as one another work's save created a moment earlier, it links that character and drops the new ID, so the save never fails on it. (ECHO-104)
-- **`StorePage`** stores a page and its responses only when its `fetched_at` is newer than the stored one, so a retried or late fetch never replaces newer data. It reports the page as changed when the hash of the responses differs, without reading the stored bodies. (ECHO-97)
+- ~~**`StorePage`** stores a page and its responses only when its `fetched_at` is newer than the stored one, so a retried or late fetch never replaces newer data. It reports the page as changed when the hash of the responses differs, without reading the stored bodies. (ECHO-97)~~
 - **`CreateAnime` and `RelinkPages`** resolve every unresolved relation that points at a newly linked source page, in the same transaction. They also increase the version of every work that gains or loses a page, so a merge that loaded before the move starts again. (ECHO-107)
 - **`Get*` answers `NOT_FOUND`** for an entity that is deleted or not merged yet, so consumers confirm deletes by reading back. Otherwise they return the entity with its version, which the vector service stores in the point. (ECHO-108)
 - **`ListEntityVersions`** pages through the visible entities of one kind with their versions, for the vector service's comparison job. (ECHO-108)
-- **`StorePage` records a missing page instead of deleting it.** A fetch with `is_not_found` sets `missing_since` and counts the answer, and keeps the stored responses. Two answers a day apart create a `dead_page` review item, or, once the provider is trusted, set `is_dead`. Seed releases never remove pages. See [[Database Schema#4. Writes and Deletes|Database Schema]]. (ECHO-97)
+- ~~**`StorePage` records a missing page instead of deleting it.** A fetch with `is_not_found` sets `missing_since` and counts the answer, and keeps the stored responses. Two answers a day apart create a `dead_page` review item, or, once the provider is trusted, set `is_dead`. Seed releases never remove pages. See [[Database Schema#4. Writes and Deletes|Database Schema]]. (ECHO-97)~~
 - **Addresses are checked.** An address that does not match its provider's pattern is refused with `INVALID_ARGUMENT`, before it reaches a URL.
   - `FetchPage` checks it. (ECHO-99)
-  - `StorePage` checks it. (ECHO-97)
+  - ~~`StorePage` checks it. (ECHO-97)~~
 - **`MarkEpisodeAired`** writes `notification.episode.aired` once, when the episode's `aired_at` has passed and `aired_notified_at` is unset. The tracker calls it at air time, so the notification does not depend on a save changing something. (ECHO-103)
 - **`SaveGeneratedText` records every attempt**, written or not, so the same provider synopses do not start the synopsis workflow again. (ECHO-115)
 - **`ListDuePages`** lists one budgeted provider's pages in due order with their work, for the budgeted fetcher. (ECHO-108)
@@ -746,7 +746,7 @@ message DuePage {  // (ECHO-108)
   - The save that first sets `merged_at` writes `anime.created`. (ECHO-98)
 - **`ListEntityPages` and `RecordRefresh`** give a refresh its due pages and record its outcome, including a refresh that changed nothing, one that left pages failed, and one that failed. (ECHO-108)
 - **Message size.** Every method that carries page bodies (`StorePage`, `LoadAnime`, `MergeAnime`, `MergeEpisode`, `MergeCharacter` and their loads) runs with a 64 MB limit, set on every server and every client: `max_decoding_message_size` and `max_encoding_message_size` in `tonic`, whose decoding limit defaults to 4 MB on both ends, and `grpc.max_receive_message_length` and `grpc.max_send_message_length` in `grpcio`. Messages are gzip-compressed.
-  - The PostgreSQL Service sets the limit and compression on its server. It returns `RESOURCE_EXHAUSTED` only for a message over the limit, never for a passing condition, so it is not retried. (ECHO-97)
+  - ~~The PostgreSQL Service sets the limit and compression on its server. It returns `RESOURCE_EXHAUSTED` only for a message over the limit, never for a passing condition, so it is not retried. (ECHO-97)~~
   - The Enrichment Service sets them on its server, and returns a provider's throttling as `UNAVAILABLE`. (ECHO-99)
   - The Update Service sets them on its clients. (ECHO-111)
 - **`DeleteAnime`** removes the work's page links, its own relations and every `graph_edge` row from or to it, and turns relations other works assert towards it back into unresolved ones, all in one transaction. A work merged into another keeps `merged_into_anime_id`, so its old links can redirect. See [[Database Schema#4. Writes and Deletes|Database Schema]]. (ECHO-107)
