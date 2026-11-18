@@ -179,7 +179,7 @@ class VisionProcessor:
             )
             return all_embeddings
 
-        await run_cached_batch_inference(
+        succeeded = await run_cached_batch_inference(
             inputs=local_paths,
             input_hashes=file_hashes,
             cached_embeddings=cached_results,
@@ -197,6 +197,10 @@ class VisionProcessor:
             modality="image",
             failure_message="Batch encoding failed",
         )
+        if not succeeded and len(uncached_positions) > 1:
+            await self._encode_uncached_individually(
+                local_paths, file_hashes, uncached_positions, cached_results
+            )
 
         all_embeddings = [e for e in cached_results if e is not None]
         logger.info(
@@ -309,6 +313,36 @@ class VisionProcessor:
             except Exception:
                 file_hashes.append(None)
         return file_hashes
+
+    async def _encode_uncached_individually(
+        self,
+        local_paths: list[str],
+        file_hashes: list[str | None],
+        uncached_positions: list[int],
+        cached_results: list[list[float] | None],
+    ) -> None:
+        """Retry uncached images individually so one unreadable file does not drop valid ones.
+
+        Args:
+            local_paths: Local file paths for downloaded images.
+            file_hashes: Content hashes aligned with ``local_paths``, or empty when uncached.
+            uncached_positions: Indices in ``local_paths`` missing from cache.
+            cached_results: Mutable list updated with per-image embeddings on success.
+        """
+        for pos in uncached_positions:
+            file_hash = file_hashes[pos] if pos < len(file_hashes) else None
+            cached_results[pos] = await run_cached_single_inference(
+                single_input=local_paths[pos],
+                input_hash=file_hash,
+                encode_fn=self.model.encode_image,
+                cache=self._cache,
+                model_name=self.model.model_name,
+                semaphore=self._semaphore,
+                span_name="vector_processing.vision.encode",
+                span_attributes={"embedding.model": self.model.model_name},
+                modality="image",
+                failure_message=f"Image encoding failed for {local_paths[pos]}",
+            )
 
     @staticmethod
     def _hash_file(path: str) -> str:

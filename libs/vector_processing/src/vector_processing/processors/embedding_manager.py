@@ -195,10 +195,11 @@ class MultiVectorEmbeddingManager:
         if not record.characters:
             return []
 
+        characters = list(record.characters)
         anime_id = cast(str, record.anime.id)
         texts_to_embed = [
             self.field_mapper.extract_character_text(character)
-            for character in record.characters
+            for character in characters
         ]
         (
             embeddings_batch,
@@ -207,7 +208,7 @@ class MultiVectorEmbeddingManager:
 
         documents: list[VectorDocument] = []
         for character, text_embedding, sparse_embedding in zip(
-            record.characters,
+            characters,
             embeddings_batch,
             sparse_embeddings_batch,
             strict=True,

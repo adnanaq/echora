@@ -155,7 +155,7 @@ class TextProcessor:
         )
 
         if uncached_positions:
-            succeeded = await run_cached_batch_inference(
+            await run_cached_batch_inference(
                 inputs=valid_texts,
                 input_hashes=valid_hashes,
                 cached_embeddings=cached_embeddings,
@@ -174,8 +174,6 @@ class TextProcessor:
                 modality="text",
                 failure_message="Batch text encoding failed",
             )
-            if not succeeded:
-                return [None] * len(texts)
 
         return self._align_embeddings_with_inputs(
             len(texts), valid_indices, cached_embeddings, zero_embedding

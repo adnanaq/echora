@@ -703,3 +703,57 @@ class TestEncodeTextsBatchWithCache:
             [None],
             [None],
         )
+
+    @pytest.mark.asyncio
+    async def test_encode_texts_batch_preserves_zero_and_cached_vectors_when_miss_fails(
+        self, text_model, embedding_config, embedding_cache
+    ):
+        cached_emb = [0.5] * 1024
+        embedding_cache.get_batch.return_value = [cached_emb, None]
+        text_model.encode.side_effect = RuntimeError("miss inference error")
+
+        processor = TextProcessor(
+            model=text_model,
+            config=embedding_config,
+            embedding_cache=embedding_cache,
+        )
+
+        result = await processor.encode_texts_batch(["", "hit", "miss"])
+        assert result == [[0.0] * 1024, cached_emb, None]
+
+    @pytest.mark.asyncio
+    async def test_encode_text_cancellation_keeps_semaphore_held_until_thread_exits(
+        self, text_model, embedding_config
+    ):
+        import asyncio
+        import threading
+
+        embedding_config.embed_max_concurrency = 1
+        started = threading.Event()
+        release = threading.Event()
+        call_count = 0
+
+        def slow_encode(texts):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                started.set()
+                release.wait(timeout=2.0)
+            return [[0.1] * 1024 for _ in texts]
+
+        text_model.encode.side_effect = slow_encode
+        processor = TextProcessor(model=text_model, config=embedding_config)
+
+        first_task = asyncio.create_task(processor.encode_text("first"))
+        await asyncio.to_thread(started.wait, 2.0)
+        first_task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await first_task
+
+        second_task = asyncio.create_task(processor.encode_text("second"))
+        await asyncio.sleep(0.05)
+        assert call_count == 1
+
+        release.set()
+        assert await second_task == [0.1] * 1024
+        assert call_count == 2

@@ -1180,3 +1180,29 @@ class TestEncodeImagesBatchWithCache:
 
         result = await processor.encode_images_batch(["http://example.com/1.jpg"])
         assert result == [[0.4] * 768]
+
+    @pytest.mark.asyncio
+    async def test_encode_images_batch_recovers_valid_images_when_batch_fails(
+        self, vision_model, embedding_config
+    ):
+        image_downloader = AsyncMock()
+        image_downloader.download_and_cache_image.side_effect = [
+            "/cache/good.jpg",
+            "/cache/corrupt.jpg",
+        ]
+        vision_model.encode_image.side_effect = [
+            RuntimeError("corrupt image in batch"),
+            [[0.4] * 768],
+            RuntimeError("cannot decode corrupt.jpg"),
+        ]
+
+        processor = VisionProcessor(
+            model=vision_model,
+            downloader=image_downloader,
+            config=embedding_config,
+        )
+
+        result = await processor.encode_images_batch(
+            ["http://example.com/good.jpg", "http://example.com/corrupt.jpg"]
+        )
+        assert result == [[0.4] * 768]

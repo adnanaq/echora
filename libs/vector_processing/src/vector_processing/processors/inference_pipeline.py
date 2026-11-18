@@ -112,12 +112,9 @@ async def run_cached_batch_inference[InputItem](
     uncached_inputs = [inputs[idx] for idx in uncached_positions]
     with _tracer.start_as_current_span(span_name, attributes=span_attributes):
         try:
-            async with semaphore:
-                start_time = time.perf_counter()
-                encoded_embeddings = await asyncio.to_thread(encode_fn, uncached_inputs)
-                _embedding_duration.record(
-                    time.perf_counter() - start_time, {"modality": modality}
-                )
+            encoded_embeddings = await _run_guarded_thread(
+                semaphore, encode_fn, uncached_inputs, modality
+            )
         except Exception:
             logger.exception(failure_message)
             return False
@@ -167,12 +164,9 @@ async def run_cached_single_inference[InputItem](
     """
     with _tracer.start_as_current_span(span_name, attributes=span_attributes):
         try:
-            async with semaphore:
-                start_time = time.perf_counter()
-                embeddings = await asyncio.to_thread(encode_fn, [single_input])
-                _embedding_duration.record(
-                    time.perf_counter() - start_time, {"modality": modality}
-                )
+            embeddings = await _run_guarded_thread(
+                semaphore, encode_fn, [single_input], modality
+            )
         except Exception:
             logger.exception(failure_message)
             return None
@@ -183,3 +177,48 @@ async def run_cached_single_inference[InputItem](
             if cache is not None and input_hash is not None:
                 await cache.set(model_name, input_hash, embedding)
             return embedding
+
+
+async def _run_guarded_thread[InputItem, OutputT](
+    semaphore: asyncio.Semaphore,
+    encode_fn: Callable[[list[InputItem]], OutputT],
+    inputs: list[InputItem],
+    modality: EmbeddingModality,
+) -> OutputT:
+    """Run ``encode_fn`` in a worker thread while holding ``semaphore`` until exit.
+
+    Shielding the worker task ensures cancelling an awaiting caller does not
+    release ``semaphore`` while the underlying thread is still executing.
+
+    Args:
+        semaphore: Concurrency limiter guarding model inference.
+        encode_fn: Synchronous model encoding callable.
+        inputs: Batch inputs passed to ``encode_fn``.
+        modality: Embedding modality for inference duration metrics.
+
+    Returns:
+        Value returned by ``encode_fn``.
+    """
+
+    async def _worker() -> OutputT:
+        async with semaphore:
+            start_time = time.perf_counter()
+            encoded = await asyncio.to_thread(encode_fn, inputs)
+            _embedding_duration.record(
+                time.perf_counter() - start_time, {"modality": modality}
+            )
+            return encoded
+
+    worker_task = asyncio.create_task(_worker())
+    worker_task.add_done_callback(_consume_worker_exception)
+    return await asyncio.shield(worker_task)
+
+
+def _consume_worker_exception(worker_task: asyncio.Task[Any]) -> None:
+    """Consume any exception on a finished worker task to prevent unretrieved warnings.
+
+    Args:
+        worker_task: Completed shielded inference worker task.
+    """
+    if not worker_task.cancelled():
+        worker_task.exception()
