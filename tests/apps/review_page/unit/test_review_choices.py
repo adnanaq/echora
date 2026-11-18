@@ -413,3 +413,9 @@ def test_choice_option_description_reads_answer_word_meaning(review_cases) -> No
         option.description == describe_answer_word(option.value) for option in options
     )
     assert all(option.description for option in options)
+
+
+def test_linked_page_helpers_ignore_entry_group_cases(review_cases) -> None:
+    entry_group_case = review_cases["atashinchi_next"]
+    assert list_linked_page_options(entry_group_case) == ()
+    assert find_linked_page_conflicts([entry_group_case]) == ()

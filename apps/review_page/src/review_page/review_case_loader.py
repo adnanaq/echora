@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from pydantic import ValidationError
+from review_page.errors import UnreadableReviewFileError
 from review_page.review_case_messages import convert_case_to_message
 from shared_proto.v1 import review_cases_pb2
 from work_matching import ReviewCase
@@ -36,25 +37,6 @@ from work_matching import ReviewCase
 # The inode, modification time in nanoseconds, and size that identify one
 # version of the review file.
 type ReviewFileVersion = tuple[int, int, int]
-
-
-class UnreadableReviewFileError(RuntimeError):
-    """Indicate that a line in the review file failed JSON or schema validation."""
-
-    def __init__(self, review_file_path: Path, line_number: int) -> None:
-        """Initialize the error with the corrupted file name and 1-based line number.
-
-        Args:
-            review_file_path: Path to the unreadable review JSONL file.
-            line_number: The 1-based line number where validation failed.
-        """
-        super().__init__(
-            f"Line {line_number} of {review_file_path.name} is not a valid review "
-            "case. When the file comes from an older version, run "
-            "scripts/clean_seed.py --no-fetch from the terminal, which rebuilds "
-            "the file and keeps its saved answers. Otherwise fix or remove that "
-            "line, then reload the page."
-        )
 
 
 @dataclass(frozen=True, slots=True)

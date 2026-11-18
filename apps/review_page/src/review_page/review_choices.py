@@ -126,7 +126,7 @@ def list_group_page_choices(
     required_page_keys = list_required_page_keys(case, answer)
     highest_work_number = max(
         (
-            int(placement.placement_word.removeprefix("work "))
+            _parse_work_number(placement.placement_word)
             for placement in placements.values()
             if placement.is_case_work
         ),
@@ -217,7 +217,7 @@ def list_work_partial_sources(
             for placement in placements.values()
             if placement.is_case_work
         },
-        key=lambda work_word: int(work_word.removeprefix("work ")),
+        key=_parse_work_number,
     )
     if len(case_work_words) < 2:
         case_work_words = []
@@ -488,3 +488,15 @@ def _write_answer(
             for placed_page_key, placement in placements.items()
         },
     }
+
+
+def _parse_work_number(work_word: str) -> int:
+    """Parse the 1-based work number from a ``work N`` placement word.
+
+    Args:
+        work_word: Placement string beginning with ``"work "``.
+
+    Returns:
+        Integer work index parsed from the suffix.
+    """
+    return int(work_word.removeprefix("work "))

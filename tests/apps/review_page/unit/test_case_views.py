@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 
 import pytest
+from review_page.case_panel_tables import build_comparison_rows
 from review_page.case_views import (
     build_case_rows,
     build_case_view,
@@ -483,3 +484,9 @@ def test_resolve_shown_answer_unanswered_case_returns_suggestion(
 ) -> None:
     case = review_cases["atashinchi_next"]
     assert resolve_shown_answer(case, None) == dict(case.suggested_answer)
+
+
+def test_build_comparison_rows_returns_empty_for_entry_group_case(
+    review_cases,
+) -> None:
+    assert build_comparison_rows(review_cases["atashinchi_next"], False) == ()
