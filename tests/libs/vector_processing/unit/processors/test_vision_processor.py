@@ -1160,10 +1160,12 @@ class TestEncodeImagesBatchWithCache:
     async def test_hash_file_reads_bytes_and_batch_handles_hash_error(
         self, vision_model, embedding_config, mock_embedding_cache, tmp_path
     ):
+        import hashlib
+
         sample_file = tmp_path / "img.bin"
         sample_file.write_bytes(b"hello-world")
         digest = VisionProcessor._hash_file(str(sample_file))
-        assert len(digest) == 64
+        assert digest == hashlib.sha256(b"hello-world").hexdigest()
 
         image_downloader = AsyncMock()
         image_downloader.download_and_cache_image.return_value = "/nonexistent/img.jpg"

@@ -2,6 +2,7 @@
 
 import logging
 from collections.abc import Sequence
+from itertools import batched
 from typing import Any, cast
 
 from PIL import Image
@@ -20,7 +21,7 @@ class OpenClipModel(VisionEmbeddingModel):
         """Initialize OpenCLIP model.
 
         Args:
-            model_name: OpenCLIP model name (e.g., 'laion/CLIP-ViT-L-14-laion2B-s32B-b82K').
+            model_name: OpenCLIP model name (e.g., 'ViT-L-14/laion2b_s32b_b82k').
             cache_dir: Optional directory to cache model files.
             batch_size: Default batch size for encoding.
         """
@@ -105,8 +106,7 @@ class OpenClipModel(VisionEmbeddingModel):
             step = max(1, self._batch_size)
             embeddings: list[list[float]] = []
 
-            for start in range(0, len(images), step):
-                chunk = images[start : start + step]
+            for chunk in batched(images, step, strict=False):
                 processed = [self._preprocess_image(img) for img in chunk]
                 image_tensor = torch.stack(processed).to(self.device)
 

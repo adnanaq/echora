@@ -250,7 +250,12 @@ async def test_process_anime_batch_handles_record_and_outer_errors(
         docs = await manager.process_anime_batch([full_record, full_record])
     assert [doc.id for doc in docs] == ["ok"]
 
-    with patch("asyncio.gather", side_effect=RuntimeError("gather failed")):
+    def failing_gather(*coros, **kwargs):
+        for coro in coros:
+            coro.close()
+        raise RuntimeError("gather failed")
+
+    with patch("asyncio.gather", side_effect=failing_gather):
         assert await manager.process_anime_batch([full_record]) == []
 
 
