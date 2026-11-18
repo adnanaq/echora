@@ -300,3 +300,18 @@ def test_build_correction_panel_unknown_entry_gives_none(
         )
         is None
     )
+
+
+def test_describe_correction_destination_for_added_page() -> None:
+    from review_page.correction_views import _describe_destination
+
+    correction = review_cases_pb2.SeedCorrection(
+        entry_reference_page="mal:anime:1",
+        page_key="anilist:anime:2",
+        address="https://anilist.co/anime/2",
+        is_added_page=True,
+    )
+    assert _describe_destination(correction) == (
+        "added to this entry",
+        "https://anilist.co/anime/2",
+    )

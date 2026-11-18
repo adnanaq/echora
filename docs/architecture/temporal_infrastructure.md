@@ -1,6 +1,6 @@
 ---
 title: Temporal Infrastructure
-date: 2026-02-19
+date: 2026-11-15
 tags:
   - infrastructure
   - temporal
@@ -60,7 +60,7 @@ The Temporal Server keeps workflow state, timers and task queues, and dispatches
 The Update Service, a Rust process built with the [Temporal Rust SDK](https://temporal.io/blog/build-durable-applications-rust-temporal-rust-sdk-now-generally-available), registers the workflow and activity implementations and polls the Temporal Server for tasks. Its activities call the Enrichment Service, the Agent Service and the PostgreSQL Service over gRPC with `tonic`. (ECHO-95)
 
 - **Task queues:** see [[update_service#Temporal Worker Configuration|Update Service]].
-  - `update-service` for workflows and merges, and `agent` for AI activities. (ECHO-95)
+  - `update-service` for workflows and merges, and `agent-service` for AI activities. (ECHO-95)
   - One `provider-<name>` queue per provider. (ECHO-113)
 - **Scaling:** add worker replicas. Temporal spreads tasks across every worker polling a queue, and the rate limits below stay the same however many workers there are. (ECHO-95)
 
@@ -145,8 +145,8 @@ A limit set this way takes precedence over `max_task_queue_activities_per_second
 
 [Worker Versioning](https://temporal.io/blog/replay-2026-product-announcements) is generally available and replaces the older build-ID versioning. A running workflow stays on the worker version that started it, so a deploy never breaks a workflow in flight, and workflow code needs no patching branches for every change. Each workflow type picks its behaviour by how long it runs:
 
-- **Pinned:** refreshes and `SynopsisWorkflow`, which finish in minutes, so an old worker version drains quickly.
-- **Moves to new code:** `SweepWorkflow`, `SeedReleaseWorkflow` and `BudgetedFetchWorkflow` continue as new between batches and take the new version there. Episode trackers, which live up to two weeks, use auto-upgrade, with patching where their steps change.
+- **Pinned:** refreshes and `WriteSynopsisWorkflow`, which finish in minutes, so an old worker version drains quickly.
+- **Moves to new code:** `SweepCatalogueWorkflow`, `LoadSeedReleaseWorkflow` and `FetchBudgetedPagesWorkflow` continue as new between batches and take the new version there. Episode trackers, which live up to two weeks, use auto-upgrade, with patching where their steps change.
 
 A one-day spike with the Rust SDK proves each feature the workflows use before the Update Service is built: the `USE_EXISTING` conflict policy, signal-with-start, schedules, search attributes and visibility counts, priority and fairness keys, and Worker Versioning. The Rust SDK's worker options take a deployment-based versioning strategy (`WorkerVersioningStrategy::WorkerDeploymentBased`).
 

@@ -120,7 +120,7 @@ Disagreement on a field expected to be uniform is **logged**, because for those 
 | `related_anime`, `related_source_material` | See [Relationships](#relationships) |
 | `id` | Assigned at merge time, deterministic from the work's identity |
 | `score` | Computed from provider scores and vote counts — mean, median and a confidence-adjusted figure. See [Score](#score) |
-| `staff_data` | Computed. No provider supplies it |
+| `production_staff` | Computed. No provider supplies it |
 | `companies` | One list carrying roles, since a company can hold two on one anime. See [Companies](#companies) |
 
 Coverage note: AniDB supplies neither `genres` nor `duration`. AniDB is the only source of `titles`, and carries by far the most `tags` (122 against AniList's 32).
