@@ -1,4 +1,2 @@
-# Production target CPU flags for application binaries.
-# Set to x86-64-v3 (AVX2 / FMA / BMI2) for modern x86_64 Linux servers.
-[target.x86_64-unknown-linux-gnu]
-rustflags = ["-C", "target-cpu=x86-64-v3"]
+# Production target CPU flags (`-C target-cpu=x86-64-v3`) are set in
+# `crates/postgres_service/Dockerfile.prd` so native dev/test builds remain portable.
