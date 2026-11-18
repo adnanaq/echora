@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT fetched_at, is_dead, missing_since, missing_answers, responses_hash, fetch_failed_at\n         FROM provider_page\n         WHERE provider = $1 AND page_kind = $2 AND address = $3\n         FOR UPDATE",
+  "query": "SELECT fetched_at, is_dead, missing_since, missing_last_at, missing_answers, responses_hash, fetch_failed_at\n         FROM provider_page\n         WHERE provider = $1 AND page_kind = $2 AND address = $3\n         FOR UPDATE",
   "describe": {
     "columns": [
       {
@@ -20,16 +20,21 @@
       },
       {
         "ordinal": 3,
+        "name": "missing_last_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
         "name": "missing_answers",
         "type_info": "Int4"
       },
       {
-        "ordinal": 4,
+        "ordinal": 5,
         "name": "responses_hash",
         "type_info": "Text"
       },
       {
-        "ordinal": 5,
+        "ordinal": 6,
         "name": "fetch_failed_at",
         "type_info": "Timestamptz"
       }
@@ -45,10 +50,11 @@
       true,
       false,
       true,
+      true,
       false,
       true,
       true
     ]
   },
-  "hash": "8b6046fea9a887d9bda2b1f9d35632f11aef5439039a8e7007ba06ac8730a494"
+  "hash": "863697ed7223623103bb783b2e792a08fd3696a7baf94ecf0c49fd7f878cb340"
 }

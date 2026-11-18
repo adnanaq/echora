@@ -8,6 +8,7 @@ CREATE TABLE provider_page (
   fetched_at      timestamptz,
   is_dead         boolean NOT NULL DEFAULT false,
   missing_since   timestamptz,
+  missing_last_at timestamptz,
   missing_answers int NOT NULL DEFAULT 0 CHECK (missing_answers >= 0),
   responses_hash  text,
   fetch_failed_at timestamptz,

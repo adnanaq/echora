@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE approval_request\n         SET status = 'rejected', decided_by = 'postgres_service', decided_at = now()\n         WHERE kind = 'dead_page'\n           AND status = 'open'\n           AND proposal_message = 'shared_proto.v1.PageKey'\n           AND proposal = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Bytea"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1007b28b0a32e1d512aeb192ba7edac635d9ab2ccc6ab8c3346d1ce1b1cf331e"
+}

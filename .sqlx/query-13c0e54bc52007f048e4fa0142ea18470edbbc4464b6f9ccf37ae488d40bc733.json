@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO provider_page (\n             provider, page_kind, address, is_dead, missing_since, missing_last_at, missing_answers\n         )\n         VALUES ($1, $2, $3, $4, $5, $6, $7)\n         ON CONFLICT (provider, page_kind, address) DO UPDATE SET\n             is_dead = EXCLUDED.is_dead,\n             missing_since = EXCLUDED.missing_since,\n             missing_last_at = EXCLUDED.missing_last_at,\n             missing_answers = EXCLUDED.missing_answers",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Bool",
+        "Timestamptz",
+        "Timestamptz",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "13c0e54bc52007f048e4fa0142ea18470edbbc4464b6f9ccf37ae488d40bc733"
+}

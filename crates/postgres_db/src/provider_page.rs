@@ -117,6 +117,7 @@ struct ExistingPageRow {
     fetched_at: Option<DateTime<Utc>>,
     is_dead: bool,
     missing_since: Option<DateTime<Utc>>,
+    missing_last_at: Option<DateTime<Utc>>,
     missing_answers: i32,
     responses_hash: Option<String>,
     fetch_failed_at: Option<DateTime<Utc>>,
@@ -125,12 +126,17 @@ struct ExistingPageRow {
 fn is_stale_observation(existing: Option<&ExistingPageRow>, fetched_at: DateTime<Utc>) -> bool {
     existing
         .and_then(|row| {
-            [row.fetched_at, row.missing_since, row.fetch_failed_at]
-                .into_iter()
-                .flatten()
-                .max()
+            [
+                row.fetched_at,
+                row.missing_since,
+                row.missing_last_at,
+                row.fetch_failed_at,
+            ]
+            .into_iter()
+            .flatten()
+            .max()
         })
-        .is_some_and(|latest| fetched_at <= latest)
+        .is_some_and(|latest| fetched_at.timestamp_micros() <= latest.timestamp_micros())
 }
 
 /// Validates that `address` matches `provider`'s expected identifier format.
@@ -255,7 +261,7 @@ async fn lock_existing_page(
 
     let row = sqlx::query_as!(
         ExistingPageRow,
-        "SELECT fetched_at, is_dead, missing_since, missing_answers, responses_hash, fetch_failed_at
+        "SELECT fetched_at, is_dead, missing_since, missing_last_at, missing_answers, responses_hash, fetch_failed_at
          FROM provider_page
          WHERE provider = $1 AND page_kind = $2 AND address = $3
          FOR UPDATE",
@@ -294,18 +300,20 @@ async fn handle_not_found(
     let page_key = &input.page_key;
     sqlx::query!(
         "INSERT INTO provider_page (
-             provider, page_kind, address, is_dead, missing_since, missing_answers
+             provider, page_kind, address, is_dead, missing_since, missing_last_at, missing_answers
          )
-         VALUES ($1, $2, $3, $4, $5, $6)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          ON CONFLICT (provider, page_kind, address) DO UPDATE SET
              is_dead = EXCLUDED.is_dead,
              missing_since = EXCLUDED.missing_since,
+             missing_last_at = EXCLUDED.missing_last_at,
              missing_answers = EXCLUDED.missing_answers",
         page_key.provider,
         page_key.page_kind.as_str(),
         page_key.address,
         next_is_dead,
         missing_since,
+        input.fetched_at,
         next_answers,
     )
     .execute(&mut **tx)
@@ -351,6 +359,25 @@ async fn enqueue_dead_page_approval(
         .execute(&mut **tx)
         .await?;
     }
+    Ok(())
+}
+
+async fn close_open_dead_page_approval(
+    tx: &mut Transaction<'_, Postgres>,
+    page_key: &PageKeyInput,
+) -> Result<(), Error> {
+    let proposal = encode_page_key_proposal(page_key);
+    sqlx::query!(
+        "UPDATE approval_request
+         SET status = 'rejected', decided_by = 'postgres_service', decided_at = now()
+         WHERE kind = 'dead_page'
+           AND status = 'open'
+           AND proposal_message = 'shared_proto.v1.PageKey'
+           AND proposal = $1",
+        proposal.as_slice(),
+    )
+    .execute(&mut **tx)
+    .await?;
     Ok(())
 }
 
@@ -401,14 +428,15 @@ async fn handle_success(
     sqlx::query!(
         "INSERT INTO provider_page (
              provider, page_kind, address, fetched_at, is_dead,
-             missing_since, missing_answers, responses_hash,
+             missing_since, missing_last_at, missing_answers, responses_hash,
              fetch_failed_at, fetch_failures
          )
-         VALUES ($1, $2, $3, $4, $5, NULL, 0, $6, NULL, 0)
+         VALUES ($1, $2, $3, $4, $5, NULL, NULL, 0, $6, NULL, 0)
          ON CONFLICT (provider, page_kind, address) DO UPDATE SET
              fetched_at = EXCLUDED.fetched_at,
              is_dead = EXCLUDED.is_dead,
              missing_since = NULL,
+             missing_last_at = NULL,
              missing_answers = 0,
              responses_hash = EXCLUDED.responses_hash,
              fetch_failed_at = NULL,
@@ -422,6 +450,10 @@ async fn handle_success(
     )
     .execute(&mut **tx)
     .await?;
+
+    if existing.is_some_and(|row| row.missing_since.is_some()) {
+        close_open_dead_page_approval(tx, page_key).await?;
+    }
 
     if responses_changed {
         sqlx::query!(
@@ -526,6 +558,7 @@ mod tests {
             fetched_at: Some(base_timestamp),
             is_dead: false,
             missing_since: Some(base_timestamp + Duration::hours(2)),
+            missing_last_at: Some(base_timestamp + Duration::hours(4)),
             missing_answers: 1,
             responses_hash: None,
             fetch_failed_at: Some(base_timestamp + Duration::hours(1)),
@@ -537,11 +570,11 @@ mod tests {
         ));
         assert!(is_stale_observation(
             Some(&existing_page_row),
-            base_timestamp + Duration::hours(2),
+            base_timestamp + Duration::hours(4),
         ));
         assert!(!is_stale_observation(
             Some(&existing_page_row),
-            base_timestamp + Duration::hours(3),
+            base_timestamp + Duration::hours(5),
         ));
         assert!(!is_stale_observation(None, base_timestamp));
     }
