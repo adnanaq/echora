@@ -226,6 +226,29 @@ services:
       start_period: 60s
     restart: unless-stopped
 
+  postgres-service:
+    build:
+      context: ..
+      dockerfile: crates/postgres_service/Dockerfile.prd
+    container_name: echora-postgres-service
+    ports:
+      - "8004:8004"
+    environment:
+      - ENVIRONMENT=production
+      - POSTGRES_SERVICE_HOST=0.0.0.0
+      - POSTGRES_SERVICE_PORT=8004
+      # Off until a production collector exists (see vector-service).
+      - OTEL_ENABLED=false
+    networks:
+      - echora-network
+    healthcheck:
+      test: ["CMD", "grpc_health_probe", "-addr=localhost:8004"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
 networks:
   echora-network:
     driver: bridge
