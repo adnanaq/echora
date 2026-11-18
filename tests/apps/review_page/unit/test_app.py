@@ -1,5 +1,7 @@
 import json
 import re
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 from google.protobuf import json_format
@@ -941,4 +943,56 @@ def test_choice_partial_sources_adds_every_ticked_page(client, review_cases) -> 
     assert (answer["anidb:anime:19188"], answer["mal:anime:61115"]) == (
         "work 1, partial in work 2",
         "work 1, partial in work 2",
+    )
+
+
+def test_choice_with_unknown_open_case_renders_empty_panel(client) -> None:
+    response = client.post(
+        "/fragments/choice",
+        data={
+            "browser_state": json.dumps({"open_case_name": "missing:case"}),
+            "page_key": "mal:anime:1",
+            "work": "work 1",
+        },
+    )
+    assert response.status_code == 200
+    assert "Select a case to inspect" in response.text or response.text.strip() != ""
+
+
+def test_choose_answers_to_save_unknown_case_keeps_staged_edit() -> None:
+    from review_page.case_routes import _choose_answers_to_save
+    from review_page.models import BrowserState
+
+    state = BrowserState(edits={"unknown:case": {"mal:anime:1": "work 1"}})
+    assert _choose_answers_to_save("save", "unknown:case", state, {}, None) == {
+        "unknown:case": {"mal:anime:1": "work 1"}
+    }
+
+
+def test_main_launches_uvicorn_with_configured_source() -> None:
+    from review_page import main as main_module
+
+    fake_settings = SimpleNamespace(
+        review_page=SimpleNamespace(
+            review_page_data_dir="/tmp/data",
+            review_page_clean_seed_script="/tmp/clean_seed.py",
+            review_page_seed_file="/tmp/seed.json",
+            review_page_host="127.0.0.1",
+            review_page_port=8003,
+        )
+    )
+    with (
+        patch.object(main_module, "get_settings", return_value=fake_settings),
+        patch.object(main_module, "FileReviewCaseSource") as source_cls,
+        patch.object(main_module, "create_app") as create_app_fn,
+        patch.object(main_module.uvicorn, "run") as uvicorn_run,
+    ):
+        main_module.main()
+
+    source_cls.assert_called_once_with(
+        "/tmp/data", "/tmp/clean_seed.py", seed_file="/tmp/seed.json"
+    )
+    create_app_fn.assert_called_once_with(source_cls.return_value)
+    uvicorn_run.assert_called_once_with(
+        create_app_fn.return_value, host="127.0.0.1", port=8003
     )
