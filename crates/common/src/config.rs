@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 use std::env;
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::path::Path;
 
 use crate::Error;
@@ -155,13 +155,21 @@ impl CommonSettings {
     /// Returns an error when `postgres_service_host` and `postgres_service_port`
     /// do not form a valid socket address.
     pub fn postgres_service_addr(&self) -> Result<SocketAddr, Error> {
-        let addr_text = format!(
-            "{}:{}",
-            self.postgres_service_host, self.postgres_service_port
-        );
-        addr_text
-            .parse::<SocketAddr>()
-            .map_err(|err| Error::invalid_env("POSTGRES_SERVICE_HOST", err.to_string()))
+        let host = self.postgres_service_host.as_str();
+        let ip_text = match (host.strip_prefix('['), host.strip_suffix(']')) {
+            (Some(stripped), Some(_)) => &stripped[..stripped.len() - 1],
+            (None, None) => host,
+            _ => {
+                return Err(Error::invalid_env(
+                    "POSTGRES_SERVICE_HOST",
+                    "unbalanced brackets in IP address",
+                ));
+            }
+        };
+        let ip = ip_text
+            .parse::<IpAddr>()
+            .map_err(|err| Error::invalid_env("POSTGRES_SERVICE_HOST", err.to_string()))?;
+        Ok(SocketAddr::new(ip, self.postgres_service_port))
     }
 }
 
@@ -295,5 +303,33 @@ mod tests {
         })
         .expect_err("non-boolean must fail");
         assert!(bad_bool.is_invalid_env());
+    }
+
+    #[test]
+    fn postgres_service_addr_supports_ipv6_bare_and_bracketed() {
+        for (host, expected) in [("::1", "[::1]:8004"), ("[::1]", "[::1]:8004")] {
+            let settings = CommonSettings::from_lookup(|name| {
+                (name == "POSTGRES_SERVICE_HOST").then(|| host.to_owned())
+            })
+            .expect("valid host");
+            assert_eq!(
+                settings
+                    .postgres_service_addr()
+                    .expect("valid ipv6 socket address")
+                    .to_string(),
+                expected
+            );
+        }
+
+        let unbalanced = CommonSettings::from_lookup(|name| {
+            (name == "POSTGRES_SERVICE_HOST").then(|| "[::1".to_owned())
+        })
+        .expect("settings parse");
+        assert!(
+            unbalanced
+                .postgres_service_addr()
+                .expect_err("unbalanced brackets must fail")
+                .is_invalid_env()
+        );
     }
 }
