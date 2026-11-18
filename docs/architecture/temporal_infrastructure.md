@@ -1,6 +1,6 @@
 ---
 title: Temporal Infrastructure
-date: 2026-02-19
+date: 2026-11-15
 tags:
   - infrastructure
   - temporal

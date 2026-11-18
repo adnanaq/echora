@@ -1,6 +1,6 @@
 ---
 title: Event Schema Specification
-date: 2026-02-24
+date: 2026-11-14
 tags:
   - protobuf
   - events

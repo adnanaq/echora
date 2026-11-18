@@ -1,6 +1,6 @@
 ---
 title: PostgreSQL Service
-date: 2026-02-16
+date: 2026-11-14
 tags:
   - architecture
   - postgresql

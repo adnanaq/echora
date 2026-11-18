@@ -1,6 +1,6 @@
 ---
 title: Architecture Index
-date: 2026-02-19
+date: 2026-11-14
 tags:
   - index
   - architecture

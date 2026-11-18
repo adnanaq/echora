@@ -1,6 +1,6 @@
 ---
 title: Schema Ownership & Contracts
-date: 2026-02-17
+date: 2026-11-14
 tags:
   - contracts
   - protobuf
