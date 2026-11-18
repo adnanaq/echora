@@ -69,6 +69,7 @@ jobs:
 
       - name: Run tests against PostgreSQL 18
         env:
+          SQLX_OFFLINE: "true"
           DATABASE_URL: postgres://echora:echora_ci_password@localhost:5432/echora
         run: cargo test --workspace --locked
 
