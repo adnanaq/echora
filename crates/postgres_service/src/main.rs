@@ -65,6 +65,7 @@ async fn wait_for_shutdown() {
                 error.message = %err,
                 "failed to listen for ctrl-c signal: {{error.message}}",
             );
+            std::future::pending::<()>().await;
         }
     };
 
@@ -81,6 +82,7 @@ async fn wait_for_shutdown() {
                     error.message = %err,
                     "failed to install SIGTERM handler: {{error.message}}",
                 );
+                std::future::pending::<()>().await;
             }
         }
     };

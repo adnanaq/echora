@@ -10,7 +10,7 @@ pub use error::Error;
 #[doc(inline)]
 pub use provider_page::{
     PageKeyInput, PageKind, PageResponseInput, StorePageInput, StorePageOutcome,
-    compute_responses_hash, store_page, validate_page_address,
+    compute_responses_hash, encode_page_key_proposal, store_page, validate_page_address,
 };
 pub use sqlx::PgPool;
 use sqlx::migrate::Migrator;

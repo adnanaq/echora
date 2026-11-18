@@ -7,6 +7,7 @@ use std::io::Write as _;
 use chrono::{DateTime, Duration, Utc};
 use flate2::Compression;
 use flate2::write::GzEncoder;
+use prost::Message as _;
 use sha2::{Digest as _, Sha256};
 use sqlx::{PgPool, Postgres, Transaction};
 use tracing::Level;
@@ -34,6 +35,35 @@ impl PageKind {
             Self::Character => "character",
         }
     }
+
+    const fn as_proto_i32(self) -> i32 {
+        match self {
+            Self::Anime => 1,
+            Self::Episode => 2,
+            Self::Character => 3,
+        }
+    }
+}
+
+#[derive(PartialEq, prost::Message)]
+struct ProtoPageKey {
+    #[prost(string, tag = "1")]
+    provider: String,
+    #[prost(int32, tag = "2")]
+    page_kind: i32,
+    #[prost(string, tag = "3")]
+    address: String,
+}
+
+/// Encodes `page_key` as a `shared_proto.v1.PageKey` protobuf payload.
+#[must_use]
+pub fn encode_page_key_proposal(page_key: &PageKeyInput) -> Vec<u8> {
+    ProtoPageKey {
+        provider: page_key.provider.clone(),
+        page_kind: page_key.page_kind.as_proto_i32(),
+        address: page_key.address.clone(),
+    }
+    .encode_to_vec()
 }
 
 /// Identifies a provider page by provider name, page kind, and address.
@@ -89,6 +119,18 @@ struct ExistingPageRow {
     missing_since: Option<DateTime<Utc>>,
     missing_answers: i32,
     responses_hash: Option<String>,
+    fetch_failed_at: Option<DateTime<Utc>>,
+}
+
+fn is_stale_observation(existing: Option<&ExistingPageRow>, fetched_at: DateTime<Utc>) -> bool {
+    existing
+        .and_then(|row| {
+            [row.fetched_at, row.missing_since, row.fetch_failed_at]
+                .into_iter()
+                .flatten()
+                .max()
+        })
+        .is_some_and(|latest| fetched_at <= latest)
 }
 
 /// Validates that `address` matches `provider`'s expected identifier format.
@@ -201,9 +243,19 @@ async fn lock_existing_page(
     tx: &mut Transaction<'_, Postgres>,
     page_key: &PageKeyInput,
 ) -> Result<Option<ExistingPageRow>, Error> {
+    // Serialize creation as well as updates when no row exists yet.
+    sqlx::query!(
+        "SELECT pg_advisory_xact_lock(hashtextextended($1 || ':' || $2 || ':' || $3, 0))",
+        page_key.provider,
+        page_key.page_kind.as_str(),
+        page_key.address,
+    )
+    .execute(&mut **tx)
+    .await?;
+
     let row = sqlx::query_as!(
         ExistingPageRow,
-        "SELECT fetched_at, is_dead, missing_since, missing_answers, responses_hash
+        "SELECT fetched_at, is_dead, missing_since, missing_answers, responses_hash, fetch_failed_at
          FROM provider_page
          WHERE provider = $1 AND page_kind = $2 AND address = $3
          FOR UPDATE",
@@ -222,11 +274,7 @@ async fn handle_not_found(
     input: &StorePageInput,
     existing: Option<&ExistingPageRow>,
 ) -> Result<StorePageOutcome, Error> {
-    if let Some(row) = existing
-        && row
-            .fetched_at
-            .is_some_and(|stored| input.fetched_at <= stored)
-    {
+    if is_stale_observation(existing, input.fetched_at) {
         return Ok(StorePageOutcome { has_changed: false });
     }
 
@@ -277,12 +325,7 @@ async fn enqueue_dead_page_approval(
     tx: &mut Transaction<'_, Postgres>,
     page_key: &PageKeyInput,
 ) -> Result<(), Error> {
-    let proposal_key = format!(
-        "{}:{}:{}",
-        page_key.provider,
-        page_key.page_kind.as_str(),
-        page_key.address
-    );
+    let proposal = encode_page_key_proposal(page_key);
     let already_open = sqlx::query_scalar!(
         "SELECT EXISTS(
              SELECT 1 FROM approval_request
@@ -291,7 +334,7 @@ async fn enqueue_dead_page_approval(
                AND proposal_message = 'shared_proto.v1.PageKey'
                AND proposal = $1
          )",
-        proposal_key.as_bytes(),
+        proposal.as_slice(),
     )
     .fetch_one(&mut **tx)
     .await?
@@ -303,7 +346,7 @@ async fn enqueue_dead_page_approval(
                  kind, proposal_message, proposal, status, created_by
              )
              VALUES ('dead_page', 'shared_proto.v1.PageKey', $1, 'open', 'postgres_service')",
-            proposal_key.as_bytes(),
+            proposal.as_slice(),
         )
         .execute(&mut **tx)
         .await?;
@@ -316,11 +359,7 @@ async fn handle_fetch_failure(
     input: &StorePageInput,
     existing: Option<&ExistingPageRow>,
 ) -> Result<StorePageOutcome, Error> {
-    if let Some(row) = existing
-        && row
-            .fetched_at
-            .is_some_and(|stored| input.fetched_at <= stored)
-    {
+    if is_stale_observation(existing, input.fetched_at) {
         return Ok(StorePageOutcome { has_changed: false });
     }
 
@@ -349,11 +388,7 @@ async fn handle_success(
     input: &StorePageInput,
     existing: Option<&ExistingPageRow>,
 ) -> Result<StorePageOutcome, Error> {
-    if let Some(row) = existing
-        && row
-            .fetched_at
-            .is_some_and(|stored| input.fetched_at <= stored)
-    {
+    if is_stale_observation(existing, input.fetched_at) {
         return Ok(StorePageOutcome { has_changed: false });
     }
 
@@ -464,5 +499,50 @@ mod tests {
         let hash_b = compute_responses_hash(&[second, first]);
         assert_eq!(hash_a, hash_b);
         assert_eq!(hash_a.len(), 64);
+    }
+
+    #[test]
+    fn encode_page_key_proposal_matches_protobuf_wire_format() {
+        let encoded_proposal = encode_page_key_proposal(&PageKeyInput {
+            provider: "mal".to_owned(),
+            page_kind: PageKind::Anime,
+            address: "21".to_owned(),
+        });
+        let decoded_proposal = ProtoPageKey::decode(encoded_proposal.as_slice());
+        assert_eq!(
+            decoded_proposal,
+            Ok(ProtoPageKey {
+                provider: "mal".to_owned(),
+                page_kind: 1,
+                address: "21".to_owned(),
+            })
+        );
+    }
+
+    #[test]
+    fn is_stale_observation_checks_all_observation_timestamps() {
+        let base_timestamp = Utc::now();
+        let existing_page_row = ExistingPageRow {
+            fetched_at: Some(base_timestamp),
+            is_dead: false,
+            missing_since: Some(base_timestamp + Duration::hours(2)),
+            missing_answers: 1,
+            responses_hash: None,
+            fetch_failed_at: Some(base_timestamp + Duration::hours(1)),
+        };
+
+        assert!(is_stale_observation(
+            Some(&existing_page_row),
+            base_timestamp + Duration::hours(1),
+        ));
+        assert!(is_stale_observation(
+            Some(&existing_page_row),
+            base_timestamp + Duration::hours(2),
+        ));
+        assert!(!is_stale_observation(
+            Some(&existing_page_row),
+            base_timestamp + Duration::hours(3),
+        ));
+        assert!(!is_stale_observation(None, base_timestamp));
     }
 }
