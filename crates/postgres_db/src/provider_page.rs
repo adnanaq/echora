@@ -244,8 +244,39 @@ pub async fn store_page(pool: &PgPool, input: StorePageInput) -> Result<StorePag
         handle_success(&mut tx, &input, existing_page.as_ref()).await?
     };
 
+    if outcome.has_changed {
+        notify_linked_source_works(&mut tx, &input.page_key).await?;
+    }
+
     tx.commit().await?;
     Ok(outcome)
+}
+
+async fn notify_linked_source_works(
+    tx: &mut Transaction<'_, Postgres>,
+    page_key: &PageKeyInput,
+) -> Result<(), Error> {
+    sqlx::query!(
+        r#"
+        UPDATE anime
+        SET version = version + 1,
+            merge_requested_at = COALESCE(merge_requested_at, now())
+        WHERE id IN (
+            SELECT anime_id
+            FROM anime_provider_page
+            WHERE provider = $1 AND page_kind = $2 AND address = $3 AND role = 'source'
+            ORDER BY anime_id
+        )
+          AND deleted_at IS NULL
+        "#,
+        page_key.provider,
+        page_key.page_kind.as_str(),
+        page_key.address,
+    )
+    .execute(&mut **tx)
+    .await?;
+
+    Ok(())
 }
 
 async fn lock_existing_page(

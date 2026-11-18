@@ -64,6 +64,7 @@ The frontend talks only to the backend (GraphQL), and the backend calls this ser
 Temporal retries failed activities, and NATS delivers events at least once, so every write accepts being called twice:
 
 - `StorePage` ignores a fetch older than the stored `fetched_at` of the same page. (ECHO-97)
+- ~~When `StorePage` changes a stored page (`has_changed`), it bumps `version` and sets `merge_requested_at` on any linked `source` work so stale in-flight merges fail the version check and trigger a re-merge. (ECHO-98)~~
 - `SaveAnime` writes nothing, and sends nothing, when the work did not change. (ECHO-98)
 - Every other write is safe to repeat.
   - Pages are upserted on their page key. (ECHO-97)

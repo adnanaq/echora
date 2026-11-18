@@ -683,3 +683,136 @@ async fn load_and_save_anime_enforce_versions_hashes_visibility_and_outbox() -> 
 
     Ok(())
 }
+
+#[tokio::test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "End-to-end concurrent store_page and stale save test"
+)]
+async fn store_page_bumps_linked_anime_version_and_blocks_stale_save() -> Result<(), Error> {
+    let Ok(database_url) = env::var("DATABASE_URL") else {
+        return Ok(());
+    };
+
+    let pool = connect_pool(&database_url, 2).await?;
+    run_migrations(&pool).await?;
+
+    let anime_id = Uuid::now_v7();
+    let page_address = "999999012";
+    let page_key = PageKeyInput {
+        provider: "mal".to_owned(),
+        page_kind: PageKind::Anime,
+        address: page_address.to_owned(),
+    };
+    let t0 = Utc::now();
+
+    store_page(
+        &pool,
+        StorePageInput {
+            page_key: page_key.clone(),
+            fetched_at: t0,
+            is_dead: false,
+            responses: vec![PageResponseInput {
+                request_name: "main".to_owned(),
+                content_type: "application/json".to_owned(),
+                body: br#"{"mal_id":999999012,"title":"V1"}"#.to_vec(),
+            }],
+            is_not_found: false,
+            dead_page_review: false,
+        },
+    )
+    .await?;
+
+    sqlx::query!("INSERT INTO anime (id) VALUES ($1)", anime_id)
+        .execute(&pool)
+        .await?;
+    sqlx::query!(
+        "INSERT INTO anime_provider_page (anime_id, provider, page_kind, address, role)
+         VALUES ($1, 'mal', 'anime', $2, 'source')",
+        anime_id,
+        page_address
+    )
+    .execute(&pool)
+    .await?;
+
+    let loaded_anime = load_anime(&pool, anime_id).await?;
+    assert_eq!(loaded_anime.version, 1);
+
+    // A newer page store commits while the caller is merging V1.
+    let updated_page = store_page(
+        &pool,
+        StorePageInput {
+            page_key,
+            fetched_at: t0 + Duration::minutes(5),
+            is_dead: false,
+            responses: vec![PageResponseInput {
+                request_name: "main".to_owned(),
+                content_type: "application/json".to_owned(),
+                body: br#"{"mal_id":999999012,"title":"V2"}"#.to_vec(),
+            }],
+            is_not_found: false,
+            dead_page_review: false,
+        },
+    )
+    .await?;
+    assert!(updated_page.has_changed);
+
+    let (bumped_version, merge_requested_at): (i64, Option<chrono::DateTime<Utc>>) =
+        sqlx::query_as("SELECT version, merge_requested_at FROM anime WHERE id = $1")
+            .bind(anime_id)
+            .fetch_one(&pool)
+            .await?;
+    assert_eq!(bumped_version, 2);
+    assert!(merge_requested_at.is_some());
+
+    // The delayed save from V1 (expected_version = 1) must fail with version conflict.
+    let Err(stale_err) = save_anime(
+        &pool,
+        &SaveAnimeInput {
+            anime_id,
+            expected_version: loaded_anime.version,
+            title: "V1".to_owned(),
+            title_english: None,
+            title_japanese: None,
+            anime_type: "TV".to_owned(),
+            status: "FINISHED".to_owned(),
+            rating: "UNKNOWN".to_owned(),
+            season: None,
+            year: None,
+            month: None,
+            episode_count: 1,
+            duration_seconds: None,
+            synopsis: None,
+            background: None,
+            source_material: None,
+            country_of_origin: None,
+            is_nsfw: Some(false),
+            aired_from: None,
+            aired_to: None,
+            score_weighted: None,
+            score_mean: None,
+            score_median: None,
+            merged_record_hash: "hash-v1".to_owned(),
+            hash_format: 1,
+            merge_version: 1,
+            traceparent: None,
+        },
+    )
+    .await
+    else {
+        panic!("stale save after concurrent store_page must fail");
+    };
+    assert!(stale_err.is_version_conflict());
+
+    sqlx::query!("DELETE FROM anime WHERE id = $1", anime_id)
+        .execute(&pool)
+        .await?;
+    sqlx::query!(
+        "DELETE FROM provider_page WHERE provider = 'mal' AND page_kind = 'anime' AND address = $1",
+        page_address
+    )
+    .execute(&pool)
+    .await?;
+
+    Ok(())
+}
