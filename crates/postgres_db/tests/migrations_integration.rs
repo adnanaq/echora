@@ -48,5 +48,22 @@ async fn lookup_and_name_tables_migrate_and_seed_expected_rows() -> Result<(), E
     .await?;
     assert_eq!(shared_name_table_count, Some(5));
 
+    let Err(duplicate_sqlx_err) = sqlx::query("INSERT INTO anime_type VALUES ('TV')")
+        .execute(&pool)
+        .await
+    else {
+        panic!("duplicate lookup insert must fail");
+    };
+    let duplicate_err = Error::from(duplicate_sqlx_err);
+    assert!(duplicate_err.is_unique_violation());
+
     Ok(())
+}
+
+#[tokio::test]
+async fn connect_pool_rejects_invalid_database_url() {
+    let Err(err) = connect_pool("not-a-postgres-url", 1).await else {
+        panic!("invalid database URL must fail");
+    };
+    assert!(err.is_database());
 }
