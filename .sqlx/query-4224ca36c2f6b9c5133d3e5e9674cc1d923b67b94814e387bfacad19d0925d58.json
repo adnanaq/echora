@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO approval_request (\n                 kind, proposal_message, proposal, status, created_by\n             )\n             VALUES ('dead_page', 'shared_proto.v1.PageKey', $1, 'open', 'postgres_service')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Bytea"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "4224ca36c2f6b9c5133d3e5e9674cc1d923b67b94814e387bfacad19d0925d58"
+}

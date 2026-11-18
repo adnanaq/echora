@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM approval_request WHERE kind = 'dead_page' AND proposal = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Bytea"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e0c3e1d04911059a706cf9890440aecb607aaba03b464639f5d0c7d8f39773b4"
+}

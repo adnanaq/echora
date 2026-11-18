@@ -1,0 +1,48 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT fetched_at, is_dead, missing_since, missing_answers, responses_hash\n         FROM provider_page\n         WHERE provider = $1 AND page_kind = $2 AND address = $3\n         FOR UPDATE",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "fetched_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 1,
+        "name": "is_dead",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 2,
+        "name": "missing_since",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 3,
+        "name": "missing_answers",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 4,
+        "name": "responses_hash",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      true,
+      false,
+      true,
+      false,
+      true
+    ]
+  },
+  "hash": "28de655cbbda820bf5b4d7ee7af36fcd22f3c93ea03b5bbca57e006ecea7ed8e"
+}

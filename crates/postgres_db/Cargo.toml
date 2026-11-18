@@ -10,7 +10,10 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
-sqlx = { workspace = true, features = ["runtime-tokio", "tls-rustls", "postgres", "migrate", "macros"] }
+chrono = { workspace = true, features = ["clock", "std"] }
+flate2 = { workspace = true, features = ["rust_backend"] }
+sha2 = { workspace = true, features = ["std"] }
+sqlx = { workspace = true, features = ["runtime-tokio", "tls-rustls", "postgres", "migrate", "macros", "chrono"] }
 tracing.workspace = true
 
 [dev-dependencies]

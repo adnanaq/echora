@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT fetch_failures FROM provider_page WHERE provider = 'mal' AND page_kind = 'anime' AND address = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "fetch_failures",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "558af47a7ed353d97bb7f0703b136e3e5c45ab682245dc6b417c76a62a7e316a"
+}

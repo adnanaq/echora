@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT is_dead FROM provider_page WHERE provider = 'mal' AND page_kind = 'anime' AND address = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "is_dead",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "d95aac627a0d689a14f9f7ca293c2fcbdef071f7df885413c1c76d496ca20dd0"
+}
