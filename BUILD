@@ -7,3 +7,8 @@ python_requirements(
         "flagembedding": ["FlagEmbedding"],
     },
 )
+
+files(
+    name="rust_workspace",
+    sources=["Cargo.toml", "Cargo.lock", ".cargo/config.toml"],
+)

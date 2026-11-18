@@ -70,3 +70,6 @@ gha-creds-*.json
 
 .obsidian/
 benchmarks/vector_service/load/results/
+
+# Rust / Cargo
+/target/

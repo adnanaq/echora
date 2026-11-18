@@ -1,0 +1,4 @@
+# Production target CPU flags for application binaries.
+# Set to x86-64-v3 (AVX2 / FMA / BMI2) for modern x86_64 Linux servers.
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "target-cpu=x86-64-v3"]
