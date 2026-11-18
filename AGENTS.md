@@ -121,7 +121,7 @@ uv run ty check libs/http_cache/
 # Format, lint, and check (recommended before commits)
 ./pants fmt lint check ::
 
-# Rust workspace (crates/) — .cargo/config.toml sets target-cpu=x86-64-v3; /target/ is gitignored
+# Rust workspace (crates/) — /target/ is gitignored; prod images set target-cpu=x86-64-v3
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
