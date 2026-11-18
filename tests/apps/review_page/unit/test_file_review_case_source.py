@@ -12,17 +12,17 @@ from unittest.mock import patch
 
 import pytest
 from google.protobuf import json_format
+from review_page.errors import (
+    RunSeedFileUnknownError,
+    SeedFileUnavailableError,
+    UnreadableReviewFileError,
+)
 from review_page.file_review_case_source import (
     FileReviewCaseSource,
-    RunSeedFileUnknownError,
     load_seed_entries,
 )
 from review_page.models import InvalidNamedPageKeyReason
-from review_page.review_case_loader import UnreadableReviewFileError
-from review_page.review_case_source import (
-    ANSWER_SAVED_ELSEWHERE_RULE_NAME,
-    SeedFileUnavailableError,
-)
+from review_page.review_case_source import ANSWER_SAVED_ELSEWHERE_RULE_NAME
 from review_page.seed_cleaning_run_process import RUN_LOG_LIMIT_BYTES
 from seed_cleaning import (
     REVIEW_ANSWER_REASON,
@@ -805,3 +805,14 @@ def test_load_seed_entries_changed_file_loaded_again(tmp_path) -> None:
         second_entries.find_by_page_key("mal:anime:21273"),
         second_entries.find_by_page_key("mal:anime:29787") is not None,
     ) == (True, None, True)
+
+
+def test_find_invalid_named_keys_and_suggestions_handle_empty_and_missing_seed(
+    tmp_path,
+) -> None:
+    source = FileReviewCaseSource(
+        tmp_path, tmp_path / "clean_seed.py", seed_file=tmp_path / "missing_seed.json"
+    )
+    assert source.find_invalid_named_page_keys([]) == {}
+    assert source.find_invalid_named_page_keys(["mal:anime:1"]) == {}
+    assert source.find_named_entry_suggestions(["mal:anime:1"]) == {}

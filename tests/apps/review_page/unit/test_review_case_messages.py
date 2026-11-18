@@ -133,3 +133,21 @@ def test_convert_message_to_case_round_trip_keeps_previous_answer(
         }
     )
     assert convert_message_to_case(convert_case_to_message(case)) == case
+
+
+def test_convert_message_to_case_round_trip_keeps_partial_addresses(
+    review_cases,
+) -> None:
+    base_case = review_cases["gochuumon_movie"]
+    reference_page, base_entry = next(iter(base_case.entries.items()))
+    entry_with_partial = base_entry.model_copy(
+        update={
+            "partial_addresses_by_page_key": {
+                "anilist:anime:99999": "https://anilist.co/anime/99999"
+            }
+        }
+    )
+    case = base_case.model_copy(
+        update={"entries": {**base_case.entries, reference_page: entry_with_partial}}
+    )
+    assert convert_message_to_case(convert_case_to_message(case)) == case

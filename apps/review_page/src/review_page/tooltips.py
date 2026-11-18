@@ -225,7 +225,6 @@ CORRECTION_CHANGE_TOOLTIPS: Final[dict[str, str]] = {
     ),
 }
 
-# Keyed by the theme setting's values.
 # Keyed by the Corrections tab's source chip values.
 CORRECTION_SOURCE_TOOLTIPS: Final[dict[str, str]] = {
     "your answer": (

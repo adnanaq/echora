@@ -1,6 +1,6 @@
 ---
 title: Architecture Index
-date: 2026-02-19
+date: 2026-11-14
 tags:
   - index
   - architecture
@@ -54,7 +54,7 @@ The Temporal workflows, written in Rust, that keep works, episodes and character
 ### Ingestion Pipeline
 🔄 **[[ingestion_pipeline|Ingestion Pipeline]]**
 
-How a seed release becomes works: clean the seed, load the works with `SeedReleaseWorkflow`, then enrich each new work, and its episodes and characters, with the same refresh workflows. Lists what exists today and what is still missing.
+How a seed release becomes works: clean the seed, load the works with `LoadSeedReleaseWorkflow`, then enrich each new work, and its episodes and characters, with the same refresh workflows. Lists what exists today and what is still missing.
 
 ### Event-Driven Architecture
 📄 **[[event_driven_architecture|Event-Driven Architecture]]**
@@ -82,7 +82,7 @@ The Temporal server and its PostgreSQL databases, local development with the CLI
 | `apps/review_page` | Python | Built, local | Answering seed-cleaning review cases | HTTP on `127.0.0.1` |
 | PostgreSQL Service | Rust | Planned | The catalogue database's only owner | gRPC |
 | Update Service | Rust | Planned | Temporal workers for refreshes, episode tracking, sweeps, synopses and seed loads | Temporal worker |
-| Backend | Not decided | Planned | The frontend's single entry point | GraphQL or REST, not decided |
+| Backend | Rust | Planned | The frontend's single entry point | GraphQL |
 | Users Service | Not decided | Planned | Accounts, MAL and AniList logins, anime lists | gRPC |
 | Agent Service | Python | Planned | Every AI call: writing synopses, extracting character attributes, Jev scoring of review cases, search reasoning | gRPC |
 | Notification Service | Not decided | Planned | Episode and status notifications | NATS consumer |
@@ -143,11 +143,11 @@ Frontend → Backend
 ```
 RefreshAnimeWorkflow (Temporal), and the same for episodes and characters
   refresh_page per due page: EnrichmentService.FetchPage → PostgresService.StorePage
-  merge_work: PostgresService.LoadWork → EnrichmentService.MergeWork → PostgresService.SaveWork
-  SaveWork checks the version, commits the work and its outbox rows,
+  merge_anime: PostgresService.LoadAnime → EnrichmentService.MergeAnime → PostgresService.SaveAnime
+  SaveAnime checks the version, commits the work and its outbox rows,
   and creates the episodes and characters the work newly lists
 → outbox relay → NATS anime.updated → Vector Service reads back and re-indexes
-→ refreshes of the new episodes and characters; SynopsisWorkflow when provider synopses changed
+→ refreshes of the new episodes and characters; WriteSynopsisWorkflow when provider synopses changed
 ```
 
 ### Episode tracking
@@ -160,7 +160,7 @@ After airing: refresh the episode again at 1, 3 and 7 days
 ### Seed load
 ```
 clean_seed.py + review page → cleaned_seed.jsonl
-→ SeedReleaseWorkflow: create new works, relink moved pages, at most 500 refreshes pending
+→ LoadSeedReleaseWorkflow: create new works, relink moved pages, at most 500 refreshes pending
 → RefreshAnimeWorkflow per new or changed work, then its episodes and characters
 → NATS anime.created / episode.created / character.created
 ```
@@ -173,6 +173,15 @@ Review case, risky change or suggested edit → approval queue in PostgreSQL
 → the entity is merged and saved again
 ```
 
+### Franchise link check (planned)
+```
+CheckFranchiseLinksWorkflow, weekly and after a seed release
+→ PostgreSQL Service streams the franchise links into the Enrichment Service's check
+→ links worth a look become link_check items in the approval queue
+→ reviewer confirms each link, or corrects it, or marks a crossover work
+→ the corrections are applied on every merge and kept in a file in the repository
+```
+
 ---
 
 ## Suggested Build Order
@@ -180,13 +189,13 @@ Review case, risky change or suggested edit → approval queue in PostgreSQL
 Tracked in the Linear initiative "Catalogue platform". Cleanup issues follow the build: ECHO-116 and ECHO-123. The docs themselves are ECHO-86.
 
 1. **PostgreSQL Service** with the page, work, episode, character and outbox tables, and the store, load and save methods. ECHO-87, ECHO-93, ECHO-97, ECHO-98, ECHO-100 to ECHO-104, ECHO-107, ECHO-108
-2. **Enrichment methods** `FetchPage`, `MergeWork`, `MergeEpisode` and `MergeCharacter`, with the merge taking the work's ID instead of deriving it. ECHO-88, ECHO-89, ECHO-94, ECHO-99, ECHO-105, ECHO-109, ECHO-110
-3. **Update Service** refresh workflows, `SweepWorkflow` and episode tracking, with queue rate limits, priority and fairness. ECHO-95, ECHO-111 to ECHO-113, ECHO-117 to ECHO-119
-4. **Cleaned seed and seed load**: write `cleaned_seed.jsonl`, then `SeedReleaseWorkflow`. ECHO-92, ECHO-120
+2. **Enrichment methods** `FetchPage`, `MergeAnime`, `MergeEpisode` and `MergeCharacter`, with the merge taking the work's ID instead of deriving it. ECHO-88, ECHO-89, ECHO-94, ECHO-99, ECHO-105, ECHO-109, ECHO-110
+3. **Update Service** refresh workflows, `SweepCatalogueWorkflow` and episode tracking, with queue rate limits, priority and fairness. ECHO-95, ECHO-111 to ECHO-113, ECHO-117 to ECHO-119
+4. **Cleaned seed and seed load**: write `cleaned_seed.jsonl`, then `LoadSeedReleaseWorkflow`. ECHO-92, ECHO-120
 5. **Vector Service consumers** for the catalogue events, with the version stored in each point. ECHO-90, ECHO-106, ECHO-114, ECHO-121, ECHO-122
 6. **Backend**, once GraphQL or REST is decided. Backend project
 7. **Approval queue** in PostgreSQL, and the review page moved onto it. Approval queue project
-8. **Knowledge graph** reads and franchises, with franchise review on the approval queue. P-ECHO-22
+8. **Knowledge graph** reads and franchises, with the franchise link check sending its candidates to the approval queue. P-ECHO-22
 9. **Agent Service** for synopses, then the **Users Service** and **Notification Service**. ECHO-91, ECHO-96, ECHO-115; Users Service and Notification Service projects
 10. **People** (staff and voice actors), last. People project
 

@@ -1,6 +1,6 @@
 ---
 title: Event-Driven Architecture
-date: 2026-02-24
+date: 2026-11-14
 tags:
   - architecture
   - events
@@ -158,7 +158,7 @@ Only a save sends an event, after a merge. (ECHO-98)
   - An episode's save sends `episode.updated`. (ECHO-103)
   - A character's save sends `character.updated`. (ECHO-104)
 - **`deleted`** means the entity was removed. The row stays with `deleted_at` set, and the version increases once more.
-  - A work merged into another is removed by `DeleteWork`. (ECHO-107)
+  - A work merged into another is removed by `DeleteAnime`. (ECHO-107)
   - A character merged into another is removed by the character merge. (ECHO-104)
   - A character no work links to any more is removed by the cleanup job. (ECHO-116)
 - A save that changes nothing sends no event. (ECHO-98)
@@ -177,7 +177,7 @@ Consumers that only index the current state, such as the vector service, handle 
 
 Each save stores the merged entity in its tables (see [[Database Schema]]) and writes its outbox rows, all in one transaction:
 
-- `SaveWork` for a work (ECHO-98),
+- `SaveAnime` for a work (ECHO-98),
 - `SaveEpisode` for an episode (ECHO-103),
 - `SaveCharacter` for a character (ECHO-104).
 
@@ -187,7 +187,7 @@ Each save stores the merged entity in its tables (see [[Database Schema]]) and w
   - The refresh's last call, `RecordRefresh`, records that it finished either way. (ECHO-108)
 
 ```rust
-// crates/postgres_db: save_work (ECHO-98)
+// crates/postgres_db: save_anime (ECHO-98)
 
 /// Subject of the notice for a work's first merge; the vector service consumes `anime.*`.
 const ANIME_CREATED_SUBJECT: &str = "anime.created";
@@ -218,7 +218,7 @@ if stored_work.merged_record_hash.as_deref() != Some(record_hash.as_str()) {
     } else {
         ANIME_UPDATED_SUBJECT
     };
-    write_work_tables(&mut transaction, anime_id, &merged_anime).await?;
+    write_anime_tables(&mut transaction, anime_id, &merged_anime).await?;
     sqlx::query!(
         "UPDATE anime SET version = $2, merged_record_hash = $3, hash_format = $4,
                           merged_at = coalesce(merged_at, now()) WHERE id = $1",
@@ -239,13 +239,13 @@ if stored_work.merged_record_hash.as_deref() != Some(record_hash.as_str()) {
 transaction.commit().await?;
 ```
 
-`save_work` returns a `SaveError`, an error struct whose kind stays private. `From<sqlx::Error>` lets `?` convert database errors, and a missing row becomes a not-found error. Callers ask `is_version_conflict()` or `is_not_found()`. (ECHO-93)
+`save_anime` returns a `SaveError`, an error struct whose kind stays private. `From<sqlx::Error>` lets `?` convert database errors, and a missing row becomes a not-found error. Callers ask `is_version_conflict()` or `is_not_found()`. (ECHO-93)
 
 The gRPC handler in `postgres_service` maps it to a status in one function, since Rust's orphan rule forbids `impl From<SaveError> for Status` in a crate that owns neither type. (ECHO-97)
 
 ```rust
 // crates/postgres_service: the one place library errors become gRPC statuses (ECHO-97)
-fn to_status(error: &SaveError) -> Status {
+fn map_save_error_to_status(error: &SaveError) -> Status {
     if error.is_version_conflict() {
         Status::aborted(error.to_string())
     } else if error.is_not_found() {
@@ -256,7 +256,7 @@ fn to_status(error: &SaveError) -> Status {
 }
 ```
 
-`write_work_tables` writes everything the save stores, in one transaction:
+`write_anime_tables` writes everything the save stores, in one transaction:
 
 - the work's columns, `updated_at`, and on a work's first merge `merged_at`, which makes its outbox row `anime.created` (ECHO-98);
 - its names, classification and images (ECHO-100);
@@ -413,9 +413,9 @@ The vector service runs one pull consumer per entity kind and reads the current 
 
 ```python
 # Vector Service (Python) (ECHO-114)
-async def consume_anime_events(js: JetStreamContext, postgres: PostgresServiceStub) -> None:
+async def consume_anime_events(jetstream: JetStreamContext, postgres: PostgresServiceStub) -> None:
     """Index works in Qdrant from anime.created, anime.updated and anime.deleted notices."""
-    subscription = await js.pull_subscribe_bind(
+    subscription = await jetstream.pull_subscribe_bind(
         durable="vector-anime-consumer", stream="ANIME_EVENTS"
     )
     while True:
@@ -423,10 +423,10 @@ async def consume_anime_events(js: JetStreamContext, postgres: PostgresServiceSt
             messages = await subscription.fetch(batch=EMBED_MAX_CONCURRENCY, timeout=5)
         except nats.errors.TimeoutError:
             continue
-        await asyncio.gather(*(index_anime_notice(message, postgres) for message in messages))
+        await asyncio.gather(*(process_anime_notice(message, postgres) for message in messages))
 
 
-async def index_anime_notice(message: Msg, postgres: PostgresServiceStub) -> None:
+async def process_anime_notice(message: Msg, postgres: PostgresServiceStub) -> None:
     """Index one notice, keeping its delivery alive while the embeddings run."""
     heartbeat = asyncio.create_task(report_progress(message, every_seconds=30))
     try:
@@ -569,7 +569,7 @@ Neither service waits for NATS to start, and both retry stream and consumer setu
 # Vector Service (Python), at startup (ECHO-114)
 from nats.js.api import ConsumerConfig
 
-await js.add_consumer(
+await jetstream.add_consumer(
     "ANIME_EVENTS",
     ConsumerConfig(
         durable_name="vector-anime-consumer",

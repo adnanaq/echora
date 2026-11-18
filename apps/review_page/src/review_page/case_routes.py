@@ -34,6 +34,7 @@ from review_page.case_views import (
     resolve_shown_answer,
 )
 from review_page.correction_views import list_case_correction_links
+from review_page.errors import SeedFileUnavailableError
 from review_page.models import (
     BrowserState,
     BrowserStateField,
@@ -60,7 +61,6 @@ from review_page.review_case_messages import (
 from review_page.review_case_source import (
     ANSWER_SAVED_ELSEWHERE_RULE_NAME,
     ReviewCaseSource,
-    SeedFileUnavailableError,
     load_case,
     load_cases,
     load_last_run_summary,
@@ -127,11 +127,7 @@ class CaseRoutes:
         Returns:
             The rendered toolbar HTML fragment.
         """
-        state = BrowserState.parse_form_field(browser_state)
-        cases, last_run_summary = (
-            load_cases(self._source),
-            load_last_run_summary(self._source),
-        )
+        state, cases, last_run_summary = self._load_case_context(browser_state)
         case_names = {case.case_name for case in cases}
         is_run_going = self._source.get_run_state().is_running
         page_buttons = build_page_buttons(
@@ -164,11 +160,7 @@ class CaseRoutes:
         Returns:
             The rendered case list HTML fragment.
         """
-        state = BrowserState.parse_form_field(browser_state)
-        cases, last_run_summary = (
-            load_cases(self._source),
-            load_last_run_summary(self._source),
-        )
+        state, cases, last_run_summary = self._load_case_context(browser_state)
         case_filter = state.build_case_filter()
         all_rows = build_case_rows(cases, last_run_summary)
         case_page = paginate_rows(
@@ -303,9 +295,8 @@ class CaseRoutes:
             A 204 event response carrying ``answerssaved``, or a 409 notice
             response when a concurrent run or save conflict prevents writing.
         """
-        state = BrowserState.parse_form_field(browser_state)
-        cases_by_name = {case.case_name: case for case in load_cases(self._source)}
-        last_run_summary = load_last_run_summary(self._source)
+        state, cases, last_run_summary = self._load_case_context(browser_state)
+        cases_by_name = {case.case_name: case for case in cases}
         answers_by_case_name = _choose_answers_to_save(
             action, case_name, state, cases_by_name, last_run_summary
         )
@@ -385,6 +376,23 @@ class CaseRoutes:
                 "is_answer_unused": last_run_summary is not None
                 and case.case_name in last_run_summary.unused_answer_case_names,
             },
+        )
+
+    def _load_case_context(
+        self, browser_state: BrowserStateField
+    ) -> tuple[BrowserState, list[ReviewCase], RunSummary | None]:
+        """Parse browser state and load review cases and the last run summary.
+
+        Args:
+            browser_state: The serialized ``BrowserState`` JSON form field.
+
+        Returns:
+            Tuple of ``(state, cases, last_run_summary)``.
+        """
+        return (
+            BrowserState.parse_form_field(browser_state),
+            load_cases(self._source),
+            load_last_run_summary(self._source),
         )
 
 

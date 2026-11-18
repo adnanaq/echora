@@ -858,14 +858,6 @@ class ProductionStaff(BaseModel):
         return {role: staff for role, staff in self.__pydantic_extra__.items() if staff}
 
 
-class StaffData(StrictFieldsModel):
-    """Comprehensive staff data structure"""
-
-    production_staff: ProductionStaff = Field(
-        default_factory=ProductionStaff, description="Production staff by role"
-    )
-
-
 class ContextualRank(StrictFieldsModel):
     """Contextual ranking information from platforms like AniList"""
 
@@ -1046,8 +1038,8 @@ class Anime(StrictFieldsModel):
     score: ScoreCalculations | None = Field(
         None, description="Aggregated score calculations from all platforms"
     )
-    staff_data: StaffData | None = Field(
-        None, description="Comprehensive staff data with multi-source integration"
+    production_staff: ProductionStaff | None = Field(
+        None, description="Production staff organized by role"
     )
     statistics: dict[str, Statistics] = Field(
         default_factory=dict,

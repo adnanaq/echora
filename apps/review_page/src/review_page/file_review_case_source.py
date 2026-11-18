@@ -45,12 +45,13 @@ from review_page.answer_checks import (
     read_case_answer,
     read_seen_saved_answers,
 )
+from review_page.errors import RunSeedFileUnknownError, SeedFileUnavailableError
 from review_page.models import InvalidNamedPageKeyReason
 from review_page.review_case_loader import ReviewCaseLoader
 from review_page.review_case_messages import (
     list_ordered_mappings,
 )
-from review_page.review_case_source import ReviewCaseSource, SeedFileUnavailableError
+from review_page.review_case_source import ReviewCaseSource
 from review_page.seed_cleaning_run_process import SeedCleaningRunProcess
 from seed_cleaning import (
     CORRECTIONS_FILE_NAME,
@@ -72,17 +73,6 @@ from work_matching import (
     list_named_entry_page_keys,
     resolve_named_entries,
 )
-
-
-class RunSeedFileUnknownError(RuntimeError):
-    """Indicate that no seed file is configured or recorded for a pipeline run."""
-
-    def __init__(self) -> None:
-        """Initialize the error with instructions for configuring a seed file."""
-        super().__init__(
-            "No seed file to clean: set REVIEW_PAGE_SEED_FILE, or run "
-            "scripts/clean_seed.py once so its result names the file"
-        )
 
 
 class FileReviewCaseSource(ReviewCaseSource):
