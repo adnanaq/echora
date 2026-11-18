@@ -157,6 +157,7 @@ docker compose -f docker/docker-compose.dev.yml up -d --build
 | vector_service (gRPC)                 | `localhost:8001`                                        |
 | enrichment_service (gRPC)             | `localhost:8002`                                        |
 | review page (HTTP, this machine only) | <http://127.0.0.1:8003>                                 |
+| postgres_service (gRPC)               | `localhost:8004`                                        |
 | Qdrant dashboard                      | <http://localhost:6333/dashboard>                       |
 | Redis                                 | `localhost:6379`                                        |
 | RedisInsight                          | <http://localhost:5540> (add host `redis`, port `6379`) |
@@ -182,6 +183,7 @@ docker compose -f docker/docker-compose.dev.yml up -d qdrant redis
 ./pants run apps/vector_service:vector_service        # gRPC on :8001
 ./pants run apps/enrichment_service:enrichment_service # gRPC on :8002
 ./pants run apps/review_page:review_page               # HTTP on 127.0.0.1:8003
+cargo run -p postgres_service                          # gRPC on :8004
 ```
 
 Pants resolves its own interpreter from `PATH`, independently of the venv. If
@@ -206,11 +208,12 @@ The vector and enrichment services are **gRPC only** — there are no HTTP
 endpoints, so `curl` will not work. Use the standard gRPC health protocol (the
 review page is plain HTTP: `GET http://127.0.0.1:8003/health`):
 
-**Path A (Docker)** — `grpc_health_probe` ships in both images:
+**Path A (Docker)** — `grpc_health_probe` ships in the images:
 
 ```bash
 docker exec echora-dev-vector-service     grpc_health_probe -addr=localhost:8001
 docker exec echora-dev-enrichment-service grpc_health_probe -addr=localhost:8002
+docker exec echora-dev-postgres-service   grpc_health_probe -addr=localhost:8004
 ```
 
 **Path B (local)** — there is no container to `exec` into, and
@@ -488,6 +491,7 @@ uv run python script.py
   - `apps/vector_service` (gRPC on `:8001`)
   - `apps/enrichment_service` (gRPC on `:8002`)
   - `apps/review_page` (HTTP on `127.0.0.1:8003`)
+  - `crates/postgres_service` (gRPC on `:8004`)
 - Active vector gRPC methods:
   - `VectorAdminService`: `Health`, `GetStats`
   - `VectorSearchService`: `Search`

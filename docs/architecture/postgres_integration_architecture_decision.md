@@ -89,22 +89,22 @@ Nodes, edges, provenance, franchises and the SQL for each read are in [[Database
 |---|---|
 | Database access and migrations | `sqlx` (Postgres, compile-time checked queries, `sqlx migrate`) (ECHO-93) |
 | gRPC server and generated code | `tonic` and `prost` (ECHO-97) |
-| Async runtime | `tokio` (ECHO-87) |
+| ~~Async runtime~~ | ~~`tokio` (ECHO-87)~~ |
 | NATS | `async-nats` (ECHO-106) |
-| Errors in libraries | Error structs with a private kind, `is_…` methods such as `is_version_conflict()`, and `From` conversions so `?` works (ECHO-87) |
+| ~~Errors in libraries~~ | ~~Error structs with a private kind, `is_…` methods such as `is_version_conflict()`, and `From` conversions so `?` works (ECHO-87)~~ |
 | Errors in apps | `anyhow`, and `postgres_service` turns library errors into gRPC statuses in one function (ECHO-97) |
-| Logs and traces | `tracing` with named events (`outbox.publish.failed`) and message templates, exported through OpenTelemetry like the other services (ECHO-87) |
+| ~~Logs and traces~~ | ~~`tracing` with named events (`outbox.publish.failed`) and message templates, exported through OpenTelemetry like the other services (ECHO-87)~~ |
 | Allocator of the PostgreSQL Service | `mimalloc` (ECHO-97) |
 | Allocator of the Update Service | `mimalloc` (ECHO-95) |
 | Generated gRPC code | `tonic-prost-build` in each crate's `build.rs` (ECHO-97) |
 
-Rust code follows the Microsoft Pragmatic Rust Guidelines, through the `ms-rust` skill. Each finished file carries its compliance comment, `// Rust guideline compliant <date>`. (ECHO-87)
+~~Rust code follows the Microsoft Pragmatic Rust Guidelines, through the `ms-rust` skill. Each finished file carries its compliance comment, `// Rust guideline compliant <date>`. (ECHO-87)~~
 
 `sqlx` is chosen over Diesel because the service is mostly hand-written SQL, including recursive queries, and `sqlx` checks plain SQL without a query DSL. Crate versions are pinned in `Cargo.lock` when the crate is created. (ECHO-93)
 
 ## Repository Layout
 
-The Rust code follows the same layering as the Python code: libraries hold the logic, and each app is a thin entry point over them. The crates sit side by side in `crates/`, apart from the Python `apps/` and `libs/`, so Cargo and Pants each own their own folders. (ECHO-87)
+~~The Rust code follows the same layering as the Python code: libraries hold the logic, and each app is a thin entry point over them. The crates sit side by side in `crates/`, apart from the Python `apps/` and `libs/`, so Cargo and Pants each own their own folders. (ECHO-87)~~
 
 ```
 echora/
@@ -123,11 +123,11 @@ echora/
 ```
 
 - **Generated gRPC code.** Each crate that needs gRPC types generates them from `protos/` in its own `build.rs`, the way `scripts/generate-proto.py` does for Python. The services exchange bytes, never Rust types, so no shared crate is needed. (ECHO-97)
-- **Settings.** `common` reads the same environment variable names as the Python `EnvSettings`, and each app defines its own settings struct from it. (ECHO-87)
+- ~~**Settings.** `common` reads the same environment variable names as the Python `EnvSettings`, and each app defines its own settings struct from it. (ECHO-87)~~
 - **Ownership.** Only `postgres_service` depends on `postgres_db`, so no other crate reaches the database. (ECHO-87)
-- **Workspace.** The root `Cargo.toml` lists every crate and declares every dependency version, the crates' own versions and the lints once, in `[workspace.dependencies]` and `[workspace.lints]`. Each crate takes them with `workspace = true`. The edition is 2024, and the minimum Rust version is 1.92, which the Temporal Rust SDK needs. (ECHO-87)
-- **Checks.** CI runs `rustfmt`, clippy with the lint set of the Microsoft Rust guidelines (the `ms-rust` skill) plus `wildcard_enum_match_arm`, `cargo-audit` for vulnerable dependencies and `cargo-udeps` for unused ones. See [[echora_contracts#The PostgreSQL Service's mapping|Schema Ownership & Contracts]] for why. (ECHO-87)
-- **Build.** Cargo builds and tests the Rust crates. Pants has no supported Rust backend, so Pants only wraps the Cargo builds to produce the Docker images, and Python targets stay as they are. (ECHO-87)
+- ~~**Workspace.** The root `Cargo.toml` lists every crate and declares every dependency version, the crates' own versions and the lints once, in `[workspace.dependencies]` and `[workspace.lints]`. Each crate takes them with `workspace = true`. The edition is 2024, and the minimum Rust version is 1.92, which the Temporal Rust SDK needs. (ECHO-87)~~
+- ~~**Checks.** CI runs `rustfmt`, clippy with the lint set of the Microsoft Rust guidelines (the `ms-rust` skill) plus `wildcard_enum_match_arm`, `cargo-audit` for vulnerable dependencies and `cargo-udeps` for unused ones. See [[echora_contracts#The PostgreSQL Service's mapping|Schema Ownership & Contracts]] for why. (ECHO-87)~~
+- ~~**Build.** Cargo builds and tests the Rust crates. Pants has no supported Rust backend, so Pants only wraps the Cargo builds to produce the Docker images, and Python targets stay as they are. (ECHO-87)~~
   - `.sqlx/` holds the prepared query data, so builds without a database still check queries. (ECHO-93)
 
 ## Security

@@ -261,6 +261,34 @@ services:
       start_period: 20s
     restart: unless-stopped
 
+  postgres-service:
+    build:
+      context: ..
+      dockerfile: crates/postgres_service/Dockerfile.dev
+    image: echora-postgres-service:dev
+    container_name: echora-dev-postgres-service
+    ports:
+      - "8004:8004"
+    environment:
+      - ENVIRONMENT=development
+      - POSTGRES_SERVICE_HOST=0.0.0.0
+      - POSTGRES_SERVICE_PORT=8004
+      # Observability — OFF by default; see the vector-service block above.
+      - OTEL_ENABLED=${OTEL_ENABLED:-false}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+      - OTEL_ENABLE_TRACING=true
+      - OTEL_ENABLE_METRICS=true
+      - OTEL_ENABLE_LOGGING=true
+    networks:
+      - echora-network
+    healthcheck:
+      test: ["CMD", "grpc_health_probe", "-addr=localhost:8004"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
 networks:
   echora-network:
     driver: bridge

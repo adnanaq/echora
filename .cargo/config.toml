@@ -1,0 +1,2 @@
+# Production target CPU flags (`-C target-cpu=x86-64-v3`) are set in
+# `crates/postgres_service/Dockerfile.prd` so native dev/test builds remain portable.

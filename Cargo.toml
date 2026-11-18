@@ -1,0 +1,36 @@
+[workspace]
+members = ["crates/*"]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.92"
+license = "MIT"
+publish = false
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+wildcard_enum_match_arm = "deny"
+unwrap_used = "warn"
+expect_used = "warn"
+
+[workspace.dependencies]
+common = { path = "crates/common", version = "0.1.0" }
+anyhow = { version = "1.0", default-features = false, features = ["std"] }
+dotenvy = { version = "0.15", default-features = false }
+mimalloc = { version = "0.1", default-features = false }
+opentelemetry = { version = "0.30", default-features = false, features = ["trace", "metrics", "logs"] }
+opentelemetry-otlp = { version = "0.30", default-features = false, features = ["grpc-tonic", "trace", "metrics", "logs"] }
+opentelemetry_sdk = { version = "0.30", default-features = false, features = ["rt-tokio", "trace", "metrics", "logs"] }
+thiserror = { version = "2.0", default-features = false }
+tokio = { version = "1.45", default-features = false, features = ["macros", "rt-multi-thread", "signal"] }
+tonic = { version = "0.14", default-features = false, features = ["transport", "server", "router"] }
+tonic-health = { version = "0.14", default-features = false }
+tracing = { version = "0.1", default-features = false, features = ["std", "attributes"] }
+tracing-opentelemetry = { version = "0.31", default-features = false }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["std", "fmt", "env-filter", "json", "ansi"] }
