@@ -9,6 +9,7 @@ from qdrant_client.http.models import (
     CollectionInfo,
     CollectionParams,
     CollectionStatus,
+    Datatype,
     Distance,
     HnswConfig,
     OptimizersConfig,
@@ -42,8 +43,9 @@ def _make_manager(
 def _make_vector_params(
     size: int = 1024,
     distance: Distance = Distance.COSINE,
+    datatype: Datatype | None = Datatype.TURBO16,
 ) -> VectorParams:
-    return VectorParams(size=size, distance=distance)
+    return VectorParams(size=size, distance=distance, datatype=datatype)
 
 
 def _collection_info(
@@ -147,6 +149,7 @@ async def test_initialize_collection_existing_compatible_skips_create() -> None:
     config = settings.qdrant.model_copy(
         deep=True,
         update={
+            "qdrant_vector_datatype": "turbo16",
             "sparse_vector_names": ["text_sparse_vector"],
             "primary_sparse_vector_name": "text_sparse_vector",
             "multivector_vectors": [],
@@ -179,6 +182,7 @@ async def test_initialize_collection_concurrent_already_exists_validates_schema(
     config = settings.qdrant.model_copy(
         deep=True,
         update={
+            "qdrant_vector_datatype": "turbo16",
             "sparse_vector_names": ["text_sparse_vector"],
             "primary_sparse_vector_name": "text_sparse_vector",
             "multivector_vectors": [],

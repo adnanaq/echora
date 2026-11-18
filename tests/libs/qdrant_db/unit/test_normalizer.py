@@ -5,7 +5,7 @@ from qdrant_db.normalizer import (
     VectorNormalizer,
     is_sparse_payload,
 )
-from qdrant_db.qdrant_models import SparseVectorPayload
+from qdrant_db.qdrant_models import BatchVectorUpdate, SparseVectorPayload
 
 
 def test_is_sparse_payload_returns_true_for_valid_dict() -> None:
@@ -157,3 +157,23 @@ def test_normalize_vector_payload_uint8_rejects_invalid_elements(
     )
     with pytest.raises(ValidationError, match="integers in \\[0, 255\\]"):
         norm.normalize_vector_payload("text_vector", vector_data)
+
+
+def test_batch_vector_update_preserves_uint8_integers_for_normalizer() -> None:
+    update = BatchVectorUpdate(
+        point_id="1",
+        vector_name="text_vector",
+        vector_data=[0, 128, 255, 1],
+    )
+    norm = VectorNormalizer(
+        sparse_vector_names=set(),
+        multivector_vectors=set(),
+        vector_names={"text_vector": 4},
+        vector_datatype="uint8",
+    )
+    assert norm.normalize_vector_payload(update.vector_name, update.vector_data) == [
+        0,
+        128,
+        255,
+        1,
+    ]

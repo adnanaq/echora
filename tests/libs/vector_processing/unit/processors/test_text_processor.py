@@ -749,10 +749,10 @@ class TestEncodeTextsBatchWithCache:
         first_task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await first_task
+        assert processor._semaphore.locked()
 
         second_task = asyncio.create_task(processor.encode_text("second"))
-        await asyncio.sleep(0)
-        await asyncio.sleep(0)
+        await asyncio.sleep(0.05)
         assert call_count == 1
 
         release.set()

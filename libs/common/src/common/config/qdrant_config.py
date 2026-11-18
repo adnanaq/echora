@@ -18,7 +18,14 @@ from .env_settings import EnvSettings
 
 
 def _lower(value: object) -> object:
-    """Lower-case text, so a choice set as "COSINE" reads as "cosine"."""
+    """Lowercase string values so case-insensitive enum inputs normalize cleanly.
+
+    Args:
+        value: Raw field value supplied to Pydantic validation.
+
+    Returns:
+        Lowercased string when ``value`` is a ``str``; otherwise ``value`` unchanged.
+    """
     return value.lower() if isinstance(value, str) else value
 
 
@@ -74,9 +81,9 @@ class QdrantConfig(EnvSettings):
         default="cosine", description="Distance metric for similarity"
     )
     qdrant_vector_datatype: VectorDatatype | None = Field(
-        default=None,
+        default="turbo16",
         description=(
-            "Optional Qdrant storage datatype for dense vectors "
+            "Qdrant storage datatype for dense vectors "
             "(float32, float16, uint8, turbo4, turbo8, turbo16)"
         ),
     )
@@ -360,7 +367,15 @@ class QdrantConfig(EnvSettings):
     def validate_multivector_vectors(
         cls, v: list[str], info: ValidationInfo
     ) -> list[str]:
-        """Validate multivector_vectors against vector_names."""
+        """Validate ``multivector_vectors`` entries against ``vector_names``.
+
+        Args:
+            v: Configured multivector field names.
+            info: Pydantic validation context containing sibling field values.
+
+        Returns:
+            Validated list of multivector field names.
+        """
         vector_names = (info.data or {}).get("vector_names", {})
         unknown = [name for name in v if name not in vector_names]
         if unknown:
@@ -372,7 +387,11 @@ class QdrantConfig(EnvSettings):
 
     @model_validator(mode="after")
     def validate_primary_vector_names(self) -> QdrantConfig:
-        """Validate explicit primary vector names against vector_names."""
+        """Validate explicit primary vector names against ``vector_names``.
+
+        Returns:
+            Validated ``QdrantConfig`` instance.
+        """
         if self.primary_text_vector_name not in self.vector_names:
             raise ValueError(  # noqa: TRY003
                 "primary_text_vector_name must be a key in vector_names"
@@ -393,7 +412,11 @@ class QdrantConfig(EnvSettings):
 
     @model_validator(mode="after")
     def validate_priorities(self) -> QdrantConfig:
-        """Check priority vectors exist and every priority has index settings."""
+        """Check priority vectors exist and every priority has index settings.
+
+        Returns:
+            Validated ``QdrantConfig`` instance.
+        """
         unknown = [
             name
             for names in self.vector_priorities.values()

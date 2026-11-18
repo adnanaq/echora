@@ -294,7 +294,13 @@ class BatchVectorUpdate(BaseModel):
 
     point_id: str = Field(min_length=1)
     vector_name: str = Field(min_length=1)
-    vector_data: DenseVector | MultiVector | SparseVectorPayload
+    vector_data: (
+        Uint8DenseVector
+        | Uint8MultiVector
+        | DenseVector
+        | MultiVector
+        | SparseVectorPayload
+    )
 
 
 class BatchPayloadUpdate(BaseModel):
