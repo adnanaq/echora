@@ -13,6 +13,7 @@ pub struct Error {
 #[derive(Debug)]
 enum ErrorKind {
     NotFound,
+    InvalidArgument(String),
     VersionConflict(String),
     UniqueViolation(String),
     ForeignKeyViolation(String),
@@ -21,6 +22,22 @@ enum ErrorKind {
 }
 
 impl Error {
+    /// Creates a not-found error.
+    #[must_use]
+    pub fn not_found() -> Self {
+        Self {
+            kind: ErrorKind::NotFound,
+        }
+    }
+
+    /// Creates an invalid-argument error with `message`.
+    #[must_use]
+    pub fn invalid_argument(message: impl Into<String>) -> Self {
+        Self {
+            kind: ErrorKind::InvalidArgument(message.into()),
+        }
+    }
+
     /// Creates an optimistic concurrency or version conflict error with `message`.
     #[must_use]
     pub fn version_conflict(message: impl Into<String>) -> Self {
@@ -42,6 +59,12 @@ impl Error {
     #[must_use]
     pub fn is_not_found(&self) -> bool {
         matches!(self.kind, ErrorKind::NotFound)
+    }
+
+    /// Returns `true` when the caller passed an invalid argument.
+    #[must_use]
+    pub fn is_invalid_argument(&self) -> bool {
+        matches!(self.kind, ErrorKind::InvalidArgument(_))
     }
 
     /// Returns `true` when an optimistic concurrency or serialization conflict occurred.
@@ -88,6 +111,7 @@ impl fmt::Display for Error {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.kind {
             ErrorKind::NotFound => write!(formatter, "record not found"),
+            ErrorKind::InvalidArgument(message) => write!(formatter, "invalid argument: {message}"),
             ErrorKind::VersionConflict(message) => write!(formatter, "version conflict: {message}"),
             ErrorKind::UniqueViolation(message) => {
                 write!(formatter, "unique constraint violation: {message}")
@@ -107,6 +131,7 @@ impl std::error::Error for Error {
             ErrorKind::Migration(err) => Some(err),
             ErrorKind::Database(err) => Some(err),
             ErrorKind::NotFound
+            | ErrorKind::InvalidArgument(_)
             | ErrorKind::VersionConflict(_)
             | ErrorKind::UniqueViolation(_)
             | ErrorKind::ForeignKeyViolation(_) => None,

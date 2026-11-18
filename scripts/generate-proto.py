@@ -39,6 +39,7 @@ TARGETS: list[ProtoTarget] = [
         "protos": [
             PROTO_ROOT / "shared_proto" / "v1" / "error.proto",
             PROTO_ROOT / "shared_proto" / "v1" / "anime.proto",
+            PROTO_ROOT / "shared_proto" / "v1" / "merge.proto",
             PROTO_ROOT / "shared_proto" / "v1" / "review_cases.proto",
         ],
         "proto_include": PROTO_ROOT,
@@ -82,6 +83,21 @@ TARGETS: list[ProtoTarget] = [
             ("from v1 import", "from enrichment_proto.v1 import"),
             ("import v1.", "import enrichment_proto.v1."),
             ("from enrichment_service.v1 import", "from enrichment_proto.v1 import"),
+            ("from common.v1 import", "from shared_proto.v1 import"),
+        ),
+    },
+    {
+        "name": "postgres_service",
+        "protos": [
+            PROTO_ROOT / "postgres_service" / "v1" / "postgres_service.proto",
+        ],
+        "proto_include": PROTO_ROOT / "postgres_service",
+        "proto_extra_includes": [PROTO_ROOT],
+        "out_root": REPO_ROOT / "libs" / "common" / "src" / "postgres_proto",
+        "rewrites": (
+            ("from v1 import", "from postgres_proto.v1 import"),
+            ("import v1.", "import postgres_proto.v1."),
+            ("from postgres_service.v1 import", "from postgres_proto.v1 import"),
             ("from common.v1 import", "from shared_proto.v1 import"),
         ),
     },

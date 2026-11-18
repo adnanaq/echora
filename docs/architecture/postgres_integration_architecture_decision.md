@@ -92,11 +92,11 @@ Nodes, edges, provenance, franchises and the SQL for each read are in [[Database
 | ~~Async runtime~~ | ~~`tokio` (ECHO-87)~~ |
 | NATS | `async-nats` (ECHO-106) |
 | ~~Errors in libraries~~ | ~~Error structs with a private kind, `is_…` methods such as `is_version_conflict()`, and `From` conversions so `?` works (ECHO-87)~~ |
-| Errors in apps | `anyhow`, and `postgres_service` turns library errors into gRPC statuses in one function (ECHO-97) |
+| ~~Errors in apps~~ | ~~`anyhow`, and `postgres_service` turns library errors into gRPC statuses in one function (ECHO-97)~~ |
 | ~~Logs and traces~~ | ~~`tracing` with named events (`outbox.publish.failed`) and message templates, exported through OpenTelemetry like the other services (ECHO-87)~~ |
-| Allocator of the PostgreSQL Service | `mimalloc` (ECHO-97) |
+| ~~Allocator of the PostgreSQL Service~~ | ~~`mimalloc` (ECHO-97)~~ |
 | Allocator of the Update Service | `mimalloc` (ECHO-95) |
-| Generated gRPC code | `tonic-prost-build` in each crate's `build.rs` (ECHO-97) |
+| ~~Generated gRPC code~~ | ~~`tonic-prost-build` in each crate's `build.rs` (ECHO-97)~~ |
 
 ~~Rust code follows the Microsoft Pragmatic Rust Guidelines, through the `ms-rust` skill. Each finished file carries its compliance comment, `// Rust guideline compliant <date>`. (ECHO-87)~~
 

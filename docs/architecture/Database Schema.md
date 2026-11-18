@@ -1412,7 +1412,7 @@ CREATE TABLE character_provider_page (  -- (ECHO-104)
 );
 ```
 
-- `StorePage` writes the page and its responses in one transaction, and only when its `fetched_at` is newer than the stored one, so a retried or late fetch never replaces newer data. It reports the page as changed when `responses_hash` differs, without reading the stored bodies. (ECHO-97)
+- ~~`StorePage` writes the page and its responses in one transaction, and only when its `fetched_at` is newer than the stored one, so a retried or late fetch never replaces newer data. It reports the page as changed when `responses_hash` differs, without reading the stored bodies. (ECHO-97)~~
 - Each load reads an entity's pages and responses, and the merge maps them in memory.
   - `LoadAnime` for a work. (ECHO-98)
   - `LoadEpisode` for an episode. (ECHO-103)

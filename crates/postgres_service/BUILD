@@ -2,7 +2,7 @@
 
 files(
     name="sources",
-    sources=["Cargo.toml", "src/**/*.rs"],
+    sources=["Cargo.toml", "build.rs", "src/**/*.rs"],
 )
 
 docker_image(
@@ -12,6 +12,7 @@ docker_image(
     dependencies=[
         "//:rust_workspace",
         "//crates/common:sources",
+        "//crates/postgres_db:sources",
         ":sources",
     ],
 )

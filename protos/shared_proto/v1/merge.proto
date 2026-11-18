@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package shared_proto.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// Kind of provider page stored or merged.
+enum PageKind {
+  PAGE_KIND_UNSPECIFIED = 0;
+  PAGE_KIND_ANIME = 1;
+  PAGE_KIND_EPISODE = 2;
+  PAGE_KIND_CHARACTER = 3;
+}
+
+// Provider page identifier: provider name, page kind, and provider address.
+message PageKey {
+  string provider = 1;
+  PageKind page_kind = 2;
+  string address = 3;
+}
+
+// One raw response belonging to a provider page, as received from the provider.
+message PageResponse {
+  string request_name = 1;
+  string content_type = 2;
+  bytes body = 3;
+}
+
+// Provider page payload stored by PostgreSQL Service.
+message StoredPage {
+  PageKey page_key = 1;
+  google.protobuf.Timestamp fetched_at = 2;
+  bool is_dead = 3;
+  repeated PageResponse responses = 4;
+  bool is_not_found = 5;
+}

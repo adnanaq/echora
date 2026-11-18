@@ -10,5 +10,11 @@ python_requirements(
 
 files(
     name="rust_workspace",
-    sources=["Cargo.toml", "Cargo.lock", ".cargo/config.toml"],
+    sources=[
+        "Cargo.toml",
+        "Cargo.lock",
+        ".cargo/config.toml",
+        ".sqlx/*.json",
+        "protos/**/*.proto",
+    ],
 )

@@ -123,10 +123,18 @@ uv run ty check libs/http_cache/
 
 # Rust workspace (crates/) — /target/ is gitignored; prod images set target-cpu=x86-64-v3
 cargo fmt --all
-cargo clippy --workspace --all-targets -- -D warnings
+SQLX_OFFLINE=true cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
-cargo run -p postgres_service                        # gRPC on :8004
+DATABASE_URL=postgres://<user>:<password>@127.0.0.1:5432/<db> cargo test --workspace
+DATABASE_URL=postgres://<user>:<password>@127.0.0.1:5432/<db> cargo sqlx prepare --workspace -- --all-targets
+cargo run -p postgres_service                        # gRPC on :8004 (requires DATABASE_URL)
 ./pants package crates/postgres_service:postgres-service-image
+
+# Proto stubs & PostgreSQL lookup enum drift check (uv and Pants equivalents)
+uv run --extra dev python scripts/generate-proto.py
+./pants run scripts/generate-proto.py
+PYTHONPATH=libs/common/src uv run python scripts/check_postgres_lookup_tables.py
+./pants run scripts/check_postgres_lookup_tables.py
 ```
 
 **MANDATORY**: All code must pass ty type checking before commits.
@@ -223,7 +231,7 @@ echora/
 │   └── work_matching/             # Which provider pages belong to the same work
 │
 ├── tests/                         # Test suite (mirrors libs/)
-├── crates/                        # Rust workspace (active: common, postgres_service; planned: postgres_db, temporal_workflows, update_service, backend)
+├── crates/                        # Rust workspace (active: common, postgres_db, postgres_service; planned: temporal_workflows, update_service, backend)
 ├── data/                          # Data files & Qdrant storage
 ├── docker/                        # Docker Compose configurations
 └── scripts/                       # Utility scripts

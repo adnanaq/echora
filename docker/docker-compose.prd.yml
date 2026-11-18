@@ -1,6 +1,6 @@
 # Compose reads .env from this file's folder (docker/), not the repo root, so
 # pass the root .env explicitly. It must set QDRANT_API_KEY, REDIS_PASSWORD,
-# REDIS_URL and VECTOR_REDIS_URL. Both URLs are the address of the redis
+# REDIS_URL, VECTOR_REDIS_URL, and POSTGRES_PASSWORD. Both Redis URLs are the address of the redis
 # service below (port 6379) carrying the same password: REDIS_URL with
 # database 0 for enrichment, VECTOR_REDIS_URL with database 1 for the vector
 # service. Use letters and digits only for the password (for example
@@ -64,6 +64,31 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:18-alpine
+    container_name: echora-postgres
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:?set POSTGRES_DB in .env}
+      - POSTGRES_USER=${POSTGRES_USER:?set POSTGRES_USER in .env}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    networks:
+      - echora-network
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-echora} -d ${POSTGRES_DB:-echora}",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     restart: unless-stopped
 
   vector-service:
@@ -237,10 +262,14 @@ services:
       - ENVIRONMENT=production
       - POSTGRES_SERVICE_HOST=0.0.0.0
       - POSTGRES_SERVICE_PORT=8004
+      - DATABASE_URL=${DATABASE_URL:?set DATABASE_URL in .env}
       # Off until a production collector exists (see vector-service).
       - OTEL_ENABLED=false
     networks:
       - echora-network
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "grpc_health_probe", "-addr=localhost:8004"]
       interval: 30s
@@ -256,6 +285,8 @@ volumes:
   qdrant-data:
     driver: local
   redis-data:
+    driver: local
+  postgres-data:
     driver: local
   model-cache:
     driver: local

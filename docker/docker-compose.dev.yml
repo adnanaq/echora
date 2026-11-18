@@ -57,8 +57,8 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql
     environment:
-      - POSTGRES_DB=${POSTGRES_DB:-echora}
-      - POSTGRES_USER=${POSTGRES_USER:-echora}
+      - POSTGRES_DB=${POSTGRES_DB:?set POSTGRES_DB in .env}
+      - POSTGRES_USER=${POSTGRES_USER:?set POSTGRES_USER in .env}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
     networks:
       - echora-network
@@ -66,7 +66,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "pg_isready -U ${POSTGRES_USER:-echora} -d ${POSTGRES_DB:-echora}",
+          "pg_isready -U ${POSTGRES_USER:?set POSTGRES_USER in .env} -d ${POSTGRES_DB:?set POSTGRES_DB in .env}",
         ]
       interval: 15s
       timeout: 5s
@@ -298,6 +298,7 @@ services:
       - ENVIRONMENT=development
       - POSTGRES_SERVICE_HOST=0.0.0.0
       - POSTGRES_SERVICE_PORT=8004
+      - DATABASE_URL=postgres://${POSTGRES_USER:?set POSTGRES_USER in .env}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:?set POSTGRES_DB in .env}
       # Observability — OFF by default; see the vector-service block above.
       - OTEL_ENABLED=${OTEL_ENABLED:-false}
       - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
@@ -306,6 +307,9 @@ services:
       - OTEL_ENABLE_LOGGING=true
     networks:
       - echora-network
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "grpc_health_probe", "-addr=localhost:8004"]
       interval: 30s

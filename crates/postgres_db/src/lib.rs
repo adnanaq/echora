@@ -3,9 +3,15 @@
 // Rust guideline compliant 2026-10-09
 
 mod error;
+mod provider_page;
 
 #[doc(inline)]
 pub use error::Error;
+#[doc(inline)]
+pub use provider_page::{
+    PageKeyInput, PageKind, PageResponseInput, StorePageInput, StorePageOutcome,
+    compute_responses_hash, encode_page_key_proposal, store_page, validate_page_address,
+};
 pub use sqlx::PgPool;
 use sqlx::migrate::Migrator;
 use sqlx::postgres::PgPoolOptions;

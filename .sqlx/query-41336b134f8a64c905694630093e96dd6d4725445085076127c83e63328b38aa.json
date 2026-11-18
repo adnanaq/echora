@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT EXISTS(\n             SELECT 1 FROM approval_request\n             WHERE kind = 'dead_page'\n               AND status = 'open'\n               AND proposal_message = 'shared_proto.v1.PageKey'\n               AND proposal = $1\n         )",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "exists",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Bytea"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "41336b134f8a64c905694630093e96dd6d4725445085076127c83e63328b38aa"
+}

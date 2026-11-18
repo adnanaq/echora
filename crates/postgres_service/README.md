@@ -4,7 +4,9 @@ gRPC server binary owning the PostgreSQL catalogue database.
 
 ## Overview
 
-This crate provides the service binary, `mimalloc` allocator, `common` configuration/telemetry bootstrap, `grpc.health.v1.Health` endpoint on port `8004`, and development/production Docker builds. Database migrations and catalogue RPC handlers are planned next.
+This crate provides the `PostgresService` gRPC server (`mimalloc` allocator, `common` configuration/telemetry bootstrap, `grpc.health.v1.Health` on port `8004`, startup migrations via `postgres_db`, and `StorePage` with 64 MiB gzip-compressed messages and `DEAD_PAGE_REVIEW_<PROVIDER>` support), plus development and production Docker builds.
+
+Required environment variable at startup: `DATABASE_URL`.
 
 ## Commands
 
