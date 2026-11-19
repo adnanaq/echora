@@ -125,6 +125,11 @@ pub(crate) fn validate_relations_and_graph(
 
     for claim in &input.relation_claims {
         invert_anime_relation_type(&claim.relation_type)?;
+        if claim.target_page.page_kind != PageKind::Anime {
+            return Err(Error::invalid_argument(
+                "anime_relation_claim requires PageKind::Anime",
+            ));
+        }
         if claim.provider.trim().is_empty()
             || claim.target_page.provider.trim().is_empty()
             || claim.target_page.address.trim().is_empty()
@@ -231,7 +236,27 @@ pub(crate) async fn link_anime_source_page_in_tx(
     anime_id: Uuid,
     page_key: &PageKeyInput,
 ) -> Result<u64, Error> {
+    let anime_exists = sqlx::query_scalar!(
+        "SELECT 1 FROM anime WHERE id = $1 AND deleted_at IS NULL FOR NO KEY UPDATE",
+        anime_id,
+    )
+    .fetch_optional(&mut **tx)
+    .await?
+    .is_some();
+    if !anime_exists {
+        return Err(Error::not_found());
+    }
+
+    // Serialize page linking with replace_anime_relations target resolution.
     sqlx::query!(
+        "SELECT pg_advisory_xact_lock(hashtextextended($1 || ':anime:' || $2, 0))",
+        page_key.provider,
+        page_key.address,
+    )
+    .execute(&mut **tx)
+    .await?;
+
+    let link_result = sqlx::query!(
         "INSERT INTO anime_provider_page (anime_id, provider, page_kind, address, role)
          VALUES ($1, $2, $3, $4, 'source')
          ON CONFLICT DO NOTHING",
@@ -242,6 +267,18 @@ pub(crate) async fn link_anime_source_page_in_tx(
     )
     .execute(&mut **tx)
     .await?;
+
+    if link_result.rows_affected() > 0 {
+        sqlx::query!(
+            "UPDATE anime
+             SET version = version + 1,
+                 merge_requested_at = COALESCE(merge_requested_at, now())
+             WHERE id = $1 AND deleted_at IS NULL",
+            anime_id,
+        )
+        .execute(&mut **tx)
+        .await?;
+    }
 
     let resolved_sources: Vec<Uuid> = sqlx::query_scalar!(
         "UPDATE anime_relation
@@ -294,29 +331,20 @@ async fn replace_anime_relations(
     anime_id: Uuid,
     relations: &[AnimeRelationInput],
 ) -> Result<BTreeSet<(Uuid, Uuid)>, Error> {
-    let previous_targets: Vec<Uuid> = sqlx::query_scalar!(
-        "SELECT DISTINCT to_anime_id
-         FROM anime_relation
-         WHERE from_anime_id = $1 AND to_anime_id IS NOT NULL",
+    let deleted_targets: Vec<Option<Uuid>> = sqlx::query_scalar!(
+        "DELETE FROM anime_relation
+         WHERE from_anime_id = $1
+         RETURNING to_anime_id",
         anime_id,
     )
     .fetch_all(&mut **tx)
-    .await?
-    .into_iter()
-    .flatten()
-    .collect();
+    .await?;
 
-    let mut affected_pairs: BTreeSet<(Uuid, Uuid)> = previous_targets
+    let mut affected_pairs: BTreeSet<(Uuid, Uuid)> = deleted_targets
         .into_iter()
+        .flatten()
         .map(|target_id| (anime_id, target_id))
         .collect();
-
-    sqlx::query!(
-        "DELETE FROM anime_relation WHERE from_anime_id = $1",
-        anime_id
-    )
-    .execute(&mut **tx)
-    .await?;
 
     let deduped: BTreeSet<(&str, &str, &str)> = relations
         .iter()
@@ -328,6 +356,22 @@ async fn replace_anime_relations(
             )
         })
         .collect();
+
+    // Lock target page keys in sorted order before resolving so concurrent
+    // link_anime_source_page calls cannot race between lookup and insert.
+    let target_pages: BTreeSet<(&str, &str)> = deduped
+        .iter()
+        .map(|(_, provider, address)| (*provider, *address))
+        .collect();
+    for (provider, address) in target_pages {
+        sqlx::query!(
+            "SELECT pg_advisory_xact_lock(hashtextextended($1 || ':anime:' || $2, 0))",
+            provider,
+            address,
+        )
+        .execute(&mut **tx)
+        .await?;
+    }
 
     for (relation_type, to_page_provider, to_page_address) in deduped {
         let resolved_target = sqlx::query_scalar!(
@@ -436,10 +480,37 @@ async fn replace_anime_source_materials(
     .execute(&mut **tx)
     .await?;
 
+    // Lock all source-material xref keys in sorted order before touching shared
+    // rows so concurrent saves cannot deadlock or create duplicate rows.
+    let mut xref_locks: BTreeSet<(&str, &str)> = BTreeSet::new();
+    for material in materials {
+        for xref in &material.xrefs {
+            xref_locks.insert((xref.provider.as_str(), xref.external_id.as_str()));
+        }
+    }
+    for (provider, external_id) in xref_locks {
+        sqlx::query!(
+            "SELECT pg_advisory_xact_lock(hashtextextended('source_material_xref:' || $1 || ':' || $2, 0))",
+            provider,
+            external_id,
+        )
+        .execute(&mut **tx)
+        .await?;
+    }
+
+    let mut ordered_materials: Vec<&AnimeSourceMaterialInput> = materials.iter().collect();
+    ordered_materials.sort_by_key(|material| {
+        material
+            .xrefs
+            .iter()
+            .map(|xref| (xref.provider.as_str(), xref.external_id.as_str()))
+            .min()
+    });
+
     let mut linked_source_ids = Vec::new();
     let mut seen_links: BTreeSet<(Uuid, String)> = BTreeSet::new();
 
-    for material in materials {
+    for material in ordered_materials {
         let source_material_id = upsert_source_material_by_xref(tx, material).await?;
         linked_source_ids.push(source_material_id);
         if seen_links.insert((source_material_id, material.relation_type.clone())) {
@@ -532,22 +603,24 @@ async fn upsert_source_material_by_xref(
         .await?
     };
 
+    let mut canonical_id = source_material_id;
     for xref in sorted_xrefs {
-        sqlx::query!(
+        canonical_id = sqlx::query_scalar!(
             "INSERT INTO source_material_xref (provider, external_id, source_material_id, url)
              VALUES ($1, $2, $3, $4)
-             ON CONFLICT (provider, external_id) DO UPDATE SET url = EXCLUDED.url",
+             ON CONFLICT (provider, external_id) DO UPDATE SET url = EXCLUDED.url
+             RETURNING source_material_id",
             xref.provider,
             xref.external_id,
-            source_material_id,
+            canonical_id,
             xref.url,
         )
-        .execute(&mut **tx)
+        .fetch_one(&mut **tx)
         .await?;
     }
 
-    replace_source_material_images(tx, source_material_id, &material.images).await?;
-    Ok(source_material_id)
+    replace_source_material_images(tx, canonical_id, &material.images).await?;
+    Ok(canonical_id)
 }
 
 async fn replace_source_material_images(
@@ -594,8 +667,35 @@ async fn replace_anime_companies(
         .execute(&mut **tx)
         .await?;
 
-    let mut unique_links: BTreeSet<(Uuid, String)> = BTreeSet::new();
+    // Lock all company xref keys in sorted order before touching shared rows so
+    // concurrent saves cannot deadlock or create duplicate company rows.
+    let mut xref_locks: BTreeSet<(&str, &str)> = BTreeSet::new();
     for company in companies {
+        for xref in &company.xrefs {
+            xref_locks.insert((xref.provider.as_str(), xref.url.as_str()));
+        }
+    }
+    for (provider, url) in xref_locks {
+        sqlx::query!(
+            "SELECT pg_advisory_xact_lock(hashtextextended('company_xref:' || $1 || ':' || $2, 0))",
+            provider,
+            url,
+        )
+        .execute(&mut **tx)
+        .await?;
+    }
+
+    let mut ordered_companies: Vec<&AnimeCompanyInput> = companies.iter().collect();
+    ordered_companies.sort_by_key(|company| {
+        company
+            .xrefs
+            .iter()
+            .map(|xref| (xref.provider.as_str(), xref.url.as_str()))
+            .min()
+    });
+
+    let mut unique_links: BTreeSet<(Uuid, String)> = BTreeSet::new();
+    for company in ordered_companies {
         let company_id = upsert_company_by_xref(tx, company).await?;
         for role in &company.roles {
             unique_links.insert((company_id, role.clone()));
@@ -672,18 +772,20 @@ async fn upsert_company_by_xref(
         xrefs_by_provider.insert(xref.provider.as_str(), xref.url.as_str());
     }
 
+    let mut canonical_id = company_id;
     for (provider, url) in xrefs_by_provider {
-        sqlx::query!(
+        canonical_id = sqlx::query_scalar!(
             "INSERT INTO company_xref (provider, url, company_id)
              VALUES ($1, $2, $3)
-             ON CONFLICT (provider, url) DO NOTHING",
+             ON CONFLICT (provider, url) DO UPDATE SET url = EXCLUDED.url
+             RETURNING company_id",
             provider,
             url,
-            company_id,
+            canonical_id,
         )
-        .execute(&mut **tx)
+        .fetch_one(&mut **tx)
         .await?;
     }
 
-    Ok(company_id)
+    Ok(canonical_id)
 }

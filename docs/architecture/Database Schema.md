@@ -772,8 +772,8 @@ CREATE TABLE anime (  -- (ECHO-98)
   year                smallint CHECK (year >= 1900),
   month               smallint CHECK (month BETWEEN 1 AND 12),  -- premiere month from AnimeSchedule
   episode_count       int NOT NULL DEFAULT 0 CHECK (episode_count >= 0),  -- the providers' total
-  duration            int CHECK (duration >= 0),
-  nsfw                boolean,
+  duration_seconds    int CHECK (duration_seconds >= 0),
+  is_nsfw             boolean,
   country_of_origin   text CHECK (char_length(country_of_origin) = 2),  -- ISO 3166-1 alpha-2
   synopsis            text,                             -- from a correction or the AI-written text only
   background          text,
@@ -2164,7 +2164,7 @@ For works, shared genres, tags and themes come from the category tables by the s
 Every field of the canonical models in `libs/common/src/common/models/anime.py` has one place. Fields marked *read* are not stored; they are read back from other tables.
 
 **`Anime`**
-- Scalars → columns of `anime`. `nsfw` → `nsfw`, `duration` → `duration`, `month` → a month number.
+- Scalars → columns of `anime`. `nsfw` → `is_nsfw`, `duration` → `duration_seconds`, `month` → a month number.
 - `id` → `anime.id`, assigned when the work is first created.
 - `entity_type` → *read*, always `anime`.
 - `sources`, `partial_sources` → `anime_provider_page` with role `source` or `partial_source`.

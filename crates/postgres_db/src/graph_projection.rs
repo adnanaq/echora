@@ -18,22 +18,22 @@ const FNV_PRIME: u64 = 0x0100_0000_01b3;
 ///
 /// Returns [`Error::invalid_argument`] when `relation_type` is not a recognized
 /// `anime_relation_type` lookup value.
-pub(crate) fn invert_anime_relation_type(relation_type: &str) -> Result<&'static str, Error> {
+pub(crate) fn invert_anime_relation_type(
+    relation_type: &str,
+) -> Result<Option<&'static str>, Error> {
     match relation_type {
-        "SEQUEL" => Ok("PREQUEL"),
-        "PREQUEL" => Ok("SEQUEL"),
-        "SPIN_OFF" | "SIDE_STORY" => Ok("PARENT_STORY"),
-        "PARENT_STORY" => Ok("SIDE_STORY"),
-        "SUMMARY" => Ok("FULL_STORY"),
-        "FULL_STORY" => Ok("SUMMARY"),
-        "SAME_FRANCHISE" => Ok("SAME_FRANCHISE"),
-        "SAME_SETTING" => Ok("SAME_SETTING"),
-        "ALTERNATIVE_VERSION" => Ok("ALTERNATIVE_VERSION"),
-        "ALTERNATIVE_SETTING" => Ok("ALTERNATIVE_SETTING"),
-        "CHARACTER" => Ok("CHARACTER"),
-        "CROSSOVER" => Ok("CROSSOVER"),
-        "ADAPTATION" => Ok("ADAPTATION"),
-        "OTHER" => Ok("OTHER"),
+        "SEQUEL" => Ok(Some("PREQUEL")),
+        "PREQUEL" => Ok(Some("SEQUEL")),
+        "SPIN_OFF" | "SIDE_STORY" => Ok(Some("PARENT_STORY")),
+        "PARENT_STORY" => Ok(Some("SIDE_STORY")),
+        "SUMMARY" => Ok(Some("FULL_STORY")),
+        "FULL_STORY" => Ok(Some("SUMMARY")),
+        "SAME_FRANCHISE" => Ok(Some("SAME_FRANCHISE")),
+        "SAME_SETTING" => Ok(Some("SAME_SETTING")),
+        "ALTERNATIVE_VERSION" => Ok(Some("ALTERNATIVE_VERSION")),
+        "ALTERNATIVE_SETTING" => Ok(Some("ALTERNATIVE_SETTING")),
+        "CROSSOVER" => Ok(Some("CROSSOVER")),
+        "ADAPTATION" | "CHARACTER" | "OTHER" => Ok(None),
         unknown => Err(Error::invalid_argument(format!(
             "unknown anime_relation_type {unknown:?}"
         ))),
@@ -125,7 +125,9 @@ async fn recompute_single_anime_pair(
         };
         let inverse_type = invert_anime_relation_type(&row.relation_type)?;
         edges.insert((row.from_anime_id, target_id, row.relation_type));
-        edges.insert((target_id, row.from_anime_id, inverse_type.to_owned()));
+        if let Some(reverse_edge_type) = inverse_type {
+            edges.insert((target_id, row.from_anime_id, reverse_edge_type.to_owned()));
+        }
     }
 
     if edges.is_empty() {
@@ -266,17 +268,23 @@ mod tests {
     fn invert_anime_relation_type_matches_design_rules() {
         assert_eq!(
             invert_anime_relation_type("SPIN_OFF").ok(),
-            Some("PARENT_STORY")
+            Some(Some("PARENT_STORY"))
         );
         assert_eq!(
             invert_anime_relation_type("SAME_FRANCHISE").ok(),
-            Some("SAME_FRANCHISE")
+            Some(Some("SAME_FRANCHISE"))
         );
         assert_eq!(
             invert_anime_relation_type("SAME_SETTING").ok(),
-            Some("SAME_SETTING")
+            Some(Some("SAME_SETTING"))
         );
-        assert_eq!(invert_anime_relation_type("SEQUEL").ok(), Some("PREQUEL"));
+        assert_eq!(
+            invert_anime_relation_type("SEQUEL").ok(),
+            Some(Some("PREQUEL"))
+        );
+        assert_eq!(invert_anime_relation_type("ADAPTATION").ok(), Some(None));
+        assert_eq!(invert_anime_relation_type("CHARACTER").ok(), Some(None));
+        assert_eq!(invert_anime_relation_type("OTHER").ok(), Some(None));
         assert!(invert_anime_relation_type("INVALID").is_err());
     }
 

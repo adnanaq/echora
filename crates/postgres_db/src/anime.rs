@@ -103,9 +103,9 @@ pub struct SaveAnimeInput {
     /// Total episode count (`>= 0`).
     pub episode_count: i32,
     /// Episode duration in seconds (`>= 0`), if known.
-    pub duration: Option<i32>,
+    pub duration_seconds: Option<i32>,
     /// Explicit NSFW flag, if known.
-    pub nsfw: Option<bool>,
+    pub is_nsfw: Option<bool>,
     /// ISO 3166-1 alpha-2 country code, if known.
     pub country_of_origin: Option<String>,
     /// Approved or AI-written synopsis, if present.
@@ -391,7 +391,7 @@ async fn save_anime_in_tx(
             hash_format
         FROM anime
         WHERE id = $1 AND deleted_at IS NULL
-        FOR UPDATE
+        FOR NO KEY UPDATE
         "#,
         input.anime_id
     )
@@ -471,8 +471,8 @@ async fn update_anime_row(
             year = $10,
             month = $11,
             episode_count = $12,
-            duration = $13,
-            nsfw = $14,
+            duration_seconds = $13,
+            is_nsfw = $14,
             country_of_origin = $15,
             synopsis = $16,
             background = $17,
@@ -502,8 +502,8 @@ async fn update_anime_row(
         input.year,
         input.month,
         input.episode_count,
-        input.duration,
-        input.nsfw,
+        input.duration_seconds,
+        input.is_nsfw,
         input.country_of_origin,
         input.synopsis,
         input.background,
@@ -626,10 +626,10 @@ fn validate_save_input(input: &SaveAnimeInput) -> Result<(), Error> {
     if input.episode_count < 0 {
         return Err(Error::invalid_argument("episode_count must be >= 0"));
     }
-    if let Some(duration) = input.duration
+    if let Some(duration) = input.duration_seconds
         && duration < 0
     {
-        return Err(Error::invalid_argument("duration must be >= 0"));
+        return Err(Error::invalid_argument("duration_seconds must be >= 0"));
     }
     if let Some(country) = input.country_of_origin.as_deref()
         && country.chars().count() != 2
@@ -752,8 +752,8 @@ mod tests {
             year: Some(2004),
             month: Some(4),
             episode_count: 74,
-            duration: Some(1440),
-            nsfw: Some(false),
+            duration_seconds: Some(1440),
+            is_nsfw: Some(false),
             country_of_origin: Some("JP".to_owned()),
             synopsis: None,
             background: None,

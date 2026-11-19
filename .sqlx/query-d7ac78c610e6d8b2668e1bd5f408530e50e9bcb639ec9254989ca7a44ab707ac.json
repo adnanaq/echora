@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT DISTINCT to_anime_id\n         FROM anime_relation\n         WHERE from_anime_id = $1 AND to_anime_id IS NOT NULL",
+  "query": "DELETE FROM anime_relation\n         WHERE from_anime_id = $1\n         RETURNING to_anime_id",
   "describe": {
     "columns": [
       {
@@ -18,5 +18,5 @@
       true
     ]
   },
-  "hash": "49ba0e7ead0ddefe63c02895c2cb9adc8fe5bb378ca16fe245dcbdaa139e92f3"
+  "hash": "d7ac78c610e6d8b2668e1bd5f408530e50e9bcb639ec9254989ca7a44ab707ac"
 }

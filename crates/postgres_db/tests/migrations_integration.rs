@@ -566,8 +566,8 @@ async fn load_and_save_anime_enforce_versions_hashes_visibility_and_outbox() -> 
         year: Some(2004),
         month: Some(4),
         episode_count: 74,
-        duration: Some(1440),
-        nsfw: Some(false),
+        duration_seconds: Some(1440),
+        is_nsfw: Some(false),
         country_of_origin: Some("JP".to_owned()),
         synopsis: None,
         background: None,
@@ -790,12 +790,12 @@ async fn store_page_bumps_linked_anime_version_and_blocks_stale_save() -> Result
             year: None,
             month: None,
             episode_count: 1,
-            duration: None,
+            duration_seconds: None,
             synopsis: None,
             background: None,
             source_material: None,
             country_of_origin: None,
-            nsfw: Some(false),
+            is_nsfw: Some(false),
             aired_from: None,
             aired_to: None,
             score_weighted: None,
@@ -867,8 +867,8 @@ async fn save_anime_replaces_names_classification_themes_and_images() -> Result<
         year: Some(2004),
         month: Some(4),
         episode_count: 74,
-        duration: Some(1440),
-        nsfw: Some(false),
+        duration_seconds: Some(1440),
+        is_nsfw: Some(false),
         country_of_origin: Some("JP".to_owned()),
         synopsis: None,
         background: None,
@@ -1104,8 +1104,8 @@ async fn save_anime_stores_songs_links_streaming_stats_broadcast_and_hiatus() ->
         year: Some(2004),
         month: Some(4),
         episode_count: 74,
-        duration: Some(1440),
-        nsfw: Some(false),
+        duration_seconds: Some(1440),
+        is_nsfw: Some(false),
         country_of_origin: Some("JP".to_owned()),
         synopsis: None,
         background: None,
@@ -1303,8 +1303,10 @@ async fn save_anime_and_link_page_persist_relations_xrefs_and_graph_edges() -> R
 
     let anime_a = Uuid::now_v7();
     let anime_b = Uuid::now_v7();
-    let target_address = "999999020";
-    let manga_id_ext = "999999021";
+    let unique_num = anime_a.as_u128() % 1_000_000_000;
+    let target_address = format!("9{unique_num:09}");
+    let manga_id_ext = format!("8{unique_num:09}");
+    let company_url = format!("https://myanimelist.net/anime/producer/{target_address}/Madhouse");
 
     store_page(
         &pool,
@@ -1312,7 +1314,7 @@ async fn save_anime_and_link_page_persist_relations_xrefs_and_graph_edges() -> R
             page_key: PageKeyInput {
                 provider: "mal".to_owned(),
                 page_kind: PageKind::Anime,
-                address: target_address.to_owned(),
+                address: target_address.clone(),
             },
             fetched_at: Utc::now(),
             is_dead: false,
@@ -1347,8 +1349,8 @@ async fn save_anime_and_link_page_persist_relations_xrefs_and_graph_edges() -> R
         year: Some(2004),
         month: Some(4),
         episode_count: 12,
-        duration: None,
-        nsfw: Some(false),
+        duration_seconds: None,
+        is_nsfw: Some(false),
         country_of_origin: Some("JP".to_owned()),
         synopsis: None,
         background: None,
@@ -1367,7 +1369,7 @@ async fn save_anime_and_link_page_persist_relations_xrefs_and_graph_edges() -> R
             relations: vec![AnimeRelationInput {
                 relation_type: "SPIN_OFF".to_owned(),
                 to_page_provider: "mal".to_owned(),
-                to_page_address: target_address.to_owned(),
+                to_page_address: target_address.clone(),
             }],
             relation_claims: vec![AnimeRelationClaimInput {
                 provider: "mal".to_owned(),
@@ -1375,7 +1377,7 @@ async fn save_anime_and_link_page_persist_relations_xrefs_and_graph_edges() -> R
                 target_page: PageKeyInput {
                     provider: "mal".to_owned(),
                     page_kind: PageKind::Anime,
-                    address: target_address.to_owned(),
+                    address: target_address.clone(),
                 },
             }],
             source_materials: vec![AnimeSourceMaterialInput {
@@ -1391,7 +1393,7 @@ async fn save_anime_and_link_page_persist_relations_xrefs_and_graph_edges() -> R
                 images: vec!["https://example.com/manga.jpg".to_owned()],
                 xrefs: vec![SourceMaterialXrefInput {
                     provider: "mal".to_owned(),
-                    external_id: manga_id_ext.to_owned(),
+                    external_id: manga_id_ext.clone(),
                     url: format!("https://myanimelist.net/manga/{manga_id_ext}"),
                 }],
             }],
@@ -1401,7 +1403,7 @@ async fn save_anime_and_link_page_persist_relations_xrefs_and_graph_edges() -> R
                 roles: vec!["STUDIO".to_owned(), "PRODUCER".to_owned()],
                 xrefs: vec![CompanyXrefInput {
                     provider: "mal".to_owned(),
-                    url: "https://myanimelist.net/anime/producer/999999020/Madhouse".to_owned(),
+                    url: company_url.clone(),
                 }],
             }],
         },
@@ -1425,7 +1427,7 @@ async fn save_anime_and_link_page_persist_relations_xrefs_and_graph_edges() -> R
         &PageKeyInput {
             provider: "mal".to_owned(),
             page_kind: PageKind::Anime,
-            address: target_address.to_owned(),
+            address: target_address.clone(),
         },
     )
     .await?;
@@ -1474,7 +1476,7 @@ async fn save_anime_and_link_page_persist_relations_xrefs_and_graph_edges() -> R
     // Save anime_b sharing the same company xref and verify company row is reused.
     let second_work_input = SaveAnimeInput {
         anime_id: anime_b,
-        expected_version: 1,
+        expected_version: 2,
         title: "Work B".to_owned(),
         merged_record_hash: "rel-b-v1".to_owned(),
         relations_and_graph: AnimeRelationsAndGraphInput {
@@ -1487,7 +1489,7 @@ async fn save_anime_and_link_page_persist_relations_xrefs_and_graph_edges() -> R
                 roles: vec!["STUDIO".to_owned()],
                 xrefs: vec![CompanyXrefInput {
                     provider: "mal".to_owned(),
-                    url: "https://myanimelist.net/anime/producer/999999020/Madhouse".to_owned(),
+                    url: company_url.clone(),
                 }],
             }],
         },
@@ -1496,12 +1498,27 @@ async fn save_anime_and_link_page_persist_relations_xrefs_and_graph_edges() -> R
     save_anime(&pool, &second_work_input).await?;
 
     let matching_companies: i64 = sqlx::query_scalar!(
-        "SELECT COUNT(*) FROM company_xref WHERE provider = 'mal' AND url = 'https://myanimelist.net/anime/producer/999999020/Madhouse'"
+        "SELECT COUNT(*) FROM company_xref WHERE provider = 'mal' AND url = $1",
+        company_url
     )
     .fetch_one(&pool)
     .await?
     .unwrap_or_default();
     assert_eq!(matching_companies, 1);
+
+    let first_work_company_id: Uuid = sqlx::query_scalar!(
+        "SELECT company_id FROM anime_company WHERE anime_id = $1 AND role = 'STUDIO'",
+        anime_a
+    )
+    .fetch_one(&pool)
+    .await?;
+    let second_work_company_id: Uuid = sqlx::query_scalar!(
+        "SELECT company_id FROM anime_company WHERE anime_id = $1 AND role = 'STUDIO'",
+        anime_b
+    )
+    .fetch_one(&pool)
+    .await?;
+    assert_eq!(first_work_company_id, second_work_company_id);
 
     sqlx::query!(
         "DELETE FROM graph_edge WHERE from_id IN ($1, $2) OR to_id IN ($1, $2)",
@@ -1522,8 +1539,9 @@ async fn save_anime_and_link_page_persist_relations_xrefs_and_graph_edges() -> R
         .await?;
     sqlx::query!(
         "DELETE FROM company WHERE id IN (
-             SELECT company_id FROM company_xref WHERE provider = 'mal' AND url = 'https://myanimelist.net/anime/producer/999999020/Madhouse'
-         )"
+             SELECT company_id FROM company_xref WHERE provider = 'mal' AND url = $1
+         )",
+        company_url
     )
     .execute(&pool)
     .await?;

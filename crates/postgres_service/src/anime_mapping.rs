@@ -46,7 +46,7 @@ pub fn build_save_anime_input(
     let anime_id = Uuid::parse_str(anime_id_str)
         .map_err(|err| Status::invalid_argument(format!("invalid anime_id UUID: {err}")))?;
 
-    let merged_record_hash = compute_anime_canonical_hash(&anime);
+    let merged_record_hash = compute_save_record_hash(&anime, &relation_claims);
 
     let Anime {
         background,
@@ -182,8 +182,8 @@ pub fn build_save_anime_input(
         year: year_i16,
         month: month_i16,
         episode_count,
-        duration,
-        nsfw,
+        duration_seconds: duration,
+        is_nsfw: nsfw,
         country_of_origin,
         synopsis,
         background,
@@ -254,9 +254,10 @@ fn build_anime_details(
     }
 }
 
-/// Computes a deterministic SHA-256 hex digest over a canonicalized [`Anime`].
+/// Computes a deterministic SHA-256 hex digest over a canonicalized [`Anime`]
+/// and its sorted [`RelationClaim`] list.
 #[must_use]
-pub fn compute_anime_canonical_hash(anime: &Anime) -> String {
+pub fn compute_save_record_hash(anime: &Anime, relation_claims: &[RelationClaim]) -> String {
     let mut canonical = anime.clone();
     canonical.content_warnings.sort();
     canonical.demographics.sort();
@@ -266,8 +267,38 @@ pub fn compute_anime_canonical_hash(anime: &Anime) -> String {
     canonical.synonyms.sort();
     canonical.tags.sort();
 
+    let mut canonical_claims = relation_claims.to_vec();
+    canonical_claims.sort_by(|left, right| {
+        let left_target = left.target_page.as_ref().map(|page| {
+            (
+                page.provider.as_str(),
+                page.page_kind,
+                page.address.as_str(),
+            )
+        });
+        let right_target = right.target_page.as_ref().map(|page| {
+            (
+                page.provider.as_str(),
+                page.page_kind,
+                page.address.as_str(),
+            )
+        });
+        (&left.provider, left.relation_type, left_target).cmp(&(
+            &right.provider,
+            right.relation_type,
+            right_target,
+        ))
+    });
+
     let mut hasher = Sha256::new();
-    hasher.update(canonical.encode_to_vec());
+    let anime_bytes = canonical.encode_to_vec();
+    hasher.update(anime_bytes.len().to_be_bytes());
+    hasher.update(&anime_bytes);
+    for claim in &canonical_claims {
+        let claim_bytes = claim.encode_to_vec();
+        hasher.update(claim_bytes.len().to_be_bytes());
+        hasher.update(&claim_bytes);
+    }
     let digest = hasher.finalize();
     let mut hex = String::with_capacity(digest.len() * 2);
     for byte in digest {
@@ -433,13 +464,13 @@ mod tests {
         let mut b = a.clone();
         b.genres.reverse();
         assert_eq!(
-            compute_anime_canonical_hash(&a),
-            compute_anime_canonical_hash(&b)
+            compute_save_record_hash(&a, &[]),
+            compute_save_record_hash(&b, &[])
         );
         a.title.push('!');
         assert_ne!(
-            compute_anime_canonical_hash(&a),
-            compute_anime_canonical_hash(&b)
+            compute_save_record_hash(&a, &[]),
+            compute_save_record_hash(&b, &[])
         );
     }
 

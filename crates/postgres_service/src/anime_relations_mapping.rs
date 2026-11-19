@@ -113,7 +113,7 @@ fn map_related_source_material(
                 .transpose()?
                 .flatten()
                 .map(str::to_owned);
-            let xrefs = sources
+            let xrefs: Vec<SourceMaterialXrefInput> = sources
                 .into_iter()
                 .filter_map(|url| {
                     parse_provider_target_from_url(&url).map(|(provider, external_id)| {
@@ -125,6 +125,9 @@ fn map_related_source_material(
                     })
                 })
                 .collect();
+            if xrefs.is_empty() {
+                continue;
+            }
             mapped.push(AnimeSourceMaterialInput {
                 relation_type: relation_type.clone(),
                 title,
@@ -144,37 +147,40 @@ fn map_related_source_material(
 }
 
 fn map_companies(companies: Vec<CompanyEntry>) -> Result<Vec<AnimeCompanyInput>, Status> {
-    companies
-        .into_iter()
-        .map(
-            |CompanyEntry {
-                 name,
-                 description,
-                 sources,
-                 roles,
-             }| {
-                let mapped_roles = roles
-                    .into_iter()
-                    .map(|role_num| map_company_role(role_num).map(str::to_owned))
-                    .collect::<Result<Vec<_>, _>>()?;
-                let xrefs = sources
-                    .into_iter()
-                    .filter_map(|url| {
-                        parse_provider_from_url(&url).map(|provider| CompanyXrefInput {
-                            provider: provider.to_owned(),
-                            url,
-                        })
-                    })
-                    .collect();
-                Ok(AnimeCompanyInput {
-                    name,
-                    description,
-                    roles: mapped_roles,
-                    xrefs,
+    let mut mapped = Vec::new();
+    for CompanyEntry {
+        name,
+        description,
+        sources,
+        roles,
+    } in companies
+    {
+        let mut mapped_roles = Vec::new();
+        for role_num in roles {
+            if let Some(role) = map_company_role(role_num)? {
+                mapped_roles.push(role.to_owned());
+            }
+        }
+        let xrefs: Vec<CompanyXrefInput> = sources
+            .into_iter()
+            .filter_map(|url| {
+                parse_provider_from_url(&url).map(|provider| CompanyXrefInput {
+                    provider: provider.to_owned(),
+                    url,
                 })
-            },
-        )
-        .collect()
+            })
+            .collect();
+        if mapped_roles.is_empty() || xrefs.is_empty() {
+            continue;
+        }
+        mapped.push(AnimeCompanyInput {
+            name,
+            description,
+            roles: mapped_roles,
+            xrefs,
+        });
+    }
+    Ok(mapped)
 }
 
 fn normalize_anime_relation_type(raw_text: &str) -> Result<&'static str, Status> {
@@ -262,18 +268,18 @@ fn map_page_kind_enum(enum_number: i32) -> Result<DbPageKind, Status> {
     }
 }
 
-fn map_company_role(enum_number: i32) -> Result<&'static str, Status> {
+fn map_company_role(enum_number: i32) -> Result<Option<&'static str>, Status> {
     let Ok(role) = CompanyRole::try_from(enum_number) else {
         return Err(Status::invalid_argument(format!(
             "unknown CompanyRole number {enum_number}"
         )));
     };
     match role {
-        CompanyRole::Unspecified => Err(Status::invalid_argument("company role must be specified")),
-        CompanyRole::Studio => Ok("STUDIO"),
-        CompanyRole::Producer => Ok("PRODUCER"),
-        CompanyRole::Licensor => Ok("LICENSOR"),
-        CompanyRole::Unknown => Ok("UNKNOWN"),
+        CompanyRole::Unspecified => Ok(None),
+        CompanyRole::Studio => Ok(Some("STUDIO")),
+        CompanyRole::Producer => Ok(Some("PRODUCER")),
+        CompanyRole::Licensor => Ok(Some("LICENSOR")),
+        CompanyRole::Unknown => Ok(Some("UNKNOWN")),
     }
 }
 
