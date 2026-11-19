@@ -12,13 +12,14 @@ use sqlx::{PgPool, Postgres, Transaction};
 use tracing::Level;
 use uuid::Uuid;
 
-use crate::{Error, PageKeyInput, PageKind, PageResponseInput};
+use crate::anime_details::{replace_anime_details, validate_anime_details};
+use crate::{AnimeDetailsInput, Error, PageKeyInput, PageKind, PageResponseInput};
 
 /// Current canonical hash format version stored in `anime.hash_format`.
 ///
 /// Bumping this constant causes unchanged records to re-save once so the new
 /// hash format is persisted.
-pub const ANIME_HASH_FORMAT_V1: i16 = 1;
+pub const ANIME_HASH_FORMAT: i16 = 2;
 
 const MIN_ANIME_YEAR: i16 = 1900;
 const MIN_MONTH: i16 = 1;
@@ -124,6 +125,8 @@ pub struct SaveAnimeInput {
     pub merge_version: i32,
     /// Optional W3C `traceparent` header propagated into outbox rows.
     pub traceparent: Option<String>,
+    /// Work names, classification lists, themes, and images.
+    pub details: AnimeDetailsInput,
 }
 
 /// Result returned by [`save_anime`].
@@ -419,6 +422,7 @@ async fn save_anime_in_tx(
     let is_first_merge = existing_anime.merged_at.is_none();
 
     update_anime_row(tx, input, next_version, now).await?;
+    replace_anime_details(tx, input.anime_id, &input.details).await?;
     emit_anime_outbox_events(
         tx,
         input,
@@ -636,6 +640,7 @@ fn validate_save_input(input: &SaveAnimeInput) -> Result<(), Error> {
             )));
         }
     }
+    validate_anime_details(&input.details)?;
     Ok(())
 }
 
@@ -745,9 +750,10 @@ mod tests {
             score_mean: None,
             score_median: None,
             merged_record_hash: "abc".to_owned(),
-            hash_format: ANIME_HASH_FORMAT_V1,
+            hash_format: ANIME_HASH_FORMAT,
             merge_version: 1,
             traceparent: None,
+            details: AnimeDetailsInput::default(),
         };
         assert!(validate_save_input(&base).is_ok());
 
@@ -769,6 +775,16 @@ mod tests {
         bad_country.country_of_origin = Some("JPN".to_owned());
         assert!(matches!(
             validate_save_input(&bad_country),
+            Err(err) if err.is_invalid_argument()
+        ));
+
+        let mut bad_image = base.clone();
+        bad_image.details.images.push(crate::AnimeImageInput {
+            image_type: "thumbnail".to_owned(),
+            url: "https://example.com/a.jpg".to_owned(),
+        });
+        assert!(matches!(
+            validate_save_input(&bad_image),
             Err(err) if err.is_invalid_argument()
         ));
 

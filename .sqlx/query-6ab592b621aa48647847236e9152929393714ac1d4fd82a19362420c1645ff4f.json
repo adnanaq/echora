@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO anime_demographic (anime_id, demographic)\n         SELECT $1, demographic\n         FROM UNNEST($2::text[]) AS entry(demographic)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6ab592b621aa48647847236e9152929393714ac1d4fd82a19362420c1645ff4f"
+}

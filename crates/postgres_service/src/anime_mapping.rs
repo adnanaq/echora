@@ -3,22 +3,27 @@
 // Rust guideline compliant 2026-10-09
 
 use chrono::{DateTime, Utc};
-use postgres_db::{ANIME_HASH_FORMAT_V1, SaveAnimeInput};
+use postgres_db::{
+    ANIME_HASH_FORMAT, AnimeDetailsInput, AnimeImageInput, AnimeThemeInput, AnimeTitleInput,
+    SaveAnimeInput,
+};
 use prost::Message as _;
 use sha2::{Digest as _, Sha256};
 use tonic::Status;
 use uuid::Uuid;
 
 use crate::service::shared_proto::v1::{
-    Anime, AnimeRating, AnimeSeason, AnimeStatus, AnimeType, EntityType, SourceMaterialType,
+    Anime, AnimeImages, AnimeRating, AnimeSeason, AnimeStatus, AnimeType, EntityType,
+    SourceMaterialType, ThemeEntry,
 };
 
 /// Maps a `shared_proto.v1.Anime` and save metadata into [`SaveAnimeInput`].
 ///
 /// Computes `merged_record_hash` over the full canonical `Anime` message, while
-/// persisting only the scalar `anime` table columns in this stage. Destructures
-/// every field of [`Anime`] without `..` and matches every proto enum
-/// exhaustively without `_` so proto changes fail compilation until handled.
+/// persisting scalar `anime` columns plus work names, classification, themes,
+/// and images. Destructures every field of [`Anime`] without `..` and matches
+/// every proto enum exhaustively without `_` so proto changes fail compilation
+/// until handled.
 ///
 /// # Errors
 ///
@@ -59,28 +64,28 @@ pub fn build_save_anime_input(
         title_japanese,
         r#type,
         year,
-        content_warnings: _,
-        demographics: _,
+        content_warnings,
+        demographics,
         ending_themes: _,
-        genres: _,
+        genres,
         opening_themes: _,
         related_anime: _,
         related_source_material: _,
         sources: _,
         streaming_sources: _,
-        synonyms: _,
-        tags: _,
-        themes: _,
+        synonyms,
+        tags,
+        themes,
         trailers: _,
         aired_dates,
         broadcast: _,
         external_sources: _,
-        images: _,
+        images,
         score,
         production_staff: _,
         statistics: _,
         hiatus: _,
-        titles: _,
+        titles,
         companies: _,
         partial_sources: _,
     } = anime;
@@ -132,6 +137,17 @@ pub fn build_save_anime_input(
         None => (None, None, None),
     };
 
+    let details = build_anime_details(
+        titles,
+        synonyms,
+        genres,
+        tags,
+        demographics,
+        content_warnings,
+        themes,
+        images,
+    );
+
     Ok(SaveAnimeInput {
         anime_id,
         expected_version,
@@ -157,10 +173,63 @@ pub fn build_save_anime_input(
         score_mean,
         score_median,
         merged_record_hash,
-        hash_format: ANIME_HASH_FORMAT_V1,
+        hash_format: ANIME_HASH_FORMAT,
         merge_version,
         traceparent,
+        details,
     })
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Maps the eight ECHO-100 detail collections into AnimeDetailsInput"
+)]
+fn build_anime_details(
+    titles: std::collections::BTreeMap<String, String>,
+    synonyms: Vec<String>,
+    genres: Vec<String>,
+    tags: Vec<String>,
+    demographics: Vec<String>,
+    content_warnings: Vec<String>,
+    themes: Vec<ThemeEntry>,
+    images: Option<AnimeImages>,
+) -> AnimeDetailsInput {
+    let mapped_titles = titles
+        .into_iter()
+        .map(|(language, title)| AnimeTitleInput { language, title })
+        .collect();
+    let mapped_themes = themes
+        .into_iter()
+        .map(|ThemeEntry { name, description }| AnimeThemeInput { name, description })
+        .collect();
+    let mapped_images = match images {
+        Some(AnimeImages {
+            covers,
+            posters,
+            banners,
+        }) => covers
+            .into_iter()
+            .map(|url| ("cover", url))
+            .chain(posters.into_iter().map(|url| ("poster", url)))
+            .chain(banners.into_iter().map(|url| ("banner", url)))
+            .map(|(image_type, url)| AnimeImageInput {
+                image_type: image_type.to_owned(),
+                url,
+            })
+            .collect(),
+        None => Vec::new(),
+    };
+
+    AnimeDetailsInput {
+        titles: mapped_titles,
+        synonyms,
+        genres,
+        tags,
+        demographics,
+        content_warnings,
+        themes: mapped_themes,
+        images: mapped_images,
+    }
 }
 
 /// Computes a deterministic SHA-256 hex digest over a canonicalized [`Anime`].
@@ -369,7 +438,14 @@ mod tests {
 
     #[test]
     fn build_save_anime_input_maps_all_enums_dates_and_scores() {
-        use crate::service::shared_proto::v1::{AiredDates, ScoreCalculations};
+        use std::collections::BTreeMap;
+
+        use crate::service::shared_proto::v1::{
+            AiredDates, AnimeImages, ScoreCalculations, ThemeEntry,
+        };
+
+        let mut titles = BTreeMap::new();
+        titles.insert("de".to_owned(), "Monster".to_owned());
 
         let anime = Anime {
             title: "Monster".to_owned(),
@@ -384,6 +460,21 @@ mod tests {
             duration: Some(1440),
             nsfw: Some(false),
             country_of_origin: Some("JP".to_owned()),
+            titles,
+            synonyms: vec!["MONSTER".to_owned()],
+            genres: vec!["Drama".to_owned(), "Mystery".to_owned()],
+            tags: vec!["Crime".to_owned()],
+            demographics: vec!["Seinen".to_owned()],
+            content_warnings: vec!["Violence".to_owned()],
+            themes: vec![ThemeEntry {
+                name: "Psychological".to_owned(),
+                description: Some("Mind games".to_owned()),
+            }],
+            images: Some(AnimeImages {
+                covers: vec!["https://example.com/cover.jpg".to_owned()],
+                posters: vec!["https://example.com/poster.jpg".to_owned()],
+                banners: vec!["https://example.com/banner.jpg".to_owned()],
+            }),
             aired_dates: Some(AiredDates {
                 aired_from: Some(prost_types::Timestamp {
                     seconds: 1_081_296_000,
@@ -411,5 +502,17 @@ mod tests {
         assert_eq!(input.month, Some(4));
         assert_eq!(input.score_weighted, Some(8.5));
         assert!(input.aired_from.is_some());
+        assert_eq!(input.details.titles.len(), 1);
+        assert_eq!(input.details.titles[0].language, "de");
+        assert_eq!(input.details.synonyms, vec!["MONSTER"]);
+        assert_eq!(input.details.genres, vec!["Drama", "Mystery"]);
+        assert_eq!(input.details.tags, vec!["Crime"]);
+        assert_eq!(input.details.demographics, vec!["Seinen"]);
+        assert_eq!(input.details.content_warnings, vec!["Violence"]);
+        assert_eq!(input.details.themes[0].name, "Psychological");
+        assert_eq!(input.details.images.len(), 3);
+        assert_eq!(input.details.images[0].image_type, "cover");
+        assert_eq!(input.details.images[1].image_type, "poster");
+        assert_eq!(input.details.images[2].image_type, "banner");
     }
 }

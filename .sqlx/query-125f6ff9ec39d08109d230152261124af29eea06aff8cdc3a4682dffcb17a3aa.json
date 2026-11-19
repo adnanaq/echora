@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO genre (name) SELECT * FROM UNNEST($1::text[]) ON CONFLICT DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "125f6ff9ec39d08109d230152261124af29eea06aff8cdc3a4682dffcb17a3aa"
+}

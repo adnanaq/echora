@@ -6,8 +6,9 @@ use std::env;
 
 use chrono::{Duration, Utc};
 use postgres_db::{
-    ANIME_HASH_FORMAT_V1, Error, PageKeyInput, PageKind, PageResponseInput, SaveAnimeInput,
-    StorePageInput, connect_pool, load_anime, run_migrations, save_anime, store_page,
+    ANIME_HASH_FORMAT, AnimeDetailsInput, AnimeImageInput, AnimeThemeInput, AnimeTitleInput, Error,
+    PageKeyInput, PageKind, PageResponseInput, SaveAnimeInput, StorePageInput, connect_pool,
+    load_anime, run_migrations, save_anime, store_page,
 };
 use uuid::Uuid;
 
@@ -571,9 +572,10 @@ async fn load_and_save_anime_enforce_versions_hashes_visibility_and_outbox() -> 
         score_mean: Some(8.80),
         score_median: Some(9.00),
         merged_record_hash: "hash-v1".to_owned(),
-        hash_format: ANIME_HASH_FORMAT_V1,
+        hash_format: ANIME_HASH_FORMAT,
         merge_version: 1,
         traceparent: Some("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01".to_owned()),
+        details: AnimeDetailsInput::default(),
     };
 
     let first_save = save_anime(&pool, &first_input).await?;
@@ -796,6 +798,7 @@ async fn store_page_bumps_linked_anime_version_and_blocks_stale_save() -> Result
             hash_format: 1,
             merge_version: 1,
             traceparent: None,
+            details: AnimeDetailsInput::default(),
         },
     )
     .await
@@ -813,6 +816,237 @@ async fn store_page_bumps_linked_anime_version_and_blocks_stale_save() -> Result
     )
     .execute(&pool)
     .await?;
+
+    Ok(())
+}
+
+#[tokio::test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "End-to-end ECHO-100 test covering all eight detail tables and replacements"
+)]
+async fn save_anime_replaces_names_classification_themes_and_images() -> Result<(), Error> {
+    let Ok(database_url) = env::var("DATABASE_URL") else {
+        return Ok(());
+    };
+
+    let pool = connect_pool(&database_url, 2).await?;
+    run_migrations(&pool).await?;
+
+    let anime_id = Uuid::now_v7();
+    // Seed a pre-ECHO-100 row with hash_format = 1 and the same hash to verify
+    // bumping ANIME_HASH_FORMAT triggers a one-time detail backfill.
+    sqlx::query!(
+        "INSERT INTO anime (id, title, type, status, merged_at, merged_record_hash, hash_format)
+         VALUES ($1, 'Monster', 'TV', 'FINISHED', now(), 'details-v1', 1)",
+        anime_id
+    )
+    .execute(&pool)
+    .await?;
+
+    let first_input = SaveAnimeInput {
+        anime_id,
+        expected_version: 1,
+        title: "Monster".to_owned(),
+        title_english: None,
+        title_japanese: None,
+        anime_type: "TV".to_owned(),
+        status: "FINISHED".to_owned(),
+        rating: "R - 17+ (violence & profanity)".to_owned(),
+        season: None,
+        source_material: None,
+        year: Some(2004),
+        month: Some(4),
+        episode_count: 74,
+        duration_seconds: Some(1440),
+        is_nsfw: Some(false),
+        country_of_origin: Some("JP".to_owned()),
+        synopsis: None,
+        background: None,
+        aired_from: None,
+        aired_to: None,
+        score_weighted: None,
+        score_mean: None,
+        score_median: None,
+        merged_record_hash: "details-v1".to_owned(),
+        hash_format: ANIME_HASH_FORMAT,
+        merge_version: 1,
+        traceparent: None,
+        details: AnimeDetailsInput {
+            titles: vec![
+                AnimeTitleInput {
+                    language: "de".to_owned(),
+                    title: "Monster DE".to_owned(),
+                },
+                AnimeTitleInput {
+                    language: "fr".to_owned(),
+                    title: "Monster FR".to_owned(),
+                },
+            ],
+            synonyms: vec!["MONSTER".to_owned(), "MONSTER".to_owned()],
+            genres: vec![
+                "Thriller".to_owned(),
+                "Drama".to_owned(),
+                "Drama".to_owned(),
+            ],
+            tags: vec!["Crime".to_owned()],
+            demographics: vec!["Seinen".to_owned()],
+            content_warnings: vec!["Violence".to_owned()],
+            themes: vec![AnimeThemeInput {
+                name: "Psychological".to_owned(),
+                description: Some("Cat and mouse".to_owned()),
+            }],
+            images: vec![
+                AnimeImageInput {
+                    image_type: "cover".to_owned(),
+                    url: "https://example.com/cover.jpg".to_owned(),
+                },
+                AnimeImageInput {
+                    image_type: "poster".to_owned(),
+                    url: "https://example.com/poster.jpg".to_owned(),
+                },
+            ],
+        },
+    };
+
+    let first_save = save_anime(&pool, &first_input).await?;
+    assert!(first_save.has_changed);
+    assert_eq!(first_save.version, 2);
+
+    let genre_matches: Vec<Uuid> = sqlx::query_scalar!(
+        "SELECT anime_id FROM anime_genre WHERE genre = 'Drama' AND anime_id = $1",
+        anime_id
+    )
+    .fetch_all(&pool)
+    .await?;
+    assert_eq!(genre_matches, vec![anime_id]);
+
+    let tag_matches: Vec<Uuid> = sqlx::query_scalar!(
+        "SELECT anime_id FROM anime_tag WHERE tag = 'Crime' AND anime_id = $1",
+        anime_id
+    )
+    .fetch_all(&pool)
+    .await?;
+    assert_eq!(tag_matches, vec![anime_id]);
+
+    let demographic_matches: Vec<Uuid> = sqlx::query_scalar!(
+        "SELECT anime_id FROM anime_demographic WHERE demographic = 'Seinen' AND anime_id = $1",
+        anime_id
+    )
+    .fetch_all(&pool)
+    .await?;
+    assert_eq!(demographic_matches, vec![anime_id]);
+
+    let warning_matches: Vec<Uuid> = sqlx::query_scalar!(
+        "SELECT anime_id FROM anime_content_warning WHERE content_warning = 'Violence' AND anime_id = $1",
+        anime_id
+    )
+    .fetch_all(&pool)
+    .await?;
+    assert_eq!(warning_matches, vec![anime_id]);
+
+    // Second save replaces all eight detail tables with updated rows.
+    let second_input = SaveAnimeInput {
+        expected_version: 2,
+        merged_record_hash: "details-v2".to_owned(),
+        details: AnimeDetailsInput {
+            titles: vec![AnimeTitleInput {
+                language: "es".to_owned(),
+                title: "Monster ES".to_owned(),
+            }],
+            synonyms: vec!["Dr. Tenma".to_owned()],
+            genres: vec!["Mystery".to_owned()],
+            tags: vec!["Police".to_owned()],
+            demographics: Vec::new(),
+            content_warnings: Vec::new(),
+            themes: vec![AnimeThemeInput {
+                name: "Medical".to_owned(),
+                description: None,
+            }],
+            images: vec![AnimeImageInput {
+                image_type: "banner".to_owned(),
+                url: "https://example.com/banner.jpg".to_owned(),
+            }],
+        },
+        ..first_input
+    };
+
+    let second_save = save_anime(&pool, &second_input).await?;
+    assert!(second_save.has_changed);
+    assert_eq!(second_save.version, 3);
+
+    let title_langs: Vec<String> = sqlx::query_scalar!(
+        "SELECT language FROM anime_title WHERE anime_id = $1 ORDER BY language",
+        anime_id
+    )
+    .fetch_all(&pool)
+    .await?;
+    assert_eq!(title_langs, vec!["es"]);
+
+    let synonyms: Vec<String> = sqlx::query_scalar!(
+        "SELECT synonym FROM anime_synonym WHERE anime_id = $1 ORDER BY synonym",
+        anime_id
+    )
+    .fetch_all(&pool)
+    .await?;
+    assert_eq!(synonyms, vec!["Dr. Tenma"]);
+
+    let genres: Vec<String> = sqlx::query_scalar!(
+        "SELECT genre FROM anime_genre WHERE anime_id = $1 ORDER BY genre",
+        anime_id
+    )
+    .fetch_all(&pool)
+    .await?;
+    assert_eq!(genres, vec!["Mystery"]);
+
+    let tags: Vec<String> = sqlx::query_scalar!(
+        "SELECT tag FROM anime_tag WHERE anime_id = $1 ORDER BY tag",
+        anime_id
+    )
+    .fetch_all(&pool)
+    .await?;
+    assert_eq!(tags, vec!["Police"]);
+
+    let demographics_count: i64 = sqlx::query_scalar!(
+        "SELECT COUNT(*) FROM anime_demographic WHERE anime_id = $1",
+        anime_id
+    )
+    .fetch_one(&pool)
+    .await?
+    .unwrap_or_default();
+    assert_eq!(demographics_count, 0);
+
+    let warnings_count: i64 = sqlx::query_scalar!(
+        "SELECT COUNT(*) FROM anime_content_warning WHERE anime_id = $1",
+        anime_id
+    )
+    .fetch_one(&pool)
+    .await?
+    .unwrap_or_default();
+    assert_eq!(warnings_count, 0);
+
+    let theme_names: Vec<String> = sqlx::query_scalar!(
+        "SELECT name FROM anime_theme WHERE anime_id = $1 ORDER BY name",
+        anime_id
+    )
+    .fetch_all(&pool)
+    .await?;
+    assert_eq!(theme_names, vec!["Medical"]);
+
+    let image_types: Vec<String> = sqlx::query_scalar!(
+        "SELECT image_type FROM anime_image WHERE anime_id = $1 ORDER BY image_type",
+        anime_id
+    )
+    .fetch_all(&pool)
+    .await?;
+    assert_eq!(image_types, vec!["banner"]);
+
+    sqlx::query!("DELETE FROM outbox WHERE entity_id = $1", anime_id)
+        .execute(&pool)
+        .await?;
+    sqlx::query!("DELETE FROM anime WHERE id = $1", anime_id)
+        .execute(&pool)
+        .await?;
 
     Ok(())
 }

@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO content_warning (name) SELECT * FROM UNNEST($1::text[]) ON CONFLICT DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e259de7340ea17e1fed75406a2afcb705773a34e3469c54935fceda6489bf972"
+}

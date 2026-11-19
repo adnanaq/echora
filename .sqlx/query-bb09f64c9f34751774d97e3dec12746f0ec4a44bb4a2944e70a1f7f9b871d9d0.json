@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT image_type FROM anime_image WHERE anime_id = $1 ORDER BY image_type",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "image_type",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "bb09f64c9f34751774d97e3dec12746f0ec4a44bb4a2944e70a1f7f9b871d9d0"
+}

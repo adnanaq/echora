@@ -259,7 +259,7 @@ fn map_save_error_to_status(error: &SaveError) -> Status {
 `write_anime_tables` writes everything the save stores, in one transaction:
 
 - ~~the work's columns, `updated_at`, and on a work's first merge `merged_at`, which makes its outbox row `anime.created` (ECHO-98);~~
-- its names, classification and images (ECHO-100);
+- ~~its names, classification and images (ECHO-100);~~
 - its songs, streaming, links, statistics, broadcast and hiatus (ECHO-101);
 - its relations, source material, companies and `graph_edge` rows, resolving pending relations (ECHO-102);
 - the episodes the merge gave new IDs (ECHO-103);
