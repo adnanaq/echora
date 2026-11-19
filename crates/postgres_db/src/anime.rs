@@ -13,16 +13,18 @@ use tracing::Level;
 use uuid::Uuid;
 
 use crate::anime_details::{replace_anime_details, validate_anime_details};
+use crate::anime_relations::{replace_relations_and_graph, validate_relations_and_graph};
 use crate::anime_schedule_and_stats::{replace_schedule_and_stats, validate_schedule_and_stats};
 use crate::{
-    AnimeDetailsInput, AnimeScheduleAndStatsInput, Error, PageKeyInput, PageKind, PageResponseInput,
+    AnimeDetailsInput, AnimeRelationsAndGraphInput, AnimeScheduleAndStatsInput, Error,
+    PageKeyInput, PageKind, PageResponseInput,
 };
 
 /// Current canonical hash format version stored in `anime.hash_format`.
 ///
 /// Bumping this constant causes unchanged records to re-save once so the new
 /// hash format is persisted.
-pub const ANIME_HASH_FORMAT: i16 = 3;
+pub const ANIME_HASH_FORMAT: i16 = 4;
 
 const MIN_ANIME_YEAR: i16 = 1900;
 const MIN_MONTH: i16 = 1;
@@ -132,6 +134,8 @@ pub struct SaveAnimeInput {
     pub details: AnimeDetailsInput,
     /// Theme songs, trailers, links, streaming, statistics, broadcast, and hiatus.
     pub schedule_and_stats: AnimeScheduleAndStatsInput,
+    /// Relations, relation claims, source material, and companies.
+    pub relations_and_graph: AnimeRelationsAndGraphInput,
 }
 
 /// Result returned by [`save_anime`].
@@ -387,7 +391,7 @@ async fn save_anime_in_tx(
             hash_format
         FROM anime
         WHERE id = $1 AND deleted_at IS NULL
-        FOR UPDATE
+        FOR NO KEY UPDATE
         "#,
         input.anime_id
     )
@@ -429,6 +433,7 @@ async fn save_anime_in_tx(
     update_anime_row(tx, input, next_version, now).await?;
     replace_anime_details(tx, input.anime_id, &input.details).await?;
     replace_schedule_and_stats(tx, input.anime_id, &input.schedule_and_stats).await?;
+    replace_relations_and_graph(tx, input.anime_id, &input.relations_and_graph).await?;
     emit_anime_outbox_events(
         tx,
         input,
@@ -648,6 +653,7 @@ fn validate_save_input(input: &SaveAnimeInput) -> Result<(), Error> {
     }
     validate_anime_details(&input.details)?;
     validate_schedule_and_stats(&input.schedule_and_stats)?;
+    validate_relations_and_graph(&input.relations_and_graph)?;
     Ok(())
 }
 
@@ -762,6 +768,7 @@ mod tests {
             traceparent: None,
             details: AnimeDetailsInput::default(),
             schedule_and_stats: AnimeScheduleAndStatsInput::default(),
+            relations_and_graph: AnimeRelationsAndGraphInput::default(),
         };
         assert!(validate_save_input(&base).is_ok());
 

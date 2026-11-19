@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            version,\n            status,\n            merged_at,\n            merged_record_hash,\n            hash_format\n        FROM anime\n        WHERE id = $1 AND deleted_at IS NULL\n        FOR UPDATE\n        ",
+  "query": "\n        SELECT\n            version,\n            status,\n            merged_at,\n            merged_record_hash,\n            hash_format\n        FROM anime\n        WHERE id = $1 AND deleted_at IS NULL\n        FOR NO KEY UPDATE\n        ",
   "describe": {
     "columns": [
       {
@@ -42,5 +42,5 @@
       true
     ]
   },
-  "hash": "609add92f44bc78d780404b72539125b1b71e133f54ca0987f4b67bf15a0c897"
+  "hash": "2500447cc5fe4d1c76e12ed3875ffc938a566a1d1525d38f5903b3c1484d8748"
 }

@@ -47,6 +47,7 @@ message SaveAnimeRequest {
   int64 expected_version = 2;
   shared_proto.v1.Anime anime = 3;
   int32 merge_version = 4;
+  repeated shared_proto.v1.RelationClaim relation_claims = 5;
 }
 
 // Result of saving a merged work.

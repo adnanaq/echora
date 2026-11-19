@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT COUNT(*) FROM graph_edge WHERE from_id = $1 AND to_type = 'source_material' AND edge_type = 'ADAPTED_FROM'",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "a742fa33149005033db4b0164929041bc9ae230d3545d105426adee8744f0772"
+}

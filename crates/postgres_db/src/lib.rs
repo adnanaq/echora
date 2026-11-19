@@ -4,8 +4,10 @@
 
 mod anime;
 mod anime_details;
+mod anime_relations;
 mod anime_schedule_and_stats;
 mod error;
+mod graph_projection;
 mod provider_page;
 
 #[doc(inline)]
@@ -15,6 +17,11 @@ pub use anime::{
 };
 #[doc(inline)]
 pub use anime_details::{AnimeDetailsInput, AnimeImageInput, AnimeThemeInput, AnimeTitleInput};
+#[doc(inline)]
+pub use anime_relations::{
+    AnimeCompanyInput, AnimeRelationClaimInput, AnimeRelationInput, AnimeRelationsAndGraphInput,
+    AnimeSourceMaterialInput, CompanyXrefInput, SourceMaterialXrefInput, link_anime_source_page,
+};
 #[doc(inline)]
 pub use anime_schedule_and_stats::{
     AnimeBroadcastInput, AnimeContextualRankInput, AnimeExternalLinkInput, AnimeHiatusInput,

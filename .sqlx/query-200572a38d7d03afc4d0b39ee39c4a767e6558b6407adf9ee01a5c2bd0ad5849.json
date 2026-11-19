@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM source_material_image WHERE source_material_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "200572a38d7d03afc4d0b39ee39c4a767e6558b6407adf9ee01a5c2bd0ad5849"
+}

@@ -242,6 +242,7 @@ impl PostgresService for PostgresGrpcService {
             req.expected_version,
             req.merge_version,
             anime,
+            req.relation_claims,
             traceparent,
         )?;
 

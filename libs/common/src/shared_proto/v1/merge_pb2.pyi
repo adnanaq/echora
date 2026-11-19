@@ -2,6 +2,7 @@ import datetime
 
 from google.protobuf import any_pb2 as _any_pb2
 from google.protobuf import timestamp_pb2 as _timestamp_pb2
+from shared_proto.v1 import anime_pb2 as _anime_pb2
 from google.protobuf.internal import containers as _containers
 from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
 from google.protobuf import descriptor as _descriptor
@@ -67,3 +68,13 @@ class FieldCorrection(_message.Message):
     approved_by: str
     approved_at: _timestamp_pb2.Timestamp
     def __init__(self, field_path: _Optional[str] = ..., value: _Optional[_Union[_any_pb2.Any, _Mapping]] = ..., approved_by: _Optional[str] = ..., approved_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...
+
+class RelationClaim(_message.Message):
+    __slots__ = ("provider", "relation_type", "target_page")
+    PROVIDER_FIELD_NUMBER: _ClassVar[int]
+    RELATION_TYPE_FIELD_NUMBER: _ClassVar[int]
+    TARGET_PAGE_FIELD_NUMBER: _ClassVar[int]
+    provider: str
+    relation_type: _anime_pb2.AnimeRelationType
+    target_page: PageKey
+    def __init__(self, provider: _Optional[str] = ..., relation_type: _Optional[_Union[_anime_pb2.AnimeRelationType, str]] = ..., target_page: _Optional[_Union[PageKey, _Mapping]] = ...) -> None: ...

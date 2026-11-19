@@ -24,23 +24,26 @@ _sym_db = _symbol_database.Default()
 
 from google.protobuf import any_pb2 as google_dot_protobuf_dot_any__pb2
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
+from shared_proto.v1 import anime_pb2 as shared__proto_dot_v1_dot_anime__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1bshared_proto/v1/merge.proto\x12\x0fshared_proto.v1\x1a\x19google/protobuf/any.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"Z\n\x07PageKey\x12\x10\n\x08provider\x18\x01 \x01(\t\x12,\n\tpage_kind\x18\x02 \x01(\x0e\x32\x19.shared_proto.v1.PageKind\x12\x0f\n\x07\x61\x64\x64ress\x18\x03 \x01(\t\"H\n\x0cPageResponse\x12\x14\n\x0crequest_name\x18\x01 \x01(\t\x12\x14\n\x0c\x63ontent_type\x18\x02 \x01(\t\x12\x0c\n\x04\x62ody\x18\x03 \x01(\x0c\"\xc1\x01\n\nStoredPage\x12*\n\x08page_key\x18\x01 \x01(\x0b\x32\x18.shared_proto.v1.PageKey\x12.\n\nfetched_at\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x0f\n\x07is_dead\x18\x03 \x01(\x08\x12\x30\n\tresponses\x18\x04 \x03(\x0b\x32\x1d.shared_proto.v1.PageResponse\x12\x14\n\x0cis_not_found\x18\x05 \x01(\x08\"\x90\x01\n\x0f\x46ieldCorrection\x12\x12\n\nfield_path\x18\x01 \x01(\t\x12#\n\x05value\x18\x02 \x01(\x0b\x32\x14.google.protobuf.Any\x12\x13\n\x0b\x61pproved_by\x18\x03 \x01(\t\x12/\n\x0b\x61pproved_at\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp*j\n\x08PageKind\x12\x19\n\x15PAGE_KIND_UNSPECIFIED\x10\x00\x12\x13\n\x0fPAGE_KIND_ANIME\x10\x01\x12\x15\n\x11PAGE_KIND_EPISODE\x10\x02\x12\x17\n\x13PAGE_KIND_CHARACTER\x10\x03\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1bshared_proto/v1/merge.proto\x12\x0fshared_proto.v1\x1a\x19google/protobuf/any.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bshared_proto/v1/anime.proto\"Z\n\x07PageKey\x12\x10\n\x08provider\x18\x01 \x01(\t\x12,\n\tpage_kind\x18\x02 \x01(\x0e\x32\x19.shared_proto.v1.PageKind\x12\x0f\n\x07\x61\x64\x64ress\x18\x03 \x01(\t\"H\n\x0cPageResponse\x12\x14\n\x0crequest_name\x18\x01 \x01(\t\x12\x14\n\x0c\x63ontent_type\x18\x02 \x01(\t\x12\x0c\n\x04\x62ody\x18\x03 \x01(\x0c\"\xc1\x01\n\nStoredPage\x12*\n\x08page_key\x18\x01 \x01(\x0b\x32\x18.shared_proto.v1.PageKey\x12.\n\nfetched_at\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x0f\n\x07is_dead\x18\x03 \x01(\x08\x12\x30\n\tresponses\x18\x04 \x03(\x0b\x32\x1d.shared_proto.v1.PageResponse\x12\x14\n\x0cis_not_found\x18\x05 \x01(\x08\"\x90\x01\n\x0f\x46ieldCorrection\x12\x12\n\nfield_path\x18\x01 \x01(\t\x12#\n\x05value\x18\x02 \x01(\x0b\x32\x14.google.protobuf.Any\x12\x13\n\x0b\x61pproved_by\x18\x03 \x01(\t\x12/\n\x0b\x61pproved_at\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\"\x8b\x01\n\rRelationClaim\x12\x10\n\x08provider\x18\x01 \x01(\t\x12\x39\n\rrelation_type\x18\x02 \x01(\x0e\x32\".shared_proto.v1.AnimeRelationType\x12-\n\x0btarget_page\x18\x03 \x01(\x0b\x32\x18.shared_proto.v1.PageKey*j\n\x08PageKind\x12\x19\n\x15PAGE_KIND_UNSPECIFIED\x10\x00\x12\x13\n\x0fPAGE_KIND_ANIME\x10\x01\x12\x15\n\x11PAGE_KIND_EPISODE\x10\x02\x12\x17\n\x13PAGE_KIND_CHARACTER\x10\x03\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'shared_proto.v1.merge_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
-  _globals['_PAGEKIND']._serialized_start=617
-  _globals['_PAGEKIND']._serialized_end=723
-  _globals['_PAGEKEY']._serialized_start=108
-  _globals['_PAGEKEY']._serialized_end=198
-  _globals['_PAGERESPONSE']._serialized_start=200
-  _globals['_PAGERESPONSE']._serialized_end=272
-  _globals['_STOREDPAGE']._serialized_start=275
-  _globals['_STOREDPAGE']._serialized_end=468
-  _globals['_FIELDCORRECTION']._serialized_start=471
-  _globals['_FIELDCORRECTION']._serialized_end=615
+  _globals['_PAGEKIND']._serialized_start=788
+  _globals['_PAGEKIND']._serialized_end=894
+  _globals['_PAGEKEY']._serialized_start=137
+  _globals['_PAGEKEY']._serialized_end=227
+  _globals['_PAGERESPONSE']._serialized_start=229
+  _globals['_PAGERESPONSE']._serialized_end=301
+  _globals['_STOREDPAGE']._serialized_start=304
+  _globals['_STOREDPAGE']._serialized_end=497
+  _globals['_FIELDCORRECTION']._serialized_start=500
+  _globals['_FIELDCORRECTION']._serialized_end=644
+  _globals['_RELATIONCLAIM']._serialized_start=647
+  _globals['_RELATIONCLAIM']._serialized_end=786
 # @@protoc_insertion_point(module_scope)

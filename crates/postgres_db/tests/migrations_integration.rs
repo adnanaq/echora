@@ -6,12 +6,14 @@ use std::env;
 
 use chrono::{Duration, NaiveDate, NaiveTime, Utc};
 use postgres_db::{
-    ANIME_HASH_FORMAT, AnimeBroadcastInput, AnimeContextualRankInput, AnimeDetailsInput,
-    AnimeExternalLinkInput, AnimeHiatusInput, AnimeImageInput, AnimeScheduleAndStatsInput,
-    AnimeStatisticsInput, AnimeStreamingInput, AnimeThemeInput, AnimeThemeSongInput,
-    AnimeTitleInput, AnimeTrailerInput, EpisodeRangeInput, Error, PageKeyInput, PageKind,
-    PageResponseInput, SaveAnimeInput, StorePageInput, connect_pool, load_anime, run_migrations,
-    save_anime, store_page,
+    ANIME_HASH_FORMAT, AnimeBroadcastInput, AnimeCompanyInput, AnimeContextualRankInput,
+    AnimeDetailsInput, AnimeExternalLinkInput, AnimeHiatusInput, AnimeImageInput,
+    AnimeRelationClaimInput, AnimeRelationInput, AnimeRelationsAndGraphInput,
+    AnimeScheduleAndStatsInput, AnimeSourceMaterialInput, AnimeStatisticsInput,
+    AnimeStreamingInput, AnimeThemeInput, AnimeThemeSongInput, AnimeTitleInput, AnimeTrailerInput,
+    CompanyXrefInput, EpisodeRangeInput, Error, PageKeyInput, PageKind, PageResponseInput,
+    SaveAnimeInput, SourceMaterialXrefInput, StorePageInput, connect_pool, link_anime_source_page,
+    load_anime, run_migrations, save_anime, store_page,
 };
 use uuid::Uuid;
 
@@ -580,6 +582,7 @@ async fn load_and_save_anime_enforce_versions_hashes_visibility_and_outbox() -> 
         traceparent: Some("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01".to_owned()),
         details: AnimeDetailsInput::default(),
         schedule_and_stats: AnimeScheduleAndStatsInput::default(),
+        relations_and_graph: AnimeRelationsAndGraphInput::default(),
     };
 
     let first_save = save_anime(&pool, &first_input).await?;
@@ -804,6 +807,7 @@ async fn store_page_bumps_linked_anime_version_and_blocks_stale_save() -> Result
             traceparent: None,
             details: AnimeDetailsInput::default(),
             schedule_and_stats: AnimeScheduleAndStatsInput::default(),
+            relations_and_graph: AnimeRelationsAndGraphInput::default(),
         },
     )
     .await
@@ -913,6 +917,7 @@ async fn save_anime_replaces_names_classification_themes_and_images() -> Result<
             ],
         },
         schedule_and_stats: AnimeScheduleAndStatsInput::default(),
+        relations_and_graph: AnimeRelationsAndGraphInput::default(),
     };
 
     let first_save = save_anime(&pool, &first_input).await?;
@@ -1182,6 +1187,7 @@ async fn save_anime_stores_songs_links_streaming_stats_broadcast_and_hiatus() ->
                 hiatus_until: None,
             }),
         },
+        relations_and_graph: AnimeRelationsAndGraphInput::default(),
     };
 
     let first_save = save_anime(&pool, &first_input).await?;
@@ -1278,6 +1284,281 @@ async fn save_anime_stores_songs_links_streaming_stats_broadcast_and_hiatus() ->
     sqlx::query!("DELETE FROM anime WHERE id = $1", anime_id)
         .execute(&pool)
         .await?;
+
+    Ok(())
+}
+
+#[tokio::test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "End-to-end ECHO-102 test covering relations, pending resolution, claims, source material, companies, and graph_edge"
+)]
+async fn save_anime_and_link_page_persist_relations_xrefs_and_graph_edges() -> Result<(), Error> {
+    let Ok(database_url) = env::var("DATABASE_URL") else {
+        return Ok(());
+    };
+
+    let pool = connect_pool(&database_url, 2).await?;
+    run_migrations(&pool).await?;
+
+    let anime_a = Uuid::now_v7();
+    let anime_b = Uuid::now_v7();
+    let unique_num = anime_a.as_u128() % 1_000_000_000;
+    let target_address = format!("9{unique_num:09}");
+    let manga_id_ext = format!("8{unique_num:09}");
+    let company_url = format!("https://myanimelist.net/anime/producer/{target_address}/Madhouse");
+
+    store_page(
+        &pool,
+        StorePageInput {
+            page_key: PageKeyInput {
+                provider: "mal".to_owned(),
+                page_kind: PageKind::Anime,
+                address: target_address.clone(),
+            },
+            fetched_at: Utc::now(),
+            is_dead: false,
+            responses: vec![PageResponseInput {
+                request_name: "main".to_owned(),
+                content_type: "application/json".to_owned(),
+                body: br#"{"mal_id":999999020}"#.to_vec(),
+            }],
+            is_not_found: false,
+            dead_page_review: false,
+        },
+    )
+    .await?;
+
+    sqlx::query!("INSERT INTO anime (id) VALUES ($1), ($2)", anime_a, anime_b)
+        .execute(&pool)
+        .await?;
+
+    // Save anime_a with an unresolved relation to mal:anime:999999020, claims,
+    // source material, and a company with two roles.
+    let first_work_input = SaveAnimeInput {
+        anime_id: anime_a,
+        expected_version: 1,
+        title: "Work A".to_owned(),
+        title_english: None,
+        title_japanese: None,
+        anime_type: "TV".to_owned(),
+        status: "FINISHED".to_owned(),
+        rating: "UNKNOWN".to_owned(),
+        season: None,
+        source_material: Some("MANGA".to_owned()),
+        year: Some(2004),
+        month: Some(4),
+        episode_count: 12,
+        duration_seconds: None,
+        is_nsfw: Some(false),
+        country_of_origin: Some("JP".to_owned()),
+        synopsis: None,
+        background: None,
+        aired_from: None,
+        aired_to: None,
+        score_weighted: None,
+        score_mean: None,
+        score_median: None,
+        merged_record_hash: "rel-a-v1".to_owned(),
+        hash_format: ANIME_HASH_FORMAT,
+        merge_version: 1,
+        traceparent: None,
+        details: AnimeDetailsInput::default(),
+        schedule_and_stats: AnimeScheduleAndStatsInput::default(),
+        relations_and_graph: AnimeRelationsAndGraphInput {
+            relations: vec![AnimeRelationInput {
+                relation_type: "SPIN_OFF".to_owned(),
+                to_page_provider: "mal".to_owned(),
+                to_page_address: target_address.clone(),
+            }],
+            relation_claims: vec![AnimeRelationClaimInput {
+                provider: "mal".to_owned(),
+                relation_type: "SPIN_OFF".to_owned(),
+                target_page: PageKeyInput {
+                    provider: "mal".to_owned(),
+                    page_kind: PageKind::Anime,
+                    address: target_address.clone(),
+                },
+            }],
+            source_materials: vec![AnimeSourceMaterialInput {
+                relation_type: "ADAPTATION".to_owned(),
+                title: "Source Manga".to_owned(),
+                title_english: None,
+                title_japanese: None,
+                source_material_type: "MANGA".to_owned(),
+                status: Some("FINISHED".to_owned()),
+                score: Some(8.5),
+                chapters: Some(100),
+                volumes: Some(10),
+                images: vec!["https://example.com/manga.jpg".to_owned()],
+                xrefs: vec![SourceMaterialXrefInput {
+                    provider: "mal".to_owned(),
+                    external_id: manga_id_ext.clone(),
+                    url: format!("https://myanimelist.net/manga/{manga_id_ext}"),
+                }],
+            }],
+            companies: vec![AnimeCompanyInput {
+                name: "Madhouse".to_owned(),
+                description: None,
+                roles: vec!["STUDIO".to_owned(), "PRODUCER".to_owned()],
+                xrefs: vec![CompanyXrefInput {
+                    provider: "mal".to_owned(),
+                    url: company_url.clone(),
+                }],
+            }],
+        },
+    };
+    save_anime(&pool, &first_work_input).await?;
+
+    // Unresolved relation has to_anime_id IS NULL until target page is linked.
+    let unresolved_target: Option<Uuid> = sqlx::query_scalar!(
+        "SELECT to_anime_id FROM anime_relation WHERE from_anime_id = $1",
+        anime_a
+    )
+    .fetch_one(&pool)
+    .await?;
+    assert!(unresolved_target.is_none());
+
+    // Linking mal:anime:999999020 to anime_b resolves the pending relation and
+    // populates both directions in graph_edge (SPIN_OFF + PARENT_STORY).
+    let resolved_count = link_anime_source_page(
+        &pool,
+        anime_b,
+        &PageKeyInput {
+            provider: "mal".to_owned(),
+            page_kind: PageKind::Anime,
+            address: target_address.clone(),
+        },
+    )
+    .await?;
+    assert_eq!(resolved_count, 1);
+
+    let ab_edge: String = sqlx::query_scalar!(
+        "SELECT edge_type FROM graph_edge WHERE from_id = $1 AND to_id = $2",
+        anime_a,
+        anime_b
+    )
+    .fetch_one(&pool)
+    .await?;
+    assert_eq!(ab_edge, "SPIN_OFF");
+
+    let ba_edge: String = sqlx::query_scalar!(
+        "SELECT edge_type FROM graph_edge WHERE from_id = $1 AND to_id = $2",
+        anime_b,
+        anime_a
+    )
+    .fetch_one(&pool)
+    .await?;
+    assert_eq!(ba_edge, "PARENT_STORY");
+
+    // Company reverse edges use each role as edge_type (2 rows for 2 roles).
+    let company_reverse_edges: Vec<String> = sqlx::query_scalar!(
+        "SELECT edge_type
+         FROM graph_edge
+         WHERE from_type = 'company' AND to_id = $1
+         ORDER BY edge_type",
+        anime_a
+    )
+    .fetch_all(&pool)
+    .await?;
+    assert_eq!(company_reverse_edges, vec!["PRODUCER", "STUDIO"]);
+
+    // Source material edges exist in both directions.
+    let source_edge_count: i64 = sqlx::query_scalar!(
+        "SELECT COUNT(*) FROM graph_edge WHERE from_id = $1 AND to_type = 'source_material' AND edge_type = 'ADAPTED_FROM'",
+        anime_a
+    )
+    .fetch_one(&pool)
+    .await?
+    .unwrap_or_default();
+    assert_eq!(source_edge_count, 1);
+
+    // Save anime_b sharing the same company xref and verify company row is reused.
+    let second_work_input = SaveAnimeInput {
+        anime_id: anime_b,
+        expected_version: 2,
+        title: "Work B".to_owned(),
+        merged_record_hash: "rel-b-v1".to_owned(),
+        relations_and_graph: AnimeRelationsAndGraphInput {
+            relations: Vec::new(),
+            relation_claims: Vec::new(),
+            source_materials: Vec::new(),
+            companies: vec![AnimeCompanyInput {
+                name: "Madhouse".to_owned(),
+                description: None,
+                roles: vec!["STUDIO".to_owned()],
+                xrefs: vec![CompanyXrefInput {
+                    provider: "mal".to_owned(),
+                    url: company_url.clone(),
+                }],
+            }],
+        },
+        ..first_work_input
+    };
+    save_anime(&pool, &second_work_input).await?;
+
+    let matching_companies: i64 = sqlx::query_scalar!(
+        "SELECT COUNT(*) FROM company_xref WHERE provider = 'mal' AND url = $1",
+        company_url
+    )
+    .fetch_one(&pool)
+    .await?
+    .unwrap_or_default();
+    assert_eq!(matching_companies, 1);
+
+    let first_work_company_id: Uuid = sqlx::query_scalar!(
+        "SELECT company_id FROM anime_company WHERE anime_id = $1 AND role = 'STUDIO'",
+        anime_a
+    )
+    .fetch_one(&pool)
+    .await?;
+    let second_work_company_id: Uuid = sqlx::query_scalar!(
+        "SELECT company_id FROM anime_company WHERE anime_id = $1 AND role = 'STUDIO'",
+        anime_b
+    )
+    .fetch_one(&pool)
+    .await?;
+    assert_eq!(first_work_company_id, second_work_company_id);
+
+    sqlx::query!(
+        "DELETE FROM graph_edge WHERE from_id IN ($1, $2) OR to_id IN ($1, $2)",
+        anime_a,
+        anime_b
+    )
+    .execute(&pool)
+    .await?;
+    sqlx::query!(
+        "DELETE FROM outbox WHERE entity_id IN ($1, $2)",
+        anime_a,
+        anime_b
+    )
+    .execute(&pool)
+    .await?;
+    sqlx::query!("DELETE FROM anime WHERE id IN ($1, $2)", anime_a, anime_b)
+        .execute(&pool)
+        .await?;
+    sqlx::query!(
+        "DELETE FROM company WHERE id IN (
+             SELECT company_id FROM company_xref WHERE provider = 'mal' AND url = $1
+         )",
+        company_url
+    )
+    .execute(&pool)
+    .await?;
+    sqlx::query!(
+        "DELETE FROM source_material WHERE id IN (
+             SELECT source_material_id FROM source_material_xref WHERE provider = 'mal' AND external_id = $1
+         )",
+        manga_id_ext
+    )
+    .execute(&pool)
+    .await?;
+    sqlx::query!(
+        "DELETE FROM provider_page WHERE provider = 'mal' AND page_kind = 'anime' AND address = $1",
+        target_address
+    )
+    .execute(&pool)
+    .await?;
 
     Ok(())
 }

@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM graph_edge\n         WHERE from_type = 'anime'\n           AND to_type = 'anime'\n           AND ((from_id = $1 AND to_id = $2) OR (from_id = $2 AND to_id = $1))",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "875f99a4af768ed02d458056ce87ac599a459b1aa2ba9037824c5e5e536a2772"
+}

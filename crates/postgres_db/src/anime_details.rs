@@ -220,16 +220,24 @@ async fn replace_anime_titles(
         .execute(&mut **tx)
         .await?;
 
-    let deduped: BTreeMap<&str, &str> = titles
+    let deduplicated_titles: BTreeMap<&str, &str> = titles
         .iter()
         .map(|entry| (entry.language.as_str(), entry.title.as_str()))
         .collect();
-    if deduped.is_empty() {
+    if deduplicated_titles.is_empty() {
         return Ok(());
     }
 
-    let languages: Vec<String> = deduped.keys().copied().map(str::to_owned).collect();
-    let title_values: Vec<String> = deduped.values().copied().map(str::to_owned).collect();
+    let languages: Vec<String> = deduplicated_titles
+        .keys()
+        .copied()
+        .map(str::to_owned)
+        .collect();
+    let title_values: Vec<String> = deduplicated_titles
+        .values()
+        .copied()
+        .map(str::to_owned)
+        .collect();
     sqlx::query!(
         "INSERT INTO anime_title (anime_id, language, title)
          SELECT $1, language, title
@@ -378,16 +386,20 @@ async fn replace_anime_themes(
         .execute(&mut **tx)
         .await?;
 
-    let deduped: BTreeMap<&str, Option<&str>> = themes
+    let deduplicated_themes: BTreeMap<&str, Option<&str>> = themes
         .iter()
         .map(|entry| (entry.name.as_str(), entry.description.as_deref()))
         .collect();
-    if deduped.is_empty() {
+    if deduplicated_themes.is_empty() {
         return Ok(());
     }
 
-    let names: Vec<String> = deduped.keys().copied().map(str::to_owned).collect();
-    let descriptions: Vec<Option<String>> = deduped
+    let names: Vec<String> = deduplicated_themes
+        .keys()
+        .copied()
+        .map(str::to_owned)
+        .collect();
+    let descriptions: Vec<Option<String>> = deduplicated_themes
         .values()
         .map(|description| description.map(str::to_owned))
         .collect();
@@ -413,19 +425,22 @@ async fn replace_anime_images(
         .execute(&mut **tx)
         .await?;
 
-    let deduped: BTreeSet<(&str, &str)> = images
+    let deduplicated_images: BTreeSet<(&str, &str)> = images
         .iter()
         .map(|entry| (entry.image_type.as_str(), entry.url.as_str()))
         .collect();
-    if deduped.is_empty() {
+    if deduplicated_images.is_empty() {
         return Ok(());
     }
 
-    let image_types: Vec<String> = deduped
+    let image_types: Vec<String> = deduplicated_images
         .iter()
         .map(|(image_type, _)| (*image_type).to_owned())
         .collect();
-    let urls: Vec<String> = deduped.iter().map(|(_, url)| (*url).to_owned()).collect();
+    let urls: Vec<String> = deduplicated_images
+        .iter()
+        .map(|(_, url)| (*url).to_owned())
+        .collect();
     sqlx::query!(
         "INSERT INTO anime_image (anime_id, image_type, url)
          SELECT $1, image_type, url

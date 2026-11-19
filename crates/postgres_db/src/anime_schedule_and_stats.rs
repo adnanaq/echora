@@ -338,12 +338,12 @@ async fn replace_theme_songs(
         .execute(&mut **tx)
         .await?;
 
-    let mut deduped: BTreeMap<(&str, i32), &AnimeThemeSongInput> = BTreeMap::new();
+    let mut deduplicated_songs: BTreeMap<(&str, i32), &AnimeThemeSongInput> = BTreeMap::new();
     for song in theme_songs {
-        deduped.insert((song.kind.as_str(), song.position), song);
+        deduplicated_songs.insert((song.kind.as_str(), song.position), song);
     }
 
-    for song in deduped.into_values() {
+    for song in deduplicated_songs.into_values() {
         let song_id = sqlx::query_scalar!(
             "INSERT INTO anime_theme_song (anime_id, kind, position, title, artist)
              VALUES ($1, $2, $3, $4, $5)
@@ -391,20 +391,24 @@ async fn replace_trailers(
         .execute(&mut **tx)
         .await?;
 
-    let deduped: BTreeMap<&str, &AnimeTrailerInput> = trailers
+    let deduplicated_trailers: BTreeMap<&str, &AnimeTrailerInput> = trailers
         .iter()
         .map(|trailer| (trailer.url.as_str(), trailer))
         .collect();
-    if deduped.is_empty() {
+    if deduplicated_trailers.is_empty() {
         return Ok(());
     }
 
-    let urls: Vec<String> = deduped.keys().copied().map(str::to_owned).collect();
-    let titles: Vec<Option<String>> = deduped
+    let urls: Vec<String> = deduplicated_trailers
+        .keys()
+        .copied()
+        .map(str::to_owned)
+        .collect();
+    let titles: Vec<Option<String>> = deduplicated_trailers
         .values()
         .map(|trailer| trailer.title.clone())
         .collect();
-    let thumbnails: Vec<Option<String>> = deduped
+    let thumbnails: Vec<Option<String>> = deduplicated_trailers
         .values()
         .map(|trailer| trailer.thumbnail_url.clone())
         .collect();
@@ -434,17 +438,29 @@ async fn replace_external_links(
     .execute(&mut **tx)
     .await?;
 
-    let deduped: BTreeMap<&str, &AnimeExternalLinkInput> =
+    let deduplicated_links: BTreeMap<&str, &AnimeExternalLinkInput> =
         links.iter().map(|link| (link.url.as_str(), link)).collect();
-    if deduped.is_empty() {
+    if deduplicated_links.is_empty() {
         return Ok(());
     }
 
-    let urls: Vec<String> = deduped.keys().copied().map(str::to_owned).collect();
-    let platforms: Vec<String> = deduped.values().map(|link| link.platform.clone()).collect();
-    let labels: Vec<Option<String>> = deduped.values().map(|link| link.label.clone()).collect();
-    let languages: Vec<Option<String>> =
-        deduped.values().map(|link| link.language.clone()).collect();
+    let urls: Vec<String> = deduplicated_links
+        .keys()
+        .copied()
+        .map(str::to_owned)
+        .collect();
+    let platforms: Vec<String> = deduplicated_links
+        .values()
+        .map(|link| link.platform.clone())
+        .collect();
+    let labels: Vec<Option<String>> = deduplicated_links
+        .values()
+        .map(|link| link.label.clone())
+        .collect();
+    let languages: Vec<Option<String>> = deduplicated_links
+        .values()
+        .map(|link| link.language.clone())
+        .collect();
     sqlx::query!(
         "INSERT INTO anime_external_link (anime_id, url, platform, label, language)
          SELECT $1, url, platform, label, language
@@ -470,12 +486,13 @@ async fn replace_streaming(
         .execute(&mut **tx)
         .await?;
 
-    let mut deduped: BTreeMap<(&str, Option<&str>), &AnimeStreamingInput> = BTreeMap::new();
+    let mut deduplicated_streaming: BTreeMap<(&str, Option<&str>), &AnimeStreamingInput> =
+        BTreeMap::new();
     for entry in entries {
-        deduped.insert((entry.url.as_str(), entry.region.as_deref()), entry);
+        deduplicated_streaming.insert((entry.url.as_str(), entry.region.as_deref()), entry);
     }
 
-    for entry in deduped.into_values() {
+    for entry in deduplicated_streaming.into_values() {
         let streaming_id = sqlx::query_scalar!(
             "INSERT INTO anime_streaming (
                  anime_id, platform, url, region, is_free, is_premium_required, has_dub
@@ -528,12 +545,12 @@ async fn replace_statistics(
         .execute(&mut **tx)
         .await?;
 
-    let deduped: BTreeMap<&str, &AnimeStatisticsInput> = statistics
+    let deduplicated_statistics: BTreeMap<&str, &AnimeStatisticsInput> = statistics
         .iter()
         .map(|stats| (stats.provider.as_str(), stats))
         .collect();
 
-    for stats in deduped.into_values() {
+    for stats in deduplicated_statistics.into_values() {
         sqlx::query!(
             "INSERT INTO anime_statistics (
                  anime_id, provider, score, scored_by, members, favorites, rank, popularity

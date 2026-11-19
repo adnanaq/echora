@@ -4,6 +4,7 @@ package shared_proto.v1;
 
 import "google/protobuf/any.proto";
 import "google/protobuf/timestamp.proto";
+import "shared_proto/v1/anime.proto";
 
 // Kind of provider page stored or merged.
 enum PageKind {
@@ -42,4 +43,11 @@ message FieldCorrection {
   google.protobuf.Any value = 2;
   string approved_by = 3;
   google.protobuf.Timestamp approved_at = 4;
+}
+
+// One provider's own claim that the work relates to a target page.
+message RelationClaim {
+  string provider = 1;
+  AnimeRelationType relation_type = 2;
+  PageKey target_page = 3;
 }

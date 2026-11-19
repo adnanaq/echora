@@ -1,0 +1,25 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO source_material_xref (provider, external_id, source_material_id, url)\n             VALUES ($1, $2, $3, $4)\n             ON CONFLICT (provider, external_id) DO UPDATE SET url = EXCLUDED.url\n             RETURNING source_material_id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "source_material_id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "685f537682299230e027a82c6ec88b8928a61169ca678ead9aabbe9b82c310e5"
+}

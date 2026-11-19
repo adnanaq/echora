@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO source_material (\n                 title, title_english, title_japanese, type, status, score, chapters, volumes\n             )\n             VALUES ($1, $2, $3, $4, $5, ROUND($6::float8::numeric, 2), $7, $8)\n             RETURNING id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Float8",
+        "Int4",
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "2442579adac15dc2e5c2ef1a0d1670d61081a1ce0cd315acc61ffceb51028ebf"
+}

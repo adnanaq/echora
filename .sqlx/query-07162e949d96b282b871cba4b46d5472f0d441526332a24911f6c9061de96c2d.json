@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT anime_id\n             FROM anime_provider_page\n             WHERE provider = $1\n               AND page_kind = 'anime'\n               AND address = $2\n               AND role = 'source'\n               AND anime_id <> $3",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "anime_id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "07162e949d96b282b871cba4b46d5472f0d441526332a24911f6c9061de96c2d"
+}

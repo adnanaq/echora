@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM anime_source_material_relation WHERE anime_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "a989f2c16ee72728cc74282ba61ee89a19314f49fcf0e55b0161096b2908841c"
+}

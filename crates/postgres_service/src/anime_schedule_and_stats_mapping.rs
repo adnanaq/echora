@@ -198,13 +198,13 @@ fn map_contextual_rank(rank_entry: ContextualRank) -> Result<AnimeContextualRank
         season,
         all_time,
     } = rank_entry;
-    let year_i16 = year
+    let rank_year = year
         .map(|value| {
             i16::try_from(value)
                 .map_err(|_| Status::invalid_argument("contextual_rank.year overflows i16"))
         })
         .transpose()?;
-    let season_str = season
+    let rank_season = season
         .as_deref()
         .map(normalize_season)
         .transpose()?
@@ -215,8 +215,8 @@ fn map_contextual_rank(rank_entry: ContextualRank) -> Result<AnimeContextualRank
         rank,
         is_all_time: all_time,
         format,
-        season: season_str,
-        year: year_i16,
+        season: rank_season,
+        year: rank_year,
     })
 }
 

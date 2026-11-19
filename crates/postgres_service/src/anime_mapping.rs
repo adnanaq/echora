@@ -12,10 +12,11 @@ use sha2::{Digest as _, Sha256};
 use tonic::Status;
 use uuid::Uuid;
 
+use crate::anime_relations_mapping::build_relations_and_graph;
 use crate::anime_schedule_and_stats_mapping::build_schedule_and_stats;
 use crate::service::shared_proto::v1::{
     Anime, AnimeImages, AnimeRating, AnimeSeason, AnimeStatus, AnimeType, EntityType,
-    SourceMaterialType, ThemeEntry,
+    RelationClaim, SourceMaterialType, ThemeEntry,
 };
 
 /// Maps a `shared_proto.v1.Anime` and save metadata into [`SaveAnimeInput`].
@@ -35,16 +36,17 @@ use crate::service::shared_proto::v1::{
     reason = "Exhaustive destructuring of every Anime proto field without '..' is required by ECHO-98"
 )]
 pub fn build_save_anime_input(
-    anime_id_str: &str,
+    anime_id_text: &str,
     expected_version: i64,
     merge_version: i32,
     anime: Anime,
+    relation_claims: Vec<RelationClaim>,
     traceparent: Option<String>,
 ) -> Result<SaveAnimeInput, Status> {
-    let anime_id = Uuid::parse_str(anime_id_str)
+    let anime_id = Uuid::parse_str(anime_id_text)
         .map_err(|err| Status::invalid_argument(format!("invalid anime_id UUID: {err}")))?;
 
-    let merged_record_hash = compute_anime_canonical_hash(&anime);
+    let merged_record_hash = compute_save_record_hash(&anime, &relation_claims);
 
     let Anime {
         background,
@@ -70,8 +72,8 @@ pub fn build_save_anime_input(
         ending_themes,
         genres,
         opening_themes,
-        related_anime: _,
-        related_source_material: _,
+        related_anime,
+        related_source_material,
         sources: _,
         streaming_sources,
         synonyms,
@@ -87,29 +89,29 @@ pub fn build_save_anime_input(
         statistics,
         hiatus,
         titles,
-        companies: _,
+        companies,
         partial_sources: _,
     } = anime;
 
     validate_entity_type(entity_type)?;
     let anime_type = map_anime_type(r#type)?.to_owned();
-    let status_str = map_anime_status(status)?.to_owned();
-    let rating_str = match rating {
+    let anime_status = map_anime_status(status)?.to_owned();
+    let anime_rating = match rating {
         Some(rating_number) => map_anime_rating(rating_number)?.to_owned(),
         None => "UNKNOWN".to_owned(),
     };
-    let season_str = season.map(map_anime_season).transpose()?.map(str::to_owned);
-    let source_material_str = source_material
+    let anime_season = season.map(map_anime_season).transpose()?.map(str::to_owned);
+    let anime_source_material = source_material
         .map(map_source_material_type)
         .transpose()?
         .map(str::to_owned);
 
-    let year_i16 = year
+    let release_year = year
         .map(|val| {
             i16::try_from(val).map_err(|_| Status::invalid_argument("year out of smallint range"))
         })
         .transpose()?;
-    let month_i16 = month
+    let release_month = month
         .map(|val| {
             i16::try_from(val).map_err(|_| Status::invalid_argument("month out of smallint range"))
         })
@@ -159,6 +161,12 @@ pub fn build_save_anime_input(
         broadcast,
         hiatus,
     )?;
+    let relations_and_graph = build_relations_and_graph(
+        related_anime,
+        related_source_material,
+        companies,
+        relation_claims,
+    )?;
 
     Ok(SaveAnimeInput {
         anime_id,
@@ -167,12 +175,12 @@ pub fn build_save_anime_input(
         title_english,
         title_japanese,
         anime_type,
-        status: status_str,
-        rating: rating_str,
-        season: season_str,
-        source_material: source_material_str,
-        year: year_i16,
-        month: month_i16,
+        status: anime_status,
+        rating: anime_rating,
+        season: anime_season,
+        source_material: anime_source_material,
+        year: release_year,
+        month: release_month,
         episode_count,
         duration_seconds: duration,
         is_nsfw: nsfw,
@@ -190,6 +198,7 @@ pub fn build_save_anime_input(
         traceparent,
         details,
         schedule_and_stats,
+        relations_and_graph,
     })
 }
 
@@ -245,20 +254,51 @@ fn build_anime_details(
     }
 }
 
-/// Computes a deterministic SHA-256 hex digest over a canonicalized [`Anime`].
+/// Computes a deterministic SHA-256 hex digest over a canonicalized [`Anime`]
+/// and its sorted [`RelationClaim`] list.
 #[must_use]
-pub fn compute_anime_canonical_hash(anime: &Anime) -> String {
-    let mut canonical = anime.clone();
-    canonical.content_warnings.sort();
-    canonical.demographics.sort();
-    canonical.genres.sort();
-    canonical.sources.sort();
-    canonical.partial_sources.sort();
-    canonical.synonyms.sort();
-    canonical.tags.sort();
+pub fn compute_save_record_hash(anime: &Anime, relation_claims: &[RelationClaim]) -> String {
+    let mut canonical_anime = anime.clone();
+    canonical_anime.content_warnings.sort();
+    canonical_anime.demographics.sort();
+    canonical_anime.genres.sort();
+    canonical_anime.sources.sort();
+    canonical_anime.partial_sources.sort();
+    canonical_anime.synonyms.sort();
+    canonical_anime.tags.sort();
+
+    let mut canonical_claims = relation_claims.to_vec();
+    canonical_claims.sort_by(|left, right| {
+        let left_target = left.target_page.as_ref().map(|page| {
+            (
+                page.provider.as_str(),
+                page.page_kind,
+                page.address.as_str(),
+            )
+        });
+        let right_target = right.target_page.as_ref().map(|page| {
+            (
+                page.provider.as_str(),
+                page.page_kind,
+                page.address.as_str(),
+            )
+        });
+        (&left.provider, left.relation_type, left_target).cmp(&(
+            &right.provider,
+            right.relation_type,
+            right_target,
+        ))
+    });
 
     let mut hasher = Sha256::new();
-    hasher.update(canonical.encode_to_vec());
+    let anime_bytes = canonical_anime.encode_to_vec();
+    hasher.update(anime_bytes.len().to_be_bytes());
+    hasher.update(&anime_bytes);
+    for claim in &canonical_claims {
+        let claim_bytes = claim.encode_to_vec();
+        hasher.update(claim_bytes.len().to_be_bytes());
+        hasher.update(&claim_bytes);
+    }
     let digest = hasher.finalize();
     let mut hex = String::with_capacity(digest.len() * 2);
     for byte in digest {
@@ -365,7 +405,7 @@ fn map_anime_season(enum_number: i32) -> Result<&'static str, Status> {
     }
 }
 
-fn map_source_material_type(enum_number: i32) -> Result<&'static str, Status> {
+pub(crate) fn map_source_material_type(enum_number: i32) -> Result<&'static str, Status> {
     let Ok(source_material) = SourceMaterialType::try_from(enum_number) else {
         return Err(Status::invalid_argument(format!(
             "unknown SourceMaterialType number {enum_number}"
@@ -414,23 +454,23 @@ mod tests {
 
     #[test]
     fn canonical_hash_is_order_independent_on_set_lists() {
-        let mut a = Anime {
+        let mut first_anime = Anime {
             title: "Monster".to_owned(),
             r#type: AnimeType::Tv as i32,
             status: AnimeStatus::Finished as i32,
             genres: vec!["Thriller".to_owned(), "Drama".to_owned()],
             ..Anime::default()
         };
-        let mut b = a.clone();
-        b.genres.reverse();
+        let mut second_anime = first_anime.clone();
+        second_anime.genres.reverse();
         assert_eq!(
-            compute_anime_canonical_hash(&a),
-            compute_anime_canonical_hash(&b)
+            compute_save_record_hash(&first_anime, &[]),
+            compute_save_record_hash(&second_anime, &[])
         );
-        a.title.push('!');
+        first_anime.title.push('!');
         assert_ne!(
-            compute_anime_canonical_hash(&a),
-            compute_anime_canonical_hash(&b)
+            compute_save_record_hash(&first_anime, &[]),
+            compute_save_record_hash(&second_anime, &[])
         );
     }
 
@@ -442,7 +482,8 @@ mod tests {
             status: AnimeStatus::Finished as i32,
             ..Anime::default()
         };
-        let Err(err) = build_save_anime_input(&Uuid::now_v7().to_string(), 1, 1, anime, None)
+        let Err(err) =
+            build_save_anime_input(&Uuid::now_v7().to_string(), 1, 1, anime, Vec::new(), None)
         else {
             panic!("unknown enum must fail");
         };
@@ -502,7 +543,8 @@ mod tests {
             }),
             ..Anime::default()
         };
-        let Ok(input) = build_save_anime_input(&Uuid::now_v7().to_string(), 2, 7, anime, None)
+        let Ok(input) =
+            build_save_anime_input(&Uuid::now_v7().to_string(), 2, 7, anime, Vec::new(), None)
         else {
             panic!("valid anime should map");
         };

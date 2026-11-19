@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM source_material WHERE id IN (\n             SELECT source_material_id FROM source_material_xref WHERE provider = 'mal' AND external_id = $1\n         )",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f924822091b6d236c10116911d33ff933a6db7ba12bb9d2a1cad4b54f699b527"
+}
