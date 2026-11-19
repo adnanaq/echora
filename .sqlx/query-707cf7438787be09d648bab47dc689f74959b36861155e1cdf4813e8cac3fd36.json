@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO graph_edge (from_id, from_type, to_id, to_type, edge_type)\n         SELECT source_id, 'source_material', $1, 'anime', 'WAS_ADAPTED_TO'\n         FROM UNNEST($2::uuid[]) AS entry(source_id)\n         ON CONFLICT DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "UuidArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "707cf7438787be09d648bab47dc689f74959b36861155e1cdf4813e8cac3fd36"
+}

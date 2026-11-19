@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO company_xref (provider, url, company_id)\n             VALUES ($1, $2, $3)\n             ON CONFLICT (provider, url) DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "8d9f23c20411b3016023c7e157c0868bab9888ba3b110e8012d57f0e7a22820b"
+}

@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE source_material\n             SET title = $2,\n                 title_english = $3,\n                 title_japanese = $4,\n                 type = $5,\n                 status = $6,\n                 score = ROUND($7::float8::numeric, 2),\n                 chapters = $8,\n                 volumes = $9,\n                 updated_at = now()\n             WHERE id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Float8",
+        "Int4",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e8cb7ec2aa4a5f8305d266b548017a1219e119e3e1d372d513770b8ba3c1a3e9"
+}

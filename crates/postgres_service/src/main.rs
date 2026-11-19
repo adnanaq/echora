@@ -3,6 +3,7 @@
 // Rust guideline compliant 2026-10-09
 
 mod anime_mapping;
+mod anime_relations_mapping;
 mod anime_schedule_and_stats_mapping;
 mod service;
 

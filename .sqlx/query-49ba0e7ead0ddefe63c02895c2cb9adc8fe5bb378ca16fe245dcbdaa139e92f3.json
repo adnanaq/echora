@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT DISTINCT to_anime_id\n         FROM anime_relation\n         WHERE from_anime_id = $1 AND to_anime_id IS NOT NULL",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "to_anime_id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "49ba0e7ead0ddefe63c02895c2cb9adc8fe5bb378ca16fe245dcbdaa139e92f3"
+}

@@ -13,16 +13,18 @@ use tracing::Level;
 use uuid::Uuid;
 
 use crate::anime_details::{replace_anime_details, validate_anime_details};
+use crate::anime_relations::{replace_relations_and_graph, validate_relations_and_graph};
 use crate::anime_schedule_and_stats::{replace_schedule_and_stats, validate_schedule_and_stats};
 use crate::{
-    AnimeDetailsInput, AnimeScheduleAndStatsInput, Error, PageKeyInput, PageKind, PageResponseInput,
+    AnimeDetailsInput, AnimeRelationsAndGraphInput, AnimeScheduleAndStatsInput, Error,
+    PageKeyInput, PageKind, PageResponseInput,
 };
 
 /// Current canonical hash format version stored in `anime.hash_format`.
 ///
 /// Bumping this constant causes unchanged records to re-save once so the new
 /// hash format is persisted.
-pub const ANIME_HASH_FORMAT: i16 = 3;
+pub const ANIME_HASH_FORMAT: i16 = 4;
 
 const MIN_ANIME_YEAR: i16 = 1900;
 const MIN_MONTH: i16 = 1;
@@ -101,9 +103,9 @@ pub struct SaveAnimeInput {
     /// Total episode count (`>= 0`).
     pub episode_count: i32,
     /// Episode duration in seconds (`>= 0`), if known.
-    pub duration_seconds: Option<i32>,
+    pub duration: Option<i32>,
     /// Explicit NSFW flag, if known.
-    pub is_nsfw: Option<bool>,
+    pub nsfw: Option<bool>,
     /// ISO 3166-1 alpha-2 country code, if known.
     pub country_of_origin: Option<String>,
     /// Approved or AI-written synopsis, if present.
@@ -132,6 +134,8 @@ pub struct SaveAnimeInput {
     pub details: AnimeDetailsInput,
     /// Theme songs, trailers, links, streaming, statistics, broadcast, and hiatus.
     pub schedule_and_stats: AnimeScheduleAndStatsInput,
+    /// Relations, relation claims, source material, and companies.
+    pub relations_and_graph: AnimeRelationsAndGraphInput,
 }
 
 /// Result returned by [`save_anime`].
@@ -429,6 +433,7 @@ async fn save_anime_in_tx(
     update_anime_row(tx, input, next_version, now).await?;
     replace_anime_details(tx, input.anime_id, &input.details).await?;
     replace_schedule_and_stats(tx, input.anime_id, &input.schedule_and_stats).await?;
+    replace_relations_and_graph(tx, input.anime_id, &input.relations_and_graph).await?;
     emit_anime_outbox_events(
         tx,
         input,
@@ -466,8 +471,8 @@ async fn update_anime_row(
             year = $10,
             month = $11,
             episode_count = $12,
-            duration_seconds = $13,
-            is_nsfw = $14,
+            duration = $13,
+            nsfw = $14,
             country_of_origin = $15,
             synopsis = $16,
             background = $17,
@@ -497,8 +502,8 @@ async fn update_anime_row(
         input.year,
         input.month,
         input.episode_count,
-        input.duration_seconds,
-        input.is_nsfw,
+        input.duration,
+        input.nsfw,
         input.country_of_origin,
         input.synopsis,
         input.background,
@@ -621,10 +626,10 @@ fn validate_save_input(input: &SaveAnimeInput) -> Result<(), Error> {
     if input.episode_count < 0 {
         return Err(Error::invalid_argument("episode_count must be >= 0"));
     }
-    if let Some(duration) = input.duration_seconds
+    if let Some(duration) = input.duration
         && duration < 0
     {
-        return Err(Error::invalid_argument("duration_seconds must be >= 0"));
+        return Err(Error::invalid_argument("duration must be >= 0"));
     }
     if let Some(country) = input.country_of_origin.as_deref()
         && country.chars().count() != 2
@@ -648,6 +653,7 @@ fn validate_save_input(input: &SaveAnimeInput) -> Result<(), Error> {
     }
     validate_anime_details(&input.details)?;
     validate_schedule_and_stats(&input.schedule_and_stats)?;
+    validate_relations_and_graph(&input.relations_and_graph)?;
     Ok(())
 }
 
@@ -746,8 +752,8 @@ mod tests {
             year: Some(2004),
             month: Some(4),
             episode_count: 74,
-            duration_seconds: Some(1440),
-            is_nsfw: Some(false),
+            duration: Some(1440),
+            nsfw: Some(false),
             country_of_origin: Some("JP".to_owned()),
             synopsis: None,
             background: None,
@@ -762,6 +768,7 @@ mod tests {
             traceparent: None,
             details: AnimeDetailsInput::default(),
             schedule_and_stats: AnimeScheduleAndStatsInput::default(),
+            relations_and_graph: AnimeRelationsAndGraphInput::default(),
         };
         assert!(validate_save_input(&base).is_ok());
 

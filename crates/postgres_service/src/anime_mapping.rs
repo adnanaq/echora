@@ -12,10 +12,11 @@ use sha2::{Digest as _, Sha256};
 use tonic::Status;
 use uuid::Uuid;
 
+use crate::anime_relations_mapping::build_relations_and_graph;
 use crate::anime_schedule_and_stats_mapping::build_schedule_and_stats;
 use crate::service::shared_proto::v1::{
     Anime, AnimeImages, AnimeRating, AnimeSeason, AnimeStatus, AnimeType, EntityType,
-    SourceMaterialType, ThemeEntry,
+    RelationClaim, SourceMaterialType, ThemeEntry,
 };
 
 /// Maps a `shared_proto.v1.Anime` and save metadata into [`SaveAnimeInput`].
@@ -39,6 +40,7 @@ pub fn build_save_anime_input(
     expected_version: i64,
     merge_version: i32,
     anime: Anime,
+    relation_claims: Vec<RelationClaim>,
     traceparent: Option<String>,
 ) -> Result<SaveAnimeInput, Status> {
     let anime_id = Uuid::parse_str(anime_id_str)
@@ -70,8 +72,8 @@ pub fn build_save_anime_input(
         ending_themes,
         genres,
         opening_themes,
-        related_anime: _,
-        related_source_material: _,
+        related_anime,
+        related_source_material,
         sources: _,
         streaming_sources,
         synonyms,
@@ -87,7 +89,7 @@ pub fn build_save_anime_input(
         statistics,
         hiatus,
         titles,
-        companies: _,
+        companies,
         partial_sources: _,
     } = anime;
 
@@ -159,6 +161,12 @@ pub fn build_save_anime_input(
         broadcast,
         hiatus,
     )?;
+    let relations_and_graph = build_relations_and_graph(
+        related_anime,
+        related_source_material,
+        companies,
+        relation_claims,
+    )?;
 
     Ok(SaveAnimeInput {
         anime_id,
@@ -174,8 +182,8 @@ pub fn build_save_anime_input(
         year: year_i16,
         month: month_i16,
         episode_count,
-        duration_seconds: duration,
-        is_nsfw: nsfw,
+        duration,
+        nsfw,
         country_of_origin,
         synopsis,
         background,
@@ -190,6 +198,7 @@ pub fn build_save_anime_input(
         traceparent,
         details,
         schedule_and_stats,
+        relations_and_graph,
     })
 }
 
@@ -365,7 +374,7 @@ fn map_anime_season(enum_number: i32) -> Result<&'static str, Status> {
     }
 }
 
-fn map_source_material_type(enum_number: i32) -> Result<&'static str, Status> {
+pub(crate) fn map_source_material_type(enum_number: i32) -> Result<&'static str, Status> {
     let Ok(source_material) = SourceMaterialType::try_from(enum_number) else {
         return Err(Status::invalid_argument(format!(
             "unknown SourceMaterialType number {enum_number}"
@@ -442,7 +451,8 @@ mod tests {
             status: AnimeStatus::Finished as i32,
             ..Anime::default()
         };
-        let Err(err) = build_save_anime_input(&Uuid::now_v7().to_string(), 1, 1, anime, None)
+        let Err(err) =
+            build_save_anime_input(&Uuid::now_v7().to_string(), 1, 1, anime, Vec::new(), None)
         else {
             panic!("unknown enum must fail");
         };
@@ -502,7 +512,8 @@ mod tests {
             }),
             ..Anime::default()
         };
-        let Ok(input) = build_save_anime_input(&Uuid::now_v7().to_string(), 2, 7, anime, None)
+        let Ok(input) =
+            build_save_anime_input(&Uuid::now_v7().to_string(), 2, 7, anime, Vec::new(), None)
         else {
             panic!("valid anime should map");
         };

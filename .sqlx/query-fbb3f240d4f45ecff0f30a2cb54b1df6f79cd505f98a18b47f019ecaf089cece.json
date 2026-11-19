@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO anime (id) VALUES ($1), ($2)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "fbb3f240d4f45ecff0f30a2cb54b1df6f79cd505f98a18b47f019ecaf089cece"
+}

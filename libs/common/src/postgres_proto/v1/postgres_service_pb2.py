@@ -26,7 +26,7 @@ from shared_proto.v1 import anime_pb2 as shared__proto_dot_v1_dot_anime__pb2
 from shared_proto.v1 import merge_pb2 as shared__proto_dot_v1_dot_merge__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x19v1/postgres_service.proto\x12\x13postgres_service.v1\x1a\x1bshared_proto/v1/anime.proto\x1a\x1bshared_proto/v1/merge.proto\"=\n\x10StorePageRequest\x12)\n\x04page\x18\x01 \x01(\x0b\x32\x1b.shared_proto.v1.StoredPage\"(\n\x11StorePageResponse\x12\x13\n\x0bhas_changed\x18\x01 \x01(\x08\"$\n\x10LoadAnimeRequest\x12\x10\n\x08\x61nime_id\x18\x01 \x01(\t\"\xc6\x01\n\x11LoadAnimeResponse\x12\x0f\n\x07version\x18\x01 \x01(\x03\x12\x31\n\x0csource_pages\x18\x02 \x03(\x0b\x32\x1b.shared_proto.v1.StoredPage\x12\x36\n\x14partial_source_pages\x18\x03 \x03(\x0b\x32\x18.shared_proto.v1.PageKey\x12\x35\n\x0b\x63orrections\x18\x04 \x03(\x0b\x32 .shared_proto.v1.FieldCorrection\"|\n\x10SaveAnimeRequest\x12\x10\n\x08\x61nime_id\x18\x01 \x01(\t\x12\x18\n\x10\x65xpected_version\x18\x02 \x01(\x03\x12%\n\x05\x61nime\x18\x03 \x01(\x0b\x32\x16.shared_proto.v1.Anime\x12\x15\n\rmerge_version\x18\x04 \x01(\x05\"9\n\x11SaveAnimeResponse\x12\x13\n\x0bhas_changed\x18\x01 \x01(\x08\x12\x0f\n\x07version\x18\x02 \x01(\x03\x32\xa5\x02\n\x0fPostgresService\x12Z\n\tStorePage\x12%.postgres_service.v1.StorePageRequest\x1a&.postgres_service.v1.StorePageResponse\x12Z\n\tLoadAnime\x12%.postgres_service.v1.LoadAnimeRequest\x1a&.postgres_service.v1.LoadAnimeResponse\x12Z\n\tSaveAnime\x12%.postgres_service.v1.SaveAnimeRequest\x1a&.postgres_service.v1.SaveAnimeResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x19v1/postgres_service.proto\x12\x13postgres_service.v1\x1a\x1bshared_proto/v1/anime.proto\x1a\x1bshared_proto/v1/merge.proto\"=\n\x10StorePageRequest\x12)\n\x04page\x18\x01 \x01(\x0b\x32\x1b.shared_proto.v1.StoredPage\"(\n\x11StorePageResponse\x12\x13\n\x0bhas_changed\x18\x01 \x01(\x08\"$\n\x10LoadAnimeRequest\x12\x10\n\x08\x61nime_id\x18\x01 \x01(\t\"\xc6\x01\n\x11LoadAnimeResponse\x12\x0f\n\x07version\x18\x01 \x01(\x03\x12\x31\n\x0csource_pages\x18\x02 \x03(\x0b\x32\x1b.shared_proto.v1.StoredPage\x12\x36\n\x14partial_source_pages\x18\x03 \x03(\x0b\x32\x18.shared_proto.v1.PageKey\x12\x35\n\x0b\x63orrections\x18\x04 \x03(\x0b\x32 .shared_proto.v1.FieldCorrection\"\xb5\x01\n\x10SaveAnimeRequest\x12\x10\n\x08\x61nime_id\x18\x01 \x01(\t\x12\x18\n\x10\x65xpected_version\x18\x02 \x01(\x03\x12%\n\x05\x61nime\x18\x03 \x01(\x0b\x32\x16.shared_proto.v1.Anime\x12\x15\n\rmerge_version\x18\x04 \x01(\x05\x12\x37\n\x0frelation_claims\x18\x05 \x03(\x0b\x32\x1e.shared_proto.v1.RelationClaim\"9\n\x11SaveAnimeResponse\x12\x13\n\x0bhas_changed\x18\x01 \x01(\x08\x12\x0f\n\x07version\x18\x02 \x01(\x03\x32\xa5\x02\n\x0fPostgresService\x12Z\n\tStorePage\x12%.postgres_service.v1.StorePageRequest\x1a&.postgres_service.v1.StorePageResponse\x12Z\n\tLoadAnime\x12%.postgres_service.v1.LoadAnimeRequest\x1a&.postgres_service.v1.LoadAnimeResponse\x12Z\n\tSaveAnime\x12%.postgres_service.v1.SaveAnimeRequest\x1a&.postgres_service.v1.SaveAnimeResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -41,10 +41,10 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_LOADANIMEREQUEST']._serialized_end=249
   _globals['_LOADANIMERESPONSE']._serialized_start=252
   _globals['_LOADANIMERESPONSE']._serialized_end=450
-  _globals['_SAVEANIMEREQUEST']._serialized_start=452
-  _globals['_SAVEANIMEREQUEST']._serialized_end=576
-  _globals['_SAVEANIMERESPONSE']._serialized_start=578
-  _globals['_SAVEANIMERESPONSE']._serialized_end=635
-  _globals['_POSTGRESSERVICE']._serialized_start=638
-  _globals['_POSTGRESSERVICE']._serialized_end=931
+  _globals['_SAVEANIMEREQUEST']._serialized_start=453
+  _globals['_SAVEANIMEREQUEST']._serialized_end=634
+  _globals['_SAVEANIMERESPONSE']._serialized_start=636
+  _globals['_SAVEANIMERESPONSE']._serialized_end=693
+  _globals['_POSTGRESSERVICE']._serialized_start=696
+  _globals['_POSTGRESSERVICE']._serialized_end=989
 # @@protoc_insertion_point(module_scope)
