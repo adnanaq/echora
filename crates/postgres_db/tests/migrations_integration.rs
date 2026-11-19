@@ -6,8 +6,8 @@ use std::env;
 
 use chrono::{Duration, Utc};
 use postgres_db::{
-    ANIME_HASH_FORMAT_V1, AnimeDetailsInput, AnimeImageInput, AnimeThemeInput, AnimeTitleInput,
-    Error, PageKeyInput, PageKind, PageResponseInput, SaveAnimeInput, StorePageInput, connect_pool,
+    ANIME_HASH_FORMAT, AnimeDetailsInput, AnimeImageInput, AnimeThemeInput, AnimeTitleInput, Error,
+    PageKeyInput, PageKind, PageResponseInput, SaveAnimeInput, StorePageInput, connect_pool,
     load_anime, run_migrations, save_anime, store_page,
 };
 use uuid::Uuid;
@@ -572,7 +572,7 @@ async fn load_and_save_anime_enforce_versions_hashes_visibility_and_outbox() -> 
         score_mean: Some(8.80),
         score_median: Some(9.00),
         merged_record_hash: "hash-v1".to_owned(),
-        hash_format: ANIME_HASH_FORMAT_V1,
+        hash_format: ANIME_HASH_FORMAT,
         merge_version: 1,
         traceparent: Some("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01".to_owned()),
         details: AnimeDetailsInput::default(),
@@ -834,9 +834,15 @@ async fn save_anime_replaces_names_classification_themes_and_images() -> Result<
     run_migrations(&pool).await?;
 
     let anime_id = Uuid::now_v7();
-    sqlx::query!("INSERT INTO anime (id) VALUES ($1)", anime_id)
-        .execute(&pool)
-        .await?;
+    // Seed a pre-ECHO-100 row with hash_format = 1 and the same hash to verify
+    // bumping ANIME_HASH_FORMAT triggers a one-time detail backfill.
+    sqlx::query!(
+        "INSERT INTO anime (id, title, type, status, merged_at, merged_record_hash, hash_format)
+         VALUES ($1, 'Monster', 'TV', 'FINISHED', now(), 'details-v1', 1)",
+        anime_id
+    )
+    .execute(&pool)
+    .await?;
 
     let first_input = SaveAnimeInput {
         anime_id,
@@ -863,7 +869,7 @@ async fn save_anime_replaces_names_classification_themes_and_images() -> Result<
         score_mean: None,
         score_median: None,
         merged_record_hash: "details-v1".to_owned(),
-        hash_format: ANIME_HASH_FORMAT_V1,
+        hash_format: ANIME_HASH_FORMAT,
         merge_version: 1,
         traceparent: None,
         details: AnimeDetailsInput {

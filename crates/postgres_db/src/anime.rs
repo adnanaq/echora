@@ -19,7 +19,7 @@ use crate::{AnimeDetailsInput, Error, PageKeyInput, PageKind, PageResponseInput}
 ///
 /// Bumping this constant causes unchanged records to re-save once so the new
 /// hash format is persisted.
-pub const ANIME_HASH_FORMAT_V1: i16 = 1;
+pub const ANIME_HASH_FORMAT: i16 = 2;
 
 const MIN_ANIME_YEAR: i16 = 1900;
 const MIN_MONTH: i16 = 1;
@@ -750,7 +750,7 @@ mod tests {
             score_mean: None,
             score_median: None,
             merged_record_hash: "abc".to_owned(),
-            hash_format: ANIME_HASH_FORMAT_V1,
+            hash_format: ANIME_HASH_FORMAT,
             merge_version: 1,
             traceparent: None,
             details: AnimeDetailsInput::default(),

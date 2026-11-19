@@ -4,7 +4,7 @@
 
 use chrono::{DateTime, Utc};
 use postgres_db::{
-    ANIME_HASH_FORMAT_V1, AnimeDetailsInput, AnimeImageInput, AnimeThemeInput, AnimeTitleInput,
+    ANIME_HASH_FORMAT, AnimeDetailsInput, AnimeImageInput, AnimeThemeInput, AnimeTitleInput,
     SaveAnimeInput,
 };
 use prost::Message as _;
@@ -173,7 +173,7 @@ pub fn build_save_anime_input(
         score_mean,
         score_median,
         merged_record_hash,
-        hash_format: ANIME_HASH_FORMAT_V1,
+        hash_format: ANIME_HASH_FORMAT,
         merge_version,
         traceparent,
         details,

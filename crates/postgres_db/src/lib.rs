@@ -9,8 +9,8 @@ mod provider_page;
 
 #[doc(inline)]
 pub use anime::{
-    ANIME_HASH_FORMAT_V1, FieldCorrectionRecord, LoadAnimeOutcome, LoadedSourcePage,
-    SaveAnimeInput, SaveAnimeOutcome, load_anime, save_anime,
+    ANIME_HASH_FORMAT, FieldCorrectionRecord, LoadAnimeOutcome, LoadedSourcePage, SaveAnimeInput,
+    SaveAnimeOutcome, load_anime, save_anime,
 };
 #[doc(inline)]
 pub use anime_details::{AnimeDetailsInput, AnimeImageInput, AnimeThemeInput, AnimeTitleInput};
