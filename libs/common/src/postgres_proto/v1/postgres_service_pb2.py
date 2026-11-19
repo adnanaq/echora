@@ -26,7 +26,7 @@ from shared_proto.v1 import anime_pb2 as shared__proto_dot_v1_dot_anime__pb2
 from shared_proto.v1 import merge_pb2 as shared__proto_dot_v1_dot_merge__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x19v1/postgres_service.proto\x12\x13postgres_service.v1\x1a\x1bshared_proto/v1/anime.proto\x1a\x1bshared_proto/v1/merge.proto\"=\n\x10StorePageRequest\x12)\n\x04page\x18\x01 \x01(\x0b\x32\x1b.shared_proto.v1.StoredPage\"(\n\x11StorePageResponse\x12\x13\n\x0bhas_changed\x18\x01 \x01(\x08\"$\n\x10LoadAnimeRequest\x12\x10\n\x08\x61nime_id\x18\x01 \x01(\t\"\xc6\x01\n\x11LoadAnimeResponse\x12\x0f\n\x07version\x18\x01 \x01(\x03\x12\x31\n\x0csource_pages\x18\x02 \x03(\x0b\x32\x1b.shared_proto.v1.StoredPage\x12\x36\n\x14partial_source_pages\x18\x03 \x03(\x0b\x32\x18.shared_proto.v1.PageKey\x12\x35\n\x0b\x63orrections\x18\x04 \x03(\x0b\x32 .shared_proto.v1.FieldCorrection\"\xb5\x01\n\x10SaveAnimeRequest\x12\x10\n\x08\x61nime_id\x18\x01 \x01(\t\x12\x18\n\x10\x65xpected_version\x18\x02 \x01(\x03\x12%\n\x05\x61nime\x18\x03 \x01(\x0b\x32\x16.shared_proto.v1.Anime\x12\x15\n\rmerge_version\x18\x04 \x01(\x05\x12\x37\n\x0frelation_claims\x18\x05 \x03(\x0b\x32\x1e.shared_proto.v1.RelationClaim\"9\n\x11SaveAnimeResponse\x12\x13\n\x0bhas_changed\x18\x01 \x01(\x08\x12\x0f\n\x07version\x18\x02 \x01(\x03\x32\xa5\x02\n\x0fPostgresService\x12Z\n\tStorePage\x12%.postgres_service.v1.StorePageRequest\x1a&.postgres_service.v1.StorePageResponse\x12Z\n\tLoadAnime\x12%.postgres_service.v1.LoadAnimeRequest\x1a&.postgres_service.v1.LoadAnimeResponse\x12Z\n\tSaveAnime\x12%.postgres_service.v1.SaveAnimeRequest\x1a&.postgres_service.v1.SaveAnimeResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x19v1/postgres_service.proto\x12\x13postgres_service.v1\x1a\x1bshared_proto/v1/anime.proto\x1a\x1bshared_proto/v1/merge.proto\"=\n\x10StorePageRequest\x12)\n\x04page\x18\x01 \x01(\x0b\x32\x1b.shared_proto.v1.StoredPage\"(\n\x11StorePageResponse\x12\x13\n\x0bhas_changed\x18\x01 \x01(\x08\"$\n\x10LoadAnimeRequest\x12\x10\n\x08\x61nime_id\x18\x01 \x01(\t\"\xc6\x01\n\x11LoadAnimeResponse\x12\x0f\n\x07version\x18\x01 \x01(\x03\x12\x31\n\x0csource_pages\x18\x02 \x03(\x0b\x32\x1b.shared_proto.v1.StoredPage\x12\x36\n\x14partial_source_pages\x18\x03 \x03(\x0b\x32\x18.shared_proto.v1.PageKey\x12\x35\n\x0b\x63orrections\x18\x04 \x03(\x0b\x32 .shared_proto.v1.FieldCorrection\"\xea\x01\n\x10SaveAnimeRequest\x12\x10\n\x08\x61nime_id\x18\x01 \x01(\t\x12\x18\n\x10\x65xpected_version\x18\x02 \x01(\x03\x12%\n\x05\x61nime\x18\x03 \x01(\x0b\x32\x16.shared_proto.v1.Anime\x12\x15\n\rmerge_version\x18\x04 \x01(\x05\x12\x37\n\x0frelation_claims\x18\x05 \x03(\x0b\x32\x1e.shared_proto.v1.RelationClaim\x12\x33\n\x08\x65pisodes\x18\x06 \x03(\x0b\x32!.shared_proto.v1.EpisodeReference\"s\n\x11SaveAnimeResponse\x12\x13\n\x0bhas_changed\x18\x01 \x01(\x08\x12\x0f\n\x07version\x18\x02 \x01(\x03\x12\x1b\n\x13\x63reated_episode_ids\x18\x03 \x03(\t\x12\x1b\n\x13\x63hanged_episode_ids\x18\x04 \x03(\t\"(\n\x12LoadEpisodeRequest\x12\x12\n\nepisode_id\x18\x01 \x01(\t\"\xd4\x01\n\x13LoadEpisodeResponse\x12\x0f\n\x07version\x18\x01 \x01(\x03\x12\x10\n\x08\x61nime_id\x18\x02 \x01(\t\x12*\n\x05pages\x18\x03 \x03(\x0b\x32\x1b.shared_proto.v1.StoredPage\x12\x35\n\x0b\x63orrections\x18\x04 \x03(\x0b\x32 .shared_proto.v1.FieldCorrection\x12\x37\n\x0clist_entries\x18\x05 \x03(\x0b\x32!.shared_proto.v1.EpisodeListEntry\"\x84\x01\n\x12SaveEpisodeRequest\x12\x12\n\nepisode_id\x18\x01 \x01(\t\x12\x18\n\x10\x65xpected_version\x18\x02 \x01(\x03\x12)\n\x07\x65pisode\x18\x03 \x01(\x0b\x32\x18.shared_proto.v1.Episode\x12\x15\n\rmerge_version\x18\x04 \x01(\x05\";\n\x13SaveEpisodeResponse\x12\x13\n\x0bhas_changed\x18\x01 \x01(\x08\x12\x0f\n\x07version\x18\x02 \x01(\x03\"-\n\x17MarkEpisodeAiredRequest\x12\x12\n\nepisode_id\x18\x01 \x01(\t\"0\n\x18MarkEpisodeAiredResponse\x12\x14\n\x0chas_notified\x18\x01 \x01(\x08\x32\xda\x04\n\x0fPostgresService\x12Z\n\tStorePage\x12%.postgres_service.v1.StorePageRequest\x1a&.postgres_service.v1.StorePageResponse\x12Z\n\tLoadAnime\x12%.postgres_service.v1.LoadAnimeRequest\x1a&.postgres_service.v1.LoadAnimeResponse\x12Z\n\tSaveAnime\x12%.postgres_service.v1.SaveAnimeRequest\x1a&.postgres_service.v1.SaveAnimeResponse\x12`\n\x0bLoadEpisode\x12\'.postgres_service.v1.LoadEpisodeRequest\x1a(.postgres_service.v1.LoadEpisodeResponse\x12`\n\x0bSaveEpisode\x12\'.postgres_service.v1.SaveEpisodeRequest\x1a(.postgres_service.v1.SaveEpisodeResponse\x12o\n\x10MarkEpisodeAired\x12,.postgres_service.v1.MarkEpisodeAiredRequest\x1a-.postgres_service.v1.MarkEpisodeAiredResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -42,9 +42,21 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_LOADANIMERESPONSE']._serialized_start=252
   _globals['_LOADANIMERESPONSE']._serialized_end=450
   _globals['_SAVEANIMEREQUEST']._serialized_start=453
-  _globals['_SAVEANIMEREQUEST']._serialized_end=634
-  _globals['_SAVEANIMERESPONSE']._serialized_start=636
-  _globals['_SAVEANIMERESPONSE']._serialized_end=693
-  _globals['_POSTGRESSERVICE']._serialized_start=696
-  _globals['_POSTGRESSERVICE']._serialized_end=989
+  _globals['_SAVEANIMEREQUEST']._serialized_end=687
+  _globals['_SAVEANIMERESPONSE']._serialized_start=689
+  _globals['_SAVEANIMERESPONSE']._serialized_end=804
+  _globals['_LOADEPISODEREQUEST']._serialized_start=806
+  _globals['_LOADEPISODEREQUEST']._serialized_end=846
+  _globals['_LOADEPISODERESPONSE']._serialized_start=849
+  _globals['_LOADEPISODERESPONSE']._serialized_end=1061
+  _globals['_SAVEEPISODEREQUEST']._serialized_start=1064
+  _globals['_SAVEEPISODEREQUEST']._serialized_end=1196
+  _globals['_SAVEEPISODERESPONSE']._serialized_start=1198
+  _globals['_SAVEEPISODERESPONSE']._serialized_end=1257
+  _globals['_MARKEPISODEAIREDREQUEST']._serialized_start=1259
+  _globals['_MARKEPISODEAIREDREQUEST']._serialized_end=1304
+  _globals['_MARKEPISODEAIREDRESPONSE']._serialized_start=1306
+  _globals['_MARKEPISODEAIREDRESPONSE']._serialized_end=1354
+  _globals['_POSTGRESSERVICE']._serialized_start=1357
+  _globals['_POSTGRESSERVICE']._serialized_end=1959
 # @@protoc_insertion_point(module_scope)

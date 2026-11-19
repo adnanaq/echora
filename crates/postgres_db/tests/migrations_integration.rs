@@ -4,7 +4,7 @@
 
 use std::env;
 
-use chrono::{Duration, NaiveDate, NaiveTime, Utc};
+use chrono::{DateTime, Duration, NaiveDate, NaiveTime, Utc};
 use postgres_db::{
     ANIME_HASH_FORMAT, AnimeBroadcastInput, AnimeCompanyInput, AnimeContextualRankInput,
     AnimeDetailsInput, AnimeExternalLinkInput, AnimeHiatusInput, AnimeImageInput,
@@ -583,6 +583,7 @@ async fn load_and_save_anime_enforce_versions_hashes_visibility_and_outbox() -> 
         details: AnimeDetailsInput::default(),
         schedule_and_stats: AnimeScheduleAndStatsInput::default(),
         relations_and_graph: AnimeRelationsAndGraphInput::default(),
+        episodes: Vec::new(),
     };
 
     let first_save = save_anime(&pool, &first_input).await?;
@@ -808,6 +809,7 @@ async fn store_page_bumps_linked_anime_version_and_blocks_stale_save() -> Result
             details: AnimeDetailsInput::default(),
             schedule_and_stats: AnimeScheduleAndStatsInput::default(),
             relations_and_graph: AnimeRelationsAndGraphInput::default(),
+            episodes: Vec::new(),
         },
     )
     .await
@@ -918,6 +920,7 @@ async fn save_anime_replaces_names_classification_themes_and_images() -> Result<
         },
         schedule_and_stats: AnimeScheduleAndStatsInput::default(),
         relations_and_graph: AnimeRelationsAndGraphInput::default(),
+        episodes: Vec::new(),
     };
 
     let first_save = save_anime(&pool, &first_input).await?;
@@ -1188,6 +1191,7 @@ async fn save_anime_stores_songs_links_streaming_stats_broadcast_and_hiatus() ->
             }),
         },
         relations_and_graph: AnimeRelationsAndGraphInput::default(),
+        episodes: Vec::new(),
     };
 
     let first_save = save_anime(&pool, &first_input).await?;
@@ -1407,6 +1411,7 @@ async fn save_anime_and_link_page_persist_relations_xrefs_and_graph_edges() -> R
                 }],
             }],
         },
+        episodes: Vec::new(),
     };
     save_anime(&pool, &first_work_input).await?;
 
@@ -1556,6 +1561,317 @@ async fn save_anime_and_link_page_persist_relations_xrefs_and_graph_edges() -> R
     sqlx::query!(
         "DELETE FROM provider_page WHERE provider = 'mal' AND page_kind = 'anime' AND address = $1",
         target_address
+    )
+    .execute(&pool)
+    .await?;
+
+    Ok(())
+}
+
+#[expect(
+    clippy::too_many_lines,
+    reason = "End-to-end lifecycle test exercises SaveAnime episode sync, LoadEpisode, SaveEpisode, MarkEpisodeAired, and delete_episode together"
+)]
+#[tokio::test]
+async fn save_anime_and_episode_lifecycle_load_save_mark_aired_and_delete()
+-> Result<(), Box<dyn std::error::Error>> {
+    use postgres_db::{
+        EpisodeCharacterInput, EpisodeListEntryInput, EpisodeReferenceInput, EpisodeStreamingInput,
+        EpisodeTitleInput, SaveEpisodeInput, delete_episode, load_episode, mark_episode_aired,
+        save_episode,
+    };
+
+    let Ok(database_url) = env::var("DATABASE_URL") else {
+        return Ok(());
+    };
+    let pool = connect_pool(&database_url, 2).await?;
+    run_migrations(&pool).await?;
+
+    let anime_id = Uuid::now_v7();
+    let episode_id = Uuid::now_v7();
+    let suffix = anime_id.as_u128() % 1_000_000_000;
+    let episode_address = format!("7{suffix:09}");
+
+    sqlx::query!("INSERT INTO anime (id) VALUES ($1)", anime_id)
+        .execute(&pool)
+        .await?;
+
+    let episode_page_key = PageKeyInput {
+        provider: "mal".to_owned(),
+        page_kind: PageKind::Episode,
+        address: episode_address.clone(),
+    };
+    let initial_aired_at =
+        DateTime::parse_from_rfc3339("2020-01-01T00:00:00Z")?.with_timezone(&Utc);
+
+    let first_anime_save = SaveAnimeInput {
+        anime_id,
+        expected_version: 1,
+        title: "Monster".to_owned(),
+        title_english: None,
+        title_japanese: None,
+        anime_type: "TV".to_owned(),
+        status: "FINISHED".to_owned(),
+        rating: "R - 17+ (violence & profanity)".to_owned(),
+        season: None,
+        source_material: None,
+        year: Some(2004),
+        month: Some(4),
+        episode_count: 74,
+        duration_seconds: Some(1440),
+        is_nsfw: Some(false),
+        country_of_origin: Some("JP".to_owned()),
+        synopsis: None,
+        background: None,
+        aired_from: None,
+        aired_to: None,
+        score_weighted: None,
+        score_mean: None,
+        score_median: None,
+        merged_record_hash: "ep-work-v1".to_owned(),
+        hash_format: ANIME_HASH_FORMAT,
+        merge_version: 1,
+        traceparent: None,
+        details: AnimeDetailsInput::default(),
+        schedule_and_stats: AnimeScheduleAndStatsInput::default(),
+        relations_and_graph: AnimeRelationsAndGraphInput::default(),
+        episodes: vec![EpisodeReferenceInput {
+            episode_id,
+            episode_number: 1,
+            title: "Herr Dr. Tenma".to_owned(),
+            page_keys: vec![episode_page_key.clone()],
+            list_entries: vec![EpisodeListEntryInput {
+                provider: "mal".to_owned(),
+                title: Some("Herr Dr. Tenma".to_owned()),
+                aired_at: Some(initial_aired_at),
+                duration_seconds: Some(1440),
+                is_filler: Some(false),
+                is_recap: Some(false),
+            }],
+        }],
+    };
+    let created_outcome = save_anime(&pool, &first_anime_save).await?;
+    assert_eq!(created_outcome.created_episode_ids, vec![episode_id]);
+    assert_eq!(created_outcome.changed_episode_ids, Vec::<Uuid>::new());
+
+    // Newly created episode is not visible until its own first merge.
+    let visible_before_merge: Option<Uuid> = sqlx::query_scalar!(
+        r#"SELECT id AS "id!" FROM episode_visible WHERE id = $1"#,
+        episode_id
+    )
+    .fetch_optional(&pool)
+    .await?;
+    assert!(visible_before_merge.is_none());
+
+    // Set next_refresh_at so we verify changed list_entries resets it to NULL.
+    sqlx::query!(
+        "UPDATE episode SET next_refresh_at = now() + interval '1 day' WHERE id = $1",
+        episode_id
+    )
+    .execute(&pool)
+    .await?;
+
+    let second_anime_save = SaveAnimeInput {
+        expected_version: 2,
+        merged_record_hash: "ep-work-v2".to_owned(),
+        episodes: vec![EpisodeReferenceInput {
+            episode_id,
+            episode_number: 1,
+            title: "Herr Dr. Tenma".to_owned(),
+            page_keys: vec![episode_page_key.clone()],
+            list_entries: vec![EpisodeListEntryInput {
+                provider: "mal".to_owned(),
+                title: Some("Herr Dr. Tenma (Revised)".to_owned()),
+                aired_at: Some(initial_aired_at),
+                duration_seconds: Some(1445),
+                is_filler: Some(false),
+                is_recap: Some(false),
+            }],
+        }],
+        ..first_anime_save
+    };
+    let changed_outcome = save_anime(&pool, &second_anime_save).await?;
+    assert_eq!(changed_outcome.created_episode_ids, Vec::<Uuid>::new());
+    assert_eq!(changed_outcome.changed_episode_ids, vec![episode_id]);
+
+    let next_refresh_after_change: Option<DateTime<Utc>> = sqlx::query_scalar!(
+        "SELECT next_refresh_at FROM episode WHERE id = $1",
+        episode_id
+    )
+    .fetch_one(&pool)
+    .await?;
+    assert!(next_refresh_after_change.is_none());
+
+    // Store fetched content on the episode's provider page; this bumps episode version to 2.
+    store_page(
+        &pool,
+        StorePageInput {
+            page_key: episode_page_key.clone(),
+            fetched_at: Utc::now(),
+            is_dead: false,
+            responses: vec![PageResponseInput {
+                request_name: "episode".to_owned(),
+                content_type: "application/json".to_owned(),
+                body: br#"{"title":"Herr Dr. Tenma"}"#.to_vec(),
+            }],
+            is_not_found: false,
+            dead_page_review: false,
+        },
+    )
+    .await?;
+
+    let loaded_episode = load_episode(&pool, episode_id).await?;
+    assert_eq!(loaded_episode.version, 2);
+    assert_eq!(loaded_episode.anime_id, anime_id);
+    assert_eq!(loaded_episode.pages.len(), 1);
+    assert_eq!(loaded_episode.list_entries.len(), 1);
+    assert_eq!(
+        loaded_episode.list_entries[0].title.as_deref(),
+        Some("Herr Dr. Tenma (Revised)")
+    );
+
+    let episode_input = SaveEpisodeInput {
+        episode_id,
+        expected_version: 2,
+        episode_number: 1,
+        season_number: Some(1),
+        title: "Herr Dr. Tenma".to_owned(),
+        title_japanese: Some("テンマ先生".to_owned()),
+        title_romaji: None,
+        synopsis: Some("Dr. Tenma saves Johan.".to_owned()),
+        description: None,
+        aired_at: Some(initial_aired_at),
+        duration_seconds: Some(1445),
+        is_filler: false,
+        is_recap: false,
+        score: Some(8.75),
+        titles: vec![EpisodeTitleInput {
+            language: "en".to_owned(),
+            title: "Herr Dr. Tenma".to_owned(),
+        }],
+        images: vec!["https://example.com/ep1.jpg".to_owned()],
+        streaming: vec![EpisodeStreamingInput {
+            platform: "crunchyroll".to_owned(),
+            url: "https://crunchyroll.com/watch/1".to_owned(),
+        }],
+        characters: vec![EpisodeCharacterInput {
+            character_page_provider: "mal".to_owned(),
+            character_page_address: "42".to_owned(),
+            role: "MAIN".to_owned(),
+        }],
+        merged_record_hash: "ep-hash-1".to_owned(),
+        hash_format: postgres_db::EPISODE_HASH_FORMAT,
+        merge_version: 1,
+        traceparent: None,
+    };
+
+    // Wrong version fails with version_conflict.
+    let stale_result = save_episode(
+        &pool,
+        &SaveEpisodeInput {
+            expected_version: 1,
+            ..episode_input.clone()
+        },
+    )
+    .await;
+    assert!(matches!(stale_result, Err(err) if err.is_version_conflict()));
+
+    // First merge emits episode.created and makes episode_visible return the row.
+    let first_ep_save = save_episode(&pool, &episode_input).await?;
+    assert!(first_ep_save.has_changed);
+    assert_eq!(first_ep_save.version, 3);
+
+    let visible_after_merge: Option<Uuid> = sqlx::query_scalar!(
+        r#"SELECT id AS "id!" FROM episode_visible WHERE id = $1"#,
+        episode_id
+    )
+    .fetch_optional(&pool)
+    .await?;
+    assert_eq!(visible_after_merge, Some(episode_id));
+
+    // Unchanged hash skips write and keeps version 3.
+    let unchanged_ep_save = save_episode(
+        &pool,
+        &SaveEpisodeInput {
+            expected_version: 3,
+            ..episode_input.clone()
+        },
+    )
+    .await?;
+    assert!(!unchanged_ep_save.has_changed);
+    assert_eq!(unchanged_ep_save.version, 3);
+
+    // Second merge with changed hash emits episode.updated.
+    let updated_ep_save = save_episode(
+        &pool,
+        &SaveEpisodeInput {
+            expected_version: 3,
+            merged_record_hash: "ep-hash-2".to_owned(),
+            synopsis: Some("Updated synopsis".to_owned()),
+            ..episode_input
+        },
+    )
+    .await?;
+    assert!(updated_ep_save.has_changed);
+    assert_eq!(updated_ep_save.version, 4);
+
+    // MarkEpisodeAired writes notification.episode.aired once and is idempotent.
+    let first_aired = mark_episode_aired(&pool, episode_id, None).await?;
+    assert!(first_aired.has_notified);
+    let second_aired = mark_episode_aired(&pool, episode_id, None).await?;
+    assert!(!second_aired.has_notified);
+
+    let outbox_subjects: Vec<String> = sqlx::query_scalar!(
+        "SELECT subject FROM outbox WHERE entity_id = $1 ORDER BY created_at, id",
+        episode_id
+    )
+    .fetch_all(&pool)
+    .await?;
+    assert_eq!(
+        outbox_subjects,
+        vec![
+            "episode.created".to_owned(),
+            "episode.updated".to_owned(),
+            "notification.episode.aired".to_owned(),
+        ]
+    );
+
+    // Deleting the episode removes its page links and allows reusing episode_number 1.
+    let deleted_version = delete_episode(&pool, episode_id, 4, None).await?;
+    assert_eq!(deleted_version, 5);
+
+    let remaining_page_links: i64 = sqlx::query_scalar!(
+        "SELECT COUNT(*) FROM episode_provider_page WHERE episode_id = $1",
+        episode_id
+    )
+    .fetch_one(&pool)
+    .await?
+    .unwrap_or_default();
+    assert_eq!(remaining_page_links, 0);
+
+    let replacement_episode_id = Uuid::now_v7();
+    sqlx::query!(
+        "INSERT INTO episode (id, anime_id, episode_number, title) VALUES ($1, $2, 1, 'Replacement')",
+        replacement_episode_id,
+        anime_id
+    )
+    .execute(&pool)
+    .await?;
+
+    // Clean up test rows.
+    sqlx::query!(
+        "DELETE FROM outbox WHERE entity_id IN ($1, $2)",
+        anime_id,
+        episode_id
+    )
+    .execute(&pool)
+    .await?;
+    sqlx::query!("DELETE FROM anime WHERE id = $1", anime_id)
+        .execute(&pool)
+        .await?;
+    sqlx::query!(
+        "DELETE FROM provider_page WHERE provider = 'mal' AND page_kind = 'episode' AND address = $1",
+        episode_address
     )
     .execute(&pool)
     .await?;

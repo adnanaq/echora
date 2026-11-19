@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM episode_image WHERE episode_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "772ac9dcb5a2a591e21850e3be0c2b67c2bab692f9f0de8fee629818db0328fc"
+}

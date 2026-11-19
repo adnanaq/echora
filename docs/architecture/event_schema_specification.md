@@ -30,7 +30,7 @@ The domain types (`Anime`, `Episode`, `Character` and their enums) are defined o
 | `protos/shared_proto/v1/anime.proto` | `shared_proto.v1` | Exists |
 | `protos/shared_proto/v1/merge.proto` | `shared_proto.v1` | ~~Planned (ECHO-97)~~ Exists |
 | `protos/enrichment_service/v1/enrichment_service.proto` | `enrichment_service.v1` | Exists, new methods planned, see [[#EnrichmentService (planned methods)]] |
-| `protos/events/v1/events.proto` | `events.v1` | ~~Planned (ECHO-90)~~ Exists (`CatalogueEvent`, `AnimeStatusChangedNotification`; `EpisodeAiredNotification` planned `ECHO-103`) |
+| `protos/events/v1/events.proto` | `events.v1` | ~~Planned (ECHO-90)~~ Exists (`CatalogueEvent`, `AnimeStatusChangedNotification`, `EpisodeAiredNotification`) |
 | `protos/postgres_service/v1/postgres_service.proto` | `postgres_service.v1` | ~~Planned (ECHO-97)~~ Exists |
 | `protos/agent_service/v1/agent_service.proto` | `agent_service.v1` | Planned (ECHO-91) |
 
@@ -717,14 +717,14 @@ message DuePage {  // (ECHO-108)
 
 - **Saves check the version.** A save writes only when the stored version still equals `expected_version`, and otherwise returns `ABORTED`.
   - ~~`SaveAnime` checks it. (ECHO-98)~~
-  - `SaveEpisode` checks it. (ECHO-103)
+  - ~~`SaveEpisode` checks it. (ECHO-103)~~
   - `SaveCharacter` checks it. (ECHO-104)
   - `DeleteAnime` checks it. (ECHO-107)
   - On `ABORTED`, the merge activity loads, merges and saves again within the same attempt. (ECHO-111)
   - ~~A save that changes nothing writes nothing and sends nothing. (ECHO-98)~~
   - `RecordRefresh`, the refresh's last call, records that it finished. (ECHO-108)
 - **`SaveAnime` creates what the work lists.**
-  - An episode the merge gave a new ID is created with its page links, and the response names it so the workflow can start its refresh. (ECHO-103)
+  - ~~An episode the merge gave a new ID is created with its page links, and the response names it so the workflow can start its refresh. (ECHO-103)~~
   - A character the merge gave a new ID is created the same way. Before creating it, the save looks up the character's page keys. When one already belongs to a character, such as one another work's save created a moment earlier, it links that character and drops the new ID, so the save never fails on it. (ECHO-104)
 - ~~**`StorePage`** stores a page and its responses only when its `fetched_at` is newer than the stored one, so a retried or late fetch never replaces newer data. It reports the page as changed when the hash of the responses differs, without reading the stored bodies. (ECHO-97)~~
 - **`CreateAnime` and `RelinkPages`** resolve every unresolved relation that points at a newly linked source page, in the same transaction. They also increase the version of every work that gains or loses a page, so a merge that loaded before the move starts again. (ECHO-107)
@@ -734,11 +734,11 @@ message DuePage {  // (ECHO-108)
 - **Addresses are checked.** An address that does not match its provider's pattern is refused with `INVALID_ARGUMENT`, before it reaches a URL.
   - `FetchPage` checks it. (ECHO-99)
   - ~~`StorePage` checks it. (ECHO-97)~~
-- **`MarkEpisodeAired`** writes `notification.episode.aired` once, when the episode's `aired_at` has passed and `aired_notified_at` is unset. The tracker calls it at air time, so the notification does not depend on a save changing something. (ECHO-103)
+- ~~**`MarkEpisodeAired`** writes `notification.episode.aired` once, when the episode's `aired_at` has passed and `aired_notified_at` is unset. The tracker calls it at air time, so the notification does not depend on a save changing something. (ECHO-103)~~
 - **`SaveGeneratedText` records every attempt**, written or not, so the same provider synopses do not start the synopsis workflow again. (ECHO-115)
 - **`ListDuePages`** lists one budgeted provider's pages in due order with their work, for the budgeted fetcher. (ECHO-108)
-- **`SaveAnime` stores each episode's list entries** in `episode_list_entry`.
-  - An existing episode whose entries changed is made due at once and returned in `changed_episode_ids`, so the refresh starts it. (ECHO-103)
+- ~~**`SaveAnime` stores each episode's list entries** in `episode_list_entry`.~~
+  - ~~An existing episode whose entries changed is made due at once and returned in `changed_episode_ids`, so the refresh starts it. (ECHO-103)~~
   - A character whose cast entry changed is made due at once and returned in `changed_character_ids`. (ECHO-104)
 - **Works exist before their first merge.** See [[Database Schema#4. Writes and Deletes|Database Schema]].
   - `CreateAnime` writes the work's ID and page links with `merged_at` unset, and links pages that were never fetched. (ECHO-107)

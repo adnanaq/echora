@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO episode_provider_page (episode_id, provider, page_kind, address)\n            VALUES ($1, $2, 'episode', $3)\n            ON CONFLICT (provider, page_kind, address) DO NOTHING\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "bac84489b212ced44bd71c8851003c9594069127982947724736de44ec84291f"
+}

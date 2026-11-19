@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE episode\n        SET deleted_at = $2,\n            version = $3,\n            updated_at = $2\n        WHERE id = $1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "38724a32227ca963e68b96b78d5140db94a1de44fe432b9eede1d3a4372828f7"
+}

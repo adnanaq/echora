@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            provider,\n            title,\n            aired_at,\n            duration_seconds,\n            is_filler,\n            is_recap\n        FROM episode_list_entry\n        WHERE episode_id = $1\n        ORDER BY provider\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "provider",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "title",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "aired_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 3,
+        "name": "duration_seconds",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 4,
+        "name": "is_filler",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 5,
+        "name": "is_recap",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "ddb299f9a4a6b23331950e8816f8619334df3aa1c1aba0ef5ea5a217c0cb0234"
+}

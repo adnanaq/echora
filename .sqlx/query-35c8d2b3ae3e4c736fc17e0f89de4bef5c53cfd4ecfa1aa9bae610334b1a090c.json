@@ -1,0 +1,19 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO outbox (id, subject, entity_id, version, payload, created_at, traceparent)\n        VALUES ($1, 'notification.episode.aired', $2, $3, $4, $5, $6)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Int8",
+        "Bytea",
+        "Timestamptz",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "35c8d2b3ae3e4c736fc17e0f89de4bef5c53cfd4ecfa1aa9bae610334b1a090c"
+}

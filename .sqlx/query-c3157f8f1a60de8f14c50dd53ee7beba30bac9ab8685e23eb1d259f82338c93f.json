@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM graph_edge WHERE from_id = $1 OR to_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c3157f8f1a60de8f14c50dd53ee7beba30bac9ab8685e23eb1d259f82338c93f"
+}

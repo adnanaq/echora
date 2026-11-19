@@ -67,7 +67,7 @@ fn map_relation_claims(claims: Vec<RelationClaim>) -> Result<Vec<AnimeRelationCl
                  relation_type,
                  target_page,
              }| {
-                let relation_type_text = map_anime_relation_type_enum(relation_type)?.to_owned();
+                let relation_type_text = map_anime_relation_type(relation_type)?.to_owned();
                 let PageKey {
                     provider: target_provider,
                     page_kind,
@@ -75,7 +75,7 @@ fn map_relation_claims(claims: Vec<RelationClaim>) -> Result<Vec<AnimeRelationCl
                 } = target_page.ok_or_else(|| {
                     Status::invalid_argument("relation_claim requires target_page")
                 })?;
-                let mapped_kind = map_page_kind_enum(page_kind)?;
+                let mapped_kind = map_page_kind(page_kind)?;
                 Ok(AnimeRelationClaimInput {
                     provider,
                     relation_type: relation_type_text,
@@ -224,7 +224,7 @@ fn normalize_source_material_relation_type(raw_text: &str) -> Result<&'static st
     }
 }
 
-fn map_anime_relation_type_enum(enum_number: i32) -> Result<&'static str, Status> {
+fn map_anime_relation_type(enum_number: i32) -> Result<&'static str, Status> {
     let Ok(relation_type) = AnimeRelationType::try_from(enum_number) else {
         return Err(Status::invalid_argument(format!(
             "unknown AnimeRelationType number {enum_number}"
@@ -252,7 +252,7 @@ fn map_anime_relation_type_enum(enum_number: i32) -> Result<&'static str, Status
     }
 }
 
-fn map_page_kind_enum(enum_number: i32) -> Result<DbPageKind, Status> {
+pub(crate) fn map_page_kind(enum_number: i32) -> Result<DbPageKind, Status> {
     let Ok(page_kind) = PageKind::try_from(enum_number) else {
         return Err(Status::invalid_argument(format!(
             "unknown PageKind number {enum_number}"
@@ -323,7 +323,7 @@ fn parse_provider_from_url(url: &str) -> Option<&'static str> {
     }
 }
 
-fn parse_provider_target_from_url(url: &str) -> Option<(&'static str, String)> {
+pub(crate) fn parse_provider_target_from_url(url: &str) -> Option<(&'static str, String)> {
     let provider = parse_provider_from_url(url)?;
     let without_scheme = url
         .trim()
@@ -342,7 +342,12 @@ fn parse_provider_target_from_url(url: &str) -> Option<(&'static str, String)> {
     let raw_id = match provider {
         "mal" | "anilist" | "anisearch" | "anidb" | "kitsu" | "anime_planet" | "livechart"
         | "simkl" => {
-            if segments.len() >= 2 && matches!(segments[0], "anime" | "manga" | "light-novels") {
+            if segments.len() >= 2
+                && matches!(
+                    segments[0],
+                    "anime" | "manga" | "light-novels" | "character"
+                )
+            {
                 segments[1]
             } else {
                 segments.first().copied()?

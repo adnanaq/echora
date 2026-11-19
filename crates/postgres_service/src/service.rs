@@ -8,14 +8,16 @@ use chrono::{DateTime, Utc};
 use opentelemetry::global;
 use opentelemetry::metrics::Gauge;
 use postgres_db::{
-    PageKeyInput, PageKind, PageResponseInput, PgPool, StorePageInput, load_anime, save_anime,
-    store_page,
+    EpisodeListEntryInput, FieldCorrectionRecord, LoadedSourcePage, PageKeyInput, PageKind,
+    PageResponseInput, PgPool, StorePageInput, load_anime, load_episode, mark_episode_aired,
+    save_anime, save_episode, store_page,
 };
 use prost::Message as _;
 use tonic::{Request, Response, Status};
 use uuid::Uuid;
 
 use crate::anime_mapping::build_save_anime_input;
+use crate::episode_mapping::build_save_episode_input;
 
 #[allow(clippy::all, clippy::pedantic, missing_docs, dead_code)]
 pub mod shared_proto {
@@ -33,12 +35,14 @@ pub mod postgres_service_proto {
 
 use postgres_service_proto::v1::postgres_service_server::PostgresService;
 use postgres_service_proto::v1::{
-    LoadAnimeRequest, LoadAnimeResponse, SaveAnimeRequest, SaveAnimeResponse, StorePageRequest,
-    StorePageResponse,
+    LoadAnimeRequest, LoadAnimeResponse, LoadEpisodeRequest, LoadEpisodeResponse,
+    MarkEpisodeAiredRequest, MarkEpisodeAiredResponse, SaveAnimeRequest, SaveAnimeResponse,
+    SaveEpisodeRequest, SaveEpisodeResponse, StorePageRequest, StorePageResponse,
 };
 use shared_proto::v1::{
-    FieldCorrection as ProtoFieldCorrection, PageKey as ProtoPageKey, PageKind as ProtoPageKind,
-    PageResponse as ProtoPageResponse, StoredPage as ProtoStoredPage,
+    EpisodeListEntry as ProtoEpisodeListEntry, FieldCorrection as ProtoFieldCorrection,
+    PageKey as ProtoPageKey, PageKind as ProtoPageKind, PageResponse as ProtoPageResponse,
+    StoredPage as ProtoStoredPage,
 };
 
 /// Maximum gRPC message size (64 MiB) for RPCs carrying raw provider page bodies.
@@ -172,25 +176,7 @@ impl PostgresService for PostgresGrpcService {
             .await
             .map_err(|err| map_db_error(&err))?;
 
-        let source_pages = outcome
-            .source_pages
-            .into_iter()
-            .map(|page| ProtoStoredPage {
-                page_key: Some(to_proto_page_key(page.page_key)),
-                fetched_at: Some(to_proto_timestamp(page.fetched_at)),
-                is_dead: page.is_dead,
-                responses: page
-                    .responses
-                    .into_iter()
-                    .map(|resp| ProtoPageResponse {
-                        request_name: resp.request_name,
-                        content_type: resp.content_type,
-                        body: resp.body,
-                    })
-                    .collect(),
-                is_not_found: page.is_not_found,
-            })
-            .collect();
+        let source_pages = to_proto_stored_pages(outcome.source_pages);
 
         let partial_source_pages = outcome
             .partial_source_pages
@@ -198,19 +184,7 @@ impl PostgresService for PostgresGrpcService {
             .map(to_proto_page_key)
             .collect();
 
-        let corrections = outcome
-            .corrections
-            .into_iter()
-            .map(|corr| ProtoFieldCorrection {
-                field_path: corr.field_path,
-                value: Some(prost_types::Any {
-                    type_url: corr.value_message,
-                    value: corr.value,
-                }),
-                approved_by: corr.approved_by,
-                approved_at: Some(to_proto_timestamp(corr.approved_at)),
-            })
-            .collect();
+        let corrections = to_proto_corrections(outcome.corrections);
 
         let response = LoadAnimeResponse {
             version: outcome.version,
@@ -227,11 +201,7 @@ impl PostgresService for PostgresGrpcService {
         &self,
         request: Request<SaveAnimeRequest>,
     ) -> Result<Response<SaveAnimeResponse>, Status> {
-        let traceparent = request
-            .metadata()
-            .get("traceparent")
-            .and_then(|val| val.to_str().ok())
-            .map(str::to_owned);
+        let traceparent = extract_traceparent(&request);
         let req = request.into_inner();
         let anime = req
             .anime
@@ -243,6 +213,7 @@ impl PostgresService for PostgresGrpcService {
             req.merge_version,
             anime,
             req.relation_claims,
+            req.episodes,
             traceparent,
         )?;
 
@@ -253,7 +224,144 @@ impl PostgresService for PostgresGrpcService {
         Ok(Response::new(SaveAnimeResponse {
             has_changed: outcome.has_changed,
             version: outcome.version,
+            created_episode_ids: outcome
+                .created_episode_ids
+                .into_iter()
+                .map(|id| id.to_string())
+                .collect(),
+            changed_episode_ids: outcome
+                .changed_episode_ids
+                .into_iter()
+                .map(|id| id.to_string())
+                .collect(),
         }))
+    }
+
+    async fn load_episode(
+        &self,
+        request: Request<LoadEpisodeRequest>,
+    ) -> Result<Response<LoadEpisodeResponse>, Status> {
+        let episode_id = Uuid::parse_str(&request.into_inner().episode_id)
+            .map_err(|err| Status::invalid_argument(format!("invalid episode_id UUID: {err}")))?;
+
+        let outcome = load_episode(&self.pool, episode_id)
+            .await
+            .map_err(|err| map_db_error(&err))?;
+
+        let response = LoadEpisodeResponse {
+            version: outcome.version,
+            anime_id: outcome.anime_id.to_string(),
+            pages: to_proto_stored_pages(outcome.pages),
+            corrections: to_proto_corrections(outcome.corrections),
+            list_entries: outcome
+                .list_entries
+                .into_iter()
+                .map(to_proto_episode_list_entry)
+                .collect(),
+        };
+        self.record_message_size(response.encoded_len() as u64);
+
+        Ok(Response::new(response))
+    }
+
+    async fn save_episode(
+        &self,
+        request: Request<SaveEpisodeRequest>,
+    ) -> Result<Response<SaveEpisodeResponse>, Status> {
+        let traceparent = extract_traceparent(&request);
+        let req = request.into_inner();
+        let episode = req
+            .episode
+            .ok_or_else(|| Status::invalid_argument("episode must be provided"))?;
+
+        let input = build_save_episode_input(
+            &req.episode_id,
+            req.expected_version,
+            req.merge_version,
+            episode,
+            traceparent,
+        )?;
+
+        let outcome = save_episode(&self.pool, &input)
+            .await
+            .map_err(|err| map_db_error(&err))?;
+
+        Ok(Response::new(SaveEpisodeResponse {
+            has_changed: outcome.has_changed,
+            version: outcome.version,
+        }))
+    }
+
+    async fn mark_episode_aired(
+        &self,
+        request: Request<MarkEpisodeAiredRequest>,
+    ) -> Result<Response<MarkEpisodeAiredResponse>, Status> {
+        let traceparent = extract_traceparent(&request);
+        let episode_id = Uuid::parse_str(&request.into_inner().episode_id)
+            .map_err(|err| Status::invalid_argument(format!("invalid episode_id UUID: {err}")))?;
+
+        let outcome = mark_episode_aired(&self.pool, episode_id, traceparent.as_deref())
+            .await
+            .map_err(|err| map_db_error(&err))?;
+
+        Ok(Response::new(MarkEpisodeAiredResponse {
+            has_notified: outcome.has_notified,
+        }))
+    }
+}
+
+fn extract_traceparent<T>(request: &Request<T>) -> Option<String> {
+    request
+        .metadata()
+        .get("traceparent")
+        .and_then(|val| val.to_str().ok())
+        .map(str::to_owned)
+}
+
+fn to_proto_stored_pages(pages: Vec<LoadedSourcePage>) -> Vec<ProtoStoredPage> {
+    pages
+        .into_iter()
+        .map(|page| ProtoStoredPage {
+            page_key: Some(to_proto_page_key(page.page_key)),
+            fetched_at: Some(to_proto_timestamp(page.fetched_at)),
+            is_dead: page.is_dead,
+            responses: page
+                .responses
+                .into_iter()
+                .map(|resp| ProtoPageResponse {
+                    request_name: resp.request_name,
+                    content_type: resp.content_type,
+                    body: resp.body,
+                })
+                .collect(),
+            is_not_found: page.is_not_found,
+        })
+        .collect()
+}
+
+fn to_proto_corrections(corrections: Vec<FieldCorrectionRecord>) -> Vec<ProtoFieldCorrection> {
+    corrections
+        .into_iter()
+        .map(|corr| ProtoFieldCorrection {
+            field_path: corr.field_path,
+            value: Some(prost_types::Any {
+                type_url: corr.value_message,
+                value: corr.value,
+            }),
+            approved_by: corr.approved_by,
+            approved_at: Some(to_proto_timestamp(corr.approved_at)),
+        })
+        .collect()
+}
+
+fn to_proto_episode_list_entry(entry: EpisodeListEntryInput) -> ProtoEpisodeListEntry {
+    ProtoEpisodeListEntry {
+        provider: entry.provider,
+        title: entry.title,
+        aired_at: entry.aired_at.map(to_proto_timestamp),
+        duration_seconds: entry.duration_seconds,
+        is_filler: entry.is_filler,
+        is_recap: entry.is_recap,
     }
 }
 

@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO episode_title (episode_id, language, title)\n         SELECT $1, language, title\n         FROM UNNEST($2::text[], $3::text[]) AS entry(language, title)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "TextArray",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7d072d74cc53ea6c16476e30d110c531991b83f9cbbb47728c08c2c7a024a8fe"
+}
