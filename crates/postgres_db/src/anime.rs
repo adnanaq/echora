@@ -15,6 +15,7 @@ use uuid::Uuid;
 use crate::anime_details::{replace_anime_details, validate_anime_details};
 use crate::anime_relations::{replace_relations_and_graph, validate_relations_and_graph};
 use crate::anime_schedule_and_stats::{replace_schedule_and_stats, validate_schedule_and_stats};
+use crate::episode::{EpisodeReferenceInput, sync_work_episodes, validate_work_episode_references};
 use crate::{
     AnimeDetailsInput, AnimeRelationsAndGraphInput, AnimeScheduleAndStatsInput, Error,
     PageKeyInput, PageKind, PageResponseInput,
@@ -24,7 +25,7 @@ use crate::{
 ///
 /// Bumping this constant causes unchanged records to re-save once so the new
 /// hash format is persisted.
-pub const ANIME_HASH_FORMAT: i16 = 4;
+pub const ANIME_HASH_FORMAT: i16 = 5;
 
 const MIN_ANIME_YEAR: i16 = 1900;
 const MIN_MONTH: i16 = 1;
@@ -136,23 +137,29 @@ pub struct SaveAnimeInput {
     pub schedule_and_stats: AnimeScheduleAndStatsInput,
     /// Relations, relation claims, source material, and companies.
     pub relations_and_graph: AnimeRelationsAndGraphInput,
+    /// Episodes listed by the work's merge.
+    pub episodes: Vec<EpisodeReferenceInput>,
 }
 
 /// Result returned by [`save_anime`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SaveAnimeOutcome {
     /// Whether the canonical hash differed and database state was updated.
     pub has_changed: bool,
     /// Work version after the save attempt.
     pub version: i64,
+    /// Newly created episode IDs to refresh next.
+    pub created_episode_ids: Vec<Uuid>,
+    /// Existing episode IDs whose list entries changed.
+    pub changed_episode_ids: Vec<Uuid>,
 }
 
 #[derive(PartialEq, prost::Message)]
-struct ProtoTimestamp {
+pub(crate) struct ProtoTimestamp {
     #[prost(int64, tag = "1")]
-    seconds: i64,
+    pub(crate) seconds: i64,
     #[prost(int32, tag = "2")]
-    nanos: i32,
+    pub(crate) nanos: i32,
 }
 
 #[derive(PartialEq, prost::Message)]
@@ -423,6 +430,8 @@ async fn save_anime_in_tx(
         return Ok(SaveAnimeOutcome {
             has_changed: false,
             version: existing_anime.version,
+            created_episode_ids: Vec::new(),
+            changed_episode_ids: Vec::new(),
         });
     }
 
@@ -434,6 +443,8 @@ async fn save_anime_in_tx(
     replace_anime_details(tx, input.anime_id, &input.details).await?;
     replace_schedule_and_stats(tx, input.anime_id, &input.schedule_and_stats).await?;
     replace_relations_and_graph(tx, input.anime_id, &input.relations_and_graph).await?;
+    let (created_episode_ids, changed_episode_ids) =
+        sync_work_episodes(tx, input.anime_id, &input.episodes).await?;
     emit_anime_outbox_events(
         tx,
         input,
@@ -447,6 +458,8 @@ async fn save_anime_in_tx(
     Ok(SaveAnimeOutcome {
         has_changed: true,
         version: next_version,
+        created_episode_ids,
+        changed_episode_ids,
     })
 }
 
@@ -654,10 +667,41 @@ fn validate_save_input(input: &SaveAnimeInput) -> Result<(), Error> {
     validate_anime_details(&input.details)?;
     validate_schedule_and_stats(&input.schedule_and_stats)?;
     validate_relations_and_graph(&input.relations_and_graph)?;
+    validate_work_episode_references(&input.episodes)?;
     Ok(())
 }
 
-fn parse_page_kind(page_kind_text: &str) -> Result<PageKind, Error> {
+pub(crate) async fn insert_catalogue_outbox_event(
+    tx: &mut Transaction<'_, Postgres>,
+    subject: &str,
+    entity_id: Uuid,
+    version: i64,
+    anime_id: Option<Uuid>,
+    saved_at: DateTime<Utc>,
+    traceparent: Option<&str>,
+) -> Result<(), Error> {
+    let event_id = Uuid::now_v7();
+    let payload = ProtoCatalogueEvent {
+        event_id: event_id.to_string(),
+        saved_at: Some(to_proto_timestamp(saved_at)),
+        entity_id: entity_id.to_string(),
+        version,
+        anime_id: anime_id.map(|id| id.to_string()),
+    }
+    .encode_to_vec();
+    insert_outbox_row(
+        tx,
+        event_id,
+        subject,
+        entity_id,
+        version,
+        &payload,
+        traceparent,
+    )
+    .await
+}
+
+pub(crate) fn parse_page_kind(page_kind_text: &str) -> Result<PageKind, Error> {
     match page_kind_text {
         "anime" => Ok(PageKind::Anime),
         "episode" => Ok(PageKind::Episode),
@@ -681,7 +725,7 @@ fn status_to_proto_i32(status: &str) -> Result<i32, Error> {
     }
 }
 
-fn decompress_body(compressed: &[u8]) -> Result<Vec<u8>, Error> {
+pub(crate) fn decompress_body(compressed: &[u8]) -> Result<Vec<u8>, Error> {
     let mut decoder = GzDecoder::new(compressed);
     let mut out = Vec::new();
     decoder
@@ -690,7 +734,7 @@ fn decompress_body(compressed: &[u8]) -> Result<Vec<u8>, Error> {
     Ok(out)
 }
 
-fn to_proto_timestamp(ts: DateTime<Utc>) -> ProtoTimestamp {
+pub(crate) fn to_proto_timestamp(ts: DateTime<Utc>) -> ProtoTimestamp {
     ProtoTimestamp {
         seconds: ts.timestamp(),
         nanos: i32::try_from(ts.timestamp_subsec_nanos()).unwrap_or(0),
@@ -769,6 +813,7 @@ mod tests {
             details: AnimeDetailsInput::default(),
             schedule_and_stats: AnimeScheduleAndStatsInput::default(),
             relations_and_graph: AnimeRelationsAndGraphInput::default(),
+            episodes: Vec::new(),
         };
         assert!(validate_save_input(&base).is_ok());
 

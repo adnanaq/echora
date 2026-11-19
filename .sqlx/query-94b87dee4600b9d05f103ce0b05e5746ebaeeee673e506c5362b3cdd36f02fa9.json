@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO source_material_image (source_material_id, source)\n         SELECT $1, source\n         FROM UNNEST($2::text[]) AS entry(source)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "94b87dee4600b9d05f103ce0b05e5746ebaeeee673e506c5362b3cdd36f02fa9"
+}

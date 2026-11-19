@@ -67,7 +67,7 @@ fn map_relation_claims(claims: Vec<RelationClaim>) -> Result<Vec<AnimeRelationCl
                  relation_type,
                  target_page,
              }| {
-                let relation_type_text = map_anime_relation_type_enum(relation_type)?.to_owned();
+                let relation_type_text = map_anime_relation_type(relation_type)?.to_owned();
                 let PageKey {
                     provider: target_provider,
                     page_kind,
@@ -75,7 +75,7 @@ fn map_relation_claims(claims: Vec<RelationClaim>) -> Result<Vec<AnimeRelationCl
                 } = target_page.ok_or_else(|| {
                     Status::invalid_argument("relation_claim requires target_page")
                 })?;
-                let mapped_kind = map_page_kind_enum(page_kind)?;
+                let mapped_kind = map_page_kind(page_kind)?;
                 Ok(AnimeRelationClaimInput {
                     provider,
                     relation_type: relation_type_text,
@@ -224,7 +224,7 @@ fn normalize_source_material_relation_type(raw_text: &str) -> Result<&'static st
     }
 }
 
-fn map_anime_relation_type_enum(enum_number: i32) -> Result<&'static str, Status> {
+fn map_anime_relation_type(enum_number: i32) -> Result<&'static str, Status> {
     let Ok(relation_type) = AnimeRelationType::try_from(enum_number) else {
         return Err(Status::invalid_argument(format!(
             "unknown AnimeRelationType number {enum_number}"
@@ -252,7 +252,7 @@ fn map_anime_relation_type_enum(enum_number: i32) -> Result<&'static str, Status
     }
 }
 
-fn map_page_kind_enum(enum_number: i32) -> Result<DbPageKind, Status> {
+pub(crate) fn map_page_kind(enum_number: i32) -> Result<DbPageKind, Status> {
     let Ok(page_kind) = PageKind::try_from(enum_number) else {
         return Err(Status::invalid_argument(format!(
             "unknown PageKind number {enum_number}"
@@ -323,7 +323,18 @@ fn parse_provider_from_url(url: &str) -> Option<&'static str> {
     }
 }
 
-fn parse_provider_target_from_url(url: &str) -> Option<(&'static str, String)> {
+pub(crate) fn parse_provider_target_from_url(url: &str) -> Option<(&'static str, String)> {
+    parse_provider_target_with_kinds(url, &["anime", "manga", "light-novels"])
+}
+
+pub(crate) fn parse_character_target_from_url(url: &str) -> Option<(&'static str, String)> {
+    parse_provider_target_with_kinds(url, &["character"])
+}
+
+fn parse_provider_target_with_kinds(
+    url: &str,
+    allowed_segments: &[&str],
+) -> Option<(&'static str, String)> {
     let provider = parse_provider_from_url(url)?;
     let without_scheme = url
         .trim()
@@ -342,10 +353,21 @@ fn parse_provider_target_from_url(url: &str) -> Option<(&'static str, String)> {
     let raw_id = match provider {
         "mal" | "anilist" | "anisearch" | "anidb" | "kitsu" | "anime_planet" | "livechart"
         | "simkl" => {
-            if segments.len() >= 2 && matches!(segments[0], "anime" | "manga" | "light-novels") {
-                segments[1]
+            if segments.len() >= 2 {
+                if allowed_segments.contains(&segments[0]) {
+                    segments[1]
+                } else {
+                    return None;
+                }
             } else {
-                segments.first().copied()?
+                let first_segment = segments.first().copied()?;
+                if matches!(
+                    first_segment,
+                    "anime" | "manga" | "light-novels" | "character"
+                ) {
+                    return None;
+                }
+                first_segment
             }
         }
         "animecountdown" => segments.first().copied()?,
@@ -441,5 +463,15 @@ mod tests {
         assert_eq!(mapped.source_materials[0].xrefs[0].external_id, "13");
         assert_eq!(mapped.companies.len(), 1);
         assert_eq!(mapped.companies[0].roles, vec!["STUDIO"]);
+    }
+
+    #[test]
+    fn parse_provider_target_from_url_rejects_character_urls() {
+        assert!(parse_provider_target_from_url("https://myanimelist.net/character/42").is_none());
+        assert!(parse_character_target_from_url("https://kitsu.app/anime/42").is_none());
+        assert_eq!(
+            parse_character_target_from_url("https://myanimelist.net/character/42"),
+            Some(("mal", "42".to_owned()))
+        );
     }
 }

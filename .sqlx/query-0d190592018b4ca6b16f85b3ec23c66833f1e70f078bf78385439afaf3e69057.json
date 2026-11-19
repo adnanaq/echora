@@ -1,0 +1,46 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            field_path,\n            value_message,\n            value,\n            approved_by,\n            approved_at\n        FROM episode_field_correction\n        WHERE episode_id = $1\n        ORDER BY field_path\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "field_path",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "value_message",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "value",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 3,
+        "name": "approved_by",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "approved_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "0d190592018b4ca6b16f85b3ec23c66833f1e70f078bf78385439afaf3e69057"
+}

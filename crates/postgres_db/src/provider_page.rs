@@ -276,6 +276,28 @@ async fn notify_linked_source_works(
     .execute(&mut **tx)
     .await?;
 
+    if page_key.page_kind == PageKind::Episode {
+        sqlx::query!(
+            r#"
+            UPDATE episode
+            SET version = version + 1,
+                merge_requested_at = COALESCE(merge_requested_at, now())
+            WHERE id IN (
+                SELECT episode_id
+                FROM episode_provider_page
+                WHERE provider = $1 AND page_kind = $2 AND address = $3
+                ORDER BY episode_id
+            )
+              AND deleted_at IS NULL
+            "#,
+            page_key.provider,
+            page_key.page_kind.as_str(),
+            page_key.address,
+        )
+        .execute(&mut **tx)
+        .await?;
+    }
+
     Ok(())
 }
 

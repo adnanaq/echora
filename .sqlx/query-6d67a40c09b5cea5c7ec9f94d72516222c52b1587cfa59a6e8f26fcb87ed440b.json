@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "INSERT INTO anime_streaming (\n                 anime_id, platform, url, region, is_free, is_premium_required, has_dub\n             )\n             VALUES ($1, $2, $3, $4, $5, $6, $7)\n             RETURNING id",
+  "query": "INSERT INTO anime_streaming (\n                 anime_id, platform, source, region, is_free, is_premium_required, has_dub\n             )\n             VALUES ($1, $2, $3, $4, $5, $6, $7)\n             RETURNING id",
   "describe": {
     "columns": [
       {
@@ -24,5 +24,5 @@
       false
     ]
   },
-  "hash": "e2c7c1da4ad7453822a2297176f43498043b8710c0dfc35b684f3b91b333af6b"
+  "hash": "6d67a40c09b5cea5c7ec9f94d72516222c52b1587cfa59a6e8f26fcb87ed440b"
 }

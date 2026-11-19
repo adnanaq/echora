@@ -78,3 +78,33 @@ class RelationClaim(_message.Message):
     relation_type: _anime_pb2.AnimeRelationType
     target_page: PageKey
     def __init__(self, provider: _Optional[str] = ..., relation_type: _Optional[_Union[_anime_pb2.AnimeRelationType, str]] = ..., target_page: _Optional[_Union[PageKey, _Mapping]] = ...) -> None: ...
+
+class EpisodeListEntry(_message.Message):
+    __slots__ = ("provider", "title", "aired_at", "duration_seconds", "is_filler", "is_recap")
+    PROVIDER_FIELD_NUMBER: _ClassVar[int]
+    TITLE_FIELD_NUMBER: _ClassVar[int]
+    AIRED_AT_FIELD_NUMBER: _ClassVar[int]
+    DURATION_SECONDS_FIELD_NUMBER: _ClassVar[int]
+    IS_FILLER_FIELD_NUMBER: _ClassVar[int]
+    IS_RECAP_FIELD_NUMBER: _ClassVar[int]
+    provider: str
+    title: str
+    aired_at: _timestamp_pb2.Timestamp
+    duration_seconds: int
+    is_filler: bool
+    is_recap: bool
+    def __init__(self, provider: _Optional[str] = ..., title: _Optional[str] = ..., aired_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., duration_seconds: _Optional[int] = ..., is_filler: _Optional[bool] = ..., is_recap: _Optional[bool] = ...) -> None: ...
+
+class EpisodeReference(_message.Message):
+    __slots__ = ("episode_id", "episode_number", "title", "page_keys", "list_entries")
+    EPISODE_ID_FIELD_NUMBER: _ClassVar[int]
+    EPISODE_NUMBER_FIELD_NUMBER: _ClassVar[int]
+    TITLE_FIELD_NUMBER: _ClassVar[int]
+    PAGE_KEYS_FIELD_NUMBER: _ClassVar[int]
+    LIST_ENTRIES_FIELD_NUMBER: _ClassVar[int]
+    episode_id: str
+    episode_number: int
+    title: str
+    page_keys: _containers.RepeatedCompositeFieldContainer[PageKey]
+    list_entries: _containers.RepeatedCompositeFieldContainer[EpisodeListEntry]
+    def __init__(self, episode_id: _Optional[str] = ..., episode_number: _Optional[int] = ..., title: _Optional[str] = ..., page_keys: _Optional[_Iterable[_Union[PageKey, _Mapping]]] = ..., list_entries: _Optional[_Iterable[_Union[EpisodeListEntry, _Mapping]]] = ...) -> None: ...

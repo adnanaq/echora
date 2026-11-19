@@ -19,31 +19,31 @@ CREATE TABLE theme_song_episode_range (
 
 CREATE TABLE anime_trailer (
   anime_id       uuid NOT NULL REFERENCES anime(id) ON DELETE CASCADE,
-  url            text NOT NULL,
+  source         text NOT NULL,
   title          text,
   thumbnail_url  text,
-  PRIMARY KEY (anime_id, url)
+  PRIMARY KEY (anime_id, source)
 );
 
 CREATE TABLE anime_external_link (
   anime_id  uuid NOT NULL REFERENCES anime(id) ON DELETE CASCADE,
-  url       text NOT NULL,
+  source    text NOT NULL,
   platform  text NOT NULL,
   label     text,
   language  text,
-  PRIMARY KEY (anime_id, url)
+  PRIMARY KEY (anime_id, source)
 );
 
 CREATE TABLE anime_streaming (
   id                   bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   anime_id             uuid NOT NULL REFERENCES anime(id) ON DELETE CASCADE,
   platform             text NOT NULL,
-  url                  text NOT NULL,
+  source               text NOT NULL,
   region               text,
   is_free              boolean,
   is_premium_required  boolean,
   has_dub              boolean,
-  UNIQUE NULLS NOT DISTINCT (anime_id, url, region)
+  UNIQUE NULLS NOT DISTINCT (anime_id, source, region)
 );
 
 CREATE TABLE anime_streaming_subtitle_language (

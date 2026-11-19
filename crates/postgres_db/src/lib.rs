@@ -6,6 +6,7 @@ mod anime;
 mod anime_details;
 mod anime_relations;
 mod anime_schedule_and_stats;
+mod episode;
 mod error;
 mod graph_projection;
 mod provider_page;
@@ -27,6 +28,13 @@ pub use anime_schedule_and_stats::{
     AnimeBroadcastInput, AnimeContextualRankInput, AnimeExternalLinkInput, AnimeHiatusInput,
     AnimeScheduleAndStatsInput, AnimeStatisticsInput, AnimeStreamingInput, AnimeThemeSongInput,
     AnimeTrailerInput, EpisodeRangeInput,
+};
+#[doc(inline)]
+pub use episode::{
+    EPISODE_HASH_FORMAT, EpisodeCharacterInput, EpisodeListEntryInput, EpisodeReferenceInput,
+    EpisodeStreamingInput, EpisodeTitleInput, LoadEpisodeOutcome, MarkEpisodeAiredOutcome,
+    SaveEpisodeInput, SaveEpisodeOutcome, delete_episode, load_episode, mark_episode_aired,
+    save_episode,
 };
 #[doc(inline)]
 pub use error::Error;
