@@ -36,14 +36,14 @@ use crate::service::shared_proto::v1::{
     reason = "Exhaustive destructuring of every Anime proto field without '..' is required by ECHO-98"
 )]
 pub fn build_save_anime_input(
-    anime_id_str: &str,
+    anime_id_text: &str,
     expected_version: i64,
     merge_version: i32,
     anime: Anime,
     relation_claims: Vec<RelationClaim>,
     traceparent: Option<String>,
 ) -> Result<SaveAnimeInput, Status> {
-    let anime_id = Uuid::parse_str(anime_id_str)
+    let anime_id = Uuid::parse_str(anime_id_text)
         .map_err(|err| Status::invalid_argument(format!("invalid anime_id UUID: {err}")))?;
 
     let merged_record_hash = compute_save_record_hash(&anime, &relation_claims);
@@ -95,23 +95,23 @@ pub fn build_save_anime_input(
 
     validate_entity_type(entity_type)?;
     let anime_type = map_anime_type(r#type)?.to_owned();
-    let status_str = map_anime_status(status)?.to_owned();
-    let rating_str = match rating {
+    let anime_status = map_anime_status(status)?.to_owned();
+    let anime_rating = match rating {
         Some(rating_number) => map_anime_rating(rating_number)?.to_owned(),
         None => "UNKNOWN".to_owned(),
     };
-    let season_str = season.map(map_anime_season).transpose()?.map(str::to_owned);
-    let source_material_str = source_material
+    let anime_season = season.map(map_anime_season).transpose()?.map(str::to_owned);
+    let anime_source_material = source_material
         .map(map_source_material_type)
         .transpose()?
         .map(str::to_owned);
 
-    let year_i16 = year
+    let release_year = year
         .map(|val| {
             i16::try_from(val).map_err(|_| Status::invalid_argument("year out of smallint range"))
         })
         .transpose()?;
-    let month_i16 = month
+    let release_month = month
         .map(|val| {
             i16::try_from(val).map_err(|_| Status::invalid_argument("month out of smallint range"))
         })
@@ -175,12 +175,12 @@ pub fn build_save_anime_input(
         title_english,
         title_japanese,
         anime_type,
-        status: status_str,
-        rating: rating_str,
-        season: season_str,
-        source_material: source_material_str,
-        year: year_i16,
-        month: month_i16,
+        status: anime_status,
+        rating: anime_rating,
+        season: anime_season,
+        source_material: anime_source_material,
+        year: release_year,
+        month: release_month,
         episode_count,
         duration_seconds: duration,
         is_nsfw: nsfw,
@@ -258,14 +258,14 @@ fn build_anime_details(
 /// and its sorted [`RelationClaim`] list.
 #[must_use]
 pub fn compute_save_record_hash(anime: &Anime, relation_claims: &[RelationClaim]) -> String {
-    let mut canonical = anime.clone();
-    canonical.content_warnings.sort();
-    canonical.demographics.sort();
-    canonical.genres.sort();
-    canonical.sources.sort();
-    canonical.partial_sources.sort();
-    canonical.synonyms.sort();
-    canonical.tags.sort();
+    let mut canonical_anime = anime.clone();
+    canonical_anime.content_warnings.sort();
+    canonical_anime.demographics.sort();
+    canonical_anime.genres.sort();
+    canonical_anime.sources.sort();
+    canonical_anime.partial_sources.sort();
+    canonical_anime.synonyms.sort();
+    canonical_anime.tags.sort();
 
     let mut canonical_claims = relation_claims.to_vec();
     canonical_claims.sort_by(|left, right| {
@@ -291,7 +291,7 @@ pub fn compute_save_record_hash(anime: &Anime, relation_claims: &[RelationClaim]
     });
 
     let mut hasher = Sha256::new();
-    let anime_bytes = canonical.encode_to_vec();
+    let anime_bytes = canonical_anime.encode_to_vec();
     hasher.update(anime_bytes.len().to_be_bytes());
     hasher.update(&anime_bytes);
     for claim in &canonical_claims {
@@ -454,23 +454,23 @@ mod tests {
 
     #[test]
     fn canonical_hash_is_order_independent_on_set_lists() {
-        let mut a = Anime {
+        let mut first_anime = Anime {
             title: "Monster".to_owned(),
             r#type: AnimeType::Tv as i32,
             status: AnimeStatus::Finished as i32,
             genres: vec!["Thriller".to_owned(), "Drama".to_owned()],
             ..Anime::default()
         };
-        let mut b = a.clone();
-        b.genres.reverse();
+        let mut second_anime = first_anime.clone();
+        second_anime.genres.reverse();
         assert_eq!(
-            compute_save_record_hash(&a, &[]),
-            compute_save_record_hash(&b, &[])
+            compute_save_record_hash(&first_anime, &[]),
+            compute_save_record_hash(&second_anime, &[])
         );
-        a.title.push('!');
+        first_anime.title.push('!');
         assert_ne!(
-            compute_save_record_hash(&a, &[]),
-            compute_save_record_hash(&b, &[])
+            compute_save_record_hash(&first_anime, &[]),
+            compute_save_record_hash(&second_anime, &[])
         );
     }
 

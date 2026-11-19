@@ -40,13 +40,13 @@ pub(crate) fn build_relations_and_graph(
 fn map_related_anime(
     related_anime: BTreeMap<String, RelatedAnimeList>,
 ) -> Result<Vec<AnimeRelationInput>, Status> {
-    let mut mapped = Vec::new();
+    let mut anime_relations = Vec::new();
     for (raw_relation_type, RelatedAnimeList { items }) in related_anime {
         let relation_type = normalize_anime_relation_type(&raw_relation_type)?;
         for item in items {
             for source_url in item.sources {
                 if let Some((provider, address)) = parse_provider_target_from_url(&source_url) {
-                    mapped.push(AnimeRelationInput {
+                    anime_relations.push(AnimeRelationInput {
                         relation_type: relation_type.to_owned(),
                         to_page_provider: provider.to_owned(),
                         to_page_address: address,
@@ -55,7 +55,7 @@ fn map_related_anime(
             }
         }
     }
-    Ok(mapped)
+    Ok(anime_relations)
 }
 
 fn map_relation_claims(claims: Vec<RelationClaim>) -> Result<Vec<AnimeRelationClaimInput>, Status> {
@@ -67,7 +67,7 @@ fn map_relation_claims(claims: Vec<RelationClaim>) -> Result<Vec<AnimeRelationCl
                  relation_type,
                  target_page,
              }| {
-                let relation_str = map_anime_relation_type_enum(relation_type)?.to_owned();
+                let relation_type_text = map_anime_relation_type_enum(relation_type)?.to_owned();
                 let PageKey {
                     provider: target_provider,
                     page_kind,
@@ -78,7 +78,7 @@ fn map_relation_claims(claims: Vec<RelationClaim>) -> Result<Vec<AnimeRelationCl
                 let mapped_kind = map_page_kind_enum(page_kind)?;
                 Ok(AnimeRelationClaimInput {
                     provider,
-                    relation_type: relation_str,
+                    relation_type: relation_type_text,
                     target_page: PageKeyInput {
                         provider: target_provider,
                         page_kind: mapped_kind,
@@ -93,7 +93,7 @@ fn map_relation_claims(claims: Vec<RelationClaim>) -> Result<Vec<AnimeRelationCl
 fn map_related_source_material(
     related_source_material: BTreeMap<String, RelatedSourceMaterialList>,
 ) -> Result<Vec<AnimeSourceMaterialInput>, Status> {
-    let mut mapped = Vec::new();
+    let mut source_materials = Vec::new();
     for (raw_relation_type, RelatedSourceMaterialList { items }) in related_source_material {
         let relation_type = normalize_source_material_relation_type(&raw_relation_type)?.to_owned();
         for RelatedSourceMaterial {
@@ -108,7 +108,7 @@ fn map_related_source_material(
         } in items
         {
             let source_material_type = map_source_material_type(r#type)?.to_owned();
-            let status_str = status
+            let publication_status = status
                 .map(map_anime_status_optional)
                 .transpose()?
                 .flatten()
@@ -128,13 +128,13 @@ fn map_related_source_material(
             if xrefs.is_empty() {
                 continue;
             }
-            mapped.push(AnimeSourceMaterialInput {
+            source_materials.push(AnimeSourceMaterialInput {
                 relation_type: relation_type.clone(),
                 title,
                 title_english: None,
                 title_japanese: None,
                 source_material_type,
-                status: status_str,
+                status: publication_status,
                 score: score.map(f64::from),
                 chapters,
                 volumes,
@@ -143,11 +143,11 @@ fn map_related_source_material(
             });
         }
     }
-    Ok(mapped)
+    Ok(source_materials)
 }
 
 fn map_companies(companies: Vec<CompanyEntry>) -> Result<Vec<AnimeCompanyInput>, Status> {
-    let mut mapped = Vec::new();
+    let mut anime_companies = Vec::new();
     for CompanyEntry {
         name,
         description,
@@ -155,10 +155,10 @@ fn map_companies(companies: Vec<CompanyEntry>) -> Result<Vec<AnimeCompanyInput>,
         roles,
     } in companies
     {
-        let mut mapped_roles = Vec::new();
+        let mut company_roles = Vec::new();
         for role_num in roles {
             if let Some(role) = map_company_role(role_num)? {
-                mapped_roles.push(role.to_owned());
+                company_roles.push(role.to_owned());
             }
         }
         let xrefs: Vec<CompanyXrefInput> = sources
@@ -170,17 +170,17 @@ fn map_companies(companies: Vec<CompanyEntry>) -> Result<Vec<AnimeCompanyInput>,
                 })
             })
             .collect();
-        if mapped_roles.is_empty() || xrefs.is_empty() {
+        if company_roles.is_empty() || xrefs.is_empty() {
             continue;
         }
-        mapped.push(AnimeCompanyInput {
+        anime_companies.push(AnimeCompanyInput {
             name,
             description,
-            roles: mapped_roles,
+            roles: company_roles,
             xrefs,
         });
     }
-    Ok(mapped)
+    Ok(anime_companies)
 }
 
 fn normalize_anime_relation_type(raw_text: &str) -> Result<&'static str, Status> {
