@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT synonym FROM anime_synonym WHERE anime_id = $1 ORDER BY synonym",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "synonym",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "ee535257696821e92391d144a8f9daf7c02957313137ee6fc2149edd62be0523"
+}
