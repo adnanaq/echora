@@ -4,7 +4,7 @@ PostgreSQL schema migrations, connection pool helpers, and database access for E
 
 ## Responsibilities
 
-- Owns `sqlx` migration files under `migrations/`, which serve as the single source of truth for the PostgreSQL 18 schema (lookup tables, shared name tables, `provider_page`, `provider_page_response` with `STORAGE EXTERNAL`, `approval_request`, `anime`, `anime_visible`, `anime_provider_page`, `anime_field_correction`, work detail tables for titles/classification/themes/images, and `outbox`).
+- Owns `sqlx` migration files under `migrations/`, which serve as the single source of truth for the PostgreSQL 18 schema (lookup tables, shared name tables, `provider_page`, `provider_page_response` with `STORAGE EXTERNAL`, `approval_request`, `anime`, `anime_visible`, `anime_provider_page`, `anime_field_correction`, work detail tables for titles/classification/themes/images/songs/links/streaming/statistics/broadcast/hiatus, and `outbox`).
 - Provides `connect_pool`, `run_migrations`, `validate_page_address`, `store_page`, `load_anime`, `save_anime`, and a private-kind `Error` with predicate helpers (`is_not_found`, `is_invalid_argument`, `is_version_conflict`, `is_unique_violation`, `is_foreign_key_violation`).
 - Only `postgres_service` depends on `postgres_db`.
 
