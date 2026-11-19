@@ -4,6 +4,7 @@
 
 mod anime;
 mod anime_details;
+mod anime_schedule_and_stats;
 mod error;
 mod provider_page;
 
@@ -14,6 +15,12 @@ pub use anime::{
 };
 #[doc(inline)]
 pub use anime_details::{AnimeDetailsInput, AnimeImageInput, AnimeThemeInput, AnimeTitleInput};
+#[doc(inline)]
+pub use anime_schedule_and_stats::{
+    AnimeBroadcastInput, AnimeContextualRankInput, AnimeExternalLinkInput, AnimeHiatusInput,
+    AnimeScheduleAndStatsInput, AnimeStatisticsInput, AnimeStreamingInput, AnimeThemeSongInput,
+    AnimeTrailerInput, EpisodeRangeInput,
+};
 #[doc(inline)]
 pub use error::Error;
 #[doc(inline)]

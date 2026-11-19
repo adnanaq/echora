@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO anime_hiatus (anime_id, reason, hiatus_from, hiatus_until)\n         VALUES ($1, $2, $3, $4)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Date",
+        "Date"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1bb7febb0fc040ef5f29b9ff269291ed0a0610234dae85220289534327c29391"
+}

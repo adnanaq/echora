@@ -13,13 +13,16 @@ use tracing::Level;
 use uuid::Uuid;
 
 use crate::anime_details::{replace_anime_details, validate_anime_details};
-use crate::{AnimeDetailsInput, Error, PageKeyInput, PageKind, PageResponseInput};
+use crate::anime_schedule_and_stats::{replace_schedule_and_stats, validate_schedule_and_stats};
+use crate::{
+    AnimeDetailsInput, AnimeScheduleAndStatsInput, Error, PageKeyInput, PageKind, PageResponseInput,
+};
 
 /// Current canonical hash format version stored in `anime.hash_format`.
 ///
 /// Bumping this constant causes unchanged records to re-save once so the new
 /// hash format is persisted.
-pub const ANIME_HASH_FORMAT: i16 = 2;
+pub const ANIME_HASH_FORMAT: i16 = 3;
 
 const MIN_ANIME_YEAR: i16 = 1900;
 const MIN_MONTH: i16 = 1;
@@ -127,6 +130,8 @@ pub struct SaveAnimeInput {
     pub traceparent: Option<String>,
     /// Work names, classification lists, themes, and images.
     pub details: AnimeDetailsInput,
+    /// Theme songs, trailers, links, streaming, statistics, broadcast, and hiatus.
+    pub schedule_and_stats: AnimeScheduleAndStatsInput,
 }
 
 /// Result returned by [`save_anime`].
@@ -423,6 +428,7 @@ async fn save_anime_in_tx(
 
     update_anime_row(tx, input, next_version, now).await?;
     replace_anime_details(tx, input.anime_id, &input.details).await?;
+    replace_schedule_and_stats(tx, input.anime_id, &input.schedule_and_stats).await?;
     emit_anime_outbox_events(
         tx,
         input,
@@ -641,6 +647,7 @@ fn validate_save_input(input: &SaveAnimeInput) -> Result<(), Error> {
         }
     }
     validate_anime_details(&input.details)?;
+    validate_schedule_and_stats(&input.schedule_and_stats)?;
     Ok(())
 }
 
@@ -754,6 +761,7 @@ mod tests {
             merge_version: 1,
             traceparent: None,
             details: AnimeDetailsInput::default(),
+            schedule_and_stats: AnimeScheduleAndStatsInput::default(),
         };
         assert!(validate_save_input(&base).is_ok());
 

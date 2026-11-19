@@ -1,0 +1,21 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO anime_statistics (\n                 anime_id, provider, score, scored_by, members, favorites, rank, popularity\n             )\n             VALUES ($1, $2, ROUND($3::float8::numeric, 2), $4, $5, $6, $7, $8)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Float8",
+        "Int4",
+        "Int4",
+        "Int4",
+        "Int4",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "480d7bf92646b9cadf8b3cca7e065c155762dd88d4cb622db2b03397141dd68d"
+}
