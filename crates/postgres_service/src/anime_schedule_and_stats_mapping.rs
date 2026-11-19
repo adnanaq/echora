@@ -36,7 +36,7 @@ pub(crate) fn build_schedule_and_stats(
     let mut theme_songs = map_theme_songs("opening", opening_themes)?;
     theme_songs.extend(map_theme_songs("ending", ending_themes)?);
 
-    let mapped_trailers = map_trailers(trailers)?;
+    let mapped_trailers = map_trailers(trailers);
     let mapped_links = map_external_links(external_sources);
     let mapped_streaming = map_streaming(streaming_sources);
     let mapped_statistics = map_statistics(statistics)?;
@@ -88,21 +88,17 @@ fn map_theme_songs(kind: &str, songs: Vec<ThemeSong>) -> Result<Vec<AnimeThemeSo
         .collect()
 }
 
-fn map_trailers(trailers: Vec<TrailerEntry>) -> Result<Vec<AnimeTrailerInput>, Status> {
+fn map_trailers(trailers: Vec<TrailerEntry>) -> Vec<AnimeTrailerInput> {
     trailers
         .into_iter()
-        .map(
+        .filter_map(
             |TrailerEntry {
                  source,
                  title,
                  thumbnail,
              }| {
-                let url = source
-                    .filter(|value| !value.trim().is_empty())
-                    .ok_or_else(|| {
-                        Status::invalid_argument("trailer entry requires a non-empty source URL")
-                    })?;
-                Ok(AnimeTrailerInput {
+                let url = source.filter(|value| !value.trim().is_empty())?;
+                Some(AnimeTrailerInput {
                     url,
                     title,
                     thumbnail_url: thumbnail,
@@ -318,9 +314,17 @@ fn parse_iso_weekday(day_text: &str) -> Result<i16, Status> {
 
 fn parse_time_of_day(time_text: &str) -> Result<NaiveTime, Status> {
     let trimmed = time_text.trim();
-    NaiveTime::parse_from_str(trimmed, "%H:%M:%S")
+    if let Ok(clock_time) = NaiveTime::parse_from_str(trimmed, "%H:%M:%S")
         .or_else(|_| NaiveTime::parse_from_str(trimmed, "%H:%M"))
-        .map_err(|err| Status::invalid_argument(format!("invalid time {time_text:?}: {err}")))
+    {
+        return Ok(clock_time);
+    }
+    if let Ok(fixed_dt) = DateTime::parse_from_rfc3339(trimmed) {
+        return Ok(fixed_dt.time());
+    }
+    Err(Status::invalid_argument(format!(
+        "invalid time {time_text:?}"
+    )))
 }
 
 fn parse_iso_date(date_text: &str, field_name: &str) -> Result<NaiveDate, Status> {
@@ -382,11 +386,18 @@ mod tests {
                 }],
             }],
             Vec::new(),
-            vec![TrailerEntry {
-                source: Some("https://youtube.com/watch?v=1".to_owned()),
-                title: Some("PV".to_owned()),
-                thumbnail: None,
-            }],
+            vec![
+                TrailerEntry {
+                    source: Some("https://youtube.com/watch?v=1".to_owned()),
+                    title: Some("PV".to_owned()),
+                    thumbnail: None,
+                },
+                TrailerEntry {
+                    source: None,
+                    title: Some("Incomplete".to_owned()),
+                    thumbnail: Some("https://example.com/thumb.jpg".to_owned()),
+                },
+            ],
             vec![ExternalLink {
                 platform: "Official".to_owned(),
                 source: "https://example.com".to_owned(),
@@ -407,9 +418,9 @@ mod tests {
                 day: Some("Wednesdays".to_owned()),
                 time: Some("00:30".to_owned()),
                 timezone: Some("Asia/Tokyo".to_owned()),
-                jp_time: None,
+                jp_time: Some("2026-11-18T23:15:00+09:00".to_owned()),
                 sub_time: Some("01:30:00".to_owned()),
-                dub_time: None,
+                dub_time: Some("2026-11-18T15:30:00Z".to_owned()),
                 sub_delay_days: Some(0),
                 dub_delay_days: None,
                 premiere_jp: None,
