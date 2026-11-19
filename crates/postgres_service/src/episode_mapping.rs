@@ -13,7 +13,7 @@ use tonic::Status;
 use uuid::Uuid;
 
 use crate::anime_mapping::parse_proto_timestamp;
-use crate::anime_relations_mapping::{map_page_kind, parse_provider_target_from_url};
+use crate::anime_relations_mapping::{map_page_kind, parse_character_target_from_url};
 use crate::service::shared_proto::v1::{
     CharacterRole, Episode, EpisodeCharacter, EpisodeListEntry, EpisodeReference, PageKey,
 };
@@ -202,7 +202,7 @@ fn map_episode_characters(
     {
         let mapped_role = map_character_role(role)?.to_owned();
         for source_url in sources {
-            if let Some((provider, address)) = parse_provider_target_from_url(&source_url) {
+            if let Some((provider, address)) = parse_character_target_from_url(&source_url) {
                 mapped_characters.push(EpisodeCharacterInput {
                     character_page_provider: provider.to_owned(),
                     character_page_address: address,

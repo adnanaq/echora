@@ -309,6 +309,18 @@ pub fn compute_save_record_hash(
     }
 
     let mut canonical_episodes = episodes.to_vec();
+    for episode in &mut canonical_episodes {
+        episode.page_keys.sort_by(|left, right| {
+            (&left.provider, left.page_kind, &left.address).cmp(&(
+                &right.provider,
+                right.page_kind,
+                &right.address,
+            ))
+        });
+        episode
+            .list_entries
+            .sort_by(|left, right| left.provider.cmp(&right.provider));
+    }
     canonical_episodes.sort_by(|left, right| left.episode_id.cmp(&right.episode_id));
     for episode in &canonical_episodes {
         let episode_bytes = episode.encode_to_vec();
@@ -470,6 +482,8 @@ mod tests {
 
     #[test]
     fn canonical_hash_is_order_independent_on_set_lists() {
+        use crate::service::shared_proto::v1::{EpisodeListEntry, PageKey, PageKind};
+
         let mut first_anime = Anime {
             title: "Monster".to_owned(),
             r#type: AnimeType::Tv as i32,
@@ -479,14 +493,46 @@ mod tests {
         };
         let mut second_anime = first_anime.clone();
         second_anime.genres.reverse();
+
+        let first_episodes = vec![EpisodeReference {
+            episode_id: "01950000-0000-7000-8000-000000000001".to_owned(),
+            episode_number: 1,
+            title: "Ep 1".to_owned(),
+            page_keys: vec![
+                PageKey {
+                    provider: "mal".to_owned(),
+                    page_kind: PageKind::Episode as i32,
+                    address: "1".to_owned(),
+                },
+                PageKey {
+                    provider: "anilist".to_owned(),
+                    page_kind: PageKind::Episode as i32,
+                    address: "2".to_owned(),
+                },
+            ],
+            list_entries: vec![
+                EpisodeListEntry {
+                    provider: "mal".to_owned(),
+                    ..EpisodeListEntry::default()
+                },
+                EpisodeListEntry {
+                    provider: "anilist".to_owned(),
+                    ..EpisodeListEntry::default()
+                },
+            ],
+        }];
+        let mut second_episodes = first_episodes.clone();
+        second_episodes[0].page_keys.reverse();
+        second_episodes[0].list_entries.reverse();
+
         assert_eq!(
-            compute_save_record_hash(&first_anime, &[], &[]),
-            compute_save_record_hash(&second_anime, &[], &[])
+            compute_save_record_hash(&first_anime, &[], &first_episodes),
+            compute_save_record_hash(&second_anime, &[], &second_episodes)
         );
         first_anime.title.push('!');
         assert_ne!(
-            compute_save_record_hash(&first_anime, &[], &[]),
-            compute_save_record_hash(&second_anime, &[], &[])
+            compute_save_record_hash(&first_anime, &[], &first_episodes),
+            compute_save_record_hash(&second_anime, &[], &second_episodes)
         );
     }
 

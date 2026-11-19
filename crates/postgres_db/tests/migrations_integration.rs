@@ -1702,7 +1702,7 @@ async fn save_anime_and_episode_lifecycle_load_save_mark_aired_and_delete()
     .await?;
     assert!(next_refresh_after_change.is_none());
 
-    // Store fetched content on the episode's provider page; this bumps episode version to 2.
+    // Store fetched content on the episode's provider page; this bumps episode version from 2 to 3.
     store_page(
         &pool,
         StorePageInput {
@@ -1721,7 +1721,7 @@ async fn save_anime_and_episode_lifecycle_load_save_mark_aired_and_delete()
     .await?;
 
     let loaded_episode = load_episode(&pool, episode_id).await?;
-    assert_eq!(loaded_episode.version, 2);
+    assert_eq!(loaded_episode.version, 3);
     assert_eq!(loaded_episode.anime_id, anime_id);
     assert_eq!(loaded_episode.pages.len(), 1);
     assert_eq!(loaded_episode.list_entries.len(), 1);
@@ -1732,7 +1732,7 @@ async fn save_anime_and_episode_lifecycle_load_save_mark_aired_and_delete()
 
     let episode_input = SaveEpisodeInput {
         episode_id,
-        expected_version: 2,
+        expected_version: 3,
         episode_number: 1,
         season_number: Some(1),
         title: "Herr Dr. Tenma".to_owned(),
@@ -1765,11 +1765,22 @@ async fn save_anime_and_episode_lifecycle_load_save_mark_aired_and_delete()
         traceparent: None,
     };
 
+    // Out-of-range score for numeric(5, 2) is rejected as invalid_argument.
+    let overflow_score_result = save_episode(
+        &pool,
+        &SaveEpisodeInput {
+            score: Some(1000.0),
+            ..episode_input.clone()
+        },
+    )
+    .await;
+    assert!(matches!(overflow_score_result, Err(err) if err.is_invalid_argument()));
+
     // Wrong version fails with version_conflict.
     let stale_result = save_episode(
         &pool,
         &SaveEpisodeInput {
-            expected_version: 1,
+            expected_version: 2,
             ..episode_input.clone()
         },
     )
@@ -1779,7 +1790,7 @@ async fn save_anime_and_episode_lifecycle_load_save_mark_aired_and_delete()
     // First merge emits episode.created and makes episode_visible return the row.
     let first_ep_save = save_episode(&pool, &episode_input).await?;
     assert!(first_ep_save.has_changed);
-    assert_eq!(first_ep_save.version, 3);
+    assert_eq!(first_ep_save.version, 4);
 
     let visible_after_merge: Option<Uuid> = sqlx::query_scalar!(
         r#"SELECT id AS "id!" FROM episode_visible WHERE id = $1"#,
@@ -1789,23 +1800,23 @@ async fn save_anime_and_episode_lifecycle_load_save_mark_aired_and_delete()
     .await?;
     assert_eq!(visible_after_merge, Some(episode_id));
 
-    // Unchanged hash skips write and keeps version 3.
+    // Unchanged hash skips write and keeps version 4.
     let unchanged_ep_save = save_episode(
         &pool,
         &SaveEpisodeInput {
-            expected_version: 3,
+            expected_version: 4,
             ..episode_input.clone()
         },
     )
     .await?;
     assert!(!unchanged_ep_save.has_changed);
-    assert_eq!(unchanged_ep_save.version, 3);
+    assert_eq!(unchanged_ep_save.version, 4);
 
     // Second merge with changed hash emits episode.updated.
     let updated_ep_save = save_episode(
         &pool,
         &SaveEpisodeInput {
-            expected_version: 3,
+            expected_version: 4,
             merged_record_hash: "ep-hash-2".to_owned(),
             synopsis: Some("Updated synopsis".to_owned()),
             ..episode_input
@@ -1813,7 +1824,7 @@ async fn save_anime_and_episode_lifecycle_load_save_mark_aired_and_delete()
     )
     .await?;
     assert!(updated_ep_save.has_changed);
-    assert_eq!(updated_ep_save.version, 4);
+    assert_eq!(updated_ep_save.version, 5);
 
     // MarkEpisodeAired writes notification.episode.aired once and is idempotent.
     let first_aired = mark_episode_aired(&pool, episode_id, None).await?;
@@ -1837,8 +1848,8 @@ async fn save_anime_and_episode_lifecycle_load_save_mark_aired_and_delete()
     );
 
     // Deleting the episode removes its page links and allows reusing episode_number 1.
-    let deleted_version = delete_episode(&pool, episode_id, 4, None).await?;
-    assert_eq!(deleted_version, 5);
+    let deleted_version = delete_episode(&pool, episode_id, 5, None).await?;
+    assert_eq!(deleted_version, 6);
 
     let remaining_page_links: i64 = sqlx::query_scalar!(
         "SELECT COUNT(*) FROM episode_provider_page WHERE episode_id = $1",
@@ -1872,6 +1883,155 @@ async fn save_anime_and_episode_lifecycle_load_save_mark_aired_and_delete()
     sqlx::query!(
         "DELETE FROM provider_page WHERE provider = 'mal' AND page_kind = 'episode' AND address = $1",
         episode_address
+    )
+    .execute(&pool)
+    .await?;
+
+    Ok(())
+}
+
+#[expect(
+    clippy::too_many_lines,
+    reason = "Integration test exercises timestamp precision, page replacement, and ownership conflict together"
+)]
+#[tokio::test]
+async fn sync_work_episodes_validates_page_ownership_replacement_and_timestamp_precision()
+-> Result<(), Box<dyn std::error::Error>> {
+    use chrono::Timelike as _;
+    use postgres_db::{EpisodeListEntryInput, EpisodeReferenceInput};
+
+    let Ok(database_url) = env::var("DATABASE_URL") else {
+        return Ok(());
+    };
+    let pool = connect_pool(&database_url, 2).await?;
+    run_migrations(&pool).await?;
+
+    let anime_id = Uuid::now_v7();
+    let first_episode_id = Uuid::now_v7();
+    let second_episode_id = Uuid::now_v7();
+    let suffix = anime_id.as_u128() % 1_000_000_000;
+    let first_address = format!("6{suffix:09}");
+    let second_address = format!("5{suffix:09}");
+
+    sqlx::query!("INSERT INTO anime (id) VALUES ($1)", anime_id)
+        .execute(&pool)
+        .await?;
+
+    let aired_with_nanos = DateTime::parse_from_rfc3339("2021-02-03T04:05:06Z")?
+        .with_timezone(&Utc)
+        .with_nanosecond(123_456_789);
+
+    let base_save = SaveAnimeInput {
+        anime_id,
+        expected_version: 1,
+        title: "Precision Work".to_owned(),
+        title_english: None,
+        title_japanese: None,
+        anime_type: "TV".to_owned(),
+        status: "FINISHED".to_owned(),
+        rating: "PG-13 - Teens 13 or older".to_owned(),
+        season: None,
+        source_material: None,
+        year: Some(2021),
+        month: Some(2),
+        episode_count: 1,
+        duration_seconds: Some(1440),
+        is_nsfw: Some(false),
+        country_of_origin: Some("JP".to_owned()),
+        synopsis: None,
+        background: None,
+        aired_from: None,
+        aired_to: None,
+        score_weighted: None,
+        score_mean: None,
+        score_median: None,
+        merged_record_hash: "prec-v1".to_owned(),
+        hash_format: ANIME_HASH_FORMAT,
+        merge_version: 1,
+        traceparent: None,
+        details: AnimeDetailsInput::default(),
+        schedule_and_stats: AnimeScheduleAndStatsInput::default(),
+        relations_and_graph: AnimeRelationsAndGraphInput::default(),
+        episodes: vec![EpisodeReferenceInput {
+            episode_id: first_episode_id,
+            episode_number: 1,
+            title: "Ep 1".to_owned(),
+            page_keys: vec![PageKeyInput {
+                provider: "mal".to_owned(),
+                page_kind: PageKind::Episode,
+                address: first_address.clone(),
+            }],
+            list_entries: vec![EpisodeListEntryInput {
+                provider: "mal".to_owned(),
+                title: Some("Ep 1".to_owned()),
+                aired_at: aired_with_nanos,
+                duration_seconds: Some(1440),
+                is_filler: Some(false),
+                is_recap: Some(false),
+            }],
+        }],
+    };
+    save_anime(&pool, &base_save).await?;
+
+    // Re-saving with identical sub-microsecond timestamp and replaced MAL page address:
+    // - does NOT report changed_episode_ids (timestamp precision matches PostgreSQL)
+    // - replaces first_address -> second_address cleanly without UNIQUE(episode_id, provider) error
+    let replace_page_save = SaveAnimeInput {
+        expected_version: 2,
+        merged_record_hash: "prec-v2".to_owned(),
+        episodes: vec![EpisodeReferenceInput {
+            episode_id: first_episode_id,
+            episode_number: 1,
+            title: "Ep 1".to_owned(),
+            page_keys: vec![PageKeyInput {
+                provider: "mal".to_owned(),
+                page_kind: PageKind::Episode,
+                address: second_address.clone(),
+            }],
+            list_entries: vec![EpisodeListEntryInput {
+                provider: "mal".to_owned(),
+                title: Some("Ep 1".to_owned()),
+                aired_at: aired_with_nanos,
+                duration_seconds: Some(1440),
+                is_filler: Some(false),
+                is_recap: Some(false),
+            }],
+        }],
+        ..base_save.clone()
+    };
+    let replace_outcome = save_anime(&pool, &replace_page_save).await?;
+    assert_eq!(replace_outcome.changed_episode_ids, Vec::<Uuid>::new());
+
+    // Attempting to claim second_address for a second episode fails with invalid_argument.
+    let conflict_save = SaveAnimeInput {
+        expected_version: 3,
+        merged_record_hash: "prec-v3".to_owned(),
+        episodes: vec![EpisodeReferenceInput {
+            episode_id: second_episode_id,
+            episode_number: 2,
+            title: "Ep 2".to_owned(),
+            page_keys: vec![PageKeyInput {
+                provider: "mal".to_owned(),
+                page_kind: PageKind::Episode,
+                address: second_address.clone(),
+            }],
+            list_entries: Vec::new(),
+        }],
+        ..base_save
+    };
+    let conflict_result = save_anime(&pool, &conflict_save).await;
+    assert!(matches!(conflict_result, Err(err) if err.is_invalid_argument()));
+
+    sqlx::query!("DELETE FROM outbox WHERE entity_id = $1", anime_id)
+        .execute(&pool)
+        .await?;
+    sqlx::query!("DELETE FROM anime WHERE id = $1", anime_id)
+        .execute(&pool)
+        .await?;
+    sqlx::query!(
+        "DELETE FROM provider_page WHERE provider = 'mal' AND page_kind = 'episode' AND address IN ($1, $2)",
+        first_address,
+        second_address
     )
     .execute(&pool)
     .await?;

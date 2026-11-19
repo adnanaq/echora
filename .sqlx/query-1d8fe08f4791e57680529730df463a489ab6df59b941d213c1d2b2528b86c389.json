@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT episode_id\n            FROM episode_provider_page\n            WHERE provider = $1 AND page_kind = 'episode' AND address = $2\n            FOR UPDATE\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "episode_id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "1d8fe08f4791e57680529730df463a489ab6df59b941d213c1d2b2528b86c389"
+}

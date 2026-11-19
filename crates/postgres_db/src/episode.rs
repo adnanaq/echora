@@ -4,7 +4,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Timelike as _, Utc};
 use prost::Message as _;
 use sqlx::{PgPool, Postgres, Transaction};
 use tracing::Level;
@@ -498,10 +498,10 @@ fn validate_save_episode_input(input: &SaveEpisodeInput) -> Result<(), Error> {
         return Err(Error::invalid_argument("duration_seconds must be >= 0"));
     }
     if let Some(score) = input.score
-        && (!score.is_finite() || score < 0.0)
+        && (!score.is_finite() || !(0.0..1000.0).contains(&score))
     {
         return Err(Error::invalid_argument(
-            "episode score must be finite and >= 0",
+            "episode score must be finite, >= 0, and < 1000",
         ));
     }
     if input.merged_record_hash.is_empty() {
@@ -1001,22 +1001,29 @@ pub(crate) async fn sync_work_episodes(
                         episode.episode_id, anime_id
                     )));
                 }
-                link_episode_pages(tx, episode.episode_id, &episode.page_keys).await?;
-                if replace_list_entries_if_changed(tx, episode.episode_id, &episode.list_entries)
-                    .await?
-                {
+                let pages_changed =
+                    link_episode_pages(tx, episode.episode_id, &episode.page_keys).await?;
+                let entries_changed =
+                    replace_list_entries_if_changed(tx, episode.episode_id, &episode.list_entries)
+                        .await?;
+                if pages_changed || entries_changed {
                     sqlx::query!(
                         r#"
                         UPDATE episode
-                        SET next_refresh_at = NULL,
+                        SET version = version + 1,
+                            merge_requested_at = COALESCE(merge_requested_at, now()),
+                            next_refresh_at = CASE WHEN $2 THEN NULL ELSE next_refresh_at END,
                             updated_at = now()
                         WHERE id = $1
                         "#,
-                        episode.episode_id
+                        episode.episode_id,
+                        entries_changed,
                     )
                     .execute(&mut **tx)
                     .await?;
-                    changed_episode_ids.push(episode.episode_id);
+                    if entries_changed {
+                        changed_episode_ids.push(episode.episode_id);
+                    }
                 }
             }
         }
@@ -1053,8 +1060,42 @@ async fn link_episode_pages(
     tx: &mut Transaction<'_, Postgres>,
     episode_id: Uuid,
     page_keys: &[PageKeyInput],
-) -> Result<(), Error> {
+) -> Result<bool, Error> {
+    let mut pages_changed = false;
     for page_key in page_keys {
+        let existing_owner = sqlx::query_scalar!(
+            r#"
+            SELECT episode_id
+            FROM episode_provider_page
+            WHERE provider = $1 AND page_kind = 'episode' AND address = $2
+            FOR UPDATE
+            "#,
+            page_key.provider,
+            page_key.address,
+        )
+        .fetch_optional(&mut **tx)
+        .await?;
+
+        if let Some(owner_episode_id) = existing_owner {
+            if owner_episode_id != episode_id {
+                return Err(Error::invalid_argument(format!(
+                    "episode page {}:episode:{} already belongs to episode {owner_episode_id}",
+                    page_key.provider, page_key.address
+                )));
+            }
+            continue;
+        }
+
+        // Replace any previous address for this (episode_id, provider) so correcting
+        // an episode's page preserves its UUID without violating UNIQUE(episode_id, provider).
+        sqlx::query!(
+            "DELETE FROM episode_provider_page WHERE episode_id = $1 AND provider = $2",
+            episode_id,
+            page_key.provider,
+        )
+        .execute(&mut **tx)
+        .await?;
+
         sqlx::query!(
             r#"
             INSERT INTO provider_page (provider, page_kind, address)
@@ -1071,7 +1112,6 @@ async fn link_episode_pages(
             r#"
             INSERT INTO episode_provider_page (episode_id, provider, page_kind, address)
             VALUES ($1, $2, 'episode', $3)
-            ON CONFLICT (provider, page_kind, address) DO NOTHING
             "#,
             episode_id,
             page_key.provider,
@@ -1079,8 +1119,9 @@ async fn link_episode_pages(
         )
         .execute(&mut **tx)
         .await?;
+        pages_changed = true;
     }
-    Ok(())
+    Ok(pages_changed)
 }
 
 async fn replace_list_entries_if_changed(
@@ -1105,11 +1146,18 @@ async fn replace_list_entries_if_changed(
 }
 
 fn normalize_list_entries(entries: &[EpisodeListEntryInput]) -> Vec<EpisodeListEntryInput> {
-    let mut deduplicated_entries: BTreeMap<&str, &EpisodeListEntryInput> = BTreeMap::new();
+    let mut deduplicated_entries: BTreeMap<&str, EpisodeListEntryInput> = BTreeMap::new();
     for entry in entries {
-        deduplicated_entries.insert(entry.provider.as_str(), entry);
+        let mut normalized_entry = entry.clone();
+        normalized_entry.aired_at = normalized_entry.aired_at.map(truncate_to_micros);
+        deduplicated_entries.insert(entry.provider.as_str(), normalized_entry);
     }
-    deduplicated_entries.into_values().cloned().collect()
+    deduplicated_entries.into_values().collect()
+}
+
+fn truncate_to_micros(ts: DateTime<Utc>) -> DateTime<Utc> {
+    let truncated_nanos = (ts.nanosecond() / 1_000) * 1_000;
+    ts.with_nanosecond(truncated_nanos).unwrap_or(ts)
 }
 
 async fn insert_episode_list_entries(

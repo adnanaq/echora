@@ -324,6 +324,17 @@ fn parse_provider_from_url(url: &str) -> Option<&'static str> {
 }
 
 pub(crate) fn parse_provider_target_from_url(url: &str) -> Option<(&'static str, String)> {
+    parse_provider_target_with_kinds(url, &["anime", "manga", "light-novels"])
+}
+
+pub(crate) fn parse_character_target_from_url(url: &str) -> Option<(&'static str, String)> {
+    parse_provider_target_with_kinds(url, &["character"])
+}
+
+fn parse_provider_target_with_kinds(
+    url: &str,
+    allowed_segments: &[&str],
+) -> Option<(&'static str, String)> {
     let provider = parse_provider_from_url(url)?;
     let without_scheme = url
         .trim()
@@ -342,12 +353,7 @@ pub(crate) fn parse_provider_target_from_url(url: &str) -> Option<(&'static str,
     let raw_id = match provider {
         "mal" | "anilist" | "anisearch" | "anidb" | "kitsu" | "anime_planet" | "livechart"
         | "simkl" => {
-            if segments.len() >= 2
-                && matches!(
-                    segments[0],
-                    "anime" | "manga" | "light-novels" | "character"
-                )
-            {
+            if segments.len() >= 2 && allowed_segments.contains(&segments[0]) {
                 segments[1]
             } else {
                 segments.first().copied()?
@@ -446,5 +452,14 @@ mod tests {
         assert_eq!(mapped.source_materials[0].xrefs[0].external_id, "13");
         assert_eq!(mapped.companies.len(), 1);
         assert_eq!(mapped.companies[0].roles, vec!["STUDIO"]);
+    }
+
+    #[test]
+    fn parse_provider_target_from_url_rejects_character_urls() {
+        assert!(parse_provider_target_from_url("https://myanimelist.net/character/42").is_none());
+        assert_eq!(
+            parse_character_target_from_url("https://myanimelist.net/character/42"),
+            Some(("mal", "42".to_owned()))
+        );
     }
 }
