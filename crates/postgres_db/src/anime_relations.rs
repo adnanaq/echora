@@ -278,6 +278,23 @@ pub(crate) async fn link_anime_source_page_in_tx(
         )
         .execute(&mut **tx)
         .await?;
+    } else {
+        let existing_owner: Option<Uuid> = sqlx::query_scalar!(
+            "SELECT anime_id
+             FROM anime_provider_page
+             WHERE provider = $1 AND page_kind = $2 AND address = $3",
+            page_key.provider,
+            page_key.page_kind.as_str(),
+            page_key.address,
+        )
+        .fetch_optional(&mut **tx)
+        .await?;
+        if existing_owner != Some(anime_id) {
+            return Err(Error::invalid_argument(format!(
+                "source page {}:{} is already linked to another work",
+                page_key.provider, page_key.address
+            )));
+        }
     }
 
     let resolved_sources: Vec<Uuid> = sqlx::query_scalar!(
@@ -331,6 +348,33 @@ async fn replace_anime_relations(
     anime_id: Uuid,
     relations: &[AnimeRelationInput],
 ) -> Result<BTreeSet<(Uuid, Uuid)>, Error> {
+    let deduped: BTreeSet<(&str, &str, &str)> = relations
+        .iter()
+        .map(|relation| {
+            (
+                relation.relation_type.as_str(),
+                relation.to_page_provider.as_str(),
+                relation.to_page_address.as_str(),
+            )
+        })
+        .collect();
+
+    // Lock target page keys in sorted order before modifying relations so
+    // concurrent link_anime_source_page calls cannot race between delete/lookup/insert.
+    let target_pages: BTreeSet<(&str, &str)> = deduped
+        .iter()
+        .map(|(_, provider, address)| (*provider, *address))
+        .collect();
+    for (provider, address) in target_pages {
+        sqlx::query!(
+            "SELECT pg_advisory_xact_lock(hashtextextended($1 || ':anime:' || $2, 0))",
+            provider,
+            address,
+        )
+        .execute(&mut **tx)
+        .await?;
+    }
+
     let deleted_targets: Vec<Option<Uuid>> = sqlx::query_scalar!(
         "DELETE FROM anime_relation
          WHERE from_anime_id = $1
@@ -345,33 +389,6 @@ async fn replace_anime_relations(
         .flatten()
         .map(|target_id| (anime_id, target_id))
         .collect();
-
-    let deduped: BTreeSet<(&str, &str, &str)> = relations
-        .iter()
-        .map(|relation| {
-            (
-                relation.relation_type.as_str(),
-                relation.to_page_provider.as_str(),
-                relation.to_page_address.as_str(),
-            )
-        })
-        .collect();
-
-    // Lock target page keys in sorted order before resolving so concurrent
-    // link_anime_source_page calls cannot race between lookup and insert.
-    let target_pages: BTreeSet<(&str, &str)> = deduped
-        .iter()
-        .map(|(_, provider, address)| (*provider, *address))
-        .collect();
-    for (provider, address) in target_pages {
-        sqlx::query!(
-            "SELECT pg_advisory_xact_lock(hashtextextended($1 || ':anime:' || $2, 0))",
-            provider,
-            address,
-        )
-        .execute(&mut **tx)
-        .await?;
-    }
 
     for (relation_type, to_page_provider, to_page_address) in deduped {
         let resolved_target = sqlx::query_scalar!(
@@ -507,11 +524,35 @@ async fn replace_anime_source_materials(
             .min()
     });
 
+    // Resolve canonical IDs for every material first, rejecting conflicting owners.
+    let mut resolved_materials: Vec<(Option<Uuid>, &AnimeSourceMaterialInput)> =
+        Vec::with_capacity(ordered_materials.len());
+    let mut existing_ids: BTreeSet<Uuid> = BTreeSet::new();
+    for material in ordered_materials {
+        let existing_id = resolve_existing_source_material_id(tx, &material.xrefs).await?;
+        if let Some(id) = existing_id {
+            existing_ids.insert(id);
+        }
+        resolved_materials.push((existing_id, material));
+    }
+
+    // Lock existing source_material rows in ascending UUID order to prevent deadlocks
+    // when two concurrent saves touch the same entities via different xref aliases.
+    if !existing_ids.is_empty() {
+        let locked_ids: Vec<Uuid> = existing_ids.into_iter().collect();
+        sqlx::query_scalar!(
+            "SELECT id FROM source_material WHERE id = ANY($1) ORDER BY id FOR NO KEY UPDATE",
+            &locked_ids,
+        )
+        .fetch_all(&mut **tx)
+        .await?;
+    }
+
     let mut linked_source_ids = Vec::new();
     let mut seen_links: BTreeSet<(Uuid, String)> = BTreeSet::new();
 
-    for material in ordered_materials {
-        let source_material_id = upsert_source_material_by_xref(tx, material).await?;
+    for (existing_id, material) in resolved_materials {
+        let source_material_id = upsert_source_material_by_xref(tx, existing_id, material).await?;
         linked_source_ids.push(source_material_id);
         if seen_links.insert((source_material_id, material.relation_type.clone())) {
             sqlx::query!(
@@ -531,17 +572,12 @@ async fn replace_anime_source_materials(
     Ok(linked_source_ids)
 }
 
-async fn upsert_source_material_by_xref(
+async fn resolve_existing_source_material_id(
     tx: &mut Transaction<'_, Postgres>,
-    material: &AnimeSourceMaterialInput,
-) -> Result<Uuid, Error> {
-    let mut sorted_xrefs: Vec<&SourceMaterialXrefInput> = material.xrefs.iter().collect();
-    sorted_xrefs.sort_by(|left, right| {
-        (&left.provider, &left.external_id).cmp(&(&right.provider, &right.external_id))
-    });
-
-    let mut existing_id: Option<Uuid> = None;
-    for xref in &sorted_xrefs {
+    xrefs: &[SourceMaterialXrefInput],
+) -> Result<Option<Uuid>, Error> {
+    let mut resolved_ids: BTreeSet<Uuid> = BTreeSet::new();
+    for xref in xrefs {
         if let Some(found_id) = sqlx::query_scalar!(
             "SELECT source_material_id
              FROM source_material_xref
@@ -552,10 +588,26 @@ async fn upsert_source_material_by_xref(
         .fetch_optional(&mut **tx)
         .await?
         {
-            existing_id = Some(found_id);
-            break;
+            resolved_ids.insert(found_id);
         }
     }
+    if resolved_ids.len() > 1 {
+        return Err(Error::invalid_argument(
+            "source_material xrefs resolve to conflicting source_material rows",
+        ));
+    }
+    Ok(resolved_ids.into_iter().next())
+}
+
+async fn upsert_source_material_by_xref(
+    tx: &mut Transaction<'_, Postgres>,
+    existing_id: Option<Uuid>,
+    material: &AnimeSourceMaterialInput,
+) -> Result<Uuid, Error> {
+    let mut sorted_xrefs: Vec<&SourceMaterialXrefInput> = material.xrefs.iter().collect();
+    sorted_xrefs.sort_by(|left, right| {
+        (&left.provider, &left.external_id).cmp(&(&right.provider, &right.external_id))
+    });
 
     let source_material_id = if let Some(found_id) = existing_id {
         sqlx::query!(
@@ -694,9 +746,32 @@ async fn replace_anime_companies(
             .min()
     });
 
-    let mut unique_links: BTreeSet<(Uuid, String)> = BTreeSet::new();
+    // Resolve canonical company IDs first, rejecting conflicting owners.
+    let mut resolved_companies: Vec<(Option<Uuid>, &AnimeCompanyInput)> =
+        Vec::with_capacity(ordered_companies.len());
+    let mut existing_ids: BTreeSet<Uuid> = BTreeSet::new();
     for company in ordered_companies {
-        let company_id = upsert_company_by_xref(tx, company).await?;
+        let existing_id = resolve_existing_company_id(tx, &company.xrefs).await?;
+        if let Some(id) = existing_id {
+            existing_ids.insert(id);
+        }
+        resolved_companies.push((existing_id, company));
+    }
+
+    // Lock existing company rows in ascending UUID order before updating metadata.
+    if !existing_ids.is_empty() {
+        let locked_ids: Vec<Uuid> = existing_ids.into_iter().collect();
+        sqlx::query_scalar!(
+            "SELECT id FROM company WHERE id = ANY($1) ORDER BY id FOR NO KEY UPDATE",
+            &locked_ids,
+        )
+        .fetch_all(&mut **tx)
+        .await?;
+    }
+
+    let mut unique_links: BTreeSet<(Uuid, String)> = BTreeSet::new();
+    for (existing_id, company) in resolved_companies {
+        let company_id = upsert_company_by_xref(tx, existing_id, company).await?;
         for role in &company.roles {
             unique_links.insert((company_id, role.clone()));
         }
@@ -724,16 +799,12 @@ async fn replace_anime_companies(
     Ok(company_roles)
 }
 
-async fn upsert_company_by_xref(
+async fn resolve_existing_company_id(
     tx: &mut Transaction<'_, Postgres>,
-    company: &AnimeCompanyInput,
-) -> Result<Uuid, Error> {
-    let mut sorted_xrefs: Vec<&CompanyXrefInput> = company.xrefs.iter().collect();
-    sorted_xrefs
-        .sort_by(|left, right| (&left.provider, &left.url).cmp(&(&right.provider, &right.url)));
-
-    let mut existing_id: Option<Uuid> = None;
-    for xref in &sorted_xrefs {
+    xrefs: &[CompanyXrefInput],
+) -> Result<Option<Uuid>, Error> {
+    let mut resolved_ids: BTreeSet<Uuid> = BTreeSet::new();
+    for xref in xrefs {
         if let Some(found_id) = sqlx::query_scalar!(
             "SELECT company_id FROM company_xref WHERE provider = $1 AND url = $2",
             xref.provider,
@@ -742,10 +813,25 @@ async fn upsert_company_by_xref(
         .fetch_optional(&mut **tx)
         .await?
         {
-            existing_id = Some(found_id);
-            break;
+            resolved_ids.insert(found_id);
         }
     }
+    if resolved_ids.len() > 1 {
+        return Err(Error::invalid_argument(
+            "company xrefs resolve to conflicting company rows",
+        ));
+    }
+    Ok(resolved_ids.into_iter().next())
+}
+
+async fn upsert_company_by_xref(
+    tx: &mut Transaction<'_, Postgres>,
+    existing_id: Option<Uuid>,
+    company: &AnimeCompanyInput,
+) -> Result<Uuid, Error> {
+    let mut sorted_xrefs: Vec<&CompanyXrefInput> = company.xrefs.iter().collect();
+    sorted_xrefs
+        .sort_by(|left, right| (&left.provider, &left.url).cmp(&(&right.provider, &right.url)));
 
     let company_id = if let Some(found_id) = existing_id {
         sqlx::query!(

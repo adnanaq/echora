@@ -339,7 +339,7 @@ fn parse_provider_target_from_url(url: &str) -> Option<(&'static str, String)> {
         .filter(|segment| !segment.is_empty())
         .collect();
 
-    let id = match provider {
+    let raw_id = match provider {
         "mal" | "anilist" | "anisearch" | "anidb" | "kitsu" | "anime_planet" | "livechart"
         | "simkl" => {
             if segments.len() >= 2 && matches!(segments[0], "anime" | "manga" | "light-novels") {
@@ -358,6 +358,16 @@ fn parse_provider_target_from_url(url: &str) -> Option<(&'static str, String)> {
                 .next()?
         }
         _ => segments.last().copied()?,
+    };
+
+    let id = match provider {
+        // Numbered providers (including AniSearch `/anime/123,slug`) key by leading digits.
+        "mal" | "anilist" | "anisearch" | "anidb" | "ann" | "livechart" | "simkl"
+        | "animecountdown" => raw_id
+            .split(|ch: char| !ch.is_ascii_digit())
+            .next()
+            .unwrap_or(""),
+        _ => raw_id,
     };
 
     if id.is_empty() {
