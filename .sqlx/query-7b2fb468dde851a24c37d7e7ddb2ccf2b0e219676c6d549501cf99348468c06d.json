@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO anime_broadcast (\n             anime_id, weekday, timezone, jp_time, sub_time, dub_time,\n             sub_delay_days, dub_delay_days, premiere_jp, premiere_sub, premiere_dub,\n             next_episode_at, next_episode_number\n         )\n         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)\n         ON CONFLICT (anime_id) DO UPDATE SET\n             weekday = EXCLUDED.weekday,\n             timezone = EXCLUDED.timezone,\n             jp_time = EXCLUDED.jp_time,\n             sub_time = EXCLUDED.sub_time,\n             dub_time = EXCLUDED.dub_time,\n             sub_delay_days = EXCLUDED.sub_delay_days,\n             dub_delay_days = EXCLUDED.dub_delay_days,\n             premiere_jp = EXCLUDED.premiere_jp,\n             premiere_sub = EXCLUDED.premiere_sub,\n             premiere_dub = EXCLUDED.premiere_dub,\n             next_episode_at = EXCLUDED.next_episode_at,\n             next_episode_number = EXCLUDED.next_episode_number",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int2",
+        "Text",
+        "Time",
+        "Time",
+        "Time",
+        "Int4",
+        "Int4",
+        "Timestamptz",
+        "Timestamptz",
+        "Timestamptz",
+        "Timestamptz",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7b2fb468dde851a24c37d7e7ddb2ccf2b0e219676c6d549501cf99348468c06d"
+}

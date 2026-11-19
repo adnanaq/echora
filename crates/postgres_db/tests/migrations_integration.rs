@@ -4,11 +4,14 @@
 
 use std::env;
 
-use chrono::{Duration, Utc};
+use chrono::{Duration, NaiveDate, NaiveTime, Utc};
 use postgres_db::{
-    ANIME_HASH_FORMAT, AnimeDetailsInput, AnimeImageInput, AnimeThemeInput, AnimeTitleInput, Error,
-    PageKeyInput, PageKind, PageResponseInput, SaveAnimeInput, StorePageInput, connect_pool,
-    load_anime, run_migrations, save_anime, store_page,
+    ANIME_HASH_FORMAT, AnimeBroadcastInput, AnimeContextualRankInput, AnimeDetailsInput,
+    AnimeExternalLinkInput, AnimeHiatusInput, AnimeImageInput, AnimeScheduleAndStatsInput,
+    AnimeStatisticsInput, AnimeStreamingInput, AnimeThemeInput, AnimeThemeSongInput,
+    AnimeTitleInput, AnimeTrailerInput, EpisodeRangeInput, Error, PageKeyInput, PageKind,
+    PageResponseInput, SaveAnimeInput, StorePageInput, connect_pool, load_anime, run_migrations,
+    save_anime, store_page,
 };
 use uuid::Uuid;
 
@@ -576,6 +579,7 @@ async fn load_and_save_anime_enforce_versions_hashes_visibility_and_outbox() -> 
         merge_version: 1,
         traceparent: Some("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01".to_owned()),
         details: AnimeDetailsInput::default(),
+        schedule_and_stats: AnimeScheduleAndStatsInput::default(),
     };
 
     let first_save = save_anime(&pool, &first_input).await?;
@@ -799,6 +803,7 @@ async fn store_page_bumps_linked_anime_version_and_blocks_stale_save() -> Result
             merge_version: 1,
             traceparent: None,
             details: AnimeDetailsInput::default(),
+            schedule_and_stats: AnimeScheduleAndStatsInput::default(),
         },
     )
     .await
@@ -907,6 +912,7 @@ async fn save_anime_replaces_names_classification_themes_and_images() -> Result<
                 },
             ],
         },
+        schedule_and_stats: AnimeScheduleAndStatsInput::default(),
     };
 
     let first_save = save_anime(&pool, &first_input).await?;
@@ -1040,6 +1046,231 @@ async fn save_anime_replaces_names_classification_themes_and_images() -> Result<
     .fetch_all(&pool)
     .await?;
     assert_eq!(image_types, vec!["banner"]);
+
+    sqlx::query!("DELETE FROM outbox WHERE entity_id = $1", anime_id)
+        .execute(&pool)
+        .await?;
+    sqlx::query!("DELETE FROM anime WHERE id = $1", anime_id)
+        .execute(&pool)
+        .await?;
+
+    Ok(())
+}
+
+#[tokio::test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "End-to-end ECHO-101 test covering songs, links, streaming, stats, broadcast, and hiatus history"
+)]
+async fn save_anime_stores_songs_links_streaming_stats_broadcast_and_hiatus() -> Result<(), Error> {
+    let Ok(database_url) = env::var("DATABASE_URL") else {
+        return Ok(());
+    };
+
+    let pool = connect_pool(&database_url, 2).await?;
+    run_migrations(&pool).await?;
+
+    let anime_id = Uuid::now_v7();
+    sqlx::query!("INSERT INTO anime (id) VALUES ($1)", anime_id)
+        .execute(&pool)
+        .await?;
+
+    let Some(hiatus_start) = NaiveDate::from_ymd_opt(2024, 5, 1) else {
+        panic!("valid hiatus_start date");
+    };
+    let Some(hiatus_end) = NaiveDate::from_ymd_opt(2024, 5, 15) else {
+        panic!("valid hiatus_end date");
+    };
+    let Some(jp_time) = NaiveTime::from_hms_opt(0, 30, 0) else {
+        panic!("valid jp_time");
+    };
+
+    let first_input = SaveAnimeInput {
+        anime_id,
+        expected_version: 1,
+        title: "Monster".to_owned(),
+        title_english: None,
+        title_japanese: None,
+        anime_type: "TV".to_owned(),
+        status: "ONGOING".to_owned(),
+        rating: "R - 17+ (violence & profanity)".to_owned(),
+        season: Some("SPRING".to_owned()),
+        source_material: Some("MANGA".to_owned()),
+        year: Some(2004),
+        month: Some(4),
+        episode_count: 74,
+        duration_seconds: Some(1440),
+        is_nsfw: Some(false),
+        country_of_origin: Some("JP".to_owned()),
+        synopsis: None,
+        background: None,
+        aired_from: None,
+        aired_to: None,
+        score_weighted: None,
+        score_mean: None,
+        score_median: None,
+        merged_record_hash: "extended-v1".to_owned(),
+        hash_format: ANIME_HASH_FORMAT,
+        merge_version: 1,
+        traceparent: None,
+        details: AnimeDetailsInput::default(),
+        schedule_and_stats: AnimeScheduleAndStatsInput {
+            theme_songs: vec![AnimeThemeSongInput {
+                kind: "opening".to_owned(),
+                position: 0,
+                title: "Grain".to_owned(),
+                artist: Some("Kuniaki Haishima".to_owned()),
+                episode_ranges: vec![EpisodeRangeInput {
+                    range_start: 1,
+                    range_end: Some(74),
+                }],
+            }],
+            trailers: vec![AnimeTrailerInput {
+                url: "https://youtube.com/watch?v=1".to_owned(),
+                title: Some("PV 1".to_owned()),
+                thumbnail_url: None,
+            }],
+            external_links: vec![AnimeExternalLinkInput {
+                url: "https://official.example.com".to_owned(),
+                platform: "Official Site".to_owned(),
+                label: Some("JP".to_owned()),
+                language: Some("ja".to_owned()),
+            }],
+            streaming_entries: vec![AnimeStreamingInput {
+                platform: "Netflix".to_owned(),
+                url: "https://netflix.com/title/1".to_owned(),
+                region: Some("US".to_owned()),
+                is_free: Some(false),
+                is_premium_required: Some(true),
+                has_dub: Some(true),
+                subtitle_languages: vec!["en".to_owned(), "es".to_owned()],
+            }],
+            statistics: vec![AnimeStatisticsInput {
+                provider: "mal".to_owned(),
+                score: Some(8.88),
+                scored_by: Some(400_000),
+                members: Some(1_100_000),
+                favorites: Some(50_000),
+                rank: Some(25),
+                popularity: Some(120),
+                contextual_ranks: vec![AnimeContextualRankInput {
+                    context: "highest rated".to_owned(),
+                    rank: 1,
+                    is_all_time: Some(true),
+                    format: Some("TV".to_owned()),
+                    season: Some("SPRING".to_owned()),
+                    year: Some(2004),
+                }],
+            }],
+            broadcast: Some(AnimeBroadcastInput {
+                weekday: Some(3),
+                timezone: Some("Asia/Tokyo".to_owned()),
+                jp_time: Some(jp_time),
+                sub_time: None,
+                dub_time: None,
+                sub_delay_days: Some(0),
+                dub_delay_days: None,
+                premiere_jp: None,
+                premiere_sub: None,
+                premiere_dub: None,
+                next_episode_at: None,
+                next_episode_number: Some(2),
+            }),
+            hiatus: Some(AnimeHiatusInput {
+                reason: Some("Golden Week".to_owned()),
+                hiatus_from: Some(hiatus_start),
+                hiatus_until: None,
+            }),
+        },
+    };
+
+    let first_save = save_anime(&pool, &first_input).await?;
+    assert!(first_save.has_changed);
+    assert_eq!(first_save.version, 2);
+
+    // Second save with identical hiatus snapshot must NOT add a second hiatus row.
+    let second_input = SaveAnimeInput {
+        expected_version: 2,
+        merged_record_hash: "extended-v2".to_owned(),
+        ..first_input.clone()
+    };
+    let second_save = save_anime(&pool, &second_input).await?;
+    assert_eq!(second_save.version, 3);
+
+    let hiatus_count_after_same: i64 = sqlx::query_scalar!(
+        "SELECT COUNT(*) FROM anime_hiatus WHERE anime_id = $1",
+        anime_id
+    )
+    .fetch_one(&pool)
+    .await?
+    .unwrap_or_default();
+    assert_eq!(hiatus_count_after_same, 1);
+
+    // Third save with a changed hiatus snapshot appends a second history row.
+    let mut third_schedule = first_input.schedule_and_stats.clone();
+    third_schedule.hiatus = Some(AnimeHiatusInput {
+        reason: Some("Golden Week".to_owned()),
+        hiatus_from: Some(hiatus_start),
+        hiatus_until: Some(hiatus_end),
+    });
+    third_schedule.broadcast = None;
+    let third_input = SaveAnimeInput {
+        expected_version: 3,
+        merged_record_hash: "extended-v3".to_owned(),
+        schedule_and_stats: third_schedule,
+        ..first_input
+    };
+    let third_save = save_anime(&pool, &third_input).await?;
+    assert_eq!(third_save.version, 4);
+
+    let hiatus_count_after_change: i64 = sqlx::query_scalar!(
+        "SELECT COUNT(*) FROM anime_hiatus WHERE anime_id = $1",
+        anime_id
+    )
+    .fetch_one(&pool)
+    .await?
+    .unwrap_or_default();
+    assert_eq!(hiatus_count_after_change, 2);
+
+    let broadcast_count: i64 = sqlx::query_scalar!(
+        "SELECT COUNT(*) FROM anime_broadcast WHERE anime_id = $1",
+        anime_id
+    )
+    .fetch_one(&pool)
+    .await?
+    .unwrap_or_default();
+    assert_eq!(broadcast_count, 0);
+
+    let subtitle_langs: Vec<String> = sqlx::query_scalar!(
+        "SELECT s.language
+         FROM anime_streaming_subtitle_language s
+         JOIN anime_streaming st ON st.id = s.streaming_id
+         WHERE st.anime_id = $1
+         ORDER BY s.language",
+        anime_id
+    )
+    .fetch_all(&pool)
+    .await?;
+    assert_eq!(subtitle_langs, vec!["en", "es"]);
+
+    let range_end: Option<i32> = sqlx::query_scalar!(
+        "SELECT r.range_end
+         FROM theme_song_episode_range r
+         JOIN anime_theme_song ts ON ts.id = r.theme_song_id
+         WHERE ts.anime_id = $1",
+        anime_id
+    )
+    .fetch_one(&pool)
+    .await?;
+    assert_eq!(range_end, Some(74));
+
+    let contextual_rank: i32 = sqlx::query_scalar!(
+        "SELECT rank FROM anime_contextual_rank WHERE anime_id = $1 AND provider = 'mal'",
+        anime_id
+    )
+    .fetch_one(&pool)
+    .await?;
+    assert_eq!(contextual_rank, 1);
 
     sqlx::query!("DELETE FROM outbox WHERE entity_id = $1", anime_id)
         .execute(&pool)

@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO anime (id, title, type, status, merged_at, merged_record_hash, hash_format)\n         VALUES ($1, 'Monster', 'TV', 'FINISHED', now(), 'details-v1', 1)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "48ac551123e74249ac2ea9a2ec13a365aeec79dafeab12456de1516fc15613d1"
+}

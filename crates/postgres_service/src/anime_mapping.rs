@@ -12,6 +12,7 @@ use sha2::{Digest as _, Sha256};
 use tonic::Status;
 use uuid::Uuid;
 
+use crate::anime_schedule_and_stats_mapping::build_schedule_and_stats;
 use crate::service::shared_proto::v1::{
     Anime, AnimeImages, AnimeRating, AnimeSeason, AnimeStatus, AnimeType, EntityType,
     SourceMaterialType, ThemeEntry,
@@ -66,25 +67,25 @@ pub fn build_save_anime_input(
         year,
         content_warnings,
         demographics,
-        ending_themes: _,
+        ending_themes,
         genres,
-        opening_themes: _,
+        opening_themes,
         related_anime: _,
         related_source_material: _,
         sources: _,
-        streaming_sources: _,
+        streaming_sources,
         synonyms,
         tags,
         themes,
-        trailers: _,
+        trailers,
         aired_dates,
-        broadcast: _,
-        external_sources: _,
+        broadcast,
+        external_sources,
         images,
         score,
         production_staff: _,
-        statistics: _,
-        hiatus: _,
+        statistics,
+        hiatus,
         titles,
         companies: _,
         partial_sources: _,
@@ -148,6 +149,17 @@ pub fn build_save_anime_input(
         images,
     );
 
+    let schedule_and_stats = build_schedule_and_stats(
+        opening_themes,
+        ending_themes,
+        trailers,
+        external_sources,
+        streaming_sources,
+        statistics,
+        broadcast,
+        hiatus,
+    )?;
+
     Ok(SaveAnimeInput {
         anime_id,
         expected_version,
@@ -177,6 +189,7 @@ pub fn build_save_anime_input(
         merge_version,
         traceparent,
         details,
+        schedule_and_stats,
     })
 }
 

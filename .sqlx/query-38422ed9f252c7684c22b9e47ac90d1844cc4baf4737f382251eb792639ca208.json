@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM anime_streaming WHERE anime_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "38422ed9f252c7684c22b9e47ac90d1844cc4baf4737f382251eb792639ca208"
+}
