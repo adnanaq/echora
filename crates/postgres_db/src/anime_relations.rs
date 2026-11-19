@@ -348,7 +348,7 @@ async fn replace_anime_relations(
     anime_id: Uuid,
     relations: &[AnimeRelationInput],
 ) -> Result<BTreeSet<(Uuid, Uuid)>, Error> {
-    let unique_relations: BTreeSet<(&str, &str, &str)> = relations
+    let deduplicated_relations: BTreeSet<(&str, &str, &str)> = relations
         .iter()
         .map(|relation| {
             (
@@ -361,7 +361,7 @@ async fn replace_anime_relations(
 
     // Lock target page keys in sorted order before modifying relations so
     // concurrent link_anime_source_page calls cannot race between delete/lookup/insert.
-    let target_pages: BTreeSet<(&str, &str)> = unique_relations
+    let target_pages: BTreeSet<(&str, &str)> = deduplicated_relations
         .iter()
         .map(|(_, provider, address)| (*provider, *address))
         .collect();
@@ -390,7 +390,7 @@ async fn replace_anime_relations(
         .map(|target_id| (anime_id, target_id))
         .collect();
 
-    for (relation_type, to_page_provider, to_page_address) in unique_relations {
+    for (relation_type, to_page_provider, to_page_address) in deduplicated_relations {
         let resolved_target = sqlx::query_scalar!(
             "SELECT anime_id
              FROM anime_provider_page
@@ -440,7 +440,7 @@ async fn replace_anime_relation_claims(
     .execute(&mut **tx)
     .await?;
 
-    let unique_claims: BTreeSet<(&str, &str, &str, &str)> = claims
+    let deduplicated_relation_claims: BTreeSet<(&str, &str, &str, &str)> = claims
         .iter()
         .map(|claim| {
             (
@@ -451,23 +451,23 @@ async fn replace_anime_relation_claims(
             )
         })
         .collect();
-    if unique_claims.is_empty() {
+    if deduplicated_relation_claims.is_empty() {
         return Ok(());
     }
 
-    let providers: Vec<String> = unique_claims
+    let providers: Vec<String> = deduplicated_relation_claims
         .iter()
         .map(|(p, _, _, _)| (*p).to_owned())
         .collect();
-    let relation_types: Vec<String> = unique_claims
+    let relation_types: Vec<String> = deduplicated_relation_claims
         .iter()
         .map(|(_, r, _, _)| (*r).to_owned())
         .collect();
-    let target_providers: Vec<String> = unique_claims
+    let target_providers: Vec<String> = deduplicated_relation_claims
         .iter()
         .map(|(_, _, tp, _)| (*tp).to_owned())
         .collect();
-    let target_addresses: Vec<String> = unique_claims
+    let target_addresses: Vec<String> = deduplicated_relation_claims
         .into_iter()
         .map(|(_, _, _, ta)| ta.to_owned())
         .collect();
