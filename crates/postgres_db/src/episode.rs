@@ -663,9 +663,9 @@ async fn replace_episode_images(
 
     let urls: Vec<String> = deduplicated_images.into_iter().map(str::to_owned).collect();
     sqlx::query!(
-        "INSERT INTO episode_image (episode_id, url)
-         SELECT $1, url
-         FROM UNNEST($2::text[]) AS entry(url)",
+        "INSERT INTO episode_image (episode_id, source)
+         SELECT $1, source
+         FROM UNNEST($2::text[]) AS entry(source)",
         episode_id,
         &urls
     )
@@ -705,9 +705,9 @@ async fn replace_episode_streaming(
         .map(str::to_owned)
         .collect();
     sqlx::query!(
-        "INSERT INTO episode_streaming (episode_id, platform, url)
-         SELECT $1, platform, url
-         FROM UNNEST($2::text[], $3::text[]) AS entry(platform, url)",
+        "INSERT INTO episode_streaming (episode_id, platform, source)
+         SELECT $1, platform, source
+         FROM UNNEST($2::text[], $3::text[]) AS entry(platform, source)",
         episode_id,
         &platforms,
         &urls

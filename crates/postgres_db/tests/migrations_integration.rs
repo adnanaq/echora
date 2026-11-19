@@ -1503,7 +1503,7 @@ async fn save_anime_and_link_page_persist_relations_xrefs_and_graph_edges() -> R
     save_anime(&pool, &second_work_input).await?;
 
     let matching_companies: i64 = sqlx::query_scalar!(
-        "SELECT COUNT(*) FROM company_xref WHERE provider = 'mal' AND url = $1",
+        "SELECT COUNT(*) FROM company_xref WHERE provider = 'mal' AND source = $1",
         company_url
     )
     .fetch_one(&pool)
@@ -1544,7 +1544,7 @@ async fn save_anime_and_link_page_persist_relations_xrefs_and_graph_edges() -> R
         .await?;
     sqlx::query!(
         "DELETE FROM company WHERE id IN (
-             SELECT company_id FROM company_xref WHERE provider = 'mal' AND url = $1
+             SELECT company_id FROM company_xref WHERE provider = 'mal' AND source = $1
          )",
         company_url
     )
@@ -2001,6 +2001,15 @@ async fn sync_work_episodes_validates_page_ownership_replacement_and_timestamp_p
     };
     let replace_outcome = save_anime(&pool, &replace_page_save).await?;
     assert_eq!(replace_outcome.changed_episode_ids, Vec::<Uuid>::new());
+
+    let replaced_episode_state = sqlx::query!(
+        "SELECT version, merge_requested_at FROM episode WHERE id = $1",
+        first_episode_id
+    )
+    .fetch_one(&pool)
+    .await?;
+    assert_eq!(replaced_episode_state.version, 2);
+    assert!(replaced_episode_state.merge_requested_at.is_some());
 
     // Attempting to claim second_address for a second episode fails with invalid_argument.
     let conflict_save = SaveAnimeInput {

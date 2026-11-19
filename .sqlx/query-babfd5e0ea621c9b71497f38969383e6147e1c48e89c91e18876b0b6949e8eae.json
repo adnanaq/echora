@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT COUNT(*) FROM company_xref WHERE provider = 'mal' AND url = $1",
+  "query": "SELECT COUNT(*) FROM company_xref WHERE provider = 'mal' AND source = $1",
   "describe": {
     "columns": [
       {
@@ -18,5 +18,5 @@
       null
     ]
   },
-  "hash": "264da2b58caae29a5239727454229232873114bb60ebc01c61651c2cce1aea03"
+  "hash": "babfd5e0ea621c9b71497f38969383e6147e1c48e89c91e18876b0b6949e8eae"
 }

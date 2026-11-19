@@ -664,9 +664,9 @@ async fn upsert_source_material_by_xref(
     let mut canonical_id = source_material_id;
     for xref in sorted_xrefs {
         canonical_id = sqlx::query_scalar!(
-            "INSERT INTO source_material_xref (provider, external_id, source_material_id, url)
+            "INSERT INTO source_material_xref (provider, external_id, source_material_id, source)
              VALUES ($1, $2, $3, $4)
-             ON CONFLICT (provider, external_id) DO UPDATE SET url = EXCLUDED.url
+             ON CONFLICT (provider, external_id) DO UPDATE SET source = EXCLUDED.source
              RETURNING source_material_id",
             xref.provider,
             xref.external_id,
@@ -705,9 +705,9 @@ async fn replace_source_material_images(
     }
 
     sqlx::query!(
-        "INSERT INTO source_material_image (source_material_id, url)
-         SELECT $1, url
-         FROM UNNEST($2::text[]) AS entry(url)",
+        "INSERT INTO source_material_image (source_material_id, source)
+         SELECT $1, source
+         FROM UNNEST($2::text[]) AS entry(source)",
         source_material_id,
         &unique_urls,
     )
@@ -812,7 +812,7 @@ async fn resolve_existing_company_id(
     let mut resolved_ids: BTreeSet<Uuid> = BTreeSet::new();
     for xref in xrefs {
         if let Some(found_id) = sqlx::query_scalar!(
-            "SELECT company_id FROM company_xref WHERE provider = $1 AND url = $2",
+            "SELECT company_id FROM company_xref WHERE provider = $1 AND source = $2",
             xref.provider,
             xref.url,
         )
@@ -867,9 +867,9 @@ async fn upsert_company_by_xref(
     let mut canonical_id = company_id;
     for (provider, url) in xrefs_by_provider {
         canonical_id = sqlx::query_scalar!(
-            "INSERT INTO company_xref (provider, url, company_id)
+            "INSERT INTO company_xref (provider, source, company_id)
              VALUES ($1, $2, $3)
-             ON CONFLICT (provider, url) DO UPDATE SET url = EXCLUDED.url
+             ON CONFLICT (provider, source) DO UPDATE SET source = EXCLUDED.source
              RETURNING company_id",
             provider,
             url,

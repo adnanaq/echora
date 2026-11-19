@@ -86,14 +86,14 @@ CREATE TABLE episode_title (
 
 CREATE TABLE episode_image (
   episode_id  uuid NOT NULL REFERENCES episode(id) ON DELETE CASCADE,
-  url         text NOT NULL,
-  PRIMARY KEY (episode_id, url)
+  source      text NOT NULL,
+  PRIMARY KEY (episode_id, source)
 );
 
 CREATE TABLE episode_streaming (
   episode_id  uuid NOT NULL REFERENCES episode(id) ON DELETE CASCADE,
   platform    text NOT NULL,
-  url         text NOT NULL,
+  source      text NOT NULL,
   PRIMARY KEY (episode_id, platform)
 );
 

@@ -353,10 +353,21 @@ fn parse_provider_target_with_kinds(
     let raw_id = match provider {
         "mal" | "anilist" | "anisearch" | "anidb" | "kitsu" | "anime_planet" | "livechart"
         | "simkl" => {
-            if segments.len() >= 2 && allowed_segments.contains(&segments[0]) {
-                segments[1]
+            if segments.len() >= 2 {
+                if allowed_segments.contains(&segments[0]) {
+                    segments[1]
+                } else {
+                    return None;
+                }
             } else {
-                segments.first().copied()?
+                let first_segment = segments.first().copied()?;
+                if matches!(
+                    first_segment,
+                    "anime" | "manga" | "light-novels" | "character"
+                ) {
+                    return None;
+                }
+                first_segment
             }
         }
         "animecountdown" => segments.first().copied()?,
@@ -457,6 +468,7 @@ mod tests {
     #[test]
     fn parse_provider_target_from_url_rejects_character_urls() {
         assert!(parse_provider_target_from_url("https://myanimelist.net/character/42").is_none());
+        assert!(parse_character_target_from_url("https://kitsu.app/anime/42").is_none());
         assert_eq!(
             parse_character_target_from_url("https://myanimelist.net/character/42"),
             Some(("mal", "42".to_owned()))

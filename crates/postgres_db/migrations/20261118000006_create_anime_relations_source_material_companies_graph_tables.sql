@@ -48,15 +48,15 @@ CREATE TABLE source_material_xref (
   provider            text NOT NULL REFERENCES provider(value),
   external_id         text NOT NULL,
   source_material_id  uuid NOT NULL REFERENCES source_material(id) ON DELETE CASCADE,
-  url                 text NOT NULL,
+  source              text NOT NULL,
   PRIMARY KEY (provider, external_id),
   UNIQUE (source_material_id, provider)
 );
 
 CREATE TABLE source_material_image (
   source_material_id  uuid NOT NULL REFERENCES source_material(id) ON DELETE CASCADE,
-  url                 text NOT NULL,
-  PRIMARY KEY (source_material_id, url)
+  source              text NOT NULL,
+  PRIMARY KEY (source_material_id, source)
 );
 
 CREATE TABLE anime_source_material_relation (
@@ -77,9 +77,9 @@ CREATE TABLE company (
 
 CREATE TABLE company_xref (
   provider    text NOT NULL REFERENCES provider(value),
-  url         text NOT NULL,
+  source      text NOT NULL,
   company_id  uuid NOT NULL REFERENCES company(id) ON DELETE CASCADE,
-  PRIMARY KEY (provider, url),
+  PRIMARY KEY (provider, source),
   UNIQUE (company_id, provider)
 );
 

@@ -56,6 +56,6 @@ CREATE TABLE anime_theme (
 CREATE TABLE anime_image (
   anime_id    uuid NOT NULL REFERENCES anime(id) ON DELETE CASCADE,
   image_type  text NOT NULL REFERENCES anime_image_type(value),
-  url         text NOT NULL,
-  PRIMARY KEY (anime_id, image_type, url)
+  source      text NOT NULL,
+  PRIMARY KEY (anime_id, image_type, source)
 );

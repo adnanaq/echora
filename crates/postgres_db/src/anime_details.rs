@@ -442,9 +442,9 @@ async fn replace_anime_images(
         .map(|(_, url)| (*url).to_owned())
         .collect();
     sqlx::query!(
-        "INSERT INTO anime_image (anime_id, image_type, url)
-         SELECT $1, image_type, url
-         FROM UNNEST($2::text[], $3::text[]) AS entry(image_type, url)",
+        "INSERT INTO anime_image (anime_id, image_type, source)
+         SELECT $1, image_type, source
+         FROM UNNEST($2::text[], $3::text[]) AS entry(image_type, source)",
         anime_id,
         &image_types,
         &urls

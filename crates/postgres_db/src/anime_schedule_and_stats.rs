@@ -413,9 +413,9 @@ async fn replace_trailers(
         .map(|trailer| trailer.thumbnail_url.clone())
         .collect();
     sqlx::query!(
-        "INSERT INTO anime_trailer (anime_id, url, title, thumbnail_url)
-         SELECT $1, url, title, thumbnail_url
-         FROM UNNEST($2::text[], $3::text[], $4::text[]) AS entry(url, title, thumbnail_url)",
+        "INSERT INTO anime_trailer (anime_id, source, title, thumbnail_url)
+         SELECT $1, source, title, thumbnail_url
+         FROM UNNEST($2::text[], $3::text[], $4::text[]) AS entry(source, title, thumbnail_url)",
         anime_id,
         &urls,
         &titles as &[Option<String>],
@@ -462,10 +462,10 @@ async fn replace_external_links(
         .map(|link| link.language.clone())
         .collect();
     sqlx::query!(
-        "INSERT INTO anime_external_link (anime_id, url, platform, label, language)
-         SELECT $1, url, platform, label, language
+        "INSERT INTO anime_external_link (anime_id, source, platform, label, language)
+         SELECT $1, source, platform, label, language
          FROM UNNEST($2::text[], $3::text[], $4::text[], $5::text[])
-           AS entry(url, platform, label, language)",
+           AS entry(source, platform, label, language)",
         anime_id,
         &urls,
         &platforms,
@@ -495,7 +495,7 @@ async fn replace_streaming(
     for entry in deduplicated_streaming.into_values() {
         let streaming_id = sqlx::query_scalar!(
             "INSERT INTO anime_streaming (
-                 anime_id, platform, url, region, is_free, is_premium_required, has_dub
+                 anime_id, platform, source, region, is_free, is_premium_required, has_dub
              )
              VALUES ($1, $2, $3, $4, $5, $6, $7)
              RETURNING id",
