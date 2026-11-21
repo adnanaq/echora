@@ -1,6 +1,4 @@
-//! Integration tests verifying `postgres_db` migrations and `store_page`.
-
-// Rust guideline compliant 2026-10-09
+//! Integration tests verifying `postgres_db` migrations, page observations, and saves.
 
 use std::env;
 
@@ -11,9 +9,9 @@ use postgres_db::{
     AnimeRelationClaimInput, AnimeRelationInput, AnimeRelationsAndGraphInput,
     AnimeScheduleAndStatsInput, AnimeSourceMaterialInput, AnimeStatisticsInput,
     AnimeStreamingInput, AnimeThemeInput, AnimeThemeSongInput, AnimeTitleInput, AnimeTrailerInput,
-    CompanyXrefInput, EpisodeRangeInput, Error, PageKeyInput, PageKind, PageResponseInput,
-    SaveAnimeInput, SourceMaterialXrefInput, StorePageInput, connect_pool, link_anime_source_page,
-    load_anime, run_migrations, save_anime, store_page,
+    CompanyXrefInput, EpisodeRangeInput, Error, FetchOutcome, PageKey, PageKind, PageObservation,
+    PageResponse, Provider, SaveAnimeInput, SourceMaterialXrefInput, connect_pool,
+    link_anime_source_page, load_anime, record_page_observation, run_migrations, save_anime,
 };
 use uuid::Uuid;
 
@@ -59,12 +57,10 @@ async fn lookup_and_name_tables_migrate_and_seed_expected_rows() -> Result<(), E
     .await?;
     assert_eq!(shared_name_table_count, Some(5));
 
-    let Err(duplicate_sqlx_err) = sqlx::query("INSERT INTO anime_type VALUES ('TV')")
+    let duplicate_sqlx_err = sqlx::query("INSERT INTO anime_type VALUES ('TV')")
         .execute(&pool)
         .await
-    else {
-        panic!("duplicate lookup insert must fail");
-    };
+        .expect_err("duplicate lookup insert must fail");
     let duplicate_err = Error::from(duplicate_sqlx_err);
     assert!(duplicate_err.is_unique_violation());
 
@@ -73,9 +69,8 @@ async fn lookup_and_name_tables_migrate_and_seed_expected_rows() -> Result<(), E
 
 #[tokio::test]
 async fn connect_pool_rejects_invalid_database_url() {
-    let Err(err) = connect_pool("not-a-postgres-url", 1).await else {
-        panic!("invalid database URL must fail");
-    };
+    let err =
+        (connect_pool("not-a-postgres-url", 1).await).expect_err("invalid database URL must fail");
     assert!(err.is_database());
 }
 
@@ -97,57 +92,50 @@ async fn store_page_updates_hashes_and_ignores_stale_fetches() -> Result<(), Err
     .await?;
 
     let t0 = Utc::now();
-    let page_key = PageKeyInput {
-        provider: "mal".to_owned(),
-        page_kind: PageKind::Anime,
-        address: test_address.to_owned(),
-    };
-    let response = PageResponseInput {
+    let page_key = PageKey::new(Provider::Mal, PageKind::Anime, test_address)?;
+    let response = PageResponse {
         request_name: "main".to_owned(),
         content_type: "application/json".to_owned(),
         body: br#"{"id":999999001}"#.to_vec(),
     };
 
-    let first = store_page(
+    let first = record_page_observation(
         &pool,
-        StorePageInput {
+        PageObservation {
             page_key: page_key.clone(),
-            fetched_at: t0,
-            is_dead: false,
-            responses: vec![response.clone()],
-            is_not_found: false,
-            dead_page_review: true,
+            observed_at: t0,
+            outcome: FetchOutcome::Success {
+                responses: vec![response.clone()],
+            },
         },
     )
     .await?;
     assert!(first.has_changed);
 
-    let same = store_page(
+    let same = record_page_observation(
         &pool,
-        StorePageInput {
+        PageObservation {
             page_key: page_key.clone(),
-            fetched_at: t0 + Duration::minutes(5),
-            is_dead: false,
-            responses: vec![response.clone()],
-            is_not_found: false,
-            dead_page_review: true,
+            observed_at: t0 + Duration::minutes(5),
+            outcome: FetchOutcome::Success {
+                responses: vec![response.clone()],
+            },
         },
     )
     .await?;
     assert!(!same.has_changed);
 
-    let older = store_page(
+    let older = record_page_observation(
         &pool,
-        StorePageInput {
+        PageObservation {
             page_key,
-            fetched_at: t0 - Duration::minutes(5),
-            is_dead: false,
-            responses: vec![PageResponseInput {
-                body: b"older".to_vec(),
-                ..response
-            }],
-            is_not_found: false,
-            dead_page_review: true,
+            observed_at: t0 - Duration::minutes(5),
+            outcome: FetchOutcome::Success {
+                responses: vec![PageResponse {
+                    body: b"older".to_vec(),
+                    ..response
+                }],
+            },
         },
     )
     .await?;
@@ -167,12 +155,8 @@ async fn store_page_tracks_failures_and_dead_page_reviews() -> Result<(), Error>
 
     let test_address = "999999002";
     let t0 = Utc::now();
-    let page_key = PageKeyInput {
-        provider: "mal".to_owned(),
-        page_kind: PageKind::Anime,
-        address: test_address.to_owned(),
-    };
-    let expected_proposal = postgres_db::encode_page_key_proposal(&page_key);
+    let page_key = PageKey::new(Provider::Mal, PageKind::Anime, test_address)?;
+    let expected_proposal = postgres_db::encode_page_key_proto(&page_key);
 
     sqlx::query!(
         "DELETE FROM provider_page WHERE provider = 'mal' AND page_kind = 'anime' AND address = $1",
@@ -187,15 +171,12 @@ async fn store_page_tracks_failures_and_dead_page_reviews() -> Result<(), Error>
     .execute(&pool)
     .await?;
 
-    let failed = store_page(
+    let failed = record_page_observation(
         &pool,
-        StorePageInput {
+        PageObservation {
             page_key: page_key.clone(),
-            fetched_at: t0,
-            is_dead: false,
-            responses: Vec::new(),
-            is_not_found: false,
-            dead_page_review: true,
+            observed_at: t0,
+            outcome: FetchOutcome::Failed,
         },
     )
     .await?;
@@ -209,27 +190,36 @@ async fn store_page_tracks_failures_and_dead_page_reviews() -> Result<(), Error>
     .await?;
     assert_eq!(failures, 1);
 
-    store_page(
+    record_page_observation(
         &pool,
-        StorePageInput {
+        PageObservation {
             page_key: page_key.clone(),
-            fetched_at: t0 + Duration::minutes(20),
-            is_dead: false,
-            responses: Vec::new(),
-            is_not_found: true,
-            dead_page_review: true,
+            observed_at: t0 + Duration::minutes(20),
+            outcome: FetchOutcome::NotFound {
+                require_review: true,
+            },
         },
     )
     .await?;
-    store_page(
+    record_page_observation(
         &pool,
-        StorePageInput {
+        PageObservation {
             page_key: page_key.clone(),
-            fetched_at: t0 + Duration::days(2),
-            is_dead: false,
-            responses: Vec::new(),
-            is_not_found: true,
-            dead_page_review: true,
+            observed_at: t0 + Duration::days(2),
+            outcome: FetchOutcome::NotFound {
+                require_review: true,
+            },
+        },
+    )
+    .await?;
+    record_page_observation(
+        &pool,
+        PageObservation {
+            page_key: page_key.clone(),
+            observed_at: t0 + Duration::days(2) + Duration::hours(1),
+            outcome: FetchOutcome::NotFound {
+                require_review: true,
+            },
         },
     )
     .await?;
@@ -242,15 +232,14 @@ async fn store_page_tracks_failures_and_dead_page_reviews() -> Result<(), Error>
     .await?;
     assert_eq!(approval_count, Some(1));
 
-    let direct = store_page(
+    let direct = record_page_observation(
         &pool,
-        StorePageInput {
+        PageObservation {
             page_key: page_key.clone(),
-            fetched_at: t0 + Duration::days(3),
-            is_dead: false,
-            responses: Vec::new(),
-            is_not_found: true,
-            dead_page_review: false,
+            observed_at: t0 + Duration::days(3),
+            outcome: FetchOutcome::NotFound {
+                require_review: false,
+            },
         },
     )
     .await?;
@@ -278,12 +267,8 @@ async fn store_page_closes_open_dead_page_approval_on_recovery() -> Result<(), E
 
     let test_address = "999999004";
     let t0 = Utc::now();
-    let page_key = PageKeyInput {
-        provider: "mal".to_owned(),
-        page_kind: PageKind::Anime,
-        address: test_address.to_owned(),
-    };
-    let expected_proposal = postgres_db::encode_page_key_proposal(&page_key);
+    let page_key = PageKey::new(Provider::Mal, PageKind::Anime, test_address)?;
+    let expected_proposal = postgres_db::encode_page_key_proto(&page_key);
 
     sqlx::query!(
         "DELETE FROM provider_page WHERE provider = 'mal' AND page_kind = 'anime' AND address = $1",
@@ -298,44 +283,41 @@ async fn store_page_closes_open_dead_page_approval_on_recovery() -> Result<(), E
     .execute(&pool)
     .await?;
 
-    store_page(
+    record_page_observation(
         &pool,
-        StorePageInput {
+        PageObservation {
             page_key: page_key.clone(),
-            fetched_at: t0,
-            is_dead: false,
-            responses: Vec::new(),
-            is_not_found: true,
-            dead_page_review: true,
+            observed_at: t0,
+            outcome: FetchOutcome::NotFound {
+                require_review: true,
+            },
         },
     )
     .await?;
-    store_page(
+    record_page_observation(
         &pool,
-        StorePageInput {
+        PageObservation {
             page_key: page_key.clone(),
-            fetched_at: t0 + Duration::days(2),
-            is_dead: false,
-            responses: Vec::new(),
-            is_not_found: true,
-            dead_page_review: true,
+            observed_at: t0 + Duration::days(2),
+            outcome: FetchOutcome::NotFound {
+                require_review: true,
+            },
         },
     )
     .await?;
 
-    let recovered = store_page(
+    let recovered = record_page_observation(
         &pool,
-        StorePageInput {
+        PageObservation {
             page_key,
-            fetched_at: t0 + Duration::days(3),
-            is_dead: false,
-            responses: vec![PageResponseInput {
-                request_name: "main".to_owned(),
-                content_type: "application/json".to_owned(),
-                body: br#"{"id":999999004}"#.to_vec(),
-            }],
-            is_not_found: false,
-            dead_page_review: true,
+            observed_at: t0 + Duration::days(3),
+            outcome: FetchOutcome::Success {
+                responses: vec![PageResponse {
+                    request_name: "main".to_owned(),
+                    content_type: "application/json".to_owned(),
+                    body: br#"{"id":999999004}"#.to_vec(),
+                }],
+            },
         },
     )
     .await?;
@@ -370,66 +352,56 @@ async fn store_page_ignores_stale_success_after_not_found() -> Result<(), Error>
     .await?;
 
     let t0 = Utc::now();
-    let page_key = PageKeyInput {
-        provider: "mal".to_owned(),
-        page_kind: PageKind::Anime,
-        address: test_address.to_owned(),
-    };
+    let page_key = PageKey::new(Provider::Mal, PageKind::Anime, test_address)?;
 
-    store_page(
+    record_page_observation(
         &pool,
-        StorePageInput {
+        PageObservation {
             page_key: page_key.clone(),
-            fetched_at: t0,
-            is_dead: false,
-            responses: Vec::new(),
-            is_not_found: true,
-            dead_page_review: false,
+            observed_at: t0,
+            outcome: FetchOutcome::NotFound {
+                require_review: false,
+            },
         },
     )
     .await?;
 
-    store_page(
+    record_page_observation(
         &pool,
-        StorePageInput {
+        PageObservation {
             page_key: page_key.clone(),
-            fetched_at: t0 + Duration::days(2),
-            is_dead: false,
-            responses: Vec::new(),
-            is_not_found: true,
-            dead_page_review: false,
+            observed_at: t0 + Duration::days(2),
+            outcome: FetchOutcome::NotFound {
+                require_review: false,
+            },
         },
     )
     .await?;
 
-    // Replaying the T0+2d not-found must not increment missing_answers again.
-    store_page(
+    record_page_observation(
         &pool,
-        StorePageInput {
+        PageObservation {
             page_key: page_key.clone(),
-            fetched_at: t0 + Duration::days(2),
-            is_dead: false,
-            responses: Vec::new(),
-            is_not_found: true,
-            dead_page_review: false,
+            observed_at: t0 + Duration::days(2),
+            outcome: FetchOutcome::NotFound {
+                require_review: false,
+            },
         },
     )
     .await?;
 
-    // A delayed success between T0 and T0+2d must not revive the dead page.
-    let stale_fetch_outcome = store_page(
+    let stale_fetch_outcome = record_page_observation(
         &pool,
-        StorePageInput {
+        PageObservation {
             page_key,
-            fetched_at: t0 + Duration::days(1),
-            is_dead: false,
-            responses: vec![PageResponseInput {
-                request_name: "main".to_owned(),
-                content_type: "application/json".to_owned(),
-                body: br#"{"id":999999003}"#.to_vec(),
-            }],
-            is_not_found: false,
-            dead_page_review: false,
+            observed_at: t0 + Duration::days(1),
+            outcome: FetchOutcome::Success {
+                responses: vec![PageResponse {
+                    request_name: "main".to_owned(),
+                    content_type: "application/json".to_owned(),
+                    body: br#"{"id":999999003}"#.to_vec(),
+                }],
+            },
         },
     )
     .await?;
@@ -463,40 +435,28 @@ async fn load_and_save_anime_enforce_versions_hashes_visibility_and_outbox() -> 
     let source_address = "999999010";
     let partial_address = "999999011";
 
-    store_page(
+    record_page_observation(
         &pool,
-        StorePageInput {
-            page_key: PageKeyInput {
-                provider: "mal".to_owned(),
-                page_kind: PageKind::Anime,
-                address: source_address.to_owned(),
+        PageObservation {
+            page_key: PageKey::new(Provider::Mal, PageKind::Anime, source_address)?,
+            observed_at: Utc::now(),
+            outcome: FetchOutcome::Success {
+                responses: vec![PageResponse {
+                    request_name: "main".to_owned(),
+                    content_type: "application/json".to_owned(),
+                    body: br#"{"mal_id":999999010}"#.to_vec(),
+                }],
             },
-            fetched_at: Utc::now(),
-            is_dead: false,
-            responses: vec![PageResponseInput {
-                request_name: "main".to_owned(),
-                content_type: "application/json".to_owned(),
-                body: br#"{"mal_id":999999010}"#.to_vec(),
-            }],
-            is_not_found: false,
-            dead_page_review: false,
         },
     )
     .await?;
 
-    store_page(
+    record_page_observation(
         &pool,
-        StorePageInput {
-            page_key: PageKeyInput {
-                provider: "anilist".to_owned(),
-                page_kind: PageKind::Anime,
-                address: partial_address.to_owned(),
-            },
-            fetched_at: Utc::now(),
-            is_dead: false,
-            responses: Vec::new(),
-            is_not_found: false,
-            dead_page_review: false,
+        PageObservation {
+            page_key: PageKey::new(Provider::AniList, PageKind::Anime, partial_address)?,
+            observed_at: Utc::now(),
+            outcome: FetchOutcome::Failed,
         },
     )
     .await?;
@@ -508,7 +468,6 @@ async fn load_and_save_anime_enforce_versions_hashes_visibility_and_outbox() -> 
     .execute(&pool)
     .await?;
 
-    // Unmerged works must not appear in anime_visible.
     let visible_before = sqlx::query_scalar!(
         "SELECT EXISTS(SELECT 1 FROM anime_visible WHERE id = $1)",
         anime_id
@@ -546,7 +505,7 @@ async fn load_and_save_anime_enforce_versions_hashes_visibility_and_outbox() -> 
     );
     assert_eq!(loaded_anime.partial_source_pages.len(), 1);
     assert_eq!(
-        loaded_anime.partial_source_pages[0].address,
+        loaded_anime.partial_source_pages[0].address().as_str(),
         partial_address
     );
     assert_eq!(loaded_anime.corrections.len(), 1);
@@ -590,7 +549,6 @@ async fn load_and_save_anime_enforce_versions_hashes_visibility_and_outbox() -> 
     assert!(first_save.has_changed);
     assert_eq!(first_save.version, 2);
 
-    // Merged work is now visible and merge_requested_at is cleared.
     let visible_after = sqlx::query_scalar!(
         "SELECT EXISTS(SELECT 1 FROM anime_visible WHERE id = $1)",
         anime_id
@@ -607,7 +565,6 @@ async fn load_and_save_anime_enforce_versions_hashes_visibility_and_outbox() -> 
     .await?;
     assert!(merge_requested.is_none());
 
-    // First save emits anime.created.
     let created_subjects: Vec<String> = sqlx::query_scalar!(
         "SELECT subject FROM outbox WHERE entity_id = $1 ORDER BY created_at",
         anime_id
@@ -616,7 +573,6 @@ async fn load_and_save_anime_enforce_versions_hashes_visibility_and_outbox() -> 
     .await?;
     assert_eq!(created_subjects, vec!["anime.created"]);
 
-    // Unchanged hash clears merge_requested_at, keeps version, and emits nothing.
     sqlx::query!(
         "UPDATE anime SET merge_requested_at = now() WHERE id = $1",
         anime_id
@@ -640,13 +596,11 @@ async fn load_and_save_anime_enforce_versions_hashes_visibility_and_outbox() -> 
     .await?;
     assert!(merge_requested_after_noop.is_none());
 
-    // Stale expected_version returns version conflict (ABORTED).
-    let Err(conflict_err) = save_anime(&pool, &first_input).await else {
-        panic!("stale expected_version must fail");
-    };
+    let conflict_err = save_anime(&pool, &first_input)
+        .await
+        .expect_err("stale expected_version must fail");
     assert!(conflict_err.is_version_conflict());
 
-    // Status change writes both anime.updated and notification.anime.status.changed.
     let status_change_input = SaveAnimeInput {
         expected_version: 2,
         status: "FINISHED".to_owned(),
@@ -697,7 +651,7 @@ async fn load_and_save_anime_enforce_versions_hashes_visibility_and_outbox() -> 
 #[tokio::test]
 #[expect(
     clippy::too_many_lines,
-    reason = "End-to-end concurrent store_page and stale save test"
+    reason = "End-to-end concurrent page observation and stale save test"
 )]
 async fn store_page_bumps_linked_anime_version_and_blocks_stale_save() -> Result<(), Error> {
     let Ok(database_url) = env::var("DATABASE_URL") else {
@@ -709,26 +663,21 @@ async fn store_page_bumps_linked_anime_version_and_blocks_stale_save() -> Result
 
     let anime_id = Uuid::now_v7();
     let page_address = "999999012";
-    let page_key = PageKeyInput {
-        provider: "mal".to_owned(),
-        page_kind: PageKind::Anime,
-        address: page_address.to_owned(),
-    };
+    let page_key = PageKey::new(Provider::Mal, PageKind::Anime, page_address)?;
     let t0 = Utc::now();
 
-    store_page(
+    record_page_observation(
         &pool,
-        StorePageInput {
+        PageObservation {
             page_key: page_key.clone(),
-            fetched_at: t0,
-            is_dead: false,
-            responses: vec![PageResponseInput {
-                request_name: "main".to_owned(),
-                content_type: "application/json".to_owned(),
-                body: br#"{"mal_id":999999012,"title":"V1"}"#.to_vec(),
-            }],
-            is_not_found: false,
-            dead_page_review: false,
+            observed_at: t0,
+            outcome: FetchOutcome::Success {
+                responses: vec![PageResponse {
+                    request_name: "main".to_owned(),
+                    content_type: "application/json".to_owned(),
+                    body: br#"{"mal_id":999999012,"title":"V1"}"#.to_vec(),
+                }],
+            },
         },
     )
     .await?;
@@ -748,20 +697,18 @@ async fn store_page_bumps_linked_anime_version_and_blocks_stale_save() -> Result
     let loaded_anime = load_anime(&pool, anime_id).await?;
     assert_eq!(loaded_anime.version, 1);
 
-    // A newer page store commits while the caller is merging V1.
-    let updated_page = store_page(
+    let updated_page = record_page_observation(
         &pool,
-        StorePageInput {
+        PageObservation {
             page_key,
-            fetched_at: t0 + Duration::minutes(5),
-            is_dead: false,
-            responses: vec![PageResponseInput {
-                request_name: "main".to_owned(),
-                content_type: "application/json".to_owned(),
-                body: br#"{"mal_id":999999012,"title":"V2"}"#.to_vec(),
-            }],
-            is_not_found: false,
-            dead_page_review: false,
+            observed_at: t0 + Duration::minutes(5),
+            outcome: FetchOutcome::Success {
+                responses: vec![PageResponse {
+                    request_name: "main".to_owned(),
+                    content_type: "application/json".to_owned(),
+                    body: br#"{"mal_id":999999012,"title":"V2"}"#.to_vec(),
+                }],
+            },
         },
     )
     .await?;
@@ -775,8 +722,7 @@ async fn store_page_bumps_linked_anime_version_and_blocks_stale_save() -> Result
     assert_eq!(bumped_version, 2);
     assert!(merge_requested_at.is_some());
 
-    // The delayed save from V1 (expected_version = 1) must fail with version conflict.
-    let Err(stale_err) = save_anime(
+    let stale_err = save_anime(
         &pool,
         &SaveAnimeInput {
             anime_id,
@@ -813,9 +759,7 @@ async fn store_page_bumps_linked_anime_version_and_blocks_stale_save() -> Result
         },
     )
     .await
-    else {
-        panic!("stale save after concurrent store_page must fail");
-    };
+    .expect_err("stale save after concurrent store_page must fail");
     assert!(stale_err.is_version_conflict());
 
     sqlx::query!("DELETE FROM anime WHERE id = $1", anime_id)
@@ -845,8 +789,6 @@ async fn save_anime_replaces_names_classification_themes_and_images() -> Result<
     run_migrations(&pool).await?;
 
     let anime_id = Uuid::now_v7();
-    // Seed a pre-ECHO-100 row with hash_format = 1 and the same hash to verify
-    // bumping ANIME_HASH_FORMAT triggers a one-time detail backfill.
     sqlx::query!(
         "INSERT INTO anime (id, title, type, status, merged_at, merged_record_hash, hash_format)
          VALUES ($1, 'Monster', 'TV', 'FINISHED', now(), 'details-v1', 1)",
@@ -959,7 +901,6 @@ async fn save_anime_replaces_names_classification_themes_and_images() -> Result<
     .await?;
     assert_eq!(warning_matches, vec![anime_id]);
 
-    // Second save replaces all eight detail tables with updated rows.
     let second_input = SaveAnimeInput {
         expected_version: 2,
         merged_record_hash: "details-v2".to_owned(),
@@ -1083,15 +1024,9 @@ async fn save_anime_stores_songs_links_streaming_stats_broadcast_and_hiatus() ->
         .execute(&pool)
         .await?;
 
-    let Some(hiatus_start) = NaiveDate::from_ymd_opt(2024, 5, 1) else {
-        panic!("valid hiatus_start date");
-    };
-    let Some(hiatus_end) = NaiveDate::from_ymd_opt(2024, 5, 15) else {
-        panic!("valid hiatus_end date");
-    };
-    let Some(jp_time) = NaiveTime::from_hms_opt(0, 30, 0) else {
-        panic!("valid jp_time");
-    };
+    let hiatus_start = NaiveDate::from_ymd_opt(2024, 5, 1).expect("valid hiatus_start date");
+    let hiatus_end = NaiveDate::from_ymd_opt(2024, 5, 15).expect("valid hiatus_end date");
+    let jp_time = NaiveTime::from_hms_opt(0, 30, 0).expect("valid jp_time");
 
     let first_input = SaveAnimeInput {
         anime_id,
@@ -1198,7 +1133,6 @@ async fn save_anime_stores_songs_links_streaming_stats_broadcast_and_hiatus() ->
     assert!(first_save.has_changed);
     assert_eq!(first_save.version, 2);
 
-    // Second save with identical hiatus snapshot must NOT add a second hiatus row.
     let second_input = SaveAnimeInput {
         expected_version: 2,
         merged_record_hash: "extended-v2".to_owned(),
@@ -1216,7 +1150,6 @@ async fn save_anime_stores_songs_links_streaming_stats_broadcast_and_hiatus() ->
     .unwrap_or_default();
     assert_eq!(hiatus_count_after_same, 1);
 
-    // Third save with a changed hiatus snapshot appends a second history row.
     let mut third_schedule = first_input.schedule_and_stats.clone();
     third_schedule.hiatus = Some(AnimeHiatusInput {
         reason: Some("Golden Week".to_owned()),
@@ -1312,23 +1245,18 @@ async fn save_anime_and_link_page_persist_relations_xrefs_and_graph_edges() -> R
     let manga_id_ext = format!("8{unique_num:09}");
     let company_url = format!("https://myanimelist.net/anime/producer/{target_address}/Madhouse");
 
-    store_page(
+    record_page_observation(
         &pool,
-        StorePageInput {
-            page_key: PageKeyInput {
-                provider: "mal".to_owned(),
-                page_kind: PageKind::Anime,
-                address: target_address.clone(),
+        PageObservation {
+            page_key: PageKey::new(Provider::Mal, PageKind::Anime, target_address.clone())?,
+            observed_at: Utc::now(),
+            outcome: FetchOutcome::Success {
+                responses: vec![PageResponse {
+                    request_name: "main".to_owned(),
+                    content_type: "application/json".to_owned(),
+                    body: br#"{"mal_id":999999020}"#.to_vec(),
+                }],
             },
-            fetched_at: Utc::now(),
-            is_dead: false,
-            responses: vec![PageResponseInput {
-                request_name: "main".to_owned(),
-                content_type: "application/json".to_owned(),
-                body: br#"{"mal_id":999999020}"#.to_vec(),
-            }],
-            is_not_found: false,
-            dead_page_review: false,
         },
     )
     .await?;
@@ -1337,8 +1265,6 @@ async fn save_anime_and_link_page_persist_relations_xrefs_and_graph_edges() -> R
         .execute(&pool)
         .await?;
 
-    // Save anime_a with an unresolved relation to mal:anime:999999020, claims,
-    // source material, and a company with two roles.
     let first_work_input = SaveAnimeInput {
         anime_id: anime_a,
         expected_version: 1,
@@ -1376,13 +1302,9 @@ async fn save_anime_and_link_page_persist_relations_xrefs_and_graph_edges() -> R
                 to_page_address: target_address.clone(),
             }],
             relation_claims: vec![AnimeRelationClaimInput {
-                provider: "mal".to_owned(),
+                provider: Provider::Mal,
                 relation_type: "SPIN_OFF".to_owned(),
-                target_page: PageKeyInput {
-                    provider: "mal".to_owned(),
-                    page_kind: PageKind::Anime,
-                    address: target_address.clone(),
-                },
+                target_page: PageKey::new(Provider::Mal, PageKind::Anime, target_address.clone())?,
             }],
             source_materials: vec![AnimeSourceMaterialInput {
                 relation_type: "ADAPTATION".to_owned(),
@@ -1415,7 +1337,6 @@ async fn save_anime_and_link_page_persist_relations_xrefs_and_graph_edges() -> R
     };
     save_anime(&pool, &first_work_input).await?;
 
-    // Unresolved relation has to_anime_id IS NULL until target page is linked.
     let unresolved_target: Option<Uuid> = sqlx::query_scalar!(
         "SELECT to_anime_id FROM anime_relation WHERE from_anime_id = $1",
         anime_a
@@ -1424,16 +1345,10 @@ async fn save_anime_and_link_page_persist_relations_xrefs_and_graph_edges() -> R
     .await?;
     assert!(unresolved_target.is_none());
 
-    // Linking mal:anime:999999020 to anime_b resolves the pending relation and
-    // populates both directions in graph_edge (SPIN_OFF + PARENT_STORY).
     let resolved_count = link_anime_source_page(
         &pool,
         anime_b,
-        &PageKeyInput {
-            provider: "mal".to_owned(),
-            page_kind: PageKind::Anime,
-            address: target_address.clone(),
-        },
+        &PageKey::new(Provider::Mal, PageKind::Anime, target_address.clone())?,
     )
     .await?;
     assert_eq!(resolved_count, 1);
@@ -1456,7 +1371,6 @@ async fn save_anime_and_link_page_persist_relations_xrefs_and_graph_edges() -> R
     .await?;
     assert_eq!(ba_edge, "PARENT_STORY");
 
-    // Company reverse edges use each role as edge_type (2 rows for 2 roles).
     let company_reverse_edges: Vec<String> = sqlx::query_scalar!(
         "SELECT edge_type
          FROM graph_edge
@@ -1468,7 +1382,6 @@ async fn save_anime_and_link_page_persist_relations_xrefs_and_graph_edges() -> R
     .await?;
     assert_eq!(company_reverse_edges, vec!["PRODUCER", "STUDIO"]);
 
-    // Source material edges exist in both directions.
     let source_edge_count: i64 = sqlx::query_scalar!(
         "SELECT COUNT(*) FROM graph_edge WHERE from_id = $1 AND to_type = 'source_material' AND edge_type = 'ADAPTED_FROM'",
         anime_a
@@ -1478,7 +1391,6 @@ async fn save_anime_and_link_page_persist_relations_xrefs_and_graph_edges() -> R
     .unwrap_or_default();
     assert_eq!(source_edge_count, 1);
 
-    // Save anime_b sharing the same company xref and verify company row is reused.
     let second_work_input = SaveAnimeInput {
         anime_id: anime_b,
         expected_version: 2,
@@ -1596,11 +1508,7 @@ async fn save_anime_and_episode_lifecycle_load_save_mark_aired_and_delete()
         .execute(&pool)
         .await?;
 
-    let episode_page_key = PageKeyInput {
-        provider: "mal".to_owned(),
-        page_kind: PageKind::Episode,
-        address: episode_address.clone(),
-    };
+    let episode_page_key = PageKey::new(Provider::Mal, PageKind::Episode, episode_address.clone())?;
     let initial_aired_at =
         DateTime::parse_from_rfc3339("2020-01-01T00:00:00Z")?.with_timezone(&Utc);
 
@@ -1641,7 +1549,7 @@ async fn save_anime_and_episode_lifecycle_load_save_mark_aired_and_delete()
             title: "Herr Dr. Tenma".to_owned(),
             page_keys: vec![episode_page_key.clone()],
             list_entries: vec![EpisodeListEntryInput {
-                provider: "mal".to_owned(),
+                provider: Provider::Mal,
                 title: Some("Herr Dr. Tenma".to_owned()),
                 aired_at: Some(initial_aired_at),
                 duration_seconds: Some(1440),
@@ -1652,9 +1560,8 @@ async fn save_anime_and_episode_lifecycle_load_save_mark_aired_and_delete()
     };
     let created_outcome = save_anime(&pool, &first_anime_save).await?;
     assert_eq!(created_outcome.created_episode_ids, vec![episode_id]);
-    assert_eq!(created_outcome.changed_episode_ids, Vec::<Uuid>::new());
+    assert_eq!(created_outcome.updated_episode_ids, Vec::<Uuid>::new());
 
-    // Newly created episode is not visible until its own first merge.
     let visible_before_merge: Option<Uuid> = sqlx::query_scalar!(
         r#"SELECT id AS "id!" FROM episode_visible WHERE id = $1"#,
         episode_id
@@ -1663,7 +1570,6 @@ async fn save_anime_and_episode_lifecycle_load_save_mark_aired_and_delete()
     .await?;
     assert!(visible_before_merge.is_none());
 
-    // Set next_refresh_at so we verify changed list_entries resets it to NULL.
     sqlx::query!(
         "UPDATE episode SET next_refresh_at = now() + interval '1 day' WHERE id = $1",
         episode_id
@@ -1680,7 +1586,7 @@ async fn save_anime_and_episode_lifecycle_load_save_mark_aired_and_delete()
             title: "Herr Dr. Tenma".to_owned(),
             page_keys: vec![episode_page_key.clone()],
             list_entries: vec![EpisodeListEntryInput {
-                provider: "mal".to_owned(),
+                provider: Provider::Mal,
                 title: Some("Herr Dr. Tenma (Revised)".to_owned()),
                 aired_at: Some(initial_aired_at),
                 duration_seconds: Some(1445),
@@ -1692,7 +1598,7 @@ async fn save_anime_and_episode_lifecycle_load_save_mark_aired_and_delete()
     };
     let changed_outcome = save_anime(&pool, &second_anime_save).await?;
     assert_eq!(changed_outcome.created_episode_ids, Vec::<Uuid>::new());
-    assert_eq!(changed_outcome.changed_episode_ids, vec![episode_id]);
+    assert_eq!(changed_outcome.updated_episode_ids, vec![episode_id]);
 
     let next_refresh_after_change: Option<DateTime<Utc>> = sqlx::query_scalar!(
         "SELECT next_refresh_at FROM episode WHERE id = $1",
@@ -1702,20 +1608,18 @@ async fn save_anime_and_episode_lifecycle_load_save_mark_aired_and_delete()
     .await?;
     assert!(next_refresh_after_change.is_none());
 
-    // Store fetched content on the episode's provider page; this bumps episode version from 2 to 3.
-    store_page(
+    record_page_observation(
         &pool,
-        StorePageInput {
+        PageObservation {
             page_key: episode_page_key.clone(),
-            fetched_at: Utc::now(),
-            is_dead: false,
-            responses: vec![PageResponseInput {
-                request_name: "episode".to_owned(),
-                content_type: "application/json".to_owned(),
-                body: br#"{"title":"Herr Dr. Tenma"}"#.to_vec(),
-            }],
-            is_not_found: false,
-            dead_page_review: false,
+            observed_at: Utc::now(),
+            outcome: FetchOutcome::Success {
+                responses: vec![PageResponse {
+                    request_name: "episode".to_owned(),
+                    content_type: "application/json".to_owned(),
+                    body: br#"{"title":"Herr Dr. Tenma"}"#.to_vec(),
+                }],
+            },
         },
     )
     .await?;
@@ -1765,7 +1669,6 @@ async fn save_anime_and_episode_lifecycle_load_save_mark_aired_and_delete()
         traceparent: None,
     };
 
-    // Out-of-range score for numeric(5, 2) is rejected as invalid_argument.
     let overflow_score_result = save_episode(
         &pool,
         &SaveEpisodeInput {
@@ -1776,7 +1679,6 @@ async fn save_anime_and_episode_lifecycle_load_save_mark_aired_and_delete()
     .await;
     assert!(matches!(overflow_score_result, Err(err) if err.is_invalid_argument()));
 
-    // Wrong version fails with version_conflict.
     let stale_result = save_episode(
         &pool,
         &SaveEpisodeInput {
@@ -1787,7 +1689,6 @@ async fn save_anime_and_episode_lifecycle_load_save_mark_aired_and_delete()
     .await;
     assert!(matches!(stale_result, Err(err) if err.is_version_conflict()));
 
-    // First merge emits episode.created and makes episode_visible return the row.
     let first_ep_save = save_episode(&pool, &episode_input).await?;
     assert!(first_ep_save.has_changed);
     assert_eq!(first_ep_save.version, 4);
@@ -1800,7 +1701,6 @@ async fn save_anime_and_episode_lifecycle_load_save_mark_aired_and_delete()
     .await?;
     assert_eq!(visible_after_merge, Some(episode_id));
 
-    // Unchanged hash skips write and keeps version 4.
     let unchanged_ep_save = save_episode(
         &pool,
         &SaveEpisodeInput {
@@ -1812,7 +1712,6 @@ async fn save_anime_and_episode_lifecycle_load_save_mark_aired_and_delete()
     assert!(!unchanged_ep_save.has_changed);
     assert_eq!(unchanged_ep_save.version, 4);
 
-    // Second merge with changed hash emits episode.updated.
     let updated_ep_save = save_episode(
         &pool,
         &SaveEpisodeInput {
@@ -1826,7 +1725,6 @@ async fn save_anime_and_episode_lifecycle_load_save_mark_aired_and_delete()
     assert!(updated_ep_save.has_changed);
     assert_eq!(updated_ep_save.version, 5);
 
-    // MarkEpisodeAired writes notification.episode.aired once and is idempotent.
     let first_aired = mark_episode_aired(&pool, episode_id, None).await?;
     assert!(first_aired.has_notified);
     let second_aired = mark_episode_aired(&pool, episode_id, None).await?;
@@ -1847,7 +1745,6 @@ async fn save_anime_and_episode_lifecycle_load_save_mark_aired_and_delete()
         ]
     );
 
-    // Deleting the episode removes its page links and allows reusing episode_number 1.
     let deleted_version = delete_episode(&pool, episode_id, 5, None).await?;
     assert_eq!(deleted_version, 6);
 
@@ -1869,7 +1766,6 @@ async fn save_anime_and_episode_lifecycle_load_save_mark_aired_and_delete()
     .execute(&pool)
     .await?;
 
-    // Clean up test rows.
     sqlx::query!(
         "DELETE FROM outbox WHERE entity_id IN ($1, $2)",
         anime_id,
@@ -1956,13 +1852,13 @@ async fn sync_work_episodes_validates_page_ownership_replacement_and_timestamp_p
             episode_id: first_episode_id,
             episode_number: 1,
             title: "Ep 1".to_owned(),
-            page_keys: vec![PageKeyInput {
-                provider: "mal".to_owned(),
-                page_kind: PageKind::Episode,
-                address: first_address.clone(),
-            }],
+            page_keys: vec![PageKey::new(
+                Provider::Mal,
+                PageKind::Episode,
+                first_address.clone(),
+            )?],
             list_entries: vec![EpisodeListEntryInput {
-                provider: "mal".to_owned(),
+                provider: Provider::Mal,
                 title: Some("Ep 1".to_owned()),
                 aired_at: aired_with_nanos,
                 duration_seconds: Some(1440),
@@ -1973,9 +1869,6 @@ async fn sync_work_episodes_validates_page_ownership_replacement_and_timestamp_p
     };
     save_anime(&pool, &base_save).await?;
 
-    // Re-saving with identical sub-microsecond timestamp and replaced MAL page address:
-    // - does NOT report changed_episode_ids (timestamp precision matches PostgreSQL)
-    // - replaces first_address -> second_address cleanly without UNIQUE(episode_id, provider) error
     let replace_page_save = SaveAnimeInput {
         expected_version: 2,
         merged_record_hash: "prec-v2".to_owned(),
@@ -1983,13 +1876,13 @@ async fn sync_work_episodes_validates_page_ownership_replacement_and_timestamp_p
             episode_id: first_episode_id,
             episode_number: 1,
             title: "Ep 1".to_owned(),
-            page_keys: vec![PageKeyInput {
-                provider: "mal".to_owned(),
-                page_kind: PageKind::Episode,
-                address: second_address.clone(),
-            }],
+            page_keys: vec![PageKey::new(
+                Provider::Mal,
+                PageKind::Episode,
+                second_address.clone(),
+            )?],
             list_entries: vec![EpisodeListEntryInput {
-                provider: "mal".to_owned(),
+                provider: Provider::Mal,
                 title: Some("Ep 1".to_owned()),
                 aired_at: aired_with_nanos,
                 duration_seconds: Some(1440),
@@ -2000,7 +1893,7 @@ async fn sync_work_episodes_validates_page_ownership_replacement_and_timestamp_p
         ..base_save.clone()
     };
     let replace_outcome = save_anime(&pool, &replace_page_save).await?;
-    assert_eq!(replace_outcome.changed_episode_ids, Vec::<Uuid>::new());
+    assert_eq!(replace_outcome.updated_episode_ids, Vec::<Uuid>::new());
 
     let replaced_episode_state = sqlx::query!(
         "SELECT version, merge_requested_at FROM episode WHERE id = $1",
@@ -2011,7 +1904,6 @@ async fn sync_work_episodes_validates_page_ownership_replacement_and_timestamp_p
     assert_eq!(replaced_episode_state.version, 2);
     assert!(replaced_episode_state.merge_requested_at.is_some());
 
-    // Attempting to claim second_address for a second episode fails with invalid_argument.
     let conflict_save = SaveAnimeInput {
         expected_version: 3,
         merged_record_hash: "prec-v3".to_owned(),
@@ -2019,11 +1911,11 @@ async fn sync_work_episodes_validates_page_ownership_replacement_and_timestamp_p
             episode_id: second_episode_id,
             episode_number: 2,
             title: "Ep 2".to_owned(),
-            page_keys: vec![PageKeyInput {
-                provider: "mal".to_owned(),
-                page_kind: PageKind::Episode,
-                address: second_address.clone(),
-            }],
+            page_keys: vec![PageKey::new(
+                Provider::Mal,
+                PageKind::Episode,
+                second_address.clone(),
+            )?],
             list_entries: Vec::new(),
         }],
         ..base_save
