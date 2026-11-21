@@ -1,7 +1,5 @@
 //! PostgreSQL connection pool and `sqlx` schema migrations for Echora.
 
-// Rust guideline compliant 2026-10-09
-
 mod anime;
 mod anime_details;
 mod anime_relations;
@@ -29,6 +27,7 @@ pub use anime_schedule_and_stats::{
     AnimeScheduleAndStatsInput, AnimeStatisticsInput, AnimeStreamingInput, AnimeThemeSongInput,
     AnimeTrailerInput, EpisodeRangeInput,
 };
+use chrono::{DateTime, Utc};
 #[doc(inline)]
 pub use episode::{
     EPISODE_HASH_FORMAT, EpisodeCharacterInput, EpisodeListEntryInput, EpisodeReferenceInput,
@@ -40,17 +39,28 @@ pub use episode::{
 pub use error::Error;
 #[doc(inline)]
 pub use provider_page::{
-    PageKeyInput, PageKind, PageResponseInput, StorePageInput, StorePageOutcome,
-    compute_responses_hash, encode_page_key_proposal, store_page, validate_page_address,
+    Address, FetchOutcome, PageKey, PageKind, PageObservation, PageResponse, Provider,
+    compute_responses_hash, encode_page_key_proto, record_page_observation,
 };
-pub use sqlx::PgPool;
 use sqlx::migrate::Migrator;
 use sqlx::postgres::PgPoolOptions;
+use sqlx::{PgPool, Postgres, Transaction};
 use tracing::Level;
 
+/// Embeds the `migrations/` folder at build time, so the binary carries its own schema.
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
 /// Connects a PostgreSQL connection pool using `database_url` and `max_connections`.
+///
+/// # Examples
+///
+/// ```no_run
+/// # async fn example() -> Result<(), postgres_db::Error> {
+/// let pool = postgres_db::connect_pool("postgres://localhost/echora", 5).await?;
+/// postgres_db::run_migrations(&pool).await?;
+/// # Ok(())
+/// # }
+/// ```
 ///
 /// # Errors
 ///
@@ -66,6 +76,17 @@ pub async fn connect_pool(database_url: &str, max_connections: u32) -> Result<Pg
 
 /// Applies all embedded `sqlx` migrations to `pool`.
 ///
+/// Migrations already applied are skipped, so this is safe to run at every start.
+///
+/// # Examples
+///
+/// ```no_run
+/// # async fn example(pool: &sqlx::PgPool) -> Result<(), postgres_db::Error> {
+/// postgres_db::run_migrations(pool).await?;
+/// # Ok(())
+/// # }
+/// ```
+///
 /// # Errors
 ///
 /// Returns an error when applying any migration fails or recorded checksums
@@ -78,4 +99,17 @@ pub async fn run_migrations(pool: &PgPool) -> Result<(), Error> {
         "applied embedded PostgreSQL migrations",
     );
     Ok(())
+}
+
+/// Reads the start time of `tx`, which PostgreSQL's `now()` returns throughout it.
+///
+/// Every timestamp one write sets comes from this clock, so the rows and events of
+/// one save agree with each other and with `now()` defaults, whichever replica wrote them.
+pub(crate) async fn read_transaction_time(
+    tx: &mut Transaction<'_, Postgres>,
+) -> Result<DateTime<Utc>, Error> {
+    let transaction_time = sqlx::query_scalar!(r#"SELECT now() AS "transaction_time!""#)
+        .fetch_one(&mut **tx)
+        .await?;
+    Ok(transaction_time)
 }

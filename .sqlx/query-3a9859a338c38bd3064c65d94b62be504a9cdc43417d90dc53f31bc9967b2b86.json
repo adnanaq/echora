@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO episode_list_entry (episode_id, provider, title, duration_seconds, is_filler, is_recap)\n             VALUES ($1, 'mal', 'Asteroid Blues', 1440, false, false)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "3a9859a338c38bd3064c65d94b62be504a9cdc43417d90dc53f31bc9967b2b86"
+}

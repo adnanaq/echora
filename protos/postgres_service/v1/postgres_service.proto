@@ -47,6 +47,7 @@ message LoadAnimeResponse {
   repeated shared_proto.v1.StoredPage source_pages = 2;
   repeated shared_proto.v1.PageKey partial_source_pages = 3;
   repeated shared_proto.v1.FieldCorrection corrections = 4;
+  repeated shared_proto.v1.EpisodeReference known_episodes = 5;  // undeleted episodes, so the merge keeps their IDs
 }
 
 // Request to save a merged work if stored version matches expected_version.
@@ -64,7 +65,7 @@ message SaveAnimeResponse {
   bool has_changed = 1;
   int64 version = 2;
   repeated string created_episode_ids = 3;
-  repeated string changed_episode_ids = 4;
+  repeated string updated_episode_ids = 4;
 }
 
 // Request to load an episode's merge inputs by episode UUID.

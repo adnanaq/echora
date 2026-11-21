@@ -1,17 +1,14 @@
 //! Persistence helpers for theme songs, trailers, external links, streaming,
 //! statistics, broadcast schedule, and hiatus history.
 
-// Rust guideline compliant 2026-10-09
-
 use std::collections::{BTreeMap, BTreeSet};
 
 use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
 use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
 
+use crate::anime::MIN_ANIME_YEAR;
 use crate::error::Error;
-
-const MIN_YEAR: i16 = 1900;
 
 /// Episode range (`[range_start, range_end]`) for a theme song.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -177,6 +174,11 @@ pub struct AnimeScheduleAndStatsInput {
     pub hiatus: Option<AnimeHiatusInput>,
 }
 
+/// Checks a work's songs, links, streaming, statistics and broadcast before any write.
+///
+/// # Errors
+///
+/// Returns an invalid-argument error naming the first field that is out of range or empty.
 pub(crate) fn validate_schedule_and_stats(input: &AnimeScheduleAndStatsInput) -> Result<(), Error> {
     validate_theme_songs(&input.theme_songs)?;
     validate_trailers_and_links(
@@ -191,6 +193,12 @@ pub(crate) fn validate_schedule_and_stats(input: &AnimeScheduleAndStatsInput) ->
     Ok(())
 }
 
+/// Checks theme song titles, positions and episode ranges.
+///
+/// # Errors
+///
+/// Returns an invalid-argument error for an unknown song kind, a negative position, a blank
+/// title, a negative episode range start, or a range that ends before it starts.
 fn validate_theme_songs(theme_songs: &[AnimeThemeSongInput]) -> Result<(), Error> {
     for song in theme_songs {
         if !matches!(song.kind.as_str(), "opening" | "ending") {
@@ -218,6 +226,11 @@ fn validate_theme_songs(theme_songs: &[AnimeThemeSongInput]) -> Result<(), Error
     Ok(())
 }
 
+/// Checks trailer, external link and streaming URLs and platforms.
+///
+/// # Errors
+///
+/// Returns an invalid-argument error for a blank URL, platform or subtitle language.
 fn validate_trailers_and_links(
     trailers: &[AnimeTrailerInput],
     external_links: &[AnimeExternalLinkInput],
@@ -253,6 +266,12 @@ fn validate_trailers_and_links(
     Ok(())
 }
 
+/// Checks each provider's scores, counts and ranks.
+///
+/// # Errors
+///
+/// Returns an invalid-argument error for a score outside 0 to 10, a negative count, a rank or
+/// popularity below 1, or a contextual rank with no context, a rank below 1 or a year too early.
 fn validate_statistics(statistics: &[AnimeStatisticsInput]) -> Result<(), Error> {
     for stats in statistics {
         if let Some(score) = stats.score
@@ -285,10 +304,10 @@ fn validate_statistics(statistics: &[AnimeStatisticsInput]) -> Result<(), Error>
                 ));
             }
             if let Some(year) = contextual.year
-                && year < MIN_YEAR
+                && year < MIN_ANIME_YEAR
             {
                 return Err(Error::invalid_argument(format!(
-                    "contextual rank year {year} must be >= {MIN_YEAR}"
+                    "contextual rank year {year} must be >= {MIN_ANIME_YEAR}"
                 )));
             }
         }
@@ -296,6 +315,11 @@ fn validate_statistics(statistics: &[AnimeStatisticsInput]) -> Result<(), Error>
     Ok(())
 }
 
+/// Checks the broadcast weekday and next episode number.
+///
+/// # Errors
+///
+/// Returns an invalid-argument error for a weekday outside 1 to 7 or a negative episode number.
 fn validate_broadcast(broadcast: &AnimeBroadcastInput) -> Result<(), Error> {
     if let Some(weekday) = broadcast.weekday
         && !(1..=7).contains(&weekday)
@@ -314,6 +338,11 @@ fn validate_broadcast(broadcast: &AnimeBroadcastInput) -> Result<(), Error> {
     Ok(())
 }
 
+/// Replaces a work's songs, trailers, links, streaming, statistics and broadcast, and records its hiatus.
+///
+/// # Errors
+///
+/// Returns a database error when a query fails.
 pub(crate) async fn replace_schedule_and_stats(
     tx: &mut Transaction<'_, Postgres>,
     anime_id: Uuid,
@@ -329,6 +358,11 @@ pub(crate) async fn replace_schedule_and_stats(
     Ok(())
 }
 
+/// Replaces a work's opening and ending songs with their episode ranges.
+///
+/// # Errors
+///
+/// Returns a database error when a query fails.
 async fn replace_theme_songs(
     tx: &mut Transaction<'_, Postgres>,
     anime_id: Uuid,
@@ -382,6 +416,11 @@ async fn replace_theme_songs(
     Ok(())
 }
 
+/// Replaces a work's trailers.
+///
+/// # Errors
+///
+/// Returns a database error when a query fails.
 async fn replace_trailers(
     tx: &mut Transaction<'_, Postgres>,
     anime_id: Uuid,
@@ -426,6 +465,11 @@ async fn replace_trailers(
     Ok(())
 }
 
+/// Replaces a work's external links.
+///
+/// # Errors
+///
+/// Returns a database error when a query fails.
 async fn replace_external_links(
     tx: &mut Transaction<'_, Postgres>,
     anime_id: Uuid,
@@ -477,6 +521,11 @@ async fn replace_external_links(
     Ok(())
 }
 
+/// Replaces a work's streaming entries with their subtitle languages.
+///
+/// # Errors
+///
+/// Returns a database error when a query fails.
 async fn replace_streaming(
     tx: &mut Transaction<'_, Postgres>,
     anime_id: Uuid,
@@ -536,6 +585,11 @@ async fn replace_streaming(
     Ok(())
 }
 
+/// Replaces each provider's statistics for a work, with their contextual ranks.
+///
+/// # Errors
+///
+/// Returns a database error when a query fails.
 async fn replace_statistics(
     tx: &mut Transaction<'_, Postgres>,
     anime_id: Uuid,
@@ -610,6 +664,11 @@ async fn replace_statistics(
     Ok(())
 }
 
+/// Stores a work's broadcast slot, or deletes it when the merge has none.
+///
+/// # Errors
+///
+/// Returns a database error when a query fails.
 async fn upsert_or_delete_broadcast(
     tx: &mut Transaction<'_, Postgres>,
     anime_id: Uuid,
@@ -662,6 +721,13 @@ async fn upsert_or_delete_broadcast(
     Ok(())
 }
 
+/// Adds a hiatus history row when the work's hiatus differs from the latest one.
+///
+/// A work with no hiatus in the merge keeps its history unchanged.
+///
+/// # Errors
+///
+/// Returns a database error when a query fails.
 async fn record_hiatus_if_changed(
     tx: &mut Transaction<'_, Postgres>,
     anime_id: Uuid,
@@ -703,4 +769,123 @@ async fn record_hiatus_if_changed(
     .await?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn build_valid_schedule_and_stats() -> AnimeScheduleAndStatsInput {
+        AnimeScheduleAndStatsInput {
+            theme_songs: vec![AnimeThemeSongInput {
+                kind: "opening".to_owned(),
+                position: 0,
+                title: "Opening".to_owned(),
+                artist: None,
+                episode_ranges: vec![EpisodeRangeInput {
+                    range_start: 1,
+                    range_end: Some(12),
+                }],
+            }],
+            trailers: vec![AnimeTrailerInput {
+                url: "https://example.com/trailer".to_owned(),
+                title: None,
+                thumbnail_url: None,
+            }],
+            external_links: vec![AnimeExternalLinkInput {
+                url: "https://example.com".to_owned(),
+                platform: "Official".to_owned(),
+                label: None,
+                language: None,
+            }],
+            streaming_entries: vec![AnimeStreamingInput {
+                platform: "Crunchyroll".to_owned(),
+                url: "https://example.com/watch".to_owned(),
+                region: None,
+                is_free: None,
+                is_premium_required: None,
+                has_dub: None,
+                subtitle_languages: vec!["en".to_owned()],
+            }],
+            statistics: vec![AnimeStatisticsInput {
+                provider: "mal".to_owned(),
+                score: Some(8.5),
+                scored_by: Some(10),
+                members: Some(20),
+                favorites: Some(3),
+                rank: Some(1),
+                popularity: Some(2),
+                contextual_ranks: vec![AnimeContextualRankInput {
+                    context: "highest rated all time".to_owned(),
+                    rank: 1,
+                    is_all_time: Some(true),
+                    format: None,
+                    season: None,
+                    year: Some(2004),
+                }],
+            }],
+            broadcast: Some(AnimeBroadcastInput {
+                weekday: Some(7),
+                timezone: None,
+                jp_time: None,
+                sub_time: None,
+                dub_time: None,
+                sub_delay_days: None,
+                dub_delay_days: None,
+                premiere_jp: None,
+                premiere_sub: None,
+                premiere_dub: None,
+                next_episode_at: None,
+                next_episode_number: Some(5),
+            }),
+            hiatus: None,
+        }
+    }
+
+    #[test]
+    fn validate_schedule_and_stats_broken_rule_returns_invalid_argument() {
+        let valid_schedule = build_valid_schedule_and_stats();
+        assert!(validate_schedule_and_stats(&valid_schedule).is_ok());
+
+        let breaking_changes: Vec<fn(&mut AnimeScheduleAndStatsInput)> = vec![
+            |input| input.theme_songs[0].kind = "insert".to_owned(),
+            |input| input.theme_songs[0].position = -1,
+            |input| input.theme_songs[0].title = " ".to_owned(),
+            |input| input.theme_songs[0].episode_ranges[0].range_start = -1,
+            |input| input.theme_songs[0].episode_ranges[0].range_end = Some(0),
+            |input| input.trailers[0].url = String::new(),
+            |input| input.external_links[0].url = " ".to_owned(),
+            |input| input.external_links[0].platform = String::new(),
+            |input| input.streaming_entries[0].url = String::new(),
+            |input| input.streaming_entries[0].platform = " ".to_owned(),
+            |input| input.streaming_entries[0].subtitle_languages = vec![String::new()],
+            |input| input.statistics[0].score = Some(11.0),
+            |input| input.statistics[0].score = Some(f64::NAN),
+            |input| input.statistics[0].members = Some(-1),
+            |input| input.statistics[0].rank = Some(0),
+            |input| input.statistics[0].popularity = Some(-3),
+            |input| input.statistics[0].contextual_ranks[0].context = " ".to_owned(),
+            |input| input.statistics[0].contextual_ranks[0].rank = 0,
+            |input| input.statistics[0].contextual_ranks[0].year = Some(1800),
+            |input| {
+                input.broadcast.as_mut().expect("valid broadcast").weekday = Some(8);
+            },
+            |input| {
+                input
+                    .broadcast
+                    .as_mut()
+                    .expect("valid broadcast")
+                    .next_episode_number = Some(-1);
+            },
+        ];
+        for break_rule in breaking_changes {
+            let mut broken_schedule = valid_schedule.clone();
+            break_rule(&mut broken_schedule);
+
+            let validation_error = validate_schedule_and_stats(&broken_schedule)
+                .expect_err("a broken rule must be refused");
+
+            assert!(validation_error.is_invalid_argument());
+        }
+    }
 }

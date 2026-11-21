@@ -1,7 +1,5 @@
 //! Environment-backed settings shared across Echora Rust services.
 
-// Rust guideline compliant 2026-10-09
-
 use std::collections::HashMap;
 use std::env;
 use std::net::{IpAddr, SocketAddr};
@@ -86,12 +84,36 @@ impl CommonSettings {
     ///
     /// Returns an error when an environment variable cannot be parsed as a valid
     /// boolean, port, or log level, or when `.env` exists but cannot be read.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use common::CommonSettings;
+    ///
+    /// let settings = CommonSettings::from_env()?;
+    /// println!("listening on {}", settings.postgres_service_addr()?);
+    /// # Ok::<(), common::Error>(())
+    /// ```
     pub fn from_env() -> Result<Self, Error> {
-        let dotenv_values = load_optional_dotenv(Path::new(".env"))?;
+        Self::from_sources(|name| env::var(name).ok(), Path::new(".env"))
+    }
+
+    /// Loads settings from `read_environment`, then the `.env` file at `dotenv_path`, then defaults.
+    ///
+    /// A value `read_environment` returns wins over the same name in the file. A missing
+    /// file is allowed, so a deployment can rely on its environment alone.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the file exists but cannot be read or parsed, or when a
+    /// value fails validation.
+    pub(crate) fn from_sources(
+        read_environment: impl Fn(&str) -> Option<String>,
+        dotenv_path: &Path,
+    ) -> Result<Self, Error> {
+        let dotenv_values = load_optional_dotenv(dotenv_path)?;
         Self::from_lookup(|name| {
-            env::var(name)
-                .ok()
-                .or_else(|| dotenv_values.get(name).cloned())
+            read_environment(name).or_else(|| dotenv_values.get(name).cloned())
         })
     }
 
@@ -100,6 +122,21 @@ impl CommonSettings {
     /// # Errors
     ///
     /// Returns an error when any looked-up value fails validation.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use common::CommonSettings;
+    ///
+    /// let settings = CommonSettings::from_lookup(|name| match name {
+    ///     "LOG_LEVEL" => Some("debug".to_owned()),
+    ///     "POSTGRES_SERVICE_PORT" => Some("9004".to_owned()),
+    ///     _ => None,
+    /// })?;
+    /// assert_eq!(settings.log_level, "DEBUG");
+    /// assert_eq!(settings.postgres_service_port, 9004);
+    /// # Ok::<(), common::Error>(())
+    /// ```
     pub fn from_lookup<F>(lookup: F) -> Result<Self, Error>
     where
         F: Fn(&str) -> Option<String>,
@@ -154,6 +191,19 @@ impl CommonSettings {
     ///
     /// Returns an error when `postgres_service_host` and `postgres_service_port`
     /// do not form a valid socket address.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use common::CommonSettings;
+    ///
+    /// let settings = CommonSettings {
+    ///     postgres_service_host: "[::1]".to_owned(),
+    ///     ..CommonSettings::default()
+    /// };
+    /// assert_eq!(settings.postgres_service_addr()?.to_string(), "[::1]:8004");
+    /// # Ok::<(), common::Error>(())
+    /// ```
     pub fn postgres_service_addr(&self) -> Result<SocketAddr, Error> {
         let host = self.postgres_service_host.as_str();
         let ip_text = match (host.strip_prefix('['), host.strip_suffix(']')) {
@@ -240,10 +290,6 @@ where
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::expect_used,
-    reason = "Unit tests panic on unexpected Result variants"
-)]
 mod tests {
     use super::*;
 
@@ -303,6 +349,71 @@ mod tests {
         })
         .expect_err("non-boolean must fail");
         assert!(bad_bool.is_invalid_env());
+
+        let unparseable_port = CommonSettings::from_lookup(|name| {
+            (name == "POSTGRES_SERVICE_PORT").then(|| "70000".to_owned())
+        })
+        .expect_err("a port above 65535 must fail");
+        assert!(unparseable_port.is_invalid_env());
+
+        let unknown_level =
+            CommonSettings::from_lookup(|name| (name == "LOG_LEVEL").then(|| "VERBOSE".to_owned()))
+                .expect_err("an unknown log level must fail");
+        assert!(unknown_level.is_invalid_env());
+    }
+
+    fn write_dotenv_file(file_name: &str, contents: &str) -> std::path::PathBuf {
+        let dotenv_path =
+            std::env::temp_dir().join(format!("echora-common-{}-{file_name}", std::process::id()));
+        std::fs::write(&dotenv_path, contents).expect("write the .env file");
+        dotenv_path
+    }
+
+    #[test]
+    fn from_sources_environment_overrides_dotenv_file_and_defaults() {
+        let dotenv_path = write_dotenv_file("layered.env", "DEBUG=false\nLOG_LEVEL=debug\n");
+
+        let settings = CommonSettings::from_sources(
+            |name| (name == "LOG_LEVEL").then(|| "ERROR".to_owned()),
+            &dotenv_path,
+        )
+        .expect("layered settings load");
+
+        assert!(!settings.debug);
+        assert_eq!(settings.log_level, "ERROR");
+        assert_eq!(settings.environment, "development");
+    }
+
+    #[test]
+    fn from_sources_missing_dotenv_file_uses_environment_and_defaults() {
+        let missing_path = std::env::temp_dir().join("echora-common-no-such-file.env");
+
+        let settings = CommonSettings::from_sources(
+            |name| (name == "ENVIRONMENT").then(|| "production".to_owned()),
+            &missing_path,
+        )
+        .expect("a missing .env file is allowed");
+
+        assert_eq!(settings.environment, "production");
+        assert!(settings.debug);
+    }
+
+    #[test]
+    fn from_sources_unreadable_dotenv_file_returns_dotenv_error() {
+        let malformed_path = write_dotenv_file("malformed.env", "DEBUG='unterminated\n");
+        let directory_path = std::env::temp_dir();
+
+        let malformed_error = CommonSettings::from_sources(|_| None, &malformed_path)
+            .expect_err("a malformed .env file must be refused");
+        let directory_error = CommonSettings::from_sources(|_| None, &directory_path)
+            .expect_err("a directory is not a .env file");
+        let file_parent_error =
+            CommonSettings::from_sources(|_| None, &malformed_path.join("child.env"))
+                .expect_err("a path under a file cannot be opened");
+
+        assert!(malformed_error.is_dotenv());
+        assert!(directory_error.is_dotenv());
+        assert!(file_parent_error.is_dotenv());
     }
 
     #[test]

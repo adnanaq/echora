@@ -1,0 +1,47 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE episode e\n        SET aired_notified_at = $2\n        FROM anime a\n        WHERE e.id = $1\n          AND e.deleted_at IS NULL\n          AND a.id = e.anime_id\n          AND a.deleted_at IS NULL\n          AND e.aired_at IS NOT NULL\n          AND e.aired_at <= $2\n          AND e.aired_notified_at IS NULL\n        RETURNING e.anime_id, a.title AS anime_title, e.episode_number, e.aired_at, e.version\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "anime_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "anime_title",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "episode_number",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 3,
+        "name": "aired_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "version",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "e8328a9f8dd58a9fa3ae6b4acc8fe865ae729997a7e3df6ebcfd005e5dfa6609"
+}

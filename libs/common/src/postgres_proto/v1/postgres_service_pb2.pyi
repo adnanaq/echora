@@ -27,16 +27,18 @@ class LoadAnimeRequest(_message.Message):
     def __init__(self, anime_id: _Optional[str] = ...) -> None: ...
 
 class LoadAnimeResponse(_message.Message):
-    __slots__ = ("version", "source_pages", "partial_source_pages", "corrections")
+    __slots__ = ("version", "source_pages", "partial_source_pages", "corrections", "known_episodes")
     VERSION_FIELD_NUMBER: _ClassVar[int]
     SOURCE_PAGES_FIELD_NUMBER: _ClassVar[int]
     PARTIAL_SOURCE_PAGES_FIELD_NUMBER: _ClassVar[int]
     CORRECTIONS_FIELD_NUMBER: _ClassVar[int]
+    KNOWN_EPISODES_FIELD_NUMBER: _ClassVar[int]
     version: int
     source_pages: _containers.RepeatedCompositeFieldContainer[_merge_pb2.StoredPage]
     partial_source_pages: _containers.RepeatedCompositeFieldContainer[_merge_pb2.PageKey]
     corrections: _containers.RepeatedCompositeFieldContainer[_merge_pb2.FieldCorrection]
-    def __init__(self, version: _Optional[int] = ..., source_pages: _Optional[_Iterable[_Union[_merge_pb2.StoredPage, _Mapping]]] = ..., partial_source_pages: _Optional[_Iterable[_Union[_merge_pb2.PageKey, _Mapping]]] = ..., corrections: _Optional[_Iterable[_Union[_merge_pb2.FieldCorrection, _Mapping]]] = ...) -> None: ...
+    known_episodes: _containers.RepeatedCompositeFieldContainer[_merge_pb2.EpisodeReference]
+    def __init__(self, version: _Optional[int] = ..., source_pages: _Optional[_Iterable[_Union[_merge_pb2.StoredPage, _Mapping]]] = ..., partial_source_pages: _Optional[_Iterable[_Union[_merge_pb2.PageKey, _Mapping]]] = ..., corrections: _Optional[_Iterable[_Union[_merge_pb2.FieldCorrection, _Mapping]]] = ..., known_episodes: _Optional[_Iterable[_Union[_merge_pb2.EpisodeReference, _Mapping]]] = ...) -> None: ...
 
 class SaveAnimeRequest(_message.Message):
     __slots__ = ("anime_id", "expected_version", "anime", "merge_version", "relation_claims", "episodes")
@@ -55,16 +57,16 @@ class SaveAnimeRequest(_message.Message):
     def __init__(self, anime_id: _Optional[str] = ..., expected_version: _Optional[int] = ..., anime: _Optional[_Union[_anime_pb2.Anime, _Mapping]] = ..., merge_version: _Optional[int] = ..., relation_claims: _Optional[_Iterable[_Union[_merge_pb2.RelationClaim, _Mapping]]] = ..., episodes: _Optional[_Iterable[_Union[_merge_pb2.EpisodeReference, _Mapping]]] = ...) -> None: ...
 
 class SaveAnimeResponse(_message.Message):
-    __slots__ = ("has_changed", "version", "created_episode_ids", "changed_episode_ids")
+    __slots__ = ("has_changed", "version", "created_episode_ids", "updated_episode_ids")
     HAS_CHANGED_FIELD_NUMBER: _ClassVar[int]
     VERSION_FIELD_NUMBER: _ClassVar[int]
     CREATED_EPISODE_IDS_FIELD_NUMBER: _ClassVar[int]
-    CHANGED_EPISODE_IDS_FIELD_NUMBER: _ClassVar[int]
+    UPDATED_EPISODE_IDS_FIELD_NUMBER: _ClassVar[int]
     has_changed: bool
     version: int
     created_episode_ids: _containers.RepeatedScalarFieldContainer[str]
-    changed_episode_ids: _containers.RepeatedScalarFieldContainer[str]
-    def __init__(self, has_changed: _Optional[bool] = ..., version: _Optional[int] = ..., created_episode_ids: _Optional[_Iterable[str]] = ..., changed_episode_ids: _Optional[_Iterable[str]] = ...) -> None: ...
+    updated_episode_ids: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, has_changed: _Optional[bool] = ..., version: _Optional[int] = ..., created_episode_ids: _Optional[_Iterable[str]] = ..., updated_episode_ids: _Optional[_Iterable[str]] = ...) -> None: ...
 
 class LoadEpisodeRequest(_message.Message):
     __slots__ = ("episode_id",)

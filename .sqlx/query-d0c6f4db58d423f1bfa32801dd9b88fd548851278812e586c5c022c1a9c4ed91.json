@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT edge_type\n             FROM graph_edge\n             WHERE from_type IN ('anime', 'source_material')\n               AND to_type IN ('anime', 'source_material')\n               AND (from_type = 'source_material' OR to_type = 'source_material')\n             ORDER BY edge_type",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "edge_type",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "d0c6f4db58d423f1bfa32801dd9b88fd548851278812e586c5c022c1a9c4ed91"
+}

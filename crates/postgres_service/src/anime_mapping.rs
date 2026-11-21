@@ -1,7 +1,5 @@
 //! Exhaustive protobuf-to-SQL mapping and canonical hashing for `Anime`.
 
-// Rust guideline compliant 2026-10-09
-
 use chrono::{DateTime, Utc};
 use postgres_db::{
     ANIME_HASH_FORMAT, AnimeDetailsInput, AnimeImageInput, AnimeThemeInput, AnimeTitleInput,
@@ -36,6 +34,14 @@ use crate::service::shared_proto::v1::{
     clippy::too_many_lines,
     reason = "Exhaustive destructuring of every Anime proto field without '..' is required by ECHO-98"
 )]
+/// Maps a `SaveAnime` request into the work save of `postgres_db`.
+///
+/// The merged record hash covers the work, its relation claims and its episode list.
+///
+/// # Errors
+///
+/// Returns `INVALID_ARGUMENT` for an invalid work ID, an unknown enum value, an invalid
+/// timestamp, or an invalid episode reference.
 pub fn build_save_anime_input(
     anime_id_text: &str,
     expected_version: i64,
@@ -124,11 +130,11 @@ pub fn build_save_anime_input(
         Some(dates) => (
             dates
                 .aired_from
-                .map(|ts| parse_proto_timestamp("aired_from", ts))
+                .map(|proto_timestamp| parse_proto_timestamp("aired_from", proto_timestamp))
                 .transpose()?,
             dates
                 .aired_to
-                .map(|ts| parse_proto_timestamp("aired_to", ts))
+                .map(|proto_timestamp| parse_proto_timestamp("aired_to", proto_timestamp))
                 .transpose()?,
         ),
         None => (None, None),
@@ -210,6 +216,7 @@ pub fn build_save_anime_input(
     clippy::too_many_arguments,
     reason = "Maps the eight ECHO-100 detail collections into AnimeDetailsInput"
 )]
+/// Collects a work's titles, names, classification, themes and images for the save.
 fn build_anime_details(
     titles: std::collections::BTreeMap<String, String>,
     synonyms: Vec<String>,
@@ -258,8 +265,10 @@ fn build_anime_details(
     }
 }
 
-/// Computes a deterministic SHA-256 hex digest over a canonicalized [`Anime`]
-/// and its sorted [`RelationClaim`] list.
+/// Computes the change hash of a work save as a SHA-256 hex digest.
+///
+/// The hash covers the canonical [`Anime`], its sorted [`RelationClaim`] list and its sorted
+/// episode list, so a save whose hash matches the stored one changes nothing.
 #[must_use]
 pub fn compute_save_record_hash(
     anime: &Anime,
@@ -336,16 +345,26 @@ pub fn compute_save_record_hash(
     hex
 }
 
+/// Converts a protobuf `Timestamp` field into a UTC timestamp.
+///
+/// # Errors
+///
+/// Returns `INVALID_ARGUMENT` naming `field_name` when the time is out of range.
 pub(crate) fn parse_proto_timestamp(
     field_name: &str,
-    ts: prost_types::Timestamp,
+    proto_timestamp: prost_types::Timestamp,
 ) -> Result<DateTime<Utc>, Status> {
-    let nanos = u32::try_from(ts.nanos)
+    let nanos = u32::try_from(proto_timestamp.nanos)
         .map_err(|_| Status::invalid_argument(format!("{field_name}.nanos is invalid")))?;
-    DateTime::<Utc>::from_timestamp(ts.seconds, nanos)
+    DateTime::<Utc>::from_timestamp(proto_timestamp.seconds, nanos)
         .ok_or_else(|| Status::invalid_argument(format!("{field_name} is out of range")))
 }
 
+/// Checks that a work's entity type is `ANIME`.
+///
+/// # Errors
+///
+/// Returns `INVALID_ARGUMENT` for any other entity type.
 fn validate_entity_type(enum_number: i32) -> Result<(), Status> {
     let Ok(entity_type) = EntityType::try_from(enum_number) else {
         return Err(Status::invalid_argument(format!(
@@ -360,6 +379,11 @@ fn validate_entity_type(enum_number: i32) -> Result<(), Status> {
     }
 }
 
+/// Converts an `AnimeType` enum number into its lookup text.
+///
+/// # Errors
+///
+/// Returns `INVALID_ARGUMENT` for an unspecified or unknown value.
 fn map_anime_type(enum_number: i32) -> Result<&'static str, Status> {
     let Ok(anime_type) = AnimeType::try_from(enum_number) else {
         return Err(Status::invalid_argument(format!(
@@ -383,6 +407,11 @@ fn map_anime_type(enum_number: i32) -> Result<&'static str, Status> {
     }
 }
 
+/// Converts an `AnimeStatus` enum number into its lookup text.
+///
+/// # Errors
+///
+/// Returns `INVALID_ARGUMENT` for an unspecified or unknown value.
 fn map_anime_status(enum_number: i32) -> Result<&'static str, Status> {
     let Ok(anime_status) = AnimeStatus::try_from(enum_number) else {
         return Err(Status::invalid_argument(format!(
@@ -399,6 +428,11 @@ fn map_anime_status(enum_number: i32) -> Result<&'static str, Status> {
     }
 }
 
+/// Converts an `AnimeRating` enum number into its lookup text.
+///
+/// # Errors
+///
+/// Returns `INVALID_ARGUMENT` for an unspecified or unknown value.
 fn map_anime_rating(enum_number: i32) -> Result<&'static str, Status> {
     let Ok(anime_rating) = AnimeRating::try_from(enum_number) else {
         return Err(Status::invalid_argument(format!(
@@ -416,6 +450,11 @@ fn map_anime_rating(enum_number: i32) -> Result<&'static str, Status> {
     }
 }
 
+/// Converts an `AnimeSeason` enum number into its lookup text.
+///
+/// # Errors
+///
+/// Returns `INVALID_ARGUMENT` for an unspecified or unknown value.
 fn map_anime_season(enum_number: i32) -> Result<&'static str, Status> {
     let Ok(anime_season) = AnimeSeason::try_from(enum_number) else {
         return Err(Status::invalid_argument(format!(
@@ -433,6 +472,11 @@ fn map_anime_season(enum_number: i32) -> Result<&'static str, Status> {
     }
 }
 
+/// Converts a `SourceMaterialType` enum number into its lookup text.
+///
+/// # Errors
+///
+/// Returns `INVALID_ARGUMENT` for an unspecified or unknown value.
 pub(crate) fn map_source_material_type(enum_number: i32) -> Result<&'static str, Status> {
     let Ok(source_material) = SourceMaterialType::try_from(enum_number) else {
         return Err(Status::invalid_argument(format!(
@@ -529,6 +573,32 @@ mod tests {
             compute_save_record_hash(&first_anime, &[], &first_episodes),
             compute_save_record_hash(&second_anime, &[], &second_episodes)
         );
+        let relation_claims = vec![
+            RelationClaim {
+                provider: "mal".to_owned(),
+                relation_type: 1,
+                target_page: Some(PageKey {
+                    provider: "mal".to_owned(),
+                    page_kind: PageKind::Anime as i32,
+                    address: "2".to_owned(),
+                }),
+            },
+            RelationClaim {
+                provider: "anilist".to_owned(),
+                relation_type: 2,
+                target_page: None,
+            },
+        ];
+        let mut reversed_claims = relation_claims.clone();
+        reversed_claims.reverse();
+        assert_eq!(
+            compute_save_record_hash(&first_anime, &relation_claims, &first_episodes),
+            compute_save_record_hash(&first_anime, &reversed_claims, &first_episodes)
+        );
+        assert_ne!(
+            compute_save_record_hash(&first_anime, &relation_claims, &first_episodes),
+            compute_save_record_hash(&first_anime, &[], &first_episodes)
+        );
         first_anime.title.push('!');
         assert_ne!(
             compute_save_record_hash(&first_anime, &[], &first_episodes),
@@ -536,26 +606,128 @@ mod tests {
         );
     }
 
-    #[test]
-    fn unknown_enum_numbers_return_invalid_argument() {
-        let anime = Anime {
+    fn build_valid_anime() -> Anime {
+        Anime {
             title: "Monster".to_owned(),
-            r#type: 999,
+            r#type: AnimeType::Tv as i32,
             status: AnimeStatus::Finished as i32,
             ..Anime::default()
-        };
-        let Err(err) = build_save_anime_input(
-            &Uuid::now_v7().to_string(),
+        }
+    }
+
+    #[test]
+    fn build_save_anime_input_invalid_field_returns_invalid_argument() {
+        use crate::service::shared_proto::v1::AiredDates;
+
+        let invalid_id_status = build_save_anime_input(
+            "not-a-uuid",
             1,
             1,
-            anime,
+            build_valid_anime(),
             Vec::new(),
             Vec::new(),
             None,
-        ) else {
-            panic!("unknown enum must fail");
-        };
-        assert_eq!(err.code(), Code::InvalidArgument);
+        )
+        .expect_err("an invalid work ID must be refused");
+        assert_eq!(invalid_id_status.code(), Code::InvalidArgument);
+
+        let breaking_changes: Vec<fn(&mut Anime)> = vec![
+            |anime| anime.entity_type = 999,
+            |anime| anime.entity_type = EntityType::Episode as i32,
+            |anime| anime.r#type = 999,
+            |anime| anime.r#type = AnimeType::Unspecified as i32,
+            |anime| anime.status = 999,
+            |anime| anime.status = AnimeStatus::Unspecified as i32,
+            |anime| anime.rating = Some(999),
+            |anime| anime.season = Some(999),
+            |anime| anime.season = Some(AnimeSeason::Unspecified as i32),
+            |anime| anime.source_material = Some(999),
+            |anime| anime.source_material = Some(SourceMaterialType::Unspecified as i32),
+            |anime| anime.year = Some(70_000),
+            |anime| anime.month = Some(70_000),
+            |anime| {
+                anime.aired_dates = Some(AiredDates {
+                    aired_from: Some(prost_types::Timestamp {
+                        seconds: 0,
+                        nanos: -1,
+                    }),
+                    aired_to: None,
+                });
+            },
+            |anime| {
+                anime.aired_dates = Some(AiredDates {
+                    aired_from: None,
+                    aired_to: Some(prost_types::Timestamp {
+                        seconds: i64::MAX,
+                        nanos: 0,
+                    }),
+                });
+            },
+        ];
+        for break_rule in breaking_changes {
+            let mut broken_anime = build_valid_anime();
+            break_rule(&mut broken_anime);
+
+            let status = build_save_anime_input(
+                &Uuid::now_v7().to_string(),
+                1,
+                1,
+                broken_anime,
+                Vec::new(),
+                Vec::new(),
+                None,
+            )
+            .expect_err("an invalid work must be refused");
+
+            assert_eq!(status.code(), Code::InvalidArgument);
+        }
+    }
+
+    async fn assert_lookup_values_exist(
+        pool: &sqlx::PgPool,
+        lookup_table: &str,
+        lookup_texts: Vec<&str>,
+    ) {
+        for lookup_text in lookup_texts {
+            let is_stored: bool = sqlx::query_scalar(&format!(
+                "SELECT EXISTS(SELECT 1 FROM {lookup_table} WHERE value = $1)"
+            ))
+            .bind(lookup_text)
+            .fetch_one(pool)
+            .await
+            .expect("query the lookup table");
+            assert!(is_stored, "{lookup_table} lacks {lookup_text:?}");
+        }
+    }
+
+    fn map_every_enum_number(
+        map_enum_number: fn(i32) -> Result<&'static str, Status>,
+    ) -> Vec<&'static str> {
+        (0..64)
+            .filter_map(|enum_number| map_enum_number(enum_number).ok())
+            .collect()
+    }
+
+    #[sqlx::test(migrations = "../postgres_db/migrations")]
+    async fn lookup_text_every_proto_enum_value_exists_in_lookup_table(pool: sqlx::PgPool) {
+        let type_texts = map_every_enum_number(map_anime_type);
+        let status_texts = map_every_enum_number(map_anime_status);
+        let rating_texts = map_every_enum_number(map_anime_rating);
+        let season_texts = map_every_enum_number(map_anime_season);
+        let source_material_texts = map_every_enum_number(map_source_material_type);
+
+        assert_eq!(type_texts.len(), AnimeType::Other as usize);
+        assert_eq!(status_texts.len(), AnimeStatus::Cancelled as usize);
+        assert_eq!(season_texts.len(), AnimeSeason::Winter as usize);
+        let accepted_entity_types = map_every_enum_number(|enum_number| {
+            validate_entity_type(enum_number).map(|()| "ANIME")
+        });
+        assert_eq!(accepted_entity_types.len(), 2);
+        assert_lookup_values_exist(&pool, "anime_type", type_texts).await;
+        assert_lookup_values_exist(&pool, "anime_status", status_texts).await;
+        assert_lookup_values_exist(&pool, "anime_rating", rating_texts).await;
+        assert_lookup_values_exist(&pool, "anime_season", season_texts).await;
+        assert_lookup_values_exist(&pool, "source_material_type", source_material_texts).await;
     }
 
     #[test]
@@ -611,7 +783,7 @@ mod tests {
             }),
             ..Anime::default()
         };
-        let Ok(input) = build_save_anime_input(
+        let input = (build_save_anime_input(
             &Uuid::now_v7().to_string(),
             2,
             7,
@@ -619,9 +791,8 @@ mod tests {
             Vec::new(),
             Vec::new(),
             None,
-        ) else {
-            panic!("valid anime should map");
-        };
+        ))
+        .expect("valid anime should map");
         assert_eq!(input.anime_type, "TV");
         assert_eq!(input.status, "ONGOING");
         assert_eq!(input.rating, "PG-13 - Teens 13 or older");

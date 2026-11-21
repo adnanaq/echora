@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO anime_relation (from_anime_id, relation_type, to_anime_id, to_page_provider, to_page_address)\n             VALUES ($1, 'SEQUEL', $2, 'mal', '2'),\n                    ($1, 'ADAPTATION', $2, 'mal', '2')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7998510a0d81a21b8fb246c0a50340642d26498faeb3e277ffa415186f94b811"
+}

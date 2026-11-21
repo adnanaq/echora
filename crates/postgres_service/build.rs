@@ -1,7 +1,5 @@
 //! Compiles protobuf definitions for `postgres_service`.
 
-// Rust guideline compliant 2026-10-09
-
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rerun-if-changed=../../protos/postgres_service/v1/postgres_service.proto");
     println!("cargo:rerun-if-changed=../../protos/shared_proto/v1/anime.proto");

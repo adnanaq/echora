@@ -1,7 +1,5 @@
 //! Episode loading, version-checked saving, aired notifications, and work-list sync.
 
-// Rust guideline compliant 2026-10-09
-
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use chrono::{DateTime, Timelike as _, Utc};
@@ -14,17 +12,24 @@ use crate::anime::{
     FieldCorrectionRecord, LoadedSourcePage, ProtoTimestamp, decompress_body,
     insert_catalogue_outbox_event, parse_page_kind, to_proto_timestamp,
 };
-use crate::provider_page::validate_page_address;
-use crate::{Error, PageKeyInput, PageKind, PageResponseInput};
+use crate::read_transaction_time;
+use crate::{Error, PageKey, PageKind, PageResponse, Provider};
 
 /// Current canonical hash format version stored in `episode.hash_format`.
 pub const EPISODE_HASH_FORMAT: i16 = 1;
 
+/// Lowest episode score that `episode.score numeric(5, 2)` cannot store.
+///
+/// PostgreSQL rounds the score to two decimals, and 999.995 rounds to 1000.00, which needs
+/// a fourth integer digit. A score at or above this value fails the save with a numeric
+/// overflow, so the save refuses it first. Changing the column's precision changes this value.
+const EPISODE_SCORE_OVERFLOW: f64 = 999.995;
+
 /// One provider's facts about an episode, sliced out of a work's page.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EpisodeListEntryInput {
-    /// Provider name (for example `"mal"` or `"anilist"`).
-    pub provider: String,
+    /// Provider whose work page lists the episode.
+    pub provider: Provider,
     /// Episode title reported by the provider, if any.
     pub title: Option<String>,
     /// Air timestamp reported by the provider, if known.
@@ -47,7 +52,7 @@ pub struct EpisodeReferenceInput {
     /// Display title from the work's episode list.
     pub title: String,
     /// Episode provider page keys linked to this episode.
-    pub page_keys: Vec<PageKeyInput>,
+    pub page_keys: Vec<PageKey>,
     /// Per-provider episode list entries from the work's pages.
     pub list_entries: Vec<EpisodeListEntryInput>,
 }
@@ -107,7 +112,7 @@ pub struct SaveEpisodeInput {
     pub episode_number: i32,
     /// Season number (`> 0`), if known.
     pub season_number: Option<i32>,
-    /// Primary display title.
+    /// Primary display title, blank while no provider has one; stored as NULL then.
     pub title: String,
     /// Japanese title, if known.
     pub title_japanese: Option<String>,
@@ -179,8 +184,26 @@ struct ProtoEpisodeAiredNotification {
     aired_at: Option<ProtoTimestamp>,
 }
 
+#[derive(Debug)]
+pub(crate) struct SyncWorkEpisodesOutcome {
+    pub created_episode_ids: Vec<Uuid>,
+    pub updated_episode_ids: Vec<Uuid>,
+}
+
 /// Loads an episode's version, linked pages, list entries, and approved corrections.
 ///
+/// # Examples
+///
+/// ```no_run
+/// # use sqlx::PgPool;
+/// # use uuid::Uuid;
+/// # use postgres_db::load_episode;
+/// # async fn example(pool: &PgPool, episode_id: Uuid) -> Result<(), postgres_db::Error> {
+/// let outcome = load_episode(pool, episode_id).await?;
+/// println!("Episode version: {}", outcome.version);
+/// # Ok(())
+/// # }
+/// ```
 /// # Errors
 ///
 /// Returns [`Error::is_not_found`] when `episode_id` does not exist or is
@@ -217,6 +240,14 @@ pub async fn load_episode(pool: &PgPool, episode_id: Uuid) -> Result<LoadEpisode
     })
 }
 
+/// Loads an episode's fetched pages with their responses.
+///
+/// A linked page that was never fetched is left out, since the merge has nothing to read.
+///
+/// # Errors
+///
+/// Returns a database error when a query fails or a body cannot be decompressed, or an
+/// invalid-argument error when a stored page key no longer passes validation.
 async fn load_episode_pages(
     tx: &mut Transaction<'_, Postgres>,
     episode_id: Uuid,
@@ -250,12 +281,9 @@ async fn load_episode_pages(
         let Some(fetched_at) = row.fetched_at else {
             continue;
         };
+        let provider: Provider = row.provider.parse()?;
         let page_kind = parse_page_kind(&row.page_kind)?;
-        let page_key = PageKeyInput {
-            provider: row.provider.clone(),
-            page_kind,
-            address: row.address.clone(),
-        };
+        let page_key = PageKey::new(provider, page_kind, &row.address)?;
         let responses = responses_by_page
             .remove(&(row.provider, row.address))
             .unwrap_or_default();
@@ -271,10 +299,15 @@ async fn load_episode_pages(
     Ok(pages)
 }
 
+/// Loads the decompressed responses of an episode's pages, grouped by page.
+///
+/// # Errors
+///
+/// Returns a database error when the query fails or a stored body cannot be decompressed.
 async fn load_episode_responses_by_page(
     tx: &mut Transaction<'_, Postgres>,
     episode_id: Uuid,
-) -> Result<HashMap<(String, String), Vec<PageResponseInput>>, Error> {
+) -> Result<HashMap<(String, String), Vec<PageResponse>>, Error> {
     let response_rows = sqlx::query!(
         r#"
         SELECT
@@ -296,13 +329,13 @@ async fn load_episode_responses_by_page(
     .fetch_all(&mut **tx)
     .await?;
 
-    let mut responses_by_page: HashMap<(String, String), Vec<PageResponseInput>> = HashMap::new();
+    let mut responses_by_page: HashMap<(String, String), Vec<PageResponse>> = HashMap::new();
     for row in response_rows {
         let body = decompress_body(&row.body)?;
         responses_by_page
             .entry((row.provider, row.address))
             .or_default()
-            .push(PageResponseInput {
+            .push(PageResponse {
                 request_name: row.request_name,
                 content_type: row.content_type,
                 body,
@@ -311,6 +344,11 @@ async fn load_episode_responses_by_page(
     Ok(responses_by_page)
 }
 
+/// Loads an episode's approved field corrections in field-path order.
+///
+/// # Errors
+///
+/// Returns a database error when a query fails.
 async fn load_episode_corrections(
     tx: &mut Transaction<'_, Postgres>,
     episode_id: Uuid,
@@ -344,6 +382,12 @@ async fn load_episode_corrections(
         .collect())
 }
 
+/// Loads what each provider's work page says about an episode.
+///
+/// # Errors
+///
+/// Returns a database error when the query fails, or an invalid-argument error for a
+/// stored provider that is not a known provider.
 async fn load_episode_list_entries(
     tx: &mut Transaction<'_, Postgres>,
     episode_id: Uuid,
@@ -366,20 +410,61 @@ async fn load_episode_list_entries(
     .fetch_all(&mut **tx)
     .await?;
 
-    Ok(rows
-        .into_iter()
-        .map(|row| EpisodeListEntryInput {
-            provider: row.provider,
-            title: row.title,
-            aired_at: row.aired_at,
-            duration_seconds: row.duration_seconds,
-            is_filler: row.is_filler,
-            is_recap: row.is_recap,
+    rows.into_iter()
+        .map(|row| {
+            Ok(EpisodeListEntryInput {
+                provider: row.provider.parse()?,
+                title: row.title,
+                aired_at: row.aired_at,
+                duration_seconds: row.duration_seconds,
+                is_filler: row.is_filler,
+                is_recap: row.is_recap,
+            })
         })
-        .collect())
+        .collect()
 }
 
 /// Validates and persists a merged episode when its canonical hash changed.
+///
+/// An unchanged hash clears `merge_requested_at` and records `merge_version`, so the
+/// episode stops being due for a merge-code upgrade, and writes nothing else.
+///
+/// # Examples
+///
+/// ```no_run
+/// # use sqlx::PgPool;
+/// # use uuid::Uuid;
+/// # use postgres_db::{EPISODE_HASH_FORMAT, SaveEpisodeInput, save_episode};
+/// # async fn example(pool: &PgPool, episode_id: Uuid) -> Result<(), postgres_db::Error> {
+/// let input = SaveEpisodeInput {
+///     episode_id,
+///     expected_version: 1,
+///     episode_number: 1,
+///     season_number: Some(1),
+///     title: "Asteroid Blues".to_owned(),
+///     title_japanese: None,
+///     title_romaji: None,
+///     synopsis: None,
+///     description: None,
+///     aired_at: None,
+///     duration_seconds: Some(1440),
+///     is_filler: false,
+///     is_recap: false,
+///     score: Some(8.75),
+///     titles: Vec::new(),
+///     images: Vec::new(),
+///     streaming: Vec::new(),
+///     characters: Vec::new(),
+///     merged_record_hash: "blake3-hash-value".to_owned(),
+///     hash_format: EPISODE_HASH_FORMAT,
+///     merge_version: 1,
+///     traceparent: None,
+/// };
+/// let outcome = save_episode(pool, &input).await?;
+/// assert!(outcome.has_changed);
+/// # Ok(())
+/// # }
+/// ```
 ///
 /// # Errors
 ///
@@ -425,10 +510,13 @@ pub async fn save_episode(
         sqlx::query!(
             r#"
             UPDATE episode
-            SET merge_requested_at = NULL
-            WHERE id = $1 AND merge_requested_at IS NOT NULL
+            SET merge_requested_at = NULL,
+                merge_version = $2
+            WHERE id = $1
+              AND (merge_requested_at IS NOT NULL OR merge_version IS DISTINCT FROM $2)
             "#,
-            input.episode_id
+            input.episode_id,
+            input.merge_version
         )
         .execute(&mut *tx)
         .await?;
@@ -441,7 +529,7 @@ pub async fn save_episode(
     }
 
     let next_version = existing.version + 1;
-    let now = Utc::now();
+    let now = read_transaction_time(&mut tx).await?;
     let is_first_merge = existing.merged_at.is_none();
 
     update_episode_row(&mut tx, input, next_version, now).await?;
@@ -468,11 +556,12 @@ pub async fn save_episode(
 
     tx.commit().await?;
     tracing::event!(
+        name: "postgres_db.episode.saved",
         Level::INFO,
-        episode_id = %input.episode_id,
-        version = next_version,
-        subject,
-        "episode.saved"
+        episode.id = %input.episode_id,
+        episode.version = next_version,
+        outbox.subject = subject,
+        "saved episode {{episode.id}} at version {{episode.version}} with {{outbox.subject}}",
     );
 
     Ok(SaveEpisodeOutcome {
@@ -481,10 +570,12 @@ pub async fn save_episode(
     })
 }
 
+/// Checks an episode save's fields and child lists before any write.
+///
+/// # Errors
+///
+/// Returns an invalid-argument error naming the first field that is out of range or empty.
 fn validate_save_episode_input(input: &SaveEpisodeInput) -> Result<(), Error> {
-    if input.title.trim().is_empty() {
-        return Err(Error::invalid_argument("episode title must not be empty"));
-    }
     if input.episode_number < 0 {
         return Err(Error::invalid_argument("episode_number must be >= 0"));
     }
@@ -498,11 +589,11 @@ fn validate_save_episode_input(input: &SaveEpisodeInput) -> Result<(), Error> {
         return Err(Error::invalid_argument("duration_seconds must be >= 0"));
     }
     if let Some(score) = input.score
-        && (!score.is_finite() || !(0.0..1000.0).contains(&score))
+        && !(0.0..EPISODE_SCORE_OVERFLOW).contains(&score)
     {
-        return Err(Error::invalid_argument(
-            "episode score must be finite, >= 0, and < 1000",
-        ));
+        return Err(Error::invalid_argument(format!(
+            "episode score must be at least 0 and below {EPISODE_SCORE_OVERFLOW}, got {score}"
+        )));
     }
     if input.merged_record_hash.is_empty() {
         return Err(Error::invalid_argument(
@@ -546,6 +637,13 @@ fn validate_save_episode_input(input: &SaveEpisodeInput) -> Result<(), Error> {
     Ok(())
 }
 
+/// Writes the episode's own columns, its new version and its merge metadata.
+///
+/// The first merge also sets `merged_at`.
+///
+/// # Errors
+///
+/// Returns a database error when a query fails.
 async fn update_episode_row(
     tx: &mut Transaction<'_, Postgres>,
     input: &SaveEpisodeInput,
@@ -580,7 +678,7 @@ async fn update_episode_row(
         input.episode_id,
         input.episode_number,
         input.season_number,
-        input.title,
+        (!input.title.trim().is_empty()).then_some(input.title.as_str()),
         input.title_japanese,
         input.title_romaji,
         input.synopsis,
@@ -601,6 +699,11 @@ async fn update_episode_row(
     Ok(())
 }
 
+/// Replaces an episode's localized titles.
+///
+/// # Errors
+///
+/// Returns a database error when a query fails.
 async fn replace_episode_titles(
     tx: &mut Transaction<'_, Postgres>,
     episode_id: Uuid,
@@ -644,6 +747,11 @@ async fn replace_episode_titles(
     Ok(())
 }
 
+/// Replaces an episode's images.
+///
+/// # Errors
+///
+/// Returns a database error when a query fails.
 async fn replace_episode_images(
     tx: &mut Transaction<'_, Postgres>,
     episode_id: Uuid,
@@ -674,6 +782,11 @@ async fn replace_episode_images(
     Ok(())
 }
 
+/// Replaces an episode's streaming links.
+///
+/// # Errors
+///
+/// Returns a database error when a query fails.
 async fn replace_episode_streaming(
     tx: &mut Transaction<'_, Postgres>,
     episode_id: Uuid,
@@ -717,6 +830,11 @@ async fn replace_episode_streaming(
     Ok(())
 }
 
+/// Replaces the characters that appear in an episode.
+///
+/// # Errors
+///
+/// Returns a database error when a query fails.
 async fn replace_episode_characters(
     tx: &mut Transaction<'_, Postgres>,
     episode_id: Uuid,
@@ -776,28 +894,44 @@ async fn replace_episode_characters(
 
 /// Writes `notification.episode.aired` once when `aired_at` has passed and `aired_notified_at` is unset.
 ///
+/// # Examples
+///
+/// ```no_run
+/// # use sqlx::PgPool;
+/// # use uuid::Uuid;
+/// # use postgres_db::mark_episode_aired;
+/// # async fn example(pool: &PgPool, episode_id: Uuid) -> Result<(), postgres_db::Error> {
+/// let outcome = mark_episode_aired(pool, episode_id, None).await?;
+/// println!("Aired notification written: {}", outcome.has_notified);
+/// # Ok(())
+/// # }
+/// ```
+///
 /// # Errors
 ///
-/// Returns [`Error::is_not_found`] when `episode_id` does not exist or is
-/// deleted, or a database error when the transaction fails.
+/// Returns [`Error::is_not_found`] when `episode_id` (or its parent work) does
+/// not exist or is deleted, or a database error when the transaction fails.
 pub async fn mark_episode_aired(
     pool: &PgPool,
     episode_id: Uuid,
     traceparent: Option<&str>,
 ) -> Result<MarkEpisodeAiredOutcome, Error> {
     let mut tx = pool.begin().await?;
-    let now = Utc::now();
+    let now = read_transaction_time(&mut tx).await?;
 
     let notified_row = sqlx::query!(
         r#"
-        UPDATE episode
+        UPDATE episode e
         SET aired_notified_at = $2
-        WHERE id = $1
-          AND deleted_at IS NULL
-          AND aired_at IS NOT NULL
-          AND aired_at <= $2
-          AND aired_notified_at IS NULL
-        RETURNING anime_id, episode_number, aired_at, version
+        FROM anime a
+        WHERE e.id = $1
+          AND e.deleted_at IS NULL
+          AND a.id = e.anime_id
+          AND a.deleted_at IS NULL
+          AND e.aired_at IS NOT NULL
+          AND e.aired_at <= $2
+          AND e.aired_notified_at IS NULL
+        RETURNING e.anime_id, a.title AS anime_title, e.episode_number, e.aired_at, e.version
         "#,
         episode_id,
         now,
@@ -807,7 +941,16 @@ pub async fn mark_episode_aired(
 
     let Some(row) = notified_row else {
         let exists = sqlx::query_scalar!(
-            "SELECT EXISTS(SELECT 1 FROM episode WHERE id = $1 AND deleted_at IS NULL)",
+            r#"
+            SELECT EXISTS(
+                SELECT 1
+                FROM episode e
+                JOIN anime a ON a.id = e.anime_id
+                WHERE e.id = $1
+                  AND e.deleted_at IS NULL
+                  AND a.deleted_at IS NULL
+            )
+            "#,
             episode_id
         )
         .fetch_one(&mut *tx)
@@ -822,20 +965,12 @@ pub async fn mark_episode_aired(
         });
     };
 
-    let anime_title = sqlx::query_scalar!(
-        "SELECT COALESCE(title, '') FROM anime WHERE id = $1",
-        row.anime_id
-    )
-    .fetch_one(&mut *tx)
-    .await?
-    .unwrap_or_default();
-
     let event_id = Uuid::now_v7();
     let notification = ProtoEpisodeAiredNotification {
         event_id: event_id.to_string(),
         saved_at: Some(to_proto_timestamp(now)),
         anime_id: row.anime_id.to_string(),
-        anime_title,
+        anime_title: row.anime_title.unwrap_or_default(),
         episode_id: episode_id.to_string(),
         episode_number: row.episode_number,
         aired_at: row.aired_at.map(to_proto_timestamp),
@@ -862,6 +997,19 @@ pub async fn mark_episode_aired(
 }
 
 /// Soft-deletes an episode, removes its page links and graph edges, and writes `episode.deleted`.
+///
+/// # Examples
+///
+/// ```no_run
+/// # use sqlx::PgPool;
+/// # use uuid::Uuid;
+/// # use postgres_db::delete_episode;
+/// # async fn example(pool: &PgPool, episode_id: Uuid) -> Result<(), postgres_db::Error> {
+/// let new_version = delete_episode(pool, episode_id, 1, None).await?;
+/// assert_eq!(new_version, 2);
+/// # Ok(())
+/// # }
+/// ```
 ///
 /// # Errors
 ///
@@ -896,7 +1044,7 @@ pub async fn delete_episode(
     }
 
     let next_version = existing.version + 1;
-    let now = Utc::now();
+    let now = read_transaction_time(&mut tx).await?;
 
     sqlx::query!(
         r#"
@@ -942,6 +1090,12 @@ pub async fn delete_episode(
     Ok(next_version)
 }
 
+/// Checks the episodes a work save lists before any write.
+///
+/// # Errors
+///
+/// Returns an invalid-argument error for a negative episode number, a page key that is
+/// not an episode page, or a negative list entry duration.
 pub(crate) fn validate_work_episode_references(
     episodes: &[EpisodeReferenceInput],
 ) -> Result<(), Error> {
@@ -950,19 +1104,13 @@ pub(crate) fn validate_work_episode_references(
             return Err(Error::invalid_argument("episode_number must be >= 0"));
         }
         for page_key in &episode.page_keys {
-            if page_key.page_kind != PageKind::Episode {
+            if page_key.page_kind() != PageKind::Episode {
                 return Err(Error::invalid_argument(
                     "episode page_keys must have PageKind::Episode",
                 ));
             }
-            validate_page_address(&page_key.provider, &page_key.address)?;
         }
         for entry in &episode.list_entries {
-            if entry.provider.trim().is_empty() {
-                return Err(Error::invalid_argument(
-                    "episode_list_entry provider must not be empty",
-                ));
-            }
             if entry.duration_seconds.is_some_and(|seconds| seconds < 0) {
                 return Err(Error::invalid_argument(
                     "episode_list_entry duration_seconds must be >= 0",
@@ -973,15 +1121,31 @@ pub(crate) fn validate_work_episode_references(
     Ok(())
 }
 
+/// Creates the episodes a work newly lists and updates those it already has.
+///
+/// - A new episode gets its row, page links and list entries, with `merged_at` empty.
+/// - An existing episode whose page links or list entries changed gets a new version and a
+///   merge request.
+/// - An existing episode whose list entries changed is also made due at once, since the sweep
+///   skips episodes of finished works.
+///
+/// # Errors
+///
+/// Returns an invalid-argument error when an episode belongs to another work or is deleted,
+/// or when a page already belongs to another episode, a unique violation when a new episode
+/// takes a number an undeleted episode holds, or a database error when a query fails.
 pub(crate) async fn sync_work_episodes(
     tx: &mut Transaction<'_, Postgres>,
     anime_id: Uuid,
     episodes: &[EpisodeReferenceInput],
-) -> Result<(Vec<Uuid>, Vec<Uuid>), Error> {
-    let mut created_episode_ids = Vec::new();
-    let mut changed_episode_ids = Vec::new();
+) -> Result<SyncWorkEpisodesOutcome, Error> {
+    let mut sorted_episodes: Vec<&EpisodeReferenceInput> = episodes.iter().collect();
+    sorted_episodes.sort_by_key(|episode| episode.episode_id);
 
-    for episode in episodes {
+    let mut created_episode_ids = Vec::new();
+    let mut updated_episode_ids = Vec::new();
+
+    for episode in sorted_episodes {
         let existing = sqlx::query!(
             "SELECT anime_id, deleted_at FROM episode WHERE id = $1 FOR UPDATE",
             episode.episode_id
@@ -1022,16 +1186,25 @@ pub(crate) async fn sync_work_episodes(
                     .execute(&mut **tx)
                     .await?;
                     if entries_changed {
-                        changed_episode_ids.push(episode.episode_id);
+                        updated_episode_ids.push(episode.episode_id);
                     }
                 }
             }
         }
     }
 
-    Ok((created_episode_ids, changed_episode_ids))
+    Ok(SyncWorkEpisodesOutcome {
+        created_episode_ids,
+        updated_episode_ids,
+    })
 }
 
+/// Creates an episode listed by its work, with its page links and list entries.
+///
+/// # Errors
+///
+/// Returns a unique violation when the work already has an undeleted episode with the same
+/// number, or a database error when a query fails.
 async fn insert_new_episode_from_work(
     tx: &mut Transaction<'_, Postgres>,
     anime_id: Uuid,
@@ -1056,13 +1229,36 @@ async fn insert_new_episode_from_work(
     Ok(())
 }
 
+/// Links each page key to the episode, replacing an older page of the same provider.
+///
+/// The result tells whether any link was added.
+///
+/// # Errors
+///
+/// Returns an invalid-argument error when a page already belongs to another episode, or a
+/// database error when a query fails.
 async fn link_episode_pages(
     tx: &mut Transaction<'_, Postgres>,
     episode_id: Uuid,
-    page_keys: &[PageKeyInput],
+    page_keys: &[PageKey],
 ) -> Result<bool, Error> {
+    let mut sorted_keys: Vec<&PageKey> = page_keys.iter().collect();
+    sorted_keys.sort_by(|left, right| {
+        (left.provider().as_str(), left.address().as_str())
+            .cmp(&(right.provider().as_str(), right.address().as_str()))
+    });
+    sorted_keys.dedup();
+
     let mut pages_changed = false;
-    for page_key in page_keys {
+    for page_key in sorted_keys {
+        sqlx::query!(
+            "SELECT pg_advisory_xact_lock(hashtextextended($1 || ':episode:' || $2, 0))",
+            page_key.provider().as_str(),
+            page_key.address().as_str(),
+        )
+        .execute(&mut **tx)
+        .await?;
+
         let existing_owner = sqlx::query_scalar!(
             r#"
             SELECT episode_id
@@ -1070,8 +1266,8 @@ async fn link_episode_pages(
             WHERE provider = $1 AND page_kind = 'episode' AND address = $2
             FOR UPDATE
             "#,
-            page_key.provider,
-            page_key.address,
+            page_key.provider().as_str(),
+            page_key.address().as_str(),
         )
         .fetch_optional(&mut **tx)
         .await?;
@@ -1080,7 +1276,8 @@ async fn link_episode_pages(
             if owner_episode_id != episode_id {
                 return Err(Error::invalid_argument(format!(
                     "episode page {}:episode:{} already belongs to episode {owner_episode_id}",
-                    page_key.provider, page_key.address
+                    page_key.provider(),
+                    page_key.address()
                 )));
             }
             continue;
@@ -1091,7 +1288,7 @@ async fn link_episode_pages(
         sqlx::query!(
             "DELETE FROM episode_provider_page WHERE episode_id = $1 AND provider = $2",
             episode_id,
-            page_key.provider,
+            page_key.provider().as_str(),
         )
         .execute(&mut **tx)
         .await?;
@@ -1102,8 +1299,8 @@ async fn link_episode_pages(
             VALUES ($1, 'episode', $2)
             ON CONFLICT (provider, page_kind, address) DO NOTHING
             "#,
-            page_key.provider,
-            page_key.address,
+            page_key.provider().as_str(),
+            page_key.address().as_str(),
         )
         .execute(&mut **tx)
         .await?;
@@ -1114,8 +1311,8 @@ async fn link_episode_pages(
             VALUES ($1, $2, 'episode', $3)
             "#,
             episode_id,
-            page_key.provider,
-            page_key.address,
+            page_key.provider().as_str(),
+            page_key.address().as_str(),
         )
         .execute(&mut **tx)
         .await?;
@@ -1124,6 +1321,13 @@ async fn link_episode_pages(
     Ok(pages_changed)
 }
 
+/// Replaces an episode's list entries when they differ from the stored ones.
+///
+/// The result tells whether the entries changed.
+///
+/// # Errors
+///
+/// Returns a database error when a query fails.
 async fn replace_list_entries_if_changed(
     tx: &mut Transaction<'_, Postgres>,
     episode_id: Uuid,
@@ -1145,8 +1349,11 @@ async fn replace_list_entries_if_changed(
     Ok(true)
 }
 
+/// Keeps one list entry per provider, with times cut to PostgreSQL's microsecond precision.
+///
+/// Stored and incoming entries then compare equal when nothing changed.
 fn normalize_list_entries(entries: &[EpisodeListEntryInput]) -> Vec<EpisodeListEntryInput> {
-    let mut deduplicated_entries: BTreeMap<&str, EpisodeListEntryInput> = BTreeMap::new();
+    let mut deduplicated_entries: BTreeMap<&'static str, EpisodeListEntryInput> = BTreeMap::new();
     for entry in entries {
         let mut normalized_entry = entry.clone();
         normalized_entry.aired_at = normalized_entry.aired_at.map(truncate_to_micros);
@@ -1155,11 +1362,19 @@ fn normalize_list_entries(entries: &[EpisodeListEntryInput]) -> Vec<EpisodeListE
     deduplicated_entries.into_values().collect()
 }
 
-fn truncate_to_micros(ts: DateTime<Utc>) -> DateTime<Utc> {
-    let truncated_nanos = (ts.nanosecond() / 1_000) * 1_000;
-    ts.with_nanosecond(truncated_nanos).unwrap_or(ts)
+/// Cuts a timestamp to the microsecond precision PostgreSQL stores.
+fn truncate_to_micros(timestamp: DateTime<Utc>) -> DateTime<Utc> {
+    let truncated_nanos = (timestamp.nanosecond() / 1_000) * 1_000;
+    timestamp
+        .with_nanosecond(truncated_nanos)
+        .unwrap_or(timestamp)
 }
 
+/// Inserts an episode's list entries, one per provider.
+///
+/// # Errors
+///
+/// Returns a database error when a query fails.
 async fn insert_episode_list_entries(
     tx: &mut Transaction<'_, Postgres>,
     episode_id: Uuid,
@@ -1172,7 +1387,7 @@ async fn insert_episode_list_entries(
 
     let providers: Vec<String> = normalized
         .iter()
-        .map(|entry| entry.provider.clone())
+        .map(|entry| entry.provider.as_str().to_owned())
         .collect();
     let titles: Vec<Option<String>> = normalized.iter().map(|entry| entry.title.clone()).collect();
     let aired_ats: Vec<Option<DateTime<Utc>>> =
@@ -1210,4 +1425,750 @@ async fn insert_episode_list_entries(
     .execute(&mut **tx)
     .await?;
     Ok(())
+}
+
+/// Loads the undeleted episodes of `anime_id` with their page keys and list entries.
+///
+/// Episodes come in episode-number order, and each episode's page keys and list entries
+/// in provider order, so two loads of the same rows give the same list.
+///
+/// # Errors
+///
+/// Returns a database error when a query fails, or an invalid-argument error when a
+/// stored provider or address no longer passes validation.
+pub(crate) async fn load_known_episodes(
+    tx: &mut Transaction<'_, Postgres>,
+    anime_id: Uuid,
+) -> Result<Vec<EpisodeReferenceInput>, Error> {
+    let episode_rows = sqlx::query!(
+        r#"
+        SELECT id, episode_number, title
+        FROM episode
+        WHERE anime_id = $1 AND deleted_at IS NULL
+        ORDER BY episode_number, id
+        "#,
+        anime_id
+    )
+    .fetch_all(&mut **tx)
+    .await?;
+    let mut page_keys_by_episode = load_page_keys_by_episode(tx, anime_id).await?;
+    let mut list_entries_by_episode = load_list_entries_by_episode(tx, anime_id).await?;
+
+    Ok(episode_rows
+        .into_iter()
+        .map(|episode_row| EpisodeReferenceInput {
+            episode_id: episode_row.id,
+            episode_number: episode_row.episode_number,
+            title: episode_row.title.unwrap_or_default(),
+            page_keys: page_keys_by_episode
+                .remove(&episode_row.id)
+                .unwrap_or_default(),
+            list_entries: list_entries_by_episode
+                .remove(&episode_row.id)
+                .unwrap_or_default(),
+        })
+        .collect())
+}
+
+/// Loads the page keys of every undeleted episode of `anime_id`, grouped by episode.
+///
+/// # Errors
+///
+/// Returns a database error when the query fails, or an invalid-argument error when a
+/// stored provider or address no longer passes validation.
+async fn load_page_keys_by_episode(
+    tx: &mut Transaction<'_, Postgres>,
+    anime_id: Uuid,
+) -> Result<HashMap<Uuid, Vec<PageKey>>, Error> {
+    let page_rows = sqlx::query!(
+        r#"
+        SELECT epp.episode_id, epp.provider, epp.address
+        FROM episode_provider_page epp
+        JOIN episode e ON e.id = epp.episode_id
+        WHERE e.anime_id = $1 AND e.deleted_at IS NULL
+        ORDER BY epp.episode_id, epp.provider, epp.address
+        "#,
+        anime_id
+    )
+    .fetch_all(&mut **tx)
+    .await?;
+
+    let mut page_keys_by_episode: HashMap<Uuid, Vec<PageKey>> = HashMap::new();
+    for page_row in page_rows {
+        let page_key = PageKey::new(
+            page_row.provider.parse()?,
+            PageKind::Episode,
+            page_row.address,
+        )?;
+        page_keys_by_episode
+            .entry(page_row.episode_id)
+            .or_default()
+            .push(page_key);
+    }
+    Ok(page_keys_by_episode)
+}
+
+/// Loads the list entries of every undeleted episode of `anime_id`, grouped by episode.
+///
+/// # Errors
+///
+/// Returns a database error when the query fails, or an invalid-argument error when a
+/// stored provider is not a known provider.
+async fn load_list_entries_by_episode(
+    tx: &mut Transaction<'_, Postgres>,
+    anime_id: Uuid,
+) -> Result<HashMap<Uuid, Vec<EpisodeListEntryInput>>, Error> {
+    let entry_rows = sqlx::query!(
+        r#"
+        SELECT
+            ele.episode_id,
+            ele.provider,
+            ele.title,
+            ele.aired_at,
+            ele.duration_seconds,
+            ele.is_filler,
+            ele.is_recap
+        FROM episode_list_entry ele
+        JOIN episode e ON e.id = ele.episode_id
+        WHERE e.anime_id = $1 AND e.deleted_at IS NULL
+        ORDER BY ele.episode_id, ele.provider
+        "#,
+        anime_id
+    )
+    .fetch_all(&mut **tx)
+    .await?;
+
+    let mut list_entries_by_episode: HashMap<Uuid, Vec<EpisodeListEntryInput>> = HashMap::new();
+    for entry_row in entry_rows {
+        list_entries_by_episode
+            .entry(entry_row.episode_id)
+            .or_default()
+            .push(EpisodeListEntryInput {
+                provider: entry_row.provider.parse()?,
+                title: entry_row.title,
+                aired_at: entry_row.aired_at,
+                duration_seconds: entry_row.duration_seconds,
+                is_filler: entry_row.is_filler,
+                is_recap: entry_row.is_recap,
+            });
+    }
+    Ok(list_entries_by_episode)
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::TimeDelta;
+    use sqlx::PgPool;
+    use uuid::Uuid;
+
+    use super::*;
+    use crate::provider_page::{FetchOutcome, PageObservation, record_page_observation};
+
+    fn sample_save_episode_input(episode_id: Uuid, expected_version: i64) -> SaveEpisodeInput {
+        SaveEpisodeInput {
+            episode_id,
+            expected_version,
+            episode_number: 1,
+            season_number: Some(1),
+            title: "Asteroid Blues".to_owned(),
+            title_japanese: Some("アステロイド・ブルース".to_owned()),
+            title_romaji: Some("Asteroid Blues".to_owned()),
+            synopsis: Some("Spike and Jet hunt Asimov Solensan.".to_owned()),
+            description: Some("Extended episode notes.".to_owned()),
+            aired_at: Some(Utc::now() - TimeDelta::days(30)),
+            duration_seconds: Some(1440),
+            is_filler: false,
+            is_recap: false,
+            score: Some(8.75),
+            titles: vec![
+                EpisodeTitleInput {
+                    language: "ja".to_owned(),
+                    title: "アステロイド・ブルース".to_owned(),
+                },
+                EpisodeTitleInput {
+                    language: "en".to_owned(),
+                    title: "Asteroid Blues".to_owned(),
+                },
+            ],
+            images: vec![
+                "https://cdn.example.com/ep1-a.jpg".to_owned(),
+                "https://cdn.example.com/ep1-a.jpg".to_owned(),
+                "https://cdn.example.com/ep1-b.jpg".to_owned(),
+            ],
+            streaming: vec![EpisodeStreamingInput {
+                platform: "crunchyroll".to_owned(),
+                url: "https://crunchyroll.com/watch/1".to_owned(),
+            }],
+            characters: vec![EpisodeCharacterInput {
+                character_page_provider: "mal".to_owned(),
+                character_page_address: "1".to_owned(),
+                role: "MAIN".to_owned(),
+            }],
+            merged_record_hash: "hash-v1".to_owned(),
+            hash_format: EPISODE_HASH_FORMAT,
+            merge_version: 1,
+            traceparent: Some("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01".to_owned()),
+        }
+    }
+
+    async fn seed_anime_and_episode(
+        pool: &PgPool,
+        aired_at: Option<DateTime<Utc>>,
+    ) -> (Uuid, Uuid) {
+        let anime_id = Uuid::now_v7();
+        let episode_id = Uuid::now_v7();
+
+        sqlx::query!(
+            r#"
+            INSERT INTO anime (id, title, type)
+            VALUES ($1, 'Cowboy Bebop', 'TV')
+            "#,
+            anime_id
+        )
+        .execute(pool)
+        .await
+        .expect("insert seed anime");
+
+        sqlx::query!(
+            r#"
+            INSERT INTO episode (id, anime_id, episode_number, title, aired_at)
+            VALUES ($1, $2, 1, 'Asteroid Blues', $3)
+            "#,
+            episode_id,
+            anime_id,
+            aired_at
+        )
+        .execute(pool)
+        .await
+        .expect("insert seed episode");
+
+        (anime_id, episode_id)
+    }
+
+    #[test]
+    fn validate_save_episode_input_rejects_invalid_fields() {
+        let id = Uuid::now_v7();
+
+        let mut neg_ep = sample_save_episode_input(id, 0);
+        neg_ep.episode_number = -1;
+        assert!(
+            validate_save_episode_input(&neg_ep)
+                .unwrap_err()
+                .is_invalid_argument()
+        );
+
+        let mut zero_season = sample_save_episode_input(id, 0);
+        zero_season.season_number = Some(0);
+        assert!(
+            validate_save_episode_input(&zero_season)
+                .unwrap_err()
+                .is_invalid_argument()
+        );
+
+        let mut neg_duration = sample_save_episode_input(id, 0);
+        neg_duration.duration_seconds = Some(-5);
+        assert!(
+            validate_save_episode_input(&neg_duration)
+                .unwrap_err()
+                .is_invalid_argument()
+        );
+
+        let mut highest_stored_score = sample_save_episode_input(id, 0);
+        highest_stored_score.score = Some(999.994);
+        assert!(validate_save_episode_input(&highest_stored_score).is_ok());
+
+        for bad_score in [-0.1, 999.995, 999.996, 1000.0, f64::NAN, f64::INFINITY] {
+            let mut bad = sample_save_episode_input(id, 0);
+            bad.score = Some(bad_score);
+            assert!(
+                validate_save_episode_input(&bad)
+                    .unwrap_err()
+                    .is_invalid_argument()
+            );
+        }
+
+        let mut empty_hash = sample_save_episode_input(id, 0);
+        empty_hash.merged_record_hash.clear();
+        assert!(
+            validate_save_episode_input(&empty_hash)
+                .unwrap_err()
+                .is_invalid_argument()
+        );
+
+        let mut neg_merge_ver = sample_save_episode_input(id, 0);
+        neg_merge_ver.merge_version = -1;
+        assert!(
+            validate_save_episode_input(&neg_merge_ver)
+                .unwrap_err()
+                .is_invalid_argument()
+        );
+
+        let mut bad_title = sample_save_episode_input(id, 0);
+        bad_title.titles.push(EpisodeTitleInput {
+            language: String::new(),
+            title: "Test".to_owned(),
+        });
+        assert!(
+            validate_save_episode_input(&bad_title)
+                .unwrap_err()
+                .is_invalid_argument()
+        );
+
+        let mut bad_image = sample_save_episode_input(id, 0);
+        bad_image.images.push("  ".to_owned());
+        assert!(
+            validate_save_episode_input(&bad_image)
+                .unwrap_err()
+                .is_invalid_argument()
+        );
+
+        let mut bad_stream = sample_save_episode_input(id, 0);
+        bad_stream.streaming.push(EpisodeStreamingInput {
+            platform: "netflix".to_owned(),
+            url: String::new(),
+        });
+        assert!(
+            validate_save_episode_input(&bad_stream)
+                .unwrap_err()
+                .is_invalid_argument()
+        );
+
+        let mut bad_char = sample_save_episode_input(id, 0);
+        bad_char.characters.push(EpisodeCharacterInput {
+            character_page_provider: "mal".to_owned(),
+            character_page_address: String::new(),
+            role: "MAIN".to_owned(),
+        });
+        assert!(
+            validate_save_episode_input(&bad_char)
+                .unwrap_err()
+                .is_invalid_argument()
+        );
+    }
+
+    #[test]
+    fn validate_work_episode_references_enforces_invariants() {
+        let valid_page = PageKey::new(Provider::Mal, PageKind::Episode, "1").unwrap();
+        let wrong_kind_page = PageKey::new(Provider::Mal, PageKind::Anime, "1").unwrap();
+
+        let neg_ep = EpisodeReferenceInput {
+            episode_id: Uuid::now_v7(),
+            episode_number: -1,
+            title: "Ep -1".to_owned(),
+            page_keys: vec![valid_page.clone()],
+            list_entries: Vec::new(),
+        };
+        assert!(
+            validate_work_episode_references(&[neg_ep])
+                .unwrap_err()
+                .is_invalid_argument()
+        );
+
+        let wrong_kind = EpisodeReferenceInput {
+            episode_id: Uuid::now_v7(),
+            episode_number: 0,
+            title: "Special".to_owned(),
+            page_keys: vec![wrong_kind_page],
+            list_entries: Vec::new(),
+        };
+        assert!(
+            validate_work_episode_references(&[wrong_kind])
+                .unwrap_err()
+                .is_invalid_argument()
+        );
+
+        let neg_entry_duration = EpisodeReferenceInput {
+            episode_id: Uuid::now_v7(),
+            episode_number: 1,
+            title: "Ep 1".to_owned(),
+            page_keys: vec![valid_page],
+            list_entries: vec![EpisodeListEntryInput {
+                provider: Provider::Mal,
+                title: None,
+                aired_at: None,
+                duration_seconds: Some(-10),
+                is_filler: None,
+                is_recap: None,
+            }],
+        };
+        assert!(
+            validate_work_episode_references(&[neg_entry_duration])
+                .unwrap_err()
+                .is_invalid_argument()
+        );
+    }
+
+    #[sqlx::test]
+    async fn load_episode_returns_not_found_for_missing_or_deleted(pool: PgPool) {
+        let missing_id = Uuid::now_v7();
+        assert!(
+            load_episode(&pool, missing_id)
+                .await
+                .unwrap_err()
+                .is_not_found()
+        );
+
+        let (_, episode_id) = seed_anime_and_episode(&pool, None).await;
+        delete_episode(&pool, episode_id, 1, None).await.unwrap();
+        assert!(
+            load_episode(&pool, episode_id)
+                .await
+                .unwrap_err()
+                .is_not_found()
+        );
+    }
+
+    #[sqlx::test]
+    async fn load_episode_hydrates_pages_list_entries_and_corrections(pool: PgPool) {
+        let (anime_id, episode_id) = seed_anime_and_episode(&pool, None).await;
+        let episode_page_key = PageKey::new(Provider::Mal, PageKind::Episode, "1").unwrap();
+        let fetched_at = Utc::now();
+
+        record_page_observation(
+            &pool,
+            PageObservation {
+                page_key: episode_page_key.clone(),
+                observed_at: fetched_at,
+                outcome: FetchOutcome::Success {
+                    responses: vec![PageResponse {
+                        request_name: "episode_detail".to_owned(),
+                        content_type: "application/json".to_owned(),
+                        body: br#"{"mal_id":1}"#.to_vec(),
+                    }],
+                },
+            },
+        )
+        .await
+        .unwrap();
+
+        sqlx::query!(
+            "INSERT INTO episode_provider_page (episode_id, provider, page_kind, address)
+             VALUES ($1, 'mal', 'episode', '1')",
+            episode_id
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        sqlx::query!(
+            "INSERT INTO episode_list_entry (episode_id, provider, title, duration_seconds, is_filler, is_recap)
+             VALUES ($1, 'mal', 'Asteroid Blues', 1440, false, false)",
+            episode_id
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        sqlx::query!(
+            "INSERT INTO episode_field_correction (episode_id, field_path, value_message, value, approved_by)
+             VALUES ($1, 'title', 'google.protobuf.StringValue', $2, 'mod_1')",
+            episode_id,
+            b"\x0a\x0eAsteroid Blues" as &[u8],
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let loaded = load_episode(&pool, episode_id).await.unwrap();
+        assert_eq!(loaded.anime_id, anime_id);
+        assert_eq!(loaded.version, 1);
+        assert_eq!(loaded.pages.len(), 1);
+        assert_eq!(loaded.pages[0].page_key, episode_page_key);
+        assert_eq!(loaded.pages[0].responses[0].body, br#"{"mal_id":1}"#);
+        assert_eq!(loaded.list_entries.len(), 1);
+        assert_eq!(loaded.list_entries[0].provider, Provider::Mal);
+        assert_eq!(loaded.corrections.len(), 1);
+        assert_eq!(loaded.corrections[0].field_path, "title");
+    }
+
+    #[sqlx::test]
+    async fn save_episode_handles_create_noop_update_and_version_conflict(pool: PgPool) {
+        let (_, episode_id) = seed_anime_and_episode(&pool, None).await;
+        let first_merge_input = sample_save_episode_input(episode_id, 1);
+
+        let first_merge_outcome = save_episode(&pool, &first_merge_input).await.unwrap();
+        assert!(first_merge_outcome.has_changed);
+        assert_eq!(first_merge_outcome.version, 2);
+
+        let subjects: Vec<String> = sqlx::query_scalar!(
+            "SELECT subject FROM outbox WHERE entity_id = $1 ORDER BY created_at",
+            episode_id
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        assert_eq!(subjects, vec!["episode.created".to_owned()]);
+
+        let image_count: i64 = sqlx::query_scalar!(
+            "SELECT COUNT(*) FROM episode_image WHERE episode_id = $1",
+            episode_id
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap()
+        .unwrap_or(0);
+        assert_eq!(image_count, 2);
+
+        sqlx::query!(
+            "UPDATE episode SET merge_requested_at = now() WHERE id = $1",
+            episode_id
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let mut unchanged_merge_input = first_merge_input.clone();
+        unchanged_merge_input.expected_version = 2;
+        let unchanged_outcome = save_episode(&pool, &unchanged_merge_input).await.unwrap();
+        assert!(!unchanged_outcome.has_changed);
+        assert_eq!(unchanged_outcome.version, 2);
+
+        let merge_requested_at = sqlx::query_scalar!(
+            "SELECT merge_requested_at FROM episode WHERE id = $1",
+            episode_id
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert!(merge_requested_at.is_none());
+
+        assert!(
+            save_episode(&pool, &first_merge_input)
+                .await
+                .unwrap_err()
+                .is_version_conflict()
+        );
+
+        let mut changed_merge_input = unchanged_merge_input;
+        changed_merge_input.merged_record_hash = "hash-v2".to_owned();
+        changed_merge_input.title = "Asteroid Blues (Remastered)".to_owned();
+        let changed_merge_outcome = save_episode(&pool, &changed_merge_input).await.unwrap();
+        assert!(changed_merge_outcome.has_changed);
+        assert_eq!(changed_merge_outcome.version, 3);
+
+        let subjects_after: Vec<String> = sqlx::query_scalar!(
+            "SELECT subject FROM outbox WHERE entity_id = $1 ORDER BY created_at",
+            episode_id
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            subjects_after,
+            vec!["episode.created".to_owned(), "episode.updated".to_owned()]
+        );
+    }
+
+    #[sqlx::test]
+    async fn mark_episode_aired_notifies_once_and_ignores_future_or_unset(pool: PgPool) {
+        let (_, future_episode_id) =
+            seed_anime_and_episode(&pool, Some(Utc::now() + TimeDelta::hours(2))).await;
+        let future_episode_outcome = mark_episode_aired(&pool, future_episode_id, None)
+            .await
+            .unwrap();
+        assert!(!future_episode_outcome.has_notified);
+
+        let (_, unaired_episode_id) = seed_anime_and_episode(&pool, None).await;
+        let unaired_episode_outcome = mark_episode_aired(&pool, unaired_episode_id, None)
+            .await
+            .unwrap();
+        assert!(!unaired_episode_outcome.has_notified);
+
+        let (anime_id, aired_episode_id) =
+            seed_anime_and_episode(&pool, Some(Utc::now() - TimeDelta::minutes(5))).await;
+        let first = mark_episode_aired(&pool, aired_episode_id, Some("00-trace-01"))
+            .await
+            .unwrap();
+        assert!(first.has_notified);
+
+        let second = mark_episode_aired(&pool, aired_episode_id, None)
+            .await
+            .unwrap();
+        assert!(!second.has_notified);
+
+        let outbox_rows = sqlx::query!(
+            "SELECT subject, payload, traceparent FROM outbox WHERE entity_id = $1",
+            aired_episode_id
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        assert_eq!(outbox_rows.len(), 1);
+        assert_eq!(outbox_rows[0].subject, "notification.episode.aired");
+        assert_eq!(outbox_rows[0].traceparent.as_deref(), Some("00-trace-01"));
+
+        let decoded =
+            ProtoEpisodeAiredNotification::decode(outbox_rows[0].payload.as_slice()).unwrap();
+        assert_eq!(decoded.anime_id, anime_id.to_string());
+        assert_eq!(decoded.anime_title, "Cowboy Bebop");
+        assert_eq!(decoded.episode_id, aired_episode_id.to_string());
+        assert_eq!(decoded.episode_number, 1);
+    }
+
+    #[sqlx::test]
+    async fn delete_episode_soft_deletes_cleans_links_and_writes_outbox(pool: PgPool) {
+        let (_, episode_id) = seed_anime_and_episode(&pool, None).await;
+
+        sqlx::query!(
+            "INSERT INTO provider_page (provider, page_kind, address) VALUES ('mal', 'episode', '10')"
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query!(
+            "INSERT INTO episode_provider_page (episode_id, provider, page_kind, address)
+             VALUES ($1, 'mal', 'episode', '10')",
+            episode_id
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        assert!(
+            delete_episode(&pool, episode_id, 99, None)
+                .await
+                .unwrap_err()
+                .is_version_conflict()
+        );
+
+        let deleted_version = delete_episode(&pool, episode_id, 1, None).await.unwrap();
+        assert_eq!(deleted_version, 2);
+
+        assert!(
+            delete_episode(&pool, episode_id, 2, None)
+                .await
+                .unwrap_err()
+                .is_not_found()
+        );
+
+        let link_count: i64 = sqlx::query_scalar!(
+            "SELECT COUNT(*) FROM episode_provider_page WHERE episode_id = $1",
+            episode_id
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap()
+        .unwrap_or(0);
+        assert_eq!(link_count, 0);
+
+        let subject = sqlx::query_scalar!(
+            "SELECT subject FROM outbox WHERE entity_id = $1",
+            episode_id
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(subject, "episode.deleted");
+    }
+
+    #[sqlx::test]
+    async fn sync_work_episodes_handles_create_idempotent_noop_page_swap_and_conflicts(
+        pool: PgPool,
+    ) {
+        let (anime_id, _) = seed_anime_and_episode(&pool, None).await;
+        let listed_episode_id = Uuid::now_v7();
+        let aired_with_nanos = Utc::now();
+
+        let listed_episode_reference = EpisodeReferenceInput {
+            episode_id: listed_episode_id,
+            episode_number: 2,
+            title: "Stray Dog Strut".to_owned(),
+            page_keys: vec![PageKey::new(Provider::Mal, PageKind::Episode, "2").unwrap()],
+            list_entries: vec![EpisodeListEntryInput {
+                provider: Provider::Mal,
+                title: Some("Stray Dog Strut".to_owned()),
+                aired_at: Some(aired_with_nanos),
+                duration_seconds: Some(1440),
+                is_filler: Some(false),
+                is_recap: Some(false),
+            }],
+        };
+
+        let mut tx = pool.begin().await.unwrap();
+        let created_outcome = sync_work_episodes(
+            &mut tx,
+            anime_id,
+            std::slice::from_ref(&listed_episode_reference),
+        )
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
+        assert_eq!(created_outcome.created_episode_ids, vec![listed_episode_id]);
+        assert_eq!(created_outcome.updated_episode_ids, Vec::<Uuid>::new());
+
+        let mut tx = pool.begin().await.unwrap();
+        let unchanged_outcome = sync_work_episodes(
+            &mut tx,
+            anime_id,
+            std::slice::from_ref(&listed_episode_reference),
+        )
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
+        assert_eq!(unchanged_outcome.created_episode_ids, Vec::<Uuid>::new());
+        assert_eq!(unchanged_outcome.updated_episode_ids, Vec::<Uuid>::new());
+
+        let mut moved_page_reference = listed_episode_reference.clone();
+        moved_page_reference.page_keys =
+            vec![PageKey::new(Provider::Mal, PageKind::Episode, "200").unwrap()];
+        let mut tx = pool.begin().await.unwrap();
+        let moved_page_outcome = sync_work_episodes(
+            &mut tx,
+            anime_id,
+            std::slice::from_ref(&moved_page_reference),
+        )
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
+        assert_eq!(moved_page_outcome.updated_episode_ids, Vec::<Uuid>::new());
+        let swapped_episode = sqlx::query!(
+            "SELECT version, merge_requested_at FROM episode WHERE id = $1",
+            listed_episode_id
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(swapped_episode.version, 2);
+        assert!(swapped_episode.merge_requested_at.is_some());
+
+        let linked_addresses: Vec<String> = sqlx::query_scalar!(
+            "SELECT address FROM episode_provider_page WHERE episode_id = $1",
+            listed_episode_id
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        assert_eq!(linked_addresses, vec!["200".to_owned()]);
+
+        let other_episode_id = Uuid::now_v7();
+        let conflicting_page_ref = EpisodeReferenceInput {
+            episode_id: other_episode_id,
+            episode_number: 3,
+            title: "Honky Tonk Women".to_owned(),
+            page_keys: vec![PageKey::new(Provider::Mal, PageKind::Episode, "200").unwrap()],
+            list_entries: Vec::new(),
+        };
+        let mut tx = pool.begin().await.unwrap();
+        let page_owner_error = sync_work_episodes(&mut tx, anime_id, &[conflicting_page_ref])
+            .await
+            .unwrap_err();
+        assert!(page_owner_error.is_invalid_argument());
+        tx.rollback().await.unwrap();
+
+        let other_anime_id = Uuid::now_v7();
+        sqlx::query!(
+            "INSERT INTO anime (id, title, type) VALUES ($1, 'Other Anime', 'TV')",
+            other_anime_id
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let mut tx = pool.begin().await.unwrap();
+        let other_work_error = sync_work_episodes(&mut tx, other_anime_id, &[moved_page_reference])
+            .await
+            .unwrap_err();
+        assert!(other_work_error.is_invalid_argument());
+        tx.rollback().await.unwrap();
+    }
 }

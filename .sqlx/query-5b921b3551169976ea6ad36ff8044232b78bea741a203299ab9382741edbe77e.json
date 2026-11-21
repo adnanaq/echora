@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT from_anime_id, to_anime_id, relation_type\n         FROM anime_relation\n         WHERE (from_anime_id = $1 AND to_anime_id = $2)\n            OR (from_anime_id = $2 AND to_anime_id = $1)",
+  "query": "SELECT from_anime_id, to_anime_id AS \"to_anime_id!\", relation_type\n         FROM anime_relation\n         WHERE (from_anime_id = $1 AND to_anime_id = $2)\n            OR (from_anime_id = $2 AND to_anime_id = $1)",
   "describe": {
     "columns": [
       {
@@ -10,7 +10,7 @@
       },
       {
         "ordinal": 1,
-        "name": "to_anime_id",
+        "name": "to_anime_id!",
         "type_info": "Uuid"
       },
       {
@@ -31,5 +31,5 @@
       false
     ]
   },
-  "hash": "8c4f8aca24c9ded95fa6c39208a6e69f3841c1424ad3a1e25bc6aecf9ee0ce47"
+  "hash": "5b921b3551169976ea6ad36ff8044232b78bea741a203299ab9382741edbe77e"
 }

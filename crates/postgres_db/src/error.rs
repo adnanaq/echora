@@ -1,13 +1,13 @@
 //! Error types for the `postgres_db` crate.
 
-// Rust guideline compliant 2026-10-09
-
+use std::backtrace::{Backtrace, BacktraceStatus};
 use std::fmt;
 
 /// Represents failures from PostgreSQL connections, queries, and migrations.
 #[derive(Debug)]
 pub struct Error {
     kind: ErrorKind,
+    backtrace: Backtrace,
 }
 
 #[derive(Debug)]
@@ -22,28 +22,93 @@ enum ErrorKind {
 }
 
 impl Error {
+    /// Creates an error of `kind`, capturing a backtrace when `RUST_BACKTRACE` asks for one.
+    fn from_kind(kind: ErrorKind) -> Self {
+        Self {
+            kind,
+            backtrace: Backtrace::capture(),
+        }
+    }
+
     /// Creates a not-found error.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use postgres_db::Error;
+    ///
+    /// let err = Error::not_found();
+    /// assert!(err.is_not_found());
+    /// ```
     #[must_use]
     pub fn not_found() -> Self {
-        Self {
-            kind: ErrorKind::NotFound,
-        }
+        Self::from_kind(ErrorKind::NotFound)
     }
 
     /// Creates an invalid-argument error with `message`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use postgres_db::Error;
+    ///
+    /// let err = Error::invalid_argument("title must not be empty");
+    /// assert!(err.is_invalid_argument());
+    /// ```
     #[must_use]
     pub fn invalid_argument(message: impl Into<String>) -> Self {
-        Self {
-            kind: ErrorKind::InvalidArgument(message.into()),
-        }
+        Self::from_kind(ErrorKind::InvalidArgument(message.into()))
     }
 
     /// Creates an optimistic concurrency or version conflict error with `message`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use postgres_db::Error;
+    ///
+    /// let err = Error::version_conflict("expected version 1, found 2");
+    /// assert!(err.is_version_conflict());
+    /// ```
     #[must_use]
     pub fn version_conflict(message: impl Into<String>) -> Self {
-        Self {
-            kind: ErrorKind::VersionConflict(message.into()),
-        }
+        Self::from_kind(ErrorKind::VersionConflict(message.into()))
+    }
+
+    /// Creates a unique-constraint error with `message`, as PostgreSQL would report it.
+    ///
+    /// Only callers' tests need this, since real ones come from the database driver.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use postgres_db::Error;
+    ///
+    /// let err = Error::unique_violation("duplicate key value violates episode_number_uniq");
+    /// assert!(err.is_unique_violation());
+    /// ```
+    #[cfg(feature = "test-util")]
+    #[must_use]
+    pub fn unique_violation(message: impl Into<String>) -> Self {
+        Self::from_kind(ErrorKind::UniqueViolation(message.into()))
+    }
+
+    /// Creates a foreign-key error with `message`, as PostgreSQL would report it.
+    ///
+    /// Only callers' tests need this, since real ones come from the database driver.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use postgres_db::Error;
+    ///
+    /// let err = Error::foreign_key_violation("insert violates provider_page_provider_fkey");
+    /// assert!(err.is_foreign_key_violation());
+    /// ```
+    #[cfg(feature = "test-util")]
+    #[must_use]
+    pub fn foreign_key_violation(message: impl Into<String>) -> Self {
+        Self::from_kind(ErrorKind::ForeignKeyViolation(message.into()))
     }
 
     /// Returns `true` when a required row was not found.
@@ -62,6 +127,15 @@ impl Error {
     }
 
     /// Returns `true` when the caller passed an invalid argument.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use postgres_db::Error;
+    ///
+    /// let err = Error::invalid_argument("bad input");
+    /// assert!(err.is_invalid_argument());
+    /// ```
     #[must_use]
     pub fn is_invalid_argument(&self) -> bool {
         matches!(self.kind, ErrorKind::InvalidArgument(_))
@@ -83,24 +157,60 @@ impl Error {
     }
 
     /// Returns `true` when a unique constraint was violated.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use postgres_db::Error;
+    ///
+    /// let err = Error::not_found();
+    /// assert!(!err.is_unique_violation());
+    /// ```
     #[must_use]
     pub fn is_unique_violation(&self) -> bool {
         matches!(self.kind, ErrorKind::UniqueViolation(_))
     }
 
     /// Returns `true` when a foreign key constraint was violated.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use postgres_db::Error;
+    ///
+    /// let err = Error::not_found();
+    /// assert!(!err.is_foreign_key_violation());
+    /// ```
     #[must_use]
     pub fn is_foreign_key_violation(&self) -> bool {
         matches!(self.kind, ErrorKind::ForeignKeyViolation(_))
     }
 
     /// Returns `true` when running embedded `sqlx` migrations failed.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use postgres_db::Error;
+    ///
+    /// let err = Error::from(sqlx::migrate::MigrateError::VersionMissing(1));
+    /// assert!(err.is_migration());
+    /// ```
     #[must_use]
     pub fn is_migration(&self) -> bool {
         matches!(self.kind, ErrorKind::Migration(_))
     }
 
     /// Returns `true` when an unclassified database driver error occurred.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use postgres_db::Error;
+    ///
+    /// let err = Error::from(sqlx::Error::PoolTimedOut);
+    /// assert!(err.is_database());
+    /// ```
     #[must_use]
     pub fn is_database(&self) -> bool {
         matches!(self.kind, ErrorKind::Database(_))
@@ -122,6 +232,13 @@ impl fmt::Display for Error {
             ErrorKind::Migration(err) => write!(formatter, "migration failed: {err}"),
             ErrorKind::Database(err) => write!(formatter, "database error: {err}"),
         }
+        .and_then(|()| {
+            if self.backtrace.status() == BacktraceStatus::Captured {
+                write!(formatter, "\n\nbacktrace:\n{}", self.backtrace)
+            } else {
+                Ok(())
+            }
+        })
     }
 }
 
@@ -142,18 +259,29 @@ impl std::error::Error for Error {
 impl From<sqlx::Error> for Error {
     fn from(err: sqlx::Error) -> Self {
         match &err {
-            sqlx::Error::RowNotFound => Self {
-                kind: ErrorKind::NotFound,
-            },
+            sqlx::Error::RowNotFound => Self::from_kind(ErrorKind::NotFound),
             sqlx::Error::Database(db_err) => {
+                /// PostgreSQL SQLSTATE for `unique_violation`.
+                const PG_UNIQUE_VIOLATION: &str = "23505";
+                /// PostgreSQL SQLSTATE for `foreign_key_violation`.
+                const PG_FOREIGN_KEY_VIOLATION: &str = "23503";
+                /// PostgreSQL SQLSTATE for `serialization_failure` (REPEATABLE READ / SERIALIZABLE).
+                const PG_SERIALIZATION_FAILURE: &str = "40001";
+
                 let code = db_err.code();
                 let kind = match code.as_deref() {
-                    Some("23505") => ErrorKind::UniqueViolation(db_err.message().to_owned()),
-                    Some("23503") => ErrorKind::ForeignKeyViolation(db_err.message().to_owned()),
-                    Some("40001") => ErrorKind::VersionConflict(db_err.message().to_owned()),
+                    Some(PG_UNIQUE_VIOLATION) => {
+                        ErrorKind::UniqueViolation(db_err.message().to_owned())
+                    }
+                    Some(PG_FOREIGN_KEY_VIOLATION) => {
+                        ErrorKind::ForeignKeyViolation(db_err.message().to_owned())
+                    }
+                    Some(PG_SERIALIZATION_FAILURE) => {
+                        ErrorKind::VersionConflict(db_err.message().to_owned())
+                    }
                     _ => ErrorKind::Database(err),
                 };
-                Self { kind }
+                Self::from_kind(kind)
             }
             sqlx::Error::Configuration(_)
             | sqlx::Error::InvalidArgument(_)
@@ -173,67 +301,22 @@ impl From<sqlx::Error> for Error {
             | sqlx::Error::Migrate(_)
             | sqlx::Error::InvalidSavePointStatement
             | sqlx::Error::BeginFailed
-            | _ => Self {
-                kind: ErrorKind::Database(err),
-            },
+            | _ => Self::from_kind(ErrorKind::Database(err)),
         }
     }
 }
 
 impl From<sqlx::migrate::MigrateError> for Error {
     fn from(err: sqlx::migrate::MigrateError) -> Self {
-        Self {
-            kind: ErrorKind::Migration(err),
-        }
+        Self::from_kind(ErrorKind::Migration(err))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::borrow::Cow;
     use std::error::Error as _;
 
     use super::*;
-
-    #[derive(Debug)]
-    struct StubDatabaseError {
-        code: Option<&'static str>,
-        message: &'static str,
-    }
-
-    impl fmt::Display for StubDatabaseError {
-        fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-            formatter.write_str(self.message)
-        }
-    }
-
-    impl std::error::Error for StubDatabaseError {}
-
-    impl sqlx::error::DatabaseError for StubDatabaseError {
-        fn message(&self) -> &str {
-            self.message
-        }
-
-        fn code(&self) -> Option<Cow<'_, str>> {
-            self.code.map(Cow::Borrowed)
-        }
-
-        fn as_error(&self) -> &(dyn std::error::Error + Send + Sync + 'static) {
-            self
-        }
-
-        fn as_error_mut(&mut self) -> &mut (dyn std::error::Error + Send + Sync + 'static) {
-            self
-        }
-
-        fn into_error(self: Box<Self>) -> Box<dyn std::error::Error + Send + Sync + 'static> {
-            self
-        }
-
-        fn kind(&self) -> sqlx::error::ErrorKind {
-            sqlx::error::ErrorKind::Other
-        }
-    }
 
     #[test]
     fn error_kind_predicates_match_variants() {
@@ -249,40 +332,6 @@ mod tests {
         assert!(conflict.to_string().contains("version conflict"));
         assert!(conflict.source().is_none());
 
-        let unique = Error::from(sqlx::Error::Database(Box::new(StubDatabaseError {
-            code: Some("23505"),
-            message: "duplicate key",
-        })));
-        assert!(unique.is_unique_violation());
-        assert!(unique.to_string().contains("unique constraint violation"));
-        assert!(unique.source().is_none());
-
-        let foreign_key = Error::from(sqlx::Error::Database(Box::new(StubDatabaseError {
-            code: Some("23503"),
-            message: "missing parent",
-        })));
-        assert!(foreign_key.is_foreign_key_violation());
-        assert!(
-            foreign_key
-                .to_string()
-                .contains("foreign key constraint violation")
-        );
-        assert!(foreign_key.source().is_none());
-
-        let serialization = Error::from(sqlx::Error::Database(Box::new(StubDatabaseError {
-            code: Some("40001"),
-            message: "could not serialize access",
-        })));
-        assert!(serialization.is_version_conflict());
-        assert!(serialization.to_string().contains("version conflict"));
-
-        let other_db = Error::from(sqlx::Error::Database(Box::new(StubDatabaseError {
-            code: Some("42P01"),
-            message: "undefined table",
-        })));
-        assert!(other_db.is_database());
-        assert!(other_db.source().is_some());
-
         let database = Error::from(sqlx::Error::PoolTimedOut);
         assert!(database.is_database());
         assert!(database.source().is_some());
@@ -292,5 +341,59 @@ mod tests {
         assert!(migration.is_migration());
         assert!(migration.source().is_some());
         assert!(migration.to_string().contains("migration failed"));
+    }
+
+    async fn raise_database_error(pool: &sqlx::PgPool, sqlstate: &str) -> Error {
+        let raise_statement = format!(
+            "DO $$ BEGIN RAISE EXCEPTION 'raised by test' USING ERRCODE = '{sqlstate}'; END $$"
+        );
+        Error::from(
+            sqlx::query(&raise_statement)
+                .execute(pool)
+                .await
+                .expect_err("the statement raises"),
+        )
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn from_database_error_classifies_sqlstate(pool: sqlx::PgPool) {
+        let unique = raise_database_error(&pool, "23505").await;
+        assert!(unique.is_unique_violation());
+        assert!(unique.to_string().contains("unique constraint violation"));
+        assert!(unique.source().is_none());
+
+        let foreign_key = raise_database_error(&pool, "23503").await;
+        assert!(foreign_key.is_foreign_key_violation());
+        assert!(
+            foreign_key
+                .to_string()
+                .contains("foreign key constraint violation")
+        );
+        assert!(foreign_key.source().is_none());
+
+        let serialization = raise_database_error(&pool, "40001").await;
+        assert!(serialization.is_version_conflict());
+        assert!(serialization.to_string().contains("version conflict"));
+
+        let undefined_table = raise_database_error(&pool, "42P01").await;
+        assert!(undefined_table.is_database());
+        assert!(undefined_table.source().is_some());
+    }
+
+    #[test]
+    fn display_captured_backtrace_follows_summary() {
+        let traced_error = Error {
+            kind: ErrorKind::NotFound,
+            backtrace: Backtrace::force_capture(),
+        };
+        let untraced_error = Error {
+            kind: ErrorKind::NotFound,
+            backtrace: Backtrace::disabled(),
+        };
+
+        let traced_text = traced_error.to_string();
+
+        assert!(traced_text.starts_with("record not found\n\nbacktrace:\n"));
+        assert_eq!(untraced_error.to_string(), "record not found");
     }
 }

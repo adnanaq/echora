@@ -1,7 +1,4 @@
-//! Persistence helpers for anime relations, relation claims, source material,
-//! companies, and pending relation resolution.
-
-// Rust guideline compliant 2026-10-09
+//! Persistence helpers for work relations, claims, source material, and companies.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -13,7 +10,7 @@ use crate::graph_projection::{
     invert_anime_relation_type, recompute_anime_pair_graph_edges, replace_company_graph_edges,
     replace_source_material_graph_edges,
 };
-use crate::provider_page::{PageKeyInput, PageKind};
+use crate::provider_page::{PageKey, PageKind, Provider};
 
 /// Directed anime-to-anime relation stored in `anime_relation`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -30,11 +27,11 @@ pub struct AnimeRelationInput {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AnimeRelationClaimInput {
     /// Provider making the claim.
-    pub provider: String,
+    pub provider: Provider,
     /// Canonical `anime_relation_type` lookup value claimed by `provider`.
     pub relation_type: String,
     /// Target provider page key.
-    pub target_page: PageKeyInput,
+    pub target_page: PageKey,
 }
 
 /// External cross-reference identifying a `source_material` row.
@@ -110,6 +107,12 @@ pub struct AnimeRelationsAndGraphInput {
     pub companies: Vec<AnimeCompanyInput>,
 }
 
+/// Validates relations, provider claims, source materials, and companies.
+///
+/// # Errors
+///
+/// Returns an invalid-argument error when relation types, scores, counts, or
+/// cross-references are invalid.
 pub(crate) fn validate_relations_and_graph(
     input: &AnimeRelationsAndGraphInput,
 ) -> Result<(), Error> {
@@ -125,17 +128,9 @@ pub(crate) fn validate_relations_and_graph(
 
     for claim in &input.relation_claims {
         invert_anime_relation_type(&claim.relation_type)?;
-        if claim.target_page.page_kind != PageKind::Anime {
+        if claim.target_page.page_kind() != PageKind::Anime {
             return Err(Error::invalid_argument(
                 "anime_relation_claim requires PageKind::Anime",
-            ));
-        }
-        if claim.provider.trim().is_empty()
-            || claim.target_page.provider.trim().is_empty()
-            || claim.target_page.address.trim().is_empty()
-        {
-            return Err(Error::invalid_argument(
-                "anime_relation_claim requires non-empty provider and target_page",
             ));
         }
     }
@@ -145,6 +140,12 @@ pub(crate) fn validate_relations_and_graph(
     Ok(())
 }
 
+/// Checks the related source material of a work save.
+///
+/// # Errors
+///
+/// Returns an invalid-argument error for a blank title, type or relation type, a score outside
+/// 0 to 10, a negative count, or no valid cross-reference.
 fn validate_source_materials(source_materials: &[AnimeSourceMaterialInput]) -> Result<(), Error> {
     for material in source_materials {
         if material.title.trim().is_empty()
@@ -186,6 +187,11 @@ fn validate_source_materials(source_materials: &[AnimeSourceMaterialInput]) -> R
     Ok(())
 }
 
+/// Checks the companies of a work save.
+///
+/// # Errors
+///
+/// Returns an invalid-argument error for a blank name, no role, or no valid cross-reference.
 fn validate_companies(companies: &[AnimeCompanyInput]) -> Result<(), Error> {
     for company in companies {
         if company.name.trim().is_empty() || company.roles.is_empty() {
@@ -207,8 +213,25 @@ fn validate_companies(companies: &[AnimeCompanyInput]) -> Result<(), Error> {
     Ok(())
 }
 
-/// Links a provider page as a work's `source`, resolves pending `anime_relation`
-/// rows targeting that page, and recomputes affected `graph_edge` pairs.
+/// Links a source page to a work and resolves pending relations.
+///
+/// A page that was never fetched is linked too, and becomes due for its first fetch.
+/// Pending `anime_relation` rows targeting `page_key` are resolved, and the affected
+/// `graph_edge` pairs are recomputed.
+///
+/// # Examples
+///
+/// ```no_run
+/// # use sqlx::PgPool;
+/// # use uuid::Uuid;
+/// # use postgres_db::{link_anime_source_page, PageKey, PageKind, Provider};
+/// # async fn example(pool: &PgPool, anime_id: Uuid) -> Result<(), postgres_db::Error> {
+/// let key = PageKey::new(Provider::Mal, PageKind::Anime, "21")?;
+/// let resolved = link_anime_source_page(pool, anime_id, &key).await?;
+/// assert_eq!(resolved, 0);
+/// # Ok(())
+/// # }
+/// ```
 ///
 /// # Errors
 ///
@@ -217,9 +240,9 @@ fn validate_companies(companies: &[AnimeCompanyInput]) -> Result<(), Error> {
 pub async fn link_anime_source_page(
     pool: &PgPool,
     anime_id: Uuid,
-    page_key: &PageKeyInput,
+    page_key: &PageKey,
 ) -> Result<u64, Error> {
-    if page_key.page_kind != PageKind::Anime {
+    if page_key.page_kind() != PageKind::Anime {
         return Err(Error::invalid_argument(
             "link_anime_source_page requires PageKind::Anime",
         ));
@@ -231,10 +254,19 @@ pub async fn link_anime_source_page(
     Ok(resolved_count)
 }
 
+/// Links `page_key` to a work as a source page and resolves relations pointing at it.
+///
+/// A page the work already holds as a partial source becomes its source. A new link
+/// raises the work's version. The result counts the relations it resolved.
+///
+/// # Errors
+///
+/// Returns a not-found error for a missing or deleted work, an invalid-argument error when
+/// the page is already another work's source page, or a database error when a query fails.
 pub(crate) async fn link_anime_source_page_in_tx(
     tx: &mut Transaction<'_, Postgres>,
     anime_id: Uuid,
-    page_key: &PageKeyInput,
+    page_key: &PageKey,
 ) -> Result<u64, Error> {
     let anime_exists = sqlx::query_scalar!(
         "SELECT 1 FROM anime WHERE id = $1 AND deleted_at IS NULL FOR NO KEY UPDATE",
@@ -250,50 +282,64 @@ pub(crate) async fn link_anime_source_page_in_tx(
     // Serialize page linking with replace_anime_relations target resolution.
     sqlx::query!(
         "SELECT pg_advisory_xact_lock(hashtextextended($1 || ':anime:' || $2, 0))",
-        page_key.provider,
-        page_key.address,
+        page_key.provider().as_str(),
+        page_key.address().as_str(),
     )
     .execute(&mut **tx)
     .await?;
 
-    let link_result = sqlx::query!(
-        "INSERT INTO anime_provider_page (anime_id, provider, page_kind, address, role)
-         VALUES ($1, $2, $3, $4, 'source')
-         ON CONFLICT DO NOTHING",
-        anime_id,
-        page_key.provider,
-        page_key.page_kind.as_str(),
-        page_key.address,
+    sqlx::query!(
+        "INSERT INTO provider_page (provider, page_kind, address)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (provider, page_kind, address) DO NOTHING",
+        page_key.provider().as_str(),
+        page_key.page_kind().as_str(),
+        page_key.address().as_str(),
     )
     .execute(&mut **tx)
     .await?;
 
-    if link_result.rows_affected() > 0 {
-        sqlx::query!(
-            "UPDATE anime
-             SET version = version + 1,
-                 merge_requested_at = COALESCE(merge_requested_at, now())
-             WHERE id = $1 AND deleted_at IS NULL",
-            anime_id,
-        )
-        .execute(&mut **tx)
-        .await?;
-    } else {
-        let existing_owner: Option<Uuid> = sqlx::query_scalar!(
-            "SELECT anime_id
-             FROM anime_provider_page
-             WHERE provider = $1 AND page_kind = $2 AND address = $3",
-            page_key.provider,
-            page_key.page_kind.as_str(),
-            page_key.address,
-        )
-        .fetch_optional(&mut **tx)
-        .await?;
-        if existing_owner != Some(anime_id) {
+    let source_owner_id: Option<Uuid> = sqlx::query_scalar!(
+        "SELECT anime_id
+         FROM anime_provider_page
+         WHERE provider = $1 AND page_kind = $2 AND address = $3 AND role = 'source'",
+        page_key.provider().as_str(),
+        page_key.page_kind().as_str(),
+        page_key.address().as_str(),
+    )
+    .fetch_optional(&mut **tx)
+    .await?;
+    match source_owner_id {
+        Some(owner_id) if owner_id != anime_id => {
             return Err(Error::invalid_argument(format!(
                 "source page {}:{} is already linked to another work",
-                page_key.provider, page_key.address
+                page_key.provider(),
+                page_key.address()
             )));
+        }
+        Some(_) => {}
+        None => {
+            sqlx::query!(
+                "INSERT INTO anime_provider_page (anime_id, provider, page_kind, address, role)
+                 VALUES ($1, $2, $3, $4, 'source')
+                 ON CONFLICT (anime_id, provider, page_kind, address)
+                 DO UPDATE SET role = 'source'",
+                anime_id,
+                page_key.provider().as_str(),
+                page_key.page_kind().as_str(),
+                page_key.address().as_str(),
+            )
+            .execute(&mut **tx)
+            .await?;
+            sqlx::query!(
+                "UPDATE anime
+                 SET version = version + 1,
+                     merge_requested_at = COALESCE(merge_requested_at, now())
+                 WHERE id = $1",
+                anime_id,
+            )
+            .execute(&mut **tx)
+            .await?;
         }
     }
 
@@ -305,8 +351,8 @@ pub(crate) async fn link_anime_source_page_in_tx(
            AND to_page_address = $2
            AND from_anime_id <> $3
          RETURNING from_anime_id",
-        page_key.provider,
-        page_key.address,
+        page_key.provider().as_str(),
+        page_key.address().as_str(),
         anime_id,
     )
     .fetch_all(&mut **tx)
@@ -324,6 +370,12 @@ pub(crate) async fn link_anime_source_page_in_tx(
     Ok(resolved_count)
 }
 
+/// Replaces a work's relations, claims, source material and companies, with their graph edges.
+///
+/// # Errors
+///
+/// Returns an invalid-argument error for an unknown relation type, or a database error
+/// when a query fails.
 pub(crate) async fn replace_relations_and_graph(
     tx: &mut Transaction<'_, Postgres>,
     anime_id: Uuid,
@@ -343,6 +395,13 @@ pub(crate) async fn replace_relations_and_graph(
     Ok(())
 }
 
+/// Replaces the relations a work asserts and resolves the targets already stored.
+///
+/// The result holds every work pair whose graph edges must be recomputed.
+///
+/// # Errors
+///
+/// Returns a database error when a query fails.
 async fn replace_anime_relations(
     tx: &mut Transaction<'_, Postgres>,
     anime_id: Uuid,
@@ -428,6 +487,11 @@ async fn replace_anime_relations(
     Ok(affected_pairs)
 }
 
+/// Replaces each provider's own relation claims for a work.
+///
+/// # Errors
+///
+/// Returns a database error when a query fails.
 async fn replace_anime_relation_claims(
     tx: &mut Transaction<'_, Postgres>,
     anime_id: Uuid,
@@ -446,8 +510,8 @@ async fn replace_anime_relation_claims(
             (
                 claim.provider.as_str(),
                 claim.relation_type.as_str(),
-                claim.target_page.provider.as_str(),
-                claim.target_page.address.as_str(),
+                claim.target_page.provider().as_str(),
+                claim.target_page.address().as_str(),
             )
         })
         .collect();
@@ -491,6 +555,11 @@ async fn replace_anime_relation_claims(
     Ok(())
 }
 
+/// Replaces a work's source material links, creating or updating the shared rows.
+///
+/// # Errors
+///
+/// Returns a database error when a query fails.
 async fn replace_anime_source_materials(
     tx: &mut Transaction<'_, Postgres>,
     anime_id: Uuid,
@@ -558,6 +627,11 @@ async fn replace_anime_source_materials(
     let mut seen_links: BTreeSet<(Uuid, String)> = BTreeSet::new();
 
     for (existing_id, material) in resolved_materials {
+        // A material listed twice in one save finds the row its first entry just created.
+        let existing_id = match existing_id {
+            Some(found_id) => Some(found_id),
+            None => resolve_existing_source_material_id(tx, &material.xrefs).await?,
+        };
         let source_material_id = upsert_source_material_by_xref(tx, existing_id, material).await?;
         linked_source_ids.push(source_material_id);
         if seen_links.insert((source_material_id, material.relation_type.clone())) {
@@ -578,6 +652,11 @@ async fn replace_anime_source_materials(
     Ok(linked_source_ids)
 }
 
+/// Finds the stored source material that any of `xrefs` already identifies.
+///
+/// # Errors
+///
+/// Returns a database error when a query fails.
 async fn resolve_existing_source_material_id(
     tx: &mut Transaction<'_, Postgres>,
     xrefs: &[SourceMaterialXrefInput],
@@ -605,6 +684,11 @@ async fn resolve_existing_source_material_id(
     Ok(resolved_ids.into_iter().next())
 }
 
+/// Creates or updates a source material row and its cross-references.
+///
+/// # Errors
+///
+/// Returns a database error when a query fails.
 async fn upsert_source_material_by_xref(
     tx: &mut Transaction<'_, Postgres>,
     existing_id: Option<Uuid>,
@@ -681,6 +765,11 @@ async fn upsert_source_material_by_xref(
     Ok(canonical_id)
 }
 
+/// Replaces a source material's images.
+///
+/// # Errors
+///
+/// Returns a database error when a query fails.
 async fn replace_source_material_images(
     tx: &mut Transaction<'_, Postgres>,
     source_material_id: Uuid,
@@ -716,6 +805,13 @@ async fn replace_source_material_images(
     Ok(())
 }
 
+/// Replaces a work's company links, creating or updating the shared company rows.
+///
+/// The result holds each linked company with its role, for the graph edges.
+///
+/// # Errors
+///
+/// Returns a database error when a query fails.
 async fn replace_anime_companies(
     tx: &mut Transaction<'_, Postgres>,
     anime_id: Uuid,
@@ -777,6 +873,11 @@ async fn replace_anime_companies(
 
     let mut unique_links: BTreeSet<(Uuid, String)> = BTreeSet::new();
     for (existing_id, company) in resolved_companies {
+        // A company listed twice in one save finds the row its first entry just created.
+        let existing_id = match existing_id {
+            Some(found_id) => Some(found_id),
+            None => resolve_existing_company_id(tx, &company.xrefs).await?,
+        };
         let company_id = upsert_company_by_xref(tx, existing_id, company).await?;
         for role in &company.roles {
             unique_links.insert((company_id, role.clone()));
@@ -805,6 +906,11 @@ async fn replace_anime_companies(
     Ok(company_roles)
 }
 
+/// Finds the stored company that any of `xrefs` already identifies.
+///
+/// # Errors
+///
+/// Returns a database error when a query fails.
 async fn resolve_existing_company_id(
     tx: &mut Transaction<'_, Postgres>,
     xrefs: &[CompanyXrefInput],
@@ -830,6 +936,11 @@ async fn resolve_existing_company_id(
     Ok(resolved_ids.into_iter().next())
 }
 
+/// Creates or updates a company row and its cross-references.
+///
+/// # Errors
+///
+/// Returns a database error when a query fails.
 async fn upsert_company_by_xref(
     tx: &mut Transaction<'_, Postgres>,
     existing_id: Option<Uuid>,
@@ -880,4 +991,92 @@ async fn upsert_company_by_xref(
     }
 
     Ok(canonical_id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn build_valid_relations() -> AnimeRelationsAndGraphInput {
+        AnimeRelationsAndGraphInput {
+            relations: vec![AnimeRelationInput {
+                relation_type: "SEQUEL".to_owned(),
+                to_page_provider: "mal".to_owned(),
+                to_page_address: "2".to_owned(),
+            }],
+            relation_claims: vec![AnimeRelationClaimInput {
+                provider: Provider::Mal,
+                relation_type: "SEQUEL".to_owned(),
+                target_page: PageKey::new(Provider::Mal, PageKind::Anime, "2").unwrap(),
+            }],
+            source_materials: vec![AnimeSourceMaterialInput {
+                relation_type: "ADAPTATION".to_owned(),
+                title: "Source Manga".to_owned(),
+                title_english: None,
+                title_japanese: None,
+                source_material_type: "MANGA".to_owned(),
+                status: None,
+                score: Some(8.0),
+                chapters: Some(10),
+                volumes: Some(2),
+                images: Vec::new(),
+                xrefs: vec![SourceMaterialXrefInput {
+                    provider: "mal".to_owned(),
+                    external_id: "13".to_owned(),
+                    url: "https://myanimelist.net/manga/13".to_owned(),
+                }],
+            }],
+            companies: vec![AnimeCompanyInput {
+                name: "Studio X".to_owned(),
+                description: None,
+                roles: vec!["STUDIO".to_owned()],
+                xrefs: vec![CompanyXrefInput {
+                    provider: "mal".to_owned(),
+                    url: "https://myanimelist.net/anime/producer/1".to_owned(),
+                }],
+            }],
+        }
+    }
+
+    #[test]
+    fn validate_relations_and_graph_broken_rule_returns_invalid_argument() {
+        let valid_relations = build_valid_relations();
+        assert!(validate_relations_and_graph(&valid_relations).is_ok());
+
+        let breaking_changes: Vec<fn(&mut AnimeRelationsAndGraphInput)> = vec![
+            |input| input.relations[0].relation_type = "NOT_A_TYPE".to_owned(),
+            |input| input.relations[0].to_page_provider = " ".to_owned(),
+            |input| input.relations[0].to_page_address = String::new(),
+            |input| input.relation_claims[0].relation_type = "NOT_A_TYPE".to_owned(),
+            |input| {
+                input.relation_claims[0].target_page =
+                    PageKey::new(Provider::Mal, PageKind::Episode, "2").unwrap();
+            },
+            |input| input.source_materials[0].title = " ".to_owned(),
+            |input| input.source_materials[0].source_material_type = String::new(),
+            |input| input.source_materials[0].relation_type = String::new(),
+            |input| input.source_materials[0].score = Some(10.5),
+            |input| input.source_materials[0].score = Some(f64::NAN),
+            |input| input.source_materials[0].chapters = Some(-1),
+            |input| input.source_materials[0].volumes = Some(-1),
+            |input| input.source_materials[0].xrefs.clear(),
+            |input| input.source_materials[0].xrefs[0].provider = String::new(),
+            |input| input.source_materials[0].xrefs[0].external_id = " ".to_owned(),
+            |input| input.source_materials[0].xrefs[0].url = String::new(),
+            |input| input.companies[0].name = String::new(),
+            |input| input.companies[0].roles.clear(),
+            |input| input.companies[0].xrefs.clear(),
+            |input| input.companies[0].xrefs[0].provider = " ".to_owned(),
+            |input| input.companies[0].xrefs[0].url = String::new(),
+        ];
+        for break_rule in breaking_changes {
+            let mut broken_relations = valid_relations.clone();
+            break_rule(&mut broken_relations);
+
+            let validation_error = validate_relations_and_graph(&broken_relations)
+                .expect_err("a broken rule must be refused");
+
+            assert!(validation_error.is_invalid_argument());
+        }
+    }
 }

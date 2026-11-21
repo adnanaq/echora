@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO episode_field_correction (episode_id, field_path, value_message, value, approved_by)\n             VALUES ($1, 'title', 'google.protobuf.StringValue', $2, 'mod_1')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Bytea"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "a7f5f28ed7e45ae7e55e7f31f9528e17abefcd0c8db6ccb3d97f331e7e66a807"
+}
