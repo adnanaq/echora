@@ -4,7 +4,7 @@ mod support;
 
 use postgres_db::{
     EPISODE_HASH_FORMAT, EpisodeCharacterInput, EpisodeReferenceInput, EpisodeStreamingInput,
-    EpisodeTitleInput, PageKey, PageKind, Provider, SaveEpisodeInput, load_episode,
+    EpisodeTitleInput, PageKey, PageKind, Provider, SaveEpisodeInput, delete_episode, load_episode,
     mark_episode_aired, save_anime, save_episode,
 };
 use sqlx::PgPool;
@@ -348,4 +348,49 @@ async fn save_episode_unchanged_hash_from_newer_merge_records_merge_version(pool
     assert_eq!(stored_version, 2);
     assert_eq!(stored_merge_version, Some(2));
     assert_eq!(event_count, 1);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn save_episode_number_held_by_another_episode_returns_unique_violation(pool: PgPool) {
+    let anime_id = insert_unmerged_work(&pool).await;
+    let first_episode_id = Uuid::now_v7();
+    let second_episode_id = Uuid::now_v7();
+    save_anime(
+        &pool,
+        &build_work_save(
+            anime_id,
+            1,
+            "work-v1",
+            vec![
+                build_episode_reference(first_episode_id, 1),
+                build_episode_reference(second_episode_id, 2),
+            ],
+        ),
+    )
+    .await
+    .expect("the work creates both episodes");
+    let mut renumbered_save = build_episode_save(second_episode_id, 1, "episode-v1");
+    renumbered_save.episode_number = 1;
+
+    let save_error = save_episode(&pool, &renumbered_save)
+        .await
+        .expect_err("episode 1 is taken");
+
+    assert!(save_error.is_unique_violation());
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn save_episode_deleted_episode_returns_not_found(pool: PgPool) {
+    let episode_id = create_listed_episode(&pool, build_episode_reference(Uuid::now_v7(), 1))
+        .await
+        .expect("the work creates the episode");
+    delete_episode(&pool, episode_id, 1, None)
+        .await
+        .expect("delete the episode");
+
+    let save_error = save_episode(&pool, &build_episode_save(episode_id, 2, "episode-v1"))
+        .await
+        .expect_err("a deleted episode cannot be saved");
+
+    assert!(save_error.is_not_found());
 }

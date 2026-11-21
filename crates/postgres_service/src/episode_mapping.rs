@@ -366,6 +366,18 @@ mod tests {
             compute_save_episode_hash(&first_episode),
             compute_save_episode_hash(&second_episode)
         );
+        let mut renumbered_episode = first_episode.clone();
+        renumbered_episode.episode_number += 1;
+        let mut reseasoned_episode = first_episode.clone();
+        reseasoned_episode.season_number = Some(2);
+        assert_ne!(
+            compute_save_episode_hash(&first_episode),
+            compute_save_episode_hash(&renumbered_episode)
+        );
+        assert_ne!(
+            compute_save_episode_hash(&first_episode),
+            compute_save_episode_hash(&reseasoned_episode)
+        );
 
         let input =
             build_save_episode_input(&Uuid::now_v7().to_string(), 1, 1, first_episode, None)
