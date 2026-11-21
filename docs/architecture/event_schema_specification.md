@@ -202,13 +202,13 @@ message EpisodeListEntry {  // (ECHO-105)
   optional bool is_recap = 6;
 }
 
-// A character a work lists, with its ID once assigned.
+// A character a work lists, with its ID once assigned. A cast is ordered by role, then
+// favorites, then ID, so no provider's billing order is carried. (ECHO-133)
 message CharacterReference {  // (ECHO-104)
   string character_id = 1;                   // existing ID, or a new UUIDv7 from the merge
   string name = 2;
   CharacterRole role = 3;
-  int32 billing_order = 4;
-  repeated PageKey page_keys = 5;
+  repeated PageKey page_keys = 4;
 }
 
 // One provider's own claim that the work relates to a target page, with the type that
@@ -436,7 +436,7 @@ message SaveAnimeRequest {  // (ECHO-98)
   int64 expected_version = 2;
   shared_proto.v1.Anime anime = 3;
   int32 merge_version = 4;                   // the mapping and merge code that produced the save
-  repeated shared_proto.v1.RelationClaim relation_claims = 5;  // stored in anime_relation_claim (ECHO-102)
+  repeated shared_proto.v1.RelationClaim relation_claims = 5;  // stored in anime_related_anime_claim (ECHO-102) (ECHO-133)
   repeated shared_proto.v1.EpisodeReference episodes = 6;      // (ECHO-103)
   repeated shared_proto.v1.CharacterReference characters = 7;  // (ECHO-104)
 }
@@ -742,7 +742,8 @@ message DuePage {  // (ECHO-108)
   - ~~An episode the merge gave a new ID is created with its page links, and the response names it so the workflow can start its refresh. (ECHO-103)~~
   - A character the merge gave a new ID is created the same way. Before creating it, the save looks up the character's page keys. When one already belongs to a character, such as one another work's save created a moment earlier, it links that character and drops the new ID, so the save never fails on it. (ECHO-104)
 - ~~**`StorePage`** stores a page and its responses only when its `fetched_at` is newer than the stored one, so a retried or late fetch never replaces newer data. It reports the page as changed when the hash of the responses differs, without reading the stored bodies. (ECHO-97)~~
-- **`CreateAnime` and `RelinkPages`** resolve every unresolved relation that points at a newly linked source page, in the same transaction. They also increase the version of every work that gains or loses a page, so a merge that loaded before the move starts again. (ECHO-107)
+- **`CreateAnime` and `RelinkPages`** recompute, in the same transaction, the `graph_edge` rows of every pair a linked or moved page touches: the pairs of the work that gains the page and those of the work that loses it. A relation stores only its target page, so it follows the page with no update. They also increase the version of every work that gains or loses a page, and of every work whose relation now points at a different work, so a merge that loaded before the move starts again. (ECHO-107) (ECHO-133)
+- **`CreateAnime` writes partial-source links** from the cleaned seed. `SaveAnime` never writes them. (ECHO-107)
 - **`Get*` answers `NOT_FOUND`** for an entity that is deleted or not merged yet, so consumers confirm deletes by reading back. Otherwise they return the entity with its version, which the vector service stores in the point. (ECHO-108)
 - **`ListEntityVersions`** pages through the visible entities of one kind with their versions, for the vector service's comparison job. (ECHO-108)
 - ~~**`StorePage` records a missing page instead of deleting it.** A fetch with `is_not_found` sets `missing_since` and counts the answer, and keeps the stored responses. Two answers a day apart create a `dead_page` review item, or, once the provider is trusted, set `is_dead`. Seed releases never remove pages. See [[Database Schema#4. Writes and Deletes|Database Schema]]. (ECHO-97)~~
@@ -767,7 +768,7 @@ message DuePage {  // (ECHO-108)
   - ~~The PostgreSQL Service sets the limit and compression on its server. It returns `RESOURCE_EXHAUSTED` only for a message over the limit, never for a passing condition, so it is not retried. (ECHO-97)~~
   - The Enrichment Service sets them on its server, and returns a provider's throttling as `UNAVAILABLE`. (ECHO-99)
   - The Update Service sets them on its clients. (ECHO-111)
-- **`DeleteAnime`** removes the work's page links, its own relations and every `graph_edge` row from or to it, and turns relations other works assert towards it back into unresolved ones, all in one transaction. A work merged into another keeps `merged_into_anime_id`, so its old links can redirect. See [[Database Schema#4. Writes and Deletes|Database Schema]]. (ECHO-107)
+- **`DeleteAnime`** removes the work's page links, its own relations and every `graph_edge` row from or to it, all in one transaction. Relations other works assert towards it keep their target page and need no change, since the target is found by the page's current owner. (ECHO-133) A work merged into another keeps `merged_into_anime_id`, so its old links can redirect. See [[Database Schema#4. Writes and Deletes|Database Schema]]. (ECHO-107)
 - **A page view writes nothing.** The backend decides from `next_refresh_at` in the `Get*` response whether an opened entity is due, so a view costs one read, and a cached one none. (ECHO-108)
 - **`ListRequestedMerges`** returns the entities whose `merge_requested_at` is set, through a partial index. The sweep starts their refreshes before paging the due queries. (ECHO-108)
 - **`DecideApproval`** (planned with the approval queue) records a reviewer's decision and, when approved, applies it in the same transaction: a correction, a page move, a dead page or a character merge. It sets `merge_requested_at` on every entity it touched, and refuses a correction whose field path the model does not have. (P-ECHO-15)

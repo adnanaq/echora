@@ -23,7 +23,7 @@ The starting point for Echora's architecture documents. Each document describes 
 - **NATS carries notices after a commit.** The PostgreSQL Service's outbox is the only publisher of catalogue events. Consumers read the current state back over gRPC.
 - **The backend is the frontend's only entry point.** It routes each request to the service that owns the data.
 - **Entities are built from provider pages.** Works, episodes and characters each have their own pages, refresh and events. Pages are stored as received, and each entity is mapped and merged from them, with approved corrections applied on top.
-- **Every field is a column or a table.** PostgreSQL holds no JSONB. The schema is normalized to fifth normal form.
+- **Every field is a column or a table.** PostgreSQL holds no JSONB. The schema is normalized to fifth normal form, and every table and column is named after the model field it stores.
 - **IDs are UUIDv7, assigned once when an entity is first created,** and never derived from provider URLs.
 - **Echora writes its own synopses.** Provider synopses are never shown. The Agent Service writes each work's synopsis, and until it exists works show none.
 
@@ -188,7 +188,7 @@ CheckFranchiseLinksWorkflow, weekly and after a seed release
 
 Tracked in the Linear initiative "Catalogue platform". Cleanup issues follow the build: ECHO-116 and ECHO-123. The docs themselves are ECHO-86.
 
-1. **PostgreSQL Service** with the page, work, episode, character and outbox tables, and the store, load and save methods. ECHO-87, ECHO-93, ECHO-97, ECHO-98, ECHO-100 to ECHO-104, ECHO-107, ECHO-108
+1. **PostgreSQL Service** with the page, work, episode, character and outbox tables, and the store, load and save methods. ECHO-87, ECHO-93, ECHO-97, ECHO-98, ECHO-100 to ECHO-103, ECHO-133, ECHO-104, ECHO-107, ECHO-108
 2. **Enrichment methods** `FetchPage`, `MergeAnime`, `MergeEpisode` and `MergeCharacter`, with the merge taking the work's ID instead of deriving it. ECHO-88, ECHO-89, ECHO-94, ECHO-99, ECHO-105, ECHO-109, ECHO-110
 3. **Update Service** refresh workflows, `SweepCatalogueWorkflow` and episode tracking, with queue rate limits, priority and fairness. ECHO-95, ECHO-111 to ECHO-113, ECHO-117 to ECHO-119
 4. **Cleaned seed and seed load**: write `cleaned_seed.jsonl`, then `LoadSeedReleaseWorkflow`. ECHO-92, ECHO-120

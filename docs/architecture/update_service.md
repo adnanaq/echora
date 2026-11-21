@@ -68,7 +68,7 @@ page was stored, whichever comes first, if a page changed, the work's pages were
 relinked, or a merge was requested:
   match_characters(anime_id)
     EnrichmentService.MatchCharacters  match only the cast entries not yet linked to a character;
-                                     entries already linked through character_provider_page stay
+                                     entries already linked through character_source stay
                                      matched, so a long cast is matched once, then in small steps
   merge_anime(anime_id)
     PostgresService.LoadAnime         pages, corrections, AI text, known episodes and
@@ -120,6 +120,8 @@ The episode merges its own pages and those entries together, so an episode with 
 - **A failed page does not fail the refresh.** `refresh_page` records the failure through `StorePage` and returns, and the merge uses the pages that were stored. Only a failed merge or save fails the refresh, which `RecordRefresh` then records. (ECHO-111)
 
 A partial-source page is linked to a work but never merged into it, so a change to it starts no merge. (ECHO-111)
+
+A refresh fetches only a work's source pages, so a partial-source page that no work holds as a source is never fetched, and cannot be found dead. Whether such pages are fetched, and by which workflow, is still to be decided. (ECHO-111)
 
 ### Starting other workflows
 
