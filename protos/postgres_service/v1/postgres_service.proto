@@ -13,9 +13,17 @@ service PostgresService {
   // Load a work's linked pages, corrections, and current version for merging.
   rpc LoadAnime(LoadAnimeRequest) returns (LoadAnimeResponse);
 
-  // Save a merged work's scalar `anime` columns with optimistic version checking and transactional outbox.
-  // Child collections on `Anime` are hashed into `merged_record_hash` and persisted by follow-up work.
+  // Save a merged work with optimistic version checking and transactional outbox.
   rpc SaveAnime(SaveAnimeRequest) returns (SaveAnimeResponse);
+
+  // Load an episode's linked pages, list entries, corrections, and current version for merging.
+  rpc LoadEpisode(LoadEpisodeRequest) returns (LoadEpisodeResponse);
+
+  // Save a merged episode with optimistic version checking and transactional outbox.
+  rpc SaveEpisode(SaveEpisodeRequest) returns (SaveEpisodeResponse);
+
+  // Record that an episode aired and emit notification.episode.aired once.
+  rpc MarkEpisodeAired(MarkEpisodeAiredRequest) returns (MarkEpisodeAiredResponse);
 }
 
 // Request carrying a fetched provider page to store.
@@ -39,6 +47,7 @@ message LoadAnimeResponse {
   repeated shared_proto.v1.StoredPage source_pages = 2;
   repeated shared_proto.v1.PageKey partial_source_pages = 3;
   repeated shared_proto.v1.FieldCorrection corrections = 4;
+  repeated shared_proto.v1.EpisodeReference known_episodes = 5;  // undeleted episodes, so the merge keeps their IDs
 }
 
 // Request to save a merged work if stored version matches expected_version.
@@ -48,10 +57,51 @@ message SaveAnimeRequest {
   shared_proto.v1.Anime anime = 3;
   int32 merge_version = 4;
   repeated shared_proto.v1.RelationClaim relation_claims = 5;
+  repeated shared_proto.v1.EpisodeReference episodes = 6;
 }
 
 // Result of saving a merged work.
 message SaveAnimeResponse {
   bool has_changed = 1;
   int64 version = 2;
+  repeated string created_episode_ids = 3;
+  repeated string updated_episode_ids = 4;
+}
+
+// Request to load an episode's merge inputs by episode UUID.
+message LoadEpisodeRequest {
+  string episode_id = 1;
+}
+
+// Stored pages, list entries, corrections, and version for an episode merge.
+message LoadEpisodeResponse {
+  int64 version = 1;
+  string anime_id = 2;
+  repeated shared_proto.v1.StoredPage pages = 3;
+  repeated shared_proto.v1.FieldCorrection corrections = 4;
+  repeated shared_proto.v1.EpisodeListEntry list_entries = 5;
+}
+
+// Request to save a merged episode if stored version matches expected_version.
+message SaveEpisodeRequest {
+  string episode_id = 1;
+  int64 expected_version = 2;
+  shared_proto.v1.Episode episode = 3;
+  int32 merge_version = 4;
+}
+
+// Result of saving a merged episode.
+message SaveEpisodeResponse {
+  bool has_changed = 1;
+  int64 version = 2;
+}
+
+// Request to mark an episode as aired and emit its notification once.
+message MarkEpisodeAiredRequest {
+  string episode_id = 1;
+}
+
+// Result reporting whether the aired notification was written.
+message MarkEpisodeAiredResponse {
+  bool has_notified = 1;
 }

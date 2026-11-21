@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO episode_list_entry (\n            episode_id, provider, title, aired_at, duration_seconds, is_filler, is_recap\n        )\n        SELECT $1, provider, title, aired_at, duration_seconds, is_filler, is_recap\n        FROM UNNEST(\n            $2::text[],\n            $3::text[],\n            $4::timestamptz[],\n            $5::int4[],\n            $6::bool[],\n            $7::bool[]\n        ) AS entry(provider, title, aired_at, duration_seconds, is_filler, is_recap)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "TextArray",
+        "TextArray",
+        "TimestamptzArray",
+        "Int4Array",
+        "BoolArray",
+        "BoolArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e7bc675fcb5b3cb2d856f51ed133cb765973c98adeeb3df1f78711cb2539938f"
+}

@@ -51,3 +51,22 @@ message RelationClaim {
   AnimeRelationType relation_type = 2;
   PageKey target_page = 3;
 }
+
+// One provider's facts about an episode, sliced out of the work's page by the work's merge.
+message EpisodeListEntry {
+  string provider = 1;
+  optional string title = 2;
+  optional google.protobuf.Timestamp aired_at = 3;
+  optional int32 duration_seconds = 4;
+  optional bool is_filler = 5;
+  optional bool is_recap = 6;
+}
+
+// An episode a work lists, with its ID once assigned.
+message EpisodeReference {
+  string episode_id = 1;
+  int32 episode_number = 2;
+  string title = 3;
+  repeated PageKey page_keys = 4;
+  repeated EpisodeListEntry list_entries = 5;
+}

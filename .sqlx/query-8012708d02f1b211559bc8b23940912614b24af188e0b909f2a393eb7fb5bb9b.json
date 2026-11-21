@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM company WHERE id IN (\n             SELECT company_id FROM company_xref WHERE provider = 'mal' AND source = $1\n         )",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "8012708d02f1b211559bc8b23940912614b24af188e0b909f2a393eb7fb5bb9b"
+}

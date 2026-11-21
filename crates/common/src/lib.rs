@@ -1,10 +1,8 @@
 //! Shared configuration, error types, and OpenTelemetry setup for Echora Rust services.
 
-// Rust guideline compliant 2026-10-09
-
-pub mod config;
-pub mod error;
-pub mod telemetry;
+mod config;
+mod error;
+mod telemetry;
 
 #[doc(inline)]
 pub use config::{CommonSettings, ObservabilitySettings};

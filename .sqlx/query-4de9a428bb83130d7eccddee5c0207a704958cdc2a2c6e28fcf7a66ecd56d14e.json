@@ -1,0 +1,19 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO provider_page_response (\n                 provider, page_kind, address, request_name, content_type, body\n             )\n             SELECT $1, $2, $3, * FROM UNNEST($4::text[], $5::text[], $6::bytea[])",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "TextArray",
+        "TextArray",
+        "ByteaArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "4de9a428bb83130d7eccddee5c0207a704958cdc2a2c6e28fcf7a66ecd56d14e"
+}

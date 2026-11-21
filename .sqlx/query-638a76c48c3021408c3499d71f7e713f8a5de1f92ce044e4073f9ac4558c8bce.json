@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE episode\n            SET version = version + 1,\n                merge_requested_at = COALESCE(merge_requested_at, now())\n            WHERE id IN (\n                SELECT episode_id\n                FROM episode_provider_page\n                WHERE provider = $1 AND page_kind = $2 AND address = $3\n            )\n              AND deleted_at IS NULL\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "638a76c48c3021408c3499d71f7e713f8a5de1f92ce044e4073f9ac4558c8bce"
+}

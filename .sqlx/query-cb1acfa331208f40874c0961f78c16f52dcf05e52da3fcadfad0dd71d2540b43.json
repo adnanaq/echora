@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO episode (id, anime_id, episode_number, title) VALUES ($1, $2, 1, 'Replacement')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "cb1acfa331208f40874c0961f78c16f52dcf05e52da3fcadfad0dd71d2540b43"
+}

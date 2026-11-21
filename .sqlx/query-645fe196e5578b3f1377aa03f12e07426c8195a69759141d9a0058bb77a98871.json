@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                        UPDATE episode\n                        SET version = version + 1,\n                            merge_requested_at = COALESCE(merge_requested_at, now()),\n                            next_refresh_at = CASE WHEN $2 THEN NULL ELSE next_refresh_at END,\n                            updated_at = now()\n                        WHERE id = $1\n                        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Bool"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "645fe196e5578b3f1377aa03f12e07426c8195a69759141d9a0058bb77a98871"
+}

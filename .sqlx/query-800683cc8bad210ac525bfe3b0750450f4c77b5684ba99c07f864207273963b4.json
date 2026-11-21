@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT COUNT(*)\n             FROM graph_edge\n             WHERE (from_id = $1 AND to_id = $2) OR (from_id = $2 AND to_id = $1)",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "800683cc8bad210ac525bfe3b0750450f4c77b5684ba99c07f864207273963b4"
+}

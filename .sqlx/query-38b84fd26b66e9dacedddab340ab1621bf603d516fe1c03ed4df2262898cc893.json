@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO anime_provider_page (anime_id, provider, page_kind, address, role)\n             VALUES ($1, 'mal', 'anime', '19', 'source'),\n                    ($1, 'anilist', 'anime', '19', 'partial_source')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "38b84fd26b66e9dacedddab340ab1621bf603d516fe1c03ed4df2262898cc893"
+}

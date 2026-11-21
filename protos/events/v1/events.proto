@@ -23,3 +23,14 @@ message AnimeStatusChangedNotification {
   shared_proto.v1.AnimeStatus previous_status = 5;
   shared_proto.v1.AnimeStatus current_status = 6;
 }
+
+// Notification emitted when episode tracking confirms an episode aired.
+message EpisodeAiredNotification {
+  string event_id = 1;
+  google.protobuf.Timestamp saved_at = 2;
+  string anime_id = 3;
+  string anime_title = 4;
+  string episode_id = 5;
+  int32 episode_number = 6;
+  google.protobuf.Timestamp aired_at = 7;
+}

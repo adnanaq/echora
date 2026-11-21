@@ -1,0 +1,32 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT from_id, to_id, edge_type\n             FROM graph_edge\n             WHERE from_type = 'anime' AND to_type = 'anime'\n             ORDER BY edge_type",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "from_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "to_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "edge_type",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "c9a21818ae591ec6b60924b3e74b80456740a8ce8a1616a658329f35a45f437a"
+}

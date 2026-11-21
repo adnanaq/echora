@@ -139,23 +139,23 @@ A consumer reads the current state back from the PostgreSQL Service over gRPC an
 
 The `version` is a counter on each entity that its save increases in the transaction that changes it:
 
-- on each work (ECHO-98),
-- on each episode (ECHO-103),
+- ~~on each work (ECHO-98),~~
+- ~~on each episode (ECHO-103),~~
 - on each character (ECHO-104).
 
 ### Created, updated and deleted
 
-Events describe works, episodes and characters, never provider pages. Storing a page sends nothing. (ECHO-97)
+~~Events describe works, episodes and characters, never provider pages. Storing a page sends nothing. (ECHO-97)~~
 
 ~~Only a save sends an event, after a merge. (ECHO-98)~~
 
 - **`created`** means the entity's first merge was saved. A new anime listed by five providers never seen before is fetched page by page, merged once and saved once, so it sends one `anime.created`, then one `episode.created` and one `character.created` for each episode and character it lists.
   - ~~A work the seed load created has a row before its first merge, with `merged_at` empty, and sends nothing until then. Its first save sends `anime.created`. (ECHO-98)~~
-  - An episode's first save sends `episode.created`. (ECHO-103)
+  - ~~An episode's first save sends `episode.created`. (ECHO-103)~~
   - A character's first save sends `character.created`. (ECHO-104)
 - **`updated`** means an existing entity was saved with changes, such as a refreshed page changing a field or a new provider page joining it.
   - ~~A work's save sends `anime.updated`. (ECHO-98)~~
-  - An episode's save sends `episode.updated`. (ECHO-103)
+  - ~~An episode's save sends `episode.updated`. (ECHO-103)~~
   - A character's save sends `character.updated`. (ECHO-104)
 - **`deleted`** means the entity was removed. The row stays with `deleted_at` set, and the version increases once more.
   - A work merged into another is removed by `DeleteAnime`. (ECHO-107)
@@ -178,7 +178,7 @@ Consumers that only index the current state, such as the vector service, handle 
 Each save stores the merged entity in its tables (see [[Database Schema]]) and writes its outbox rows, all in one transaction:
 
 - ~~`SaveAnime` for a work (ECHO-98)~~,
-- `SaveEpisode` for an episode (ECHO-103),
+- ~~`SaveEpisode` for an episode (ECHO-103)~~,
 - `SaveCharacter` for a character (ECHO-104).
 
 - **Version check.** The save writes only if the entity's version still equals `expected_version` from its load. Otherwise it returns `ABORTED`. Every save checks it, as listed under [[event_schema_specification#PostgresService (planned)|Event Schema Specification]].
@@ -239,17 +239,21 @@ if stored_work.merged_record_hash.as_deref() != Some(record_hash.as_str()) {
 transaction.commit().await?;
 ```
 
-`save_anime` returns a `SaveError`, an error struct whose kind stays private. `From<sqlx::Error>` lets `?` convert database errors, and a missing row becomes a not-found error. Callers ask `is_version_conflict()` or `is_not_found()`. (ECHO-93)
+~~`save_anime` returns a `postgres_db::Error`, an error struct whose kind stays private. `From<sqlx::Error>` lets `?` convert database errors, and a missing row becomes a not-found error. Callers ask `is_version_conflict()` or `is_not_found()`. (ECHO-93)~~
 
-The gRPC handler in `postgres_service` maps it to a status in one function, since Rust's orphan rule forbids `impl From<SaveError> for Status` in a crate that owns neither type. (ECHO-97)
+~~The gRPC handler in `postgres_service` maps it to a status in one function, since Rust's orphan rule forbids `impl From<postgres_db::Error> for Status` in a crate that owns neither type. (ECHO-97)~~
 
 ```rust
 // crates/postgres_service: the one place library errors become gRPC statuses (ECHO-97)
-fn map_save_error_to_status(error: &SaveError) -> Status {
+fn map_db_error(error: &postgres_db::Error) -> Status {
     if error.is_version_conflict() {
         Status::aborted(error.to_string())
     } else if error.is_not_found() {
         Status::not_found(error.to_string())
+    } else if error.is_invalid_argument() || error.is_foreign_key_violation() {
+        Status::invalid_argument(error.to_string())
+    } else if error.is_unique_violation() {
+        Status::failed_precondition(error.to_string())
     } else {
         Status::internal(error.to_string())
     }
@@ -262,13 +266,13 @@ fn map_save_error_to_status(error: &SaveError) -> Status {
 - ~~its names, classification and images (ECHO-100);~~
 - ~~its songs, streaming, links, statistics, broadcast and hiatus (ECHO-101);~~
 - ~~its relations, source material, companies and `graph_edge` rows, resolving pending relations (ECHO-102);~~
-- the episodes the merge gave new IDs (ECHO-103);
+- ~~the episodes the merge gave new IDs (ECHO-103);~~
 - the characters the merge gave new IDs (ECHO-104);
 - ~~a status notification row when the work's status changed (ECHO-98).~~
 
-It sorts its keys and writes the shared tables (`genre`, `tag`, `company`, `character`, `graph_edge` and the others) in a fixed order, so two refreshes saving at once take their locks in the same order and cannot deadlock. (ECHO-98)
+~~It sorts its keys and writes the shared tables (`genre`, `tag`, `company`, `character`, `graph_edge` and the others) in a fixed order, so two refreshes saving at once take their locks in the same order and cannot deadlock. (ECHO-98)~~
 
-The episode-aired notification is not written by a save. `MarkEpisodeAired` writes it, once, when episode tracking confirms the episode aired. (ECHO-103)
+~~The episode-aired notification is not written by a save. `MarkEpisodeAired` writes it, once, when episode tracking confirms the episode aired. (ECHO-103)~~
 
 ### 2. The outbox relay publishes
 

@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT EXISTS(\n                SELECT 1\n                FROM episode e\n                JOIN anime a ON a.id = e.anime_id\n                WHERE e.id = $1\n                  AND e.deleted_at IS NULL\n                  AND a.deleted_at IS NULL\n            )\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "exists",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "4dadc7630f3a2e82b32b453adc3fc6c83db2d3feaa5ecab24700fe8d66dc4ca9"
+}

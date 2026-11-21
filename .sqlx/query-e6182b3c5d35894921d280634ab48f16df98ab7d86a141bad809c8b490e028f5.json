@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO anime (id, title, type)\n            VALUES ($1, 'Cowboy Bebop', 'TV')\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e6182b3c5d35894921d280634ab48f16df98ab7d86a141bad809c8b490e028f5"
+}

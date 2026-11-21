@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO episode_provider_page (episode_id, provider, page_kind, address)\n             VALUES ($1, 'mal', 'episode', '1')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e9c77575a628e8b8d08deafddbb7a0d04066a33ba6f0273eaad3f50757f4659e"
+}

@@ -1,7 +1,5 @@
 //! Bidirectional `graph_edge` projection and deadlock-free pairwise advisory locks.
 
-// Rust guideline compliant 2026-10-09
-
 use std::collections::BTreeSet;
 
 use sqlx::{Postgres, Transaction};
@@ -9,7 +7,10 @@ use uuid::Uuid;
 
 use crate::error::Error;
 
+/// 64-bit FNV-1a offset basis used for deterministic cross-process advisory lock keys.
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
+
+/// 64-bit FNV-1a prime multiplier.
 const FNV_PRIME: u64 = 0x0100_0000_01b3;
 
 /// Returns the inverse `graph_edge_type` for a directed anime relation.
@@ -56,6 +57,14 @@ pub(crate) fn pair_advisory_lock_key(first_id: Uuid, second_id: Uuid) -> i64 {
     i64::from_ne_bytes(hash.to_ne_bytes())
 }
 
+/// Recomputes bidirectional `graph_edge` rows for the given work pairs.
+///
+/// Acquires pairwise advisory locks in ascending hash order to prevent deadlocks.
+///
+/// # Errors
+///
+/// Returns an invalid-argument error on unknown relation types or a database
+/// error when any query fails.
 pub(crate) async fn recompute_anime_pair_graph_edges(
     tx: &mut Transaction<'_, Postgres>,
     affected_pairs: BTreeSet<(Uuid, Uuid)>,
@@ -91,6 +100,12 @@ pub(crate) async fn recompute_anime_pair_graph_edges(
     Ok(())
 }
 
+/// Recomputes the graph edges between two works from both works' relations.
+///
+/// # Errors
+///
+/// Returns an invalid-argument error for an unknown relation type, or a database error
+/// when a query fails.
 async fn recompute_single_anime_pair(
     tx: &mut Transaction<'_, Postgres>,
     left_id: Uuid,
@@ -108,10 +123,10 @@ async fn recompute_single_anime_pair(
     .await?;
 
     let stored_relations = sqlx::query!(
-        "SELECT from_anime_id, to_anime_id, relation_type
+        r#"SELECT from_anime_id, to_anime_id AS "to_anime_id!", relation_type
          FROM anime_relation
          WHERE (from_anime_id = $1 AND to_anime_id = $2)
-            OR (from_anime_id = $2 AND to_anime_id = $1)",
+            OR (from_anime_id = $2 AND to_anime_id = $1)"#,
         left_id,
         right_id,
     )
@@ -120,9 +135,7 @@ async fn recompute_single_anime_pair(
 
     let mut edges: BTreeSet<(Uuid, Uuid, String)> = BTreeSet::new();
     for row in stored_relations {
-        let Some(target_id) = row.to_anime_id else {
-            continue;
-        };
+        let target_id = row.to_anime_id;
         let inverse_type = invert_anime_relation_type(&row.relation_type)?;
         edges.insert((row.from_anime_id, target_id, row.relation_type));
         if let Some(reverse_edge_type) = inverse_type {
@@ -156,6 +169,11 @@ async fn recompute_single_anime_pair(
     Ok(())
 }
 
+/// Replaces bidirectional `graph_edge` rows linking `anime_id` to source materials.
+///
+/// # Errors
+///
+/// Returns a database error when any delete or batch insert fails.
 pub(crate) async fn replace_source_material_graph_edges(
     tx: &mut Transaction<'_, Postgres>,
     anime_id: Uuid,
@@ -205,6 +223,11 @@ pub(crate) async fn replace_source_material_graph_edges(
     Ok(())
 }
 
+/// Replaces bidirectional `graph_edge` rows linking `anime_id` to companies.
+///
+/// # Errors
+///
+/// Returns a database error when any delete or batch insert fails.
 pub(crate) async fn replace_company_graph_edges(
     tx: &mut Transaction<'_, Postgres>,
     anime_id: Uuid,
@@ -259,16 +282,40 @@ pub(crate) async fn replace_company_graph_edges(
 
     Ok(())
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sqlx::PgPool;
 
     #[test]
     fn invert_anime_relation_type_matches_design_rules() {
         assert_eq!(
+            invert_anime_relation_type("SEQUEL").ok(),
+            Some(Some("PREQUEL"))
+        );
+        assert_eq!(
+            invert_anime_relation_type("PREQUEL").ok(),
+            Some(Some("SEQUEL"))
+        );
+        assert_eq!(
             invert_anime_relation_type("SPIN_OFF").ok(),
             Some(Some("PARENT_STORY"))
+        );
+        assert_eq!(
+            invert_anime_relation_type("SIDE_STORY").ok(),
+            Some(Some("PARENT_STORY"))
+        );
+        assert_eq!(
+            invert_anime_relation_type("PARENT_STORY").ok(),
+            Some(Some("SIDE_STORY"))
+        );
+        assert_eq!(
+            invert_anime_relation_type("SUMMARY").ok(),
+            Some(Some("FULL_STORY"))
+        );
+        assert_eq!(
+            invert_anime_relation_type("FULL_STORY").ok(),
+            Some(Some("SUMMARY"))
         );
         assert_eq!(
             invert_anime_relation_type("SAME_FRANCHISE").ok(),
@@ -279,8 +326,16 @@ mod tests {
             Some(Some("SAME_SETTING"))
         );
         assert_eq!(
-            invert_anime_relation_type("SEQUEL").ok(),
-            Some(Some("PREQUEL"))
+            invert_anime_relation_type("ALTERNATIVE_VERSION").ok(),
+            Some(Some("ALTERNATIVE_VERSION"))
+        );
+        assert_eq!(
+            invert_anime_relation_type("ALTERNATIVE_SETTING").ok(),
+            Some(Some("ALTERNATIVE_SETTING"))
+        );
+        assert_eq!(
+            invert_anime_relation_type("CROSSOVER").ok(),
+            Some(Some("CROSSOVER"))
         );
         assert_eq!(invert_anime_relation_type("ADAPTATION").ok(), Some(None));
         assert_eq!(invert_anime_relation_type("CHARACTER").ok(), Some(None));
@@ -296,5 +351,127 @@ mod tests {
             pair_advisory_lock_key(first_id, second_id),
             pair_advisory_lock_key(second_id, first_id)
         );
+        assert_ne!(
+            pair_advisory_lock_key(first_id, second_id),
+            pair_advisory_lock_key(first_id, Uuid::from_u128(30))
+        );
+    }
+
+    #[sqlx::test]
+    async fn graph_projection_recomputes_all_bidirectional_edge_types(pool: PgPool) {
+        let anime_a = Uuid::now_v7();
+        let anime_b = Uuid::now_v7();
+        let unrelated_anime = Uuid::now_v7();
+        for (id, title) in [
+            (anime_a, "Work A"),
+            (anime_b, "Work B"),
+            (unrelated_anime, "Unrelated Work"),
+        ] {
+            sqlx::query!(
+                "INSERT INTO anime (id, title, type, status, rating)
+                 VALUES ($1, $2, 'TV', 'FINISHED', 'PG-13 - Teens 13 or older')",
+                id,
+                title,
+            )
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+
+        sqlx::query!(
+            "INSERT INTO anime_relation (from_anime_id, relation_type, to_anime_id, to_page_provider, to_page_address)
+             VALUES ($1, 'SEQUEL', $2, 'mal', '2'),
+                    ($1, 'ADAPTATION', $2, 'mal', '2')",
+            anime_a,
+            anime_b,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let mut pairs = BTreeSet::new();
+        pairs.insert((anime_a, anime_a));
+        pairs.insert((anime_b, anime_a));
+        pairs.insert((anime_a, unrelated_anime));
+
+        let mut tx = pool.begin().await.unwrap();
+        recompute_anime_pair_graph_edges(&mut tx, pairs)
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+
+        let anime_edges: Vec<(Uuid, Uuid, String)> = sqlx::query!(
+            "SELECT from_id, to_id, edge_type
+             FROM graph_edge
+             WHERE from_type = 'anime' AND to_type = 'anime'
+             ORDER BY edge_type"
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|r| (r.from_id, r.to_id, r.edge_type))
+        .collect();
+        assert_eq!(
+            anime_edges,
+            vec![
+                (anime_a, anime_b, "ADAPTATION".to_owned()),
+                (anime_b, anime_a, "PREQUEL".to_owned()),
+                (anime_a, anime_b, "SEQUEL".to_owned()),
+            ]
+        );
+
+        let source_id = sqlx::query_scalar!(
+            "INSERT INTO source_material (title, type) VALUES ('Manga A', 'MANGA') RETURNING id"
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+        let mut tx = pool.begin().await.unwrap();
+        replace_source_material_graph_edges(&mut tx, anime_a, &[source_id, source_id])
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+
+        let sm_edges: Vec<String> = sqlx::query_scalar!(
+            "SELECT edge_type
+             FROM graph_edge
+             WHERE from_type IN ('anime', 'source_material')
+               AND to_type IN ('anime', 'source_material')
+               AND (from_type = 'source_material' OR to_type = 'source_material')
+             ORDER BY edge_type"
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            sm_edges,
+            vec!["ADAPTED_FROM".to_owned(), "WAS_ADAPTED_TO".to_owned()]
+        );
+
+        let company_id =
+            sqlx::query_scalar!("INSERT INTO company (name) VALUES ('Studio X') RETURNING id")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+
+        let mut tx = pool.begin().await.unwrap();
+        replace_company_graph_edges(&mut tx, anime_a, &[(company_id, "STUDIO".to_owned())])
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+
+        let company_edges = sqlx::query_scalar!(
+            "SELECT COUNT(*)
+             FROM graph_edge
+             WHERE (from_id = $1 AND to_id = $2) OR (from_id = $2 AND to_id = $1)",
+            anime_a,
+            company_id,
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(company_edges, Some(2));
     }
 }

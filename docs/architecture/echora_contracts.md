@@ -67,7 +67,7 @@ from shared_proto.v1 import anime_pb2
 
 ### Rust crates in this repository
 
-Each Rust crate that needs gRPC types generates them from `protos/` in its own `build.rs` with `tonic-prost-build`, at build time. Since tonic 0.14, code generation lives in `tonic-prost-build` and the runtime codec in `tonic-prost`, and `tonic-build` no longer has `configure()` or `compile_protos()`. Nothing is checked in or downloaded. (ECHO-97)
+~~Each Rust crate that needs gRPC types generates them from `protos/` in its own `build.rs` with `tonic-prost-build`, at build time. Since tonic 0.14, code generation lives in `tonic-prost-build` and the runtime codec in `tonic-prost`, and `tonic-build` no longer has `configure()` or `compile_protos()`. Nothing is checked in or downloaded. (ECHO-97)~~
 
 ```rust
 // crates/postgres_service/build.rs, the crate that serves the gRPC handlers
@@ -103,7 +103,7 @@ Python stubs (checked in)  ·  Rust code (build.rs)  ·  PostgreSQL columns (che
 | Proto style | `buf lint`, configured in `buf.yaml` |
 | Proto and checked-in Python stubs | `proto-stubs-check.yml` regenerates the stubs and fails on any `git diff` |
 | Proto and Rust code | Generated on every build, so it cannot be stale |
-| Proto and the PostgreSQL Service's mapping | The Rust build fails when the proto gains a field or an enum value the save does not handle (see below) (ECHO-98) |
+| ~~Proto and the PostgreSQL Service's mapping~~ | ~~The Rust build fails when the proto gains a field or an enum value the save does not handle (see below) (ECHO-98)~~ |
 | ~~Proto and PostgreSQL columns~~ | ~~`cargo sqlx prepare` fails when a query does not match the migrated schema (ECHO-93)~~ |
 | ~~`anime.py` enums and PostgreSQL lookup tables~~ | ~~A planned check compares every enum's values with the rows its lookup migration inserts, and fails on a value missing from either side. `sqlx` cannot catch this, since a missing lookup row only fails when a save uses it. (ECHO-93)~~ |
 
@@ -167,7 +167,7 @@ The order matters because the strict checks fail loudly in one direction only. A
 
 Proto releases are tagged by hand as `proto-v<N>`.
 
-`buf breaking` is turned on for the stored messages with the first migration that stores protobuf bytes. (ECHO-98)
+~~`buf breaking` is turned on for the stored messages with the first migration that stores protobuf bytes. (ECHO-98)~~
 
 `buf breaking` is turned on for every other message before the first production release. (P-ECHO-21)
 

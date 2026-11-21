@@ -1,8 +1,6 @@
 //! Protobuf-to-SQL mapping for theme songs, trailers, external links, streaming,
 //! statistics, broadcast schedule, and hiatus snapshot.
 
-// Rust guideline compliant 2026-10-09
-
 use std::collections::BTreeMap;
 
 use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
@@ -23,6 +21,11 @@ use crate::service::shared_proto::v1::{
     clippy::too_many_arguments,
     reason = "Maps the eight ECHO-101 proto fields into AnimeScheduleAndStatsInput"
 )]
+/// Collects a work's songs, trailers, links, streaming, statistics, broadcast and hiatus.
+///
+/// # Errors
+///
+/// Returns `INVALID_ARGUMENT` for an invalid season, weekday, time, date, timestamp or count.
 pub(crate) fn build_schedule_and_stats(
     opening_themes: Vec<ThemeSong>,
     ending_themes: Vec<ThemeSong>,
@@ -33,8 +36,8 @@ pub(crate) fn build_schedule_and_stats(
     broadcast: Option<Broadcast>,
     hiatus: Option<AnimeHiatus>,
 ) -> Result<AnimeScheduleAndStatsInput, Status> {
-    let mut theme_songs = map_theme_songs("opening", opening_themes)?;
-    theme_songs.extend(map_theme_songs("ending", ending_themes)?);
+    let mut theme_songs = map_theme_songs("opening", opening_themes);
+    theme_songs.extend(map_theme_songs("ending", ending_themes));
 
     let mapped_trailers = map_trailers(trailers);
     let mapped_links = map_external_links(external_sources);
@@ -54,21 +57,22 @@ pub(crate) fn build_schedule_and_stats(
     })
 }
 
-fn map_theme_songs(kind: &str, songs: Vec<ThemeSong>) -> Result<Vec<AnimeThemeSongInput>, Status> {
+/// Converts opening or ending songs into theme song inputs of `kind`.
+///
+/// Each song's position is its place in the list, counted from 0.
+fn map_theme_songs(kind: &str, songs: Vec<ThemeSong>) -> Vec<AnimeThemeSongInput> {
     songs
         .into_iter()
-        .enumerate()
+        .zip(0_i32..)
         .map(
             |(
-                index,
                 ThemeSong {
                     title,
                     artist,
                     episodes,
                 },
+                position,
             )| {
-                let position = i32::try_from(index)
-                    .map_err(|_| Status::invalid_argument("theme_song position overflows i32"))?;
                 let episode_ranges = episodes
                     .into_iter()
                     .map(|EpisodeRange { start, end }| EpisodeRangeInput {
@@ -76,18 +80,19 @@ fn map_theme_songs(kind: &str, songs: Vec<ThemeSong>) -> Result<Vec<AnimeThemeSo
                         range_end: end,
                     })
                     .collect();
-                Ok(AnimeThemeSongInput {
+                AnimeThemeSongInput {
                     kind: kind.to_owned(),
                     position,
                     title,
                     artist,
                     episode_ranges,
-                })
+                }
             },
         )
         .collect()
 }
 
+/// Converts trailer entries into trailer inputs.
 fn map_trailers(trailers: Vec<TrailerEntry>) -> Vec<AnimeTrailerInput> {
     trailers
         .into_iter()
@@ -108,6 +113,7 @@ fn map_trailers(trailers: Vec<TrailerEntry>) -> Vec<AnimeTrailerInput> {
         .collect()
 }
 
+/// Converts external links into external link inputs.
 fn map_external_links(links: Vec<ExternalLink>) -> Vec<AnimeExternalLinkInput> {
     links
         .into_iter()
@@ -127,6 +133,7 @@ fn map_external_links(links: Vec<ExternalLink>) -> Vec<AnimeExternalLinkInput> {
         .collect()
 }
 
+/// Converts streaming entries into streaming inputs with their subtitle languages.
 fn map_streaming(entries: Vec<StreamingEntry>) -> Vec<AnimeStreamingInput> {
     entries
         .into_iter()
@@ -152,6 +159,12 @@ fn map_streaming(entries: Vec<StreamingEntry>) -> Vec<AnimeStreamingInput> {
         .collect()
 }
 
+/// Converts each provider's statistics into statistics inputs with contextual ranks.
+///
+/// # Errors
+///
+/// Returns `INVALID_ARGUMENT` for a count that does not fit in an `i32`, or a contextual rank
+/// with a year that does not fit in an `i16` or an unknown season.
 fn map_statistics(
     statistics: BTreeMap<String, Statistics>,
 ) -> Result<Vec<AnimeStatisticsInput>, Status> {
@@ -189,6 +202,11 @@ fn map_statistics(
         .collect()
 }
 
+/// Converts one contextual rank into its input.
+///
+/// # Errors
+///
+/// Returns `INVALID_ARGUMENT` for a year that does not fit in an `i16`, or an unknown season.
 fn map_contextual_rank(rank_entry: ContextualRank) -> Result<AnimeContextualRankInput, Status> {
     let ContextualRank {
         rank,
@@ -220,6 +238,11 @@ fn map_contextual_rank(rank_entry: ContextualRank) -> Result<AnimeContextualRank
     })
 }
 
+/// Converts a season name into its lookup text.
+///
+/// # Errors
+///
+/// Returns `INVALID_ARGUMENT` for a name that is not a season.
 fn normalize_season(season_text: &str) -> Result<&'static str, Status> {
     match season_text.trim().to_ascii_uppercase().as_str() {
         "SPRING" => Ok("SPRING"),
@@ -232,6 +255,11 @@ fn normalize_season(season_text: &str) -> Result<&'static str, Status> {
     }
 }
 
+/// Converts the broadcast slot into its input.
+///
+/// # Errors
+///
+/// Returns `INVALID_ARGUMENT` for an invalid weekday, time or timestamp.
 fn map_broadcast(broadcast: Broadcast) -> Result<AnimeBroadcastInput, Status> {
     let Broadcast {
         day,
@@ -262,21 +290,26 @@ fn map_broadcast(broadcast: Broadcast) -> Result<AnimeBroadcastInput, Status> {
         sub_delay_days,
         dub_delay_days,
         premiere_jp: premiere_jp
-            .map(|ts| timestamp_to_utc(ts, "broadcast.premiere_jp"))
+            .map(|proto_timestamp| timestamp_to_utc(proto_timestamp, "broadcast.premiere_jp"))
             .transpose()?,
         premiere_sub: premiere_sub
-            .map(|ts| timestamp_to_utc(ts, "broadcast.premiere_sub"))
+            .map(|proto_timestamp| timestamp_to_utc(proto_timestamp, "broadcast.premiere_sub"))
             .transpose()?,
         premiere_dub: premiere_dub
-            .map(|ts| timestamp_to_utc(ts, "broadcast.premiere_dub"))
+            .map(|proto_timestamp| timestamp_to_utc(proto_timestamp, "broadcast.premiere_dub"))
             .transpose()?,
         next_episode_at: next_episode_at
-            .map(|ts| timestamp_to_utc(ts, "broadcast.next_episode_at"))
+            .map(|proto_timestamp| timestamp_to_utc(proto_timestamp, "broadcast.next_episode_at"))
             .transpose()?,
         next_episode_number,
     })
 }
 
+/// Converts the hiatus snapshot into its input.
+///
+/// # Errors
+///
+/// Returns `INVALID_ARGUMENT` for a date that is not ISO 8601.
 fn map_hiatus(hiatus: AnimeHiatus) -> Result<AnimeHiatusInput, Status> {
     let AnimeHiatus {
         reason,
@@ -297,6 +330,11 @@ fn map_hiatus(hiatus: AnimeHiatus) -> Result<AnimeHiatusInput, Status> {
     })
 }
 
+/// Converts a weekday name into its ISO number, Monday being 1.
+///
+/// # Errors
+///
+/// Returns `INVALID_ARGUMENT` for a name that is not a weekday.
 fn parse_iso_weekday(day_text: &str) -> Result<i16, Status> {
     match day_text.trim().to_ascii_lowercase().as_str() {
         "monday" | "mondays" | "1" => Ok(1),
@@ -312,6 +350,11 @@ fn parse_iso_weekday(day_text: &str) -> Result<i16, Status> {
     }
 }
 
+/// Converts `HH:MM`, `HH:MM:SS` or RFC 3339 text into a time of day.
+///
+/// # Errors
+///
+/// Returns `INVALID_ARGUMENT` for text in none of those forms.
 fn parse_time_of_day(time_text: &str) -> Result<NaiveTime, Status> {
     let trimmed = time_text.trim();
     if let Ok(clock_time) = NaiveTime::parse_from_str(trimmed, "%H:%M:%S")
@@ -327,12 +370,22 @@ fn parse_time_of_day(time_text: &str) -> Result<NaiveTime, Status> {
     )))
 }
 
+/// Converts `YYYY-MM-DD` text into a date.
+///
+/// # Errors
+///
+/// Returns `INVALID_ARGUMENT` naming `field_name` for text that is not a date.
 fn parse_iso_date(date_text: &str, field_name: &str) -> Result<NaiveDate, Status> {
     NaiveDate::parse_from_str(date_text.trim(), "%Y-%m-%d").map_err(|err| {
         Status::invalid_argument(format!("invalid {field_name} date {date_text:?}: {err}"))
     })
 }
 
+/// Converts an optional 64-bit count into a 32-bit one.
+///
+/// # Errors
+///
+/// Returns `INVALID_ARGUMENT` naming `field_name` when the count does not fit.
 fn opt_i64_to_i32(value: Option<i64>, field_name: &str) -> Result<Option<i32>, Status> {
     value
         .map(|number| {
@@ -342,10 +395,15 @@ fn opt_i64_to_i32(value: Option<i64>, field_name: &str) -> Result<Option<i32>, S
         .transpose()
 }
 
-fn timestamp_to_utc(ts: Timestamp, field_name: &str) -> Result<DateTime<Utc>, Status> {
-    let nanos = u32::try_from(ts.nanos)
+/// Converts a protobuf `Timestamp` into a UTC timestamp.
+///
+/// # Errors
+///
+/// Returns `INVALID_ARGUMENT` naming `field_name` when the time is out of range.
+fn timestamp_to_utc(proto_timestamp: Timestamp, field_name: &str) -> Result<DateTime<Utc>, Status> {
+    let nanos = u32::try_from(proto_timestamp.nanos)
         .map_err(|_| Status::invalid_argument(format!("{field_name} has negative nanos")))?;
-    DateTime::<Utc>::from_timestamp(ts.seconds, nanos)
+    DateTime::<Utc>::from_timestamp(proto_timestamp.seconds, nanos)
         .ok_or_else(|| Status::invalid_argument(format!("{field_name} is out of range")))
 }
 
@@ -354,6 +412,10 @@ mod tests {
     use super::*;
 
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "one fixture fills every schedule and statistics field"
+    )]
     fn build_schedule_and_stats_maps_all_extended_fields() {
         let mut stats = BTreeMap::new();
         stats.insert(
@@ -376,7 +438,7 @@ mod tests {
             },
         );
 
-        let Ok(mapped) = build_schedule_and_stats(
+        let mapped = build_schedule_and_stats(
             vec![ThemeSong {
                 title: "OP1".to_owned(),
                 artist: Some("Artist".to_owned()),
@@ -422,21 +484,20 @@ mod tests {
                 sub_time: Some("01:30:00".to_owned()),
                 dub_time: Some("2026-11-18T15:30:00Z".to_owned()),
                 sub_delay_days: Some(0),
-                dub_delay_days: None,
-                premiere_jp: None,
-                premiere_sub: None,
-                premiere_dub: None,
-                next_episode_at: None,
+                premiere_jp: Some(build_timestamp(1_700_000_000)),
+                premiere_sub: Some(build_timestamp(1_700_003_600)),
+                premiere_dub: Some(build_timestamp(1_700_007_200)),
+                next_episode_at: Some(build_timestamp(1_700_604_800)),
                 next_episode_number: Some(5),
+                ..build_broadcast()
             }),
             Some(AnimeHiatus {
                 reason: Some("Break".to_owned()),
                 hiatus_from: Some("2024-05-01".to_owned()),
-                hiatus_until: None,
+                hiatus_until: Some("2024-05-15".to_owned()),
             }),
-        ) else {
-            panic!("valid extended fields should map");
-        };
+        )
+        .expect("valid extended fields should map");
 
         assert_eq!(mapped.theme_songs.len(), 1);
         assert_eq!(mapped.theme_songs[0].kind, "opening");
@@ -447,7 +508,198 @@ mod tests {
             mapped.statistics[0].contextual_ranks[0].season.as_deref(),
             Some("SPRING")
         );
-        assert_eq!(mapped.broadcast.as_ref().and_then(|b| b.weekday), Some(3));
-        assert!(mapped.hiatus.as_ref().and_then(|h| h.hiatus_from).is_some());
+        let mapped_broadcast = mapped.broadcast.expect("broadcast maps");
+        assert_eq!(mapped_broadcast.weekday, Some(3));
+        assert_eq!(
+            mapped_broadcast
+                .next_episode_at
+                .map(|aired_at| aired_at.timestamp()),
+            Some(1_700_604_800)
+        );
+        assert!(mapped_broadcast.premiere_dub.is_some());
+        let mapped_hiatus = mapped.hiatus.expect("hiatus maps");
+        assert!(mapped_hiatus.hiatus_from.is_some());
+        assert!(mapped_hiatus.hiatus_until.is_some());
+    }
+
+    fn build_timestamp(seconds: i64) -> Timestamp {
+        Timestamp { seconds, nanos: 0 }
+    }
+
+    fn build_broadcast() -> Broadcast {
+        Broadcast {
+            day: Some("Sundays".to_owned()),
+            time: None,
+            timezone: None,
+            jp_time: Some("00:30".to_owned()),
+            sub_time: None,
+            dub_time: None,
+            sub_delay_days: None,
+            dub_delay_days: None,
+            premiere_jp: None,
+            premiere_sub: None,
+            premiere_dub: None,
+            next_episode_at: None,
+            next_episode_number: None,
+        }
+    }
+
+    fn build_statistics(rank_year: Option<i32>, rank_season: Option<&str>) -> Statistics {
+        Statistics {
+            score: None,
+            scored_by: None,
+            rank: None,
+            popularity: None,
+            members: None,
+            favorites: None,
+            contextual_ranks: vec![ContextualRank {
+                rank: 1,
+                context: "top".to_owned(),
+                format: None,
+                year: rank_year,
+                season: rank_season.map(str::to_owned),
+                all_time: None,
+            }],
+        }
+    }
+
+    fn map_schedule_parts(
+        statistics: Option<Statistics>,
+        broadcast: Option<Broadcast>,
+        hiatus: Option<AnimeHiatus>,
+    ) -> Result<AnimeScheduleAndStatsInput, Status> {
+        build_schedule_and_stats(
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            statistics
+                .map(|provider_statistics| {
+                    BTreeMap::from([("mal".to_owned(), provider_statistics)])
+                })
+                .unwrap_or_default(),
+            broadcast,
+            hiatus,
+        )
+    }
+
+    #[test]
+    fn build_schedule_and_stats_invalid_field_returns_invalid_argument() {
+        let negative_nanos = Timestamp {
+            seconds: 0,
+            nanos: -1,
+        };
+        let mut overflowing_count = build_statistics(None, None);
+        overflowing_count.scored_by = Some(i64::MAX);
+        let invalid_cases = vec![
+            map_schedule_parts(Some(build_statistics(Some(100_000), None)), None, None),
+            map_schedule_parts(Some(build_statistics(None, Some("monsoon"))), None, None),
+            map_schedule_parts(Some(overflowing_count), None, None),
+            map_schedule_parts(
+                None,
+                Some(Broadcast {
+                    day: Some("someday".to_owned()),
+                    ..build_broadcast()
+                }),
+                None,
+            ),
+            map_schedule_parts(
+                None,
+                Some(Broadcast {
+                    jp_time: Some("half past noon".to_owned()),
+                    ..build_broadcast()
+                }),
+                None,
+            ),
+            map_schedule_parts(
+                None,
+                Some(Broadcast {
+                    premiere_jp: Some(negative_nanos),
+                    ..build_broadcast()
+                }),
+                None,
+            ),
+            map_schedule_parts(
+                None,
+                Some(Broadcast {
+                    premiere_sub: Some(negative_nanos),
+                    ..build_broadcast()
+                }),
+                None,
+            ),
+            map_schedule_parts(
+                None,
+                Some(Broadcast {
+                    premiere_dub: Some(negative_nanos),
+                    ..build_broadcast()
+                }),
+                None,
+            ),
+            map_schedule_parts(
+                None,
+                Some(Broadcast {
+                    next_episode_at: Some(build_timestamp(i64::MAX)),
+                    ..build_broadcast()
+                }),
+                None,
+            ),
+            map_schedule_parts(
+                None,
+                None,
+                Some(AnimeHiatus {
+                    reason: None,
+                    hiatus_from: Some("2024-13-01".to_owned()),
+                    hiatus_until: None,
+                }),
+            ),
+            map_schedule_parts(
+                None,
+                None,
+                Some(AnimeHiatus {
+                    reason: None,
+                    hiatus_from: None,
+                    hiatus_until: Some("soon".to_owned()),
+                }),
+            ),
+        ];
+
+        for mapping_result in invalid_cases {
+            let status = mapping_result.expect_err("an invalid field must be refused");
+            assert_eq!(status.code(), tonic::Code::InvalidArgument);
+        }
+    }
+
+    #[test]
+    fn parse_iso_weekday_day_names_return_iso_numbers() {
+        for (day_names, iso_weekday) in [
+            (["Monday", "mondays", "1"], 1),
+            (["Tuesday", "tuesdays", "2"], 2),
+            (["Wednesday", "wednesdays", "3"], 3),
+            (["Thursday", "thursdays", "4"], 4),
+            (["Friday", "fridays", "5"], 5),
+            (["Saturday", "saturdays", "6"], 6),
+            (["Sunday", "sundays", "7"], 7),
+        ] {
+            for day_name in day_names {
+                assert_eq!(parse_iso_weekday(day_name).expect(day_name), iso_weekday);
+            }
+        }
+    }
+
+    #[test]
+    fn normalize_season_season_names_return_lookup_text() {
+        for (season_name, lookup_text) in [
+            ("spring", "SPRING"),
+            ("Summer", "SUMMER"),
+            ("fall", "FALL"),
+            ("autumn", "FALL"),
+            ("WINTER", "WINTER"),
+        ] {
+            assert_eq!(
+                normalize_season(season_name).expect(season_name),
+                lookup_text
+            );
+        }
     }
 }

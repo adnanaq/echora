@@ -100,7 +100,7 @@ record_refresh(anime_id, outcome)
 
 An episode's or a character's refresh is the same with its own pages: `ListEntityPages`, `refresh_page` for each due page, `LoadEpisode`, `MergeEpisode`, `SaveEpisode` or `LoadCharacter`, `MergeCharacter`, `SaveCharacter`, then `RecordRefresh`. (ECHO-112)
 
-An episode's load also returns its list entries, what each provider's work page says about it, since only MAL and aniSearch have a page per episode. (ECHO-103)
+~~An episode's load also returns its list entries, what each provider's work page says about it, since only MAL and aniSearch have a page per episode. (ECHO-103)~~
 
 The episode merges its own pages and those entries together, so an episode with no page of its own still merges. (ECHO-109)
 
@@ -109,13 +109,13 @@ The episode merges its own pages and those entries together, so an episode with 
 - **The synopsis waits for the pages.** An early merge may hold only one or two fast providers, and the next merge, minutes later, would change the provider synopses again. `WriteSynopsisWorkflow` therefore starts once every page of the refresh has finished or failed, so one refresh asks for at most one synopsis. Episode and character refreshes start after each merge, since a repeated start joins the one already running. (ECHO-111)
 - **The first merge does not wait for the slowest provider.** Every provider's page is valid input on its own, since every mapper sets a title, a type and a status, so the work can be saved with the pages that are in. A page that is still waiting, such as an AniDB page behind AniDB's slow queue, merges when it arrives, while the workflow is still open. Most works still merge once, since the fast providers arrive well within the wait. (ECHO-111)
 - **Requested merges.** A change made in the database, such as an approved correction, a page move or new AI-written text, needs a merge even when nothing is refreshing the entity.
-  - The change sets `merge_requested_at`, and the save that follows clears it. (ECHO-98)
+  - ~~The change sets `merge_requested_at`, and the save that follows clears it. (ECHO-98)~~
   - A pass every 15 minutes finds the entities still marked, so the change is merged even when the `merge_requested` signal was lost. (ECHO-117)
 - **Merge version.** A refresh also merges, without fetching, when the entity was last merged by older mapping or merge code (`merge_version`), so a mapping fix reaches every entity, including those the sweep otherwise leaves alone. (ECHO-111)
 - **A page the provider says is gone stays.**
   - Seed releases never remove pages. (ECHO-107)
   - `FetchPage` reports the provider's own "not found" as `is_not_found`. (ECHO-99)
-  - `StorePage` marks the page missing, keeps its last data in the merge, and after two answers a day apart sends it for review as a `dead_page`. With the provider's `DEAD_PAGE_REVIEW` setting turned off, once reviews keep confirming, it marks the page dead directly. (ECHO-97)
+  - ~~`StorePage` marks the page missing, keeps its last data in the merge, and after two answers a day apart sends it for review as a `dead_page`. With the provider's `DEAD_PAGE_REVIEW` setting turned off, once reviews keep confirming, it marks the page dead directly. (ECHO-97)~~
   - Otherwise only an approval marks it dead. (P-ECHO-15)
 - **A failed page does not fail the refresh.** `refresh_page` records the failure through `StorePage` and returns, and the merge uses the pages that were stored. Only a failed merge or save fails the refresh, which `RecordRefresh` then records. (ECHO-111)
 
@@ -141,7 +141,7 @@ So the large data never leaves an activity. `refresh_page` fetches and stores a 
 
 Inside an activity the pages still travel over gRPC, and they are large. The saved One Piece pages are 2.7 MB from AniDB and 1.8 MB from aniSearch's episode list, among others, past gRPC's 4 MB default for one message. A merge needs every page in memory at once, so streaming one page per message would add code without lowering memory. So each side sets its message limit explicitly to 64 MB, uses gRPC's gzip compression, which shrinks HTML and XML several times over, and records the largest message size it handles as a metric:
 
-- the PostgreSQL Service (ECHO-97),
+- ~~the PostgreSQL Service (ECHO-97),~~
 - the Enrichment Service (ECHO-99),
 - the Update Service's clients (ECHO-111).
 
@@ -235,7 +235,7 @@ A work is **older** when it first aired more than `ON_DEMAND_REFRESH_AGE_YEARS` 
 | Trigger | Entities | When |
 |---|---|---|
 | Weekly sweep | Works that are not older, with every provider's statistics; episodes and characters of ongoing and upcoming works | Due under `next_refresh_at`, `REFRESH_AFTER_DAYS` (7) after the last success (ECHO-117) |
-| Work's merge | Episodes of finished works | The work's weekly merge changed what it says about them: a changed list entry (ECHO-103) |
+| ~~Work's merge~~ | ~~Episodes of finished works~~ | ~~The work's weekly merge changed what it says about them: a changed list entry (ECHO-103)~~ |
 | Work's merge | Characters of finished works | The work's weekly merge added or changed their cast entry (ECHO-104) |
 | Opened by a user | Any work, episode or character | The user opens its page and it is due. Bots never start a refresh, and the backend caps refresh starts per minute (P-ECHO-16) |
 | Episode tracking | Episodes of ongoing and upcoming works | At each episode's expected air time, then 1, 3 and 7 days after it aired (ECHO-118) |
@@ -276,7 +276,7 @@ When the expected air time changes, as with a delay or a hiatus, the tracking wo
 
 Echora never shows a provider's synopsis. A work's synopsis is written by the Agent Service from every provider's synopsis and a web search, so the text is Echora's own. Until the Agent Service exists, works show no synopsis. (P-ECHO-14)
 
-Provider synopses are still fetched and kept in the stored pages, as the input for writing. (ECHO-97)
+~~Provider synopses are still fetched and kept in the stored pages, as the input for writing. (ECHO-97)~~
 
 ### When it is written
 
@@ -398,7 +398,7 @@ The workflows and activities live in `crates/temporal_workflows/`, and `crates/u
 | `TEMPORAL_NAMESPACE` | `echora` | Temporal namespace (ECHO-95) |
 | `REFRESH_AFTER_DAYS` | `7` | Age after which a work, episode or character counts as due, for the sweep and for opened pages (ECHO-111) |
 | `MERGE_VERSION` | — | Version of the mapping and merge code; raised with a fix that should reach every entity (ECHO-111) |
-| `DEAD_PAGE_REVIEW` | `true` per provider | Missing pages go to review before they are marked dead; turned off for a provider once reviews keep confirming (ECHO-97) |
+| ~~`DEAD_PAGE_REVIEW`~~ | ~~`true` per provider~~ | ~~Missing pages go to review before they are marked dead; turned off for a provider once reviews keep confirming (ECHO-97)~~ |
 | `MERGE_FIRST_WAIT_MINUTES` | `10` | How long a refresh waits after its first stored page before merging without the pages still in flight (ECHO-111) |
 | `BUDGETED_PROVIDERS` | `anidb` | Providers fetched by a budgeted fetcher instead of by work refreshes (ECHO-119) |
 | `ANIDB_DAILY_BUDGET` | `150` | AniDB requests a day; the `provider-anidb` queue's rate limit is set from it (ECHO-113) |

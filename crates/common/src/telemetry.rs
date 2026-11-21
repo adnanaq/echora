@@ -1,7 +1,5 @@
 //! Structured logging and OpenTelemetry bootstrap for Echora Rust services.
 
-// Rust guideline compliant 2026-10-09
-
 use opentelemetry::KeyValue;
 use opentelemetry::global;
 use opentelemetry::trace::TracerProvider as _;
@@ -57,6 +55,22 @@ impl Drop for TelemetryGuard {
 ///
 /// Returns an error when an OTLP exporter cannot be built or a global
 /// subscriber is already installed.
+///
+/// # Examples
+///
+/// ```
+/// use common::{CommonSettings, ObservabilitySettings, init_telemetry};
+///
+/// let settings = CommonSettings {
+///     observability: ObservabilitySettings {
+///         otel_enabled: false,
+///         ..ObservabilitySettings::default()
+///     },
+///     ..CommonSettings::default()
+/// };
+/// let _telemetry_guard = init_telemetry("example-service", &settings)?;
+/// # Ok::<(), common::Error>(())
+/// ```
 pub fn init_telemetry(
     service_name: &str,
     settings: &CommonSettings,

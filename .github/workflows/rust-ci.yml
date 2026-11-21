@@ -7,7 +7,9 @@ on:
       - "Cargo.lock"
       - ".cargo/**"
       - ".sqlx/**"
+      - "clippy.toml"
       - "crates/**"
+      - "protos/**"
       - ".github/workflows/rust-ci.yml"
   push:
     branches: ["main"]
@@ -16,7 +18,9 @@ on:
       - "Cargo.lock"
       - ".cargo/**"
       - ".sqlx/**"
+      - "clippy.toml"
       - "crates/**"
+      - "protos/**"
       - ".github/workflows/rust-ci.yml"
 
 jobs:
@@ -46,7 +50,12 @@ jobs:
       - name: Install Rust stable toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt, clippy
+          components: rustfmt, clippy, llvm-tools-preview
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
 
       - name: Cache Cargo registry and target
         uses: actions/cache@v5
@@ -67,11 +76,40 @@ jobs:
           SQLX_OFFLINE: "true"
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
-      - name: Run tests against PostgreSQL 18
+      # cargo-llvm-cov runs every test except doc tests, whose coverage needs nightly.
+      # Cleaning first keeps coverage data from a cached earlier run out of the report.
+      - name: Run tests against PostgreSQL 18 with coverage
         env:
           SQLX_OFFLINE: "true"
           DATABASE_URL: postgres://echora:echora_ci_password@localhost:5432/echora
-        run: cargo test --workspace --locked
+        run: |
+          cargo llvm-cov clean --workspace
+          cargo llvm-cov --workspace --locked --no-report
+
+      - name: Run doc tests
+        env:
+          SQLX_OFFLINE: "true"
+        run: cargo test --workspace --doc --locked
+
+      # The only lines left uncovered are the arguments of tracing events, which
+      # llvm-cov reports as uncovered even when the event runs.
+      - name: Check coverage and write the report
+        run: |
+          cargo llvm-cov report --lcov --output-path lcov.info --fail-under-lines 99
+          {
+            echo '### Rust coverage'
+            echo '```'
+            cargo llvm-cov report
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: rust-coverage
+          path: lcov.info
+          if-no-files-found: ignore
 
   rust-security-and-deps:
     runs-on: ubuntu-latest

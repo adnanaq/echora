@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO episode_character (\n             episode_id, character_page_provider, character_page_address, role\n         )\n         SELECT $1, provider, address, role\n         FROM UNNEST($2::text[], $3::text[], $4::text[]) AS entry(provider, address, role)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "TextArray",
+        "TextArray",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "326ad355c1597030f2060da3f8c9ed222d4aef0fbb7f4008b0fa628646b7de8b"
+}

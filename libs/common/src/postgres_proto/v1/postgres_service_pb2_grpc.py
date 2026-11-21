@@ -50,6 +50,21 @@ class PostgresServiceStub:
                 request_serializer=v1_dot_postgres__service__pb2.SaveAnimeRequest.SerializeToString,
                 response_deserializer=v1_dot_postgres__service__pb2.SaveAnimeResponse.FromString,
                 _registered_method=True)
+        self.LoadEpisode = channel.unary_unary(
+                '/postgres_service.v1.PostgresService/LoadEpisode',
+                request_serializer=v1_dot_postgres__service__pb2.LoadEpisodeRequest.SerializeToString,
+                response_deserializer=v1_dot_postgres__service__pb2.LoadEpisodeResponse.FromString,
+                _registered_method=True)
+        self.SaveEpisode = channel.unary_unary(
+                '/postgres_service.v1.PostgresService/SaveEpisode',
+                request_serializer=v1_dot_postgres__service__pb2.SaveEpisodeRequest.SerializeToString,
+                response_deserializer=v1_dot_postgres__service__pb2.SaveEpisodeResponse.FromString,
+                _registered_method=True)
+        self.MarkEpisodeAired = channel.unary_unary(
+                '/postgres_service.v1.PostgresService/MarkEpisodeAired',
+                request_serializer=v1_dot_postgres__service__pb2.MarkEpisodeAiredRequest.SerializeToString,
+                response_deserializer=v1_dot_postgres__service__pb2.MarkEpisodeAiredResponse.FromString,
+                _registered_method=True)
 
 
 class PostgresServiceServicer:
@@ -71,8 +86,28 @@ class PostgresServiceServicer:
         raise NotImplementedError('Method not implemented!')
 
     def SaveAnime(self, request, context):
-        """Save a merged work's scalar `anime` columns with optimistic version checking and transactional outbox.
-        Child collections on `Anime` are hashed into `merged_record_hash` and persisted by follow-up work.
+        """Save a merged work with optimistic version checking and transactional outbox.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def LoadEpisode(self, request, context):
+        """Load an episode's linked pages, list entries, corrections, and current version for merging.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SaveEpisode(self, request, context):
+        """Save a merged episode with optimistic version checking and transactional outbox.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def MarkEpisodeAired(self, request, context):
+        """Record that an episode aired and emit notification.episode.aired once.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -95,6 +130,21 @@ def add_PostgresServiceServicer_to_server(servicer, server):
                     servicer.SaveAnime,
                     request_deserializer=v1_dot_postgres__service__pb2.SaveAnimeRequest.FromString,
                     response_serializer=v1_dot_postgres__service__pb2.SaveAnimeResponse.SerializeToString,
+            ),
+            'LoadEpisode': grpc.unary_unary_rpc_method_handler(
+                    servicer.LoadEpisode,
+                    request_deserializer=v1_dot_postgres__service__pb2.LoadEpisodeRequest.FromString,
+                    response_serializer=v1_dot_postgres__service__pb2.LoadEpisodeResponse.SerializeToString,
+            ),
+            'SaveEpisode': grpc.unary_unary_rpc_method_handler(
+                    servicer.SaveEpisode,
+                    request_deserializer=v1_dot_postgres__service__pb2.SaveEpisodeRequest.FromString,
+                    response_serializer=v1_dot_postgres__service__pb2.SaveEpisodeResponse.SerializeToString,
+            ),
+            'MarkEpisodeAired': grpc.unary_unary_rpc_method_handler(
+                    servicer.MarkEpisodeAired,
+                    request_deserializer=v1_dot_postgres__service__pb2.MarkEpisodeAiredRequest.FromString,
+                    response_serializer=v1_dot_postgres__service__pb2.MarkEpisodeAiredResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -179,6 +229,87 @@ class PostgresService:
             '/postgres_service.v1.PostgresService/SaveAnime',
             v1_dot_postgres__service__pb2.SaveAnimeRequest.SerializeToString,
             v1_dot_postgres__service__pb2.SaveAnimeResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def LoadEpisode(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/postgres_service.v1.PostgresService/LoadEpisode',
+            v1_dot_postgres__service__pb2.LoadEpisodeRequest.SerializeToString,
+            v1_dot_postgres__service__pb2.LoadEpisodeResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SaveEpisode(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/postgres_service.v1.PostgresService/SaveEpisode',
+            v1_dot_postgres__service__pb2.SaveEpisodeRequest.SerializeToString,
+            v1_dot_postgres__service__pb2.SaveEpisodeResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def MarkEpisodeAired(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/postgres_service.v1.PostgresService/MarkEpisodeAired',
+            v1_dot_postgres__service__pb2.MarkEpisodeAiredRequest.SerializeToString,
+            v1_dot_postgres__service__pb2.MarkEpisodeAiredResponse.FromString,
             options,
             channel_credentials,
             insecure,

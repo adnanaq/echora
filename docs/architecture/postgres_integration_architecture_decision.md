@@ -26,13 +26,13 @@ The catalogue database is owned by one service, the **PostgreSQL Service**, writ
 
 ## What the Service Does
 
-- **Stores every provider page losslessly**, with its responses as received and its fetch time. Nothing mapped is stored. (ECHO-97)
+- ~~**Stores every provider page losslessly**, with its responses as received and its fetch time. Nothing mapped is stored. (ECHO-97)~~
 - **Stores works, episodes and characters.**
-  - A work's source and partial-source pages, its merged record and its approved per-field corrections. (ECHO-98)
-  - Episodes, with their pages and merged records. (ECHO-103)
+  - ~~A work's source and partial-source pages, its merged record and its approved per-field corrections. (ECHO-98)~~
+  - ~~Episodes, with their pages and merged records. (ECHO-103)~~
   - Characters, with their pages and merged records. (ECHO-104)
 - **Writes events through an outbox.** See [[event_driven_architecture|Event-Driven Architecture]].
-  - A change and its outbox row commit in one transaction. (ECHO-98)
+  - ~~A change and its outbox row commit in one transaction. (ECHO-98)~~
   - A relay task in the same process publishes the rows to NATS. (ECHO-106)
 - **Answers reads** for the vector service, the backend and the update service's sweep. (ECHO-108)
 
@@ -49,8 +49,8 @@ The service exposes gRPC only. The planned methods are listed in [[event_schema_
 
 | Caller | Methods | Purpose |
 |---|---|---|
-| Update Service activities (Temporal) | `StorePage` | Store each fetched page (ECHO-97) |
-| Update Service activities (Temporal) | `LoadAnime`, `SaveAnime` | Load, merge and save a work (ECHO-98) |
+| ~~Update Service activities (Temporal)~~ | ~~`StorePage`~~ | ~~Store each fetched page (ECHO-97)~~ |
+| ~~Update Service activities (Temporal)~~ | ~~`LoadAnime`, `SaveAnime`~~ | ~~Load, merge and save a work (ECHO-98)~~ |
 | Update Service activities (Temporal) | `ListDueAnime` | Find the works the sweep refreshes (ECHO-108) |
 | Vector Service | `GetAnime`, `GetEpisode`, `GetCharacter`, `ListEntityVersions` | Read the current state after an event, and compare Qdrant with PostgreSQL (ECHO-108) |
 | Backend | Reads for pages the frontend shows, defined with the backend | Serve the frontend (P-ECHO-16) |
@@ -63,12 +63,12 @@ The frontend talks only to the backend (GraphQL), and the backend calls this ser
 
 Temporal retries failed activities, and NATS delivers events at least once, so every write accepts being called twice:
 
-- `StorePage` ignores a fetch older than the stored `fetched_at` of the same page. (ECHO-97)
+- ~~`StorePage` ignores a fetch older than the stored `fetched_at` of the same page. (ECHO-97)~~
 - ~~When `StorePage` changes a stored page (`has_changed`), it bumps `version` and sets `merge_requested_at` on any linked `source` work so stale in-flight merges fail the version check and trigger a re-merge. (ECHO-98)~~
-- `SaveAnime` writes nothing, and sends nothing, when the work did not change. (ECHO-98)
+- ~~`SaveAnime` writes nothing, and sends nothing, when the work did not change. (ECHO-98)~~
 - Every other write is safe to repeat.
-  - Pages are upserted on their page key. (ECHO-97)
-  - Entities are written by the ID the merge assigned, and detail rows are replaced per entity. (ECHO-98)
+  - ~~Pages are upserted on their page key. (ECHO-97)~~
+  - ~~Entities are written by the ID the merge assigned, and detail rows are replaced per entity. (ECHO-98)~~
 
 ### Knowledge graph
 
@@ -99,7 +99,7 @@ Nodes, edges, provenance, franchises and the SQL for each read are in [[Database
 | Allocator of the Update Service | `mimalloc` (ECHO-95) |
 | ~~Generated gRPC code~~ | ~~`tonic-prost-build` in each crate's `build.rs` (ECHO-97)~~ |
 
-~~Rust code follows the Microsoft Pragmatic Rust Guidelines, through the `ms-rust` skill. Each finished file carries its compliance comment, `// Rust guideline compliant <date>`. (ECHO-87)~~
+~~Rust code follows the Microsoft Pragmatic Rust Guidelines, through the `ms-rust` skill. (ECHO-87)~~
 
 ~~`sqlx` is chosen over Diesel because the service is mostly hand-written SQL, including recursive queries, and `sqlx` checks plain SQL without a query DSL. Crate versions are pinned in `Cargo.lock` when the crate is created. (ECHO-93)~~
 
