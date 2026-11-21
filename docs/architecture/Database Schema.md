@@ -1220,6 +1220,12 @@ CREATE INDEX character_source_material_work_idx ON character_source_material(sou
 
 A character page's animeography only confirms links the works already make. `anime_character` is written from each work's own character list, so a character is linked to a work once that work is stored.
 
+- `SaveAnime` replaces only its own work's `anime_character` rows. With each row it writes a `FEATURES` edge from the work to the character and an `APPEARS_IN` edge back, in the same transaction. (ECHO-104)
+- A character no work lists any more keeps its row until the cleanup job removes it. (ECHO-116)
+- Before looking up or linking a character's page keys, the save takes an advisory lock on each key in sorted order. Two works creating the same new character at once therefore link one character, and neither save fails. (ECHO-104)
+- `StorePage` raises the version and sets `merge_requested_at` on the character that owns a changed character page, as it does for work and episode pages. (ECHO-104)
+- `mangaography` is written to `character_source_material` through `source_material_xref`, matching each entry's URLs. An entry whose URLs no stored source material holds is skipped, since a character page only confirms what works list, and `Ography` carries no source material type. (ECHO-104)
+
 ---
 
 ### Episodes

@@ -203,7 +203,7 @@ message EpisodeListEntry {  // (ECHO-105)
 }
 
 // A character a work lists, with its ID once assigned.
-message CharacterReference {  // (ECHO-105)
+message CharacterReference {  // (ECHO-104)
   string character_id = 1;                   // existing ID, or a new UUIDv7 from the merge
   string name = 2;
   CharacterRole role = 3;
@@ -757,7 +757,7 @@ message DuePage {  // (ECHO-108)
 - **`ListDuePages`** lists one budgeted provider's pages in due order with their work, for the budgeted fetcher. (ECHO-108)
 - ~~**`SaveAnime` stores each episode's list entries** in `episode_list_entry`.~~
   - ~~An existing episode whose entries changed is made due at once and returned in `updated_episode_ids`, so the refresh starts it. (ECHO-103)~~
-  - A character whose cast entry changed is made due at once and returned in `updated_character_ids`. (ECHO-104)
+  - A character whose cast entry was added, changed or removed is made due at once and returned in `updated_character_ids`, since `Character.roles` and `anime_ids` are read from `anime_character`. (ECHO-104)
 - **Works exist before their first merge.** See [[Database Schema#4. Writes and Deletes|Database Schema]].
   - `CreateAnime` writes the work's ID and page links with `merged_at` unset, and links pages that were never fetched. (ECHO-107)
   - The `Get*` and listing methods skip such works. (ECHO-108)
