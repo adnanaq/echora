@@ -26,13 +26,13 @@ Every stage of enrichment is stored, so nothing has to be fetched again to rebui
 
 | Stage | Where it is stored | Written by |
 |---|---|---|
-| Each provider page, as received | `provider_page`, `provider_page_response` | `StorePage` (ECHO-97) |
-| Which pages make up an entity | `anime_provider_page`, `episode_provider_page`, `character_provider_page` | Merges, which link the pages they read (ECHO-97) |
+| ~~Each provider page, as received~~ | ~~`provider_page`, `provider_page_response`~~ | ~~`StorePage` (ECHO-97)~~ |
+| Which pages make up an entity | `anime_provider_page`, `episode_provider_page`, `character_provider_page` | Merges, which link the pages they read (ECHO-97) (ECHO-104, ECHO-107) |
 | Which pages make up an entity | `anime_provider_page` | Seed load and review answers, which create works and move pages (ECHO-107) |
 | Approved corrections | `anime_field_correction` and the episode and character ones | Approval queue (P-ECHO-15) |
 | AI-written text | `anime_generated_text` | `WriteSynopsisWorkflow` (ECHO-115) |
-| The merged work, as users see it | `anime` and its detail tables | `SaveAnime` (ECHO-98) |
-| The merged episode | `episode` and its detail tables | `SaveEpisode` (ECHO-103) |
+| ~~The merged work, as users see it~~ | ~~`anime` and its detail tables~~ | ~~`SaveAnime` (ECHO-98)~~ |
+| ~~The merged episode~~ | ~~`episode` and its detail tables~~ | ~~`SaveEpisode` (ECHO-103)~~ |
 | The merged character | `character` and its detail tables | `SaveCharacter` (ECHO-104) |
 
 Mapping a page to the canonical model happens in memory during each merge and is never stored. A mapper fix therefore reaches every entity on its next merge without fetching again.
@@ -176,7 +176,7 @@ erDiagram
   anime_image {
     uuid anime_id PK
     text image_type PK
-    text url PK
+    text source PK
   }
 ```
 
@@ -214,7 +214,7 @@ erDiagram
     bigint id PK
     uuid anime_id FK
     text platform
-    text url
+    text source
   }
   anime_streaming_subtitle_language {
     bigint streaming_id PK
@@ -222,12 +222,12 @@ erDiagram
   }
   anime_trailer {
     uuid anime_id PK
-    text url PK
+    text source PK
     text title
   }
   anime_external_link {
     uuid anime_id PK
-    text url PK
+    text source PK
     text platform
   }
 ```
@@ -306,12 +306,12 @@ erDiagram
   }
   episode_image {
     uuid episode_id PK
-    text url PK
+    text source PK
   }
   episode_streaming {
     uuid episode_id PK
     text platform PK
-    text url
+    text source
   }
   episode_character {
     uuid episode_id PK
@@ -449,7 +449,7 @@ erDiagram
   }
   source_material_image {
     uuid source_material_id PK
-    text url PK
+    text source PK
   }
   company {
     uuid id PK
@@ -457,7 +457,7 @@ erDiagram
   }
   company_xref {
     text provider PK
-    text url PK
+    text source PK
     uuid company_id FK
   }
   anime_company {
@@ -488,18 +488,18 @@ Each entity is stored **once** under a UUIDv7 ID:
 - IDs are UUIDv7, from `uuid.uuid7()` through `generate_entity_id` in `libs/common`. (ECHO-88)
 - A work from the seed gets its ID when the seed load creates it. (ECHO-107)
 - An episode or character gets its ID from the merge of the work that first lists it, and every later merge receives that ID and keeps it. (ECHO-105)
-- Rows the PostgreSQL Service creates by itself, `source_material` and `company`, get `DEFAULT uuidv7()`. (ECHO-102)
+- ~~Rows the PostgreSQL Service creates by itself, `source_material` and `company`, get `DEFAULT uuidv7()`. (ECHO-102)~~
 
 **Pages identify what arrives from outside.** Inside the system, only the UUID is used.
 
-- A provider page is stored once under its page key: provider, page kind and address, such as `mal`, `anime`, `21`. (ECHO-97)
+- ~~A provider page is stored once under its page key: provider, page kind and address, such as `mal`, `anime`, `21`. (ECHO-97)~~
 - When a seed release or discovery brings page keys, a key already linked as a source belongs to that entity. A key never seen before is a new entity, unless the matching rules or a review answer place it elsewhere. (ECHO-107)
 
 A work page is linked to a work in one of two roles:
-- **`source`**: the page lists this work. The page is merged into the work. A work has at most one source page per provider. (ECHO-97)
-- **`partial_source`**: the page lists a larger work this work is part of. The page is linked for reference and is not merged. (ECHO-97)
+- ~~**`source`**: the page lists this work. The page is merged into the work. A work has at most one source page per provider. (ECHO-97)~~
+- ~~**`partial_source`**: the page lists a larger work this work is part of. The page is linked for reference and is not merged. (ECHO-97)~~
 
-A page can be a source of one work and a partial source of several. The works that share a page are partial sources of each other both ways. Episode and character pages have no roles: each belongs to exactly one episode or character. (ECHO-97)
+A page can be a source of one work and a partial source of several. The works that share a page are partial sources of each other both ways. Episode and character pages have no roles: each belongs to exactly one episode or character. (ECHO-97) (ECHO-107)
 
 **Example**: "One Piece" is one `anime` row with one source page each from MAL, AniList, Kitsu, AniDB and the other providers, and each of its episodes and characters links to its own pages the same way.
 
@@ -509,7 +509,7 @@ A page can be a source of one work and a partial source of several. The works th
 
 **Problem**: When work A is saved, related work B may not exist yet.
 
-**Solution**: Store the relationship at once with a nullable foreign key (ECHO-102)
+~~**Solution**: Store the relationship at once with a nullable foreign key (ECHO-102)~~
 - Insert the edge with `to_anime_id = NULL`
 - Store the target page (`to_page_provider`, `to_page_address`)
 - Resolve the foreign key when that page becomes a source of a work
@@ -530,29 +530,29 @@ WHERE to_anime_id IS NULL AND to_page_provider = 'anilist' AND to_page_address =
 - Show the link before the target exists
 - Graph queries use only resolved edges (`WHERE to_anime_id IS NOT NULL`)
 
-The same pattern links an episode to a character that is not stored yet (`episode_character`). (ECHO-103)
+~~The same pattern links an episode to a character that is not stored yet (`episode_character`). (ECHO-103)~~
 
-Source material needs no unresolved state: a related source work always carries a title and type, so `SaveAnime` creates or finds its row through `source_material_xref` in the same transaction. (ECHO-102)
+~~Source material needs no unresolved state: a related source work always carries a title and type, so `SaveAnime` creates or finds its row through `source_material_xref` in the same transaction. (ECHO-102)~~
 
 **Who asserts an edge:**
-- `anime_relation` holds only what each work's own provider pages say, in one direction, from that work. When work A lists B as a sequel and B lists A as a prequel, there are two rows, one asserted by each work. (ECHO-102)
-- `SaveAnime` replaces the work's own `anime_relation` rows with what the merge produced. It never touches rows another work asserted. (ECHO-102)
-- `SaveAnime` replaces the work's own `anime_relation_claim` rows with the providers' claims the merge passed on, so the provenance always matches the stored relations. (ECHO-102)
-- Both directions exist only in `graph_edge`. The `graph_edge` rows between two works are recomputed from both works' `anime_relation` rows and the inverse map whenever either work's relations change, so removing one work's assertion never removes an edge the other work still asserts. (ECHO-102)
-- Before recomputing a pair, the save takes a transaction-level advisory lock on that pair. `pg_advisory_xact_lock` takes a `bigint`, so the key is a 64-bit hash of the pair's two IDs in sorted order. A save that touches several pairs takes their locks in ascending order of those hashed keys, never of the raw IDs, since the hash does not keep the IDs' order. Two related works saving at once therefore recompute their pair one after the other, each reading the other's committed rows, and cannot deadlock. A hash collision only makes two unrelated pairs wait for each other. (ECHO-102)
+- ~~`anime_relation` holds only what each work's own provider pages say, in one direction, from that work. When work A lists B as a sequel and B lists A as a prequel, there are two rows, one asserted by each work. (ECHO-102)~~
+- ~~`SaveAnime` replaces the work's own `anime_relation` rows with what the merge produced. It never touches rows another work asserted. (ECHO-102)~~
+- ~~`SaveAnime` replaces the work's own `anime_relation_claim` rows with the providers' claims the merge passed on, so the provenance always matches the stored relations. (ECHO-102)~~
+- ~~Both directions exist only in `graph_edge`. The `graph_edge` rows between two works are recomputed from both works' `anime_relation` rows and the inverse map whenever either work's relations change, so removing one work's assertion never removes an edge the other work still asserts. (ECHO-102)~~
+- ~~Before recomputing a pair, the save takes a transaction-level advisory lock on that pair. `pg_advisory_xact_lock` takes a `bigint`, so the key is a 64-bit hash of the pair's two IDs in sorted order. A save that touches several pairs takes their locks in ascending order of those hashed keys, never of the raw IDs, since the hash does not keep the IDs' order. Two related works saving at once therefore recompute their pair one after the other, each reading the other's committed rows, and cannot deadlock. A hash collision only makes two unrelated pairs wait for each other. (ECHO-102)~~
 - Any transaction that links a page as a source of a work resolves every unresolved relation pointing at that page, and recomputes the `graph_edge` rows of each pair it resolves.
-  - A save resolves them when it links a page. (ECHO-102)
+  - ~~A save resolves them when it links a page. (ECHO-102)~~
   - `CreateAnime` and `RelinkPages` resolve them when they link a page. (ECHO-107)
 
 ---
 
 ### 4. Writes and Deletes
 
-**Write order.** A save upserts rows in shared tables (`genre`, `tag`, `company`, `source_material`, `character`, `graph_edge`) inside one transaction. Each save sorts its keys and writes every table in a fixed order, so two refreshes saving at the same time take their locks in the same order and cannot deadlock. (ECHO-98)
+~~**Write order.** A save upserts rows in shared tables (`genre`, `tag`, `company`, `source_material`, `character`, `graph_edge`) inside one transaction. Each save sorts its keys and writes every table in a fixed order, so two refreshes saving at the same time take their locks in the same order and cannot deadlock. (ECHO-98)~~
 
 **Version.** An entity's `version` increases with every change to the entity or to what its merge reads. A merge that loaded before such a change then fails its version check and starts again from a fresh load. Versions only need to grow, so a version without an event of its own is fine.
 
-- A save that changes the entity increases it, and so does a new correction. (ECHO-98)
+- A save that changes the entity increases it, and so does a new correction. (ECHO-98) (ECHO-132)
 - A page relinked to or from a work, by `CreateAnime` or `RelinkPages`, increases the work's version. (ECHO-107)
 - A new AI-written text, saved by `SaveGeneratedText`, increases the work's version. (ECHO-115)
 
@@ -561,7 +561,7 @@ Source material needs no unresolved state: a related source work always carries 
 **Not yet merged.** A work exists before its first merge. Episodes and characters a work's save creates follow the same rule: they exist from the work's lists, and their own first merge sets `merged_at`.
 
 - The seed load creates the work with its ID and page links, and nothing has been fetched. A linked page that was never fetched has a NULL `fetched_at` and `responses_hash`, which also makes it due. (ECHO-107)
-- The work's `merged_at` is NULL, so `title`, `type` and `status` may be empty, and a check constraint requires all three once `merged_at` is set. The save that first sets `merged_at` writes the `created` event; every later changing save writes `updated`. (ECHO-98)
+- ~~The work's `merged_at` is NULL, so `title`, `type` and `status` may be empty, and a check constraint requires all three once `merged_at` is set. The save that first sets `merged_at` writes the `created` event; every later changing save writes `updated`. (ECHO-98)~~
 - Every read for consumers and the backend (`Get*`, `ListEpisodes`, `ListScoreAnime`, `ListUpcomingEpisodes`, the graph primitives) reads the `*_visible` views, which skip rows whose `merged_at` is NULL. The due queries do not: an unmerged work has never been refreshed, so it is due. (ECHO-108)
 
 **Recording a refresh.** `RecordRefresh`, the last activity of every refresh, sets `next_refresh_at`, the one column every due check reads:
@@ -572,20 +572,20 @@ Source material needs no unresolved state: a related source work always carries 
 
 The workflow passes `REFRESH_AFTER_DAYS` with the call, since the setting belongs to the Update Service. (ECHO-108)
 
-A page that fails every fetch attempt records `fetch_failed_at` and `fetch_failures` through `StorePage`, and the refresh goes on without it. (ECHO-97)
+~~A page that fails every fetch attempt records `fetch_failed_at` and `fetch_failures` through `StorePage`, and the refresh goes on without it. (ECHO-97)~~
 
 **Visible rows.** Reads for consumers and the backend go through the `anime_visible`, `episode_visible` and `character_visible` views, which hold only merged, undeleted rows.
 
-- The views are created with their tables. (ECHO-98)
+- ~~The views are created with their tables. (ECHO-98)~~
 - Loads for merging, `ListEntityPages` and the due queries read the tables, since unmerged entities must be loaded and are due. (ECHO-108)
 
 **Purging deleted rows.** A deleted entity keeps its own row for good, with its ID, version, `deleted_at` and `merged_into_anime_id`, so old links and users' lists can be redirected. Its detail rows (titles, genres, images and the others) are purged 30 days after the delete by the cleanup job. Unique constraints that a deleted row could block, such as an episode's number, count only undeleted rows. (ECHO-116)
 
-**Missing and dead pages.** A seed release never removes a work or a page; it only adds them and moves pages between works. A page is found to be gone only by a refresh. When `FetchPage` reports the provider's own "not found" (not a block or an error), `StorePage` records `missing_since` and counts `missing_answers`, and keeps the page's last stored responses, which still take part in merges. After two such answers at least a day apart, with no successful fetch between them, the page becomes a `dead_page` approval item. A reviewer's approval sets `is_dead`, which takes the page out of merges and refreshes; a rejection clears the count. Once reviews of a provider's dead pages keep being confirmed, its `DEAD_PAGE_REVIEW` setting is turned off and two answers a day apart set `is_dead` directly. A successful fetch clears both `missing_since` and `missing_answers`, so two isolated answers months apart never add up to a review item. (ECHO-97)
+**Missing and dead pages.** A seed release never removes a work or a page; it only adds them and moves pages between works. A page is found to be gone only by a refresh. When `FetchPage` reports the provider's own "not found" (not a block or an error), `StorePage` records `missing_since` and counts `missing_answers`, and keeps the page's last stored responses, which still take part in merges. After two such answers at least a day apart, with no successful fetch between them, the page becomes a `dead_page` approval item. A reviewer's approval sets `is_dead`, which takes the page out of merges and refreshes; a rejection clears the count. Once reviews of a provider's dead pages keep being confirmed, its `DEAD_PAGE_REVIEW` setting is turned off and two answers a day apart set `is_dead` directly. A successful fetch clears both `missing_since` and `missing_answers`, so two isolated answers months apart never add up to a review item. (ECHO-97) (ECHO-131)
 
 **Merges the database requests.** A change made in the database that the next merge must see sets `merge_requested_at` on the entity in the same transaction: `CreateAnime`, `RelinkPages`, a new AI-written text, and an approved correction, dead page or character merge. The caller also sends the entity's refresh `merge_requested` at once, so the merge usually runs within seconds. The column guarantees it runs even when that signal is lost or nothing is refreshing the entity, such as a finished work's episode the sweep skips.
 
-- The save that follows clears the column, changed or not. (ECHO-98)
+- ~~The save that follows clears the column, changed or not. (ECHO-98)~~
 - `ListRequestedMerges` returns such entities whatever their age, status or `next_refresh_at`. (ECHO-108)
 - A pass every 15 minutes reads `ListRequestedMerges` and sends each entity's refresh `merge_requested`. (ECHO-117)
 
@@ -599,20 +599,20 @@ A page that fails every fetch attempt records `fetch_failed_at` and `fetch_failu
 
 **The merge version.** A mapping fix reaches every entity this way, including finished works and those over 30 years old, with no separate workflow.
 
-- Each entity stores the `merge_version` of the code that last merged it. (ECHO-98)
+- ~~Each entity stores the `merge_version` of the code that last merged it. (ECHO-98)~~
 - The due queries also return entities whose `merge_version` is older than the current one, whatever their age, status or `next_refresh_at`. Raising the version makes every entity due at once. (ECHO-108)
 - Their refresh merges them from stored pages without fetching, so they cannot use up any provider's rate. They run at priority 4 with the fairness key `remerge`, below the sweep's priority 3, so the weekly refreshes go first. (ECHO-111)
 
-**The change hash.** `merged_record_hash` is computed over a canonical form of everything the save writes: the merged entity and its episode and character lists. Maps are encoded in key order (`prost` is configured to generate `BTreeMap` for map fields, since its default `HashMap` encodes in a different order on every run), and the merge returns every list sorted. `hash_format` records the form used, so changing it is a planned re-save of every entity, not an accident. (ECHO-98)
+~~**The change hash.** `merged_record_hash` is computed over a canonical form of everything the save writes: the merged entity and its episode and character lists. Maps are encoded in key order (`prost` is configured to generate `BTreeMap` for map fields, since its default `HashMap` encodes in a different order on every run), and the merge returns every list sorted. `hash_format` records the form used, so changing it is a planned re-save of every entity, not an accident. (ECHO-98)~~
 
-**`updated_at`.** The save that changes a row sets `updated_at = now()` in the same statement. There is no trigger. (ECHO-98)
+~~**`updated_at`.** The save that changes a row sets `updated_at = now()` in the same statement. There is no trigger. (ECHO-98)~~
 
 A page view writes nothing: the backend decides whether an entity is due from the `next_refresh_at` that `Get*` returns. (ECHO-108)
 
 **Deleting an entity.** An entity is removed by setting `deleted_at`, never by deleting its row, so consumers can still read its version. Foreign keys with `ON DELETE CASCADE` do not fire on a soft delete, so the deleting transaction removes what hangs off the entity itself:
 
 - **A work** (`DeleteAnime`, such as when merged into another): its page links are removed, so the surviving work can claim those pages as sources; its own `anime_relation` rows are deleted; relations other works assert towards it go back to unresolved, keeping their page key, so they resolve to whichever work next holds that page; and every `graph_edge` row from or to it is deleted. (ECHO-107)
-- **An episode**: its page links and every `graph_edge` row from or to it are deleted. (ECHO-103)
+- ~~**An episode**: its page links and every `graph_edge` row from or to it are deleted. (ECHO-103)~~
 - **A character**: its page links and every `graph_edge` row from or to it are deleted. (ECHO-104)
 - In every case the version increases once more, and the `deleted` event is written to the outbox, by the method that deletes the entity.
 
@@ -637,12 +637,12 @@ Every table is in fifth normal form:
 | ~~**Shared name tables**~~ | ~~Genres, tags, demographics, content warnings and character traits are rows in `genre`, `tag`, `demographic`, `content_warning` and `trait`, linked per entity, so each name is stored once. (ECHO-93)~~ |
 | **`episode_count` is the provider's total** | It is the number of episodes providers report for the work, which can be ahead of the episodes stored. It is not a count of `episode` rows. |
 | **`score_weighted`, `score_mean`, `score_median` are columns** | `ScoreCalculations` has exactly three values, each depending only on the work. |
-| **Hiatus history** | Each change of the hiatus snapshot adds a row to `anime_hiatus`, so the frontend can show a work's pauses. The current hiatus is the latest row. (ECHO-101) |
-| **Source material and companies deduplicate through cross-references** | A source URL already in `source_material_xref` or `company_xref` reuses its row. Names are never used to merge two rows, since similar names belong to different companies and works. (ECHO-102) |
-| **Corrections are stored per entity table** | `anime_field_correction` has a real foreign key to its work, instead of one table with an untyped entity reference (ECHO-98) |
-| **Corrections are stored per entity table** | `episode_field_correction` has a real foreign key to its episode (ECHO-103) |
+| ~~**Hiatus history**~~ | ~~Each change of the hiatus snapshot adds a row to `anime_hiatus`, so the frontend can show a work's pauses. The current hiatus is the latest row. (ECHO-101)~~ |
+| ~~**Source material and companies deduplicate through cross-references**~~ | ~~A source URL already in `source_material_xref` or `company_xref` reuses its row. Names are never used to merge two rows, since similar names belong to different companies and works. (ECHO-102)~~ |
+| ~~**Corrections are stored per entity table**~~ | ~~`anime_field_correction` has a real foreign key to its work, instead of one table with an untyped entity reference (ECHO-98)~~ |
+| ~~**Corrections are stored per entity table**~~ | ~~`episode_field_correction` has a real foreign key to its episode (ECHO-103)~~ |
 | **Corrections are stored per entity table** | `character_field_correction` has a real foreign key to its character (ECHO-104) |
-| **Typed values as protobuf bytes** | A correction or approval value can be any field, nested ones included. It is stored as the protobuf message of that field, with the message name beside it, and only the merge and the approval queue read it. (ECHO-98) |
+| ~~**Typed values as protobuf bytes**~~ | ~~A correction or approval value can be any field, nested ones included. It is stored as the protobuf message of that field, with the message name beside it, and only the merge and the approval queue read it. (ECHO-98)~~ |
 
 ---
 
@@ -895,31 +895,31 @@ CREATE TABLE theme_song_episode_range (  -- (ECHO-101)
 
 CREATE TABLE anime_trailer (  -- (ECHO-101)
   anime_id       uuid NOT NULL REFERENCES anime(id) ON DELETE CASCADE,
-  url            text NOT NULL,
+  source         text NOT NULL,
   title          text,
   thumbnail_url  text,
-  PRIMARY KEY (anime_id, url)
+  PRIMARY KEY (anime_id, source)
 );
 
 CREATE TABLE anime_external_link (  -- (ECHO-101)
   anime_id  uuid NOT NULL REFERENCES anime(id) ON DELETE CASCADE,
-  url       text NOT NULL,
+  source    text NOT NULL,
   platform  text NOT NULL,
   label     text,
   language  text,
-  PRIMARY KEY (anime_id, url)
+  PRIMARY KEY (anime_id, source)
 );
 
 CREATE TABLE anime_streaming (  -- (ECHO-101)
   id                   bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   anime_id             uuid NOT NULL REFERENCES anime(id) ON DELETE CASCADE,
   platform             text NOT NULL,
-  url                  text NOT NULL,
+  source               text NOT NULL,
   region               text,
   is_free              boolean,
   is_premium_required  boolean,
   has_dub              boolean,
-  UNIQUE NULLS NOT DISTINCT (anime_id, url, region)
+  UNIQUE NULLS NOT DISTINCT (anime_id, source, region)
 );
 
 CREATE TABLE anime_streaming_subtitle_language (  -- (ECHO-101)
@@ -931,8 +931,8 @@ CREATE TABLE anime_streaming_subtitle_language (  -- (ECHO-101)
 CREATE TABLE anime_image (  -- (ECHO-100)
   anime_id    uuid NOT NULL REFERENCES anime(id) ON DELETE CASCADE,
   image_type  text NOT NULL REFERENCES anime_image_type(value),
-  url         text NOT NULL,
-  PRIMARY KEY (anime_id, image_type, url)
+  source      text NOT NULL,
+  PRIMARY KEY (anime_id, image_type, source)
 );
 
 -- Statistics as each provider reports them
@@ -1053,15 +1053,15 @@ CREATE TABLE source_material_xref (  -- (ECHO-102)
   provider            text NOT NULL REFERENCES provider(value),
   external_id         text NOT NULL,
   source_material_id  uuid NOT NULL REFERENCES source_material(id) ON DELETE CASCADE,
-  url                 text NOT NULL,
+  source              text NOT NULL,
   PRIMARY KEY (provider, external_id),
   UNIQUE (source_material_id, provider)
 );
 
 CREATE TABLE source_material_image (  -- (ECHO-102)
   source_material_id  uuid NOT NULL REFERENCES source_material(id) ON DELETE CASCADE,
-  url                 text NOT NULL,
-  PRIMARY KEY (source_material_id, url)
+  source              text NOT NULL,
+  PRIMARY KEY (source_material_id, source)
 );
 
 CREATE TABLE anime_source_material_relation (  -- (ECHO-102)
@@ -1082,9 +1082,9 @@ CREATE TABLE company (  -- (ECHO-102)
 
 CREATE TABLE company_xref (  -- (ECHO-102)
   provider    text NOT NULL REFERENCES provider(value),
-  url         text NOT NULL,                   -- canonical company page URL
+  source      text NOT NULL,                   -- canonical company page URL
   company_id  uuid NOT NULL REFERENCES company(id) ON DELETE CASCADE,
-  PRIMARY KEY (provider, url),
+  PRIMARY KEY (provider, source),
   UNIQUE (company_id, provider)
 );
 
@@ -1282,14 +1282,14 @@ CREATE TABLE episode_title (
 
 CREATE TABLE episode_image (
   episode_id  uuid NOT NULL REFERENCES episode(id) ON DELETE CASCADE,
-  url         text NOT NULL,
-  PRIMARY KEY (episode_id, url)
+  source      text NOT NULL,
+  PRIMARY KEY (episode_id, source)
 );
 
 CREATE TABLE episode_streaming (
   episode_id  uuid NOT NULL REFERENCES episode(id) ON DELETE CASCADE,
   platform    text NOT NULL,
-  url         text NOT NULL,
+  source      text NOT NULL,
   PRIMARY KEY (episode_id, platform)
 );
 
@@ -1414,8 +1414,8 @@ CREATE TABLE character_provider_page (  -- (ECHO-104)
 
 - ~~`StorePage` writes the page and its responses in one transaction, and only when its `fetched_at` is newer than the stored one, so a retried or late fetch never replaces newer data. It reports the page as changed when `responses_hash` differs, without reading the stored bodies. (ECHO-97)~~
 - Each load reads an entity's pages and responses, and the merge maps them in memory.
-  - `LoadAnime` for a work. (ECHO-98)
-  - `LoadEpisode` for an episode. (ECHO-103)
+  - ~~`LoadAnime` for a work. (ECHO-98)~~
+  - ~~`LoadEpisode` for an episode. (ECHO-103)~~
   - `LoadCharacter` for a character. (ECHO-104)
 - An entity's `sources` and `partial_sources` in the merged model come from these links. (ECHO-105)
 
@@ -1552,7 +1552,7 @@ CREATE TABLE outbox (  -- (ECHO-98)
 CREATE INDEX outbox_unpublished_idx ON outbox(id) WHERE published_at IS NULL AND parked_at IS NULL;  -- (ECHO-106)
 ```
 
-- A correction holds one field's approved value. The load methods return an entity's corrections with its pages. (ECHO-98)
+- ~~A correction holds one field's approved value. The load methods return an entity's corrections with its pages. (ECHO-98)~~
 - The merge applies them after merging, so a refresh never overwrites them. (ECHO-105)
 - `anime.synopsis` is set only from an approved correction or the latest `anime_generated_text` row, never from a provider. (ECHO-105)
 - Provider synopses stay in the stored page responses as input for writing. See [[update_service#AI-Written Synopsis|Update Service]]. (ECHO-115)
@@ -1584,9 +1584,9 @@ Until then, those model fields are not stored.
 
 ### Exact Deduplication
 
-- `provider_page` is keyed by its page key, so a page is stored once. (ECHO-97)
-- A work page is a source of at most one work, and an episode or character page belongs to exactly one episode or character, so the same provider page always maps to the same entity. (ECHO-97)
-- `source_material_xref` and `company_xref` are keyed by provider and external ID or URL, so the same external work or company always maps to the same row. (ECHO-102)
+- ~~`provider_page` is keyed by its page key, so a page is stored once. (ECHO-97)~~
+- ~~A work page is a source of at most one work, and an episode or character page belongs to exactly one episode or character, so the same provider page always maps to the same entity. (ECHO-97)~~
+- ~~`source_material_xref` and `company_xref` are keyed by provider and external ID or URL, so the same external work or company always maps to the same row. (ECHO-102)~~
 
 ### Fuzzy Deduplication (Characters)
 

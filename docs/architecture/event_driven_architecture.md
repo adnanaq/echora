@@ -145,7 +145,7 @@ The `version` is a counter on each entity that its save increases in the transac
 
 ### Created, updated and deleted
 
-Events describe works, episodes and characters, never provider pages. Storing a page sends nothing. (ECHO-97)
+~~Events describe works, episodes and characters, never provider pages. Storing a page sends nothing. (ECHO-97)~~
 
 ~~Only a save sends an event, after a merge. (ECHO-98)~~
 
@@ -239,17 +239,21 @@ if stored_work.merged_record_hash.as_deref() != Some(record_hash.as_str()) {
 transaction.commit().await?;
 ```
 
-`save_anime` returns a `SaveError`, an error struct whose kind stays private. `From<sqlx::Error>` lets `?` convert database errors, and a missing row becomes a not-found error. Callers ask `is_version_conflict()` or `is_not_found()`. (ECHO-93)
+~~`save_anime` returns a `postgres_db::Error`, an error struct whose kind stays private. `From<sqlx::Error>` lets `?` convert database errors, and a missing row becomes a not-found error. Callers ask `is_version_conflict()` or `is_not_found()`. (ECHO-93)~~
 
-The gRPC handler in `postgres_service` maps it to a status in one function, since Rust's orphan rule forbids `impl From<SaveError> for Status` in a crate that owns neither type. (ECHO-97)
+~~The gRPC handler in `postgres_service` maps it to a status in one function, since Rust's orphan rule forbids `impl From<postgres_db::Error> for Status` in a crate that owns neither type. (ECHO-97)~~
 
 ```rust
 // crates/postgres_service: the one place library errors become gRPC statuses (ECHO-97)
-fn map_save_error_to_status(error: &SaveError) -> Status {
+fn map_db_error(error: &postgres_db::Error) -> Status {
     if error.is_version_conflict() {
         Status::aborted(error.to_string())
     } else if error.is_not_found() {
         Status::not_found(error.to_string())
+    } else if error.is_invalid_argument() || error.is_foreign_key_violation() {
+        Status::invalid_argument(error.to_string())
+    } else if error.is_unique_violation() {
+        Status::failed_precondition(error.to_string())
     } else {
         Status::internal(error.to_string())
     }
@@ -266,7 +270,7 @@ fn map_save_error_to_status(error: &SaveError) -> Status {
 - the characters the merge gave new IDs (ECHO-104);
 - ~~a status notification row when the work's status changed (ECHO-98).~~
 
-It sorts its keys and writes the shared tables (`genre`, `tag`, `company`, `character`, `graph_edge` and the others) in a fixed order, so two refreshes saving at once take their locks in the same order and cannot deadlock. (ECHO-98)
+~~It sorts its keys and writes the shared tables (`genre`, `tag`, `company`, `character`, `graph_edge` and the others) in a fixed order, so two refreshes saving at once take their locks in the same order and cannot deadlock. (ECHO-98)~~
 
 ~~The episode-aired notification is not written by a save. `MarkEpisodeAired` writes it, once, when episode tracking confirms the episode aired. (ECHO-103)~~
 

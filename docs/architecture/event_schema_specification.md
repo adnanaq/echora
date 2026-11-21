@@ -25,14 +25,14 @@ This page defines the messages the services exchange:
 
 The domain types (`Anime`, `Episode`, `Character` and their enums) are defined once in `protos/shared_proto/v1/anime.proto`. Events and services import them and never redefine them.
 
-| File | Package | Status |
-|---|---|---|
-| `protos/shared_proto/v1/anime.proto` | `shared_proto.v1` | Exists |
-| `protos/shared_proto/v1/merge.proto` | `shared_proto.v1` | ~~Planned (ECHO-97)~~ Exists |
-| `protos/enrichment_service/v1/enrichment_service.proto` | `enrichment_service.v1` | Exists, new methods planned, see [[#EnrichmentService (planned methods)]] |
-| `protos/events/v1/events.proto` | `events.v1` | ~~Planned (ECHO-90)~~ Exists (`CatalogueEvent`, `AnimeStatusChangedNotification`, `EpisodeAiredNotification`) |
-| `protos/postgres_service/v1/postgres_service.proto` | `postgres_service.v1` | ~~Planned (ECHO-97)~~ Exists |
-| `protos/agent_service/v1/agent_service.proto` | `agent_service.v1` | Planned (ECHO-91) |
+| File                                                    | Package                 | Status                                                                                                        |
+| ------------------------------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `protos/shared_proto/v1/anime.proto`                    | `shared_proto.v1`       | Exists                                                                                                        |
+| `protos/shared_proto/v1/merge.proto`                    | `shared_proto.v1`       | ~~Planned (ECHO-97)~~ Exists                                                                                  |
+| `protos/enrichment_service/v1/enrichment_service.proto` | `enrichment_service.v1` | Exists, new methods planned, see [[#EnrichmentService (planned methods)]]                                     |
+| `protos/events/v1/events.proto`                         | `events.v1`             | ~~Planned (ECHO-90)~~ Exists (`CatalogueEvent`, `AnimeStatusChangedNotification`, `EpisodeAiredNotification`) |
+| `protos/postgres_service/v1/postgres_service.proto`     | `postgres_service.v1`   | ~~Planned (ECHO-97)~~ Exists                                                                                  |
+| `protos/agent_service/v1/agent_service.proto`           | `agent_service.v1`      | Planned (ECHO-91)                                                                                             |
 
 ## Catalogue Events
 
@@ -57,34 +57,34 @@ message CatalogueEvent {  // (ECHO-90)
 }
 ```
 
-| Subject | Sent when | Consumers |
-|---|---|---|
-| `anime.created` | A work is saved for the first time | Vector Service, later "recently added" and new-anime notifications (ECHO-98) |
-| `anime.updated` | An existing work is saved with changes | Vector Service (ECHO-98) |
-| `anime.deleted` | A work is removed, such as when merged into another | Vector Service (ECHO-107) |
-| `episode.created` | An episode is saved for the first time | Vector Service (ECHO-103) |
-| `episode.updated` | An existing episode is saved with changes | Vector Service (ECHO-103) |
-| `episode.deleted` | An episode is removed | Vector Service (ECHO-103) |
-| `character.created` | A character is saved for the first time | Vector Service (ECHO-104) |
-| `character.updated` | An existing character is saved with changes | Vector Service (ECHO-104) |
-| `character.deleted` | A character is removed as a merged duplicate | Vector Service (ECHO-104) |
-| `character.deleted` | A character no work links to any more is removed | Vector Service (ECHO-116) |
+| Subject             | Sent when                                           | Consumers                                                                    |
+| ------------------- | --------------------------------------------------- | ---------------------------------------------------------------------------- |
+| ~~`anime.created`~~ | ~~A work is saved for the first time~~ | ~~Vector Service, later "recently added" and new-anime notifications (ECHO-98)~~ |
+| ~~`anime.updated`~~ | ~~An existing work is saved with changes~~ | ~~Vector Service (ECHO-98)~~ |
+| `anime.deleted`     | A work is removed, such as when merged into another | Vector Service (ECHO-107)                                                    |
+| ~~`episode.created`~~ | ~~An episode is saved for the first time~~ | ~~Vector Service (ECHO-103)~~ |
+| ~~`episode.updated`~~ | ~~An existing episode is saved with changes~~ | ~~Vector Service (ECHO-103)~~ |
+| ~~`episode.deleted`~~ | ~~An episode is removed~~ | ~~Vector Service (ECHO-103)~~ |
+| `character.created` | A character is saved for the first time             | Vector Service (ECHO-104)                                                    |
+| `character.updated` | An existing character is saved with changes         | Vector Service (ECHO-104)                                                    |
+| `character.deleted` | A character is removed as a merged duplicate        | Vector Service (ECHO-104)                                                    |
+| `character.deleted` | A character no work links to any more is removed    | Vector Service (ECHO-116)                                                    |
 
-- **Version.** Each save that changes an entity increases its `version` in the same transaction. A consumer stores the version it last handled and skips any event whose version is not newer. (ECHO-98)
+- ~~**Version.** Each save that changes an entity increases its `version` in the same transaction. A consumer stores the version it last handled and skips any event whose version is not newer. (ECHO-98)~~
 - **Deletes.** A removed entity keeps its row with `deleted_at` set, and its `version` increases once more, so the delete event's version is newer than every update before it.
   - `DeleteAnime` removes works this way. (ECHO-107)
-  - Episodes are removed this way. (ECHO-103)
+  - ~~Episodes are removed this way. (ECHO-103)~~
   - Characters are removed this way. (ECHO-104)
   - A consumer reads a deleted entity back like any other, and `Get*` answers `NOT_FOUND`, which confirms the delete. (ECHO-114)
-- **Removing an episode.** When an episode is removed and `episode.deleted` is sent, for example when a work's merge no longer lists it, is not decided yet. (ECHO-103)
+- **Removing an episode.** When an episode is removed and `episode.deleted` is sent, for example when a work's merge no longer lists it, is not decided yet. (ECHO-103) (no issue yet)
 
 ## Notification Events
 
 Notification events carry what a notification shows, so the notification service can send a message without reading PostgreSQL. They come from the same outbox as catalogue events.
 
 - They go to the `NOTIFICATION_EVENTS` stream, which allows a per-message expiry. (ECHO-90)
-- The status notification is written by the work's save, in the same transaction as the status change. (ECHO-98)
-- The aired notification is written by `MarkEpisodeAired`, once, when episode tracking confirms the episode aired. (ECHO-103)
+- ~~The status notification is written by the work's save, in the same transaction as the status change. (ECHO-98)~~
+- ~~The aired notification is written by `MarkEpisodeAired`, once, when episode tracking confirms the episode aired. (ECHO-103)~~
 - The relay sends each one with a `Nats-TTL`, so a notification the service could not deliver in time expires. (ECHO-106)
 
 ```protobuf
@@ -110,10 +110,10 @@ message AnimeStatusChangedNotification {  // (ECHO-90)
 }
 ```
 
-| Subject | Message | Consumers |
-|---|---|---|
-| `notification.episode.aired` | `EpisodeAiredNotification` | Notification Service (planned) (ECHO-103) |
-| `notification.anime.status.changed` | `AnimeStatusChangedNotification` | Notification Service (planned) (ECHO-98) |
+| Subject                             | Message                          | Consumers                                 |
+| ----------------------------------- | -------------------------------- | ----------------------------------------- |
+| ~~`notification.episode.aired`~~ | ~~`EpisodeAiredNotification`~~ | ~~Notification Service (planned) (ECHO-103)~~ |
+| ~~`notification.anime.status.changed`~~ | ~~`AnimeStatusChangedNotification`~~ | ~~Notification Service (planned) (ECHO-98)~~ |
 
 The Notification Service that reads these subjects is planned. (P-ECHO-18)
 
@@ -125,7 +125,7 @@ Every method called from a Temporal activity is safe to run twice, because Tempo
 
 ### Shared messages (planned)
 
-Several services exchange provider pages, corrections, generated text and entity references, the inputs and outputs of a merge, so these messages live in `shared_proto.v1`. No service proto imports another service's proto. (ECHO-97)
+~~Several services exchange provider pages, corrections, generated text and entity references, the inputs and outputs of a merge, so these messages live in `shared_proto.v1`. No service proto imports another service's proto. (ECHO-97)~~
 
 ```protobuf
 // protos/shared_proto/v1/merge.proto
@@ -162,7 +162,7 @@ message PageResponse {  // (ECHO-97)
 message StoredPage {  // (ECHO-97)
   PageKey page_key = 1;
   google.protobuf.Timestamp fetched_at = 2;
-  bool is_dead = 3;                          // confirmed gone: by a reviewer, or automatically once trusted
+  bool is_dead = 3;                          // confirmed gone: by a reviewer, or automatically once trusted; StorePage refuses it
   repeated PageResponse responses = 4;
   bool is_not_found = 5;                     // this fetch got the provider's own "not found"; StorePage records it, keeping the old responses
 }
@@ -220,9 +220,9 @@ message RelationClaim {  // (ECHO-102)
 }
 ```
 
-`PageKey` holds the same three parts as the page key string `libs/work_matching` uses, `provider:kind:id` such as `mal:anime:21`, with `id` named `address`. Manga pages (`mal:manga:13`) are not fetched as provider pages; they identify source material through `source_material_xref`. (ECHO-97)
+~~`PageKey` holds the same three parts as the page key string `libs/work_matching` uses, `provider:kind:id` such as `mal:anime:21`, with `id` named `address`. Manga pages (`mal:manga:13`) are not fetched as provider pages; they identify source material through `source_material_xref`. (ECHO-97)~~
 
-`FieldCorrection.value` is a `google.protobuf.Any`: the type URL names the value's message and the bytes hold it. PostgreSQL stores the two as `value_message` and `value` (see [[Database Schema#Approval, Corrections, AI Text and Outbox|Database Schema]]). (ECHO-98)
+~~`FieldCorrection.value` is a `google.protobuf.Any`: the type URL names the value's message and the bytes hold it. PostgreSQL stores the two as `value_message` and `value` (see [[Database Schema#Approval, Corrections, AI Text and Outbox|Database Schema]]). (ECHO-98)~~
 
 ### EnrichmentService (planned methods)
 
@@ -359,15 +359,15 @@ service PostgresService {
 
   // Episodes and characters
   rpc LoadEpisode(LoadEpisodeRequest) returns (LoadEpisodeResponse);  // (ECHO-103)
-  rpc SaveEpisode(SaveEpisodeRequest) returns (SaveEntityResponse);  // (ECHO-103)
+  rpc SaveEpisode(SaveEpisodeRequest) returns (SaveEpisodeResponse);  // (ECHO-103)
   rpc LoadCharacter(LoadCharacterRequest) returns (LoadCharacterResponse);  // (ECHO-104)
-  rpc SaveCharacter(SaveCharacterRequest) returns (SaveEntityResponse);  // (ECHO-104)
+  rpc SaveCharacter(SaveCharacterRequest) returns (SaveCharacterResponse);  // (ECHO-104)
 
   // Seed load and review answers
   rpc FindEntitiesByPages(FindEntitiesByPagesRequest) returns (FindEntitiesByPagesResponse);  // (ECHO-107)
   rpc CreateAnime(CreateAnimeRequest) returns (CreateAnimeResponse);  // (ECHO-107)
   rpc RelinkPages(RelinkPagesRequest) returns (RelinkPagesResponse);  // (ECHO-107)
-  rpc DeleteAnime(DeleteAnimeRequest) returns (SaveEntityResponse);  // (ECHO-107)
+  rpc DeleteAnime(DeleteAnimeRequest) returns (DeleteAnimeResponse);  // (ECHO-107)
 
   // What is due
   rpc ListEntityPages(ListEntityPagesRequest) returns (ListEntityPagesResponse);  // (ECHO-108)
@@ -426,27 +426,28 @@ message LoadAnimeResponse {  // (ECHO-98)
   repeated shared_proto.v1.StoredPage source_pages = 2;
   repeated shared_proto.v1.PageKey partial_source_pages = 3;
   repeated shared_proto.v1.FieldCorrection corrections = 4;
-  repeated shared_proto.v1.GeneratedText generated_texts = 5;  // the latest per field
-  repeated shared_proto.v1.EpisodeReference known_episodes = 6;
-  repeated shared_proto.v1.CharacterReference known_characters = 7;
+  repeated shared_proto.v1.EpisodeReference known_episodes = 5;      // undeleted episodes, so the merge keeps their IDs (ECHO-103)
+  repeated shared_proto.v1.CharacterReference known_characters = 6;  // (ECHO-104)
+  repeated shared_proto.v1.GeneratedText generated_texts = 7;  // the latest per field (ECHO-115)
 }
 
 message SaveAnimeRequest {  // (ECHO-98)
   string anime_id = 1;
   int64 expected_version = 2;
   shared_proto.v1.Anime anime = 3;
-  repeated shared_proto.v1.EpisodeReference episodes = 4;
-  repeated shared_proto.v1.CharacterReference characters = 5;
-  repeated shared_proto.v1.RelationClaim relation_claims = 6;  // stored in anime_relation_claim (ECHO-102)
+  int32 merge_version = 4;                   // the mapping and merge code that produced the save
+  repeated shared_proto.v1.RelationClaim relation_claims = 5;  // stored in anime_relation_claim (ECHO-102)
+  repeated shared_proto.v1.EpisodeReference episodes = 6;      // (ECHO-103)
+  repeated shared_proto.v1.CharacterReference characters = 7;  // (ECHO-104)
 }
 
 message SaveAnimeResponse {  // (ECHO-98)
   bool has_changed = 1;
   int64 version = 2;
   repeated string created_episode_ids = 3;   // episodes to refresh next (ECHO-103)
-  repeated string created_character_ids = 4; // characters to refresh next (ECHO-104)
-  repeated string changed_episode_ids = 5;   // existing episodes whose list entries changed (ECHO-103)
-  repeated string changed_character_ids = 6; // existing characters whose cast entry changed (ECHO-104)
+  repeated string updated_episode_ids = 4;   // existing episodes whose list entries changed (ECHO-103)
+  repeated string created_character_ids = 5; // characters to refresh next (ECHO-104)
+  repeated string updated_character_ids = 6; // existing characters whose cast entry changed (ECHO-104)
 }
 
 message LoadEpisodeRequest {  // (ECHO-103)
@@ -465,6 +466,7 @@ message SaveEpisodeRequest {  // (ECHO-103)
   string episode_id = 1;
   int64 expected_version = 2;
   shared_proto.v1.Episode episode = 3;
+  int32 merge_version = 4;
 }
 
 message LoadCharacterRequest {  // (ECHO-104)
@@ -481,9 +483,22 @@ message SaveCharacterRequest {  // (ECHO-104)
   string character_id = 1;
   int64 expected_version = 2;
   shared_proto.v1.Character character = 3;
+  int32 merge_version = 4;
 }
 
-message SaveEntityResponse {  // (ECHO-103)
+// SaveEpisode, SaveCharacter and DeleteAnime each have their own response, since buf's
+// STANDARD lint (RPC_RESPONSE_STANDARD_NAME, RPC_REQUEST_RESPONSE_UNIQUE) refuses a shared one.
+message SaveEpisodeResponse {  // (ECHO-103)
+  bool has_changed = 1;
+  int64 version = 2;
+}
+
+message SaveCharacterResponse {  // (ECHO-104)
+  bool has_changed = 1;
+  int64 version = 2;
+}
+
+message DeleteAnimeResponse {  // (ECHO-107)
   bool has_changed = 1;
   int64 version = 2;
 }
@@ -734,12 +749,15 @@ message DuePage {  // (ECHO-108)
 - **Addresses are checked.** An address that does not match its provider's pattern is refused with `INVALID_ARGUMENT`, before it reaches a URL.
   - `FetchPage` checks it. (ECHO-99)
   - ~~`StorePage` checks it. (ECHO-97)~~
+- ~~**`StorePage` refuses `is_dead`.** A fetch reports what the provider answered, never that a page is dead. Only an approved `dead_page` review, or two "not found" answers a day apart once the provider's review is turned off, marks a page dead, so `StorePage` returns `INVALID_ARGUMENT` for a page with `is_dead` set. (ECHO-103)~~
+- ~~**`LoadAnime` returns the work's known episodes.** `known_episodes` holds every undeleted episode with its page keys and list entries, so the merge keeps their IDs. (ECHO-103)~~
+- ~~**Rule violations are not retried.** A unique violation returns `FAILED_PRECONDITION`, such as a new episode ID for a number an undeleted episode holds, and a foreign-key violation returns `INVALID_ARGUMENT`, such as an unknown lookup value. Both are permanent, so the activity does not retry them, where `INTERNAL` would be retried. (ECHO-103)~~
 - ~~**`MarkEpisodeAired`** writes `notification.episode.aired` once, when the episode's `aired_at` has passed and `aired_notified_at` is unset. The tracker calls it at air time, so the notification does not depend on a save changing something. (ECHO-103)~~
 - **`SaveGeneratedText` records every attempt**, written or not, so the same provider synopses do not start the synopsis workflow again. (ECHO-115)
 - **`ListDuePages`** lists one budgeted provider's pages in due order with their work, for the budgeted fetcher. (ECHO-108)
 - ~~**`SaveAnime` stores each episode's list entries** in `episode_list_entry`.~~
-  - ~~An existing episode whose entries changed is made due at once and returned in `changed_episode_ids`, so the refresh starts it. (ECHO-103)~~
-  - A character whose cast entry changed is made due at once and returned in `changed_character_ids`. (ECHO-104)
+  - ~~An existing episode whose entries changed is made due at once and returned in `updated_episode_ids`, so the refresh starts it. (ECHO-103)~~
+  - A character whose cast entry changed is made due at once and returned in `updated_character_ids`. (ECHO-104)
 - **Works exist before their first merge.** See [[Database Schema#4. Writes and Deletes|Database Schema]].
   - `CreateAnime` writes the work's ID and page links with `merged_at` unset, and links pages that were never fetched. (ECHO-107)
   - The `Get*` and listing methods skip such works. (ECHO-108)
@@ -769,7 +787,7 @@ message DuePage {  // (ECHO-108)
 
 `libs/common/src/common/models/anime.py` is the source of truth for the domain types. `protos/shared_proto/v1/anime.proto` mirrors it, and a change to one changes the other in the same PR. `scripts/check_anime_model_proto_contract.py` checks that they match.
 
-Messages PostgreSQL stores follow the production rules below from the first migration that stores them: the messages of `anime.proto`, since a `FieldCorrection` value can be any of them, `FieldCorrection` itself, the approval queue's proposals and decisions, and `CatalogueEvent` in the outbox. Protobuf bytes name fields by number, so a renumbered field would silently read a stored value into the wrong field. (ECHO-98)
+~~Messages PostgreSQL stores follow the production rules below from the first migration that stores them: the messages of `anime.proto`, since a `FieldCorrection` value can be any of them, `FieldCorrection` itself, the approval queue's proposals and decisions, and `CatalogueEvent` in the outbox. Protobuf bytes name fields by number, so a renumbered field would silently read a stored value into the wrong field. (ECHO-98)~~
 
 Before any service runs in production, every other message may change in place:
 
@@ -784,9 +802,9 @@ Once services exchange these messages across versions in production:
 
 Thin events make this rarely matter for events. A domain field added to `Anime` changes no event message, since events carry only IDs and versions.
 
-Stored corrections, approval values and outbox events are protobuf messages too, which is why they follow the production rules from the start. (ECHO-98)
+~~Stored corrections, approval values and outbox events are protobuf messages too, which is why they follow the production rules from the start. (ECHO-98)~~
 
-PostgreSQL migrations are written by hand. A model field without a database column is caught at build time, when `cargo sqlx prepare` checks the queries against the schema. (ECHO-93)
+~~PostgreSQL migrations are written by hand. A model field without a database column is caught at build time, when `cargo sqlx prepare` checks the queries against the schema. (ECHO-93)~~
 
 ## Related Documentation
 
