@@ -39,6 +39,8 @@ impl Error {
     ///
     /// let err = Error::not_found();
     /// assert!(err.is_not_found());
+    /// assert!(!err.is_version_conflict());
+    /// assert!(err.to_string().starts_with("record not found"));
     /// ```
     #[must_use]
     pub fn not_found() -> Self {
@@ -54,6 +56,8 @@ impl Error {
     ///
     /// let err = Error::invalid_argument("title must not be empty");
     /// assert!(err.is_invalid_argument());
+    /// assert!(!err.is_not_found());
+    /// assert!(err.to_string().starts_with("invalid argument: title must not be empty"));
     /// ```
     #[must_use]
     pub fn invalid_argument(message: impl Into<String>) -> Self {
@@ -69,6 +73,8 @@ impl Error {
     ///
     /// let err = Error::version_conflict("expected version 1, found 2");
     /// assert!(err.is_version_conflict());
+    /// assert!(!err.is_invalid_argument());
+    /// assert!(err.to_string().starts_with("version conflict: expected version 1, found 2"));
     /// ```
     #[must_use]
     pub fn version_conflict(message: impl Into<String>) -> Self {
@@ -86,6 +92,10 @@ impl Error {
     ///
     /// let err = Error::unique_violation("duplicate key value violates episode_number_uniq");
     /// assert!(err.is_unique_violation());
+    /// assert!(!err.is_foreign_key_violation());
+    /// assert!(err.to_string().starts_with(
+    ///     "unique constraint violation: duplicate key value violates episode_number_uniq"
+    /// ));
     /// ```
     #[cfg(feature = "test-util")]
     #[must_use]
@@ -104,6 +114,10 @@ impl Error {
     ///
     /// let err = Error::foreign_key_violation("insert violates provider_page_provider_fkey");
     /// assert!(err.is_foreign_key_violation());
+    /// assert!(!err.is_unique_violation());
+    /// assert!(err.to_string().starts_with(
+    ///     "foreign key constraint violation: insert violates provider_page_provider_fkey"
+    /// ));
     /// ```
     #[cfg(feature = "test-util")]
     #[must_use]
@@ -118,8 +132,11 @@ impl Error {
     /// ```
     /// use postgres_db::Error;
     ///
-    /// let err = Error::from(sqlx::Error::RowNotFound);
-    /// assert!(err.is_not_found());
+    /// let missing_row = Error::from(sqlx::Error::RowNotFound);
+    /// assert!(missing_row.is_not_found());
+    ///
+    /// let stale_save = Error::version_conflict("stale row version");
+    /// assert!(!stale_save.is_not_found());
     /// ```
     #[must_use]
     pub fn is_not_found(&self) -> bool {
@@ -133,8 +150,11 @@ impl Error {
     /// ```
     /// use postgres_db::Error;
     ///
-    /// let err = Error::invalid_argument("bad input");
-    /// assert!(err.is_invalid_argument());
+    /// let bad_input = Error::invalid_argument("bad input");
+    /// assert!(bad_input.is_invalid_argument());
+    ///
+    /// let missing_row = Error::not_found();
+    /// assert!(!missing_row.is_invalid_argument());
     /// ```
     #[must_use]
     pub fn is_invalid_argument(&self) -> bool {
@@ -148,8 +168,11 @@ impl Error {
     /// ```
     /// use postgres_db::Error;
     ///
-    /// let err = Error::version_conflict("stale row version");
-    /// assert!(err.is_version_conflict());
+    /// let stale_save = Error::version_conflict("stale row version");
+    /// assert!(stale_save.is_version_conflict());
+    ///
+    /// let missing_row = Error::not_found();
+    /// assert!(!missing_row.is_version_conflict());
     /// ```
     #[must_use]
     pub fn is_version_conflict(&self) -> bool {
@@ -163,8 +186,11 @@ impl Error {
     /// ```
     /// use postgres_db::Error;
     ///
-    /// let err = Error::not_found();
-    /// assert!(!err.is_unique_violation());
+    /// let missing_row = Error::not_found();
+    /// assert!(!missing_row.is_unique_violation());
+    ///
+    /// let bad_input = Error::invalid_argument("duplicate episode number");
+    /// assert!(!bad_input.is_unique_violation(), "only PostgreSQL's own check counts");
     /// ```
     #[must_use]
     pub fn is_unique_violation(&self) -> bool {
@@ -178,8 +204,11 @@ impl Error {
     /// ```
     /// use postgres_db::Error;
     ///
-    /// let err = Error::not_found();
-    /// assert!(!err.is_foreign_key_violation());
+    /// let missing_row = Error::not_found();
+    /// assert!(!missing_row.is_foreign_key_violation());
+    ///
+    /// let bad_input = Error::invalid_argument("unknown provider");
+    /// assert!(!bad_input.is_foreign_key_violation(), "only PostgreSQL's own check counts");
     /// ```
     #[must_use]
     pub fn is_foreign_key_violation(&self) -> bool {
@@ -195,6 +224,8 @@ impl Error {
     ///
     /// let err = Error::from(sqlx::migrate::MigrateError::VersionMissing(1));
     /// assert!(err.is_migration());
+    /// assert!(!err.is_database());
+    /// assert!(err.to_string().starts_with("migration failed: "));
     /// ```
     #[must_use]
     pub fn is_migration(&self) -> bool {
@@ -210,6 +241,8 @@ impl Error {
     ///
     /// let err = Error::from(sqlx::Error::PoolTimedOut);
     /// assert!(err.is_database());
+    /// assert!(!err.is_version_conflict());
+    /// assert!(err.to_string().starts_with("database error: "));
     /// ```
     #[must_use]
     pub fn is_database(&self) -> bool {

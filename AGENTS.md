@@ -130,11 +130,11 @@ DATABASE_URL=postgres://<user>:<password>@127.0.0.1:5432/<db> cargo sqlx prepare
 cargo run -p postgres_service                        # gRPC on :8004 (requires DATABASE_URL)
 ./pants package crates/postgres_service:postgres-service-image
 
-# Proto stubs & PostgreSQL lookup enum drift check (uv and Pants equivalents)
+# Proto stubs & PostgreSQL schema check: lookup enums and stored field names (uv and Pants equivalents)
 uv run --extra dev python scripts/generate-proto.py
 ./pants run scripts/generate-proto.py
-PYTHONPATH=libs/common/src uv run python scripts/check_postgres_lookup_tables.py
-./pants run scripts/check_postgres_lookup_tables.py
+PYTHONPATH=libs/common/src uv run python scripts/check_postgres_schema.py
+./pants run scripts/check_postgres_schema.py
 ```
 
 **MANDATORY**: All code must pass ty type checking before commits.
@@ -453,6 +453,7 @@ The service supports multiple embedding providers through configuration:
 - Conversions more than one provider needs are `Annotated` types in `enrichment/sources/base/field_types.py` (`StrippedText`, `PlainText`, `NumberFromText`). A conversion one provider needs is a validator in that provider's model.
 - Canonical models (`common/models/anime.py`) reject keys they do not define (`StrictFieldsModel`) and bound their numbers (counts `NonNegativeInt`, ranks `PositiveInt`, scores 0-10).
 - Canonical enums list the values providers send in `provider_value_map()`. A provider word with no mapping becomes the fallback value (`UNKNOWN` or `OTHER`) and logs a warning, so add new provider words there.
+- Every language field holds a BCP 47 code (`LanguageCode`) and every country field an ISO 3166-1 code (`CountryCode`), from `common/models/language_codes.py`. A provider's own codes or regional names are converted in its provider model; plain English names and standard codes need nothing.
 - Settings follow the same rule: `QdrantConfig` types its fixed choices as `Literal` and its per-priority settings as models, so code reads them without defaults or checks.
 
 ### Class Member Ordering

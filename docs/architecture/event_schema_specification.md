@@ -137,17 +137,11 @@ import "google/protobuf/any.proto";
 import "google/protobuf/timestamp.proto";
 import "shared_proto/v1/anime.proto";
 
-enum PageKind {  // (ECHO-97)
-  PAGE_KIND_UNSPECIFIED = 0;
-  PAGE_KIND_ANIME = 1;
-  PAGE_KIND_EPISODE = 2;
-  PAGE_KIND_CHARACTER = 3;
-}
-
-// A provider page, named by provider, kind and the page's address on that provider.
-message PageKey {  // (ECHO-97)
+// A provider page, named by provider, the entity type it describes (EntityType from
+// anime.proto: ANIME, CHARACTER, EPISODE) and the page's address on that provider.
+message PageKey {  // (ECHO-97) (ECHO-133)
   string provider = 1;                       // 'mal', 'anilist', ...
-  PageKind page_kind = 2;
+  EntityType entity_type = 2;
   string address = 3;                        // e.g. '21'
 }
 
@@ -220,7 +214,7 @@ message RelationClaim {  // (ECHO-102)
 }
 ```
 
-~~`PageKey` holds the same three parts as the page key string `libs/work_matching` uses, `provider:kind:id` such as `mal:anime:21`, with `id` named `address`. Manga pages (`mal:manga:13`) are not fetched as provider pages; they identify source material through `source_material_xref`. (ECHO-97)~~
+~~`PageKey` holds the same three parts as the page key string `libs/work_matching` uses, `provider:kind:id` such as `mal:anime:21`, with `kind` named `entity_type` and `id` named `address`. Manga pages (`mal:manga:13`) are not fetched as provider pages; they identify source material through `source_material_xref`. (ECHO-97)~~
 
 ~~`FieldCorrection.value` is a `google.protobuf.Any`: the type URL names the value's message and the bytes hold it. PostgreSQL stores the two as `value_message` and `value` (see [[Database Schema#Approval, Corrections, AI Text and Outbox|Database Schema]]). (ECHO-98)~~
 
@@ -586,7 +580,7 @@ message UpcomingEpisode {  // (ECHO-108)
 }
 
 message ListEntityPagesRequest {  // (ECHO-108)
-  shared_proto.v1.PageKind entity_kind = 1;
+  shared_proto.v1.EntityType entity_type = 1;
   string entity_id = 2;
 }
 
@@ -604,7 +598,7 @@ message EntityPage {  // (ECHO-108)
 }
 
 message RecordRefreshRequest {  // (ECHO-108)
-  shared_proto.v1.PageKind entity_kind = 1;
+  shared_proto.v1.EntityType entity_type = 1;
   string entity_id = 2;
   RefreshOutcome outcome = 3;
   google.protobuf.Duration refresh_after = 4;  // REFRESH_AFTER_DAYS, from the Update Service's settings
@@ -630,7 +624,7 @@ message ListScoreAnimeResponse {  // (ECHO-108)
 }
 
 message ListRequestedMergesRequest {  // (ECHO-108)
-  shared_proto.v1.PageKind entity_kind = 1;
+  shared_proto.v1.EntityType entity_type = 1;
   int32 limit = 2;
 }
 
@@ -701,7 +695,7 @@ message ListEpisodesResponse {  // (ECHO-108)
 }
 
 message ListEntityVersionsRequest {  // (ECHO-108)
-  shared_proto.v1.PageKind entity_kind = 1;
+  shared_proto.v1.EntityType entity_type = 1;
   int32 page_size = 2;
   optional string after_id = 3;              // keyset: the last ID of the previous page
 }

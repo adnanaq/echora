@@ -90,8 +90,10 @@ impl CommonSettings {
     /// ```no_run
     /// use common::CommonSettings;
     ///
+    /// // With none of the variables set in the environment or in `.env`:
     /// let settings = CommonSettings::from_env()?;
-    /// println!("listening on {}", settings.postgres_service_addr()?);
+    /// assert_eq!(settings.log_level, "INFO");
+    /// assert_eq!(settings.postgres_service_addr()?.to_string(), "0.0.0.0:8004");
     /// # Ok::<(), common::Error>(())
     /// ```
     pub fn from_env() -> Result<Self, Error> {

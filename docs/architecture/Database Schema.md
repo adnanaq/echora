@@ -21,7 +21,7 @@ PostgreSQL schema of the catalogue, owned by the [[postgres_integration_architec
 > - **Provider pages are stored as fetched.** Each page keeps the raw responses its provider sent, so any entity can be merged again at any time without fetching anything.
 > - **Entities are built from pages.** A work, an episode and a character each link to their own provider pages, and each holds its merged record.
 > - **Every field is a column or a table.** No JSONB. Each list, map and nested object of the canonical models in `libs/common/src/common/models/anime.py` has its own table, and every table is normalized to fifth normal form.
-> - **One vocabulary.** Every table and column is named after the model field it stores, by the rule in [[#Naming Rule]], so nothing has to be translated between the model and the database. (ECHO-133)
+> - ~~**One vocabulary.** Every table and column is named after the model field it stores, by the rule in [[#Naming Rule]], so nothing has to be translated between the model and the database. (ECHO-133)~~
 
 Every stage of enrichment is stored, so nothing has to be fetched again to rebuild an entity:
 
@@ -64,14 +64,14 @@ erDiagram
 
   provider_page {
     text provider PK
-    text page_kind PK
+    text entity_type PK
     text address PK
     timestamptz fetched_at
     boolean is_dead
   }
   provider_page_response {
     text provider PK
-    text page_kind PK
+    text entity_type PK
     text address PK
     text request_name PK
     text content_type
@@ -193,7 +193,7 @@ erDiagram
 
 ### Anime songs, streaming and links
 
-Opening and ending themes with the episodes they play in, streaming sources with their subtitle languages, trailers and external sources of `Anime`. A URL's platform and language, and a trailer's title and thumbnail, are stored once in shared tables, since they describe the URL, not the work. (ECHO-133)
+~~Opening and ending themes with the episodes they play in, streaming sources with their subtitle languages, trailers and external sources of `Anime`. A URL's platform and language, and a trailer's title and thumbnail, are stored once in shared tables, since they describe the URL, not the work. (ECHO-133)~~
 
 ```mermaid
 erDiagram
@@ -442,7 +442,7 @@ erDiagram
 
 ### Language and country codes
 
-Every language column holds a BCP 47 code and every country column an ISO 3166-1 code, each stored once in `language` or `country`. Reads need no join, since the code is the value shown; the references make these two tables the one place every code lives. (ECHO-133)
+~~Every language column holds a BCP 47 code and every country column an ISO 3166-1 code, each stored once in `language` or `country`. Reads need no join, since the code is the value shown; the references make these two tables the one place every code lives. (ECHO-133)~~
 
 ```mermaid
 erDiagram
@@ -578,12 +578,12 @@ Each entity is stored **once** under a UUIDv7 ID:
 
 **Pages identify what arrives from outside.** Inside the system, only the UUID is used.
 
-- ~~A provider page is stored once under its page key: provider, page kind and address, such as `mal`, `anime`, `21`. (ECHO-97)~~
+- ~~A provider page is stored once under its page key: provider, entity type and address, such as `mal`, `anime`, `21`. (ECHO-97)~~
 - When a seed release or discovery brings page keys, a key already linked as a source belongs to that entity. A key never seen before is a new entity, unless the matching rules or a review answer place it elsewhere. (ECHO-107)
 
 A work page is linked to a work in one of two tables, one per model field:
-- **`anime_source`** (`Anime.sources`): the page lists this work. The page is merged into the work. A work has at most one source page per provider, and a page is the source of at most one work; both are plain unique constraints. (ECHO-97) (ECHO-133)
-- **`anime_partial_source`** (`Anime.partial_sources`): the page lists a larger work this work is part of. The page is linked for reference and is not merged. (ECHO-97) (ECHO-133)
+- ~~**`anime_source`** (`Anime.sources`): the page lists this work. The page is merged into the work. A work has at most one source page per provider, and a page is the source of at most one work; both are plain unique constraints. (ECHO-97) (ECHO-133)~~
+- ~~**`anime_partial_source`** (`Anime.partial_sources`): the page lists a larger work this work is part of. The page is linked for reference and is not merged. (ECHO-97) (ECHO-133)~~
 
 A page can be a source of one work and a partial source of several, but never both for the same work: linking a work's partial source as its source moves the row from one table to the other in one transaction. The works that share a page are partial sources of each other both ways, found by joining the two tables, never stored. Episode and character pages have one table each, `episode_source` and `character_source`: each page belongs to exactly one episode or character. (ECHO-97) (ECHO-107) (ECHO-133)
 
@@ -600,7 +600,7 @@ A page can be a source of one work and a partial source of several, but never bo
 
 **Problem**: When work A is saved, related work B may not exist yet.
 
-**Solution**: Store the relation by its target page only, and find the target work by joining that page to `anime_source`. (ECHO-133)
+~~**Solution**: Store the relation by its target page only, and find the target work by joining that page to `anime_source`. (ECHO-133)~~
 - Insert the relation with the target page (`to_page_provider`, `to_page_address`) and nothing else about the target
 - The target work is whichever work holds that page in `anime_source` at the moment of reading, other than the work itself
 - No row is ever updated to resolve it, so a page that moves to another work takes its relations along at once
@@ -614,7 +614,7 @@ VALUES ('uuid-a', 'SEQUEL', 'anilist', '141902');
 SELECT r.relation_type, target.anime_id
 FROM anime_related_anime r
 LEFT JOIN anime_source target
-  ON target.provider = r.to_page_provider AND target.page_kind = 'anime'
+  ON target.provider = r.to_page_provider AND target.entity_type = 'anime'
  AND target.address = r.to_page_address AND target.anime_id <> r.from_anime_id
 WHERE r.from_anime_id = 'uuid-a';
 ```
@@ -622,23 +622,23 @@ WHERE r.from_anime_id = 'uuid-a';
 **Benefits**:
 - Save works in any order
 - Show the link before the target exists
-- Nothing is stored twice, so a page move or a deleted work can never leave a relation pointing at the wrong work. A stored target ID did exactly that: after a move, two relations to one page pointed at two different works, and the graph lost the moved work's edges. (ECHO-133)
-- Measured on PostgreSQL 18.7 with 40,000 works and 240,000 relations, the join costs about 0.04 ms more per query than a stored ID, with every query under 0.3 ms at p99. Graph reads are unaffected, since they read `graph_edge`. (ECHO-133)
+- ~~Nothing is stored twice, so a page move or a deleted work can never leave a relation pointing at the wrong work. A stored target ID did exactly that: after a move, two relations to one page pointed at two different works, and the graph lost the moved work's edges. (ECHO-133)~~
+- ~~Measured on PostgreSQL 18.7 with 40,000 works and 240,000 relations, the join costs about 0.04 ms more per query than a stored ID, with every query under 0.3 ms at p99. Graph reads are unaffected, since they read `graph_edge`. (ECHO-133)~~
 
-The same pattern links an episode to a character: `episode_character` stores the character's page, and the character is found by joining that page to `character_source`. (ECHO-103) (ECHO-133)
+The same pattern links an episode to a character: `episode_character` stores the character's page, and the character is found by joining that page to `character_source`. (ECHO-103) (ECHO-133) (ECHO-104)
 
 ~~Source material needs no unresolved state: a related source work always carries a title and type, so `SaveAnime` creates or finds its row through `source_material_xref` in the same transaction. (ECHO-102)~~
 
 **Who asserts an edge:**
-- ~~`anime_relation` holds only what each work's own provider pages say, in one direction, from that work. When work A lists B as a sequel and B lists A as a prequel, there are two rows, one asserted by each work. (ECHO-102)~~ The table is `anime_related_anime`. (ECHO-133)
+- ~~`anime_relation` holds only what each work's own provider pages say, in one direction, from that work. When work A lists B as a sequel and B lists A as a prequel, there are two rows, one asserted by each work. (ECHO-102)~~ ~~The table is `anime_related_anime`. (ECHO-133)~~
 - ~~`SaveAnime` replaces the work's own `anime_relation` rows with what the merge produced. It never touches rows another work asserted. (ECHO-102)~~
-- ~~`SaveAnime` replaces the work's own `anime_relation_claim` rows with the providers' claims the merge passed on, so the provenance always matches the stored relations. (ECHO-102)~~ The table is `anime_related_anime_claim`. (ECHO-133)
+- ~~`SaveAnime` replaces the work's own `anime_relation_claim` rows with the providers' claims the merge passed on, so the provenance always matches the stored relations. (ECHO-102)~~ ~~The table is `anime_related_anime_claim`. (ECHO-133)~~
 - ~~Both directions exist only in `graph_edge`. The `graph_edge` rows between two works are recomputed from both works' `anime_relation` rows and the inverse map whenever either work's relations change, so removing one work's assertion never removes an edge the other work still asserts. (ECHO-102)~~
 - ~~Before recomputing a pair, the save takes a transaction-level advisory lock on that pair. `pg_advisory_xact_lock` takes a `bigint`, so the key is a 64-bit hash of the pair's two IDs in sorted order. A save that touches several pairs takes their locks in ascending order of those hashed keys, never of the raw IDs, since the hash does not keep the IDs' order. Two related works saving at once therefore recompute their pair one after the other, each reading the other's committed rows, and cannot deadlock. A hash collision only makes two unrelated pairs wait for each other. (ECHO-102)~~
-- `graph_edge` is the one stored projection of relations. A pair's rows are recomputed from both works' relations joined to `anime_source`. (ECHO-133)
+- ~~`graph_edge` is the one stored projection of relations. A pair's rows are recomputed from both works' relations joined to `anime_source`. (ECHO-133)~~
 - Any transaction that changes which work holds a page as its source recomputes the `graph_edge` rows of every pair the change touches: the pairs of the work that gains the page and, when the page moves, the pairs of the work that loses it.
   - ~~A save recomputes them when it links a page. (ECHO-102)~~
-  - Linking a page also raises the version, sets `merge_requested_at` and writes `anime.updated` for every work whose relation now points at the new owner, so caches and vector points do not keep the unresolved relation. (ECHO-133)
+  - ~~Linking a page also raises the version, sets `merge_requested_at` and writes `anime.updated` for every work whose relation now points at the new owner, so caches and vector points do not keep the unresolved relation. (ECHO-133)~~
   - `CreateAnime`, `RelinkPages` and `DeleteAnime` recompute both sides when they link, move or remove a page. (ECHO-107)
 
 ---
@@ -647,7 +647,7 @@ The same pattern links an episode to a character: `episode_character` stores the
 
 ~~**Write order.** A save upserts rows in shared tables (`genre`, `tag`, `company`, `source_material`, `character`, `graph_edge`) inside one transaction. Each save sorts its keys and writes every table in a fixed order, so two refreshes saving at the same time take their locks in the same order and cannot deadlock. (ECHO-98)~~
 
-The shared tables ECHO-133 adds follow the same order: `language` and `country` first, since other shared rows reference them, then `external_source`, `trailer` and `theme`, each upserted with `ON CONFLICT DO NOTHING` in sorted key order before the work's own rows. (ECHO-133)
+~~The shared tables ECHO-133 adds follow the same order: `language` and `country` first, since other shared rows reference them, then `external_source`, `trailer` and `theme`, each upserted with `ON CONFLICT DO NOTHING` in sorted key order before the work's own rows. (ECHO-133)~~
 
 **Version.** An entity's `version` increases with every change to the entity or to what its merge reads. A merge that loaded before such a change then fails its version check and starts again from a fresh load. Versions only need to grow, so a version without an event of its own is fine.
 
@@ -725,9 +725,9 @@ Every table is in fifth normal form:
 
 - **1NF.** No column holds a list or group. Titles, genres, streaming links and every other list become rows.
 - **2NF and 3NF.** Every column describes the whole key of its own table and nothing else. A related work's title is not copied onto the relation, a theme song's episodes are not copied onto the song, and nothing that belongs to another entity is stored twice.
-  - A fact about a URL or a name is stored once, keyed by it, in a shared table: a URL's platform and language in `external_source`, a trailer's title and thumbnail in `trailer`, a theme's description in `theme`. A work's own tables hold only what depends on the work too, such as a link's `label`. (ECHO-133)
-  - Every language is a BCP 47 code and every country an ISO 3166-1 code, each stored once in `language` or `country` and referenced from every column that holds one: titles, external sources, subtitle languages and `country_of_origin`. One convention holds everywhere, and a code the model did not standardize cannot be stored. (ECHO-133)
-  - A relation's target work and an episode character's character are found by joining their page to its source table, never stored beside the page they follow from. (ECHO-133)
+  - ~~A fact about a URL or a name is stored once, keyed by it, in a shared table: a URL's platform and language in `external_source`, a trailer's title and thumbnail in `trailer`, a theme's description in `theme`. A work's own tables hold only what depends on the work too, such as a link's `label`. (ECHO-133)~~
+  - ~~Every language is a BCP 47 code and every country an ISO 3166-1 code, each stored once in `language` or `country` and referenced from every column that holds one: titles, external sources, subtitle languages and `country_of_origin`. One convention holds everywhere, and a code the model did not standardize cannot be stored. (ECHO-133)~~
+  - A relation's target work and an episode character's character are found by joining their page to its source table, never stored beside the page they follow from. (ECHO-133) (ECHO-104)
 - **4NF.** Facts that vary independently get separate tables. A streaming entry's subtitle languages are their own table, apart from its regions and flags.
 - **5NF.** A table with three or more key columns exists only when the fact really involves all of them together. `anime_company (anime_id, company_id, role)` stays three-way, because a company can animate one work and finance another, so the role cannot be rebuilt from two-way tables.
 
@@ -739,9 +739,9 @@ Every table is in fifth normal form:
 | ~~**Shared name tables**~~ | ~~Genres, tags, demographics, content warnings and character traits are rows in `genre`, `tag`, `demographic`, `content_warning` and `trait`, linked per entity, so each name is stored once. (ECHO-93)~~ |
 | **`episode_count` is the provider's total** | It is the number of episodes providers report for the work, which can be ahead of the episodes stored. It is not a count of `episode` rows. |
 | **`score_weighted`, `score_mean`, `score_median` are columns** | `ScoreCalculations` has exactly three values, each depending only on the work, so the work's row holds them as three typed columns. A table of three name and value rows would lose the typed columns and their checks, and gains nothing, since the number of values never varies. |
-| **`language` and `country` hold only the code** | The model standardizes each code before it is saved, so the table's only job is to be the one place every code column references. Reads need no join, since the code is the value shown; a display name in any language comes from the code when read. (ECHO-133) |
+| ~~**`language` and `country` hold only the code**~~ | ~~The model standardizes each code before it is saved, so the table's only job is to be the one place every code column references. Reads need no join, since the code is the value shown; a display name in any language comes from the code when read. (ECHO-133)~~ |
 | **Shared tables keyed by URL or name** | `external_source`, `trailer` and `theme` hold what depends on the URL or name alone, written in sorted key order like `genre`, so concurrent saves cannot deadlock. Rows no work uses any more are removed by the cleanup job. (ECHO-133) (ECHO-116) |
-| **`graph_edge` is the one stored projection** | It exists for the recursive graph reads. Everything else that could be derived, such as a relation's target work, is found by a join when read. (ECHO-133) |
+| ~~**`graph_edge` is the one stored projection**~~ | ~~It exists for the recursive graph reads. Everything else that could be derived, such as a relation's target work, is found by a join when read. (ECHO-133)~~ |
 | ~~**Hiatus history**~~ | ~~Each change of the hiatus snapshot adds a row to `anime_hiatus`, so the frontend can show a work's pauses. The current hiatus is the latest row. (ECHO-101)~~ |
 | ~~**Source material and companies deduplicate through cross-references**~~ | ~~A source URL already in `source_material_xref` or `company_xref` reuses its row. Names are never used to merge two rows, since similar names belong to different companies and works. (ECHO-102)~~ |
 | ~~**Corrections are stored per entity table**~~ | ~~`anime_field_correction` has a real foreign key to its work, instead of one table with an untyped entity reference (ECHO-98)~~ |
@@ -769,9 +769,10 @@ The canonical model in `anime.py` and `anime.proto` is the only vocabulary. Ever
 
 - A URL column is named `source`, or `<subject>_source` when a table holds more than one URL, such as `trailer.thumbnail_source`.
 - Booleans start with `is_` or `has_`, and a number with a unit names it, such as `duration_seconds`, in the model and the database alike.
+- ~~A lookup table is named after the model enum whose values it holds, in snake case, and a column holding one of its values takes the same name, with a `from_` or `to_` prefix when a row holds two, such as `graph_edge.from_node_type`. A page key's `entity_type` names what its page describes, with the values of `EntityType`, so pages, records and vector search use one word for one idea. (ECHO-133)~~
 - Bookkeeping columns the database needs are not model fields: `version`, `merged_record_hash`, `hash_format`, `merge_version`, `merge_requested_at`, `merged_at`, `refreshed_at`, `refresh_failed_at`, `next_refresh_at`, `refresh_failures`, `deleted_at`, `merged_into_*_id`, `created_at` and `updated_at`.
-- A CI check reads `anime.proto` and the migrations, applies the rule, and fails on a stored model field with no matching table or column. Its short list of exceptions is the fields not stored yet, such as `voice_actors`, and the fields read from link tables.
-- Every index and constraint is named explicitly, in under 63 bytes, since PostgreSQL silently truncates longer names.
+- ~~`scripts/check_postgres_schema.py` reads the model in `anime.py`, which `anime.proto` mirrors, and the migrations, applies the rule, and fails on a stored model field with no matching table or column. Its short list of exceptions, each with its reason, holds the fields not stored yet, such as `voice_actors`, and the fields stored where the rule cannot derive, such as a company's roles. An exception naming a field that no longer exists fails the check too. The same script checks the lookup tables against their enums. (ECHO-133)~~
+- ~~Every index is named explicitly, and so is every constraint whose generated name would pass 63 bytes, since PostgreSQL silently truncates longer names. A test in `postgres_db` fails on any table, index or constraint name PostgreSQL would cut. (ECHO-133)~~
 
 ---
 
@@ -832,6 +833,9 @@ INSERT INTO source_material_relation_type VALUES
   ('ADAPTATION'), ('SOURCE'), ('ALTERNATIVE'), ('SPIN_OFF'), ('CHARACTER'),
   ('SEQUEL'), ('PREQUEL'), ('PARENT_STORY'), ('SIDE_STORY'), ('OTHER');
 
+CREATE TABLE entity_type (value text PRIMARY KEY);  -- (ECHO-133)
+INSERT INTO entity_type VALUES ('anime'), ('character'), ('episode');
+
 -- Values of the storage design
 CREATE TABLE provider (value text PRIMARY KEY);
 INSERT INTO provider VALUES
@@ -839,9 +843,6 @@ INSERT INTO provider VALUES
   ('animeschedule'), ('syoboi'),
   ('ann'), ('livechart'), ('simkl'),   -- from the seed's links; fetched once their fetchers exist
   ('animecountdown');                   -- link only, never fetched
-
-CREATE TABLE page_kind (value text PRIMARY KEY);
-INSERT INTO page_kind VALUES ('anime'), ('episode'), ('character');
 
 CREATE TABLE anime_image_type (value text PRIMARY KEY);
 INSERT INTO anime_image_type VALUES ('cover'), ('poster'), ('banner');
@@ -1285,16 +1286,16 @@ CREATE INDEX anime_company_company_idx ON anime_company(company_id);  -- (ECHO-1
 -- A reverse edge from a company has the company's role as its type, the same as the
 -- forward edge, so two roles of one company on one work stay two rows.
 CREATE TABLE graph_edge (  -- (ECHO-102)
-  from_id    uuid NOT NULL,
-  from_type  text NOT NULL REFERENCES graph_node_type(value),
-  to_id      uuid NOT NULL,
-  to_type    text NOT NULL REFERENCES graph_node_type(value),
-  edge_type  text NOT NULL REFERENCES graph_edge_type(value),
+  from_id         uuid NOT NULL,
+  from_node_type  text NOT NULL REFERENCES graph_node_type(value),
+  to_id           uuid NOT NULL,
+  to_node_type    text NOT NULL REFERENCES graph_node_type(value),
+  edge_type       text NOT NULL REFERENCES graph_edge_type(value),
   PRIMARY KEY (from_id, to_id, edge_type)
 );
 
-CREATE INDEX graph_edge_from_idx ON graph_edge(from_id, from_type, edge_type);  -- (ECHO-102)
-CREATE INDEX graph_edge_to_idx   ON graph_edge(to_id,   to_type,   edge_type);  -- (ECHO-102)
+CREATE INDEX graph_edge_from_idx ON graph_edge(from_id, from_node_type, edge_type);  -- (ECHO-102)
+CREATE INDEX graph_edge_to_idx   ON graph_edge(to_id,   to_node_type,   edge_type);  -- (ECHO-102)
 ```
 
 - **Orphans.** `character` and `company` rows are shared, so deleting a work never deletes them (`ON DELETE RESTRICT` on their links). A weekly job deletes characters and companies no work links to any more, and source material no work or character links to. (ECHO-116)
@@ -1509,7 +1510,7 @@ CREATE INDEX episode_character_page_idx
   ON episode_character(character_page_provider, character_page_address);
 ```
 
-- `Episode.streaming` is a map keyed by platform, so the save refuses two URLs of one episode on the same platform before writing. (ECHO-133)
+- ~~`Episode.streaming` is a map keyed by platform, so the save refuses two URLs of one episode on the same platform before writing. (ECHO-133)~~
 
 ---
 
@@ -1519,7 +1520,7 @@ CREATE INDEX episode_character_page_idx
 -- One row per provider page, keyed by its page key
 CREATE TABLE provider_page (  -- (ECHO-97)
   provider    text NOT NULL REFERENCES provider(value),
-  page_kind   text NOT NULL REFERENCES page_kind(value),
+  entity_type   text NOT NULL REFERENCES entity_type(value),
   address     text NOT NULL,                 -- the page's address on that provider, e.g. '21'
   fetched_at  timestamptz,                   -- NULL until first fetched; an older fetch never replaces a newer one
   is_dead     boolean NOT NULL DEFAULT false,-- confirmed gone: by a reviewer, or automatically once the provider is trusted
@@ -1528,7 +1529,7 @@ CREATE TABLE provider_page (  -- (ECHO-97)
   responses_hash text,                       -- hash of the uncompressed responses; StorePage compares it
   fetch_failed_at timestamptz,               -- last fetch that failed every attempt
   fetch_failures  int NOT NULL DEFAULT 0 CHECK (fetch_failures >= 0),  -- failures since the last success
-  PRIMARY KEY (provider, page_kind, address),
+  PRIMARY KEY (provider, entity_type, address),
   CHECK ((fetched_at IS NULL) = (responses_hash IS NULL))
 );
 
@@ -1536,14 +1537,14 @@ CREATE TABLE provider_page (  -- (ECHO-97)
 -- (an AniList page is several GraphQL responses; a MAL page is several HTML pages)
 CREATE TABLE provider_page_response (  -- (ECHO-97)
   provider      text NOT NULL,
-  page_kind     text NOT NULL,
+  entity_type     text NOT NULL,
   address       text NOT NULL,
   request_name  text NOT NULL,               -- e.g. 'main', 'characters', 'episodes_page_2'
   content_type  text NOT NULL,               -- 'application/json', 'text/html', 'application/xml'
   body          bytea NOT NULL,              -- stored compressed
-  PRIMARY KEY (provider, page_kind, address, request_name),
-  FOREIGN KEY (provider, page_kind, address)
-    REFERENCES provider_page(provider, page_kind, address) ON DELETE CASCADE
+  PRIMARY KEY (provider, entity_type, address, request_name),
+  FOREIGN KEY (provider, entity_type, address)
+    REFERENCES provider_page(provider, entity_type, address) ON DELETE CASCADE
 );
 
 -- The body is already compressed, so TOAST stores it out of line without compressing again
@@ -1554,12 +1555,12 @@ ALTER TABLE provider_page_response ALTER COLUMN body SET STORAGE EXTERNAL;  -- (
 CREATE TABLE anime_source (
   anime_id   uuid NOT NULL REFERENCES anime(id) ON DELETE CASCADE,
   provider   text NOT NULL,
-  page_kind  text NOT NULL DEFAULT 'anime' CHECK (page_kind = 'anime'),
+  entity_type  text NOT NULL DEFAULT 'anime' CHECK (entity_type = 'anime'),
   address    text NOT NULL,
-  PRIMARY KEY (provider, page_kind, address),
+  PRIMARY KEY (provider, entity_type, address),
   CONSTRAINT anime_source_provider_key UNIQUE (anime_id, provider),
-  FOREIGN KEY (provider, page_kind, address)
-    REFERENCES provider_page(provider, page_kind, address) ON DELETE RESTRICT
+  FOREIGN KEY (provider, entity_type, address)
+    REFERENCES provider_page(provider, entity_type, address) ON DELETE RESTRICT
 );
 
 -- Anime.partial_sources: pages listing a larger work this work is part of; linked for
@@ -1567,26 +1568,26 @@ CREATE TABLE anime_source (
 CREATE TABLE anime_partial_source (
   anime_id   uuid NOT NULL REFERENCES anime(id) ON DELETE CASCADE,
   provider   text NOT NULL,
-  page_kind  text NOT NULL DEFAULT 'anime' CHECK (page_kind = 'anime'),
+  entity_type  text NOT NULL DEFAULT 'anime' CHECK (entity_type = 'anime'),
   address    text NOT NULL,
-  PRIMARY KEY (anime_id, provider, page_kind, address),
-  FOREIGN KEY (provider, page_kind, address)
-    REFERENCES provider_page(provider, page_kind, address) ON DELETE RESTRICT
+  PRIMARY KEY (anime_id, provider, entity_type, address),
+  FOREIGN KEY (provider, entity_type, address)
+    REFERENCES provider_page(provider, entity_type, address) ON DELETE RESTRICT
 );
 
 -- The works holding a page as a partial source
-CREATE INDEX anime_partial_source_page_idx ON anime_partial_source(provider, page_kind, address);  -- (ECHO-133)
+CREATE INDEX anime_partial_source_page_idx ON anime_partial_source(provider, entity_type, address);  -- (ECHO-133)
 
 -- Episode.sources: each episode page belongs to exactly one episode (ECHO-103) (ECHO-133)
 CREATE TABLE episode_source (
   episode_id  uuid NOT NULL REFERENCES episode(id) ON DELETE CASCADE,
   provider    text NOT NULL,
-  page_kind   text NOT NULL DEFAULT 'episode' CHECK (page_kind = 'episode'),
+  entity_type   text NOT NULL DEFAULT 'episode' CHECK (entity_type = 'episode'),
   address     text NOT NULL,
-  PRIMARY KEY (provider, page_kind, address),
+  PRIMARY KEY (provider, entity_type, address),
   CONSTRAINT episode_source_provider_key UNIQUE (episode_id, provider),
-  FOREIGN KEY (provider, page_kind, address)
-    REFERENCES provider_page(provider, page_kind, address) ON DELETE RESTRICT
+  FOREIGN KEY (provider, entity_type, address)
+    REFERENCES provider_page(provider, entity_type, address) ON DELETE RESTRICT
 );
 
 -- What one provider's work page says about an episode, sliced out by the work's merge.
@@ -1607,17 +1608,17 @@ CREATE TABLE episode_list_entry (  -- (ECHO-103)
 CREATE TABLE character_source (
   character_id  uuid NOT NULL REFERENCES character(id) ON DELETE CASCADE,
   provider      text NOT NULL,
-  page_kind     text NOT NULL DEFAULT 'character' CHECK (page_kind = 'character'),
+  entity_type     text NOT NULL DEFAULT 'character' CHECK (entity_type = 'character'),
   address       text NOT NULL,
-  PRIMARY KEY (provider, page_kind, address),
+  PRIMARY KEY (provider, entity_type, address),
   CONSTRAINT character_source_provider_key UNIQUE (character_id, provider),
-  FOREIGN KEY (provider, page_kind, address)
-    REFERENCES provider_page(provider, page_kind, address) ON DELETE RESTRICT
+  FOREIGN KEY (provider, entity_type, address)
+    REFERENCES provider_page(provider, entity_type, address) ON DELETE RESTRICT
 );
 ```
 
 - ~~`StorePage` writes the page and its responses in one transaction, and only when its `fetched_at` is newer than the stored one, so a retried or late fetch never replaces newer data. It reports the page as changed when `responses_hash` differs, without reading the stored bodies. (ECHO-97)~~
-- `StorePage` refuses a fetch time later than the database's clock plus a small allowance, with `INVALID_ARGUMENT`. A fetch stamped far in the future would otherwise count as the newest and block every real fetch of the page after it. (ECHO-133)
+- ~~`StorePage` refuses a fetch time later than the database's clock plus a small allowance, with `INVALID_ARGUMENT`. A fetch stamped far in the future would otherwise count as the newest and block every real fetch of the page after it. (ECHO-133)~~
 - Each load reads an entity's pages and responses, and the merge maps them in memory.
   - ~~`LoadAnime` for a work. (ECHO-98)~~
   - ~~`LoadEpisode` for an episode. (ECHO-103)~~
@@ -1887,9 +1888,9 @@ The same due queries exist for `episode` and `character`. An episode is older wh
 -- ListDuePages: the pages of one budgeted provider (AniDB) in due order, for the budgeted
 -- fetcher, with the work each page is merged into. Never-fetched pages come first. Only source
 -- pages are listed, since a partial-source page is never merged. (ECHO-133)
-SELECT p.provider, p.page_kind, p.address, ap.anime_id
+SELECT p.provider, p.entity_type, p.address, ap.anime_id
 FROM provider_page p
-JOIN anime_source ap USING (provider, page_kind, address)
+JOIN anime_source ap USING (provider, entity_type, address)
 WHERE p.provider = $1 AND NOT p.is_dead
   AND (p.fetch_failed_at IS NULL
        OR p.fetch_failed_at < now() - make_interval(hours => least(power(2, p.fetch_failures)::int, 168)))
@@ -1945,7 +1946,7 @@ WHERE ac.character_id = $1 AND a.deleted_at IS NULL;
 SELECT r.relation_type, r.to_page_provider, r.to_page_address, t.id, t.title, t.type, t.year
 FROM anime_related_anime r
 LEFT JOIN anime_source target
-  ON target.provider = r.to_page_provider AND target.page_kind = 'anime'
+  ON target.provider = r.to_page_provider AND target.entity_type = 'anime'
  AND target.address = r.to_page_address AND target.anime_id <> r.from_anime_id
 LEFT JOIN anime t ON t.id = target.anime_id AND t.deleted_at IS NULL
 WHERE r.from_anime_id = $1;
@@ -2084,7 +2085,7 @@ WITH crossover_work AS (
 ), franchise_pair AS (
   SELECT DISTINCT least(ge.from_id, ge.to_id) AS first_anime_id, greatest(ge.from_id, ge.to_id) AS second_anime_id
   FROM graph_edge ge
-  WHERE ge.from_type = 'anime' AND ge.to_type = 'anime'
+  WHERE ge.from_node_type = 'anime' AND ge.to_node_type = 'anime'
     AND ge.edge_type IN ('SEQUEL', 'PREQUEL', 'SIDE_STORY', 'PARENT_STORY', 'SUMMARY', 'FULL_STORY',
                          'SAME_FRANCHISE', 'SAME_SETTING')
 )
@@ -2272,9 +2273,9 @@ Named reads serve pages directly and are built on the same edges: a work's franc
 
 ```sql
 -- FindNeighbors(start, start_type, edge_types, limit)
-SELECT ge.to_id, ge.to_type, ge.edge_type
+SELECT ge.to_id, ge.to_node_type, ge.edge_type
 FROM graph_edge ge
-WHERE ge.from_id = $1 AND ge.from_type = $2
+WHERE ge.from_id = $1 AND ge.from_node_type = $2
   AND ge.edge_type = ANY($3)
 LIMIT $4;
 ```
@@ -2291,9 +2292,9 @@ WITH RECURSIVE reached_nodes(node_id, node_type, depth) AS (
 
   UNION
 
-  SELECT ge.to_id, ge.to_type, r.depth + 1
+  SELECT ge.to_id, ge.to_node_type, r.depth + 1
   FROM reached_nodes r
-  JOIN graph_edge ge ON ge.from_id = r.node_id AND ge.from_type = r.node_type
+  JOIN graph_edge ge ON ge.from_id = r.node_id AND ge.from_node_type = r.node_type
   WHERE r.depth < $4
     AND ge.edge_type = ANY($3)
 )
@@ -2318,9 +2319,9 @@ WITH RECURSIVE reached_nodes(node_id, node_type, depth) AS (
 
   UNION
 
-  SELECT ge.to_id, ge.to_type, r.depth + 1
+  SELECT ge.to_id, ge.to_node_type, r.depth + 1
   FROM reached_nodes r
-  JOIN graph_edge ge ON ge.from_id = r.node_id AND ge.from_type = r.node_type
+  JOIN graph_edge ge ON ge.from_id = r.node_id AND ge.from_node_type = r.node_type
   WHERE r.depth < $6
     AND NOT (r.node_id = $3 AND r.node_type = $4)   -- stop expanding at the end node
     AND ge.edge_type = ANY($5)
@@ -2336,10 +2337,10 @@ WITH RECURSIVE reached_nodes(node_id, node_type, depth) AS (
   UNION ALL
 
   -- Each step goes to a node exactly one hop closer to the start, so the depth falls to 0
-  SELECT ge.from_id, ge.from_type, b.depth - 1, ge.from_id || b.node_path, ge.edge_type || b.edge_path
+  SELECT ge.from_id, ge.from_node_type, b.depth - 1, ge.from_id || b.node_path, ge.edge_type || b.edge_path
   FROM reverse_paths b
-  JOIN graph_edge ge ON ge.to_id = b.node_id AND ge.to_type = b.node_type AND ge.edge_type = ANY($5)
-  JOIN shortest_depths s ON s.node_id = ge.from_id AND s.node_type = ge.from_type AND s.depth = b.depth - 1
+  JOIN graph_edge ge ON ge.to_id = b.node_id AND ge.to_node_type = b.node_type AND ge.edge_type = ANY($5)
+  JOIN shortest_depths s ON s.node_id = ge.from_id AND s.node_type = ge.from_node_type AND s.depth = b.depth - 1
   WHERE b.depth > 0
 )
 SELECT node_path, edge_path, cardinality(edge_path) AS hops
@@ -2359,12 +2360,12 @@ The walk back reads `graph_edge_to_idx`. Both templates were run on PostgreSQL 1
 
 ```sql
 -- CompareEntities, shared links: nodes both start nodes link to with the same edge type
-SELECT g1.to_id, g1.to_type, g1.edge_type
+SELECT g1.to_id, g1.to_node_type, g1.edge_type
 FROM graph_edge g1
 JOIN graph_edge g2
-  ON g1.to_id = g2.to_id AND g1.to_type = g2.to_type AND g1.edge_type = g2.edge_type
+  ON g1.to_id = g2.to_id AND g1.to_node_type = g2.to_node_type AND g1.edge_type = g2.edge_type
 WHERE g1.from_id = $1 AND g2.from_id = $2
-  AND g1.from_type = $3 AND g2.from_type = $3;
+  AND g1.from_node_type = $3 AND g2.from_node_type = $3;
 ```
 
 For works, shared genres, tags and themes come from the category tables by the same kind of join.
@@ -2382,7 +2383,7 @@ For works, shared genres, tags and themes come from the category tables by the s
 
 Every field of the canonical models in `libs/common/src/common/models/anime.py` has one place. Fields marked *read* are not stored; they are read back from other tables.
 
-Every name follows [[#Naming Rule]], so a field and its table or column share one name. (ECHO-133)
+~~Every name follows [[#Naming Rule]], so a field and its table or column share one name. (ECHO-133)~~
 
 **`Anime`**
 - Scalars → columns of `anime` with the same names, such as `is_nsfw` and `duration_seconds`. `month` → a month number.
@@ -2433,12 +2434,12 @@ Every name follows [[#Naming Rule]], so a field and its table or column share on
 
 - **`Broadcast`**: typed fields. `day` becomes an ISO weekday, `time` merges into `jp_time` as a time, `timezone` becomes an IANA zone, and `sub_time` and `dub_time` become times. (ECHO-88)
 - **`AnimeHiatus`**: `hiatus_from` and `hiatus_until` become dates. (ECHO-88)
-- **Language and country codes**: every language field (`Anime.titles` and `Episode.titles` keys, `ExternalLink.language`, `StreamingEntry.subtitle_languages`, `VoiceActor.language`) holds a BCP 47 code, and `country_of_origin` an ISO 3166-1 alpha-2 code. The shared types `LanguageCode` and `CountryCode` in `libs/common` check and standardize the value with `langcodes`: a provider's `"Japanese"`, `ja_jp` or `jpn` becomes `ja`, and a word no code matches becomes `und` with a warning, as unmapped enum words fall back to `UNKNOWN`. (ECHO-133)
+- ~~**Language and country codes**: every language field (`Anime.titles` and `Episode.titles` keys, `ExternalLink.language`, `StreamingEntry.subtitle_languages`, `VoiceActor.language`) holds a BCP 47 code, and `country_of_origin` an ISO 3166-1 alpha-2 code. The shared types `LanguageCode` and `CountryCode` in `libs/common` check and standardize the value with `langcodes`: a provider's `"Japanese"`, `ja_jp` or `jpn` becomes `ja`, and a word no code matches becomes `und` with a warning, as unmapped enum words fall back to `UNKNOWN`. (ECHO-133)~~
 - **IDs**: `generate_entity_id` uses `uuid.uuid7()`, and a merge receives the existing ID and keeps it. (ECHO-88)
 - **Derived IDs**: `merged_anime_id` and the deterministic episode and character IDs are removed. (ECHO-123)
 - **`StaffMember.enhancement_status`**: removed, since it records matching progress, not data. (ECHO-88)
 - **`Statistics`**: its docstring no longer says the values are mapped by AI. (ECHO-88)
-- **Names**: `nsfw` → `is_nsfw`; `duration` → `duration_seconds` on `Anime` and `Episode`; `aired` → `aired_at`; `filler`, `recap` → `is_filler`, `is_recap`; `StreamingEntry.free`, `premium_required`, `dub_available` → `is_free`, `is_premium_required`, `has_dub`; `ContextualRank.all_time` → `is_all_time`; `TrailerEntry.thumbnail` → `thumbnail_source`; `EpisodeRange.start`, `end` → `range_start`, `range_end`, since `end` is a reserved word in SQL. The protos are renumbered without gaps. (ECHO-133)
+- ~~**Names**: `nsfw` → `is_nsfw`; `duration` → `duration_seconds` on `Anime` and `Episode`; `aired` → `aired_at`; `filler`, `recap` → `is_filler`, `is_recap`; `StreamingEntry.free`, `premium_required`, `dub_available` → `is_free`, `is_premium_required`, `has_dub`; `ContextualRank.all_time` → `is_all_time`; `TrailerEntry.thumbnail` → `thumbnail_source`; `EpisodeRange.start`, `end` → `range_start`, `range_end`, since `end` is a reserved word in SQL. The protos are renumbered without gaps. (ECHO-133)~~
 
 ---
 

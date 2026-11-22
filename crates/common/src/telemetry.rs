@@ -69,6 +69,10 @@ impl Drop for TelemetryGuard {
 ///     ..CommonSettings::default()
 /// };
 /// let _telemetry_guard = init_telemetry("example-service", &settings)?;
+///
+/// // A process has one global subscriber, so a second install is refused.
+/// let second_install = init_telemetry("example-service", &settings);
+/// assert!(second_install.is_err_and(|error| error.is_telemetry_init()));
 /// # Ok::<(), common::Error>(())
 /// ```
 pub fn init_telemetry(

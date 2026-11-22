@@ -329,6 +329,22 @@ uv run ty check scripts/ libs/ apps/
 ./pants fmt lint check ::
 ```
 
+### Model and Schema Checks
+
+The canonical model in `libs/common/src/common/models/anime.py` is the one source of the catalogue's shape. Two scripts check that everything built from it still matches, and CI runs both:
+
+- `scripts/check_anime_model_proto_contract.py` compares `anime.py` with `protos/shared_proto/v1/anime.proto`, field by field.
+- `scripts/check_postgres_schema.py` compares `anime.py` with the PostgreSQL migrations in `crates/postgres_db/migrations/`:
+  - each lookup table holds exactly the values of its enum;
+  - every stored field of `Anime` and `Episode` has the table or column the naming rule in `docs/architecture/Database Schema.md` (Naming Rule) gives it. Fields the rule cannot derive, or that are not stored yet, are listed with their reason in the script's `FIELD_EXCEPTIONS`.
+
+```bash
+PYTHONPATH=libs/common/src uv run python scripts/check_anime_model_proto_contract.py
+PYTHONPATH=libs/common/src uv run python scripts/check_postgres_schema.py
+```
+
+`.github/workflows/postgres-schema-check.yml` runs the schema check whenever the model, the migrations or the script change.
+
 ### Running Scripts
 
 **Note**: Use Pants for running scripts as it handles monorepo dependencies automatically. UV requires PYTHONPATH setup for imports from `libs/`.
