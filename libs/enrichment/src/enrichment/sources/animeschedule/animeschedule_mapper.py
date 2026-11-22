@@ -71,7 +71,7 @@ def anime_from_animeschedule(anime: AnimeScheduleAnime) -> dict[str, Any]:
     status = AnimeStatus(anime.status)
     year = anime.year
     episode_count = anime.episodes or 0
-    duration = anime.length_min * 60 if anime.length_min else None
+    duration_seconds = anime.length_min * 60 if anime.length_min else None
 
     season_str = anime.season.season if anime.season else None
     season = AnimeSeason(season_str.upper()) if season_str else None
@@ -194,7 +194,7 @@ def anime_from_animeschedule(anime: AnimeScheduleAnime) -> dict[str, Any]:
         season=season,
         month=anime.month,
         episode_count=episode_count,
-        duration=duration,
+        duration_seconds=duration_seconds,
         source_material=source_material,
         synopsis=anime.description,
         synonyms=synonyms,

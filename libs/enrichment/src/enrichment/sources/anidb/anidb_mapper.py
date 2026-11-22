@@ -120,7 +120,7 @@ def anime_from_anidb(anime: AniDBAnime, *, anidb_url: str) -> dict[str, Any]:
     title = anime.title or anime.title_english or ""
     title_english = anime.title_english
     title_japanese = anime.title_japanese
-    nsfw = anime.restricted or None
+    is_nsfw = anime.restricted or None
 
     anime_type = AnimeType(anime.type)
     start_date = anime.start_date
@@ -195,7 +195,7 @@ def anime_from_anidb(anime: AniDBAnime, *, anidb_url: str) -> dict[str, Any]:
     # ── Build canonical object ────────────────────────────────────────────────
     result = Anime(
         episode_count=episode_count,
-        nsfw=nsfw,
+        is_nsfw=is_nsfw,
         status=status or AnimeStatus.UNKNOWN,
         synopsis=synopsis,
         title=title,
@@ -324,18 +324,18 @@ def episode_from_anidb(
     skip = {"en", "ja", "romaji"}
     extra_titles = {k: v for k, v in ep.titles.items() if k not in skip}
 
-    aired = normalize_to_utc(ep.airdate) if ep.airdate else None
-    duration = ep.length * 60 if ep.length else None  # minutes → seconds
+    aired_at = normalize_to_utc(ep.airdate) if ep.airdate else None
+    duration_seconds = ep.length * 60 if ep.length else None  # minutes → seconds
 
     sources = [f"https://anidb.net/episode/{ep.id}"] if ep.id else []
 
     episode = Episode(
-        aired=aired,
+        aired_at=aired_at,
         anime_id=anime_id,
-        duration=duration,
+        duration_seconds=duration_seconds,
         episode_number=ep.episode_number,
-        filler=False,
-        recap=False,
+        is_filler=False,
+        is_recap=False,
         synopsis=ep.summary,
         title=title,
         title_japanese=title_japanese,

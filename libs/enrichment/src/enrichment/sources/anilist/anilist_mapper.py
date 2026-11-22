@@ -165,8 +165,10 @@ def anime_from_anilist(anime: AniListAnime) -> dict[str, Any]:
     source_material = SourceMaterialType(anime.source) if anime.source else None
     status = AnimeStatus(anime.status)
     episode_count = anime.episodes or 0
-    duration = (anime.duration * 60) if anime.duration else None  # minutes → seconds
-    nsfw = anime.is_adult
+    duration_seconds = (
+        (anime.duration * 60) if anime.duration else None
+    )  # minutes → seconds
+    is_nsfw = anime.is_adult
     start, end = anime.start_date, anime.end_date
     year = anime.season_year or (start.year if start else None)
     season = AnimeSeason(anime.season) if anime.season else None
@@ -240,7 +242,7 @@ def anime_from_anilist(anime: AniListAnime) -> dict[str, Any]:
         trailers.append(
             TrailerEntry(
                 source=f"https://youtu.be/{anime.trailer.id}",
-                thumbnail=anime.trailer.thumbnail,
+                thumbnail_source=anime.trailer.thumbnail,
             )
         )
 
@@ -261,7 +263,7 @@ def anime_from_anilist(anime: AniListAnime) -> dict[str, Any]:
             format=r.format,
             year=r.year,
             season=r.season,
-            all_time=r.all_time,
+            is_all_time=r.all_time,
         )
         for r in anime.rankings
     ]
@@ -295,8 +297,8 @@ def anime_from_anilist(anime: AniListAnime) -> dict[str, Any]:
         source_material=source_material,
         status=status,
         episode_count=episode_count,
-        duration=duration,
-        nsfw=nsfw,
+        duration_seconds=duration_seconds,
+        is_nsfw=is_nsfw,
         country_of_origin=country_of_origin,
         year=year,
         month=month,

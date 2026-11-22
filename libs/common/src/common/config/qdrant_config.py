@@ -325,7 +325,7 @@ class QdrantConfig(EnvSettings):
             "status": "keyword",
             "rating": "keyword",
             "source_material": "keyword",
-            "nsfw": "bool",
+            "is_nsfw": "bool",
             # Categorical fields
             "genres": "keyword",
             "tags": "keyword",
@@ -334,7 +334,7 @@ class QdrantConfig(EnvSettings):
             # Temporal fields (flattened)
             "year": "integer",
             "season": "keyword",
-            "duration": "integer",
+            "duration_seconds": "integer",
             # Platform fields
             "sources": "keyword",
             # Statistics - MAL

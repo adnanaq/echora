@@ -403,11 +403,11 @@ class TestEpisodeProcessing:
         assert ep1["title_japanese"] == "MAL Japanese 1"
         assert ep1["title_romaji"] == "MAL Romaji 1"
         assert ep1["synopsis"] == "MAL synopsis"
-        assert ep1["aired"] == "1999-10-19T15:00:00Z"
-        assert ep1["duration"] == 1440
+        assert ep1["aired_at"] == "1999-10-19T15:00:00Z"
+        assert ep1["duration_seconds"] == 1440
         assert ep1["score"] == 8.5
-        assert ep1["filler"] is False
-        assert ep1["recap"] is False
+        assert ep1["is_filler"] is False
+        assert ep1["is_recap"] is False
         assert (
             ep1["episode_pages"]["mal"]
             == "https://myanimelist.net/anime/21/One_Piece/episode/1"
@@ -422,8 +422,8 @@ class TestEpisodeProcessing:
         assert ep2["synopsis"] == "Kitsu synopsis 2"
         assert ep2["description"] == "Kitsu description 2"
         assert ep2["season_number"] == 1
-        assert ep2["aired"] == "1999-10-26T15:00:00Z"
-        assert ep2["filler"] is True
+        assert ep2["aired_at"] == "1999-10-26T15:00:00Z"
+        assert ep2["is_filler"] is True
         assert ep2["thumbnails"] == ["https://kitsu.io/thumb2.jpg"]
         assert "kitsu" in ep2["episode_pages"]
         assert (
@@ -434,8 +434,8 @@ class TestEpisodeProcessing:
         ep3 = episodes[2]
         assert ep3["episode_number"] == 3
         assert ep3["title"] == "AniSearch Title 3"
-        assert ep3["aired"] == "1999-11-02T15:00:00Z"
-        assert ep3["recap"] is True
+        assert ep3["aired_at"] == "1999-11-02T15:00:00Z"
+        assert ep3["is_recap"] is True
         assert ep3["episode_pages"] == {}
 
     def test_process_all_episodes_title_falls_back_from_mal_to_kitsu_to_anisearch(
@@ -514,7 +514,7 @@ class TestEpisodeProcessing:
         assert len(output["episodes"]) == 1
         ep = output["episodes"][0]
         assert ep["title"] == "Episode 1"
-        assert ep["aired"] == "2023-12-31T15:00:00Z"
+        assert ep["aired_at"] == "2023-12-31T15:00:00Z"
 
     def test_process_all_episodes_writes_episodes_list(
         self, agent_dir_with_all_sources
@@ -642,13 +642,13 @@ class TestEdgeCases:
         ep = output["episodes"][0]
         assert ep["episode_number"] == 1
         assert ep["title"] is None
-        assert ep["aired"] is None
-        assert ep["filler"] is False
-        assert ep["recap"] is False
+        assert ep["aired_at"] is None
+        assert ep["is_filler"] is False
+        assert ep["is_recap"] is False
         assert ep["thumbnails"] == []
         assert ep["episode_pages"] == {}
 
-    def test_process_all_episodes_null_aired_writes_null_aired(self, tmp_path):
+    def test_process_all_episodes_null_aired_writes_null_aired_at(self, tmp_path):
         episodes_data = [
             {
                 "episode_number": 1,
@@ -670,7 +670,7 @@ class TestEdgeCases:
             output = json.load(f)
 
         ep = output["episodes"][0]
-        assert ep["aired"] is None
+        assert ep["aired_at"] is None
 
     def test_process_all_episodes_japanese_title_written_unescaped(self, tmp_path):
         episodes_data = [

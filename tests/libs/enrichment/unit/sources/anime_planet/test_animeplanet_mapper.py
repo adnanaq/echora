@@ -550,8 +550,8 @@ def test_character_from_animeplanet_voice_actors_named_by_language_without_repea
         )
     )
     assert [(actor["name"], actor["language"]) for actor in mapped["voice_actors"]] == [
-        ("Mayumi Tanaka", "Japanese"),
-        ("Colleen Clinkenbeard", "English"),
+        ("Mayumi Tanaka", "ja"),
+        ("Colleen Clinkenbeard", "en"),
         ("Some Actor", "pt"),
     ]
     assert mapped["voice_actors"][0]["sources"] == [

@@ -50,13 +50,16 @@ from enrichment.sources.base.companies import companies_from_roles
 
 _AP_BASE_URL = "https://www.anime-planet.com"
 
+# Anime-Planet labels each voice actor with a flag, named by a country code ("jp",
+# "us"), which is no language code. Each known flag becomes its BCP 47 tag; any
+# other flag goes on as written, for the canonical model to standardize.
 _FLAG_TO_LANGUAGE: dict[str, str] = {
-    "jp": "Japanese",
-    "us": "English",
-    "es": "Spanish",
-    "fr": "French",
-    "de": "German",
-    "ko": "Korean",
+    "jp": "ja",
+    "us": "en",
+    "es": "es",
+    "fr": "fr",
+    "de": "de",
+    "ko": "ko",
 }
 
 

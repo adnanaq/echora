@@ -229,12 +229,12 @@ def process_all_episodes(temp_dir: str):
         # Convert according to Stage 2 prompt template schema with timezone conversion
         processed_episode = {
             # SCALAR FIELDS (alphabetical)
-            "aired": convert_jst_to_utc(episode.get("aired")),
+            "aired_at": convert_jst_to_utc(episode.get("aired")),
             "description": kitsu_description,  # From Kitsu
-            "duration": episode.get("duration"),
+            "duration_seconds": episode.get("duration"),
             "episode_number": episode.get("episode_number"),
-            "filler": episode.get("filler", False),
-            "recap": episode.get("recap", False),
+            "is_filler": episode.get("filler", False),
+            "is_recap": episode.get("recap", False),
             "score": episode.get("score"),
             "season_number": kitsu_season_number,  # From Kitsu (MAL doesn't provide this)
             "synopsis": episode.get("synopsis")
@@ -272,7 +272,7 @@ def process_all_episodes(temp_dir: str):
     print("\nTimezone conversion examples:")
     for i in range(min(3, len(episodes_data))):
         original = episodes_data[i].get("aired")
-        converted = episodes[i]["aired"]
+        converted = episodes[i]["aired_at"]
         print(f"  Episode {i + 1}: {original} -> {converted}")
 
 

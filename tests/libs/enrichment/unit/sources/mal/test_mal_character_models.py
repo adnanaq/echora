@@ -20,6 +20,11 @@ def test_mal_voice_actor_ref_minimal() -> None:
     assert va.sources == []
 
 
+def test_mal_voice_actor_ref_regional_language_name_becomes_language_tag() -> None:
+    va = MalVoiceActorRef(person_id=71, name="Pereira, Ana", language="Portuguese (BR)")
+    assert va.language == "pt-BR"
+
+
 def test_mal_voice_actor_ref_with_image() -> None:
     va = MalVoiceActorRef(
         person_id=70,

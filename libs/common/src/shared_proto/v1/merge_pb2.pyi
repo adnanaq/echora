@@ -4,7 +4,6 @@ from google.protobuf import any_pb2 as _any_pb2
 from google.protobuf import timestamp_pb2 as _timestamp_pb2
 from shared_proto.v1 import anime_pb2 as _anime_pb2
 from google.protobuf.internal import containers as _containers
-from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
 from collections.abc import Iterable as _Iterable, Mapping as _Mapping
@@ -12,26 +11,15 @@ from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
-class PageKind(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
-    __slots__ = ()
-    PAGE_KIND_UNSPECIFIED: _ClassVar[PageKind]
-    PAGE_KIND_ANIME: _ClassVar[PageKind]
-    PAGE_KIND_EPISODE: _ClassVar[PageKind]
-    PAGE_KIND_CHARACTER: _ClassVar[PageKind]
-PAGE_KIND_UNSPECIFIED: PageKind
-PAGE_KIND_ANIME: PageKind
-PAGE_KIND_EPISODE: PageKind
-PAGE_KIND_CHARACTER: PageKind
-
 class PageKey(_message.Message):
-    __slots__ = ("provider", "page_kind", "address")
+    __slots__ = ("provider", "entity_type", "address")
     PROVIDER_FIELD_NUMBER: _ClassVar[int]
-    PAGE_KIND_FIELD_NUMBER: _ClassVar[int]
+    ENTITY_TYPE_FIELD_NUMBER: _ClassVar[int]
     ADDRESS_FIELD_NUMBER: _ClassVar[int]
     provider: str
-    page_kind: PageKind
+    entity_type: _anime_pb2.EntityType
     address: str
-    def __init__(self, provider: _Optional[str] = ..., page_kind: _Optional[_Union[PageKind, str]] = ..., address: _Optional[str] = ...) -> None: ...
+    def __init__(self, provider: _Optional[str] = ..., entity_type: _Optional[_Union[_anime_pb2.EntityType, str]] = ..., address: _Optional[str] = ...) -> None: ...
 
 class PageResponse(_message.Message):
     __slots__ = ("request_name", "content_type", "body")

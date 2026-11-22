@@ -244,16 +244,16 @@ def test_anime_from_anilist_without_episode_count_gives_zero() -> None:
 
 
 def test_anime_from_anilist_duration_in_minutes_gives_seconds() -> None:
-    assert anime_from_anilist(_anime(duration=24))["duration"] == 1440
+    assert anime_from_anilist(_anime(duration=24))["duration_seconds"] == 1440
 
 
-def test_anime_from_anilist_without_duration_omits_duration() -> None:
-    assert "duration" not in anime_from_anilist(_anime(duration=None))
+def test_anime_from_anilist_without_duration_omits_duration_seconds() -> None:
+    assert "duration_seconds" not in anime_from_anilist(_anime(duration=None))
 
 
 @pytest.mark.parametrize("is_adult", [False, True])
-def test_anime_from_anilist_adult_flag_gives_nsfw(is_adult: bool) -> None:
-    assert anime_from_anilist(_anime(isAdult=is_adult))["nsfw"] is is_adult
+def test_anime_from_anilist_adult_flag_gives_is_nsfw(is_adult: bool) -> None:
+    assert anime_from_anilist(_anime(isAdult=is_adult))["is_nsfw"] is is_adult
 
 
 def test_anime_from_anilist_season_year_and_season_mapped() -> None:
@@ -446,7 +446,7 @@ def test_anime_from_anilist_youtube_trailer_gives_short_link_and_thumbnail() -> 
     assert result["trailers"] == [
         {
             "source": "https://youtu.be/abc123",
-            "thumbnail": "https://img.youtube.com/abc123.jpg",
+            "thumbnail_source": "https://img.youtube.com/abc123.jpg",
         }
     ]
 
@@ -518,7 +518,7 @@ def test_anime_from_anilist_rankings_become_contextual_ranks() -> None:
         )
     )
     rank = result["statistics"]["anilist"]["contextual_ranks"][0]
-    assert (rank["rank"], rank["context"], rank["all_time"]) == (
+    assert (rank["rank"], rank["context"], rank["is_all_time"]) == (
         22,
         "highest rated all time",
         True,
@@ -803,7 +803,7 @@ def test_character_from_anilist_voice_actor_mapped_with_language_and_links() -> 
     assert (actor["name"], actor["native_name"], actor["language"]) == (
         "Mayumi Tanaka",
         "田中真弓",
-        "Japanese",
+        "ja",
     )
     assert actor["image"] == "https://anilist.co/img/tanaka.jpg"
     assert actor["sources"] == ["https://anilist.co/staff/95"]
@@ -864,7 +864,7 @@ def test_character_from_anilist_voice_actors_in_several_languages_all_kept() -> 
     assert [
         (actor["name"], actor["language"])
         for actor in character_from_anilist(edge)["voice_actors"]
-    ] == [("Mayumi Tanaka", "Japanese"), ("Sonny Strait", "English")]
+    ] == [("Mayumi Tanaka", "ja"), ("Sonny Strait", "en")]
 
 
 def test_anime_from_anilist_description_html_removed_from_synopsis() -> None:

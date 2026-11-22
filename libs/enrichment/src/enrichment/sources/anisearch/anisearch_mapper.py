@@ -372,11 +372,11 @@ def episode_from_anisearch(ep: AniSearchEpisode) -> dict[str, Any]:
         Dict of canonical Episode field name → value (exclude_none=True).
     """
     episode = Episode(
-        aired=normalize_to_utc(ep.aired),
-        duration=ep.duration,
+        aired_at=normalize_to_utc(ep.aired),
+        duration_seconds=ep.duration,
         episode_number=ep.episode_number,
-        filler=ep.is_filler,
-        recap=ep.is_recap,
+        is_filler=ep.is_filler,
+        is_recap=ep.is_recap,
         title=ep.title or f"Episode {ep.episode_number}",
         title_japanese=ep.title_japanese,
         title_romaji=ep.title_romaji,

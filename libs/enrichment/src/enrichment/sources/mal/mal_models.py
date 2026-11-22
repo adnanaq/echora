@@ -34,6 +34,33 @@ from pydantic import (
     model_validator,
 )
 
+# MAL's language names that name a region the plain language name would lose.
+# Every other MAL name ("Japanese", "Mandarin") is a plain English language name,
+# which the canonical model turns into its BCP 47 code.
+_LANGUAGE_TAGS = {"portuguese (br)": "pt-BR"}
+
+
+def _mal_language_tag(value: object) -> object:
+    """Turn MAL's regional language names into BCP 47 tags, leaving the rest as written.
+
+    Args:
+        value: The language name as MAL prints it.
+
+    Returns:
+        The BCP 47 tag for a regional name, or ``value`` unchanged.
+
+    >>> _mal_language_tag("Portuguese (BR)")
+    'pt-BR'
+    >>> _mal_language_tag("Japanese")
+    'Japanese'
+    """
+    if isinstance(value, str):
+        return _LANGUAGE_TAGS.get(value.strip().lower(), value)
+    return value
+
+
+MalLanguage = Annotated[str, BeforeValidator(_mal_language_tag)]
+
 # MAL prints the rank as "#4536" inside the sidebar HTML.
 _RANK = re.compile(r"#([\d,]+)")
 
@@ -307,7 +334,7 @@ class MalVoiceActorRef(BaseModel):
 
     person_id: int
     name: str
-    language: str
+    language: MalLanguage
     image_url: str | None = None
     sources: list[str] = []
 
@@ -354,7 +381,7 @@ class EpisodeVARef(BaseModel):
 
     person_id: int  # MAL person ID
     name: str
-    language: str  # "Japanese", "English", etc.
+    language: MalLanguage  # "Japanese", "English", etc.
 
 
 class EpisodeCharacterRef(BaseModel):

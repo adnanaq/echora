@@ -125,7 +125,7 @@ def merge_episode_count(ranked: Ranked) -> int:
     return int(next(iter(counts.values()), 0))
 
 
-def merge_nsfw(ranked: Ranked) -> bool:
+def merge_is_nsfw(ranked: Ranked) -> bool:
     """Resolve the adult-content flag, taking any provider's yes as a yes.
 
     Priority is the wrong rule here. Only AniList and Kitsu supply the flag,
@@ -144,7 +144,7 @@ def merge_nsfw(ranked: Ranked) -> bool:
     Returns:
         ``True`` when any provider flags the work, otherwise ``False``.
     """
-    return any(bool(value) for _, value in providers_supplying(ranked, "nsfw"))
+    return any(bool(value) for _, value in providers_supplying(ranked, "is_nsfw"))
 
 
 def merge_synopsis(ranked: Ranked) -> str | None:
@@ -305,7 +305,7 @@ def _chosen_field(by_field: dict[str, dict[str, list[int]]]) -> str:
     """
     # A content warning outranks everyone, including MAL. Another provider
     # calling the word a theme is not a denial that it is adult content, and
-    # the two mistakes are not equally bad - the same reasoning as `nsfw`.
+    # the two mistakes are not equally bad - the same reasoning as `is_nsfw`.
     if "content_warnings" in by_field:
         return "content_warnings"
 

@@ -17,7 +17,7 @@ enum AnimeStatus {
   ANIME_STATUS_CANCELLED = 5;
 }
 
-// Primary entity type for vector indexing/filtering.
+// Type of catalogue entity: what a record holds, and what a provider page describes.
 enum EntityType {
   ENTITY_TYPE_UNSPECIFIED = 0;
   ENTITY_TYPE_ANIME = 1;
@@ -157,7 +157,7 @@ enum SourceMaterialRelationType {
 message TrailerEntry {
   optional string source = 1;
   optional string title = 2;
-  optional string thumbnail = 3;
+  optional string thumbnail_source = 3;
 }
 
 // Aired date range. Fields renamed from from_date/to for clarity.
@@ -232,16 +232,17 @@ message ExternalLink {
   string platform = 1;
   string source = 2;
   optional string label = 3;
-  optional string language = 4;
+  optional string language = 4;  // BCP 47 language code
 }
 
 message StreamingEntry {
   string platform = 1;
   string source = 2;
   optional string region = 3;
-  optional bool free = 4;
-  optional bool premium_required = 5;
-  optional bool dub_available = 6;
+  optional bool is_free = 4;
+  optional bool is_premium_required = 5;
+  optional bool has_dub = 6;
+  // BCP 47 language codes
   repeated string subtitle_languages = 7;
 }
 
@@ -251,8 +252,8 @@ message ThemeEntry {
 }
 
 message EpisodeRange {
-  int32 start = 1;
-  optional int32 end = 2;
+  int32 range_start = 1;
+  optional int32 range_end = 2;
 }
 
 message ThemeSong {
@@ -289,7 +290,7 @@ message VoiceActor {
   string name = 1;
   optional string native_name = 2;
   optional string id = 3;
-  optional string language = 4;
+  optional string language = 4;  // BCP 47 language code
   optional string image = 5;
   optional string biography = 6;
   optional string birth_date = 7;
@@ -330,7 +331,7 @@ message ContextualRank {
   optional string format = 3;
   optional int32 year = 4;
   optional string season = 5;
-  optional bool all_time = 6;
+  optional bool is_all_time = 6;
 }
 
 message Statistics {
@@ -390,15 +391,15 @@ message Character {
 }
 
 message Episode {
-  optional google.protobuf.Timestamp aired = 1;
+  optional google.protobuf.Timestamp aired_at = 1;
   optional string anime_id = 2;
   optional string description = 3;
-  optional int32 duration = 4;
+  optional int32 duration_seconds = 4;
   int32 episode_number = 5;
-  bool filler = 6;
+  bool is_filler = 6;
   optional string id = 7;
   EntityType entity_type = 8;
-  bool recap = 9;
+  bool is_recap = 9;
   optional float score = 10;
   optional int32 season_number = 11;
   optional string synopsis = 12;
@@ -417,13 +418,13 @@ message Episode {
 
 message Anime {
   optional string background = 1;
-  optional string country_of_origin = 40;
-  optional int32 duration = 2;
+  optional string country_of_origin = 40;  // ISO 3166-1 alpha-2 country code
+  optional int32 duration_seconds = 2;
   int32 episode_count = 3;
   string id = 4;
   EntityType entity_type = 5;
   optional int32 month = 6;
-  optional bool nsfw = 7;
+  optional bool is_nsfw = 7;
   optional AnimeRating rating = 8;
   optional AnimeSeason season = 9;
   optional SourceMaterialType source_material = 10;

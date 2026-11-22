@@ -265,7 +265,7 @@ def test_anime_from_kitsu_full():
     assert result["season"] == "FALL"
     assert result["year"] == 1999
     assert result["episode_count"] == 1000
-    assert result["duration"] == 24 * 60
+    assert result["duration_seconds"] == 24 * 60
     assert result["genres"] == ["Action", "Adventure", "Comedy"]
     assert result["themes"][0]["name"] == "Pirate"
     assert result["synonyms"] == ["OP"]
@@ -398,7 +398,7 @@ def test_character_from_kitsu():
     assert len(result["voice_actors"]) == 2
     va_jp = result["voice_actors"][0]
     assert va_jp["name"] == "Mayumi Tanaka"
-    assert va_jp["language"] == "Japanese"
+    assert va_jp["language"] == "ja"
     assert va_jp["image"] == "https://example.com/mayumi.jpg"
     assert va_jp["biography"] == "Veteran voice actress"
     assert va_jp["sources"] == ["https://kitsu.app/people/1"]
@@ -476,11 +476,11 @@ def test_episode_from_kitsu():
     assert result["episode_number"] == 1
     assert result["season_number"] == 1
     assert result["synopsis"] == "Luffy sets sail."
-    assert result["duration"] == 24 * 60
+    assert result["duration_seconds"] == 24 * 60
     assert result["images"] == ["https://example.com/ep1.jpg"]
     assert result["sources"] == ["https://kitsu.app/anime/one-piece/episodes/1"]
     # airdate "1999-10-20" → midnight UTC
-    assert result["aired"].startswith("1999-10-19")  # midnight JST → UTC prev day
+    assert result["aired_at"].startswith("1999-10-19")  # midnight JST → UTC prev day
 
 
 def test_episode_from_kitsu_fallback_title():

@@ -700,26 +700,26 @@ def test_merge_provider_records_external_streaming_link_keeps_only_streaming_fie
     ]
 
 
-def test_nsfw_takes_any_provider_flag_over_priority() -> None:
+def test_is_nsfw_takes_any_provider_flag_over_priority() -> None:
     # AniList outranks Kitsu, so priority would mark a work Kitsu flags as
     # adult "safe". The two errors are not equally bad.
     merged = merge_provider_records(
-        {"anilist": _record(nsfw=False), "kitsu": _record(nsfw=True)}
+        {"anilist": _record(is_nsfw=False), "kitsu": _record(is_nsfw=True)}
     )
-    assert merged["nsfw"] is True
+    assert merged["is_nsfw"] is True
 
 
-def test_nsfw_is_false_only_when_no_provider_flags_it() -> None:
+def test_is_nsfw_is_false_only_when_no_provider_flags_it() -> None:
     merged = merge_provider_records(
-        {"anilist": _record(nsfw=False), "kitsu": _record(nsfw=False)}
+        {"anilist": _record(is_nsfw=False), "kitsu": _record(is_nsfw=False)}
     )
-    assert merged["nsfw"] is False
+    assert merged["is_nsfw"] is False
 
 
-def test_nsfw_defaults_to_false_when_nobody_supplies_it() -> None:
+def test_is_nsfw_defaults_to_false_when_nobody_supplies_it() -> None:
     # The flag is never left empty: consumers always get a usable answer
     # rather than having to decide what an absent one means.
-    assert merge_provider_records({"mal": _record()})["nsfw"] is False
+    assert merge_provider_records({"mal": _record()})["is_nsfw"] is False
 
 
 def test_a_content_warning_outranks_every_provider() -> None:

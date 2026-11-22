@@ -136,7 +136,7 @@ def test_extract_anime_text_includes_genres_temporal_and_streaming() -> None:
         streaming_sources=[
             StreamingEntry(platform="Crunchyroll", source="crunchyroll")
         ],
-        trailers=[TrailerEntry(thumbnail="https://example.com/thumb.jpg")],
+        trailers=[TrailerEntry(thumbnail_source="https://example.com/thumb.jpg")],
     )
     mapper = AnimeFieldMapper()
     text = mapper.extract_anime_text(anime)
@@ -152,7 +152,7 @@ def test_extract_anime_text_includes_genres_temporal_and_streaming() -> None:
     assert "Platform: Crunchyroll" in text
     assert "https://example.com/thumb.jpg" in mapper.extract_image_urls(anime)
 
-    episode = Episode(episode_number=1, title="Recap Ep", filler=True, recap=True)
+    episode = Episode(episode_number=1, title="Recap Ep", is_filler=True, is_recap=True)
     ep_text = mapper.extract_episode_text(episode)
     assert "(Filler, Recap)" in ep_text
 
