@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        DELETE FROM graph_edge\n        WHERE (from_id = $1 AND from_node_type = 'character' AND edge_type = 'APPEARS_IN')\n           OR (to_id = $1 AND to_node_type = 'character' AND edge_type = 'FEATURES')\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e7a20117985fbbd96cd9019a20d92bc1858a30f793b386c65b78b6f1b33900d5"
+}

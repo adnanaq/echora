@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE character\n            SET merge_requested_at = NULL,\n                merge_version = $2\n            WHERE id = $1\n              AND (merge_requested_at IS NOT NULL OR merge_version IS DISTINCT FROM $2)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "339dbc91a2daee84d144bd5308162633c3eccd9ce28d330294ce1732a742fa33"
+}

@@ -229,8 +229,8 @@ fn validate_companies(companies: &[AnimeCompanyInput]) -> Result<(), Error> {
 /// # async fn example(pool: &PgPool, anime_id: Uuid) -> Result<(), postgres_db::Error> {
 /// // One other work already lists MAL page 21 as its sequel.
 /// let key = PageKey::new(Provider::Mal, EntityType::Anime, "21")?;
-/// let relating_works = link_anime_source_page(pool, anime_id, &key).await?;
-/// assert_eq!(relating_works, 1, "that work's relation now reaches this one");
+/// let relating_anime_count = link_anime_source_page(pool, anime_id, &key).await?;
+/// assert_eq!(relating_anime_count, 1, "that work's relation now reaches this one");
 ///
 /// // Linking the same page again changes nothing.
 /// assert_eq!(link_anime_source_page(pool, anime_id, &key).await?, 0);
@@ -266,6 +266,8 @@ pub async fn link_anime_source_page(
 /// - Every other work with a relation to the page gets a new version and a merge request,
 ///   and a merged one an `anime.updated` event, since the relation it shows now reaches a
 ///   work. The graph edges of each such pair are recomputed.
+/// - Every character whose appearances name the page gets a new version, its graph edges
+///   recomputed, and a merged one a `character.updated` event, since it now reaches the work.
 ///
 /// The result counts the works whose relations now reach the linked work.
 ///
@@ -289,13 +291,11 @@ pub(crate) async fn link_anime_source_page_in_tx(
         return Err(Error::not_found());
     }
 
-    // Serialize page linking with replace_anime_relations target resolution.
-    sqlx::query!(
-        "SELECT pg_advisory_xact_lock(hashtextextended($1 || ':anime:' || $2, 0))",
-        page_key.provider().as_str(),
-        page_key.address().as_str(),
+    // Serialize page linking with every save that names the page.
+    lock_anime_pages_exclusive(
+        tx,
+        &BTreeSet::from([(page_key.provider().as_str(), page_key.address().as_str())]),
     )
-    .execute(&mut **tx)
     .await?;
 
     sqlx::query!(
@@ -361,7 +361,8 @@ pub(crate) async fn link_anime_source_page_in_tx(
     .execute(&mut **tx)
     .await?;
 
-    let relating_anime_ids = notify_works_relating_to_page(tx, anime_id, page_key).await?;
+    let relating_anime_ids = notify_anime_relating_to_page(tx, anime_id, page_key).await?;
+    crate::character::notify_characters_naming_anime_page(tx, page_key).await?;
     let relating_count = u64::try_from(relating_anime_ids.len()).unwrap_or(u64::MAX);
     let affected_pairs: BTreeSet<(Uuid, Uuid)> = relating_anime_ids
         .into_iter()
@@ -376,6 +377,8 @@ pub(crate) async fn link_anime_source_page_in_tx(
 
 /// Tells every other work with a relation to `page_key` that the relation now reaches a work.
 ///
+/// `anime` in the name means several anime: every other anime with a relation to the page.
+///
 /// Each such work gets a new version and a merge request, in ascending ID order so two links
 /// at once lock the rows in the same order. A merged, undeleted work also gets an
 /// `anime.updated` event, so caches and search points stop showing the relation as pending.
@@ -384,7 +387,7 @@ pub(crate) async fn link_anime_source_page_in_tx(
 /// # Errors
 ///
 /// Returns a database error when a query fails.
-async fn notify_works_relating_to_page(
+async fn notify_anime_relating_to_page(
     tx: &mut Transaction<'_, Postgres>,
     linked_anime_id: Uuid,
     page_key: &PageKey,
@@ -407,7 +410,7 @@ async fn notify_works_relating_to_page(
     )
     .fetch_all(&mut **tx)
     .await?;
-    let relating_works = sqlx::query!(
+    let relating_anime_rows = sqlx::query!(
         r#"
         UPDATE anime
         SET version = version + 1,
@@ -421,21 +424,21 @@ async fn notify_works_relating_to_page(
     .await?;
 
     let transaction_time = crate::read_transaction_time(tx).await?;
-    let mut relating_anime_ids = Vec::with_capacity(relating_works.len());
-    for relating_work in relating_works {
-        if relating_work.is_merged {
+    let mut relating_anime_ids = Vec::with_capacity(relating_anime_rows.len());
+    for relating_anime_row in relating_anime_rows {
+        if relating_anime_row.is_merged {
             crate::anime::insert_catalogue_outbox_event(
                 tx,
                 crate::anime::ANIME_UPDATED_SUBJECT,
-                relating_work.id,
-                relating_work.version,
+                relating_anime_row.id,
+                relating_anime_row.version,
                 None,
                 transaction_time,
                 None,
             )
             .await?;
         }
-        relating_anime_ids.push(relating_work.id);
+        relating_anime_ids.push(relating_anime_row.id);
     }
     relating_anime_ids.sort_unstable();
     Ok(relating_anime_ids)
@@ -466,10 +469,11 @@ pub(crate) async fn replace_relations_and_graph(
     Ok(())
 }
 
-/// Locks the target page of every relation in `relations`, in sorted order.
+/// Takes a shared lock on the target page of every relation in `relations`, in sorted order.
 ///
-/// A page's lock serializes everything that changes what reaches the page: linking it as a
-/// source and saving a relation to it. Every path takes page locks before any work's row
+/// Linking a page as a source takes the same lock exclusively, so a link and a save naming
+/// the page run one after the other and neither misses the other's rows, while saves
+/// naming the page run side by side. Every path takes page locks before any work's row
 /// lock, so a save, which locks its own row, takes these first. Linking a page then waits
 /// for the save instead of holding the page while the save holds the row both need.
 ///
@@ -489,9 +493,51 @@ pub(crate) async fn lock_relation_target_pages(
             )
         })
         .collect();
-    for (provider, address) in target_pages {
+    lock_anime_pages_shared(tx, &target_pages).await
+}
+
+/// Locks work pages, given as `(provider, address)`, exclusively for the rest of the transaction.
+///
+/// Linking a work page takes this lock, which waits for every save holding the page shared
+/// through [`lock_anime_pages_shared`], and makes later ones wait. A sorted set fixes the order, so
+/// two transactions locking several pages always take them in the same order.
+///
+/// # Errors
+///
+/// Returns a database error when a lock query fails.
+pub(crate) async fn lock_anime_pages_exclusive(
+    tx: &mut Transaction<'_, Postgres>,
+    anime_pages: &BTreeSet<(&str, &str)>,
+) -> Result<(), Error> {
+    for (provider, address) in anime_pages {
         sqlx::query!(
             "SELECT pg_advisory_xact_lock(hashtextextended($1 || ':anime:' || $2, 0))",
+            provider,
+            address,
+        )
+        .execute(&mut **tx)
+        .await?;
+    }
+    Ok(())
+}
+
+/// Locks work pages, given as `(provider, address)`, shared for the rest of the transaction.
+///
+/// A save that names work pages takes this lock. Saves naming the same page do not wait for
+/// each other, since none of them changes which work holds it, but they wait for a link of
+/// the page, which takes the lock exclusively through [`lock_anime_pages_exclusive`]. A sorted set
+/// fixes the order, as for the exclusive lock.
+///
+/// # Errors
+///
+/// Returns a database error when a lock query fails.
+pub(crate) async fn lock_anime_pages_shared(
+    tx: &mut Transaction<'_, Postgres>,
+    anime_pages: &BTreeSet<(&str, &str)>,
+) -> Result<(), Error> {
+    for (provider, address) in anime_pages {
+        sqlx::query!(
+            "SELECT pg_advisory_xact_lock_shared(hashtextextended($1 || ':anime:' || $2, 0))",
             provider,
             address,
         )
@@ -532,7 +578,7 @@ async fn replace_anime_relations(
     let mut affected_pairs: BTreeSet<(Uuid, Uuid)> = read_relation_target_ids(tx, anime_id)
         .await?
         .into_iter()
-        .chain(read_graph_neighbor_work_ids(tx, anime_id).await?)
+        .chain(read_graph_neighbor_anime_ids(tx, anime_id).await?)
         .map(|target_id| (anime_id, target_id))
         .collect();
 
@@ -582,7 +628,7 @@ async fn replace_anime_relations(
 /// # Errors
 ///
 /// Returns a database error when the query fails.
-async fn read_graph_neighbor_work_ids(
+async fn read_graph_neighbor_anime_ids(
     tx: &mut Transaction<'_, Postgres>,
     anime_id: Uuid,
 ) -> Result<Vec<Uuid>, Error> {

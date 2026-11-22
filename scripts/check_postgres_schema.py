@@ -3,7 +3,7 @@
 Two checks run over the same migration files:
 
 - Lookup values: each lookup table holds exactly the values of its enum.
-- Stored field names: every stored field of ``Anime`` and ``Episode`` has the table or
+- Stored field names: every stored field of ``Anime``, ``Episode`` and ``Character`` has the table or
   column the naming rule in ``docs/architecture/Database Schema.md`` gives it.
 
 The naming rule:
@@ -35,6 +35,7 @@ from common.models.anime import (
     AnimeSeason,
     AnimeStatus,
     AnimeType,
+    Character,
     CharacterRole,
     CompanyRole,
     EntityType,
@@ -169,7 +170,11 @@ def find_lookup_mismatches(
     return mismatches
 
 
-ENTITY_MODELS: dict[str, type[BaseModel]] = {"anime": Anime, "episode": Episode}
+ENTITY_MODELS: dict[str, type[BaseModel]] = {
+    "anime": Anime,
+    "episode": Episode,
+    "character": Character,
+}
 
 FIELD_EXCEPTIONS: dict[str, str] = {
     "anime.entity_type": "read: always anime",
@@ -186,6 +191,13 @@ FIELD_EXCEPTIONS: dict[str, str] = {
     "episode.characters.sources": "stored as the character's page key",
     "episode.characters.voice_actors": "people tables, planned last",
     "episode.staff": "people tables, planned last",
+    "character.entity_type": "read: always character",
+    "character.roles": "read from character_animeography through the join to anime_source",
+    "character.anime_ids": "read from character_animeography through the join to anime_source",
+    "character.animeography.title": "read from the work the page joins to",
+    "character.animeography.sources": "stored as the work's page key",
+    "character.mangaography.sources": "matched to source material through source_material_xref",
+    "character.voice_actors": "people tables, planned last",
 }
 
 _IRREGULAR_SINGULARS = {

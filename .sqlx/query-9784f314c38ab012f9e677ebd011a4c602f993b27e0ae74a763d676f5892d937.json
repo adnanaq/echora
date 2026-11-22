@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE character\n        SET\n            name = $2,\n            name_native = $3,\n            description = $4,\n            favorites = $5,\n            version = $6,\n            merged_record_hash = $7,\n            hash_format = $8,\n            merge_version = $9,\n            merge_requested_at = NULL,\n            merged_at = COALESCE(merged_at, $10),\n            updated_at = $10\n        WHERE id = $1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Int4",
+        "Int8",
+        "Text",
+        "Int2",
+        "Int4",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "9784f314c38ab012f9e677ebd011a4c602f993b27e0ae74a763d676f5892d937"
+}

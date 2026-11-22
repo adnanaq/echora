@@ -10,7 +10,9 @@ use postgres_db::{
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::support::{CapturedLogs, insert_unmerged_work};
+use crate::support::{
+    CapturedLogs, insert_unmerged_anime, insert_unmerged_character, link_character_page,
+};
 
 fn build_success(body: &[u8]) -> FetchOutcome {
     FetchOutcome::Success {
@@ -127,12 +129,12 @@ async fn record_page_observation_changed_episode_page_queues_episode_merge(pool:
             .await
             .expect("read the episode");
     assert_eq!((episode_version, is_merge_requested), (2, true));
-    let work_version: i64 = sqlx::query_scalar("SELECT version FROM anime WHERE id = $1")
+    let anime_version: i64 = sqlx::query_scalar("SELECT version FROM anime WHERE id = $1")
         .bind(anime_id)
         .fetch_one(&pool)
         .await
         .expect("read the work");
-    assert_eq!(work_version, 1);
+    assert_eq!(anime_version, 1);
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -196,10 +198,10 @@ async fn record_page_observation_fetch_time_ahead_of_database_clock_returns_inva
 }
 
 #[sqlx::test(migrations = "./migrations")]
-async fn record_page_observation_changed_page_requests_merge_of_source_work_only(pool: PgPool) {
+async fn record_page_observation_changed_page_requests_merge_of_source_anime_only(pool: PgPool) {
     let page_key = PageKey::new(Provider::Mal, EntityType::Anime, "25").expect("valid page key");
-    let source_work_id = insert_unmerged_work(&pool).await;
-    let partial_work_id = insert_unmerged_work(&pool).await;
+    let source_anime_id = insert_unmerged_anime(&pool).await;
+    let partial_anime_id = insert_unmerged_anime(&pool).await;
     record_page_observation(
         &pool,
         PageObservation {
@@ -211,8 +213,8 @@ async fn record_page_observation_changed_page_requests_merge_of_source_work_only
     .await
     .expect("store the first fetch");
     for (anime_id, link_table) in [
-        (source_work_id, "anime_source"),
-        (partial_work_id, "anime_partial_source"),
+        (source_anime_id, "anime_source"),
+        (partial_anime_id, "anime_partial_source"),
     ] {
         sqlx::query(&format!(
             "INSERT INTO {link_table} (anime_id, provider, entity_type, address)
@@ -236,13 +238,68 @@ async fn record_page_observation_changed_page_requests_merge_of_source_work_only
     .expect("store the changed fetch");
 
     assert!(changed_page.has_changed);
-    let work_states: Vec<(i64, bool)> = sqlx::query_as(
+    let anime_states: Vec<(i64, bool)> = sqlx::query_as(
         "SELECT version, merge_requested_at IS NOT NULL FROM anime WHERE id = ANY($1)
          ORDER BY array_position($1, id)",
     )
-    .bind(vec![source_work_id, partial_work_id])
+    .bind(vec![source_anime_id, partial_anime_id])
     .fetch_all(&pool)
     .await
     .expect("read the works");
-    assert_eq!(work_states, vec![(2, true), (1, false)]);
+    assert_eq!(anime_states, vec![(2, true), (1, false)]);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn record_page_observation_changed_character_page_requests_merge_of_owning_character(
+    pool: PgPool,
+) {
+    let page_key =
+        PageKey::new(Provider::Mal, EntityType::Character, "40").expect("valid page key");
+    let owning_character_id = insert_unmerged_character(&pool, "Monkey D. Luffy").await;
+    let other_character_id = insert_unmerged_character(&pool, "Roronoa Zoro").await;
+    record_page_observation(
+        &pool,
+        PageObservation {
+            page_key: page_key.clone(),
+            observed_at: Utc::now() - Duration::days(1),
+            outcome: build_success(br#"{"id":40}"#),
+        },
+    )
+    .await
+    .expect("store the first fetch");
+    link_character_page(&pool, owning_character_id, "mal", "40").await;
+    link_character_page(&pool, other_character_id, "mal", "62").await;
+
+    let unchanged_page = record_page_observation(
+        &pool,
+        PageObservation {
+            page_key: page_key.clone(),
+            observed_at: Utc::now() - Duration::hours(1),
+            outcome: build_success(br#"{"id":40}"#),
+        },
+    )
+    .await
+    .expect("store the same fetch again");
+    let changed_page = record_page_observation(
+        &pool,
+        PageObservation {
+            page_key,
+            observed_at: Utc::now(),
+            outcome: build_success(br#"{"id":40,"name":"changed"}"#),
+        },
+    )
+    .await
+    .expect("store the changed fetch");
+
+    assert!(!unchanged_page.has_changed);
+    assert!(changed_page.has_changed);
+    let character_states: Vec<(i64, bool)> = sqlx::query_as(
+        "SELECT version, merge_requested_at IS NOT NULL FROM character WHERE id = ANY($1)
+         ORDER BY array_position($1, id)",
+    )
+    .bind(vec![owning_character_id, other_character_id])
+    .fetch_all(&pool)
+    .await
+    .expect("read the characters");
+    assert_eq!(character_states, vec![(2, true), (1, false)]);
 }

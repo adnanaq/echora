@@ -119,3 +119,39 @@ class MarkEpisodeAiredResponse(_message.Message):
     HAS_NOTIFIED_FIELD_NUMBER: _ClassVar[int]
     has_notified: bool
     def __init__(self, has_notified: _Optional[bool] = ...) -> None: ...
+
+class LoadCharacterRequest(_message.Message):
+    __slots__ = ("character_id",)
+    CHARACTER_ID_FIELD_NUMBER: _ClassVar[int]
+    character_id: str
+    def __init__(self, character_id: _Optional[str] = ...) -> None: ...
+
+class LoadCharacterResponse(_message.Message):
+    __slots__ = ("version", "pages", "corrections")
+    VERSION_FIELD_NUMBER: _ClassVar[int]
+    PAGES_FIELD_NUMBER: _ClassVar[int]
+    CORRECTIONS_FIELD_NUMBER: _ClassVar[int]
+    version: int
+    pages: _containers.RepeatedCompositeFieldContainer[_merge_pb2.StoredPage]
+    corrections: _containers.RepeatedCompositeFieldContainer[_merge_pb2.FieldCorrection]
+    def __init__(self, version: _Optional[int] = ..., pages: _Optional[_Iterable[_Union[_merge_pb2.StoredPage, _Mapping]]] = ..., corrections: _Optional[_Iterable[_Union[_merge_pb2.FieldCorrection, _Mapping]]] = ...) -> None: ...
+
+class SaveCharacterRequest(_message.Message):
+    __slots__ = ("character_id", "expected_version", "character", "merge_version")
+    CHARACTER_ID_FIELD_NUMBER: _ClassVar[int]
+    EXPECTED_VERSION_FIELD_NUMBER: _ClassVar[int]
+    CHARACTER_FIELD_NUMBER: _ClassVar[int]
+    MERGE_VERSION_FIELD_NUMBER: _ClassVar[int]
+    character_id: str
+    expected_version: int
+    character: _anime_pb2.Character
+    merge_version: int
+    def __init__(self, character_id: _Optional[str] = ..., expected_version: _Optional[int] = ..., character: _Optional[_Union[_anime_pb2.Character, _Mapping]] = ..., merge_version: _Optional[int] = ...) -> None: ...
+
+class SaveCharacterResponse(_message.Message):
+    __slots__ = ("has_changed", "version")
+    HAS_CHANGED_FIELD_NUMBER: _ClassVar[int]
+    VERSION_FIELD_NUMBER: _ClassVar[int]
+    has_changed: bool
+    version: int
+    def __init__(self, has_changed: _Optional[bool] = ..., version: _Optional[int] = ...) -> None: ...

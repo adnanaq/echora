@@ -8,8 +8,8 @@ use opentelemetry::global;
 use opentelemetry::metrics::Gauge;
 use postgres_db::{
     EntityType, EpisodeListEntryInput, FetchOutcome, FieldCorrectionRecord, LoadedSourcePage,
-    PageKey, PageObservation, PageResponse, Provider, load_anime, load_episode, mark_episode_aired,
-    record_page_observation, save_anime, save_episode,
+    PageKey, PageObservation, PageResponse, Provider, load_anime, load_character, load_episode,
+    mark_episode_aired, record_page_observation, save_anime, save_character, save_episode,
 };
 use prost::Message as _;
 use sqlx::PgPool;
@@ -17,6 +17,7 @@ use tonic::{Request, Response, Status};
 use uuid::Uuid;
 
 use crate::anime_mapping::build_save_anime_input;
+use crate::character_mapping::build_save_character_input;
 use crate::episode_mapping::{build_save_episode_input, to_proto_episode_reference};
 
 #[allow(
@@ -46,8 +47,9 @@ pub mod postgres_service_proto {
 
 use postgres_service_proto::v1::postgres_service_server::PostgresService;
 use postgres_service_proto::v1::{
-    LoadAnimeRequest, LoadAnimeResponse, LoadEpisodeRequest, LoadEpisodeResponse,
-    MarkEpisodeAiredRequest, MarkEpisodeAiredResponse, SaveAnimeRequest, SaveAnimeResponse,
+    LoadAnimeRequest, LoadAnimeResponse, LoadCharacterRequest, LoadCharacterResponse,
+    LoadEpisodeRequest, LoadEpisodeResponse, MarkEpisodeAiredRequest, MarkEpisodeAiredResponse,
+    SaveAnimeRequest, SaveAnimeResponse, SaveCharacterRequest, SaveCharacterResponse,
     SaveEpisodeRequest, SaveEpisodeResponse, StorePageRequest, StorePageResponse,
 };
 use shared_proto::v1::{
@@ -329,6 +331,66 @@ impl PostgresService for PostgresGrpcService {
             has_notified: outcome.has_notified,
         }))
     }
+
+    /// Loads a character's merge inputs through `LoadCharacter`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `INVALID_ARGUMENT` for an invalid character ID, `NOT_FOUND` for a missing or
+    /// deleted character, or the mapped status of a database error.
+    async fn load_character(
+        &self,
+        request: Request<LoadCharacterRequest>,
+    ) -> Result<Response<LoadCharacterResponse>, Status> {
+        let character_id = Uuid::parse_str(&request.into_inner().character_id)
+            .map_err(|err| Status::invalid_argument(format!("invalid character_id UUID: {err}")))?;
+
+        let outcome = load_character(&self.pool, character_id)
+            .await
+            .map_err(|err| map_db_error(&err))?;
+
+        let response = LoadCharacterResponse {
+            version: outcome.version,
+            pages: to_proto_stored_pages(outcome.pages),
+            corrections: to_proto_corrections(outcome.corrections),
+        };
+        self.record_message_size(response.encoded_len() as u64);
+        Ok(Response::new(response))
+    }
+
+    /// Saves a merged character through `SaveCharacter`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `INVALID_ARGUMENT` for an invalid request, `ABORTED` for a stale version,
+    /// `NOT_FOUND` for a missing character, or the mapped status of a database error.
+    async fn save_character(
+        &self,
+        request: Request<SaveCharacterRequest>,
+    ) -> Result<Response<SaveCharacterResponse>, Status> {
+        let traceparent = extract_traceparent(&request);
+        let save_request = request.into_inner();
+        let character = save_request
+            .character
+            .ok_or_else(|| Status::invalid_argument("character must be provided"))?;
+
+        let input = build_save_character_input(
+            &save_request.character_id,
+            save_request.expected_version,
+            save_request.merge_version,
+            character,
+            traceparent,
+        )?;
+
+        let outcome = save_character(&self.pool, &input)
+            .await
+            .map_err(|err| map_db_error(&err))?;
+
+        Ok(Response::new(SaveCharacterResponse {
+            has_changed: outcome.has_changed,
+            version: outcome.version,
+        }))
+    }
 }
 
 /// Reads the W3C `traceparent` header of a request, when it is present as text.
@@ -549,7 +611,8 @@ mod tests {
 
     use super::*;
     use crate::service::shared_proto::v1::{
-        Anime, AnimeStatus, AnimeType, Episode, EpisodeListEntry, EpisodeReference,
+        Anime, AnimeStatus, AnimeType, Character, CharacterRole, Episode, EpisodeListEntry,
+        EpisodeReference, Ography,
     };
 
     const WORK_PAGE_ADDRESS: &str = "21";
@@ -559,7 +622,7 @@ mod tests {
         PostgresGrpcService::new(pool, HashSet::new())
     }
 
-    async fn insert_unmerged_work(pool: &PgPool) -> Uuid {
+    async fn insert_unmerged_anime(pool: &PgPool) -> Uuid {
         let anime_id = Uuid::now_v7();
         sqlx::query("INSERT INTO anime (id) VALUES ($1)")
             .bind(anime_id)
@@ -586,7 +649,7 @@ mod tests {
         })
     }
 
-    fn build_work_save_request(anime_id: Uuid, expected_version: i64) -> SaveAnimeRequest {
+    fn build_anime_save_request(anime_id: Uuid, expected_version: i64) -> SaveAnimeRequest {
         SaveAnimeRequest {
             anime_id: anime_id.to_string(),
             expected_version,
@@ -626,12 +689,12 @@ mod tests {
     }
 
     async fn create_listed_episode(service: &PostgresGrpcService, pool: &PgPool) -> (Uuid, Uuid) {
-        let anime_id = insert_unmerged_work(pool).await;
+        let anime_id = insert_unmerged_anime(pool).await;
         let episode_id = Uuid::now_v7();
-        let mut work_save = build_work_save_request(anime_id, 1);
-        work_save.episodes = vec![build_listed_episode(episode_id)];
+        let mut anime_save = build_anime_save_request(anime_id, 1);
+        anime_save.episodes = vec![build_listed_episode(episode_id)];
         service
-            .save_anime(Request::new(work_save))
+            .save_anime(Request::new(anime_save))
             .await
             .expect("work save creates the episode");
         (anime_id, episode_id)
@@ -664,6 +727,50 @@ mod tests {
         .execute(pool)
         .await
         .expect("insert correction");
+    }
+
+    async fn insert_character_with_page(pool: &PgPool, address: &str) -> Uuid {
+        let character_id = Uuid::now_v7();
+        sqlx::query("INSERT INTO character (id, name) VALUES ($1, 'Monkey D. Luffy')")
+            .bind(character_id)
+            .execute(pool)
+            .await
+            .expect("insert placeholder character");
+        sqlx::query(
+            "INSERT INTO provider_page (provider, entity_type, address)
+             VALUES ('mal', 'character', $1) ON CONFLICT DO NOTHING",
+        )
+        .bind(address)
+        .execute(pool)
+        .await
+        .expect("store the character page");
+        sqlx::query(
+            "INSERT INTO character_source (character_id, provider, entity_type, address)
+             VALUES ($1, 'mal', 'character', $2)",
+        )
+        .bind(character_id)
+        .bind(address)
+        .execute(pool)
+        .await
+        .expect("link the character page");
+        character_id
+    }
+
+    fn build_character_save_request(character_id: Uuid) -> SaveCharacterRequest {
+        SaveCharacterRequest {
+            character_id: character_id.to_string(),
+            expected_version: 1,
+            character: Some(Character {
+                name: "Monkey D. Luffy".to_owned(),
+                animeography: vec![Ography {
+                    title: "One Piece".to_owned(),
+                    role: CharacterRole::Main as i32,
+                    sources: vec![format!("https://myanimelist.net/anime/{WORK_PAGE_ADDRESS}")],
+                }],
+                ..Character::default()
+            }),
+            merge_version: 1,
+        }
     }
 
     #[sqlx::test(migrations = "../postgres_db/migrations")]
@@ -708,7 +815,7 @@ mod tests {
     }
 
     #[test]
-    fn to_proto_page_key_keeps_every_page_kind() {
+    fn to_proto_page_key_keeps_every_entity_type() {
         for (entity_type, proto_entity_type) in [
             (EntityType::Anime, ProtoEntityType::Anime),
             (EntityType::Episode, ProtoEntityType::Episode),
@@ -728,11 +835,11 @@ mod tests {
         let (anime_id, episode_id) = create_listed_episode(&service, &pool).await;
         let mut changed_episode = build_listed_episode(episode_id);
         changed_episode.list_entries[0].duration_seconds = Some(1500);
-        let mut work_save = build_work_save_request(anime_id, 2);
-        work_save.episodes = vec![changed_episode];
+        let mut anime_save = build_anime_save_request(anime_id, 2);
+        anime_save.episodes = vec![changed_episode];
 
         let save_response = service
-            .save_anime(Request::new(work_save))
+            .save_anime(Request::new(anime_save))
             .await
             .expect("work save updates the episode")
             .into_inner();
@@ -745,7 +852,7 @@ mod tests {
     }
 
     #[sqlx::test(migrations = "../postgres_db/migrations")]
-    async fn load_anime_invalid_or_missing_work_returns_error_status(pool: PgPool) {
+    async fn load_anime_invalid_or_missing_anime_returns_error_status(pool: PgPool) {
         let service = build_service(pool);
 
         let invalid_status = service
@@ -801,7 +908,7 @@ mod tests {
         .expect("link the partial source page");
         insert_correction(&pool, "anime_field_correction", "anime_id", anime_id).await;
 
-        let loaded_work = service
+        let loaded_anime = service
             .load_anime(Request::new(LoadAnimeRequest {
                 anime_id: anime_id.to_string(),
             }))
@@ -809,23 +916,23 @@ mod tests {
             .expect("load the work")
             .into_inner();
 
-        assert_eq!(loaded_work.version, 2);
-        assert_eq!(loaded_work.source_pages.len(), 1);
+        assert_eq!(loaded_anime.version, 2);
+        assert_eq!(loaded_anime.source_pages.len(), 1);
         assert_eq!(
-            loaded_work.source_pages[0].responses[0].request_name,
+            loaded_anime.source_pages[0].responses[0].request_name,
             "main"
         );
         assert_eq!(
-            loaded_work.partial_source_pages,
+            loaded_anime.partial_source_pages,
             vec![ProtoPageKey {
                 provider: "anilist".to_owned(),
                 entity_type: ProtoEntityType::Anime as i32,
                 address: "5".to_owned(),
             }]
         );
-        assert_eq!(loaded_work.corrections[0].field_path, "title");
+        assert_eq!(loaded_anime.corrections[0].field_path, "title");
         assert_eq!(
-            loaded_work.known_episodes,
+            loaded_anime.known_episodes,
             vec![build_listed_episode(episode_id)]
         );
     }
@@ -833,16 +940,16 @@ mod tests {
     #[sqlx::test(migrations = "../postgres_db/migrations")]
     async fn save_anime_invalid_requests_return_error_status(pool: PgPool) {
         let service = build_service(pool.clone());
-        let anime_id = insert_unmerged_work(&pool).await;
-        let mut missing_work = build_work_save_request(anime_id, 1);
-        missing_work.anime = None;
+        let anime_id = insert_unmerged_anime(&pool).await;
+        let mut missing_anime = build_anime_save_request(anime_id, 1);
+        missing_anime.anime = None;
 
         let missing_status = service
-            .save_anime(Request::new(missing_work))
+            .save_anime(Request::new(missing_anime))
             .await
             .expect_err("missing work payload must be refused");
         let stale_status = service
-            .save_anime(Request::new(build_work_save_request(anime_id, 7)))
+            .save_anime(Request::new(build_anime_save_request(anime_id, 7)))
             .await
             .expect_err("stale version must be refused");
 
@@ -948,6 +1055,149 @@ mod tests {
 
         assert_eq!(missing_status.code(), tonic::Code::InvalidArgument);
         assert_eq!(unknown_status.code(), tonic::Code::NotFound);
+    }
+
+    #[sqlx::test(migrations = "../postgres_db/migrations")]
+    async fn load_character_returns_pages_corrections_and_version(pool: PgPool) {
+        let service = build_service(pool.clone());
+        service
+            .store_page(build_store_page_request(build_page_key(
+                ProtoEntityType::Character,
+                "40",
+            )))
+            .await
+            .expect("store the character page");
+        let character_id = insert_character_with_page(&pool, "40").await;
+        insert_correction(
+            &pool,
+            "character_field_correction",
+            "character_id",
+            character_id,
+        )
+        .await;
+
+        let loaded_character = service
+            .load_character(Request::new(LoadCharacterRequest {
+                character_id: character_id.to_string(),
+            }))
+            .await
+            .expect("load the character")
+            .into_inner();
+
+        assert_eq!(loaded_character.version, 1);
+        assert_eq!(
+            loaded_character
+                .pages
+                .iter()
+                .map(|page| page
+                    .page_key
+                    .as_ref()
+                    .map(|page_key| page_key.address.as_str()))
+                .collect::<Vec<_>>(),
+            vec![Some("40")]
+        );
+        assert_eq!(loaded_character.corrections[0].field_path, "title");
+    }
+
+    #[sqlx::test(migrations = "../postgres_db/migrations")]
+    async fn load_character_invalid_or_missing_character_returns_error_status(pool: PgPool) {
+        let service = build_service(pool);
+
+        let invalid_status = service
+            .load_character(Request::new(LoadCharacterRequest {
+                character_id: "not-a-uuid".to_owned(),
+            }))
+            .await
+            .expect_err("invalid ID must be refused");
+        let missing_status = service
+            .load_character(Request::new(LoadCharacterRequest {
+                character_id: Uuid::now_v7().to_string(),
+            }))
+            .await
+            .expect_err("missing character must be refused");
+
+        assert_eq!(invalid_status.code(), tonic::Code::InvalidArgument);
+        assert_eq!(missing_status.code(), tonic::Code::NotFound);
+    }
+
+    #[sqlx::test(migrations = "../postgres_db/migrations")]
+    async fn save_character_first_merge_stores_anime_page_and_keeps_traceparent(pool: PgPool) {
+        let service = build_service(pool.clone());
+        let character_id = insert_character_with_page(&pool, "40").await;
+        let traceparent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
+        let mut character_save = Request::new(build_character_save_request(character_id));
+        character_save
+            .metadata_mut()
+            .insert("traceparent", MetadataValue::from_static(traceparent));
+
+        let save_response = service
+            .save_character(character_save)
+            .await
+            .expect("first merge saves")
+            .into_inner();
+
+        assert!(save_response.has_changed);
+        assert_eq!(save_response.version, 2);
+        let stored_appearance: (String, String, String) = sqlx::query_as(
+            "SELECT anime_page_provider, anime_page_address, role
+             FROM character_animeography WHERE character_id = $1",
+        )
+        .bind(character_id)
+        .fetch_one(&pool)
+        .await
+        .expect("read the appearance");
+        assert_eq!(
+            stored_appearance,
+            (
+                "mal".to_owned(),
+                WORK_PAGE_ADDRESS.to_owned(),
+                "MAIN".to_owned()
+            )
+        );
+        let stored_traceparent: Option<String> = sqlx::query_scalar(
+            "SELECT traceparent FROM outbox
+             WHERE entity_id = $1 AND subject = 'character.created'",
+        )
+        .bind(character_id)
+        .fetch_one(&pool)
+        .await
+        .expect("read the outbox row");
+        assert_eq!(stored_traceparent.as_deref(), Some(traceparent));
+    }
+
+    #[sqlx::test(migrations = "../postgres_db/migrations")]
+    async fn save_character_invalid_requests_return_error_status(pool: PgPool) {
+        let service = build_service(pool.clone());
+        let character_id = insert_character_with_page(&pool, "40").await;
+        let mut missing_character = build_character_save_request(character_id);
+        missing_character.character = None;
+        let mut stale_version = build_character_save_request(character_id);
+        stale_version.expected_version = 7;
+
+        let missing_status = service
+            .save_character(Request::new(missing_character))
+            .await
+            .expect_err("missing character payload must be refused");
+        let invalid_id_status = service
+            .save_character(Request::new(SaveCharacterRequest {
+                character_id: "not-a-uuid".to_owned(),
+                ..build_character_save_request(character_id)
+            }))
+            .await
+            .expect_err("invalid ID must be refused");
+        let unknown_status = service
+            .save_character(Request::new(build_character_save_request(Uuid::now_v7())))
+            .await
+            .expect_err("unknown character must be refused");
+        let stale_status = service
+            .save_character(Request::new(stale_version))
+            .await
+            .expect_err("stale version must be refused");
+
+        assert_eq!(missing_status.code(), tonic::Code::InvalidArgument);
+        assert_eq!(invalid_id_status.code(), tonic::Code::InvalidArgument);
+        assert_eq!(unknown_status.code(), tonic::Code::NotFound);
+        assert_eq!(stale_status.code(), tonic::Code::Aborted);
     }
 
     #[sqlx::test(migrations = "../postgres_db/migrations")]

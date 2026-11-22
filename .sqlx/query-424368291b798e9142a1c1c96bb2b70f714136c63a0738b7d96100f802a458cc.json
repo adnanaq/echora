@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            anime_page.anime_id AS \"anime_id!\",\n            (array_agg(appearance.role ORDER BY array_position(\n                ARRAY['MAIN', 'SUPPORTING', 'BACKGROUND', 'UNKNOWN'], appearance.role\n            )))[1] AS \"role!\"\n        FROM character_animeography appearance\n        JOIN anime_source anime_page\n          ON anime_page.provider = appearance.anime_page_provider\n         AND anime_page.address = appearance.anime_page_address\n        JOIN anime work ON work.id = anime_page.anime_id AND work.deleted_at IS NULL\n        WHERE appearance.character_id = $1\n        GROUP BY anime_page.anime_id\n        ORDER BY min(array_position(\n                     ARRAY['MAIN', 'SUPPORTING', 'BACKGROUND', 'UNKNOWN'], appearance.role\n                 )),\n                 anime_page.anime_id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "anime_id!",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "role!",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      null
+    ]
+  },
+  "hash": "424368291b798e9142a1c1c96bb2b70f714136c63a0738b7d96100f802a458cc"
+}

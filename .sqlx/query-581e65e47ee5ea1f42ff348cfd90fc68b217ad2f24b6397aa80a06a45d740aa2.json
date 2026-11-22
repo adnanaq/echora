@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id\n         FROM character\n         WHERE id IN (\n             SELECT character_id\n             FROM character_animeography\n             WHERE anime_page_provider = $1 AND anime_page_address = $2\n         )\n           AND deleted_at IS NULL\n         ORDER BY id\n         FOR NO KEY UPDATE",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "581e65e47ee5ea1f42ff348cfd90fc68b217ad2f24b6397aa80a06a45d740aa2"
+}

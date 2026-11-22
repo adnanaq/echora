@@ -4,6 +4,7 @@ mod anime;
 mod anime_details;
 mod anime_relations;
 mod anime_schedule_and_stats;
+mod character;
 mod episode;
 mod error;
 mod graph_projection;
@@ -27,6 +28,12 @@ pub use anime_schedule_and_stats::{
     AnimeBroadcastInput, AnimeContextualRankInput, AnimeExternalSourceInput, AnimeHiatusInput,
     AnimeScheduleAndStatsInput, AnimeStatisticsInput, AnimeStreamingSourceInput,
     AnimeThemeSongInput, AnimeTrailerInput, EpisodeRangeInput,
+};
+#[doc(inline)]
+pub use character::{
+    CHARACTER_HASH_FORMAT, CharacterAnime, CharacterAppearanceInput, CharacterMangaographyInput,
+    LoadCharacterOutcome, SaveCharacterInput, SaveCharacterOutcome, list_character_anime,
+    load_character, save_character,
 };
 use chrono::{DateTime, Utc};
 #[doc(inline)]

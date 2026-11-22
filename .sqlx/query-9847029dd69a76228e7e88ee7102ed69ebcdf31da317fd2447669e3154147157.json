@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO character_mangaography (character_id, source_material_id, role)\n         SELECT DISTINCT ON (xref.source_material_id) $1, xref.source_material_id, entry.role\n         FROM UNNEST($2::text[], $3::text[], $4::text[]) AS entry(provider, external_id, role)\n         JOIN source_material_xref xref\n           ON xref.provider = entry.provider AND xref.external_id = entry.external_id\n         ORDER BY xref.source_material_id,\n                  array_position(ARRAY['MAIN', 'SUPPORTING', 'BACKGROUND', 'UNKNOWN'], entry.role)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "TextArray",
+        "TextArray",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "9847029dd69a76228e7e88ee7102ed69ebcdf31da317fd2447669e3154147157"
+}
