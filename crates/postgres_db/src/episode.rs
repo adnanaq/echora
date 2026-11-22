@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::anime::{
     FieldCorrectionRecord, LoadedSourcePage, ProtoTimestamp, decompress_body,
-    insert_catalogue_outbox_event, parse_page_kind, to_proto_timestamp,
+    insert_catalogue_outbox_event, parse_entity_type, to_proto_timestamp,
 };
 use crate::read_transaction_time;
 use crate::{EntityType, Error, PageKey, PageResponse, Provider};
@@ -186,7 +186,7 @@ struct ProtoEpisodeAiredNotification {
 }
 
 #[derive(Debug)]
-pub(crate) struct SyncWorkEpisodesOutcome {
+pub(crate) struct SyncAnimeEpisodesOutcome {
     pub created_episode_ids: Vec<Uuid>,
     pub updated_episode_ids: Vec<Uuid>,
 }
@@ -290,7 +290,7 @@ async fn load_episode_pages(
             continue;
         };
         let provider: Provider = row.provider.parse()?;
-        let entity_type = parse_page_kind(&row.entity_type)?;
+        let entity_type = parse_entity_type(&row.entity_type)?;
         let page_key = PageKey::new(provider, entity_type, &row.address)?;
         let responses = responses_by_page
             .remove(&(row.provider, row.address))
@@ -1157,7 +1157,7 @@ pub async fn delete_episode(
 ///
 /// Returns an invalid-argument error for a negative episode number, a page key that is
 /// not an episode page, or a negative list entry duration.
-pub(crate) fn validate_work_episode_references(
+pub(crate) fn validate_anime_episode_references(
     episodes: &[EpisodeReferenceInput],
 ) -> Result<(), Error> {
     for episode in episodes {
@@ -1195,11 +1195,11 @@ pub(crate) fn validate_work_episode_references(
 /// Returns an invalid-argument error when an episode belongs to another work or is deleted,
 /// or when a page already belongs to another episode, a unique violation when a new episode
 /// takes a number an undeleted episode holds, or a database error when a query fails.
-pub(crate) async fn sync_work_episodes(
+pub(crate) async fn sync_anime_episodes(
     tx: &mut Transaction<'_, Postgres>,
     anime_id: Uuid,
     episodes: &[EpisodeReferenceInput],
-) -> Result<SyncWorkEpisodesOutcome, Error> {
+) -> Result<SyncAnimeEpisodesOutcome, Error> {
     let mut sorted_episodes: Vec<&EpisodeReferenceInput> = episodes.iter().collect();
     sorted_episodes.sort_by_key(|episode| episode.episode_id);
 
@@ -1216,7 +1216,7 @@ pub(crate) async fn sync_work_episodes(
 
         match existing {
             None => {
-                insert_new_episode_from_work(tx, anime_id, episode).await?;
+                insert_new_episode_from_anime(tx, anime_id, episode).await?;
                 created_episode_ids.push(episode.episode_id);
             }
             Some(row) => {
@@ -1254,7 +1254,7 @@ pub(crate) async fn sync_work_episodes(
         }
     }
 
-    Ok(SyncWorkEpisodesOutcome {
+    Ok(SyncAnimeEpisodesOutcome {
         created_episode_ids,
         updated_episode_ids,
     })
@@ -1266,7 +1266,7 @@ pub(crate) async fn sync_work_episodes(
 ///
 /// Returns a unique violation when the work already has an undeleted episode with the same
 /// number, or a database error when a query fails.
-async fn insert_new_episode_from_work(
+async fn insert_new_episode_from_anime(
     tx: &mut Transaction<'_, Postgres>,
     anime_id: Uuid,
     episode: &EpisodeReferenceInput,
@@ -1848,7 +1848,7 @@ mod tests {
     }
 
     #[test]
-    fn validate_work_episode_references_enforces_invariants() {
+    fn validate_anime_episode_references_enforces_invariants() {
         let valid_page = PageKey::new(Provider::Mal, EntityType::Episode, "1").unwrap();
         let wrong_kind_page = PageKey::new(Provider::Mal, EntityType::Anime, "1").unwrap();
 
@@ -1860,7 +1860,7 @@ mod tests {
             list_entries: Vec::new(),
         };
         assert!(
-            validate_work_episode_references(&[neg_ep])
+            validate_anime_episode_references(&[neg_ep])
                 .unwrap_err()
                 .is_invalid_argument()
         );
@@ -1873,7 +1873,7 @@ mod tests {
             list_entries: Vec::new(),
         };
         assert!(
-            validate_work_episode_references(&[wrong_kind])
+            validate_anime_episode_references(&[wrong_kind])
                 .unwrap_err()
                 .is_invalid_argument()
         );
@@ -1893,7 +1893,7 @@ mod tests {
             }],
         };
         assert!(
-            validate_work_episode_references(&[neg_entry_duration])
+            validate_anime_episode_references(&[neg_entry_duration])
                 .unwrap_err()
                 .is_invalid_argument()
         );
@@ -2163,7 +2163,7 @@ mod tests {
     }
 
     #[sqlx::test]
-    async fn sync_work_episodes_handles_create_idempotent_noop_page_swap_and_conflicts(
+    async fn sync_anime_episodes_handles_create_idempotent_noop_page_swap_and_conflicts(
         pool: PgPool,
     ) {
         let (anime_id, _) = seed_anime_and_episode(&pool, None).await;
@@ -2186,7 +2186,7 @@ mod tests {
         };
 
         let mut tx = pool.begin().await.unwrap();
-        let created_outcome = sync_work_episodes(
+        let created_outcome = sync_anime_episodes(
             &mut tx,
             anime_id,
             std::slice::from_ref(&listed_episode_reference),
@@ -2198,7 +2198,7 @@ mod tests {
         assert_eq!(created_outcome.updated_episode_ids, Vec::<Uuid>::new());
 
         let mut tx = pool.begin().await.unwrap();
-        let unchanged_outcome = sync_work_episodes(
+        let unchanged_outcome = sync_anime_episodes(
             &mut tx,
             anime_id,
             std::slice::from_ref(&listed_episode_reference),
@@ -2213,7 +2213,7 @@ mod tests {
         moved_page_reference.page_keys =
             vec![PageKey::new(Provider::Mal, EntityType::Episode, "200").unwrap()];
         let mut tx = pool.begin().await.unwrap();
-        let moved_page_outcome = sync_work_episodes(
+        let moved_page_outcome = sync_anime_episodes(
             &mut tx,
             anime_id,
             std::slice::from_ref(&moved_page_reference),
@@ -2250,7 +2250,7 @@ mod tests {
             list_entries: Vec::new(),
         };
         let mut tx = pool.begin().await.unwrap();
-        let page_owner_error = sync_work_episodes(&mut tx, anime_id, &[conflicting_page_ref])
+        let page_owner_error = sync_anime_episodes(&mut tx, anime_id, &[conflicting_page_ref])
             .await
             .unwrap_err();
         assert!(page_owner_error.is_invalid_argument());
@@ -2266,10 +2266,11 @@ mod tests {
         .unwrap();
 
         let mut tx = pool.begin().await.unwrap();
-        let other_work_error = sync_work_episodes(&mut tx, other_anime_id, &[moved_page_reference])
-            .await
-            .unwrap_err();
-        assert!(other_work_error.is_invalid_argument());
+        let other_anime_error =
+            sync_anime_episodes(&mut tx, other_anime_id, &[moved_page_reference])
+                .await
+                .unwrap_err();
+        assert!(other_anime_error.is_invalid_argument());
         tx.rollback().await.unwrap();
     }
 }

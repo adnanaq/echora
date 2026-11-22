@@ -14,8 +14,8 @@ use crate::anime_details::{replace_anime_details, validate_anime_details};
 use crate::anime_relations::{replace_relations_and_graph, validate_relations_and_graph};
 use crate::anime_schedule_and_stats::{replace_schedule_and_stats, validate_schedule_and_stats};
 use crate::episode::{
-    SyncWorkEpisodesOutcome, load_known_episodes, sync_work_episodes,
-    validate_work_episode_references,
+    SyncAnimeEpisodesOutcome, load_known_episodes, sync_anime_episodes,
+    validate_anime_episode_references,
 };
 use crate::read_transaction_time;
 use crate::{
@@ -315,7 +315,7 @@ async fn load_linked_pages(
             continue;
         };
         let provider: Provider = row.provider.parse()?;
-        let entity_type = parse_page_kind(&row.entity_type)?;
+        let entity_type = parse_entity_type(&row.entity_type)?;
         let page_key = PageKey::new(provider, entity_type, &row.address)?;
         let responses = responses_by_page
             .remove(&(row.provider, row.entity_type, row.address))
@@ -344,7 +344,7 @@ async fn load_linked_pages(
     let mut partial_source_pages = Vec::with_capacity(partial_source_rows.len());
     for row in partial_source_rows {
         let provider: Provider = row.provider.parse()?;
-        let entity_type = parse_page_kind(&row.entity_type)?;
+        let entity_type = parse_entity_type(&row.entity_type)?;
         partial_source_pages.push(PageKey::new(provider, entity_type, &row.address)?);
     }
 
@@ -516,7 +516,7 @@ async fn save_anime_in_tx(
     // always lock in the same order; see lock_relation_target_pages.
     crate::anime_relations::lock_relation_target_pages(tx, &input.relations_and_graph.relations)
         .await?;
-    upsert_work_shared_rows(tx, input).await?;
+    upsert_anime_shared_rows(tx, input).await?;
     let existing_anime = sqlx::query!(
         r#"
         SELECT
@@ -575,10 +575,10 @@ async fn save_anime_in_tx(
     replace_anime_details(tx, input.anime_id, &input.details).await?;
     replace_schedule_and_stats(tx, input.anime_id, &input.schedule_and_stats).await?;
     replace_relations_and_graph(tx, input.anime_id, &input.relations_and_graph).await?;
-    let SyncWorkEpisodesOutcome {
+    let SyncAnimeEpisodesOutcome {
         created_episode_ids,
         updated_episode_ids,
-    } = sync_work_episodes(tx, input.anime_id, &input.episodes).await?;
+    } = sync_anime_episodes(tx, input.anime_id, &input.episodes).await?;
     emit_anime_outbox_events(
         tx,
         input,
@@ -608,7 +608,7 @@ async fn save_anime_in_tx(
 /// # Errors
 ///
 /// Returns a database error when an insert or upsert fails.
-async fn upsert_work_shared_rows(
+async fn upsert_anime_shared_rows(
     tx: &mut Transaction<'_, Postgres>,
     input: &SaveAnimeInput,
 ) -> Result<(), Error> {
@@ -876,7 +876,7 @@ fn validate_save_input(input: &SaveAnimeInput) -> Result<(), Error> {
     validate_anime_details(&input.details)?;
     validate_schedule_and_stats(&input.schedule_and_stats)?;
     validate_relations_and_graph(&input.relations_and_graph)?;
-    validate_work_episode_references(&input.episodes)?;
+    validate_anime_episode_references(&input.episodes)?;
     Ok(())
 }
 
@@ -922,8 +922,8 @@ pub(crate) async fn insert_catalogue_outbox_event(
 /// # Errors
 ///
 /// Returns an invalid-argument error for text no migration defines.
-pub(crate) fn parse_page_kind(page_kind_text: &str) -> Result<EntityType, Error> {
-    match page_kind_text {
+pub(crate) fn parse_entity_type(entity_type_text: &str) -> Result<EntityType, Error> {
+    match entity_type_text {
         "anime" => Ok(EntityType::Anime),
         "episode" => Ok(EntityType::Episode),
         "character" => Ok(EntityType::Character),
@@ -1133,13 +1133,13 @@ mod tests {
 
     #[test]
     fn helpers_reject_unknown_values_and_corrupt_gzip() {
-        assert_eq!(parse_page_kind("anime").ok(), Some(EntityType::Anime));
-        assert_eq!(parse_page_kind("episode").ok(), Some(EntityType::Episode));
+        assert_eq!(parse_entity_type("anime").ok(), Some(EntityType::Anime));
+        assert_eq!(parse_entity_type("episode").ok(), Some(EntityType::Episode));
         assert_eq!(
-            parse_page_kind("character").ok(),
+            parse_entity_type("character").ok(),
             Some(EntityType::Character)
         );
-        assert!(matches!(parse_page_kind("unknown"), Err(e) if e.is_invalid_argument()));
+        assert!(matches!(parse_entity_type("unknown"), Err(e) if e.is_invalid_argument()));
 
         assert_eq!(status_to_proto_i32("FINISHED").ok(), Some(1));
         assert_eq!(status_to_proto_i32("UPCOMING").ok(), Some(2));

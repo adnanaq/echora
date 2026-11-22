@@ -10,7 +10,7 @@ use postgres_db::{
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::support::{CapturedLogs, build_work_save, insert_unmerged_work};
+use crate::support::{CapturedLogs, build_anime_save, insert_unmerged_anime};
 
 fn build_episode_reference(episode_id: Uuid, episode_number: i32) -> EpisodeReferenceInput {
     EpisodeReferenceInput {
@@ -57,11 +57,11 @@ async fn create_listed_episode(
     pool: &PgPool,
     episode_reference: EpisodeReferenceInput,
 ) -> Result<Uuid, postgres_db::Error> {
-    let anime_id = insert_unmerged_work(pool).await;
+    let anime_id = insert_unmerged_anime(pool).await;
     let episode_id = episode_reference.episode_id;
     save_anime(
         pool,
-        &build_work_save(anime_id, 1, "work-v1", vec![episode_reference]),
+        &build_anime_save(anime_id, 1, "work-v1", vec![episode_reference]),
     )
     .await?;
     Ok(episode_id)
@@ -79,11 +79,11 @@ async fn count_episode_rows(pool: &PgPool, table: &str, episode_id: Uuid) -> i64
 
 #[sqlx::test(migrations = "./migrations")]
 async fn save_anime_new_episode_id_for_listed_number_returns_unique_violation(pool: PgPool) {
-    let anime_id = insert_unmerged_work(&pool).await;
+    let anime_id = insert_unmerged_anime(&pool).await;
     let first_episode_id = Uuid::now_v7();
     save_anime(
         &pool,
-        &build_work_save(
+        &build_anime_save(
             anime_id,
             1,
             "work-v1",
@@ -93,7 +93,7 @@ async fn save_anime_new_episode_id_for_listed_number_returns_unique_violation(po
     .await
     .expect("first save creates episode 5");
 
-    let renamed_episode_save = build_work_save(
+    let renamed_episode_save = build_anime_save(
         anime_id,
         2,
         "work-v2",
@@ -233,7 +233,7 @@ async fn mark_episode_aired_missing_episode_returns_not_found(pool: PgPool) {
 }
 
 #[sqlx::test(migrations = "./migrations")]
-async fn mark_episode_aired_deleted_work_returns_not_found(pool: PgPool) {
+async fn mark_episode_aired_deleted_anime_returns_not_found(pool: PgPool) {
     let episode_id = create_listed_episode(&pool, build_episode_reference(Uuid::now_v7(), 1))
         .await
         .expect("work save creates the episode");
@@ -364,12 +364,12 @@ async fn save_episode_unchanged_hash_from_newer_merge_records_merge_version(pool
 
 #[sqlx::test(migrations = "./migrations")]
 async fn save_episode_number_held_by_another_episode_returns_unique_violation(pool: PgPool) {
-    let anime_id = insert_unmerged_work(&pool).await;
+    let anime_id = insert_unmerged_anime(&pool).await;
     let first_episode_id = Uuid::now_v7();
     let second_episode_id = Uuid::now_v7();
     save_anime(
         &pool,
-        &build_work_save(
+        &build_anime_save(
             anime_id,
             1,
             "work-v1",
@@ -411,11 +411,11 @@ async fn save_episode_deleted_episode_returns_not_found(pool: PgPool) {
 async fn save_anime_and_save_episode_sharing_new_language_at_once_both_succeed(pool: PgPool) {
     for attempt in 0..20 {
         let new_language = format!("x-shared{attempt}");
-        let anime_id = insert_unmerged_work(&pool).await;
+        let anime_id = insert_unmerged_anime(&pool).await;
         let episode_id = Uuid::now_v7();
         save_anime(
             &pool,
-            &build_work_save(
+            &build_anime_save(
                 anime_id,
                 1,
                 "work-v1",
@@ -434,8 +434,8 @@ async fn save_anime_and_save_episode_sharing_new_language_at_once_both_succeed(p
             is_filler: None,
             is_recap: None,
         }];
-        let mut work_save = build_work_save(anime_id, 2, "work-v2", vec![changed_reference]);
-        work_save.details.titles = vec![AnimeTitleInput {
+        let mut anime_save = build_anime_save(anime_id, 2, "work-v2", vec![changed_reference]);
+        anime_save.details.titles = vec![AnimeTitleInput {
             language: new_language.clone(),
             title: "Work title".to_owned(),
         }];
@@ -445,12 +445,12 @@ async fn save_anime_and_save_episode_sharing_new_language_at_once_both_succeed(p
             title: "Episode title".to_owned(),
         }];
 
-        let (work_outcome, episode_outcome) = tokio::join!(
-            save_anime(&pool, &work_save),
+        let (anime_outcome, episode_outcome) = tokio::join!(
+            save_anime(&pool, &anime_save),
             save_episode(&pool, &episode_save)
         );
 
-        work_outcome.unwrap_or_else(|error| panic!("attempt {attempt}: work save: {error}"));
+        anime_outcome.unwrap_or_else(|error| panic!("attempt {attempt}: work save: {error}"));
         if let Err(episode_error) = episode_outcome {
             assert!(
                 episode_error.is_version_conflict(),

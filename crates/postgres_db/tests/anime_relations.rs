@@ -10,7 +10,7 @@ use postgres_db::{
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::support::{build_work_save, insert_unmerged_work};
+use crate::support::{build_anime_save, insert_unmerged_anime};
 
 fn build_source_material(title: &str, xrefs: &[(&str, &str)]) -> AnimeSourceMaterialInput {
     AnimeSourceMaterialInput {
@@ -50,16 +50,17 @@ fn build_company(name: &str, xref_urls: &[(&str, &str)]) -> AnimeCompanyInput {
     }
 }
 
-async fn save_work_with_relations(
+async fn save_anime_with_relations(
     pool: &PgPool,
     anime_id: Uuid,
     expected_version: i64,
     merged_record_hash: &str,
     relations_and_graph: AnimeRelationsAndGraphInput,
 ) -> Result<(), postgres_db::Error> {
-    let mut work_save = build_work_save(anime_id, expected_version, merged_record_hash, Vec::new());
-    work_save.relations_and_graph = relations_and_graph;
-    save_anime(pool, &work_save).await.map(|_| ())
+    let mut anime_save =
+        build_anime_save(anime_id, expected_version, merged_record_hash, Vec::new());
+    anime_save.relations_and_graph = relations_and_graph;
+    save_anime(pool, &anime_save).await.map(|_| ())
 }
 
 async fn count_anime_edges(pool: &PgPool, first_id: Uuid, second_id: Uuid) -> i64 {
@@ -76,22 +77,22 @@ async fn count_anime_edges(pool: &PgPool, first_id: Uuid, second_id: Uuid) -> i6
 
 #[sqlx::test(migrations = "./migrations")]
 async fn link_anime_source_page_invalid_link_returns_error(pool: PgPool) {
-    let owning_anime_id = insert_unmerged_work(&pool).await;
-    let other_anime_id = insert_unmerged_work(&pool).await;
-    let work_page = PageKey::new(Provider::Mal, EntityType::Anime, "21").expect("valid page key");
+    let owning_anime_id = insert_unmerged_anime(&pool).await;
+    let other_anime_id = insert_unmerged_anime(&pool).await;
+    let anime_page = PageKey::new(Provider::Mal, EntityType::Anime, "21").expect("valid page key");
     let episode_page =
         PageKey::new(Provider::Mal, EntityType::Episode, "21").expect("valid page key");
-    link_anime_source_page(&pool, owning_anime_id, &work_page)
+    link_anime_source_page(&pool, owning_anime_id, &anime_page)
         .await
         .expect("first link succeeds");
 
     let episode_error = link_anime_source_page(&pool, owning_anime_id, &episode_page)
         .await
         .expect_err("an episode page cannot be a work's source");
-    let missing_error = link_anime_source_page(&pool, Uuid::now_v7(), &work_page)
+    let missing_error = link_anime_source_page(&pool, Uuid::now_v7(), &anime_page)
         .await
         .expect_err("a missing work cannot gain a page");
-    let taken_error = link_anime_source_page(&pool, other_anime_id, &work_page)
+    let taken_error = link_anime_source_page(&pool, other_anime_id, &anime_page)
         .await
         .expect_err("a page has at most one source work");
 
@@ -102,13 +103,13 @@ async fn link_anime_source_page_invalid_link_returns_error(pool: PgPool) {
 
 #[sqlx::test(migrations = "./migrations")]
 async fn link_anime_source_page_repeated_link_resolves_nothing(pool: PgPool) {
-    let anime_id = insert_unmerged_work(&pool).await;
-    let work_page = PageKey::new(Provider::Mal, EntityType::Anime, "21").expect("valid page key");
-    link_anime_source_page(&pool, anime_id, &work_page)
+    let anime_id = insert_unmerged_anime(&pool).await;
+    let anime_page = PageKey::new(Provider::Mal, EntityType::Anime, "21").expect("valid page key");
+    link_anime_source_page(&pool, anime_id, &anime_page)
         .await
         .expect("first link succeeds");
 
-    let resolved_count = link_anime_source_page(&pool, anime_id, &work_page)
+    let resolved_count = link_anime_source_page(&pool, anime_id, &anime_page)
         .await
         .expect("repeated link succeeds");
     let stored_version: i64 = sqlx::query_scalar("SELECT version FROM anime WHERE id = $1")
@@ -122,9 +123,9 @@ async fn link_anime_source_page_repeated_link_resolves_nothing(pool: PgPool) {
 }
 
 #[sqlx::test(migrations = "./migrations")]
-async fn save_anime_relation_to_stored_work_resolves_then_clears_graph_edges(pool: PgPool) {
-    let sequel_anime_id = insert_unmerged_work(&pool).await;
-    let prequel_anime_id = insert_unmerged_work(&pool).await;
+async fn save_anime_relation_to_stored_anime_resolves_then_clears_graph_edges(pool: PgPool) {
+    let sequel_anime_id = insert_unmerged_anime(&pool).await;
+    let prequel_anime_id = insert_unmerged_anime(&pool).await;
     link_anime_source_page(
         &pool,
         sequel_anime_id,
@@ -141,11 +142,11 @@ async fn save_anime_relation_to_stored_work_resolves_then_clears_graph_edges(poo
         ..AnimeRelationsAndGraphInput::default()
     };
 
-    save_work_with_relations(&pool, prequel_anime_id, 1, "work-v1", sequel_relation)
+    save_anime_with_relations(&pool, prequel_anime_id, 1, "work-v1", sequel_relation)
         .await
         .expect("save the relation");
     let edges_after_relation = count_anime_edges(&pool, prequel_anime_id, sequel_anime_id).await;
-    save_work_with_relations(
+    save_anime_with_relations(
         &pool,
         prequel_anime_id,
         2,
@@ -162,8 +163,8 @@ async fn save_anime_relation_to_stored_work_resolves_then_clears_graph_edges(poo
 
 #[sqlx::test(migrations = "./migrations")]
 async fn save_anime_shared_xrefs_reuse_stored_source_material_and_company(pool: PgPool) {
-    let first_anime_id = insert_unmerged_work(&pool).await;
-    let second_anime_id = insert_unmerged_work(&pool).await;
+    let first_anime_id = insert_unmerged_anime(&pool).await;
+    let second_anime_id = insert_unmerged_anime(&pool).await;
     let first_relations = AnimeRelationsAndGraphInput {
         source_materials: vec![
             build_source_material("Second Manga", &[("mal", "20")]),
@@ -201,10 +202,10 @@ async fn save_anime_shared_xrefs_reuse_stored_source_material_and_company(pool: 
         ..AnimeRelationsAndGraphInput::default()
     };
 
-    save_work_with_relations(&pool, first_anime_id, 1, "work-v1", first_relations)
+    save_anime_with_relations(&pool, first_anime_id, 1, "work-v1", first_relations)
         .await
         .expect("first work saves");
-    save_work_with_relations(&pool, second_anime_id, 1, "work-v1", second_relations)
+    save_anime_with_relations(&pool, second_anime_id, 1, "work-v1", second_relations)
         .await
         .expect("second work saves");
 
@@ -221,14 +222,14 @@ async fn save_anime_shared_xrefs_reuse_stored_source_material_and_company(pool: 
         source_material_titles,
         vec!["First Manga Renamed".to_owned(), "Second Manga".to_owned()]
     );
-    let first_work_links: i64 = sqlx::query_scalar(
+    let first_anime_links: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM anime_related_source_material WHERE anime_id = $1",
     )
     .bind(first_anime_id)
     .fetch_one(&pool)
     .await
     .expect("read source material links");
-    assert_eq!(first_work_links, 2);
+    assert_eq!(first_anime_links, 2);
     assert_eq!(
         company_names,
         vec!["Studio A Renamed".to_owned(), "Studio B".to_owned()]
@@ -237,8 +238,8 @@ async fn save_anime_shared_xrefs_reuse_stored_source_material_and_company(pool: 
 
 #[sqlx::test(migrations = "./migrations")]
 async fn save_anime_xrefs_naming_two_stored_rows_returns_invalid_argument(pool: PgPool) {
-    let first_anime_id = insert_unmerged_work(&pool).await;
-    let merging_anime_id = insert_unmerged_work(&pool).await;
+    let first_anime_id = insert_unmerged_anime(&pool).await;
+    let merging_anime_id = insert_unmerged_anime(&pool).await;
     let separate_relations = AnimeRelationsAndGraphInput {
         source_materials: vec![
             build_source_material("Manga One", &[("mal", "13")]),
@@ -253,7 +254,7 @@ async fn save_anime_xrefs_naming_two_stored_rows_returns_invalid_argument(pool: 
         ],
         ..AnimeRelationsAndGraphInput::default()
     };
-    save_work_with_relations(&pool, first_anime_id, 1, "work-v1", separate_relations)
+    save_anime_with_relations(&pool, first_anime_id, 1, "work-v1", separate_relations)
         .await
         .expect("separate rows save");
     let merged_source_material = AnimeRelationsAndGraphInput {
@@ -274,7 +275,7 @@ async fn save_anime_xrefs_naming_two_stored_rows_returns_invalid_argument(pool: 
         ..AnimeRelationsAndGraphInput::default()
     };
 
-    let source_material_error = save_work_with_relations(
+    let source_material_error = save_anime_with_relations(
         &pool,
         merging_anime_id,
         1,
@@ -284,7 +285,7 @@ async fn save_anime_xrefs_naming_two_stored_rows_returns_invalid_argument(pool: 
     .await
     .expect_err("xrefs of two stored source material rows must be refused");
     let company_error =
-        save_work_with_relations(&pool, merging_anime_id, 1, "work-v1", merged_company)
+        save_anime_with_relations(&pool, merging_anime_id, 1, "work-v1", merged_company)
             .await
             .expect_err("xrefs of two stored company rows must be refused");
 
@@ -337,33 +338,33 @@ async fn read_page_roles(
 
 #[sqlx::test(migrations = "./migrations")]
 async fn link_anime_source_page_partial_source_links_respect_roles(pool: PgPool) {
-    let linking_work_id = insert_unmerged_work(&pool).await;
-    let larger_work_id = insert_unmerged_work(&pool).await;
+    let linking_anime_id = insert_unmerged_anime(&pool).await;
+    let larger_anime_id = insert_unmerged_anime(&pool).await;
     let shared_page = PageKey::new(Provider::Mal, EntityType::Anime, "21").expect("valid page key");
-    link_partial_source_page(&pool, linking_work_id, &shared_page)
+    link_partial_source_page(&pool, linking_anime_id, &shared_page)
         .await
         .expect("link the linking work's partial page");
-    link_partial_source_page(&pool, larger_work_id, &shared_page)
+    link_partial_source_page(&pool, larger_anime_id, &shared_page)
         .await
         .expect("link the larger work's partial page");
 
-    link_anime_source_page(&pool, linking_work_id, &shared_page)
+    link_anime_source_page(&pool, linking_anime_id, &shared_page)
         .await
         .expect("the work's own partial page becomes its source");
-    let third_work_id = insert_unmerged_work(&pool).await;
-    let taken_error = link_anime_source_page(&pool, third_work_id, &shared_page)
+    let third_anime_id = insert_unmerged_anime(&pool).await;
+    let taken_error = link_anime_source_page(&pool, third_anime_id, &shared_page)
         .await
         .expect_err("the page already has a source work");
     let second_mal_page =
         PageKey::new(Provider::Mal, EntityType::Anime, "22").expect("valid page key");
-    link_partial_source_page(&pool, linking_work_id, &second_mal_page)
+    link_partial_source_page(&pool, linking_anime_id, &second_mal_page)
         .await
         .expect("link a second MAL page as a partial source");
-    let second_source_error = link_anime_source_page(&pool, linking_work_id, &second_mal_page)
+    let second_source_error = link_anime_source_page(&pool, linking_anime_id, &second_mal_page)
         .await
         .expect_err("a work holds one source page per provider");
-    let linking_work_version: i64 = sqlx::query_scalar("SELECT version FROM anime WHERE id = $1")
-        .bind(linking_work_id)
+    let linking_anime_version: i64 = sqlx::query_scalar("SELECT version FROM anime WHERE id = $1")
+        .bind(linking_anime_id)
         .fetch_one(&pool)
         .await
         .expect("read the version");
@@ -373,8 +374,8 @@ async fn link_anime_source_page_partial_source_links_respect_roles(pool: PgPool)
             .await
             .expect("read the page's links"),
         vec![
-            (larger_work_id, "partial_source".to_owned()),
-            (linking_work_id, "source".to_owned()),
+            (larger_anime_id, "partial_source".to_owned()),
+            (linking_anime_id, "source".to_owned()),
         ]
     );
     assert!(taken_error.is_invalid_argument());
@@ -383,9 +384,9 @@ async fn link_anime_source_page_partial_source_links_respect_roles(pool: PgPool)
         read_page_roles(&pool, &second_mal_page)
             .await
             .expect("read the second page's links"),
-        vec![(linking_work_id, "partial_source".to_owned())]
+        vec![(linking_anime_id, "partial_source".to_owned())]
     );
-    assert_eq!(linking_work_version, 2);
+    assert_eq!(linking_anime_version, 2);
 }
 
 fn build_relation_to(page_address: &str) -> AnimeRelationInput {
@@ -413,15 +414,15 @@ async fn count_update_events(pool: &PgPool, anime_id: Uuid) -> Result<i64, sqlx:
 }
 
 #[sqlx::test(migrations = "./migrations")]
-async fn link_anime_source_page_relating_works_get_version_merge_request_and_event(pool: PgPool) {
-    let merged_relating_id = insert_unmerged_work(&pool).await;
-    let unmerged_relating_id = insert_unmerged_work(&pool).await;
-    let linked_work_id = insert_unmerged_work(&pool).await;
+async fn link_anime_source_page_relating_anime_get_version_merge_request_and_event(pool: PgPool) {
+    let merged_relating_id = insert_unmerged_anime(&pool).await;
+    let unmerged_relating_id = insert_unmerged_anime(&pool).await;
+    let linked_anime_id = insert_unmerged_anime(&pool).await;
     let relations = AnimeRelationsAndGraphInput {
         relations: vec![build_relation_to("700")],
         ..AnimeRelationsAndGraphInput::default()
     };
-    save_work_with_relations(
+    save_anime_with_relations(
         &pool,
         merged_relating_id,
         1,
@@ -448,15 +449,15 @@ async fn link_anime_source_page_relating_works_get_version_merge_request_and_eve
         .await
         .expect("count the work\'s update events");
 
-    let relating_works = link_anime_source_page(
+    let relating_anime_count = link_anime_source_page(
         &pool,
-        linked_work_id,
+        linked_anime_id,
         &PageKey::new(Provider::Mal, EntityType::Anime, "700").expect("valid page key"),
     )
     .await
     .expect("the page links");
 
-    assert_eq!(relating_works, 2);
+    assert_eq!(relating_anime_count, 2);
     assert_eq!(
         read_anime_state(&pool, merged_relating_id)
             .await
@@ -482,11 +483,11 @@ async fn link_anime_source_page_relating_works_get_version_merge_request_and_eve
         0
     );
     assert_eq!(
-        count_anime_edges(&pool, merged_relating_id, linked_work_id).await,
+        count_anime_edges(&pool, merged_relating_id, linked_anime_id).await,
         2
     );
     assert_eq!(
-        count_anime_edges(&pool, unmerged_relating_id, linked_work_id).await,
+        count_anime_edges(&pool, unmerged_relating_id, linked_anime_id).await,
         2
     );
 }
@@ -495,9 +496,9 @@ async fn link_anime_source_page_relating_works_get_version_merge_request_and_eve
 async fn save_anime_relation_after_target_page_moved_follows_page_and_clears_old_edges(
     pool: PgPool,
 ) {
-    let relating_work_id = insert_unmerged_work(&pool).await;
-    let first_owner_id = insert_unmerged_work(&pool).await;
-    let second_owner_id = insert_unmerged_work(&pool).await;
+    let relating_anime_id = insert_unmerged_anime(&pool).await;
+    let first_owner_id = insert_unmerged_anime(&pool).await;
+    let second_owner_id = insert_unmerged_anime(&pool).await;
     let moved_page = PageKey::new(Provider::Mal, EntityType::Anime, "701").expect("valid page key");
     link_anime_source_page(&pool, first_owner_id, &moved_page)
         .await
@@ -506,11 +507,17 @@ async fn save_anime_relation_after_target_page_moved_follows_page_and_clears_old
         relations: vec![build_relation_to("701")],
         ..AnimeRelationsAndGraphInput::default()
     };
-    save_work_with_relations(&pool, relating_work_id, 1, "relating-v1", relations.clone())
-        .await
-        .expect("the relating work saves");
+    save_anime_with_relations(
+        &pool,
+        relating_anime_id,
+        1,
+        "relating-v1",
+        relations.clone(),
+    )
+    .await
+    .expect("the relating work saves");
     assert_eq!(
-        count_anime_edges(&pool, relating_work_id, first_owner_id).await,
+        count_anime_edges(&pool, relating_anime_id, first_owner_id).await,
         2
     );
 
@@ -519,13 +526,13 @@ async fn save_anime_relation_after_target_page_moved_follows_page_and_clears_old
         .execute(&pool)
         .await
         .expect("move the page to the second owner");
-    let relating_version = read_anime_state(&pool, relating_work_id)
+    let relating_version = read_anime_state(&pool, relating_anime_id)
         .await
         .expect("read the work\'s version")
         .0;
-    save_work_with_relations(
+    save_anime_with_relations(
         &pool,
-        relating_work_id,
+        relating_anime_id,
         relating_version,
         "relating-v2",
         relations,
@@ -534,18 +541,18 @@ async fn save_anime_relation_after_target_page_moved_follows_page_and_clears_old
     .expect("the relating work saves again");
 
     assert_eq!(
-        count_anime_edges(&pool, relating_work_id, second_owner_id).await,
+        count_anime_edges(&pool, relating_anime_id, second_owner_id).await,
         2
     );
     assert_eq!(
-        count_anime_edges(&pool, relating_work_id, first_owner_id).await,
+        count_anime_edges(&pool, relating_anime_id, first_owner_id).await,
         0
     );
 }
 
 #[sqlx::test(migrations = "./migrations")]
-async fn save_anime_relation_to_own_source_page_reaches_no_work(pool: PgPool) {
-    let anime_id = insert_unmerged_work(&pool).await;
+async fn save_anime_relation_to_own_source_page_reaches_no_anime(pool: PgPool) {
+    let anime_id = insert_unmerged_anime(&pool).await;
     link_anime_source_page(
         &pool,
         anime_id,
@@ -562,7 +569,7 @@ async fn save_anime_relation_to_own_source_page_reaches_no_work(pool: PgPool) {
         ..AnimeRelationsAndGraphInput::default()
     };
 
-    save_work_with_relations(&pool, anime_id, version, "self-v1", relations)
+    save_anime_with_relations(&pool, anime_id, version, "self-v1", relations)
         .await
         .expect("a relation to the work's own page saves");
 
@@ -570,24 +577,30 @@ async fn save_anime_relation_to_own_source_page_reaches_no_work(pool: PgPool) {
 }
 
 #[sqlx::test(migrations = "./migrations")]
-async fn link_anime_source_page_while_relating_work_saves_both_succeed(pool: PgPool) {
+async fn link_anime_source_page_while_relating_anime_saves_both_succeed(pool: PgPool) {
     for attempt in 0..20 {
         let page_address = format!("{}", 800 + attempt);
-        let relating_work_id = insert_unmerged_work(&pool).await;
-        let linked_work_id = insert_unmerged_work(&pool).await;
+        let relating_anime_id = insert_unmerged_anime(&pool).await;
+        let linked_anime_id = insert_unmerged_anime(&pool).await;
         let relations = AnimeRelationsAndGraphInput {
             relations: vec![build_relation_to(&page_address)],
             ..AnimeRelationsAndGraphInput::default()
         };
-        save_work_with_relations(&pool, relating_work_id, 1, "relating-v1", relations.clone())
-            .await
-            .unwrap_or_else(|error| panic!("attempt {attempt}: first save: {error}"));
+        save_anime_with_relations(
+            &pool,
+            relating_anime_id,
+            1,
+            "relating-v1",
+            relations.clone(),
+        )
+        .await
+        .unwrap_or_else(|error| panic!("attempt {attempt}: first save: {error}"));
         let page_key = PageKey::new(Provider::Mal, EntityType::Anime, page_address.clone())
             .expect("valid page key");
 
         let (link_outcome, save_outcome) = tokio::join!(
-            link_anime_source_page(&pool, linked_work_id, &page_key),
-            save_work_with_relations(&pool, relating_work_id, 2, "relating-v2", relations),
+            link_anime_source_page(&pool, linked_anime_id, &page_key),
+            save_anime_with_relations(&pool, relating_anime_id, 2, "relating-v2", relations),
         );
 
         link_outcome.unwrap_or_else(|error| panic!("attempt {attempt}: link: {error}"));
@@ -598,7 +611,7 @@ async fn link_anime_source_page_while_relating_work_saves_both_succeed(pool: PgP
             );
         }
         assert_eq!(
-            count_anime_edges(&pool, relating_work_id, linked_work_id).await,
+            count_anime_edges(&pool, relating_anime_id, linked_anime_id).await,
             2
         );
     }

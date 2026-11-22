@@ -9,11 +9,11 @@ use postgres_db::{
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::support::{build_work_save, insert_unmerged_work};
+use crate::support::{build_anime_save, insert_unmerged_anime};
 
 #[sqlx::test(migrations = "./migrations")]
 async fn load_anime_returns_undeleted_known_episodes(pool: PgPool) {
-    let anime_id = insert_unmerged_work(&pool).await;
+    let anime_id = insert_unmerged_anime(&pool).await;
     let listed_episode = EpisodeReferenceInput {
         episode_id: Uuid::now_v7(),
         episode_number: 1,
@@ -37,7 +37,7 @@ async fn load_anime_returns_undeleted_known_episodes(pool: PgPool) {
     };
     save_anime(
         &pool,
-        &build_work_save(
+        &build_anime_save(
             anime_id,
             1,
             "work-v1",
@@ -50,14 +50,14 @@ async fn load_anime_returns_undeleted_known_episodes(pool: PgPool) {
         .await
         .expect("delete episode 2");
 
-    let loaded_work = load_anime(&pool, anime_id).await.expect("load the work");
+    let loaded_anime = load_anime(&pool, anime_id).await.expect("load the work");
 
-    assert_eq!(loaded_work.known_episodes, vec![listed_episode]);
+    assert_eq!(loaded_anime.known_episodes, vec![listed_episode]);
 }
 
 #[sqlx::test(migrations = "./migrations")]
 async fn load_anime_never_fetched_source_page_returns_no_source_pages(pool: PgPool) {
-    let anime_id = insert_unmerged_work(&pool).await;
+    let anime_id = insert_unmerged_anime(&pool).await;
     sqlx::query(
         "INSERT INTO provider_page (provider, entity_type, address) VALUES ('mal', 'anime', '21')",
     )
@@ -73,9 +73,9 @@ async fn load_anime_never_fetched_source_page_returns_no_source_pages(pool: PgPo
     .await
     .expect("link the page");
 
-    let loaded_work = load_anime(&pool, anime_id).await.expect("load the work");
+    let loaded_anime = load_anime(&pool, anime_id).await.expect("load the work");
 
-    assert_eq!(loaded_work.source_pages, Vec::new());
+    assert_eq!(loaded_anime.source_pages, Vec::new());
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -117,7 +117,7 @@ async fn load_anime_stored_invalid_episode_address_returns_invalid_argument(pool
 
 #[sqlx::test(migrations = "./migrations")]
 async fn save_anime_timestamps_share_transaction_time(pool: PgPool) {
-    let anime_id = insert_unmerged_work(&pool).await;
+    let anime_id = insert_unmerged_anime(&pool).await;
     let new_episode = EpisodeReferenceInput {
         episode_id: Uuid::now_v7(),
         episode_number: 1,
@@ -127,12 +127,12 @@ async fn save_anime_timestamps_share_transaction_time(pool: PgPool) {
     };
     save_anime(
         &pool,
-        &build_work_save(anime_id, 1, "work-v1", vec![new_episode.clone()]),
+        &build_anime_save(anime_id, 1, "work-v1", vec![new_episode.clone()]),
     )
     .await
     .expect("the work saves");
 
-    let (work_updated_at, work_merged_at, episode_created_at, event_created_at): (
+    let (anime_updated_at, anime_merged_at, episode_created_at, event_created_at): (
         chrono::DateTime<chrono::Utc>,
         Option<chrono::DateTime<chrono::Utc>>,
         chrono::DateTime<chrono::Utc>,
@@ -150,18 +150,18 @@ async fn save_anime_timestamps_share_transaction_time(pool: PgPool) {
     .await
     .expect("read the save's timestamps");
 
-    assert_eq!(work_merged_at, Some(work_updated_at));
-    assert_eq!(episode_created_at, work_updated_at);
-    assert_eq!(event_created_at, work_updated_at);
+    assert_eq!(anime_merged_at, Some(anime_updated_at));
+    assert_eq!(episode_created_at, anime_updated_at);
+    assert_eq!(event_created_at, anime_updated_at);
 }
 
 #[sqlx::test(migrations = "./migrations")]
 async fn save_anime_unchanged_hash_from_newer_merge_records_merge_version(pool: PgPool) {
-    let anime_id = insert_unmerged_work(&pool).await;
-    save_anime(&pool, &build_work_save(anime_id, 1, "work-v1", Vec::new()))
+    let anime_id = insert_unmerged_anime(&pool).await;
+    save_anime(&pool, &build_anime_save(anime_id, 1, "work-v1", Vec::new()))
         .await
         .expect("the first merge saves");
-    let mut newer_merge_save = build_work_save(anime_id, 2, "work-v1", Vec::new());
+    let mut newer_merge_save = build_anime_save(anime_id, 2, "work-v1", Vec::new());
     newer_merge_save.merge_version = 2;
 
     let save_outcome = save_anime(&pool, &newer_merge_save)

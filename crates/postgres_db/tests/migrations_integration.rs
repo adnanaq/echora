@@ -1277,7 +1277,7 @@ async fn save_anime_and_link_page_persist_relations_xrefs_and_graph_edges() -> R
         .execute(&pool)
         .await?;
 
-    let first_work_input = SaveAnimeInput {
+    let first_anime_input = SaveAnimeInput {
         anime_id: anime_a,
         expected_version: 1,
         title: "Work A".to_owned(),
@@ -1351,7 +1351,7 @@ async fn save_anime_and_link_page_persist_relations_xrefs_and_graph_edges() -> R
         },
         episodes: Vec::new(),
     };
-    save_anime(&pool, &first_work_input).await?;
+    save_anime(&pool, &first_anime_input).await?;
 
     let target_before_link: Option<Uuid> = sqlx::query_scalar!(
         "SELECT target.anime_id
@@ -1412,7 +1412,7 @@ async fn save_anime_and_link_page_persist_relations_xrefs_and_graph_edges() -> R
     .unwrap_or_default();
     assert_eq!(source_edge_count, 1);
 
-    let second_work_input = SaveAnimeInput {
+    let second_anime_input = SaveAnimeInput {
         anime_id: anime_b,
         expected_version: 2,
         title: "Work B".to_owned(),
@@ -1431,9 +1431,9 @@ async fn save_anime_and_link_page_persist_relations_xrefs_and_graph_edges() -> R
                 }],
             }],
         },
-        ..first_work_input
+        ..first_anime_input
     };
-    save_anime(&pool, &second_work_input).await?;
+    save_anime(&pool, &second_anime_input).await?;
 
     let matching_companies: i64 = sqlx::query_scalar!(
         "SELECT COUNT(*) FROM company_xref WHERE provider = 'mal' AND source = $1",
@@ -1444,19 +1444,19 @@ async fn save_anime_and_link_page_persist_relations_xrefs_and_graph_edges() -> R
     .unwrap_or_default();
     assert_eq!(matching_companies, 1);
 
-    let first_work_company_id: Uuid = sqlx::query_scalar!(
+    let first_anime_company_id: Uuid = sqlx::query_scalar!(
         "SELECT company_id FROM anime_company WHERE anime_id = $1 AND role = 'STUDIO'",
         anime_a
     )
     .fetch_one(&pool)
     .await?;
-    let second_work_company_id: Uuid = sqlx::query_scalar!(
+    let second_anime_company_id: Uuid = sqlx::query_scalar!(
         "SELECT company_id FROM anime_company WHERE anime_id = $1 AND role = 'STUDIO'",
         anime_b
     )
     .fetch_one(&pool)
     .await?;
-    assert_eq!(first_work_company_id, second_work_company_id);
+    assert_eq!(first_anime_company_id, second_anime_company_id);
 
     sqlx::query!(
         "DELETE FROM graph_edge WHERE from_id IN ($1, $2) OR to_id IN ($1, $2)",
@@ -1813,7 +1813,7 @@ async fn save_anime_and_episode_lifecycle_load_save_mark_aired_and_delete()
     reason = "Integration test exercises timestamp precision, page replacement, and ownership conflict together"
 )]
 #[tokio::test]
-async fn sync_work_episodes_validates_page_ownership_replacement_and_timestamp_precision()
+async fn sync_anime_episodes_validates_page_ownership_replacement_and_timestamp_precision()
 -> Result<(), Box<dyn std::error::Error>> {
     use chrono::Timelike as _;
     use postgres_db::{EpisodeListEntryInput, EpisodeReferenceInput};
