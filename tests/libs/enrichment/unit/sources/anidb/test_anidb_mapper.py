@@ -385,6 +385,9 @@ def test_anime_from_anidb_one_piece_xml_maps_title_type_year_season_and_source(
         "FALL",
     )
     assert result["sources"] == [ANIDB_URL]
+    assert result["titles"]["ms"] == "Budak Getah"
+    assert {"bn", "gl"} <= result["titles"].keys()
+    assert not {"und", "my", "bd", "es-GA"} & result["titles"].keys()
 
 
 def test_anime_from_anidb_one_piece_xml_keeps_end_date_and_score(

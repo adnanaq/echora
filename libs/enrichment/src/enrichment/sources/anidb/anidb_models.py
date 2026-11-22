@@ -14,6 +14,25 @@ from pydantic import BaseModel, BeforeValidator, ConfigDict, model_validator
 # AniDB's placeholder for a date it does not know.
 _UNKNOWN_DATE = "1970-01-01"
 
+# AniDB's title language codes that mean something else, or nothing, in BCP 47,
+# from AniDB's language table. AniDB writes Malay as "my", which is Burmese in
+# BCP 47, and Burmese as "bur". Its "x-...t" codes are romanized titles.
+_TITLE_LANGUAGE_CODES: dict[str, str] = {
+    "bd": "bn",
+    "my": "ms",
+    "bur": "my",
+    "al": "sq",
+    "es-GA": "gl",
+    "es-CA": "ca",
+    "es-PV": "eu",
+    "x-jat": "ja-Latn",
+    "x-zht": "zh-Latn",
+    "x-kot": "ko-Latn",
+    "x-tht": "th-Latn",
+    "x-unk": "und",
+    "x-other": "mis",
+}
+
 
 def _whole_number_or_none(value: object) -> object:
     """Read AniDB text as a whole number; text that is not one becomes None.
@@ -73,10 +92,36 @@ def _known_date(value: object) -> object:
     return None if value == _UNKNOWN_DATE else value
 
 
+def _key_titles_by_language(titles: object) -> object:
+    """Key AniDB titles by the BCP 47 code of each AniDB title language.
+
+    Codes missing from AniDB's own list are standard already and stay as written,
+    for the canonical model to check. The parser builds each model once from the
+    raw XML, so the codes are resolved once; resolving a resolved code again
+    would read Burmese ("my") as AniDB's Malay.
+
+    Args:
+        titles: The titles keyed by AniDB language code, as the parser read them.
+
+    Returns:
+        The titles keyed by BCP 47 code, or the value unchanged when it is not a
+        mapping, for Pydantic to reject.
+
+    >>> _key_titles_by_language({"bd": "ওয়ান পিস্", "de": "One Piece"})
+    {'bn': 'ওয়ান পিস্', 'de': 'One Piece'}
+    """
+    if not isinstance(titles, dict):
+        return titles
+    return {
+        _TITLE_LANGUAGE_CODES.get(code, code): title for code, title in titles.items()
+    }
+
+
 WholeNumber = Annotated[int | None, BeforeValidator(_whole_number_or_none)]
 Count = Annotated[int, BeforeValidator(_count_or_zero)]
 Decimal = Annotated[float | None, BeforeValidator(_decimal_or_none)]
 KnownDate = Annotated[str | None, BeforeValidator(_known_date)]
+TitlesByLanguage = Annotated[dict[str, str], BeforeValidator(_key_titles_by_language)]
 
 # =============================================================================
 # SUPPORTING MODELS
@@ -126,7 +171,8 @@ class AniDBEpisode(BaseModel):
     rating: Decimal = None
     rating_votes: Count = 0
     summary: str | None = None  # matches XML tag name
-    titles: dict[str, str] = {}  # {lang_code: title} — "x-jat" normalized to "romaji"
+    # {language code: title}; the parser keys romanized Japanese as "romaji"
+    titles: TitlesByLanguage = {}
     streaming: dict[str, str] = {}  # {platform: url}
 
     @model_validator(mode="after")
@@ -243,9 +289,8 @@ class AniDBAnime(BaseModel):
     title_english: str | None = None  # type="official" lang="en"
     title_japanese: str | None = None  # type="official" lang="ja"
     synonyms: list[str] = []  # type="synonym" + type="short" (informal only)
-    title_others: dict[
-        str, str
-    ] = {}  # type="official" other langs → canonical Anime.titles
+    # type="official" titles in other languages → canonical Anime.titles
+    title_others: TitlesByLanguage = {}
 
     # Array elements
     characters: list[AniDBCharacter] = []
