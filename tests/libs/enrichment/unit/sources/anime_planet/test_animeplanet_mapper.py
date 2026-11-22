@@ -518,9 +518,9 @@ def test_character_from_animeplanet_appearances_give_animeography_and_mangaograp
     assert mapped["roles"] == ["MAIN"]
 
 
-def test_character_from_animeplanet_voice_actors_named_by_language_without_repeats() -> (
-    None
-):
+def test_character_from_animeplanet_voice_actors_named_by_language_without_repeats(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     tanaka = AnimePlanetVoiceActor(name="Mayumi Tanaka", url="/people/mayumi-tanaka")
     mapped = character_from_animeplanet(
         _character(
@@ -552,8 +552,9 @@ def test_character_from_animeplanet_voice_actors_named_by_language_without_repea
     assert [(actor["name"], actor["language"]) for actor in mapped["voice_actors"]] == [
         ("Mayumi Tanaka", "ja"),
         ("Colleen Clinkenbeard", "en"),
-        ("Some Actor", "pt"),
+        ("Some Actor", "und"),
     ]
+    assert "Anime-Planet flag 'pt' names no known language; using und" in caplog.text
     assert mapped["voice_actors"][0]["sources"] == [
         "https://www.anime-planet.com/people/mayumi-tanaka"
     ]

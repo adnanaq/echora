@@ -20,15 +20,14 @@ from enrichment.sources.anime_planet.anime_planet_character_crawler import (
     _extract_manga_roles,
     _extract_metadata,
     _extract_tags,
-    _extract_vas_from_cell,
     _fetch_character_data,
     _fetch_page_html,
+    _read_voice_actors_by_flag,
     fetch_animeplanet_character,
     fetch_animeplanet_characters,
 )
 from enrichment.sources.anime_planet.anime_planet_character_models import (
     AnimePlanetCharacter,
-    AnimePlanetVoiceActor,
 )
 from enrichment.sources.base.cloudflare_challenge import CloudflareChallengeError
 from enrichment.sources.base.framework import NullRepository
@@ -254,24 +253,27 @@ def test_extract_tags_tag_links_return_tag_names() -> None:
 
 
 @pytest.mark.parametrize("cell", ["", "<td>no flags here</td>"])
-def test_extract_vas_from_cell_without_flags_returns_empty_dict(cell: str) -> None:
-    assert _extract_vas_from_cell(cell) == {}
+def test_read_voice_actors_by_flag_without_flags_returns_empty_dict(cell: str) -> None:
+    assert _read_voice_actors_by_flag(cell) == {}
 
 
-def test_extract_vas_from_cell_flagged_links_return_actors_by_country() -> None:
+def test_read_voice_actors_by_flag_flagged_links_return_actors_by_country() -> None:
     cell = (
         '<div class="flag flagJP"></div>'
         '<a href="/people/mayumi-tanaka">Mayumi TANAKA</a>'
         '<div class="flag flagUS"></div>'
         '<a href="/people/colleen-clinkenbeard">Colleen CLINKENBEARD</a>'
+        '<div class="flag flagBR"></div>'
+        '<a href="/people/andre-rodrigues">Andre RODRIGUES</a>'
     )
 
-    result = _extract_vas_from_cell(cell)
+    actors_by_flag = _read_voice_actors_by_flag(cell)
 
-    assert result["jp"] == [
-        AnimePlanetVoiceActor(name="Mayumi TANAKA", url="/people/mayumi-tanaka")
+    assert list(actors_by_flag) == ["jp", "us", "br"]
+    assert actors_by_flag["jp"] == [
+        {"name": "Mayumi TANAKA", "url": "/people/mayumi-tanaka"}
     ]
-    assert result["us"][0].name == "Colleen CLINKENBEARD"
+    assert actors_by_flag["us"][0]["name"] == "Colleen CLINKENBEARD"
 
 
 def test_extract_anime_roles_page_without_section_returns_empty_list() -> None:
@@ -299,7 +301,7 @@ def test_extract_anime_roles_blank_role_returns_none_role() -> None:
 
     roles = _extract_anime_roles(html)
 
-    assert [(role.title, role.url, role.role) for role in roles] == [
+    assert [(role["title"], role["url"], role["role"]) for role in roles] == [
         ("Test Show", "/anime/test-show", None)
     ]
 
@@ -309,10 +311,10 @@ def test_extract_anime_roles_luffy_page_returns_main_role_with_voice_actors(
 ) -> None:
     roles = _extract_anime_roles(ap_character_html)
 
-    one_piece = next(role for role in roles if "One Piece" in role.title)
+    one_piece = next(role for role in roles if "One Piece" in role["title"])
     assert len(roles) == 25
-    assert one_piece.role == "Main"
-    assert "jp" in one_piece.voice_actors
+    assert one_piece["role"] == "Main"
+    assert "jp" in one_piece["voice_actors"]
 
 
 def test_extract_anime_roles_ad_annotated_heading_returns_empty_list(
@@ -369,9 +371,9 @@ def test_extract_manga_roles_luffy_page_returns_main_role(
 ) -> None:
     roles = _extract_manga_roles(ap_character_html)
 
-    main = next(role for role in roles if role.title == "One Piece")
+    main = next(role for role in roles if role["title"] == "One Piece")
     assert len(roles) == 16
-    assert (main.role, main.url) == ("Main", "/manga/one-piece")
+    assert (main["role"], main["url"]) == ("Main", "/manga/one-piece")
 
 
 @pytest.mark.parametrize("html", ["", _PAGE_WITHOUT_NAME])
@@ -414,6 +416,12 @@ def test_build_character_from_raw_luffy_page_returns_typed_character(
     )
     assert (character.gender, character.hair_color) == ("Male", "Black")
     assert character.description is not None
+    one_piece = next(
+        role for role in character.anime_roles if role.title == "One Piece"
+    )
+    assert {
+        language: len(actors) for language, actors in one_piece.voice_actors.items()
+    } == {"ja": 1, "en": 4, "fr": 2, "es": 5, "de": 1, "ko": 1}
     assert "Shanks" in character.description
     assert "Straw Hat" in character.alt_names
     assert (len(character.anime_roles), len(character.manga_roles)) == (25, 16)
