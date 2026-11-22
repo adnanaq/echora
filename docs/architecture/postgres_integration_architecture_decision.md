@@ -30,7 +30,7 @@ The catalogue database is owned by one service, the **PostgreSQL Service**, writ
 - **Stores works, episodes and characters.**
   - ~~A work's source and partial-source pages, its merged record and its approved per-field corrections. (ECHO-98)~~
   - ~~Episodes, with their pages and merged records. (ECHO-103)~~
-  - Characters, with their pages and merged records. (ECHO-104)
+  - ~~Characters, with their pages and merged records. (ECHO-104)~~
 - **Writes events through an outbox.** See [[event_driven_architecture|Event-Driven Architecture]].
   - ~~A change and its outbox row commit in one transaction. (ECHO-98)~~
   - A relay task in the same process publishes the rows to NATS. (ECHO-106)

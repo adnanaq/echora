@@ -66,27 +66,21 @@ on that provider's task queue, all at once:
 merge when every page has finished, or MERGE_FIRST_WAIT_MINUTES (10) after the first
 page was stored, whichever comes first, if a page changed, the work's pages were
 relinked, or a merge was requested:
-  match_characters(anime_id)
-    EnrichmentService.MatchCharacters  match only the cast entries not yet linked to a character;
-                                     entries already linked through character_source stay
-                                     matched, so a long cast is matched once, then in small steps
   merge_anime(anime_id)
-    PostgresService.LoadAnime         pages, corrections, AI text, known episodes and
-                                     characters, and the work's version
+    PostgresService.LoadAnime         pages, corrections, AI text, known episodes,
+                                     and the work's version
     EnrichmentService.MergeAnime      map the pages, merge them, apply corrections and AI text;
-                                     known episodes and characters keep their IDs, new ones
-                                     get a UUIDv7
+                                     known episodes keep their IDs, new ones get a UUIDv7
     PostgresService.SaveAnime         save if the version still matches; the same transaction
-                                     creates new episodes and characters and writes the outbox rows
-    returns                          the new episode and character IDs, and whether the
-                                     provider synopses changed
+                                     creates new episodes and writes the outbox rows
+    returns                          the new episode IDs, and whether the provider
+                                     synopses changed
 
 each page that finishes after that merge sets the merge flag again; pages that finish
 close together are merged once
 
 then, through start_entity_workflows on the update-service queue:
   start RefreshEpisodeWorkflow for each new or changed episode, after each merge
-  start RefreshCharacterWorkflow for each new or changed character, after each merge
   start WriteSynopsisWorkflow once every page has finished or failed, if any merge of this
   refresh reported changed provider synopses
 
@@ -151,7 +145,7 @@ When a MAL page shows a new episode, the refresh fetches that one page and merge
 
 The same workflow serves two other cases:
 
-- **First enrichment of a new work.** Every page is due, so every page is fetched, then the work is merged once, and each episode and character it lists starts its own first refresh. (ECHO-111)
+- **First enrichment of a new work.** Every page is due, so every page is fetched, then the work is merged once, and each episode it lists starts its own first refresh. Its characters come from the character list and refresh on their own. (ECHO-111) (ECHO-135)
 - **A page moving between works**, after a seed release or a review answer.
   - The links change in PostgreSQL. (ECHO-107)
   - Each affected work is merged again from its stored pages, and only a page new to the catalogue is fetched. (ECHO-111)
@@ -215,7 +209,6 @@ Starting values, tuned once real runs are measured:
 |---|---|---|---|
 | `refresh_page` | 5 minutes (browser-crawled pages are slow) | 1 minute | Exponential backoff, at most 5 attempts (ECHO-111) |
 | `list_pages`, `record_refresh` | 30 seconds | — | Exponential backoff, at most 5 attempts (ECHO-111) |
-| `match_characters` | 10 minutes | 1 minute | At most 5 attempts (ECHO-111) |
 | `merge_anime` | 2 minutes | — | At most 5 attempts; `ABORTED` is retried inside the attempt (ECHO-111) |
 | `merge_episode`, `merge_character` | 2 minutes | — | At most 5 attempts; `ABORTED` is retried inside the attempt (ECHO-112) |
 | `start_entity_workflows` | 1 minute | — | Exponential backoff, at most 5 attempts (ECHO-111) |
@@ -238,7 +231,8 @@ A work is **older** when it first aired more than `ON_DEMAND_REFRESH_AGE_YEARS` 
 |---|---|---|
 | Weekly sweep | Works that are not older, with every provider's statistics; episodes and characters of ongoing and upcoming works | Due under `next_refresh_at`, `REFRESH_AFTER_DAYS` (7) after the last success (ECHO-117) |
 | ~~Work's merge~~ | ~~Episodes of finished works~~ | ~~The work's weekly merge changed what it says about them: a changed list entry (ECHO-103)~~ |
-| Work's merge | Characters of finished works | The work's weekly merge added or changed their cast entry (ECHO-104) |
+| Character load | New characters | `CreateCharacter` created them from the character list (ECHO-135) |
+| Character discovery | Known characters a new or refreshed work lists | The work's character list names a character whose appearances do not include that work yet; its refresh gets `fetch_requested` (ECHO-135) |
 | Opened by a user | Any work, episode or character | The user opens its page and it is due. Bots never start a refresh, and the backend caps refresh starts per minute (P-ECHO-16) |
 | Episode tracking | Episodes of ongoing and upcoming works | At each episode's expected air time, then 1, 3 and 7 days after it aired (ECHO-118) |
 | Daily scores | Ongoing works and works finished in the last 90 days | Once a day, the pages that report scores (MAL, AniList, Kitsu) (ECHO-117) |

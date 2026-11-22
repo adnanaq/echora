@@ -28,13 +28,14 @@ Every stage of enrichment is stored, so nothing has to be fetched again to rebui
 | Stage | Where it is stored | Written by |
 |---|---|---|
 | ~~Each provider page, as received~~ | ~~`provider_page`, `provider_page_response`~~ | ~~`StorePage` (ECHO-97)~~ |
-| Which pages make up an entity | `anime_source`, `anime_partial_source`, `episode_source`, `character_source` | Merges, which link the pages they read (ECHO-97) (ECHO-104, ECHO-107, ECHO-133) |
+| Which pages make up an entity | `anime_source`, `anime_partial_source`, `episode_source` | Merges, which link the pages they read (ECHO-97) (ECHO-107, ECHO-133) |
+| Which pages make up a character | `character_source` | The character load, from the character list built from works' character lists (ECHO-135) |
 | Which pages make up an entity | `anime_source`, `anime_partial_source` | Seed load and review answers, which create works and move pages (ECHO-107) |
 | Approved corrections | `anime_field_correction` and the episode and character ones | Approval queue (P-ECHO-15) |
 | AI-written text | `anime_generated_text` | `WriteSynopsisWorkflow` (ECHO-115) |
 | ~~The merged work, as users see it~~ | ~~`anime` and its detail tables~~ | ~~`SaveAnime` (ECHO-98)~~ |
 | ~~The merged episode~~ | ~~`episode` and its detail tables~~ | ~~`SaveEpisode` (ECHO-103)~~ |
-| The merged character | `character` and its detail tables | `SaveCharacter` (ECHO-104) |
+| ~~The merged character~~ | ~~`character` and its detail tables~~ | ~~`SaveCharacter` (ECHO-104)~~ |
 
 Mapping a page to the canonical model happens in memory during each merge and is never stored. A mapper fix therefore reaches every entity on its next merge without fetching again.
 
@@ -367,13 +368,13 @@ erDiagram
 
 ### Characters
 
-Characters are shared between works, so a work links to them through `anime_character`.
+~~Characters are shared between works. A character's own pages list the works it appears in and its role in each, so `character_animeography` holds each work by its page, and the work is found by joining that page to `anime_source`, as a relation finds its target. A work's save writes nothing about characters. (ECHO-104)~~
 
 ```mermaid
 erDiagram
   direction LR
-  anime ||--o{ anime_character : "includes"
-  character ||--o{ anime_character : "appears in"
+  character ||--o{ character_source : "built from"
+  character ||--o{ character_animeography : "appears in"
   character ||--o{ character_name_variation : "spelled"
   character ||--o{ character_nickname : "nicknamed"
   character ||--o{ character_trait : "has trait"
@@ -384,18 +385,21 @@ erDiagram
   source_material ||--o{ character_mangaography : "features"
   character ||--o{ character_field_correction : "corrected by"
 
-  anime {
-    uuid id PK
-  }
   character {
     uuid id PK
     text name
     text description
     bigint version
   }
-  anime_character {
-    uuid anime_id PK
+  character_source {
+    uuid character_id FK
+    text provider PK
+    text address PK
+  }
+  character_animeography {
     uuid character_id PK
+    text anime_page_provider PK
+    text anime_page_address PK
     text role FK
   }
   character_name_variation {
@@ -625,7 +629,9 @@ WHERE r.from_anime_id = 'uuid-a';
 - ~~Nothing is stored twice, so a page move or a deleted work can never leave a relation pointing at the wrong work. A stored target ID did exactly that: after a move, two relations to one page pointed at two different works, and the graph lost the moved work's edges. (ECHO-133)~~
 - ~~Measured on PostgreSQL 18.7 with 40,000 works and 240,000 relations, the join costs about 0.04 ms more per query than a stored ID, with every query under 0.3 ms at p99. Graph reads are unaffected, since they read `graph_edge`. (ECHO-133)~~
 
-The same pattern links an episode to a character: `episode_character` stores the character's page, and the character is found by joining that page to `character_source`. (ECHO-103) (ECHO-133) (ECHO-104)
+~~The same pattern links an episode to a character: `episode_character` stores the character's page, and the character is found by joining that page to `character_source`. (ECHO-103) (ECHO-133) (ECHO-104)~~
+
+~~It also links a character to the works it appears in: `character_animeography` stores each work's page, and the work is found by joining that page to `anime_source`. A character can therefore name a work before the work is stored, and follows a page that moves between works. (ECHO-104)~~
 
 ~~Source material needs no unresolved state: a related source work always carries a title and type, so `SaveAnime` creates or finds its row through `source_material_xref` in the same transaction. (ECHO-102)~~
 
@@ -640,6 +646,9 @@ The same pattern links an episode to a character: `episode_character` stores the
   - ~~A save recomputes them when it links a page. (ECHO-102)~~
   - ~~Linking a page also raises the version, sets `merge_requested_at` and writes `anime.updated` for every work whose relation now points at the new owner, so caches and vector points do not keep the unresolved relation. (ECHO-133)~~
   - `CreateAnime`, `RelinkPages` and `DeleteAnime` recompute both sides when they link, move or remove a page. (ECHO-107)
+  - ~~Linking a page as a work's source, in `link_anime_source_page`, recomputes the `FEATURES` and `APPEARS_IN` edges of the characters whose `character_animeography` rows name the page, gives them a new version and, once merged, `character.updated`. (ECHO-104)~~
+  - Moving or removing the page does the same for those characters, in `RelinkPages` and `DeleteAnime`. (ECHO-107)
+  - ~~A save that names a work page holds the page's advisory lock shared and a page link holds it exclusively, so saves naming one page run side by side and a link waits for them, and they for it. (ECHO-104)~~
 
 ---
 
@@ -655,9 +664,9 @@ The same pattern links an episode to a character: `episode_character` stores the
 - A page relinked to or from a work, by `CreateAnime` or `RelinkPages`, increases the work's version. (ECHO-107)
 - A new AI-written text, saved by `SaveGeneratedText`, increases the work's version. (ECHO-115)
 
-**Characters a save creates.** Before creating a character the merge gave a new ID, `SaveAnime` looks up its page keys in `character_source`. When any of them already belongs to a character, such as one another work's save created a moment earlier, it links that character instead and the new ID is dropped. A save therefore never fails on a character another work created, and never loops. (ECHO-104)
+**Characters the character load creates.** `CreateCharacter` creates a character with its name and page links, from the character list built from works' character lists. Before linking, it takes an advisory lock on each page key in sorted order. When a page already belongs to a character, it links the entry's other pages to that character instead, so a repeated or concurrent load never creates a second one. (ECHO-135)
 
-**Not yet merged.** A work exists before its first merge. Episodes and characters a work's save creates follow the same rule: they exist from the work's lists, and their own first merge sets `merged_at`.
+**Not yet merged.** A work exists before its first merge. Episodes a work's save creates, and characters the character load creates, follow the same rule: they exist from a list, and their own first merge sets `merged_at`. (ECHO-103) (ECHO-135)
 
 - The seed load creates the work with its ID and page links, and nothing has been fetched. A linked page that was never fetched has a NULL `fetched_at` and `responses_hash`, which also makes it due. (ECHO-107)
 - ~~The work's `merged_at` is NULL, so `title`, `type` and `status` may be empty, and a check constraint requires all three once `merged_at` is set. The save that first sets `merged_at` writes the `created` event; every later changing save writes `updated`. (ECHO-98)~~
@@ -694,7 +703,7 @@ The workflow passes `REFRESH_AFTER_DAYS` with the call, since the setting belong
 
 - Characters are matched across providers with Jev, and an uncertain match becomes a `character_match` review item, as work matching does. (ECHO-110)
 - Two stored characters can still turn out to be one, when a character was first created from one provider in one work and from another provider in another. Finding such pairs is the character deduplication project. (P-ECHO-23)
-- The older ID survives (UUIDv7 IDs sort by creation time). In one transaction, the newer character's page links, cast rows and graph edges move to the survivor, and its episode appearances follow its pages, and the newer character keeps its row with `deleted_at` and `merged_into_character_id`, sends `character.deleted`, and the survivor gets `merge_requested_at`. Until reviews keep confirming them, such merges go through review like dead pages. (ECHO-104)
+- The older ID survives (UUIDv7 IDs sort by creation time). In one transaction, the newer character's page links, appearance rows and graph edges move to the survivor, and its episode appearances follow its pages, and the newer character keeps its row with `deleted_at` and `merged_into_character_id`, sends `character.deleted`, and the survivor gets `merge_requested_at`. Until reviews keep confirming them, such merges go through review like dead pages. (P-ECHO-23)
 
 **The merge version.** A mapping fix reaches every entity this way, including finished works and those over 30 years old, with no separate workflow.
 
@@ -711,8 +720,9 @@ A page view writes nothing: the backend decides whether an entity is due from th
 **Deleting an entity.** An entity is removed by setting `deleted_at`, never by deleting its row, so consumers can still read its version. Foreign keys with `ON DELETE CASCADE` do not fire on a soft delete, so the deleting transaction removes what hangs off the entity itself:
 
 - **A work** (`DeleteAnime`, such as when merged into another): its page links are removed, so the surviving work can claim those pages as sources; its own `anime_related_anime` rows are deleted; and every `graph_edge` row from or to it is deleted. Relations other works assert towards it keep their page key and need no change: once the page leaves the deleted work, the join finds no target, or the work that holds the page next. (ECHO-107) (ECHO-133)
+  - Characters whose `character_animeography` rows reach the work through those pages get a new version and `character.updated`, since their `anime_ids` change. (ECHO-107)
 - ~~**An episode**: its page links and every `graph_edge` row from or to it are deleted. (ECHO-103)~~
-- **A character**: its page links and every `graph_edge` row from or to it are deleted. (ECHO-104)
+- **A character** (by the character merge or the cleanup job): its page links, its `character_animeography` rows and every `graph_edge` row from or to it are deleted. (P-ECHO-23) (ECHO-116)
 - In every case the version increases once more, and the `deleted` event is written to the outbox, by the method that deletes the entity.
 
 Every query that joins an entity filters out deleted rows. (ECHO-108)
@@ -727,7 +737,7 @@ Every table is in fifth normal form:
 - **2NF and 3NF.** Every column describes the whole key of its own table and nothing else. A related work's title is not copied onto the relation, a theme song's episodes are not copied onto the song, and nothing that belongs to another entity is stored twice.
   - ~~A fact about a URL or a name is stored once, keyed by it, in a shared table: a URL's platform and language in `external_source`, a trailer's title and thumbnail in `trailer`, a theme's description in `theme`. A work's own tables hold only what depends on the work too, such as a link's `label`. (ECHO-133)~~
   - ~~Every language is a BCP 47 code and every country an ISO 3166-1 code, each stored once in `language` or `country` and referenced from every column that holds one: titles, external sources, subtitle languages and `country_of_origin`. One convention holds everywhere, and a code the model did not standardize cannot be stored. (ECHO-133)~~
-  - A relation's target work and an episode character's character are found by joining their page to its source table, never stored beside the page they follow from. (ECHO-133) (ECHO-104)
+  - ~~A relation's target work and an episode character's character are found by joining their page to its source table, never stored beside the page they follow from. (ECHO-133) (ECHO-104)~~
 - **4NF.** Facts that vary independently get separate tables. A streaming entry's subtitle languages are their own table, apart from its regions and flags.
 - **5NF.** A table with three or more key columns exists only when the fact really involves all of them together. `anime_company (anime_id, company_id, role)` stays three-way, because a company can animate one work and finance another, so the role cannot be rebuilt from two-way tables.
 
@@ -746,7 +756,7 @@ Every table is in fifth normal form:
 | ~~**Source material and companies deduplicate through cross-references**~~ | ~~A source URL already in `source_material_xref` or `company_xref` reuses its row. Names are never used to merge two rows, since similar names belong to different companies and works. (ECHO-102)~~ |
 | ~~**Corrections are stored per entity table**~~ | ~~`anime_field_correction` has a real foreign key to its work, instead of one table with an untyped entity reference (ECHO-98)~~ |
 | ~~**Corrections are stored per entity table**~~ | ~~`episode_field_correction` has a real foreign key to its episode (ECHO-103)~~ |
-| **Corrections are stored per entity table** | `character_field_correction` has a real foreign key to its character (ECHO-104) |
+| ~~**Corrections are stored per entity table**~~ | ~~`character_field_correction` has a real foreign key to its character (ECHO-104)~~ |
 | ~~**Typed values as protobuf bytes**~~ | ~~A correction or approval value can be any field, nested ones included. It is stored as the protobuf message of that field, with the message name beside it, and only the merge and the approval queue read it. (ECHO-98)~~ |
 
 ### Naming Rule
@@ -764,7 +774,7 @@ The canonical model in `anime.py` and `anime.proto` is the only vocabulary. Ever
 | List inside a stored object | A table `<parent table>_<field in singular>` | `ThemeSong.episodes` → `anime_opening_theme_episode` |
 | Single nested object | Columns `<field>_<subfield>`; a subfield that already names its field keeps its own name; an object with many subfields gets a one-to-one table `<entity>_<field>` | `score.weighted` → `score_weighted`; `aired_dates.aired_from` → `aired_from`; `broadcast` → `anime_broadcast` |
 | Nested object of lists | One table `<entity>_<field in singular>`, with a type column whose values are the subfield names in singular | `images.covers` → `anime_image` with `image_type = 'cover'` |
-| Link between two entities | A table `<entity>_<entity>`; the model fields read from it are listed in [[#Where Each Model Field Is Stored]] | `anime_character` gives `Character.roles` and `anime_ids` |
+| Link between two entities | A table `<entity>_<entity>`; the model fields read from it are listed in [[#Where Each Model Field Is Stored]] | `anime_company` gives `Anime.companies` |
 | Value shared across entities | A table named after the value, keyed by it | `genre`, `theme`, `trailer`, `external_source`, `language`, `country` |
 
 - A URL column is named `source`, or `<subject>_source` when a table holds more than one URL, such as `trailer.thumbnail_source`.
@@ -1313,7 +1323,7 @@ CREATE INDEX graph_edge_to_idx   ON graph_edge(to_id,   to_node_type,   edge_typ
 ```sql
 CREATE TABLE character (
   id                   uuid PRIMARY KEY,                -- UUIDv7, assigned when the character is first created
-  name                 text NOT NULL,                   -- from the work's cast list until the first merge
+  name                 text NOT NULL,                   -- from the character list until the first merge (ECHO-135)
   name_native          text,
   description          text,                            -- its spoiler is a character_spoiler row (ECHO-133)
   favorites            int CHECK (favorites >= 0),
@@ -1343,17 +1353,21 @@ CREATE INDEX character_refresh_order_idx
 CREATE VIEW character_visible AS
   SELECT * FROM character WHERE merged_at IS NOT NULL AND deleted_at IS NULL;
 
--- Written from each work's character list; Character.roles and anime_ids are read from here.
--- A cast is shown ordered by role, then the character's favorites, then ID, so no
--- provider's billing order is stored. (ECHO-133)
-CREATE TABLE anime_character (
-  anime_id       uuid NOT NULL REFERENCES anime(id) ON DELETE CASCADE,
-  character_id   uuid NOT NULL REFERENCES character(id) ON DELETE RESTRICT,
-  role           text NOT NULL REFERENCES character_role(value),
-  PRIMARY KEY (anime_id, character_id)
+-- Character.animeography: each work the character's pages list, held by the work's page,
+-- with the character's role there. The work is found by joining the page to anime_source;
+-- Character.roles and anime_ids are read through that join. A cast is shown ordered by
+-- role, then the character's favorites, then ID, so no billing order is stored. (ECHO-104)
+CREATE TABLE character_animeography (
+  character_id         uuid NOT NULL REFERENCES character(id) ON DELETE CASCADE,
+  anime_page_provider  text NOT NULL,
+  anime_page_address   text NOT NULL,
+  role                 text NOT NULL REFERENCES character_role(value),
+  PRIMARY KEY (character_id, anime_page_provider, anime_page_address)
 );
 
-CREATE INDEX anime_character_character_idx ON anime_character(character_id);
+-- A work's cast, and the characters to update when a page becomes a work's source
+CREATE INDEX character_animeography_anime_page_idx
+  ON character_animeography(anime_page_provider, anime_page_address);
 
 CREATE TABLE character_name_variation (
   character_id    uuid NOT NULL REFERENCES character(id) ON DELETE CASCADE,
@@ -1406,16 +1420,18 @@ CREATE TABLE character_mangaography (
   PRIMARY KEY (character_id, source_material_id)
 );
 
-CREATE INDEX character_mangaography_work_idx ON character_mangaography(source_material_id);
+CREATE INDEX character_mangaography_source_material_idx ON character_mangaography(source_material_id);
 ```
 
-A character page's animeography only confirms links the works already make. `anime_character` is written from each work's own character list, so a character is linked to a work once that work is stored.
+~~`SaveCharacter` replaces the character's `character_animeography` rows with the works its merge found on the character's own pages, each held by the work's page. A work that is not stored yet is linked once one of its pages becomes a work's source page. (ECHO-104)~~
 
-- `SaveAnime` replaces only its own work's `anime_character` rows. With each row it writes a `FEATURES` edge from the work to the character and an `APPEARS_IN` edge back, in the same transaction. (ECHO-104)
-- A character no work lists any more keeps its row until the cleanup job removes it. (ECHO-116)
-- Before looking up or linking a character's page keys, the save takes an advisory lock on each key in sorted order. Two works creating the same new character at once therefore link one character, and neither save fails. (ECHO-104)
-- `StorePage` raises the version and sets `merge_requested_at` on the character that owns a changed character page, as it does for work and episode pages. (ECHO-104)
-- `mangaography` is written to `character_mangaography` through `source_material_xref`, matching each entry's URLs. An entry whose URLs no stored source material holds is skipped, since a character page only confirms what works list, and `Ography` carries no source material type. (ECHO-104)
+- ~~When several of a character's rows reach one work, through that work's pages on different providers, the strongest role is shown: `MAIN`, then `SUPPORTING`, `BACKGROUND` and `UNKNOWN`. (ECHO-104)~~
+- ~~The `FEATURES` edge from a work to a character and the `APPEARS_IN` edge back are recomputed from the join when the character's appearances change, and when a page they name becomes a work's source page. Linking such a page also raises the character's version and, once it is merged, writes `character.updated`, since its `anime_ids` changed. (ECHO-104)~~
+- When a page they name stops being a work's source page, by a move or a delete, the edges, version and event follow the same way. (ECHO-107)
+- Characters are created by the character load, from the character list built from works' character lists, not by a work's save. (ECHO-135)
+- A character no stored work's pages reach any more keeps its row until the cleanup job removes it. (ECHO-116)
+- ~~`StorePage` raises the version and sets `merge_requested_at` on the character that owns a changed character page, as it does for work and episode pages. (ECHO-104)~~
+- ~~`mangaography` is written to `character_mangaography` through `source_material_xref`, matching each entry's URLs. An entry whose URLs no stored source material holds is skipped, since a character page only confirms what works list, and `Ography` carries no source material type. (ECHO-104)~~
 
 ---
 
@@ -1622,7 +1638,7 @@ CREATE TABLE character_source (
 - Each load reads an entity's pages and responses, and the merge maps them in memory.
   - ~~`LoadAnime` for a work. (ECHO-98)~~
   - ~~`LoadEpisode` for an episode. (ECHO-103)~~
-  - `LoadCharacter` for a character. (ECHO-104)
+  - ~~`LoadCharacter` for a character. (ECHO-104)~~
 - An entity's `sources` and `partial_sources` in the merged model come from these links. (ECHO-105)
 
 ---
@@ -1929,17 +1945,26 @@ LIMIT 1;
 > **Linear:** P-ECHO-16
 
 ```sql
--- All characters in a work, main characters first, then by favorites (ECHO-133)
-SELECT c.* FROM character c
-JOIN anime_character ac ON ac.character_id = c.id
-WHERE ac.anime_id = $1 AND c.deleted_at IS NULL
-ORDER BY array_position(ARRAY['MAIN', 'SUPPORTING', 'BACKGROUND', 'UNKNOWN'], ac.role),
-         c.favorites DESC NULLS LAST, c.id;
+-- All characters in a work, main characters first, then by favorites. A character listed
+-- under several of the work's pages shows its strongest role. (ECHO-104)
+SELECT c.id, c.name, c.favorites,
+       min(array_position(ARRAY['MAIN', 'SUPPORTING', 'BACKGROUND', 'UNKNOWN'], appearance.role)) AS role_rank
+FROM anime_source work_page
+JOIN character_animeography appearance
+  ON appearance.anime_page_provider = work_page.provider
+ AND appearance.anime_page_address = work_page.address
+JOIN character c ON c.id = appearance.character_id AND c.deleted_at IS NULL
+WHERE work_page.anime_id = $1
+GROUP BY c.id
+ORDER BY role_rank, c.favorites DESC NULLS LAST, c.id;
 
--- All works sharing a character
-SELECT a.* FROM anime a
-JOIN anime_character ac ON ac.anime_id = a.id
-WHERE ac.character_id = $1 AND a.deleted_at IS NULL;
+-- All works sharing a character (ECHO-104)
+SELECT DISTINCT a.* FROM character_animeography appearance
+JOIN anime_source work_page
+  ON work_page.provider = appearance.anime_page_provider
+ AND work_page.address = appearance.anime_page_address
+JOIN anime a ON a.id = work_page.anime_id AND a.deleted_at IS NULL
+WHERE appearance.character_id = $1;
 
 -- Relations the work's own pages list, with those no stored work holds shown by their page.
 -- The inverses other works assert are in graph_edge. (ECHO-133)
@@ -2016,7 +2041,7 @@ Providers that state both directions confirm the `SPIN_OFF` inverse: AniList and
 
 `graph_edge` holds the link and its type only. Everything else about an edge stays in the table it came from and is joined when asked:
 
-- a character's role in `anime_character`;
+- a character's role in `character_animeography`;
 - a company's role, which is the edge type itself;
 - each provider's own claim about a relation in `anime_related_anime_claim`.
 
@@ -2423,8 +2448,8 @@ Every field of the canonical models in `libs/common/src/common/models/anime.py` 
 - `id` → `character.id`, assigned when the character is first created.
 - `entity_type` → *read*, always `character`.
 - `sources` → `character_source`.
-- `roles`, `anime_ids` → *read* from `anime_character`.
-- `animeography` → confirms `anime_character` links, which works write.
+- `roles`, `anime_ids` → *read* from `character_animeography`, joined to `anime_source`.
+- `animeography` → `character_animeography`, each work held by its page.
 - `mangaography` → `character_mangaography`.
 - `traits` → `character_trait`. `name_variations` → `character_name_variation`. `nicknames` → `character_nickname`. `images` → `character_image`.
 - `attributes` → `character_attribute`. `spoilers` → `character_spoiler`, the description spoiler included.

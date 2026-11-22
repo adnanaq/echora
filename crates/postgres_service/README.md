@@ -14,6 +14,8 @@ The service is defined in `protos/postgres_service/v1/postgres_service.proto`.
 | `LoadEpisode` | Returns an episode's pages, list entries, corrections and version |
 | `SaveEpisode` | Saves a merged episode |
 | `MarkEpisodeAired` | Writes the episode's aired notification once |
+| `LoadCharacter` | Returns a character's pages, corrections and version |
+| `SaveCharacter` | Saves a merged character, with the works its `animeography` names, each by its work page |
 
 The server also answers `grpc.health.v1.Health`.
 
@@ -21,7 +23,9 @@ The server also answers `grpc.health.v1.Health`.
 
 - Every proto message is taken apart with each field named and no `..`, and every enum value has its own arm with no `_`. A field or value added to the proto fails the build until the mapping handles it.
 - An enum number this build does not know is refused with `INVALID_ARGUMENT`.
-- `SaveAnime` and `SaveEpisode` hash a canonical form of the merged record. Maps are encoded in key order, which is why `build.rs` asks `prost` for `BTreeMap`.
+- `SaveAnime`, `SaveEpisode` and `SaveCharacter` hash a canonical form of the merged record. A character's `roles` and `anime_ids` are left out, since they are read through the works its pages name. Maps are encoded in key order, which is why `build.rs` asks `prost` for `BTreeMap`.
+- `SaveCharacter` turns each `animeography` URL into a work page key and each `mangaography` URL into a source material identifier; a URL that names no such page is left out.
+- A page key's address is lowercased, as work matching builds page keys, so a slug written with capitals names the same stored page. Character page URLs are read in the singular (`/character/`) and in the plural (`/characters/`, as Kitsu and Anime-Planet write them).
 - `StorePage` refuses a page marked dead. Only a review or the provider's two "not found" answers mark a page dead.
 
 ## Status Codes

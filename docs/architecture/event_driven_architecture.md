@@ -141,7 +141,7 @@ The `version` is a counter on each entity that its save increases in the transac
 
 - ~~on each work (ECHO-98),~~
 - ~~on each episode (ECHO-103),~~
-- on each character (ECHO-104).
+- ~~on each character (ECHO-104).~~
 
 ### Created, updated and deleted
 
@@ -152,14 +152,16 @@ The `version` is a counter on each entity that its save increases in the transac
 - **`created`** means the entity's first merge was saved. A new anime listed by five providers never seen before is fetched page by page, merged once and saved once, so it sends one `anime.created`, then one `episode.created` and one `character.created` for each episode and character it lists.
   - ~~A work the seed load created has a row before its first merge, with `merged_at` empty, and sends nothing until then. Its first save sends `anime.created`. (ECHO-98)~~
   - ~~An episode's first save sends `episode.created`. (ECHO-103)~~
-  - A character's first save sends `character.created`. (ECHO-104)
+  - ~~A character's first save sends `character.created`. (ECHO-104)~~
 - **`updated`** means an existing entity was saved with changes, such as a refreshed page changing a field or a new provider page joining it.
   - ~~A work's save sends `anime.updated`. (ECHO-98)~~
   - ~~An episode's save sends `episode.updated`. (ECHO-103)~~
-  - A character's save sends `character.updated`. (ECHO-104)
+  - ~~A character's save sends `character.updated`. (ECHO-104)~~
+  - ~~Linking a work page sends `character.updated` for each merged character whose appearances name that page, since its `anime_ids` change. (ECHO-104)~~
+  - Moving or removing a work page sends `character.updated` for those characters the same way. (ECHO-107)
 - **`deleted`** means the entity was removed. The row stays with `deleted_at` set, and the version increases once more.
   - A work merged into another is removed by `DeleteAnime`. (ECHO-107)
-  - A character merged into another is removed by the character merge. (ECHO-104)
+  - A character merged into another is removed by the character merge. (P-ECHO-23)
   - A character no work links to any more is removed by the cleanup job. (ECHO-116)
 - ~~A save that changes nothing sends no event. (ECHO-98)~~
 
@@ -179,7 +181,7 @@ Each save stores the merged entity in its tables (see [[Database Schema]]) and w
 
 - ~~`SaveAnime` for a work (ECHO-98)~~,
 - ~~`SaveEpisode` for an episode (ECHO-103)~~,
-- `SaveCharacter` for a character (ECHO-104).
+- ~~`SaveCharacter` for a character (ECHO-104).~~
 
 - **Version check.** The save writes only if the entity's version still equals `expected_version` from its load. Otherwise it returns `ABORTED`. Every save checks it, as listed under [[event_schema_specification#PostgresService (planned)|Event Schema Specification]].
   - The merge activity then loads, merges and saves again. (ECHO-111)
@@ -197,8 +199,8 @@ const ANIME_UPDATED_SUBJECT: &str = "anime.updated";
 const HASH_FORMAT: i16 = 1;
 
 let mut transaction = pool.begin().await?;
-// Canonical hash of everything the save writes: the work and its episode and character lists
-let record_hash = hash_merged_record(&merged_anime, &episodes, &characters);
+// Canonical hash of everything the save writes: the work and its episode list
+let record_hash = hash_merged_record(&merged_anime, &episodes);
 
 let stored_work = sqlx::query!(
     "SELECT version, merged_record_hash, merged_at FROM anime WHERE id = $1 FOR UPDATE",
@@ -267,7 +269,6 @@ fn map_db_error(error: &postgres_db::Error) -> Status {
 - ~~its songs, streaming, links, statistics, broadcast and hiatus (ECHO-101);~~
 - ~~its relations, source material, companies and `graph_edge` rows, resolving pending relations (ECHO-102);~~
 - ~~the episodes the merge gave new IDs (ECHO-103);~~
-- the characters the merge gave new IDs (ECHO-104);
 - ~~a status notification row when the work's status changed (ECHO-98).~~
 
 ~~It sorts its keys and writes the shared tables (`genre`, `tag`, `company`, `character`, `graph_edge` and the others) in a fixed order, so two refreshes saving at once take their locks in the same order and cannot deadlock. (ECHO-98)~~
