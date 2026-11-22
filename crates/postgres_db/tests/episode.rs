@@ -3,9 +3,9 @@
 mod support;
 
 use postgres_db::{
-    EPISODE_HASH_FORMAT, EpisodeCharacterInput, EpisodeReferenceInput, EpisodeStreamingInput,
-    EpisodeTitleInput, PageKey, PageKind, Provider, SaveEpisodeInput, delete_episode, load_episode,
-    mark_episode_aired, save_anime, save_episode,
+    AnimeTitleInput, EPISODE_HASH_FORMAT, EntityType, EpisodeCharacterInput, EpisodeListEntryInput,
+    EpisodeReferenceInput, EpisodeStreamingInput, EpisodeTitleInput, PageKey, Provider,
+    SaveEpisodeInput, delete_episode, load_episode, mark_episode_aired, save_anime, save_episode,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -131,7 +131,7 @@ async fn save_episode_score_rounding_to_one_thousand_returns_invalid_argument(po
 async fn load_episode_never_fetched_page_returns_no_pages(pool: PgPool) {
     let mut episode_reference = build_episode_reference(Uuid::now_v7(), 1);
     episode_reference.page_keys =
-        vec![PageKey::new(Provider::Mal, PageKind::Episode, "1").expect("valid page key")];
+        vec![PageKey::new(Provider::Mal, EntityType::Episode, "1").expect("valid page key")];
     let episode_id = create_listed_episode(&pool, episode_reference)
         .await
         .expect("work save creates the episode");
@@ -142,7 +142,7 @@ async fn load_episode_never_fetched_page_returns_no_pages(pool: PgPool) {
 
     assert_eq!(loaded_episode.pages, Vec::new());
     assert_eq!(
-        count_episode_rows(&pool, "episode_provider_page", episode_id).await,
+        count_episode_rows(&pool, "episode_source", episode_id).await,
         1
     );
 }
@@ -151,8 +151,8 @@ async fn load_episode_never_fetched_page_returns_no_pages(pool: PgPool) {
 async fn save_anime_episode_pages_from_two_providers_links_both(pool: PgPool) {
     let mut episode_reference = build_episode_reference(Uuid::now_v7(), 1);
     episode_reference.page_keys = vec![
-        PageKey::new(Provider::Mal, PageKind::Episode, "1").expect("valid page key"),
-        PageKey::new(Provider::AniDb, PageKind::Episode, "1").expect("valid page key"),
+        PageKey::new(Provider::Mal, EntityType::Episode, "1").expect("valid page key"),
+        PageKey::new(Provider::AniDb, EntityType::Episode, "1").expect("valid page key"),
     ];
 
     let episode_id = create_listed_episode(&pool, episode_reference)
@@ -160,7 +160,7 @@ async fn save_anime_episode_pages_from_two_providers_links_both(pool: PgPool) {
         .expect("work save creates the episode");
 
     let linked_providers: Vec<String> = sqlx::query_scalar(
-        "SELECT provider FROM episode_provider_page WHERE episode_id = $1 ORDER BY provider",
+        "SELECT provider FROM episode_source WHERE episode_id = $1 ORDER BY provider",
     )
     .bind(episode_id)
     .fetch_all(&pool)
@@ -182,7 +182,7 @@ async fn save_episode_empty_lists_removes_previous_rows(pool: PgPool) {
     filled_save.images = vec!["https://example.com/placeholder.jpg".to_owned()];
     filled_save.streaming = vec![EpisodeStreamingInput {
         platform: "crunchyroll".to_owned(),
-        url: "https://example.com/watch/1".to_owned(),
+        source: "https://example.com/watch/1".to_owned(),
     }];
     filled_save.characters = vec![EpisodeCharacterInput {
         character_page_provider: "mal".to_owned(),
@@ -192,6 +192,18 @@ async fn save_episode_empty_lists_removes_previous_rows(pool: PgPool) {
     save_episode(&pool, &filled_save)
         .await
         .expect("first merge stores the lists");
+    let stored_platform: String = sqlx::query_scalar(
+        "SELECT platform FROM external_source WHERE source = 'https://example.com/watch/1'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("the streaming URL is stored once with its platform");
+    assert_eq!(stored_platform, "crunchyroll");
+    let stored_languages: Vec<String> = sqlx::query_scalar("SELECT code FROM language")
+        .fetch_all(&pool)
+        .await
+        .expect("read the language codes");
+    assert_eq!(stored_languages, vec!["en".to_owned()]);
 
     save_episode(&pool, &build_episode_save(episode_id, 2, "episode-v2"))
         .await
@@ -393,4 +405,57 @@ async fn save_episode_deleted_episode_returns_not_found(pool: PgPool) {
         .expect_err("a deleted episode cannot be saved");
 
     assert!(save_error.is_not_found());
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn save_anime_and_save_episode_sharing_new_language_at_once_both_succeed(pool: PgPool) {
+    for attempt in 0..20 {
+        let new_language = format!("x-shared{attempt}");
+        let anime_id = insert_unmerged_work(&pool).await;
+        let episode_id = Uuid::now_v7();
+        save_anime(
+            &pool,
+            &build_work_save(
+                anime_id,
+                1,
+                "work-v1",
+                vec![build_episode_reference(episode_id, 1)],
+            ),
+        )
+        .await
+        .unwrap_or_else(|error| panic!("attempt {attempt}: first work save: {error}"));
+
+        let mut changed_reference = build_episode_reference(episode_id, 1);
+        changed_reference.list_entries = vec![EpisodeListEntryInput {
+            provider: Provider::Mal,
+            title: Some(format!("Listed title {attempt}")),
+            aired_at: None,
+            duration_seconds: None,
+            is_filler: None,
+            is_recap: None,
+        }];
+        let mut work_save = build_work_save(anime_id, 2, "work-v2", vec![changed_reference]);
+        work_save.details.titles = vec![AnimeTitleInput {
+            language: new_language.clone(),
+            title: "Work title".to_owned(),
+        }];
+        let mut episode_save = build_episode_save(episode_id, 1, "episode-v1");
+        episode_save.titles = vec![EpisodeTitleInput {
+            language: new_language,
+            title: "Episode title".to_owned(),
+        }];
+
+        let (work_outcome, episode_outcome) = tokio::join!(
+            save_anime(&pool, &work_save),
+            save_episode(&pool, &episode_save)
+        );
+
+        work_outcome.unwrap_or_else(|error| panic!("attempt {attempt}: work save: {error}"));
+        if let Err(episode_error) = episode_outcome {
+            assert!(
+                episode_error.is_version_conflict(),
+                "attempt {attempt}: episode save failed with {episode_error}"
+            );
+        }
+    }
 }

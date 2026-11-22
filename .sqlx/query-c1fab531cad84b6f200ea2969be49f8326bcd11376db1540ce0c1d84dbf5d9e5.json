@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO theme (name, description)\n         SELECT name, description\n         FROM UNNEST($1::text[], $2::text[]) AS entry(name, description)\n         ON CONFLICT (name) DO UPDATE SET description = EXCLUDED.description\n         WHERE EXCLUDED.description IS NOT NULL\n           AND theme.description IS DISTINCT FROM EXCLUDED.description",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "TextArray",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c1fab531cad84b6f200ea2969be49f8326bcd11376db1540ce0c1d84dbf5d9e5"
+}

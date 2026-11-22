@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO graph_edge (from_id, from_node_type, to_id, to_node_type, edge_type)\n         SELECT from_id, 'anime', to_id, 'anime', edge_type\n         FROM UNNEST($1::uuid[], $2::uuid[], $3::text[]) AS entry(from_id, to_id, edge_type)\n         ON CONFLICT DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "UuidArray",
+        "UuidArray",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "b5aa3e8765790d1b289e9c34d294cb45678906e8acac978c48633b50117615a3"
+}

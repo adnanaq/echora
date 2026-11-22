@@ -21,6 +21,14 @@ const MIN_NOT_FOUND_OBSERVATIONS: i32 = 2;
 /// Minimum elapsed time since the first 404 before a page is considered dead.
 const MIN_MISSING_DURATION: TimeDelta = TimeDelta::days(1);
 
+/// Furthest a fetch time may lie ahead of the database's clock.
+///
+/// A fetch stamped later than this counts as the newest answer and would block every
+/// real fetch of the page after it, so it is refused. Five minutes covers the clock
+/// drift between a fetching worker and the database without letting a wrong clock
+/// through.
+const MAX_FETCH_CLOCK_AHEAD: TimeDelta = TimeDelta::minutes(5);
+
 /// Supported external anime metadata providers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Provider {
@@ -241,46 +249,48 @@ impl fmt::Display for Address {
     }
 }
 
-/// Kind of provider page stored in PostgreSQL.
+/// Type of catalogue entity, which is also what a provider page describes.
+///
+/// Matches `EntityType` in the canonical model and `shared_proto.v1.EntityType`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum PageKind {
-    /// Work or anime page.
+pub enum EntityType {
+    /// A work (anime).
     Anime,
-    /// Episode page.
-    Episode,
-    /// Character page.
+    /// A character.
     Character,
+    /// An episode of a work.
+    Episode,
 }
 
-impl PageKind {
-    /// Returns the lookup table key for this page kind.
+impl EntityType {
+    /// Returns the lookup table key for this entity type.
     ///
     /// # Examples
     ///
     /// ```
-    /// # use postgres_db::PageKind;
-    /// assert_eq!(PageKind::Anime.as_str(), "anime");
+    /// # use postgres_db::EntityType;
+    /// assert_eq!(EntityType::Anime.as_str(), "anime");
     /// ```
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Anime => "anime",
-            Self::Episode => "episode",
             Self::Character => "character",
+            Self::Episode => "episode",
         }
     }
 
-    /// Returns the `shared_proto.v1.PageKind` enum number of this page kind.
+    /// Returns the `shared_proto.v1.EntityType` enum number of this entity type.
     const fn as_proto_i32(self) -> i32 {
         match self {
             Self::Anime => 1,
-            Self::Episode => 2,
-            Self::Character => 3,
+            Self::Character => 2,
+            Self::Episode => 3,
         }
     }
 }
 
-impl fmt::Display for PageKind {
+impl fmt::Display for EntityType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
     }
@@ -291,7 +301,7 @@ struct ProtoPageKey {
     #[prost(string, tag = "1")]
     provider: String,
     #[prost(int32, tag = "2")]
-    page_kind: i32,
+    entity_type: i32,
     #[prost(string, tag = "3")]
     address: String,
 }
@@ -301,38 +311,39 @@ struct ProtoPageKey {
 /// # Examples
 ///
 /// ```
-/// # use postgres_db::{encode_page_key_proto, PageKey, PageKind, Provider};
-/// let key = PageKey::new(Provider::Mal, PageKind::Anime, "21")?;
+/// # use postgres_db::{encode_page_key_proto, PageKey, EntityType, Provider};
+/// let key = PageKey::new(Provider::Mal, EntityType::Anime, "21")?;
 /// let bytes = encode_page_key_proto(&key);
-/// assert!(!bytes.is_empty());
+/// // provider "mal" (field 1), entity type ANIME = 1 (field 2), address "21" (field 3)
+/// assert_eq!(bytes, b"\x0a\x03mal\x10\x01\x1a\x0221");
 /// # Ok::<(), postgres_db::Error>(())
 /// ```
 #[must_use]
 pub fn encode_page_key_proto(page_key: &PageKey) -> Vec<u8> {
     ProtoPageKey {
         provider: page_key.provider.as_str().to_owned(),
-        page_kind: page_key.page_kind.as_proto_i32(),
+        entity_type: page_key.entity_type.as_proto_i32(),
         address: page_key.address.as_str().to_owned(),
     }
     .encode_to_vec()
 }
 
-/// Identifies a provider page by provider, page kind, and address.
+/// Identifies a provider page by provider, entity type, and address.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PageKey {
     provider: Provider,
-    page_kind: PageKind,
+    entity_type: EntityType,
     address: Address,
 }
 
 impl PageKey {
-    /// Creates a validated page key for `provider`, `page_kind`, and `address`.
+    /// Creates a validated page key for `provider`, `entity_type`, and `address`.
     ///
     /// # Examples
     ///
     /// ```
-    /// # use postgres_db::{PageKey, PageKind, Provider};
-    /// let key = PageKey::new(Provider::Kitsu, PageKind::Anime, "cowboy-bebop")?;
+    /// # use postgres_db::{PageKey, EntityType, Provider};
+    /// let key = PageKey::new(Provider::Kitsu, EntityType::Anime, "cowboy-bebop")?;
     /// assert_eq!(key.provider(), Provider::Kitsu);
     /// assert_eq!(key.address().as_str(), "cowboy-bebop");
     /// # Ok::<(), postgres_db::Error>(())
@@ -343,13 +354,13 @@ impl PageKey {
     /// Returns an invalid-argument error when `address` fails `provider` validation.
     pub fn new(
         provider: Provider,
-        page_kind: PageKind,
+        entity_type: EntityType,
         address: impl Into<String>,
     ) -> Result<Self, Error> {
         let address = Address::new(provider, address)?;
         Ok(Self {
             provider,
-            page_kind,
+            entity_type,
             address,
         })
     }
@@ -360,10 +371,10 @@ impl PageKey {
         self.provider
     }
 
-    /// Returns the entity kind for this page key.
+    /// Returns the entity type this page key's page describes.
     #[must_use]
-    pub const fn page_kind(&self) -> PageKind {
-        self.page_kind
+    pub const fn entity_type(&self) -> EntityType {
+        self.entity_type
     }
 
     /// Returns the validated address for this page key.
@@ -483,13 +494,26 @@ fn is_stale_observation(
 ///
 /// ```
 /// # use postgres_db::{compute_responses_hash, PageResponse};
-/// let responses = vec![PageResponse {
+/// let main_response = PageResponse {
 ///     request_name: "main".to_owned(),
 ///     content_type: "application/json".to_owned(),
 ///     body: b"{}".to_vec(),
-/// }];
-/// let digest = compute_responses_hash(&responses);
-/// assert_eq!(digest.len(), 64);
+/// };
+/// let characters_response = PageResponse {
+///     request_name: "characters".to_owned(),
+///     content_type: "application/json".to_owned(),
+///     body: b"[]".to_vec(),
+/// };
+///
+/// assert_eq!(
+///     compute_responses_hash(&[main_response.clone()]),
+///     "10adfb9736ff0c549610edd040821b900d0f192a44dac409b4b0c0cd2115e0f3"
+/// );
+/// // The responses are sorted by request name first, so their order does not matter.
+/// assert_eq!(
+///     compute_responses_hash(&[main_response.clone(), characters_response.clone()]),
+///     compute_responses_hash(&[characters_response, main_response]),
+/// );
 /// ```
 #[must_use]
 pub fn compute_responses_hash(responses: &[PageResponse]) -> String {
@@ -604,25 +628,42 @@ fn prepare_outcome(outcome: FetchOutcome) -> Result<PreparedOutcome, Error> {
 /// # use chrono::Utc;
 /// # use sqlx::PgPool;
 /// # use postgres_db::{
-/// #     record_page_observation, FetchOutcome, PageKey, PageKind, PageObservation, Provider,
+/// #     record_page_observation, FetchOutcome, PageKey, EntityType, PageObservation, PageResponse,
+/// #     Provider,
 /// # };
 /// # async fn example(pool: &PgPool) -> Result<(), postgres_db::Error> {
-/// let observation = PageObservation {
-///     page_key: PageKey::new(Provider::Mal, PageKind::Anime, "21")?,
+/// let page_key = PageKey::new(Provider::Mal, EntityType::Anime, "21")?;
+///
+/// // A fetch that failed every attempt only counts the failure: nothing changed.
+/// let failed_fetch = PageObservation {
+///     page_key: page_key.clone(),
 ///     observed_at: Utc::now(),
 ///     outcome: FetchOutcome::Failed,
 /// };
-/// let outcome = record_page_observation(pool, observation).await?;
-/// assert!(!outcome.has_changed);
+/// assert!(!record_page_observation(pool, failed_fetch).await?.has_changed);
+///
+/// // The first successful fetch stores the page's responses, which is a change.
+/// let first_success = PageObservation {
+///     page_key: page_key.clone(),
+///     observed_at: Utc::now(),
+///     outcome: FetchOutcome::Success {
+///         responses: vec![PageResponse {
+///             request_name: "main".to_owned(),
+///             content_type: "application/json".to_owned(),
+///             body: br#"{"id":21}"#.to_vec(),
+///         }],
+///     },
+/// };
+/// assert!(record_page_observation(pool, first_success).await?.has_changed);
 /// # Ok(())
 /// # }
 /// ```
 ///
 /// # Errors
 ///
-/// Returns an invalid-argument error for a successful fetch with no responses, a blank
-/// request name or content type, or a repeated request name, and a database error when a
-/// query fails.
+/// Returns an invalid-argument error for a fetch time more than five minutes ahead of the
+/// database's clock, for a successful fetch with no responses, a blank request name or
+/// content type, or a repeated request name, and a database error when a query fails.
 pub async fn record_page_observation(
     pool: &PgPool,
     observation: PageObservation,
@@ -630,6 +671,13 @@ pub async fn record_page_observation(
     let prepared_outcome = prepare_outcome(observation.outcome)?;
 
     let mut tx = pool.begin().await?;
+    let transaction_time = crate::read_transaction_time(&mut tx).await?;
+    if observation.observed_at > transaction_time + MAX_FETCH_CLOCK_AHEAD {
+        return Err(Error::invalid_argument(format!(
+            "fetch time {} is later than the database clock {transaction_time}",
+            observation.observed_at
+        )));
+    }
     let existing_page = lock_existing_page(&mut tx, &observation.page_key).await?;
 
     if is_stale_observation(existing_page.as_ref(), observation.observed_at) {
@@ -687,7 +735,7 @@ async fn queue_page_owners_for_merge(
     tx: &mut Transaction<'_, Postgres>,
     page_key: &PageKey,
 ) -> Result<(), Error> {
-    if page_key.page_kind == PageKind::Episode {
+    if page_key.entity_type == EntityType::Episode {
         sqlx::query!(
             r#"
             UPDATE episode
@@ -695,13 +743,13 @@ async fn queue_page_owners_for_merge(
                 merge_requested_at = COALESCE(merge_requested_at, now())
             WHERE id IN (
                 SELECT episode_id
-                FROM episode_provider_page
-                WHERE provider = $1 AND page_kind = $2 AND address = $3
+                FROM episode_source
+                WHERE provider = $1 AND entity_type = $2 AND address = $3
             )
               AND deleted_at IS NULL
             "#,
             page_key.provider.as_str(),
-            page_key.page_kind.as_str(),
+            page_key.entity_type.as_str(),
             page_key.address.as_str(),
         )
         .execute(&mut **tx)
@@ -716,14 +764,14 @@ async fn queue_page_owners_for_merge(
             merge_requested_at = COALESCE(merge_requested_at, now())
         WHERE id IN (
             SELECT anime_id
-            FROM anime_provider_page
-            WHERE provider = $1 AND page_kind = $2 AND address = $3 AND role = 'source'
+            FROM anime_source
+            WHERE provider = $1 AND entity_type = $2 AND address = $3
             ORDER BY anime_id
         )
           AND deleted_at IS NULL
         "#,
         page_key.provider.as_str(),
-        page_key.page_kind.as_str(),
+        page_key.entity_type.as_str(),
         page_key.address.as_str(),
     )
     .execute(&mut **tx)
@@ -747,7 +795,7 @@ async fn lock_existing_page(
     sqlx::query!(
         "SELECT pg_advisory_xact_lock(hashtextextended($1 || ':' || $2 || ':' || $3, 0))",
         page_key.provider.as_str(),
-        page_key.page_kind.as_str(),
+        page_key.entity_type.as_str(),
         page_key.address.as_str(),
     )
     .execute(&mut **tx)
@@ -757,10 +805,10 @@ async fn lock_existing_page(
         ExistingPageRow,
         "SELECT fetched_at, is_dead, missing_since, missing_last_at, missing_answers, responses_hash, fetch_failed_at
          FROM provider_page
-         WHERE provider = $1 AND page_kind = $2 AND address = $3
+         WHERE provider = $1 AND entity_type = $2 AND address = $3
          FOR UPDATE",
         page_key.provider.as_str(),
-        page_key.page_kind.as_str(),
+        page_key.entity_type.as_str(),
         page_key.address.as_str(),
     )
     .fetch_optional(&mut **tx)
@@ -802,16 +850,16 @@ async fn record_not_found(
 
     sqlx::query!(
         "INSERT INTO provider_page (
-             provider, page_kind, address, is_dead, missing_since, missing_last_at, missing_answers
+             provider, entity_type, address, is_dead, missing_since, missing_last_at, missing_answers
          )
          VALUES ($1, $2, $3, $4, $5, $6, $7)
-         ON CONFLICT (provider, page_kind, address) DO UPDATE SET
+         ON CONFLICT (provider, entity_type, address) DO UPDATE SET
              is_dead = EXCLUDED.is_dead,
              missing_since = EXCLUDED.missing_since,
              missing_last_at = EXCLUDED.missing_last_at,
              missing_answers = EXCLUDED.missing_answers",
         page_key.provider.as_str(),
-        page_key.page_kind.as_str(),
+        page_key.entity_type.as_str(),
         page_key.address.as_str(),
         next_is_dead,
         missing_since,
@@ -906,14 +954,14 @@ async fn record_fetch_failure(
 ) -> Result<RecordOutcome, Error> {
     sqlx::query!(
         "INSERT INTO provider_page (
-             provider, page_kind, address, fetch_failed_at, fetch_failures
+             provider, entity_type, address, fetch_failed_at, fetch_failures
          )
          VALUES ($1, $2, $3, $4, 1)
-         ON CONFLICT (provider, page_kind, address) DO UPDATE SET
+         ON CONFLICT (provider, entity_type, address) DO UPDATE SET
              fetch_failed_at = EXCLUDED.fetch_failed_at,
              fetch_failures = provider_page.fetch_failures + 1",
         page_key.provider.as_str(),
-        page_key.page_kind.as_str(),
+        page_key.entity_type.as_str(),
         page_key.address.as_str(),
         observed_at,
     )
@@ -946,12 +994,12 @@ async fn record_success(
 
     sqlx::query!(
         "INSERT INTO provider_page (
-             provider, page_kind, address, fetched_at, is_dead,
+             provider, entity_type, address, fetched_at, is_dead,
              missing_since, missing_last_at, missing_answers, responses_hash,
              fetch_failed_at, fetch_failures
          )
          VALUES ($1, $2, $3, $4, FALSE, NULL, NULL, 0, $5, NULL, 0)
-         ON CONFLICT (provider, page_kind, address) DO UPDATE SET
+         ON CONFLICT (provider, entity_type, address) DO UPDATE SET
              fetched_at = EXCLUDED.fetched_at,
              is_dead = FALSE,
              missing_since = NULL,
@@ -961,7 +1009,7 @@ async fn record_success(
              fetch_failed_at = NULL,
              fetch_failures = 0",
         page_key.provider.as_str(),
-        page_key.page_kind.as_str(),
+        page_key.entity_type.as_str(),
         page_key.address.as_str(),
         observed_at,
         responses_hash,
@@ -976,9 +1024,9 @@ async fn record_success(
     if responses_changed {
         sqlx::query!(
             "DELETE FROM provider_page_response
-             WHERE provider = $1 AND page_kind = $2 AND address = $3",
+             WHERE provider = $1 AND entity_type = $2 AND address = $3",
             page_key.provider.as_str(),
-            page_key.page_kind.as_str(),
+            page_key.entity_type.as_str(),
             page_key.address.as_str(),
         )
         .execute(&mut **tx)
@@ -996,11 +1044,11 @@ async fn record_success(
 
         sqlx::query!(
             "INSERT INTO provider_page_response (
-                 provider, page_kind, address, request_name, content_type, body
+                 provider, entity_type, address, request_name, content_type, body
              )
              SELECT $1, $2, $3, * FROM UNNEST($4::text[], $5::text[], $6::bytea[])",
             page_key.provider.as_str(),
-            page_key.page_kind.as_str(),
+            page_key.entity_type.as_str(),
             page_key.address.as_str(),
             &request_names,
             &content_types,
@@ -1014,10 +1062,10 @@ async fn record_success(
         name: "postgres_db.provider_page.recorded",
         Level::DEBUG,
         page.provider = %page_key.provider,
-        page.kind = page_key.page_kind.as_str(),
+        page.entity_type = page_key.entity_type.as_str(),
         page.address = %page_key.address,
         page.has_changed = has_changed,
-        "recorded provider page {{page.provider}}:{{page.kind}}:{{page.address}}",
+        "recorded provider page {{page.provider}}:{{page.entity_type}}:{{page.address}}",
     );
 
     Ok(RecordOutcome { has_changed })
@@ -1093,8 +1141,8 @@ mod tests {
 
     #[test]
     fn page_key_new_invalid_address_returns_invalid_argument() {
-        assert!(PageKey::new(Provider::Mal, PageKind::Anime, "21").is_ok());
-        assert!(PageKey::new(Provider::Mal, PageKind::Anime, "invalid").is_err());
+        assert!(PageKey::new(Provider::Mal, EntityType::Anime, "21").is_ok());
+        assert!(PageKey::new(Provider::Mal, EntityType::Anime, "invalid").is_err());
     }
 
     #[test]
@@ -1118,27 +1166,27 @@ mod tests {
 
     #[test]
     fn encode_page_key_proto_matches_protobuf_wire_format() {
-        let page_key = PageKey::new(Provider::Mal, PageKind::Anime, "21").unwrap();
+        let page_key = PageKey::new(Provider::Mal, EntityType::Anime, "21").unwrap();
         let encoded_proposal = encode_page_key_proto(&page_key);
         let decoded_proposal = ProtoPageKey::decode(encoded_proposal.as_slice());
         assert_eq!(
             decoded_proposal,
             Ok(ProtoPageKey {
                 provider: "mal".to_owned(),
-                page_kind: 1,
+                entity_type: 1,
                 address: "21".to_owned(),
             })
         );
 
-        for (page_kind, proto_number, kind_name) in [
-            (PageKind::Episode, 2, "episode"),
-            (PageKind::Character, 3, "character"),
+        for (entity_type, proto_number, entity_type_name) in [
+            (EntityType::Character, 2, "character"),
+            (EntityType::Episode, 3, "episode"),
         ] {
-            let page_key = PageKey::new(Provider::Kitsu, page_kind, "cowboy-bebop").unwrap();
+            let page_key = PageKey::new(Provider::Kitsu, entity_type, "cowboy-bebop").unwrap();
             let decoded_page_key =
                 ProtoPageKey::decode(encode_page_key_proto(&page_key).as_slice()).unwrap();
-            assert_eq!(decoded_page_key.page_kind, proto_number);
-            assert_eq!(page_kind.to_string(), kind_name);
+            assert_eq!(decoded_page_key.entity_type, proto_number);
+            assert_eq!(entity_type.to_string(), entity_type_name);
             assert_eq!(page_key.address().as_ref(), "cowboy-bebop");
         }
     }

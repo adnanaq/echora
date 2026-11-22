@@ -1,56 +1,105 @@
--- ECHO-101: Theme songs, trailers, external links, streaming, statistics, broadcast, and hiatus history.
+-- ECHO-101: Opening and ending themes, trailers, external sources, streaming, statistics, broadcast, and hiatus history.
 
-CREATE TABLE anime_theme_song (
+-- Anime.opening_themes and Anime.ending_themes, one table each.
+CREATE TABLE anime_opening_theme (
   id        bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   anime_id  uuid NOT NULL REFERENCES anime(id) ON DELETE CASCADE,
-  kind      text NOT NULL REFERENCES theme_song_kind(value),
   position  int NOT NULL,
   title     text NOT NULL,
   artist    text,
-  UNIQUE (anime_id, kind, position)
+  CONSTRAINT anime_opening_theme_position_key UNIQUE (anime_id, position)
 );
 
-CREATE TABLE theme_song_episode_range (
-  theme_song_id  bigint NOT NULL REFERENCES anime_theme_song(id) ON DELETE CASCADE,
-  range_start    int NOT NULL CHECK (range_start >= 0),
-  range_end      int CHECK (range_end >= range_start),
-  PRIMARY KEY (theme_song_id, range_start)
+-- ThemeSong.episodes of an opening.
+CREATE TABLE anime_opening_theme_episode (
+  opening_theme_id  bigint NOT NULL REFERENCES anime_opening_theme(id) ON DELETE CASCADE,
+  range_start       int NOT NULL CHECK (range_start >= 0),
+  range_end         int CHECK (range_end >= range_start),
+  PRIMARY KEY (opening_theme_id, range_start)
+);
+
+CREATE TABLE anime_ending_theme (
+  id        bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  anime_id  uuid NOT NULL REFERENCES anime(id) ON DELETE CASCADE,
+  position  int NOT NULL,
+  title     text NOT NULL,
+  artist    text,
+  CONSTRAINT anime_ending_theme_position_key UNIQUE (anime_id, position)
+);
+
+-- ThemeSong.episodes of an ending.
+CREATE TABLE anime_ending_theme_episode (
+  ending_theme_id  bigint NOT NULL REFERENCES anime_ending_theme(id) ON DELETE CASCADE,
+  range_start      int NOT NULL CHECK (range_start >= 0),
+  range_end        int CHECK (range_end >= range_start),
+  PRIMARY KEY (ending_theme_id, range_start)
+);
+
+-- One row per trailer video, shared by every work that lists it.
+CREATE TABLE trailer (
+  source            text PRIMARY KEY,
+  title             text,
+  thumbnail_source  text
 );
 
 CREATE TABLE anime_trailer (
-  anime_id       uuid NOT NULL REFERENCES anime(id) ON DELETE CASCADE,
-  source         text NOT NULL,
-  title          text,
-  thumbnail_url  text,
-  PRIMARY KEY (anime_id, source)
-);
-
-CREATE TABLE anime_external_link (
   anime_id  uuid NOT NULL REFERENCES anime(id) ON DELETE CASCADE,
-  source    text NOT NULL,
-  platform  text NOT NULL,
-  label     text,
-  language  text,
+  source    text NOT NULL REFERENCES trailer(source),
   PRIMARY KEY (anime_id, source)
 );
 
-CREATE TABLE anime_streaming (
+CREATE INDEX anime_trailer_source_idx ON anime_trailer(source, anime_id);
+
+-- One row per external URL, links and streaming pages alike. Its platform and
+-- language describe the URL, whichever work lists it.
+CREATE TABLE external_source (
+  source    text PRIMARY KEY,
+  platform  text NOT NULL,
+  language  text REFERENCES language(code)
+);
+
+CREATE INDEX external_source_language_idx
+  ON external_source(language)
+  WHERE language IS NOT NULL;
+
+-- Anime.external_sources; the label is the provider's own name for the link, per work.
+CREATE TABLE anime_external_source (
+  anime_id  uuid NOT NULL REFERENCES anime(id) ON DELETE CASCADE,
+  source    text NOT NULL REFERENCES external_source(source),
+  label     text,
+  PRIMARY KEY (anime_id, source)
+);
+
+CREATE INDEX anime_external_source_source_idx ON anime_external_source(source, anime_id);
+
+-- Anime.streaming_sources; the platform is read from external_source.
+CREATE TABLE anime_streaming_source (
   id                   bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   anime_id             uuid NOT NULL REFERENCES anime(id) ON DELETE CASCADE,
-  platform             text NOT NULL,
-  source               text NOT NULL,
+  source               text NOT NULL REFERENCES external_source(source),
   region               text,
   is_free              boolean,
   is_premium_required  boolean,
   has_dub              boolean,
-  UNIQUE NULLS NOT DISTINCT (anime_id, source, region)
+  CONSTRAINT anime_streaming_source_region_key UNIQUE NULLS NOT DISTINCT (anime_id, source, region)
 );
 
-CREATE TABLE anime_streaming_subtitle_language (
-  streaming_id  bigint NOT NULL REFERENCES anime_streaming(id) ON DELETE CASCADE,
-  language      text NOT NULL,
-  PRIMARY KEY (streaming_id, language)
+CREATE INDEX anime_streaming_source_source_idx ON anime_streaming_source(source);
+
+-- StreamingEntry.subtitle_languages. Constraints are named, since the generated
+-- names pass PostgreSQL's 63-byte limit.
+CREATE TABLE anime_streaming_source_subtitle_language (
+  streaming_source_id  bigint CONSTRAINT anime_streaming_subtitle_source_not_null NOT NULL,
+  language             text NOT NULL,
+  CONSTRAINT anime_streaming_subtitle_pkey PRIMARY KEY (streaming_source_id, language),
+  CONSTRAINT anime_streaming_subtitle_source_fkey FOREIGN KEY (streaming_source_id)
+    REFERENCES anime_streaming_source(id) ON DELETE CASCADE,
+  CONSTRAINT anime_streaming_subtitle_language_fkey FOREIGN KEY (language)
+    REFERENCES language(code)
 );
+
+CREATE INDEX anime_streaming_subtitle_language_idx
+  ON anime_streaming_source_subtitle_language(language);
 
 CREATE TABLE anime_statistics (
   anime_id    uuid NOT NULL REFERENCES anime(id) ON DELETE CASCADE,
@@ -64,7 +113,8 @@ CREATE TABLE anime_statistics (
   PRIMARY KEY (anime_id, provider)
 );
 
-CREATE TABLE anime_contextual_rank (
+-- Statistics.contextual_ranks
+CREATE TABLE anime_statistics_contextual_rank (
   anime_id     uuid NOT NULL,
   provider     text NOT NULL,
   context      text NOT NULL,

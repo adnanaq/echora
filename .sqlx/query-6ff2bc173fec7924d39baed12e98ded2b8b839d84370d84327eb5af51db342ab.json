@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT DISTINCT to_id\n         FROM graph_edge\n         WHERE from_id = $1 AND from_node_type = 'anime' AND to_node_type = 'anime' AND to_id <> $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "to_id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "6ff2bc173fec7924d39baed12e98ded2b8b839d84370d84327eb5af51db342ab"
+}

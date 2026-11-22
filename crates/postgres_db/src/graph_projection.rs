@@ -113,8 +113,8 @@ async fn recompute_single_anime_pair(
 ) -> Result<(), Error> {
     sqlx::query!(
         "DELETE FROM graph_edge
-         WHERE from_type = 'anime'
-           AND to_type = 'anime'
+         WHERE from_node_type = 'anime'
+           AND to_node_type = 'anime'
            AND ((from_id = $1 AND to_id = $2) OR (from_id = $2 AND to_id = $1))",
         left_id,
         right_id,
@@ -122,11 +122,16 @@ async fn recompute_single_anime_pair(
     .execute(&mut **tx)
     .await?;
 
+    // A relation reaches the work that holds its target page as a source page.
     let stored_relations = sqlx::query!(
-        r#"SELECT from_anime_id, to_anime_id AS "to_anime_id!", relation_type
-         FROM anime_relation
-         WHERE (from_anime_id = $1 AND to_anime_id = $2)
-            OR (from_anime_id = $2 AND to_anime_id = $1)"#,
+        r#"SELECT relation.from_anime_id, target.anime_id AS to_anime_id, relation.relation_type
+         FROM anime_related_anime relation
+         JOIN anime_source target
+           ON target.provider = relation.to_page_provider
+          AND target.entity_type = 'anime'
+          AND target.address = relation.to_page_address
+         WHERE (relation.from_anime_id = $1 AND target.anime_id = $2)
+            OR (relation.from_anime_id = $2 AND target.anime_id = $1)"#,
         left_id,
         right_id,
     )
@@ -155,7 +160,7 @@ async fn recompute_single_anime_pair(
         .collect();
 
     sqlx::query!(
-        "INSERT INTO graph_edge (from_id, from_type, to_id, to_type, edge_type)
+        "INSERT INTO graph_edge (from_id, from_node_type, to_id, to_node_type, edge_type)
          SELECT from_id, 'anime', to_id, 'anime', edge_type
          FROM UNNEST($1::uuid[], $2::uuid[], $3::text[]) AS entry(from_id, to_id, edge_type)
          ON CONFLICT DO NOTHING",
@@ -181,8 +186,8 @@ pub(crate) async fn replace_source_material_graph_edges(
 ) -> Result<(), Error> {
     sqlx::query!(
         "DELETE FROM graph_edge
-         WHERE (from_id = $1 AND from_type = 'anime' AND to_type = 'source_material')
-            OR (to_id = $1 AND to_type = 'anime' AND from_type = 'source_material')",
+         WHERE (from_id = $1 AND from_node_type = 'anime' AND to_node_type = 'source_material')
+            OR (to_id = $1 AND to_node_type = 'anime' AND from_node_type = 'source_material')",
         anime_id,
     )
     .execute(&mut **tx)
@@ -199,7 +204,7 @@ pub(crate) async fn replace_source_material_graph_edges(
     }
 
     sqlx::query!(
-        "INSERT INTO graph_edge (from_id, from_type, to_id, to_type, edge_type)
+        "INSERT INTO graph_edge (from_id, from_node_type, to_id, to_node_type, edge_type)
          SELECT $1, 'anime', source_id, 'source_material', 'ADAPTED_FROM'
          FROM UNNEST($2::uuid[]) AS entry(source_id)
          ON CONFLICT DO NOTHING",
@@ -210,7 +215,7 @@ pub(crate) async fn replace_source_material_graph_edges(
     .await?;
 
     sqlx::query!(
-        "INSERT INTO graph_edge (from_id, from_type, to_id, to_type, edge_type)
+        "INSERT INTO graph_edge (from_id, from_node_type, to_id, to_node_type, edge_type)
          SELECT source_id, 'source_material', $1, 'anime', 'WAS_ADAPTED_TO'
          FROM UNNEST($2::uuid[]) AS entry(source_id)
          ON CONFLICT DO NOTHING",
@@ -235,8 +240,8 @@ pub(crate) async fn replace_company_graph_edges(
 ) -> Result<(), Error> {
     sqlx::query!(
         "DELETE FROM graph_edge
-         WHERE (from_id = $1 AND from_type = 'anime' AND to_type = 'company')
-            OR (to_id = $1 AND to_type = 'anime' AND from_type = 'company')",
+         WHERE (from_id = $1 AND from_node_type = 'anime' AND to_node_type = 'company')
+            OR (to_id = $1 AND to_node_type = 'anime' AND from_node_type = 'company')",
         anime_id,
     )
     .execute(&mut **tx)
@@ -257,7 +262,7 @@ pub(crate) async fn replace_company_graph_edges(
         .collect();
 
     sqlx::query!(
-        "INSERT INTO graph_edge (from_id, from_type, to_id, to_type, edge_type)
+        "INSERT INTO graph_edge (from_id, from_node_type, to_id, to_node_type, edge_type)
          SELECT $1, 'anime', company_id, 'company', role
          FROM UNNEST($2::uuid[], $3::text[]) AS entry(company_id, role)
          ON CONFLICT DO NOTHING",
@@ -269,7 +274,7 @@ pub(crate) async fn replace_company_graph_edges(
     .await?;
 
     sqlx::query!(
-        "INSERT INTO graph_edge (from_id, from_type, to_id, to_type, edge_type)
+        "INSERT INTO graph_edge (from_id, from_node_type, to_id, to_node_type, edge_type)
          SELECT company_id, 'company', $1, 'anime', role
          FROM UNNEST($2::uuid[], $3::text[]) AS entry(company_id, role)
          ON CONFLICT DO NOTHING",
@@ -379,11 +384,24 @@ mod tests {
         }
 
         sqlx::query!(
-            "INSERT INTO anime_relation (from_anime_id, relation_type, to_anime_id, to_page_provider, to_page_address)
-             VALUES ($1, 'SEQUEL', $2, 'mal', '2'),
-                    ($1, 'ADAPTATION', $2, 'mal', '2')",
-            anime_a,
+            "INSERT INTO provider_page (provider, entity_type, address) VALUES ('mal', 'anime', '2')"
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query!(
+            "INSERT INTO anime_source (anime_id, provider, entity_type, address)
+             VALUES ($1, 'mal', 'anime', '2')",
             anime_b,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query!(
+            "INSERT INTO anime_related_anime (from_anime_id, relation_type, to_page_provider, to_page_address)
+             VALUES ($1, 'SEQUEL', 'mal', '2'),
+                    ($1, 'ADAPTATION', 'mal', '2')",
+            anime_a,
         )
         .execute(&pool)
         .await
@@ -403,7 +421,7 @@ mod tests {
         let anime_edges: Vec<(Uuid, Uuid, String)> = sqlx::query!(
             "SELECT from_id, to_id, edge_type
              FROM graph_edge
-             WHERE from_type = 'anime' AND to_type = 'anime'
+             WHERE from_node_type = 'anime' AND to_node_type = 'anime'
              ORDER BY edge_type"
         )
         .fetch_all(&pool)
@@ -437,9 +455,9 @@ mod tests {
         let sm_edges: Vec<String> = sqlx::query_scalar!(
             "SELECT edge_type
              FROM graph_edge
-             WHERE from_type IN ('anime', 'source_material')
-               AND to_type IN ('anime', 'source_material')
-               AND (from_type = 'source_material' OR to_type = 'source_material')
+             WHERE from_node_type IN ('anime', 'source_material')
+               AND to_node_type IN ('anime', 'source_material')
+               AND (from_node_type = 'source_material' OR to_node_type = 'source_material')
              ORDER BY edge_type"
         )
         .fetch_all(&pool)

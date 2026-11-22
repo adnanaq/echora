@@ -2,10 +2,12 @@
 
 CREATE TABLE anime_title (
   anime_id  uuid NOT NULL REFERENCES anime(id) ON DELETE CASCADE,
-  language  text NOT NULL,
+  language  text NOT NULL REFERENCES language(code),
   title     text NOT NULL,
   PRIMARY KEY (anime_id, language)
 );
+
+CREATE INDEX anime_title_language_idx ON anime_title(language);
 
 CREATE TABLE anime_synonym (
   anime_id  uuid NOT NULL REFERENCES anime(id) ON DELETE CASCADE,
@@ -46,12 +48,20 @@ CREATE TABLE anime_content_warning (
 CREATE INDEX anime_content_warning_content_warning_idx
   ON anime_content_warning(content_warning, anime_id);
 
-CREATE TABLE anime_theme (
-  anime_id     uuid NOT NULL REFERENCES anime(id) ON DELETE CASCADE,
-  name         text NOT NULL,
-  description  text,
-  PRIMARY KEY (anime_id, name)
+-- One row per theme, shared by every work that has it, like genre. The description
+-- describes the theme, not the work.
+CREATE TABLE theme (
+  name         text PRIMARY KEY,
+  description  text
 );
+
+CREATE TABLE anime_theme (
+  anime_id  uuid NOT NULL REFERENCES anime(id) ON DELETE CASCADE,
+  theme     text NOT NULL REFERENCES theme(name),
+  PRIMARY KEY (anime_id, theme)
+);
+
+CREATE INDEX anime_theme_theme_idx ON anime_theme(theme, anime_id);
 
 CREATE TABLE anime_image (
   anime_id    uuid NOT NULL REFERENCES anime(id) ON DELETE CASCADE,

@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM provider_page WHERE provider = 'mal' AND entity_type = 'episode' AND address IN ($1, $2)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "efe4e8ce2b42dbbb74464611ea8a8096d1ff25ce7b2406ed90be533ddc48954d"
+}

@@ -60,12 +60,12 @@ pub fn build_save_anime_input(
     let Anime {
         background,
         country_of_origin,
-        duration,
+        duration_seconds,
         episode_count,
         id: _,
         entity_type,
         month,
-        nsfw,
+        is_nsfw,
         rating,
         season,
         source_material,
@@ -191,8 +191,8 @@ pub fn build_save_anime_input(
         year: release_year,
         month: release_month,
         episode_count,
-        duration_seconds: duration,
-        is_nsfw: nsfw,
+        duration_seconds,
+        is_nsfw,
         country_of_origin,
         synopsis,
         background,
@@ -289,14 +289,14 @@ pub fn compute_save_record_hash(
         let left_target = left.target_page.as_ref().map(|page| {
             (
                 page.provider.as_str(),
-                page.page_kind,
+                page.entity_type,
                 page.address.as_str(),
             )
         });
         let right_target = right.target_page.as_ref().map(|page| {
             (
                 page.provider.as_str(),
-                page.page_kind,
+                page.entity_type,
                 page.address.as_str(),
             )
         });
@@ -320,9 +320,9 @@ pub fn compute_save_record_hash(
     let mut canonical_episodes = episodes.to_vec();
     for episode in &mut canonical_episodes {
         episode.page_keys.sort_by(|left, right| {
-            (&left.provider, left.page_kind, &left.address).cmp(&(
+            (&left.provider, left.entity_type, &left.address).cmp(&(
                 &right.provider,
-                right.page_kind,
+                right.entity_type,
                 &right.address,
             ))
         });
@@ -526,7 +526,7 @@ mod tests {
 
     #[test]
     fn canonical_hash_is_order_independent_on_set_lists() {
-        use crate::service::shared_proto::v1::{EpisodeListEntry, PageKey, PageKind};
+        use crate::service::shared_proto::v1::{EntityType, EpisodeListEntry, PageKey};
 
         let mut first_anime = Anime {
             title: "Monster".to_owned(),
@@ -545,12 +545,12 @@ mod tests {
             page_keys: vec![
                 PageKey {
                     provider: "mal".to_owned(),
-                    page_kind: PageKind::Episode as i32,
+                    entity_type: EntityType::Episode as i32,
                     address: "1".to_owned(),
                 },
                 PageKey {
                     provider: "anilist".to_owned(),
-                    page_kind: PageKind::Episode as i32,
+                    entity_type: EntityType::Episode as i32,
                     address: "2".to_owned(),
                 },
             ],
@@ -579,7 +579,7 @@ mod tests {
                 relation_type: 1,
                 target_page: Some(PageKey {
                     provider: "mal".to_owned(),
-                    page_kind: PageKind::Anime as i32,
+                    entity_type: EntityType::Anime as i32,
                     address: "2".to_owned(),
                 }),
             },
@@ -751,8 +751,8 @@ mod tests {
             year: Some(2004),
             month: Some(4),
             episode_count: 74,
-            duration: Some(1440),
-            nsfw: Some(false),
+            duration_seconds: Some(1440),
+            is_nsfw: Some(false),
             country_of_origin: Some("JP".to_owned()),
             titles,
             synonyms: vec!["MONSTER".to_owned()],

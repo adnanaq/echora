@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO provider_page (provider, entity_type, address) VALUES ('mal', 'episode', '10')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "5ccb482916440ae8206e796b8bfe13c1cbb7b0a3b09b5efa53c6d15a8401d222"
+}

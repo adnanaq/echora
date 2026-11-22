@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT rank FROM anime_statistics_contextual_rank WHERE anime_id = $1 AND provider = 'mal'",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "rank",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "accf7dd38d141d361e6bd2e60878f1d0ff6cf6d548b0e0314fd76a77636844e8"
+}

@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO trailer (source, title, thumbnail_source)\n         SELECT source, title, thumbnail_source\n         FROM UNNEST($1::text[], $2::text[], $3::text[]) AS entry(source, title, thumbnail_source)\n         ON CONFLICT (source) DO UPDATE\n           SET title = coalesce(EXCLUDED.title, trailer.title),\n               thumbnail_source = coalesce(EXCLUDED.thumbnail_source, trailer.thumbnail_source)\n         WHERE (EXCLUDED.title IS NOT NULL AND trailer.title IS DISTINCT FROM EXCLUDED.title)\n            OR (EXCLUDED.thumbnail_source IS NOT NULL\n                AND trailer.thumbnail_source IS DISTINCT FROM EXCLUDED.thumbnail_source)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "TextArray",
+        "TextArray",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c2655d7bafa95a3b1b43953a9e11c9faf056c97ab2de41e2475a8e362f641896"
+}

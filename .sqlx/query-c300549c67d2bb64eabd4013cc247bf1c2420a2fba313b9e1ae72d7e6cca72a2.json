@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO provider_page (provider, entity_type, address)\n         VALUES ($1, $2, $3)\n         ON CONFLICT (provider, entity_type, address) DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c300549c67d2bb64eabd4013cc247bf1c2420a2fba313b9e1ae72d7e6cca72a2"
+}

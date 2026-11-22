@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            source.provider,\n            source.entity_type,\n            source.address,\n            pp.fetched_at,\n            pp.is_dead,\n            pp.missing_since\n        FROM episode_source source\n        JOIN provider_page pp\n          ON pp.provider = source.provider\n         AND pp.entity_type = source.entity_type\n         AND pp.address = source.address\n        WHERE source.episode_id = $1\n        ORDER BY source.provider, source.address\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "provider",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "entity_type",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "address",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "fetched_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "is_dead",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 5,
+        "name": "missing_since",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      true
+    ]
+  },
+  "hash": "f64d9a2a5738ce7630b22673095c97fe92b89797e3359e1e794b8a364c6764f5"
+}

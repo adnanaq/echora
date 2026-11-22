@@ -45,6 +45,9 @@ INSERT INTO source_material_relation_type VALUES
   ('ADAPTATION'), ('SOURCE'), ('ALTERNATIVE'), ('SPIN_OFF'), ('CHARACTER'),
   ('SEQUEL'), ('PREQUEL'), ('PARENT_STORY'), ('SIDE_STORY'), ('OTHER');
 
+CREATE TABLE entity_type (value text PRIMARY KEY);
+INSERT INTO entity_type VALUES ('anime'), ('character'), ('episode');
+
 -- Values of the storage design
 CREATE TABLE provider (value text PRIMARY KEY);
 INSERT INTO provider VALUES
@@ -53,17 +56,8 @@ INSERT INTO provider VALUES
   ('ann'), ('livechart'), ('simkl'),
   ('animecountdown');
 
-CREATE TABLE page_kind (value text PRIMARY KEY);
-INSERT INTO page_kind VALUES ('anime'), ('episode'), ('character');
-
-CREATE TABLE anime_page_role (value text PRIMARY KEY);
-INSERT INTO anime_page_role VALUES ('source'), ('partial_source');
-
 CREATE TABLE anime_image_type (value text PRIMARY KEY);
 INSERT INTO anime_image_type VALUES ('cover'), ('poster'), ('banner');
-
-CREATE TABLE theme_song_kind (value text PRIMARY KEY);
-INSERT INTO theme_song_kind VALUES ('opening'), ('ending');
 
 CREATE TABLE approval_kind (value text PRIMARY KEY);
 INSERT INTO approval_kind VALUES
@@ -93,3 +87,14 @@ CREATE TABLE tag (name text PRIMARY KEY);
 CREATE TABLE demographic (name text PRIMARY KEY);
 CREATE TABLE content_warning (name text PRIMARY KEY);
 CREATE TABLE trait (name text PRIMARY KEY);
+
+-- Language and country codes, one row per code in use, added by the save that first
+-- uses one. The canonical model has already standardized every code, so a row holds
+-- only the key, and a display name is read from the code, never stored.
+CREATE TABLE language (
+  code text PRIMARY KEY CHECK (code <> '')
+);
+
+CREATE TABLE country (
+  code text PRIMARY KEY CHECK (code ~ '^[A-Z]{2}$')
+);

@@ -1,0 +1,27 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO anime_streaming_source (\n                 anime_id, source, region, is_free, is_premium_required, has_dub\n             )\n             VALUES ($1, $2, $3, $4, $5, $6)\n             RETURNING id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Bool",
+        "Bool",
+        "Bool"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "4377f5bc0a87b0810d02ffacd62c1241eca61a73ada2e5179162210c641af6fe"
+}

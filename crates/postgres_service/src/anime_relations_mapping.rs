@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use postgres_db::{
     AnimeCompanyInput, AnimeRelationClaimInput, AnimeRelationInput, AnimeRelationsAndGraphInput,
-    AnimeSourceMaterialInput, CompanyXrefInput, PageKey, PageKind as DbPageKind, Provider,
+    AnimeSourceMaterialInput, CompanyXrefInput, EntityType as DbEntityType, PageKey, Provider,
     SourceMaterialXrefInput,
 };
 use tonic::Status;
@@ -13,7 +13,7 @@ use tonic::Status;
 use crate::anime_mapping::map_source_material_type;
 use crate::service::map_db_error;
 use crate::service::shared_proto::v1::{
-    AnimeRelationType, AnimeStatus, CompanyEntry, CompanyRole, PageKey as ProtoPageKey, PageKind,
+    AnimeRelationType, AnimeStatus, CompanyEntry, CompanyRole, EntityType, PageKey as ProtoPageKey,
     RelatedAnimeList, RelatedSourceMaterial, RelatedSourceMaterialList, RelationClaim,
 };
 
@@ -21,7 +21,7 @@ use crate::service::shared_proto::v1::{
 ///
 /// # Errors
 ///
-/// Returns `INVALID_ARGUMENT` for an unknown relation type, role or page kind, or a related
+/// Returns `INVALID_ARGUMENT` for an unknown relation type, role or entity type, or a related
 /// page whose provider or address is not valid.
 pub(crate) fn build_relations_and_graph(
     related_anime: BTreeMap<String, RelatedAnimeList>,
@@ -72,7 +72,7 @@ fn map_related_anime(
 ///
 /// # Errors
 ///
-/// Returns `INVALID_ARGUMENT` for an unknown provider, relation type or page kind, or a
+/// Returns `INVALID_ARGUMENT` for an unknown provider, relation type or entity type, or a
 /// target page that is missing or not valid.
 fn map_relation_claims(claims: Vec<RelationClaim>) -> Result<Vec<AnimeRelationClaimInput>, Status> {
     claims
@@ -88,7 +88,7 @@ fn map_relation_claims(claims: Vec<RelationClaim>) -> Result<Vec<AnimeRelationCl
                 let relation_type_text = map_anime_relation_type(relation_type)?.to_owned();
                 let ProtoPageKey {
                     provider: target_provider,
-                    page_kind,
+                    entity_type,
                     address,
                 } = target_page.ok_or_else(|| {
                     Status::invalid_argument("relation_claim requires target_page")
@@ -96,11 +96,11 @@ fn map_relation_claims(claims: Vec<RelationClaim>) -> Result<Vec<AnimeRelationCl
 
                 let parsed_target_provider: Provider =
                     target_provider.parse().map_err(|err| map_db_error(&err))?;
-                let mapped_kind = map_page_kind(page_kind)?;
+                let mapped_entity_type = map_entity_type(entity_type)?;
                 Ok(AnimeRelationClaimInput {
                     provider: claiming_provider,
                     relation_type: relation_type_text,
-                    target_page: PageKey::new(parsed_target_provider, mapped_kind, address)
+                    target_page: PageKey::new(parsed_target_provider, mapped_entity_type, address)
                         .map_err(|err| map_db_error(&err))?,
                 })
             },
@@ -295,24 +295,24 @@ fn map_anime_relation_type(enum_number: i32) -> Result<&'static str, Status> {
     }
 }
 
-/// Converts a `PageKind` enum number into a `postgres_db` page kind.
+/// Converts an `EntityType` enum number into a `postgres_db` entity type.
 ///
 /// # Errors
 ///
 /// Returns `INVALID_ARGUMENT` for an unspecified or unknown value.
-pub(crate) fn map_page_kind(enum_number: i32) -> Result<DbPageKind, Status> {
-    let Ok(page_kind) = PageKind::try_from(enum_number) else {
+pub(crate) fn map_entity_type(enum_number: i32) -> Result<DbEntityType, Status> {
+    let Ok(entity_type) = EntityType::try_from(enum_number) else {
         return Err(Status::invalid_argument(format!(
-            "unknown PageKind number {enum_number}"
+            "unknown EntityType number {enum_number}"
         )));
     };
-    match page_kind {
-        PageKind::Unspecified => Err(Status::invalid_argument(
-            "relation_claim.target_page.page_kind must be specified",
+    match entity_type {
+        EntityType::Unspecified => Err(Status::invalid_argument(
+            "relation_claim.target_page.entity_type must be specified",
         )),
-        PageKind::Anime => Ok(DbPageKind::Anime),
-        PageKind::Episode => Ok(DbPageKind::Episode),
-        PageKind::Character => Ok(DbPageKind::Character),
+        EntityType::Anime => Ok(DbEntityType::Anime),
+        EntityType::Episode => Ok(DbEntityType::Episode),
+        EntityType::Character => Ok(DbEntityType::Character),
     }
 }
 
@@ -502,7 +502,7 @@ mod tests {
             relation_type: AnimeRelationType::SpinOff as i32,
             target_page: Some(ProtoPageKey {
                 provider: "mal".to_owned(),
-                page_kind: PageKind::Anime as i32,
+                entity_type: EntityType::Anime as i32,
                 address: "21".to_owned(),
             }),
         }];
@@ -644,19 +644,19 @@ mod tests {
     #[test]
     fn map_page_kind_proto_numbers_return_page_kinds() {
         assert_eq!(
-            map_page_kind(PageKind::Anime as i32).ok(),
-            Some(DbPageKind::Anime)
+            map_entity_type(EntityType::Anime as i32).ok(),
+            Some(DbEntityType::Anime)
         );
         assert_eq!(
-            map_page_kind(PageKind::Episode as i32).ok(),
-            Some(DbPageKind::Episode)
+            map_entity_type(EntityType::Episode as i32).ok(),
+            Some(DbEntityType::Episode)
         );
         assert_eq!(
-            map_page_kind(PageKind::Character as i32).ok(),
-            Some(DbPageKind::Character)
+            map_entity_type(EntityType::Character as i32).ok(),
+            Some(DbEntityType::Character)
         );
-        assert!(map_page_kind(PageKind::Unspecified as i32).is_err());
-        assert!(map_page_kind(99).is_err());
+        assert!(map_entity_type(EntityType::Unspecified as i32).is_err());
+        assert!(map_entity_type(99).is_err());
     }
 
     async fn assert_lookup_values_exist(
@@ -760,7 +760,7 @@ mod tests {
             relation_type: AnimeRelationType::Sequel as i32,
             target_page: Some(ProtoPageKey {
                 provider: "mal".to_owned(),
-                page_kind: PageKind::Anime as i32,
+                entity_type: EntityType::Anime as i32,
                 address: "2".to_owned(),
             }),
         };

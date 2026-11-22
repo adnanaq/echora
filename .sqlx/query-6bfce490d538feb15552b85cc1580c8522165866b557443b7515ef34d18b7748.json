@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO external_source (source, platform, language)\n         SELECT source, platform, language\n         FROM UNNEST($1::text[], $2::text[], $3::text[]) AS entry(source, platform, language)\n         ON CONFLICT (source) DO UPDATE\n           SET platform = EXCLUDED.platform,\n               language = coalesce(EXCLUDED.language, external_source.language)\n         WHERE external_source.platform IS DISTINCT FROM EXCLUDED.platform\n            OR (EXCLUDED.language IS NOT NULL\n                AND external_source.language IS DISTINCT FROM EXCLUDED.language)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "TextArray",
+        "TextArray",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6bfce490d538feb15552b85cc1580c8522165866b557443b7515ef34d18b7748"
+}

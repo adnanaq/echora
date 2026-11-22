@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM provider_page WHERE provider = 'anilist' AND entity_type = 'anime' AND address = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e34a1e4778c36d5976eca82163007bf965379abd74928f02c9cb225e14ef877e"
+}

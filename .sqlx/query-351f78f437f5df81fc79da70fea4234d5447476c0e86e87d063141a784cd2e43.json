@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE anime\n        SET version = version + 1,\n            merge_requested_at = COALESCE(merge_requested_at, now())\n        WHERE id = ANY($1)\n        RETURNING id, version, merged_at IS NOT NULL AS \"is_merged!\"\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "version",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "is_merged!",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "UuidArray"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      null
+    ]
+  },
+  "hash": "351f78f437f5df81fc79da70fea4234d5447476c0e86e87d063141a784cd2e43"
+}

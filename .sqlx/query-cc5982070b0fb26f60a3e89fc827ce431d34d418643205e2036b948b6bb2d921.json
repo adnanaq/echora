@@ -1,0 +1,21 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO anime_statistics_contextual_rank (\n                 anime_id, provider, context, rank, is_all_time, format, season, year\n             )\n             SELECT $1, $2, context, rank, is_all_time, format, season, year\n             FROM UNNEST($3::text[], $4::int4[], $5::bool[], $6::text[], $7::text[], $8::int2[])\n               AS entry(context, rank, is_all_time, format, season, year)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "TextArray",
+        "Int4Array",
+        "BoolArray",
+        "TextArray",
+        "TextArray",
+        "Int2Array"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "cc5982070b0fb26f60a3e89fc827ce431d34d418643205e2036b948b6bb2d921"
+}

@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO provider_page (\n             provider, entity_type, address, fetch_failed_at, fetch_failures\n         )\n         VALUES ($1, $2, $3, $4, 1)\n         ON CONFLICT (provider, entity_type, address) DO UPDATE SET\n             fetch_failed_at = EXCLUDED.fetch_failed_at,\n             fetch_failures = provider_page.fetch_failures + 1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f1c29468d03199c359a651393f827bd3d09a25947f7a548046d203c4d9ed935b"
+}

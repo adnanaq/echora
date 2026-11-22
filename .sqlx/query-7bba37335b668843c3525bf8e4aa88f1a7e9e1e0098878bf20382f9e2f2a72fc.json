@@ -1,0 +1,25 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO anime_ending_theme (anime_id, position, title, artist)\n                     VALUES ($1, $2, $3, $4)\n                     RETURNING id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int4",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "7bba37335b668843c3525bf8e4aa88f1a7e9e1e0098878bf20382f9e2f2a72fc"
+}

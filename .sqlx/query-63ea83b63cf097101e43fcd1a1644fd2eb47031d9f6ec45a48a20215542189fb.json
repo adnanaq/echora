@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM provider_page_response\n             WHERE provider = $1 AND entity_type = $2 AND address = $3",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "63ea83b63cf097101e43fcd1a1644fd2eb47031d9f6ec45a48a20215542189fb"
+}

@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO anime_external_source (anime_id, source, label)\n         SELECT $1, source, label\n         FROM UNNEST($2::text[], $3::text[]) AS entry(source, label)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "TextArray",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f81933a52632c339091df949744b4033605ecf042ed3baa7c6a1f9d3b70b27fc"
+}

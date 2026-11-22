@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT r.range_end\n         FROM anime_opening_theme_episode r\n         JOIN anime_opening_theme ts ON ts.id = r.opening_theme_id\n         WHERE ts.anime_id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "range_end",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "629788134f80b372ec1aacfebd941031e14fac17e529cc350b37ee086362e197"
+}

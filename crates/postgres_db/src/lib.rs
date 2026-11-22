@@ -7,6 +7,7 @@ mod anime_schedule_and_stats;
 mod episode;
 mod error;
 mod graph_projection;
+mod language_code;
 mod provider_page;
 
 #[doc(inline)]
@@ -23,9 +24,9 @@ pub use anime_relations::{
 };
 #[doc(inline)]
 pub use anime_schedule_and_stats::{
-    AnimeBroadcastInput, AnimeContextualRankInput, AnimeExternalLinkInput, AnimeHiatusInput,
-    AnimeScheduleAndStatsInput, AnimeStatisticsInput, AnimeStreamingInput, AnimeThemeSongInput,
-    AnimeTrailerInput, EpisodeRangeInput,
+    AnimeBroadcastInput, AnimeContextualRankInput, AnimeExternalSourceInput, AnimeHiatusInput,
+    AnimeScheduleAndStatsInput, AnimeStatisticsInput, AnimeStreamingSourceInput,
+    AnimeThemeSongInput, AnimeTrailerInput, EpisodeRangeInput,
 };
 use chrono::{DateTime, Utc};
 #[doc(inline)]
@@ -39,7 +40,7 @@ pub use episode::{
 pub use error::Error;
 #[doc(inline)]
 pub use provider_page::{
-    Address, FetchOutcome, PageKey, PageKind, PageObservation, PageResponse, Provider,
+    Address, EntityType, FetchOutcome, PageKey, PageObservation, PageResponse, Provider,
     compute_responses_hash, encode_page_key_proto, record_page_observation,
 };
 use sqlx::migrate::Migrator;
@@ -57,6 +58,7 @@ static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 /// ```no_run
 /// # async fn example() -> Result<(), postgres_db::Error> {
 /// let pool = postgres_db::connect_pool("postgres://localhost/echora", 5).await?;
+/// assert_eq!(pool.options().get_max_connections(), 5);
 /// postgres_db::run_migrations(&pool).await?;
 /// # Ok(())
 /// # }
@@ -82,6 +84,14 @@ pub async fn connect_pool(database_url: &str, max_connections: u32) -> Result<Pg
 ///
 /// ```no_run
 /// # async fn example(pool: &sqlx::PgPool) -> Result<(), postgres_db::Error> {
+/// postgres_db::run_migrations(pool).await?;
+/// let has_schema: bool =
+///     sqlx::query_scalar("SELECT to_regclass('anime_source') IS NOT NULL")
+///         .fetch_one(pool)
+///         .await?;
+/// assert!(has_schema, "every table exists once the migrations ran");
+///
+/// // A second run finds every migration applied and changes nothing.
 /// postgres_db::run_migrations(pool).await?;
 /// # Ok(())
 /// # }

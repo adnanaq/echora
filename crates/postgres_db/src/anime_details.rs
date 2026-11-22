@@ -16,12 +16,12 @@ pub struct AnimeTitleInput {
     pub title: String,
 }
 
-/// Theme entry stored in `anime_theme`.
+/// Theme entry, linked to the work in `anime_theme` and described once in `theme`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AnimeThemeInput {
     /// Theme name (for example `"Psychological"`).
     pub name: String,
-    /// Optional theme description.
+    /// Optional theme description, shared by every work with the theme.
     pub description: Option<String>,
 }
 
@@ -118,13 +118,33 @@ fn validate_non_empty_names(names: &[String], field_name: &str) -> Result<(), Er
     Ok(())
 }
 
-/// Replaces all detail child tables for `anime_id` within an open transaction.
+/// Adds the shared names a work's details use: genres, tags, demographics, content warnings and themes.
 ///
-/// Upserts shared lookup rows in sorted order to avoid multi-worker deadlocks.
+/// Each table is written in sorted key order, and the save calls this before it locks the
+/// work's row, so two saves at once take every lock in the same order and cannot deadlock.
 ///
 /// # Errors
 ///
-/// Returns a database error when any upsert, delete, or batch insert fails.
+/// Returns a database error when an upsert fails.
+pub(crate) async fn upsert_shared_detail_rows(
+    tx: &mut Transaction<'_, Postgres>,
+    details: &AnimeDetailsInput,
+) -> Result<(), Error> {
+    upsert_shared_genres(tx, &sort_unique_strings(&details.genres)).await?;
+    upsert_shared_tags(tx, &sort_unique_strings(&details.tags)).await?;
+    upsert_shared_demographics(tx, &sort_unique_strings(&details.demographics)).await?;
+    upsert_shared_content_warnings(tx, &sort_unique_strings(&details.content_warnings)).await?;
+    upsert_shared_themes(tx, &details.themes).await
+}
+
+/// Replaces all detail child tables for `anime_id` within an open transaction.
+///
+/// The save has already added every shared row these reference, with
+/// [`upsert_shared_detail_rows`] and the language codes.
+///
+/// # Errors
+///
+/// Returns a database error when any delete or batch insert fails.
 pub(crate) async fn replace_anime_details(
     tx: &mut Transaction<'_, Postgres>,
     anime_id: Uuid,
@@ -134,12 +154,6 @@ pub(crate) async fn replace_anime_details(
     let sorted_tags = sort_unique_strings(&details.tags);
     let sorted_demographics = sort_unique_strings(&details.demographics);
     let sorted_content_warnings = sort_unique_strings(&details.content_warnings);
-
-    // Upsert shared name tables in fixed, sorted key order to avoid deadlocks.
-    upsert_shared_genres(tx, &sorted_genres).await?;
-    upsert_shared_tags(tx, &sorted_tags).await?;
-    upsert_shared_demographics(tx, &sorted_demographics).await?;
-    upsert_shared_content_warnings(tx, &sorted_content_warnings).await?;
 
     replace_anime_titles(tx, anime_id, &details.titles).await?;
     replace_anime_synonyms(tx, anime_id, &sort_unique_strings(&details.synonyms)).await?;
@@ -444,20 +458,20 @@ async fn replace_anime_content_warnings(
     Ok(())
 }
 
-/// Replaces a work's themes and their descriptions.
+/// Adds the themes not yet stored to the shared `theme` table, with their descriptions.
+///
+/// A description describes the theme, not the work, so it is stored once per name. A
+/// later save that brings a description fills or replaces it; a save without one keeps
+/// the stored description. Themes are written in sorted name order, so two saves cannot
+/// deadlock.
 ///
 /// # Errors
 ///
 /// Returns a database error when a query fails.
-async fn replace_anime_themes(
+async fn upsert_shared_themes(
     tx: &mut Transaction<'_, Postgres>,
-    anime_id: Uuid,
     themes: &[AnimeThemeInput],
 ) -> Result<(), Error> {
-    sqlx::query!("DELETE FROM anime_theme WHERE anime_id = $1", anime_id)
-        .execute(&mut **tx)
-        .await?;
-
     let deduplicated_themes: BTreeMap<&str, Option<&str>> = themes
         .iter()
         .map(|entry| (entry.name.as_str(), entry.description.as_deref()))
@@ -476,12 +490,49 @@ async fn replace_anime_themes(
         .map(|description| description.map(str::to_owned))
         .collect();
     sqlx::query!(
-        "INSERT INTO anime_theme (anime_id, name, description)
-         SELECT $1, name, description
-         FROM UNNEST($2::text[], $3::text[]) AS entry(name, description)",
-        anime_id,
+        "INSERT INTO theme (name, description)
+         SELECT name, description
+         FROM UNNEST($1::text[], $2::text[]) AS entry(name, description)
+         ON CONFLICT (name) DO UPDATE SET description = EXCLUDED.description
+         WHERE EXCLUDED.description IS NOT NULL
+           AND theme.description IS DISTINCT FROM EXCLUDED.description",
         &names,
         &descriptions as &[Option<String>]
+    )
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
+/// Replaces the themes a work has.
+///
+/// # Errors
+///
+/// Returns a database error when a query fails.
+async fn replace_anime_themes(
+    tx: &mut Transaction<'_, Postgres>,
+    anime_id: Uuid,
+    themes: &[AnimeThemeInput],
+) -> Result<(), Error> {
+    sqlx::query!("DELETE FROM anime_theme WHERE anime_id = $1", anime_id)
+        .execute(&mut **tx)
+        .await?;
+
+    let theme_names: Vec<String> = themes
+        .iter()
+        .map(|entry| entry.name.as_str())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .map(str::to_owned)
+        .collect();
+    if theme_names.is_empty() {
+        return Ok(());
+    }
+    sqlx::query!(
+        "INSERT INTO anime_theme (anime_id, theme)
+         SELECT $1, theme FROM UNNEST($2::text[]) AS entry(theme)",
+        anime_id,
+        &theme_names
     )
     .execute(&mut **tx)
     .await?;
@@ -673,6 +724,15 @@ mod tests {
         };
 
         let mut tx = pool.begin().await.unwrap();
+        crate::language_code::insert_language_codes(
+            &mut tx,
+            populated.titles.iter().map(|entry| entry.language.as_str()),
+        )
+        .await
+        .unwrap();
+        upsert_shared_detail_rows(&mut tx, &populated)
+            .await
+            .unwrap();
         replace_anime_details(&mut tx, anime_id, &populated)
             .await
             .unwrap();

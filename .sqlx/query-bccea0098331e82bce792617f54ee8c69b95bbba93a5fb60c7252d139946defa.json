@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            ppr.provider,\n            ppr.entity_type,\n            ppr.address,\n            ppr.request_name,\n            ppr.content_type,\n            ppr.body\n        FROM anime_source source\n        JOIN provider_page_response ppr\n          ON ppr.provider = source.provider\n         AND ppr.entity_type = source.entity_type\n         AND ppr.address = source.address\n        WHERE source.anime_id = $1\n        ORDER BY ppr.provider, ppr.address, ppr.request_name\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "provider",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "entity_type",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "address",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "request_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "content_type",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "body",
+        "type_info": "Bytea"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "bccea0098331e82bce792617f54ee8c69b95bbba93a5fb60c7252d139946defa"
+}

@@ -1,13 +1,13 @@
-//! Protobuf-to-SQL mapping for theme songs, trailers, external links, streaming,
-//! statistics, broadcast schedule, and hiatus snapshot.
+//! Protobuf-to-SQL mapping for opening and ending themes, trailers, external sources,
+//! streaming sources, statistics, broadcast schedule, and hiatus snapshot.
 
 use std::collections::BTreeMap;
 
 use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
 use postgres_db::{
-    AnimeBroadcastInput, AnimeContextualRankInput, AnimeExternalLinkInput, AnimeHiatusInput,
-    AnimeScheduleAndStatsInput, AnimeStatisticsInput, AnimeStreamingInput, AnimeThemeSongInput,
-    AnimeTrailerInput, EpisodeRangeInput,
+    AnimeBroadcastInput, AnimeContextualRankInput, AnimeExternalSourceInput, AnimeHiatusInput,
+    AnimeScheduleAndStatsInput, AnimeStatisticsInput, AnimeStreamingSourceInput,
+    AnimeThemeSongInput, AnimeTrailerInput, EpisodeRangeInput,
 };
 use prost_types::Timestamp;
 use tonic::Status;
@@ -36,31 +36,31 @@ pub(crate) fn build_schedule_and_stats(
     broadcast: Option<Broadcast>,
     hiatus: Option<AnimeHiatus>,
 ) -> Result<AnimeScheduleAndStatsInput, Status> {
-    let mut theme_songs = map_theme_songs("opening", opening_themes);
-    theme_songs.extend(map_theme_songs("ending", ending_themes));
-
+    let mapped_opening_themes = map_theme_songs(opening_themes);
+    let mapped_ending_themes = map_theme_songs(ending_themes);
     let mapped_trailers = map_trailers(trailers);
-    let mapped_links = map_external_links(external_sources);
-    let mapped_streaming = map_streaming(streaming_sources);
+    let mapped_external_sources = map_external_sources(external_sources);
+    let mapped_streaming_sources = map_streaming_sources(streaming_sources);
     let mapped_statistics = map_statistics(statistics)?;
     let mapped_broadcast = broadcast.map(map_broadcast).transpose()?;
     let mapped_hiatus = hiatus.map(map_hiatus).transpose()?;
 
     Ok(AnimeScheduleAndStatsInput {
-        theme_songs,
+        opening_themes: mapped_opening_themes,
+        ending_themes: mapped_ending_themes,
         trailers: mapped_trailers,
-        external_links: mapped_links,
-        streaming_entries: mapped_streaming,
+        external_sources: mapped_external_sources,
+        streaming_sources: mapped_streaming_sources,
         statistics: mapped_statistics,
         broadcast: mapped_broadcast,
         hiatus: mapped_hiatus,
     })
 }
 
-/// Converts opening or ending songs into theme song inputs of `kind`.
+/// Converts opening or ending songs into theme song inputs.
 ///
 /// Each song's position is its place in the list, counted from 0.
-fn map_theme_songs(kind: &str, songs: Vec<ThemeSong>) -> Vec<AnimeThemeSongInput> {
+fn map_theme_songs(songs: Vec<ThemeSong>) -> Vec<AnimeThemeSongInput> {
     songs
         .into_iter()
         .zip(0_i32..)
@@ -75,13 +75,17 @@ fn map_theme_songs(kind: &str, songs: Vec<ThemeSong>) -> Vec<AnimeThemeSongInput
             )| {
                 let episode_ranges = episodes
                     .into_iter()
-                    .map(|EpisodeRange { start, end }| EpisodeRangeInput {
-                        range_start: start,
-                        range_end: end,
-                    })
+                    .map(
+                        |EpisodeRange {
+                             range_start,
+                             range_end,
+                         }| EpisodeRangeInput {
+                            range_start,
+                            range_end,
+                        },
+                    )
                     .collect();
                 AnimeThemeSongInput {
-                    kind: kind.to_owned(),
                     position,
                     title,
                     artist,
@@ -100,21 +104,21 @@ fn map_trailers(trailers: Vec<TrailerEntry>) -> Vec<AnimeTrailerInput> {
             |TrailerEntry {
                  source,
                  title,
-                 thumbnail,
+                 thumbnail_source,
              }| {
-                let url = source.filter(|value| !value.trim().is_empty())?;
+                let source = source.filter(|value| !value.trim().is_empty())?;
                 Some(AnimeTrailerInput {
-                    url,
+                    source,
                     title,
-                    thumbnail_url: thumbnail,
+                    thumbnail_source,
                 })
             },
         )
         .collect()
 }
 
-/// Converts external links into external link inputs.
-fn map_external_links(links: Vec<ExternalLink>) -> Vec<AnimeExternalLinkInput> {
+/// Converts external links into external source inputs.
+fn map_external_sources(links: Vec<ExternalLink>) -> Vec<AnimeExternalSourceInput> {
     links
         .into_iter()
         .map(
@@ -123,8 +127,8 @@ fn map_external_links(links: Vec<ExternalLink>) -> Vec<AnimeExternalLinkInput> {
                  source,
                  label,
                  language,
-             }| AnimeExternalLinkInput {
-                url: source,
+             }| AnimeExternalSourceInput {
+                source,
                 platform,
                 label,
                 language,
@@ -133,8 +137,8 @@ fn map_external_links(links: Vec<ExternalLink>) -> Vec<AnimeExternalLinkInput> {
         .collect()
 }
 
-/// Converts streaming entries into streaming inputs with their subtitle languages.
-fn map_streaming(entries: Vec<StreamingEntry>) -> Vec<AnimeStreamingInput> {
+/// Converts streaming entries into streaming source inputs with their subtitle languages.
+fn map_streaming_sources(entries: Vec<StreamingEntry>) -> Vec<AnimeStreamingSourceInput> {
     entries
         .into_iter()
         .map(
@@ -142,17 +146,17 @@ fn map_streaming(entries: Vec<StreamingEntry>) -> Vec<AnimeStreamingInput> {
                  platform,
                  source,
                  region,
-                 free,
-                 premium_required,
-                 dub_available,
+                 is_free,
+                 is_premium_required,
+                 has_dub,
                  subtitle_languages,
-             }| AnimeStreamingInput {
+             }| AnimeStreamingSourceInput {
                 platform,
-                url: source,
+                source,
                 region,
-                is_free: free,
-                is_premium_required: premium_required,
-                has_dub: dub_available,
+                is_free,
+                is_premium_required,
+                has_dub,
                 subtitle_languages,
             },
         )
@@ -214,7 +218,7 @@ fn map_contextual_rank(rank_entry: ContextualRank) -> Result<AnimeContextualRank
         format,
         year,
         season,
-        all_time,
+        is_all_time,
     } = rank_entry;
     let rank_year = year
         .map(|value| {
@@ -231,7 +235,7 @@ fn map_contextual_rank(rank_entry: ContextualRank) -> Result<AnimeContextualRank
     Ok(AnimeContextualRankInput {
         context,
         rank,
-        is_all_time: all_time,
+        is_all_time,
         format,
         season: rank_season,
         year: rank_year,
@@ -433,7 +437,7 @@ mod tests {
                     format: Some("TV".to_owned()),
                     year: Some(2024),
                     season: Some("spring".to_owned()),
-                    all_time: Some(false),
+                    is_all_time: Some(false),
                 }],
             },
         );
@@ -443,8 +447,8 @@ mod tests {
                 title: "OP1".to_owned(),
                 artist: Some("Artist".to_owned()),
                 episodes: vec![EpisodeRange {
-                    start: 1,
-                    end: Some(12),
+                    range_start: 1,
+                    range_end: Some(12),
                 }],
             }],
             Vec::new(),
@@ -452,12 +456,12 @@ mod tests {
                 TrailerEntry {
                     source: Some("https://youtube.com/watch?v=1".to_owned()),
                     title: Some("PV".to_owned()),
-                    thumbnail: None,
+                    thumbnail_source: None,
                 },
                 TrailerEntry {
                     source: None,
                     title: Some("Incomplete".to_owned()),
-                    thumbnail: Some("https://example.com/thumb.jpg".to_owned()),
+                    thumbnail_source: Some("https://example.com/thumb.jpg".to_owned()),
                 },
             ],
             vec![ExternalLink {
@@ -470,9 +474,9 @@ mod tests {
                 platform: "Crunchyroll".to_owned(),
                 source: "https://crunchyroll.com/1".to_owned(),
                 region: Some("US".to_owned()),
-                free: Some(false),
-                premium_required: Some(true),
-                dub_available: Some(true),
+                is_free: Some(false),
+                is_premium_required: Some(true),
+                has_dub: Some(true),
                 subtitle_languages: vec!["en".to_owned()],
             }],
             stats,
@@ -499,11 +503,11 @@ mod tests {
         )
         .expect("valid extended fields should map");
 
-        assert_eq!(mapped.theme_songs.len(), 1);
-        assert_eq!(mapped.theme_songs[0].kind, "opening");
+        assert_eq!(mapped.opening_themes.len(), 1);
+        assert_eq!(mapped.ending_themes, Vec::new());
         assert_eq!(mapped.trailers.len(), 1);
-        assert_eq!(mapped.external_links.len(), 1);
-        assert_eq!(mapped.streaming_entries.len(), 1);
+        assert_eq!(mapped.external_sources.len(), 1);
+        assert_eq!(mapped.streaming_sources.len(), 1);
         assert_eq!(
             mapped.statistics[0].contextual_ranks[0].season.as_deref(),
             Some("SPRING")
@@ -558,7 +562,7 @@ mod tests {
                 format: None,
                 year: rank_year,
                 season: rank_season.map(str::to_owned),
-                all_time: None,
+                is_all_time: None,
             }],
         }
     }

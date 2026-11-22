@@ -13,7 +13,7 @@ use crate::anime::{
     insert_catalogue_outbox_event, parse_page_kind, to_proto_timestamp,
 };
 use crate::read_transaction_time;
-use crate::{Error, PageKey, PageKind, PageResponse, Provider};
+use crate::{EntityType, Error, PageKey, PageResponse, Provider};
 
 /// Current canonical hash format version stored in `episode.hash_format`.
 pub const EPISODE_HASH_FORMAT: i16 = 1;
@@ -60,19 +60,20 @@ pub struct EpisodeReferenceInput {
 /// Localized episode title stored in `episode_title`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EpisodeTitleInput {
-    /// Language code or name (primary key component).
+    /// BCP 47 language code (primary key component).
     pub language: String,
     /// Localized title text.
     pub title: String,
 }
 
-/// Episode streaming link stored in `episode_streaming`.
+/// Episode streaming link stored in `episode_streaming`, with its platform in
+/// `external_source`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EpisodeStreamingInput {
-    /// Streaming platform identifier (primary key component).
+    /// Streaming platform name, the key of `Episode.streaming`.
     pub platform: String,
     /// Direct episode URL on `platform`.
-    pub url: String,
+    pub source: String,
 }
 
 /// Character appearance in an episode stored in `episode_character`.
@@ -198,9 +199,16 @@ pub(crate) struct SyncWorkEpisodesOutcome {
 /// # use sqlx::PgPool;
 /// # use uuid::Uuid;
 /// # use postgres_db::load_episode;
-/// # async fn example(pool: &PgPool, episode_id: Uuid) -> Result<(), postgres_db::Error> {
+/// # async fn example(
+/// #     pool: &PgPool,
+/// #     episode_id: Uuid,
+/// #     anime_id: Uuid,
+/// # ) -> Result<(), postgres_db::Error> {
+/// // An episode its work's save just created, before the episode's own first merge.
 /// let outcome = load_episode(pool, episode_id).await?;
-/// println!("Episode version: {}", outcome.version);
+/// assert_eq!(outcome.version, 1);
+/// assert_eq!(outcome.anime_id, anime_id);
+/// assert_eq!(outcome.pages, Vec::new(), "its pages are linked but not fetched yet");
 /// # Ok(())
 /// # }
 /// ```
@@ -255,19 +263,19 @@ async fn load_episode_pages(
     let linked_rows = sqlx::query!(
         r#"
         SELECT
-            epp.provider,
-            epp.page_kind,
-            epp.address,
+            source.provider,
+            source.entity_type,
+            source.address,
             pp.fetched_at,
             pp.is_dead,
             pp.missing_since
-        FROM episode_provider_page epp
+        FROM episode_source source
         JOIN provider_page pp
-          ON pp.provider = epp.provider
-         AND pp.page_kind = epp.page_kind
-         AND pp.address = epp.address
-        WHERE epp.episode_id = $1
-        ORDER BY epp.provider, epp.address
+          ON pp.provider = source.provider
+         AND pp.entity_type = source.entity_type
+         AND pp.address = source.address
+        WHERE source.episode_id = $1
+        ORDER BY source.provider, source.address
         "#,
         episode_id
     )
@@ -282,8 +290,8 @@ async fn load_episode_pages(
             continue;
         };
         let provider: Provider = row.provider.parse()?;
-        let page_kind = parse_page_kind(&row.page_kind)?;
-        let page_key = PageKey::new(provider, page_kind, &row.address)?;
+        let entity_type = parse_page_kind(&row.entity_type)?;
+        let page_key = PageKey::new(provider, entity_type, &row.address)?;
         let responses = responses_by_page
             .remove(&(row.provider, row.address))
             .unwrap_or_default();
@@ -316,12 +324,12 @@ async fn load_episode_responses_by_page(
             ppr.request_name,
             ppr.content_type,
             ppr.body
-        FROM episode_provider_page epp
+        FROM episode_source source
         JOIN provider_page_response ppr
-          ON ppr.provider = epp.provider
-         AND ppr.page_kind = epp.page_kind
-         AND ppr.address = epp.address
-        WHERE epp.episode_id = $1
+          ON ppr.provider = source.provider
+         AND ppr.entity_type = source.entity_type
+         AND ppr.address = source.address
+        WHERE source.episode_id = $1
         ORDER BY ppr.provider, ppr.address, ppr.request_name
         "#,
         episode_id
@@ -434,7 +442,7 @@ async fn load_episode_list_entries(
 /// ```no_run
 /// # use sqlx::PgPool;
 /// # use uuid::Uuid;
-/// # use postgres_db::{EPISODE_HASH_FORMAT, SaveEpisodeInput, save_episode};
+/// # use postgres_db::{EPISODE_HASH_FORMAT, SaveEpisodeInput, SaveEpisodeOutcome, save_episode};
 /// # async fn example(pool: &PgPool, episode_id: Uuid) -> Result<(), postgres_db::Error> {
 /// let input = SaveEpisodeInput {
 ///     episode_id,
@@ -460,8 +468,13 @@ async fn load_episode_list_entries(
 ///     merge_version: 1,
 ///     traceparent: None,
 /// };
-/// let outcome = save_episode(pool, &input).await?;
-/// assert!(outcome.has_changed);
+/// let first_save = save_episode(pool, &input).await?;
+/// assert_eq!(first_save, SaveEpisodeOutcome { has_changed: true, version: 2 });
+///
+/// // The same merged record saved again writes nothing and keeps the version.
+/// let repeated_input = SaveEpisodeInput { expected_version: 2, ..input };
+/// let repeated_save = save_episode(pool, &repeated_input).await?;
+/// assert_eq!(repeated_save, SaveEpisodeOutcome { has_changed: false, version: 2 });
 /// # Ok(())
 /// # }
 /// ```
@@ -479,6 +492,8 @@ pub async fn save_episode(
     validate_save_episode_input(input)?;
 
     let mut tx = pool.begin().await?;
+    // Shared rows come before the episode's row lock, in the order a work's save writes them.
+    upsert_episode_shared_rows(&mut tx, input).await?;
     let existing = sqlx::query!(
         r#"
         SELECT
@@ -617,11 +632,31 @@ fn validate_save_episode_input(input: &SaveEpisodeInput) -> Result<(), Error> {
             ));
         }
     }
+    let mut source_by_platform: BTreeMap<&str, &str> = BTreeMap::new();
+    let mut platform_by_source: BTreeMap<&str, &str> = BTreeMap::new();
     for streaming_entry in &input.streaming {
-        if streaming_entry.platform.trim().is_empty() || streaming_entry.url.trim().is_empty() {
+        let platform = streaming_entry.platform.as_str();
+        let source = streaming_entry.source.as_str();
+        if platform.trim().is_empty() || source.trim().is_empty() {
             return Err(Error::invalid_argument(
-                "episode_streaming platform and url must not be empty",
+                "episode_streaming platform and source must not be empty",
             ));
+        }
+        if source_by_platform
+            .insert(platform, source)
+            .is_some_and(|known_source| known_source != source)
+        {
+            return Err(Error::invalid_argument(format!(
+                "episode_streaming platform {platform:?} is given two sources"
+            )));
+        }
+        if platform_by_source
+            .insert(source, platform)
+            .is_some_and(|known_platform| known_platform != platform)
+        {
+            return Err(Error::invalid_argument(format!(
+                "episode_streaming source {source:?} is given two platforms"
+            )));
         }
     }
     for character_entry in &input.characters {
@@ -782,7 +817,33 @@ async fn replace_episode_images(
     Ok(())
 }
 
-/// Replaces an episode's streaming links.
+/// Adds the language codes and streaming URLs an episode's save references, before its row is locked.
+///
+/// A work's save writes the same tables in the same order, language codes and then
+/// external sources, before it locks any entity row. Two saves at once, such as a work's
+/// and one of its episodes', therefore cannot each hold a new shared row the other waits for.
+///
+/// # Errors
+///
+/// Returns a database error when an insert or upsert fails.
+async fn upsert_episode_shared_rows(
+    tx: &mut Transaction<'_, Postgres>,
+    input: &SaveEpisodeInput,
+) -> Result<(), Error> {
+    crate::language_code::insert_language_codes(
+        tx,
+        input.titles.iter().map(|entry| entry.language.as_str()),
+    )
+    .await?;
+    let url_details: BTreeMap<&str, (&str, Option<&str>)> = input
+        .streaming
+        .iter()
+        .map(|entry| (entry.source.as_str(), (entry.platform.as_str(), None)))
+        .collect();
+    crate::anime_schedule_and_stats::upsert_external_sources(tx, url_details).await
+}
+
+/// Replaces an episode's streaming links; the save has already stored each URL's platform.
 ///
 /// # Errors
 ///
@@ -792,38 +853,28 @@ async fn replace_episode_streaming(
     episode_id: Uuid,
     streaming: &[EpisodeStreamingInput],
 ) -> Result<(), Error> {
+    let sources: Vec<String> = streaming
+        .iter()
+        .map(|entry| entry.source.as_str())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .map(str::to_owned)
+        .collect();
+
     sqlx::query!(
         "DELETE FROM episode_streaming WHERE episode_id = $1",
         episode_id
     )
     .execute(&mut **tx)
     .await?;
-
-    let deduplicated_streaming: BTreeMap<&str, &str> = streaming
-        .iter()
-        .map(|entry| (entry.platform.as_str(), entry.url.as_str()))
-        .collect();
-    if deduplicated_streaming.is_empty() {
+    if sources.is_empty() {
         return Ok(());
     }
-
-    let platforms: Vec<String> = deduplicated_streaming
-        .keys()
-        .copied()
-        .map(str::to_owned)
-        .collect();
-    let urls: Vec<String> = deduplicated_streaming
-        .values()
-        .copied()
-        .map(str::to_owned)
-        .collect();
     sqlx::query!(
-        "INSERT INTO episode_streaming (episode_id, platform, source)
-         SELECT $1, platform, source
-         FROM UNNEST($2::text[], $3::text[]) AS entry(platform, source)",
+        "INSERT INTO episode_streaming (episode_id, source)
+         SELECT $1, source FROM UNNEST($2::text[]) AS entry(source)",
         episode_id,
-        &platforms,
-        &urls
+        &sources
     )
     .execute(&mut **tx)
     .await?;
@@ -899,10 +950,15 @@ async fn replace_episode_characters(
 /// ```no_run
 /// # use sqlx::PgPool;
 /// # use uuid::Uuid;
-/// # use postgres_db::mark_episode_aired;
+/// # use postgres_db::{mark_episode_aired, MarkEpisodeAiredOutcome};
 /// # async fn example(pool: &PgPool, episode_id: Uuid) -> Result<(), postgres_db::Error> {
-/// let outcome = mark_episode_aired(pool, episode_id, None).await?;
-/// println!("Aired notification written: {}", outcome.has_notified);
+/// // The episode aired an hour ago, and no notification was written yet.
+/// let first_call = mark_episode_aired(pool, episode_id, None).await?;
+/// assert_eq!(first_call, MarkEpisodeAiredOutcome { has_notified: true });
+///
+/// // The notification is written once, however often episode tracking asks.
+/// let repeated_call = mark_episode_aired(pool, episode_id, None).await?;
+/// assert_eq!(repeated_call, MarkEpisodeAiredOutcome { has_notified: false });
 /// # Ok(())
 /// # }
 /// ```
@@ -1005,8 +1061,13 @@ pub async fn mark_episode_aired(
 /// # use uuid::Uuid;
 /// # use postgres_db::delete_episode;
 /// # async fn example(pool: &PgPool, episode_id: Uuid) -> Result<(), postgres_db::Error> {
+/// // The episode is at version 1; the delete raises it once more for `episode.deleted`.
 /// let new_version = delete_episode(pool, episode_id, 1, None).await?;
 /// assert_eq!(new_version, 2);
+///
+/// // A deleted episode cannot be deleted again.
+/// let repeated_delete = delete_episode(pool, episode_id, new_version, None).await;
+/// assert!(repeated_delete.is_err_and(|error| error.is_not_found()));
 /// # Ok(())
 /// # }
 /// ```
@@ -1062,7 +1123,7 @@ pub async fn delete_episode(
     .await?;
 
     sqlx::query!(
-        "DELETE FROM episode_provider_page WHERE episode_id = $1",
+        "DELETE FROM episode_source WHERE episode_id = $1",
         episode_id
     )
     .execute(&mut *tx)
@@ -1104,9 +1165,9 @@ pub(crate) fn validate_work_episode_references(
             return Err(Error::invalid_argument("episode_number must be >= 0"));
         }
         for page_key in &episode.page_keys {
-            if page_key.page_kind() != PageKind::Episode {
+            if page_key.entity_type() != EntityType::Episode {
                 return Err(Error::invalid_argument(
-                    "episode page_keys must have PageKind::Episode",
+                    "episode page_keys must have EntityType::Episode",
                 ));
             }
         }
@@ -1262,8 +1323,8 @@ async fn link_episode_pages(
         let existing_owner = sqlx::query_scalar!(
             r#"
             SELECT episode_id
-            FROM episode_provider_page
-            WHERE provider = $1 AND page_kind = 'episode' AND address = $2
+            FROM episode_source
+            WHERE provider = $1 AND entity_type = 'episode' AND address = $2
             FOR UPDATE
             "#,
             page_key.provider().as_str(),
@@ -1286,7 +1347,7 @@ async fn link_episode_pages(
         // Replace any previous address for this (episode_id, provider) so correcting
         // an episode's page preserves its UUID without violating UNIQUE(episode_id, provider).
         sqlx::query!(
-            "DELETE FROM episode_provider_page WHERE episode_id = $1 AND provider = $2",
+            "DELETE FROM episode_source WHERE episode_id = $1 AND provider = $2",
             episode_id,
             page_key.provider().as_str(),
         )
@@ -1295,9 +1356,9 @@ async fn link_episode_pages(
 
         sqlx::query!(
             r#"
-            INSERT INTO provider_page (provider, page_kind, address)
+            INSERT INTO provider_page (provider, entity_type, address)
             VALUES ($1, 'episode', $2)
-            ON CONFLICT (provider, page_kind, address) DO NOTHING
+            ON CONFLICT (provider, entity_type, address) DO NOTHING
             "#,
             page_key.provider().as_str(),
             page_key.address().as_str(),
@@ -1307,7 +1368,7 @@ async fn link_episode_pages(
 
         sqlx::query!(
             r#"
-            INSERT INTO episode_provider_page (episode_id, provider, page_kind, address)
+            INSERT INTO episode_source (episode_id, provider, entity_type, address)
             VALUES ($1, $2, 'episode', $3)
             "#,
             episode_id,
@@ -1482,11 +1543,11 @@ async fn load_page_keys_by_episode(
 ) -> Result<HashMap<Uuid, Vec<PageKey>>, Error> {
     let page_rows = sqlx::query!(
         r#"
-        SELECT epp.episode_id, epp.provider, epp.address
-        FROM episode_provider_page epp
-        JOIN episode e ON e.id = epp.episode_id
+        SELECT source.episode_id, source.provider, source.address
+        FROM episode_source source
+        JOIN episode e ON e.id = source.episode_id
         WHERE e.anime_id = $1 AND e.deleted_at IS NULL
-        ORDER BY epp.episode_id, epp.provider, epp.address
+        ORDER BY source.episode_id, source.provider, source.address
         "#,
         anime_id
     )
@@ -1497,7 +1558,7 @@ async fn load_page_keys_by_episode(
     for page_row in page_rows {
         let page_key = PageKey::new(
             page_row.provider.parse()?,
-            PageKind::Episode,
+            EntityType::Episode,
             page_row.address,
         )?;
         page_keys_by_episode
@@ -1597,7 +1658,7 @@ mod tests {
             ],
             streaming: vec![EpisodeStreamingInput {
                 platform: "crunchyroll".to_owned(),
-                url: "https://crunchyroll.com/watch/1".to_owned(),
+                source: "https://crunchyroll.com/watch/1".to_owned(),
             }],
             characters: vec![EpisodeCharacterInput {
                 character_page_provider: "mal".to_owned(),
@@ -1725,7 +1786,7 @@ mod tests {
         let mut bad_stream = sample_save_episode_input(id, 0);
         bad_stream.streaming.push(EpisodeStreamingInput {
             platform: "netflix".to_owned(),
-            url: String::new(),
+            source: String::new(),
         });
         assert!(
             validate_save_episode_input(&bad_stream)
@@ -1747,9 +1808,49 @@ mod tests {
     }
 
     #[test]
+    fn validate_save_episode_input_conflicting_streaming_links_return_invalid_argument() {
+        let id = Uuid::now_v7();
+        let mut repeated_stream = sample_save_episode_input(id, 0);
+        repeated_stream.streaming.push(EpisodeStreamingInput {
+            platform: "crunchyroll".to_owned(),
+            source: "https://crunchyroll.com/watch/1".to_owned(),
+        });
+        assert!(
+            validate_save_episode_input(&repeated_stream).is_ok(),
+            "the same platform and source twice is one link"
+        );
+
+        let mut two_sources_one_platform = sample_save_episode_input(id, 0);
+        two_sources_one_platform
+            .streaming
+            .push(EpisodeStreamingInput {
+                platform: "crunchyroll".to_owned(),
+                source: "https://crunchyroll.com/watch/other".to_owned(),
+            });
+        assert!(
+            validate_save_episode_input(&two_sources_one_platform)
+                .unwrap_err()
+                .is_invalid_argument()
+        );
+
+        let mut two_platforms_one_source = sample_save_episode_input(id, 0);
+        two_platforms_one_source
+            .streaming
+            .push(EpisodeStreamingInput {
+                platform: "funimation".to_owned(),
+                source: "https://crunchyroll.com/watch/1".to_owned(),
+            });
+        assert!(
+            validate_save_episode_input(&two_platforms_one_source)
+                .unwrap_err()
+                .is_invalid_argument()
+        );
+    }
+
+    #[test]
     fn validate_work_episode_references_enforces_invariants() {
-        let valid_page = PageKey::new(Provider::Mal, PageKind::Episode, "1").unwrap();
-        let wrong_kind_page = PageKey::new(Provider::Mal, PageKind::Anime, "1").unwrap();
+        let valid_page = PageKey::new(Provider::Mal, EntityType::Episode, "1").unwrap();
+        let wrong_kind_page = PageKey::new(Provider::Mal, EntityType::Anime, "1").unwrap();
 
         let neg_ep = EpisodeReferenceInput {
             episode_id: Uuid::now_v7(),
@@ -1821,7 +1922,7 @@ mod tests {
     #[sqlx::test]
     async fn load_episode_hydrates_pages_list_entries_and_corrections(pool: PgPool) {
         let (anime_id, episode_id) = seed_anime_and_episode(&pool, None).await;
-        let episode_page_key = PageKey::new(Provider::Mal, PageKind::Episode, "1").unwrap();
+        let episode_page_key = PageKey::new(Provider::Mal, EntityType::Episode, "1").unwrap();
         let fetched_at = Utc::now();
 
         record_page_observation(
@@ -1842,7 +1943,7 @@ mod tests {
         .unwrap();
 
         sqlx::query!(
-            "INSERT INTO episode_provider_page (episode_id, provider, page_kind, address)
+            "INSERT INTO episode_source (episode_id, provider, entity_type, address)
              VALUES ($1, 'mal', 'episode', '1')",
             episode_id
         )
@@ -2010,13 +2111,13 @@ mod tests {
         let (_, episode_id) = seed_anime_and_episode(&pool, None).await;
 
         sqlx::query!(
-            "INSERT INTO provider_page (provider, page_kind, address) VALUES ('mal', 'episode', '10')"
+            "INSERT INTO provider_page (provider, entity_type, address) VALUES ('mal', 'episode', '10')"
         )
         .execute(&pool)
         .await
         .unwrap();
         sqlx::query!(
-            "INSERT INTO episode_provider_page (episode_id, provider, page_kind, address)
+            "INSERT INTO episode_source (episode_id, provider, entity_type, address)
              VALUES ($1, 'mal', 'episode', '10')",
             episode_id
         )
@@ -2042,7 +2143,7 @@ mod tests {
         );
 
         let link_count: i64 = sqlx::query_scalar!(
-            "SELECT COUNT(*) FROM episode_provider_page WHERE episode_id = $1",
+            "SELECT COUNT(*) FROM episode_source WHERE episode_id = $1",
             episode_id
         )
         .fetch_one(&pool)
@@ -2073,7 +2174,7 @@ mod tests {
             episode_id: listed_episode_id,
             episode_number: 2,
             title: "Stray Dog Strut".to_owned(),
-            page_keys: vec![PageKey::new(Provider::Mal, PageKind::Episode, "2").unwrap()],
+            page_keys: vec![PageKey::new(Provider::Mal, EntityType::Episode, "2").unwrap()],
             list_entries: vec![EpisodeListEntryInput {
                 provider: Provider::Mal,
                 title: Some("Stray Dog Strut".to_owned()),
@@ -2110,7 +2211,7 @@ mod tests {
 
         let mut moved_page_reference = listed_episode_reference.clone();
         moved_page_reference.page_keys =
-            vec![PageKey::new(Provider::Mal, PageKind::Episode, "200").unwrap()];
+            vec![PageKey::new(Provider::Mal, EntityType::Episode, "200").unwrap()];
         let mut tx = pool.begin().await.unwrap();
         let moved_page_outcome = sync_work_episodes(
             &mut tx,
@@ -2132,7 +2233,7 @@ mod tests {
         assert!(swapped_episode.merge_requested_at.is_some());
 
         let linked_addresses: Vec<String> = sqlx::query_scalar!(
-            "SELECT address FROM episode_provider_page WHERE episode_id = $1",
+            "SELECT address FROM episode_source WHERE episode_id = $1",
             listed_episode_id
         )
         .fetch_all(&pool)
@@ -2145,7 +2246,7 @@ mod tests {
             episode_id: other_episode_id,
             episode_number: 3,
             title: "Honky Tonk Women".to_owned(),
-            page_keys: vec![PageKey::new(Provider::Mal, PageKind::Episode, "200").unwrap()],
+            page_keys: vec![PageKey::new(Provider::Mal, EntityType::Episode, "200").unwrap()],
             list_entries: Vec::new(),
         };
         let mut tx = pool.begin().await.unwrap();

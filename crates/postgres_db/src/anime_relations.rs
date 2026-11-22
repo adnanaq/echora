@@ -10,9 +10,9 @@ use crate::graph_projection::{
     invert_anime_relation_type, recompute_anime_pair_graph_edges, replace_company_graph_edges,
     replace_source_material_graph_edges,
 };
-use crate::provider_page::{PageKey, PageKind, Provider};
+use crate::provider_page::{EntityType, PageKey, Provider};
 
-/// Directed anime-to-anime relation stored in `anime_relation`.
+/// Directed anime-to-anime relation stored in `anime_related_anime`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AnimeRelationInput {
     /// Canonical `anime_relation_type` lookup value.
@@ -23,7 +23,7 @@ pub struct AnimeRelationInput {
     pub to_page_address: String,
 }
 
-/// Provider-specific relation provenance stored in `anime_relation_claim`.
+/// Provider-specific relation provenance stored in `anime_related_anime_claim`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AnimeRelationClaimInput {
     /// Provider making the claim.
@@ -121,16 +121,16 @@ pub(crate) fn validate_relations_and_graph(
         if relation.to_page_provider.trim().is_empty() || relation.to_page_address.trim().is_empty()
         {
             return Err(Error::invalid_argument(
-                "anime_relation target provider and address must be non-empty",
+                "anime_related_anime target provider and address must be non-empty",
             ));
         }
     }
 
     for claim in &input.relation_claims {
         invert_anime_relation_type(&claim.relation_type)?;
-        if claim.target_page.page_kind() != PageKind::Anime {
+        if claim.target_page.entity_type() != EntityType::Anime {
             return Err(Error::invalid_argument(
-                "anime_relation_claim requires PageKind::Anime",
+                "anime_related_anime_claim requires EntityType::Anime",
             ));
         }
     }
@@ -213,38 +213,43 @@ fn validate_companies(companies: &[AnimeCompanyInput]) -> Result<(), Error> {
     Ok(())
 }
 
-/// Links a source page to a work and resolves pending relations.
+/// Links a source page to a work, so relations pointing at the page reach the work.
 ///
 /// A page that was never fetched is linked too, and becomes due for its first fetch.
-/// Pending `anime_relation` rows targeting `page_key` are resolved, and the affected
-/// `graph_edge` pairs are recomputed.
+/// Relations store only their target page, so none is rewritten. The works whose
+/// relations now reach this work get a new version and a merge request, and the affected
+/// `graph_edge` pairs are recomputed. The result counts those works.
 ///
 /// # Examples
 ///
 /// ```no_run
 /// # use sqlx::PgPool;
 /// # use uuid::Uuid;
-/// # use postgres_db::{link_anime_source_page, PageKey, PageKind, Provider};
+/// # use postgres_db::{link_anime_source_page, PageKey, EntityType, Provider};
 /// # async fn example(pool: &PgPool, anime_id: Uuid) -> Result<(), postgres_db::Error> {
-/// let key = PageKey::new(Provider::Mal, PageKind::Anime, "21")?;
-/// let resolved = link_anime_source_page(pool, anime_id, &key).await?;
-/// assert_eq!(resolved, 0);
+/// // One other work already lists MAL page 21 as its sequel.
+/// let key = PageKey::new(Provider::Mal, EntityType::Anime, "21")?;
+/// let relating_works = link_anime_source_page(pool, anime_id, &key).await?;
+/// assert_eq!(relating_works, 1, "that work's relation now reaches this one");
+///
+/// // Linking the same page again changes nothing.
+/// assert_eq!(link_anime_source_page(pool, anime_id, &key).await?, 0);
 /// # Ok(())
 /// # }
 /// ```
 ///
 /// # Errors
 ///
-/// Returns [`Error::invalid_argument`] if `page_key.page_kind` is not
-/// [`PageKind::Anime`], or a database error when any query fails.
+/// Returns [`Error::invalid_argument`] if `page_key.entity_type` is not
+/// [`EntityType::Anime`], or a database error when any query fails.
 pub async fn link_anime_source_page(
     pool: &PgPool,
     anime_id: Uuid,
     page_key: &PageKey,
 ) -> Result<u64, Error> {
-    if page_key.page_kind() != PageKind::Anime {
+    if page_key.entity_type() != EntityType::Anime {
         return Err(Error::invalid_argument(
-            "link_anime_source_page requires PageKind::Anime",
+            "link_anime_source_page requires EntityType::Anime",
         ));
     }
 
@@ -254,10 +259,15 @@ pub async fn link_anime_source_page(
     Ok(resolved_count)
 }
 
-/// Links `page_key` to a work as a source page and resolves relations pointing at it.
+/// Links `page_key` to a work as a source page, so relations pointing at the page now reach the work.
 ///
-/// A page the work already holds as a partial source becomes its source. A new link
-/// raises the work's version. The result counts the relations it resolved.
+/// - A page the work already holds as a partial source becomes its source.
+/// - A new link raises the work's version and requests its merge.
+/// - Every other work with a relation to the page gets a new version and a merge request,
+///   and a merged one an `anime.updated` event, since the relation it shows now reaches a
+///   work. The graph edges of each such pair are recomputed.
+///
+/// The result counts the works whose relations now reach the linked work.
 ///
 /// # Errors
 ///
@@ -289,11 +299,11 @@ pub(crate) async fn link_anime_source_page_in_tx(
     .await?;
 
     sqlx::query!(
-        "INSERT INTO provider_page (provider, page_kind, address)
+        "INSERT INTO provider_page (provider, entity_type, address)
          VALUES ($1, $2, $3)
-         ON CONFLICT (provider, page_kind, address) DO NOTHING",
+         ON CONFLICT (provider, entity_type, address) DO NOTHING",
         page_key.provider().as_str(),
-        page_key.page_kind().as_str(),
+        page_key.entity_type().as_str(),
         page_key.address().as_str(),
     )
     .execute(&mut **tx)
@@ -301,10 +311,10 @@ pub(crate) async fn link_anime_source_page_in_tx(
 
     let source_owner_id: Option<Uuid> = sqlx::query_scalar!(
         "SELECT anime_id
-         FROM anime_provider_page
-         WHERE provider = $1 AND page_kind = $2 AND address = $3 AND role = 'source'",
+         FROM anime_source
+         WHERE provider = $1 AND entity_type = $2 AND address = $3",
         page_key.provider().as_str(),
-        page_key.page_kind().as_str(),
+        page_key.entity_type().as_str(),
         page_key.address().as_str(),
     )
     .fetch_optional(&mut **tx)
@@ -317,49 +327,43 @@ pub(crate) async fn link_anime_source_page_in_tx(
                 page_key.address()
             )));
         }
-        Some(_) => {}
-        None => {
-            sqlx::query!(
-                "INSERT INTO anime_provider_page (anime_id, provider, page_kind, address, role)
-                 VALUES ($1, $2, $3, $4, 'source')
-                 ON CONFLICT (anime_id, provider, page_kind, address)
-                 DO UPDATE SET role = 'source'",
-                anime_id,
-                page_key.provider().as_str(),
-                page_key.page_kind().as_str(),
-                page_key.address().as_str(),
-            )
-            .execute(&mut **tx)
-            .await?;
-            sqlx::query!(
-                "UPDATE anime
-                 SET version = version + 1,
-                     merge_requested_at = COALESCE(merge_requested_at, now())
-                 WHERE id = $1",
-                anime_id,
-            )
-            .execute(&mut **tx)
-            .await?;
-        }
+        Some(_) => return Ok(0),
+        None => {}
     }
 
-    let resolved_sources: Vec<Uuid> = sqlx::query_scalar!(
-        "UPDATE anime_relation
-         SET to_anime_id = $3
-         WHERE to_anime_id IS NULL
-           AND to_page_provider = $1
-           AND to_page_address = $2
-           AND from_anime_id <> $3
-         RETURNING from_anime_id",
+    sqlx::query!(
+        "DELETE FROM anime_partial_source
+         WHERE anime_id = $1 AND provider = $2 AND entity_type = $3 AND address = $4",
+        anime_id,
         page_key.provider().as_str(),
+        page_key.entity_type().as_str(),
         page_key.address().as_str(),
+    )
+    .execute(&mut **tx)
+    .await?;
+    sqlx::query!(
+        "INSERT INTO anime_source (anime_id, provider, entity_type, address)
+         VALUES ($1, $2, $3, $4)",
+        anime_id,
+        page_key.provider().as_str(),
+        page_key.entity_type().as_str(),
+        page_key.address().as_str(),
+    )
+    .execute(&mut **tx)
+    .await?;
+    sqlx::query!(
+        "UPDATE anime
+         SET version = version + 1,
+             merge_requested_at = COALESCE(merge_requested_at, now())
+         WHERE id = $1",
         anime_id,
     )
-    .fetch_all(&mut **tx)
+    .execute(&mut **tx)
     .await?;
 
-    let resolved_count = u64::try_from(resolved_sources.len()).unwrap_or(u64::MAX);
-    let affected_pairs: BTreeSet<(Uuid, Uuid)> = resolved_sources
+    let relating_anime_ids = notify_works_relating_to_page(tx, anime_id, page_key).await?;
+    let relating_count = u64::try_from(relating_anime_ids.len()).unwrap_or(u64::MAX);
+    let affected_pairs: BTreeSet<(Uuid, Uuid)> = relating_anime_ids
         .into_iter()
         .map(|from_anime_id| (from_anime_id, anime_id))
         .collect();
@@ -367,7 +371,74 @@ pub(crate) async fn link_anime_source_page_in_tx(
         recompute_anime_pair_graph_edges(tx, affected_pairs).await?;
     }
 
-    Ok(resolved_count)
+    Ok(relating_count)
+}
+
+/// Tells every other work with a relation to `page_key` that the relation now reaches a work.
+///
+/// Each such work gets a new version and a merge request, in ascending ID order so two links
+/// at once lock the rows in the same order. A merged, undeleted work also gets an
+/// `anime.updated` event, so caches and search points stop showing the relation as pending.
+/// The result lists the works, in ascending ID order.
+///
+/// # Errors
+///
+/// Returns a database error when a query fails.
+async fn notify_works_relating_to_page(
+    tx: &mut Transaction<'_, Postgres>,
+    linked_anime_id: Uuid,
+    page_key: &PageKey,
+) -> Result<Vec<Uuid>, Error> {
+    // An UPDATE locks rows in no set order, so the rows are locked in ID order first.
+    let relating_ids: Vec<Uuid> = sqlx::query_scalar!(
+        "SELECT id
+         FROM anime
+         WHERE id IN (
+             SELECT from_anime_id
+             FROM anime_related_anime
+             WHERE to_page_provider = $1 AND to_page_address = $2 AND from_anime_id <> $3
+         )
+           AND deleted_at IS NULL
+         ORDER BY id
+         FOR NO KEY UPDATE",
+        page_key.provider().as_str(),
+        page_key.address().as_str(),
+        linked_anime_id,
+    )
+    .fetch_all(&mut **tx)
+    .await?;
+    let relating_works = sqlx::query!(
+        r#"
+        UPDATE anime
+        SET version = version + 1,
+            merge_requested_at = COALESCE(merge_requested_at, now())
+        WHERE id = ANY($1)
+        RETURNING id, version, merged_at IS NOT NULL AS "is_merged!"
+        "#,
+        &relating_ids,
+    )
+    .fetch_all(&mut **tx)
+    .await?;
+
+    let transaction_time = crate::read_transaction_time(tx).await?;
+    let mut relating_anime_ids = Vec::with_capacity(relating_works.len());
+    for relating_work in relating_works {
+        if relating_work.is_merged {
+            crate::anime::insert_catalogue_outbox_event(
+                tx,
+                crate::anime::ANIME_UPDATED_SUBJECT,
+                relating_work.id,
+                relating_work.version,
+                None,
+                transaction_time,
+                None,
+            )
+            .await?;
+        }
+        relating_anime_ids.push(relating_work.id);
+    }
+    relating_anime_ids.sort_unstable();
+    Ok(relating_anime_ids)
 }
 
 /// Replaces a work's relations, claims, source material and companies, with their graph edges.
@@ -395,7 +466,44 @@ pub(crate) async fn replace_relations_and_graph(
     Ok(())
 }
 
-/// Replaces the relations a work asserts and resolves the targets already stored.
+/// Locks the target page of every relation in `relations`, in sorted order.
+///
+/// A page's lock serializes everything that changes what reaches the page: linking it as a
+/// source and saving a relation to it. Every path takes page locks before any work's row
+/// lock, so a save, which locks its own row, takes these first. Linking a page then waits
+/// for the save instead of holding the page while the save holds the row both need.
+///
+/// # Errors
+///
+/// Returns a database error when a lock query fails.
+pub(crate) async fn lock_relation_target_pages(
+    tx: &mut Transaction<'_, Postgres>,
+    relations: &[AnimeRelationInput],
+) -> Result<(), Error> {
+    let target_pages: BTreeSet<(&str, &str)> = relations
+        .iter()
+        .map(|relation| {
+            (
+                relation.to_page_provider.as_str(),
+                relation.to_page_address.as_str(),
+            )
+        })
+        .collect();
+    for (provider, address) in target_pages {
+        sqlx::query!(
+            "SELECT pg_advisory_xact_lock(hashtextextended($1 || ':anime:' || $2, 0))",
+            provider,
+            address,
+        )
+        .execute(&mut **tx)
+        .await?;
+    }
+    Ok(())
+}
+
+/// Replaces the relations a work asserts, each stored by its target page.
+///
+/// The caller holds the target pages' locks from [`lock_relation_target_pages`].
 ///
 /// The result holds every work pair whose graph edges must be recomputed.
 ///
@@ -418,73 +526,102 @@ async fn replace_anime_relations(
         })
         .collect();
 
-    // Lock target page keys in sorted order before modifying relations so
-    // concurrent link_anime_source_page calls cannot race between delete/lookup/insert.
-    let target_pages: BTreeSet<(&str, &str)> = deduplicated_relations
-        .iter()
-        .map(|(_, provider, address)| (*provider, *address))
+    // The save already holds the target pages' locks; see lock_relation_target_pages.
+    // The works the graph links this one to today, which include the old owner of a page
+    // that has moved since the last save, so that pair's stale edges are cleared too.
+    let mut affected_pairs: BTreeSet<(Uuid, Uuid)> = read_relation_target_ids(tx, anime_id)
+        .await?
+        .into_iter()
+        .chain(read_graph_neighbor_work_ids(tx, anime_id).await?)
+        .map(|target_id| (anime_id, target_id))
         .collect();
-    for (provider, address) in target_pages {
+
+    sqlx::query!(
+        "DELETE FROM anime_related_anime WHERE from_anime_id = $1",
+        anime_id,
+    )
+    .execute(&mut **tx)
+    .await?;
+
+    if !deduplicated_relations.is_empty() {
+        let mut relation_types = Vec::with_capacity(deduplicated_relations.len());
+        let mut to_page_providers = Vec::with_capacity(deduplicated_relations.len());
+        let mut to_page_addresses = Vec::with_capacity(deduplicated_relations.len());
+        for (relation_type, to_page_provider, to_page_address) in deduplicated_relations {
+            relation_types.push(relation_type.to_owned());
+            to_page_providers.push(to_page_provider.to_owned());
+            to_page_addresses.push(to_page_address.to_owned());
+        }
         sqlx::query!(
-            "SELECT pg_advisory_xact_lock(hashtextextended($1 || ':anime:' || $2, 0))",
-            provider,
-            address,
+            "INSERT INTO anime_related_anime (
+                 from_anime_id, relation_type, to_page_provider, to_page_address
+             )
+             SELECT $1, relation_type, to_page_provider, to_page_address
+             FROM UNNEST($2::text[], $3::text[], $4::text[])
+               AS entry(relation_type, to_page_provider, to_page_address)",
+            anime_id,
+            &relation_types,
+            &to_page_providers,
+            &to_page_addresses,
         )
         .execute(&mut **tx)
         .await?;
     }
 
-    let deleted_targets: Vec<Option<Uuid>> = sqlx::query_scalar!(
-        "DELETE FROM anime_relation
-         WHERE from_anime_id = $1
-         RETURNING to_anime_id",
+    affected_pairs.extend(
+        read_relation_target_ids(tx, anime_id)
+            .await?
+            .into_iter()
+            .map(|target_id| (anime_id, target_id)),
+    );
+    Ok(affected_pairs)
+}
+
+/// Reads the works `graph_edge` links a work to, whichever work's relation the edge came from.
+///
+/// # Errors
+///
+/// Returns a database error when the query fails.
+async fn read_graph_neighbor_work_ids(
+    tx: &mut Transaction<'_, Postgres>,
+    anime_id: Uuid,
+) -> Result<Vec<Uuid>, Error> {
+    let neighbor_ids = sqlx::query_scalar!(
+        "SELECT DISTINCT to_id
+         FROM graph_edge
+         WHERE from_id = $1 AND from_node_type = 'anime' AND to_node_type = 'anime' AND to_id <> $1",
         anime_id,
     )
     .fetch_all(&mut **tx)
     .await?;
+    Ok(neighbor_ids)
+}
 
-    let mut affected_pairs: BTreeSet<(Uuid, Uuid)> = deleted_targets
-        .into_iter()
-        .flatten()
-        .map(|target_id| (anime_id, target_id))
-        .collect();
-
-    for (relation_type, to_page_provider, to_page_address) in deduplicated_relations {
-        let resolved_target = sqlx::query_scalar!(
-            "SELECT anime_id
-             FROM anime_provider_page
-             WHERE provider = $1
-               AND page_kind = 'anime'
-               AND address = $2
-               AND role = 'source'
-               AND anime_id <> $3",
-            to_page_provider,
-            to_page_address,
-            anime_id,
-        )
-        .fetch_optional(&mut **tx)
-        .await?;
-
-        if let Some(target_id) = resolved_target {
-            affected_pairs.insert((anime_id, target_id));
-        }
-
-        sqlx::query!(
-            "INSERT INTO anime_relation (
-                 from_anime_id, relation_type, to_anime_id, to_page_provider, to_page_address
-             )
-             VALUES ($1, $2, $3, $4, $5)",
-            anime_id,
-            relation_type,
-            resolved_target,
-            to_page_provider,
-            to_page_address,
-        )
-        .execute(&mut **tx)
-        .await?;
-    }
-
-    Ok(affected_pairs)
+/// Reads the works a work's relations reach, by joining each target page to its source work.
+///
+/// A relation whose page no work holds as a source reaches no work, and a relation to the
+/// work's own page is left out.
+///
+/// # Errors
+///
+/// Returns a database error when the query fails.
+async fn read_relation_target_ids(
+    tx: &mut Transaction<'_, Postgres>,
+    anime_id: Uuid,
+) -> Result<Vec<Uuid>, Error> {
+    let target_ids = sqlx::query_scalar!(
+        "SELECT DISTINCT target.anime_id
+         FROM anime_related_anime relation
+         JOIN anime_source target
+           ON target.provider = relation.to_page_provider
+          AND target.entity_type = 'anime'
+          AND target.address = relation.to_page_address
+         WHERE relation.from_anime_id = $1 AND target.anime_id <> $1",
+        anime_id,
+    )
+    .fetch_all(&mut **tx)
+    .await?;
+    Ok(target_ids)
 }
 
 /// Replaces each provider's own relation claims for a work.
@@ -498,7 +635,7 @@ async fn replace_anime_relation_claims(
     claims: &[AnimeRelationClaimInput],
 ) -> Result<(), Error> {
     sqlx::query!(
-        "DELETE FROM anime_relation_claim WHERE from_anime_id = $1",
+        "DELETE FROM anime_related_anime_claim WHERE from_anime_id = $1",
         anime_id
     )
     .execute(&mut **tx)
@@ -537,7 +674,7 @@ async fn replace_anime_relation_claims(
         .collect();
 
     sqlx::query!(
-        "INSERT INTO anime_relation_claim (
+        "INSERT INTO anime_related_anime_claim (
              from_anime_id, provider, relation_type, to_page_provider, to_page_address
          )
          SELECT $1, provider, relation_type, to_page_provider, to_page_address
@@ -566,7 +703,7 @@ async fn replace_anime_source_materials(
     materials: &[AnimeSourceMaterialInput],
 ) -> Result<Vec<Uuid>, Error> {
     sqlx::query!(
-        "DELETE FROM anime_source_material_relation WHERE anime_id = $1",
+        "DELETE FROM anime_related_source_material WHERE anime_id = $1",
         anime_id
     )
     .execute(&mut **tx)
@@ -636,7 +773,7 @@ async fn replace_anime_source_materials(
         linked_source_ids.push(source_material_id);
         if seen_links.insert((source_material_id, material.relation_type.clone())) {
             sqlx::query!(
-                "INSERT INTO anime_source_material_relation (
+                "INSERT INTO anime_related_source_material (
                      anime_id, source_material_id, relation_type
                  )
                  VALUES ($1, $2, $3)",
@@ -1007,7 +1144,7 @@ mod tests {
             relation_claims: vec![AnimeRelationClaimInput {
                 provider: Provider::Mal,
                 relation_type: "SEQUEL".to_owned(),
-                target_page: PageKey::new(Provider::Mal, PageKind::Anime, "2").unwrap(),
+                target_page: PageKey::new(Provider::Mal, EntityType::Anime, "2").unwrap(),
             }],
             source_materials: vec![AnimeSourceMaterialInput {
                 relation_type: "ADAPTATION".to_owned(),
@@ -1050,7 +1187,7 @@ mod tests {
             |input| input.relation_claims[0].relation_type = "NOT_A_TYPE".to_owned(),
             |input| {
                 input.relation_claims[0].target_page =
-                    PageKey::new(Provider::Mal, PageKind::Episode, "2").unwrap();
+                    PageKey::new(Provider::Mal, EntityType::Episode, "2").unwrap();
             },
             |input| input.source_materials[0].title = " ".to_owned(),
             |input| input.source_materials[0].source_material_type = String::new(),

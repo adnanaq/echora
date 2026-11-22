@@ -7,9 +7,9 @@ use chrono::{DateTime, Utc};
 use opentelemetry::global;
 use opentelemetry::metrics::Gauge;
 use postgres_db::{
-    EpisodeListEntryInput, FetchOutcome, FieldCorrectionRecord, LoadedSourcePage, PageKey,
-    PageKind, PageObservation, PageResponse, Provider, load_anime, load_episode,
-    mark_episode_aired, record_page_observation, save_anime, save_episode,
+    EntityType, EpisodeListEntryInput, FetchOutcome, FieldCorrectionRecord, LoadedSourcePage,
+    PageKey, PageObservation, PageResponse, Provider, load_anime, load_episode, mark_episode_aired,
+    record_page_observation, save_anime, save_episode,
 };
 use prost::Message as _;
 use sqlx::PgPool;
@@ -51,9 +51,9 @@ use postgres_service_proto::v1::{
     SaveEpisodeRequest, SaveEpisodeResponse, StorePageRequest, StorePageResponse,
 };
 use shared_proto::v1::{
-    EpisodeListEntry as ProtoEpisodeListEntry, FieldCorrection as ProtoFieldCorrection,
-    PageKey as ProtoPageKey, PageKind as ProtoPageKind, PageResponse as ProtoPageResponse,
-    StoredPage as ProtoStoredPage,
+    EntityType as ProtoEntityType, EpisodeListEntry as ProtoEpisodeListEntry,
+    FieldCorrection as ProtoFieldCorrection, PageKey as ProtoPageKey,
+    PageResponse as ProtoPageResponse, StoredPage as ProtoStoredPage,
 };
 
 /// Maximum gRPC message size (64 MiB) for RPCs carrying raw provider page bodies.
@@ -392,14 +392,14 @@ pub(crate) fn to_proto_episode_list_entry(entry: EpisodeListEntryInput) -> Proto
 
 /// Converts a page key into its proto message.
 pub(crate) fn to_proto_page_key(key: &PageKey) -> ProtoPageKey {
-    let page_kind = match key.page_kind() {
-        PageKind::Anime => ProtoPageKind::Anime,
-        PageKind::Episode => ProtoPageKind::Episode,
-        PageKind::Character => ProtoPageKind::Character,
+    let entity_type = match key.entity_type() {
+        EntityType::Anime => ProtoEntityType::Anime,
+        EntityType::Episode => ProtoEntityType::Episode,
+        EntityType::Character => ProtoEntityType::Character,
     };
     ProtoPageKey {
         provider: key.provider().as_str().to_owned(),
-        page_kind: page_kind as i32,
+        entity_type: entity_type as i32,
         address: key.address().as_str().to_owned(),
     }
 }
@@ -423,7 +423,7 @@ fn to_proto_timestamp(timestamp: DateTime<Utc>) -> prost_types::Timestamp {
 ///
 /// # Errors
 ///
-/// Returns `INVALID_ARGUMENT` when the page key, page kind or fetch time is missing or
+/// Returns `INVALID_ARGUMENT` when the page key, entity type or fetch time is missing or
 /// invalid, when `is_dead` is set, or when a "not found" answer carries responses.
 fn build_page_observation(
     page: ProtoStoredPage,
@@ -483,24 +483,24 @@ fn build_page_observation(
 ///
 /// # Errors
 ///
-/// Returns `INVALID_ARGUMENT` for an unknown provider, an unspecified or unknown page kind,
+/// Returns `INVALID_ARGUMENT` for an unknown provider, an unspecified or unknown entity type,
 /// or an address the provider's pattern does not allow.
 fn parse_page_key(proto_key: ProtoPageKey) -> Result<PageKey, Status> {
     let provider: Provider = proto_key
         .provider
         .parse()
         .map_err(|err| map_db_error(&err))?;
-    let page_kind = match ProtoPageKind::try_from(proto_key.page_kind) {
-        Ok(ProtoPageKind::Anime) => PageKind::Anime,
-        Ok(ProtoPageKind::Episode) => PageKind::Episode,
-        Ok(ProtoPageKind::Character) => PageKind::Character,
-        Ok(ProtoPageKind::Unspecified) | Err(_) => {
+    let entity_type = match ProtoEntityType::try_from(proto_key.entity_type) {
+        Ok(ProtoEntityType::Anime) => EntityType::Anime,
+        Ok(ProtoEntityType::Episode) => EntityType::Episode,
+        Ok(ProtoEntityType::Character) => EntityType::Character,
+        Ok(ProtoEntityType::Unspecified) | Err(_) => {
             return Err(Status::invalid_argument(
-                "page.page_key.page_kind must be specified",
+                "page.page_key.entity_type must be specified",
             ));
         }
     };
-    PageKey::new(provider, page_kind, proto_key.address).map_err(|err| map_db_error(&err))
+    PageKey::new(provider, entity_type, proto_key.address).map_err(|err| map_db_error(&err))
 }
 
 /// Converts the proto fetch time of a page into a UTC timestamp.
@@ -569,10 +569,10 @@ mod tests {
         anime_id
     }
 
-    fn build_page_key(page_kind: ProtoPageKind, address: &str) -> ProtoPageKey {
+    fn build_page_key(entity_type: ProtoEntityType, address: &str) -> ProtoPageKey {
         ProtoPageKey {
             provider: "mal".to_owned(),
-            page_kind: page_kind as i32,
+            entity_type: entity_type as i32,
             address: address.to_owned(),
         }
     }
@@ -607,7 +607,10 @@ mod tests {
             episode_id: episode_id.to_string(),
             episode_number: 1,
             title: "Placeholder episode 1".to_owned(),
-            page_keys: vec![build_page_key(ProtoPageKind::Episode, EPISODE_PAGE_ADDRESS)],
+            page_keys: vec![build_page_key(
+                ProtoEntityType::Episode,
+                EPISODE_PAGE_ADDRESS,
+            )],
             list_entries: vec![EpisodeListEntry {
                 provider: "mal".to_owned(),
                 title: Some("Placeholder episode 1".to_owned()),
@@ -641,7 +644,7 @@ mod tests {
             episode: Some(Episode {
                 episode_number: 1,
                 title: "Placeholder episode 1".to_owned(),
-                aired: Some(prost_types::Timestamp {
+                aired_at: Some(prost_types::Timestamp {
                     seconds: aired_seconds,
                     nanos: 0,
                 }),
@@ -666,7 +669,7 @@ mod tests {
     #[sqlx::test(migrations = "../postgres_db/migrations")]
     async fn store_page_repeated_fetch_reports_change_once(pool: PgPool) {
         let service = build_service(pool);
-        let page_key = build_page_key(ProtoPageKind::Anime, WORK_PAGE_ADDRESS);
+        let page_key = build_page_key(ProtoEntityType::Anime, WORK_PAGE_ADDRESS);
 
         let first_store = service
             .store_page(build_store_page_request(page_key.clone()))
@@ -685,7 +688,7 @@ mod tests {
     async fn store_page_invalid_page_returns_invalid_argument(pool: PgPool) {
         let service = build_service(pool);
         let repeated_request_name = ProtoStoredPage {
-            page_key: Some(build_page_key(ProtoPageKind::Anime, WORK_PAGE_ADDRESS)),
+            page_key: Some(build_page_key(ProtoEntityType::Anime, WORK_PAGE_ADDRESS)),
             ..build_stored_page(vec![build_main_response(), build_main_response()])
         };
 
@@ -706,16 +709,16 @@ mod tests {
 
     #[test]
     fn to_proto_page_key_keeps_every_page_kind() {
-        for (page_kind, proto_page_kind) in [
-            (PageKind::Anime, ProtoPageKind::Anime),
-            (PageKind::Episode, ProtoPageKind::Episode),
-            (PageKind::Character, ProtoPageKind::Character),
+        for (entity_type, proto_entity_type) in [
+            (EntityType::Anime, ProtoEntityType::Anime),
+            (EntityType::Episode, ProtoEntityType::Episode),
+            (EntityType::Character, ProtoEntityType::Character),
         ] {
-            let page_key = PageKey::new(Provider::Mal, page_kind, "40").expect("valid page key");
+            let page_key = PageKey::new(Provider::Mal, entity_type, "40").expect("valid page key");
 
             let proto_page_key = to_proto_page_key(&page_key);
 
-            assert_eq!(proto_page_key, build_page_key(proto_page_kind, "40"));
+            assert_eq!(proto_page_key, build_page_key(proto_entity_type, "40"));
         }
     }
 
@@ -768,26 +771,34 @@ mod tests {
         let (anime_id, episode_id) = create_listed_episode(&service, &pool).await;
         service
             .store_page(build_store_page_request(build_page_key(
-                ProtoPageKind::Anime,
+                ProtoEntityType::Anime,
                 WORK_PAGE_ADDRESS,
             )))
             .await
             .expect("store the work page");
         sqlx::query(
-            "INSERT INTO provider_page (provider, page_kind, address) VALUES ('anilist', 'anime', '5')",
+            "INSERT INTO provider_page (provider, entity_type, address) VALUES ('anilist', 'anime', '5')",
         )
         .execute(&pool)
         .await
         .expect("insert partial page");
         sqlx::query(
-            "INSERT INTO anime_provider_page (anime_id, provider, page_kind, address, role)
-             VALUES ($1, 'mal', 'anime', $2, 'source'), ($1, 'anilist', 'anime', '5', 'partial_source')",
+            "INSERT INTO anime_source (anime_id, provider, entity_type, address)
+             VALUES ($1, 'mal', 'anime', $2)",
         )
         .bind(anime_id)
         .bind(WORK_PAGE_ADDRESS)
         .execute(&pool)
         .await
-        .expect("link the pages");
+        .expect("link the source page");
+        sqlx::query(
+            "INSERT INTO anime_partial_source (anime_id, provider, entity_type, address)
+             VALUES ($1, 'anilist', 'anime', '5')",
+        )
+        .bind(anime_id)
+        .execute(&pool)
+        .await
+        .expect("link the partial source page");
         insert_correction(&pool, "anime_field_correction", "anime_id", anime_id).await;
 
         let loaded_work = service
@@ -808,7 +819,7 @@ mod tests {
             loaded_work.partial_source_pages,
             vec![ProtoPageKey {
                 provider: "anilist".to_owned(),
-                page_kind: ProtoPageKind::Anime as i32,
+                entity_type: ProtoEntityType::Anime as i32,
                 address: "5".to_owned(),
             }]
         );
@@ -845,7 +856,7 @@ mod tests {
         let (anime_id, episode_id) = create_listed_episode(&service, &pool).await;
         service
             .store_page(build_store_page_request(build_page_key(
-                ProtoPageKind::Episode,
+                ProtoEntityType::Episode,
                 EPISODE_PAGE_ADDRESS,
             )))
             .await
@@ -1037,7 +1048,7 @@ mod tests {
         ProtoStoredPage {
             page_key: Some(ProtoPageKey {
                 provider: "mal".to_owned(),
-                page_kind: ProtoPageKind::Anime as i32,
+                entity_type: ProtoEntityType::Anime as i32,
                 address: "21".to_owned(),
             }),
             fetched_at: Some(prost_types::Timestamp {
@@ -1080,15 +1091,15 @@ mod tests {
         .expect("fetched page maps");
         let character_observation = build_page_observation(
             ProtoStoredPage {
-                page_key: Some(build_page_key(ProtoPageKind::Character, "40")),
+                page_key: Some(build_page_key(ProtoEntityType::Character, "40")),
                 ..build_stored_page(vec![build_main_response()])
             },
             &HashSet::new(),
         )
         .expect("fetched character page maps");
         assert_eq!(
-            character_observation.page_key.page_kind(),
-            PageKind::Character
+            character_observation.page_key.entity_type(),
+            EntityType::Character
         );
 
         assert_eq!(observation.page_key.address().as_str(), "21");
@@ -1177,7 +1188,7 @@ mod tests {
         let mut unspecified_kind = build_stored_page(Vec::new());
         unspecified_kind.page_key = Some(ProtoPageKey {
             provider: "mal".to_owned(),
-            page_kind: ProtoPageKind::Unspecified as i32,
+            entity_type: ProtoEntityType::Unspecified as i32,
             address: "21".to_owned(),
         });
         let mut missing_fetch_time = build_stored_page(Vec::new());
@@ -1190,11 +1201,11 @@ mod tests {
         let mut unknown_provider = build_stored_page(Vec::new());
         unknown_provider.page_key = Some(ProtoPageKey {
             provider: "not_a_provider".to_owned(),
-            page_kind: ProtoPageKind::Anime as i32,
+            entity_type: ProtoEntityType::Anime as i32,
             address: "21".to_owned(),
         });
         let mut invalid_address = build_stored_page(Vec::new());
-        invalid_address.page_key = Some(build_page_key(ProtoPageKind::Anime, "not-numeric"));
+        invalid_address.page_key = Some(build_page_key(ProtoEntityType::Anime, "not-numeric"));
         let mut out_of_range_time = build_stored_page(Vec::new());
         out_of_range_time.fetched_at = Some(prost_types::Timestamp {
             seconds: i64::MAX,
