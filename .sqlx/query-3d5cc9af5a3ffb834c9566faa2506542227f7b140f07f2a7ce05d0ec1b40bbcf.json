@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id\n         FROM anime\n         WHERE id IN (\n             SELECT from_anime_id\n             FROM anime_related_anime\n             WHERE to_page_provider = $1 AND to_page_address = $2 AND from_anime_id <> $3\n         )\n           AND deleted_at IS NULL\n         ORDER BY id\n         FOR NO KEY UPDATE",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "3d5cc9af5a3ffb834c9566faa2506542227f7b140f07f2a7ce05d0ec1b40bbcf"
+}

@@ -106,6 +106,7 @@ Python stubs (checked in)  ·  Rust code (build.rs)  ·  PostgreSQL columns (che
 | ~~Proto and the PostgreSQL Service's mapping~~ | ~~The Rust build fails when the proto gains a field or an enum value the save does not handle (see below) (ECHO-98)~~ |
 | ~~Proto and PostgreSQL columns~~ | ~~`cargo sqlx prepare` fails when a query does not match the migrated schema (ECHO-93)~~ |
 | ~~`anime.py` enums and PostgreSQL lookup tables~~ | ~~A planned check compares every enum's values with the rows its lookup migration inserts, and fails on a value missing from either side. `sqlx` cannot catch this, since a missing lookup row only fails when a save uses it. (ECHO-93)~~ |
+| ~~`anime.py` field names and PostgreSQL tables and columns~~ | ~~`scripts/check_postgres_schema.py` applies the naming rule to every stored field of `Anime` and `Episode`, and fails on a field with no matching table or column. It runs in `postgres-schema-check.yml` with the lookup check. (ECHO-133)~~ |
 
 `proto-stubs-check.yml` runs the first three on every PR that touches the protos, the models or the scripts. ~~The lookup check runs on every PR that touches `anime.py` or the migrations. (ECHO-93)~~
 
@@ -120,7 +121,7 @@ The PostgreSQL Service turns each proto message into columns and rows, and back.
 - **Loading refuses text it does not know.** When loading, lookup text is turned back into a proto enum. A match on text needs a `_` arm, since any string is possible, so that arm returns an error and never picks a value. It fires only when a migration added a value the running code does not handle yet.
 - **Unknown values are refused.** Prost keeps enum fields as numbers, so a newer sender can send a value this build does not know. `AnimeStatus::try_from` then fails, and the save returns `INVALID_ARGUMENT` instead of storing a guess.
 
-A field change then fails in this order: the contract script, if `anime.proto` was not updated with `anime.py`; the Rust build, if the save does not handle the field or value; `cargo sqlx prepare`, if the save's SQL names a column no migration created; and the lookup check, if no migration inserts the new enum value.
+A field change then fails in this order: the contract script, if `anime.proto` was not updated with `anime.py`; the Rust build, if the save does not handle the field or value; `cargo sqlx prepare`, if the save's SQL names a column no migration created; and `scripts/check_postgres_schema.py`, if no migration inserts the new enum value, or the field's table or column is not named after it by the naming rule in [[Database Schema#Naming Rule|Database Schema]].
 
 ## Changing a Field
 

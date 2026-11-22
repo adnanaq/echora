@@ -115,12 +115,12 @@ def test_anime_from_anidb_seed_url_becomes_only_source() -> None:
     assert _map()["sources"] == [ANIDB_URL]
 
 
-def test_anime_from_anidb_restricted_anime_marked_nsfw() -> None:
-    assert _map(restricted=True)["nsfw"] is True
+def test_anime_from_anidb_restricted_anime_marked_is_nsfw() -> None:
+    assert _map(restricted=True)["is_nsfw"] is True
 
 
-def test_anime_from_anidb_unrestricted_anime_omits_nsfw() -> None:
-    assert "nsfw" not in _map(restricted=False)
+def test_anime_from_anidb_unrestricted_anime_omits_is_nsfw() -> None:
+    assert "is_nsfw" not in _map(restricted=False)
 
 
 def test_anime_from_anidb_picture_becomes_cdn_cover() -> None:
@@ -228,7 +228,7 @@ def test_anime_from_anidb_url_field_becomes_japanese_official_site() -> None:
         {
             "platform": "official_site",
             "source": "http://onepiece.toei-anim.co.jp",
-            "language": "Japanese",
+            "language": "ja",
         }
     ]
 
@@ -335,7 +335,7 @@ def test_anime_from_anidb_official_site_resource_reads_address_with_language() -
         {
             "platform": "official_site",
             "source": "http://resource-site.jp",
-            "language": "Japanese",
+            "language": "ja",
         }
     ]
 
@@ -385,6 +385,9 @@ def test_anime_from_anidb_one_piece_xml_maps_title_type_year_season_and_source(
         "FALL",
     )
     assert result["sources"] == [ANIDB_URL]
+    assert result["titles"]["ms"] == "Budak Getah"
+    assert {"bn", "gl"} <= result["titles"].keys()
+    assert not {"und", "my", "bd", "es-GA"} & result["titles"].keys()
 
 
 def test_anime_from_anidb_one_piece_xml_keeps_end_date_and_score(
@@ -414,7 +417,7 @@ def test_episode_from_anidb_regular_episode_maps_number_title_and_duration() -> 
         titles={"en": "Romance Dawn", "romaji": "Romance Dawn", "ja": "ロマンス"},
     )
     result = episode_from_anidb(episode)
-    assert (result["episode_number"], result["title"], result["duration"]) == (
+    assert (result["episode_number"], result["title"], result["duration_seconds"]) == (
         1,
         "Romance Dawn",
         1440,
@@ -423,7 +426,7 @@ def test_episode_from_anidb_regular_episode_maps_number_title_and_duration() -> 
         "Romance Dawn",
         "ロマンス",
     )
-    assert (result["synopsis"], result["filler"], result["recap"]) == (
+    assert (result["synopsis"], result["is_filler"], result["is_recap"]) == (
         "Luffy sets sail.",
         False,
         False,
@@ -462,7 +465,7 @@ def test_episode_from_anidb_without_titles_gives_empty_title() -> None:
 
 def test_episode_from_anidb_zero_length_omits_duration() -> None:
     episode = AniDBEpisode(episode_type=1, episode_number=1, length=0)
-    assert "duration" not in episode_from_anidb(episode)
+    assert "duration_seconds" not in episode_from_anidb(episode)
 
 
 def test_episode_from_anidb_episode_id_becomes_anidb_link() -> None:
@@ -510,7 +513,7 @@ def test_episode_from_anidb_one_piece_xml_maps_every_regular_episode(
     ]
     assert len(regular) > 1000
     first = next(mapped for mapped in regular if mapped["episode_number"] == 1)
-    assert first["duration"] > 0
+    assert first["duration_seconds"] > 0
 
 
 def test_character_from_anidb_name_only_gives_name_and_empty_lists() -> None:

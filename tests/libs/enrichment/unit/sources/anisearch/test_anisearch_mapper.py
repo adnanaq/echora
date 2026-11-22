@@ -552,10 +552,10 @@ def test_character_from_anisearch_named_voice_actors_mapped_with_language() -> N
     ] == [
         (
             "Mayumi Tanaka",
-            "Japanese",
+            "ja",
             ["https://www.anisearch.com/person/1,mayumi-tanaka"],
         ),
-        ("Unlinked Actor", "German", []),
+        ("Unlinked Actor", "de", []),
     ]
 
 
@@ -563,27 +563,27 @@ def test_episode_from_anisearch_number_flags_and_duration_mapped() -> None:
     mapped = episode_from_anisearch(_episode(is_filler=True, is_recap=True))
     assert (
         mapped["episode_number"],
-        mapped["filler"],
-        mapped["recap"],
-        mapped["duration"],
+        mapped["is_filler"],
+        mapped["is_recap"],
+        mapped["duration_seconds"],
     ) == (1, True, True, 1440)
 
 
 def test_episode_from_anisearch_default_flags_give_regular_episode() -> None:
     mapped = episode_from_anisearch(_episode())
-    assert (mapped["filler"], mapped["recap"]) == (False, False)
+    assert (mapped["is_filler"], mapped["is_recap"]) == (False, False)
 
 
-def test_episode_from_anisearch_without_duration_omits_duration() -> None:
-    assert "duration" not in episode_from_anisearch(_episode(duration=None))
+def test_episode_from_anisearch_without_duration_omits_duration_seconds() -> None:
+    assert "duration_seconds" not in episode_from_anisearch(_episode(duration=None))
 
 
 def test_episode_from_anisearch_aired_date_normalized_to_utc() -> None:
-    assert episode_from_anisearch(_episode())["aired"] == "1999-10-19T15:00:00Z"
+    assert episode_from_anisearch(_episode())["aired_at"] == "1999-10-19T15:00:00Z"
 
 
-def test_episode_from_anisearch_without_aired_date_omits_aired() -> None:
-    assert "aired" not in episode_from_anisearch(_episode(aired=None))
+def test_episode_from_anisearch_without_aired_date_omits_aired_at() -> None:
+    assert "aired_at" not in episode_from_anisearch(_episode(aired=None))
 
 
 def test_episode_from_anisearch_titles_mapped() -> None:

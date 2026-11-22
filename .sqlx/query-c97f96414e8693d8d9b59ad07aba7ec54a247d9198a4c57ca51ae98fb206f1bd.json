@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM anime_partial_source\n         WHERE anime_id = $1 AND provider = $2 AND entity_type = $3 AND address = $4",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c97f96414e8693d8d9b59ad07aba7ec54a247d9198a4c57ca51ae98fb206f1bd"
+}

@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO anime_theme (anime_id, theme)\n         SELECT $1, theme FROM UNNEST($2::text[]) AS entry(theme)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "b6384fc561bacdf99b2da67e0ee3f9f0134d9e942a39936b657b6f853b08eb5d"
+}

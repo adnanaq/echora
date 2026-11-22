@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT anime_id\n         FROM anime_source\n         WHERE provider = $1 AND entity_type = $2 AND address = $3",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "anime_id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "164aff6b07a748b89a09b664f2de335ad142a63f9670c696bc4a8a471f1813c5"
+}

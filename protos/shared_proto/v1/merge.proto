@@ -6,18 +6,10 @@ import "google/protobuf/any.proto";
 import "google/protobuf/timestamp.proto";
 import "shared_proto/v1/anime.proto";
 
-// Kind of provider page stored or merged.
-enum PageKind {
-  PAGE_KIND_UNSPECIFIED = 0;
-  PAGE_KIND_ANIME = 1;
-  PAGE_KIND_EPISODE = 2;
-  PAGE_KIND_CHARACTER = 3;
-}
-
-// Provider page identifier: provider name, page kind, and provider address.
+// Provider page identifier: provider name, the entity type the page describes, and provider address.
 message PageKey {
   string provider = 1;
-  PageKind page_kind = 2;
+  EntityType entity_type = 2;
   string address = 3;
 }
 

@@ -3,7 +3,7 @@
 -- One row per provider page, keyed by its page key.
 CREATE TABLE provider_page (
   provider        text NOT NULL REFERENCES provider(value),
-  page_kind       text NOT NULL REFERENCES page_kind(value),
+  entity_type       text NOT NULL REFERENCES entity_type(value),
   address         text NOT NULL,
   fetched_at      timestamptz,
   is_dead         boolean NOT NULL DEFAULT false,
@@ -13,21 +13,21 @@ CREATE TABLE provider_page (
   responses_hash  text,
   fetch_failed_at timestamptz,
   fetch_failures  int NOT NULL DEFAULT 0 CHECK (fetch_failures >= 0),
-  PRIMARY KEY (provider, page_kind, address),
+  PRIMARY KEY (provider, entity_type, address),
   CHECK ((fetched_at IS NULL) = (responses_hash IS NULL))
 );
 
 -- Every response that makes up a page, stored compressed at rest.
 CREATE TABLE provider_page_response (
   provider     text NOT NULL,
-  page_kind    text NOT NULL,
+  entity_type    text NOT NULL,
   address      text NOT NULL,
   request_name text NOT NULL,
   content_type text NOT NULL,
   body         bytea NOT NULL,
-  PRIMARY KEY (provider, page_kind, address, request_name),
-  FOREIGN KEY (provider, page_kind, address)
-    REFERENCES provider_page(provider, page_kind, address) ON DELETE CASCADE
+  PRIMARY KEY (provider, entity_type, address, request_name),
+  FOREIGN KEY (provider, entity_type, address)
+    REFERENCES provider_page(provider, entity_type, address) ON DELETE CASCADE
 );
 
 -- Store pre-compressed bodies out of line without TOAST re-compressing them.

@@ -49,6 +49,10 @@ impl Error {
     ///
     /// let err = Error::from("bad".parse::<u16>().unwrap_err());
     /// assert!(err.is_invalid_env());
+    /// assert!(!err.is_dotenv());
+    /// assert!(err.to_string().starts_with(
+    ///     "invalid environment variable INTEGER: invalid digit found in string"
+    /// ));
     /// ```
     #[must_use]
     pub fn is_invalid_env(&self) -> bool {
@@ -64,6 +68,8 @@ impl Error {
     ///
     /// let err = Error::from(dotenvy::Error::LineParse("BAD LINE".to_owned(), 1));
     /// assert!(err.is_dotenv());
+    /// assert!(!err.is_invalid_env());
+    /// assert!(err.to_string().starts_with("failed to load .env file: "));
     /// ```
     #[must_use]
     pub fn is_dotenv(&self) -> bool {
@@ -77,8 +83,9 @@ impl Error {
     /// ```
     /// use common::Error;
     ///
-    /// let err = Error::from("bad".parse::<u16>().unwrap_err());
-    /// assert!(!err.is_telemetry_init());
+    /// let bad_setting = Error::from("bad".parse::<u16>().unwrap_err());
+    /// assert!(!bad_setting.is_telemetry_init());
+    /// assert!(bad_setting.is_invalid_env(), "a bad setting is not a telemetry failure");
     /// ```
     #[must_use]
     pub fn is_telemetry_init(&self) -> bool {

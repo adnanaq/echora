@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO provider_page (provider, entity_type, address) VALUES ('mal', 'anime', '2')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "73482450d7d04708e1ff70ae5777c963d7b96570bcb4a63785b5b76f15dfe304"
+}

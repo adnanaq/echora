@@ -53,16 +53,16 @@ CREATE VIEW episode_visible AS
   FROM episode
   WHERE merged_at IS NOT NULL AND deleted_at IS NULL;
 
--- Each episode page belongs to exactly one episode.
-CREATE TABLE episode_provider_page (
+-- Episode.sources: each episode page belongs to exactly one episode.
+CREATE TABLE episode_source (
   episode_id  uuid NOT NULL REFERENCES episode(id) ON DELETE CASCADE,
   provider    text NOT NULL,
-  page_kind   text NOT NULL DEFAULT 'episode' CHECK (page_kind = 'episode'),
+  entity_type   text NOT NULL DEFAULT 'episode' CHECK (entity_type = 'episode'),
   address     text NOT NULL,
-  PRIMARY KEY (provider, page_kind, address),
-  UNIQUE (episode_id, provider),
-  FOREIGN KEY (provider, page_kind, address)
-    REFERENCES provider_page(provider, page_kind, address) ON DELETE RESTRICT
+  PRIMARY KEY (provider, entity_type, address),
+  CONSTRAINT episode_source_provider_key UNIQUE (episode_id, provider),
+  FOREIGN KEY (provider, entity_type, address)
+    REFERENCES provider_page(provider, entity_type, address) ON DELETE RESTRICT
 );
 
 -- What one provider's work page says about an episode, sliced out by the work's merge.
@@ -79,10 +79,12 @@ CREATE TABLE episode_list_entry (
 
 CREATE TABLE episode_title (
   episode_id  uuid NOT NULL REFERENCES episode(id) ON DELETE CASCADE,
-  language    text NOT NULL,
+  language    text NOT NULL REFERENCES language(code),
   title       text NOT NULL,
   PRIMARY KEY (episode_id, language)
 );
+
+CREATE INDEX episode_title_language_idx ON episode_title(language);
 
 CREATE TABLE episode_image (
   episode_id  uuid NOT NULL REFERENCES episode(id) ON DELETE CASCADE,
@@ -90,26 +92,29 @@ CREATE TABLE episode_image (
   PRIMARY KEY (episode_id, source)
 );
 
+-- Episode.streaming; the map's key, the platform, is read from external_source.
 CREATE TABLE episode_streaming (
   episode_id  uuid NOT NULL REFERENCES episode(id) ON DELETE CASCADE,
-  platform    text NOT NULL,
-  source      text NOT NULL,
-  PRIMARY KEY (episode_id, platform)
+  source      text NOT NULL REFERENCES external_source(source),
+  PRIMARY KEY (episode_id, source)
 );
 
--- Characters in an episode, by their character page until ECHO-104 creates the character table.
+CREATE INDEX episode_streaming_source_idx ON episode_streaming(source);
+
+-- Characters in an episode, by their character page. The character is found by
+-- joining that page to character_source, so nothing here changes when the
+-- character is stored, moved or merged.
 CREATE TABLE episode_character (
   episode_id               uuid NOT NULL REFERENCES episode(id) ON DELETE CASCADE,
   character_page_provider  text NOT NULL,
   character_page_address   text NOT NULL,
-  character_id             uuid,
   role                     text NOT NULL REFERENCES character_role(value),
   PRIMARY KEY (episode_id, character_page_provider, character_page_address)
 );
 
-CREATE INDEX episode_character_unresolved_idx
-  ON episode_character(character_page_provider, character_page_address)
-  WHERE character_id IS NULL;
+-- The episodes a character page appears in, for the join from a character.
+CREATE INDEX episode_character_page_idx
+  ON episode_character(character_page_provider, character_page_address);
 
 -- Approved per-field overrides applied after every episode merge.
 CREATE TABLE episode_field_correction (

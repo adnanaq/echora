@@ -4,13 +4,13 @@ mod support;
 
 use chrono::{Duration, Utc};
 use postgres_db::{
-    FetchOutcome, PageKey, PageKind, PageObservation, PageResponse, Provider,
+    EntityType, FetchOutcome, PageKey, PageObservation, PageResponse, Provider,
     record_page_observation,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::support::CapturedLogs;
+use crate::support::{CapturedLogs, insert_unmerged_work};
 
 fn build_success(body: &[u8]) -> FetchOutcome {
     FetchOutcome::Success {
@@ -24,20 +24,20 @@ fn build_success(body: &[u8]) -> FetchOutcome {
 
 async fn read_page_state(pool: &PgPool, page_key: &PageKey) -> (bool, i64) {
     let is_dead: bool = sqlx::query_scalar(
-        "SELECT is_dead FROM provider_page WHERE provider = $1 AND page_kind = $2 AND address = $3",
+        "SELECT is_dead FROM provider_page WHERE provider = $1 AND entity_type = $2 AND address = $3",
     )
     .bind(page_key.provider().as_str())
-    .bind(page_key.page_kind().as_str())
+    .bind(page_key.entity_type().as_str())
     .bind(page_key.address().as_str())
     .fetch_one(pool)
     .await
     .unwrap_or(false);
     let response_count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM provider_page_response
-         WHERE provider = $1 AND page_kind = $2 AND address = $3",
+         WHERE provider = $1 AND entity_type = $2 AND address = $3",
     )
     .bind(page_key.provider().as_str())
-    .bind(page_key.page_kind().as_str())
+    .bind(page_key.entity_type().as_str())
     .bind(page_key.address().as_str())
     .fetch_one(pool)
     .await
@@ -47,8 +47,8 @@ async fn read_page_state(pool: &PgPool, page_key: &PageKey) -> (bool, i64) {
 
 #[sqlx::test(migrations = "./migrations")]
 async fn record_page_observation_not_found_keeps_responses_and_page_alive(pool: PgPool) {
-    let page_key = PageKey::new(Provider::Mal, PageKind::Anime, "21").expect("valid page key");
-    let first_fetch_at = Utc::now();
+    let page_key = PageKey::new(Provider::Mal, EntityType::Anime, "21").expect("valid page key");
+    let first_fetch_at = Utc::now() - Duration::days(7);
     record_page_observation(
         &pool,
         PageObservation {
@@ -82,7 +82,7 @@ async fn record_page_observation_not_found_keeps_responses_and_page_alive(pool: 
 async fn record_page_observation_changed_episode_page_queues_episode_merge(pool: PgPool) {
     let anime_id = Uuid::now_v7();
     let episode_id = Uuid::now_v7();
-    let page_key = PageKey::new(Provider::Mal, PageKind::Episode, "7").expect("valid page key");
+    let page_key = PageKey::new(Provider::Mal, EntityType::Episode, "7").expect("valid page key");
     sqlx::query("INSERT INTO anime (id) VALUES ($1)")
         .bind(anime_id)
         .execute(&pool)
@@ -95,13 +95,13 @@ async fn record_page_observation_changed_episode_page_queues_episode_merge(pool:
         .await
         .expect("insert placeholder episode");
     sqlx::query(
-        "INSERT INTO provider_page (provider, page_kind, address) VALUES ('mal', 'episode', '7')",
+        "INSERT INTO provider_page (provider, entity_type, address) VALUES ('mal', 'episode', '7')",
     )
     .execute(&pool)
     .await
     .expect("insert placeholder page");
     sqlx::query(
-        "INSERT INTO episode_provider_page (episode_id, provider, page_kind, address)
+        "INSERT INTO episode_source (episode_id, provider, entity_type, address)
          VALUES ($1, 'mal', 'episode', '7')",
     )
     .bind(episode_id)
@@ -137,7 +137,7 @@ async fn record_page_observation_changed_episode_page_queues_episode_merge(pool:
 
 #[sqlx::test(migrations = "./migrations")]
 async fn record_page_observation_logs_recorded_event_with_page_key(pool: PgPool) {
-    let page_key = PageKey::new(Provider::Mal, PageKind::Anime, "23").expect("valid page key");
+    let page_key = PageKey::new(Provider::Mal, EntityType::Anime, "23").expect("valid page key");
     let captured_logs = CapturedLogs::install_global();
 
     record_page_observation(
@@ -156,4 +156,93 @@ async fn record_page_observation_logs_recorded_event_with_page_key(pool: PgPool)
     assert!(log_text.contains("page.has_changed=true"), "{log_text}");
     assert!(log_text.contains("page.provider=mal"), "{log_text}");
     assert!(log_text.contains("page.address=23"), "{log_text}");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn record_page_observation_fetch_time_ahead_of_database_clock_returns_invalid_argument(
+    pool: PgPool,
+) {
+    let page_key = PageKey::new(Provider::Mal, EntityType::Anime, "24").expect("valid page key");
+
+    let future_error = record_page_observation(
+        &pool,
+        PageObservation {
+            page_key: page_key.clone(),
+            observed_at: Utc::now() + Duration::minutes(30),
+            outcome: build_success(br#"{"id":24}"#),
+        },
+    )
+    .await
+    .expect_err("a fetch time half an hour ahead must be refused");
+    assert!(future_error.is_invalid_argument());
+    let stored_pages: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM provider_page WHERE address = '24'")
+            .fetch_one(&pool)
+            .await
+            .expect("count the stored pages");
+    assert_eq!(stored_pages, 0);
+
+    let slightly_ahead = record_page_observation(
+        &pool,
+        PageObservation {
+            page_key: page_key.clone(),
+            observed_at: Utc::now() + Duration::minutes(1),
+            outcome: build_success(br#"{"id":24}"#),
+        },
+    )
+    .await
+    .expect("a fetch time within the clock allowance is stored");
+    assert!(slightly_ahead.has_changed);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn record_page_observation_changed_page_requests_merge_of_source_work_only(pool: PgPool) {
+    let page_key = PageKey::new(Provider::Mal, EntityType::Anime, "25").expect("valid page key");
+    let source_work_id = insert_unmerged_work(&pool).await;
+    let partial_work_id = insert_unmerged_work(&pool).await;
+    record_page_observation(
+        &pool,
+        PageObservation {
+            page_key: page_key.clone(),
+            observed_at: Utc::now() - Duration::days(1),
+            outcome: build_success(br#"{"id":25}"#),
+        },
+    )
+    .await
+    .expect("store the first fetch");
+    for (anime_id, link_table) in [
+        (source_work_id, "anime_source"),
+        (partial_work_id, "anime_partial_source"),
+    ] {
+        sqlx::query(&format!(
+            "INSERT INTO {link_table} (anime_id, provider, entity_type, address)
+             VALUES ($1, 'mal', 'anime', '25')"
+        ))
+        .bind(anime_id)
+        .execute(&pool)
+        .await
+        .expect("link the page");
+    }
+
+    let changed_page = record_page_observation(
+        &pool,
+        PageObservation {
+            page_key,
+            observed_at: Utc::now(),
+            outcome: build_success(br#"{"id":25,"title":"changed"}"#),
+        },
+    )
+    .await
+    .expect("store the changed fetch");
+
+    assert!(changed_page.has_changed);
+    let work_states: Vec<(i64, bool)> = sqlx::query_as(
+        "SELECT version, merge_requested_at IS NOT NULL FROM anime WHERE id = ANY($1)
+         ORDER BY array_position($1, id)",
+    )
+    .bind(vec![source_work_id, partial_work_id])
+    .fetch_all(&pool)
+    .await
+    .expect("read the works");
+    assert_eq!(work_states, vec![(2, true), (1, false)]);
 }

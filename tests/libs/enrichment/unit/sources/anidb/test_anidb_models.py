@@ -395,3 +395,38 @@ def test_content_tag_names_onepiece_drops_every_heading(
     assert content_names.isdisjoint(heading_names)
     assert {"military", "action", "comedy", "fantasy", "time travel"} <= content_names
     assert len(content_names) + len(heading_names) == len(onepiece_anime.tags)
+
+
+@pytest.mark.parametrize(
+    ("anidb_code", "language"),
+    [
+        ("bd", "bn"),
+        ("my", "ms"),
+        ("bur", "my"),
+        ("al", "sq"),
+        ("es-GA", "gl"),
+        ("es-CA", "ca"),
+        ("es-PV", "eu"),
+        ("x-jat", "ja-Latn"),
+        ("x-zht", "zh-Latn"),
+        ("x-kot", "ko-Latn"),
+        ("x-tht", "th-Latn"),
+        ("x-unk", "und"),
+        ("x-other", "mis"),
+        ("de", "de"),
+        ("zh-Hans", "zh-Hans"),
+    ],
+)
+def test_anidb_titles_anidb_language_code_becomes_bcp_47_code(
+    anidb_code: str, language: str
+) -> None:
+    anime = AniDBAnime(id=69, title_others={anidb_code: "Title"})
+    episode = AniDBEpisode(titles={anidb_code: "Title", "romaji": "Romaji"})
+
+    assert anime.title_others == {language: "Title"}
+    assert episode.titles == {language: "Title", "romaji": "Romaji"}
+
+
+def test_anidb_titles_list_raises_validation_error() -> None:
+    with pytest.raises(ValidationError, match="title_others"):
+        AniDBAnime(id=69, title_others=["Title"])

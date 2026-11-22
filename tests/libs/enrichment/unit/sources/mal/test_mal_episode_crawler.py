@@ -519,7 +519,7 @@ async def test_fetch_mal_episodes_all_cached_returns_episodes_without_fetching(
         _LUFFY_TITLE,
         "Usopp vs. Daddy the Parent! Showdown at High!",
     ]
-    assert episodes[1]["filler"] is True
+    assert episodes[1]["is_filler"] is True
 
 
 async def test_fetch_mal_episodes_cache_miss_fetches_page_and_caches_raw(
@@ -537,7 +537,7 @@ async def test_fetch_mal_episodes_cache_miss_fetches_page_and_caches_raw(
         episodes = await fetch_mal_episodes([_EP1_URL, _EP50_URL])
 
     assert episodes[0]["title"] == _LUFFY_TITLE
-    assert episodes[1]["filler"] is True
+    assert episodes[1]["is_filler"] is True
     [written] = cache_writes.await_args_list
     urls, raw_values = written.args
     assert urls == [_EP50_URL]
@@ -569,7 +569,7 @@ async def test_fetch_mal_episodes_cached_raw_without_episode_number_refetches_pa
         episodes = await fetch_mal_episodes([_EP50_URL])
 
     assert episodes[0] is not None
-    assert episodes[0]["filler"] is True
+    assert episodes[0]["is_filler"] is True
 
 
 @pytest.mark.parametrize("html", ["", _PAGE_WITHOUT_EPISODE_TITLE])

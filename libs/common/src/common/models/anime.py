@@ -5,6 +5,7 @@ from enum import StrEnum
 from typing import Annotated
 
 from common.models.base import ProviderMappedEnum, StrictFieldsModel
+from common.models.language_codes import CountryCode, LanguageCode
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -70,7 +71,11 @@ class AnimeStatus(ProviderMappedEnum):
 
 
 class EntityType(StrEnum):
-    """Primary entity type classification for vector search."""
+    """Name the type of catalogue entity a record holds.
+
+    The same type says what a provider page describes, so PostgreSQL stores it with
+    every page key, and vector search filters points by it.
+    """
 
     ANIME = "anime"
     CHARACTER = "character"
@@ -582,7 +587,7 @@ class TrailerEntry(StrictFieldsModel):
 
     source: str | None = Field(None, description="Trailer video URL")
     title: str | None = Field(None, description="Trailer title")
-    thumbnail: str | None = Field(None, description="Trailer thumbnail URL")
+    thumbnail_source: str | None = Field(None, description="Trailer thumbnail URL")
 
 
 class AiredDates(StrictFieldsModel):
@@ -686,7 +691,9 @@ class ExternalLink(StrictFieldsModel):
     platform: str = Field(description="Canonical platform name from the host")
     source: str = Field(description="Link URL")
     label: str | None = Field(None, description="Provider's own name for the link")
-    language: str | None = Field(None, description="Language of the linked page")
+    language: LanguageCode | None = Field(
+        None, description="BCP 47 code of the linked page's language"
+    )
 
 
 class StreamingEntry(StrictFieldsModel):
@@ -695,13 +702,13 @@ class StreamingEntry(StrictFieldsModel):
     platform: str = Field(description="Streaming platform name")
     source: str = Field(description="Streaming URL")
     region: str | None = Field(None, description="Available regions")
-    free: bool | None = Field(None, description="Free to watch")
-    premium_required: bool | None = Field(
+    has_dub: bool | None = Field(None, description="Dub available")
+    is_free: bool | None = Field(None, description="Free to watch")
+    is_premium_required: bool | None = Field(
         None, description="Premium subscription required"
     )
-    dub_available: bool | None = Field(None, description="Dub available")
-    subtitle_languages: list[str] = Field(
-        default_factory=list, description="Available subtitle languages"
+    subtitle_languages: list[LanguageCode] = Field(
+        default_factory=list, description="BCP 47 codes of the subtitle languages"
     )
 
 
@@ -725,10 +732,10 @@ class ThemeEntry(StrictFieldsModel):
 
 
 class EpisodeRange(StrictFieldsModel):
-    """Represents a range of episodes (e.g., 1-12) or a single episode (start=end)."""
+    """Represents a range of episodes (e.g., 1-12) or a single episode (range_start=range_end)."""
 
-    start: NonNegativeInt = Field(description="Starting episode number")
-    end: NonNegativeInt | None = Field(
+    range_start: NonNegativeInt = Field(description="Starting episode number")
+    range_end: NonNegativeInt | None = Field(
         None, description="Ending episode number (None means ongoing)"
     )
 
@@ -817,8 +824,8 @@ class VoiceActor(StrictFieldsModel):
     blood_type: str | None = Field(None, description="Blood type")
     id: str | None = Field(None, description="Unique UUID for the voice actor")
     image: str | None = Field(None, description="Voice actor image URL")
-    language: str | None = Field(
-        None, description="Voice acting language (Japanese, English, etc.)"
+    language: LanguageCode | None = Field(
+        None, description="BCP 47 code of the voice acting language (ja, en, etc.)"
     )
     name: str = Field(description="Voice actor name")
     native_name: str | None = Field(None, description="Native language name")
@@ -862,13 +869,13 @@ class ContextualRank(StrictFieldsModel):
     """Contextual ranking information from platforms like AniList"""
 
     # ── Scalars (alphabetical) ────────────────────────────────────────────────
-    all_time: bool | None = Field(
-        None, description="Whether this is an all-time ranking"
-    )
     context: str = Field(
         description="Human-readable ranking context (e.g. 'highest rated all time')",
     )
     format: str | None = Field(None, description="Format context (TV, Movie, etc.)")
+    is_all_time: bool | None = Field(
+        None, description="Whether this is an all-time ranking"
+    )
     rank: PositiveInt = Field(description="Rank position")
     season: str | None = Field(
         None, description="Season context (SPRING, SUMMER, FALL, WINTER)"
@@ -929,11 +936,11 @@ class Anime(StrictFieldsModel):
     # SCALAR FIELDS (alphabetical)
     # =====================================================================
     background: str | None = Field(None, description="Background information from MAL")
-    country_of_origin: str | None = Field(
+    country_of_origin: CountryCode = Field(
         None,
         description="ISO 3166-1 alpha-2 country code (e.g. 'JP', 'CN', 'KR') — from AniList",
     )
-    duration: NonNegativeInt | None = Field(
+    duration_seconds: NonNegativeInt | None = Field(
         None, description="Episode duration in seconds"
     )
     episode_count: NonNegativeInt = Field(default=0, description="Number of episodes")
@@ -942,10 +949,10 @@ class Anime(StrictFieldsModel):
         default=EntityType.ANIME,
         description="Entity type for vector search filtering",
     )
+    is_nsfw: bool | None = Field(None, description="Not Safe For Work flag from Kitsu")
     month: MonthNumber | None = Field(
         None, description="Premiere month number, 1 for January to 12 for December"
     )
-    nsfw: bool | None = Field(None, description="Not Safe For Work flag from Kitsu")
     rating: AnimeRating = Field(
         default=AnimeRating.UNKNOWN, description="Content rating (PG-13, R, etc.)"
     )
@@ -1045,7 +1052,7 @@ class Anime(StrictFieldsModel):
         default_factory=dict,
         description="Standardized statistics from different platforms (mal, anilist, kitsu, animeschedule)",
     )
-    titles: dict[str, str] = Field(
+    titles: dict[LanguageCode, str] = Field(
         default_factory=dict,
         description="Official titles in other languages keyed by BCP 47 language code (e.g. 'de', 'ko', 'zh-Hant')",
     )
@@ -1138,14 +1145,15 @@ class Episode(StrictFieldsModel):
     # =====================================================================
     # SCALAR FIELDS (alphabetical)
     # =====================================================================
-    aired: datetime | None = Field(None, description="Episode air date with timezone")
+    aired_at: datetime | None = Field(
+        None, description="Episode air date with timezone"
+    )
     anime_id: str | None = Field(None, description="UUID of the parent anime")
     description: str | None = Field(None, description="Episode description")
-    duration: NonNegativeInt | None = Field(
+    duration_seconds: NonNegativeInt | None = Field(
         None, description="Episode duration in seconds"
     )
     episode_number: NonNegativeInt = Field(description="Episode number")
-    filler: bool = Field(default=False, description="Whether episode is filler")
     id: str | None = Field(
         None, description="Deterministic ID (hash of anime_id + episode_number)"
     )
@@ -1153,7 +1161,8 @@ class Episode(StrictFieldsModel):
         default=EntityType.EPISODE,
         description="Entity type for vector search filtering",
     )
-    recap: bool = Field(default=False, description="Whether episode is recap")
+    is_filler: bool = Field(default=False, description="Whether episode is filler")
+    is_recap: bool = Field(default=False, description="Whether episode is recap")
     score: Annotated[FiniteFloat, Field(ge=0)] | None = Field(
         None, description="Episode rating score"
     )
@@ -1162,7 +1171,7 @@ class Episode(StrictFieldsModel):
     title: str = Field(description="Primary episode title")
     title_japanese: str | None = Field(None, description="Japanese episode title")
     title_romaji: str | None = Field(None, description="Romanized episode title")
-    titles: dict[str, str] = Field(
+    titles: dict[LanguageCode, str] = Field(
         default_factory=dict,
         description="Additional titles keyed by BCP 47 language code (e.g. 'de', 'fr')",
     )

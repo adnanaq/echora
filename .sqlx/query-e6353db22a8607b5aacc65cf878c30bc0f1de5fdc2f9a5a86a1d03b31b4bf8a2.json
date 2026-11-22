@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO anime_ending_theme_episode (ending_theme_id, range_start, range_end)\n                     SELECT $1, range_start, range_end\n                     FROM UNNEST($2::int4[], $3::int4[]) AS entry(range_start, range_end)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int4Array",
+        "Int4Array"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e6353db22a8607b5aacc65cf878c30bc0f1de5fdc2f9a5a86a1d03b31b4bf8a2"
+}

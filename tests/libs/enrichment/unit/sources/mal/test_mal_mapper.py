@@ -104,7 +104,7 @@ def test_anime_from_mal_one_piece_page_maps_titles_and_scalars() -> None:
         "ONGOING",
         "MANGA",
     )
-    assert (result["duration"], result["episode_count"], result["year"]) == (
+    assert (result["duration_seconds"], result["episode_count"], result["year"]) == (
         1440,
         1122,
         1999,
@@ -317,7 +317,9 @@ def test_anime_from_mal_theme_songs_keep_artist_and_episode_ranges() -> None:
     )
     assert result["opening_themes"][0]["title"] == "We Are!"
     assert result["opening_themes"][0]["artist"] == "Kitadani Hiroshi"
-    assert result["opening_themes"][0]["episodes"] == [{"start": 1, "end": 47}]
+    assert result["opening_themes"][0]["episodes"] == [
+        {"range_start": 1, "range_end": 47}
+    ]
     assert [song["title"] for song in result["ending_themes"]] == ["memories"]
 
 
@@ -361,7 +363,7 @@ def test_anime_from_mal_trailer_kept_with_title_and_thumbnail() -> None:
         {
             "source": "https://www.youtube.com/watch?v=gAX3Zj-JGE0",
             "title": "PV 1",
-            "thumbnail": "https://img.youtube.com/vi/gAX3Zj-JGE0/maxresdefault.jpg",
+            "thumbnail_source": "https://img.youtube.com/vi/gAX3Zj-JGE0/maxresdefault.jpg",
         }
     ]
 
@@ -443,7 +445,7 @@ def test_character_from_mal_voice_actors_mapped_with_language_and_links() -> Non
     actor = result["voice_actors"][0]
     assert (actor["name"], actor["language"], actor["sources"]) == (
         "Tanaka, Mayumi",
-        "Japanese",
+        "ja",
         ["https://myanimelist.net/people/70/Mayumi_Tanaka"],
     )
 
@@ -508,7 +510,11 @@ def test_episode_from_mal_scalars_mapped() -> None:
             recap=True,
         )
     )
-    assert (result["episode_number"], result["duration"], result["synopsis"]) == (
+    assert (
+        result["episode_number"],
+        result["duration_seconds"],
+        result["synopsis"],
+    ) == (
         1,
         1440,
         "Luffy meets Coby.",
@@ -518,21 +524,21 @@ def test_episode_from_mal_scalars_mapped() -> None:
         "俺はルフィ！",
         "Ore wa Luffy!",
     )
-    assert (result["filler"], result["recap"]) == (True, True)
+    assert (result["is_filler"], result["is_recap"]) == (True, True)
     assert result["sources"] == [EPISODE_URL]
 
 
 def test_episode_from_mal_aired_date_normalized_to_utc() -> None:
-    assert episode_from_mal(_episode(aired="1999-10-20"))["aired"] == (
+    assert episode_from_mal(_episode(aired="1999-10-20"))["aired_at"] == (
         "1999-10-19T15:00:00Z"
     )
 
 
 @pytest.mark.parametrize("aired", [None, "Not available"])
-def test_episode_from_mal_missing_or_unreadable_air_date_omits_aired(
+def test_episode_from_mal_missing_or_unreadable_air_date_omits_aired_at(
     aired: str | None,
 ) -> None:
-    assert "aired" not in episode_from_mal(_episode(aired=aired))
+    assert "aired_at" not in episode_from_mal(_episode(aired=aired))
 
 
 def test_episode_from_mal_characters_mapped_with_voice_actors_and_links() -> None:
@@ -561,7 +567,7 @@ def test_episode_from_mal_characters_mapped_with_voice_actors_and_links() -> Non
     actor = character["voice_actors"][0]
     assert (actor["name"], actor["language"], actor["sources"]) == (
         "Tanaka, Mayumi",
-        "Japanese",
+        "ja",
         ["https://myanimelist.net/people/70"],
     )
 

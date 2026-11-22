@@ -19,7 +19,6 @@ from enrichment.sources.anime_planet.anime_planet_character_models import (
     AnimePlanetCharacter,
     AnimePlanetCharacterAnimeRole,
     AnimePlanetCharacterMangaRole,
-    AnimePlanetVoiceActor,
 )
 from enrichment.sources.anime_planet.animeplanet_mapper import (
     character_from_animeplanet,
@@ -101,19 +100,10 @@ _OGRAPHY_HREF_RE = re.compile(r'href="(/(?:anime|manga)/[^"?#]+)"', re.IGNORECAS
 _LAST_ANCHOR_TEXT_RE = re.compile(r">([^<>]+)</a>(?!.*</a>)", re.DOTALL | re.IGNORECASE)
 
 _VA_FLAG_RE = re.compile(
-    r'<div[^>]+class="flag\s+flag(JP|US|ES|FR|DE|KO)"[^>]*>.*?'
+    r'<div[^>]+class="flag\s+flag([A-Za-z]+)"[^>]*>.*?'
     r'<a[^>]+href="(/people/[^"?#]+)"[^>]*>([^<]+)</a>',
     re.DOTALL | re.IGNORECASE,
 )
-
-_FLAG_LANG_MAP: dict[str, str] = {
-    "JP": "jp",
-    "US": "us",
-    "ES": "es",
-    "FR": "fr",
-    "DE": "de",
-    "KO": "ko",
-}
 
 
 # ---------------------------------------------------------------------------
@@ -171,26 +161,47 @@ def _extract_tags(body_html: str) -> list[str]:
     return [unescape(m.group(1).strip()) for m in _TAG_RE.finditer(body_html)]
 
 
-def _extract_vas_from_cell(cell_html: str) -> dict[str, list[AnimePlanetVoiceActor]]:
-    """Extract voice actors keyed by language code from a table-cell HTML block."""
-    vas: dict[str, list[AnimePlanetVoiceActor]] = {}
-    for m in _VA_FLAG_RE.finditer(cell_html):
-        lang = _FLAG_LANG_MAP.get(m.group(1).upper(), m.group(1).lower())
-        url = m.group(2)
-        name = unescape(m.group(3).strip())
-        if lang not in vas:
-            vas[lang] = []
-        vas[lang].append(AnimePlanetVoiceActor(name=name, url=url))
-    return vas
+def _read_voice_actors_by_flag(cell_html: str) -> dict[str, list[dict[str, str]]]:
+    """Extract the voice actors of a table cell, keyed by the flag shown before each.
+
+    Every flag is kept as written, in lower case, so the character model decides
+    which language each one names and none is dropped here.
+
+    Args:
+        cell_html: HTML of the voice actor cell of one anime role row.
+
+    Returns:
+        The name and people path of each voice actor, keyed by flag, such as ``jp``.
+    """
+    actors_by_flag: dict[str, list[dict[str, str]]] = {}
+    for actor_match in _VA_FLAG_RE.finditer(cell_html):
+        flag = actor_match.group(1).lower()
+        actors_by_flag.setdefault(flag, []).append(
+            {
+                "name": unescape(actor_match.group(3).strip()),
+                "url": actor_match.group(2),
+            }
+        )
+    return actors_by_flag
 
 
-def _extract_anime_roles(body_html: str) -> list[AnimePlanetCharacterAnimeRole]:
-    """Extract anime ography entries from the 'Anime Roles' table."""
+def _extract_anime_roles(body_html: str) -> list[dict[str, Any]]:
+    """Extract the anime roles of the 'Anime Roles' table as plain values.
+
+    The values are cached as they are, and the character model is built from them
+    once, so a conversion in the model never runs twice.
+
+    Args:
+        body_html: HTML of the character page.
+
+    Returns:
+        The title, path, role and voice actors of each anime role.
+    """
     section_match = _ANIME_ROLES_SECTION_RE.search(body_html)
     if not section_match:
         return []
 
-    roles: list[AnimePlanetCharacterAnimeRole] = []
+    roles: list[dict[str, Any]] = []
     for row_match in _TR_RE.finditer(section_match.group(1)):
         cells = _TD_RE.findall(row_match.group(1))
         if len(cells) < 2:
@@ -205,23 +216,30 @@ def _extract_anime_roles(body_html: str) -> list[AnimePlanetCharacterAnimeRole]:
             continue
 
         roles.append(
-            AnimePlanetCharacterAnimeRole(
-                title=unescape(title_match.group(1).strip()),
-                url=href_match.group(1),
-                role=role_cell if role_cell else None,
-                voice_actors=_extract_vas_from_cell(actors_cell),
-            )
+            {
+                "title": unescape(title_match.group(1).strip()),
+                "url": href_match.group(1),
+                "role": role_cell if role_cell else None,
+                "voice_actors": _read_voice_actors_by_flag(actors_cell),
+            }
         )
     return roles
 
 
-def _extract_manga_roles(body_html: str) -> list[AnimePlanetCharacterMangaRole]:
-    """Extract manga ography entries from the 'Manga Roles' table."""
+def _extract_manga_roles(body_html: str) -> list[dict[str, Any]]:
+    """Extract the manga roles of the 'Manga Roles' table as plain values.
+
+    Args:
+        body_html: HTML of the character page.
+
+    Returns:
+        The title, path and role of each manga role.
+    """
     section_match = _MANGA_ROLES_SECTION_RE.search(body_html)
     if not section_match:
         return []
 
-    roles: list[AnimePlanetCharacterMangaRole] = []
+    roles: list[dict[str, Any]] = []
     for row_match in _TR_RE.finditer(section_match.group(1)):
         cells = _TD_RE.findall(row_match.group(1))
         if len(cells) < 2:
@@ -235,11 +253,11 @@ def _extract_manga_roles(body_html: str) -> list[AnimePlanetCharacterMangaRole]:
             continue
 
         roles.append(
-            AnimePlanetCharacterMangaRole(
-                title=unescape(title_match.group(1).strip()),
-                url=href_match.group(1),
-                role=role_cell if role_cell else None,
-            )
+            {
+                "title": unescape(title_match.group(1).strip()),
+                "url": href_match.group(1),
+                "role": role_cell if role_cell else None,
+            }
         )
     return roles
 
@@ -293,8 +311,8 @@ def _extract_character_from_html(html: str) -> dict[str, Any] | None:
         "tags": _extract_tags(html),
         "alt_names": _extract_alt_names(html),
         "attributes": _extract_metadata(html),
-        "anime_roles": [r.model_dump() for r in _extract_anime_roles(html)],
-        "manga_roles": [r.model_dump() for r in _extract_manga_roles(html)],
+        "anime_roles": _extract_anime_roles(html),
+        "manga_roles": _extract_manga_roles(html),
     }
 
 

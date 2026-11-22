@@ -15,7 +15,7 @@ CREATE TABLE anime (
   episode_count        int NOT NULL DEFAULT 0 CHECK (episode_count >= 0),
   duration_seconds     int CHECK (duration_seconds >= 0),
   is_nsfw              boolean,
-  country_of_origin    text CHECK (char_length(country_of_origin) = 2),
+  country_of_origin    text REFERENCES country(code),
   synopsis             text,
   background           text,
   aired_from           timestamptz,
@@ -48,6 +48,11 @@ CREATE INDEX anime_merged_into_idx
   ON anime(merged_into_anime_id)
   WHERE merged_into_anime_id IS NOT NULL;
 
+-- Works by country, and the foreign key check when an unused country is deleted
+CREATE INDEX anime_country_of_origin_idx
+  ON anime(country_of_origin)
+  WHERE country_of_origin IS NOT NULL;
+
 CREATE INDEX anime_refresh_order_idx
   ON anime((coalesce(next_refresh_at, '-infinity'::timestamptz)), id)
   WHERE deleted_at IS NULL;
@@ -57,28 +62,33 @@ CREATE VIEW anime_visible AS
   FROM anime
   WHERE merged_at IS NOT NULL AND deleted_at IS NULL;
 
--- Which provider pages make up each work.
-CREATE TABLE anime_provider_page (
+-- Anime.sources: the pages merged into each work. A page is the source of at most
+-- one work, and a work has at most one source page per provider.
+CREATE TABLE anime_source (
   anime_id   uuid NOT NULL REFERENCES anime(id) ON DELETE CASCADE,
   provider   text NOT NULL,
-  page_kind  text NOT NULL DEFAULT 'anime' CHECK (page_kind = 'anime'),
+  entity_type  text NOT NULL DEFAULT 'anime' CHECK (entity_type = 'anime'),
   address    text NOT NULL,
-  role       text NOT NULL REFERENCES anime_page_role(value),
-  PRIMARY KEY (anime_id, provider, page_kind, address),
-  FOREIGN KEY (provider, page_kind, address)
-    REFERENCES provider_page(provider, page_kind, address) ON DELETE RESTRICT
+  PRIMARY KEY (provider, entity_type, address),
+  CONSTRAINT anime_source_provider_key UNIQUE (anime_id, provider),
+  FOREIGN KEY (provider, entity_type, address)
+    REFERENCES provider_page(provider, entity_type, address) ON DELETE RESTRICT
 );
 
-CREATE UNIQUE INDEX anime_provider_page_one_source_uniq
-  ON anime_provider_page(provider, address)
-  WHERE role = 'source';
+-- Anime.partial_sources: pages listing a larger work this work is part of, linked for
+-- reference and never merged. A page can be a partial source of several works.
+CREATE TABLE anime_partial_source (
+  anime_id   uuid NOT NULL REFERENCES anime(id) ON DELETE CASCADE,
+  provider   text NOT NULL,
+  entity_type  text NOT NULL DEFAULT 'anime' CHECK (entity_type = 'anime'),
+  address    text NOT NULL,
+  PRIMARY KEY (anime_id, provider, entity_type, address),
+  FOREIGN KEY (provider, entity_type, address)
+    REFERENCES provider_page(provider, entity_type, address) ON DELETE RESTRICT
+);
 
-CREATE UNIQUE INDEX anime_provider_page_source_per_provider_uniq
-  ON anime_provider_page(anime_id, provider)
-  WHERE role = 'source';
-
-CREATE INDEX anime_provider_page_page_idx
-  ON anime_provider_page(provider, page_kind, address);
+CREATE INDEX anime_partial_source_page_idx
+  ON anime_partial_source(provider, entity_type, address);
 
 -- Approved per-field overrides applied after every merge.
 CREATE TABLE anime_field_correction (

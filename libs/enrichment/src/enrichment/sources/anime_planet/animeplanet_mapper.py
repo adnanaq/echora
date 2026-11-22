@@ -50,15 +50,6 @@ from enrichment.sources.base.companies import companies_from_roles
 
 _AP_BASE_URL = "https://www.anime-planet.com"
 
-_FLAG_TO_LANGUAGE: dict[str, str] = {
-    "jp": "Japanese",
-    "us": "English",
-    "es": "Spanish",
-    "fr": "French",
-    "de": "German",
-    "ko": "Korean",
-}
-
 
 def anime_from_animeplanet(anime: AnimePlanetAnime) -> dict[str, Any]:
     """Map an AnimePlanetAnime source model to canonical Anime field values.
@@ -276,25 +267,24 @@ def character_from_animeplanet(char: AnimePlanetCharacter) -> dict[str, Any]:
             for entry in char.manga_roles
         ]
 
-    # ── Voice actors (flat dedup across all anime roles, keyed by name+lang) ─
-    seen_vas: set[tuple[str, str]] = set()
-    vas: list[VoiceActor] = []
+    # ── Voice actors (once each across all anime roles, by name and language) ─
+    seen_voice_actor_keys: set[tuple[str, str]] = set()
+    voice_actors: list[VoiceActor] = []
     for anime_role in char.anime_roles:
-        for lang_code, actors in anime_role.voice_actors.items():
-            language = _FLAG_TO_LANGUAGE.get(lang_code, lang_code)
-            for va in actors:
-                key = (va.name, language)
-                if key not in seen_vas:
-                    seen_vas.add(key)
-                    vas.append(
+        for language, role_voice_actors in anime_role.voice_actors.items():
+            for voice_actor in role_voice_actors:
+                voice_actor_key = (voice_actor.name, language)
+                if voice_actor_key not in seen_voice_actor_keys:
+                    seen_voice_actor_keys.add(voice_actor_key)
+                    voice_actors.append(
                         VoiceActor(
-                            name=va.name,
+                            name=voice_actor.name,
                             language=language,
-                            sources=[f"{_AP_BASE_URL}{va.url}"],
+                            sources=[f"{_AP_BASE_URL}{voice_actor.url}"],
                         )
                     )
-    if vas:
-        result["voice_actors"] = vas
+    if voice_actors:
+        result["voice_actors"] = voice_actors
 
     character = Character.model_validate(result)
     return character.model_dump(mode="json", exclude_none=True)

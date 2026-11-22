@@ -344,7 +344,7 @@ async def test_get_character_voices_attaches_sideloaded_people(kitsu_api) -> Non
         ],
     )
     voices = await KitsuHelper(get_cache()).get_character_voices("mc1")
-    assert voices[0].attributes.locale == "ja_jp"
+    assert voices[0].attributes.locale == "ja"
     assert voices[0].person.attributes.name == "Mayumi Tanaka"
     assert voices[1].person is None
 

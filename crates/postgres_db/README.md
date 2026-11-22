@@ -8,13 +8,15 @@ The migrations in `migrations/` are the only source of the schema, and are writt
 
 | Migration | Tables |
 | --- | --- |
-| `..._create_lookup_and_name_tables.sql` | Lookup tables for every enum, such as `anime_type` and `provider`, and the shared names `genre`, `tag`, `demographic`, `content_warning` and `trait` |
-| `..._create_provider_page_tables.sql` | `provider_page` and `provider_page_response`, the pages as received |
-| `..._create_anime_and_outbox_tables.sql` | `anime`, `anime_visible`, `anime_provider_page`, `anime_field_correction`, `approval_request` and `outbox` |
-| `..._create_anime_names_classification_images_tables.sql` | Titles, synonyms, genres, tags, demographics, content warnings, themes and images of a work |
-| `..._create_anime_songs_streaming_stats_broadcast_hiatus_tables.sql` | Theme songs, trailers, links, streaming, statistics, broadcast and hiatus history |
-| `..._create_anime_relations_source_material_companies_graph_tables.sql` | Relations and claims, source material, companies and `graph_edge` |
+| `..._create_lookup_and_name_tables.sql` | Lookup tables for every enum, such as `anime_type` and `provider`, the shared names `genre`, `tag`, `demographic`, `content_warning` and `trait`, and the shared codes `language` and `country` |
+| `..._create_provider_page_tables.sql` | `provider_page` and `provider_page_response`, the pages as received, and `approval_request` |
+| `..._create_anime_and_outbox_tables.sql` | `anime`, `anime_visible`, `anime_source`, `anime_partial_source`, `anime_field_correction` and `outbox` |
+| `..._create_anime_names_classification_images_tables.sql` | Titles, synonyms, genres, tags, demographics, content warnings, themes and images of a work, and the shared `theme` table |
+| `..._create_anime_songs_streaming_stats_broadcast_hiatus_tables.sql` | Opening and ending themes, trailers, external sources, streaming sources, statistics, broadcast and hiatus history, and the shared `trailer` and `external_source` tables |
+| `..._create_anime_relations_source_material_companies_graph_tables.sql` | Related anime and their claims, related source material, companies and `graph_edge` |
 | `..._create_episode_tables.sql` | `episode`, `episode_visible`, its pages, list entries, titles, images, streaming, characters and corrections |
+
+Every table and column is named after the model field it stores, by the rule in `docs/architecture/Database Schema.md` (Naming Rule), which `scripts/check_postgres_schema.py` checks in CI. A value shared across works, such as a URL's platform or a theme's description, is stored once in a shared table, and a relation stores only its target page, so the target work is always found by a join.
 
 A migration that builds an index with `CREATE INDEX CONCURRENTLY` starts with `-- no-transaction` and holds only that statement. The full design, with the reasons for each table, is in `docs/architecture/Database Schema.md`.
 
@@ -25,7 +27,7 @@ A migration that builds an index with `CREATE INDEX CONCURRENTLY` starts with `-
 | `connect_pool`, `run_migrations` | Open a pool and bring the schema up to date |
 | `record_page_observation` | Store one fetch of a provider page: a success, the provider's "not found", or a failure |
 | `load_anime`, `save_anime` | Read a work's pages, corrections, known episodes and version; save its merged record |
-| `link_anime_source_page` | Link a page to a work as its source, and resolve relations that point at that page |
+| `link_anime_source_page` | Link a page to a work as its source, and tell the works whose relations now reach it |
 | `load_episode`, `save_episode` | The same for an episode |
 | `mark_episode_aired` | Write the aired notification once, after the episode's air time has passed |
 | `delete_episode` | Remove an episode, its page links and its graph edges, and send `episode.deleted` |
@@ -38,7 +40,7 @@ A migration that builds an index with `CREATE INDEX CONCURRENTLY` starts with `-
 - **Outbox.** A changing save raises the version and writes its event in the same transaction: `anime.created` or `episode.created` on the first merge, `.updated` afterwards. A changed work status also writes `notification.anime.status.changed`.
 - **One clock.** Every timestamp in a transaction is PostgreSQL's transaction time, so a save's rows and events agree with each other, whichever server wrote them.
 - **No deadlocks.** Shared rows are locked and written in sorted key order. A pair of related works is locked by an advisory lock keyed by a hash of the pair, taken in ascending hash order.
-- **Pages.** A fetch older than what is stored is ignored. A changed page raises the version of every entity built from it and requests its merge. Two "not found" answers at least a day apart open a `dead_page` review, or mark the page dead when that provider's review is off.
+- **Pages.** A fetch stamped more than five minutes ahead of the database's clock is refused, and a fetch older than what is stored is ignored. A changed page raises the version of every entity built from it and requests its merge. Two "not found" answers at least a day apart open a `dead_page` review, or mark the page dead when that provider's review is off.
 - **Validation.** Inputs are checked before any write, and a broken rule fails with an invalid-argument error.
 
 ## Errors
@@ -66,6 +68,9 @@ When `RUST_BACKTRACE` is set, the error also captures a backtrace and prints it 
 ## Tests
 
 Unit tests sit beside the code they test. Integration tests are in `tests/`, one file per area, with shared helpers in `tests/support/`. Each test gets a fresh database with every migration applied.
+
+- A test fails when PostgreSQL would cut a table, index or constraint name at its 63-byte limit, so a long generated name is named explicitly in its migration.
+- Saves that share rows are tested running at the same moment, so a change to the lock order shows up as a deadlock in the tests.
 
 ```bash
 cargo test -p postgres_db

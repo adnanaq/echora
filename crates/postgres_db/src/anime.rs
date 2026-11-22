@@ -19,8 +19,8 @@ use crate::episode::{
 };
 use crate::read_transaction_time;
 use crate::{
-    AnimeDetailsInput, AnimeRelationsAndGraphInput, AnimeScheduleAndStatsInput,
-    EpisodeReferenceInput, Error, PageKey, PageKind, PageResponse, Provider,
+    AnimeDetailsInput, AnimeRelationsAndGraphInput, AnimeScheduleAndStatsInput, EntityType,
+    EpisodeReferenceInput, Error, PageKey, PageResponse, Provider,
 };
 
 /// Current canonical hash format version stored in `anime.hash_format`.
@@ -28,6 +28,12 @@ use crate::{
 /// Bumping this constant causes unchanged records to re-save once so the new
 /// hash format is persisted.
 pub const ANIME_HASH_FORMAT: i16 = 5;
+
+/// Subject of the notice for a work's first merge; the vector service consumes `anime.*`.
+pub(crate) const ANIME_CREATED_SUBJECT: &str = "anime.created";
+
+/// Subject of the notice for any later change to a work.
+pub(crate) const ANIME_UPDATED_SUBJECT: &str = "anime.updated";
 
 /// Minimum valid release year stored in `anime.year`.
 pub(crate) const MIN_ANIME_YEAR: i16 = 1900;
@@ -47,7 +53,7 @@ const MAX_SCORE: f64 = 10.0;
 /// Stored provider page with its decompressed responses returned by [`load_anime`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LoadedSourcePage {
-    /// Page identifier (`provider`, `page_kind`, `address`).
+    /// Page identifier (`provider`, `entity_type`, `address`).
     pub page_key: PageKey,
     /// When the provider page was last fetched.
     pub fetched_at: DateTime<Utc>,
@@ -214,10 +220,18 @@ struct ProtoAnimeStatusChangedNotification {
 /// ```no_run
 /// # use sqlx::PgPool;
 /// # use uuid::Uuid;
-/// # use postgres_db::load_anime;
+/// # use postgres_db::{load_anime, PageKey, EntityType, Provider};
 /// # async fn example(pool: &PgPool, anime_id: Uuid) -> Result<(), postgres_db::Error> {
+/// // A work the seed load just created: its MAL page is linked but not fetched yet, and
+/// // an AniDB page listing the larger work it is part of is linked as a partial source.
 /// let loaded = load_anime(pool, anime_id).await?;
-/// assert!(loaded.version >= 1);
+/// assert_eq!(loaded.version, 1);
+/// assert_eq!(loaded.source_pages, Vec::new(), "a page never fetched has nothing to merge");
+/// assert_eq!(
+///     loaded.partial_source_pages,
+///     vec![PageKey::new(Provider::AniDb, EntityType::Anime, "69")?]
+/// );
+/// assert_eq!(loaded.corrections, Vec::new());
 /// # Ok(())
 /// # }
 /// ```
@@ -272,23 +286,22 @@ async fn load_linked_pages(
     tx: &mut Transaction<'_, Postgres>,
     anime_id: Uuid,
 ) -> Result<(Vec<LoadedSourcePage>, Vec<PageKey>), Error> {
-    let linked_rows = sqlx::query!(
+    let source_rows = sqlx::query!(
         r#"
         SELECT
-            app.provider,
-            app.page_kind,
-            app.address,
-            app.role,
+            source.provider,
+            source.entity_type,
+            source.address,
             pp.fetched_at,
             pp.is_dead,
             pp.missing_since
-        FROM anime_provider_page app
+        FROM anime_source source
         JOIN provider_page pp
-          ON pp.provider = app.provider
-         AND pp.page_kind = app.page_kind
-         AND pp.address = app.address
-        WHERE app.anime_id = $1
-        ORDER BY app.role, app.provider, app.address
+          ON pp.provider = source.provider
+         AND pp.entity_type = source.entity_type
+         AND pp.address = source.address
+        WHERE source.anime_id = $1
+        ORDER BY source.provider, source.address
         "#,
         anime_id
     )
@@ -297,26 +310,42 @@ async fn load_linked_pages(
 
     let mut responses_by_page = load_source_responses_by_page(tx, anime_id).await?;
     let mut source_pages = Vec::new();
-    let mut partial_source_pages = Vec::new();
-
-    for row in linked_rows {
+    for row in source_rows {
+        let Some(fetched_at) = row.fetched_at else {
+            continue;
+        };
         let provider: Provider = row.provider.parse()?;
-        let page_kind = parse_page_kind(&row.page_kind)?;
-        let page_key = PageKey::new(provider, page_kind, &row.address)?;
-        if row.role == "partial_source" {
-            partial_source_pages.push(page_key);
-        } else if let Some(fetched_at) = row.fetched_at {
-            let responses = responses_by_page
-                .remove(&(row.provider, row.page_kind, row.address))
-                .unwrap_or_default();
-            source_pages.push(LoadedSourcePage {
-                page_key,
-                fetched_at,
-                is_dead: row.is_dead,
-                is_not_found: row.missing_since.is_some(),
-                responses,
-            });
-        }
+        let entity_type = parse_page_kind(&row.entity_type)?;
+        let page_key = PageKey::new(provider, entity_type, &row.address)?;
+        let responses = responses_by_page
+            .remove(&(row.provider, row.entity_type, row.address))
+            .unwrap_or_default();
+        source_pages.push(LoadedSourcePage {
+            page_key,
+            fetched_at,
+            is_dead: row.is_dead,
+            is_not_found: row.missing_since.is_some(),
+            responses,
+        });
+    }
+
+    let partial_source_rows = sqlx::query!(
+        r#"
+        SELECT provider, entity_type, address
+        FROM anime_partial_source
+        WHERE anime_id = $1
+        ORDER BY provider, address
+        "#,
+        anime_id
+    )
+    .fetch_all(&mut **tx)
+    .await?;
+
+    let mut partial_source_pages = Vec::with_capacity(partial_source_rows.len());
+    for row in partial_source_rows {
+        let provider: Provider = row.provider.parse()?;
+        let entity_type = parse_page_kind(&row.entity_type)?;
+        partial_source_pages.push(PageKey::new(provider, entity_type, &row.address)?);
     }
 
     Ok((source_pages, partial_source_pages))
@@ -335,17 +364,17 @@ async fn load_source_responses_by_page(
         r#"
         SELECT
             ppr.provider,
-            ppr.page_kind,
+            ppr.entity_type,
             ppr.address,
             ppr.request_name,
             ppr.content_type,
             ppr.body
-        FROM anime_provider_page app
+        FROM anime_source source
         JOIN provider_page_response ppr
-          ON ppr.provider = app.provider
-         AND ppr.page_kind = app.page_kind
-         AND ppr.address = app.address
-        WHERE app.anime_id = $1 AND app.role = 'source'
+          ON ppr.provider = source.provider
+         AND ppr.entity_type = source.entity_type
+         AND ppr.address = source.address
+        WHERE source.anime_id = $1
         ORDER BY ppr.provider, ppr.address, ppr.request_name
         "#,
         anime_id
@@ -358,7 +387,7 @@ async fn load_source_responses_by_page(
     for row in response_rows {
         let body = decompress_body(&row.body)?;
         responses_by_page
-            .entry((row.provider, row.page_kind, row.address))
+            .entry((row.provider, row.entity_type, row.address))
             .or_default()
             .push(PageResponse {
                 request_name: row.request_name,
@@ -408,10 +437,38 @@ async fn load_anime_corrections(
 ///
 /// ```no_run
 /// # use sqlx::PgPool;
-/// # use postgres_db::{save_anime, SaveAnimeInput};
-/// # async fn example(pool: &PgPool, input: &SaveAnimeInput) -> Result<(), postgres_db::Error> {
-/// let outcome = save_anime(pool, input).await?;
-/// assert!(outcome.version >= 1);
+/// # use uuid::Uuid;
+/// # use postgres_db::{save_anime, SaveAnimeInput, SaveAnimeOutcome};
+/// # async fn example(
+/// #     pool: &PgPool,
+/// #     input: &SaveAnimeInput,
+/// #     new_episode_id: Uuid,
+/// # ) -> Result<(), postgres_db::Error> {
+/// // The work's first merge, at the version its load returned, listing one new episode.
+/// let first_save = save_anime(pool, input).await?;
+/// assert_eq!(
+///     first_save,
+///     SaveAnimeOutcome {
+///         has_changed: true,
+///         version: input.expected_version + 1,
+///         created_episode_ids: vec![new_episode_id],
+///         updated_episode_ids: Vec::new(),
+///     }
+/// );
+///
+/// // The same merged record saved again writes nothing and keeps the version.
+/// let mut repeated_input = input.clone();
+/// repeated_input.expected_version = first_save.version;
+/// let repeated_save = save_anime(pool, &repeated_input).await?;
+/// assert_eq!(
+///     repeated_save,
+///     SaveAnimeOutcome {
+///         has_changed: false,
+///         version: first_save.version,
+///         created_episode_ids: Vec::new(),
+///         updated_episode_ids: Vec::new(),
+///     }
+/// );
 /// # Ok(())
 /// # }
 /// ```
@@ -455,6 +512,11 @@ async fn save_anime_in_tx(
     tx: &mut Transaction<'_, Postgres>,
     input: &SaveAnimeInput,
 ) -> Result<SaveAnimeOutcome, Error> {
+    // Every path takes page locks, then shared rows, then entity rows, so two writers
+    // always lock in the same order; see lock_relation_target_pages.
+    crate::anime_relations::lock_relation_target_pages(tx, &input.relations_and_graph.relations)
+        .await?;
+    upsert_work_shared_rows(tx, input).await?;
     let existing_anime = sqlx::query!(
         r#"
         SELECT
@@ -533,6 +595,51 @@ async fn save_anime_in_tx(
         created_episode_ids,
         updated_episode_ids,
     })
+}
+
+/// Adds or updates every shared row a work's save references, before the work's row is locked.
+///
+/// The tables are written in one fixed order, each in sorted key order: language codes,
+/// the country, the shared names and themes, then external sources and trailers. An
+/// episode's save writes its language codes and external sources in the same order before
+/// it locks the episode's row. Every writer therefore takes these locks in one order and
+/// before any entity row, so no two saves can each hold what the other waits for.
+///
+/// # Errors
+///
+/// Returns a database error when an insert or upsert fails.
+async fn upsert_work_shared_rows(
+    tx: &mut Transaction<'_, Postgres>,
+    input: &SaveAnimeInput,
+) -> Result<(), Error> {
+    let title_languages = input
+        .details
+        .titles
+        .iter()
+        .map(|entry| entry.language.as_str());
+    let link_languages = input
+        .schedule_and_stats
+        .external_sources
+        .iter()
+        .filter_map(|link| link.language.as_deref());
+    let subtitle_languages = input
+        .schedule_and_stats
+        .streaming_sources
+        .iter()
+        .flat_map(|entry| entry.subtitle_languages.iter().map(String::as_str));
+    crate::language_code::insert_language_codes(
+        tx,
+        title_languages
+            .chain(link_languages)
+            .chain(subtitle_languages),
+    )
+    .await?;
+    if let Some(country_code) = input.country_of_origin.as_deref() {
+        crate::language_code::insert_country_code(tx, country_code).await?;
+    }
+    crate::anime_details::upsert_shared_detail_rows(tx, &input.details).await?;
+    crate::anime_schedule_and_stats::upsert_shared_schedule_rows(tx, &input.schedule_and_stats)
+        .await
 }
 
 /// Writes the work's own columns, its new version and its merge metadata.
@@ -630,9 +737,9 @@ async fn emit_anime_outbox_events(
     previous_status: Option<&str>,
 ) -> Result<(), Error> {
     let catalogue_subject = if is_first_merge {
-        "anime.created"
+        ANIME_CREATED_SUBJECT
     } else {
-        "anime.updated"
+        ANIME_UPDATED_SUBJECT
     };
     let catalogue_event_id = Uuid::now_v7();
     let catalogue_payload =
@@ -810,18 +917,18 @@ pub(crate) async fn insert_catalogue_outbox_event(
     .await
 }
 
-/// Converts stored `page_kind` lookup text into a [`PageKind`].
+/// Converts stored `entity_type` lookup text into a [`EntityType`].
 ///
 /// # Errors
 ///
 /// Returns an invalid-argument error for text no migration defines.
-pub(crate) fn parse_page_kind(page_kind_text: &str) -> Result<PageKind, Error> {
+pub(crate) fn parse_page_kind(page_kind_text: &str) -> Result<EntityType, Error> {
     match page_kind_text {
-        "anime" => Ok(PageKind::Anime),
-        "episode" => Ok(PageKind::Episode),
-        "character" => Ok(PageKind::Character),
+        "anime" => Ok(EntityType::Anime),
+        "episode" => Ok(EntityType::Episode),
+        "character" => Ok(EntityType::Character),
         other => Err(Error::invalid_argument(format!(
-            "unknown stored page_kind {other:?}"
+            "unknown stored entity_type {other:?}"
         ))),
     }
 }
@@ -1026,9 +1133,12 @@ mod tests {
 
     #[test]
     fn helpers_reject_unknown_values_and_corrupt_gzip() {
-        assert_eq!(parse_page_kind("anime").ok(), Some(PageKind::Anime));
-        assert_eq!(parse_page_kind("episode").ok(), Some(PageKind::Episode));
-        assert_eq!(parse_page_kind("character").ok(), Some(PageKind::Character));
+        assert_eq!(parse_page_kind("anime").ok(), Some(EntityType::Anime));
+        assert_eq!(parse_page_kind("episode").ok(), Some(EntityType::Episode));
+        assert_eq!(
+            parse_page_kind("character").ok(),
+            Some(EntityType::Character)
+        );
         assert!(matches!(parse_page_kind("unknown"), Err(e) if e.is_invalid_argument()));
 
         assert_eq!(status_to_proto_i32("FINISHED").ok(), Some(1));
@@ -1091,7 +1201,7 @@ mod tests {
         .await
         .unwrap();
 
-        let mal_key = PageKey::new(Provider::Mal, PageKind::Anime, "19").unwrap();
+        let mal_key = PageKey::new(Provider::Mal, EntityType::Anime, "19").unwrap();
         record_page_observation(
             &pool,
             PageObservation {
@@ -1117,16 +1227,23 @@ mod tests {
         .unwrap();
 
         sqlx::query!(
-            "INSERT INTO provider_page (provider, page_kind, address) VALUES ('anilist', 'anime', '19')"
+            "INSERT INTO provider_page (provider, entity_type, address) VALUES ('anilist', 'anime', '19')"
         )
         .execute(&pool)
         .await
         .unwrap();
 
         sqlx::query!(
-            "INSERT INTO anime_provider_page (anime_id, provider, page_kind, address, role)
-             VALUES ($1, 'mal', 'anime', '19', 'source'),
-                    ($1, 'anilist', 'anime', '19', 'partial_source')",
+            "INSERT INTO anime_source (anime_id, provider, entity_type, address)
+             VALUES ($1, 'mal', 'anime', '19')",
+            anime_id,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query!(
+            "INSERT INTO anime_partial_source (anime_id, provider, entity_type, address)
+             VALUES ($1, 'anilist', 'anime', '19')",
             anime_id,
         )
         .execute(&pool)

@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT missing_answers FROM provider_page WHERE provider = 'mal' AND entity_type = 'anime' AND address = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "missing_answers",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "8c96272f6788557b251035ccece8a9ebb8e8b52bee66075dccacd0b052bc0f81"
+}

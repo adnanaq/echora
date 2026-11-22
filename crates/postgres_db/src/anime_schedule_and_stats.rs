@@ -1,5 +1,5 @@
-//! Persistence helpers for theme songs, trailers, external links, streaming,
-//! statistics, broadcast schedule, and hiatus history.
+//! Persistence helpers for opening and ending themes, trailers, external sources,
+//! streaming sources, statistics, broadcast schedule, and hiatus history.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -19,11 +19,9 @@ pub struct EpisodeRangeInput {
     pub range_end: Option<i32>,
 }
 
-/// Opening or ending theme song entry stored in `anime_theme_song`.
+/// Opening or ending theme song, stored in `anime_opening_theme` or `anime_ending_theme`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AnimeThemeSongInput {
-    /// Lookup value in `theme_song_kind` (`"opening"` or `"ending"`).
-    pub kind: String,
     /// Zero-based position within the work's openings or endings.
     pub position: i32,
     /// Song title.
@@ -34,37 +32,39 @@ pub struct AnimeThemeSongInput {
     pub episode_ranges: Vec<EpisodeRangeInput>,
 }
 
-/// Trailer entry stored in `anime_trailer`.
+/// Trailer, linked to the work in `anime_trailer` and described once in `trailer`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AnimeTrailerInput {
-    /// Trailer URL.
-    pub url: String,
+    /// Trailer video URL.
+    pub source: String,
     /// Optional trailer title.
     pub title: Option<String>,
-    /// Optional thumbnail URL.
-    pub thumbnail_url: Option<String>,
+    /// Optional thumbnail image URL.
+    pub thumbnail_source: Option<String>,
 }
 
-/// External link stored in `anime_external_link`.
+/// External source, linked to the work in `anime_external_source` and described once in
+/// `external_source`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AnimeExternalLinkInput {
+pub struct AnimeExternalSourceInput {
     /// Destination URL.
-    pub url: String,
-    /// Platform name.
+    pub source: String,
+    /// Canonical platform name from the URL's host.
     pub platform: String,
-    /// Optional link label.
+    /// The provider's own name for the link, kept per work.
     pub label: Option<String>,
-    /// Optional BCP 47 language code.
+    /// BCP 47 code of the linked page's language.
     pub language: Option<String>,
 }
 
-/// Streaming availability entry stored in `anime_streaming`.
+/// Streaming source stored in `anime_streaming_source`, with its platform in
+/// `external_source`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AnimeStreamingInput {
+pub struct AnimeStreamingSourceInput {
     /// Streaming platform name.
     pub platform: String,
     /// Watch URL.
-    pub url: String,
+    pub source: String,
     /// Region code, if region-specific.
     pub region: Option<String>,
     /// Whether free tier viewing is available.
@@ -73,11 +73,11 @@ pub struct AnimeStreamingInput {
     pub is_premium_required: Option<bool>,
     /// Whether a dub is available.
     pub has_dub: Option<bool>,
-    /// Available subtitle languages.
+    /// BCP 47 codes of the subtitle languages.
     pub subtitle_languages: Vec<String>,
 }
 
-/// Contextual ranking entry stored in `anime_contextual_rank`.
+/// Contextual ranking entry stored in `anime_statistics_contextual_rank`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AnimeContextualRankInput {
     /// Ranking context description.
@@ -158,14 +158,16 @@ pub struct AnimeHiatusInput {
 /// Extended work tables (songs, links, streaming, statistics, broadcast, hiatus).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct AnimeScheduleAndStatsInput {
-    /// Opening and ending theme songs.
-    pub theme_songs: Vec<AnimeThemeSongInput>,
+    /// Opening theme songs.
+    pub opening_themes: Vec<AnimeThemeSongInput>,
+    /// Ending theme songs.
+    pub ending_themes: Vec<AnimeThemeSongInput>,
     /// Trailers.
     pub trailers: Vec<AnimeTrailerInput>,
-    /// External links.
-    pub external_links: Vec<AnimeExternalLinkInput>,
-    /// Streaming availability entries.
-    pub streaming_entries: Vec<AnimeStreamingInput>,
+    /// External sources: official sites, social media and wikis.
+    pub external_sources: Vec<AnimeExternalSourceInput>,
+    /// Streaming sources.
+    pub streaming_sources: Vec<AnimeStreamingSourceInput>,
     /// Per-provider statistics and contextual ranks.
     pub statistics: Vec<AnimeStatisticsInput>,
     /// Broadcast slot and premiere dates.
@@ -180,11 +182,12 @@ pub struct AnimeScheduleAndStatsInput {
 ///
 /// Returns an invalid-argument error naming the first field that is out of range or empty.
 pub(crate) fn validate_schedule_and_stats(input: &AnimeScheduleAndStatsInput) -> Result<(), Error> {
-    validate_theme_songs(&input.theme_songs)?;
+    validate_theme_songs(&input.opening_themes)?;
+    validate_theme_songs(&input.ending_themes)?;
     validate_trailers_and_links(
         &input.trailers,
-        &input.external_links,
-        &input.streaming_entries,
+        &input.external_sources,
+        &input.streaming_sources,
     )?;
     validate_statistics(&input.statistics)?;
     if let Some(broadcast) = input.broadcast.as_ref() {
@@ -197,16 +200,10 @@ pub(crate) fn validate_schedule_and_stats(input: &AnimeScheduleAndStatsInput) ->
 ///
 /// # Errors
 ///
-/// Returns an invalid-argument error for an unknown song kind, a negative position, a blank
-/// title, a negative episode range start, or a range that ends before it starts.
+/// Returns an invalid-argument error for a negative position, a blank title, a negative
+/// episode range start, or a range that ends before it starts.
 fn validate_theme_songs(theme_songs: &[AnimeThemeSongInput]) -> Result<(), Error> {
     for song in theme_songs {
-        if !matches!(song.kind.as_str(), "opening" | "ending") {
-            return Err(Error::invalid_argument(format!(
-                "unknown theme_song_kind {:?}",
-                song.kind
-            )));
-        }
         if song.position < 0 || song.title.trim().is_empty() {
             return Err(Error::invalid_argument(
                 "theme song requires non-negative position and non-empty title",
@@ -226,31 +223,43 @@ fn validate_theme_songs(theme_songs: &[AnimeThemeSongInput]) -> Result<(), Error
     Ok(())
 }
 
-/// Checks trailer, external link and streaming URLs and platforms.
+/// Checks trailer, external source and streaming source URLs, platforms and languages.
 ///
 /// # Errors
 ///
-/// Returns an invalid-argument error for a blank URL, platform or subtitle language.
+/// Returns an invalid-argument error for a blank URL or platform, a blank language code, or
+/// one URL given two different platforms.
 fn validate_trailers_and_links(
     trailers: &[AnimeTrailerInput],
-    external_links: &[AnimeExternalLinkInput],
-    streaming_entries: &[AnimeStreamingInput],
+    external_sources: &[AnimeExternalSourceInput],
+    streaming_sources: &[AnimeStreamingSourceInput],
 ) -> Result<(), Error> {
-    if trailers.iter().any(|trailer| trailer.url.trim().is_empty()) {
-        return Err(Error::invalid_argument("trailer url must be non-empty"));
-    }
-    if external_links
+    if trailers
         .iter()
-        .any(|link| link.url.trim().is_empty() || link.platform.trim().is_empty())
+        .any(|trailer| trailer.source.trim().is_empty())
     {
-        return Err(Error::invalid_argument(
-            "external link url and platform must be non-empty",
-        ));
+        return Err(Error::invalid_argument("trailer source must be non-empty"));
     }
-    for entry in streaming_entries {
-        if entry.url.trim().is_empty() || entry.platform.trim().is_empty() {
+    for link in external_sources {
+        if link.source.trim().is_empty() || link.platform.trim().is_empty() {
             return Err(Error::invalid_argument(
-                "streaming url and platform must be non-empty",
+                "external source url and platform must be non-empty",
+            ));
+        }
+        if link
+            .language
+            .as_deref()
+            .is_some_and(|language| language.trim().is_empty())
+        {
+            return Err(Error::invalid_argument(
+                "external source language must be non-empty when set",
+            ));
+        }
+    }
+    for entry in streaming_sources {
+        if entry.source.trim().is_empty() || entry.platform.trim().is_empty() {
+            return Err(Error::invalid_argument(
+                "streaming source url and platform must be non-empty",
             ));
         }
         if entry
@@ -261,6 +270,24 @@ fn validate_trailers_and_links(
             return Err(Error::invalid_argument(
                 "streaming subtitle_languages must be non-empty",
             ));
+        }
+    }
+    let mut platform_by_source: BTreeMap<&str, &str> = BTreeMap::new();
+    let all_sources = external_sources
+        .iter()
+        .map(|link| (link.source.as_str(), link.platform.as_str()))
+        .chain(
+            streaming_sources
+                .iter()
+                .map(|entry| (entry.source.as_str(), entry.platform.as_str())),
+        );
+    for (source, platform) in all_sources {
+        if let Some(known_platform) = platform_by_source.insert(source, platform)
+            && known_platform != platform
+        {
+            return Err(Error::invalid_argument(format!(
+                "external source {source:?} is given two platforms, {known_platform:?} and {platform:?}"
+            )));
         }
     }
     Ok(())
@@ -338,7 +365,31 @@ fn validate_broadcast(broadcast: &AnimeBroadcastInput) -> Result<(), Error> {
     Ok(())
 }
 
+/// Adds or updates the shared rows a work's links, streaming and trailers use.
+///
+/// External sources come first, then trailers, each in sorted key order. The save calls
+/// this before it locks the work's row, so two saves at once take every lock in the same
+/// order and cannot deadlock.
+///
+/// # Errors
+///
+/// Returns a database error when an upsert fails.
+pub(crate) async fn upsert_shared_schedule_rows(
+    tx: &mut Transaction<'_, Postgres>,
+    input: &AnimeScheduleAndStatsInput,
+) -> Result<(), Error> {
+    upsert_external_sources(
+        tx,
+        collect_external_source_details(&input.external_sources, &input.streaming_sources),
+    )
+    .await?;
+    upsert_trailers(tx, &input.trailers).await
+}
+
 /// Replaces a work's songs, trailers, links, streaming, statistics and broadcast, and records its hiatus.
+///
+/// The save has already added every shared row these reference, with
+/// [`upsert_shared_schedule_rows`] and the language codes.
 ///
 /// # Errors
 ///
@@ -348,17 +399,27 @@ pub(crate) async fn replace_schedule_and_stats(
     anime_id: Uuid,
     input: &AnimeScheduleAndStatsInput,
 ) -> Result<(), Error> {
-    replace_theme_songs(tx, anime_id, &input.theme_songs).await?;
-    replace_trailers(tx, anime_id, &input.trailers).await?;
-    replace_external_links(tx, anime_id, &input.external_links).await?;
-    replace_streaming(tx, anime_id, &input.streaming_entries).await?;
+    replace_theme_songs(tx, anime_id, ThemeSongKind::Opening, &input.opening_themes).await?;
+    replace_theme_songs(tx, anime_id, ThemeSongKind::Ending, &input.ending_themes).await?;
+    replace_anime_trailers(tx, anime_id, &input.trailers).await?;
+    replace_anime_external_sources(tx, anime_id, &input.external_sources).await?;
+    replace_anime_streaming_sources(tx, anime_id, &input.streaming_sources).await?;
     replace_statistics(tx, anime_id, &input.statistics).await?;
     upsert_or_delete_broadcast(tx, anime_id, input.broadcast.as_ref()).await?;
     record_hiatus_if_changed(tx, anime_id, input.hiatus.as_ref()).await?;
     Ok(())
 }
 
-/// Replaces a work's opening and ending songs with their episode ranges.
+/// Which of a work's two theme song lists a song belongs to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ThemeSongKind {
+    /// `Anime.opening_themes`, stored in `anime_opening_theme`.
+    Opening,
+    /// `Anime.ending_themes`, stored in `anime_ending_theme`.
+    Ending,
+}
+
+/// Replaces a work's opening or ending songs with their episode ranges.
 ///
 /// # Errors
 ///
@@ -366,79 +427,186 @@ pub(crate) async fn replace_schedule_and_stats(
 async fn replace_theme_songs(
     tx: &mut Transaction<'_, Postgres>,
     anime_id: Uuid,
+    kind: ThemeSongKind,
     theme_songs: &[AnimeThemeSongInput],
 ) -> Result<(), Error> {
-    sqlx::query!("DELETE FROM anime_theme_song WHERE anime_id = $1", anime_id)
-        .execute(&mut **tx)
-        .await?;
-
-    let mut deduplicated_songs: BTreeMap<(&str, i32), &AnimeThemeSongInput> = BTreeMap::new();
-    for song in theme_songs {
-        deduplicated_songs.insert((song.kind.as_str(), song.position), song);
+    match kind {
+        ThemeSongKind::Opening => {
+            sqlx::query!(
+                "DELETE FROM anime_opening_theme WHERE anime_id = $1",
+                anime_id
+            )
+            .execute(&mut **tx)
+            .await?;
+        }
+        ThemeSongKind::Ending => {
+            sqlx::query!(
+                "DELETE FROM anime_ending_theme WHERE anime_id = $1",
+                anime_id
+            )
+            .execute(&mut **tx)
+            .await?;
+        }
     }
 
-    for song in deduplicated_songs.into_values() {
-        let song_id = sqlx::query_scalar!(
-            "INSERT INTO anime_theme_song (anime_id, kind, position, title, artist)
-             VALUES ($1, $2, $3, $4, $5)
-             RETURNING id",
-            anime_id,
-            song.kind,
-            song.position,
-            song.title,
-            song.artist,
-        )
-        .fetch_one(&mut **tx)
-        .await?;
+    let deduplicated_songs: BTreeMap<i32, &AnimeThemeSongInput> = theme_songs
+        .iter()
+        .map(|song| (song.position, song))
+        .collect();
 
+    for song in deduplicated_songs.into_values() {
         let range_map: BTreeMap<i32, Option<i32>> = song
             .episode_ranges
             .iter()
             .map(|range| (range.range_start, range.range_end))
             .collect();
-        if range_map.is_empty() {
-            continue;
-        }
         let range_starts: Vec<i32> = range_map.keys().copied().collect();
         let range_ends: Vec<Option<i32>> = range_map.values().copied().collect();
-        sqlx::query!(
-            "INSERT INTO theme_song_episode_range (theme_song_id, range_start, range_end)
-             SELECT $1, range_start, range_end
-             FROM UNNEST($2::int4[], $3::int4[]) AS entry(range_start, range_end)",
-            song_id,
-            &range_starts,
-            &range_ends as &[Option<i32>],
-        )
-        .execute(&mut **tx)
-        .await?;
+        match kind {
+            ThemeSongKind::Opening => {
+                let opening_theme_id = sqlx::query_scalar!(
+                    "INSERT INTO anime_opening_theme (anime_id, position, title, artist)
+                     VALUES ($1, $2, $3, $4)
+                     RETURNING id",
+                    anime_id,
+                    song.position,
+                    song.title,
+                    song.artist,
+                )
+                .fetch_one(&mut **tx)
+                .await?;
+                if range_starts.is_empty() {
+                    continue;
+                }
+                sqlx::query!(
+                    "INSERT INTO anime_opening_theme_episode (opening_theme_id, range_start, range_end)
+                     SELECT $1, range_start, range_end
+                     FROM UNNEST($2::int4[], $3::int4[]) AS entry(range_start, range_end)",
+                    opening_theme_id,
+                    &range_starts,
+                    &range_ends as &[Option<i32>],
+                )
+                .execute(&mut **tx)
+                .await?;
+            }
+            ThemeSongKind::Ending => {
+                let ending_theme_id = sqlx::query_scalar!(
+                    "INSERT INTO anime_ending_theme (anime_id, position, title, artist)
+                     VALUES ($1, $2, $3, $4)
+                     RETURNING id",
+                    anime_id,
+                    song.position,
+                    song.title,
+                    song.artist,
+                )
+                .fetch_one(&mut **tx)
+                .await?;
+                if range_starts.is_empty() {
+                    continue;
+                }
+                sqlx::query!(
+                    "INSERT INTO anime_ending_theme_episode (ending_theme_id, range_start, range_end)
+                     SELECT $1, range_start, range_end
+                     FROM UNNEST($2::int4[], $3::int4[]) AS entry(range_start, range_end)",
+                    ending_theme_id,
+                    &range_starts,
+                    &range_ends as &[Option<i32>],
+                )
+                .execute(&mut **tx)
+                .await?;
+            }
+        }
     }
 
     Ok(())
 }
 
-/// Replaces a work's trailers.
+/// Collects each URL of a work's links and streaming pages with its platform and language.
+///
+/// A link's platform and language win over a streaming entry for the same URL, since a
+/// link names the page's language.
+fn collect_external_source_details<'input>(
+    external_sources: &'input [AnimeExternalSourceInput],
+    streaming_sources: &'input [AnimeStreamingSourceInput],
+) -> BTreeMap<&'input str, (&'input str, Option<&'input str>)> {
+    let mut url_details: BTreeMap<&str, (&str, Option<&str>)> = streaming_sources
+        .iter()
+        .map(|entry| (entry.source.as_str(), (entry.platform.as_str(), None)))
+        .collect();
+    for link in external_sources {
+        url_details.insert(
+            link.source.as_str(),
+            (link.platform.as_str(), link.language.as_deref()),
+        );
+    }
+    url_details
+}
+
+/// Adds or updates shared `external_source` rows, one per URL with its platform and language.
+///
+/// A URL's platform and language describe the URL, so they are stored once. A stored
+/// language is kept when a later save brings none, and a stored row is rewritten only when a
+/// value actually differs. The map's sorted keys make two saves lock the rows in one order.
 ///
 /// # Errors
 ///
 /// Returns a database error when a query fails.
-async fn replace_trailers(
+pub(crate) async fn upsert_external_sources(
     tx: &mut Transaction<'_, Postgres>,
-    anime_id: Uuid,
+    url_details: BTreeMap<&str, (&str, Option<&str>)>,
+) -> Result<(), Error> {
+    if url_details.is_empty() {
+        return Ok(());
+    }
+
+    let mut sources = Vec::with_capacity(url_details.len());
+    let mut platforms = Vec::with_capacity(url_details.len());
+    let mut languages = Vec::with_capacity(url_details.len());
+    for (source, (platform, language)) in url_details {
+        sources.push(source.to_owned());
+        platforms.push(platform.to_owned());
+        languages.push(language.map(str::to_owned));
+    }
+    sqlx::query!(
+        "INSERT INTO external_source (source, platform, language)
+         SELECT source, platform, language
+         FROM UNNEST($1::text[], $2::text[], $3::text[]) AS entry(source, platform, language)
+         ON CONFLICT (source) DO UPDATE
+           SET platform = EXCLUDED.platform,
+               language = coalesce(EXCLUDED.language, external_source.language)
+         WHERE external_source.platform IS DISTINCT FROM EXCLUDED.platform
+            OR (EXCLUDED.language IS NOT NULL
+                AND external_source.language IS DISTINCT FROM EXCLUDED.language)",
+        &sources,
+        &platforms,
+        &languages as &[Option<String>],
+    )
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
+/// Adds or updates the shared `trailer` rows of a work's trailers.
+///
+/// A trailer's title and thumbnail describe the video, so they are stored once. A value a
+/// later save leaves out is kept, and a stored row is rewritten only when a value differs.
+///
+/// # Errors
+///
+/// Returns a database error when a query fails.
+async fn upsert_trailers(
+    tx: &mut Transaction<'_, Postgres>,
     trailers: &[AnimeTrailerInput],
 ) -> Result<(), Error> {
-    sqlx::query!("DELETE FROM anime_trailer WHERE anime_id = $1", anime_id)
-        .execute(&mut **tx)
-        .await?;
-
     let deduplicated_trailers: BTreeMap<&str, &AnimeTrailerInput> = trailers
         .iter()
-        .map(|trailer| (trailer.url.as_str(), trailer))
+        .map(|trailer| (trailer.source.as_str(), trailer))
         .collect();
     if deduplicated_trailers.is_empty() {
         return Ok(());
     }
 
-    let urls: Vec<String> = deduplicated_trailers
+    let sources: Vec<String> = deduplicated_trailers
         .keys()
         .copied()
         .map(str::to_owned)
@@ -447,110 +615,143 @@ async fn replace_trailers(
         .values()
         .map(|trailer| trailer.title.clone())
         .collect();
-    let thumbnails: Vec<Option<String>> = deduplicated_trailers
+    let thumbnail_sources: Vec<Option<String>> = deduplicated_trailers
         .values()
-        .map(|trailer| trailer.thumbnail_url.clone())
+        .map(|trailer| trailer.thumbnail_source.clone())
         .collect();
     sqlx::query!(
-        "INSERT INTO anime_trailer (anime_id, source, title, thumbnail_url)
-         SELECT $1, source, title, thumbnail_url
-         FROM UNNEST($2::text[], $3::text[], $4::text[]) AS entry(source, title, thumbnail_url)",
-        anime_id,
-        &urls,
+        "INSERT INTO trailer (source, title, thumbnail_source)
+         SELECT source, title, thumbnail_source
+         FROM UNNEST($1::text[], $2::text[], $3::text[]) AS entry(source, title, thumbnail_source)
+         ON CONFLICT (source) DO UPDATE
+           SET title = coalesce(EXCLUDED.title, trailer.title),
+               thumbnail_source = coalesce(EXCLUDED.thumbnail_source, trailer.thumbnail_source)
+         WHERE (EXCLUDED.title IS NOT NULL AND trailer.title IS DISTINCT FROM EXCLUDED.title)
+            OR (EXCLUDED.thumbnail_source IS NOT NULL
+                AND trailer.thumbnail_source IS DISTINCT FROM EXCLUDED.thumbnail_source)",
+        &sources,
         &titles as &[Option<String>],
-        &thumbnails as &[Option<String>],
+        &thumbnail_sources as &[Option<String>],
     )
     .execute(&mut **tx)
     .await?;
     Ok(())
 }
 
-/// Replaces a work's external links.
+/// Replaces the trailers a work lists.
 ///
 /// # Errors
 ///
 /// Returns a database error when a query fails.
-async fn replace_external_links(
+async fn replace_anime_trailers(
     tx: &mut Transaction<'_, Postgres>,
     anime_id: Uuid,
-    links: &[AnimeExternalLinkInput],
+    trailers: &[AnimeTrailerInput],
+) -> Result<(), Error> {
+    sqlx::query!("DELETE FROM anime_trailer WHERE anime_id = $1", anime_id)
+        .execute(&mut **tx)
+        .await?;
+
+    let sources: Vec<String> = trailers
+        .iter()
+        .map(|trailer| trailer.source.as_str())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .map(str::to_owned)
+        .collect();
+    if sources.is_empty() {
+        return Ok(());
+    }
+    sqlx::query!(
+        "INSERT INTO anime_trailer (anime_id, source)
+         SELECT $1, source FROM UNNEST($2::text[]) AS entry(source)",
+        anime_id,
+        &sources,
+    )
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
+/// Replaces the external sources a work lists, with the provider's label for each.
+///
+/// # Errors
+///
+/// Returns a database error when a query fails.
+async fn replace_anime_external_sources(
+    tx: &mut Transaction<'_, Postgres>,
+    anime_id: Uuid,
+    external_sources: &[AnimeExternalSourceInput],
 ) -> Result<(), Error> {
     sqlx::query!(
-        "DELETE FROM anime_external_link WHERE anime_id = $1",
+        "DELETE FROM anime_external_source WHERE anime_id = $1",
         anime_id
     )
     .execute(&mut **tx)
     .await?;
 
-    let deduplicated_links: BTreeMap<&str, &AnimeExternalLinkInput> =
-        links.iter().map(|link| (link.url.as_str(), link)).collect();
+    let deduplicated_links: BTreeMap<&str, Option<&str>> = external_sources
+        .iter()
+        .map(|link| (link.source.as_str(), link.label.as_deref()))
+        .collect();
     if deduplicated_links.is_empty() {
         return Ok(());
     }
 
-    let urls: Vec<String> = deduplicated_links
+    let sources: Vec<String> = deduplicated_links
         .keys()
         .copied()
         .map(str::to_owned)
         .collect();
-    let platforms: Vec<String> = deduplicated_links
-        .values()
-        .map(|link| link.platform.clone())
-        .collect();
     let labels: Vec<Option<String>> = deduplicated_links
         .values()
-        .map(|link| link.label.clone())
-        .collect();
-    let languages: Vec<Option<String>> = deduplicated_links
-        .values()
-        .map(|link| link.language.clone())
+        .map(|label| label.map(str::to_owned))
         .collect();
     sqlx::query!(
-        "INSERT INTO anime_external_link (anime_id, source, platform, label, language)
-         SELECT $1, source, platform, label, language
-         FROM UNNEST($2::text[], $3::text[], $4::text[], $5::text[])
-           AS entry(source, platform, label, language)",
+        "INSERT INTO anime_external_source (anime_id, source, label)
+         SELECT $1, source, label
+         FROM UNNEST($2::text[], $3::text[]) AS entry(source, label)",
         anime_id,
-        &urls,
-        &platforms,
+        &sources,
         &labels as &[Option<String>],
-        &languages as &[Option<String>],
     )
     .execute(&mut **tx)
     .await?;
     Ok(())
 }
 
-/// Replaces a work's streaming entries with their subtitle languages.
+/// Replaces a work's streaming sources with their subtitle languages.
 ///
 /// # Errors
 ///
 /// Returns a database error when a query fails.
-async fn replace_streaming(
+async fn replace_anime_streaming_sources(
     tx: &mut Transaction<'_, Postgres>,
     anime_id: Uuid,
-    entries: &[AnimeStreamingInput],
+    streaming_sources: &[AnimeStreamingSourceInput],
 ) -> Result<(), Error> {
-    sqlx::query!("DELETE FROM anime_streaming WHERE anime_id = $1", anime_id)
-        .execute(&mut **tx)
-        .await?;
+    sqlx::query!(
+        "DELETE FROM anime_streaming_source WHERE anime_id = $1",
+        anime_id
+    )
+    .execute(&mut **tx)
+    .await?;
 
-    let mut deduplicated_streaming: BTreeMap<(&str, Option<&str>), &AnimeStreamingInput> =
+    let mut deduplicated_streaming: BTreeMap<(&str, Option<&str>), &AnimeStreamingSourceInput> =
         BTreeMap::new();
-    for entry in entries {
-        deduplicated_streaming.insert((entry.url.as_str(), entry.region.as_deref()), entry);
+    for entry in streaming_sources {
+        deduplicated_streaming.insert((entry.source.as_str(), entry.region.as_deref()), entry);
     }
 
     for entry in deduplicated_streaming.into_values() {
-        let streaming_id = sqlx::query_scalar!(
-            "INSERT INTO anime_streaming (
-                 anime_id, platform, source, region, is_free, is_premium_required, has_dub
+        let streaming_source_id = sqlx::query_scalar!(
+            "INSERT INTO anime_streaming_source (
+                 anime_id, source, region, is_free, is_premium_required, has_dub
              )
-             VALUES ($1, $2, $3, $4, $5, $6, $7)
+             VALUES ($1, $2, $3, $4, $5, $6)
              RETURNING id",
             anime_id,
-            entry.platform,
-            entry.url,
+            entry.source,
             entry.region,
             entry.is_free,
             entry.is_premium_required,
@@ -572,10 +773,10 @@ async fn replace_streaming(
         }
 
         sqlx::query!(
-            "INSERT INTO anime_streaming_subtitle_language (streaming_id, language)
+            "INSERT INTO anime_streaming_source_subtitle_language (streaming_source_id, language)
              SELECT $1, language
              FROM UNNEST($2::text[]) AS entry(language)",
-            streaming_id,
+            streaming_source_id,
             &languages,
         )
         .execute(&mut **tx)
@@ -642,7 +843,7 @@ async fn replace_statistics(
         let years: Vec<Option<i16>> = rank_map.values().map(|item| item.year).collect();
 
         sqlx::query!(
-            "INSERT INTO anime_contextual_rank (
+            "INSERT INTO anime_statistics_contextual_rank (
                  anime_id, provider, context, rank, is_all_time, format, season, year
              )
              SELECT $1, $2, context, rank, is_all_time, format, season, year
@@ -777,8 +978,7 @@ mod tests {
 
     fn build_valid_schedule_and_stats() -> AnimeScheduleAndStatsInput {
         AnimeScheduleAndStatsInput {
-            theme_songs: vec![AnimeThemeSongInput {
-                kind: "opening".to_owned(),
+            opening_themes: vec![AnimeThemeSongInput {
                 position: 0,
                 title: "Opening".to_owned(),
                 artist: None,
@@ -787,20 +987,21 @@ mod tests {
                     range_end: Some(12),
                 }],
             }],
+            ending_themes: Vec::new(),
             trailers: vec![AnimeTrailerInput {
-                url: "https://example.com/trailer".to_owned(),
+                source: "https://example.com/trailer".to_owned(),
                 title: None,
-                thumbnail_url: None,
+                thumbnail_source: None,
             }],
-            external_links: vec![AnimeExternalLinkInput {
-                url: "https://example.com".to_owned(),
+            external_sources: vec![AnimeExternalSourceInput {
+                source: "https://example.com".to_owned(),
                 platform: "Official".to_owned(),
                 label: None,
-                language: None,
+                language: Some("ja".to_owned()),
             }],
-            streaming_entries: vec![AnimeStreamingInput {
+            streaming_sources: vec![AnimeStreamingSourceInput {
                 platform: "Crunchyroll".to_owned(),
-                url: "https://example.com/watch".to_owned(),
+                source: "https://example.com/watch".to_owned(),
                 region: None,
                 is_free: None,
                 is_premium_required: None,
@@ -848,17 +1049,23 @@ mod tests {
         assert!(validate_schedule_and_stats(&valid_schedule).is_ok());
 
         let breaking_changes: Vec<fn(&mut AnimeScheduleAndStatsInput)> = vec![
-            |input| input.theme_songs[0].kind = "insert".to_owned(),
-            |input| input.theme_songs[0].position = -1,
-            |input| input.theme_songs[0].title = " ".to_owned(),
-            |input| input.theme_songs[0].episode_ranges[0].range_start = -1,
-            |input| input.theme_songs[0].episode_ranges[0].range_end = Some(0),
-            |input| input.trailers[0].url = String::new(),
-            |input| input.external_links[0].url = " ".to_owned(),
-            |input| input.external_links[0].platform = String::new(),
-            |input| input.streaming_entries[0].url = String::new(),
-            |input| input.streaming_entries[0].platform = " ".to_owned(),
-            |input| input.streaming_entries[0].subtitle_languages = vec![String::new()],
+            |input| input.opening_themes[0].position = -1,
+            |input| input.opening_themes[0].title = " ".to_owned(),
+            |input| input.opening_themes[0].episode_ranges[0].range_start = -1,
+            |input| input.opening_themes[0].episode_ranges[0].range_end = Some(0),
+            |input| {
+                let mut ending_theme = input.opening_themes[0].clone();
+                ending_theme.position = -1;
+                input.ending_themes = vec![ending_theme];
+            },
+            |input| input.trailers[0].source = String::new(),
+            |input| input.external_sources[0].source = " ".to_owned(),
+            |input| input.external_sources[0].platform = String::new(),
+            |input| input.external_sources[0].language = Some(" ".to_owned()),
+            |input| input.streaming_sources[0].source = String::new(),
+            |input| input.streaming_sources[0].platform = " ".to_owned(),
+            |input| input.streaming_sources[0].subtitle_languages = vec![String::new()],
+            |input| input.streaming_sources[0].source = input.external_sources[0].source.clone(),
             |input| input.statistics[0].score = Some(11.0),
             |input| input.statistics[0].score = Some(f64::NAN),
             |input| input.statistics[0].members = Some(-1),

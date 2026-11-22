@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO anime_related_source_material (\n                     anime_id, source_material_id, relation_type\n                 )\n                 VALUES ($1, $2, $3)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c43e37d9b3fcf097d8eb2db55190d362f1c6e46a8d8e27b0325445b995626b84"
+}

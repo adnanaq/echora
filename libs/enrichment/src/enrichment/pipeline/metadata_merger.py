@@ -65,8 +65,8 @@ from enrichment.pipeline.metadata_rules import (
     merge_categories,
     merge_companies,
     merge_episode_count,
+    merge_is_nsfw,
     merge_month,
-    merge_nsfw,
     merge_object,
     merge_score,
     merge_statistics,
@@ -97,7 +97,7 @@ _DEFAULT_CONFIG = EnrichmentConfig.model_construct()
 # only question is who answers first. Disagreement here is worth a log line.
 _FIRST_SIGNAL: tuple[str, ...] = (
     "country_of_origin",
-    "duration",
+    "duration_seconds",
     "entity_type",
     "rating",
     "season",
@@ -263,7 +263,7 @@ def merge_provider_records(
             merged[field] = title
 
     for field, resolve in (
-        ("nsfw", merge_nsfw),
+        ("is_nsfw", merge_is_nsfw),
         ("title_japanese", merge_title_japanese),
         ("synopsis", merge_synopsis),
         ("images", merge_images),

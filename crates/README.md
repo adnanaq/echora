@@ -98,16 +98,7 @@ uv run --extra dev python scripts/generate-proto.py
 buf lint
 ```
 
-## Lookup Tables
-
-The lookup tables in `postgres_db`'s first migration must hold the same values as the enums in `libs/common/src/common/models/anime.py`. The check runs in CI whenever either side changes:
-
-```bash
-PYTHONPATH=libs/common/src uv run python scripts/check_postgres_lookup_tables.py
-```
-
 ## CI
 
 - `.github/workflows/rust-ci.yml` checks formatting and runs clippy offline. It then runs the tests against PostgreSQL 18 under `cargo-llvm-cov`, and fails when line coverage falls under 99%. The coverage table goes in the run's summary, and `lcov.info` is kept as the `rust-coverage` artifact. A second job runs `cargo audit` and `cargo-udeps`. Changes to `crates/`, `protos/`, `.sqlx/`, `clippy.toml` or the Cargo files start it.
-- `.github/workflows/postgres-lookup-check.yml` compares the lookup tables with `anime.py`.
 - `.github/workflows/proto-stubs-check.yml` runs `buf lint`, and `buf breaking` on the protos PostgreSQL stores.

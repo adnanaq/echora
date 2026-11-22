@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO anime_streaming_source_subtitle_language (streaming_source_id, language)\n             SELECT $1, language\n             FROM UNNEST($2::text[]) AS entry(language)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "82f09dbcade35ef59bbddcaf6bf5e3d72ec97bf377b1f3a4be702dc75f8c9a53"
+}

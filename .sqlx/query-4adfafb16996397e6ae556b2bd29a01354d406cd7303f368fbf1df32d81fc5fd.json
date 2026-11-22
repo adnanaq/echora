@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT relname::text AS \"name!\" FROM pg_class\n           WHERE relnamespace = 'public'::regnamespace AND octet_length(relname::text) >= 63\n           UNION ALL\n           SELECT conname::text FROM pg_constraint\n           WHERE connamespace = 'public'::regnamespace AND octet_length(conname::text) >= 63",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "name!",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "4adfafb16996397e6ae556b2bd29a01354d406cd7303f368fbf1df32d81fc5fd"
+}

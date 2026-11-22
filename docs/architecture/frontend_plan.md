@@ -111,7 +111,7 @@ Every idea from [echora_frontend_discovery_research.md](../echora_frontend_disco
 | Image-based discovery (screenshot / artwork visual search) | **1** | **Doable.** Existing `VectorSearchService.Search(image)` (OpenCLIP `image_vector`). GraphQL takes base64 or a companion upload endpoint on `axum`. |
 | Overall "Similar anime" & "Similar characters" | **2** | **Needs addition.** Add `similar_to_id` to `VectorSearchService.Search` (Qdrant point-ID lookup) so Backend doesn't re-embed. |
 | Knowledge graph explorer (sequels, prequels, spin-offs, shared studios, characters, source material) | **2** | **Doable.** Existing `FindNeighbors` / `FindReachable` + `ListAnimeByIds` / `ListCompaniesByIds` / `ListCharactersByIds`. |
-| Explainable connection paths (`Anime A -> Studio X -> Anime B` with type, direction, provenance) | **2** | **Doable.** Existing `FindPath` + `anime_relation_claim` provider counts. |
+| Explainable connection paths (`Anime A -> Studio X -> Anime B` with type, direction, provenance) | **2** | **Doable.** Existing `FindPath` + `anime_related_anime_claim` provider counts. |
 | Structural anime comparison (2–3 anime: scalar diffs, shared studios, characters, genres, tags, paths) | **2** | **Doable.** Existing `CompareEntities` (extend to accept 2–3 IDs or compose pairs in Backend). |
 | Discovery dashboard ("Connected anime", "Explore a studio", "Explore a character", "Recently added") | **2** | **Doable** for PostgreSQL/Graph/overall-vector sections; **Phase 3/4** for AI-curated theme collections. |
 | Natural-language discovery (`aiSearch`) with intent awareness & "Understanding your search" | **3** | **Needs `AgentService`.** Intent classification (`EXACT_LOOKUP`, `SEMANTIC_DISCOVERY`, etc.), constraint extraction, and structured query interpretation output. |
@@ -157,7 +157,7 @@ Every idea from [echora_frontend_discovery_research.md](../echora_frontend_disco
   - `ListCharactersByIds(repeated string character_ids)` / `ListCompaniesByIds(repeated string company_ids)`.
   - `BrowseAnime(filter, sort, cursor, page_size)` → `repeated AnimeCard` + `next_cursor`.
   - `ListAiringSchedule(weekday, ...)` → `repeated AnimeCard` + broadcast slot.
-  - `ListAnimeCharacters(anime_id, page_size, after_billing_order)` (paginated).
+  - `ListAnimeCharacters(anime_id, page_size, cursor)` (paginated by role, then favorites, then ID, since no billing order is stored; ECHO-133).
   - `ListCharacterAnime(character_id, page_size, cursor)`.
   - `GetCompany(company_id)` + `ListCompanyAnime(company_id, role, page_size, cursor)`.
   - `GetAnimeRedirect(anime_id)` → `optional string merged_into_anime_id` (or included in `GetAnime` error metadata).
@@ -189,14 +189,14 @@ type Query {
 
 - **Overall "Similar Anime" (Point-ID Similarity):** On any anime page, discover semantically and visually similar works using Qdrant point-ID lookup (`similar_to_entity_id`, no re-embedding), paired with hard factual filters (`format`, `year`, `excludeSource`). Because Qdrant already stores `text_vector` and `image_vector` on every anime point, Phase 2 `similarAnime` can already use `query_points()` (`Prefetch` + `RrfQuery`) to offer **Overall**, **Content only (`text_vector`)**, **Visual style only (`image_vector`)**, or a simple **Content ↔ Visuals** balance.
 - **Interactive Knowledge Graph Explorer:** Turns PostgreSQL `graph_edge` rows into an explorable universe. Starting from an anime, character, studio, or source material, users can expand nodes, collapse branches, filter edge types (`SEQUEL`, `PREQUEL`, `SIDE_STORY`, `STUDIO`, `FEATURES`, `ADAPTED_FROM`), and jump to entity pages—without needing a separate graph database.
-- **Explainable Connection Paths:** Instead of overwhelming users with a giant hairball graph, answers *"How are these two connected?"* with a clear path such as `Anime A --[PRODUCED_BY]--> Studio X <--[PRODUCED_BY]-- Anime B`. Preserves edge type, direction, provenance, and provider agreement counts (`anime_relation_claim`), so a shared studio is never presented as equivalent to a sequel.
+- **Explainable Connection Paths:** Instead of overwhelming users with a giant hairball graph, answers *"How are these two connected?"* with a clear path such as `Anime A --[PRODUCED_BY]--> Studio X <--[PRODUCED_BY]-- Anime B`. Preserves edge type, direction, provenance, and provider agreement counts (`anime_related_anime_claim`), so a shared studio is never presented as equivalent to a sequel.
 - **Structural Anime Comparison (2–3 Anime):** Side-by-side comparison showing both shared and distinct attributes: scalar metadata (format, duration, release year, score), shared studios, shared characters, overlapping genres/tags/themes, and direct graph paths. *(Expands in Phase 4 to include per-dimension similarity scores.)*
 - **Discovery Dashboard (Core Sections):** Replaces a generic "popular anime" homepage with structured discovery entry points: *Recently Added*, *Hidden Gems*, *Explore a Studio*, *Connected Franchises* (watch orders), and *Discover Something New*.
 
 ### Frontend Screens & Features
 
 - **Similar Anime Tab (on `/anime/:id`):** Overall semantic + visual similarity using Qdrant point-ID lookup, with structured filters (`format`, `year`, `excludeSource`).
-- **Interactive Connections Explorer (`/anime/:id/connections`):** Expandable/collapsible graph starting from an anime, character, studio, or source material; filterable by edge type (`SEQUEL`, `PREQUEL`, `SIDE_STORY`, `STUDIO`, `FEATURES`, `ADAPTED_FROM`). Clearly labels relationship types (e.g., *Shared Studio* vs. *Sequel*) and provider agreement counts (`anime_relation_claim`).
+- **Interactive Connections Explorer (`/anime/:id/connections`):** Expandable/collapsible graph starting from an anime, character, studio, or source material; filterable by edge type (`SEQUEL`, `PREQUEL`, `SIDE_STORY`, `STUDIO`, `FEATURES`, `ADAPTED_FROM`). Clearly labels relationship types (e.g., *Shared Studio* vs. *Sequel*) and provider agreement counts (`anime_related_anime_claim`).
 - **Connection Path Explainer (`/connections/path?from=...&to=...`):** Shows shortest path(s) between two entities (e.g., `Anime A --[STUDIO]--> Studio X --[STUDIO]--> Anime B`) using `FindPath`.
 - **Structural Compare (`/compare?ids=a,b,c`):** Side-by-side diff of 2–3 anime: scalar fields, shared studios, shared characters, shared genres/tags/themes, and direct graph paths.
 - **Discovery Dashboard (`/`):**
@@ -208,7 +208,7 @@ type Query {
 ### Required Service Additions
 
 - **`VectorSearchService.Search` (`vector_search.proto`):** Add `optional string similar_to_entity_id` (uses Qdrant `query_points` by point ID, excluding the source ID).
-- **`PostgresService`:** Ensure `FindNeighbors`, `FindReachable`, `FindPath`, `CompareEntities` filter through `*_visible` views and expose `anime_relation_claim` provider counts for edge confidence.
+- **`PostgresService`:** Ensure `FindNeighbors`, `FindReachable`, `FindPath`, `CompareEntities` filter through `*_visible` views and expose `anime_related_anime_claim` provider counts for edge confidence.
 
 ### GraphQL Additions (Phase 2)
 

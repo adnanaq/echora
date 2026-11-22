@@ -273,12 +273,12 @@ async def test_fetch_anisearch_episodes_real_page_returns_parsed_list(
     assert (
         result[0]["title"] == "I'm Luffy! The Man Who's Gonna Be King Of The Pirates!"
     )
-    assert result[2]["filler"] is True
-    assert result[2]["recap"] is True
-    assert result[3]["recap"] is True
-    assert result[3]["filler"] is False
-    assert result[4]["filler"] is True
-    assert result[4]["recap"] is False
+    assert result[2]["is_filler"] is True
+    assert result[2]["is_recap"] is True
+    assert result[3]["is_recap"] is True
+    assert result[3]["is_filler"] is False
+    assert result[4]["is_filler"] is True
+    assert result[4]["is_recap"] is False
     assert result[0]["titles"] == {
         "de": "Hier kommt Ruffy, der künftige König der Piraten!",
         "fr": "Je suis Luffy ! Celui qui deviendra Roi des pirates !",

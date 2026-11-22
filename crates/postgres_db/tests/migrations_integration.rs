@@ -5,13 +5,14 @@ use std::env;
 use chrono::{DateTime, Duration, NaiveDate, NaiveTime, Utc};
 use postgres_db::{
     ANIME_HASH_FORMAT, AnimeBroadcastInput, AnimeCompanyInput, AnimeContextualRankInput,
-    AnimeDetailsInput, AnimeExternalLinkInput, AnimeHiatusInput, AnimeImageInput,
+    AnimeDetailsInput, AnimeExternalSourceInput, AnimeHiatusInput, AnimeImageInput,
     AnimeRelationClaimInput, AnimeRelationInput, AnimeRelationsAndGraphInput,
     AnimeScheduleAndStatsInput, AnimeSourceMaterialInput, AnimeStatisticsInput,
-    AnimeStreamingInput, AnimeThemeInput, AnimeThemeSongInput, AnimeTitleInput, AnimeTrailerInput,
-    CompanyXrefInput, EpisodeRangeInput, Error, FetchOutcome, PageKey, PageKind, PageObservation,
-    PageResponse, Provider, SaveAnimeInput, SourceMaterialXrefInput, connect_pool,
-    link_anime_source_page, load_anime, record_page_observation, run_migrations, save_anime,
+    AnimeStreamingSourceInput, AnimeThemeInput, AnimeThemeSongInput, AnimeTitleInput,
+    AnimeTrailerInput, CompanyXrefInput, EntityType, EpisodeRangeInput, Error, FetchOutcome,
+    PageKey, PageObservation, PageResponse, Provider, SaveAnimeInput, SourceMaterialXrefInput,
+    connect_pool, link_anime_source_page, load_anime, record_page_observation, run_migrations,
+    save_anime,
 };
 use uuid::Uuid;
 
@@ -85,14 +86,15 @@ async fn store_page_updates_hashes_and_ignores_stale_fetches() -> Result<(), Err
 
     let test_address = "999999001";
     sqlx::query!(
-        "DELETE FROM provider_page WHERE provider = 'mal' AND page_kind = 'anime' AND address = $1",
+        "DELETE FROM provider_page WHERE provider = 'mal' AND entity_type = 'anime' AND address = $1",
         test_address
     )
     .execute(&pool)
     .await?;
 
-    let t0 = Utc::now();
-    let page_key = PageKey::new(Provider::Mal, PageKind::Anime, test_address)?;
+    // Fetch times may not lie ahead of the database clock, so each timeline starts a week back.
+    let t0 = Utc::now() - Duration::days(7);
+    let page_key = PageKey::new(Provider::Mal, EntityType::Anime, test_address)?;
     let response = PageResponse {
         request_name: "main".to_owned(),
         content_type: "application/json".to_owned(),
@@ -154,12 +156,13 @@ async fn store_page_tracks_failures_and_dead_page_reviews() -> Result<(), Error>
     run_migrations(&pool).await?;
 
     let test_address = "999999002";
-    let t0 = Utc::now();
-    let page_key = PageKey::new(Provider::Mal, PageKind::Anime, test_address)?;
+    // Fetch times may not lie ahead of the database clock, so each timeline starts a week back.
+    let t0 = Utc::now() - Duration::days(7);
+    let page_key = PageKey::new(Provider::Mal, EntityType::Anime, test_address)?;
     let expected_proposal = postgres_db::encode_page_key_proto(&page_key);
 
     sqlx::query!(
-        "DELETE FROM provider_page WHERE provider = 'mal' AND page_kind = 'anime' AND address = $1",
+        "DELETE FROM provider_page WHERE provider = 'mal' AND entity_type = 'anime' AND address = $1",
         test_address
     )
     .execute(&pool)
@@ -183,7 +186,7 @@ async fn store_page_tracks_failures_and_dead_page_reviews() -> Result<(), Error>
     assert!(!failed.has_changed);
 
     let failures = sqlx::query_scalar!(
-        "SELECT fetch_failures FROM provider_page WHERE provider = 'mal' AND page_kind = 'anime' AND address = $1",
+        "SELECT fetch_failures FROM provider_page WHERE provider = 'mal' AND entity_type = 'anime' AND address = $1",
         test_address
     )
     .fetch_one(&pool)
@@ -246,7 +249,7 @@ async fn store_page_tracks_failures_and_dead_page_reviews() -> Result<(), Error>
     assert!(direct.has_changed);
 
     let is_dead = sqlx::query_scalar!(
-        "SELECT is_dead FROM provider_page WHERE provider = 'mal' AND page_kind = 'anime' AND address = $1",
+        "SELECT is_dead FROM provider_page WHERE provider = 'mal' AND entity_type = 'anime' AND address = $1",
         test_address
     )
     .fetch_one(&pool)
@@ -266,12 +269,13 @@ async fn store_page_closes_open_dead_page_approval_on_recovery() -> Result<(), E
     run_migrations(&pool).await?;
 
     let test_address = "999999004";
-    let t0 = Utc::now();
-    let page_key = PageKey::new(Provider::Mal, PageKind::Anime, test_address)?;
+    // Fetch times may not lie ahead of the database clock, so each timeline starts a week back.
+    let t0 = Utc::now() - Duration::days(7);
+    let page_key = PageKey::new(Provider::Mal, EntityType::Anime, test_address)?;
     let expected_proposal = postgres_db::encode_page_key_proto(&page_key);
 
     sqlx::query!(
-        "DELETE FROM provider_page WHERE provider = 'mal' AND page_kind = 'anime' AND address = $1",
+        "DELETE FROM provider_page WHERE provider = 'mal' AND entity_type = 'anime' AND address = $1",
         test_address
     )
     .execute(&pool)
@@ -345,14 +349,15 @@ async fn store_page_ignores_stale_success_after_not_found() -> Result<(), Error>
 
     let test_address = "999999003";
     sqlx::query!(
-        "DELETE FROM provider_page WHERE provider = 'mal' AND page_kind = 'anime' AND address = $1",
+        "DELETE FROM provider_page WHERE provider = 'mal' AND entity_type = 'anime' AND address = $1",
         test_address
     )
     .execute(&pool)
     .await?;
 
-    let t0 = Utc::now();
-    let page_key = PageKey::new(Provider::Mal, PageKind::Anime, test_address)?;
+    // Fetch times may not lie ahead of the database clock, so each timeline starts a week back.
+    let t0 = Utc::now() - Duration::days(7);
+    let page_key = PageKey::new(Provider::Mal, EntityType::Anime, test_address)?;
 
     record_page_observation(
         &pool,
@@ -408,7 +413,7 @@ async fn store_page_ignores_stale_success_after_not_found() -> Result<(), Error>
     assert!(!stale_fetch_outcome.has_changed);
 
     let missing_answers = sqlx::query_scalar!(
-        "SELECT missing_answers FROM provider_page WHERE provider = 'mal' AND page_kind = 'anime' AND address = $1",
+        "SELECT missing_answers FROM provider_page WHERE provider = 'mal' AND entity_type = 'anime' AND address = $1",
         test_address
     )
     .fetch_one(&pool)
@@ -438,7 +443,7 @@ async fn load_and_save_anime_enforce_versions_hashes_visibility_and_outbox() -> 
     record_page_observation(
         &pool,
         PageObservation {
-            page_key: PageKey::new(Provider::Mal, PageKind::Anime, source_address)?,
+            page_key: PageKey::new(Provider::Mal, EntityType::Anime, source_address)?,
             observed_at: Utc::now(),
             outcome: FetchOutcome::Success {
                 responses: vec![PageResponse {
@@ -454,7 +459,7 @@ async fn load_and_save_anime_enforce_versions_hashes_visibility_and_outbox() -> 
     record_page_observation(
         &pool,
         PageObservation {
-            page_key: PageKey::new(Provider::AniList, PageKind::Anime, partial_address)?,
+            page_key: PageKey::new(Provider::AniList, EntityType::Anime, partial_address)?,
             observed_at: Utc::now(),
             outcome: FetchOutcome::Failed,
         },
@@ -477,11 +482,17 @@ async fn load_and_save_anime_enforce_versions_hashes_visibility_and_outbox() -> 
     assert_eq!(visible_before, Some(false));
 
     sqlx::query!(
-        "INSERT INTO anime_provider_page (anime_id, provider, page_kind, address, role)
-         VALUES ($1, 'mal', 'anime', $2, 'source'),
-                ($1, 'anilist', 'anime', $3, 'partial_source')",
+        "INSERT INTO anime_source (anime_id, provider, entity_type, address)
+         VALUES ($1, 'mal', 'anime', $2)",
         anime_id,
         source_address,
+    )
+    .execute(&pool)
+    .await?;
+    sqlx::query!(
+        "INSERT INTO anime_partial_source (anime_id, provider, entity_type, address)
+         VALUES ($1, 'anilist', 'anime', $2)",
+        anime_id,
         partial_address,
     )
     .execute(&pool)
@@ -633,13 +644,13 @@ async fn load_and_save_anime_enforce_versions_hashes_visibility_and_outbox() -> 
         .execute(&pool)
         .await?;
     sqlx::query!(
-        "DELETE FROM provider_page WHERE provider = 'mal' AND page_kind = 'anime' AND address = $1",
+        "DELETE FROM provider_page WHERE provider = 'mal' AND entity_type = 'anime' AND address = $1",
         source_address
     )
     .execute(&pool)
     .await?;
     sqlx::query!(
-        "DELETE FROM provider_page WHERE provider = 'anilist' AND page_kind = 'anime' AND address = $1",
+        "DELETE FROM provider_page WHERE provider = 'anilist' AND entity_type = 'anime' AND address = $1",
         partial_address
     )
     .execute(&pool)
@@ -663,8 +674,9 @@ async fn store_page_bumps_linked_anime_version_and_blocks_stale_save() -> Result
 
     let anime_id = Uuid::now_v7();
     let page_address = "999999012";
-    let page_key = PageKey::new(Provider::Mal, PageKind::Anime, page_address)?;
-    let t0 = Utc::now();
+    let page_key = PageKey::new(Provider::Mal, EntityType::Anime, page_address)?;
+    // Fetch times may not lie ahead of the database clock, so each timeline starts a week back.
+    let t0 = Utc::now() - Duration::days(7);
 
     record_page_observation(
         &pool,
@@ -686,8 +698,8 @@ async fn store_page_bumps_linked_anime_version_and_blocks_stale_save() -> Result
         .execute(&pool)
         .await?;
     sqlx::query!(
-        "INSERT INTO anime_provider_page (anime_id, provider, page_kind, address, role)
-         VALUES ($1, 'mal', 'anime', $2, 'source')",
+        "INSERT INTO anime_source (anime_id, provider, entity_type, address)
+         VALUES ($1, 'mal', 'anime', $2)",
         anime_id,
         page_address
     )
@@ -766,7 +778,7 @@ async fn store_page_bumps_linked_anime_version_and_blocks_stale_save() -> Result
         .execute(&pool)
         .await?;
     sqlx::query!(
-        "DELETE FROM provider_page WHERE provider = 'mal' AND page_kind = 'anime' AND address = $1",
+        "DELETE FROM provider_page WHERE provider = 'mal' AND entity_type = 'anime' AND address = $1",
         page_address
     )
     .execute(&pool)
@@ -981,7 +993,7 @@ async fn save_anime_replaces_names_classification_themes_and_images() -> Result<
     assert_eq!(warnings_count, 0);
 
     let theme_names: Vec<String> = sqlx::query_scalar!(
-        "SELECT name FROM anime_theme WHERE anime_id = $1 ORDER BY name",
+        "SELECT theme FROM anime_theme WHERE anime_id = $1 ORDER BY theme",
         anime_id
     )
     .fetch_all(&pool)
@@ -1058,8 +1070,7 @@ async fn save_anime_stores_songs_links_streaming_stats_broadcast_and_hiatus() ->
         traceparent: None,
         details: AnimeDetailsInput::default(),
         schedule_and_stats: AnimeScheduleAndStatsInput {
-            theme_songs: vec![AnimeThemeSongInput {
-                kind: "opening".to_owned(),
+            opening_themes: vec![AnimeThemeSongInput {
                 position: 0,
                 title: "Grain".to_owned(),
                 artist: Some("Kuniaki Haishima".to_owned()),
@@ -1068,20 +1079,21 @@ async fn save_anime_stores_songs_links_streaming_stats_broadcast_and_hiatus() ->
                     range_end: Some(74),
                 }],
             }],
+            ending_themes: Vec::new(),
             trailers: vec![AnimeTrailerInput {
-                url: "https://youtube.com/watch?v=1".to_owned(),
+                source: "https://youtube.com/watch?v=1".to_owned(),
                 title: Some("PV 1".to_owned()),
-                thumbnail_url: None,
+                thumbnail_source: None,
             }],
-            external_links: vec![AnimeExternalLinkInput {
-                url: "https://official.example.com".to_owned(),
+            external_sources: vec![AnimeExternalSourceInput {
+                source: "https://official.example.com".to_owned(),
                 platform: "Official Site".to_owned(),
                 label: Some("JP".to_owned()),
                 language: Some("ja".to_owned()),
             }],
-            streaming_entries: vec![AnimeStreamingInput {
+            streaming_sources: vec![AnimeStreamingSourceInput {
                 platform: "Netflix".to_owned(),
-                url: "https://netflix.com/title/1".to_owned(),
+                source: "https://netflix.com/title/1".to_owned(),
                 region: Some("US".to_owned()),
                 is_free: Some(false),
                 is_premium_required: Some(true),
@@ -1186,8 +1198,8 @@ async fn save_anime_stores_songs_links_streaming_stats_broadcast_and_hiatus() ->
 
     let subtitle_langs: Vec<String> = sqlx::query_scalar!(
         "SELECT s.language
-         FROM anime_streaming_subtitle_language s
-         JOIN anime_streaming st ON st.id = s.streaming_id
+         FROM anime_streaming_source_subtitle_language s
+         JOIN anime_streaming_source st ON st.id = s.streaming_source_id
          WHERE st.anime_id = $1
          ORDER BY s.language",
         anime_id
@@ -1198,8 +1210,8 @@ async fn save_anime_stores_songs_links_streaming_stats_broadcast_and_hiatus() ->
 
     let range_end: Option<i32> = sqlx::query_scalar!(
         "SELECT r.range_end
-         FROM theme_song_episode_range r
-         JOIN anime_theme_song ts ON ts.id = r.theme_song_id
+         FROM anime_opening_theme_episode r
+         JOIN anime_opening_theme ts ON ts.id = r.opening_theme_id
          WHERE ts.anime_id = $1",
         anime_id
     )
@@ -1208,7 +1220,7 @@ async fn save_anime_stores_songs_links_streaming_stats_broadcast_and_hiatus() ->
     assert_eq!(range_end, Some(74));
 
     let contextual_rank: i32 = sqlx::query_scalar!(
-        "SELECT rank FROM anime_contextual_rank WHERE anime_id = $1 AND provider = 'mal'",
+        "SELECT rank FROM anime_statistics_contextual_rank WHERE anime_id = $1 AND provider = 'mal'",
         anime_id
     )
     .fetch_one(&pool)
@@ -1248,7 +1260,7 @@ async fn save_anime_and_link_page_persist_relations_xrefs_and_graph_edges() -> R
     record_page_observation(
         &pool,
         PageObservation {
-            page_key: PageKey::new(Provider::Mal, PageKind::Anime, target_address.clone())?,
+            page_key: PageKey::new(Provider::Mal, EntityType::Anime, target_address.clone())?,
             observed_at: Utc::now(),
             outcome: FetchOutcome::Success {
                 responses: vec![PageResponse {
@@ -1304,7 +1316,11 @@ async fn save_anime_and_link_page_persist_relations_xrefs_and_graph_edges() -> R
             relation_claims: vec![AnimeRelationClaimInput {
                 provider: Provider::Mal,
                 relation_type: "SPIN_OFF".to_owned(),
-                target_page: PageKey::new(Provider::Mal, PageKind::Anime, target_address.clone())?,
+                target_page: PageKey::new(
+                    Provider::Mal,
+                    EntityType::Anime,
+                    target_address.clone(),
+                )?,
             }],
             source_materials: vec![AnimeSourceMaterialInput {
                 relation_type: "ADAPTATION".to_owned(),
@@ -1337,18 +1353,23 @@ async fn save_anime_and_link_page_persist_relations_xrefs_and_graph_edges() -> R
     };
     save_anime(&pool, &first_work_input).await?;
 
-    let unresolved_target: Option<Uuid> = sqlx::query_scalar!(
-        "SELECT to_anime_id FROM anime_relation WHERE from_anime_id = $1",
+    let target_before_link: Option<Uuid> = sqlx::query_scalar!(
+        "SELECT target.anime_id
+         FROM anime_related_anime relation
+         JOIN anime_source target
+           ON target.provider = relation.to_page_provider
+          AND target.address = relation.to_page_address
+         WHERE relation.from_anime_id = $1",
         anime_a
     )
-    .fetch_one(&pool)
+    .fetch_optional(&pool)
     .await?;
-    assert!(unresolved_target.is_none());
+    assert!(target_before_link.is_none());
 
     let resolved_count = link_anime_source_page(
         &pool,
         anime_b,
-        &PageKey::new(Provider::Mal, PageKind::Anime, target_address.clone())?,
+        &PageKey::new(Provider::Mal, EntityType::Anime, target_address.clone())?,
     )
     .await?;
     assert_eq!(resolved_count, 1);
@@ -1374,7 +1395,7 @@ async fn save_anime_and_link_page_persist_relations_xrefs_and_graph_edges() -> R
     let company_reverse_edges: Vec<String> = sqlx::query_scalar!(
         "SELECT edge_type
          FROM graph_edge
-         WHERE from_type = 'company' AND to_id = $1
+         WHERE from_node_type = 'company' AND to_id = $1
          ORDER BY edge_type",
         anime_a
     )
@@ -1383,7 +1404,7 @@ async fn save_anime_and_link_page_persist_relations_xrefs_and_graph_edges() -> R
     assert_eq!(company_reverse_edges, vec!["PRODUCER", "STUDIO"]);
 
     let source_edge_count: i64 = sqlx::query_scalar!(
-        "SELECT COUNT(*) FROM graph_edge WHERE from_id = $1 AND to_type = 'source_material' AND edge_type = 'ADAPTED_FROM'",
+        "SELECT COUNT(*) FROM graph_edge WHERE from_id = $1 AND to_node_type = 'source_material' AND edge_type = 'ADAPTED_FROM'",
         anime_a
     )
     .fetch_one(&pool)
@@ -1471,7 +1492,7 @@ async fn save_anime_and_link_page_persist_relations_xrefs_and_graph_edges() -> R
     .execute(&pool)
     .await?;
     sqlx::query!(
-        "DELETE FROM provider_page WHERE provider = 'mal' AND page_kind = 'anime' AND address = $1",
+        "DELETE FROM provider_page WHERE provider = 'mal' AND entity_type = 'anime' AND address = $1",
         target_address
     )
     .execute(&pool)
@@ -1508,7 +1529,8 @@ async fn save_anime_and_episode_lifecycle_load_save_mark_aired_and_delete()
         .execute(&pool)
         .await?;
 
-    let episode_page_key = PageKey::new(Provider::Mal, PageKind::Episode, episode_address.clone())?;
+    let episode_page_key =
+        PageKey::new(Provider::Mal, EntityType::Episode, episode_address.clone())?;
     let initial_aired_at =
         DateTime::parse_from_rfc3339("2020-01-01T00:00:00Z")?.with_timezone(&Utc);
 
@@ -1656,7 +1678,7 @@ async fn save_anime_and_episode_lifecycle_load_save_mark_aired_and_delete()
         images: vec!["https://example.com/ep1.jpg".to_owned()],
         streaming: vec![EpisodeStreamingInput {
             platform: "crunchyroll".to_owned(),
-            url: "https://crunchyroll.com/watch/1".to_owned(),
+            source: "https://crunchyroll.com/watch/1".to_owned(),
         }],
         characters: vec![EpisodeCharacterInput {
             character_page_provider: "mal".to_owned(),
@@ -1749,7 +1771,7 @@ async fn save_anime_and_episode_lifecycle_load_save_mark_aired_and_delete()
     assert_eq!(deleted_version, 6);
 
     let remaining_page_links: i64 = sqlx::query_scalar!(
-        "SELECT COUNT(*) FROM episode_provider_page WHERE episode_id = $1",
+        "SELECT COUNT(*) FROM episode_source WHERE episode_id = $1",
         episode_id
     )
     .fetch_one(&pool)
@@ -1777,7 +1799,7 @@ async fn save_anime_and_episode_lifecycle_load_save_mark_aired_and_delete()
         .execute(&pool)
         .await?;
     sqlx::query!(
-        "DELETE FROM provider_page WHERE provider = 'mal' AND page_kind = 'episode' AND address = $1",
+        "DELETE FROM provider_page WHERE provider = 'mal' AND entity_type = 'episode' AND address = $1",
         episode_address
     )
     .execute(&pool)
@@ -1854,7 +1876,7 @@ async fn sync_work_episodes_validates_page_ownership_replacement_and_timestamp_p
             title: "Ep 1".to_owned(),
             page_keys: vec![PageKey::new(
                 Provider::Mal,
-                PageKind::Episode,
+                EntityType::Episode,
                 first_address.clone(),
             )?],
             list_entries: vec![EpisodeListEntryInput {
@@ -1878,7 +1900,7 @@ async fn sync_work_episodes_validates_page_ownership_replacement_and_timestamp_p
             title: "Ep 1".to_owned(),
             page_keys: vec![PageKey::new(
                 Provider::Mal,
-                PageKind::Episode,
+                EntityType::Episode,
                 second_address.clone(),
             )?],
             list_entries: vec![EpisodeListEntryInput {
@@ -1913,7 +1935,7 @@ async fn sync_work_episodes_validates_page_ownership_replacement_and_timestamp_p
             title: "Ep 2".to_owned(),
             page_keys: vec![PageKey::new(
                 Provider::Mal,
-                PageKind::Episode,
+                EntityType::Episode,
                 second_address.clone(),
             )?],
             list_entries: Vec::new(),
@@ -1930,12 +1952,30 @@ async fn sync_work_episodes_validates_page_ownership_replacement_and_timestamp_p
         .execute(&pool)
         .await?;
     sqlx::query!(
-        "DELETE FROM provider_page WHERE provider = 'mal' AND page_kind = 'episode' AND address IN ($1, $2)",
+        "DELETE FROM provider_page WHERE provider = 'mal' AND entity_type = 'episode' AND address IN ($1, $2)",
         first_address,
         second_address
     )
     .execute(&pool)
     .await?;
 
+    Ok(())
+}
+
+/// PostgreSQL silently truncates identifiers to 63 bytes, so a name at that length was cut.
+#[sqlx::test(migrations = "./migrations")]
+async fn migrations_every_identifier_fits_without_truncation(
+    pool: sqlx::PgPool,
+) -> Result<(), Error> {
+    let truncated_names: Vec<String> = sqlx::query_scalar!(
+        r#"SELECT relname::text AS "name!" FROM pg_class
+           WHERE relnamespace = 'public'::regnamespace AND octet_length(relname::text) >= 63
+           UNION ALL
+           SELECT conname::text FROM pg_constraint
+           WHERE connamespace = 'public'::regnamespace AND octet_length(conname::text) >= 63"#
+    )
+    .fetch_all(&pool)
+    .await?;
+    assert_eq!(truncated_names, Vec::<String>::new());
     Ok(())
 }

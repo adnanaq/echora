@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM anime_related_anime_claim WHERE from_anime_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "66be046f42447fa7dda4c583c1948e83ef7c47f8e240cacc6328058cfabf88fa"
+}

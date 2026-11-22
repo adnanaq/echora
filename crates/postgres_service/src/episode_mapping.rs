@@ -1,8 +1,8 @@
 //! Protobuf-to-SQL mapping and canonical hashing for `Episode` and `EpisodeReference`.
 
 use postgres_db::{
-    EPISODE_HASH_FORMAT, EpisodeCharacterInput, EpisodeListEntryInput, EpisodeReferenceInput,
-    EpisodeStreamingInput, EpisodeTitleInput, PageKey, PageKind as DbPageKind, Provider,
+    EPISODE_HASH_FORMAT, EntityType as DbEntityType, EpisodeCharacterInput, EpisodeListEntryInput,
+    EpisodeReferenceInput, EpisodeStreamingInput, EpisodeTitleInput, PageKey, Provider,
     SaveEpisodeInput,
 };
 use prost::Message as _;
@@ -11,7 +11,7 @@ use tonic::Status;
 use uuid::Uuid;
 
 use crate::anime_mapping::parse_proto_timestamp;
-use crate::anime_relations_mapping::{map_page_kind, parse_character_target_from_url};
+use crate::anime_relations_mapping::{map_entity_type, parse_character_target_from_url};
 use crate::service::shared_proto::v1::{
     CharacterRole, Episode, EpisodeCharacter, EpisodeListEntry, EpisodeReference,
     PageKey as ProtoPageKey,
@@ -23,7 +23,7 @@ use crate::service::{map_db_error, to_proto_episode_list_entry, to_proto_page_ke
 /// # Errors
 ///
 /// Returns [`Status::invalid_argument`] when an `episode_id` is not a valid
-/// UUID, a provider is unknown, a `page_key` is not `PageKind::Episode`, or a timestamp
+/// UUID, a provider is unknown, a `page_key` is not `EntityType::Episode`, or a timestamp
 /// is invalid.
 pub fn build_episode_references(
     episodes: Vec<EpisodeReference>,
@@ -47,18 +47,18 @@ pub fn build_episode_references(
                     .map(
                         |ProtoPageKey {
                              provider,
-                             page_kind,
+                             entity_type,
                              address,
                          }| {
                             let provider: Provider =
                                 provider.parse().map_err(|err| map_db_error(&err))?;
-                            let mapped_kind = map_page_kind(page_kind)?;
-                            if mapped_kind != DbPageKind::Episode {
+                            let mapped_entity_type = map_entity_type(entity_type)?;
+                            if mapped_entity_type != DbEntityType::Episode {
                                 return Err(Status::invalid_argument(
-                                    "EpisodeReference.page_keys must use PageKind::Episode",
+                                    "EpisodeReference.page_keys must use EntityType::Episode",
                                 ));
                             }
-                            PageKey::new(provider, mapped_kind, address)
+                            PageKey::new(provider, mapped_entity_type, address)
                                 .map_err(|err| map_db_error(&err))
                         },
                     )
@@ -147,15 +147,15 @@ pub fn build_save_episode_input(
     let merged_record_hash = compute_save_episode_hash(&episode);
 
     let Episode {
-        aired,
+        aired_at,
         anime_id: _,
         description,
-        duration,
+        duration_seconds,
         episode_number,
-        filler,
+        is_filler,
         id: _,
         entity_type: _,
-        recap,
+        is_recap,
         score,
         season_number,
         synopsis,
@@ -170,8 +170,8 @@ pub fn build_save_episode_input(
         titles,
     } = episode;
 
-    let aired_at = aired
-        .map(|proto_timestamp| parse_proto_timestamp("episode.aired", proto_timestamp))
+    let aired_at = aired_at
+        .map(|proto_timestamp| parse_proto_timestamp("episode.aired_at", proto_timestamp))
         .transpose()?;
 
     let mapped_titles = titles
@@ -184,7 +184,7 @@ pub fn build_save_episode_input(
 
     let mapped_streaming = streaming
         .into_iter()
-        .map(|(platform, url)| EpisodeStreamingInput { platform, url })
+        .map(|(platform, source)| EpisodeStreamingInput { platform, source })
         .collect();
 
     let mapped_characters = map_episode_characters(characters)?;
@@ -200,9 +200,9 @@ pub fn build_save_episode_input(
         synopsis,
         description,
         aired_at,
-        duration_seconds: duration,
-        is_filler: filler,
-        is_recap: recap,
+        duration_seconds,
+        is_filler,
+        is_recap,
         score: score.map(f64::from),
         titles: mapped_titles,
         images,
@@ -303,7 +303,7 @@ mod tests {
     use tonic::Code;
 
     use super::*;
-    use crate::service::shared_proto::v1::PageKind;
+    use crate::service::shared_proto::v1::EntityType;
 
     #[test]
     fn build_save_episode_input_maps_fields_and_is_order_independent() {
@@ -320,9 +320,9 @@ mod tests {
             episode_number: 1,
             season_number: Some(1),
             title: "Herr Dr. Tenma".to_owned(),
-            duration: Some(1440),
-            filler: false,
-            recap: false,
+            duration_seconds: Some(1440),
+            is_filler: false,
+            is_recap: false,
             score: Some(8.6),
             images: vec![
                 "https://example.com/a.jpg".to_owned(),
@@ -416,7 +416,7 @@ mod tests {
             title: "Placeholder".to_owned(),
             page_keys: vec![ProtoPageKey {
                 provider: "mal".to_owned(),
-                page_kind: PageKind::Episode as i32,
+                entity_type: EntityType::Episode as i32,
                 address: "1".to_owned(),
             }],
             list_entries: vec![EpisodeListEntry {
@@ -432,7 +432,7 @@ mod tests {
         let breaking_changes: Vec<fn(&mut EpisodeReference)> = vec![
             |reference| reference.episode_id = "not-a-uuid".to_owned(),
             |reference| reference.page_keys[0].provider = "not_a_provider".to_owned(),
-            |reference| reference.page_keys[0].page_kind = PageKind::Anime as i32,
+            |reference| reference.page_keys[0].entity_type = EntityType::Anime as i32,
             |reference| reference.page_keys[0].address = "not-numeric".to_owned(),
             |reference| reference.list_entries[0].provider = "not_a_provider".to_owned(),
             |reference| {
@@ -466,7 +466,7 @@ mod tests {
             (
                 Uuid::now_v7().to_string(),
                 Episode {
-                    aired: Some(prost_types::Timestamp {
+                    aired_at: Some(prost_types::Timestamp {
                         seconds: i64::MAX,
                         nanos: 0,
                     }),
@@ -508,7 +508,7 @@ mod tests {
             episode_id: Uuid::now_v7(),
             episode_number: 3,
             title: "Placeholder episode 3".to_owned(),
-            page_keys: vec![PageKey::new(Provider::AniDb, DbPageKind::Episode, "3").unwrap()],
+            page_keys: vec![PageKey::new(Provider::AniDb, DbEntityType::Episode, "3").unwrap()],
             list_entries: vec![EpisodeListEntryInput {
                 provider: Provider::Mal,
                 title: Some("Placeholder episode 3".to_owned()),

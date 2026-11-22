@@ -63,7 +63,7 @@ def anime_from_mal(anime: MalAnime) -> dict[str, Any]:
     # ── Scalars ──────────────────────────────────────────────────────────
     background = anime.background
 
-    duration = anime.duration
+    duration_seconds = anime.duration
     episode_count = anime.episode_count or 0
     rating = AnimeRating(anime.rating) if anime.rating else AnimeRating.UNKNOWN
     season = AnimeSeason(anime.season.upper()) if anime.season else None
@@ -94,7 +94,7 @@ def anime_from_mal(anime: MalAnime) -> dict[str, Any]:
             TrailerEntry(
                 source=anime.trailer.source,
                 title=anime.trailer.title,
-                thumbnail=anime.trailer.thumbnail,
+                thumbnail_source=anime.trailer.thumbnail,
             )
         ]
         if anime.trailer
@@ -169,7 +169,9 @@ def anime_from_mal(anime: MalAnime) -> dict[str, Any]:
         ThemeSong(
             title=s.title,
             artist=s.artist,
-            episodes=[EpisodeRange(start=r.start, end=r.end) for r in s.episodes],
+            episodes=[
+                EpisodeRange(range_start=r.start, range_end=r.end) for r in s.episodes
+            ],
         )
         for s in anime.opening_themes
     ]
@@ -177,7 +179,9 @@ def anime_from_mal(anime: MalAnime) -> dict[str, Any]:
         ThemeSong(
             title=s.title,
             artist=s.artist,
-            episodes=[EpisodeRange(start=r.start, end=r.end) for r in s.episodes],
+            episodes=[
+                EpisodeRange(range_start=r.start, range_end=r.end) for r in s.episodes
+            ],
         )
         for s in anime.ending_themes
     ]
@@ -196,7 +200,7 @@ def anime_from_mal(anime: MalAnime) -> dict[str, Any]:
     # Build final canonical object
     result = Anime(
         background=background,
-        duration=duration,
+        duration_seconds=duration_seconds,
         episode_count=episode_count,
         month=anime.month,
         rating=rating,
@@ -322,11 +326,11 @@ def episode_from_mal(
     #         title, title_japanese, title_romaji
     # ARRAY:  characters, images, sources, staff
     # DICT:   streamina
-    aired = None
+    aired_at = None
     if ep.aired:
         aired_dt = normalize_to_utc(ep.aired)
         if aired_dt:
-            aired = aired_dt
+            aired_at = aired_dt
 
     characters = [
         EpisodeCharacter(
@@ -355,12 +359,12 @@ def episode_from_mal(
     ]
 
     episode = Episode(
-        aired=aired,
+        aired_at=aired_at,
         anime_id=anime_id,
-        duration=ep.duration,
+        duration_seconds=ep.duration,
         episode_number=ep.episode_number,
-        filler=ep.filler,
-        recap=ep.recap,
+        is_filler=ep.filler,
+        is_recap=ep.recap,
         score=None,
         synopsis=ep.synopsis,
         title=ep.title,

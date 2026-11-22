@@ -39,28 +39,6 @@ from enrichment.sources.kitsu.kitsu_models import (
 )
 from enrichment.utils.text_utils import normalize_score
 
-# Kitsu locale codes → canonical language name for VoiceActor.language
-_LOCALE_TO_LANGUAGE: dict[str, str] = {
-    "ja_jp": "Japanese",
-    "en": "English",
-    "en_us": "English",
-    "pt_br": "Portuguese (Brazil)",
-    "pt_pt": "Portuguese",
-    "es": "Spanish",
-    "es_la": "Spanish (Latin America)",
-    "de": "German",
-    "fr": "French",
-    "it": "Italian",
-    "ko": "Korean",
-    "zh": "Chinese",
-    "zh_cn": "Chinese (Simplified)",
-    "zh_tw": "Chinese (Traditional)",
-    "ru": "Russian",
-    "pl": "Polish",
-    "hu": "Hungarian",
-    "ar": "Arabic",
-}
-
 
 def _kitsu_page(media_type: str, kitsu_id: str) -> str:
     """Return Kitsu's numeric page address, the form the offline seed uses.
@@ -167,10 +145,10 @@ def anime_from_kitsu(anime: KitsuAnime) -> dict[str, Any]:
         type=AnimeType(attrs.subtype),
         status=AnimeStatus(attrs.status),
         episode_count=attrs.episodeCount or 0,
-        duration=attrs.episodeLength * 60 if attrs.episodeLength else None,
+        duration_seconds=attrs.episodeLength * 60 if attrs.episodeLength else None,
         year=year,
         season=season,
-        nsfw=attrs.nsfw,
+        is_nsfw=attrs.nsfw,
         rating=rating,
         genres=anime.genres,
         themes=anime.themes,
@@ -258,11 +236,10 @@ def character_from_kitsu(char: KitsuMediaCharacter) -> dict[str, Any]:
         if not person:
             continue
         p_attrs = person.attributes
-        locale = voice.attributes.locale or ""
         voice_actors.append(
             VoiceActor(
                 name=p_attrs.name or "Unknown",
-                language=_LOCALE_TO_LANGUAGE.get(locale, locale) or None,
+                language=voice.attributes.locale,
                 image=p_attrs.image.original if p_attrs.image else None,
                 biography=p_attrs.description,
                 sources=[f"https://kitsu.app/people/{person.id}"],
@@ -340,8 +317,8 @@ def episode_from_kitsu(
         episode_number=attrs.number or 0,
         season_number=attrs.seasonNumber,
         synopsis=attrs.synopsis or attrs.description,
-        aired=normalize_to_utc(attrs.airdate),
-        duration=attrs.length * 60 if attrs.length else None,
+        aired_at=normalize_to_utc(attrs.airdate),
+        duration_seconds=attrs.length * 60 if attrs.length else None,
         images=(
             [attrs.thumbnail.original]
             if attrs.thumbnail and attrs.thumbnail.original

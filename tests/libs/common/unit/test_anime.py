@@ -163,9 +163,9 @@ def test_anime_negative_episode_count_fails() -> None:
         _anime(episode_count=-1)
 
 
-def test_anime_negative_duration_fails() -> None:
+def test_anime_negative_duration_seconds_fails() -> None:
     with pytest.raises(ValidationError):
-        _anime(duration=-60)
+        _anime(duration_seconds=-60)
 
 
 def test_anime_provider_statistics_parse_from_dict() -> None:
@@ -209,9 +209,9 @@ def test_related_source_material_negative_chapters_fails() -> None:
         )
 
 
-def test_episode_range_negative_start_fails() -> None:
+def test_episode_range_negative_range_start_fails() -> None:
     with pytest.raises(ValidationError):
-        EpisodeRange(start=-1)
+        EpisodeRange(range_start=-1)
 
 
 def test_episode_zero_episode_number_is_kept() -> None:
@@ -248,6 +248,36 @@ def test_production_staff_role_not_list_fails() -> None:
         ProductionStaff.model_validate({"notes": "not a list"})
 
 
+def test_anime_language_and_country_fields_hold_standard_codes() -> None:
+    anime = _anime(
+        titles={"German": "Ein Stück", "zh_tw": "海賊王"},
+        country_of_origin="jp",
+        external_sources=[
+            {
+                "platform": "Official Site",
+                "source": "https://one-piece.com",
+                "language": "Japanese",
+            }
+        ],
+        streaming_sources=[
+            {
+                "platform": "Crunchyroll",
+                "source": "https://crunchyroll.com/one-piece",
+                "subtitle_languages": ["English", "pt_br"],
+            }
+        ],
+    )
+
+    assert anime.titles == {"de": "Ein Stück", "zh-TW": "海賊王"}
+    assert anime.country_of_origin == "JP"
+    assert anime.external_sources[0].language == "ja"
+    assert anime.streaming_sources[0].subtitle_languages == ["en", "pt-BR"]
+
+
+def test_anime_unknown_country_of_origin_becomes_none() -> None:
+    assert _anime(country_of_origin="UK").country_of_origin is None
+
+
 def test_streaming_entry_unknown_key_fails() -> None:
     with pytest.raises(ValidationError):
         StreamingEntry.model_validate(
@@ -258,7 +288,9 @@ def test_streaming_entry_unknown_key_fails() -> None:
 def test_anime_record_round_trip_keeps_values() -> None:
     record = AnimeRecord(
         anime=_anime(statistics={"mal": {"score": 8.7}}, episode_count=1155),
-        episodes=[Episode(episode_number=1, title="Romance Dawn", duration=1440)],
+        episodes=[
+            Episode(episode_number=1, title="Romance Dawn", duration_seconds=1440)
+        ],
     )
 
     dumped = record.model_dump(mode="json", exclude_none=True)

@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO anime_partial_source (anime_id, provider, entity_type, address)\n         VALUES ($1, 'anilist', 'anime', $2)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "3358d88e1e0895602d95668032dad0764678c31142b41f805e28744f003474c5"
+}

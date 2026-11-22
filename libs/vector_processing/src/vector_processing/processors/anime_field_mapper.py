@@ -225,9 +225,9 @@ class AnimeFieldMapper:
         ]
 
         flags = []
-        if hasattr(episode, "filler") and episode.filler:
+        if episode.is_filler:
             flags.append("Filler")
-        if hasattr(episode, "recap") and episode.recap:
+        if episode.is_recap:
             flags.append("Recap")
 
         result = " | ".join(filter(None, parts))
@@ -253,8 +253,8 @@ class AnimeFieldMapper:
         urls.extend(anime.images.banners)
 
         for trailer in anime.trailers:
-            if hasattr(trailer, "thumbnail") and trailer.thumbnail:
-                urls.append(trailer.thumbnail)
+            if trailer.thumbnail_source:
+                urls.append(trailer.thumbnail_source)
 
         return list(dict.fromkeys(filter(None, urls)))
 

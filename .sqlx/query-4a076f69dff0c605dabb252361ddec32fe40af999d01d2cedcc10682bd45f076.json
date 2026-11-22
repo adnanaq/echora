@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO anime_related_anime (\n                 from_anime_id, relation_type, to_page_provider, to_page_address\n             )\n             SELECT $1, relation_type, to_page_provider, to_page_address\n             FROM UNNEST($2::text[], $3::text[], $4::text[])\n               AS entry(relation_type, to_page_provider, to_page_address)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "TextArray",
+        "TextArray",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "4a076f69dff0c605dabb252361ddec32fe40af999d01d2cedcc10682bd45f076"
+}

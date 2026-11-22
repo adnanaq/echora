@@ -3,7 +3,7 @@
 mod support;
 
 use postgres_db::{
-    EpisodeListEntryInput, EpisodeReferenceInput, PageKey, PageKind, Provider, delete_episode,
+    EntityType, EpisodeListEntryInput, EpisodeReferenceInput, PageKey, Provider, delete_episode,
     load_anime, save_anime,
 };
 use sqlx::PgPool;
@@ -18,7 +18,7 @@ async fn load_anime_returns_undeleted_known_episodes(pool: PgPool) {
         episode_id: Uuid::now_v7(),
         episode_number: 1,
         title: "Placeholder episode 1".to_owned(),
-        page_keys: vec![PageKey::new(Provider::Mal, PageKind::Episode, "1").expect("valid key")],
+        page_keys: vec![PageKey::new(Provider::Mal, EntityType::Episode, "1").expect("valid key")],
         list_entries: vec![EpisodeListEntryInput {
             provider: Provider::Mal,
             title: Some("Placeholder episode 1".to_owned()),
@@ -59,14 +59,14 @@ async fn load_anime_returns_undeleted_known_episodes(pool: PgPool) {
 async fn load_anime_never_fetched_source_page_returns_no_source_pages(pool: PgPool) {
     let anime_id = insert_unmerged_work(&pool).await;
     sqlx::query(
-        "INSERT INTO provider_page (provider, page_kind, address) VALUES ('mal', 'anime', '21')",
+        "INSERT INTO provider_page (provider, entity_type, address) VALUES ('mal', 'anime', '21')",
     )
     .execute(&pool)
     .await
     .expect("insert never-fetched page");
     sqlx::query(
-        "INSERT INTO anime_provider_page (anime_id, provider, page_kind, address, role)
-         VALUES ($1, 'mal', 'anime', '21', 'source')",
+        "INSERT INTO anime_source (anime_id, provider, entity_type, address)
+         VALUES ($1, 'mal', 'anime', '21')",
     )
     .bind(anime_id)
     .execute(&pool)
@@ -94,13 +94,13 @@ async fn load_anime_stored_invalid_episode_address_returns_invalid_argument(pool
         .await
         .expect("insert placeholder episode");
     sqlx::query(
-        "INSERT INTO provider_page (provider, page_kind, address) VALUES ('mal', 'episode', 'not-numeric')",
+        "INSERT INTO provider_page (provider, entity_type, address) VALUES ('mal', 'episode', 'not-numeric')",
     )
     .execute(&pool)
     .await
     .expect("insert page with an invalid address");
     sqlx::query(
-        "INSERT INTO episode_provider_page (episode_id, provider, page_kind, address)
+        "INSERT INTO episode_source (episode_id, provider, entity_type, address)
          VALUES ($1, 'mal', 'episode', 'not-numeric')",
     )
     .bind(episode_id)

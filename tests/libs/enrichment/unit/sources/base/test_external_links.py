@@ -151,7 +151,7 @@ def test_external_link_keeps_address_as_given_with_domain_platform() -> None:
         "imdb",
         "https://www.imdb.com/title/tt0388629",
         None,
-        "English",
+        "en",
     )
 
 
@@ -219,7 +219,7 @@ def test_page_link_keeps_language_and_trims_identifier() -> None:
     link = page_link("myanimelist", " 21 ", kind="anime", language="English")
     assert (link.source, link.language) == (
         "https://myanimelist.net/anime/21",
-        "English",
+        "en",
     )
 
 

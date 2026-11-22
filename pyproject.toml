@@ -36,6 +36,7 @@ dependencies = [
     "scikit-learn>=1.9.1",
     "numpy>=2.5.3",
     "langdetect>=1.0.9",
+    "langcodes[data]>=3.5.1", # BCP 47 codes for every language field of the canonical model
     "lxml>=5.0.0",
     "networkx>=3.7", # UnionFind for grouping seed entries that may be one work
     # "dghs-imgutils>=0.19.0",
