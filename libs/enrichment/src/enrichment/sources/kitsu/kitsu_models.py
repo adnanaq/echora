@@ -109,6 +109,49 @@ def _strip_preamble(value: object) -> object:
     return " ".join(narrative_parts).strip() or None
 
 
+# Kitsu locales whose region the standard reading of the code gets wrong: Kitsu's
+# "ja_jp" and "en_us" mean the language itself, and "es_la" means Latin American
+# Spanish, not Spanish of Laos.
+_LOCALE_LANGUAGES: dict[str, str] = {
+    "ja_jp": "ja",
+    "en_us": "en",
+    "pt_pt": "pt",
+    "es_la": "es-419",
+    "zh_cn": "zh-Hans",
+    "zh_tw": "zh-Hant",
+}
+
+
+def _resolve_locale_language(value: object) -> object:
+    """Resolve the language code a Kitsu locale stands for.
+
+    Kitsu's own locales become their BCP 47 code. Every other locale is passed on
+    as Kitsu wrote it, and the canonical model standardizes it (``pt_br`` becomes
+    ``pt-BR``). A code that is already resolved stays the same, so validating a
+    voice twice changes nothing.
+
+    Args:
+        value: The locale as the Kitsu API sends it, such as ``ja_jp``.
+
+    Returns:
+        The language code for one of Kitsu's own locales, None for an empty
+        locale, or ``value`` unchanged.
+
+    >>> _resolve_locale_language("es_la")
+    'es-419'
+    >>> _resolve_locale_language("pt_br")
+    'pt_br'
+    >>> _resolve_locale_language("") is None
+    True
+    """
+    if not isinstance(value, str):
+        return value
+    locale = value.strip()
+    return _LOCALE_LANGUAGES.get(locale, locale) or None
+
+
+KitsuLocale = Annotated[str | None, BeforeValidator(_resolve_locale_language)]
+
 TextList = Annotated[
     list[str],
     BeforeValidator(_without_null_texts),
@@ -362,7 +405,8 @@ class KitsuPerson(BaseModel):
 class KitsuCharacterVoiceAttributes(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="allow")
 
-    locale: str | None = None  # "ja_jp", "en", "pt_br", "es", "ko", "de", "it", etc.
+    # Kitsu sends "ja_jp", "en", "pt_br", "es_la" and the like; held as a language code
+    locale: KitsuLocale = None
 
 
 class KitsuCharacterVoice(BaseModel):

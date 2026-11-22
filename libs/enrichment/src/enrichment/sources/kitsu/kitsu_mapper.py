@@ -39,19 +39,6 @@ from enrichment.sources.kitsu.kitsu_models import (
 )
 from enrichment.utils.text_utils import normalize_score
 
-# Kitsu locales whose region the standard reading of the code gets wrong: Kitsu's
-# "ja_jp" and "en_us" mean the language itself, and "es_la" means Latin American
-# Spanish, not Spanish of Laos. Every other locale goes to VoiceActor.language as
-# Kitsu wrote it, and the canonical model turns it into its BCP 47 code.
-_LOCALE_LANGUAGE_TAGS: dict[str, str] = {
-    "ja_jp": "ja",
-    "en_us": "en",
-    "pt_pt": "pt",
-    "es_la": "es-419",
-    "zh_cn": "zh-Hans",
-    "zh_tw": "zh-Hant",
-}
-
 
 def _kitsu_page(media_type: str, kitsu_id: str) -> str:
     """Return Kitsu's numeric page address, the form the offline seed uses.
@@ -249,11 +236,10 @@ def character_from_kitsu(char: KitsuMediaCharacter) -> dict[str, Any]:
         if not person:
             continue
         p_attrs = person.attributes
-        locale = voice.attributes.locale or ""
         voice_actors.append(
             VoiceActor(
                 name=p_attrs.name or "Unknown",
-                language=_LOCALE_LANGUAGE_TAGS.get(locale, locale) or None,
+                language=voice.attributes.locale,
                 image=p_attrs.image.original if p_attrs.image else None,
                 biography=p_attrs.description,
                 sources=[f"https://kitsu.app/people/{person.id}"],

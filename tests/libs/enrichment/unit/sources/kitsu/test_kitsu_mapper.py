@@ -376,7 +376,11 @@ def test_anime_from_kitsu_season_derivation():
 
 def test_character_from_kitsu():
     mc = _make_media_char()
-    voices = [_make_voice("ja_jp", "1"), _make_voice("en", "2")]
+    voices = [
+        _make_voice("ja_jp", "1"),
+        _make_voice("en", "2"),
+        _make_voice("pt_br", "3"),
+    ]
     animeography = [
         _make_animeography_entry("anime"),
         _make_animeography_entry("manga"),
@@ -395,7 +399,11 @@ def test_character_from_kitsu():
     assert "https://kitsu.io/characters/monkey-d-luffy" in result["sources"]
     assert "https://myanimelist.net/character/40" in result["sources"]
 
-    assert len(result["voice_actors"]) == 2
+    assert [actor["language"] for actor in result["voice_actors"]] == [
+        "ja",
+        "en",
+        "pt-BR",
+    ]
     va_jp = result["voice_actors"][0]
     assert va_jp["name"] == "Mayumi Tanaka"
     assert va_jp["language"] == "ja"

@@ -5,6 +5,7 @@ from common.models.anime import AnimeRating
 from enrichment.sources.kitsu.kitsu_models import (
     KitsuAnimeAttributes,
     KitsuCharacterAttributes,
+    KitsuCharacterVoiceAttributes,
     KitsuEpisodeAttributes,
     KitsuPersonAttributes,
     KitsuTitles,
@@ -312,3 +313,28 @@ def test_kitsu_anime_attributes_content_rating_unread_guide_without_code_logs_wa
     with caplog.at_level(logging.WARNING):
         assert attrs.content_rating is AnimeRating.UNKNOWN
     assert "Mature Themes" in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("locale", "language"),
+    [
+        ("ja_jp", "ja"),
+        ("en_us", "en"),
+        ("es_la", "es-419"),
+        ("zh_tw", "zh-Hant"),
+        ("pt_br", "pt_br"),
+        ("hu", "hu"),
+        ("", None),
+        (None, None),
+    ],
+)
+def test_kitsu_character_voice_attributes_locale_becomes_language_code(
+    locale: str | None, language: str | None
+) -> None:
+    voice_attributes = KitsuCharacterVoiceAttributes.model_validate({"locale": locale})
+    revalidated_attributes = KitsuCharacterVoiceAttributes.model_validate(
+        voice_attributes.model_dump()
+    )
+
+    assert voice_attributes.locale == language
+    assert revalidated_attributes.locale == language
