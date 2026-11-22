@@ -765,10 +765,13 @@ def test_character_from_anilist_description_fields_become_attributes_and_prose()
     None
 ):
     result = character_from_anilist(
-        _usopp_edge("__Height:__ 174 cm\n\nUsopp is a liar.")
+        _usopp_edge(
+            "__Height:__ 174 cm\n__Bounty:__\n__Appearance:__ ~! !~\n\nUsopp is a liar."
+        )
     )
     assert result["description"] == "Usopp is a liar."
-    assert result["attributes"]["height"] == "174 cm"
+    assert result["attributes"] == {"height": "174 cm"}
+    assert "appearance" not in result.get("spoilers", {})
 
 
 def test_character_from_anilist_spoiler_description_field_becomes_spoiler() -> None:
