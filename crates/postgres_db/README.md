@@ -15,8 +15,9 @@ The migrations in `migrations/` are the only source of the schema, and are writt
 | `..._create_anime_songs_streaming_stats_broadcast_hiatus_tables.sql` | Opening and ending themes, trailers, external sources, streaming sources, statistics, broadcast and hiatus history, and the shared `trailer` and `external_source` tables |
 | `..._create_anime_relations_source_material_companies_graph_tables.sql` | Related anime and their claims, related source material, companies and `graph_edge` |
 | `..._create_episode_tables.sql` | `episode`, `episode_visible`, its pages, list entries, titles, images, streaming, characters and corrections |
+| `..._create_character_tables.sql` | `character`, `character_visible`, its pages, the works it appears in (`character_animeography`), names, nicknames, traits, images, attributes, spoilers, mangaography and corrections |
 
-Every table and column is named after the model field it stores, by the rule in `docs/architecture/Database Schema.md` (Naming Rule), which `scripts/check_postgres_schema.py` checks in CI. A value shared across works, such as a URL's platform or a theme's description, is stored once in a shared table, and a relation stores only its target page, so the target work is always found by a join.
+Every table and column is named after the model field it stores, by the rule in `docs/architecture/Database Schema.md` (Naming Rule), which `scripts/check_postgres_schema.py` checks in CI. A value shared across works, such as a URL's platform or a theme's description, is stored once in a shared table, and a relation stores only its target page, so the target work is always found by a join. A character stores the works it appears in the same way, by each work's page.
 
 A migration that builds an index with `CREATE INDEX CONCURRENTLY` starts with `-- no-transaction` and holds only that statement. The full design, with the reasons for each table, is in `docs/architecture/Database Schema.md`.
 
@@ -27,9 +28,11 @@ A migration that builds an index with `CREATE INDEX CONCURRENTLY` starts with `-
 | `connect_pool`, `run_migrations` | Open a pool and bring the schema up to date |
 | `record_page_observation` | Store one fetch of a provider page: a success, the provider's "not found", or a failure |
 | `load_anime`, `save_anime` | Read a work's pages, corrections, known episodes and version; save its merged record |
-| `link_anime_source_page` | Link a page to a work as its source, and tell the works whose relations now reach it |
+| `link_anime_source_page` | Link a page to a work as its source, and tell the works whose relations, and the characters whose appearances, now reach it |
 | `load_episode`, `save_episode` | The same for an episode |
 | `mark_episode_aired` | Write the aired notification once, after the episode's air time has passed |
+| `load_character`, `save_character` | The same for a character; its save stores the works it appears in by each work's page, with their graph edges |
+| `list_character_anime` | List the stored works a character appears in, with the strongest role its pages give in each |
 | `delete_episode` | Remove an episode, its page links and its graph edges, and send `episode.deleted` |
 | `compute_responses_hash` | Hash a page's responses the way `record_page_observation` compares them |
 
@@ -37,9 +40,9 @@ A migration that builds an index with `CREATE INDEX CONCURRENTLY` starts with `-
 
 - **Version check.** A save names the version it loaded. A different stored version fails with a version conflict, and the caller loads again.
 - **Unchanged saves write nothing.** When the merged record hash and its format match the stored ones, the save only clears `merge_requested_at` and records `merge_version`. It raises no version and sends no event.
-- **Outbox.** A changing save raises the version and writes its event in the same transaction: `anime.created` or `episode.created` on the first merge, `.updated` afterwards. A changed work status also writes `notification.anime.status.changed`.
+- **Outbox.** A changing save raises the version and writes its event in the same transaction: `anime.created`, `episode.created` or `character.created` on the first merge, `.updated` afterwards. A changed work status also writes `notification.anime.status.changed`.
 - **One clock.** Every timestamp in a transaction is PostgreSQL's transaction time, so a save's rows and events agree with each other, whichever server wrote them.
-- **No deadlocks.** Shared rows are locked and written in sorted key order. A pair of related works is locked by an advisory lock keyed by a hash of the pair, taken in ascending hash order.
+- **No deadlocks.** Every save takes its locks in one order: the work pages it names, then shared rows in sorted key order, then its own row. A save holds a work page's advisory lock shared, so saves naming the same page run side by side, while `link_anime_source_page` and `record_page_observation` hold it exclusively, so a page link and a save naming the page never miss each other's rows. A pair of related works is locked by an advisory lock keyed by a hash of the pair, taken in ascending hash order.
 - **Pages.** A fetch stamped more than five minutes ahead of the database's clock is refused, and a fetch older than what is stored is ignored. A changed page raises the version of every entity built from it and requests its merge. Two "not found" answers at least a day apart open a `dead_page` review, or mark the page dead when that provider's review is off.
 - **Validation.** Inputs are checked before any write, and a broken rule fails with an invalid-argument error.
 
@@ -49,7 +52,7 @@ A migration that builds an index with `CREATE INDEX CONCURRENTLY` starts with `-
 
 - `is_not_found()` for a missing or deleted entity;
 - `is_version_conflict()` for a stale `expected_version`, or a serialization failure;
-- `is_invalid_argument()` for input that breaks a rule;
+- `is_invalid_argument()` for input that breaks a rule, or text PostgreSQL cannot store, such as a NUL byte;
 - `is_unique_violation()` and `is_foreign_key_violation()` for constraints PostgreSQL enforced;
 - `is_migration()` and `is_database()` for everything else.
 
@@ -59,7 +62,7 @@ When `RUST_BACKTRACE` is set, the error also captures a backtrace and prints it 
 
 - `postgres_db.migrations.applied`
 - `postgres_db.provider_page.recorded`, with the page key and whether it changed
-- `postgres_db.anime.saved` and `postgres_db.episode.saved`, with the ID, version and event subject
+- `postgres_db.anime.saved`, `postgres_db.episode.saved` and `postgres_db.character.saved`, with the ID, version and event subject
 
 ## Features
 

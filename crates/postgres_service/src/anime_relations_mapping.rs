@@ -384,16 +384,29 @@ fn parse_provider_from_url(url: &str) -> Option<&'static str> {
 
 /// Finds the provider and work address a work page URL names.
 pub(crate) fn parse_provider_target_from_url(url: &str) -> Option<(&'static str, String)> {
-    parse_provider_target_with_kinds(url, &["anime", "manga", "light-novels"])
+    parse_provider_target_with_path_segments(url, &["anime", "manga", "light-novels"])
+}
+
+/// Finds the provider and work address an anime page URL names, refusing manga and novels.
+pub(crate) fn parse_anime_target_from_url(url: &str) -> Option<(&'static str, String)> {
+    parse_provider_target_with_path_segments(url, &["anime"])
+}
+
+/// Finds the provider and identifier a manga or novel page URL names, refusing anime.
+pub(crate) fn parse_source_material_target_from_url(url: &str) -> Option<(&'static str, String)> {
+    parse_provider_target_with_path_segments(url, &["manga", "light-novels"])
 }
 
 /// Finds the provider and character address a character page URL names.
+///
+/// Kitsu and Anime-Planet write the segment in the plural (`/characters/…`), the others in
+/// the singular.
 pub(crate) fn parse_character_target_from_url(url: &str) -> Option<(&'static str, String)> {
-    parse_provider_target_with_kinds(url, &["character"])
+    parse_provider_target_with_path_segments(url, &["character", "characters"])
 }
 
-/// Finds the provider and address a URL names, when its path kind is in `allowed_segments`.
-fn parse_provider_target_with_kinds(
+/// Finds the provider and address a URL names, if its first path segment is allowed.
+fn parse_provider_target_with_path_segments(
     url: &str,
     allowed_segments: &[&str],
 ) -> Option<(&'static str, String)> {
@@ -425,7 +438,7 @@ fn parse_provider_target_with_kinds(
                 let first_segment = segments.first().copied()?;
                 if matches!(
                     first_segment,
-                    "anime" | "manga" | "light-novels" | "character"
+                    "anime" | "manga" | "light-novels" | "character" | "characters"
                 ) {
                     return None;
                 }
@@ -458,7 +471,9 @@ fn parse_provider_target_with_kinds(
     if id.is_empty() {
         return None;
     }
-    Some((provider, id.to_owned()))
+    // Page keys hold lowercase addresses, as work matching builds them, so a slug written
+    // with capitals still names the same stored page.
+    Some((provider, id.to_lowercase()))
 }
 
 #[cfg(test)]
@@ -526,6 +541,38 @@ mod tests {
     }
 
     #[test]
+    fn parse_anime_and_source_material_targets_accept_only_their_path_segments() {
+        assert_eq!(
+            parse_anime_target_from_url("https://myanimelist.net/anime/21/One_Piece"),
+            Some(("mal", "21".to_owned()))
+        );
+        assert_eq!(
+            parse_anime_target_from_url("https://myanimelist.net/manga/13"),
+            None
+        );
+        assert_eq!(
+            parse_anime_target_from_url("https://www.anime-planet.com/anime/One-Piece"),
+            Some(("anime_planet", "one-piece".to_owned()))
+        );
+        assert_eq!(
+            parse_anime_target_from_url("https://kitsu.io/anime/One-Piece"),
+            Some(("kitsu", "one-piece".to_owned()))
+        );
+        assert_eq!(
+            parse_source_material_target_from_url("https://myanimelist.net/manga/13/One_Piece"),
+            Some(("mal", "13".to_owned()))
+        );
+        assert_eq!(
+            parse_source_material_target_from_url("https://anilist.co/light-novels/7"),
+            Some(("anilist", "7".to_owned()))
+        );
+        assert_eq!(
+            parse_source_material_target_from_url("https://myanimelist.net/anime/21"),
+            None
+        );
+    }
+
+    #[test]
     fn parse_provider_target_from_url_rejects_character_urls() {
         assert!(parse_provider_target_from_url("https://myanimelist.net/character/42").is_none());
         assert!(parse_character_target_from_url("https://kitsu.app/anime/42").is_none());
@@ -533,6 +580,15 @@ mod tests {
             parse_character_target_from_url("https://myanimelist.net/character/42"),
             Some(("mal", "42".to_owned()))
         );
+        assert_eq!(
+            parse_character_target_from_url("https://kitsu.io/characters/monkey-d-luffy"),
+            Some(("kitsu", "monkey-d-luffy".to_owned()))
+        );
+        assert_eq!(
+            parse_character_target_from_url("https://www.anime-planet.com/characters/brook"),
+            Some(("anime_planet", "brook".to_owned()))
+        );
+        assert!(parse_provider_target_from_url("https://kitsu.io/characters/brook").is_none());
     }
 
     #[test]
@@ -642,7 +698,7 @@ mod tests {
     }
 
     #[test]
-    fn map_page_kind_proto_numbers_return_page_kinds() {
+    fn map_entity_type_proto_numbers_return_entity_types() {
         assert_eq!(
             map_entity_type(EntityType::Anime as i32).ok(),
             Some(DbEntityType::Anime)

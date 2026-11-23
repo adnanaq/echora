@@ -3,6 +3,7 @@ from enrichment.sources.base.field_types import (
     NumberFromText,
     PlainText,
     StrippedText,
+    StrippedTextList,
     html_to_plain_text,
     number_from_display_text,
     strip_text_or_none,
@@ -14,6 +15,7 @@ class _ProviderFields(BaseModel):
     title: StrippedText = None
     synopsis: PlainText = None
     rank: NumberFromText = None
+    nicknames: StrippedTextList = []
 
 
 @pytest.mark.parametrize(
@@ -28,6 +30,13 @@ def test_stripped_text_strips_and_empties_to_none(
 
 def test_strip_text_or_none_non_string_returns_unchanged() -> None:
     assert strip_text_or_none(12) == 12
+
+
+def test_stripped_text_list_strips_each_text_and_drops_empty_ones() -> None:
+    assert _ProviderFields(nicknames=[" Straw Hat ", "", "  ", "Luffy"]).nicknames == [
+        "Straw Hat",
+        "Luffy",
+    ]
 
 
 @pytest.mark.parametrize(

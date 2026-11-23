@@ -65,16 +65,16 @@ message CatalogueEvent {  // (ECHO-90)
 | ~~`episode.created`~~ | ~~An episode is saved for the first time~~ | ~~Vector Service (ECHO-103)~~ |
 | ~~`episode.updated`~~ | ~~An existing episode is saved with changes~~ | ~~Vector Service (ECHO-103)~~ |
 | ~~`episode.deleted`~~ | ~~An episode is removed~~ | ~~Vector Service (ECHO-103)~~ |
-| `character.created` | A character is saved for the first time             | Vector Service (ECHO-104)                                                    |
-| `character.updated` | An existing character is saved with changes         | Vector Service (ECHO-104)                                                    |
-| `character.deleted` | A character is removed as a merged duplicate        | Vector Service (ECHO-104)                                                    |
+| ~~`character.created`~~ | ~~A character is saved for the first time~~ | ~~Vector Service (ECHO-104)~~ |
+| ~~`character.updated`~~ | ~~An existing character is saved with changes~~ | ~~Vector Service (ECHO-104)~~ |
+| `character.deleted` | A character is removed as a merged duplicate        | Vector Service (P-ECHO-23)                                                   |
 | `character.deleted` | A character no work links to any more is removed    | Vector Service (ECHO-116)                                                    |
 
 - ~~**Version.** Each save that changes an entity increases its `version` in the same transaction. A consumer stores the version it last handled and skips any event whose version is not newer. (ECHO-98)~~
 - **Deletes.** A removed entity keeps its row with `deleted_at` set, and its `version` increases once more, so the delete event's version is newer than every update before it.
   - `DeleteAnime` removes works this way. (ECHO-107)
   - ~~Episodes are removed this way. (ECHO-103)~~
-  - Characters are removed this way. (ECHO-104)
+  - Characters are removed this way, by the character merge and the cleanup job. (P-ECHO-23) (ECHO-116)
   - A consumer reads a deleted entity back like any other, and `Get*` answers `NOT_FOUND`, which confirms the delete. (ECHO-114)
 - **Removing an episode.** When an episode is removed and `episode.deleted` is sent, for example when a work's merge no longer lists it, is not decided yet. (ECHO-103) (no issue yet)
 
@@ -196,15 +196,6 @@ message EpisodeListEntry {  // (ECHO-105)
   optional bool is_recap = 6;
 }
 
-// A character a work lists, with its ID once assigned. A cast is ordered by role, then
-// favorites, then ID, so no provider's billing order is carried. (ECHO-133)
-message CharacterReference {  // (ECHO-104)
-  string character_id = 1;                   // existing ID, or a new UUIDv7 from the merge
-  string name = 2;
-  CharacterRole role = 3;
-  repeated PageKey page_keys = 4;
-}
-
 // One provider's own claim that the work relates to a target page, with the type that
 // provider gave, kept as provenance beside the single type the merge picks.
 message RelationClaim {  // (ECHO-102)
@@ -234,10 +225,6 @@ service EnrichmentService {
   rpc MergeAnime(MergeAnimeRequest) returns (MergeAnimeResponse);  // (ECHO-105)
   rpc MergeEpisode(MergeEpisodeRequest) returns (MergeEpisodeResponse);  // (ECHO-109)
   rpc MergeCharacter(MergeCharacterRequest) returns (MergeCharacterResponse);  // (ECHO-110)
-  // Match the cast entries of a work's pages that are not yet linked to a character.
-  // Its own call, so a cast of a thousand runs under its own timeout. Messages are defined
-  // with the character merge.
-  rpc MatchCharacters(MatchCharactersRequest) returns (MatchCharactersResponse);  // (ECHO-110)
   // Find franchise links worth a reviewer's look. The links stream in; the candidates come back.
   // Messages are defined with the knowledge graph project.
   rpc FindFranchiseLinkCandidates(stream FindFranchiseLinkCandidatesRequest) returns (FindFranchiseLinkCandidatesResponse);  // (P-ECHO-22)
@@ -259,14 +246,12 @@ message MergeAnimeRequest {  // (ECHO-105)
   repeated shared_proto.v1.FieldCorrection corrections = 4;
   repeated shared_proto.v1.GeneratedText generated_texts = 5;
   repeated shared_proto.v1.EpisodeReference known_episodes = 6;
-  repeated shared_proto.v1.CharacterReference known_characters = 7;
 }
 
 message MergeAnimeResponse {  // (ECHO-105)
   shared_proto.v1.Anime anime = 1;
   repeated shared_proto.v1.EpisodeReference episodes = 2;     // every episode the pages list
-  repeated shared_proto.v1.CharacterReference characters = 3; // every character the pages list
-  repeated shared_proto.v1.RelationClaim relation_claims = 4;  // each provider's relations, before the merge picks one type (ECHO-105)
+  repeated shared_proto.v1.RelationClaim relation_claims = 3;  // each provider's relations, before the merge picks one type (ECHO-105)
 }
 
 message MergeEpisodeRequest {  // (ECHO-109)
@@ -296,7 +281,7 @@ message MergeCharacterResponse {  // (ECHO-110)
   - Nothing mapped is stored, because the fetchers return pages as received. AniList and Kitsu move first. (ECHO-89)
   - MAL, Anime-Planet and aniSearch follow. (ECHO-94)
   - AniDB, AnimeSchedule and Syoboi follow. (ECHO-99)
-- **IDs are assigned at the merge.** The work's ID is passed in. An episode or character the pages list keeps its ID when `known_episodes` or `known_characters` already has it, matched by episode number or page key. One the work has never listed gets a new UUIDv7. (ECHO-105)
+- **IDs are assigned at the merge.** The work's ID is passed in. An episode the pages list keeps its ID when `known_episodes` already has it, matched by page key or episode number. One the work has never listed gets a new UUIDv7. A work's merge lists no characters: a character comes from the character list and is created by `CreateCharacter`. (ECHO-105) (ECHO-135)
 - **The merge keeps no provider synopsis.** `Anime.synopsis` comes from a correction, else the latest generated text, else stays empty. (ECHO-105)
 - The work's `sources` and `partial_sources` come from the page links, so the merge no longer reads the offline database entry. (ECHO-105)
 
@@ -356,6 +341,7 @@ service PostgresService {
   rpc SaveEpisode(SaveEpisodeRequest) returns (SaveEpisodeResponse);  // (ECHO-103)
   rpc LoadCharacter(LoadCharacterRequest) returns (LoadCharacterResponse);  // (ECHO-104)
   rpc SaveCharacter(SaveCharacterRequest) returns (SaveCharacterResponse);  // (ECHO-104)
+  rpc CreateCharacter(CreateCharacterRequest) returns (CreateCharacterResponse);  // (ECHO-135)
 
   // Seed load and review answers
   rpc FindEntitiesByPages(FindEntitiesByPagesRequest) returns (FindEntitiesByPagesResponse);  // (ECHO-107)
@@ -421,8 +407,7 @@ message LoadAnimeResponse {  // (ECHO-98)
   repeated shared_proto.v1.PageKey partial_source_pages = 3;
   repeated shared_proto.v1.FieldCorrection corrections = 4;
   repeated shared_proto.v1.EpisodeReference known_episodes = 5;      // undeleted episodes, so the merge keeps their IDs (ECHO-103)
-  repeated shared_proto.v1.CharacterReference known_characters = 6;  // (ECHO-104)
-  repeated shared_proto.v1.GeneratedText generated_texts = 7;  // the latest per field (ECHO-115)
+  repeated shared_proto.v1.GeneratedText generated_texts = 6;  // the latest per field (ECHO-115)
 }
 
 message SaveAnimeRequest {  // (ECHO-98)
@@ -432,7 +417,6 @@ message SaveAnimeRequest {  // (ECHO-98)
   int32 merge_version = 4;                   // the mapping and merge code that produced the save
   repeated shared_proto.v1.RelationClaim relation_claims = 5;  // stored in anime_related_anime_claim (ECHO-102) (ECHO-133)
   repeated shared_proto.v1.EpisodeReference episodes = 6;      // (ECHO-103)
-  repeated shared_proto.v1.CharacterReference characters = 7;  // (ECHO-104)
 }
 
 message SaveAnimeResponse {  // (ECHO-98)
@@ -440,8 +424,6 @@ message SaveAnimeResponse {  // (ECHO-98)
   int64 version = 2;
   repeated string created_episode_ids = 3;   // episodes to refresh next (ECHO-103)
   repeated string updated_episode_ids = 4;   // existing episodes whose list entries changed (ECHO-103)
-  repeated string created_character_ids = 5; // characters to refresh next (ECHO-104)
-  repeated string updated_character_ids = 6; // existing characters whose cast entry changed (ECHO-104)
 }
 
 message LoadEpisodeRequest {  // (ECHO-103)
@@ -490,6 +472,16 @@ message SaveEpisodeResponse {  // (ECHO-103)
 message SaveCharacterResponse {  // (ECHO-104)
   bool has_changed = 1;
   int64 version = 2;
+}
+
+message CreateCharacterRequest {  // (ECHO-135)
+  string name = 1;                           // from the character list, until the first merge
+  repeated shared_proto.v1.PageKey page_keys = 2;
+}
+
+message CreateCharacterResponse {  // (ECHO-135)
+  string character_id = 1;                   // the new character, or the one that already held a page
+  bool is_created = 2;
 }
 
 message DeleteAnimeResponse {  // (ECHO-107)
@@ -727,14 +719,15 @@ message DuePage {  // (ECHO-108)
 - **Saves check the version.** A save writes only when the stored version still equals `expected_version`, and otherwise returns `ABORTED`.
   - ~~`SaveAnime` checks it. (ECHO-98)~~
   - ~~`SaveEpisode` checks it. (ECHO-103)~~
-  - `SaveCharacter` checks it. (ECHO-104)
+  - ~~`SaveCharacter` checks it. (ECHO-104)~~
   - `DeleteAnime` checks it. (ECHO-107)
   - On `ABORTED`, the merge activity loads, merges and saves again within the same attempt. (ECHO-111)
   - ~~A save that changes nothing writes nothing and sends nothing. (ECHO-98)~~
   - `RecordRefresh`, the refresh's last call, records that it finished. (ECHO-108)
 - **`SaveAnime` creates what the work lists.**
   - ~~An episode the merge gave a new ID is created with its page links, and the response names it so the workflow can start its refresh. (ECHO-103)~~
-  - A character the merge gave a new ID is created the same way. Before creating it, the save looks up the character's page keys. When one already belongs to a character, such as one another work's save created a moment earlier, it links that character and drops the new ID, so the save never fails on it. (ECHO-104)
+- ~~**`SaveCharacter` stores where the character appears.** It replaces the character's `character_animeography` rows with the works its merged `animeography` names, each by the work's page, so a work not stored yet is linked once its page becomes a work's source. `Character.roles` and `anime_ids` are read through that join, and a work's save writes nothing about characters. (ECHO-104)~~
+- **`CreateCharacter`** creates a character from the character list with its page links, or returns the character that already holds one of the pages. (ECHO-135)
 - ~~**`StorePage`** stores a page and its responses only when its `fetched_at` is newer than the stored one, so a retried or late fetch never replaces newer data. It reports the page as changed when the hash of the responses differs, without reading the stored bodies. (ECHO-97)~~
 - **`CreateAnime` and `RelinkPages`** recompute, in the same transaction, the `graph_edge` rows of every pair a linked or moved page touches: the pairs of the work that gains the page and those of the work that loses it. A relation stores only its target page, so it follows the page with no update. They also increase the version of every work that gains or loses a page, and of every work whose relation now points at a different work, so a merge that loaded before the move starts again. (ECHO-107) (ECHO-133)
 - **`CreateAnime` writes partial-source links** from the cleaned seed. `SaveAnime` never writes them. (ECHO-107)
@@ -752,7 +745,6 @@ message DuePage {  // (ECHO-108)
 - **`ListDuePages`** lists one budgeted provider's pages in due order with their work, for the budgeted fetcher. (ECHO-108)
 - ~~**`SaveAnime` stores each episode's list entries** in `episode_list_entry`.~~
   - ~~An existing episode whose entries changed is made due at once and returned in `updated_episode_ids`, so the refresh starts it. (ECHO-103)~~
-  - A character whose cast entry was added, changed or removed is made due at once and returned in `updated_character_ids`, since `Character.roles` and `anime_ids` are read from `anime_character`. (ECHO-104)
 - **Works exist before their first merge.** See [[Database Schema#4. Writes and Deletes|Database Schema]].
   - `CreateAnime` writes the work's ID and page links with `merged_at` unset, and links pages that were never fetched. (ECHO-107)
   - The `Get*` and listing methods skip such works. (ECHO-108)

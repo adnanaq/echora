@@ -252,7 +252,7 @@ fn map_episode_characters(
 /// # Errors
 ///
 /// Returns `INVALID_ARGUMENT` for an unspecified or unknown value.
-fn map_character_role(enum_number: i32) -> Result<&'static str, Status> {
+pub(crate) fn map_character_role(enum_number: i32) -> Result<&'static str, Status> {
     let Ok(role) = CharacterRole::try_from(enum_number) else {
         return Err(Status::invalid_argument(format!(
             "unknown CharacterRole number {enum_number}"

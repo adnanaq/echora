@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT version, merged_record_hash, hash_format, merged_at\n        FROM character\n        WHERE id = $1 AND deleted_at IS NULL\n        FOR UPDATE\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "version",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "merged_record_hash",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "hash_format",
+        "type_info": "Int2"
+      },
+      {
+        "ordinal": 3,
+        "name": "merged_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "2a456bb0fc0b1dcd9d05a063a1abebe4acd9775a9fe135e7c7464fd649bd6805"
+}

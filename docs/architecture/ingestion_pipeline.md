@@ -19,13 +19,14 @@ related:
 
 ## Overview
 
-Ingestion fills the catalogue from a seed release, the offline anime database. It has three steps:
+Ingestion fills the catalogue from a seed release, the offline anime database. It has four steps:
 
 1. **Clean the seed.** Seed cleaning decides which provider pages make up each work, and sends what the rules cannot settle to review. (ECHO-92)
 2. **Load the works.** A Temporal workflow turns the cleaned seed into works and page links in PostgreSQL. (ECHO-120)
 3. **Enrich each new work.**
    - The same `RefreshAnimeWorkflow` that keeps works current fetches every page of a new work, merges it and saves it. (ECHO-111)
-   - Each episode and character the work lists then gets its own first refresh. (ECHO-112)
+   - Each episode the work lists then gets its own first refresh. (ECHO-112)
+4. **Load the characters.** A character list is built from every work's character lists on each provider, deduplicated across providers, and loaded with `CreateCharacter`. Each new character gets its own first refresh, whose merge reads the works it appears in from its own pages. (ECHO-135) (ECHO-112)
 
 There is no separate ingestion service and no separate enrichment path. A first enrichment is a refresh in which every page is due, so ingestion and updates share one code path, one set of provider rate limits and one history in Temporal. See [[update_service|Update Service]]. (ECHO-111)
 
@@ -50,6 +51,10 @@ flowchart TD
     pages and merged works")]
     events["NATS anime.created
     episode.created · character.created"]
+    charlist["4. Character list
+    works' character lists, deduplicated"]
+    charload["CreateCharacter, then
+    RefreshCharacterWorkflow per character"]
 
     seed --> cleaning
     cleaning <--> review
@@ -58,6 +63,9 @@ flowchart TD
     seedwf --> links
     seedwf -->|new and changed works| refresh
     refresh --> saved
+    saved -->|stored works| charlist
+    charlist --> charload
+    charload --> saved
     saved -->|outbox| events
 
     classDef clean fill:#e8eaf6,stroke:#9fa8da,color:#1f1f1f
@@ -65,7 +73,7 @@ flowchart TD
     classDef enrich fill:#e8f5e9,stroke:#a5d6a7,color:#1f1f1f
     class seed,cleaning,review,cleaned clean
     class seedwf,links load
-    class refresh,saved,events enrich
+    class refresh,saved,events,charlist,charload enrich
 ```
 
 ---
@@ -133,13 +141,39 @@ The `RefreshAnimeWorkflow` of a new work finds every page due, since none has be
    - ~~`PostgresService.StorePage` stores it. (ECHO-97)~~
 2. `merge_anime` runs once. (ECHO-111)
    - ~~`PostgresService.LoadAnime` loads the work's pages. (ECHO-98)~~
-   - `EnrichmentService.MergeAnime` merges them, and gives each episode and character the pages list a UUIDv7. (ECHO-105)
+   - `EnrichmentService.MergeAnime` merges them, and gives each episode the pages list a UUIDv7. (ECHO-105)
    - ~~`PostgresService.SaveAnime` saves the work. (ECHO-98)~~
    - ~~The same save creates the new episodes. (ECHO-103)~~
-   - The same save creates the new characters. (ECHO-104)
 3. ~~`SaveAnime` saves the work and writes `anime.created` to the outbox in the same transaction. (ECHO-98)~~
    - The vector service indexes the work from that event. (ECHO-114)
-4. The workflow starts a `RefreshEpisodeWorkflow` and a `RefreshCharacterWorkflow` for each new episode and character, which fetch their own pages and send `episode.created` and `character.created`. (ECHO-112)
+4. The workflow starts a `RefreshEpisodeWorkflow` for each new episode, which fetches its own pages and sends `episode.created`. (ECHO-112)
+
+The work's refresh creates no characters. They are loaded on their own, below.
+
+---
+
+## 4. Load the Characters
+
+> **Linear:** ECHO-135
+
+Characters have their own list, as works have the cleaned seed. Every provider with characters has a list of a work's characters, and each entry links to the character's own page:
+
+| Provider | A work's character list |
+|---|---|
+| MAL | `/anime/{id}/{slug}/characters` |
+| AniList | the work's `characters` connection |
+| Kitsu | the work's media-characters |
+| AniDB | the `<characters>` block of the work's XML |
+| Anime-Planet, aniSearch | the work's characters page |
+
+1. **Build the list.** Every work's character lists are read, each character page is kept once, and pages of one character on different providers become one entry: matched by name and role within one work's lists, with Jev deciding unclear pairs and an uncertain pair going to review as `character_match`. The list is written as a JSONL file. (ECHO-135)
+2. **Load it.** `CreateCharacter` creates each new character with its name and page links. A page that already belongs to a character links the entry's other pages to that character instead, so a repeated load creates nothing twice. (ECHO-135)
+3. **Refresh.**
+   - Each new character's `RefreshCharacterWorkflow` fetches its own pages, merges them and saves it. (ECHO-112)
+   - The merge reads the works the character appears in, and its role in each, from its own pages. (ECHO-110)
+   - ~~`SaveCharacter` stores the merged character and sends `character.created`. It stores the works it appears in by each work's page, so the character joins every stored work whose page it names. (ECHO-104)~~
+
+Discovery adds characters the same way. A pass runs once a day over the works added or refreshed since the last one, so an airing work's character list is read about once a week, right after its weekly refresh. It creates the characters whose pages no character holds yet, and sends a known character a refetch when a work lists it that its appearances do not name yet. (ECHO-135)
 
 A full seed load starts tens of thousands of these workflows. They share the provider task queues and their rate limits with the weekly sweep and with entities users open. A large load therefore takes as long as the slowest provider's pacing allows, without ever exceeding it. (ECHO-113)
 

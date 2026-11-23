@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO character_trait (character_id, trait)\n         SELECT $1, trait FROM UNNEST($2::text[]) AS entry(trait)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "5793fd6ca45581b1a4d3b67831dae7530a1c6b8853ba5cbf1ca0e1eca4879d4d"
+}

@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO trait (name)\n         SELECT name FROM UNNEST($1::text[]) WITH ORDINALITY AS entry(name, position)\n         ORDER BY position\n         ON CONFLICT (name) DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "4590adb90a312d530b13e59ecc268bdb8c8ce094b9866562a054a6d32058edf3"
+}

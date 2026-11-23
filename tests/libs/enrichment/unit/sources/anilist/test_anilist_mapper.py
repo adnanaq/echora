@@ -765,10 +765,13 @@ def test_character_from_anilist_description_fields_become_attributes_and_prose()
     None
 ):
     result = character_from_anilist(
-        _usopp_edge("__Height:__ 174 cm\n\nUsopp is a liar.")
+        _usopp_edge(
+            "__Height:__ 174 cm\n__Bounty:__\n__Appearance:__ ~! !~\n\nUsopp is a liar."
+        )
     )
     assert result["description"] == "Usopp is a liar."
-    assert result["attributes"]["height"] == "174 cm"
+    assert result["attributes"] == {"height": "174 cm"}
+    assert "appearance" not in result.get("spoilers", {})
 
 
 def test_character_from_anilist_spoiler_description_field_becomes_spoiler() -> None:
@@ -796,6 +799,27 @@ def test_character_from_anilist_spoiler_alternative_names_become_nicknames() -> 
     edge = _character_edge()
     edge.node.name.alternative_spoiler = ["God Usopp", "King of Snipers"]
     assert character_from_anilist(edge)["nicknames"] == ["God Usopp", "King of Snipers"]
+
+
+def test_character_from_anilist_alternative_names_strip_and_drop_empty_texts() -> None:
+    edge = AniListCharacterEdge.model_validate(
+        {
+            **_character_edge().model_dump(by_alias=True),
+            "node": {
+                **_character_edge().node.model_dump(by_alias=True),
+                "name": {
+                    "full": "Monkey D. Luffy",
+                    "alternative": ["Big News ", " "],
+                    "alternativeSpoiler": [" God Usopp"],
+                },
+            },
+        }
+    )
+    character = character_from_anilist(edge)
+    assert (character["name_variations"], character["nicknames"]) == (
+        ["Big News"],
+        ["God Usopp"],
+    )
 
 
 def test_character_from_anilist_voice_actor_mapped_with_language_and_links() -> None:

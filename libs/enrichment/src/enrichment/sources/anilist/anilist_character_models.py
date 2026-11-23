@@ -21,7 +21,7 @@ markdown at the top of the prose field:
 
 import re
 
-from enrichment.sources.base.field_types import StrippedText
+from enrichment.sources.base.field_types import StrippedText, StrippedTextList
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 _ATTR_LINE_RE = re.compile(r"^__(.+?):__\s*(.*)")
@@ -34,8 +34,8 @@ class AniListCharacterName(BaseModel):
 
     full: StrippedText = None
     native: StrippedText = None
-    alternative: list[str] = Field(default_factory=list)
-    alternative_spoiler: list[str] = Field(
+    alternative: StrippedTextList = Field(default_factory=list)
+    alternative_spoiler: StrippedTextList = Field(
         default_factory=list, alias="alternativeSpoiler"
     )
 
@@ -134,12 +134,15 @@ class AniListCharacterNode(BaseModel):
                 raw_value = m.group(2).strip()
                 spoiler_match = _SPOILER_RE.fullmatch(raw_value)
                 if spoiler_match:
-                    spoilers[key] = spoiler_match.group(1).strip()
+                    spoiler_value = spoiler_match.group(1).strip()
+                    if spoiler_value:
+                        spoilers[key] = spoiler_value
                 else:
                     clean_value = _SPOILER_RE.sub(
                         lambda s: s.group(1).strip(), raw_value
                     )
-                    attributes[key] = clean_value
+                    if clean_value:
+                        attributes[key] = clean_value
             else:
                 in_prose = True
                 prose_lines.append(line)

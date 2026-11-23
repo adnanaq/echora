@@ -10,7 +10,7 @@ import re
 from typing import Annotated
 
 import lxml.html
-from pydantic import BeforeValidator
+from pydantic import AfterValidator, BeforeValidator
 
 # Tags that end a line or a block of text; one between two words leaves a space.
 _LINE_TAGS = (
@@ -135,6 +135,25 @@ def number_from_display_text(value: object) -> object:
     return int(re.sub(r"[.,]", "", match.group(1))) if match else None
 
 
+def strip_texts(values: list[str]) -> list[str]:
+    """Strip each text in a list and leave out the texts that end up empty.
+
+    A list item becomes a stored row, such as a nickname or a trait, so a text
+    with surrounding spaces would store a second row for the same value.
+
+    >>> strip_texts([" Straw Hat ", "", "  ", "Luffy"])
+    ['Straw Hat', 'Luffy']
+
+    Args:
+        values: Texts as the provider sent them.
+
+    Returns:
+        The stripped texts, in their order, without the empty ones.
+    """
+    return [stripped_text for value in values if (stripped_text := value.strip())]
+
+
 StrippedText = Annotated[str | None, BeforeValidator(strip_text_or_none)]
+StrippedTextList = Annotated[list[str], AfterValidator(strip_texts)]
 PlainText = Annotated[str | None, BeforeValidator(html_to_plain_text)]
 NumberFromText = Annotated[int | None, BeforeValidator(number_from_display_text)]

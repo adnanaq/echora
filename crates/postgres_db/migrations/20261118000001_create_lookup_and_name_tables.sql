@@ -27,8 +27,14 @@ INSERT INTO source_material_type VALUES
   ('VISUAL NOVEL'), ('WEB MANGA'), ('WEB NOVEL'), ('WEBTOON'), ('FAIRY TALE'),
   ('SHORT STORY'), ('COMIC'), ('LIVE ACTION'), ('ILLUSTRATION'), ('WESTERN MEDIA');
 
-CREATE TABLE character_role (value text PRIMARY KEY);
-INSERT INTO character_role VALUES ('BACKGROUND'), ('MAIN'), ('SUPPORTING'), ('UNKNOWN');
+-- rank orders the roles from strongest to weakest, so a character listed twice for one work
+-- or source material shows its strongest role.
+CREATE TABLE character_role (
+  value  text PRIMARY KEY,
+  rank   smallint NOT NULL UNIQUE CHECK (rank > 0)
+);
+INSERT INTO character_role (value, rank) VALUES
+  ('MAIN', 1), ('SUPPORTING', 2), ('BACKGROUND', 3), ('UNKNOWN', 4);
 
 CREATE TABLE company_role (value text PRIMARY KEY);
 INSERT INTO company_role VALUES ('STUDIO'), ('PRODUCER'), ('LICENSOR'), ('UNKNOWN');

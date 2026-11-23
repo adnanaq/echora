@@ -19,7 +19,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 /// Inserts a work that exists only as an ID, as the seed load creates it.
-pub async fn insert_unmerged_work(pool: &PgPool) -> Uuid {
+pub async fn insert_unmerged_anime(pool: &PgPool) -> Uuid {
     let anime_id = Uuid::now_v7();
     sqlx::query("INSERT INTO anime (id) VALUES ($1)")
         .bind(anime_id)
@@ -29,8 +29,44 @@ pub async fn insert_unmerged_work(pool: &PgPool) -> Uuid {
     anime_id
 }
 
+/// Inserts a character that exists only as an ID and a name, as the character load creates it.
+pub async fn insert_unmerged_character(pool: &PgPool, name: &str) -> Uuid {
+    let character_id = Uuid::now_v7();
+    sqlx::query("INSERT INTO character (id, name) VALUES ($1, $2)")
+        .bind(character_id)
+        .bind(name)
+        .execute(pool)
+        .await
+        .expect("insert placeholder character");
+    character_id
+}
+
+/// Links a character page to a character, storing the page first when it is new.
+pub async fn link_character_page(pool: &PgPool, character_id: Uuid, provider: &str, address: &str) {
+    sqlx::query(
+        "INSERT INTO provider_page (provider, entity_type, address)
+         VALUES ($1, 'character', $2)
+         ON CONFLICT DO NOTHING",
+    )
+    .bind(provider)
+    .bind(address)
+    .execute(pool)
+    .await
+    .expect("store the character page");
+    sqlx::query(
+        "INSERT INTO character_source (character_id, provider, entity_type, address)
+         VALUES ($1, $2, 'character', $3)",
+    )
+    .bind(character_id)
+    .bind(provider)
+    .bind(address)
+    .execute(pool)
+    .await
+    .expect("link the character page");
+}
+
 /// Builds a valid work save with no detail rows, for tests to fill in what they check.
-pub fn build_work_save(
+pub fn build_anime_save(
     anime_id: Uuid,
     expected_version: i64,
     merged_record_hash: &str,

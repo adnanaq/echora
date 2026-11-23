@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO character_animeography (\n             character_id, anime_page_provider, anime_page_address, role\n         )\n         SELECT DISTINCT ON (entry.provider, entry.address)\n                $1, entry.provider, entry.address, entry.role\n         FROM UNNEST($2::text[], $3::text[], $4::text[]) AS entry(provider, address, role)\n         LEFT JOIN character_role role_order ON role_order.value = entry.role\n         ORDER BY entry.provider, entry.address, role_order.rank",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "TextArray",
+        "TextArray",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e449a9dacc36630f417d2b4bb5d070780c65e808cac609ba6913f2859c9e0589"
+}

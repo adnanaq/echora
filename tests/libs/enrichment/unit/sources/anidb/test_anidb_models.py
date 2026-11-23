@@ -239,6 +239,35 @@ def test_character_page_minimal() -> None:
     assert p.abilities == []
 
 
+def test_character_page_name_and_trait_lists_strip_and_drop_empty_texts() -> None:
+    page = AniDBCharacterPage(
+        nicknames=[" Straw Hat ", ""],
+        official_names=["Monkey D. Luffy "],
+        abilities=[" rubber body"],
+        looks=["straw hat ", " "],
+        personality=[" cheerful"],
+        role=["captain "],
+        supernatural_abilities=[" devil fruit user"],
+    )
+    assert (
+        page.nicknames,
+        page.official_names,
+        page.abilities,
+        page.looks,
+        page.personality,
+        page.role,
+        page.supernatural_abilities,
+    ) == (
+        ["Straw Hat"],
+        ["Monkey D. Luffy"],
+        ["rubber body"],
+        ["straw hat"],
+        ["cheerful"],
+        ["captain"],
+        ["devil fruit user"],
+    )
+
+
 def test_character_page_extra_forbidden() -> None:
     import pytest
 

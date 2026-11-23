@@ -24,6 +24,12 @@ service PostgresService {
 
   // Record that an episode aired and emit notification.episode.aired once.
   rpc MarkEpisodeAired(MarkEpisodeAiredRequest) returns (MarkEpisodeAiredResponse);
+
+  // Load a character's fetched pages, corrections, and current version for merging.
+  rpc LoadCharacter(LoadCharacterRequest) returns (LoadCharacterResponse);
+
+  // Save a merged character with optimistic version checking and transactional outbox.
+  rpc SaveCharacter(SaveCharacterRequest) returns (SaveCharacterResponse);
 }
 
 // Request carrying a fetched provider page to store.
@@ -104,4 +110,31 @@ message MarkEpisodeAiredRequest {
 // Result reporting whether the aired notification was written.
 message MarkEpisodeAiredResponse {
   bool has_notified = 1;
+}
+
+// Request to load a character's merge inputs by character UUID.
+message LoadCharacterRequest {
+  string character_id = 1;
+}
+
+// Stored pages, corrections, and version for a character merge.
+message LoadCharacterResponse {
+  int64 version = 1;
+  repeated shared_proto.v1.StoredPage pages = 2;
+  repeated shared_proto.v1.FieldCorrection corrections = 3;
+}
+
+// Request to save a merged character if stored version matches expected_version.
+// The works it appears in come from character.animeography, each by its work page URLs.
+message SaveCharacterRequest {
+  string character_id = 1;
+  int64 expected_version = 2;
+  shared_proto.v1.Character character = 3;
+  int32 merge_version = 4;
+}
+
+// Result of saving a merged character.
+message SaveCharacterResponse {
+  bool has_changed = 1;
+  int64 version = 2;
 }

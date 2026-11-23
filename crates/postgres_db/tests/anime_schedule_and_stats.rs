@@ -10,7 +10,7 @@ use postgres_db::{
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::support::{build_work_save, insert_unmerged_work};
+use crate::support::{build_anime_save, insert_unmerged_anime};
 
 async fn count_rows(pool: &PgPool, table: &str) -> i64 {
     sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {table}"))
@@ -21,9 +21,9 @@ async fn count_rows(pool: &PgPool, table: &str) -> i64 {
 
 #[sqlx::test(migrations = "./migrations")]
 async fn save_anime_entries_without_child_lists_store_no_child_rows(pool: PgPool) {
-    let anime_id = insert_unmerged_work(&pool).await;
-    let mut work_save = build_work_save(anime_id, 1, "work-v1", Vec::new());
-    work_save.schedule_and_stats = AnimeScheduleAndStatsInput {
+    let anime_id = insert_unmerged_anime(&pool).await;
+    let mut anime_save = build_anime_save(anime_id, 1, "work-v1", Vec::new());
+    anime_save.schedule_and_stats = AnimeScheduleAndStatsInput {
         opening_themes: vec![AnimeThemeSongInput {
             position: 0,
             title: "Opening".to_owned(),
@@ -52,7 +52,9 @@ async fn save_anime_entries_without_child_lists_store_no_child_rows(pool: PgPool
         ..AnimeScheduleAndStatsInput::default()
     };
 
-    save_anime(&pool, &work_save).await.expect("the work saves");
+    save_anime(&pool, &anime_save)
+        .await
+        .expect("the work saves");
 
     for (table, expected_rows) in [
         ("anime_opening_theme", 1),
@@ -76,8 +78,9 @@ fn build_shared_details_save(
     merged_record_hash: &str,
     link_label: &str,
 ) -> SaveAnimeInput {
-    let mut work_save = build_work_save(anime_id, expected_version, merged_record_hash, Vec::new());
-    work_save.details = AnimeDetailsInput {
+    let mut anime_save =
+        build_anime_save(anime_id, expected_version, merged_record_hash, Vec::new());
+    anime_save.details = AnimeDetailsInput {
         titles: vec![AnimeTitleInput {
             language: "de".to_owned(),
             title: "Ein Stück".to_owned(),
@@ -88,7 +91,7 @@ fn build_shared_details_save(
         }],
         ..AnimeDetailsInput::default()
     };
-    work_save.schedule_and_stats = AnimeScheduleAndStatsInput {
+    anime_save.schedule_and_stats = AnimeScheduleAndStatsInput {
         trailers: vec![AnimeTrailerInput {
             source: SHARED_TRAILER.to_owned(),
             title: Some("Franchise PV".to_owned()),
@@ -111,7 +114,7 @@ fn build_shared_details_save(
         }],
         ..AnimeScheduleAndStatsInput::default()
     };
-    work_save
+    anime_save
 }
 
 async fn read_text_rows(pool: &PgPool, query: &str) -> Result<Vec<String>, sqlx::Error> {
@@ -119,9 +122,9 @@ async fn read_text_rows(pool: &PgPool, query: &str) -> Result<Vec<String>, sqlx:
 }
 
 #[sqlx::test(migrations = "./migrations")]
-async fn save_anime_details_shared_by_two_works_stored_once_with_labels_per_work(pool: PgPool) {
-    let first_anime_id = insert_unmerged_work(&pool).await;
-    let second_anime_id = insert_unmerged_work(&pool).await;
+async fn save_anime_details_shared_by_two_anime_stored_once_with_labels_per_anime(pool: PgPool) {
+    let first_anime_id = insert_unmerged_anime(&pool).await;
+    let second_anime_id = insert_unmerged_anime(&pool).await;
 
     save_anime(
         &pool,
@@ -184,8 +187,8 @@ async fn save_anime_details_shared_by_two_works_stored_once_with_labels_per_work
 
 #[sqlx::test(migrations = "./migrations")]
 async fn save_anime_later_save_without_shared_detail_keeps_stored_value(pool: PgPool) {
-    let first_anime_id = insert_unmerged_work(&pool).await;
-    let second_anime_id = insert_unmerged_work(&pool).await;
+    let first_anime_id = insert_unmerged_anime(&pool).await;
+    let second_anime_id = insert_unmerged_anime(&pool).await;
     save_anime(
         &pool,
         &build_shared_details_save(first_anime_id, 1, "first-v1", "Official"),
@@ -228,8 +231,8 @@ async fn save_anime_later_save_without_shared_detail_keeps_stored_value(pool: Pg
 
 #[sqlx::test(migrations = "./migrations")]
 async fn save_anime_later_save_with_new_shared_detail_replaces_stored_value(pool: PgPool) {
-    let first_anime_id = insert_unmerged_work(&pool).await;
-    let second_anime_id = insert_unmerged_work(&pool).await;
+    let first_anime_id = insert_unmerged_anime(&pool).await;
+    let second_anime_id = insert_unmerged_anime(&pool).await;
     save_anime(
         &pool,
         &build_shared_details_save(first_anime_id, 1, "first-v1", "Official"),
@@ -268,7 +271,7 @@ async fn save_anime_later_save_with_new_shared_detail_replaces_stored_value(pool
 
 #[sqlx::test(migrations = "./migrations")]
 async fn save_anime_one_url_given_two_platforms_returns_invalid_argument(pool: PgPool) {
-    let anime_id = insert_unmerged_work(&pool).await;
+    let anime_id = insert_unmerged_anime(&pool).await;
     let mut conflicting_save = build_shared_details_save(anime_id, 1, "conflict-v1", "Official");
     conflicting_save.schedule_and_stats.streaming_sources[0].source = SHARED_LINK.to_owned();
 
@@ -282,7 +285,7 @@ async fn save_anime_one_url_given_two_platforms_returns_invalid_argument(pool: P
 
 #[sqlx::test(migrations = "./migrations")]
 async fn save_anime_openings_and_endings_stored_in_their_own_tables(pool: PgPool) {
-    let anime_id = insert_unmerged_work(&pool).await;
+    let anime_id = insert_unmerged_anime(&pool).await;
     let build_song = |position: i32, title: &str, range_end: Option<i32>| AnimeThemeSongInput {
         position,
         title: title.to_owned(),
@@ -295,8 +298,8 @@ async fn save_anime_openings_and_endings_stored_in_their_own_tables(pool: PgPool
             .into_iter()
             .collect(),
     };
-    let mut work_save = build_work_save(anime_id, 1, "songs-v1", Vec::new());
-    work_save.schedule_and_stats = AnimeScheduleAndStatsInput {
+    let mut anime_save = build_anime_save(anime_id, 1, "songs-v1", Vec::new());
+    anime_save.schedule_and_stats = AnimeScheduleAndStatsInput {
         opening_themes: vec![
             build_song(0, "We Are!", Some(115)),
             build_song(1, "Believe", None),
@@ -308,7 +311,9 @@ async fn save_anime_openings_and_endings_stored_in_their_own_tables(pool: PgPool
         ..AnimeScheduleAndStatsInput::default()
     };
 
-    save_anime(&pool, &work_save).await.expect("the work saves");
+    save_anime(&pool, &anime_save)
+        .await
+        .expect("the work saves");
 
     assert_eq!(
         read_text_rows(
@@ -343,19 +348,19 @@ async fn save_anime_openings_and_endings_stored_in_their_own_tables(pool: PgPool
 }
 
 fn build_many_shared_links_save(anime_id: Uuid, reverse_order: bool) -> SaveAnimeInput {
-    let mut work_save = build_work_save(anime_id, 1, "many-links-v1", Vec::new());
+    let mut anime_save = build_anime_save(anime_id, 1, "many-links-v1", Vec::new());
     let mut link_numbers: Vec<u32> = (0..40).collect();
     if reverse_order {
         link_numbers.reverse();
     }
-    work_save.details.themes = link_numbers
+    anime_save.details.themes = link_numbers
         .iter()
         .map(|link_number| AnimeThemeInput {
             name: format!("Theme {link_number}"),
             description: Some(format!("Description {link_number}")),
         })
         .collect();
-    work_save.schedule_and_stats = AnimeScheduleAndStatsInput {
+    anime_save.schedule_and_stats = AnimeScheduleAndStatsInput {
         trailers: link_numbers
             .iter()
             .map(|link_number| AnimeTrailerInput {
@@ -375,14 +380,14 @@ fn build_many_shared_links_save(anime_id: Uuid, reverse_order: bool) -> SaveAnim
             .collect(),
         ..AnimeScheduleAndStatsInput::default()
     };
-    work_save
+    anime_save
 }
 
 #[sqlx::test(migrations = "./migrations")]
-async fn save_anime_two_works_sharing_rows_saved_at_once_both_succeed(pool: PgPool) {
+async fn save_anime_two_anime_sharing_rows_saved_at_once_both_succeed(pool: PgPool) {
     for attempt in 0..5 {
-        let first_anime_id = insert_unmerged_work(&pool).await;
-        let second_anime_id = insert_unmerged_work(&pool).await;
+        let first_anime_id = insert_unmerged_anime(&pool).await;
+        let second_anime_id = insert_unmerged_anime(&pool).await;
         let first_save = build_many_shared_links_save(first_anime_id, false);
         let second_save = build_many_shared_links_save(second_anime_id, true);
 
@@ -405,18 +410,18 @@ fn build_crossed_languages_save(
     title_language: &str,
     link_language: &str,
 ) -> SaveAnimeInput {
-    let mut work_save = build_work_save(anime_id, 1, "languages-v1", Vec::new());
-    work_save.details.titles = vec![AnimeTitleInput {
+    let mut anime_save = build_anime_save(anime_id, 1, "languages-v1", Vec::new());
+    anime_save.details.titles = vec![AnimeTitleInput {
         language: title_language.to_owned(),
         title: format!("Title in {title_language}"),
     }];
-    work_save.schedule_and_stats.external_sources = vec![AnimeExternalSourceInput {
+    anime_save.schedule_and_stats.external_sources = vec![AnimeExternalSourceInput {
         source: format!("https://example.com/{anime_id}"),
         platform: "Official Site".to_owned(),
         label: None,
         language: Some(link_language.to_owned()),
     }];
-    work_save
+    anime_save
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -424,8 +429,8 @@ async fn save_anime_new_languages_in_crossed_order_saved_at_once_both_succeed(po
     for attempt in 0..20 {
         let first_language = format!("x-first{attempt}");
         let second_language = format!("x-second{attempt}");
-        let first_anime_id = insert_unmerged_work(&pool).await;
-        let second_anime_id = insert_unmerged_work(&pool).await;
+        let first_anime_id = insert_unmerged_anime(&pool).await;
+        let second_anime_id = insert_unmerged_anime(&pool).await;
         let first_save =
             build_crossed_languages_save(first_anime_id, &first_language, &second_language);
         let second_save =

@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        -- reached_anime holds several anime: every anime the character reaches, once each.\n        WITH reached_anime AS (\n            SELECT DISTINCT anime_page.anime_id\n            FROM character_animeography appearance\n            JOIN anime_source anime_page\n              ON anime_page.provider = appearance.anime_page_provider\n             AND anime_page.address = appearance.anime_page_address\n            JOIN anime ON anime.id = anime_page.anime_id AND anime.deleted_at IS NULL\n            WHERE appearance.character_id = $1\n        )\n        INSERT INTO graph_edge (from_id, from_node_type, to_id, to_node_type, edge_type)\n        SELECT anime_id, 'anime', $1, 'character', 'FEATURES' FROM reached_anime\n        UNION ALL\n        SELECT $1, 'character', anime_id, 'anime', 'APPEARS_IN' FROM reached_anime\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "17daf2384f3ce489753a8c801d11954cf29ecd9031d82fc53ba68c34e210fd93"
+}

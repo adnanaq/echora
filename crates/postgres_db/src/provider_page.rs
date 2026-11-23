@@ -725,8 +725,9 @@ pub async fn record_page_observation(
 /// Raises the version of every entity built from `page_key` and requests its merge.
 ///
 /// A merge that loaded before the page changed then fails its version check and starts again.
-/// - A work page queues every work that holds it as a source page.
+/// - A work page queues the work that holds it as a source page.
 /// - An episode page queues the episode that owns it.
+/// - A character page queues the character that owns it.
 ///
 /// # Errors
 ///
@@ -735,48 +736,71 @@ async fn queue_page_owners_for_merge(
     tx: &mut Transaction<'_, Postgres>,
     page_key: &PageKey,
 ) -> Result<(), Error> {
-    if page_key.entity_type == EntityType::Episode {
-        sqlx::query!(
-            r#"
-            UPDATE episode
-            SET version = version + 1,
-                merge_requested_at = COALESCE(merge_requested_at, now())
-            WHERE id IN (
-                SELECT episode_id
-                FROM episode_source
-                WHERE provider = $1 AND entity_type = $2 AND address = $3
+    let provider = page_key.provider.as_str();
+    let entity_type = page_key.entity_type.as_str();
+    let address = page_key.address.as_str();
+    match page_key.entity_type {
+        EntityType::Anime => {
+            sqlx::query!(
+                r#"
+                UPDATE anime
+                SET version = version + 1,
+                    merge_requested_at = COALESCE(merge_requested_at, now())
+                WHERE id IN (
+                    SELECT anime_id
+                    FROM anime_source
+                    WHERE provider = $1 AND entity_type = $2 AND address = $3
+                )
+                  AND deleted_at IS NULL
+                "#,
+                provider,
+                entity_type,
+                address,
             )
-              AND deleted_at IS NULL
-            "#,
-            page_key.provider.as_str(),
-            page_key.entity_type.as_str(),
-            page_key.address.as_str(),
-        )
-        .execute(&mut **tx)
-        .await?;
-        return Ok(());
+            .execute(&mut **tx)
+            .await?;
+        }
+        EntityType::Episode => {
+            sqlx::query!(
+                r#"
+                UPDATE episode
+                SET version = version + 1,
+                    merge_requested_at = COALESCE(merge_requested_at, now())
+                WHERE id IN (
+                    SELECT episode_id
+                    FROM episode_source
+                    WHERE provider = $1 AND entity_type = $2 AND address = $3
+                )
+                  AND deleted_at IS NULL
+                "#,
+                provider,
+                entity_type,
+                address,
+            )
+            .execute(&mut **tx)
+            .await?;
+        }
+        EntityType::Character => {
+            sqlx::query!(
+                r#"
+                UPDATE character
+                SET version = version + 1,
+                    merge_requested_at = COALESCE(merge_requested_at, now())
+                WHERE id IN (
+                    SELECT character_id
+                    FROM character_source
+                    WHERE provider = $1 AND entity_type = $2 AND address = $3
+                )
+                  AND deleted_at IS NULL
+                "#,
+                provider,
+                entity_type,
+                address,
+            )
+            .execute(&mut **tx)
+            .await?;
+        }
     }
-
-    sqlx::query!(
-        r#"
-        UPDATE anime
-        SET version = version + 1,
-            merge_requested_at = COALESCE(merge_requested_at, now())
-        WHERE id IN (
-            SELECT anime_id
-            FROM anime_source
-            WHERE provider = $1 AND entity_type = $2 AND address = $3
-            ORDER BY anime_id
-        )
-          AND deleted_at IS NULL
-        "#,
-        page_key.provider.as_str(),
-        page_key.entity_type.as_str(),
-        page_key.address.as_str(),
-    )
-    .execute(&mut **tx)
-    .await?;
-
     Ok(())
 }
 

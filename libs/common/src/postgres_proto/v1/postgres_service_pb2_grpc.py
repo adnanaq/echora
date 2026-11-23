@@ -65,6 +65,16 @@ class PostgresServiceStub:
                 request_serializer=v1_dot_postgres__service__pb2.MarkEpisodeAiredRequest.SerializeToString,
                 response_deserializer=v1_dot_postgres__service__pb2.MarkEpisodeAiredResponse.FromString,
                 _registered_method=True)
+        self.LoadCharacter = channel.unary_unary(
+                '/postgres_service.v1.PostgresService/LoadCharacter',
+                request_serializer=v1_dot_postgres__service__pb2.LoadCharacterRequest.SerializeToString,
+                response_deserializer=v1_dot_postgres__service__pb2.LoadCharacterResponse.FromString,
+                _registered_method=True)
+        self.SaveCharacter = channel.unary_unary(
+                '/postgres_service.v1.PostgresService/SaveCharacter',
+                request_serializer=v1_dot_postgres__service__pb2.SaveCharacterRequest.SerializeToString,
+                response_deserializer=v1_dot_postgres__service__pb2.SaveCharacterResponse.FromString,
+                _registered_method=True)
 
 
 class PostgresServiceServicer:
@@ -113,6 +123,20 @@ class PostgresServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def LoadCharacter(self, request, context):
+        """Load a character's fetched pages, corrections, and current version for merging.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SaveCharacter(self, request, context):
+        """Save a merged character with optimistic version checking and transactional outbox.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_PostgresServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -145,6 +169,16 @@ def add_PostgresServiceServicer_to_server(servicer, server):
                     servicer.MarkEpisodeAired,
                     request_deserializer=v1_dot_postgres__service__pb2.MarkEpisodeAiredRequest.FromString,
                     response_serializer=v1_dot_postgres__service__pb2.MarkEpisodeAiredResponse.SerializeToString,
+            ),
+            'LoadCharacter': grpc.unary_unary_rpc_method_handler(
+                    servicer.LoadCharacter,
+                    request_deserializer=v1_dot_postgres__service__pb2.LoadCharacterRequest.FromString,
+                    response_serializer=v1_dot_postgres__service__pb2.LoadCharacterResponse.SerializeToString,
+            ),
+            'SaveCharacter': grpc.unary_unary_rpc_method_handler(
+                    servicer.SaveCharacter,
+                    request_deserializer=v1_dot_postgres__service__pb2.SaveCharacterRequest.FromString,
+                    response_serializer=v1_dot_postgres__service__pb2.SaveCharacterResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -310,6 +344,60 @@ class PostgresService:
             '/postgres_service.v1.PostgresService/MarkEpisodeAired',
             v1_dot_postgres__service__pb2.MarkEpisodeAiredRequest.SerializeToString,
             v1_dot_postgres__service__pb2.MarkEpisodeAiredResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def LoadCharacter(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/postgres_service.v1.PostgresService/LoadCharacter',
+            v1_dot_postgres__service__pb2.LoadCharacterRequest.SerializeToString,
+            v1_dot_postgres__service__pb2.LoadCharacterResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SaveCharacter(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/postgres_service.v1.PostgresService/SaveCharacter',
+            v1_dot_postgres__service__pb2.SaveCharacterRequest.SerializeToString,
+            v1_dot_postgres__service__pb2.SaveCharacterResponse.FromString,
             options,
             channel_credentials,
             insecure,

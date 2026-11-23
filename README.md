@@ -336,7 +336,7 @@ The canonical model in `libs/common/src/common/models/anime.py` is the one sourc
 - `scripts/check_anime_model_proto_contract.py` compares `anime.py` with `protos/shared_proto/v1/anime.proto`, field by field.
 - `scripts/check_postgres_schema.py` compares `anime.py` with the PostgreSQL migrations in `crates/postgres_db/migrations/`:
   - each lookup table holds exactly the values of its enum;
-  - every stored field of `Anime` and `Episode` has the table or column the naming rule in `docs/architecture/Database Schema.md` (Naming Rule) gives it. Fields the rule cannot derive, or that are not stored yet, are listed with their reason in the script's `FIELD_EXCEPTIONS`.
+  - every stored field of `Anime`, `Episode` and `Character` has the table or column the naming rule in `docs/architecture/Database Schema.md` (Naming Rule) gives it. Fields the rule cannot derive, or that are not stored yet, are listed with their reason in the script's `FIELD_EXCEPTIONS`.
 
 ```bash
 PYTHONPATH=libs/common/src uv run python scripts/check_anime_model_proto_contract.py
@@ -514,7 +514,7 @@ uv run python script.py
 - Active enrichment gRPC methods:
   - `EnrichmentService`: `Health`, `RunPipeline`
 - Active PostgreSQL gRPC methods:
-  - `PostgresService`: `StorePage`, `LoadAnime`, `SaveAnime`
+  - `PostgresService`: `StorePage`, `LoadAnime`, `SaveAnime`, `LoadEpisode`, `SaveEpisode`, `MarkEpisodeAired`, `LoadCharacter`, `SaveCharacter`
 - Proto sources:
   - `protos/vector_service/v1/`
   - `protos/enrichment_service/v1/`

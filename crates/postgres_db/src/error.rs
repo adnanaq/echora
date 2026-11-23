@@ -145,6 +145,8 @@ impl Error {
 
     /// Returns `true` when the caller passed an invalid argument.
     ///
+    /// Text PostgreSQL cannot store, such as a NUL byte, counts too, since it never succeeds.
+    ///
     /// # Examples
     ///
     /// ```
@@ -300,6 +302,9 @@ impl From<sqlx::Error> for Error {
                 const PG_FOREIGN_KEY_VIOLATION: &str = "23503";
                 /// PostgreSQL SQLSTATE for `serialization_failure` (REPEATABLE READ / SERIALIZABLE).
                 const PG_SERIALIZATION_FAILURE: &str = "40001";
+                /// PostgreSQL SQLSTATE for `character_not_in_repertoire`, such as a NUL byte in
+                /// text. The same input always fails, so it is the caller's to fix, not to retry.
+                const PG_CHARACTER_NOT_IN_REPERTOIRE: &str = "22021";
 
                 let code = db_err.code();
                 let kind = match code.as_deref() {
@@ -311,6 +316,9 @@ impl From<sqlx::Error> for Error {
                     }
                     Some(PG_SERIALIZATION_FAILURE) => {
                         ErrorKind::VersionConflict(db_err.message().to_owned())
+                    }
+                    Some(PG_CHARACTER_NOT_IN_REPERTOIRE) => {
+                        ErrorKind::InvalidArgument(db_err.message().to_owned())
                     }
                     _ => ErrorKind::Database(err),
                 };
