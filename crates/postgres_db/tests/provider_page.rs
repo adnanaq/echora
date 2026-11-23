@@ -250,13 +250,15 @@ async fn record_page_observation_changed_page_requests_merge_of_source_anime_onl
 }
 
 #[sqlx::test(migrations = "./migrations")]
-async fn record_page_observation_changed_character_page_requests_merge_of_owning_character(
+async fn record_page_observation_changed_or_first_fetched_character_page_requests_merge_of_owning_character(
     pool: PgPool,
 ) {
     let page_key =
         PageKey::new(Provider::Mal, EntityType::Character, "40").expect("valid page key");
     let owning_character_id = insert_unmerged_character(&pool, "Monkey D. Luffy").await;
     let other_character_id = insert_unmerged_character(&pool, "Roronoa Zoro").await;
+    let unfetched_page_owner_id = insert_unmerged_character(&pool, "Nami").await;
+    link_character_page(&pool, unfetched_page_owner_id, "mal", "723").await;
     record_page_observation(
         &pool,
         PageObservation {
@@ -291,15 +293,32 @@ async fn record_page_observation_changed_character_page_requests_merge_of_owning
     .await
     .expect("store the changed fetch");
 
+    let first_fetched_page = record_page_observation(
+        &pool,
+        PageObservation {
+            page_key: PageKey::new(Provider::Mal, EntityType::Character, "723")
+                .expect("valid page key"),
+            observed_at: Utc::now(),
+            outcome: build_success(br#"{"id":723}"#),
+        },
+    )
+    .await
+    .expect("store the first fetch of the linked page");
+
     assert!(!unchanged_page.has_changed);
     assert!(changed_page.has_changed);
+    assert!(first_fetched_page.has_changed);
     let character_states: Vec<(i64, bool)> = sqlx::query_as(
         "SELECT version, merge_requested_at IS NOT NULL FROM character WHERE id = ANY($1)
          ORDER BY array_position($1, id)",
     )
-    .bind(vec![owning_character_id, other_character_id])
+    .bind(vec![
+        owning_character_id,
+        other_character_id,
+        unfetched_page_owner_id,
+    ])
     .fetch_all(&pool)
     .await
     .expect("read the characters");
-    assert_eq!(character_states, vec![(2, true), (1, false)]);
+    assert_eq!(character_states, vec![(2, true), (1, false), (2, true)]);
 }
