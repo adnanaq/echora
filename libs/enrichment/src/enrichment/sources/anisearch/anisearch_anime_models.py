@@ -12,6 +12,7 @@ from typing import Annotated, Any, Self
 from enrichment.sources.base.field_types import (
     NumberFromText,
     StrippedText,
+    StrippedTextList,
     number_from_display_text,
     strip_text_or_none,
 )
@@ -464,7 +465,7 @@ class AniSearchCharacter(BaseModel):
     # Anime whose characters page supplied `role`, so the mapper can attach it
     # to the matching animeography entry.
     anime_url: str | None = None
-    tags: list[str] = []
+    tags: StrippedTextList = []
     screenshot_images: list[str] = []
     picture_images: list[str] = []
     voice_actors: list[AniSearchVoiceActorRef] = []

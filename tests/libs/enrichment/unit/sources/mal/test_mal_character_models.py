@@ -89,10 +89,11 @@ def test_mal_scraped_character_nicknames() -> None:
     char = MalCharacter(
         source="...",
         name="Monkey D., Luffy",
-        nicknames=["Straw Hat Luffy", "Straw Hat"],
+        nicknames=["Straw Hat Luffy ", " Straw Hat", " "],
+        images=[" https://cdn.myanimelist.net/images/characters/9/310307.jpg "],
     )
-    assert len(char.nicknames) == 2
-    assert "Straw Hat Luffy" in char.nicknames
+    assert char.nicknames == ["Straw Hat Luffy", "Straw Hat"]
+    assert char.images == ["https://cdn.myanimelist.net/images/characters/9/310307.jpg"]
 
 
 def test_mal_scraped_character_voice_actors() -> None:

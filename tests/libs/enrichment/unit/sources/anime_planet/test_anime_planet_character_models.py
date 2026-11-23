@@ -1,5 +1,6 @@
 import pytest
 from enrichment.sources.anime_planet.anime_planet_character_models import (
+    AnimePlanetCharacter,
     AnimePlanetCharacterAnimeRole,
     AnimePlanetVoiceActor,
 )
@@ -67,3 +68,14 @@ def test_anime_planet_character_anime_role_voice_actors_list_raises_validation_e
         AnimePlanetCharacterAnimeRole(
             title="One Piece", url="/anime/one-piece", voice_actors=[TANAKA]
         )
+
+
+def test_anime_planet_character_tags_and_alt_names_strip_and_drop_empty_texts() -> None:
+    character = AnimePlanetCharacter(
+        name="Monkey D. Luffy",
+        slug="monkey-d-luffy",
+        url="https://www.anime-planet.com/characters/monkey-d-luffy",
+        tags=[" Pirates ", ""],
+        alt_names=["Straw Hat ", " "],
+    )
+    assert (character.tags, character.alt_names) == (["Pirates"], ["Straw Hat"])

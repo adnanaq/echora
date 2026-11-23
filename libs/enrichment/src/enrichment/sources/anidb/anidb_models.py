@@ -8,7 +8,7 @@ XML tag names are used where no canonical equivalent exists.
 from typing import Annotated, Self
 
 from enrichment.sources.anidb.anidb_heading_tags import HEADING_TAG_PATHS
-from enrichment.sources.base.field_types import strip_text_or_none
+from enrichment.sources.base.field_types import StrippedTextList, strip_text_or_none
 from pydantic import BaseModel, BeforeValidator, ConfigDict, model_validator
 
 # AniDB's placeholder for a date it does not know.
@@ -335,11 +335,11 @@ class AniDBCharacterPage(BaseModel):
     name_kanji: str | None = None
     description: str | None = None
     gender: str | None = None
-    nicknames: list[str] = []
-    official_names: list[str] = []
-    abilities: list[str] = []
-    looks: list[str] = []
-    personality: list[str] = []
-    role: list[str] = []
-    supernatural_abilities: list[str] = []
+    nicknames: StrippedTextList = []
+    official_names: StrippedTextList = []
+    abilities: StrippedTextList = []
+    looks: StrippedTextList = []
+    personality: StrippedTextList = []
+    role: StrippedTextList = []
+    supernatural_abilities: StrippedTextList = []
     animeography: list[dict[str, str]] = []  # [{"title": ..., "role": ..., "url": ...}]

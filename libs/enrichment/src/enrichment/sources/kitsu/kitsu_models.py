@@ -12,6 +12,7 @@ from enrichment.sources.base.field_types import (
     PlainText,
     StrippedText,
     strip_text_or_none,
+    strip_texts,
 )
 from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field
 
@@ -41,11 +42,6 @@ def _without_null_texts(values: object) -> object:
     if isinstance(values, list):
         return [value for value in values if value is not None]
     return values
-
-
-def _without_empty_texts(values: list[str]) -> list[str]:
-    """Strip each text and leave out the empty ones."""
-    return [text.strip() for text in values if text.strip()]
 
 
 def _strip_preamble(value: object) -> object:
@@ -155,7 +151,7 @@ KitsuLocale = Annotated[str | None, BeforeValidator(_resolve_locale_language)]
 TextList = Annotated[
     list[str],
     BeforeValidator(_without_null_texts),
-    AfterValidator(_without_empty_texts),
+    AfterValidator(strip_texts),
 ]
 CharacterDescription = Annotated[PlainText, BeforeValidator(_strip_preamble)]
 

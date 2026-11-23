@@ -12,6 +12,7 @@ from typing import Annotated, Any
 from enrichment.sources.base.field_types import (
     NumberFromText,
     StrippedText,
+    StrippedTextList,
     strip_text_or_none,
 )
 from enrichment.sources.base.utils import (
@@ -351,9 +352,9 @@ class MalCharacter(BaseModel):
     name: str
     name_native: str | None = None  # Kanji/native script in parens from page title
     description: str | None = None  # "About" section on character page
-    nicknames: list[str] = []
+    nicknames: StrippedTextList = []
     favorites: int = 0
-    images: list[str] = []  # Cover image URLs
+    images: StrippedTextList = []  # Cover image URLs
 
     # Free-form biographical data — keys vary per character (not all characters have the same fields)
     # Common keys: Age, Birthdate, Height, Weight, Blood type, Affiliation, Position,

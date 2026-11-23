@@ -1,5 +1,8 @@
 import pytest
-from enrichment.sources.anisearch.anisearch_anime_models import AniSearchAnime
+from enrichment.sources.anisearch.anisearch_anime_models import (
+    AniSearchAnime,
+    AniSearchCharacter,
+)
 from pydantic import ValidationError
 
 
@@ -156,3 +159,11 @@ def test_anisearch_anime_synonyms_stripped_and_blank_names_dropped() -> None:
 def test_anisearch_anime_synonyms_as_one_text_rejected() -> None:
     with pytest.raises(ValidationError):
         AniSearchAnime.model_validate({"synonyms": "Synonyms: OP, OneP"})
+
+
+def test_anisearch_character_tags_strip_and_drop_empty_texts() -> None:
+    character = AniSearchCharacter(
+        source="https://www.anisearch.com/character/1234,monkey-d-luffy",
+        tags=[" Pirate ", " "],
+    )
+    assert character.tags == ["Pirate"]

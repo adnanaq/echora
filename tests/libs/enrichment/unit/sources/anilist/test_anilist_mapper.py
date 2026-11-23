@@ -801,6 +801,27 @@ def test_character_from_anilist_spoiler_alternative_names_become_nicknames() -> 
     assert character_from_anilist(edge)["nicknames"] == ["God Usopp", "King of Snipers"]
 
 
+def test_character_from_anilist_alternative_names_strip_and_drop_empty_texts() -> None:
+    edge = AniListCharacterEdge.model_validate(
+        {
+            **_character_edge().model_dump(by_alias=True),
+            "node": {
+                **_character_edge().node.model_dump(by_alias=True),
+                "name": {
+                    "full": "Monkey D. Luffy",
+                    "alternative": ["Big News ", " "],
+                    "alternativeSpoiler": [" God Usopp"],
+                },
+            },
+        }
+    )
+    character = character_from_anilist(edge)
+    assert (character["name_variations"], character["nicknames"]) == (
+        ["Big News"],
+        ["God Usopp"],
+    )
+
+
 def test_character_from_anilist_voice_actor_mapped_with_language_and_links() -> None:
     actor = character_from_anilist(_character_edge())["voice_actors"][0]
     assert (actor["name"], actor["native_name"], actor["language"]) == (

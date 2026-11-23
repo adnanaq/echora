@@ -9,7 +9,11 @@ them into the canonical Character model.
 import logging
 
 from common.models.language_codes import UNDETERMINED_LANGUAGE
-from enrichment.sources.base.field_types import NumberFromText, StrippedText
+from enrichment.sources.base.field_types import (
+    NumberFromText,
+    StrippedText,
+    StrippedTextList,
+)
 from pydantic import BaseModel, Field, field_validator
 
 logger = logging.getLogger(__name__)
@@ -111,8 +115,8 @@ class AnimePlanetCharacter(BaseModel):
     hated_rank: NumberFromText = None
     loved_count: NumberFromText = None  # "36,485 users" → 36485
     description: str | None = None
-    tags: list[str] = Field(default_factory=list)
-    alt_names: list[str] = Field(default_factory=list)  # from h2.aka
+    tags: StrippedTextList = Field(default_factory=list)
+    alt_names: StrippedTextList = Field(default_factory=list)  # from h2.aka
     attributes: dict[str, str] = Field(default_factory=dict)
     # All EntryMetadata items not explicitly modelled (eye_color, birthday, age, etc.)
 
