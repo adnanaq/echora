@@ -22,7 +22,7 @@ use crate::anime::{
     parse_entity_type,
 };
 use crate::anime_relations::lock_anime_pages_shared;
-use crate::{Error, PageKey, PageResponse, Provider, SourceMaterialXrefInput};
+use crate::{Error, PageKey, PageResponse, Provider};
 
 /// Current canonical hash format version stored in `character.hash_format`.
 pub const CHARACTER_HASH_FORMAT: i16 = 1;
@@ -44,11 +44,13 @@ pub struct CharacterAppearanceInput {
     pub role: String,
 }
 
-/// A manga or novel a character's pages name, matched to stored source material.
+/// A manga or novel a character's pages name, by its provider identifier, with the role there.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CharacterMangaographyInput {
-    /// Provider identifiers of the source material, from the entry's URLs.
-    pub xrefs: Vec<SourceMaterialXrefInput>,
+    /// Provider of the manga or novel page.
+    pub source_material_provider: String,
+    /// Identifier of the manga or novel on `source_material_provider`.
+    pub source_material_external_id: String,
     /// Canonical `character_role` lookup value (for example `"MAIN"`).
     pub role: String,
 }
@@ -530,14 +532,12 @@ fn validate_save_character_input(input: &SaveCharacterInput) -> Result<(), Error
         ));
     }
     if input.mangaography.iter().any(|entry| {
-        entry.role.trim().is_empty()
-            || entry
-                .xrefs
-                .iter()
-                .any(|xref| xref.provider.trim().is_empty() || xref.external_id.trim().is_empty())
+        entry.source_material_provider.trim().is_empty()
+            || entry.source_material_external_id.trim().is_empty()
+            || entry.role.trim().is_empty()
     }) {
         return Err(Error::invalid_argument(
-            "character_mangaography role and xrefs must not be empty",
+            "character_mangaography provider, external ID and role must not be empty",
         ));
     }
     Ok(())
@@ -754,8 +754,7 @@ async fn replace_character_attributes_and_spoilers(
 
 /// Replaces the works a character appears in, each held by the work's page.
 ///
-/// A page given twice keeps its strongest role: `MAIN`, then `SUPPORTING`, `BACKGROUND`
-/// and `UNKNOWN`.
+/// A page given twice keeps its strongest role, by the `character_role` rank.
 ///
 /// # Errors
 ///
@@ -766,32 +765,17 @@ async fn replace_character_animeography(
     character_id: Uuid,
     animeography: &[CharacterAppearanceInput],
 ) -> Result<(), Error> {
-    let mut role_by_page: BTreeMap<(&str, &str), &str> = BTreeMap::new();
-    for appearance in animeography {
-        let page = (
-            appearance.anime_page_provider.as_str(),
-            appearance.anime_page_address.as_str(),
-        );
-        role_by_page
-            .entry(page)
-            .and_modify(|stored_role| {
-                if role_rank(&appearance.role) < role_rank(stored_role) {
-                    *stored_role = appearance.role.as_str();
-                }
-            })
-            .or_insert(appearance.role.as_str());
-    }
-    let providers: Vec<String> = role_by_page
-        .keys()
-        .map(|(provider, _)| (*provider).to_owned())
+    let providers: Vec<&str> = animeography
+        .iter()
+        .map(|appearance| appearance.anime_page_provider.as_str())
         .collect();
-    let addresses: Vec<String> = role_by_page
-        .keys()
-        .map(|(_, address)| (*address).to_owned())
+    let addresses: Vec<&str> = animeography
+        .iter()
+        .map(|appearance| appearance.anime_page_address.as_str())
         .collect();
-    let roles: Vec<String> = role_by_page
-        .values()
-        .map(|role| (*role).to_owned())
+    let roles: Vec<&str> = animeography
+        .iter()
+        .map(|appearance| appearance.role.as_str())
         .collect();
 
     sqlx::query!(
@@ -804,23 +788,26 @@ async fn replace_character_animeography(
         "INSERT INTO character_animeography (
              character_id, anime_page_provider, anime_page_address, role
          )
-         SELECT $1, provider, address, role
-         FROM UNNEST($2::text[], $3::text[], $4::text[]) AS entry(provider, address, role)",
+         SELECT DISTINCT ON (entry.provider, entry.address)
+                $1, entry.provider, entry.address, entry.role
+         FROM UNNEST($2::text[], $3::text[], $4::text[]) AS entry(provider, address, role)
+         LEFT JOIN character_role role_order ON role_order.value = entry.role
+         ORDER BY entry.provider, entry.address, role_order.rank",
         character_id,
-        &providers,
-        &addresses,
-        &roles
+        &providers as &[&str],
+        &addresses as &[&str],
+        &roles as &[&str]
     )
     .execute(&mut **tx)
     .await?;
     Ok(())
 }
 
-/// Replaces the source material a character appears in, matched through its identifiers.
+/// Replaces the manga and novels a character appears in, each held by its provider identifier.
 ///
-/// An entry none of whose identifiers a stored source material holds is skipped, since a
-/// character page only confirms what works list. Two entries matching one source material
-/// keep the strongest role.
+/// The source material is found by joining the identifier to `source_material_xref`, so
+/// source material stored after the character still reaches it. An identifier given twice
+/// keeps its strongest role, by the `character_role` rank.
 ///
 /// # Errors
 ///
@@ -831,16 +818,18 @@ async fn replace_character_mangaography(
     character_id: Uuid,
     mangaography: &[CharacterMangaographyInput],
 ) -> Result<(), Error> {
-    let mut providers = Vec::new();
-    let mut external_ids = Vec::new();
-    let mut roles = Vec::new();
-    for entry in mangaography {
-        for xref in &entry.xrefs {
-            providers.push(xref.provider.clone());
-            external_ids.push(xref.external_id.clone());
-            roles.push(entry.role.clone());
-        }
-    }
+    let providers: Vec<&str> = mangaography
+        .iter()
+        .map(|entry| entry.source_material_provider.as_str())
+        .collect();
+    let external_ids: Vec<&str> = mangaography
+        .iter()
+        .map(|entry| entry.source_material_external_id.as_str())
+        .collect();
+    let roles: Vec<&str> = mangaography
+        .iter()
+        .map(|entry| entry.role.as_str())
+        .collect();
 
     sqlx::query!(
         "DELETE FROM character_mangaography WHERE character_id = $1",
@@ -849,17 +838,18 @@ async fn replace_character_mangaography(
     .execute(&mut **tx)
     .await?;
     sqlx::query!(
-        "INSERT INTO character_mangaography (character_id, source_material_id, role)
-         SELECT DISTINCT ON (xref.source_material_id) $1, xref.source_material_id, entry.role
+        "INSERT INTO character_mangaography (
+             character_id, source_material_provider, source_material_external_id, role
+         )
+         SELECT DISTINCT ON (entry.provider, entry.external_id)
+                $1, entry.provider, entry.external_id, entry.role
          FROM UNNEST($2::text[], $3::text[], $4::text[]) AS entry(provider, external_id, role)
-         JOIN source_material_xref xref
-           ON xref.provider = entry.provider AND xref.external_id = entry.external_id
-         ORDER BY xref.source_material_id,
-                  array_position(ARRAY['MAIN', 'SUPPORTING', 'BACKGROUND', 'UNKNOWN'], entry.role)",
+         LEFT JOIN character_role role_order ON role_order.value = entry.role
+         ORDER BY entry.provider, entry.external_id, role_order.rank",
         character_id,
-        &providers,
-        &external_ids,
-        &roles
+        &providers as &[&str],
+        &external_ids as &[&str],
+        &roles as &[&str]
     )
     .execute(&mut **tx)
     .await?;
@@ -898,7 +888,7 @@ pub(crate) async fn recompute_character_graph_edges(
             JOIN anime_source anime_page
               ON anime_page.provider = appearance.anime_page_provider
              AND anime_page.address = appearance.anime_page_address
-            JOIN anime work ON work.id = anime_page.anime_id AND work.deleted_at IS NULL
+            JOIN anime ON anime.id = anime_page.anime_id AND anime.deleted_at IS NULL
             WHERE appearance.character_id = $1
         )
         INSERT INTO graph_edge (from_id, from_node_type, to_id, to_node_type, edge_type)
@@ -1016,20 +1006,16 @@ pub async fn list_character_anime(
         r#"
         SELECT
             anime_page.anime_id AS "anime_id!",
-            (array_agg(appearance.role ORDER BY array_position(
-                ARRAY['MAIN', 'SUPPORTING', 'BACKGROUND', 'UNKNOWN'], appearance.role
-            )))[1] AS "role!"
+            (array_agg(appearance.role ORDER BY role_order.rank))[1] AS "role!"
         FROM character_animeography appearance
+        JOIN character_role role_order ON role_order.value = appearance.role
         JOIN anime_source anime_page
           ON anime_page.provider = appearance.anime_page_provider
          AND anime_page.address = appearance.anime_page_address
-        JOIN anime work ON work.id = anime_page.anime_id AND work.deleted_at IS NULL
+        JOIN anime ON anime.id = anime_page.anime_id AND anime.deleted_at IS NULL
         WHERE appearance.character_id = $1
         GROUP BY anime_page.anime_id
-        ORDER BY min(array_position(
-                     ARRAY['MAIN', 'SUPPORTING', 'BACKGROUND', 'UNKNOWN'], appearance.role
-                 )),
-                 anime_page.anime_id
+        ORDER BY min(role_order.rank), anime_page.anime_id
         "#,
         character_id
     )
@@ -1042,17 +1028,6 @@ pub async fn list_character_anime(
             role: row.role,
         })
         .collect())
-}
-
-/// Ranks a `character_role` value, lower being stronger; an unknown value ranks last.
-fn role_rank(role: &str) -> u8 {
-    match role {
-        "MAIN" => 0,
-        "SUPPORTING" => 1,
-        "BACKGROUND" => 2,
-        "UNKNOWN" => 3,
-        _ => 4,
-    }
 }
 
 /// Returns `values` sorted with repeats removed, ready for an `UNNEST` insert.
@@ -1069,16 +1044,6 @@ fn sort_unique(values: &[String]) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn role_rank_orders_main_before_supporting_background_unknown_and_other() {
-        let mut roles = vec!["OTHER", "UNKNOWN", "BACKGROUND", "SUPPORTING", "MAIN"];
-        roles.sort_by_key(|role| role_rank(role));
-        assert_eq!(
-            roles,
-            vec!["MAIN", "SUPPORTING", "BACKGROUND", "UNKNOWN", "OTHER"]
-        );
-    }
 
     #[test]
     fn sort_unique_returns_sorted_values_once() {

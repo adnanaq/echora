@@ -196,7 +196,8 @@ FIELD_EXCEPTIONS: dict[str, str] = {
     "character.anime_ids": "read from character_animeography through the join to anime_source",
     "character.animeography.title": "read from the work the page joins to",
     "character.animeography.sources": "stored as the work's page key",
-    "character.mangaography.sources": "matched to source material through source_material_xref",
+    "character.mangaography.title": "read from the source material the identifier joins to",
+    "character.mangaography.sources": "stored as the source material's provider identifier",
     "character.voice_actors": "people tables, planned last",
 }
 

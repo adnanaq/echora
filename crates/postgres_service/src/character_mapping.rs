@@ -3,11 +3,10 @@
 //! A character's `animeography` names each work by its page URLs. Each URL becomes a work
 //! page key, which the database joins to the work that holds the page, so a work stored
 //! after the character still reaches it. `mangaography` URLs become source material
-//! identifiers, which the database matches to stored source material.
+//! identifiers in the same way, which the database joins to `source_material_xref`.
 
 use postgres_db::{
-    CHARACTER_HASH_FORMAT, CharacterAppearanceInput, CharacterMangaographyInput,
-    SaveCharacterInput, SourceMaterialXrefInput,
+    CHARACTER_HASH_FORMAT, CharacterAppearanceInput, CharacterMangaographyInput, SaveCharacterInput,
 };
 use prost::Message as _;
 use sha2::{Digest as _, Sha256};
@@ -121,8 +120,8 @@ fn map_character_animeography(
 
 /// Converts the manga and novels a character appears in into source material identifiers.
 ///
-/// A URL that names no provider's manga or novel page is left out, and so is an entry
-/// with none, since it could match no stored source material.
+/// Each URL that names a provider's manga or novel page becomes one identifier with the
+/// entry's role, and any other URL is left out.
 ///
 /// # Errors
 ///
@@ -138,23 +137,16 @@ fn map_character_mangaography(
     } in mangaography
     {
         let mapped_role = map_character_role(role)?;
-        let xrefs: Vec<SourceMaterialXrefInput> = sources
-            .into_iter()
-            .filter_map(|url| {
-                parse_source_material_target_from_url(&url).map(|(provider, external_id)| {
-                    SourceMaterialXrefInput {
-                        provider: provider.to_owned(),
-                        external_id,
-                        url,
-                    }
-                })
-            })
-            .collect();
-        if !xrefs.is_empty() {
-            entries.push(CharacterMangaographyInput {
-                xrefs,
-                role: mapped_role.to_owned(),
-            });
+        for source_url in sources {
+            if let Some((provider, external_id)) =
+                parse_source_material_target_from_url(&source_url)
+            {
+                entries.push(CharacterMangaographyInput {
+                    source_material_provider: provider.to_owned(),
+                    source_material_external_id: external_id,
+                    role: mapped_role.to_owned(),
+                });
+            }
         }
     }
     Ok(entries)
@@ -256,6 +248,7 @@ mod tests {
                     CharacterRole::Main,
                     &[
                         "https://myanimelist.net/manga/13/One_Piece",
+                        "https://anilist.co/manga/30013",
                         "https://myanimelist.net/anime/21",
                     ],
                 ),
@@ -313,14 +306,18 @@ mod tests {
         );
         assert_eq!(
             input.mangaography,
-            vec![CharacterMangaographyInput {
-                xrefs: vec![SourceMaterialXrefInput {
-                    provider: "mal".to_owned(),
-                    external_id: "13".to_owned(),
-                    url: "https://myanimelist.net/manga/13/One_Piece".to_owned(),
-                }],
-                role: "MAIN".to_owned(),
-            }]
+            vec![
+                CharacterMangaographyInput {
+                    source_material_provider: "mal".to_owned(),
+                    source_material_external_id: "13".to_owned(),
+                    role: "MAIN".to_owned(),
+                },
+                CharacterMangaographyInput {
+                    source_material_provider: "anilist".to_owned(),
+                    source_material_external_id: "30013".to_owned(),
+                    role: "MAIN".to_owned(),
+                },
+            ]
         );
     }
 

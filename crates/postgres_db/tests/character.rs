@@ -8,8 +8,8 @@ use chrono::{Duration, Utc};
 use postgres_db::{
     CHARACTER_HASH_FORMAT, CharacterAnime, CharacterAppearanceInput, CharacterMangaographyInput,
     EntityType, FetchOutcome, PageKey, PageObservation, PageResponse, Provider, SaveCharacterInput,
-    SaveCharacterOutcome, SourceMaterialXrefInput, link_anime_source_page, list_character_anime,
-    load_character, record_page_observation, save_character,
+    SaveCharacterOutcome, link_anime_source_page, list_character_anime, load_character,
+    record_page_observation, save_character,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -47,6 +47,18 @@ fn build_appearance(provider: &str, address: &str, role: &str) -> CharacterAppea
     CharacterAppearanceInput {
         anime_page_provider: provider.to_owned(),
         anime_page_address: address.to_owned(),
+        role: role.to_owned(),
+    }
+}
+
+fn build_mangaography_entry(
+    provider: &str,
+    external_id: &str,
+    role: &str,
+) -> CharacterMangaographyInput {
+    CharacterMangaographyInput {
+        source_material_provider: provider.to_owned(),
+        source_material_external_id: external_id.to_owned(),
         role: role.to_owned(),
     }
 }
@@ -538,24 +550,21 @@ async fn save_character_invalid_fields_return_invalid_argument(pool: PgPool) {
         (
             "blank mangaography role",
             SaveCharacterInput {
-                mangaography: vec![CharacterMangaographyInput {
-                    xrefs: Vec::new(),
-                    role: String::new(),
-                }],
+                mangaography: vec![build_mangaography_entry("mal", "13", "")],
+                ..valid_input.clone()
+            },
+        ),
+        (
+            "blank mangaography provider",
+            SaveCharacterInput {
+                mangaography: vec![build_mangaography_entry(" ", "13", "MAIN")],
                 ..valid_input.clone()
             },
         ),
         (
             "blank mangaography external id",
             SaveCharacterInput {
-                mangaography: vec![CharacterMangaographyInput {
-                    xrefs: vec![SourceMaterialXrefInput {
-                        provider: "mal".to_owned(),
-                        external_id: String::new(),
-                        url: String::new(),
-                    }],
-                    role: "MAIN".to_owned(),
-                }],
+                mangaography: vec![build_mangaography_entry("mal", "", "MAIN")],
                 ..valid_input.clone()
             },
         ),
@@ -791,9 +800,44 @@ async fn link_anime_source_page_named_by_characters_updates_them_and_their_edges
 }
 
 #[sqlx::test(migrations = "./migrations")]
-async fn save_character_mangaography_keeps_matched_source_material_with_strongest_role(
+async fn save_character_mangaography_before_source_material_stored_reaches_it_through_identifiers(
     pool: PgPool,
 ) {
+    let character_id = insert_unmerged_character(&pool, "Luffy").await;
+    let mut input = build_character_save(character_id, 1, "hash");
+    input.mangaography = vec![
+        build_mangaography_entry("anilist", "30013", "SUPPORTING"),
+        build_mangaography_entry("mal", "13", "BACKGROUND"),
+        build_mangaography_entry("mal", "13", "MAIN"),
+        build_mangaography_entry("mal", "999999", "UNKNOWN"),
+    ];
+
+    save_character(&pool, &input)
+        .await
+        .expect("save the character");
+
+    let stored_mangaography: Vec<(String, String, String)> = sqlx::query_as(
+        "SELECT source_material_provider, source_material_external_id, role
+         FROM character_mangaography WHERE character_id = $1
+         ORDER BY source_material_provider, source_material_external_id",
+    )
+    .bind(character_id)
+    .fetch_all(&pool)
+    .await
+    .expect("read the mangaography");
+    assert_eq!(
+        stored_mangaography,
+        vec![
+            (
+                "anilist".to_owned(),
+                "30013".to_owned(),
+                "SUPPORTING".to_owned()
+            ),
+            ("mal".to_owned(), "13".to_owned(), "MAIN".to_owned()),
+            ("mal".to_owned(), "999999".to_owned(), "UNKNOWN".to_owned()),
+        ]
+    );
+
     let source_material_id = Uuid::now_v7();
     sqlx::query("INSERT INTO source_material (id, title, type) VALUES ($1, 'One Piece', 'MANGA')")
         .bind(source_material_id)
@@ -809,41 +853,23 @@ async fn save_character_mangaography_keeps_matched_source_material_with_stronges
     .execute(&pool)
     .await
     .expect("store the cross-references");
-    let character_id = insert_unmerged_character(&pool, "Luffy").await;
-    let build_xref = |provider: &str, external_id: &str| SourceMaterialXrefInput {
-        provider: provider.to_owned(),
-        external_id: external_id.to_owned(),
-        url: String::new(),
-    };
-    let mut input = build_character_save(character_id, 1, "hash");
-    input.mangaography = vec![
-        CharacterMangaographyInput {
-            xrefs: vec![build_xref("anilist", "30013")],
-            role: "SUPPORTING".to_owned(),
-        },
-        CharacterMangaographyInput {
-            xrefs: vec![build_xref("mal", "13")],
-            role: "MAIN".to_owned(),
-        },
-        CharacterMangaographyInput {
-            xrefs: vec![build_xref("mal", "999999")],
-            role: "MAIN".to_owned(),
-        },
-    ];
 
-    save_character(&pool, &input)
-        .await
-        .expect("save the character");
-
-    let stored_mangaography: Vec<(Uuid, String)> = sqlx::query_as(
-        "SELECT source_material_id, role FROM character_mangaography WHERE character_id = $1",
+    let reached_source_material: Vec<(Uuid, String)> = sqlx::query_as(
+        "SELECT DISTINCT ON (xref.source_material_id) xref.source_material_id, entry.role
+         FROM character_mangaography entry
+         JOIN source_material_xref xref
+           ON xref.provider = entry.source_material_provider
+          AND xref.external_id = entry.source_material_external_id
+         JOIN character_role role_order ON role_order.value = entry.role
+         WHERE entry.character_id = $1
+         ORDER BY xref.source_material_id, role_order.rank",
     )
     .bind(character_id)
     .fetch_all(&pool)
     .await
-    .expect("read the mangaography");
+    .expect("read the source material through the join");
     assert_eq!(
-        stored_mangaography,
+        reached_source_material,
         vec![(source_material_id, "MAIN".to_owned())]
     );
 }

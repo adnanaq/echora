@@ -58,6 +58,15 @@ async fn lookup_and_name_tables_migrate_and_seed_expected_rows() -> Result<(), E
     .await?;
     assert_eq!(shared_name_table_count, Some(5));
 
+    let character_roles_by_strength =
+        sqlx::query_scalar!("SELECT value FROM character_role ORDER BY rank")
+            .fetch_all(&pool)
+            .await?;
+    assert_eq!(
+        character_roles_by_strength,
+        vec!["MAIN", "SUPPORTING", "BACKGROUND", "UNKNOWN"]
+    );
+
     let duplicate_sqlx_err = sqlx::query("INSERT INTO anime_type VALUES ('TV')")
         .execute(&pool)
         .await

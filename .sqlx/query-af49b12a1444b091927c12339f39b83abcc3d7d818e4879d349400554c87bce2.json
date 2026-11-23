@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO character_mangaography (\n             character_id, source_material_provider, source_material_external_id, role\n         )\n         SELECT DISTINCT ON (entry.provider, entry.external_id)\n                $1, entry.provider, entry.external_id, entry.role\n         FROM UNNEST($2::text[], $3::text[], $4::text[]) AS entry(provider, external_id, role)\n         LEFT JOIN character_role role_order ON role_order.value = entry.role\n         ORDER BY entry.provider, entry.external_id, role_order.rank",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "TextArray",
+        "TextArray",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "af49b12a1444b091927c12339f39b83abcc3d7d818e4879d349400554c87bce2"
+}

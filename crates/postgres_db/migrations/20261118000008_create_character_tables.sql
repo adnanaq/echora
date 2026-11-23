@@ -54,6 +54,7 @@ CREATE TABLE character_source (
 -- Character.animeography: each work the character's pages list, held by the work's page,
 -- with the character's role there. The work is found by joining the page to anime_source,
 -- so a work stored after the character, or a page that moves, needs no change here.
+-- The page has no foreign key to provider_page, since the work's page may not be fetched yet.
 CREATE TABLE character_animeography (
   character_id         uuid NOT NULL REFERENCES character(id) ON DELETE CASCADE,
   anime_page_provider  text NOT NULL,
@@ -108,16 +109,21 @@ CREATE TABLE character_spoiler (
   PRIMARY KEY (character_id, spoiler_name)
 );
 
--- Character.mangaography, matched to stored source material through source_material_xref.
+-- Character.mangaography: each manga or novel the character's pages list, held by its
+-- provider identifier, with the character's role there. The source material is found by
+-- joining the identifier to source_material_xref, so source material stored after the
+-- character still reaches it.
 CREATE TABLE character_mangaography (
-  character_id        uuid NOT NULL REFERENCES character(id) ON DELETE CASCADE,
-  source_material_id  uuid NOT NULL REFERENCES source_material(id) ON DELETE CASCADE,
-  role                text NOT NULL REFERENCES character_role(value),
-  PRIMARY KEY (character_id, source_material_id)
+  character_id                 uuid NOT NULL REFERENCES character(id) ON DELETE CASCADE,
+  source_material_provider     text NOT NULL,
+  source_material_external_id  text NOT NULL,
+  role                         text NOT NULL REFERENCES character_role(value),
+  PRIMARY KEY (character_id, source_material_provider, source_material_external_id)
 );
 
+-- The characters of a source material, joined from its cross-references.
 CREATE INDEX character_mangaography_source_material_idx
-  ON character_mangaography(source_material_id);
+  ON character_mangaography(source_material_provider, source_material_external_id);
 
 -- Approved per-field overrides applied after every character merge.
 CREATE TABLE character_field_correction (
