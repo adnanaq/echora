@@ -5,7 +5,7 @@ comparisons, and background evidence pages consumed by ``case_views.build_case_v
 
 Key presentation and constraint rules include:
 - Placeable pages: An entry group case presents one row for each placeable
-  provider page in deterministic ``list_placeable_case_page_keys`` order,
+  provider page in deterministic ``ReviewCase.placeable_page_keys`` order,
   annotating the entry label (Work A, Work B) and whether the page serves as
   that entry's reference page.
 - Closed works: A work holds at most one page of each provider, so a row
