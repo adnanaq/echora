@@ -65,6 +65,19 @@ def test_anime_from_anisearch_titles_synopsis_genres_and_tags_mapped() -> None:
     assert mapped["sources"] == [ONE_PIECE_URL]
 
 
+def test_anime_from_anisearch_placeholder_synopsis_omitted() -> None:
+    mapped = anime_from_anisearch(
+        AniSearchAnime(
+            title="Ba La La Xiao Mo Xian Zhi: Qiji Wubu",
+            synopsis="A short plot summary about the anime “Balala the Fairies 2” "
+            "would help many anime and manga fans decide whether they want to "
+            "watch this show or not.",
+            url=ONE_PIECE_URL,
+        )
+    )
+    assert "synopsis" not in mapped
+
+
 def test_anime_from_anisearch_english_title_and_titles_copied() -> None:
     mapped = anime_from_anisearch(
         AniSearchAnime(

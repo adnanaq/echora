@@ -49,6 +49,27 @@ def _without_label(value: object) -> object:
     return value
 
 
+def _synopsis_text(value: object) -> object:
+    """Strip the synopsis; AniSearch's placeholder for a missing one becomes None.
+
+    AniSearch shows the placeholder on a page whose English plot summary nobody
+    has written, so the text names the anime but tells nothing about it.
+
+    >>> _synopsis_text("A short plot summary about the anime “Ninja” would help many anime and manga fans decide.") is None
+    True
+
+    Args:
+        value: The page's English description as the crawler read it.
+
+    Returns:
+        The stripped synopsis, or None for no text or the placeholder.
+    """
+    value = strip_text_or_none(value)
+    if isinstance(value, str) and "would help many anime and manga fans" in value:
+        return None
+    return value
+
+
 def _type_name(value: object) -> object:
     """Read the type from "Type: TV-Series, 25 (~24 min)".
 
@@ -324,7 +345,7 @@ class AniSearchAnime(BaseModel):
     status: LabelledText = None  # "Upcoming", "On Hold", "Completed", etc.
 
     # ── Content ───────────────────────────────────────────────────────────
-    synopsis: StrippedText = None
+    synopsis: Annotated[str | None, BeforeValidator(_synopsis_text)] = None
     genres: list[str] = []
     tags: list[str] = []
 

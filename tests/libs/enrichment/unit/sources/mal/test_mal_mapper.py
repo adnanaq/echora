@@ -139,9 +139,14 @@ def test_anime_from_mal_background_kept() -> None:
     )
 
 
-def test_anime_from_mal_placeholder_background_omitted() -> None:
-    anime = _anime(background="No background information has been added to this title.")
-    assert "background" not in anime_from_mal(anime)
+def test_anime_from_mal_placeholder_background_and_synopsis_omitted() -> None:
+    anime = _anime(
+        background="No background information has been added to this title.",
+        synopsis="No synopsis information has been added to this title. "
+        "Help improve our database by adding a synopsis here.",
+    )
+    mapped = anime_from_mal(anime)
+    assert ("background" in mapped, "synopsis" in mapped) == (False, False)
 
 
 def test_anime_from_mal_statistics_kept_as_stated() -> None:
