@@ -75,7 +75,7 @@ def test_provider_page_links_searched_page_links_count_for_searched_by_page(
             "kitsu:anime:6190",
         }
     )
-    assert links.get_linked_page_keys("https://animeschedule.net/anime/puu-neko") == (
+    assert links.get_linked_page_keys("animeschedule:anime:puu-neko") == (
         links.get_linked_page_keys("mal:anime:10459")
     )
 
