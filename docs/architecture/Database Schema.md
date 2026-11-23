@@ -382,7 +382,7 @@ erDiagram
   character ||--o{ character_attribute : "described by"
   character ||--o{ character_spoiler : "spoiled by"
   character ||--o{ character_mangaography : "appears in"
-  source_material ||--o{ character_mangaography : "features"
+  source_material_xref ||--o{ character_mangaography : "joined by identifier"
   character ||--o{ character_field_correction : "corrected by"
 
   character {
@@ -430,11 +430,14 @@ erDiagram
   }
   character_mangaography {
     uuid character_id PK
-    uuid source_material_id PK
+    text source_material_provider PK
+    text source_material_external_id PK
     text role FK
   }
-  source_material {
-    uuid id PK
+  source_material_xref {
+    text provider PK
+    text external_id PK
+    uuid source_material_id FK
   }
   character_field_correction {
     bigint id PK
@@ -825,8 +828,14 @@ INSERT INTO source_material_type VALUES
   ('VISUAL NOVEL'), ('WEB MANGA'), ('WEB NOVEL'), ('WEBTOON'), ('FAIRY TALE'),
   ('SHORT STORY'), ('COMIC'), ('LIVE ACTION'), ('ILLUSTRATION'), ('WESTERN MEDIA');
 
-CREATE TABLE character_role (value text PRIMARY KEY);
-INSERT INTO character_role VALUES ('BACKGROUND'), ('MAIN'), ('SUPPORTING'), ('UNKNOWN');
+-- rank orders the roles from strongest to weakest, so a character listed twice for one work
+-- or source material shows its strongest role. (ECHO-104)
+CREATE TABLE character_role (
+  value  text PRIMARY KEY,
+  rank   smallint NOT NULL UNIQUE CHECK (rank > 0)
+);
+INSERT INTO character_role (value, rank) VALUES
+  ('MAIN', 1), ('SUPPORTING', 2), ('BACKGROUND', 3), ('UNKNOWN', 4);
 
 CREATE TABLE company_role (value text PRIMARY KEY);
 INSERT INTO company_role VALUES ('STUDIO'), ('PRODUCER'), ('LICENSOR'), ('UNKNOWN');
@@ -1356,7 +1365,8 @@ CREATE VIEW character_visible AS
 -- Character.animeography: each work the character's pages list, held by the work's page,
 -- with the character's role there. The work is found by joining the page to anime_source;
 -- Character.roles and anime_ids are read through that join. A cast is shown ordered by
--- role, then the character's favorites, then ID, so no billing order is stored. (ECHO-104)
+-- role, then the character's favorites, then ID, so no billing order is stored. The page
+-- has no foreign key to provider_page, since the work's page may not be fetched yet. (ECHO-104)
 CREATE TABLE character_animeography (
   character_id         uuid NOT NULL REFERENCES character(id) ON DELETE CASCADE,
   anime_page_provider  text NOT NULL,
@@ -1412,26 +1422,32 @@ CREATE TABLE character_spoiler (
   PRIMARY KEY (character_id, spoiler_name)
 );
 
--- Character.mangaography (ECHO-133)
+-- Character.mangaography: each manga or novel the character's pages list, held by its
+-- provider identifier, with the character's role there. The source material is found by
+-- joining the identifier to source_material_xref, so source material stored after the
+-- character still reaches it. (ECHO-104)
 CREATE TABLE character_mangaography (
-  character_id        uuid NOT NULL REFERENCES character(id) ON DELETE CASCADE,
-  source_material_id  uuid NOT NULL REFERENCES source_material(id) ON DELETE CASCADE,
-  role                text NOT NULL REFERENCES character_role(value),
-  PRIMARY KEY (character_id, source_material_id)
+  character_id                 uuid NOT NULL REFERENCES character(id) ON DELETE CASCADE,
+  source_material_provider     text NOT NULL,
+  source_material_external_id  text NOT NULL,
+  role                         text NOT NULL REFERENCES character_role(value),
+  PRIMARY KEY (character_id, source_material_provider, source_material_external_id)
 );
 
-CREATE INDEX character_mangaography_source_material_idx ON character_mangaography(source_material_id);
+-- The characters of a source material, joined from its cross-references
+CREATE INDEX character_mangaography_source_material_idx
+  ON character_mangaography(source_material_provider, source_material_external_id);
 ```
 
 ~~`SaveCharacter` replaces the character's `character_animeography` rows with the works its merge found on the character's own pages, each held by the work's page. A work that is not stored yet is linked once one of its pages becomes a work's source page. (ECHO-104)~~
 
-- ~~When several of a character's rows reach one work, through that work's pages on different providers, the strongest role is shown: `MAIN`, then `SUPPORTING`, `BACKGROUND` and `UNKNOWN`. (ECHO-104)~~
+- ~~When several of a character's rows reach one work, through that work's pages on different providers, the strongest role is shown, by the `character_role` rank: `MAIN`, then `SUPPORTING`, `BACKGROUND` and `UNKNOWN`. (ECHO-104)~~
 - ~~The `FEATURES` edge from a work to a character and the `APPEARS_IN` edge back are recomputed from the join when the character's appearances change, and when a page they name becomes a work's source page. Linking such a page also raises the character's version and, once it is merged, writes `character.updated`, since its `anime_ids` changed. (ECHO-104)~~
 - When a page they name stops being a work's source page, by a move or a delete, the edges, version and event follow the same way. (ECHO-107)
 - Characters are created by the character load, from the character list built from works' character lists, not by a work's save. (ECHO-135)
 - A character no stored work's pages reach any more keeps its row until the cleanup job removes it. (ECHO-116)
 - ~~`StorePage` raises the version and sets `merge_requested_at` on the character that owns a changed character page, as it does for work and episode pages. (ECHO-104)~~
-- ~~`mangaography` is written to `character_mangaography` through `source_material_xref`, matching each entry's URLs. An entry whose URLs no stored source material holds is skipped, since a character page only confirms what works list, and `Ography` carries no source material type. (ECHO-104)~~
+- ~~`mangaography` is written to `character_mangaography`, each manga or novel held by the provider identifier its URL gives. The source material is found by joining that identifier to `source_material_xref`, so a character saved before its source material still reaches it once the source material is stored. An identifier given twice keeps its strongest role. (ECHO-104)~~
 
 ---
 
@@ -1947,16 +1963,24 @@ LIMIT 1;
 ```sql
 -- All characters in a work, main characters first, then by favorites. A character listed
 -- under several of the work's pages shows its strongest role. (ECHO-104)
-SELECT c.id, c.name, c.favorites,
-       min(array_position(ARRAY['MAIN', 'SUPPORTING', 'BACKGROUND', 'UNKNOWN'], appearance.role)) AS role_rank
+SELECT c.id, c.name, c.favorites, min(role_order.rank) AS role_rank
 FROM anime_source work_page
 JOIN character_animeography appearance
   ON appearance.anime_page_provider = work_page.provider
  AND appearance.anime_page_address = work_page.address
+JOIN character_role role_order ON role_order.value = appearance.role
 JOIN character c ON c.id = appearance.character_id AND c.deleted_at IS NULL
 WHERE work_page.anime_id = $1
 GROUP BY c.id
 ORDER BY role_rank, c.favorites DESC NULLS LAST, c.id;
+
+-- All characters of a source material, through its cross-references (ECHO-104)
+SELECT DISTINCT c.* FROM source_material_xref xref
+JOIN character_mangaography entry
+  ON entry.source_material_provider = xref.provider
+ AND entry.source_material_external_id = xref.external_id
+JOIN character c ON c.id = entry.character_id AND c.deleted_at IS NULL
+WHERE xref.source_material_id = $1;
 
 -- All works sharing a character (ECHO-104)
 SELECT DISTINCT a.* FROM character_animeography appearance
@@ -2450,7 +2474,7 @@ Every field of the canonical models in `libs/common/src/common/models/anime.py` 
 - `sources` → `character_source`.
 - `roles`, `anime_ids` → *read* from `character_animeography`, joined to `anime_source`.
 - `animeography` → `character_animeography`, each work held by its page.
-- `mangaography` → `character_mangaography`.
+- `mangaography` → `character_mangaography`, each manga or novel held by its provider identifier.
 - `traits` → `character_trait`. `name_variations` → `character_name_variation`. `nicknames` → `character_nickname`. `images` → `character_image`.
 - `attributes` → `character_attribute`. `spoilers` → `character_spoiler`, the description spoiler included.
 - `voice_actors` → people tables, planned last.
