@@ -79,7 +79,7 @@ def test_review_case_build_entry_group_case_single_entry_keeps_entry_and_searche
     decisions = decide_doubled_providers(entry, pages, KnownWorkEntriesFromSeed([]))
     case = ReviewCase.build_entry_group_case([entry], decisions, (), pages)
     assert [page.key for page in case.pages] == [
-        "https://animeschedule.net/anime/show",
+        "animeschedule:anime:show",
         "kitsu:anime:1",
         "kitsu:anime:2",
         "mal:anime:1",
@@ -216,7 +216,7 @@ def test_review_case_build_entry_group_case_keeps_searched_pages(
     pages = [linked_page("https://myanimelist.net/anime/1"), found_page]
     case = build_group_case(entries, pages)
     assert [page.key for page in case.pages] == [
-        "https://animeschedule.net/anime/show",
+        "animeschedule:anime:show",
         "mal:anime:1",
     ]
 

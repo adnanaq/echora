@@ -124,9 +124,7 @@ def test_provider_page_store_searched_page_added_through_second_search_keeps_bot
                 searched_by_address=searched_by_address,
             )
         )
-    reopened_page = ProviderPageStore(path).get_page(
-        "https://animeschedule.net/anime/ranma"
-    )
+    reopened_page = ProviderPageStore(path).get_page("animeschedule:anime:ranma")
     assert reopened_page is not None
     assert reopened_page.searched_by == ("anilist:anime:210", "mal:anime:21")
 
@@ -167,8 +165,6 @@ def test_provider_page_store_searched_page_added_twice_in_one_call_keeps_both_se
             for searched_by_address in (MAL, "https://anilist.co/anime/210")
         )
     )
-    reopened_page = ProviderPageStore(path).get_page(
-        "https://animeschedule.net/anime/ranma"
-    )
+    reopened_page = ProviderPageStore(path).get_page("animeschedule:anime:ranma")
     assert reopened_page is not None
     assert reopened_page.searched_by == ("anilist:anime:210", "mal:anime:21")

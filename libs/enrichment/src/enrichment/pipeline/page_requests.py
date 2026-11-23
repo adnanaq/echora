@@ -4,6 +4,7 @@ Each item gives the rule, then the reason for it.
 
 - A page is requested through the enrichment helper of its provider; ANN,
   LiveChart, Simkl and AnimeCountdown have none, so their pages are skipped.
+  An AnimeSchedule page already found is fetched by its own address.
 - AnimeSchedule is not in the seed: its page is found by searching AnimeSchedule
   with the entry's MAL pages, else AniList, else AniDB, the ids its helper
   finds an anime by.
@@ -38,13 +39,14 @@ _HELPER_BY_PROVIDER = {
     "anidb": _EnrichmentHelper("anidb", "anidb_url"),
     "animeplanet": _EnrichmentHelper("anime_planet", "anime_planet_url"),
     "anisearch": _EnrichmentHelper("anisearch", "anisearch_url"),
+    "animeschedule": _EnrichmentHelper("animeschedule", "animeschedule_url"),
 }
 # The providers whose pages are fetched, so a page of theirs can be checked live.
 FETCHED_PROVIDERS: frozenset[str] = frozenset(_HELPER_BY_PROVIDER)
 # The providers AnimeSchedule is searched by, in the order tried: the
 # AnimeSchedule helper finds an anime by these ids.
 _SEARCHED_BY_PROVIDERS = ("mal", "anilist", "anidb")
-_SEARCHED_PAGE_SERVICE = "animeschedule"
+_SEARCHED_PAGE_SERVICE = _HELPER_BY_PROVIDER["animeschedule"].service
 
 
 @dataclass(frozen=True)

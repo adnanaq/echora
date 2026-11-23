@@ -6,7 +6,8 @@ Fetches anime data from AnimeSchedule API (async version).
 AnimeSchedule has no ID of its own that other sites link to, but it filters its
 anime list by MyAnimeList, AniList and AniDB IDs, so the helper looks the anime
 up by the IDs in its source URLs. Only when none of them finds it does it search
-by title, keeping the result only if it links back to one of those sources.
+by title, keeping the result only if it links back to one of those sources. An
+AnimeSchedule page already found is fetched by its own address, with no search.
 
 The app token is sent with every request: without it, AnimeSchedule leaves the
 provider links out of its answers, so no result can be matched to its anime.
@@ -53,6 +54,8 @@ from pydantic import SecretStr
 logger = logging.getLogger(__name__)
 
 _ANIME_LIST_URL = "https://animeschedule.net/api/v3/anime"
+# An AnimeSchedule page address, whose slug names the anime in the API.
+_ANIME_PAGE_SLUG = re.compile(r"animeschedule\.net/anime/([^/?#]+)")
 
 # AnimeSchedule website keys that carry cross-source URLs (partial, no scheme)
 _CROSS_SOURCE_KEYS = ("mal", "aniList", "kitsu", "animePlanet", "anidb")
@@ -181,12 +184,13 @@ class AnimescheduleHelper(BaseEnrichmentHelper):
     ) -> dict[str, Any] | None:
         """Fetch and map AnimeSchedule data for an anime.
 
-        Looks the anime up by the MyAnimeList, AniList and AniDB IDs in ``ids``;
-        when none finds it, searches by ``offline_data["title"]``.
+        Fetches the page at ``ids["animeschedule_url"]`` when given. Otherwise
+        looks the anime up by the MyAnimeList, AniList and AniDB IDs in
+        ``ids``, and when none finds it, searches by ``offline_data["title"]``.
 
         Args:
-            ids: Source URLs by provider (``mal_url``, ``anilist_url``,
-                ``anidb_url``).
+            ids: Source URLs by provider (``animeschedule_url``, ``mal_url``,
+                ``anilist_url``, ``anidb_url``).
             offline_data: The offline anime entry; its ``title`` and
                 ``sources`` are used for the title search.
             temp_dir: Optional directory for intermediate JSONL storage.
@@ -196,8 +200,14 @@ class AnimescheduleHelper(BaseEnrichmentHelper):
         Returns:
             Canonical anime payload, or None when AnimeSchedule has no such anime.
         """
-        raw_data = await self._find_by_ids(ids) or await self._find_by_title(
-            offline_data.get("title", ""), offline_data.get("sources", [])
+        page_slug = _ANIME_PAGE_SLUG.search(ids.get("animeschedule_url") or "")
+        raw_data = (
+            await self._request_anime(f"{_ANIME_LIST_URL}/{page_slug.group(1)}")
+            if page_slug
+            else await self._find_by_ids(ids)
+            or await self._find_by_title(
+                offline_data.get("title", ""), offline_data.get("sources", [])
+            )
         )
         if raw_data is None:
             return None
@@ -272,6 +282,21 @@ class AnimescheduleHelper(BaseEnrichmentHelper):
 
         Returns:
             The anime found; empty when there is no match.
+        """
+        found = await self._request_anime(_ANIME_LIST_URL, params)
+        return (found or {}).get("anime", [])
+
+    async def _request_anime(
+        self, url: str, params: dict[str, str] | None = None
+    ) -> dict | None:
+        """Request one AnimeSchedule API address with the app token.
+
+        Args:
+            url: The anime list address, or one anime's address.
+            params: Filter or search parameters for the anime list.
+
+        Returns:
+            The JSON answer, or None when AnimeSchedule finds no anime.
 
         Raises:
             ServiceNotConfiguredError: If no app token is set; nothing is sent.
@@ -284,17 +309,16 @@ class AnimescheduleHelper(BaseEnrichmentHelper):
         try:
             async with self._cache.get_aiohttp_session("animeschedule") as session:
                 async with session.get(
-                    _ANIME_LIST_URL, params=params, headers=request_headers
+                    url, params=params, headers=request_headers
                 ) as response:
                     if response.status in _NOT_FOUND_STATUSES:
-                        return []
+                        return None
                     response.raise_for_status()
-                    found = await response.json()
+                    return await response.json()
         except aiohttp.ClientError as e:
             raise ServiceNetworkError(service="animeschedule", cause=e) from e
         except json.JSONDecodeError as e:
             raise ServiceParseError(service="animeschedule", cause=e) from e
-        return (found or {}).get("anime", [])
 
     def _map(self, raw_data: dict, output_path: str | None) -> dict[str, Any]:
         """Validate and map a raw anime, appending it to ``output_path`` when given.
