@@ -101,22 +101,21 @@ TARGETS: list[ProtoTarget] = [
             ("from common.v1 import", "from shared_proto.v1 import"),
         ),
     },
-    # Agent proto generation is disabled for now.
-    # {
-    #     "name": "agent_service",
-    #     "optional": True,
-    #     "protos": [
-    #         PROTO_ROOT / "agent_service" / "v1" / "agent_search.proto",
-    #     ],
-    #     "proto_include": PROTO_ROOT / "agent_service",
-    #     "out_root": REPO_ROOT / "apps" / "agent_service" / "src" / "agent_proto",
-    #     "rewrites": (
-    #         ("from v1 import", "from agent_proto.v1 import"),
-    #         ("import v1.", "import agent_proto.v1."),
-    #         ("from agent.v1 import", "from agent_proto.v1 import"),
-    #         ("from agent_service.v1 import", "from agent_proto.v1 import"),
-    #     ),
-    # },
+    {
+        "name": "agent_service",
+        "protos": [
+            PROTO_ROOT / "agent_service" / "v1" / "agent_service.proto",
+        ],
+        "proto_include": PROTO_ROOT / "agent_service",
+        "proto_extra_includes": [PROTO_ROOT],
+        "out_root": REPO_ROOT / "libs" / "common" / "src" / "agent_proto",
+        "rewrites": (
+            ("from v1 import", "from agent_proto.v1 import"),
+            ("import v1.", "import agent_proto.v1."),
+            ("from agent_service.v1 import", "from agent_proto.v1 import"),
+            ("from common.v1 import", "from shared_proto.v1 import"),
+        ),
+    },
 ]
 
 

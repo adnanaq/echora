@@ -38,6 +38,8 @@ from work_matching.page_details_comparison import (
 # A fixed model, so a newer Jev behind ``jev-latest`` never changes stored
 # answers unnoticed.
 JEV_MODEL: Final = "jev-1.14.0"
+# TypeSafe's price for the model's input tokens; output tokens are free.
+JEV_DOLLARS_PER_INPUT_TOKEN: Final = 0.042 / 1_000_000
 _SYNOPSIS_CHARACTERS: Final = 1500
 # The names Jev was measured with. A provider missing here is named by the
 # host of its address, so a provider fetched later needs no entry.

@@ -18,6 +18,9 @@ from pathlib import Path
 
 from match_suggestions.model_pair_judgment import PairJudgment
 
+# The answer file's name in seed cleaning's data folder, next to the review file.
+PAIR_JUDGMENTS_FILE_NAME = "page_pair_judgments.jsonl"
+
 
 class PairJudgmentStore(ABC):
     """Find and add Jev's answers about page pairs."""

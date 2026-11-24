@@ -21,6 +21,12 @@ class ServiceConfig(EnvSettings):
     enrichment_service_port: int = Field(
         default=8002, ge=1, le=65535, description="Enrichment service port"
     )
+    agent_service_host: str = Field(
+        default="0.0.0.0", description="Agent service host address"
+    )
+    agent_service_port: int = Field(
+        default=8005, ge=1, le=65535, description="Agent service port"
+    )
     enable_gpu: bool = Field(
         default=False,
         description=(

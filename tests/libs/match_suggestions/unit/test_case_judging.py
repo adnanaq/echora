@@ -2,7 +2,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import create_autospec
 
-from match_suggestions.case_judging import judge_pair_requests, list_pair_requests
+from match_suggestions.case_judging import (
+    estimate_input_tokens,
+    judge_pair_requests,
+    list_pair_requests,
+)
 from match_suggestions.model_pair_judgment import PairJudgment
 from match_suggestions.pair_judgment_store import JsonlPairJudgmentStore
 from match_suggestions.pair_questions import QUESTION_VERSION
@@ -138,10 +142,11 @@ async def test_judge_pair_requests_stores_answers(tmp_path: Path) -> None:
     judging_summary = await judge_pair_requests([pair_request], store, client)
 
     stored_judgment = store.find_judgments([(ANILIST, MAL)])[(ANILIST, MAL)]
-    assert (judging_summary.judged_pair_count, judging_summary.failed_pair_count) == (
-        1,
-        0,
-    )
+    assert (
+        judging_summary.judged_pair_count,
+        judging_summary.failed_pair_count,
+        judging_summary.input_token_count,
+    ) == (1, 0, 400)
     assert (
         stored_judgment.is_same_work,
         stored_judgment.is_second_work_part_of_first_work,
@@ -161,8 +166,24 @@ async def test_judge_pair_requests_failed_request_stores_nothing(
 
     judging_summary = await judge_pair_requests([pair_request], store, client)
 
-    assert (judging_summary.judged_pair_count, judging_summary.failed_pair_count) == (
-        0,
-        1,
-    )
+    assert (
+        judging_summary.judged_pair_count,
+        judging_summary.failed_pair_count,
+        judging_summary.input_token_count,
+    ) == (0, 1, 0)
     assert store.find_judgments([(ANILIST, MAL)]) == {}
+
+
+async def test_estimate_input_tokens_adds_each_request(tmp_path: Path) -> None:
+    (pair_request,) = await list_pair_requests(
+        [_case([MAL, ANILIST], {MAL: "work 1"})],
+        JsonlPairJudgmentStore(tmp_path / "judgments.jsonl"),
+        _read_synopsis,
+    )
+
+    single_request_tokens = estimate_input_tokens([pair_request])
+
+    assert single_request_tokens > 0
+    assert (
+        estimate_input_tokens([pair_request, pair_request]) == 2 * single_request_tokens
+    )

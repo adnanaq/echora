@@ -7,6 +7,7 @@ from typing import Any
 
 from pydantic import Field, field_validator
 
+from .agent_config import AgentConfig
 from .cache_config import CacheConfig
 from .embedding_config import EmbeddingConfig
 from .enrichment_config import EnrichmentConfig
@@ -46,6 +47,7 @@ class Settings(EnvSettings):
     cache: CacheConfig = Field(default_factory=CacheConfig)
     enrichment: EnrichmentConfig = Field(default_factory=EnrichmentConfig)
     review_page: ReviewPageConfig = Field(default_factory=ReviewPageConfig)
+    agent: AgentConfig = Field(default_factory=AgentConfig)
 
     @field_validator("environment", mode="before")
     @classmethod

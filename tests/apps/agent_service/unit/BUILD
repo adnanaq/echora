@@ -1,0 +1,10 @@
+python_tests(
+    name="unit",
+    sources=["**/test_*.py"],
+    dependencies=[
+        "//:reqs0#pytest",
+        "//:reqs0#grpcio",
+        "//:reqs0#grpcio-health-checking",
+        "//apps/agent_service/src/agent_service:agent_service",
+    ],
+)

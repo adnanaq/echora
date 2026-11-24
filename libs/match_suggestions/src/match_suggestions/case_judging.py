@@ -16,6 +16,7 @@ before any is sent. Each item gives the rule, then the reason for it.
 """
 
 import asyncio
+import json
 import logging
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
@@ -55,12 +56,18 @@ class PairRequest:
         return (self.first_page.key, self.second_page.key)
 
 
+# Characters of JSON per input token TypeSafe bills, from the measurement: the
+# labelled pairs averaged about 1,100 tokens for 2,900 characters.
+_CHARACTERS_PER_INPUT_TOKEN = 2.6
+
+
 @dataclass(frozen=True, slots=True)
 class JudgingSummary:
-    """Count the pairs a batch asked about, answered and failed."""
+    """Count the pairs a batch answered and failed, and the input tokens billed."""
 
     judged_pair_count: int
     failed_pair_count: int
+    input_token_count: int
 
 
 async def list_pair_requests(
@@ -117,6 +124,30 @@ async def list_pair_requests(
     return tuple(pair_requests)
 
 
+def estimate_input_tokens(pair_requests: Iterable[PairRequest]) -> int:
+    """Estimate the input tokens asking these pairs would bill, before any is sent.
+
+    Args:
+        pair_requests: The pairs to ask.
+
+    Returns:
+        The estimated input tokens, the state and questions of every request.
+    """
+    question_characters = len(
+        json.dumps(
+            {
+                name: question.model_dump(mode="json")
+                for name, question in PAIR_QUESTIONS.items()
+            }
+        )
+    )
+    request_characters = sum(
+        len(json.dumps(pair_request.pair_state)) + question_characters
+        for pair_request in pair_requests
+    )
+    return round(request_characters / _CHARACTERS_PER_INPUT_TOKEN)
+
+
 async def judge_pair_requests(
     pair_requests: Iterable[PairRequest],
     store: PairJudgmentStore,
@@ -133,11 +164,11 @@ async def judge_pair_requests(
         max_concurrent_requests: The most requests waiting for an answer at once.
 
     Returns:
-        How many pairs were answered and how many failed.
+        How many pairs were answered and failed, and the input tokens billed.
     """
     request_slots = asyncio.Semaphore(max_concurrent_requests)
 
-    async def judge_pair(pair_request: PairRequest) -> bool:
+    async def judge_pair(pair_request: PairRequest) -> int | None:
         async with request_slots:
             try:
                 system_one_response = await client.system_one(
@@ -147,7 +178,7 @@ async def judge_pair_requests(
                 logger.warning(
                     f"Jev gave no answer for {pair_request.page_key_pair}: {error}"
                 )
-                return False
+                return None
         probabilities = {
             name: answer.noul for name, answer in system_one_response.nouls.items()
         }
@@ -163,10 +194,19 @@ async def judge_pair_requests(
                 )
             ]
         )
-        return True
+        return system_one_response.usage.input_tokens or 0
 
-    judged_pairs = await asyncio.gather(*map(judge_pair, pair_requests))
-    return JudgingSummary(sum(judged_pairs), len(judged_pairs) - sum(judged_pairs))
+    input_tokens_by_request = await asyncio.gather(*map(judge_pair, pair_requests))
+    billed_input_tokens = [
+        input_tokens
+        for input_tokens in input_tokens_by_request
+        if input_tokens is not None
+    ]
+    return JudgingSummary(
+        len(billed_input_tokens),
+        len(input_tokens_by_request) - len(billed_input_tokens),
+        sum(billed_input_tokens),
+    )
 
 
 async def _read_synopses(

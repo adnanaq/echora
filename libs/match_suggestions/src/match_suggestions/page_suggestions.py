@@ -29,6 +29,7 @@ from dataclasses import dataclass
 from itertools import combinations
 
 from match_suggestions.model_pair_judgment import PairJudgment, build_page_key_pair
+from match_suggestions.pair_judgment_store import PairJudgmentStore
 from match_suggestions.pair_questions import QUESTION_VERSION
 from match_suggestions.pair_relation import (
     PairRelation,
@@ -215,6 +216,27 @@ def suggest_page_answers(
     return tuple(
         sorted(page_suggestions, key=lambda page_suggestion: page_suggestion.page_key)
     )
+
+
+def suggest_stored_page_answers(
+    review_case: ReviewCase, store: PairJudgmentStore
+) -> tuple[PageSuggestion, ...]:
+    """Suggest a dropdown word for each open page from the answers the store holds.
+
+    Args:
+        review_case: The review case.
+        store: Jev's stored answers.
+
+    Returns:
+        The suggestions ``suggest_page_answers`` gives for the case's stored pairs.
+    """
+    page_key_pairs = [
+        build_page_key_pair(page_key, other_page_key)
+        for page_key, other_page_key in combinations(
+            list_placeable_pages(review_case), 2
+        )
+    ]
+    return suggest_page_answers(review_case, store.find_judgments(page_key_pairs))
 
 
 def list_placeable_pages(review_case: ReviewCase) -> dict[str, ProviderPage]:

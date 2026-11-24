@@ -1,11 +1,14 @@
 from datetime import UTC, datetime
+from pathlib import Path
 
 from match_suggestions.model_pair_judgment import PairJudgment, build_page_key_pair
 from match_suggestions.page_suggestions import (
     PageSuggestion,
     list_open_page_keys,
     suggest_page_answers,
+    suggest_stored_page_answers,
 )
+from match_suggestions.pair_judgment_store import JsonlPairJudgmentStore
 from match_suggestions.pair_questions import QUESTION_VERSION
 from pydantic import JsonValue
 from work_matching import ProviderPage, ReviewCase, WorkEntry
@@ -216,3 +219,63 @@ def test_list_open_page_keys_leaves_out_suggested_and_searched_pages() -> None:
     )
 
     assert list_open_page_keys(review_case) == (ANILIST, KITSU)
+
+
+def test_suggest_stored_page_answers_reads_case_pairs_from_store(
+    tmp_path: Path,
+) -> None:
+    store = JsonlPairJudgmentStore(tmp_path / "page_pair_judgments.jsonl")
+    store.add_judgments([_judgment(ANILIST, MAL, 0.92)[1]])
+
+    assert suggest_stored_page_answers(
+        _case([MAL, ANILIST], {MAL: "work 1"}), store
+    ) == (PageSuggestion(ANILIST, "work 1", 0.92),)
+
+
+def test_suggest_page_answers_skips_missing_pair_judgments_and_same_provider_different_works() -> (
+    None
+):
+    # Work 1 holds MAL and ANILIST, while KITSU has a judgment only against MAL.
+    partial_case = _case([MAL, ANILIST, KITSU], {MAL: "work 1", ANILIST: "work 1"})
+    assert suggest_page_answers(partial_case, dict([_judgment(KITSU, MAL, 0.92)])) == (
+        PageSuggestion(KITSU, "work 1", 0.92),
+    )
+
+    # When KITSU is PARTIAL_IN MAL and work 1 also holds ANILIST with no
+    # judgment against KITSU, _has_contradiction_with_work skips the missing pair.
+    partial_missing_case = _case(
+        [MAL, ANILIST, KITSU],
+        {MAL: "work 1", ANILIST: "work 1"},
+    )
+    assert suggest_page_answers(
+        partial_missing_case, dict([_judgment(KITSU, MAL, 0.2, first_part=0.9)])
+    ) == (
+        PageSuggestion(ANILIST, "work 1, partial in work 2", 0.9),
+        PageSuggestion(KITSU, "work 2, partial in work 1", 0.9),
+        PageSuggestion(MAL, "work 1, partial in work 2", 0.9),
+    )
+
+    # OTHER_KITSU is already in work 1 and Jev says KITSU is DIFFERENT_WORKS
+    # even though KITSU looks PARTIAL_IN MAL, and ANILIST has no judgment.
+    blocked_case = _case(
+        [MAL, ANILIST, KITSU, OTHER_KITSU],
+        {MAL: "work 1", ANILIST: "work 1", OTHER_KITSU: "work 1"},
+    )
+    assert (
+        suggest_page_answers(
+            blocked_case,
+            dict(
+                [
+                    _judgment(KITSU, MAL, 0.2, first_part=0.9),
+                    _judgment(KITSU, OTHER_KITSU, 0.08),
+                ]
+            ),
+        )
+        == ()
+    )
+
+
+def test_suggest_page_answers_without_suggested_work_and_no_judgments_returns_empty() -> (
+    None
+):
+    assert suggest_page_answers(_case([ANILIST, MAL]), {}) == ()

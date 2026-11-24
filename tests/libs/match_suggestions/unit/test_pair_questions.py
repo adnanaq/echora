@@ -143,3 +143,80 @@ def test_build_pair_state_provider_without_site_name_named_by_host() -> None:
     simkl_page = _page("simkl:anime:5", "https://simkl.com/anime/5")
 
     assert build_pair_state(simkl_page, MAL_PAGE, {})["page_a"]["site"] == "simkl.com"
+
+
+def test_build_pair_state_comparison_edge_cases() -> None:
+    movie_missing_year = _page(
+        "kitsu:anime:10",
+        "https://kitsu.app/anime/10",
+        year=None,
+        aired_from=None,
+    ).model_copy(update={"type": "MOVIE"})
+    pair_state_missing = build_pair_state(movie_missing_year, MAL_PAGE, {})[
+        "comparison"
+    ]
+    assert "types differ" in pair_state_missing["type"]
+    assert pair_state_missing["years"] == "One page gives no year."
+
+    fall_next_year = _page(
+        "kitsu:anime:11",
+        "https://kitsu.app/anime/11",
+        year=2021,
+        aired_from=datetime(2020, 1, 8, tzinfo=UTC),
+    ).model_copy(update={"season": "FALL"})
+    pair_state_diff_year = build_pair_state(fall_next_year, MAL_PAGE, {})["comparison"]
+    assert "years differ" in pair_state_diff_year["years"]
+    assert (
+        pair_state_diff_year["start_dates"]
+        == "The first air dates are less than a week apart."
+    )
+
+    fall_same_year = _page(
+        "kitsu:anime:12",
+        "https://kitsu.app/anime/12",
+        year=2020,
+        aired_from=datetime(2020, 7, 1, tzinfo=UTC),
+    ).model_copy(update={"season": "FALL"})
+    pair_state_diff_season = build_pair_state(fall_same_year, MAL_PAGE, {})[
+        "comparison"
+    ]
+    assert "seasons differ" in pair_state_diff_season["years"]
+    assert "months apart" in pair_state_diff_season["start_dates"]
+
+    shorter_with_end = _page(
+        "kitsu:anime:13",
+        "https://kitsu.app/anime/13",
+        episode_count=6,
+        aired_from=datetime(2020, 1, 1, tzinfo=UTC),
+        aired_to=datetime(2020, 2, 15, tzinfo=UTC),
+    )
+    longer_no_end = _page(
+        "mal:anime:13",
+        "https://myanimelist.net/anime/13",
+        episode_count=24,
+        aired_from=datetime(2020, 1, 1, tzinfo=UTC),
+        aired_to=None,
+    )
+    assert (
+        "missing end date"
+        in build_pair_state(shorter_with_end, longer_no_end, {})["comparison"][
+            "air_spans"
+        ]
+    )
+
+    longer_with_end = longer_no_end.model_copy(
+        update={"aired_to": datetime(2020, 6, 30, tzinfo=UTC)}
+    )
+    shorter_outside = _page(
+        "kitsu:anime:14",
+        "https://kitsu.app/anime/14",
+        episode_count=6,
+        aired_from=datetime(2022, 1, 1, tzinfo=UTC),
+        aired_to=datetime(2022, 2, 15, tzinfo=UTC),
+    )
+    assert (
+        "airs outside"
+        in build_pair_state(shorter_outside, longer_with_end, {})["comparison"][
+            "air_spans"
+        ]
+    )

@@ -1,5 +1,6 @@
 """Configuration for every service, built once by each app with ``get_settings``."""
 
+from .agent_config import AgentConfig
 from .cache_config import CacheConfig
 from .embedding_config import EmbeddingConfig
 from .enrichment_config import EnrichmentConfig
@@ -11,6 +12,7 @@ from .service_config import ServiceConfig
 from .settings import Settings, get_settings
 
 __all__ = [
+    "AgentConfig",
     "CacheConfig",
     "EmbeddingConfig",
     "EnrichmentConfig",
