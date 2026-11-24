@@ -8,9 +8,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import grpc
 import pytest
-from agent_proto.v1 import agent_service_pb2
+from agent_proto.v1 import agent_service_pb2, agent_service_pb2_grpc
+from agent_service.agents.review_cases import (
+    ReviewCasesAgent,
+    build_default_typesafe_client,
+)
 from agent_service.main import _register_sigterm_shutdown, build_grpc_server, serve
-from agent_service.service import AgentServiceHandler
 from common.config import AgentConfig, ServiceConfig, Settings
 from common.config.settings import Environment
 from grpc_health.v1 import health_pb2, health_pb2_grpc
@@ -20,6 +23,7 @@ from match_suggestions import (
     JsonlPairJudgmentStore,
     PairJudgment,
 )
+from pydantic import SecretStr
 from review_page.agent_suggestions_client import GrpcAgentSuggestionsClient
 from shared_proto.v1 import review_cases_pb2
 from work_matching import (
@@ -94,14 +98,14 @@ async def test_suggest_page_answers_returns_stored_suggestions(tmp_path: Path) -
             )
         ]
     )
-    handler = AgentServiceHandler(store)
+    handler = ReviewCasesAgent(store)
     review_case = _build_open_split_case()
     request = agent_service_pb2.SuggestPageAnswersRequest(
         review_case=convert_case_to_message(review_case)
     )
     context = MagicMock(spec=grpc.aio.ServicerContext)
 
-    response = await handler.SuggestPageAnswers(request, context)
+    response = await handler.suggest_page_answers(request, context)
 
     assert len(response.page_suggestions) == 1
     assert response.page_suggestions[0].page_key == "anilist:anime:19"
@@ -115,7 +119,7 @@ async def test_suggest_page_answers_returns_empty_for_answered_case(
 ) -> None:
     """Verify SuggestPageAnswers returns no suggestions when a case already has an answer."""
     store = JsonlPairJudgmentStore(tmp_path / PAIR_JUDGMENTS_FILE_NAME)
-    handler = AgentServiceHandler(store)
+    handler = ReviewCasesAgent(store)
     answered_case = _build_open_split_case().model_copy(
         update={"answer": {"mal:anime:10": "work 1", "anilist:anime:19": "work 1"}}
     )
@@ -124,7 +128,7 @@ async def test_suggest_page_answers_returns_empty_for_answered_case(
     )
     context = MagicMock(spec=grpc.aio.ServicerContext)
 
-    response = await handler.SuggestPageAnswers(request, context)
+    response = await handler.suggest_page_answers(request, context)
 
     assert list(response.page_suggestions) == []
 
@@ -135,13 +139,13 @@ async def test_suggest_page_answers_aborts_when_review_case_missing(
 ) -> None:
     """Verify SuggestPageAnswers rejects requests missing review_case."""
     store = JsonlPairJudgmentStore(tmp_path / PAIR_JUDGMENTS_FILE_NAME)
-    handler = AgentServiceHandler(store)
+    handler = ReviewCasesAgent(store)
     request = agent_service_pb2.SuggestPageAnswersRequest()
     context = MagicMock(spec=grpc.aio.ServicerContext)
     context.abort = AsyncMock(side_effect=RuntimeError("aborted"))
 
     with pytest.raises(RuntimeError, match="aborted"):
-        await handler.SuggestPageAnswers(request, context)
+        await handler.suggest_page_answers(request, context)
 
     context.abort.assert_awaited_once_with(
         grpc.StatusCode.INVALID_ARGUMENT,
@@ -155,14 +159,14 @@ async def test_suggest_page_answers_aborts_on_invalid_review_case(
 ) -> None:
     """Verify SuggestPageAnswers rejects malformed review_case payloads."""
     store = JsonlPairJudgmentStore(tmp_path / PAIR_JUDGMENTS_FILE_NAME)
-    handler = AgentServiceHandler(store)
+    handler = ReviewCasesAgent(store)
     invalid_message = review_cases_pb2.ReviewCase(case_name="bad")
     request = agent_service_pb2.SuggestPageAnswersRequest(review_case=invalid_message)
     context = MagicMock(spec=grpc.aio.ServicerContext)
     context.abort = AsyncMock(side_effect=RuntimeError("aborted"))
 
     with pytest.raises(RuntimeError, match="aborted"):
-        await handler.SuggestPageAnswers(request, context)
+        await handler.suggest_page_answers(request, context)
 
     assert context.abort.await_args.args[0] == grpc.StatusCode.INVALID_ARGUMENT
 
@@ -173,7 +177,7 @@ async def test_suggest_page_answers_rejects_invalid_review_case_message(
 ) -> None:
     """Verify SuggestPageAnswers rejects protobuf review cases that fail validation."""
     store = JsonlPairJudgmentStore(tmp_path / PAIR_JUDGMENTS_FILE_NAME)
-    handler = AgentServiceHandler(store)
+    handler = ReviewCasesAgent(store)
     invalid_message = review_cases_pb2.ReviewCase(
         case_name="bad_case",
         doubled_provider_decisions=[
@@ -188,7 +192,7 @@ async def test_suggest_page_answers_rejects_invalid_review_case_message(
     context.abort = AsyncMock(side_effect=RuntimeError("aborted"))
 
     with pytest.raises(RuntimeError, match="aborted"):
-        await handler.SuggestPageAnswers(request, context)
+        await handler.suggest_page_answers(request, context)
 
     assert context.abort.await_args.args[0] == grpc.StatusCode.INVALID_ARGUMENT
     assert "invalid review_case" in context.abort.await_args.args[1]
@@ -320,3 +324,150 @@ def test_main_invokes_asyncio_run() -> None:
         run_mock.assert_called_once_with(coro)
     finally:
         coro.close()
+
+
+@pytest.mark.asyncio
+async def test_judge_open_cases_returns_empty_without_api_key(tmp_path: Path) -> None:
+    """Verify JudgeOpenCases returns zeros when TYPESAFE_API_KEY is unset."""
+    store = JsonlPairJudgmentStore(tmp_path / PAIR_JUDGMENTS_FILE_NAME)
+    handler = ReviewCasesAgent(store, typesafe_api_key=None)
+    request = agent_service_pb2.JudgeOpenCasesRequest(
+        review_cases=[convert_case_to_message(_build_open_split_case())]
+    )
+    context = MagicMock(spec=grpc.aio.ServicerContext)
+
+    response = await handler.judge_open_cases(request, context)
+
+    assert response.judged_pair_count == 0
+    assert response.failed_pair_count == 0
+    assert response.input_token_count == 0
+
+
+@pytest.mark.asyncio
+async def test_judge_open_cases_rejects_invalid_review_case(tmp_path: Path) -> None:
+    """Verify JudgeOpenCases aborts with INVALID_ARGUMENT on malformed cases."""
+    store = JsonlPairJudgmentStore(tmp_path / PAIR_JUDGMENTS_FILE_NAME)
+    handler = ReviewCasesAgent(store, typesafe_api_key="test-key")
+    invalid_message = review_cases_pb2.ReviewCase(
+        case_name="bad_case",
+        doubled_provider_decisions=[
+            review_cases_pb2.DoubledProviderDecision(
+                provider="anilist",
+                outcome="NOT_AN_OUTCOME",
+            )
+        ],
+    )
+    request = agent_service_pb2.JudgeOpenCasesRequest(review_cases=[invalid_message])
+    context = MagicMock(spec=grpc.aio.ServicerContext)
+    context.abort = AsyncMock(side_effect=RuntimeError("aborted"))
+
+    with pytest.raises(RuntimeError, match="aborted"):
+        await handler.judge_open_cases(request, context)
+
+    assert context.abort.await_args.args[0] == grpc.StatusCode.INVALID_ARGUMENT
+
+
+@pytest.mark.asyncio
+async def test_judge_open_cases_skips_when_no_pair_requests_needed(
+    tmp_path: Path,
+) -> None:
+    """Verify JudgeOpenCases does not open a TypeSafe client when pairs are stored."""
+    store = JsonlPairJudgmentStore(tmp_path / PAIR_JUDGMENTS_FILE_NAME)
+    case = _build_open_split_case()
+    client_factory = MagicMock()
+    handler = ReviewCasesAgent(
+        store, typesafe_api_key="test-key", client_factory=client_factory
+    )
+    # Mark case as answered so list_pair_requests returns nothing.
+    answered_case = case.model_copy(update={"answer": {"anilist:anime:19": "work 1"}})
+    request = agent_service_pb2.JudgeOpenCasesRequest(
+        review_cases=[convert_case_to_message(answered_case)]
+    )
+    context = MagicMock(spec=grpc.aio.ServicerContext)
+
+    response = await handler.judge_open_cases(request, context)
+
+    assert response.judged_pair_count == 0
+    client_factory.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_judge_open_cases_judges_pairs_with_synopses_and_persists(
+    tmp_path: Path,
+) -> None:
+    """Verify JudgeOpenCases passes synopses, judges unstored pairs, and returns counts."""
+    from contextlib import asynccontextmanager
+    from types import SimpleNamespace
+
+    store = JsonlPairJudgmentStore(tmp_path / PAIR_JUDGMENTS_FILE_NAME)
+    fake_client = object()
+
+    @asynccontextmanager
+    async def _fake_client_factory(api_key: str):
+        assert api_key == "test-key"
+        yield fake_client
+
+    handler = ReviewCasesAgent(
+        store, typesafe_api_key="test-key", client_factory=_fake_client_factory
+    )
+    request = agent_service_pb2.JudgeOpenCasesRequest(
+        review_cases=[convert_case_to_message(_build_open_split_case())],
+        synopses_by_page_key={"anilist:anime:19": "A great story."},
+    )
+    context = MagicMock(spec=grpc.aio.ServicerContext)
+
+    with patch(
+        "agent_service.agents.review_cases.judge_pair_requests",
+        AsyncMock(
+            return_value=SimpleNamespace(
+                judged_pair_count=1,
+                failed_pair_count=0,
+                input_token_count=321,
+            )
+        ),
+    ) as judge_mock:
+        response = await handler.judge_open_cases(request, context)
+
+    assert response.judged_pair_count == 1
+    assert response.failed_pair_count == 0
+    assert response.input_token_count == 321
+    pair_requests = judge_mock.await_args.args[0]
+    assert len(pair_requests) == 1
+    assert pair_requests[0].pair_state["page_a"]["synopsis"] == "A great story."
+
+
+def test_build_default_typesafe_client_returns_client() -> None:
+    """Verify build_default_typesafe_client constructs an AsyncTypeSafeClient."""
+    with patch("agent_service.agents.review_cases.AsyncTypeSafeClient") as client_cls:
+        client = build_default_typesafe_client("secret-key")
+    client_cls.assert_called_once_with(api_key="secret-key")
+    assert client is client_cls.return_value
+
+
+@pytest.mark.asyncio
+async def test_grpc_end_to_end_judge_open_cases_via_adapter(tmp_path: Path) -> None:
+    """Verify AgentRoutes delegates JudgeOpenCases over gRPC."""
+    port = _pick_free_port()
+    settings = Settings(
+        environment=Environment.DEVELOPMENT,
+        service=ServiceConfig(agent_service_host="127.0.0.1", agent_service_port=port),
+        agent=AgentConfig(
+            agent_data_dir=tmp_path, typesafe_api_key=SecretStr("test-key")
+        ),
+    )
+    server, listen_address = await build_grpc_server(settings)
+    await server.start()
+    try:
+        async with grpc.aio.insecure_channel(listen_address) as channel:
+            stub = agent_service_pb2_grpc.AgentServiceStub(channel)
+            answered_case = _build_open_split_case().model_copy(
+                update={"answer": {"anilist:anime:19": "work 1"}}
+            )
+            response = await stub.JudgeOpenCases(
+                agent_service_pb2.JudgeOpenCasesRequest(
+                    review_cases=[convert_case_to_message(answered_case)]
+                )
+            )
+            assert response.judged_pair_count == 0
+    finally:
+        await server.stop(grace=0)

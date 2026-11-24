@@ -25,19 +25,27 @@ _sym_db = _symbol_database.Default()
 from shared_proto.v1 import review_cases_pb2 as shared__proto_dot_v1_dot_review__cases__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x16v1/agent_service.proto\x12\x10\x61gent_service.v1\x1a\"shared_proto/v1/review_cases.proto\"M\n\x19SuggestPageAnswersRequest\x12\x30\n\x0breview_case\x18\x01 \x01(\x0b\x32\x1b.shared_proto.v1.ReviewCase\"L\n\x14PageAnswerSuggestion\x12\x10\n\x08page_key\x18\x01 \x01(\t\x12\x13\n\x0b\x61nswer_word\x18\x02 \x01(\t\x12\r\n\x05score\x18\x03 \x01(\x01\"^\n\x1aSuggestPageAnswersResponse\x12@\n\x10page_suggestions\x18\x01 \x03(\x0b\x32&.agent_service.v1.PageAnswerSuggestion2\x7f\n\x0c\x41gentService\x12o\n\x12SuggestPageAnswers\x12+.agent_service.v1.SuggestPageAnswersRequest\x1a,.agent_service.v1.SuggestPageAnswersResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x16v1/agent_service.proto\x12\x10\x61gent_service.v1\x1a\"shared_proto/v1/review_cases.proto\"M\n\x19SuggestPageAnswersRequest\x12\x30\n\x0breview_case\x18\x01 \x01(\x0b\x32\x1b.shared_proto.v1.ReviewCase\"L\n\x14PageAnswerSuggestion\x12\x10\n\x08page_key\x18\x01 \x01(\t\x12\x13\n\x0b\x61nswer_word\x18\x02 \x01(\t\x12\r\n\x05score\x18\x03 \x01(\x01\"^\n\x1aSuggestPageAnswersResponse\x12@\n\x10page_suggestions\x18\x01 \x03(\x0b\x32&.agent_service.v1.PageAnswerSuggestion\"\xe2\x01\n\x15JudgeOpenCasesRequest\x12\x31\n\x0creview_cases\x18\x01 \x03(\x0b\x32\x1b.shared_proto.v1.ReviewCase\x12\\\n\x14synopses_by_page_key\x18\x02 \x03(\x0b\x32>.agent_service.v1.JudgeOpenCasesRequest.SynopsesByPageKeyEntry\x1a\x38\n\x16SynopsesByPageKeyEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"i\n\x16JudgeOpenCasesResponse\x12\x19\n\x11judged_pair_count\x18\x01 \x01(\x05\x12\x19\n\x11\x66\x61iled_pair_count\x18\x02 \x01(\x05\x12\x19\n\x11input_token_count\x18\x03 \x01(\x05\x32\xe4\x01\n\x0c\x41gentService\x12o\n\x12SuggestPageAnswers\x12+.agent_service.v1.SuggestPageAnswersRequest\x1a,.agent_service.v1.SuggestPageAnswersResponse\x12\x63\n\x0eJudgeOpenCases\x12\'.agent_service.v1.JudgeOpenCasesRequest\x1a(.agent_service.v1.JudgeOpenCasesResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'v1.agent_service_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
+  _globals['_JUDGEOPENCASESREQUEST_SYNOPSESBYPAGEKEYENTRY']._loaded_options = None
+  _globals['_JUDGEOPENCASESREQUEST_SYNOPSESBYPAGEKEYENTRY']._serialized_options = b'8\001'
   _globals['_SUGGESTPAGEANSWERSREQUEST']._serialized_start=80
   _globals['_SUGGESTPAGEANSWERSREQUEST']._serialized_end=157
   _globals['_PAGEANSWERSUGGESTION']._serialized_start=159
   _globals['_PAGEANSWERSUGGESTION']._serialized_end=235
   _globals['_SUGGESTPAGEANSWERSRESPONSE']._serialized_start=237
   _globals['_SUGGESTPAGEANSWERSRESPONSE']._serialized_end=331
-  _globals['_AGENTSERVICE']._serialized_start=333
-  _globals['_AGENTSERVICE']._serialized_end=460
+  _globals['_JUDGEOPENCASESREQUEST']._serialized_start=334
+  _globals['_JUDGEOPENCASESREQUEST']._serialized_end=560
+  _globals['_JUDGEOPENCASESREQUEST_SYNOPSESBYPAGEKEYENTRY']._serialized_start=504
+  _globals['_JUDGEOPENCASESREQUEST_SYNOPSESBYPAGEKEYENTRY']._serialized_end=560
+  _globals['_JUDGEOPENCASESRESPONSE']._serialized_start=562
+  _globals['_JUDGEOPENCASESRESPONSE']._serialized_end=667
+  _globals['_AGENTSERVICE']._serialized_start=670
+  _globals['_AGENTSERVICE']._serialized_end=898
 # @@protoc_insertion_point(module_scope)

@@ -10,6 +10,9 @@ service AgentService {
   // Suggest a place for each open page of an entry group case that the
   // suggestion is sure of. Pages it is unsure of get no suggestion.
   rpc SuggestPageAnswers(SuggestPageAnswersRequest) returns (SuggestPageAnswersResponse);
+  // Judge open review case pairs whose answers are not yet stored, using the
+  // provided page synopses.
+  rpc JudgeOpenCases(JudgeOpenCasesRequest) returns (JudgeOpenCasesResponse);
 }
 
 // The review case whose open pages to suggest places for.
@@ -30,4 +33,17 @@ message PageAnswerSuggestion {
 // The suggested places, sorted by page key; empty for an answered case.
 message SuggestPageAnswersResponse {
   repeated PageAnswerSuggestion page_suggestions = 1;
+}
+
+// Open review cases and page synopses to evaluate with Jev.
+message JudgeOpenCasesRequest {
+  repeated shared_proto.v1.ReviewCase review_cases = 1;
+  map<string, string> synopses_by_page_key = 2;
+}
+
+// Summary of Jev pair judgments performed and billed tokens.
+message JudgeOpenCasesResponse {
+  int32 judged_pair_count = 1;
+  int32 failed_pair_count = 2;
+  int32 input_token_count = 3;
 }

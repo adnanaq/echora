@@ -28,3 +28,28 @@ class SuggestPageAnswersResponse(_message.Message):
     PAGE_SUGGESTIONS_FIELD_NUMBER: _ClassVar[int]
     page_suggestions: _containers.RepeatedCompositeFieldContainer[PageAnswerSuggestion]
     def __init__(self, page_suggestions: _Optional[_Iterable[_Union[PageAnswerSuggestion, _Mapping]]] = ...) -> None: ...
+
+class JudgeOpenCasesRequest(_message.Message):
+    __slots__ = ("review_cases", "synopses_by_page_key")
+    class SynopsesByPageKeyEntry(_message.Message):
+        __slots__ = ("key", "value")
+        KEY_FIELD_NUMBER: _ClassVar[int]
+        VALUE_FIELD_NUMBER: _ClassVar[int]
+        key: str
+        value: str
+        def __init__(self, key: _Optional[str] = ..., value: _Optional[str] = ...) -> None: ...
+    REVIEW_CASES_FIELD_NUMBER: _ClassVar[int]
+    SYNOPSES_BY_PAGE_KEY_FIELD_NUMBER: _ClassVar[int]
+    review_cases: _containers.RepeatedCompositeFieldContainer[_review_cases_pb2.ReviewCase]
+    synopses_by_page_key: _containers.ScalarMap[str, str]
+    def __init__(self, review_cases: _Optional[_Iterable[_Union[_review_cases_pb2.ReviewCase, _Mapping]]] = ..., synopses_by_page_key: _Optional[_Mapping[str, str]] = ...) -> None: ...
+
+class JudgeOpenCasesResponse(_message.Message):
+    __slots__ = ("judged_pair_count", "failed_pair_count", "input_token_count")
+    JUDGED_PAIR_COUNT_FIELD_NUMBER: _ClassVar[int]
+    FAILED_PAIR_COUNT_FIELD_NUMBER: _ClassVar[int]
+    INPUT_TOKEN_COUNT_FIELD_NUMBER: _ClassVar[int]
+    judged_pair_count: int
+    failed_pair_count: int
+    input_token_count: int
+    def __init__(self, judged_pair_count: _Optional[int] = ..., failed_pair_count: _Optional[int] = ..., input_token_count: _Optional[int] = ...) -> None: ...

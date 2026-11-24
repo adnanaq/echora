@@ -41,6 +41,11 @@ class AgentServiceStub:
                 request_serializer=v1_dot_agent__service__pb2.SuggestPageAnswersRequest.SerializeToString,
                 response_deserializer=v1_dot_agent__service__pb2.SuggestPageAnswersResponse.FromString,
                 _registered_method=True)
+        self.JudgeOpenCases = channel.unary_unary(
+                '/agent_service.v1.AgentService/JudgeOpenCases',
+                request_serializer=v1_dot_agent__service__pb2.JudgeOpenCasesRequest.SerializeToString,
+                response_deserializer=v1_dot_agent__service__pb2.JudgeOpenCasesResponse.FromString,
+                _registered_method=True)
 
 
 class AgentServiceServicer:
@@ -56,6 +61,14 @@ class AgentServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def JudgeOpenCases(self, request, context):
+        """Judge open review case pairs whose answers are not yet stored, using the
+        provided page synopses.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_AgentServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -63,6 +76,11 @@ def add_AgentServiceServicer_to_server(servicer, server):
                     servicer.SuggestPageAnswers,
                     request_deserializer=v1_dot_agent__service__pb2.SuggestPageAnswersRequest.FromString,
                     response_serializer=v1_dot_agent__service__pb2.SuggestPageAnswersResponse.SerializeToString,
+            ),
+            'JudgeOpenCases': grpc.unary_unary_rpc_method_handler(
+                    servicer.JudgeOpenCases,
+                    request_deserializer=v1_dot_agent__service__pb2.JudgeOpenCasesRequest.FromString,
+                    response_serializer=v1_dot_agent__service__pb2.JudgeOpenCasesResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -94,6 +112,33 @@ class AgentService:
             '/agent_service.v1.AgentService/SuggestPageAnswers',
             v1_dot_agent__service__pb2.SuggestPageAnswersRequest.SerializeToString,
             v1_dot_agent__service__pb2.SuggestPageAnswersResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def JudgeOpenCases(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agent_service.v1.AgentService/JudgeOpenCases',
+            v1_dot_agent__service__pb2.JudgeOpenCasesRequest.SerializeToString,
+            v1_dot_agent__service__pb2.JudgeOpenCasesResponse.FromString,
             options,
             channel_credentials,
             insecure,

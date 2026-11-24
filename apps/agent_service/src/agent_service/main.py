@@ -6,7 +6,8 @@ import signal
 
 import grpc
 from agent_proto.v1 import agent_service_pb2, agent_service_pb2_grpc
-from agent_service.service import AgentServiceHandler, build_default_judgment_store
+from agent_service.routes import AgentRoutes
+from agent_service.runtime import build_runtime
 from common.config import Settings, get_settings
 from grpc_health.v1 import health, health_pb2, health_pb2_grpc
 
@@ -44,9 +45,9 @@ async def build_grpc_server(settings: Settings) -> tuple[grpc.aio.Server, str]:
         The unstarted ``grpc.aio.Server`` and its ``host:port`` listen address.
     """
     server = grpc.aio.server()
-    judgment_store = build_default_judgment_store(settings.agent.agent_data_dir)
+    runtime = build_runtime(settings)
     agent_service_pb2_grpc.add_AgentServiceServicer_to_server(
-        AgentServiceHandler(judgment_store),
+        AgentRoutes(runtime),
         server,
     )
 
