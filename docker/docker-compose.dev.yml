@@ -236,6 +236,33 @@ services:
       start_period: 60s
     restart: unless-stopped
 
+  # Agent service: gRPC endpoints for Jev match suggestions and reasoning models.
+  agent-service:
+    build:
+      context: ..
+      dockerfile: apps/agent_service/Dockerfile.dev
+    image: echora-agent-service:dev
+    container_name: echora-dev-agent-service
+    ports:
+      - "8005:8005"
+    environment:
+      - ENVIRONMENT=development
+      - AGENT_SERVICE_HOST=0.0.0.0
+      - AGENT_SERVICE_PORT=8005
+      - AGENT_DATA_DIR=/app/data/agent
+      - TYPESAFE_API_KEY=${TYPESAFE_API_KEY:-}
+    volumes:
+      - ../data:/app/data:ro
+    networks:
+      - echora-network
+    healthcheck:
+      test: ["CMD", "grpc_health_probe", "-addr=localhost:8005"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
   # Seed review page: answer seed cleaning's review cases and start a run.
   review-page:
     build:
@@ -252,6 +279,10 @@ services:
       - REVIEW_PAGE_HOST=0.0.0.0
       - REVIEW_PAGE_PORT=8003
       - REVIEW_PAGE_DATA_DIR=/app/data/seed_cleaning
+      - AGENT_SERVICE_HOST=agent-service
+      - AGENT_SERVICE_PORT=8005
+      - AGENT_DATA_DIR=/app/data/agent
+      - TYPESAFE_API_KEY=${TYPESAFE_API_KEY:-}
     # Saves and runs write the review file and the run's results, so the data
     # folder is writable. A run reads the seed file the last run used, a path
     # relative to /app, so the seed folder sits at the same place.
@@ -264,6 +295,7 @@ services:
         target: /app/data/seed_cleaning
         bind:
           create_host_path: false
+      - ../data/agent:/app/data/agent
       - type: bind
         source: ../assets/seed_data
         target: /app/assets/seed_data

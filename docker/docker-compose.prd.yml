@@ -251,6 +251,31 @@ services:
       start_period: 60s
     restart: unless-stopped
 
+  agent-service:
+    build:
+      context: ..
+      dockerfile: apps/agent_service/Dockerfile.prd
+    container_name: echora-agent-service
+    ports:
+      - "8005:8005"
+    environment:
+      - ENVIRONMENT=production
+      - AGENT_SERVICE_HOST=0.0.0.0
+      - AGENT_SERVICE_PORT=8005
+      - AGENT_DATA_DIR=/app/data/agent
+      - TYPESAFE_API_KEY=${TYPESAFE_API_KEY:-}
+    volumes:
+      - ../data:/app/data:ro
+    networks:
+      - echora-network
+    healthcheck:
+      test: ["CMD", "grpc_health_probe", "-addr=localhost:8005"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
   postgres-service:
     build:
       context: ..
