@@ -10,6 +10,7 @@ import uvicorn
 from common.config import get_settings
 from review_page.agent_suggestions_client import GrpcAgentSuggestionsClient
 from review_page.app import create_app
+from review_page.enrichment_run_client import GrpcSeedCleaningRunClient
 from review_page.file_review_case_source import FileReviewCaseSource
 
 
@@ -17,15 +18,29 @@ def main() -> None:
     """Load review page settings, initialize the file source, and start the server."""
     settings = get_settings()
     config = settings.review_page
-    source = FileReviewCaseSource(
-        config.review_page_data_dir,
-        config.review_page_clean_seed_script,
-        seed_file=config.review_page_seed_file,
-    )
     service = getattr(settings, "service", None)
     if service is None:
+        source = FileReviewCaseSource(
+            config.review_page_data_dir,
+            config.review_page_clean_seed_script,
+            seed_file=config.review_page_seed_file,
+        )
         app = create_app(source)
     else:
+        enrichment_host = (
+            "127.0.0.1"
+            if service.enrichment_service_host == "0.0.0.0"  # noqa: S104
+            else service.enrichment_service_host
+        )
+        run_client = GrpcSeedCleaningRunClient(
+            f"{enrichment_host}:{service.enrichment_service_port}"
+        )
+        source = FileReviewCaseSource(
+            config.review_page_data_dir,
+            config.review_page_clean_seed_script,
+            seed_file=config.review_page_seed_file,
+            run_client=run_client,
+        )
         agent_host = (
             "127.0.0.1"
             if service.agent_service_host == "0.0.0.0"  # noqa: S104

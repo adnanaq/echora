@@ -10,6 +10,7 @@ python_sources(
     dependencies=[
         ":page_files",
         "//libs/common/src/agent_proto:proto",
+        "//apps/enrichment_service/src/enrichment_proto:proto",
         "//libs/common/src/shared_proto:proto",
         "//libs/common/src/common",
         "//libs/seed_cleaning/src/seed_cleaning",

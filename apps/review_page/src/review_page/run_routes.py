@@ -12,7 +12,10 @@ Each route rule reads `<rule>: <reason>`:
 
 from fastapi import APIRouter, Request, Response
 from fastapi.templating import Jinja2Templates
-from review_page.errors import RunSeedFileUnknownError
+from review_page.errors import (
+    EnrichmentServiceUnavailableError,
+    RunSeedFileUnknownError,
+)
 from review_page.models import BrowserState, BrowserStateField
 from review_page.request_guards import (
     build_event_headers,
@@ -53,6 +56,8 @@ class RunRoutes:
             self._source.start_run()
         except RunSeedFileUnknownError as error:
             return build_notice_response(409, str(error))
+        except EnrichmentServiceUnavailableError as error:
+            return build_notice_response(503, str(error))
         return build_event_response({"runstarted": True})
 
     def report_run_state(self) -> Response:

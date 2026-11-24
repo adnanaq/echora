@@ -64,6 +64,8 @@ import os
 from datetime import datetime
 from pathlib import Path
 
+import grpc
+from agent_proto.v1 import agent_service_pb2, agent_service_pb2_grpc
 from common.config import get_settings
 from enrichment.pipeline.api_fetcher import ApiFetcher
 from enrichment.pipeline.circuit_breaker_api_fetcher import CircuitBreakerApiFetcher
@@ -73,14 +75,6 @@ from enrichment.pipeline.provider_page_fetcher import ProviderPageFetcher
 from enrichment.sources.animeschedule.animeschedule_helper import require_app_token
 from enrichment.sources.mal import mal_anime_crawler
 from http_cache import close_cache, configure_cache
-from match_suggestions import (
-    JEV_DOLLARS_PER_INPUT_TOKEN,
-    PAIR_JUDGMENTS_FILE_NAME,
-    JsonlPairJudgmentStore,
-    estimate_input_tokens,
-    judge_pair_requests,
-    list_pair_requests,
-)
 from seed_cleaning import (
     REVIEW_FILE_NAME,
     NotListedSearchFile,
@@ -88,12 +82,13 @@ from seed_cleaning import (
     read_seed_release_name,
     run_seed_cleaning,
 )
-from typesafe_sdk import AsyncTypeSafeClient
 from work_matching import (
     KnownWorkEntriesFromSeed,
     ProviderPageStore,
     ReviewCase,
+    ReviewCaseKind,
 )
+from work_matching.review_case_messages import convert_case_to_message
 
 logger = logging.getLogger(__name__)
 
@@ -143,51 +138,56 @@ async def main() -> None:
 
 
 async def ask_jev_about_open_cases(data_dir: Path) -> None:
-    """Ask Jev about the open cases' page pairs it has no answer for, and keep the answers.
+    """Ask AgentService to judge open cases' unstored pairs using page synopses.
 
     Args:
-        data_dir: The data folder holding the review file and Jev's answers.
+        data_dir: The data folder holding the review file.
     """
     settings = get_settings()
-    typesafe_api_key = settings.agent.typesafe_api_key
-    if typesafe_api_key is None or not typesafe_api_key.get_secret_value():
-        logger.info("Answer suggestions skipped: TYPESAFE_API_KEY is not set")
-        return
     review_lines = (data_dir / REVIEW_FILE_NAME).read_text(encoding="utf-8")
-    review_cases = [
-        ReviewCase.model_validate_json(line)
+    open_cases = [
+        case
         for line in review_lines.splitlines()
         if line.strip()
+        and (case := ReviewCase.model_validate_json(line)).answer is None
+        and case.kind is not ReviewCaseKind.LINKED_PAGE
     ]
-    store = JsonlPairJudgmentStore(
-        settings.agent.agent_data_dir / PAIR_JUDGMENTS_FILE_NAME
-    )
+    if not open_cases:
+        return
     cache = configure_cache(settings.cache, settings.redis)
     try:
         synopsis_reader = PageSynopsisReader(ApiFetcher(settings.enrichment, cache))
-        pair_requests = await list_pair_requests(
-            review_cases, store, synopsis_reader.read_synopsis
-        )
-        estimated_tokens = estimate_input_tokens(pair_requests)
-        logger.info(
-            f"Answer suggestions: {len(pair_requests)} page pairs to ask Jev, "
-            f"about {estimated_tokens} input tokens "
-            f"(${estimated_tokens * JEV_DOLLARS_PER_INPUT_TOKEN:.2f})"
-        )
-        if not pair_requests:
-            return
-        async with AsyncTypeSafeClient(
-            api_key=typesafe_api_key.get_secret_value()
-        ) as client:
-            judging_summary = await judge_pair_requests(pair_requests, store, client)
+        pages_by_key = {page.key: page for case in open_cases for page in case.pages}
+        synopses: dict[str, str] = {}
+        for page_key, page in pages_by_key.items():
+            synopsis = await synopsis_reader.read_synopsis(page)
+            if synopsis:
+                synopses[page_key] = synopsis
     finally:
         await close_cache()
-    logger.info(
-        f"Answer suggestions: {judging_summary.judged_pair_count} pairs answered, "
-        f"{judging_summary.failed_pair_count} failed, "
-        f"{judging_summary.input_token_count} input tokens billed "
-        f"(${judging_summary.input_token_count * JEV_DOLLARS_PER_INPUT_TOKEN:.2f})"
+    agent_host = (
+        "127.0.0.1"
+        if settings.service.agent_service_host == "0.0.0.0"  # noqa: S104
+        else settings.service.agent_service_host
     )
+    target_address = f"{agent_host}:{settings.service.agent_service_port}"
+    request = agent_service_pb2.JudgeOpenCasesRequest(
+        review_cases=[convert_case_to_message(case) for case in open_cases],
+        synopses_by_page_key=synopses,
+    )
+    try:
+        async with grpc.aio.insecure_channel(target_address) as channel:
+            stub = agent_service_pb2_grpc.AgentServiceStub(channel)
+            summary = await stub.JudgeOpenCases(request, timeout=600.0)
+        logger.info(
+            f"Answer suggestions: {summary.judged_pair_count} pairs answered, "
+            f"{summary.failed_pair_count} failed, "
+            f"{summary.input_token_count} input tokens billed"
+        )
+    except grpc.RpcError as error:
+        logger.warning(
+            "Answer suggestions skipped: AgentService unavailable: %s", error
+        )
 
 
 def parse_arguments() -> argparse.Namespace:

@@ -228,6 +228,8 @@ services:
       - ENRICHMENT_OUTPUT_DIR=/app/assets/seed_data
       - CACHE_ENABLED=true
       - REDIS_URL=${REDIS_URL:?set REDIS_URL in .env}
+      - AGENT_SERVICE_HOST=agent-service
+      - AGENT_SERVICE_PORT=8005
       # Off until a production collector exists (see vector-service).
       - OTEL_ENABLED=false
     # The crawlers start Chrome: init reaps its exited processes, and Chrome

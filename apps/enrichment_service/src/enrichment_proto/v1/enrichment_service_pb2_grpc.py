@@ -3,6 +3,7 @@
 import grpc
 import warnings
 
+from shared_proto.v1 import review_cases_pb2 as shared__proto_dot_v1_dot_review__cases__pb2
 from enrichment_proto.v1 import enrichment_service_pb2 as v1_dot_enrichment__service__pb2
 
 GRPC_GENERATED_VERSION = '1.84.0'
@@ -45,6 +46,16 @@ class EnrichmentServiceStub:
                 request_serializer=v1_dot_enrichment__service__pb2.RunPipelineRequest.SerializeToString,
                 response_deserializer=v1_dot_enrichment__service__pb2.RunPipelineResponse.FromString,
                 _registered_method=True)
+        self.StartSeedCleaning = channel.unary_unary(
+                '/enrichment_service.v1.EnrichmentService/StartSeedCleaning',
+                request_serializer=v1_dot_enrichment__service__pb2.StartSeedCleaningRequest.SerializeToString,
+                response_deserializer=shared__proto_dot_v1_dot_review__cases__pb2.RunState.FromString,
+                _registered_method=True)
+        self.GetSeedCleaningStatus = channel.unary_unary(
+                '/enrichment_service.v1.EnrichmentService/GetSeedCleaningStatus',
+                request_serializer=v1_dot_enrichment__service__pb2.GetSeedCleaningStatusRequest.SerializeToString,
+                response_deserializer=shared__proto_dot_v1_dot_review__cases__pb2.RunState.FromString,
+                _registered_method=True)
 
 
 class EnrichmentServiceServicer:
@@ -65,6 +76,20 @@ class EnrichmentServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def StartSeedCleaning(self, request, context):
+        """Starts a background seed-cleaning run if none is active.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetSeedCleaningStatus(self, request, context):
+        """Reports whether a seed-cleaning run is active and the last exit code.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_EnrichmentServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -77,6 +102,16 @@ def add_EnrichmentServiceServicer_to_server(servicer, server):
                     servicer.RunPipeline,
                     request_deserializer=v1_dot_enrichment__service__pb2.RunPipelineRequest.FromString,
                     response_serializer=v1_dot_enrichment__service__pb2.RunPipelineResponse.SerializeToString,
+            ),
+            'StartSeedCleaning': grpc.unary_unary_rpc_method_handler(
+                    servicer.StartSeedCleaning,
+                    request_deserializer=v1_dot_enrichment__service__pb2.StartSeedCleaningRequest.FromString,
+                    response_serializer=shared__proto_dot_v1_dot_review__cases__pb2.RunState.SerializeToString,
+            ),
+            'GetSeedCleaningStatus': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetSeedCleaningStatus,
+                    request_deserializer=v1_dot_enrichment__service__pb2.GetSeedCleaningStatusRequest.FromString,
+                    response_serializer=shared__proto_dot_v1_dot_review__cases__pb2.RunState.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -134,6 +169,60 @@ class EnrichmentService:
             '/enrichment_service.v1.EnrichmentService/RunPipeline',
             v1_dot_enrichment__service__pb2.RunPipelineRequest.SerializeToString,
             v1_dot_enrichment__service__pb2.RunPipelineResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StartSeedCleaning(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/enrichment_service.v1.EnrichmentService/StartSeedCleaning',
+            v1_dot_enrichment__service__pb2.StartSeedCleaningRequest.SerializeToString,
+            shared__proto_dot_v1_dot_review__cases__pb2.RunState.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetSeedCleaningStatus(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/enrichment_service.v1.EnrichmentService/GetSeedCleaningStatus',
+            v1_dot_enrichment__service__pb2.GetSeedCleaningStatusRequest.SerializeToString,
+            shared__proto_dot_v1_dot_review__cases__pb2.RunState.FromString,
             options,
             channel_credentials,
             insecure,
