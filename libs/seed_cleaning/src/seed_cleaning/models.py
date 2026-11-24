@@ -21,13 +21,18 @@ corrects, or reports:
   ``review_run.json``.
 """
 
+from __future__ import annotations
+
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import NamedTuple, Self
+from pathlib import Path
+from typing import TYPE_CHECKING, NamedTuple, Self
 
-from enrichment.pipeline.fetch_summary import FetchSummary
 from pydantic import BaseModel, ConfigDict, JsonValue
+
+if TYPE_CHECKING:
+    from enrichment.pipeline.fetch_summary import FetchSummary
 from work_matching import (
     KnownWorkEntriesFromSeed,
     LinkingEntryDetails,
@@ -342,3 +347,26 @@ class SeedCleaningRunResult(BaseModel):
     new_case_names: tuple[str, ...]
     # Every answer in the review file as this run wrote it, by case name.
     original_answers: dict[str, JsonValue]
+
+
+CORRECTIONS_FILE_NAME = "corrections.jsonl"
+ENTRIES_TO_CHECK_FILE_NAME = "entries_to_check.json"
+REVIEW_FILE_NAME = "review.jsonl"
+RUN_RESULT_FILE_NAME = "review_run.json"
+
+
+def read_seed_cleaning_run_result(data_dir: Path) -> SeedCleaningRunResult | None:
+    """Read the last run's result from the data folder.
+
+    Args:
+        data_dir: The folder ``review_run.json`` is written to.
+
+    Returns:
+        The result, or None when no run has written one yet.
+    """
+    result_path = data_dir / RUN_RESULT_FILE_NAME
+    if not result_path.exists():
+        return None
+    return SeedCleaningRunResult.model_validate_json(
+        result_path.read_text(encoding="utf-8")
+    )
