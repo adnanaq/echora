@@ -394,16 +394,16 @@ def test_object_fields_merge_one_sub_field_at_a_time() -> None:
     # highest-ranked object whole would discard everyone else's keys.
     merged = merge_provider_records(
         {
-            "mal": _record(broadcast={"day": "Sundays", "time": "23:15"}),
+            "mal": _record(broadcast={"day": 7, "jp_time": "23:15:00"}),
             "anilist": _record(broadcast={"next_episode_at": "2026-09-20T14:16:00Z"}),
-            "animeschedule": _record(broadcast={"jp_time": "2025-04-01T14:15:00Z"}),
+            "animeschedule": _record(broadcast={"sub_time": "14:15:00"}),
         }
     )
     assert merged["broadcast"] == {
-        "day": "Sundays",
-        "time": "23:15",
+        "day": 7,
+        "jp_time": "23:15:00",
         "next_episode_at": "2026-09-20T14:16:00Z",
-        "jp_time": "2025-04-01T14:15:00Z",
+        "sub_time": "14:15:00",
     }
 
 

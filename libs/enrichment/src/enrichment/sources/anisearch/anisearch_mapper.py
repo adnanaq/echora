@@ -44,6 +44,9 @@ from common.utils.datetime_utils import (
     determine_anime_status,
     determine_anime_year,
     normalize_to_utc,
+    parse_broadcast_time,
+    parse_iana_timezone,
+    parse_iso_weekday,
 )
 from enrichment.sources.anisearch.anisearch_anime_models import (
     AniSearchAnime,
@@ -202,12 +205,19 @@ def anime_from_anisearch(anime: AniSearchAnime) -> dict[str, Any]:
     images = AnimeImages(covers=[anime.cover_image] if anime.cover_image else [])
 
     # ── Broadcast ─────────────────────────────────────────────────────────
+    broadcast_day = parse_iso_weekday(anime.broadcast_day)
+    broadcast_time = parse_broadcast_time(anime.broadcast_time)
+    broadcast_timezone = parse_iana_timezone(anime.broadcast_timezone)
     broadcast = None
-    if anime.broadcast_day or anime.broadcast_time or anime.broadcast_timezone:
+    if (
+        broadcast_day is not None
+        or broadcast_time is not None
+        or broadcast_timezone is not None
+    ):
         broadcast = Broadcast(
-            day=anime.broadcast_day,
-            time=anime.broadcast_time,
-            timezone=anime.broadcast_timezone,
+            day=broadcast_day,
+            jp_time=broadcast_time,
+            timezone=broadcast_timezone,
         )
 
     # ── Companies ─────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 """Identity generation utilities using standard UUID versions.
 
 This module provides standard functions for generating:
-1. Random UUIDs (UUIDv4) for primary entities.
+1. Time-ordered UUIDs (UUIDv7) for primary entities.
 2. Deterministic UUIDs (UUIDv5) for sub-entities based on content.
 """
 
@@ -19,12 +19,12 @@ NAMESPACE_ECHORA = uuid.UUID("979fe79f-4bcb-499b-841f-3b9a075ae30f")
 
 
 def generate_entity_id() -> str:
-    """Generate a new random UUID (UUIDv4).
+    """Generate a new time-ordered UUID (UUIDv7).
 
     Returns:
-        UUID string (e.g., '01934f6c-8a2b-4c3d-9e5f-1a2b3c4d5e6f')
+        UUID string (e.g., '01934f6c-8a2b-7c3d-9e5f-1a2b3c4d5e6f')
     """
-    return str(uuid.uuid4())
+    return str(uuid.uuid7())
 
 
 def generate_deterministic_id(seed: str) -> str:

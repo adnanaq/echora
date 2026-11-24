@@ -41,7 +41,12 @@ from common.models.anime import (
     TrailerEntry,
     VoiceActor,
 )
-from common.utils.datetime_utils import normalize_to_utc
+from common.utils.datetime_utils import (
+    normalize_to_utc,
+    parse_broadcast_time,
+    parse_iana_timezone,
+    parse_iso_weekday,
+)
 from enrichment.sources.base.companies import companies_from_roles
 from enrichment.sources.base.external_links import external_link
 from enrichment.sources.mal.mal_models import (
@@ -111,14 +116,21 @@ def anime_from_mal(anime: MalAnime) -> dict[str, Any]:
             aired_to=normalize_to_utc(anime.aired_to),
         )
 
+    broadcast_day = parse_iso_weekday(anime.broadcast_day)
+    broadcast_time = parse_broadcast_time(anime.broadcast_time)
+    broadcast_timezone = parse_iana_timezone(anime.broadcast_timezone)
     broadcast = None
-    if any([anime.broadcast_day, anime.broadcast_time, anime.broadcast_timezone]):
+    if (
+        broadcast_day is not None
+        or broadcast_time is not None
+        or broadcast_timezone is not None
+    ):
         from common.models.anime import Broadcast
 
         broadcast = Broadcast(
-            day=anime.broadcast_day,
-            time=anime.broadcast_time,
-            timezone=anime.broadcast_timezone,
+            day=broadcast_day,
+            jp_time=broadcast_time,
+            timezone=broadcast_timezone,
         )
 
     images = AnimeImages(covers=anime.picture_urls)

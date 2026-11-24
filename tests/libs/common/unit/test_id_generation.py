@@ -20,16 +20,17 @@ def _is_valid_uuid(val: str) -> bool:
 
 
 def test_generate_entity_id_format():
-    """Test that generated entity IDs are valid UUID strings."""
+    """Test that generated entity IDs are valid UUIDv7 strings."""
     id1 = generate_entity_id()
     assert _is_valid_uuid(id1)
+    assert uuid.UUID(id1).version == 7
     # UUID format: 8-4-4-4-12 (36 chars with hyphens)
     assert len(id1) == 36
     assert id1.count("-") == 4
 
 
 def test_generate_entity_id_randomness():
-    """Test that entity IDs are unique (UUIDv4)."""
+    """Test that entity IDs are unique (UUIDv7)."""
     id1 = generate_entity_id()
     id2 = generate_entity_id()
 

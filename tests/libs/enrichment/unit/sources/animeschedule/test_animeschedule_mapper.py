@@ -83,7 +83,23 @@ def test_anime_from_animeschedule_delay_sets_hiatus_without_zero_end() -> None:
 
     assert mapped["hiatus"] == {
         "reason": "Production issues",
-        "hiatus_from": "2024-01-07T00:00:00Z",
+        "hiatus_from": "2024-01-07",
+    }
+
+
+def test_anime_from_animeschedule_broadcast_times_map_to_time_of_day() -> None:
+    mapped = anime_from_animeschedule(
+        _anime(
+            jpnTime="2025-04-01T23:15:00+09:00",
+            subTime="2025-04-01T15:30:00Z",
+            dubTime="2025-04-08T18:00:00Z",
+        )
+    )
+
+    assert mapped["broadcast"] == {
+        "jp_time": "23:15:00",
+        "sub_time": "15:30:00",
+        "dub_time": "18:00:00",
     }
 
 
