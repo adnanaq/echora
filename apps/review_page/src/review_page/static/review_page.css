@@ -318,11 +318,6 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; }
 .notice { margin: var(--space-2) var(--space-4) 0; padding: var(--space-2) var(--space-3); border-radius: var(--radius); background: var(--color-surface); border: 1px solid var(--color-edited); }
 .run-panel { margin: 0 var(--space-4); }
 .run-panel:has(> *) { margin-top: var(--space-4); }
-.suggestion-score {
-  display: inline-block; margin-left: var(--space-1); padding: 1px var(--space-1);
-  border-radius: var(--radius-pill); border: 1px solid var(--color-control-border);
-  font-size: var(--size-small); color: var(--color-muted);
-}
 .run-panel p { margin: 0; }
 .run-summary { display: flex; flex-wrap: wrap; gap: var(--space-4); font-size: var(--size-small); color: var(--color-muted); }
 .empty-state { color: var(--color-muted); text-align: center; padding: var(--space-6); }

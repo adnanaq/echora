@@ -68,7 +68,7 @@
   <tbody>
     {% for row in view.page_rows %}
     <tr class="{% if row.is_changed %}is-changed{% endif %}">
-      <td>{{ page_link(row.page_key, row.address) }}{% if row.choices.is_required %} *{% endif %}{% if previous_answer and row.page_key in previous_answer.added_page_keys %} {{ pill("Added", "new", tooltips.ADDED_PAGE_PILL) }}{% endif %}{% if row.is_place_missing %}{{ error_line("needs a place") }}{% endif %}</td>
+      <td>{{ page_link(row.page_key, row.address) }}{% if row.choices.is_required %} *{% endif %}{% if previous_answer and row.page_key in previous_answer.added_page_keys %} {{ pill("Added", "new", tooltips.ADDED_PAGE_PILL) }}{% endif %}{% if row.suggestion_score is not none %} {{ pill("Jev %.0f%%" | format(row.suggestion_score * 100), "suggested", "Jev confidence") }}{% endif %}{% if row.is_place_missing %}{{ error_line("needs a place") }}{% endif %}</td>
       <td>{{ row.entry_label }}{% if row.is_reference_page %} (ref){% endif %}</td>
       {% for column in view.shown_columns %}
       {% if column.name == "LINKS" and row.linked_pages %}
@@ -83,7 +83,6 @@
                             is_changed=row.is_changed, is_invalid=row.is_place_missing,
                             hx_vals={"page_key": row.page_key}, empty_label="no place",
                             empty_description=choice_meaning_by_word["no place"]) }}
-          {% if row.suggestion_score is not none %}<span class="suggestion-score" title="Jev confidence">{{ "%.0f%%" | format(row.suggestion_score * 100) }}</span>{% endif %}
           {% if row.choices.work == "other work" %}{{ named_entry_picker(row) }}{% endif %}
         </div>
         {% if row.choices.work == "other work" and row.choices.named_entry_page_key %}

@@ -97,7 +97,7 @@ def test_review_page_preselects_agent_suggestion_and_shows_score(
     )
 
     assert response.status_code == 200
-    assert "92%" in response.text
+    assert "Jev 92%" in response.text
     assert re.search(
         r'aria-label="Work of anilist:anime:19".*?<option value="work 1"\s+selected',
         response.text,
