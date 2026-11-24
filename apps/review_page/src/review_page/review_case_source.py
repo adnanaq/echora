@@ -37,13 +37,13 @@ from datetime import datetime
 from typing import NamedTuple
 
 from review_page.models import InvalidNamedPageKeyReason, RunSummary
-from review_page.review_case_messages import (
+from shared_proto.v1 import review_cases_pb2
+from work_matching import ReviewCase
+from work_matching.review_case_messages import (
     convert_message_to_case,
     convert_message_to_fields,
     join_ordered_mappings,
 )
-from shared_proto.v1 import review_cases_pb2
-from work_matching import ReviewCase
 
 # Rule identifier returned when a case's saved answer changed after editing began.
 ANSWER_SAVED_ELSEWHERE_RULE_NAME = "ANSWER_SAVED_ELSEWHERE"

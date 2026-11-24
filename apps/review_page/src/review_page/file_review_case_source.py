@@ -48,9 +48,6 @@ from review_page.answer_checks import (
 from review_page.errors import RunSeedFileUnknownError, SeedFileUnavailableError
 from review_page.models import InvalidNamedPageKeyReason
 from review_page.review_case_loader import ReviewCaseLoader
-from review_page.review_case_messages import (
-    list_ordered_mappings,
-)
 from review_page.review_case_source import ReviewCaseSource
 from review_page.seed_cleaning_run_process import SeedCleaningRunProcess
 from seed_cleaning import (
@@ -72,6 +69,9 @@ from work_matching import (
     build_target_entry_suggestion,
     list_named_entry_page_keys,
     resolve_named_entries,
+)
+from work_matching.review_case_messages import (
+    list_ordered_mappings,
 )
 
 

@@ -4,7 +4,8 @@ Work Matching - decide which provider pages belong to the same work.
 Holds the work entry, provider page keys and details, and the lookup of
 known work entries that seed cleaning, seed link filling and discovery compare
 against.
-Imports nothing from the enrichment pipeline.
+Imports nothing from the enrichment pipeline; review cases convert to and
+from the shared_proto messages here.
 """
 
 python_distribution(
