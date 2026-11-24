@@ -158,6 +158,7 @@ docker compose -f docker/docker-compose.dev.yml up -d --build
 | enrichment_service (gRPC)             | `localhost:8002`                                        |
 | review page (HTTP, this machine only) | <http://127.0.0.1:8003>                                 |
 | postgres_service (gRPC)               | `localhost:8004`                                        |
+| agent_service (gRPC)                  | `localhost:8005`                                        |
 | Qdrant dashboard                      | <http://localhost:6333/dashboard>                       |
 | Redis                                 | `localhost:6379`                                        |
 | RedisInsight                          | <http://localhost:5540> (add host `redis`, port `6379`) |
@@ -184,6 +185,7 @@ docker compose -f docker/docker-compose.dev.yml up -d qdrant redis postgres
 ./pants run apps/enrichment_service:enrichment_service # gRPC on :8002
 ./pants run apps/review_page:review_page               # HTTP on 127.0.0.1:8003
 cargo run -p postgres_service                          # gRPC on :8004
+./pants run apps/agent_service:agent_service           # gRPC on :8005
 ```
 
 Pants resolves its own interpreter from `PATH`, independently of the venv. If
@@ -214,6 +216,7 @@ review page is plain HTTP: `GET http://127.0.0.1:8003/health`):
 docker exec echora-dev-vector-service     grpc_health_probe -addr=localhost:8001
 docker exec echora-dev-enrichment-service grpc_health_probe -addr=localhost:8002
 docker exec echora-dev-postgres-service   grpc_health_probe -addr=localhost:8004
+docker exec echora-dev-agent-service      grpc_health_probe -addr=localhost:8005
 ```
 
 **Path B (local)** — there is no container to `exec` into, and
