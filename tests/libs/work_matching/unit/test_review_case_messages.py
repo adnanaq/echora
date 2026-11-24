@@ -1,11 +1,11 @@
 import pytest
 from google.protobuf import json_format
-from review_page.review_case_messages import (
+from work_matching import LinkedPageDecision, PreviousAnswer, TargetEntrySuggestion
+from work_matching.review_case_messages import (
     build_case_answer,
     convert_case_to_message,
     convert_message_to_case,
 )
-from work_matching import LinkedPageDecision, PreviousAnswer, TargetEntrySuggestion
 
 
 @pytest.mark.parametrize(

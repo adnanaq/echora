@@ -61,6 +61,8 @@ dependencies = [
     "jinja2>=3.1.6",
     "filelock>=4.0.9",
     "python-multipart>=0.0.33",  # FastAPI reads the page's form posts with it
+    # Match suggestions (libs/match_suggestions): TypeSafe's client for Jev
+    "typesafe-sdk==0.7.5",
 ]
 
 [project.optional-dependencies]
@@ -135,6 +137,7 @@ extra-paths = [
     "libs/common/src",
     "libs/enrichment/src",
     "libs/http_cache/src",
+    "libs/match_suggestions/src",
     "libs/qdrant_db/src",
     "libs/seed_cleaning/src",
     "libs/vector_db_interface/src",

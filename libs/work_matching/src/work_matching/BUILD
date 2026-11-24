@@ -1,4 +1,4 @@
-"""Work Matching sources - no dependency on other internal libs."""
+"""Work Matching sources - depend only on the generated shared_proto messages."""
 
 python_sources(
     dependencies=[],

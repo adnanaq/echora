@@ -46,6 +46,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue
 from work_matching.answer_placement_check import PlacementCheck
 from work_matching.entry_group import (
     check_group_answer_placements,
+    combine_group_entries,
     list_mal_page_review_reasons,
     suggest_group_page_placements,
 )
@@ -63,7 +64,7 @@ from work_matching.models import (
     PreviousAnswer,
 )
 from work_matching.page_details_comparison import MalPageComparison
-from work_matching.page_placement import PagePlacement
+from work_matching.page_placement import PagePlacement, list_placeable_page_keys
 from work_matching.provider_page import ProviderPage, index_pages_by_current_page_key
 from work_matching.split_work_check import SplitWorkReviewReason
 from work_matching.work_entry import WorkEntry
@@ -312,6 +313,23 @@ class ReviewCase(BaseModel):
                 if isinstance(decision, LinkedPageDecision)
             ),
             None,
+        )
+
+    @property
+    def placeable_page_keys(self) -> tuple[str, ...]:
+        """Return the keys of the pages an answer to an entry group case places.
+
+        The review page offers a place for each, and suggestions name pages by
+        the same keys. Doubled pages are named by their current key, as the
+        decisions name them.
+
+        Returns:
+            The doubled pages first, then the entries' other pages, as
+            ``list_placeable_page_keys`` orders them.
+        """
+        return list_placeable_page_keys(
+            combine_group_entries(list(self.entries.values())),
+            self.doubled_provider_decisions,
         )
 
     @property

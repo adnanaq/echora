@@ -53,34 +53,16 @@ from work_matching.answer_words import (
     SKIP_ANSWER,
     WHOLE_PAGE_ANSWER,
 )
-from work_matching.entry_group import combine_group_entries
 from work_matching.linked_page_check import check_linked_page_answer
 from work_matching.models import LinkedPageAddition, PlacementRule
 from work_matching.page_placement import (
     PagePlacement,
-    list_placeable_page_keys,
     read_placement,
     read_placements,
     write_placement,
 )
 from work_matching.provider_page_key import read_page_provider
 from work_matching.review_cases import ReviewCase, ReviewCaseKind
-
-
-def list_placeable_case_page_keys(case: ReviewCase) -> tuple[str, ...]:
-    """Return the keys of an entry group case's pages an answer can place.
-
-    Args:
-        case: A doubled-provider or split-work case.
-
-    Returns:
-        The doubled pages first, then the entries' other pages, as
-        ``list_placeable_page_keys`` orders them.
-    """
-    return list_placeable_page_keys(
-        combine_group_entries(list(case.entries.values())),
-        case.doubled_provider_decisions,
-    )
 
 
 def list_required_page_keys(
@@ -100,7 +82,7 @@ def list_required_page_keys(
         placement.is_later_work for placement in read_placements(answer).values()
     )
     if case.kind is ReviewCaseKind.SPLIT_WORK or is_later_work_used:
-        return frozenset(list_placeable_case_page_keys(case))
+        return frozenset(case.placeable_page_keys)
     return frozenset(
         page_key
         for decision in case.doubled_provider_decisions
@@ -118,11 +100,11 @@ def list_group_page_choices(
         answer: The answer so far: page keys mapped to places.
 
     Returns:
-        One entry per placeable page, in ``list_placeable_case_page_keys``
+        One entry per placeable page, in ``ReviewCase.placeable_page_keys``
         order, with each disabled choice's rule.
     """
     placements = read_placements(answer)
-    placeable_page_keys = list_placeable_case_page_keys(case)
+    placeable_page_keys = case.placeable_page_keys
     required_page_keys = list_required_page_keys(case, answer)
     highest_work_number = max(
         (

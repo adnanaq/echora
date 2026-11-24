@@ -146,6 +146,24 @@ def _background_text(value: object) -> object:
     return value
 
 
+def _synopsis_text(value: object) -> object:
+    """Strip the synopsis; MAL's placeholder for a missing one becomes None.
+
+    >>> _synopsis_text("No synopsis information has been added to this title.") is None
+    True
+
+    Args:
+        value: The synopsis as the crawler read it.
+
+    Returns:
+        The stripped synopsis, or None for no text or the placeholder.
+    """
+    value = strip_text_or_none(value)
+    if isinstance(value, str) and "no synopsis information" in value.lower():
+        return None
+    return value
+
+
 def _ranked_or_none(value: int | None) -> int | None:
     """Treat rank 0 as not ranked; MAL shows #0 for an anime it has not ranked."""
     return value or None
@@ -269,7 +287,7 @@ class MalAnime(BaseModel):
     favorites: MalCount = None
 
     # Text
-    synopsis: str | None = None
+    synopsis: Annotated[str | None, BeforeValidator(_synopsis_text)] = None
     background: Annotated[str | None, BeforeValidator(_background_text)] = None
 
     # Arrays

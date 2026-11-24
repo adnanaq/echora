@@ -1,4 +1,5 @@
 from shared_proto.v1 import error_pb2 as _error_pb2
+from shared_proto.v1 import review_cases_pb2 as _review_cases_pb2
 from google.protobuf.internal import containers as _containers
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
@@ -54,3 +55,21 @@ class RunPipelineResponse(_message.Message):
     result_json: str
     error: _error_pb2.ErrorDetails
     def __init__(self, success: _Optional[bool] = ..., output_path: _Optional[str] = ..., result_json: _Optional[str] = ..., error: _Optional[_Union[_error_pb2.ErrorDetails, _Mapping]] = ...) -> None: ...
+
+class StartSeedCleaningRequest(_message.Message):
+    __slots__ = ("seed_file", "data_dir", "no_fetch", "refetch_stored")
+    SEED_FILE_FIELD_NUMBER: _ClassVar[int]
+    DATA_DIR_FIELD_NUMBER: _ClassVar[int]
+    NO_FETCH_FIELD_NUMBER: _ClassVar[int]
+    REFETCH_STORED_FIELD_NUMBER: _ClassVar[int]
+    seed_file: str
+    data_dir: str
+    no_fetch: bool
+    refetch_stored: bool
+    def __init__(self, seed_file: _Optional[str] = ..., data_dir: _Optional[str] = ..., no_fetch: _Optional[bool] = ..., refetch_stored: _Optional[bool] = ...) -> None: ...
+
+class GetSeedCleaningStatusRequest(_message.Message):
+    __slots__ = ("data_dir",)
+    DATA_DIR_FIELD_NUMBER: _ClassVar[int]
+    data_dir: str
+    def __init__(self, data_dir: _Optional[str] = ...) -> None: ...

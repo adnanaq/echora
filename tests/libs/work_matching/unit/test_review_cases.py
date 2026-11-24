@@ -79,7 +79,7 @@ def test_review_case_build_entry_group_case_single_entry_keeps_entry_and_searche
     decisions = decide_doubled_providers(entry, pages, KnownWorkEntriesFromSeed([]))
     case = ReviewCase.build_entry_group_case([entry], decisions, (), pages)
     assert [page.key for page in case.pages] == [
-        "https://animeschedule.net/anime/show",
+        "animeschedule:anime:show",
         "kitsu:anime:1",
         "kitsu:anime:2",
         "mal:anime:1",
@@ -216,7 +216,7 @@ def test_review_case_build_entry_group_case_keeps_searched_pages(
     pages = [linked_page("https://myanimelist.net/anime/1"), found_page]
     case = build_group_case(entries, pages)
     assert [page.key for page in case.pages] == [
-        "https://animeschedule.net/anime/show",
+        "animeschedule:anime:show",
         "mal:anime:1",
     ]
 
@@ -509,3 +509,21 @@ def test_describe_case_reasons_split_work_and_mal_reason_names_never_overlap() -
     assert not {reason.name for reason in SplitWorkReviewReason} & {
         comparison.name for comparison in MalPageComparison
     }
+
+
+def test_review_case_placeable_page_keys_doubled_pages_first(review_cases) -> None:
+    assert review_cases["gochuumon_movie"].placeable_page_keys[:3] == (
+        "anidb:anime:19188",
+        "anidb:anime:19792",
+        "anilist:anime:187217",
+    )
+
+
+def test_review_case_placeable_page_keys_split_work_lists_every_entry_page(
+    review_cases,
+) -> None:
+    assert review_cases["atashinchi_next"].placeable_page_keys == (
+        "anilist:anime:203146",
+        "mal:anime:63013",
+        "anidb:anime:19895",
+    )

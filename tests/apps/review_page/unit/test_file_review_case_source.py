@@ -3,16 +3,20 @@ import json
 import os
 import subprocess
 import sys
-import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from google.protobuf import json_format
+from review_page.enrichment_run_client import (
+    GrpcSeedCleaningRunClient,
+    SeedCleaningRunClient,
+)
 from review_page.errors import (
+    EnrichmentServiceUnavailableError,
     RunSeedFileUnknownError,
     SeedFileUnavailableError,
     UnreadableReviewFileError,
@@ -23,7 +27,6 @@ from review_page.file_review_case_source import (
 )
 from review_page.models import InvalidNamedPageKeyReason
 from review_page.review_case_source import ANSWER_SAVED_ELSEWHERE_RULE_NAME
-from review_page.seed_cleaning_run_process import RUN_LOG_LIMIT_BYTES
 from seed_cleaning import (
     REVIEW_ANSWER_REASON,
     SeedCleaningRunResult,
@@ -413,114 +416,52 @@ def test_file_review_case_source_get_last_run_result_reads_result_file(
     ] == [("review cases open", 4)]
 
 
-def test_file_review_case_source_start_run_runs_script_without_fetch(
-    source, data_dir
+def test_file_review_case_source_start_run_delegates_to_run_client(
+    data_dir,
 ) -> None:
-    assert source.start_run().is_running
-    run_state = _wait_for_run_end(source)
-    assert json.loads((data_dir / "run_arguments.json").read_text()) == [
-        "assets/seed_data/seed.json",
-        "--no-fetch",
-        "--data-dir",
-        str(data_dir),
-    ]
-    assert (run_state.is_running, run_state.last_exit_code) == (False, 0)
-
-
-def test_file_review_case_source_start_run_failed_script_reports_exit_code(
-    source, data_dir
-) -> None:
-    (data_dir / "exit_code").write_text("3")
-    source.start_run()
-    assert _wait_for_run_end(source).last_exit_code == 3
-
-
-def test_file_review_case_source_start_run_while_running_starts_nothing_more(
-    source, data_dir
-) -> None:
-    source.start_run()
-    for _ in range(100):
-        if (data_dir / "run_arguments.json").exists():
-            break
-        time.sleep(0.02)
-    (data_dir / "run_arguments.json").unlink()
-    source.start_run()
-    _wait_for_run_end(source)
-    assert not (data_dir / "run_arguments.json").exists()
-
-
-def test_file_review_case_source_start_run_requested_at_once_starts_one_run(
-    data_dir, tmp_path
-) -> None:
-    script = tmp_path / "counting_clean_seed.py"
-    script.write_text(
-        "import sys, time\n"
-        "from pathlib import Path\n"
-        "data_dir = Path(sys.argv[sys.argv.index('--data-dir') + 1])\n"
-        "with (data_dir / 'started_runs.log').open('a') as log:\n"
-        "    log.write('started\\n')\n"
-        "time.sleep(0.5)\n",
-        encoding="utf-8",
-    )
+    run_client = MagicMock(spec=SeedCleaningRunClient)
+    run_client.start_run.return_value = review_cases_pb2.RunState(is_running=True)
     source = FileReviewCaseSource(
-        data_dir, script, seed_file=Path("assets/seed_data/seed.json")
+        data_dir,
+        seed_file=Path("assets/seed_data/seed.json"),
+        run_client=run_client,
     )
-    barrier = threading.Barrier(8)
 
-    def start_run_after_barrier() -> None:
-        barrier.wait()
-        source.start_run()
+    state = source.start_run()
 
-    threads = [threading.Thread(target=start_run_after_barrier) for _ in range(8)]
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join()
-    _wait_for_run_end(source)
-    started_runs = (data_dir / "started_runs.log").read_text().splitlines()
-    assert started_runs == ["started"]
+    assert state.is_running is True
+    run_client.start_run.assert_called_once_with(
+        Path("assets/seed_data/seed.json"), data_dir
+    )
 
 
-def test_file_review_case_source_get_run_state_asked_at_once_after_failed_run_reports_exit_code(
-    source, data_dir
+def test_file_review_case_source_get_run_state_delegates_to_run_client(
+    data_dir,
 ) -> None:
-    (data_dir / "exit_code").write_text("3")
-    source.start_run()
-    time.sleep(1)
-    barrier = threading.Barrier(8)
-    run_states = []
+    run_client = MagicMock(spec=SeedCleaningRunClient)
+    run_client.get_run_state.return_value = review_cases_pb2.RunState(
+        is_running=False, last_exit_code=0
+    )
+    source = FileReviewCaseSource(data_dir, run_client=run_client)
 
-    def read_run_state_after_barrier() -> None:
-        barrier.wait()
-        run_states.append(source.get_run_state())
+    state = source.get_run_state()
 
-    threads = [threading.Thread(target=read_run_state_after_barrier) for _ in range(8)]
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join()
-    assert [
-        (run_state.is_running, run_state.last_exit_code) for run_state in run_states
-    ] == [(False, 3)] * 8
-
-
-def test_file_review_case_source_get_run_state_process_id_not_started_here_not_running(
-    source, data_dir
-) -> None:
-    (data_dir / "review_run.pid").write_text(str(os.getpid()), encoding="utf-8")
-    assert not source.get_run_state().is_running
+    assert (state.is_running, state.last_exit_code) == (False, 0)
+    run_client.get_run_state.assert_called_once_with(data_dir)
 
 
 def test_file_review_case_source_start_run_without_known_seed_file_raises(
-    data_dir, run_script
+    data_dir,
 ) -> None:
-    source = FileReviewCaseSource(data_dir, run_script)
+    run_client = MagicMock(spec=SeedCleaningRunClient)
+    source = FileReviewCaseSource(data_dir, run_client=run_client)
     with pytest.raises(RunSeedFileUnknownError):
         source.start_run()
+    run_client.start_run.assert_not_called()
 
 
 def test_file_review_case_source_start_run_uses_seed_file_of_last_run(
-    data_dir, run_script
+    data_dir,
 ) -> None:
     (data_dir / "review_run.json").write_text(
         SeedCleaningRunResult(
@@ -539,12 +480,39 @@ def test_file_review_case_source_start_run_uses_seed_file_of_last_run(
         ).model_dump_json(),
         encoding="utf-8",
     )
-    source = FileReviewCaseSource(data_dir, run_script)
+    run_client = MagicMock(spec=SeedCleaningRunClient)
+    run_client.start_run.return_value = review_cases_pb2.RunState(is_running=True)
+    source = FileReviewCaseSource(data_dir, run_client=run_client)
     source.start_run()
-    _wait_for_run_end(source)
-    assert json.loads((data_dir / "run_arguments.json").read_text())[0] == (
-        "assets/seed_data/last.json"
+    run_client.start_run.assert_called_once_with(
+        Path("assets/seed_data/last.json"), data_dir
     )
+
+
+def test_grpc_seed_cleaning_run_client_degrades_gracefully_when_unreachable(
+    tmp_path: Path,
+) -> None:
+    client = GrpcSeedCleaningRunClient("127.0.0.1:1", timeout_seconds=0.1)
+    state = client.get_run_state(tmp_path)
+    assert state.is_running is False
+    with pytest.raises(EnrichmentServiceUnavailableError, match="unavailable"):
+        client.start_run(tmp_path / "seed.json", tmp_path)
+
+
+def test_post_run_returns_503_notice_when_enrichment_service_unavailable() -> None:
+    from fastapi.testclient import TestClient
+    from review_page.app import create_app
+
+    source = MagicMock()
+    source.start_run.side_effect = EnrichmentServiceUnavailableError("127.0.0.1:8002")
+    client = TestClient(
+        create_app(source),
+        base_url="http://127.0.0.1:8003",
+        headers={"HX-Request": "true"},
+    )
+    response = client.post("/run")
+    assert response.status_code == 503
+    assert "Enrichment service is unavailable" in response.text
 
 
 def test_file_review_case_source_save_answers_conflicting_linked_pages_warns(
@@ -724,24 +692,6 @@ def test_file_review_case_source_list_cases_broken_line_names_line(
     (data_dir / "review.jsonl").write_text("".join(lines), encoding="utf-8")
     with pytest.raises(UnreadableReviewFileError, match="Line 2 of"):
         source.list_cases()
-
-
-def test_file_review_case_source_start_run_full_run_log_keeps_previous_log(
-    source, data_dir
-) -> None:
-    run_log = data_dir / "logs" / "review_page_runs.log"
-    run_log.parent.mkdir()
-    run_log.write_bytes(b"x" * (RUN_LOG_LIMIT_BYTES + 1))
-    source.start_run()
-    _wait_for_run_end(source)
-    previous_log = run_log.with_name("review_page_runs.log.1")
-    assert (
-        previous_log.stat().st_size,
-        run_log.stat().st_size < RUN_LOG_LIMIT_BYTES,
-    ) == (
-        RUN_LOG_LIMIT_BYTES + 1,
-        True,
-    )
 
 
 def _write_seed(seed_file: Path, page_number: int) -> None:

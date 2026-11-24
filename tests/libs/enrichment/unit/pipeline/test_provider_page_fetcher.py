@@ -174,7 +174,9 @@ async def test_search_animeschedule_found_through_mal_page_stored_as_searched_pa
         {("animeschedule", MAL): {"title": "One Piece", "sources": [SCHEDULE, MAL]}},
     )
     await fetcher.search_animeschedule([_one_piece(MAL, KITSU)])
-    searched_page = ProviderPageStore(tmp_path / "pages.jsonl").get_page(SCHEDULE)
+    searched_page = ProviderPageStore(tmp_path / "pages.jsonl").get_page(
+        "animeschedule:anime:one-piece"
+    )
     assert searched_page is not None
     assert searched_page.searched_by == ("mal:anime:21",)
     assert api_fetcher.requests == [

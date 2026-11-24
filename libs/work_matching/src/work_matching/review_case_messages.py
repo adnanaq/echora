@@ -1,9 +1,10 @@
 """Convert review cases and answers between domain models and protobuf messages.
 
-Translates between ``work_matching.ReviewCase`` domain models and protobuf
-messages defined in ``shared_proto/v1/review_cases.proto`` so the review page
-can evaluate placement rules in memory while exchanging protobuf messages with
-any ``ReviewCaseSource``.
+Translates between ``ReviewCase`` domain models and the protobuf messages in
+``shared_proto/v1/review_cases.proto``. Services exchange review cases as
+messages, and the review page and the agent service read them back into models
+to apply the placement rules. Every reader converts here, so a field added to
+the model changes one converter.
 
 Each conversion rule reads `<rule>: <reason>`:
 - Shared field names: Protobuf messages mirror the Pydantic model field names so

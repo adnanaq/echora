@@ -461,14 +461,19 @@ def test_build_anime_from_raw_background_without_heading_gives_none(
     assert _build(raw).background is None
 
 
-def test_build_anime_from_raw_placeholder_background_gives_none(
+def test_build_anime_from_raw_placeholder_background_and_synopsis_give_none(
     mal_anime_extracted,
 ) -> None:
     placeholder = '<td><div><h2 id="background">Background</h2></div>No background information has been added to this title.</td>'
-    assert (
-        _build({**mal_anime_extracted, "background_raw": placeholder}).background
-        is None
+    anime = _build(
+        {
+            **mal_anime_extracted,
+            "background_raw": placeholder,
+            "synopsis": "No synopsis information has been added to this title. "
+            "Help improve our database by adding a synopsis here.",
+        }
     )
+    assert (anime.background, anime.synopsis) == (None, None)
 
 
 def test_build_anime_from_raw_cover_image_adds_large_version_to_pictures() -> None:

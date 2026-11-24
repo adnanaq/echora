@@ -3,6 +3,7 @@ syntax = "proto3";
 package enrichment_service.v1;
 
 import "shared_proto/v1/error.proto";
+import "shared_proto/v1/review_cases.proto";
 
 // RPCs for enrichment pipeline health and execution.
 service EnrichmentService {
@@ -10,6 +11,10 @@ service EnrichmentService {
   rpc Health(HealthRequest) returns (HealthResponse);
   // Runs the enrichment pipeline for one selected anime record.
   rpc RunPipeline(RunPipelineRequest) returns (RunPipelineResponse);
+  // Starts a background seed-cleaning run if none is active.
+  rpc StartSeedCleaning(StartSeedCleaningRequest) returns (shared_proto.v1.RunState);
+  // Reports whether a seed-cleaning run is active and the last exit code.
+  rpc GetSeedCleaningStatus(GetSeedCleaningStatusRequest) returns (shared_proto.v1.RunState);
 }
 
 // Empty request for health checks.
@@ -54,4 +59,17 @@ message RunPipelineResponse {
   string result_json = 3;
   // Populated when pipeline execution fails.
   shared_proto.v1.ErrorDetails error = 4;
+}
+
+// Request to start a background seed-cleaning run.
+message StartSeedCleaningRequest {
+  string seed_file = 1;
+  string data_dir = 2;
+  bool no_fetch = 3;
+  bool refetch_stored = 4;
+}
+
+// Request for the current seed-cleaning run state.
+message GetSeedCleaningStatusRequest {
+  string data_dir = 1;
 }

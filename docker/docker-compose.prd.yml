@@ -228,6 +228,8 @@ services:
       - ENRICHMENT_OUTPUT_DIR=/app/assets/seed_data
       - CACHE_ENABLED=true
       - REDIS_URL=${REDIS_URL:?set REDIS_URL in .env}
+      - AGENT_SERVICE_HOST=agent-service
+      - AGENT_SERVICE_PORT=8005
       # Off until a production collector exists (see vector-service).
       - OTEL_ENABLED=false
     # The crawlers start Chrome: init reaps its exited processes, and Chrome
@@ -249,6 +251,31 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
+    restart: unless-stopped
+
+  agent-service:
+    build:
+      context: ..
+      dockerfile: apps/agent_service/Dockerfile.prd
+    container_name: echora-agent-service
+    ports:
+      - "8005:8005"
+    environment:
+      - ENVIRONMENT=production
+      - AGENT_SERVICE_HOST=0.0.0.0
+      - AGENT_SERVICE_PORT=8005
+      - AGENT_DATA_DIR=/app/data/agent
+      - TYPESAFE_API_KEY=${TYPESAFE_API_KEY:-}
+    volumes:
+      - ../data:/app/data:ro
+    networks:
+      - echora-network
+    healthcheck:
+      test: ["CMD", "grpc_health_probe", "-addr=localhost:8005"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
     restart: unless-stopped
 
   postgres-service:

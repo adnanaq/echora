@@ -228,6 +228,14 @@ def _anime_from_page(raw: dict) -> AniSearchAnime:
     return _build_anime_from_raw(raw, _URL)
 
 
+def test_build_anime_from_raw_placeholder_description_gives_no_synopsis(
+    read_page,
+) -> None:
+    raw = _extract_anime_from_html(read_page("balala_the_fairies_2_main"))
+    assert raw is not None
+    assert _anime_from_page(raw).synopsis is None
+
+
 def test_build_anime_from_raw_chinese_work_reads_title_fields_from_title_blocks(
     read_page,
 ) -> None:

@@ -25,6 +25,7 @@ _SLUG_ID = r"(?P<id>[^/?#]+)"
 _NUMBERED_PAGE = re.compile(rf"/(?P<kind>anime|manga)/{_NUMERIC_ID}")
 _SLUG_PAGE = re.compile(rf"/(?P<kind>anime|manga)/{_SLUG_ID}")
 _NUMBERED_ANIME_PAGE = re.compile(rf"/(?P<kind>anime)/{_NUMERIC_ID}")
+_SLUG_ANIME_PAGE = re.compile(rf"/(?P<kind>anime)/{_SLUG_ID}")
 
 # The pages each host serves, matched against the address after the host. Every
 # pattern names the id explicitly; prefix comparison is not safe, because
@@ -60,13 +61,15 @@ _PAGE_PATTERNS: dict[str, tuple[tuple[str, re.Pattern[str]], ...]] = {
     "livechart.me": (("livechart", _NUMBERED_ANIME_PAGE),),
     "simkl.com": (("simkl", _NUMBERED_ANIME_PAGE),),
     "animecountdown.com": (("animecountdown", re.compile(rf"/{_NUMERIC_ID}")),),
+    "animeschedule.net": (("animeschedule", _SLUG_ANIME_PAGE),),
 }
 
 PROVIDERS: frozenset[str] = frozenset(
     provider for patterns in _PAGE_PATTERNS.values() for provider, _ in patterns
 )
 
-# Each provider's page address as the seed spells it, filled with a key's kind
+# Each provider's page address as the seed spells it, or as AnimeSchedule
+# spells its own pages, which the seed does not list, filled with a key's kind
 # and id. Links are kept as page keys, so fetching a linked page needs its
 # address back; the seed's spelling keeps the cache shared with seed pages.
 _SEED_ADDRESS_BY_PROVIDER = {
@@ -80,6 +83,7 @@ _SEED_ADDRESS_BY_PROVIDER = {
     "livechart": "https://livechart.me/{kind}/{id}",
     "simkl": "https://simkl.com/{kind}/{id}",
     "animecountdown": "https://animecountdown.com/{id}",
+    "animeschedule": "https://animeschedule.net/{kind}/{id}",
 }
 
 # Which page names an entry: the providers that seed merged anime ids come

@@ -14,6 +14,10 @@ Each item reads ``<step>: <action>``:
   pages.
 - Anime ID marking: After both passes, each added page that now supplies the
   anime ID of its seed entry is marked on the merged entries.
+- Answer suggestions: Jev is asked about the open cases' page pairs it has no
+  answer for, with each page's synopsis, so the review page can pre-select
+  the places Jev is sure of. The run logs the pairs and their estimated cost
+  before asking, and skips the step when ``TYPESAFE_API_KEY`` is not set.
 
 The script writes the following files to the data directory.
 Each item reads ``<file>: <purpose>``:
@@ -27,6 +31,8 @@ Each item reads ``<file>: <purpose>``:
   and each added linked page, rewritten on every run.
 - ``not_listed_searches.jsonl``: AnimeSchedule searches that returned no match
   in this release, skipped until a new release is used.
+- ``page_pair_judgments.jsonl``: Jev's answers about page pairs, kept across
+  runs, so a pair is asked again only when what would be sent changed.
 - ``logs/clean_seed_<release>.log``: Run progress and fetch failure reports,
   appended per seed release so earlier release logs remain available.
 
@@ -58,14 +64,19 @@ import os
 from datetime import datetime
 from pathlib import Path
 
+import grpc
+from agent_proto.v1 import agent_service_pb2, agent_service_pb2_grpc
 from common.config import get_settings
+from enrichment.pipeline.api_fetcher import ApiFetcher
 from enrichment.pipeline.circuit_breaker_api_fetcher import CircuitBreakerApiFetcher
 from enrichment.pipeline.fetch_summary import describe_fetch_summary
+from enrichment.pipeline.page_synopsis_reader import PageSynopsisReader
 from enrichment.pipeline.provider_page_fetcher import ProviderPageFetcher
 from enrichment.sources.animeschedule.animeschedule_helper import require_app_token
 from enrichment.sources.mal import mal_anime_crawler
 from http_cache import close_cache, configure_cache
 from seed_cleaning import (
+    REVIEW_FILE_NAME,
     NotListedSearchFile,
     fetch_seed_and_linked_pages,
     read_seed_release_name,
@@ -74,7 +85,10 @@ from seed_cleaning import (
 from work_matching import (
     KnownWorkEntriesFromSeed,
     ProviderPageStore,
+    ReviewCase,
+    ReviewCaseKind,
 )
+from work_matching.review_case_messages import convert_case_to_message
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +134,60 @@ async def main() -> None:
         store,
         arguments.data_dir,
     )
+    await ask_jev_about_open_cases(arguments.data_dir)
+
+
+async def ask_jev_about_open_cases(data_dir: Path) -> None:
+    """Ask AgentService to judge open cases' unstored pairs using page synopses.
+
+    Args:
+        data_dir: The data folder holding the review file.
+    """
+    settings = get_settings()
+    review_lines = (data_dir / REVIEW_FILE_NAME).read_text(encoding="utf-8")
+    open_cases = [
+        case
+        for line in review_lines.splitlines()
+        if line.strip()
+        and (case := ReviewCase.model_validate_json(line)).answer is None
+        and case.kind is not ReviewCaseKind.LINKED_PAGE
+    ]
+    if not open_cases:
+        return
+    cache = configure_cache(settings.cache, settings.redis)
+    try:
+        synopsis_reader = PageSynopsisReader(ApiFetcher(settings.enrichment, cache))
+        pages_by_key = {page.key: page for case in open_cases for page in case.pages}
+        synopses: dict[str, str] = {}
+        for page_key, page in pages_by_key.items():
+            synopsis = await synopsis_reader.read_synopsis(page)
+            if synopsis:
+                synopses[page_key] = synopsis
+    finally:
+        await close_cache()
+    agent_host = (
+        "127.0.0.1"
+        if settings.service.agent_service_host == "0.0.0.0"  # noqa: S104
+        else settings.service.agent_service_host
+    )
+    target_address = f"{agent_host}:{settings.service.agent_service_port}"
+    request = agent_service_pb2.JudgeOpenCasesRequest(
+        review_cases=[convert_case_to_message(case) for case in open_cases],
+        synopses_by_page_key=synopses,
+    )
+    try:
+        async with grpc.aio.insecure_channel(target_address) as channel:
+            stub = agent_service_pb2_grpc.AgentServiceStub(channel)
+            summary = await stub.JudgeOpenCases(request, timeout=600.0)
+        logger.info(
+            f"Answer suggestions: {summary.judged_pair_count} pairs answered, "
+            f"{summary.failed_pair_count} failed, "
+            f"{summary.input_token_count} input tokens billed"
+        )
+    except grpc.RpcError as error:
+        logger.warning(
+            "Answer suggestions skipped: AgentService unavailable: %s", error
+        )
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -221,6 +289,8 @@ def configure_run_log(log_path: Path) -> None:
         "seed_cleaning",
         "enrichment.pipeline.circuit_breaker_api_fetcher",
         "enrichment.pipeline.provider_page_fetcher",
+        "enrichment.pipeline.page_synopsis_reader",
+        "match_suggestions",
     ):
         logging.getLogger(logger_name).setLevel(logging.INFO)
 

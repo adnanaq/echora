@@ -108,7 +108,7 @@
         "is_dead": false
       },
       {
-        "key": "https://animeschedule.net/anime/puu-neko",
+        "key": "animeschedule:anime:puu-neko",
         "address": "https://animeschedule.net/anime/puu-neko",
         "titles": [
           "Puu-Neko",
@@ -128,7 +128,7 @@
         "is_dead": false
       },
       {
-        "key": "https://animeschedule.net/anime/puu-neko-shougekijou",
+        "key": "animeschedule:anime:puu-neko-shougekijou",
         "address": "https://animeschedule.net/anime/puu-neko-shougekijou",
         "titles": [
           "Puu-Neko Shougekijou",
@@ -349,7 +349,7 @@
         "is_dead": false
       },
       {
-        "key": "https://animeschedule.net/anime/ao-haru-ride-page-13",
+        "key": "animeschedule:anime:ao-haru-ride-page-13",
         "address": "https://animeschedule.net/anime/ao-haru-ride-page-13",
         "titles": [
           "Ao Haru Ride OVA",
@@ -519,7 +519,7 @@
         "is_dead": false
       },
       {
-        "key": "https://animeschedule.net/anime/cocoon-2025",
+        "key": "animeschedule:anime:cocoon-2025",
         "address": "https://animeschedule.net/anime/cocoon-2025",
         "titles": [
           "cocoon: Aru Natsu no Shoujo-tachi Yori",
@@ -770,7 +770,7 @@
         "is_dead": false
       },
       {
-        "key": "https://animeschedule.net/anime/baki-dou",
+        "key": "animeschedule:anime:baki-dou",
         "address": "https://animeschedule.net/anime/baki-dou",
         "titles": [
           "BAKI-DOU: The Invincible Samurai",
@@ -930,7 +930,7 @@
         "is_dead": false
       },
       {
-        "key": "https://animeschedule.net/anime/cue",
+        "key": "animeschedule:anime:cue",
         "address": "https://animeschedule.net/anime/cue",
         "titles": [
           "Cue!"
@@ -1134,7 +1134,7 @@
         "is_dead": false
       },
       {
-        "key": "https://animeschedule.net/anime/douluo-dalu-chongfan-haotian",
+        "key": "animeschedule:anime:douluo-dalu-chongfan-haotian",
         "address": "https://animeschedule.net/anime/douluo-dalu-chongfan-haotian",
         "titles": [
           "Douluo Dalu: Chongfan Haotian",
@@ -1198,7 +1198,7 @@
         "is_dead": false
       },
       {
-        "key": "https://animeschedule.net/anime/douluo-dalu-ayin-fuhuo",
+        "key": "animeschedule:anime:douluo-dalu-ayin-fuhuo",
         "address": "https://animeschedule.net/anime/douluo-dalu-ayin-fuhuo",
         "titles": [
           "Douluo Dalu: Ayin Fuhuo",
@@ -1261,7 +1261,7 @@
         "is_dead": false
       },
       {
-        "key": "https://animeschedule.net/anime/douluo-dalu-gui-zong-zhi-lu",
+        "key": "animeschedule:anime:douluo-dalu-gui-zong-zhi-lu",
         "address": "https://animeschedule.net/anime/douluo-dalu-gui-zong-zhi-lu",
         "titles": [
           "Douluo Dalu: Gui Zong Zhi Lu",
@@ -1559,7 +1559,7 @@
         "is_dead": false
       },
       {
-        "key": "https://animeschedule.net/anime/ajin-shoudou",
+        "key": "animeschedule:anime:ajin-shoudou",
         "address": "https://animeschedule.net/anime/ajin-shoudou",
         "titles": [
           "Ajin: Shoudou",
@@ -1664,7 +1664,7 @@
         "is_dead": false
       },
       {
-        "key": "https://animeschedule.net/anime/ajin-shoutotsu",
+        "key": "animeschedule:anime:ajin-shoutotsu",
         "address": "https://animeschedule.net/anime/ajin-shoutotsu",
         "titles": [
           "Ajin: Shoutotsu",
@@ -1769,7 +1769,7 @@
         "is_dead": false
       },
       {
-        "key": "https://animeschedule.net/anime/ajin-shougeki",
+        "key": "animeschedule:anime:ajin-shougeki",
         "address": "https://animeschedule.net/anime/ajin-shougeki",
         "titles": [
           "Ajin: Shougeki",

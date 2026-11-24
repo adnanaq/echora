@@ -42,6 +42,10 @@ from work_matching.provider_page_key import (
             "https://animenewsnetwork.com/encyclopedia/anime.php?id=836",
         ),
         ("https://www.animecountdown.com/38636", "https://animecountdown.com/38636"),
+        (
+            "https://www.animeschedule.net/anime/one-piece/",
+            "https://animeschedule.net/anime/one-piece",
+        ),
     ],
 )
 def test_resolve_page_key_two_spellings_give_one_key(
@@ -53,6 +57,13 @@ def test_resolve_page_key_two_spellings_give_one_key(
 def test_resolve_page_key_recognised_page_gives_provider_kind_and_id() -> None:
     assert (
         resolve_page_key("https://myanimelist.net/anime/21/One_Piece") == "mal:anime:21"
+    )
+
+
+def test_resolve_page_key_animeschedule_page_gives_slug_key() -> None:
+    assert (
+        resolve_page_key("https://animeschedule.net/anime/one-piece")
+        == "animeschedule:anime:one-piece"
     )
 
 
@@ -195,6 +206,7 @@ def test_read_page_id_id_with_colon_kept_whole() -> None:
         "https://livechart.me/anime/12932",
         "https://simkl.com/anime/48858",
         "https://animecountdown.com/48858",
+        "https://animeschedule.net/anime/one-piece",
     ],
 )
 def test_build_page_address_seed_address_key_gives_seed_address(address: str) -> None:
@@ -211,4 +223,4 @@ def test_build_page_address_every_provider_gives_address_with_same_key() -> None
 
 
 def test_build_page_address_unrecognised_key_gives_none() -> None:
-    assert build_page_address("https://animeschedule.net/anime/one-piece") is None
+    assert build_page_address("https://example.com/anime/one-piece") is None

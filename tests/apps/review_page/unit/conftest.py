@@ -13,7 +13,6 @@ from review_page.errors import (
 )
 from review_page.file_review_case_source import FileReviewCaseSource
 from review_page.models import InvalidNamedPageKeyReason
-from review_page.review_case_messages import convert_case_to_message
 from review_page.review_case_source import ReviewCaseSource
 from shared_proto.v1 import review_cases_pb2
 from work_matching import (
@@ -22,6 +21,7 @@ from work_matching import (
     SavedAnswerChangedError,
     UnknownCaseError,
 )
+from work_matching.review_case_messages import convert_case_to_message
 
 _REVIEW_CASE_FIXTURE = (
     Path(__file__).parents[3]

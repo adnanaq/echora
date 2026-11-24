@@ -45,14 +45,14 @@ from review_page.answer_checks import (
     read_case_answer,
     read_seen_saved_answers,
 )
+from review_page.enrichment_run_client import (
+    GrpcSeedCleaningRunClient,
+    SeedCleaningRunClient,
+)
 from review_page.errors import RunSeedFileUnknownError, SeedFileUnavailableError
 from review_page.models import InvalidNamedPageKeyReason
 from review_page.review_case_loader import ReviewCaseLoader
-from review_page.review_case_messages import (
-    list_ordered_mappings,
-)
 from review_page.review_case_source import ReviewCaseSource
-from review_page.seed_cleaning_run_process import SeedCleaningRunProcess
 from seed_cleaning import (
     CORRECTIONS_FILE_NAME,
     ENTRIES_TO_CHECK_FILE_NAME,
@@ -70,8 +70,12 @@ from work_matching import (
     ReviewCase,
     ReviewFile,
     build_target_entry_suggestion,
+    is_review_file_locked,
     list_named_entry_page_keys,
     resolve_named_entries,
+)
+from work_matching.review_case_messages import (
+    list_ordered_mappings,
 )
 
 
@@ -81,27 +85,28 @@ class FileReviewCaseSource(ReviewCaseSource):
     def __init__(
         self,
         data_dir: Path,
-        clean_seed_script: Path,
+        clean_seed_script: Path | None = None,
         *,
         seed_file: Path | None = None,
         python_executable: str = sys.executable,
+        run_client: SeedCleaningRunClient | None = None,
     ) -> None:
-        """Initialize the file-backed review case source with paths and execution settings.
+        """Initialize the file-backed review case source with paths and run client.
 
         Args:
-            data_dir: Directory containing ``review.jsonl`` and run state files.
-            clean_seed_script: Path to ``scripts/clean_seed.py`` executed on run.
+            data_dir: Directory containing ``review.jsonl`` and run outputs.
+            clean_seed_script: Unused legacy argument kept temporarily for callers.
             seed_file: Explicit seed release file path, or None to use the path
                 recorded by the previous pipeline run.
-            python_executable: Python interpreter executable used to launch runs.
+            python_executable: Unused legacy argument kept temporarily for callers.
+            run_client: gRPC client calling ``EnrichmentService`` for seed runs.
         """
+        del clean_seed_script, python_executable
         self._data_dir = data_dir
         self._seed_file = seed_file
         self._review_file_path = data_dir / REVIEW_FILE_NAME
         self._review_case_loader = ReviewCaseLoader(self._review_file_path)
-        self._run_process = SeedCleaningRunProcess(
-            data_dir, self._review_file_path, clean_seed_script, python_executable
-        )
+        self._run_client = run_client or GrpcSeedCleaningRunClient("127.0.0.1:8002")
 
     def list_cases(self) -> list[review_cases_pb2.ReviewCase]:
         """Read all review cases from the local review file in file order.
@@ -195,7 +200,7 @@ class FileReviewCaseSource(ReviewCaseSource):
         return check_results
 
     def start_run(self) -> review_cases_pb2.RunState:
-        """Launch ``clean_seed.py --no-fetch`` in a background subprocess if no run is active.
+        """Start a ``--no-fetch`` seed-cleaning run via ``EnrichmentService`` if idle.
 
         Returns:
             The active run state marked as running.
@@ -204,23 +209,18 @@ class FileReviewCaseSource(ReviewCaseSource):
             RunSeedFileUnknownError: Neither configured settings nor a previous
                 run result specifies a seed file path.
         """
-        return self._run_process.start_run(self._find_seed_file)
+        return self._run_client.start_run(self._find_seed_file(), self._data_dir)
 
     def get_run_state(self) -> review_cases_pb2.RunState:
         """Report whether a pipeline run is active and the exit code of the last run.
 
-        Each tracking rule reads `<rule>: <reason>`:
-        - Child process polling: Runs spawned by this server process are tracked
-          by PID; once finished, the exit code is persisted and the PID file removed.
-        - File lock fallback: Runs started externally or before a server restart
-          are detected while they hold the review file lock.
-        - Foreign PID preservation: A PID file written by another server process
-          is left untouched so the originating process can collect its exit code.
-
         Returns:
             The current run state message with active status and last exit code.
         """
-        return self._run_process.read_run_state()
+        run_state = self._run_client.get_run_state(self._data_dir)
+        if not run_state.is_running and is_review_file_locked(self._review_file_path):
+            return review_cases_pb2.RunState(is_running=True)
+        return run_state
 
     def find_invalid_named_page_keys(
         self, page_keys: Sequence[str]

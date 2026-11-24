@@ -30,6 +30,21 @@ class RunSeedFileUnknownError(ReviewPageError):
         )
 
 
+class EnrichmentServiceUnavailableError(ReviewPageError):
+    """Indicate that EnrichmentService could not be reached to start a run."""
+
+    def __init__(self, target_address: str) -> None:
+        """Initialize the error with the unreachable EnrichmentService address.
+
+        Args:
+            target_address: ``host:port`` address of the EnrichmentService server.
+        """
+        super().__init__(
+            f"Enrichment service is unavailable ({target_address}). "
+            "Start enrichment-service and try again."
+        )
+
+
 class UnreadableReviewFileError(ReviewPageError):
     """Indicate that a line in the review file failed JSON or schema validation."""
 

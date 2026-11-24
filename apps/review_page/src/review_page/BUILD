@@ -9,6 +9,8 @@ python_sources(
     name="review_page",
     dependencies=[
         ":page_files",
+        "//libs/common/src/agent_proto:proto",
+        "//apps/enrichment_service/src/enrichment_proto:proto",
         "//libs/common/src/shared_proto:proto",
         "//libs/common/src/common",
         "//libs/seed_cleaning/src/seed_cleaning",
@@ -18,5 +20,6 @@ python_sources(
         "//:reqs0#jinja2",
         "//:reqs0#python-multipart",
         "//:reqs0#filelock",
+        "//:reqs0#grpcio",
     ],
 )

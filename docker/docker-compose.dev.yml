@@ -216,6 +216,8 @@ services:
       - OTEL_ENABLE_AIOHTTP_CLIENT_INSTRUMENTATION=true
       - CACHE_ENABLED=true
       - REDIS_URL=redis://redis:6379/0
+      - AGENT_SERVICE_HOST=agent-service
+      - AGENT_SERVICE_PORT=8005
     # init reaps the Chrome and Xvfb processes the crawlers leave; Chrome needs
     # more shared memory than Docker's 64 MB default.
     init: true
@@ -236,6 +238,33 @@ services:
       start_period: 60s
     restart: unless-stopped
 
+  # Agent service: gRPC endpoints for Jev match suggestions and reasoning models.
+  agent-service:
+    build:
+      context: ..
+      dockerfile: apps/agent_service/Dockerfile.dev
+    image: echora-agent-service:dev
+    container_name: echora-dev-agent-service
+    ports:
+      - "8005:8005"
+    environment:
+      - ENVIRONMENT=development
+      - AGENT_SERVICE_HOST=0.0.0.0
+      - AGENT_SERVICE_PORT=8005
+      - AGENT_DATA_DIR=/app/data/agent
+      - TYPESAFE_API_KEY=${TYPESAFE_API_KEY:-}
+    volumes:
+      - ../data:/app/data:ro
+    networks:
+      - echora-network
+    healthcheck:
+      test: ["CMD", "grpc_health_probe", "-addr=localhost:8005"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
   # Seed review page: answer seed cleaning's review cases and start a run.
   review-page:
     build:
@@ -252,9 +281,12 @@ services:
       - REVIEW_PAGE_HOST=0.0.0.0
       - REVIEW_PAGE_PORT=8003
       - REVIEW_PAGE_DATA_DIR=/app/data/seed_cleaning
-    # Saves and runs write the review file and the run's results, so the data
-    # folder is writable. A run reads the seed file the last run used, a path
-    # relative to /app, so the seed folder sits at the same place.
+      - AGENT_SERVICE_HOST=agent-service
+      - AGENT_SERVICE_PORT=8005
+      - ENRICHMENT_SERVICE_HOST=enrichment-service
+      - ENRICHMENT_SERVICE_PORT=8002
+    # Saves write the review file in the mounted data folder, and seed
+    # metadata reads the active seed release at the same path.
     # Both folders must exist first: the short syntax would create a missing
     # one owned by root, where the container's user (uid 1000) cannot write,
     # so Compose refuses to start instead (create_host_path: false).

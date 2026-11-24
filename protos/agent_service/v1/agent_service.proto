@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package agent_service.v1;
+
+import "shared_proto/v1/review_cases.proto";
+
+// Suggests answers to review cases. Each task is its own RPC, and the service
+// chooses the model that answers it; no model is named in the contract.
+service AgentService {
+  // Suggest a place for each open page of an entry group case that the
+  // suggestion is sure of. Pages it is unsure of get no suggestion.
+  rpc SuggestPageAnswers(SuggestPageAnswersRequest) returns (SuggestPageAnswersResponse);
+  // Judge open review case pairs whose answers are not yet stored, using the
+  // provided page synopses.
+  rpc JudgeOpenCases(JudgeOpenCasesRequest) returns (JudgeOpenCasesResponse);
+}
+
+// The review case whose open pages to suggest places for.
+message SuggestPageAnswersRequest {
+  shared_proto.v1.ReviewCase review_case = 1;
+}
+
+// One suggested place for one page.
+message PageAnswerSuggestion {
+  // The page key, as the case's placeable pages name it.
+  string page_key = 1;
+  // The place as a review answer writes it, such as "work 2, partial in work 1".
+  string answer_word = 2;
+  // How sure the suggestion is, from 0.7 to 1: its least sure judgment.
+  double score = 3;
+}
+
+// The suggested places, sorted by page key; empty for an answered case.
+message SuggestPageAnswersResponse {
+  repeated PageAnswerSuggestion page_suggestions = 1;
+}
+
+// Open review cases and page synopses to evaluate with Jev.
+message JudgeOpenCasesRequest {
+  repeated shared_proto.v1.ReviewCase review_cases = 1;
+  map<string, string> synopses_by_page_key = 2;
+}
+
+// Summary of Jev pair judgments performed and billed tokens.
+message JudgeOpenCasesResponse {
+  int32 judged_pair_count = 1;
+  int32 failed_pair_count = 2;
+  int32 input_token_count = 3;
+}

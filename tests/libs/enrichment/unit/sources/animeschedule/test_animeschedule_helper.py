@@ -198,6 +198,38 @@ async def test_fetch_all_mal_id_finds_anime_without_title_search(
     assert _sent_params(search_session) == [{"mal-ids": "21"}]
 
 
+async def test_fetch_all_animeschedule_address_fetches_page_without_search(
+    search_session,
+) -> None:
+    _answer(search_session, ONE_PIECE_RESULT)
+
+    result = await AnimescheduleHelper(get_cache(), APP_TOKEN).fetch_all(
+        {
+            "animeschedule_url": "https://animeschedule.net/anime/one-piece",
+            "mal_url": MAL_URL,
+        },
+        {"title": "One Piece"},
+    )
+
+    assert result is not None
+    assert result["anime"]["title"] == "One Piece"
+    assert [call.args[0] for call in search_session.get.call_args_list] == [
+        f"{SEARCH_URL}/one-piece"
+    ]
+
+
+async def test_fetch_all_missing_animeschedule_address_returns_none(
+    search_session,
+) -> None:
+    _response(search_session).status = 404
+
+    result = await AnimescheduleHelper(get_cache(), APP_TOKEN).fetch_all(
+        {"animeschedule_url": "https://animeschedule.net/anime/gone"}, {}
+    )
+
+    assert result is None
+
+
 async def test_fetch_all_unknown_mal_id_tries_anilist_then_anidb(
     search_session,
 ) -> None:

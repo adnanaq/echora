@@ -4,7 +4,6 @@ from datetime import UTC, datetime
 
 from review_page.file_review_case_source import convert_run_result_to_message
 from review_page.models import RunSummary
-from review_page.review_case_messages import convert_case_to_message
 from review_page.review_case_source import (
     ConvertedReviewCases,
     build_run_summary,
@@ -12,6 +11,7 @@ from review_page.review_case_source import (
     load_last_run_summary,
 )
 from seed_cleaning import SeedCleaningRunResult
+from work_matching.review_case_messages import convert_case_to_message
 
 
 def test_load_cases_returns_source_cases_as_models(source) -> None:

@@ -48,7 +48,7 @@ adds:
 | **Original answer** | A case's baseline answer recorded by the last pipeline run. "Changed" and "Reset" compare against it.                                |
 | **Unsaved edit**    | An unpersisted answer choice staged in the browser until saved or discarded.                                                         |
 | **Saved answer**    | A placement answer persisted to the review file on disk. The next Run applies it.                                                    |
-| **Suggestion**      | The placement suggested by matching rules. An unanswered case opens on it; Accept saves it.                                          |
+| **Suggestion**      | The placement suggested by matching rules (or by Jev via `AgentService` for unanswered entry-group cases, shown with a confidence score until edited). An unanswered case opens on it; Accept saves it. |
 | **Case source**     | Interface for reading cases and corrections, saving answers, and tracking runs (`ReviewCaseSource`). The initial source reads files. |
 
 ## Running it
@@ -84,26 +84,29 @@ seed-cleaning script are found:
 PYTHONPATH="apps/review_page/src:$(printf '%s:' libs/*/src)" uv run python -m review_page.main
 ```
 
-The image (`apps/review_page/Dockerfile.dev`, `Dockerfile.prd`) holds the page,
-`scripts/clean_seed.py` and the libraries a run imports. A run from the page
-fetches nothing, so the image holds no browser. A run loads no embedding
-model either, so the image leaves out the model stack (torch and the packages
-built on it).
+The image (`apps/review_page/Dockerfile.dev`, `Dockerfile.prd`) holds only the
+review UI, `work_matching`, `seed_cleaning`, and the generated gRPC stubs for
+`enrichment_service` and `agent_service`. Clicking **Run** calls
+`EnrichmentService/StartSeedCleaning` over gRPC (never fetching over the
+network), and open entry-group cases query `AgentService/SuggestPageAnswers`
+over gRPC; the image carries neither `enrichment` nor `match_suggestions`.
 
 ### Settings
 
 `ReviewPageConfig` in `libs/common/src/common/config/review_page_config.py`,
-read like every other sub-config of `Settings`. The settings are trusted: Run
-starts the configured script with the server's own Python, so only the person
-running the page sets them.
+and `ServiceConfig` in `libs/common/src/common/config/service_config.py`, read
+like every other sub-config of `Settings`.
 
 | Environment variable            | Default                 | Meaning                                                                                                |
 | ------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------ |
 | `REVIEW_PAGE_HOST`              | `127.0.0.1`             | Address the page listens on. The container sets `0.0.0.0` and publishes the port on `127.0.0.1` alone. |
 | `REVIEW_PAGE_PORT`              | `8003`                  | Port the page listens on.                                                                              |
-| `REVIEW_PAGE_DATA_DIR`          | `data/seed_cleaning`    | Seed cleaning's data folder: the review file, the page store and the run's results.                    |
+| `REVIEW_PAGE_DATA_DIR`          | `data/seed_cleaning`    | Seed cleaning's data folder: the review file and the run's results.                                    |
 | `REVIEW_PAGE_SEED_FILE`         | unset                   | Seed file a Run uses. Unset, Run uses the seed file the last run recorded in `review_run.json`.        |
-| `REVIEW_PAGE_CLEAN_SEED_SCRIPT` | `scripts/clean_seed.py` | The script Run starts.                                                                                 |
+| `ENRICHMENT_SERVICE_HOST`       | `0.0.0.0` (`127.0.0.1`) | Host of `enrichment_service` for `StartSeedCleaning` / `GetSeedCleaningStatus` gRPC calls.             |
+| `ENRICHMENT_SERVICE_PORT`       | `8002`                  | Port of `enrichment_service`.                                                                          |
+| `AGENT_SERVICE_HOST`            | `0.0.0.0` (`127.0.0.1`) | Host of `agent_service` for `SuggestPageAnswers` gRPC calls.                                           |
+| `AGENT_SERVICE_PORT`            | `8005`                  | Port of `agent_service`.                                                                               |
 
 A run records its seed file as the path it was given. The container finds the
 seed folder at `/app/assets/seed_data`, so start the terminal run with the path
@@ -122,9 +125,10 @@ relative to the repository (`assets/seed_data/…`), not a full path.
 4. Click Save (or Save & next, or Save all for all staged edits). Saves that
    violate a placement rule are rejected with the rule message, keeping the
    staged edit in the browser for correction.
-5. Click Run. Run invokes seed cleaning without network fetching (`--no-fetch`)
-   and applies all saved answers using `REVIEW_PAGE_SEED_FILE` when configured,
-   or the seed file recorded by the previous run.
+5. Click Run. Run calls `EnrichmentService/StartSeedCleaning` without network
+   fetching (`no_fetch=True`), applies all saved answers using
+   `REVIEW_PAGE_SEED_FILE` when configured (or the seed file recorded by the
+   previous run), and triggers `AgentService/JudgeOpenCases` for open cases.
 6. Inspect the run summary banner and the Corrections tab to verify the
    resulting entry changes.
 
@@ -329,8 +333,7 @@ All in `data/seed_cleaning/` (`REVIEW_PAGE_DATA_DIR`):
 | `corrections.jsonl`                      | Seed entry corrections for the Corrections tab.            | Never; written by the seed-cleaning run.   |
 | `entries_to_check.json`                  | Titles and metadata of checked seed entries.               | Never; written by the seed-cleaning run.   |
 | `review.jsonl.lock`                      | Whether a pipeline run currently holds the lock.           | Acquired during answer saves.              |
-| `review_run.pid`, `review_run.exit_code` | Active run process ID and last subprocess exit code.       | Written when starting and completing runs. |
-| `logs/review_page_runs.log`              | Never.                                                     | Standard output and error of spawned runs. |
+| `review_run.exit_code`                   | Last run exit code (via `EnrichmentService`).              | Written by `enrichment_service`.           |
 
 ## How it is built
 
@@ -349,13 +352,17 @@ protobuf messages defined in `protos/shared_proto/v1/review_cases.proto`:
 implementation and the only module in `review_page` that imports
 `seed_cleaning`. `FileReviewCaseSource`:
 
-- reads and writes the local data files listed above;
-- starts runs and reports their state through `SeedCleaningRunProcess`
-  (`seed_cleaning_run_process.py`), which is given the paths it needs and
-  imports nothing from `seed_cleaning`;
+- reads and writes `review.jsonl` and reads the run's outputs listed above;
+- starts runs and queries run state through `GrpcSeedCleaningRunClient`
+  (`enrichment_run_client.py`), calling `EnrichmentService/StartSeedCleaning`
+  and `GetSeedCleaningStatus` over gRPC (with `review.jsonl.lock` fallback);
 - converts `seed_cleaning` domain records into protobuf messages;
 - precomputes correction display labels, rule explanation sentences, and answer
   provenance flags so downstream views remain decoupled from `seed_cleaning`.
+
+Open entry-group cases also query `GrpcAgentSuggestionsClient`
+(`agent_suggestions_client.py`) for `AgentService/SuggestPageAnswers` over gRPC,
+degrading gracefully to no suggestions when `agent_service` is unreachable.
 
 ### Server and browser
 

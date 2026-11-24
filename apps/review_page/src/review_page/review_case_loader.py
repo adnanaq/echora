@@ -30,9 +30,9 @@ from typing import NamedTuple
 
 from pydantic import ValidationError
 from review_page.errors import UnreadableReviewFileError
-from review_page.review_case_messages import convert_case_to_message
 from shared_proto.v1 import review_cases_pb2
 from work_matching import ReviewCase
+from work_matching.review_case_messages import convert_case_to_message
 
 # The inode, modification time in nanoseconds, and size that identify one
 # version of the review file.

@@ -325,6 +325,24 @@ def _render_other_work_panel(client, source, review_cases, place: str) -> str:
     ).text
 
 
+def test_case_panel_searched_page_shown_by_page_key(
+    client, source, review_cases
+) -> None:
+    case = review_cases["atashinchi_next"]
+    source.cases[case.case_name] = case
+
+    panel = client.post(
+        "/fragments/case-panel", data=_state(open_case_name=case.case_name)
+    ).text
+
+    evidence_section = panel[panel.index("Evidence only, not placed") :]
+    assert (
+        '<a class="page-key" href="https://animeschedule.net/anime/atashin-chi-next-2nd-season"'
+        ' target="_blank" rel="noopener">animeschedule:anime:atashin-chi-next-2nd-season</a>'
+        in evidence_section
+    )
+
+
 def _cut_named_entry_controls(panel: str) -> str:
     start = panel.index('class="control-picker')
     return panel[start : panel.index("</td>", start)]
