@@ -31,6 +31,7 @@ from review_page.case_panel_tables import (
     list_shown_columns,
 )
 from review_page.models import (
+    AgentPageSuggestion,
     CaseRow,
     CaseView,
     ChoiceOption,
@@ -140,6 +141,7 @@ def build_case_view(
     is_run_going: bool,
     show_only_differences: bool,
     invalid_named_page_key_reasons: Mapping[str, InvalidNamedPageKeyReason],
+    agent_suggestions: Sequence[AgentPageSuggestion] = (),
 ) -> CaseView:
     """Assemble the detailed inspection panel view for a selected review case.
 
@@ -159,6 +161,9 @@ def build_case_view(
     Returns:
         A CaseView model containing assembled tables, candidate rows, and action button states.
     """
+    agent_suggestions_by_page = {
+        suggestion.page_key: suggestion for suggestion in agent_suggestions
+    }
     tables = _build_case_tables(
         case,
         original_answer,
@@ -166,19 +171,68 @@ def build_case_view(
         is_rejected,
         show_only_differences,
         invalid_named_page_key_reasons,
+        agent_suggestions_by_page,
+    )
+    return _assemble_case_view(
+        case,
+        tables,
+        agent_suggestions_by_page=agent_suggestions_by_page,
+        original_answer=original_answer,
+        unsaved_answer=unsaved_answer,
+        is_rejected=is_rejected,
+        is_run_going=is_run_going,
+        show_only_differences=show_only_differences,
+    )
+
+
+def _assemble_case_view(
+    case: ReviewCase,
+    tables: _CaseTables,
+    *,
+    agent_suggestions_by_page: Mapping[str, AgentPageSuggestion],
+    original_answer: JsonValue,
+    unsaved_answer: JsonValue,
+    is_rejected: bool,
+    is_run_going: bool,
+    show_only_differences: bool,
+) -> CaseView:
+    """Assemble ``CaseView`` from pre-built tables, edit state, and toolbar buttons.
+
+    Args:
+        case: The review case being presented.
+        tables: Pre-built page rows and comparison tables for ``case``.
+        agent_suggestions_by_page: Jev suggestions keyed by page key.
+        original_answer: The baseline answer recorded by the previous run.
+        unsaved_answer: The staged browser edit for ``case``, or None.
+        is_rejected: Whether the last save attempt failed validation rules.
+        is_run_going: Whether a pipeline cleaning run is currently in progress.
+        show_only_differences: Whether to hide attributes identical across entries.
+
+    Returns:
+        The assembled ``CaseView`` model.
+    """
+    edit_state = resolve_case_edit_state(
+        original_answer=original_answer,
+        saved_answer=case.answer,
+        unsaved_answer=unsaved_answer,
+        has_unsaved_edit=unsaved_answer is not None,
+        is_rejected=is_rejected,
+    )
+    buttons = build_case_buttons(
+        case,
+        original_answer=original_answer,
+        saved_answer=case.answer,
+        chosen_answer=tables.chosen_answer,
+        is_run_going=is_run_going,
     )
     return CaseView(
         case=case,
         title=find_case_title(case),
-        edit_state=resolve_case_edit_state(
-            original_answer=original_answer,
-            saved_answer=case.answer,
-            unsaved_answer=unsaved_answer,
-            has_unsaved_edit=unsaved_answer is not None,
-            is_rejected=is_rejected,
-        ),
+        edit_state=edit_state,
         chosen_answer=tables.chosen_answer,
-        is_suggestion_shown=_is_suggestion_shown(case, unsaved_answer),
+        is_suggestion_shown=_is_suggestion_shown(
+            case, unsaved_answer, agent_suggestions_by_page
+        ),
         reason_sentences=describe_case_reasons(case),
         entries=build_entry_views(case),
         page_rows=tables.page_rows,
@@ -190,29 +244,28 @@ def build_case_view(
         linked_page_link=tables.linked_page_link,
         choice_meanings=tables.choice_meanings,
         comparison_rows=tables.comparison_rows,
-        buttons=build_case_buttons(
-            case,
-            original_answer=original_answer,
-            saved_answer=case.answer,
-            chosen_answer=tables.chosen_answer,
-            is_run_going=is_run_going,
-        ),
+        buttons=buttons,
         show_only_differences=show_only_differences,
     )
 
 
-def resolve_shown_answer(case: ReviewCase, unsaved_answer: JsonValue) -> JsonValue:
+def resolve_shown_answer(
+    case: ReviewCase,
+    unsaved_answer: JsonValue,
+    agent_suggestions_by_page: Mapping[str, AgentPageSuggestion] = {},
+) -> JsonValue:
     """Resolve the answer the case panel shows and a choice starts from.
 
     The panel shows the first of these answers that is present.
 
     - The unsaved browser edit.
     - The saved answer, when the saved answer places a page.
-    - An editable copy of the suggested placements.
+    - An editable copy of the suggested placements, with Jev's confident places.
 
     Args:
         case: The review case with its saved answer and suggestion.
         unsaved_answer: The unsaved browser edit, or None when the case is unedited.
+        agent_suggestions_by_page: Optional Jev suggestions keyed by page key.
 
     Returns:
         The first answer of the list above that is present.
@@ -221,7 +274,15 @@ def resolve_shown_answer(case: ReviewCase, unsaved_answer: JsonValue) -> JsonVal
         return unsaved_answer
     if not is_answer_empty(case.answer):
         return case.answer
-    return build_suggested_answer(case)
+    suggested = build_suggested_answer(case)
+    if not agent_suggestions_by_page:
+        return suggested
+    merged_answer: dict[str, JsonValue] = {}
+    if isinstance(suggested, dict):
+        merged_answer.update(suggested)
+    for page_key, suggestion in agent_suggestions_by_page.items():
+        merged_answer[page_key] = suggestion.answer_word
+    return merged_answer
 
 
 def find_case_title(case: ReviewCase) -> str:
@@ -261,12 +322,17 @@ def list_original_answers(
     }
 
 
-def _is_suggestion_shown(case: ReviewCase, unsaved_answer: JsonValue) -> bool:
+def _is_suggestion_shown(
+    case: ReviewCase,
+    unsaved_answer: JsonValue,
+    agent_suggestions_by_page: Mapping[str, AgentPageSuggestion] = {},
+) -> bool:
     """Report whether the case panel shows the run's suggestion as the answer.
 
     Args:
         case: The review case with its saved answer and suggestion.
         unsaved_answer: The staged browser edit for this case, or None.
+        agent_suggestions_by_page: Optional Jev suggestions keyed by page key.
 
     Returns:
         True when the case has a suggestion and neither an edit nor a saved
@@ -275,7 +341,7 @@ def _is_suggestion_shown(case: ReviewCase, unsaved_answer: JsonValue) -> bool:
     return (
         unsaved_answer is None
         and is_answer_empty(case.answer)
-        and bool(case.suggested_answer)
+        and (bool(case.suggested_answer) or bool(agent_suggestions_by_page))
     )
 
 
@@ -301,6 +367,7 @@ def _build_case_tables(
     is_rejected: bool,
     show_only_differences: bool,
     invalid_named_page_key_reasons: Mapping[str, InvalidNamedPageKeyReason],
+    agent_suggestions_by_page: Mapping[str, AgentPageSuggestion],
 ) -> _CaseTables:
     """Build all table rows, links, and options for a review case panel.
 
@@ -312,11 +379,14 @@ def _build_case_tables(
         show_only_differences: Whether to hide identical metadata attributes.
         invalid_named_page_key_reasons: Each invalid page key named after
             ``other work``, mapped to the reason it is invalid.
+        agent_suggestions_by_page: Jev suggestions keyed by page key.
 
     Returns:
         The assembled ``_CaseTables`` bundle for ``CaseView``.
     """
-    chosen_answer = resolve_shown_answer(case, unsaved_answer)
+    chosen_answer = resolve_shown_answer(
+        case, unsaved_answer, agent_suggestions_by_page
+    )
     linking_entry_link, linked_page_link = build_linked_page_case_links(case)
     page_rows, work_partial_sources = _build_group_case_tables(
         case,
@@ -324,6 +394,7 @@ def _build_case_tables(
         original_answer,
         is_rejected=is_rejected,
         invalid_named_page_key_reasons=invalid_named_page_key_reasons,
+        agent_suggestions_by_page=agent_suggestions_by_page,
     )
     shown_columns = list_shown_columns(page_rows, show_only_differences)
     evidence_pages = list_evidence_pages(case, page_rows)
@@ -361,6 +432,7 @@ def _build_group_case_tables(
     *,
     is_rejected: bool,
     invalid_named_page_key_reasons: Mapping[str, InvalidNamedPageKeyReason],
+    agent_suggestions_by_page: Mapping[str, AgentPageSuggestion],
 ) -> tuple[tuple[PageRowView, ...], tuple[WorkPartialSources, ...]]:
     """Build the pages table and the Works table of an entry group case.
 
@@ -374,6 +446,7 @@ def _build_group_case_tables(
         is_rejected: Whether the last save attempt broke validation rules.
         invalid_named_page_key_reasons: Each invalid page key named after
             ``other work``, mapped to the reason it is invalid.
+        agent_suggestions_by_page: Jev suggestions keyed by page key.
 
     Returns:
         The page rows and each work's partial sources; both empty for a
@@ -387,6 +460,7 @@ def _build_group_case_tables(
         original_answer,
         is_rejected=is_rejected,
         invalid_named_page_key_reasons=invalid_named_page_key_reasons,
+        agent_suggestions_by_page=agent_suggestions_by_page,
     )
     return page_rows, list_work_partial_sources(
         case, chosen_answer if isinstance(chosen_answer, dict) else {}
@@ -400,6 +474,7 @@ def _build_marked_page_rows(
     *,
     is_rejected: bool,
     invalid_named_page_key_reasons: Mapping[str, InvalidNamedPageKeyReason],
+    agent_suggestions_by_page: Mapping[str, AgentPageSuggestion],
 ) -> tuple[PageRowView, ...]:
     """Build candidate page rows for an entry group case, marking altered placements.
 
@@ -413,6 +488,7 @@ def _build_marked_page_rows(
         is_rejected: Whether the last save attempt broke validation rules.
         invalid_named_page_key_reasons: Each invalid page key named after
             ``other work``, mapped to the reason it is invalid.
+        agent_suggestions_by_page: Jev suggestions keyed by page key.
 
     Returns:
         A tuple of PageRowView models for placeable candidate pages.
@@ -428,4 +504,5 @@ def _build_marked_page_rows(
         starting_answer,
         is_rejected=is_rejected,
         invalid_named_page_key_reasons=invalid_named_page_key_reasons,
+        agent_suggestions_by_page=agent_suggestions_by_page,
     )

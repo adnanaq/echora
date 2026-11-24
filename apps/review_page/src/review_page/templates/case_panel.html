@@ -83,6 +83,7 @@
                             is_changed=row.is_changed, is_invalid=row.is_place_missing,
                             hx_vals={"page_key": row.page_key}, empty_label="no place",
                             empty_description=choice_meaning_by_word["no place"]) }}
+          {% if row.suggestion_score is not none %}<span class="suggestion-score" title="Jev confidence">{{ "%.0f%%" | format(row.suggestion_score * 100) }}</span>{% endif %}
           {% if row.choices.work == "other work" %}{{ named_entry_picker(row) }}{% endif %}
         </div>
         {% if row.choices.work == "other work" and row.choices.named_entry_page_key %}

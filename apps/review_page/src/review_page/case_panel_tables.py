@@ -27,6 +27,7 @@ from collections.abc import Mapping, Sequence
 
 from pydantic import JsonValue
 from review_page.models import (
+    AgentPageSuggestion,
     ComparisonRowView,
     DetailColumn,
     EntryView,
@@ -54,6 +55,7 @@ def build_page_rows(
     *,
     is_rejected: bool,
     invalid_named_page_key_reasons: Mapping[str, InvalidNamedPageKeyReason],
+    agent_suggestions_by_page: Mapping[str, AgentPageSuggestion] = {},
 ) -> tuple[PageRowView, ...]:
     """Build candidate provider page rows with details, placement options, and flags.
 
@@ -79,32 +81,103 @@ def build_page_rows(
         if choices.work
     }
     return tuple(
-        PageRowView(
-            page_key=choices.page_key,
-            address=_find_page_address(case, choices.page_key, pages_by_key),
-            entry_label=entry_label_by_page_key.get(choices.page_key, ""),
-            is_reference_page=choices.page_key in reference_page_keys,
-            details=_describe_page(pages_by_key.get(choices.page_key)),
-            choices=choices,
-            is_changed=answer.get(choices.page_key)
-            != base_answer.get(choices.page_key),
-            pages_by_closed_work=_find_pages_by_closed_work(
-                choices, page_key_by_work_provider, case, pages_by_key
-            ),
-            is_place_missing=is_rejected
-            and choices.is_required
-            and choices.work is None,
-            linked_pages=_list_page_links(pages_by_key.get(choices.page_key)),
-            target_entry_options=_list_target_entry_options(case, choices.page_key),
-            named_entry_address=build_page_address(choices.named_entry_page_key)
-            if choices.named_entry_page_key
-            else None,
-            named_entry_invalid_reason=invalid_named_page_key_reasons.get(
-                choices.named_entry_page_key or ""
-            ),
+        _build_page_row(
+            case,
+            choices,
+            answer,
+            base_answer,
+            pages_by_key,
+            entry_label_by_page_key,
+            reference_page_keys,
+            page_key_by_work_provider,
+            is_rejected=is_rejected,
+            invalid_named_page_key_reasons=invalid_named_page_key_reasons,
+            agent_suggestions_by_page=agent_suggestions_by_page,
         )
         for choices in page_choices
     )
+
+
+def _build_page_row(
+    case: ReviewCase,
+    choices: GroupPageChoices,
+    answer: dict[str, JsonValue],
+    base_answer: dict[str, JsonValue],
+    pages_by_key: Mapping[str, ProviderPage],
+    entry_label_by_page_key: Mapping[str, str],
+    reference_page_keys: set[str],
+    page_key_by_work_provider: Mapping[tuple[str, str | None], str],
+    *,
+    is_rejected: bool,
+    invalid_named_page_key_reasons: Mapping[str, InvalidNamedPageKeyReason],
+    agent_suggestions_by_page: Mapping[str, AgentPageSuggestion],
+) -> PageRowView:
+    """Build one candidate provider page row view.
+
+    Args:
+        case: The review case containing candidate provider pages.
+        choices: Placement options and current selection for one page.
+        answer: The active answer mapping shown in the UI.
+        base_answer: The baseline answer mapping from the previous run.
+        pages_by_key: Indexed provider pages for the case.
+        entry_label_by_page_key: Entry letter labels keyed by page key.
+        reference_page_keys: Page keys that serve as entry reference pages.
+        page_key_by_work_provider: Chosen page keys indexed by work and provider.
+        is_rejected: Whether the last save attempt failed constraint validation.
+        invalid_named_page_key_reasons: Invalid ``other work`` target reasons by key.
+        agent_suggestions_by_page: Jev suggestions keyed by page key.
+
+    Returns:
+        The assembled ``PageRowView`` for ``choices.page_key``.
+    """
+    return PageRowView(
+        page_key=choices.page_key,
+        address=_find_page_address(case, choices.page_key, pages_by_key),
+        entry_label=entry_label_by_page_key.get(choices.page_key, ""),
+        is_reference_page=choices.page_key in reference_page_keys,
+        details=_describe_page(pages_by_key.get(choices.page_key)),
+        choices=choices,
+        is_changed=answer.get(choices.page_key) != base_answer.get(choices.page_key),
+        pages_by_closed_work=_find_pages_by_closed_work(
+            choices, page_key_by_work_provider, case, pages_by_key
+        ),
+        is_place_missing=is_rejected and choices.is_required and choices.work is None,
+        linked_pages=_list_page_links(pages_by_key.get(choices.page_key)),
+        target_entry_options=_list_target_entry_options(case, choices.page_key),
+        named_entry_address=build_page_address(choices.named_entry_page_key)
+        if choices.named_entry_page_key
+        else None,
+        named_entry_invalid_reason=invalid_named_page_key_reasons.get(
+            choices.named_entry_page_key or ""
+        ),
+        suggestion_score=_resolve_shown_suggestion_score(
+            choices.page_key,
+            answer.get(choices.page_key),
+            agent_suggestions_by_page,
+        ),
+    )
+
+
+def _resolve_shown_suggestion_score(
+    page_key: str,
+    shown_placement: JsonValue,
+    agent_suggestions_by_page: Mapping[str, AgentPageSuggestion],
+) -> float | None:
+    """Return Jev's confidence score only while the shown placement matches it.
+
+    Args:
+        page_key: The provider page key for the row being built.
+        shown_placement: The placement string currently shown in the dropdown.
+        agent_suggestions_by_page: Jev suggestions keyed by page key.
+
+    Returns:
+        The confidence score when ``shown_placement`` matches Jev's suggestion,
+        or None when the page has no suggestion or was changed by the reviewer.
+    """
+    suggestion = agent_suggestions_by_page.get(page_key)
+    if suggestion is None or shown_placement != suggestion.answer_word:
+        return None
+    return suggestion.score
 
 
 def build_entry_views(case: ReviewCase) -> tuple[EntryView, ...]:

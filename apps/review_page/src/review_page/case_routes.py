@@ -20,12 +20,13 @@ Each route rule reads `<rule>: <reason>`:
   before validation are reported as rejected in ``answerssaved``.
 """
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Annotated, Any, Final
 
 from fastapi import APIRouter, Form, Request, Response
 from fastapi.templating import Jinja2Templates
 from pydantic import JsonValue
+from review_page.agent_suggestions_client import AgentSuggestionsClient
 from review_page.case_views import (
     build_case_rows,
     build_case_view,
@@ -36,6 +37,7 @@ from review_page.case_views import (
 from review_page.correction_views import list_case_correction_links
 from review_page.errors import SeedFileUnavailableError
 from review_page.models import (
+    AgentPageSuggestion,
     BrowserState,
     BrowserStateField,
     RunSummary,
@@ -47,6 +49,7 @@ from review_page.page_state import (
     count_resolved_rows_by_kind,
     filter_case_rows,
     find_next_case_name,
+    is_answer_empty,
     paginate_rows,
     resolve_row_edit_state,
 )
@@ -54,9 +57,6 @@ from review_page.request_guards import (
     build_event_headers,
     build_event_response,
     build_notice_response,
-)
-from review_page.review_case_messages import (
-    build_case_answer,
 )
 from review_page.review_case_source import (
     ANSWER_SAVED_ELSEWHERE_RULE_NAME,
@@ -77,6 +77,9 @@ from work_matching import (
     list_named_entry_page_keys,
     resolve_page_key,
 )
+from work_matching.review_case_messages import (
+    build_case_answer,
+)
 
 # The notice each save refusal shows; every refusal saves nothing.
 _SAVE_REFUSAL_NOTICES: Final[dict[type[Exception], str]] = {
@@ -96,15 +99,22 @@ _SAVE_REFUSAL_NOTICES: Final[dict[type[Exception], str]] = {
 class CaseRoutes:
     """Register and serve stateless HTTP routes for the Cases tab."""
 
-    def __init__(self, source: ReviewCaseSource, templates: Jinja2Templates) -> None:
+    def __init__(
+        self,
+        source: ReviewCaseSource,
+        templates: Jinja2Templates,
+        suggestion_client: AgentSuggestionsClient | None = None,
+    ) -> None:
         """Register Cases tab endpoints on a new router instance.
 
         Args:
             source: The review case source used to read cases and persist answers.
             templates: The Jinja2 templates collection for rendering HTML fragments.
+            suggestion_client: Optional AgentService client for Jev suggestions.
         """
         self._source = source
         self._templates = templates
+        self._suggestion_client = suggestion_client
         self.router = APIRouter()
         for path, endpoint in (
             ("/fragments/toolbar", self.render_toolbar),
@@ -238,37 +248,30 @@ class CaseRoutes:
         case = load_case(self._source, state.open_case_name)
         if case is None:
             return self._render_case(request, state, None)
-        current_answer = resolve_shown_answer(case, state.edits.get(case.case_name))
-        if case.kind is ReviewCaseKind.LINKED_PAGE:
-            new_answer: dict[str, JsonValue] = (
-                {page_key: linked_answer} if linked_answer else {}
-            )
-        elif partial_source_work:
-            new_answer = choose_partial_sources(
-                current_answer if isinstance(current_answer, dict) else {},
-                partial_source_page_keys or [page_key],
-                partial_source_work,
-                is_partial_source=is_partial_source,
-            )
-        else:
-            new_answer = choose_group_page_place(
-                current_answer if isinstance(current_answer, dict) else {},
-                page_key,
-                _write_work(work, named_entry),
-            )
-        is_unsaved = _record_answer_edit(state, case, new_answer)
-        response = self._render_case(request, state, case)
+        current_suggestions = self._fetch_case_suggestions(case)
+        suggestions_by_page = {
+            suggestion.page_key: suggestion for suggestion in current_suggestions
+        }
+        current_answer = resolve_shown_answer(
+            case, state.edits.get(case.case_name), suggestions_by_page
+        )
+        new_answer = _apply_choice_to_answer(
+            case,
+            current_answer,
+            page_key=page_key,
+            work=work,
+            linked_answer=linked_answer,
+            named_entry=named_entry,
+            partial_source_work=partial_source_work,
+            is_partial_source=is_partial_source,
+            partial_source_page_keys=partial_source_page_keys,
+        )
+        is_unsaved = _record_answer_edit(state, case, new_answer, suggestions_by_page)
+        response = self._render_case(
+            request, state, case, agent_suggestions=current_suggestions
+        )
         response.headers.update(
-            build_event_headers(
-                {
-                    "answerchanged": {
-                        "case_name": case.case_name,
-                        "answer": new_answer,
-                        "is_unsaved": is_unsaved,
-                        "saved_answer": case.answer,
-                    }
-                }
-            )
+            _build_answer_changed_headers(case, new_answer, is_unsaved)
         )
         return response
 
@@ -298,7 +301,12 @@ class CaseRoutes:
         state, cases, last_run_summary = self._load_case_context(browser_state)
         cases_by_name = {case.case_name: case for case in cases}
         answers_by_case_name = _choose_answers_to_save(
-            action, case_name, state, cases_by_name, last_run_summary
+            action,
+            case_name,
+            state,
+            cases_by_name,
+            last_run_summary,
+            self._fetch_case_suggestions,
         )
         try:
             check_results = self._source.save_answers(
@@ -331,11 +339,33 @@ class CaseRoutes:
             {"answerssaved": _build_answers_saved_event(check_results, next_case_name)}
         )
 
+    def _fetch_case_suggestions(
+        self, case: ReviewCase
+    ) -> tuple[AgentPageSuggestion, ...]:
+        """Fetch Jev suggestions only for unanswered entry group cases.
+
+        Args:
+            case: The review case being rendered or edited.
+
+        Returns:
+            Tuple of ``AgentPageSuggestion`` items, or empty when unavailable
+            or when ``case`` is already answered or a linked-page case.
+        """
+        if (
+            self._suggestion_client is None
+            or case.kind is ReviewCaseKind.LINKED_PAGE
+            or not is_answer_empty(case.answer)
+        ):
+            return ()
+        return self._suggestion_client.suggest_page_answers(case)
+
     def _render_case(
         self,
         request: Request,
         state: BrowserState,
         case: ReviewCase | None,
+        *,
+        agent_suggestions: tuple[AgentPageSuggestion, ...] | None = None,
     ) -> Response:
         """Render the case panel fragment for a given case or its empty state.
 
@@ -343,6 +373,7 @@ class CaseRoutes:
             request: The incoming HTTP request.
             state: The parsed ``BrowserState`` from the request.
             case: The ``ReviewCase`` to render, or None for the empty state.
+            agent_suggestions: Pre-fetched suggestions, or None to query now.
 
         Returns:
             The rendered ``case_panel.html`` response.
@@ -353,6 +384,14 @@ class CaseRoutes:
             )
         last_run_summary = load_last_run_summary(self._source)
         unsaved_answer = state.edits.get(case.case_name)
+        resolved_suggestions = (
+            self._fetch_case_suggestions(case)
+            if agent_suggestions is None
+            else agent_suggestions
+        )
+        suggestions_by_page = {
+            suggestion.page_key: suggestion for suggestion in resolved_suggestions
+        }
         case_view = build_case_view(
             case,
             original_answer=find_original_answer(case, last_run_summary),
@@ -361,8 +400,11 @@ class CaseRoutes:
             is_run_going=self._source.get_run_state().is_running,
             show_only_differences=state.show_only_differences,
             invalid_named_page_key_reasons=self._source.find_invalid_named_page_keys(
-                list_named_entry_page_keys(resolve_shown_answer(case, unsaved_answer))
+                list_named_entry_page_keys(
+                    resolve_shown_answer(case, unsaved_answer, suggestions_by_page)
+                )
             ),
+            agent_suggestions=resolved_suggestions,
         )
         return self._templates.TemplateResponse(
             request,
@@ -396,6 +438,78 @@ class CaseRoutes:
         )
 
 
+def _build_answer_changed_headers(
+    case: ReviewCase,
+    new_answer: dict[str, JsonValue],
+    is_unsaved: bool,
+) -> dict[str, str]:
+    """Build HTMX ``answerchanged`` trigger headers after an answer edit.
+
+    Args:
+        case: The review case that was edited.
+        new_answer: The updated answer dictionary.
+        is_unsaved: Whether the updated answer differs from the saved answer.
+
+    Returns:
+        Response header dictionary carrying the serialized ``answerchanged`` event.
+    """
+    return build_event_headers(
+        {
+            "answerchanged": {
+                "case_name": case.case_name,
+                "answer": new_answer,
+                "is_unsaved": is_unsaved,
+                "saved_answer": case.answer,
+            }
+        }
+    )
+
+
+def _apply_choice_to_answer(
+    case: ReviewCase,
+    current_answer: JsonValue,
+    *,
+    page_key: str,
+    work: str,
+    linked_answer: str,
+    named_entry: str,
+    partial_source_work: str,
+    is_partial_source: bool,
+    partial_source_page_keys: list[str] | None,
+) -> dict[str, JsonValue]:
+    """Compute the updated answer mapping after a single UI choice.
+
+    Args:
+        case: The review case being edited.
+        current_answer: The currently displayed answer payload.
+        page_key: The provider page key whose placement is being updated.
+        work: The selected work placement word, or empty for no placement.
+        linked_answer: The selected decision word for a linked-page case.
+        named_entry: The target seed entry page key or address for ``other work``.
+        partial_source_work: The work ``page_key`` becomes or stops being a
+            partial source of, or empty when choosing the page's place.
+        is_partial_source: Whether ``page_key`` becomes a partial source.
+        partial_source_page_keys: Pages chosen together in the partial source
+            picker, used instead of ``page_key`` when provided.
+
+    Returns:
+        The updated answer dictionary for ``case``.
+    """
+    if case.kind is ReviewCaseKind.LINKED_PAGE:
+        return {page_key: linked_answer} if linked_answer else {}
+    answer_mapping = current_answer if isinstance(current_answer, dict) else {}
+    if partial_source_work:
+        return choose_partial_sources(
+            answer_mapping,
+            partial_source_page_keys or [page_key],
+            partial_source_work,
+            is_partial_source=is_partial_source,
+        )
+    return choose_group_page_place(
+        answer_mapping, page_key, _write_work(work, named_entry)
+    )
+
+
 def _write_work(work: str, named_entry: str) -> str | None:
     """Format a page's selected work placement string, resolving ``other work`` targets.
 
@@ -422,6 +536,8 @@ def _choose_answers_to_save(
     state: BrowserState,
     cases_by_name: dict[str, ReviewCase],
     last_run_summary: RunSummary | None,
+    fetch_suggestions: Callable[[ReviewCase], tuple[AgentPageSuggestion, ...]]
+    | None = None,
 ) -> dict[str, Any]:
     """Select the mapping of case names to answer payloads for a save action.
 
@@ -431,6 +547,7 @@ def _choose_answers_to_save(
         state: The parsed ``BrowserState`` holding staged unsaved edits.
         cases_by_name: All stored review cases indexed by case name.
         last_run_summary: The last pipeline run summary, or None before the first run.
+        fetch_suggestions: Optional callback fetching Jev suggestions.
 
     Returns:
         A dictionary mapping target case names to the answer payloads to persist.
@@ -441,11 +558,22 @@ def _choose_answers_to_save(
     case = cases_by_name.get(case_name)
     if case is None:
         return {case_name: state.edits.get(case_name)}
-    if action == "accept":
-        return {case_name: build_suggested_answer(case)}
     if action == "reset":
         return {case_name: find_original_answer(case, last_run_summary)}
-    return {case_name: resolve_shown_answer(case, state.edits.get(case_name))}
+    suggestions = fetch_suggestions(case) if fetch_suggestions is not None else ()
+    suggestions_by_page = {
+        suggestion.page_key: suggestion for suggestion in suggestions
+    }
+    if action == "accept":
+        return {
+            case_name: resolve_shown_answer(case, None, suggestions_by_page)
+            or build_suggested_answer(case)
+        }
+    return {
+        case_name: resolve_shown_answer(
+            case, state.edits.get(case_name), suggestions_by_page
+        )
+    }
 
 
 def _build_answers_saved_event(
@@ -488,7 +616,10 @@ def _build_answers_saved_event(
 
 
 def _record_answer_edit(
-    state: BrowserState, case: ReviewCase, new_answer: dict[str, JsonValue]
+    state: BrowserState,
+    case: ReviewCase,
+    new_answer: dict[str, JsonValue],
+    agent_suggestions_by_page: dict[str, AgentPageSuggestion] = {},
 ) -> bool:
     """Record a chosen answer as the case's unsaved edit, or clear the edit.
 
@@ -500,11 +631,14 @@ def _record_answer_edit(
         state: The browser state, changed in place.
         case: The open review case.
         new_answer: The answer after the choice.
+        agent_suggestions_by_page: Optional Jev suggestions keyed by page key.
 
     Returns:
         True when the answer differs from what the case shows without edits.
     """
-    is_unsaved = (new_answer or None) != (resolve_shown_answer(case, None) or None)
+    is_unsaved = (new_answer or None) != (
+        resolve_shown_answer(case, None, agent_suggestions_by_page) or None
+    )
     if is_unsaved:
         state.edits[case.case_name] = new_answer
     else:

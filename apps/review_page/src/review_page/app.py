@@ -20,6 +20,7 @@ from fastapi import APIRouter, FastAPI, Request, Response
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from review_page.agent_suggestions_client import AgentSuggestionsClient
 from review_page.case_routes import CaseRoutes
 from review_page.correction_routes import CorrectionRoutes
 from review_page.errors import UnreadableReviewFileError
@@ -70,12 +71,16 @@ class PageRoutes:
         return self._templates.TemplateResponse(request, "page.html")
 
 
-def create_app(source: ReviewCaseSource) -> FastAPI:
+def create_app(
+    source: ReviewCaseSource,
+    suggestion_client: AgentSuggestionsClient | None = None,
+) -> FastAPI:
     """Construct the FastAPI application wired to the given review case source.
 
     Args:
         source: The review case source used to read cases, save answers, and
             manage pipeline runs.
+        suggestion_client: Optional AgentService client for Jev suggestions.
 
     Returns:
         The configured ``FastAPI`` application with routes, guards, templates,
@@ -89,7 +94,7 @@ def create_app(source: ReviewCaseSource) -> FastAPI:
         context_processors=[add_template_functions],
     )
     app.include_router(PageRoutes(templates).router)
-    app.include_router(CaseRoutes(source, templates).router)
+    app.include_router(CaseRoutes(source, templates, suggestion_client).router)
     app.include_router(NamedEntryRoutes(source, templates).router)
     app.include_router(CorrectionRoutes(source, templates).router)
     app.include_router(RunRoutes(source, templates).router)

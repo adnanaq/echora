@@ -227,6 +227,15 @@ class PageLink:
 
 
 @dataclass(frozen=True, slots=True)
+class AgentPageSuggestion:
+    """Hold one page placement suggested by AgentService and Jev's confidence score."""
+
+    page_key: str
+    answer_word: str
+    score: float
+
+
+@dataclass(frozen=True, slots=True)
 class PageRowView:
     """Represent a candidate provider page to be placed within a review case.
 
@@ -256,6 +265,8 @@ class PageRowView:
     named_entry_address: str | None = None
     # Why the page key named after "other work" cannot be used; None when it can.
     named_entry_invalid_reason: InvalidNamedPageKeyReason | None = None
+    # Jev's confidence score when the shown placement still matches its suggestion.
+    suggestion_score: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
