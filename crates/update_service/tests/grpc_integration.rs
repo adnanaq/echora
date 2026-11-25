@@ -679,6 +679,91 @@ async fn grpc_catalogue_adapter_covers_happy_failed_and_aborted_paths() -> anyho
 }
 
 #[tokio::test]
+async fn grpc_catalogue_adapter_routes_split_fetch_and_merge_endpoints() -> anyhow::Result<()> {
+    let pg_listener = TcpListener::bind("127.0.0.1:0").await?;
+    let fetch_listener = TcpListener::bind("127.0.0.1:0").await?;
+    let merge_listener = TcpListener::bind("127.0.0.1:0").await?;
+    let pg_addr = pg_listener.local_addr()?;
+    let fetch_addr = fetch_listener.local_addr()?;
+    let merge_addr = merge_listener.local_addr()?;
+
+    let pg_mock = MockServices::default();
+    let fetch_mock = MockServices::default();
+    let merge_mock = MockServices::default();
+
+    let spawn_incoming = |listener: TcpListener| {
+        futures::stream::unfold(listener, |listener| async move {
+            let accepted = listener.accept().await.map(|(stream, _addr)| stream);
+            Some((accepted, listener))
+        })
+    };
+
+    tokio::spawn(async move {
+        let _ = Server::builder()
+            .add_service(
+                PostgresServiceServer::new(pg_mock)
+                    .accept_compressed(tonic::codec::CompressionEncoding::Gzip)
+                    .send_compressed(tonic::codec::CompressionEncoding::Gzip),
+            )
+            .serve_with_incoming(spawn_incoming(pg_listener))
+            .await;
+    });
+    tokio::spawn(async move {
+        let _ = Server::builder()
+            .add_service(
+                EnrichmentServiceServer::new(fetch_mock)
+                    .accept_compressed(tonic::codec::CompressionEncoding::Gzip)
+                    .send_compressed(tonic::codec::CompressionEncoding::Gzip),
+            )
+            .serve_with_incoming(spawn_incoming(fetch_listener))
+            .await;
+    });
+    tokio::spawn(async move {
+        let _ = Server::builder()
+            .add_service(
+                EnrichmentServiceServer::new(merge_mock)
+                    .accept_compressed(tonic::codec::CompressionEncoding::Gzip)
+                    .send_compressed(tonic::codec::CompressionEncoding::Gzip),
+            )
+            .serve_with_incoming(spawn_incoming(merge_listener))
+            .await;
+    });
+
+    let pg_ch = Channel::from_shared(format!("http://{pg_addr}"))?
+        .connect()
+        .await?;
+    let fetch_ch = Channel::from_shared(format!("http://{fetch_addr}"))?
+        .connect()
+        .await?;
+    let merge_ch = Channel::from_shared(format!("http://{merge_addr}"))?
+        .connect()
+        .await?;
+
+    let adapter = GrpcCatalogueAdapter::with_split_enrichment(
+        build_postgres_client(pg_ch),
+        build_enrichment_client(fetch_ch),
+        build_enrichment_client(merge_ch),
+    );
+    let page_out = adapter
+        .refresh_page(
+            RefreshPageKey {
+                provider: "mal".to_owned(),
+                entity_type: "anime".to_owned(),
+                address: "1".to_owned(),
+            },
+            0,
+        )
+        .await?;
+    assert!(page_out.has_changed);
+
+    let merge_out = adapter
+        .merge_entity_attempt(RefreshEntityKind::Anime, "a1".to_owned(), 1)
+        .await?;
+    assert!(matches!(merge_out, MergeAttemptOutcome::Saved(_)));
+    Ok(())
+}
+
+#[tokio::test]
 async fn temporal_workflow_starter_starts_and_deduplicates_downstream_workflows()
 -> anyhow::Result<()> {
     let temporal_addr =

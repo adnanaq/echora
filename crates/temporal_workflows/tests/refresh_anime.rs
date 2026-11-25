@@ -19,10 +19,11 @@ use temporal_workflows::{
     RefreshEntityInput, RefreshEntityKind, RefreshEntityOutcome, RefreshEpisodeWorkflow,
     RefreshOutcomeKind, RefreshPageKey, RefreshPageOutput, StartEntityWorkflowsInput,
     UPDATE_SERVICE_TASK_QUEUE, UpdateServiceActivities, UpdateServicePorts, WorkerQueueSpec,
-    WorkflowStarterPort, build_refresh_anime_workflow_id, build_refresh_character_workflow_id,
-    build_refresh_episode_workflow_id, build_worker_options, build_write_synopsis_workflow_id,
-    compute_page_backoff_seconds, is_non_retryable_grpc_code, is_page_due, matches_fetch_request,
-    merge_priority, select_pages_to_refresh,
+    WorkflowStarterPort, build_priority, build_refresh_anime_workflow_id,
+    build_refresh_character_workflow_id, build_refresh_episode_workflow_id, build_worker_options,
+    build_write_synopsis_workflow_id, compute_page_backoff_seconds, find_provider_worker_policy,
+    is_non_retryable_grpc_code, is_page_due, matches_fetch_request, merge_priority,
+    select_pages_to_refresh,
 };
 use temporalio_client::grpc::WorkflowService as _;
 use temporalio_client::{
@@ -190,6 +191,60 @@ fn pure_scheduling_helpers_and_ports_cover_all_edge_cases() {
     assert_eq!(merge_priority(2, 0), 2);
     assert_eq!(merge_priority(3, 1), 1);
     assert_eq!(merge_priority(1, 3), 1);
+
+    let p_user = build_priority(0, "user");
+    assert_eq!(p_user.priority_key, Some(1));
+    assert_eq!(p_user.fairness_key.as_deref(), Some("user"));
+    assert_eq!(p_user.fairness_weight, None);
+
+    let p_ep = build_priority(0, "episode");
+    assert_eq!(p_ep.priority_key, Some(2));
+    assert_eq!(p_ep.fairness_key.as_deref(), Some("episode"));
+
+    let p_rev = build_priority(0, "review");
+    assert_eq!(p_rev.priority_key, Some(2));
+    assert_eq!(p_rev.fairness_key.as_deref(), Some("review"));
+
+    let p_sweep = build_priority(0, "sweep");
+    assert_eq!(p_sweep.priority_key, Some(3));
+    assert_eq!(p_sweep.fairness_key.as_deref(), Some("sweep"));
+    assert_eq!(p_sweep.fairness_weight, Some(1.0));
+
+    let p_seed = build_priority(0, "seed");
+    assert_eq!(p_seed.priority_key, Some(3));
+    assert_eq!(p_seed.fairness_key.as_deref(), Some("seed"));
+    assert_eq!(p_seed.fairness_weight, Some(1.0));
+
+    let p_remerge = build_priority(0, "remerge");
+    assert_eq!(p_remerge.priority_key, Some(4));
+    assert_eq!(p_remerge.fairness_key.as_deref(), Some("remerge"));
+
+    let p_empty = build_priority(9, "");
+    assert_eq!(p_empty.priority_key, Some(5));
+    assert!(p_empty.fairness_key.is_none());
+
+    let anidb_pol = find_provider_worker_policy("anidb");
+    assert!((anidb_pol.fallback_rps - 0.00174).abs() < f64::EPSILON);
+    assert_eq!(anidb_pol.max_concurrent_activities, Some(1));
+    assert_eq!(
+        find_provider_worker_policy("mal").max_concurrent_activities,
+        Some(2)
+    );
+    assert_eq!(
+        find_provider_worker_policy("anime_planet").max_concurrent_activities,
+        Some(2)
+    );
+    assert_eq!(
+        find_provider_worker_policy("anisearch").max_concurrent_activities,
+        Some(2)
+    );
+    assert!(
+        find_provider_worker_policy("kitsu")
+            .max_concurrent_activities
+            .is_none()
+    );
+    assert!((find_provider_worker_policy("anilist").fallback_rps - 0.50).abs() < f64::EPSILON);
+    assert!((find_provider_worker_policy("syoboi").fallback_rps - 1.0).abs() < f64::EPSILON);
 
     assert!(is_non_retryable_grpc_code(3));
     assert!(is_non_retryable_grpc_code(5));
