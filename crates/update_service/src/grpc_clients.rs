@@ -5,11 +5,12 @@ use futures::future::BoxFuture;
 use serde::Serialize;
 use temporal_workflows::{
     AGENT_SERVICE_TASK_QUEUE, CatalogueDataPort, EntityPageSummary, ListEntityPagesOutput,
-    MergeAnimeOutput, MergeAttemptOutcome, PortError, REFRESH_TRIGGER_SEARCH_ATTRIBUTE,
-    RecordRefreshInput, RefreshOutcomeKind, RefreshPageKey, RefreshPageOutput,
+    MergeAttemptOutcome, MergeEntityOutput, PortError, REFRESH_TRIGGER_SEARCH_ATTRIBUTE,
+    RecordRefreshInput, RefreshCharacterWorkflow, RefreshEntityInput, RefreshEntityKind,
+    RefreshEpisodeWorkflow, RefreshOutcomeKind, RefreshPageKey, RefreshPageOutput,
     StartEntityWorkflowsInput, UPDATE_SERVICE_TASK_QUEUE, WorkflowStarterPort, build_priority,
-    build_refresh_episode_workflow_id, build_write_synopsis_workflow_id,
-    is_non_retryable_grpc_code,
+    build_refresh_character_workflow_id, build_refresh_episode_workflow_id,
+    build_write_synopsis_workflow_id, is_non_retryable_grpc_code,
 };
 use temporalio_client::{Client, UntypedWorkflow, WorkflowIdConflictPolicy, WorkflowStartOptions};
 use temporalio_common::Priority;
@@ -59,11 +60,14 @@ pub mod enrichment_service_proto {
 }
 
 use enrichment_service_proto::v1::enrichment_service_client::EnrichmentServiceClient;
-use enrichment_service_proto::v1::{FetchPageRequest, MergeAnimeRequest};
+use enrichment_service_proto::v1::{
+    FetchPageRequest, MergeAnimeRequest, MergeCharacterRequest, MergeEpisodeRequest,
+};
 use postgres_service_proto::v1::postgres_service_client::PostgresServiceClient;
 use postgres_service_proto::v1::{
-    ListEntityPagesRequest, LoadAnimeRequest, RecordRefreshRequest,
-    RefreshOutcome as ProtoRefreshOutcome, SaveAnimeRequest, StorePageRequest,
+    ListEntityPagesRequest, LoadAnimeRequest, LoadCharacterRequest, LoadEpisodeRequest,
+    RecordRefreshRequest, RefreshOutcome as ProtoRefreshOutcome, SaveAnimeRequest,
+    SaveCharacterRequest, SaveEpisodeRequest, StorePageRequest,
 };
 use shared_proto::v1::{EntityType as ProtoEntityType, PageKey as ProtoPageKey, StoredPage};
 
@@ -185,17 +189,179 @@ fn from_proto_page_key(key: ProtoPageKey) -> RefreshPageKey {
     }
 }
 
+/// Converts a [`RefreshEntityKind`] into a proto `EntityType`.
+const fn to_proto_entity_type(kind: RefreshEntityKind) -> i32 {
+    match kind {
+        RefreshEntityKind::Anime => ProtoEntityType::Anime as i32,
+        RefreshEntityKind::Episode => ProtoEntityType::Episode as i32,
+        RefreshEntityKind::Character => ProtoEntityType::Character as i32,
+    }
+}
+
+/// Converts a gRPC `Save*` response/status into [`MergeAttemptOutcome`].
+fn map_save_result<T, F>(
+    save_res: Result<tonic::Response<T>, tonic::Status>,
+    map_saved: F,
+) -> Result<MergeAttemptOutcome, PortError>
+where
+    F: FnOnce(T) -> MergeEntityOutput,
+{
+    match save_res {
+        Ok(resp) => Ok(MergeAttemptOutcome::Saved(map_saved(resp.into_inner()))),
+        Err(status) if status.code() == tonic::Code::Aborted => {
+            Ok(MergeAttemptOutcome::VersionConflict(status.to_string()))
+        }
+        Err(status) => Err(map_grpc_status(&status)),
+    }
+}
+
+/// Executes `LoadAnime` -> `MergeAnime` -> `SaveAnime`.
+async fn merge_anime_rpc(
+    mut postgres: PostgresServiceClient<Channel>,
+    mut enrichment: EnrichmentServiceClient<Channel>,
+    anime_id: String,
+    merge_version: i32,
+) -> Result<MergeAttemptOutcome, PortError> {
+    let loaded = postgres
+        .load_anime(LoadAnimeRequest {
+            anime_id: anime_id.clone(),
+        })
+        .await
+        .map_err(|status| map_grpc_status(&status))?
+        .into_inner();
+
+    let merged = enrichment
+        .merge_anime(MergeAnimeRequest {
+            anime_id: anime_id.clone(),
+            source_pages: loaded.source_pages,
+            partial_source_pages: loaded.partial_source_pages,
+            corrections: loaded.corrections,
+            generated_texts: Vec::new(),
+            known_episodes: loaded.known_episodes,
+        })
+        .await
+        .map_err(|status| map_grpc_status(&status))?
+        .into_inner();
+
+    let synopses_changed = !merged.provider_synopses_hash.is_empty();
+    let save_res = postgres
+        .save_anime(SaveAnimeRequest {
+            anime_id,
+            expected_version: loaded.version,
+            anime: merged.anime,
+            merge_version,
+            relation_claims: merged.relation_claims,
+            episodes: merged.episodes,
+        })
+        .await;
+
+    map_save_result(save_res, |saved| {
+        let mut changed_episode_ids = saved.created_episode_ids;
+        changed_episode_ids.extend(saved.updated_episode_ids);
+        MergeEntityOutput {
+            has_changed: saved.has_changed,
+            changed_episode_ids,
+            has_changed_synopses: synopses_changed,
+        }
+    })
+}
+
+/// Executes `LoadEpisode` -> `MergeEpisode` -> `SaveEpisode`.
+async fn merge_episode_rpc(
+    mut postgres: PostgresServiceClient<Channel>,
+    mut enrichment: EnrichmentServiceClient<Channel>,
+    episode_id: String,
+    merge_version: i32,
+) -> Result<MergeAttemptOutcome, PortError> {
+    let loaded = postgres
+        .load_episode(LoadEpisodeRequest {
+            episode_id: episode_id.clone(),
+        })
+        .await
+        .map_err(|status| map_grpc_status(&status))?
+        .into_inner();
+
+    let merged = enrichment
+        .merge_episode(MergeEpisodeRequest {
+            episode_id: episode_id.clone(),
+            anime_id: loaded.anime_id,
+            pages: loaded.pages,
+            corrections: loaded.corrections,
+            list_entries: loaded.list_entries,
+        })
+        .await
+        .map_err(|status| map_grpc_status(&status))?
+        .into_inner();
+
+    let save_res = postgres
+        .save_episode(SaveEpisodeRequest {
+            episode_id,
+            expected_version: loaded.version,
+            episode: merged.episode,
+            merge_version,
+        })
+        .await;
+
+    map_save_result(save_res, |saved| MergeEntityOutput {
+        has_changed: saved.has_changed,
+        changed_episode_ids: Vec::new(),
+        has_changed_synopses: false,
+    })
+}
+
+/// Executes `LoadCharacter` -> `MergeCharacter` -> `SaveCharacter`.
+async fn merge_character_rpc(
+    mut postgres: PostgresServiceClient<Channel>,
+    mut enrichment: EnrichmentServiceClient<Channel>,
+    character_id: String,
+    merge_version: i32,
+) -> Result<MergeAttemptOutcome, PortError> {
+    let loaded = postgres
+        .load_character(LoadCharacterRequest {
+            character_id: character_id.clone(),
+        })
+        .await
+        .map_err(|status| map_grpc_status(&status))?
+        .into_inner();
+
+    let merged = enrichment
+        .merge_character(MergeCharacterRequest {
+            character_id: character_id.clone(),
+            pages: loaded.pages,
+            corrections: loaded.corrections,
+        })
+        .await
+        .map_err(|status| map_grpc_status(&status))?
+        .into_inner();
+
+    let save_res = postgres
+        .save_character(SaveCharacterRequest {
+            character_id,
+            expected_version: loaded.version,
+            character: merged.character,
+            merge_version,
+        })
+        .await;
+
+    map_save_result(save_res, |saved| MergeEntityOutput {
+        has_changed: saved.has_changed,
+        changed_episode_ids: Vec::new(),
+        has_changed_synopses: false,
+    })
+}
+
 impl CatalogueDataPort for GrpcCatalogueAdapter {
     fn list_entity_pages(
         &self,
-        anime_id: String,
+        entity_kind: RefreshEntityKind,
+        entity_id: String,
     ) -> BoxFuture<'_, Result<ListEntityPagesOutput, PortError>> {
         let mut postgres = self.postgres.clone();
         Box::pin(async move {
             let response = postgres
                 .list_entity_pages(ListEntityPagesRequest {
-                    entity_type: ProtoEntityType::Anime as i32,
-                    entity_id: anime_id,
+                    entity_type: to_proto_entity_type(entity_kind),
+                    entity_id,
                 })
                 .await
                 .map_err(|status| map_grpc_status(&status))?
@@ -289,61 +455,25 @@ impl CatalogueDataPort for GrpcCatalogueAdapter {
         })
     }
 
-    fn merge_anime_attempt(
+    fn merge_entity_attempt(
         &self,
-        anime_id: String,
+        entity_kind: RefreshEntityKind,
+        entity_id: String,
         merge_version: i32,
     ) -> BoxFuture<'_, Result<MergeAttemptOutcome, PortError>> {
-        let mut postgres = self.postgres.clone();
-        let mut enrichment = self.enrichment.clone();
+        let postgres = self.postgres.clone();
+        let enrichment = self.enrichment.clone();
         Box::pin(async move {
-            let loaded = postgres
-                .load_anime(LoadAnimeRequest {
-                    anime_id: anime_id.clone(),
-                })
-                .await
-                .map_err(|status| map_grpc_status(&status))?
-                .into_inner();
-
-            let merged = enrichment
-                .merge_anime(MergeAnimeRequest {
-                    anime_id: anime_id.clone(),
-                    source_pages: loaded.source_pages,
-                    partial_source_pages: loaded.partial_source_pages,
-                    corrections: loaded.corrections,
-                    generated_texts: Vec::new(),
-                    known_episodes: loaded.known_episodes,
-                })
-                .await
-                .map_err(|status| map_grpc_status(&status))?
-                .into_inner();
-
-            let save_res = postgres
-                .save_anime(SaveAnimeRequest {
-                    anime_id,
-                    expected_version: loaded.version,
-                    anime: merged.anime,
-                    merge_version,
-                    relation_claims: merged.relation_claims,
-                    episodes: merged.episodes,
-                })
-                .await;
-
-            match save_res {
-                Ok(resp) => {
-                    let saved = resp.into_inner();
-                    let mut changed_episode_ids = saved.created_episode_ids;
-                    changed_episode_ids.extend(saved.updated_episode_ids);
-                    Ok(MergeAttemptOutcome::Saved(MergeAnimeOutput {
-                        has_changed: saved.has_changed,
-                        changed_episode_ids,
-                        has_changed_synopses: !merged.provider_synopses_hash.is_empty(),
-                    }))
+            match entity_kind {
+                RefreshEntityKind::Anime => {
+                    merge_anime_rpc(postgres, enrichment, entity_id, merge_version).await
                 }
-                Err(status) if status.code() == tonic::Code::Aborted => {
-                    Ok(MergeAttemptOutcome::VersionConflict(status.to_string()))
+                RefreshEntityKind::Episode => {
+                    merge_episode_rpc(postgres, enrichment, entity_id, merge_version).await
                 }
-                Err(status) => Err(map_grpc_status(&status)),
+                RefreshEntityKind::Character => {
+                    merge_character_rpc(postgres, enrichment, entity_id, merge_version).await
+                }
             }
         })
     }
@@ -358,8 +488,8 @@ impl CatalogueDataPort for GrpcCatalogueAdapter {
             };
             postgres
                 .record_refresh(RecordRefreshRequest {
-                    entity_type: ProtoEntityType::Anime as i32,
-                    entity_id: input.anime_id,
+                    entity_type: to_proto_entity_type(input.entity_kind),
+                    entity_id: input.entity_id,
                     outcome,
                     refresh_after: Some(prost_types::Duration {
                         seconds: input.refresh_after_days.max(1) * 86_400,
@@ -409,8 +539,22 @@ fn encode_json_raw_value<T: Serialize>(value: &T) -> Result<RawValue, PortError>
     })
 }
 
-/// Starts one top-level Temporal workflow with `USE_EXISTING`, priority, and `RefreshTrigger`.
-async fn start_top_level_workflow(
+/// Builds `WorkflowStartOptions` with `USE_EXISTING`, priority, and `RefreshTrigger`.
+fn build_start_options(
+    task_queue: &str,
+    workflow_id: String,
+    priority: Priority,
+    search_attrs: SearchAttributes,
+) -> WorkflowStartOptions {
+    WorkflowStartOptions::new(task_queue, workflow_id)
+        .id_conflict_policy(WorkflowIdConflictPolicy::UseExisting)
+        .priority(priority)
+        .search_attributes(search_attrs)
+        .build()
+}
+
+/// Starts one untyped top-level Temporal workflow with `USE_EXISTING`, priority, and `RefreshTrigger`.
+async fn start_untyped_workflow(
     client: &Client,
     task_queue: &str,
     workflow_type: &str,
@@ -419,17 +563,63 @@ async fn start_top_level_workflow(
     search_attrs: SearchAttributes,
     input: &ChildRefreshStartInput,
 ) -> Result<(), PortError> {
-    let opts = WorkflowStartOptions::new(task_queue, workflow_id)
-        .id_conflict_policy(WorkflowIdConflictPolicy::UseExisting)
-        .priority(priority)
-        .search_attributes(search_attrs)
-        .build();
+    let opts = build_start_options(task_queue, workflow_id, priority, search_attrs);
     let raw_input = encode_json_raw_value(input)?;
     client
         .start_workflow(UntypedWorkflow::new(workflow_type), raw_input, opts)
         .await
         .map_err(|err| PortError::retryable(err.to_string()))?;
     Ok(())
+}
+
+/// Starts top-level `RefreshEpisodeWorkflow` or `RefreshCharacterWorkflow` instances
+/// with `USE_EXISTING` conflict policy.
+async fn start_entity_refresh_batch(
+    client: &Client,
+    kind: RefreshEntityKind,
+    entity_ids: Vec<String>,
+    trigger: &str,
+    raw_priority: u32,
+    priority: &Priority,
+    search_attrs: &SearchAttributes,
+) -> Result<usize, PortError> {
+    let mut started = 0_usize;
+    for entity_id in entity_ids {
+        let wf_input = RefreshEntityInput {
+            entity_id: entity_id.clone(),
+            trigger: trigger.to_owned(),
+            priority: raw_priority,
+            ..RefreshEntityInput::default()
+        };
+        let wf_id = match kind {
+            RefreshEntityKind::Episode => build_refresh_episode_workflow_id(&entity_id),
+            RefreshEntityKind::Character => build_refresh_character_workflow_id(&entity_id),
+            RefreshEntityKind::Anime => continue,
+        };
+        let opts = build_start_options(
+            UPDATE_SERVICE_TASK_QUEUE,
+            wf_id,
+            priority.clone(),
+            search_attrs.clone(),
+        );
+        match kind {
+            RefreshEntityKind::Episode => {
+                client
+                    .start_workflow(RefreshEpisodeWorkflow::run, wf_input, opts)
+                    .await
+                    .map_err(|err| PortError::retryable(err.to_string()))?;
+            }
+            RefreshEntityKind::Character => {
+                client
+                    .start_workflow(RefreshCharacterWorkflow::run, wf_input, opts)
+                    .await
+                    .map_err(|err| PortError::retryable(err.to_string()))?;
+            }
+            RefreshEntityKind::Anime => {}
+        }
+        started += 1;
+    }
+    Ok(started)
 }
 
 impl WorkflowStarterPort for TemporalWorkflowStarter {
@@ -439,7 +629,6 @@ impl WorkflowStarterPort for TemporalWorkflowStarter {
     ) -> BoxFuture<'_, Result<usize, PortError>> {
         let client = self.client.clone();
         Box::pin(async move {
-            let mut started = 0_usize;
             let trigger_val = if input.trigger.is_empty() {
                 "sweep".to_owned()
             } else {
@@ -447,27 +636,54 @@ impl WorkflowStarterPort for TemporalWorkflowStarter {
             };
 
             let priority = build_priority(input.priority);
-
             let trigger_key = SearchAttributeKey::keyword(REFRESH_TRIGGER_SEARCH_ATTRIBUTE);
             let search_attrs = SearchAttributes::new([trigger_key.value_set(trigger_val.clone())]);
 
-            for episode_id in input.episode_ids {
-                let wf_id = build_refresh_episode_workflow_id(&episode_id);
-                let child_input = ChildRefreshStartInput {
-                    entity_id: episode_id,
-                    trigger: trigger_val.clone(),
-                    priority: input.priority,
-                };
-                start_top_level_workflow(
-                    &client,
+            let mut started = start_entity_refresh_batch(
+                &client,
+                RefreshEntityKind::Episode,
+                input.episode_ids,
+                &trigger_val,
+                input.priority,
+                &priority,
+                &search_attrs,
+            )
+            .await?;
+
+            started += start_entity_refresh_batch(
+                &client,
+                RefreshEntityKind::Character,
+                input.character_ids,
+                &trigger_val,
+                input.priority,
+                &priority,
+                &search_attrs,
+            )
+            .await?;
+
+            for target in input.character_fetch_requests {
+                let wf_id = build_refresh_character_workflow_id(&target.character_id);
+                let opts = build_start_options(
                     UPDATE_SERVICE_TASK_QUEUE,
-                    "RefreshEpisodeWorkflow",
                     wf_id,
                     priority.clone(),
                     search_attrs.clone(),
-                    &child_input,
-                )
-                .await?;
+                );
+                client
+                    .signal_with_start_workflow(
+                        RefreshCharacterWorkflow::run,
+                        RefreshEntityInput {
+                            entity_id: target.character_id,
+                            trigger: trigger_val.clone(),
+                            priority: input.priority,
+                            ..RefreshEntityInput::default()
+                        },
+                        RefreshCharacterWorkflow::fetch_requested,
+                        target.fetch,
+                        opts,
+                    )
+                    .await
+                    .map_err(|err| PortError::retryable(err.to_string()))?;
                 started += 1;
             }
 
@@ -478,7 +694,7 @@ impl WorkflowStarterPort for TemporalWorkflowStarter {
                     trigger: trigger_val,
                     priority: input.priority,
                 };
-                start_top_level_workflow(
+                start_untyped_workflow(
                     &client,
                     AGENT_SERVICE_TASK_QUEUE,
                     "WriteSynopsisWorkflow",

@@ -8,6 +8,7 @@ mod activities;
 mod ports;
 mod refresh_anime_types;
 mod refresh_anime_workflow;
+mod refresh_entity_workflows;
 
 use temporalio_common::worker::{WorkerDeploymentOptions, WorkerDeploymentVersion};
 use temporalio_sdk::WorkerOptions;
@@ -24,11 +25,13 @@ pub use ports::{
 };
 #[doc(inline)]
 pub use refresh_anime_types::{
-    DEFAULT_MERGE_FIRST_WAIT_MINUTES, DEFAULT_REFRESH_AFTER_DAYS, EntityPageSummary,
-    FetchRequestedSignal, ListEntityPagesOutput, MAX_PAGE_RETRY_BACKOFF_HOURS, MergeAnimeInput,
-    MergeAnimeOutput, RecordRefreshInput, RefreshAnimeInput, RefreshAnimeOutcome,
-    RefreshOutcomeKind, RefreshPageInput, RefreshPageKey, RefreshPageOutput,
-    StartEntityWorkflowsInput, build_refresh_anime_workflow_id, build_refresh_episode_workflow_id,
+    CharacterFetchTarget, DEFAULT_MERGE_FIRST_WAIT_MINUTES, DEFAULT_REFRESH_AFTER_DAYS,
+    EntityPageSummary, FetchRequestedSignal, ListEntityPagesInput, ListEntityPagesOutput,
+    MAX_PAGE_RETRY_BACKOFF_HOURS, MergeEntityInput, MergeEntityOutput, RecordRefreshInput,
+    RefreshAnimeInput, RefreshAnimeOutcome, RefreshEntityInput, RefreshEntityKind,
+    RefreshEntityOutcome, RefreshOutcomeKind, RefreshPageInput, RefreshPageKey, RefreshPageOutput,
+    StartEntityWorkflowsInput, build_refresh_anime_workflow_id,
+    build_refresh_character_workflow_id, build_refresh_episode_workflow_id,
     build_write_synopsis_workflow_id,
 };
 #[doc(inline)]
@@ -36,6 +39,8 @@ pub use refresh_anime_workflow::{
     RefreshAnimeWorkflow, build_priority, compute_page_backoff_seconds, is_page_due,
     matches_fetch_request, merge_priority, select_pages_to_refresh,
 };
+#[doc(inline)]
+pub use refresh_entity_workflows::{RefreshCharacterWorkflow, RefreshEpisodeWorkflow};
 
 /// Task queue for Update Service workflows, merges, and workflow starters.
 pub const UPDATE_SERVICE_TASK_QUEUE: &str = "update-service";
@@ -149,6 +154,8 @@ pub fn build_worker_options(
         WorkerQueueSpec::UpdateService => builder
             .register_activities(UpdateServiceActivities::new(ports))
             .register_workflow::<RefreshAnimeWorkflow>()?
+            .register_workflow::<RefreshEpisodeWorkflow>()?
+            .register_workflow::<RefreshCharacterWorkflow>()?
             .register_workflow::<SpikeWorkflow>()?,
         WorkerQueueSpec::Provider(_) => builder.register_activities(ProviderActivities::new(ports)),
         WorkerQueueSpec::AgentService => builder.register_activities(SpikeActivities),

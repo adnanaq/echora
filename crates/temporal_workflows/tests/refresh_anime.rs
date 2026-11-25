@@ -12,15 +12,17 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use futures::future::BoxFuture;
 use temporal_workflows::{
-    AGENT_SERVICE_TASK_QUEUE, CatalogueDataPort, EntityPageSummary, FetchRequestedSignal,
-    ListEntityPagesOutput, MAX_PAGE_RETRY_BACKOFF_HOURS, MergeAnimeOutput, MergeAttemptOutcome,
-    PortError, PortErrorKind, ProviderActivities, RecordRefreshInput, RefreshAnimeInput,
-    RefreshAnimeOutcome, RefreshAnimeWorkflow, RefreshOutcomeKind, RefreshPageKey,
-    RefreshPageOutput, StartEntityWorkflowsInput, UPDATE_SERVICE_TASK_QUEUE,
-    UpdateServiceActivities, UpdateServicePorts, WorkerQueueSpec, WorkflowStarterPort,
-    build_refresh_anime_workflow_id, build_refresh_episode_workflow_id, build_worker_options,
-    build_write_synopsis_workflow_id, compute_page_backoff_seconds, is_non_retryable_grpc_code,
-    is_page_due, matches_fetch_request, merge_priority, select_pages_to_refresh,
+    AGENT_SERVICE_TASK_QUEUE, CatalogueDataPort, CharacterFetchTarget, EntityPageSummary,
+    FetchRequestedSignal, ListEntityPagesOutput, MAX_PAGE_RETRY_BACKOFF_HOURS, MergeAttemptOutcome,
+    MergeEntityOutput, PortError, PortErrorKind, ProviderActivities, RecordRefreshInput,
+    RefreshAnimeInput, RefreshAnimeOutcome, RefreshAnimeWorkflow, RefreshCharacterWorkflow,
+    RefreshEntityInput, RefreshEntityKind, RefreshEntityOutcome, RefreshEpisodeWorkflow,
+    RefreshOutcomeKind, RefreshPageKey, RefreshPageOutput, StartEntityWorkflowsInput,
+    UPDATE_SERVICE_TASK_QUEUE, UpdateServiceActivities, UpdateServicePorts, WorkerQueueSpec,
+    WorkflowStarterPort, build_refresh_anime_workflow_id, build_refresh_character_workflow_id,
+    build_refresh_episode_workflow_id, build_worker_options, build_write_synopsis_workflow_id,
+    compute_page_backoff_seconds, is_non_retryable_grpc_code, is_page_due, matches_fetch_request,
+    merge_priority, select_pages_to_refresh,
 };
 use temporalio_client::grpc::WorkflowService as _;
 use temporalio_client::{
@@ -58,7 +60,8 @@ struct FakePorts {
 impl CatalogueDataPort for FakePorts {
     fn list_entity_pages(
         &self,
-        _anime_id: String,
+        _entity_kind: RefreshEntityKind,
+        _entity_id: String,
     ) -> BoxFuture<'_, Result<ListEntityPagesOutput, PortError>> {
         let out = self.state.lock().expect("lock").pages.clone();
         Box::pin(async move { Ok(out) })
@@ -104,9 +107,10 @@ impl CatalogueDataPort for FakePorts {
         })
     }
 
-    fn merge_anime_attempt(
+    fn merge_entity_attempt(
         &self,
-        _anime_id: String,
+        entity_kind: RefreshEntityKind,
+        _entity_id: String,
         _merge_version: i32,
     ) -> BoxFuture<'_, Result<MergeAttemptOutcome, PortError>> {
         let mut guard = self.state.lock().expect("lock");
@@ -122,11 +126,16 @@ impl CatalogueDataPort for FakePorts {
                 ))
             });
         }
-        Box::pin(async {
-            Ok(MergeAttemptOutcome::Saved(MergeAnimeOutput {
+        let is_anime = entity_kind == RefreshEntityKind::Anime;
+        Box::pin(async move {
+            Ok(MergeAttemptOutcome::Saved(MergeEntityOutput {
                 has_changed: true,
-                changed_episode_ids: vec!["ep-1".to_owned()],
-                has_changed_synopses: true,
+                changed_episode_ids: if is_anime {
+                    vec!["ep-1".to_owned()]
+                } else {
+                    Vec::new()
+                },
+                has_changed_synopses: is_anime,
             }))
         })
     }
@@ -159,7 +168,14 @@ fn pure_scheduling_helpers_and_ports_cover_all_edge_cases() {
         build_refresh_episode_workflow_id("e1"),
         "refresh-episode-e1"
     );
+    assert_eq!(
+        build_refresh_character_workflow_id("c1"),
+        "refresh-character-c1"
+    );
     assert_eq!(build_write_synopsis_workflow_id("a1"), "synopsis-anime-a1");
+    assert_eq!(RefreshEntityKind::Anime.as_str(), "anime");
+    assert_eq!(RefreshEntityKind::Episode.as_str(), "episode");
+    assert_eq!(RefreshEntityKind::Character.as_str(), "character");
 
     assert_eq!(compute_page_backoff_seconds(0), 0);
     assert_eq!(compute_page_backoff_seconds(-2), 0);
@@ -288,7 +304,7 @@ async fn noop_ports_reject_all_calls() {
     assert!(
         ports
             .catalogue
-            .list_entity_pages("x".to_owned())
+            .list_entity_pages(RefreshEntityKind::Anime, "x".to_owned())
             .await
             .is_err()
     );
@@ -309,7 +325,7 @@ async fn noop_ports_reject_all_calls() {
     assert!(
         ports
             .catalogue
-            .merge_anime_attempt("x".to_owned(), 1)
+            .merge_entity_attempt(RefreshEntityKind::Anime, "x".to_owned(), 1)
             .await
             .is_err()
     );
@@ -317,7 +333,8 @@ async fn noop_ports_reject_all_calls() {
         ports
             .catalogue
             .record_refresh(RecordRefreshInput {
-                anime_id: "x".to_owned(),
+                entity_kind: RefreshEntityKind::Anime,
+                entity_id: "x".to_owned(),
                 outcome: RefreshOutcomeKind::Succeeded,
                 refresh_after_days: 7,
             })
@@ -329,10 +346,13 @@ async fn noop_ports_reject_all_calls() {
             .starter
             .start_entity_workflows(StartEntityWorkflowsInput {
                 anime_id: "x".to_owned(),
-                episode_ids: Vec::new(),
-                start_synopsis: false,
+                character_fetch_requests: vec![CharacterFetchTarget {
+                    character_id: "c1".to_owned(),
+                    fetch: FetchRequestedSignal::default(),
+                }],
                 trigger: "sweep".to_owned(),
                 priority: 3,
+                ..StartEntityWorkflowsInput::default()
             })
             .await
             .is_err()
@@ -854,5 +874,156 @@ async fn refresh_anime_workflow_records_failed_when_merge_fails_non_retryably() 
         state.recorded_outcomes[0].outcome,
         RefreshOutcomeKind::Failed
     );
+    Ok(())
+}
+
+#[tokio::test]
+async fn refresh_episode_and_character_workflows_execute_end_to_end() -> anyhow::Result<()> {
+    let client = connect_isolated_client().await?;
+    let fake = FakePorts::default();
+    {
+        let mut guard = fake.state.lock().expect("lock");
+        guard.aborted_remaining = 1;
+        guard.pages = ListEntityPagesOutput {
+            pages: vec![EntityPageSummary {
+                page_key: RefreshPageKey {
+                    provider: "mal".to_owned(),
+                    entity_type: "episode".to_owned(),
+                    address: "1".to_owned(),
+                },
+                is_partial_source: false,
+                fetched_at_epoch_seconds: None,
+                is_dead: false,
+                fetch_failed_at_epoch_seconds: None,
+                fetch_failures: 0,
+            }],
+            entity_merge_version: Some(1),
+        };
+    }
+
+    let ports = UpdateServicePorts::new(Arc::new(fake.clone()), Arc::new(fake.clone()));
+    let runtime = Runtime::from_current_tokio(RuntimeOptions::default())
+        .map_err(|err| anyhow::anyhow!("runtime: {err}"))?;
+    let deployment = WorkerDeploymentVersion::builder()
+        .deployment_name("update-service".to_owned())
+        .build_id("test-112-entity".to_owned())
+        .build();
+
+    let mut update_worker = Worker::new(
+        &runtime,
+        client.clone(),
+        build_worker_options(
+            &WorkerQueueSpec::UpdateService,
+            deployment.clone(),
+            false,
+            ports.clone(),
+        )
+        .map_err(|err| anyhow::anyhow!("{err}"))?,
+    )
+    .map_err(|err| anyhow::anyhow!("{err}"))?;
+
+    let mut mal_worker = Worker::new(
+        &runtime,
+        client.clone(),
+        build_worker_options(
+            &WorkerQueueSpec::Provider("mal".to_owned()),
+            deployment,
+            false,
+            ports,
+        )
+        .map_err(|err| anyhow::anyhow!("{err}"))?,
+    )
+    .map_err(|err| anyhow::anyhow!("{err}"))?;
+
+    let ep_opts = WorkflowStartOptions::new(
+        UPDATE_SERVICE_TASK_QUEUE,
+        build_refresh_episode_workflow_id("ep-112"),
+    )
+    .id_conflict_policy(WorkflowIdConflictPolicy::UseExisting)
+    .build();
+    let ch_opts = WorkflowStartOptions::new(
+        UPDATE_SERVICE_TASK_QUEUE,
+        build_refresh_character_workflow_id("char-112"),
+    )
+    .id_conflict_policy(WorkflowIdConflictPolicy::UseExisting)
+    .build();
+
+    let run_future = async {
+        let ep_handle = client
+            .start_workflow(
+                RefreshEpisodeWorkflow::run,
+                RefreshEntityInput {
+                    entity_id: "ep-112".to_owned(),
+                    trigger: "episode".to_owned(),
+                    priority: 2,
+                    refresh_after_days: 7,
+                    merge_version: 2,
+                    merge_first_wait_seconds: Some(0),
+                    pages_relinked: false,
+                },
+                ep_opts,
+            )
+            .await?;
+        let ep_out: RefreshEntityOutcome = ep_handle
+            .get_result(WorkflowGetResultOptions::default())
+            .await?;
+        assert_eq!(ep_out.entity_id, "ep-112");
+        assert_eq!(ep_out.final_outcome, RefreshOutcomeKind::Succeeded);
+        assert_eq!(ep_out.merges_run, 1);
+
+        let ch_handle = client
+            .signal_with_start_workflow(
+                RefreshCharacterWorkflow::run,
+                RefreshEntityInput {
+                    entity_id: "char-112".to_owned(),
+                    trigger: "user".to_owned(),
+                    priority: 1,
+                    refresh_after_days: 7,
+                    merge_version: 2,
+                    merge_first_wait_seconds: Some(0),
+                    pages_relinked: false,
+                },
+                RefreshCharacterWorkflow::fetch_requested,
+                FetchRequestedSignal {
+                    providers: vec!["mal".to_owned()],
+                    max_age_seconds: 0,
+                    priority: 1,
+                },
+                ch_opts,
+            )
+            .await?;
+        ch_handle
+            .signal(
+                RefreshCharacterWorkflow::merge_requested,
+                (),
+                WorkflowSignalOptions::default(),
+            )
+            .await?;
+        let ch_out: RefreshEntityOutcome = ch_handle
+            .get_result(WorkflowGetResultOptions::default())
+            .await?;
+        assert_eq!(ch_out.entity_id, "char-112");
+        assert_eq!(ch_out.final_outcome, RefreshOutcomeKind::Succeeded);
+        anyhow::Ok(())
+    };
+
+    tokio::select! {
+        res = run_future => { res?; }
+        res = update_worker.run() => { res.map_err(|err| anyhow::anyhow!("update worker: {err}"))?; }
+        res = mal_worker.run() => { res.map_err(|err| anyhow::anyhow!("mal worker: {err}"))?; }
+    }
+
+    let state = fake.state.lock().expect("lock");
+    assert_eq!(state.recorded_outcomes.len(), 2);
+    assert_eq!(
+        state.recorded_outcomes[0].entity_kind,
+        RefreshEntityKind::Episode
+    );
+    assert_eq!(
+        state.recorded_outcomes[1].entity_kind,
+        RefreshEntityKind::Character
+    );
+    assert_eq!(state.started_batches.len(), 0);
+
     Ok(())
 }

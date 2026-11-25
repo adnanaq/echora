@@ -14,8 +14,9 @@ mod definitions {
 
     use crate::ports::{MergeAttemptOutcome, PortError, PortErrorKind, UpdateServicePorts};
     use crate::refresh_anime_types::{
-        ListEntityPagesOutput, MergeAnimeInput, MergeAnimeOutput, RecordRefreshInput,
-        RefreshPageInput, RefreshPageOutput, StartEntityWorkflowsInput,
+        ListEntityPagesInput, ListEntityPagesOutput, MergeEntityInput, MergeEntityOutput,
+        RecordRefreshInput, RefreshEntityKind, RefreshPageInput, RefreshPageOutput,
+        StartEntityWorkflowsInput,
     };
 
     /// Maximum `LoadAnime` -> `MergeAnime` -> `SaveAnime` retries inside one `merge_anime` attempt
@@ -72,6 +73,30 @@ mod definitions {
         )
     }
 
+    /// Runs `merge_entity_attempt` up to `MAX_ABORTED_RETRIES_PER_ATTEMPT` times on `ABORTED`.
+    async fn execute_merge_with_aborted_retries(
+        ports: &UpdateServicePorts,
+        entity_kind: RefreshEntityKind,
+        input: MergeEntityInput,
+    ) -> Result<MergeEntityOutput, ActivityError> {
+        for _attempt in 0..MAX_ABORTED_RETRIES_PER_ATTEMPT {
+            match ports
+                .catalogue
+                .merge_entity_attempt(entity_kind, input.entity_id.clone(), input.merge_version)
+                .await
+                .map_err(|err| to_activity_error(&err))?
+            {
+                MergeAttemptOutcome::Saved(output) => return Ok(output),
+                MergeAttemptOutcome::VersionConflict(_) => {}
+            }
+        }
+        Err(to_activity_error(&PortError::retryable(format!(
+            "merge_{} exceeded {MAX_ABORTED_RETRIES_PER_ATTEMPT} ABORTED retries for {}",
+            entity_kind.as_str(),
+            input.entity_id
+        ))))
+    }
+
     #[activities]
     impl UpdateServiceActivities {
         /// Lists an entity's linked pages and fetch state via `PostgresService.ListEntityPages`.
@@ -84,11 +109,11 @@ mod definitions {
         pub async fn list_pages(
             self: Arc<Self>,
             _ctx: ActivityContext,
-            anime_id: String,
+            input: ListEntityPagesInput,
         ) -> Result<ListEntityPagesOutput, ActivityError> {
             self.ports
                 .catalogue
-                .list_entity_pages(anime_id)
+                .list_entity_pages(input.entity_kind, input.entity_id)
                 .await
                 .map_err(|err| to_activity_error(&err))
         }
@@ -103,24 +128,40 @@ mod definitions {
         pub async fn merge_anime(
             self: Arc<Self>,
             _ctx: ActivityContext,
-            input: MergeAnimeInput,
-        ) -> Result<MergeAnimeOutput, ActivityError> {
-            for _attempt in 0..MAX_ABORTED_RETRIES_PER_ATTEMPT {
-                match self
-                    .ports
-                    .catalogue
-                    .merge_anime_attempt(input.anime_id.clone(), input.merge_version)
-                    .await
-                    .map_err(|err| to_activity_error(&err))?
-                {
-                    MergeAttemptOutcome::Saved(output) => return Ok(output),
-                    MergeAttemptOutcome::VersionConflict(_) => {}
-                }
-            }
-            Err(to_activity_error(&PortError::retryable(format!(
-                "merge_anime exceeded {MAX_ABORTED_RETRIES_PER_ATTEMPT} ABORTED retries for {}",
-                input.anime_id
-            ))))
+            input: MergeEntityInput,
+        ) -> Result<MergeEntityOutput, ActivityError> {
+            execute_merge_with_aborted_retries(&self.ports, RefreshEntityKind::Anime, input).await
+        }
+
+        /// Loads, merges, and saves an episode, retrying `ABORTED` conflicts up to 10 times.
+        ///
+        /// # Errors
+        ///
+        /// Returns a retryable [`ActivityError`] if more than 10 consecutive version conflicts
+        /// occur or a transient gRPC failure happens, or non-retryable on permanent gRPC errors.
+        #[activity]
+        pub async fn merge_episode(
+            self: Arc<Self>,
+            _ctx: ActivityContext,
+            input: MergeEntityInput,
+        ) -> Result<MergeEntityOutput, ActivityError> {
+            execute_merge_with_aborted_retries(&self.ports, RefreshEntityKind::Episode, input).await
+        }
+
+        /// Loads, merges, and saves a character, retrying `ABORTED` conflicts up to 10 times.
+        ///
+        /// # Errors
+        ///
+        /// Returns a retryable [`ActivityError`] if more than 10 consecutive version conflicts
+        /// occur or a transient gRPC failure happens, or non-retryable on permanent gRPC errors.
+        #[activity]
+        pub async fn merge_character(
+            self: Arc<Self>,
+            _ctx: ActivityContext,
+            input: MergeEntityInput,
+        ) -> Result<MergeEntityOutput, ActivityError> {
+            execute_merge_with_aborted_retries(&self.ports, RefreshEntityKind::Character, input)
+                .await
         }
 
         /// Starts top-level downstream workflows (`RefreshEpisodeWorkflow` / `WriteSynopsisWorkflow`)

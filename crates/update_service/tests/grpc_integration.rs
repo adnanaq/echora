@@ -11,9 +11,11 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use temporal_workflows::{
-    CatalogueDataPort, MergeAttemptOutcome, REFRESH_TRIGGER_SEARCH_ATTRIBUTE, RecordRefreshInput,
-    RefreshOutcomeKind, RefreshPageKey, StartEntityWorkflowsInput, WorkflowStarterPort,
-    build_refresh_episode_workflow_id, build_write_synopsis_workflow_id,
+    CatalogueDataPort, CharacterFetchTarget, FetchRequestedSignal, MergeAttemptOutcome,
+    REFRESH_TRIGGER_SEARCH_ATTRIBUTE, RecordRefreshInput, RefreshEntityKind, RefreshOutcomeKind,
+    RefreshPageKey, StartEntityWorkflowsInput, WorkflowStarterPort,
+    build_refresh_character_workflow_id, build_refresh_episode_workflow_id,
+    build_write_synopsis_workflow_id,
 };
 use temporalio_client::grpc::{OperatorService as _, WorkflowService as _};
 use temporalio_client::{Client, ClientOptions, Connection, ConnectionOptions};
@@ -205,14 +207,29 @@ impl PostgresService for MockServices {
         &self,
         _request: Request<LoadEpisodeRequest>,
     ) -> Result<Response<LoadEpisodeResponse>, Status> {
-        Err(Status::unimplemented("unused"))
+        if self.state.lock().expect("lock").fail_postgres_not_found {
+            return Err(Status::not_found("missing episode"));
+        }
+        Ok(Response::new(LoadEpisodeResponse {
+            version: 1,
+            anime_id: "a1".to_owned(),
+            pages: vec![],
+            corrections: vec![],
+            list_entries: vec![],
+        }))
     }
 
     async fn save_episode(
         &self,
         _request: Request<SaveEpisodeRequest>,
     ) -> Result<Response<SaveEpisodeResponse>, Status> {
-        Err(Status::unimplemented("unused"))
+        if self.state.lock().expect("lock").aborted_save {
+            return Err(Status::aborted("episode version conflict"));
+        }
+        Ok(Response::new(SaveEpisodeResponse {
+            has_changed: true,
+            version: 2,
+        }))
     }
 
     async fn mark_episode_aired(
@@ -226,14 +243,27 @@ impl PostgresService for MockServices {
         &self,
         _request: Request<LoadCharacterRequest>,
     ) -> Result<Response<LoadCharacterResponse>, Status> {
-        Err(Status::unimplemented("unused"))
+        if self.state.lock().expect("lock").fail_postgres_not_found {
+            return Err(Status::not_found("missing character"));
+        }
+        Ok(Response::new(LoadCharacterResponse {
+            version: 1,
+            pages: vec![],
+            corrections: vec![],
+        }))
     }
 
     async fn save_character(
         &self,
         _request: Request<SaveCharacterRequest>,
     ) -> Result<Response<SaveCharacterResponse>, Status> {
-        Err(Status::unimplemented("unused"))
+        if self.state.lock().expect("lock").aborted_save {
+            return Err(Status::aborted("character version conflict"));
+        }
+        Ok(Response::new(SaveCharacterResponse {
+            has_changed: true,
+            version: 2,
+        }))
     }
 
     async fn list_due_anime(
@@ -385,14 +415,20 @@ impl EnrichmentService for MockServices {
         &self,
         _request: Request<MergeEpisodeRequest>,
     ) -> Result<Response<MergeEpisodeResponse>, Status> {
-        Err(Status::unimplemented("unused"))
+        if self.state.lock().expect("lock").fail_enrichment_not_found {
+            return Err(Status::invalid_argument("bad episode merge"));
+        }
+        Ok(Response::new(MergeEpisodeResponse { episode: None }))
     }
 
     async fn merge_character(
         &self,
         _request: Request<MergeCharacterRequest>,
     ) -> Result<Response<MergeCharacterResponse>, Status> {
-        Err(Status::unimplemented("unused"))
+        if self.state.lock().expect("lock").fail_enrichment_not_found {
+            return Err(Status::invalid_argument("bad character merge"));
+        }
+        Ok(Response::new(MergeCharacterResponse { character: None }))
     }
 }
 
@@ -432,7 +468,9 @@ async fn grpc_catalogue_adapter_covers_happy_failed_and_aborted_paths() -> anyho
         build_enrichment_client(enr_channel),
     );
 
-    let listed = adapter.list_entity_pages("a1".to_owned()).await?;
+    let listed = adapter
+        .list_entity_pages(RefreshEntityKind::Anime, "a1".to_owned())
+        .await?;
     assert_eq!(listed.pages.len(), 4);
     assert_eq!(listed.entity_merge_version, None);
 
@@ -450,7 +488,9 @@ async fn grpc_catalogue_adapter_covers_happy_failed_and_aborted_paths() -> anyho
     assert!(!failed_fetch.has_changed);
     assert!(failed_fetch.has_failed);
 
-    let saved = adapter.merge_anime_attempt("a1".to_owned(), 2).await?;
+    let saved = adapter
+        .merge_entity_attempt(RefreshEntityKind::Anime, "a1".to_owned(), 2)
+        .await?;
     match saved {
         MergeAttemptOutcome::Saved(out) => {
             assert!(out.has_changed);
@@ -460,30 +500,58 @@ async fn grpc_catalogue_adapter_covers_happy_failed_and_aborted_paths() -> anyho
         MergeAttemptOutcome::VersionConflict(msg) => panic!("unexpected conflict: {msg}"),
     }
 
+    let ep_saved = adapter
+        .merge_entity_attempt(RefreshEntityKind::Episode, "ep-1".to_owned(), 2)
+        .await?;
+    assert!(matches!(ep_saved, MergeAttemptOutcome::Saved(_)));
+    let ch_saved = adapter
+        .merge_entity_attempt(RefreshEntityKind::Character, "ch-1".to_owned(), 2)
+        .await?;
+    assert!(matches!(ch_saved, MergeAttemptOutcome::Saved(_)));
+
     mock.state.lock().expect("lock").aborted_save = true;
-    let conflicted = adapter.merge_anime_attempt("a1".to_owned(), 2).await?;
+    let conflicted = adapter
+        .merge_entity_attempt(RefreshEntityKind::Anime, "a1".to_owned(), 2)
+        .await?;
     assert!(matches!(
         conflicted,
+        MergeAttemptOutcome::VersionConflict(_)
+    ));
+    let ep_conflicted = adapter
+        .merge_entity_attempt(RefreshEntityKind::Episode, "ep-1".to_owned(), 2)
+        .await?;
+    assert!(matches!(
+        ep_conflicted,
+        MergeAttemptOutcome::VersionConflict(_)
+    ));
+    let ch_conflicted = adapter
+        .merge_entity_attempt(RefreshEntityKind::Character, "ch-1".to_owned(), 2)
+        .await?;
+    assert!(matches!(
+        ch_conflicted,
         MergeAttemptOutcome::VersionConflict(_)
     ));
 
     adapter
         .record_refresh(RecordRefreshInput {
-            anime_id: "a1".to_owned(),
+            entity_kind: RefreshEntityKind::Anime,
+            entity_id: "a1".to_owned(),
             outcome: RefreshOutcomeKind::Succeeded,
             refresh_after_days: 7,
         })
         .await?;
     adapter
         .record_refresh(RecordRefreshInput {
-            anime_id: "a1".to_owned(),
+            entity_kind: RefreshEntityKind::Episode,
+            entity_id: "ep-1".to_owned(),
             outcome: RefreshOutcomeKind::PagesFailed,
             refresh_after_days: 7,
         })
         .await?;
     adapter
         .record_refresh(RecordRefreshInput {
-            anime_id: "a1".to_owned(),
+            entity_kind: RefreshEntityKind::Character,
+            entity_id: "ch-1".to_owned(),
             outcome: RefreshOutcomeKind::Failed,
             refresh_after_days: 7,
         })
@@ -499,7 +567,9 @@ async fn grpc_catalogue_adapter_covers_happy_failed_and_aborted_paths() -> anyho
         map_grpc_status(&Status::unavailable("x")).kind,
         temporal_workflows::PortErrorKind::Retryable
     );
-    let listed_all = adapter.list_entity_pages("a1".to_owned()).await?;
+    let listed_all = adapter
+        .list_entity_pages(RefreshEntityKind::Episode, "ep-1".to_owned())
+        .await?;
     assert_eq!(listed_all.pages.len(), 4);
     for entity_type in ["character", "episode", "other"] {
         let out = adapter
@@ -535,14 +605,31 @@ async fn grpc_catalogue_adapter_covers_happy_failed_and_aborted_paths() -> anyho
     mock.state.lock().expect("lock").fail_enrichment_not_found = true;
     assert!(
         adapter
-            .merge_anime_attempt("a1".to_owned(), 1)
+            .merge_entity_attempt(RefreshEntityKind::Anime, "a1".to_owned(), 1)
+            .await
+            .is_err()
+    );
+    assert!(
+        adapter
+            .merge_entity_attempt(RefreshEntityKind::Episode, "ep-1".to_owned(), 1)
+            .await
+            .is_err()
+    );
+    assert!(
+        adapter
+            .merge_entity_attempt(RefreshEntityKind::Character, "ch-1".to_owned(), 1)
             .await
             .is_err()
     );
     mock.state.lock().expect("lock").fail_enrichment_not_found = false;
 
     mock.state.lock().expect("lock").fail_postgres_not_found = true;
-    assert!(adapter.list_entity_pages("a1".to_owned()).await.is_err());
+    assert!(
+        adapter
+            .list_entity_pages(RefreshEntityKind::Anime, "a1".to_owned())
+            .await
+            .is_err()
+    );
     assert!(
         adapter
             .refresh_page(
@@ -558,14 +645,27 @@ async fn grpc_catalogue_adapter_covers_happy_failed_and_aborted_paths() -> anyho
     );
     assert!(
         adapter
-            .merge_anime_attempt("a1".to_owned(), 1)
+            .merge_entity_attempt(RefreshEntityKind::Anime, "a1".to_owned(), 1)
+            .await
+            .is_err()
+    );
+    assert!(
+        adapter
+            .merge_entity_attempt(RefreshEntityKind::Episode, "ep-1".to_owned(), 1)
+            .await
+            .is_err()
+    );
+    assert!(
+        adapter
+            .merge_entity_attempt(RefreshEntityKind::Character, "ch-1".to_owned(), 1)
             .await
             .is_err()
     );
     assert!(
         adapter
             .record_refresh(RecordRefreshInput {
-                anime_id: "a1".to_owned(),
+                entity_kind: RefreshEntityKind::Anime,
+                entity_id: "a1".to_owned(),
                 outcome: RefreshOutcomeKind::Succeeded,
                 refresh_after_days: 7,
             })
@@ -573,9 +673,7 @@ async fn grpc_catalogue_adapter_covers_happy_failed_and_aborted_paths() -> anyho
             .is_err()
     );
     mock.state.lock().expect("lock").fail_postgres_not_found = false;
-    // Also cover non-Aborted SaveAnime failure
     mock.state.lock().expect("lock").aborted_save = false;
-    mock.state.lock().expect("lock").fail_enrichment_not_found = false;
 
     Ok(())
 }
@@ -622,25 +720,33 @@ async fn temporal_workflow_starter_starts_and_deduplicates_downstream_workflows(
     let input = StartEntityWorkflowsInput {
         anime_id: "anime-xyz".to_owned(),
         episode_ids: vec!["ep-1".to_owned(), "ep-2".to_owned()],
+        character_ids: vec!["char-1".to_owned()],
+        character_fetch_requests: vec![CharacterFetchTarget {
+            character_id: "char-2".to_owned(),
+            fetch: FetchRequestedSignal {
+                providers: vec!["anilist".to_owned()],
+                max_age_seconds: 0,
+                priority: 2,
+            },
+        }],
         start_synopsis: true,
         trigger: "user".to_owned(),
         priority: 1,
     };
     let started_count = starter.start_entity_workflows(input.clone()).await?;
-    assert_eq!(started_count, 3);
+    assert_eq!(started_count, 5);
 
     // Calling again hits UseExisting conflict policy cleanly without erroring
     let deduped = starter.start_entity_workflows(input).await?;
-    assert_eq!(deduped, 3);
+    assert_eq!(deduped, 5);
 
     // Also cover default trigger ("") and priority (0)
     let defaulted = starter
         .start_entity_workflows(StartEntityWorkflowsInput {
             anime_id: "anime-def".to_owned(),
-            episode_ids: Vec::new(),
-            start_synopsis: false,
             trigger: String::new(),
             priority: 0,
+            ..StartEntityWorkflowsInput::default()
         })
         .await?;
     assert_eq!(defaulted, 0);
@@ -648,6 +754,10 @@ async fn temporal_workflow_starter_starts_and_deduplicates_downstream_workflows(
     assert_eq!(
         build_refresh_episode_workflow_id("ep-1"),
         "refresh-episode-ep-1"
+    );
+    assert_eq!(
+        build_refresh_character_workflow_id("char-1"),
+        "refresh-character-char-1"
     );
     assert_eq!(
         build_write_synopsis_workflow_id("anime-xyz"),
