@@ -298,3 +298,27 @@ def test_apply_field_corrections_handles_nested_enum_message_and_invalid_paths()
     assert anime.status == anime_pb2.ANIME_STATUS_FINISHED
     assert anime.broadcast.jp_time == "22:30:00"
     assert anime.hiatus.reason == "Special broadcast"
+
+
+def test_apply_field_corrections_accepts_bare_type_url_without_prefix() -> None:
+    """Field corrections unpack PostgreSQL bare type names without type.googleapis.com/."""
+    anime = build_anime_proto({"id": "work-2", "title": "Initial", "status": "ONGOING"})
+    raw_string_any = AnyProto(
+        type_url="google.protobuf.StringValue",
+        value=wrappers_pb2.StringValue(value="Overridden Title").SerializeToString(),
+    )
+    raw_hiatus_any = AnyProto(
+        type_url=anime_pb2.AnimeHiatus.DESCRIPTOR.full_name,
+        value=anime_pb2.AnimeHiatus(reason="Bare message type").SerializeToString(),
+    )
+
+    apply_field_corrections(
+        anime,
+        [
+            FieldCorrection(field_path="title", value=raw_string_any),
+            FieldCorrection(field_path="hiatus", value=raw_hiatus_any),
+        ],
+    )
+
+    assert anime.title == "Overridden Title"
+    assert anime.hiatus.reason == "Bare message type"
