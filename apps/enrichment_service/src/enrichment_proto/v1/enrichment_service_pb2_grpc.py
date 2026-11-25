@@ -60,6 +60,11 @@ class EnrichmentServiceStub:
                 request_serializer=v1_dot_enrichment__service__pb2.MergeEpisodeRequest.SerializeToString,
                 response_deserializer=v1_dot_enrichment__service__pb2.MergeEpisodeResponse.FromString,
                 _registered_method=True)
+        self.MergeCharacter = channel.unary_unary(
+                '/enrichment_service.v1.EnrichmentService/MergeCharacter',
+                request_serializer=v1_dot_enrichment__service__pb2.MergeCharacterRequest.SerializeToString,
+                response_deserializer=v1_dot_enrichment__service__pb2.MergeCharacterResponse.FromString,
+                _registered_method=True)
 
 
 class EnrichmentServiceServicer:
@@ -101,6 +106,13 @@ class EnrichmentServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def MergeCharacter(self, request, context):
+        """Maps stored character pages and applies corrections into one character.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_EnrichmentServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -128,6 +140,11 @@ def add_EnrichmentServiceServicer_to_server(servicer, server):
                     servicer.MergeEpisode,
                     request_deserializer=v1_dot_enrichment__service__pb2.MergeEpisodeRequest.FromString,
                     response_serializer=v1_dot_enrichment__service__pb2.MergeEpisodeResponse.SerializeToString,
+            ),
+            'MergeCharacter': grpc.unary_unary_rpc_method_handler(
+                    servicer.MergeCharacter,
+                    request_deserializer=v1_dot_enrichment__service__pb2.MergeCharacterRequest.FromString,
+                    response_serializer=v1_dot_enrichment__service__pb2.MergeCharacterResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -266,6 +283,33 @@ class EnrichmentService:
             '/enrichment_service.v1.EnrichmentService/MergeEpisode',
             v1_dot_enrichment__service__pb2.MergeEpisodeRequest.SerializeToString,
             v1_dot_enrichment__service__pb2.MergeEpisodeResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def MergeCharacter(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/enrichment_service.v1.EnrichmentService/MergeCharacter',
+            v1_dot_enrichment__service__pb2.MergeCharacterRequest.SerializeToString,
+            v1_dot_enrichment__service__pb2.MergeCharacterResponse.FromString,
             options,
             channel_credentials,
             insecure,
