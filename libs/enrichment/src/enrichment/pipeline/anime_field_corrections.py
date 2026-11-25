@@ -9,6 +9,7 @@ from typing import Any
 
 from google.protobuf import wrappers_pb2
 from google.protobuf.any_pb2 import Any as AnyProto  # ty: ignore[unresolved-import]
+from google.protobuf.message import Message
 from google.protobuf.timestamp_pb2 import Timestamp  # ty: ignore[unresolved-import]
 from shared_proto.v1 import anime_pb2
 from shared_proto.v1.merge_pb2 import FieldCorrection
@@ -58,20 +59,18 @@ def _unpack_any_value(any_value: AnyProto) -> Any:
     return None
 
 
-def _apply_single_correction(
-    anime: anime_pb2.Anime, field_path: str, value: Any
-) -> None:
-    """Apply one unpacked field correction onto ``anime`` at ``field_path``.
+def _apply_single_correction(target_msg: Message, field_path: str, value: Any) -> None:
+    """Apply one unpacked field correction onto ``target_msg`` at ``field_path``.
 
     Args:
-        anime: Target ``anime_pb2.Anime`` message mutated in place.
-        field_path: Dotted field path on ``Anime`` (e.g. ``'episode_count'``).
+        target_msg: Target protobuf message mutated in place.
+        field_path: Dotted field path on the message (e.g. ``'episode_count'``).
         value: Unpacked correction value.
     """
     parts = [part for part in field_path.split(".") if part]
     if not parts:
         return
-    target: Any = anime
+    target: Any = target_msg
     for attr in parts[:-1]:
         if not hasattr(target, attr):
             logger.warning(f"Ignoring unknown correction path {field_path!r}")
@@ -105,13 +104,13 @@ def _apply_single_correction(
 
 
 def apply_field_corrections(
-    anime: anime_pb2.Anime,
+    target_msg: Message,
     corrections: Sequence[FieldCorrection],
 ) -> None:
-    """Apply approved ``FieldCorrection`` overrides onto a merged ``Anime`` message.
+    """Apply approved ``FieldCorrection`` overrides onto a merged protobuf message.
 
     Args:
-        anime: Target ``anime_pb2.Anime`` message mutated in place.
+        target_msg: Target protobuf message mutated in place.
         corrections: Sequence of approved ``FieldCorrection`` messages.
     """
     for correction in corrections:
@@ -120,4 +119,4 @@ def apply_field_corrections(
         unpacked = _unpack_any_value(correction.value)
         if unpacked is None:
             continue
-        _apply_single_correction(anime, correction.field_path, unpacked)
+        _apply_single_correction(target_msg, correction.field_path, unpacked)
