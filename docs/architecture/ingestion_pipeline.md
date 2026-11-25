@@ -137,7 +137,7 @@ The weekly sweep keeps them current. (ECHO-117)
 The `RefreshAnimeWorkflow` of a new work finds every page due, since none has been fetched into PostgreSQL yet:
 
 1. `refresh_page` runs once per page, on that provider's task queue. (ECHO-111)
-   - `EnrichmentService.FetchPage` fetches the page. (ECHO-99)
+   - ~~`EnrichmentService.FetchPage` fetches the page. (ECHO-99)~~
    - ~~`PostgresService.StorePage` stores it. (ECHO-97)~~
 2. `merge_anime` runs once. (ECHO-111)
    - ~~`PostgresService.LoadAnime` loads the work's pages. (ECHO-98)~~
