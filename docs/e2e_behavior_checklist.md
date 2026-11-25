@@ -10,11 +10,31 @@ Comprehensive behavior checklist extracted from completed Update Service & Postg
 
 | Ticket | Title | Primary Crates / Apps | Real-Stack Dependencies |
 | --- | --- | --- | --- |
+| `ECHO-87` / `ECHO-93` | Rust workspace, PostgreSQL schema & `sqlx` migrations | `common`, `postgres_db`, `postgres_service` | `postgres` |
 | `ECHO-95` | Set up the Temporal dev server and `update_service` worker | `temporal_workflows`, `update_service`, `docker/` | `temporal`, `update-service` |
+| `ECHO-97` | Store fetched provider pages (`StorePage`) | `postgres_db`, `postgres_service` | `postgres`, `postgres-service` |
+| `ECHO-98` / `ECHO-100..102` / `ECHO-133` | Load, merge-save, graph projection & outbox (`LoadAnime`, `SaveAnime`) | `postgres_db`, `postgres_service` | `postgres`, `postgres-service` |
+| `ECHO-103` | Episode load, save & air notification (`LoadEpisode`, `SaveEpisode`, `MarkEpisodeAired`) | `postgres_db`, `postgres_service` | `postgres`, `postgres-service` |
+| `ECHO-104` | Character load & save (`LoadCharacter`, `SaveCharacter`) | `postgres_db`, `postgres_service` | `postgres`, `postgres-service` |
 | `ECHO-108` | Add the scheduling and read methods | `postgres_db`, `postgres_service` | `postgres`, `postgres-service` |
 | `ECHO-111` | Refresh a work with `RefreshAnimeWorkflow` | `temporal_workflows`, `update_service` | `temporal`, `update-service`, `postgres-service`, `enrichment-service` |
 | `ECHO-112` | Refresh episodes and characters with their own workflows | `temporal_workflows`, `update_service` | `temporal`, `update-service`, `postgres-service`, `enrichment-service` |
 | `ECHO-113` | Rate-limit each provider and order requests by priority & fairness | `temporal_workflows`, `update_service`, `enrichment_service`, `docker/temporal/`, `scripts/` | `temporal`, `update-service`, `enrichment-service` |
+
+---
+
+## 0. PostgreSQL Storage & Core RPCs (`ECHO-87`, `ECHO-93`, `ECHO-97`, `ECHO-98..104`, `ECHO-133`)
+
+| ID | Ticket | Behavior / Branch | Expected Outcome | Current Coverage | Real E2E Status |
+| --- | --- | --- | --- | --- | --- |
+| `E93-01` | `ECHO-87`, `ECHO-93` | `sqlx` migrations, `*_visible` views & typed errors | Migrations apply cleanly on fresh Postgres; `Error::is_not_found`, `is_version_conflict`, `is_invalid_argument`, `is_unique_violation`, `is_foreign_key_violation` classify SQLSTATEs and map to gRPC statuses | Covered (`#[sqlx::test]`, `common` unit tests) | Verified against Postgres |
+| `E97-01` | `ECHO-97` | `StorePage` lossless upsert & staleness guard | Stores raw responses lossless by `PageKey`; ignores fetches with older `fetched_at` (`has_changed == false`); handles gzip payloads cleanly | Covered (`#[sqlx::test]`, `test_postgres_round_trip_e2e.py`) | Pending `update_service` -> `postgres_service` E2E |
+| `E97-02` | `ECHO-97` | `StorePage` `has_changed` triggers `merge_requested_at` | When stored response hash changes, bumps `version` and sets `merge_requested_at` on linked `source` works so concurrent stale saves fail optimistic lock | Covered (`#[sqlx::test]`) | Pending `update_service` -> `postgres_service` E2E |
+| `E97-03` | `ECHO-97` | `StorePage` `is_not_found` & failure tracking | Empty responses record `fetch_failed_at` & increment `fetch_failures`; `is_not_found` tracks missing answers (promoting to `is_dead` / dead-page review after threshold) | Covered (`#[sqlx::test]`) | Pending live E2E |
+| `E98-01` | `ECHO-98`, `ECHO-133` | `LoadAnime` & `SaveAnime` roundtrip + no-op skip | `LoadAnime` returns `version`, `source_pages`, `partial_source_pages`, `corrections`, `known_episodes`; `SaveAnime` checks `expected_version` (`ABORTED` on conflict), skips writes & outbox on no-op, and replaces detail rows + writes `anime.created`/`anime.updated` outbox row atomically | Covered (`#[sqlx::test]`, `test_postgres_round_trip_e2e.py`) | Pending `update_service` -> `postgres_service` E2E |
+| `E101-01` | `ECHO-100..102` | `SaveAnime` graph projection & episode sync | Bidirectional relation edges recomputed under symmetric advisory lock; new/updated `EpisodeReference` rows created/synced in same transaction and returned in `created_episode_ids` / `updated_episode_ids` | Covered (`#[sqlx::test]`) | Pending `RefreshAnimeWorkflow` -> `RefreshEpisodeWorkflow` E2E |
+| `E103-01` | `ECHO-103` | `LoadEpisode`, `SaveEpisode` & `MarkEpisodeAired` | `LoadEpisode` returns pages + `list_entries` + `corrections`; `SaveEpisode` enforces `expected_version` (`ABORTED`) and writes outbox; `MarkEpisodeAired` emits `notification.episode.aired` at most once (idempotent on repeat calls) | Covered (`#[sqlx::test]`, `test_merge_episode_integration.py`) | Pending `RefreshEpisodeWorkflow` E2E |
+| `E104-01` | `ECHO-104` | `LoadCharacter` & `SaveCharacter` | `LoadCharacter` returns character pages + `corrections`; `SaveCharacter` enforces `expected_version` (`ABORTED`), writes animeography & voice actor details, and emits outbox event atomically | Covered (`#[sqlx::test]`, `test_merge_character_integration.py`) | Pending `RefreshCharacterWorkflow` E2E |
 
 ---
 
@@ -39,8 +59,9 @@ Comprehensive behavior checklist extracted from completed Update Service & Postg
 | `E108-03` | `ListDueAnime` / `ListDueEpisodes` / `ListDueCharacters` | Keyset pagination (`after_next_refresh_at`, `after_id`); respects cutoff, `ON_DEMAND_REFRESH_AGE_YEARS` (works <=30 yrs + unknown year), and ongoing/upcoming episode/character filters; includes outdated `merge_version` | Covered (`#[sqlx::test]`) | Pending cross-container call |
 | `E108-04` | `ListUpcomingEpisodes` & `ListScoreAnime` | Returns upcoming aired-window episodes and ongoing/recently-finished works needing daily score sync | Covered (`#[sqlx::test]`) | Pending cross-container call |
 | `E108-05` | `ListRequestedMerges` & `ListDuePages` | Returns entities with `merge_requested_at IS NOT NULL`, and budgeted-provider due source pages in due order | Covered (`#[sqlx::test]`) | Pending cross-container call |
-| `E108-06` | `GetAnime` / `GetEpisode` / `ListEpisodes` / `GetCharacter` | Returns merged undeleted record + `version` + `next_refresh_at`; soft-deleted or missing entity returns `NOT_FOUND` | Covered (`#[sqlx::test]` + tonic) | Pending cross-container call |
-| `E108-07` | `ListEntityVersions` | Keyset-paged visible entity versions for Vector Service drift checks; excludes soft-deleted rows | Covered (`#[sqlx::test]`) | Pending cross-container call |
+| `E108-06` | `GetAnime` / `GetEpisode` / `ListEpisodes` / `GetCharacter` | Returns merged undeleted record + `version` + `next_refresh_at`; soft-deleted or unmerged (`merged_at IS NULL` in `*_visible` views) returns `NOT_FOUND`, while `ListEntityPages`/`ListDue*` still return unmerged entities | Covered (`#[sqlx::test]` + tonic) | Pending cross-container call |
+| `E108-07` | `ListEntityVersions` | Keyset-paged visible entity versions for Vector Service drift checks; excludes soft-deleted and unmerged rows | Covered (`#[sqlx::test]`) | Pending cross-container call |
+| `E108-08` | `RecordRefresh(Failed)` exponential backoff | Sets `refresh_failed_at = now()`, increments `refresh_failures`, and moves `next_refresh_at = now() + min(2^refresh_failures, 168)h` so repeatedly failing entities back off from sweeps | Covered (`#[sqlx::test]`) | Pending cross-container call |
 
 ---
 
@@ -85,3 +106,5 @@ Comprehensive behavior checklist extracted from completed Update Service & Postg
 | `E113-04` | Worker fallback RPS & browser concurrency caps | `find_provider_worker_policy` sets `max_task_queue_activities_per_second` on all `provider-*` workers and `WorkerTuner` fixed slots on browser queues (`anidb=1`, `mal/anime_planet/anisearch=2`) | Covered (`refresh_anime.rs`, `worker_config.rs`) | Pending live slow-browser contention test |
 | `E113-05` | `enrichment_service` browser pool startup limit | `serve()` calls `configure_browser_pool(settings.enrichment.enrichment_max_concurrent_browsers)` | Covered (`test_main_browser_pool.py`) | Pending rebuilt container test |
 | `E113-06` | Single-container default & split-ready fetch/merge routing | `ENRICHMENT_FETCH_SERVICE_ADDRESS` & `ENRICHMENT_MERGE_SERVICE_ADDRESS` default to `ENRICHMENT_SERVICE_ADDRESS`, and route `FetchPage` vs. `Merge*` independently when set | Covered (`worker_config.rs`, `grpc_integration.rs`) | Pending split-container test |
+| `E113-07` | Live queue preemption & weighted fairness sharing | Under queued contention on a 1-partition `provider-*` queue, priority `1` (`user`) dispatches before priority `3`, and `sweep` / `seed` (`weight 1.0`) share priority `3` capacity 50/50 | Priority/fairness unit-tested (`build_priority`) | Pending live queue contention E2E |
+| `E113-08` | Python intra-page spacing & fail-fast circuit breaker (`PoliteHttpClient`) | `PoliteHttpClient` enforces `min_interval` across concurrent `asyncio` coroutines in 1 process, and trips `_blocked_reason` on 403/423/429/refused connection so subsequent calls fail fast without HTTP requests | Covered in `libs/enrichment` unit tests | Pending real E2E block simulation |
