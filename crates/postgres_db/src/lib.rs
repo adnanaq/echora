@@ -2,14 +2,17 @@
 
 mod anime;
 mod anime_details;
+mod anime_reads;
 mod anime_relations;
 mod anime_schedule_and_stats;
 mod character;
+mod entity_reads;
 mod episode;
 mod error;
 mod graph_projection;
 mod language_code;
 mod provider_page;
+mod scheduling;
 
 #[doc(inline)]
 pub use anime::{
@@ -18,6 +21,11 @@ pub use anime::{
 };
 #[doc(inline)]
 pub use anime_details::{AnimeDetailsInput, AnimeImageInput, AnimeThemeInput, AnimeTitleInput};
+#[doc(inline)]
+pub use anime_reads::{
+    VisibleAnimeCompany, VisibleAnimeRecord, VisibleAnimeRelation, VisibleSourceMaterialRelation,
+    read_visible_anime,
+};
 #[doc(inline)]
 pub use anime_relations::{
     AnimeCompanyInput, AnimeRelationClaimInput, AnimeRelationInput, AnimeRelationsAndGraphInput,
@@ -37,6 +45,11 @@ pub use character::{
 };
 use chrono::{DateTime, Utc};
 #[doc(inline)]
+pub use entity_reads::{
+    VisibleCharacterRecord, VisibleEpisodeRecord, list_visible_episodes, read_visible_character,
+    read_visible_episode,
+};
+#[doc(inline)]
 pub use episode::{
     EPISODE_HASH_FORMAT, EpisodeCharacterInput, EpisodeListEntryInput, EpisodeReferenceInput,
     EpisodeStreamingInput, EpisodeTitleInput, LoadEpisodeOutcome, MarkEpisodeAiredOutcome,
@@ -49,6 +62,13 @@ pub use error::Error;
 pub use provider_page::{
     Address, EntityType, FetchOutcome, PageKey, PageObservation, PageResponse, Provider,
     compute_responses_hash, encode_page_key_proto, record_page_observation,
+};
+#[doc(inline)]
+pub use scheduling::{
+    DueEntitiesQuery, DueEntityRecord, DuePageRecord, EntityPageRecord, EntityVersionRecord,
+    RefreshOutcome, UpcomingEpisodeRecord, list_due_anime, list_due_characters, list_due_episodes,
+    list_due_pages, list_entity_pages, list_entity_versions, list_requested_merges,
+    list_score_anime, list_upcoming_episodes, record_refresh,
 };
 use sqlx::migrate::Migrator;
 use sqlx::postgres::PgPoolOptions;

@@ -296,6 +296,21 @@ impl fmt::Display for EntityType {
     }
 }
 
+impl FromStr for EntityType {
+    type Err = Error;
+
+    fn from_str(raw: &str) -> Result<Self, Self::Err> {
+        match raw {
+            "anime" => Ok(Self::Anime),
+            "character" => Ok(Self::Character),
+            "episode" => Ok(Self::Episode),
+            other => Err(Error::invalid_argument(format!(
+                "unknown entity type: {other}"
+            ))),
+        }
+    }
+}
+
 #[derive(PartialEq, prost::Message)]
 struct ProtoPageKey {
     #[prost(string, tag = "1")]
