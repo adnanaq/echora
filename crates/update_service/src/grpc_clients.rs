@@ -113,6 +113,17 @@ pub fn build_enrichment_client(channel: Channel) -> EnrichmentServiceClient<Chan
 }
 
 /// Maps a `tonic::Status` into a [`PortError`], marking permanent codes non-retryable.
+///
+/// # Examples
+///
+/// ```
+/// use temporal_workflows::PortErrorKind;
+/// use tonic::Status;
+/// use update_service::map_grpc_status;
+///
+/// assert_eq!(map_grpc_status(&Status::not_found("missing")).kind, PortErrorKind::NonRetryable);
+/// assert_eq!(map_grpc_status(&Status::unavailable("busy")).kind, PortErrorKind::Retryable);
+/// ```
 #[must_use]
 pub fn map_grpc_status(status: &tonic::Status) -> PortError {
     if is_non_retryable_grpc_code(status.code() as i32) {

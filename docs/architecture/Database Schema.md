@@ -596,7 +596,7 @@ A page can be a source of one work and a partial source of several, but never bo
 
 - Partial-source links are written by `CreateAnime` and `RelinkPages` from the cleaned seed, and `SaveAnime` never writes them. (ECHO-107)
 - What discovery does with a partial-source page it finds is decided with discovery. (P-ECHO-8)
-- A refresh fetches only a work's source pages, so a partial-source page that no work holds as a source is never fetched and cannot be found dead. Whether such pages are fetched is decided with the refresh workflow. (ECHO-111)
+- A refresh fetches only a work's source pages, so a partial-source page that no work holds as a source is never fetched and cannot be found dead. Whether such pages are fetched is decided with the refresh workflow. (~~ECHO-111~~)
 - Whether works sharing a partial-source page are linked in the graph is decided with the knowledge graph. (P-ECHO-22)
 
 **Example**: "One Piece" is one `anime` row with one source page each from MAL, AniList, Kitsu, AniDB and the other providers, and each of its episodes and characters links to its own pages the same way.
@@ -712,7 +712,7 @@ The workflow passes `REFRESH_AFTER_DAYS` with the call, since the setting belong
 
 - ~~Each entity stores the `merge_version` of the code that last merged it. (ECHO-98)~~
 - The due queries also return entities whose `merge_version` is older than the current one, whatever their age, status or `next_refresh_at`. Raising the version makes every entity due at once. (ECHO-108)
-- Their refresh merges them from stored pages without fetching, so they cannot use up any provider's rate. They run at priority 4 with the fairness key `remerge`, below the sweep's priority 3, so the weekly refreshes go first. (ECHO-111)
+- Their refresh merges them from stored pages without fetching, so they cannot use up any provider's rate. They run at priority 4 with the fairness key `remerge`, below the sweep's priority 3, so the weekly refreshes go first. (~~ECHO-111~~)
 
 ~~**The change hash.** `merged_record_hash` is computed over a canonical form of everything the save writes: the merged entity and its episode and character lists. Maps are encoded in key order (`prost` is configured to generate `BTreeMap` for map fields, since its default `HashMap` encodes in a different order on every run), and the merge returns every list sorted. `hash_format` records the form used, so changing it is a planned re-save of every entity, not an accident. (ECHO-98)~~
 

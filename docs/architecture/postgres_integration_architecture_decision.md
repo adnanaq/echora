@@ -38,7 +38,7 @@ The catalogue database is owned by one service, the **PostgreSQL Service**, writ
 
 ## What the Service Does Not Do
 
-- **It never calls another service.** Temporal workflows call it, and call the enrichment service between its steps. See [[update_service|Update Service]]. (ECHO-111)
+- **It never calls another service.** Temporal workflows call it, and call the enrichment service between its steps. See [[update_service|Update Service]]. (~~ECHO-111~~)
 - ~~**It holds no enrichment rules.** Merging pages and applying corrections happen in `EnrichmentService.MergeAnime`. The service stores the result. (ECHO-105)~~
 - **It does not decide what is risky.** A change that needs review is sent to the approval queue by the workflow that found it, once "risky" is defined. The service only stores the queue. (P-ECHO-15)
 - **It does not hold user accounts or lists.** Those belong to the planned users service and its own database. (P-ECHO-17)

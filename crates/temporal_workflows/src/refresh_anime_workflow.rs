@@ -57,6 +57,15 @@ fn build_priority(priority_key: u32) -> Priority {
 }
 
 /// Selects the highest (numerically lowest) priority key among two values (`0` means unset).
+///
+/// # Examples
+///
+/// ```
+/// use temporal_workflows::merge_priority;
+///
+/// assert_eq!(merge_priority(3, 1), 1);
+/// assert_eq!(merge_priority(0, 2), 2);
+/// ```
 #[must_use]
 pub const fn merge_priority(current: u32, incoming: u32) -> u32 {
     match (current, incoming) {
@@ -80,6 +89,15 @@ fn to_epoch_seconds(timestamp: Option<SystemTime>) -> i64 {
 }
 
 /// Computes the exponential failure retry backoff in seconds, capped at one week (168h).
+///
+/// # Examples
+///
+/// ```
+/// use temporal_workflows::compute_page_backoff_seconds;
+///
+/// assert_eq!(compute_page_backoff_seconds(1), 7_200);
+/// assert_eq!(compute_page_backoff_seconds(20), 168 * 3_600);
+/// ```
 #[must_use]
 pub fn compute_page_backoff_seconds(fetch_failures: i32) -> i64 {
     if fetch_failures <= 0 {
@@ -94,6 +112,26 @@ pub fn compute_page_backoff_seconds(fetch_failures: i32) -> i64 {
 }
 
 /// Evaluates whether a source page is due for refresh at `now_epoch_seconds`.
+///
+/// # Examples
+///
+/// ```
+/// use temporal_workflows::{EntityPageSummary, RefreshPageKey, is_page_due};
+///
+/// let page = EntityPageSummary {
+///     page_key: RefreshPageKey {
+///         provider: "mal".to_owned(),
+///         entity_type: "anime".to_owned(),
+///         address: "1".to_owned(),
+///     },
+///     is_partial_source: false,
+///     fetched_at_epoch_seconds: None,
+///     is_dead: false,
+///     fetch_failed_at_epoch_seconds: None,
+///     fetch_failures: 0,
+/// };
+/// assert!(is_page_due(&page, 1_700_000_000, 7));
+/// ```
 #[must_use]
 pub fn is_page_due(
     page: &EntityPageSummary,
@@ -123,6 +161,33 @@ pub fn is_page_due(
 }
 
 /// Evaluates whether a page should be refreshed due to a `fetch_requested` signal.
+///
+/// # Examples
+///
+/// ```
+/// use temporal_workflows::{
+///     EntityPageSummary, FetchRequestedSignal, RefreshPageKey, matches_fetch_request,
+/// };
+///
+/// let page = EntityPageSummary {
+///     page_key: RefreshPageKey {
+///         provider: "kitsu".to_owned(),
+///         entity_type: "anime".to_owned(),
+///         address: "1".to_owned(),
+///     },
+///     is_partial_source: false,
+///     fetched_at_epoch_seconds: Some(1_700_000_000),
+///     is_dead: false,
+///     fetch_failed_at_epoch_seconds: None,
+///     fetch_failures: 0,
+/// };
+/// let signal = FetchRequestedSignal {
+///     providers: vec!["kitsu".to_owned()],
+///     max_age_seconds: 0,
+///     priority: 1,
+/// };
+/// assert!(matches_fetch_request(&page, &signal, 1_700_000_010));
+/// ```
 #[must_use]
 pub fn matches_fetch_request(
     page: &EntityPageSummary,
@@ -150,6 +215,27 @@ pub fn matches_fetch_request(
 }
 
 /// Selects the deduplicated list of `(RefreshPageKey, max_age_seconds)` tasks to run.
+///
+/// # Examples
+///
+/// ```
+/// use temporal_workflows::{EntityPageSummary, RefreshPageKey, select_pages_to_refresh};
+///
+/// let page = EntityPageSummary {
+///     page_key: RefreshPageKey {
+///         provider: "mal".to_owned(),
+///         entity_type: "anime".to_owned(),
+///         address: "1".to_owned(),
+///     },
+///     is_partial_source: false,
+///     fetched_at_epoch_seconds: None,
+///     is_dead: false,
+///     fetch_failed_at_epoch_seconds: None,
+///     fetch_failures: 0,
+/// };
+/// let selected = select_pages_to_refresh(&[page], 1_700_000_000, 7, &[], true);
+/// assert_eq!(selected.len(), 1);
+/// ```
 #[must_use]
 pub fn select_pages_to_refresh(
     pages: &[EntityPageSummary],
