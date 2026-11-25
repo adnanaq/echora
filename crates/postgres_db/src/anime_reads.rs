@@ -152,6 +152,8 @@ pub struct VisibleAnimeRecord {
 /// # async fn example(pool: &sqlx::PgPool, anime_id: Uuid) -> Result<(), postgres_db::Error> {
 /// let work = postgres_db::read_visible_anime(pool, anime_id).await?;
 /// assert_eq!(work.anime_id, anime_id);
+/// assert!(work.version >= 1);
+/// assert!(!work.title.is_empty());
 /// # Ok(())
 /// # }
 /// ```
