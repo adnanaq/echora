@@ -2,7 +2,9 @@ syntax = "proto3";
 
 package enrichment_service.v1;
 
+import "google/protobuf/duration.proto";
 import "shared_proto/v1/error.proto";
+import "shared_proto/v1/merge.proto";
 
 // RPCs for enrichment pipeline health and execution.
 service EnrichmentService {
@@ -10,6 +12,8 @@ service EnrichmentService {
   rpc Health(HealthRequest) returns (HealthResponse);
   // Runs the enrichment pipeline for one selected anime record.
   rpc RunPipeline(RunPipelineRequest) returns (RunPipelineResponse);
+  // Fetches raw provider page responses as received without mapping.
+  rpc FetchPage(FetchPageRequest) returns (FetchPageResponse);
 }
 
 // Empty request for health checks.
@@ -54,4 +58,16 @@ message RunPipelineResponse {
   string result_json = 3;
   // Populated when pipeline execution fails.
   shared_proto.v1.ErrorDetails error = 4;
+}
+
+// Request to fetch raw provider page responses for one PageKey.
+message FetchPageRequest {
+  shared_proto.v1.PageKey page_key = 1;
+  // Cache freshness bound; zero forces a live fetch.
+  google.protobuf.Duration max_age = 2;
+}
+
+// StoredPage containing raw responses as received from the provider.
+message FetchPageResponse {
+  shared_proto.v1.StoredPage page = 1;
 }
