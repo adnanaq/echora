@@ -29,7 +29,11 @@ from common.models.anime import (
     Statistics,
     StreamingEntry,
 )
-from common.utils.datetime_utils import normalize_to_utc
+from common.utils.datetime_utils import (
+    normalize_to_utc,
+    parse_broadcast_time,
+    parse_hiatus_date,
+)
 from enrichment.sources.animeschedule.animeschedule_models import AnimeScheduleAnime
 from enrichment.sources.base.companies import companies_from_roles
 from enrichment.sources.base.external_links import external_link
@@ -135,12 +139,12 @@ def anime_from_animeschedule(anime: AnimeScheduleAnime) -> dict[str, Any]:
 
     # ── Broadcast ────────────────────────────────────────────────────────
     broadcast_fields: dict[str, Any] = {}
-    if anime.jpn_time:
-        broadcast_fields["jp_time"] = anime.jpn_time
-    if anime.sub_time:
-        broadcast_fields["sub_time"] = anime.sub_time
-    if anime.dub_time:
-        broadcast_fields["dub_time"] = anime.dub_time
+    if jp_time := parse_broadcast_time(anime.jpn_time):
+        broadcast_fields["jp_time"] = jp_time
+    if sub_time := parse_broadcast_time(anime.sub_time):
+        broadcast_fields["sub_time"] = sub_time
+    if dub_time := parse_broadcast_time(anime.dub_time):
+        broadcast_fields["dub_time"] = dub_time
     if anime.premier:
         broadcast_fields["premiere_jp"] = normalize_to_utc(anime.premier)
     if anime.sub_premier:
@@ -151,11 +155,11 @@ def anime_from_animeschedule(anime: AnimeScheduleAnime) -> dict[str, Any]:
 
     # ── Hiatus ───────────────────────────────────────────────────────────
     hiatus: AnimeHiatus | None = None
-    if anime.delayed_from:
+    if hiatus_from := parse_hiatus_date(anime.delayed_from):
         hiatus = AnimeHiatus(
             reason=anime.delayed_reason,
-            hiatus_from=anime.delayed_from,
-            hiatus_until=anime.delayed_until,
+            hiatus_from=hiatus_from,
+            hiatus_until=parse_hiatus_date(anime.delayed_until),
         )
 
     # ── Streaming ────────────────────────────────────────────────────────

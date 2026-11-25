@@ -267,7 +267,6 @@ fn normalize_season(season_text: &str) -> Result<&'static str, Status> {
 fn map_broadcast(broadcast: Broadcast) -> Result<AnimeBroadcastInput, Status> {
     let Broadcast {
         day,
-        time,
         timezone,
         jp_time,
         sub_time,
@@ -282,13 +281,9 @@ fn map_broadcast(broadcast: Broadcast) -> Result<AnimeBroadcastInput, Status> {
     } = broadcast;
 
     Ok(AnimeBroadcastInput {
-        weekday: day.as_deref().map(parse_iso_weekday).transpose()?,
+        weekday: day.map(validate_iso_weekday).transpose()?,
         timezone,
-        jp_time: jp_time
-            .or(time)
-            .as_deref()
-            .map(parse_time_of_day)
-            .transpose()?,
+        jp_time: jp_time.as_deref().map(parse_time_of_day).transpose()?,
         sub_time: sub_time.as_deref().map(parse_time_of_day).transpose()?,
         dub_time: dub_time.as_deref().map(parse_time_of_day).transpose()?,
         sub_delay_days,
@@ -334,24 +329,16 @@ fn map_hiatus(hiatus: AnimeHiatus) -> Result<AnimeHiatusInput, Status> {
     })
 }
 
-/// Converts a weekday name into its ISO number, Monday being 1.
+/// Validates that a weekday integer is in the ISO range 1..=7.
 ///
 /// # Errors
 ///
-/// Returns `INVALID_ARGUMENT` for a name that is not a weekday.
-fn parse_iso_weekday(day_text: &str) -> Result<i16, Status> {
-    match day_text.trim().to_ascii_lowercase().as_str() {
-        "monday" | "mondays" | "1" => Ok(1),
-        "tuesday" | "tuesdays" | "2" => Ok(2),
-        "wednesday" | "wednesdays" | "3" => Ok(3),
-        "thursday" | "thursdays" | "4" => Ok(4),
-        "friday" | "fridays" | "5" => Ok(5),
-        "saturday" | "saturdays" | "6" => Ok(6),
-        "sunday" | "sundays" | "7" => Ok(7),
-        _ => Err(Status::invalid_argument(format!(
-            "unknown broadcast day {day_text:?}"
-        ))),
-    }
+/// Returns `INVALID_ARGUMENT` for an integer outside 1..=7.
+fn validate_iso_weekday(weekday: i32) -> Result<i16, Status> {
+    i16::try_from(weekday)
+        .ok()
+        .filter(|value| (1..=7).contains(value))
+        .ok_or_else(|| Status::invalid_argument(format!("unknown broadcast day {weekday}")))
 }
 
 /// Converts `HH:MM`, `HH:MM:SS` or RFC 3339 text into a time of day.
@@ -416,10 +403,6 @@ mod tests {
     use super::*;
 
     #[test]
-    #[expect(
-        clippy::too_many_lines,
-        reason = "one fixture fills every schedule and statistics field"
-    )]
     fn build_schedule_and_stats_maps_all_extended_fields() {
         let mut stats = BTreeMap::new();
         stats.insert(
@@ -481,8 +464,7 @@ mod tests {
             }],
             stats,
             Some(Broadcast {
-                day: Some("Wednesdays".to_owned()),
-                time: Some("00:30".to_owned()),
+                day: Some(3),
                 timezone: Some("Asia/Tokyo".to_owned()),
                 jp_time: Some("2026-11-18T23:15:00+09:00".to_owned()),
                 sub_time: Some("01:30:00".to_owned()),
@@ -532,8 +514,7 @@ mod tests {
 
     fn build_broadcast() -> Broadcast {
         Broadcast {
-            day: Some("Sundays".to_owned()),
-            time: None,
+            day: Some(7),
             timezone: None,
             jp_time: Some("00:30".to_owned()),
             sub_time: None,
@@ -603,7 +584,7 @@ mod tests {
             map_schedule_parts(
                 None,
                 Some(Broadcast {
-                    day: Some("someday".to_owned()),
+                    day: Some(8),
                     ..build_broadcast()
                 }),
                 None,
@@ -675,20 +656,15 @@ mod tests {
     }
 
     #[test]
-    fn parse_iso_weekday_day_names_return_iso_numbers() {
-        for (day_names, iso_weekday) in [
-            (["Monday", "mondays", "1"], 1),
-            (["Tuesday", "tuesdays", "2"], 2),
-            (["Wednesday", "wednesdays", "3"], 3),
-            (["Thursday", "thursdays", "4"], 4),
-            (["Friday", "fridays", "5"], 5),
-            (["Saturday", "saturdays", "6"], 6),
-            (["Sunday", "sundays", "7"], 7),
-        ] {
-            for day_name in day_names {
-                assert_eq!(parse_iso_weekday(day_name).expect(day_name), iso_weekday);
-            }
+    fn validate_iso_weekday_accepts_one_through_seven() {
+        for iso_weekday in 1..=7 {
+            assert_eq!(
+                validate_iso_weekday(iso_weekday).expect("1..=7 is valid"),
+                i16::try_from(iso_weekday).expect("fits in i16")
+            );
         }
+        assert!(validate_iso_weekday(0).is_err());
+        assert!(validate_iso_weekday(8).is_err());
     }
 
     #[test]

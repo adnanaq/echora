@@ -263,9 +263,8 @@ class AiredDates(_message.Message):
     def __init__(self, aired_from: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., aired_to: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...
 
 class Broadcast(_message.Message):
-    __slots__ = ("day", "time", "timezone", "jp_time", "sub_time", "dub_time", "sub_delay_days", "dub_delay_days", "premiere_jp", "premiere_sub", "premiere_dub", "next_episode_at", "next_episode_number")
+    __slots__ = ("day", "timezone", "jp_time", "sub_time", "dub_time", "sub_delay_days", "dub_delay_days", "premiere_jp", "premiere_sub", "premiere_dub", "next_episode_at", "next_episode_number")
     DAY_FIELD_NUMBER: _ClassVar[int]
-    TIME_FIELD_NUMBER: _ClassVar[int]
     TIMEZONE_FIELD_NUMBER: _ClassVar[int]
     JP_TIME_FIELD_NUMBER: _ClassVar[int]
     SUB_TIME_FIELD_NUMBER: _ClassVar[int]
@@ -277,8 +276,7 @@ class Broadcast(_message.Message):
     PREMIERE_DUB_FIELD_NUMBER: _ClassVar[int]
     NEXT_EPISODE_AT_FIELD_NUMBER: _ClassVar[int]
     NEXT_EPISODE_NUMBER_FIELD_NUMBER: _ClassVar[int]
-    day: str
-    time: str
+    day: int
     timezone: str
     jp_time: str
     sub_time: str
@@ -290,7 +288,7 @@ class Broadcast(_message.Message):
     premiere_dub: _timestamp_pb2.Timestamp
     next_episode_at: _timestamp_pb2.Timestamp
     next_episode_number: int
-    def __init__(self, day: _Optional[str] = ..., time: _Optional[str] = ..., timezone: _Optional[str] = ..., jp_time: _Optional[str] = ..., sub_time: _Optional[str] = ..., dub_time: _Optional[str] = ..., sub_delay_days: _Optional[int] = ..., dub_delay_days: _Optional[int] = ..., premiere_jp: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., premiere_sub: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., premiere_dub: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., next_episode_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., next_episode_number: _Optional[int] = ...) -> None: ...
+    def __init__(self, day: _Optional[int] = ..., timezone: _Optional[str] = ..., jp_time: _Optional[str] = ..., sub_time: _Optional[str] = ..., dub_time: _Optional[str] = ..., sub_delay_days: _Optional[int] = ..., dub_delay_days: _Optional[int] = ..., premiere_jp: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., premiere_sub: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., premiere_dub: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., next_episode_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., next_episode_number: _Optional[int] = ...) -> None: ...
 
 class AnimeHiatus(_message.Message):
     __slots__ = ("reason", "hiatus_from", "hiatus_until")
@@ -421,7 +419,7 @@ class Ography(_message.Message):
     def __init__(self, title: _Optional[str] = ..., role: _Optional[_Union[CharacterRole, str]] = ..., sources: _Optional[_Iterable[str]] = ...) -> None: ...
 
 class StaffMember(_message.Message):
-    __slots__ = ("staff_ids", "name", "native_name", "role", "image", "biography", "birth_date", "hometown", "primary_occupations", "years_active", "gender", "blood_type", "community_favorites", "enhancement_status")
+    __slots__ = ("staff_ids", "name", "native_name", "role", "image", "biography", "birth_date", "hometown", "primary_occupations", "years_active", "gender", "blood_type", "community_favorites")
     class StaffIdsEntry(_message.Message):
         __slots__ = ("key", "value")
         KEY_FIELD_NUMBER: _ClassVar[int]
@@ -442,7 +440,6 @@ class StaffMember(_message.Message):
     GENDER_FIELD_NUMBER: _ClassVar[int]
     BLOOD_TYPE_FIELD_NUMBER: _ClassVar[int]
     COMMUNITY_FAVORITES_FIELD_NUMBER: _ClassVar[int]
-    ENHANCEMENT_STATUS_FIELD_NUMBER: _ClassVar[int]
     staff_ids: _containers.ScalarMap[str, int]
     name: str
     native_name: str
@@ -456,8 +453,7 @@ class StaffMember(_message.Message):
     gender: str
     blood_type: str
     community_favorites: int
-    enhancement_status: str
-    def __init__(self, staff_ids: _Optional[_Mapping[str, int]] = ..., name: _Optional[str] = ..., native_name: _Optional[str] = ..., role: _Optional[str] = ..., image: _Optional[str] = ..., biography: _Optional[str] = ..., birth_date: _Optional[str] = ..., hometown: _Optional[str] = ..., primary_occupations: _Optional[_Iterable[str]] = ..., years_active: _Optional[_Iterable[int]] = ..., gender: _Optional[str] = ..., blood_type: _Optional[str] = ..., community_favorites: _Optional[int] = ..., enhancement_status: _Optional[str] = ...) -> None: ...
+    def __init__(self, staff_ids: _Optional[_Mapping[str, int]] = ..., name: _Optional[str] = ..., native_name: _Optional[str] = ..., role: _Optional[str] = ..., image: _Optional[str] = ..., biography: _Optional[str] = ..., birth_date: _Optional[str] = ..., hometown: _Optional[str] = ..., primary_occupations: _Optional[_Iterable[str]] = ..., years_active: _Optional[_Iterable[int]] = ..., gender: _Optional[str] = ..., blood_type: _Optional[str] = ..., community_favorites: _Optional[int] = ...) -> None: ...
 
 class VoiceActor(_message.Message):
     __slots__ = ("name", "native_name", "id", "language", "image", "biography", "birth_date", "blood_type", "character_assignments", "sources")

@@ -184,7 +184,6 @@ FIELD_EXCEPTIONS: dict[str, str] = {
     "anime.companies.sources": "stored in company_xref",
     "anime.companies.roles": "the role key column of anime_company, one row per role",
     "anime.broadcast.day": "typed into weekday by ECHO-88",
-    "anime.broadcast.time": "typed into jp_time by ECHO-88",
     "episode.entity_type": "read: always episode",
     "episode.anime_id": "the episode row's foreign key to its work",
     "episode.characters.name": "read from the character",

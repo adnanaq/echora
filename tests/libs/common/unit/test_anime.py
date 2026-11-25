@@ -1,14 +1,17 @@
 import logging
+from datetime import date, time
 from enum import StrEnum
 
 import pytest
 from common.models.anime import (
     Anime,
+    AnimeHiatus,
     AnimeRating,
     AnimeRecord,
     AnimeRelationType,
     AnimeStatus,
     AnimeType,
+    Broadcast,
     CharacterRole,
     ContextualRank,
     Episode,
@@ -334,6 +337,51 @@ def test_provider_value_maps_to_member_without_warning(
         assert enum(provider_value) is expected
 
     assert caplog.text == ""
+
+
+def test_broadcast_and_hiatus_accept_typed_fields() -> None:
+    broadcast = Broadcast(
+        day=7,
+        timezone="Asia/Tokyo",
+        jp_time=time(23, 15),
+        sub_time=time(1, 30),
+        dub_time=time(15, 30),
+    )
+    assert broadcast.day == 7
+    assert broadcast.timezone == "Asia/Tokyo"
+    assert broadcast.jp_time == time(23, 15)
+    assert broadcast.sub_time == time(1, 30)
+    assert broadcast.dub_time == time(15, 30)
+
+    hiatus = AnimeHiatus(
+        reason="Production break",
+        hiatus_from=date(2024, 1, 7),
+        hiatus_until=date(2024, 1, 14),
+    )
+    assert hiatus.hiatus_from == date(2024, 1, 7)
+    assert hiatus.hiatus_until == date(2024, 1, 14)
+
+
+def test_broadcast_rejects_invalid_weekday_timezone_and_removed_time() -> None:
+    with pytest.raises(ValidationError):
+        Broadcast(day=0)
+    with pytest.raises(ValidationError):
+        Broadcast(day=8)
+    with pytest.raises(ValidationError):
+        Broadcast(timezone="Mars/Olympus")
+    with pytest.raises(ValidationError):
+        Broadcast.model_validate({"time": "23:15"})
+
+
+def test_staff_member_rejects_removed_enhancement_status() -> None:
+    with pytest.raises(ValidationError):
+        StaffMember.model_validate(
+            {
+                "name": "Eiichiro Oda",
+                "role": "Original Creator",
+                "enhancement_status": "matched",
+            }
+        )
 
 
 @pytest.mark.parametrize(

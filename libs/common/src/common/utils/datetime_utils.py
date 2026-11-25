@@ -1,6 +1,7 @@
 """Datetime utility functions for anime data processing."""
 
-from datetime import UTC, datetime, time, timedelta, timezone
+from datetime import UTC, date, datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from common.models.anime import AnimeSeason, AnimeStatus
 
@@ -396,4 +397,141 @@ def determine_anime_year(date_str: str | None) -> int | None:
             return None
         return year
     except ValueError, TypeError, IndexError:
+        return None
+
+
+_WEEKDAY_BY_NAME: dict[str, int] = {
+    "monday": 1,
+    "mondays": 1,
+    "1": 1,
+    "tuesday": 2,
+    "tuesdays": 2,
+    "2": 2,
+    "wednesday": 3,
+    "wednesdays": 3,
+    "3": 3,
+    "thursday": 4,
+    "thursdays": 4,
+    "4": 4,
+    "friday": 5,
+    "fridays": 5,
+    "5": 5,
+    "saturday": 6,
+    "saturdays": 6,
+    "6": 6,
+    "sunday": 7,
+    "sundays": 7,
+    "7": 7,
+}
+
+_TIMEZONE_ABBREVIATIONS: dict[str, str] = {
+    "JST": "Asia/Tokyo",
+    "UTC": "UTC",
+    "GMT": "UTC",
+    "EST": "America/New_York",
+    "EDT": "America/New_York",
+    "CST": "America/Chicago",
+    "CDT": "America/Chicago",
+    "MST": "America/Denver",
+    "MDT": "America/Denver",
+    "PST": "America/Los_Angeles",
+    "PDT": "America/Los_Angeles",
+    "CET": "Europe/Berlin",
+    "CEST": "Europe/Berlin",
+}
+
+
+def parse_iso_weekday(day_value: int | str | None) -> int | None:
+    """Parse a weekday name or number into an ISO weekday integer.
+
+    Args:
+        day_value: Weekday name (e.g., "Sundays") or ISO weekday number (1-7).
+
+    Returns:
+        ISO weekday integer from 1 (Monday) to 7 (Sunday), or None if invalid.
+    """
+    if day_value is None or isinstance(day_value, bool):
+        return None
+    if isinstance(day_value, int):
+        return day_value if 1 <= day_value <= 7 else None
+    return _WEEKDAY_BY_NAME.get(day_value.strip().lower())
+
+
+def parse_broadcast_time(time_value: time | str | None) -> time | None:
+    """Parse a clock string or ISO datetime string into a naive time of day.
+
+    Args:
+        time_value: Time object, HH:MM string, HH:MM:SS string, or ISO timestamp.
+
+    Returns:
+        Naive time-of-day value, or None if the input cannot be parsed.
+    """
+    if time_value is None:
+        return None
+    if isinstance(time_value, time):
+        return time_value.replace(tzinfo=None)
+    trimmed = time_value.strip()
+    if not trimmed:
+        return None
+    try:
+        return time.fromisoformat(trimmed).replace(tzinfo=None)
+    except ValueError:
+        pass
+    try:
+        return (
+            datetime.fromisoformat(trimmed.replace("Z", "+00:00"))
+            .time()
+            .replace(tzinfo=None)
+        )
+    except ValueError:
+        return None
+
+
+def parse_iana_timezone(timezone_value: str | None) -> str | None:
+    """Normalize a timezone string or abbreviation into a valid IANA time zone.
+
+    Args:
+        timezone_value: Timezone abbreviation (e.g., "JST") or IANA zone name.
+
+    Returns:
+        Validated IANA time zone string, or None if unknown or empty.
+    """
+    if timezone_value is None:
+        return None
+    trimmed = timezone_value.strip()
+    if not trimmed:
+        return None
+    candidate = _TIMEZONE_ABBREVIATIONS.get(trimmed.upper(), trimmed)
+    try:
+        ZoneInfo(candidate)
+    except ZoneInfoNotFoundError, ValueError:
+        return None
+    return candidate
+
+
+def parse_hiatus_date(date_value: date | datetime | str | None) -> date | None:
+    """Parse a date or ISO datetime string into a calendar date.
+
+    Args:
+        date_value: Date object, datetime object, or ISO date/timestamp string.
+
+    Returns:
+        Calendar date value, or None if the input cannot be parsed.
+    """
+    if date_value is None:
+        return None
+    if isinstance(date_value, datetime):
+        return date_value.date()
+    if isinstance(date_value, date):
+        return date_value
+    trimmed = date_value.strip()
+    if not trimmed:
+        return None
+    try:
+        return date.fromisoformat(trimmed)
+    except ValueError:
+        pass
+    try:
+        return datetime.fromisoformat(trimmed.replace("Z", "+00:00")).date()
+    except ValueError:
         return None

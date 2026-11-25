@@ -214,12 +214,16 @@ def test_anime_from_anisearch_broadcast_parts_give_broadcast() -> None:
             broadcast_day="Sunday", broadcast_time="09:30", broadcast_timezone="JST"
         )
     )
-    assert mapped["broadcast"] == {"day": "Sunday", "time": "09:30", "timezone": "JST"}
+    assert mapped["broadcast"] == {
+        "day": 7,
+        "jp_time": "09:30:00",
+        "timezone": "Asia/Tokyo",
+    }
 
 
 def test_anime_from_anisearch_broadcast_day_alone_gives_partial_broadcast() -> None:
     mapped = anime_from_anisearch(AniSearchAnime(broadcast_day="Sunday"))
-    assert mapped["broadcast"] == {"day": "Sunday"}
+    assert mapped["broadcast"] == {"day": 7}
 
 
 def test_anime_from_anisearch_without_broadcast_omits_broadcast() -> None:

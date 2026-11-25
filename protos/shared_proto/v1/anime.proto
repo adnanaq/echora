@@ -171,21 +171,20 @@ message AiredDates {
 // Broadcast + BroadcastSchedule + PremiereDates messages.
 message Broadcast {
   // Weekly slot (MAL)
-  optional string day = 1;
-  optional string time = 2;
-  optional string timezone = 3;
-  // Per-version streaming times (AnimeSchedule)
-  optional string jp_time = 4;
-  optional string sub_time = 5;
-  optional string dub_time = 6;
-  optional int32 sub_delay_days = 7;
-  optional int32 dub_delay_days = 8;
+  optional int32 day = 1;
+  optional string timezone = 2;
+  // Per-version streaming times (AnimeSchedule / MAL)
+  optional string jp_time = 3;
+  optional string sub_time = 4;
+  optional string dub_time = 5;
+  optional int32 sub_delay_days = 6;
+  optional int32 dub_delay_days = 7;
   // Premiere dates
-  optional google.protobuf.Timestamp premiere_jp = 9;
-  optional google.protobuf.Timestamp premiere_sub = 10;
-  optional google.protobuf.Timestamp premiere_dub = 11;
-  optional google.protobuf.Timestamp next_episode_at = 12;
-  optional int32 next_episode_number = 13;
+  optional google.protobuf.Timestamp premiere_jp = 8;
+  optional google.protobuf.Timestamp premiere_sub = 9;
+  optional google.protobuf.Timestamp premiere_dub = 10;
+  optional google.protobuf.Timestamp next_episode_at = 11;
+  optional int32 next_episode_number = 12;
 }
 
 // Hiatus information — replaces the old DelayInformation message.
@@ -283,7 +282,6 @@ message StaffMember {
   optional string gender = 11;
   optional string blood_type = 12;
   optional int64 community_favorites = 13;
-  optional string enhancement_status = 14;
 }
 
 message VoiceActor {

@@ -161,9 +161,9 @@ def test_anime_from_mal_without_statistics_gives_no_mal_statistics() -> None:
 
 def test_anime_from_mal_broadcast_parts_give_broadcast() -> None:
     assert anime_from_mal(_one_piece())["broadcast"] == {
-        "day": "Sundays",
-        "time": "23:15",
-        "timezone": "JST",
+        "day": 7,
+        "jp_time": "23:15:00",
+        "timezone": "Asia/Tokyo",
     }
 
 

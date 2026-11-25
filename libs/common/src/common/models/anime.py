@@ -1,8 +1,9 @@
 """Pydantic models for anime, character, and episode data used across Echora services."""
 
-from datetime import datetime
+from datetime import date, datetime, time
 from enum import StrEnum
 from typing import Annotated
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from common.models.base import ProviderMappedEnum, StrictFieldsModel
 from common.models.language_codes import CountryCode, LanguageCode
@@ -13,6 +14,7 @@ from pydantic import (
     FiniteFloat,
     NonNegativeInt,
     PositiveInt,
+    field_validator,
 )
 
 ScoreOutOfTen = Annotated[float, Field(ge=0, le=10)]
@@ -605,20 +607,17 @@ class Broadcast(StrictFieldsModel):
     """
 
     # Weekly recurring slot (from MAL)
-    day: str | None = Field(None, description="Broadcast day (e.g., 'Sundays')")
-    time: str | None = Field(
-        None, description="Broadcast time in JP timezone (e.g., '23:15')"
+    day: int | None = Field(
+        None, ge=1, le=7, description="ISO weekday (1=Monday .. 7=Sunday)"
     )
-    timezone: str | None = Field(None, description="Broadcast timezone (e.g., 'JST')")
+    timezone: str | None = Field(
+        None, description="IANA time zone name (e.g., 'Asia/Tokyo')"
+    )
 
-    # Per-version airtimes (from AnimeSchedule)
-    jp_time: str | None = Field(
-        None, description="Japanese broadcast time with timezone"
-    )
-    sub_time: str | None = Field(
-        None, description="Subtitle broadcast time with timezone"
-    )
-    dub_time: str | None = Field(None, description="Dub broadcast time with timezone")
+    # Per-version airtimes (from AnimeSchedule / MAL)
+    jp_time: time | None = Field(None, description="Japanese broadcast time of day")
+    sub_time: time | None = Field(None, description="Subtitle broadcast time of day")
+    dub_time: time | None = Field(None, description="Dub broadcast time of day")
     sub_delay_days: int | None = Field(None, description="Days after JP that sub drops")
     dub_delay_days: int | None = Field(None, description="Days after JP that dub drops")
 
@@ -636,13 +635,35 @@ class Broadcast(StrictFieldsModel):
         description="Number of the episode airing at next_episode_at (from AniList)",
     )
 
+    @field_validator("timezone")
+    @classmethod
+    def validate_iana_timezone(cls, timezone_name: str | None) -> str | None:
+        """Validate that a provided timezone string is an IANA time zone.
+
+        Args:
+            timezone_name: Candidate IANA time zone name or None.
+
+        Returns:
+            Validated IANA time zone string or None.
+        """
+        if timezone_name is None:
+            return None
+        try:
+            ZoneInfo(timezone_name)
+        except ZoneInfoNotFoundError as exc:
+            error_message = (
+                f"timezone must be a valid IANA time zone, got {timezone_name!r}"
+            )
+            raise ValueError(error_message) from exc
+        return timezone_name
+
 
 class AnimeHiatus(StrictFieldsModel):
     """Current hiatus snapshot from AnimeSchedule."""
 
     reason: str | None = Field(None, description="Reason for hiatus or delay")
-    hiatus_from: str | None = Field(None, description="Hiatus start date")
-    hiatus_until: str | None = Field(
+    hiatus_from: date | None = Field(None, description="Hiatus start date")
+    hiatus_until: date | None = Field(
         None, description="Hiatus end date (None = still on hiatus)"
     )
 
@@ -806,9 +827,6 @@ class StaffMember(StrictFieldsModel):
     community_favorites: NonNegativeInt | None = Field(
         None, description="Community favorites count"
     )
-    enhancement_status: str | None = Field(
-        None, description="Enhancement status from AniList matching"
-    )
 
 
 class VoiceActor(StrictFieldsModel):
@@ -884,7 +902,7 @@ class ContextualRank(StrictFieldsModel):
 
 
 class Statistics(StrictFieldsModel):
-    """Standardized statistics entry — AI maps all platforms to these uniform properties"""
+    """Standardized statistics entry across all provider platforms."""
 
     # ── Scalars (alphabetical) ────────────────────────────────────────────────
     favorites: NonNegativeInt | None = Field(
