@@ -43,8 +43,8 @@ Each entity has one refresh workflow with a fixed ID:
 | Entity | Workflow | ID |
 |---|---|---|
 | Work | `RefreshAnimeWorkflow` | `refresh-anime-<anime_id>` (~~ECHO-111~~) |
-| Episode | `RefreshEpisodeWorkflow` | `refresh-episode-<episode_id>` (ECHO-112) |
-| Character | `RefreshCharacterWorkflow` | `refresh-character-<character_id>` (ECHO-112) |
+| Episode | `RefreshEpisodeWorkflow` | `refresh-episode-<episode_id>` (~~ECHO-112~~) |
+| Character | `RefreshCharacterWorkflow` | `refresh-character-<character_id>` (~~ECHO-112~~) |
 
 A work's refresh runs these activities (~~ECHO-111~~):
 
@@ -92,7 +92,7 @@ record_refresh(anime_id, outcome)
                                      pages failed; a backoff when the refresh failed
 ```
 
-An episode's or a character's refresh is the same with its own pages: `ListEntityPages`, `refresh_page` for each due page, `LoadEpisode`, `MergeEpisode`, `SaveEpisode` or `LoadCharacter`, `MergeCharacter`, `SaveCharacter`, then `RecordRefresh`. (ECHO-112)
+An episode's or a character's refresh is the same with its own pages: `ListEntityPages`, `refresh_page` for each due page, `LoadEpisode`, `MergeEpisode`, `SaveEpisode` or `LoadCharacter`, `MergeCharacter`, `SaveCharacter`, then `RecordRefresh`. (~~ECHO-112~~)
 
 ~~An episode's load also returns its list entries, what each provider's work page says about it, since only MAL and aniSearch have a page per episode. (ECHO-103)~~
 
@@ -210,7 +210,7 @@ Starting values, tuned once real runs are measured:
 | `refresh_page` | 5 minutes (browser-crawled pages are slow) | 1 minute | Exponential backoff, at most 5 attempts (~~ECHO-111~~) |
 | `list_pages`, `record_refresh` | 30 seconds | — | Exponential backoff, at most 5 attempts (~~ECHO-111~~) |
 | `merge_anime` | 2 minutes | — | At most 5 attempts; `ABORTED` is retried inside the attempt (~~ECHO-111~~) |
-| `merge_episode`, `merge_character` | 2 minutes | — | At most 5 attempts; `ABORTED` is retried inside the attempt (ECHO-112) |
+| `merge_episode`, `merge_character` | 2 minutes | — | At most 5 attempts; `ABORTED` is retried inside the attempt (~~ECHO-112~~) |
 | `start_entity_workflows` | 1 minute | — | Exponential backoff, at most 5 attempts (~~ECHO-111~~) |
 | `write_synopsis` | 10 minutes | 1 minute | 3 attempts (ECHO-115) |
 
