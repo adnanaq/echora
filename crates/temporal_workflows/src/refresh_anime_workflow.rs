@@ -45,7 +45,17 @@ fn standard_retry_policy() -> RetryPolicy {
 }
 
 /// Computes `priority` metadata for an activity invocation (`1` = highest, `3` = default).
-fn build_priority(priority_key: u32) -> Priority {
+///
+/// # Examples
+///
+/// ```
+/// use temporal_workflows::build_priority;
+///
+/// assert_eq!(build_priority(0).priority_key, Some(3));
+/// assert_eq!(build_priority(9).priority_key, Some(5));
+/// ```
+#[must_use]
+pub fn build_priority(priority_key: u32) -> Priority {
     let clamped = if priority_key == 0 {
         3
     } else {

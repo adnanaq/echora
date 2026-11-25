@@ -7,7 +7,7 @@ use temporal_workflows::{
     AGENT_SERVICE_TASK_QUEUE, CatalogueDataPort, EntityPageSummary, ListEntityPagesOutput,
     MergeAnimeOutput, MergeAttemptOutcome, PortError, REFRESH_TRIGGER_SEARCH_ATTRIBUTE,
     RecordRefreshInput, RefreshOutcomeKind, RefreshPageKey, RefreshPageOutput,
-    StartEntityWorkflowsInput, UPDATE_SERVICE_TASK_QUEUE, WorkflowStarterPort,
+    StartEntityWorkflowsInput, UPDATE_SERVICE_TASK_QUEUE, WorkflowStarterPort, build_priority,
     build_refresh_episode_workflow_id, build_write_synopsis_workflow_id,
     is_non_retryable_grpc_code,
 };
@@ -446,12 +446,7 @@ impl WorkflowStarterPort for TemporalWorkflowStarter {
                 input.trigger.clone()
             };
 
-            let mut priority = Priority::default();
-            priority.priority_key = Some(if input.priority == 0 {
-                3
-            } else {
-                input.priority.clamp(1, 5)
-            });
+            let priority = build_priority(input.priority);
 
             let trigger_key = SearchAttributeKey::keyword(REFRESH_TRIGGER_SEARCH_ATTRIBUTE);
             let search_attrs = SearchAttributes::new([trigger_key.value_set(trigger_val.clone())]);

@@ -33,8 +33,8 @@ pub use refresh_anime_types::{
 };
 #[doc(inline)]
 pub use refresh_anime_workflow::{
-    RefreshAnimeWorkflow, compute_page_backoff_seconds, is_page_due, matches_fetch_request,
-    merge_priority, select_pages_to_refresh,
+    RefreshAnimeWorkflow, build_priority, compute_page_backoff_seconds, is_page_due,
+    matches_fetch_request, merge_priority, select_pages_to_refresh,
 };
 
 /// Task queue for Update Service workflows, merges, and workflow starters.
