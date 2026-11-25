@@ -12,6 +12,7 @@ from enrichment.sources.base.exceptions import (
     AniListGraphQLError,
     ServiceBlockedError,
     ServiceNetworkError,
+    ServiceParseError,
     ServiceRateLimitedError,
 )
 from enrichment.sources.base.network_errors import is_aiohttp_network_error
@@ -236,7 +237,11 @@ class AniListFetcher(PageFetcher):
             return FetchedPage(page_key=page_key, responses=(), is_not_found=True)
 
         main_bytes, main_type, main_payload, _ = main_result
-        if not main_payload.get("data", {}).get("Media"):
+        data = main_payload.get("data")
+        if not isinstance(data, dict) or "Media" not in data:
+            msg = "AniList anime response missing 'data.Media' field"
+            raise ServiceParseError(service="anilist", cause=msg)
+        if data["Media"] is None:
             return FetchedPage(page_key=page_key, responses=(), is_not_found=True)
 
         responses = [
@@ -281,15 +286,21 @@ class AniListFetcher(PageFetcher):
                     return FetchedPage(
                         page_key=page_key, responses=(), is_not_found=True
                     )
-                break
+                msg = f"AniList character pagination failed at page {page} with 404"
+                raise ServiceNetworkError(service="anilist", cause=msg)
             raw_bytes, content_type, payload, from_cache = result
-            character_data = payload.get("data", {}).get("Character")
-            if not character_data:
+            data = payload.get("data")
+            if not isinstance(data, dict) or "Character" not in data:
+                msg = "AniList character response missing 'data.Character' field"
+                raise ServiceParseError(service="anilist", cause=msg)
+            character_data = data["Character"]
+            if character_data is None:
                 if page == 1:
                     return FetchedPage(
                         page_key=page_key, responses=(), is_not_found=True
                     )
-                break
+                msg = f"AniList character pagination returned null at page {page}"
+                raise ServiceParseError(service="anilist", cause=msg)
             request_name = "main" if page == 1 else f"media_page_{page}"
             responses.append(
                 PageResponse(
@@ -338,13 +349,22 @@ class AniListFetcher(PageFetcher):
                 query, {"id": target_id, "page": page}, max_age=max_age
             )
             if result is None:
-                break
+                msg = f"AniList {connection_key} pagination failed at page {page} with 404"
+                raise ServiceNetworkError(service="anilist", cause=msg)
             raw_bytes, content_type, payload, from_cache = result
-            connection = (
-                payload.get("data", {}).get(resource_key, {}).get(connection_key)
-            )
+            data = payload.get("data")
+            resource = data.get(resource_key) if isinstance(data, dict) else None
+            if not isinstance(resource, dict) or connection_key not in resource:
+                msg = (
+                    f"AniList pagination missing 'data.{resource_key}.{connection_key}'"
+                )
+                raise ServiceParseError(service="anilist", cause=msg)
+            connection = resource[connection_key]
             if not connection:
-                break
+                if page == 1:
+                    break
+                msg = f"AniList {connection_key} pagination empty at page {page}"
+                raise ServiceParseError(service="anilist", cause=msg)
             responses.append(
                 PageResponse(
                     request_name=f"{request_prefix}{page}",
@@ -451,7 +471,7 @@ class AniListFetcher(PageFetcher):
                         )
                     return await self._read_checked_response(response)
             except aiohttp.ClientResponseError as exc:
-                if exc.status < 500:
+                if exc.status >= 500:
                     raise ServiceNetworkError(service="anilist", cause=exc) from exc
                 raise
             except (aiohttp.ClientError, json.JSONDecodeError, TimeoutError) as exc:
