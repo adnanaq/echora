@@ -61,7 +61,7 @@ The Update Service, a Rust process built with the [Temporal Rust SDK](https://te
 
 - **Task queues:** see [[update_service#Temporal Worker Configuration|Update Service]].
   - `update-service` for workflows and merges, and `agent-service` for AI activities. (ECHO-95)
-  - One `provider-<name>` queue per provider. (ECHO-113)
+  - One `provider-<name>` queue per provider. (~~ECHO-113~~)
 - **Scaling:** add worker replicas. Temporal spreads tasks across every worker polling a queue, and the rate limits below stay the same however many workers there are. (ECHO-95)
 
 ---
@@ -95,7 +95,7 @@ The Update Service, a Rust process built with the [Temporal Rust SDK](https://te
 
 ### Priority and fairness
 
-> **Linear:** ECHO-113
+> **Linear:** ~~ECHO-113~~
 
 [Task Queue Priority and Fairness](https://docs.temporal.io/develop/task-queue-priority-fairness) are generally available from server [1.31.0](https://github.com/temporalio/temporal/releases/tag/v1.31.0), for self-hosted servers too. That release turns on the new matcher by default, so priority keys are respected without extra configuration.
 
@@ -106,7 +106,7 @@ The keys the Update Service uses are listed in [[update_service#Provider rate li
 
 ### Partitions
 
-> **Linear:** ECHO-113
+> **Linear:** ~~ECHO-113~~
 
 A task queue has 4 partitions by default, and tasks are spread across them at random. Priority and fairness are exact only within one partition, so with several partitions a sweep task on a lightly loaded partition can go ahead of a user's task on a busy one. The provider queues carry less than one task a second, far below the roughly 400 a second that needs more than one partition, so each runs on a single partition:
 
@@ -124,7 +124,7 @@ Read and write partitions are set to the same value. On a running server, loweri
 
 ### Rate limits
 
-> **Linear:** ECHO-113
+> **Linear:** ~~ECHO-113~~
 
 Each provider queue's rate limit is set on the queue itself, not in each worker:
 

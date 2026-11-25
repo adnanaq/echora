@@ -45,25 +45,57 @@ fn standard_retry_policy() -> RetryPolicy {
     }
 }
 
-/// Computes `priority` metadata for an activity invocation (`1` = highest, `3` = default).
+/// Computes Temporal priority and fairness metadata (`1` = highest, `3` = default).
+///
+/// Attaches `fairness_key` from `trigger` (`user`, `episode`, `review`, `sweep`, `seed`,
+/// `remerge`) and `fairness_weight = 1.0` for `sweep` and `seed` so background triggers share
+/// provider capacity evenly within priority 3.
 ///
 /// # Examples
 ///
 /// ```
 /// use temporal_workflows::build_priority;
 ///
-/// assert_eq!(build_priority(0).priority_key, Some(3));
-/// assert_eq!(build_priority(9).priority_key, Some(5));
+/// let sweep = build_priority(0, "sweep");
+/// assert_eq!(sweep.priority_key, Some(3));
+/// assert_eq!(sweep.fairness_key.as_deref(), Some("sweep"));
+/// assert_eq!(sweep.fairness_weight, Some(1.0));
+///
+/// let user = build_priority(0, "user");
+/// assert_eq!(user.priority_key, Some(1));
+/// assert_eq!(user.fairness_key.as_deref(), Some("user"));
+///
+/// let custom = build_priority(9, "");
+/// assert_eq!(custom.priority_key, Some(5));
+/// assert!(custom.fairness_key.is_none());
 /// ```
 #[must_use]
-pub fn build_priority(priority_key: u32) -> Priority {
+pub fn build_priority(priority_key: u32, trigger: &str) -> Priority {
+    let normalized = trigger.trim();
+    let default_priority = match normalized {
+        "user" => 1,
+        "episode" | "review" => 2,
+        "remerge" => 4,
+        _ => 3,
+    };
     let clamped = if priority_key == 0 {
-        3
+        default_priority
     } else {
         priority_key.clamp(1, 5)
     };
+    let fairness_key = if normalized.is_empty() {
+        None
+    } else {
+        Some(normalized.chars().take(64).collect())
+    };
+    let fairness_weight = match normalized {
+        "sweep" | "seed" => Some(1.0),
+        _ => None,
+    };
     let mut priority = Priority::default();
     priority.priority_key = Some(clamped);
+    priority.fairness_key = fairness_key;
+    priority.fairness_weight = fairness_weight;
     priority
 }
 
@@ -464,7 +496,7 @@ pub(crate) async fn run_entity_refresh<W: EntityRefreshWorkflowState>(
                 ActivityOptions::with_start_to_close_timeout(LIST_PAGES_TIMEOUT)
                     .task_queue(UPDATE_SERVICE_TASK_QUEUE.to_owned())
                     .retry_policy(standard_retry_policy())
-                    .priority(build_priority(priority_key))
+                    .priority(build_priority(priority_key, &input.trigger))
                     .build(),
             )
             .await?;
@@ -578,7 +610,7 @@ async fn finish_refresh<W: EntityRefreshWorkflowState>(
                 ActivityOptions::with_start_to_close_timeout(START_WORKFLOWS_TIMEOUT)
                     .task_queue(AGENT_SERVICE_TASK_QUEUE.to_owned())
                     .retry_policy(standard_retry_policy())
-                    .priority(build_priority(syn_priority))
+                    .priority(build_priority(syn_priority, &input.trigger))
                     .build(),
             )
             .await?;
@@ -633,7 +665,7 @@ async fn run_refresh_page_batch<W: EntityRefreshWorkflowState>(
             .task_queue(task_queue)
             .heartbeat_timeout(REFRESH_PAGE_HEARTBEAT_TIMEOUT)
             .retry_policy(standard_retry_policy())
-            .priority(build_priority(act_priority))
+            .priority(build_priority(act_priority, &input.trigger))
             .build();
         page_futures.push(Box::pin(ctx.execute_activity(
             ProviderActivities::refresh_page,
@@ -779,7 +811,7 @@ async fn run_merge_and_episodes<W: EntityRefreshWorkflowState>(
     let merge_opts = ActivityOptions::with_start_to_close_timeout(MERGE_ANIME_TIMEOUT)
         .task_queue(UPDATE_SERVICE_TASK_QUEUE.to_owned())
         .retry_policy(standard_retry_policy())
-        .priority(build_priority(priority_key))
+        .priority(build_priority(priority_key, &input.trigger))
         .build();
     let merge_output: MergeEntityOutput = match W::ENTITY_KIND {
         RefreshEntityKind::Anime => {
@@ -828,7 +860,7 @@ async fn run_merge_and_episodes<W: EntityRefreshWorkflowState>(
                 ActivityOptions::with_start_to_close_timeout(START_WORKFLOWS_TIMEOUT)
                     .task_queue(UPDATE_SERVICE_TASK_QUEUE.to_owned())
                     .retry_policy(standard_retry_policy())
-                    .priority(build_priority(ep_priority))
+                    .priority(build_priority(ep_priority, &input.trigger))
                     .build(),
             )
             .await?;
@@ -846,6 +878,7 @@ async fn call_record_refresh<W: EntityRefreshWorkflowState>(
     refresh_after_days: i64,
 ) -> WorkflowResult<()> {
     let priority_key = ctx.state(|state| state.core_state().current_priority);
+    let trigger = ctx.state(|state| state.core_state().input.trigger.clone());
     ctx.execute_activity(
         UpdateServiceActivities::record_refresh,
         RecordRefreshInput {
@@ -857,7 +890,7 @@ async fn call_record_refresh<W: EntityRefreshWorkflowState>(
         ActivityOptions::with_start_to_close_timeout(RECORD_REFRESH_TIMEOUT)
             .task_queue(UPDATE_SERVICE_TASK_QUEUE.to_owned())
             .retry_policy(standard_retry_policy())
-            .priority(build_priority(priority_key))
+            .priority(build_priority(priority_key, &trigger))
             .build(),
     )
     .await?;

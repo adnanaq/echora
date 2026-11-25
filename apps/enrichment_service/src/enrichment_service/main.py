@@ -13,6 +13,7 @@ import signal
 
 import grpc
 from common.config import get_settings
+from enrichment.sources.base.browser import configure_browser_pool
 from enrichment_proto.v1 import enrichment_service_pb2_grpc
 from grpc_health.v1 import health, health_pb2, health_pb2_grpc
 from http_cache import close_cache
@@ -93,6 +94,7 @@ async def serve() -> None:
     settings = get_settings()
     # 1. Initialize Telemetry (MUST BE FIRST)
     _setup_observability(settings)
+    configure_browser_pool(settings.enrichment.enrichment_max_concurrent_browsers)
 
     runtime = await build_runtime(settings)
 

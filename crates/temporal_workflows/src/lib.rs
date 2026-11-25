@@ -12,6 +12,7 @@ mod refresh_entity_workflows;
 
 use temporalio_common::worker::{WorkerDeploymentOptions, WorkerDeploymentVersion};
 use temporalio_sdk::WorkerOptions;
+use temporalio_sdk::runtime::worker_tuner::{FixedSizeSlotSupplier, TunerHolder, WorkerTuner};
 
 #[doc(inline)]
 pub use activities::{
@@ -112,6 +113,72 @@ impl WorkerQueueSpec {
     }
 }
 
+/// Default concurrency cap for browser-crawled provider activity workers (`mal`, `anime_planet`, `anisearch`, `anidb`).
+pub const DEFAULT_BROWSER_ACTIVITY_SLOTS: usize = 2;
+
+/// Default activity slot count for HTTP/API provider workers that do not cap concurrency.
+const DEFAULT_UNBOUNDED_ACTIVITY_SLOTS: usize = 100;
+
+/// Per-provider worker fallback rate limit and activity concurrency policy.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ProviderWorkerPolicy {
+    /// Fallback activities-per-second cap applied when the Temporal server queue has no RPS limit set.
+    pub fallback_rps: f64,
+    /// Optional cap on concurrent `refresh_page` activities executed on this worker (set for browser-crawled providers).
+    pub max_concurrent_activities: Option<usize>,
+}
+
+/// Resolves the fallback rate limit and concurrency policy for `provider`.
+///
+/// # Examples
+///
+/// ```
+/// use temporal_workflows::find_provider_worker_policy;
+///
+/// let anidb = find_provider_worker_policy("anidb");
+/// assert!((anidb.fallback_rps - 0.00174).abs() < f64::EPSILON);
+/// assert_eq!(anidb.max_concurrent_activities, Some(1));
+///
+/// let mal = find_provider_worker_policy("mal");
+/// assert_eq!(mal.max_concurrent_activities, Some(2));
+///
+/// let kitsu = find_provider_worker_policy("kitsu");
+/// assert!(kitsu.max_concurrent_activities.is_none());
+/// ```
+#[must_use]
+pub fn find_provider_worker_policy(provider: &str) -> ProviderWorkerPolicy {
+    match provider {
+        "anidb" => ProviderWorkerPolicy {
+            fallback_rps: 0.00174,
+            max_concurrent_activities: Some(1),
+        },
+        "mal" => ProviderWorkerPolicy {
+            fallback_rps: 0.10,
+            max_concurrent_activities: Some(DEFAULT_BROWSER_ACTIVITY_SLOTS),
+        },
+        "anisearch" => ProviderWorkerPolicy {
+            fallback_rps: 0.16,
+            max_concurrent_activities: Some(DEFAULT_BROWSER_ACTIVITY_SLOTS),
+        },
+        "anime_planet" => ProviderWorkerPolicy {
+            fallback_rps: 0.33,
+            max_concurrent_activities: Some(DEFAULT_BROWSER_ACTIVITY_SLOTS),
+        },
+        "anilist" => ProviderWorkerPolicy {
+            fallback_rps: 0.50,
+            max_concurrent_activities: None,
+        },
+        "kitsu" => ProviderWorkerPolicy {
+            fallback_rps: 2.0,
+            max_concurrent_activities: None,
+        },
+        _ => ProviderWorkerPolicy {
+            fallback_rps: 1.0,
+            max_concurrent_activities: None,
+        },
+    }
+}
+
 /// Builds `WorkerOptions` with deployment-based Worker Versioning for `queue_spec`.
 ///
 /// # Errors
@@ -150,18 +217,40 @@ pub fn build_worker_options(
 
     let builder = WorkerOptions::new(task_queue).deployment_options(deployment_options);
 
-    let builder = match queue_spec {
-        WorkerQueueSpec::UpdateService => builder
+    match queue_spec {
+        WorkerQueueSpec::UpdateService => Ok(builder
             .register_activities(UpdateServiceActivities::new(ports))
             .register_workflow::<RefreshAnimeWorkflow>()?
             .register_workflow::<RefreshEpisodeWorkflow>()?
             .register_workflow::<RefreshCharacterWorkflow>()?
-            .register_workflow::<SpikeWorkflow>()?,
-        WorkerQueueSpec::Provider(_) => builder.register_activities(ProviderActivities::new(ports)),
-        WorkerQueueSpec::AgentService => builder.register_activities(SpikeActivities),
-    };
-
-    Ok(builder.build())
+            .register_workflow::<SpikeWorkflow>()?
+            .build()),
+        WorkerQueueSpec::Provider(provider) => {
+            let policy = find_provider_worker_policy(provider);
+            let maybe_tuner = policy.max_concurrent_activities.map(|max_slots| {
+                WorkerTuner::from(
+                    TunerHolder::builder()
+                        .workflow_task_slot_supplier(FixedSizeSlotSupplier::new(
+                            DEFAULT_UNBOUNDED_ACTIVITY_SLOTS,
+                        ))
+                        .activity_task_slot_supplier(FixedSizeSlotSupplier::new(max_slots))
+                        .local_activity_task_slot_supplier(FixedSizeSlotSupplier::new(
+                            DEFAULT_UNBOUNDED_ACTIVITY_SLOTS,
+                        ))
+                        .nexus_task_slot_supplier(FixedSizeSlotSupplier::new(
+                            DEFAULT_UNBOUNDED_ACTIVITY_SLOTS,
+                        ))
+                        .build(),
+                )
+            });
+            Ok(builder
+                .register_activities(ProviderActivities::new(ports))
+                .max_task_queue_activities_per_second(policy.fallback_rps)
+                .maybe_tuner(maybe_tuner)
+                .build())
+        }
+        WorkerQueueSpec::AgentService => Ok(builder.register_activities(SpikeActivities).build()),
+    }
 }
 
 #[allow(

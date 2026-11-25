@@ -33,6 +33,34 @@ fn settings_load_defaults_and_env_overrides() {
     assert_eq!(loaded.deployment_name, "custom-worker");
     assert_eq!(loaded.build_id, "build-42");
     assert!(loaded.use_worker_versioning);
+    assert_eq!(
+        loaded.enrichment_fetch_service_address,
+        "http://localhost:8002"
+    );
+    assert_eq!(
+        loaded.enrichment_merge_service_address,
+        "http://localhost:8002"
+    );
+
+    let split_env = HashMap::from([
+        ("ENRICHMENT_SERVICE_ADDRESS", "http://enrichment:8002"),
+        (
+            "ENRICHMENT_FETCH_SERVICE_ADDRESS",
+            "http://enrichment-fetch:8002",
+        ),
+        ("ENRICHMENT_MERGE_SERVICE_ADDRESS", "enrichment-merge:8002"),
+    ]);
+    let split =
+        UpdateServiceSettings::from_lookup(|key| split_env.get(key).copied().map(str::to_owned));
+    assert_eq!(split.enrichment_service_address, "http://enrichment:8002");
+    assert_eq!(
+        split.enrichment_fetch_service_address,
+        "http://enrichment-fetch:8002"
+    );
+    assert_eq!(
+        split.enrichment_merge_service_address,
+        "http://enrichment-merge:8002"
+    );
 
     let workers = build_all_worker_options(&loaded, &UpdateServicePorts::noop())
         .expect("build all worker options");

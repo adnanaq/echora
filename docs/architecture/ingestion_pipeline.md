@@ -25,8 +25,8 @@ Ingestion fills the catalogue from a seed release, the offline anime database. I
 2. **Load the works.** A Temporal workflow turns the cleaned seed into works and page links in PostgreSQL. (ECHO-120)
 3. **Enrich each new work.**
    - The same `RefreshAnimeWorkflow` that keeps works current fetches every page of a new work, merges it and saves it. (~~ECHO-111~~)
-   - Each episode the work lists then gets its own first refresh. (ECHO-112)
-4. **Load the characters.** A character list is built from every work's character lists on each provider, deduplicated across providers, and loaded with `CreateCharacter`. Each new character gets its own first refresh, whose merge reads the works it appears in from its own pages. (ECHO-135) (ECHO-112)
+   - Each episode the work lists then gets its own first refresh. (~~ECHO-112~~)
+4. **Load the characters.** A character list is built from every work's character lists on each provider, deduplicated across providers, and loaded with `CreateCharacter`. Each new character gets its own first refresh, whose merge reads the works it appears in from its own pages. (ECHO-135) (~~ECHO-112~~)
 
 There is no separate ingestion service and no separate enrichment path. A first enrichment is a refresh in which every page is due, so ingestion and updates share one code path, one set of provider rate limits and one history in Temporal. See [[update_service|Update Service]]. (~~ECHO-111~~)
 
@@ -126,7 +126,7 @@ The weekly sweep keeps them current. (ECHO-117)
 
 - **Bounded.** Before each batch of refresh starts, the workflow waits until fewer than `MAX_PENDING_BULK_REFRESHES` (500) of its refreshes are still running, counted by the search attribute `RefreshTrigger = 'seed'`. It continues as new between batches, so its own history stays small. (ECHO-120)
 - **Shares the providers fairly.** Its refreshes run with priority 3 and the fairness key `seed`. (ECHO-120)
-  - The provider queues order work by priority and fairness, so works users open still go first, and the weekly sweep keeps its share of every provider. See [[update_service#Provider rate limits|Update Service]]. (ECHO-113)
+  - The provider queues order work by priority and fairness, so works users open still go first, and the weekly sweep keeps its share of every provider. See [[update_service#Provider rate limits|Update Service]]. (~~ECHO-113~~)
 - **Safe to run again.** A retried or repeated load changes nothing the second time. (ECHO-120)
   - `CreateAnime` skips a work an earlier attempt already created, and the other seed-load writes are safe to repeat. (ECHO-107)
 
@@ -146,7 +146,7 @@ The `RefreshAnimeWorkflow` of a new work finds every page due, since none has be
    - ~~The same save creates the new episodes. (ECHO-103)~~
 3. ~~`SaveAnime` saves the work and writes `anime.created` to the outbox in the same transaction. (ECHO-98)~~
    - The vector service indexes the work from that event. (ECHO-114)
-4. The workflow starts a `RefreshEpisodeWorkflow` for each new episode, which fetches its own pages and sends `episode.created`. (ECHO-112)
+4. The workflow starts a `RefreshEpisodeWorkflow` for each new episode, which fetches its own pages and sends `episode.created`. (~~ECHO-112~~)
 
 The work's refresh creates no characters. They are loaded on their own, below.
 
@@ -169,13 +169,13 @@ Characters have their own list, as works have the cleaned seed. Every provider w
 1. **Build the list.** Every work's character lists are read, each character page is kept once, and pages of one character on different providers become one entry: matched by name and role within one work's lists, with Jev deciding unclear pairs and an uncertain pair going to review as `character_match`. The list is written as a JSONL file. (ECHO-135)
 2. **Load it.** `CreateCharacter` creates each new character with its name and page links. A page that already belongs to a character links the entry's other pages to that character instead, so a repeated load creates nothing twice. (ECHO-135)
 3. **Refresh.**
-   - Each new character's `RefreshCharacterWorkflow` fetches its own pages, merges them and saves it. (ECHO-112)
+   - Each new character's `RefreshCharacterWorkflow` fetches its own pages, merges them and saves it. (~~ECHO-112~~)
    - ~~The merge reads the works the character appears in, and its role in each, from its own pages. (ECHO-110)~~
    - ~~`SaveCharacter` stores the merged character and sends `character.created`. It stores the works it appears in by each work's page, so the character joins every stored work whose page it names. (ECHO-104)~~
 
 Discovery adds characters the same way. A pass runs once a day over the works added or refreshed since the last one, so an airing work's character list is read about once a week, right after its weekly refresh. It creates the characters whose pages no character holds yet, and sends a known character a refetch when a work lists it that its appearances do not name yet. (ECHO-135)
 
-A full seed load starts tens of thousands of these workflows. They share the provider task queues and their rate limits with the weekly sweep and with entities users open. A large load therefore takes as long as the slowest provider's pacing allows, without ever exceeding it. (ECHO-113)
+A full seed load starts tens of thousands of these workflows. They share the provider task queues and their rate limits with the weekly sweep and with entities users open. A large load therefore takes as long as the slowest provider's pacing allows, without ever exceeding it. (~~ECHO-113~~)
 
 ---
 

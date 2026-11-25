@@ -138,23 +138,35 @@ pub fn map_grpc_status(status: &tonic::Status) -> PortError {
 }
 
 /// gRPC-backed implementation of [`CatalogueDataPort`] talking to `postgres_service` and
-/// `enrichment_service`.
+/// `enrichment_service` (supporting either one shared client or split fetch/merge endpoints).
 #[derive(Clone)]
 pub struct GrpcCatalogueAdapter {
     postgres: PostgresServiceClient<Channel>,
-    enrichment: EnrichmentServiceClient<Channel>,
+    fetch_enrichment: EnrichmentServiceClient<Channel>,
+    merge_enrichment: EnrichmentServiceClient<Channel>,
 }
 
 impl GrpcCatalogueAdapter {
-    /// Creates an adapter from pre-configured `postgres` and `enrichment` gRPC clients.
+    /// Creates an adapter using one shared `enrichment` client for both fetches and merges.
     #[must_use]
     pub fn new(
         postgres: PostgresServiceClient<Channel>,
         enrichment: EnrichmentServiceClient<Channel>,
     ) -> Self {
+        Self::with_split_enrichment(postgres, enrichment.clone(), enrichment)
+    }
+
+    /// Creates an adapter with independent `fetch_enrichment` and `merge_enrichment` clients.
+    #[must_use]
+    pub fn with_split_enrichment(
+        postgres: PostgresServiceClient<Channel>,
+        fetch_enrichment: EnrichmentServiceClient<Channel>,
+        merge_enrichment: EnrichmentServiceClient<Channel>,
+    ) -> Self {
         Self {
             postgres,
-            enrichment,
+            fetch_enrichment,
+            merge_enrichment,
         }
     }
 }
@@ -394,7 +406,7 @@ impl CatalogueDataPort for GrpcCatalogueAdapter {
         page_key: RefreshPageKey,
         max_age_seconds: i64,
     ) -> BoxFuture<'_, Result<RefreshPageOutput, PortError>> {
-        let mut enrichment = self.enrichment.clone();
+        let mut enrichment = self.fetch_enrichment.clone();
         let mut postgres = self.postgres.clone();
         Box::pin(async move {
             let proto_key = to_proto_page_key(&page_key);
@@ -462,7 +474,7 @@ impl CatalogueDataPort for GrpcCatalogueAdapter {
         merge_version: i32,
     ) -> BoxFuture<'_, Result<MergeAttemptOutcome, PortError>> {
         let postgres = self.postgres.clone();
-        let enrichment = self.enrichment.clone();
+        let enrichment = self.merge_enrichment.clone();
         Box::pin(async move {
             match entity_kind {
                 RefreshEntityKind::Anime => {
@@ -635,7 +647,7 @@ impl WorkflowStarterPort for TemporalWorkflowStarter {
                 input.trigger.clone()
             };
 
-            let priority = build_priority(input.priority);
+            let priority = build_priority(input.priority, &trigger_val);
             let trigger_key = SearchAttributeKey::keyword(REFRESH_TRIGGER_SEARCH_ATTRIBUTE);
             let search_attrs = SearchAttributes::new([trigger_key.value_set(trigger_val.clone())]);
 
