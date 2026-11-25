@@ -1,15 +1,27 @@
 //! Configuration and worker-set helpers for `update_service`.
 
+mod grpc_clients;
+
 use std::env;
 use std::future::Future;
+use std::sync::Arc;
 
 use anyhow::Context as _;
 use futures::future::try_join_all;
-use temporal_workflows::{PROVIDER_QUEUE_NAMES, WorkerQueueSpec, build_worker_options};
+#[doc(inline)]
+pub use grpc_clients::{
+    GrpcCatalogueAdapter, MAX_GRPC_MESSAGE_BYTES, TemporalWorkflowStarter, build_enrichment_client,
+    build_postgres_client, enrichment_service_proto, map_grpc_status, postgres_service_proto,
+    shared_proto,
+};
+use temporal_workflows::{
+    PROVIDER_QUEUE_NAMES, UpdateServicePorts, WorkerQueueSpec, build_worker_options,
+};
 use temporalio_client::{Client, ClientOptions, Connection, ConnectionOptions};
 use temporalio_common::worker::WorkerDeploymentVersion;
 use temporalio_sdk::runtime::{Runtime, RuntimeOptions};
 use temporalio_sdk::{Worker, WorkerOptions};
+use tonic::transport::Endpoint;
 use tracing::Level;
 use url::Url;
 
@@ -22,13 +34,23 @@ const DEFAULT_TEMPORAL_NAMESPACE: &str = "echora";
 /// Default Worker Deployment name for Update Service workers.
 const DEFAULT_DEPLOYMENT_NAME: &str = "update-service";
 
-/// Temporal client and Worker Versioning settings for `update_service`.
+/// Default PostgreSQL Service gRPC URL.
+const DEFAULT_POSTGRES_SERVICE_ADDRESS: &str = "http://localhost:8004";
+
+/// Default Enrichment Service gRPC URL.
+const DEFAULT_ENRICHMENT_SERVICE_ADDRESS: &str = "http://localhost:8002";
+
+/// Temporal client, gRPC backend, and Worker Versioning settings for `update_service`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UpdateServiceSettings {
     /// Temporal frontend gRPC URL (for example `http://localhost:7233`).
     pub temporal_address: String,
     /// Temporal namespace name (default `echora`).
     pub temporal_namespace: String,
+    /// PostgreSQL Service gRPC URL (default `http://localhost:8004`).
+    pub postgres_service_address: String,
+    /// Enrichment Service gRPC URL (default `http://localhost:8002`).
+    pub enrichment_service_address: String,
     /// Worker Deployment name for deployment-based Worker Versioning.
     pub deployment_name: String,
     /// Build identifier for deployment-based Worker Versioning.
@@ -68,11 +90,19 @@ impl UpdateServiceSettings {
         let raw_address = lookup("TEMPORAL_ADDRESS")
             .filter(|val| !val.trim().is_empty())
             .unwrap_or_else(|| DEFAULT_TEMPORAL_ADDRESS.to_owned());
+        let raw_postgres = lookup("POSTGRES_SERVICE_ADDRESS")
+            .filter(|val| !val.trim().is_empty())
+            .unwrap_or_else(|| DEFAULT_POSTGRES_SERVICE_ADDRESS.to_owned());
+        let raw_enrichment = lookup("ENRICHMENT_SERVICE_ADDRESS")
+            .filter(|val| !val.trim().is_empty())
+            .unwrap_or_else(|| DEFAULT_ENRICHMENT_SERVICE_ADDRESS.to_owned());
         Self {
             temporal_address: normalize_temporal_address(&raw_address),
             temporal_namespace: lookup("TEMPORAL_NAMESPACE")
                 .filter(|val| !val.trim().is_empty())
                 .unwrap_or_else(|| DEFAULT_TEMPORAL_NAMESPACE.to_owned()),
+            postgres_service_address: normalize_temporal_address(&raw_postgres),
+            enrichment_service_address: normalize_temporal_address(&raw_enrichment),
             deployment_name: lookup("WORKER_DEPLOYMENT_NAME")
                 .filter(|val| !val.trim().is_empty())
                 .unwrap_or_else(|| DEFAULT_DEPLOYMENT_NAME.to_owned()),
@@ -127,12 +157,13 @@ pub fn list_worker_queue_specs() -> Vec<WorkerQueueSpec> {
 /// use update_service::{UpdateServiceSettings, build_all_worker_options};
 ///
 /// let settings = UpdateServiceSettings::from_lookup(|_| None);
-/// let workers = build_all_worker_options(&settings)?;
+/// let workers = build_all_worker_options(&settings, &temporal_workflows::UpdateServicePorts::noop())?;
 /// assert_eq!(workers.len(), 10);
 /// # Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
 /// ```
 pub fn build_all_worker_options(
     settings: &UpdateServiceSettings,
+    ports: &UpdateServicePorts,
 ) -> Result<Vec<WorkerOptions>, Box<dyn std::error::Error + Send + Sync>> {
     let deployment = WorkerDeploymentVersion::builder()
         .deployment_name(settings.deployment_name.clone())
@@ -140,7 +171,14 @@ pub fn build_all_worker_options(
         .build();
     list_worker_queue_specs()
         .iter()
-        .map(|spec| build_worker_options(spec, deployment.clone(), settings.use_worker_versioning))
+        .map(|spec| {
+            build_worker_options(
+                spec,
+                deployment.clone(),
+                settings.use_worker_versioning,
+                ports.clone(),
+            )
+        })
         .collect()
 }
 
@@ -177,8 +215,22 @@ pub async fn run_workers(
 
     let runtime =
         Runtime::from_current_tokio(RuntimeOptions::default()).map_err(anyhow::Error::msg)?;
-    let worker_options =
-        build_all_worker_options(settings).map_err(|err| anyhow::anyhow!("{err}"))?;
+    let postgres_channel = Endpoint::from_shared(settings.postgres_service_address.clone())
+        .context("POSTGRES_SERVICE_ADDRESS must be a valid URL")?
+        .connect_lazy();
+    let enrichment_channel = Endpoint::from_shared(settings.enrichment_service_address.clone())
+        .context("ENRICHMENT_SERVICE_ADDRESS must be a valid URL")?
+        .connect_lazy();
+    let catalogue_port = Arc::new(GrpcCatalogueAdapter::new(
+        build_postgres_client(postgres_channel),
+        build_enrichment_client(enrichment_channel),
+    ));
+    let starter_port = Arc::new(TemporalWorkflowStarter::new(client.clone()));
+    let worker_options = build_all_worker_options(
+        settings,
+        &UpdateServicePorts::new(catalogue_port, starter_port),
+    )
+    .map_err(|err| anyhow::anyhow!("{err}"))?;
 
     tracing::event!(
         name: "update_service.workers.starting",
