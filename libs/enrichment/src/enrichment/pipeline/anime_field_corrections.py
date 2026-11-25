@@ -34,11 +34,15 @@ def _unpack_any_value(any_value: AnyProto) -> Any:
         "FloatValue",
         "DoubleValue",
     )
+    type_name = any_value.type_url.rsplit("/", 1)[-1]
     for wrapper_name in wrapper_names:
         wrapper_cls = getattr(wrappers_pb2, wrapper_name)
-        if any_value.Is(wrapper_cls.DESCRIPTOR):
+        if (
+            any_value.Is(wrapper_cls.DESCRIPTOR)
+            or type_name == wrapper_cls.DESCRIPTOR.full_name
+        ):
             msg = wrapper_cls()
-            any_value.Unpack(msg)
+            msg.ParseFromString(any_value.value)
             return msg.value
 
     message_types = (
@@ -50,9 +54,12 @@ def _unpack_any_value(any_value: AnyProto) -> Any:
         Timestamp,
     )
     for msg_cls in message_types:
-        if any_value.Is(msg_cls.DESCRIPTOR):
+        descriptor = msg_cls.DESCRIPTOR
+        if any_value.Is(descriptor) or (
+            descriptor is not None and type_name == descriptor.full_name
+        ):
             msg = msg_cls()
-            any_value.Unpack(msg)
+            msg.ParseFromString(any_value.value)
             return msg
 
     logger.warning(f"Unsupported FieldCorrection Any type_url: {any_value.type_url!r}")

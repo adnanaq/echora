@@ -452,6 +452,25 @@ def _apply_page_data(result: dict[str, Any], page: AniDBCharacterPage) -> None:
 
     if page.gender:
         result.setdefault("attributes", {})["gender"] = page.gender
+    for attr_key, attr_val in (
+        ("date_of_birth", page.date_of_birth),
+        ("age", page.age),
+        ("blood_type", page.blood_type),
+        ("height", page.height),
+    ):
+        if attr_val:
+            result.setdefault("attributes", {})[attr_key] = attr_val
+    if page.picture and not result.get("images"):
+        result["images"] = [page.picture]
+    if page.seiyuu and not result.get("voice_actors"):
+        result["voice_actors"] = [
+            VoiceActor(
+                name=entry["name"],
+                sources=[entry["url"]] if entry.get("url") else [],
+            ).model_dump(mode="json", exclude_none=True)
+            for entry in page.seiyuu
+            if entry.get("name")
+        ]
 
 
 def map_anidb_anime_responses(
@@ -547,3 +566,31 @@ def map_anidb_character_page_responses(
     if character_page is None or not any(character_page.model_dump().values()):
         return None
     return character_page
+
+
+def map_anidb_character_responses(
+    responses: Sequence[PageResponse],
+    *,
+    source_url: str = "",
+) -> dict[str, Any]:
+    """Map stored AniDB character HTML response into a canonical Character dict.
+
+    Args:
+        responses: Stored PageResponse sequence containing a ``main`` HTML response.
+        source_url: Canonical AniDB character URL.
+
+    Returns:
+        Dict of canonical Character field values.
+
+    Raises:
+        ValueError: If the ``main`` response is missing or yields no character data.
+    """
+    page_data = map_anidb_character_page_responses(responses)
+    if page_data is None or not page_data.name_main:
+        error_message = "AniDB character 'main' HTML yielded no character data"
+        raise ValueError(error_message)
+    char_model = AniDBCharacter(name=page_data.name_main)
+    mapped = character_from_anidb(char_model, page_data=page_data)
+    if source_url and source_url not in (mapped.get("sources") or []):
+        mapped["sources"] = [*mapped.get("sources", []), source_url]
+    return mapped

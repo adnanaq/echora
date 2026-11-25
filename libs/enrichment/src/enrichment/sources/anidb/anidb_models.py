@@ -334,7 +334,12 @@ class AniDBCharacterPage(BaseModel):
     name_main: str | None = None
     name_kanji: str | None = None
     description: str | None = None
+    picture: str | None = None
     gender: str | None = None
+    date_of_birth: str | None = None
+    age: str | None = None
+    blood_type: str | None = None
+    height: str | None = None
     nicknames: StrippedTextList = []
     official_names: StrippedTextList = []
     abilities: StrippedTextList = []
@@ -343,3 +348,4 @@ class AniDBCharacterPage(BaseModel):
     role: StrippedTextList = []
     supernatural_abilities: StrippedTextList = []
     animeography: list[dict[str, str]] = []  # [{"title": ..., "role": ..., "url": ...}]
+    seiyuu: list[dict[str, str]] = []  # [{"name": ..., "url": ..., "anime_url": ...}]

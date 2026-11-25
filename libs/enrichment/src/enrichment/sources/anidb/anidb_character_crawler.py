@@ -74,6 +74,12 @@ _XPATHS: dict[str, str] = {
         "//label[@itemprop='alternateName']/text()"
     ),
     "gender": "//span[@itemprop='gender']/text()",
+    "picture": "//div[contains(@class,'info')]//div[contains(@class,'image')]//img/@src",
+    "date_of_birth": "//*[@id='tab_1_pane']//tr[contains(@class,'birthdate')]//td/text()",
+    "age": "//*[@id='tab_1_pane']//tr[contains(@class,'age')]//td/text()",
+    "blood_type": "//*[@id='tab_1_pane']//tr[contains(@class,'bloodtype')]//td/text()",
+    "height": "//*[@id='tab_1_pane']//tr[contains(@class,'height')]//td/text()",
+    "seiyuu_rows": "//table[contains(@class,'seiyuu')]//tr[td]",
     # Tag categories
     "abilities": (
         "//*[@id='tab_1_pane']"
@@ -158,6 +164,35 @@ def _extract_from_html(html: str) -> AniDBCharacterPage | None:
                 entries.append({"title": title, "role": role, "url": url})
         return entries
 
+    def _seiyuu() -> list[dict[str, str]]:
+        entries: list[dict[str, str]] = []
+        for row in cast(list[Any], tree.xpath(_XPATHS["seiyuu_rows"])):
+            creator_els = cast(
+                list[Any],
+                row.xpath('.//td[contains(@class,"creator")]//a'),
+            )
+            if not creator_els:
+                continue
+            name = " ".join(creator_els[0].itertext()).strip()
+            href = creator_els[0].get("href", "")
+            creator_url = f"https://anidb.net{href}" if href.startswith("/") else href
+            anime_els = cast(
+                list[Any],
+                row.xpath('.//td[contains(@class,"anime")]//a'),
+            )
+            anime_href = anime_els[0].get("href", "") if anime_els else ""
+            anime_url = (
+                f"https://anidb.net{anime_href}"
+                if anime_href.startswith("/")
+                else anime_href
+            )
+            if name:
+                entry: dict[str, str] = {"name": name, "url": creator_url}
+                if anime_url:
+                    entry["anime_url"] = anime_url
+                entries.append(entry)
+        return entries
+
     def _description() -> str | None:
         nodes = cast(list[Any], tree.xpath(_XPATHS["description"]))
         if not nodes:
@@ -169,7 +204,12 @@ def _extract_from_html(html: str) -> AniDBCharacterPage | None:
         name_main=_first("name_main"),
         name_kanji=_first("name_kanji"),
         description=_description(),
+        picture=_first("picture"),
         gender=_first("gender"),
+        date_of_birth=_first("date_of_birth"),
+        age=_first("age"),
+        blood_type=_first("blood_type"),
+        height=_first("height"),
         abilities=_texts("abilities"),
         supernatural_abilities=_texts("supernatural_abilities"),
         looks=_texts("looks"),
@@ -178,6 +218,7 @@ def _extract_from_html(html: str) -> AniDBCharacterPage | None:
         official_names=_texts("official_names"),
         nicknames=_texts("nicknames"),
         animeography=_animeography(),
+        seiyuu=_seiyuu(),
     )
 
 
