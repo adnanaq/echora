@@ -146,8 +146,10 @@ async fn ensure_entity_exists(
 /// ```no_run
 /// # use uuid::Uuid;
 /// # async fn example(pool: &sqlx::PgPool, anime_id: Uuid) -> Result<(), postgres_db::Error> {
+/// // A work linked to one MAL source page (fetched) and one AniDB partial source (unfetched).
 /// let pages = postgres_db::list_entity_pages(pool, postgres_db::EntityType::Anime, anime_id).await?;
-/// assert!(pages.iter().all(|page| !page.is_dead || page.is_partial_source || page.is_dead));
+/// assert_eq!(pages.iter().filter(|page| !page.is_partial_source).count(), 1);
+/// assert!(pages.iter().any(|page| page.is_partial_source && page.fetched_at.is_none()));
 /// # Ok(())
 /// # }
 /// ```
@@ -267,6 +269,7 @@ async fn find_earliest_failed_page_retry(
 /// # use chrono::Duration;
 /// # use uuid::Uuid;
 /// # async fn example(pool: &sqlx::PgPool, anime_id: Uuid) -> Result<(), postgres_db::Error> {
+/// // Record a clean refresh 7 days out; future refreshes pick it up again after that interval.
 /// postgres_db::record_refresh(
 ///     pool,
 ///     postgres_db::EntityType::Anime,
@@ -394,8 +397,19 @@ fn map_due_rows(rows: Vec<(Uuid, Option<DateTime<Utc>>)>) -> Vec<DueEntityRecord
 ///     after_id: None,
 ///     merge_version: 1,
 /// };
-/// let due = postgres_db::list_due_anime(pool, &query).await?;
-/// assert!(due.len() <= 100);
+/// let first_page = postgres_db::list_due_anime(pool, &query).await?;
+/// if let Some(last) = first_page.last() {
+///     let next_page = postgres_db::list_due_anime(
+///         pool,
+///         &postgres_db::DueEntitiesQuery {
+///             after_next_refresh_at: last.next_refresh_at,
+///             after_id: Some(last.entity_id),
+///             ..query
+///         },
+///     )
+///     .await?;
+///     assert!(next_page.iter().all(|row| row.entity_id != last.entity_id));
+/// }
 /// # Ok(())
 /// # }
 /// ```
@@ -450,7 +464,8 @@ pub async fn list_due_anime(
 ///     merge_version: 1,
 /// };
 /// let due = postgres_db::list_due_episodes(pool, &query).await?;
-/// assert!(due.len() <= 100);
+/// // Never-refreshed episodes (next_refresh_at == None) sort ahead of scheduled ones.
+/// assert!(due.first().is_none_or(|row| row.next_refresh_at.is_none()));
 /// # Ok(())
 /// # }
 /// ```
@@ -511,6 +526,7 @@ pub async fn list_due_episodes(
 ///     merge_version: 1,
 /// };
 /// let due = postgres_db::list_due_characters(pool, &query).await?;
+/// // Only characters with at least one ongoing or upcoming undeleted work are returned.
 /// assert!(due.len() <= 100);
 /// # Ok(())
 /// # }
@@ -650,7 +666,10 @@ pub async fn list_upcoming_episodes(
 /// ```no_run
 /// # async fn example(pool: &sqlx::PgPool) -> Result<(), postgres_db::Error> {
 /// let anime_ids = postgres_db::list_score_anime(pool, 90, 100, None).await?;
-/// assert!(anime_ids.len() <= 100);
+/// if let Some(&last_id) = anime_ids.last() {
+///     let next_page = postgres_db::list_score_anime(pool, 90, 100, Some(last_id)).await?;
+///     assert!(next_page.iter().all(|&id| id > last_id));
+/// }
 /// # Ok(())
 /// # }
 /// ```
@@ -743,7 +762,7 @@ pub async fn list_requested_merges(
 ///     None,
 /// )
 /// .await?;
-/// assert!(versions.len() <= 100);
+/// assert!(versions.iter().all(|entry| entry.version >= 1));
 /// # Ok(())
 /// # }
 /// ```
@@ -784,6 +803,7 @@ pub async fn list_entity_versions(
 /// ```no_run
 /// # async fn example(pool: &sqlx::PgPool) -> Result<(), postgres_db::Error> {
 /// let pages = postgres_db::list_due_pages(pool, postgres_db::Provider::AniDb, 50).await?;
+/// // Never-fetched pages appear first, followed by oldest fetched_at in address order.
 /// assert!(pages.len() <= 50);
 /// # Ok(())
 /// # }

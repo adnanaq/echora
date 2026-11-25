@@ -106,6 +106,8 @@ pub struct VisibleCharacterRecord {
 /// # async fn example(pool: &sqlx::PgPool, episode_id: Uuid) -> Result<(), postgres_db::Error> {
 /// let episode = postgres_db::read_visible_episode(pool, episode_id).await?;
 /// assert_eq!(episode.episode_id, episode_id);
+/// assert!(episode.episode_number >= 0);
+/// assert!(episode.version >= 1);
 /// # Ok(())
 /// # }
 /// ```
@@ -279,6 +281,8 @@ async fn hydrate_episode_record(
 /// # async fn example(pool: &sqlx::PgPool, character_id: Uuid) -> Result<(), postgres_db::Error> {
 /// let character = postgres_db::read_visible_character(pool, character_id).await?;
 /// assert_eq!(character.character_id, character_id);
+/// assert!(!character.name.is_empty());
+/// assert!(character.version >= 1);
 /// # Ok(())
 /// # }
 /// ```
