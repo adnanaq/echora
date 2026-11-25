@@ -270,7 +270,8 @@ Character pages are behind Cloudflare. Its "Just a moment..." page clears by its
 
 | Module | Purpose |
 |---|---|
-| `anidb_helper.py` | `AniDBHelper` — anime, episodes, and characters via XML API |
+| `anidb_fetcher.py` | `AniDBFetcher` — raw `PageResponse` fetcher (`ANIME` XML + `CHARACTER` HTML) |
+| `anidb_helper.py` | `AniDBHelper` — legacy helper entry point (anime, episodes, characters via XML API) |
 | `anidb_character_crawler.py` | `fetch_anidb_characters(char_ids)` / `fetch_anidb_character(char_id)` — character web pages via zendriver + lxml XPath |
 | `anidb_xml_parser.py` | AniDB XML → source models (stateless, no I/O) |
 | `anidb_mapper.py` | XML + page responses → canonical dicts |
@@ -294,11 +295,22 @@ REST API via aiohttp. Lookup is title-search-based (no persistent anime ID).
 
 | Module | Purpose |
 |---|---|
-| `animeschedule_helper.py` | `AnimescheduleHelper` — anime + broadcast schedule |
+| `animeschedule_fetcher.py` | `AnimeScheduleFetcher` — raw `PageResponse` fetcher (`ANIME` JSON) |
+| `animeschedule_helper.py` | `AnimescheduleHelper` — legacy helper entry point (anime + broadcast schedule) |
 | `animeschedule_mapper.py` | API responses → canonical dicts |
 | `animeschedule_models.py` | Pydantic source models |
 
 **Expected `ids` key:** resolved via title search against `offline_data`
+
+---
+
+### Syoboi (`sources/syoboi/`)
+
+Syoboi Calendar XML API (`cal.syoboi.jp/db.php`) via aiohttp.
+
+| Module | Purpose |
+|---|---|
+| `syoboi_fetcher.py` | `SyoboiFetcher` — raw `PageResponse` fetcher (`TitleLookup` + `ProgLookup` XML) |
 
 ---
 
