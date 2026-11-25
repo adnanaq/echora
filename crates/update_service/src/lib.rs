@@ -1,7 +1,5 @@
 //! Configuration and worker-set helpers for `update_service`.
 
-// Rust guideline compliant 2026-10-09
-
 use std::env;
 use std::future::Future;
 

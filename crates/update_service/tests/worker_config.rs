@@ -1,7 +1,5 @@
 //! Unit tests for `update_service` settings and worker builder.
 
-// Rust guideline compliant 2026-10-09
-
 use std::collections::HashMap;
 use std::time::Duration;
 

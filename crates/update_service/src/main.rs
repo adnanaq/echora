@@ -1,7 +1,5 @@
 //! Entry point for the Echora Update Service Temporal worker process.
 
-// Rust guideline compliant 2026-10-09
-
 use common::{CommonSettings, init_telemetry};
 use mimalloc::MiMalloc;
 use tokio::signal::unix::{Signal, SignalKind, signal};

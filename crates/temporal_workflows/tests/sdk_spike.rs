@@ -1,7 +1,5 @@
 //! Temporal SDK spike and workflow integration tests for ECHO-95.
 
-// Rust guideline compliant 2026-10-09
-
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use futures::StreamExt as _;

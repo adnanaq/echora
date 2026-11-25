@@ -4,8 +4,6 @@
 //! deployment-based worker versioning helpers, and SDK spike primitives used
 //! by `update_service`.
 
-// Rust guideline compliant 2026-10-09
-
 use temporalio_common::worker::{WorkerDeploymentOptions, WorkerDeploymentVersion};
 use temporalio_sdk::WorkerOptions;
 

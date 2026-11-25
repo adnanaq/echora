@@ -1,7 +1,5 @@
 //! Integration tests that run the `update_service` binary against Temporal.
 
-// Rust guideline compliant 2026-10-09
-
 #![allow(
     clippy::expect_used,
     reason = "a failed setup step stops the test, as a test's own expect does"
