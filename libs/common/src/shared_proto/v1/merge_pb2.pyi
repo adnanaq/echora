@@ -57,6 +57,16 @@ class FieldCorrection(_message.Message):
     approved_at: _timestamp_pb2.Timestamp
     def __init__(self, field_path: _Optional[str] = ..., value: _Optional[_Union[_any_pb2.Any, _Mapping]] = ..., approved_by: _Optional[str] = ..., approved_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...
 
+class GeneratedText(_message.Message):
+    __slots__ = ("field_path", "text", "written_at")
+    FIELD_PATH_FIELD_NUMBER: _ClassVar[int]
+    TEXT_FIELD_NUMBER: _ClassVar[int]
+    WRITTEN_AT_FIELD_NUMBER: _ClassVar[int]
+    field_path: str
+    text: str
+    written_at: _timestamp_pb2.Timestamp
+    def __init__(self, field_path: _Optional[str] = ..., text: _Optional[str] = ..., written_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...
+
 class RelationClaim(_message.Message):
     __slots__ = ("provider", "relation_type", "target_page")
     PROVIDER_FIELD_NUMBER: _ClassVar[int]

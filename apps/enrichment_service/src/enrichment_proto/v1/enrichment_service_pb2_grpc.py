@@ -50,6 +50,11 @@ class EnrichmentServiceStub:
                 request_serializer=v1_dot_enrichment__service__pb2.FetchPageRequest.SerializeToString,
                 response_deserializer=v1_dot_enrichment__service__pb2.FetchPageResponse.FromString,
                 _registered_method=True)
+        self.MergeAnime = channel.unary_unary(
+                '/enrichment_service.v1.EnrichmentService/MergeAnime',
+                request_serializer=v1_dot_enrichment__service__pb2.MergeAnimeRequest.SerializeToString,
+                response_deserializer=v1_dot_enrichment__service__pb2.MergeAnimeResponse.FromString,
+                _registered_method=True)
 
 
 class EnrichmentServiceServicer:
@@ -77,6 +82,13 @@ class EnrichmentServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def MergeAnime(self, request, context):
+        """Maps stored pages, merges them into one anime, and applies overrides.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_EnrichmentServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -94,6 +106,11 @@ def add_EnrichmentServiceServicer_to_server(servicer, server):
                     servicer.FetchPage,
                     request_deserializer=v1_dot_enrichment__service__pb2.FetchPageRequest.FromString,
                     response_serializer=v1_dot_enrichment__service__pb2.FetchPageResponse.SerializeToString,
+            ),
+            'MergeAnime': grpc.unary_unary_rpc_method_handler(
+                    servicer.MergeAnime,
+                    request_deserializer=v1_dot_enrichment__service__pb2.MergeAnimeRequest.FromString,
+                    response_serializer=v1_dot_enrichment__service__pb2.MergeAnimeResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -178,6 +195,33 @@ class EnrichmentService:
             '/enrichment_service.v1.EnrichmentService/FetchPage',
             v1_dot_enrichment__service__pb2.FetchPageRequest.SerializeToString,
             v1_dot_enrichment__service__pb2.FetchPageResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def MergeAnime(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/enrichment_service.v1.EnrichmentService/MergeAnime',
+            v1_dot_enrichment__service__pb2.MergeAnimeRequest.SerializeToString,
+            v1_dot_enrichment__service__pb2.MergeAnimeResponse.FromString,
             options,
             channel_credentials,
             insecure,
