@@ -5,8 +5,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use futures::StreamExt as _;
 use temporal_workflows::{
     AGENT_SERVICE_TASK_QUEUE, PROVIDER_QUEUE_NAMES, REFRESH_TRIGGER_SEARCH_ATTRIBUTE, SpikeInput,
-    SpikeWorkflow, UPDATE_SERVICE_TASK_QUEUE, WorkerQueueSpec, build_worker_options,
-    provider_task_queue,
+    SpikeWorkflow, UPDATE_SERVICE_TASK_QUEUE, UpdateServicePorts, WorkerQueueSpec,
+    build_worker_options, provider_task_queue,
 };
 use temporalio_client::{
     Client, ClientOptions, Connection, ConnectionOptions, WorkflowGetResultOptions,
@@ -33,8 +33,13 @@ fn task_queue_names_and_worker_options_match_specification() {
         .deployment_name("update-service".to_owned())
         .build_id("0.1.0".to_owned())
         .build();
-    let options = build_worker_options(&WorkerQueueSpec::UpdateService, deployment.clone(), true)
-        .expect("build update-service worker options");
+    let options = build_worker_options(
+        &WorkerQueueSpec::UpdateService,
+        deployment.clone(),
+        true,
+        UpdateServicePorts::noop(),
+    )
+    .expect("build update-service worker options");
     assert_eq!(options.task_queue, UPDATE_SERVICE_TASK_QUEUE);
     assert_eq!(options.deployment_options.version, deployment);
     assert!(options.deployment_options.use_worker_versioning);
@@ -43,13 +48,19 @@ fn task_queue_names_and_worker_options_match_specification() {
         &WorkerQueueSpec::Provider("anidb".to_owned()),
         deployment.clone(),
         false,
+        UpdateServicePorts::noop(),
     )
     .expect("build provider worker options");
     assert_eq!(provider_opts.task_queue, "provider-anidb");
     assert!(!provider_opts.deployment_options.use_worker_versioning);
 
-    let agent_opts = build_worker_options(&WorkerQueueSpec::AgentService, deployment, false)
-        .expect("build agent worker options");
+    let agent_opts = build_worker_options(
+        &WorkerQueueSpec::AgentService,
+        deployment,
+        false,
+        UpdateServicePorts::noop(),
+    )
+    .expect("build agent worker options");
     assert_eq!(agent_opts.task_queue, AGENT_SERVICE_TASK_QUEUE);
 }
 
@@ -85,8 +96,13 @@ async fn sdk_spike_proves_conflict_policy_signals_priority_and_search_attributes
         .deployment_name("update-service".to_owned())
         .build_id("spike-1".to_owned())
         .build();
-    let worker_options = build_worker_options(&WorkerQueueSpec::UpdateService, deployment, false)
-        .map_err(|err| anyhow::anyhow!("failed to build worker options: {err}"))?;
+    let worker_options = build_worker_options(
+        &WorkerQueueSpec::UpdateService,
+        deployment,
+        false,
+        UpdateServicePorts::noop(),
+    )
+    .map_err(|err| anyhow::anyhow!("failed to build worker options: {err}"))?;
     let mut worker = Worker::new(&runtime, client.clone(), worker_options)
         .map_err(|err| anyhow::anyhow!("failed to create worker: {err}"))?;
 

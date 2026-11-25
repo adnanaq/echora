@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use temporal_workflows::PROVIDER_QUEUE_NAMES;
+use temporal_workflows::{PROVIDER_QUEUE_NAMES, UpdateServicePorts};
 use update_service::{
     UpdateServiceSettings, build_all_worker_options, list_worker_queue_specs, run_workers,
 };
@@ -34,7 +34,8 @@ fn settings_load_defaults_and_env_overrides() {
     assert_eq!(loaded.build_id, "build-42");
     assert!(loaded.use_worker_versioning);
 
-    let workers = build_all_worker_options(&loaded).expect("build all worker options");
+    let workers = build_all_worker_options(&loaded, &UpdateServicePorts::noop())
+        .expect("build all worker options");
     assert_eq!(workers.len(), 2 + PROVIDER_QUEUE_NAMES.len());
     assert!(workers[0].deployment_options.use_worker_versioning);
 }
