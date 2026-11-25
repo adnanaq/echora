@@ -5,6 +5,7 @@ Pure value normalization functions. No I/O, no side effects.
 Maps validated Kitsu models to canonical Anime / Character / Episode field dicts.
 """
 
+from collections.abc import Sequence
 from typing import Any
 
 from common.models.anime import (
@@ -21,6 +22,7 @@ from common.models.anime import (
     ExternalLink,
     Ography,
     Statistics,
+    ThemeEntry,
     TrailerEntry,
     VoiceActor,
 )
@@ -31,13 +33,22 @@ from common.utils.datetime_utils import (
 )
 from enrichment.sources.base.companies import companies_from_roles
 from enrichment.sources.base.external_links import page_link
+from enrichment.sources.base.page_fetcher import (
+    collect_paginated_responses,
+    index_responses_by_name,
+    parse_json_response,
+)
 from enrichment.sources.kitsu.kitsu_models import (
     KitsuAnime,
+    KitsuCategory,
     KitsuEpisode,
+    KitsuGenre,
     KitsuMapping,
     KitsuMediaCharacter,
+    KitsuProduction,
 )
 from enrichment.utils.text_utils import normalize_score
+from shared_proto.v1.merge_pb2 import PageResponse
 
 
 def _kitsu_page(media_type: str, kitsu_id: str) -> str:
@@ -327,3 +338,120 @@ def episode_from_kitsu(
         sources=[source] if source else [],
     )
     return result.model_dump(mode="json", exclude_none=True)
+
+
+def _extract_kitsu_productions(
+    pages: Sequence[dict[str, Any]],
+) -> list[KitsuProduction]:
+    """Assemble deduplicated KitsuProduction entries from paginated JSON:API payloads.
+
+    Args:
+        pages: Decoded JSON:API payloads from ``productions_page_*`` responses.
+
+    Returns:
+        List of deduplicated KitsuProduction entries.
+    """
+    credited: dict[tuple[str | None, str | None], KitsuProduction] = {}
+    for page in pages:
+        company_names = {
+            company["id"]: (company.get("attributes") or {}).get("name")
+            for company in page.get("included", [])
+            if company.get("type") == "producers"
+        }
+        for join_row in page.get("data", []):
+            company_id = (
+                (join_row.get("relationships") or {})
+                .get("producer", {})
+                .get("data", {})
+                .get("id")
+            )
+            name = company_names.get(company_id)
+            if not name:
+                continue
+            role = (join_row.get("attributes") or {}).get("role")
+            credited.setdefault(
+                (company_id, role),
+                KitsuProduction(name=name, role=role, company_id=company_id),
+            )
+    return list(credited.values())
+
+
+def map_kitsu_anime_responses(
+    responses: Sequence[PageResponse],
+) -> dict[str, Any]:
+    """Map stored Kitsu anime page responses into a canonical Anime dict.
+
+    Args:
+        responses: Stored PageResponse sequence containing a ``main`` response.
+
+    Returns:
+        Dict of canonical Anime field values.
+
+    Raises:
+        ValueError: If the ``main`` response or its ``data`` resource is missing.
+    """
+    by_name = index_responses_by_name(responses)
+    main_response = by_name.get("main")
+    if main_response is None:
+        error_message = "Kitsu anime responses missing required 'main' response"
+        raise ValueError(error_message)
+    main_payload = parse_json_response(main_response)
+    anime_resource = main_payload.get("data")
+    if not isinstance(anime_resource, dict):
+        error_message = "Kitsu 'main' response missing 'data' object"
+        raise TypeError(error_message)
+
+    anime_model = KitsuAnime.model_validate(anime_resource)
+    anime_model.genres = [
+        name
+        for page in collect_paginated_responses(responses, "genres_page_")
+        for genre in page.get("data", [])
+        if (name := KitsuGenre.model_validate(genre).attributes.name) is not None
+    ]
+    anime_model.themes = [
+        ThemeEntry(
+            name=category.attributes.title,
+            description=category.attributes.description or None,
+        )
+        for page in collect_paginated_responses(responses, "categories_page_")
+        for category in map(KitsuCategory.model_validate, page.get("data", []))
+        if category.attributes.title
+    ]
+    anime_model.companies = _extract_kitsu_productions(
+        collect_paginated_responses(responses, "productions_page_")
+    )
+    anime_model.mappings = [
+        KitsuMapping.model_validate(mapping)
+        for page in collect_paginated_responses(responses, "mappings_page_")
+        for mapping in page.get("data", [])
+    ]
+    return anime_from_kitsu(anime_model)
+
+
+def map_kitsu_anime_episode_responses(
+    responses: Sequence[PageResponse],
+) -> list[dict[str, Any]]:
+    """Map stored Kitsu anime episode responses into canonical Episode dicts.
+
+    Args:
+        responses: Stored PageResponse sequence containing ``main`` and ``episodes_page_*``.
+
+    Returns:
+        List of canonical Episode field dicts.
+    """
+    by_name = index_responses_by_name(responses)
+    anime_slug: str | None = None
+    if main_response := by_name.get("main"):
+        anime_data = parse_json_response(main_response).get("data")
+        if isinstance(anime_data, dict):
+            anime_slug = (anime_data.get("attributes") or {}).get("slug")
+
+    episodes: list[dict[str, Any]] = []
+    for page in collect_paginated_responses(responses, "episodes_page_"):
+        for ep_raw in page.get("data", []):
+            episodes.append(
+                episode_from_kitsu(
+                    KitsuEpisode.model_validate(ep_raw), anime_slug=anime_slug
+                )
+            )
+    return episodes
