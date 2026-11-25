@@ -409,6 +409,12 @@ impl PostgresService for PostgresGrpcService {
         }))
     }
 
+    /// Lists an entity's linked provider pages and their last fetch state.
+    ///
+    /// # Errors
+    ///
+    /// Returns `INVALID_ARGUMENT` for an unknown entity type or invalid UUID, `NOT_FOUND`
+    /// when the entity does not exist or is deleted, or the mapped status of a database error.
     async fn list_entity_pages(
         &self,
         request: Request<ListEntityPagesRequest>,
@@ -435,6 +441,13 @@ impl PostgresService for PostgresGrpcService {
         }))
     }
 
+    /// Records the outcome of an entity refresh and updates `next_refresh_at`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `INVALID_ARGUMENT` for an unknown entity type, invalid UUID, unspecified
+    /// outcome, or missing/negative duration; `NOT_FOUND` when the entity is missing; or
+    /// the mapped status of a database error.
     async fn record_refresh(
         &self,
         request: Request<RecordRefreshRequest>,
@@ -452,6 +465,12 @@ impl PostgresService for PostgresGrpcService {
         Ok(Response::new(RecordRefreshResponse {}))
     }
 
+    /// Pages through works due for refresh.
+    ///
+    /// # Errors
+    ///
+    /// Returns `INVALID_ARGUMENT` when `due_before` is missing, `page_size <= 0`, or a
+    /// cursor is invalid, or the mapped status of a database error.
     async fn list_due_anime(
         &self,
         request: Request<ListDueRequest>,
@@ -463,6 +482,12 @@ impl PostgresService for PostgresGrpcService {
         Ok(Response::new(to_list_due_response(due)))
     }
 
+    /// Pages through episodes of ongoing and upcoming works due for refresh.
+    ///
+    /// # Errors
+    ///
+    /// Returns `INVALID_ARGUMENT` when `due_before` is missing, `page_size <= 0`, or a
+    /// cursor is invalid, or the mapped status of a database error.
     async fn list_due_episodes(
         &self,
         request: Request<ListDueRequest>,
@@ -474,6 +499,12 @@ impl PostgresService for PostgresGrpcService {
         Ok(Response::new(to_list_due_response(due)))
     }
 
+    /// Pages through characters of ongoing and upcoming works due for refresh.
+    ///
+    /// # Errors
+    ///
+    /// Returns `INVALID_ARGUMENT` when `due_before` is missing, `page_size <= 0`, or a
+    /// cursor is invalid, or the mapped status of a database error.
     async fn list_due_characters(
         &self,
         request: Request<ListDueRequest>,
@@ -485,6 +516,12 @@ impl PostgresService for PostgresGrpcService {
         Ok(Response::new(to_list_due_response(due)))
     }
 
+    /// Lists episodes of ongoing and upcoming works airing within `window_days`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `INVALID_ARGUMENT` when `window_days < 0`, or the mapped status of a database
+    /// error.
     async fn list_upcoming_episodes(
         &self,
         request: Request<ListUpcomingEpisodesRequest>,
@@ -507,6 +544,12 @@ impl PostgresService for PostgresGrpcService {
         }))
     }
 
+    /// Pages through works whose scores refresh daily.
+    ///
+    /// # Errors
+    ///
+    /// Returns `INVALID_ARGUMENT` when `lookback_days < 0`, `page_size <= 0`, or `after_id`
+    /// is invalid, or the mapped status of a database error.
     async fn list_score_anime(
         &self,
         request: Request<ListScoreAnimeRequest>,
@@ -526,6 +569,12 @@ impl PostgresService for PostgresGrpcService {
         }))
     }
 
+    /// Lists entities whose `merge_requested_at` timestamp is set.
+    ///
+    /// # Errors
+    ///
+    /// Returns `INVALID_ARGUMENT` for an unknown entity type or `limit <= 0`, or the mapped
+    /// status of a database error.
     async fn list_requested_merges(
         &self,
         request: Request<ListRequestedMergesRequest>,
@@ -541,6 +590,12 @@ impl PostgresService for PostgresGrpcService {
         }))
     }
 
+    /// Reads a merged, undeleted work from `anime_visible`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `INVALID_ARGUMENT` for an invalid UUID, `NOT_FOUND` when unmerged, deleted,
+    /// or missing, or the mapped status of a database error.
     async fn get_anime(
         &self,
         request: Request<GetEntityRequest>,
@@ -552,6 +607,12 @@ impl PostgresService for PostgresGrpcService {
         Ok(Response::new(to_get_anime_response(record)))
     }
 
+    /// Reads a merged, undeleted episode from `episode_visible`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `INVALID_ARGUMENT` for an invalid UUID, `NOT_FOUND` when unmerged, deleted,
+    /// or missing, or the mapped status of a database error.
     async fn get_episode(
         &self,
         request: Request<GetEntityRequest>,
@@ -563,6 +624,11 @@ impl PostgresService for PostgresGrpcService {
         Ok(Response::new(to_get_episode_response(record)))
     }
 
+    /// Lists all merged, undeleted episodes of a work from `episode_visible`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `INVALID_ARGUMENT` for an invalid UUID, or the mapped status of a database error.
     async fn list_episodes(
         &self,
         request: Request<GetEntityRequest>,
@@ -574,6 +640,12 @@ impl PostgresService for PostgresGrpcService {
         Ok(Response::new(to_list_episodes_response(records)))
     }
 
+    /// Reads a merged, undeleted character from `character_visible`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `INVALID_ARGUMENT` for an invalid UUID, `NOT_FOUND` when unmerged, deleted,
+    /// or missing, or the mapped status of a database error.
     async fn get_character(
         &self,
         request: Request<GetEntityRequest>,
@@ -585,6 +657,12 @@ impl PostgresService for PostgresGrpcService {
         Ok(Response::new(to_get_character_response(record)))
     }
 
+    /// Pages through visible entity versions for vector comparison.
+    ///
+    /// # Errors
+    ///
+    /// Returns `INVALID_ARGUMENT` for an unknown entity type, `page_size <= 0`, or an
+    /// invalid cursor UUID, or the mapped status of a database error.
     async fn list_entity_versions(
         &self,
         request: Request<ListEntityVersionsRequest>,
@@ -611,6 +689,12 @@ impl PostgresService for PostgresGrpcService {
         }))
     }
 
+    /// Lists due source pages of one budgeted provider in due order.
+    ///
+    /// # Errors
+    ///
+    /// Returns `INVALID_ARGUMENT` for an unknown provider or `page_size <= 0`, or the mapped
+    /// status of a database error.
     async fn list_due_pages(
         &self,
         request: Request<ListDuePagesRequest>,

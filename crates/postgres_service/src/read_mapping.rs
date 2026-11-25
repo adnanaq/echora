@@ -267,6 +267,7 @@ pub(crate) fn to_get_character_response(record: VisibleCharacterRecord) -> GetCh
     }
 }
 
+/// Formats linked [`PageKey`]s as `"provider:address"` source strings.
 fn format_page_sources(pages: &[PageKey]) -> Vec<String> {
     pages
         .iter()
@@ -274,6 +275,7 @@ fn format_page_sources(pages: &[PageKey]) -> Vec<String> {
         .collect()
 }
 
+/// Groups work image entries into cover, poster, and banner lists.
 fn map_anime_images(entries: Vec<postgres_db::AnimeImageInput>) -> AnimeImages {
     let mut images = AnimeImages::default();
     for image in entries {
@@ -287,6 +289,7 @@ fn map_anime_images(entries: Vec<postgres_db::AnimeImageInput>) -> AnimeImages {
     images
 }
 
+/// Maps stored opening or ending theme songs into protobuf [`ThemeSong`] entries.
 fn map_theme_songs(songs: Vec<AnimeThemeSongInput>) -> Vec<ThemeSong> {
     songs
         .into_iter()
@@ -305,6 +308,7 @@ fn map_theme_songs(songs: Vec<AnimeThemeSongInput>) -> Vec<ThemeSong> {
         .collect()
 }
 
+/// Maps stored trailer inputs into protobuf [`TrailerEntry`] messages.
 fn map_trailers(trailers: Vec<AnimeTrailerInput>) -> Vec<TrailerEntry> {
     trailers
         .into_iter()
@@ -316,6 +320,7 @@ fn map_trailers(trailers: Vec<AnimeTrailerInput>) -> Vec<TrailerEntry> {
         .collect()
 }
 
+/// Maps stored external links into protobuf [`ExternalLink`] messages.
 fn map_external_sources(sources: Vec<AnimeExternalSourceInput>) -> Vec<ExternalLink> {
     sources
         .into_iter()
@@ -328,6 +333,7 @@ fn map_external_sources(sources: Vec<AnimeExternalSourceInput>) -> Vec<ExternalL
         .collect()
 }
 
+/// Maps stored streaming sources into protobuf [`StreamingEntry`] messages.
 fn map_streaming_sources(sources: Vec<AnimeStreamingSourceInput>) -> Vec<StreamingEntry> {
     sources
         .into_iter()
@@ -343,6 +349,7 @@ fn map_streaming_sources(sources: Vec<AnimeStreamingSourceInput>) -> Vec<Streami
         .collect()
 }
 
+/// Maps per-provider statistics and contextual ranks keyed by provider slug.
 #[allow(
     clippy::cast_possible_truncation,
     reason = "proto float fields are f32 scores"
@@ -372,6 +379,7 @@ fn map_statistics(stats: Vec<AnimeStatisticsInput>) -> BTreeMap<String, Statisti
         .collect()
 }
 
+/// Maps a single contextual ranking entry into a protobuf [`ContextualRank`].
 fn map_contextual_rank(rank: AnimeContextualRankInput) -> ContextualRank {
     ContextualRank {
         context: rank.context,
@@ -383,6 +391,7 @@ fn map_contextual_rank(rank: AnimeContextualRankInput) -> ContextualRank {
     }
 }
 
+/// Maps a stored broadcast schedule into a protobuf [`Broadcast`].
 fn map_broadcast(broadcast: AnimeBroadcastInput) -> Broadcast {
     Broadcast {
         day: broadcast.weekday.map(i32::from),
@@ -406,6 +415,7 @@ fn map_broadcast(broadcast: AnimeBroadcastInput) -> Broadcast {
     }
 }
 
+/// Maps a stored hiatus snapshot into a protobuf [`AnimeHiatus`].
 fn map_hiatus(hiatus: AnimeHiatusInput) -> AnimeHiatus {
     AnimeHiatus {
         reason: hiatus.reason,
@@ -418,6 +428,7 @@ fn map_hiatus(hiatus: AnimeHiatusInput) -> AnimeHiatus {
     }
 }
 
+/// Groups related anime links by relation type name.
 fn group_related_anime(relations: Vec<VisibleAnimeRelation>) -> BTreeMap<String, RelatedAnimeList> {
     let mut grouped: BTreeMap<String, RelatedAnimeList> = BTreeMap::new();
     for relation in relations {
@@ -442,6 +453,7 @@ fn group_related_anime(relations: Vec<VisibleAnimeRelation>) -> BTreeMap<String,
     grouped
 }
 
+/// Groups related source material links by relation type name.
 fn group_related_source_material(
     relations: Vec<VisibleSourceMaterialRelation>,
 ) -> BTreeMap<String, RelatedSourceMaterialList> {
@@ -467,6 +479,7 @@ fn group_related_source_material(
     grouped
 }
 
+/// Collapses company-role rows by company name into [`CompanyEntry`] messages.
 fn map_companies(companies: Vec<VisibleAnimeCompany>) -> Vec<CompanyEntry> {
     let mut by_name: BTreeMap<String, Vec<i32>> = BTreeMap::new();
     for company in companies {
