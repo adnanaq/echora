@@ -12,6 +12,7 @@ that implements `BaseEnrichmentHelper`.
 sources/
 ├── base/                      # Shared infrastructure
 │   ├── base_helper.py         # BaseEnrichmentHelper ABC + normalize_enrichment_payload
+│   ├── page_fetcher.py        # PageFetcher ABC, FetchedPage, and raw response helpers
 │   ├── browser.py             # browser_session(): start, limit, block, close and reap browsers
 │   ├── page_readiness.py      # wait_for_page(): wait for an element, then the page's HTML
 │   ├── cloudflare_challenge.py  # Wait out a Cloudflare challenge, solve it only if it stays
@@ -37,6 +38,13 @@ sources/
 ```
 
 ## Base Framework
+
+### `PageFetcher`
+
+Abstract base class for provider fetchers that return raw `PageResponse` bytes as received (`FetchedPage`), decoupled from mapping:
+
+- `fetch_page(page_key, *, max_age=None) -> FetchedPage`
+- `FetchedPage.to_stored_page()` converts the raw responses into a `StoredPage` protobuf message.
 
 ### `BaseEnrichmentHelper`
 
@@ -160,8 +168,9 @@ REST API via aiohttp with Redis HTTP cache.
 
 | Module | Purpose |
 |---|---|
-| `kitsu_helper.py` | `KitsuHelper` — anime, episodes, characters |
-| `kitsu_mapper.py` | Kitsu API responses → canonical dicts |
+| `kitsu_fetcher.py` | `KitsuFetcher` — raw `PageResponse` fetcher (`ANIME`, `CHARACTER`) |
+| `kitsu_helper.py` | `KitsuHelper` — legacy helper entry point (anime, episodes, characters) |
+| `kitsu_mapper.py` | Kitsu API / stored `PageResponse`s → canonical dicts |
 | `kitsu_models.py` | Pydantic source models |
 
 **Expected `ids` key:** `kitsu_url` — full URL or slug URL (e.g. `https://kitsu.app/anime/one-piece`)
@@ -179,8 +188,9 @@ GraphQL API via aiohttp with Redis HTTP cache.
 
 | Module | Purpose |
 |---|---|
-| `anilist_helper.py` | `AniListHelper` — anime + characters |
-| `anilist_mapper.py` | AniList GraphQL responses → canonical dicts |
+| `anilist_fetcher.py` | `AniListFetcher` — raw `PageResponse` fetcher (`ANIME`, `CHARACTER`) |
+| `anilist_helper.py` | `AniListHelper` — legacy helper entry point (anime + characters) |
+| `anilist_mapper.py` | AniList GraphQL / stored `PageResponse`s → canonical dicts |
 | `anilist_anime_models.py` | Pydantic anime source models |
 | `anilist_character_models.py` | Pydantic character source models |
 

@@ -6,7 +6,9 @@ Maps raw AniList API response (validated as AniListAnime / AniListCharacterEdge)
 to canonical Anime / Character field dicts.
 """
 
+import logging
 from collections import defaultdict
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
 
@@ -45,7 +47,15 @@ from enrichment.sources.anilist.anilist_character_models import (
 )
 from enrichment.sources.base.companies import companies_from_roles
 from enrichment.sources.base.external_links import external_link
+from enrichment.sources.base.page_fetcher import (
+    collect_paginated_responses,
+    index_responses_by_name,
+    parse_json_response,
+)
 from enrichment.utils.text_utils import normalize_score
+from shared_proto.v1.merge_pb2 import PageResponse
+
+logger = logging.getLogger(__name__)
 
 # AniList relation types that represent the anime being the SOURCE of a relation
 # (i.e. the related item is what the anime was adapted FROM)
@@ -404,3 +414,59 @@ def character_from_anilist(edge: AniListCharacterEdge) -> dict[str, Any]:
     )
 
     return result.model_dump(mode="json", exclude_none=True)
+
+
+def map_anilist_anime_responses(
+    responses: Sequence[PageResponse],
+) -> dict[str, Any]:
+    """Map stored AniList anime page responses into a canonical Anime dict.
+
+    Args:
+        responses: Stored PageResponse sequence containing a ``main`` response.
+
+    Returns:
+        Dict of canonical Anime field values.
+
+    Raises:
+        ValueError: If the ``main`` response or its ``Media`` payload is missing.
+    """
+    by_name = index_responses_by_name(responses)
+    main_response = by_name.get("main")
+    if main_response is None:
+        error_message = "AniList anime responses missing required 'main' response"
+        raise ValueError(error_message)
+    payload = parse_json_response(main_response)
+    media = payload.get("data", {}).get("Media")
+    if not isinstance(media, dict):
+        error_message = "AniList 'main' response missing 'data.Media' object"
+        raise TypeError(error_message)
+    return anime_from_anilist(AniListAnime.model_validate(media))
+
+
+def map_anilist_anime_character_responses(
+    responses: Sequence[PageResponse],
+) -> list[dict[str, Any]]:
+    """Map paginated AniList character connection responses into Character dicts.
+
+    Args:
+        responses: Stored PageResponse sequence containing ``characters_page_*`` items.
+
+    Returns:
+        List of canonical Character field dicts.
+    """
+    characters: list[dict[str, Any]] = []
+    for page_payload in collect_paginated_responses(responses, "characters_page_"):
+        edges = (
+            page_payload.get("data", {})
+            .get("Media", {})
+            .get("characters", {})
+            .get("edges", [])
+        )
+        for edge in edges:
+            try:
+                characters.append(
+                    character_from_anilist(AniListCharacterEdge.model_validate(edge))
+                )
+            except Exception:
+                logger.warning("Skipping invalid AniList character edge", exc_info=True)
+    return characters

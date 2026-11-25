@@ -581,3 +581,86 @@ def test_episode_from_kitsu_empty_synopsis_html_uses_description() -> None:
     )
 
     assert episode_from_kitsu(episode)["synopsis"] == "Luffy sets sail."
+
+
+def test_map_kitsu_anime_and_episode_responses() -> None:
+    import json
+
+    from enrichment.sources.kitsu.kitsu_mapper import (
+        map_kitsu_anime_episode_responses,
+        map_kitsu_anime_responses,
+    )
+    from shared_proto.v1.merge_pb2 import PageResponse
+
+    responses = [
+        PageResponse(
+            request_name="main",
+            content_type="application/vnd.api+json",
+            body=json.dumps(
+                {
+                    "data": {
+                        "id": "12",
+                        "type": "anime",
+                        "attributes": {
+                            "slug": "one-piece",
+                            "canonicalTitle": "One Piece",
+                            "subtype": "TV",
+                            "status": "current",
+                        },
+                    }
+                }
+            ).encode("utf-8"),
+        ),
+        PageResponse(
+            request_name="genres_page_1",
+            content_type="application/vnd.api+json",
+            body=json.dumps(
+                {
+                    "data": [
+                        {
+                            "id": "1",
+                            "type": "genres",
+                            "attributes": {"name": "Action"},
+                        }
+                    ]
+                }
+            ).encode("utf-8"),
+        ),
+        PageResponse(
+            request_name="categories_page_1",
+            content_type="application/vnd.api+json",
+            body=json.dumps(
+                {
+                    "data": [
+                        {
+                            "id": "2",
+                            "type": "categories",
+                            "attributes": {"title": "Pirates", "description": "Sea"},
+                        }
+                    ]
+                }
+            ).encode("utf-8"),
+        ),
+        PageResponse(
+            request_name="episodes_page_1",
+            content_type="application/vnd.api+json",
+            body=json.dumps(
+                {
+                    "data": [
+                        {
+                            "id": "101",
+                            "type": "episodes",
+                            "attributes": {"number": 1, "canonicalTitle": "I'm Luffy!"},
+                        }
+                    ]
+                }
+            ).encode("utf-8"),
+        ),
+    ]
+    anime = map_kitsu_anime_responses(responses)
+    assert anime["title"] == "One Piece"
+    assert anime["genres"] == ["Action"]
+    assert anime["themes"][0]["name"] == "Pirates"
+    episodes = map_kitsu_anime_episode_responses(responses)
+    assert len(episodes) == 1
+    assert episodes[0]["title"] == "I'm Luffy!"
