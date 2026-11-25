@@ -2484,7 +2484,8 @@ Every field of the canonical models in `libs/common/src/common/models/anime.py` 
 - ~~**`Broadcast`**: typed fields. `day` becomes an ISO weekday, `time` merges into `jp_time` as a time, `timezone` becomes an IANA zone, and `sub_time` and `dub_time` become times. (ECHO-88)~~
 - ~~**`AnimeHiatus`**: `hiatus_from` and `hiatus_until` become dates. (ECHO-88)~~
 - ~~**Language and country codes**: every language field (`Anime.titles` and `Episode.titles` keys, `ExternalLink.language`, `StreamingEntry.subtitle_languages`, `VoiceActor.language`) holds a BCP 47 code, and `country_of_origin` an ISO 3166-1 alpha-2 code. The shared types `LanguageCode` and `CountryCode` in `libs/common` check and standardize the value with `langcodes`: a provider's `"Japanese"`, `ja_jp` or `jpn` becomes `ja`, and a word no code matches becomes `und` with a warning, as unmapped enum words fall back to `UNKNOWN`. (ECHO-133)~~
-- ~~**IDs**: `generate_entity_id` uses `uuid.uuid7()`, and a merge receives the existing ID and keeps it. (ECHO-88)~~
+- ~~**IDs**: `generate_entity_id` uses `uuid.uuid7()`. (ECHO-88)~~
+- **IDs**: a merge must receive the existing ID and keep it; `merge_provider_records` currently derives `merged["id"]` from `merged_anime_id(merged["sources"])`.
 - **Derived IDs**: `merged_anime_id` and the deterministic episode and character IDs are removed. (ECHO-123)
 - ~~**`StaffMember.enhancement_status`**: removed, since it records matching progress, not data. (ECHO-88)~~
 - ~~**`Statistics`**: its docstring no longer says the values are mapped by AI. (ECHO-88)~~
