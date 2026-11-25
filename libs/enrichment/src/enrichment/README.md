@@ -23,6 +23,7 @@ libs/enrichment/src/enrichment/
 │   ├── anime_proto_mapper.py    # Converts canonical Anime dicts to protobuf and sorts lists
 │   ├── anime_field_corrections.py # Applies FieldCorrection overrides onto merged Anime protos
 │   ├── episode_reference_merger.py # Extracts and matches EpisodeReferences from stored pages
+│   ├── episode_merge.py         # Merges stored episode pages and list entries into MergeEpisodeResponse
 │   ├── metadata_rules.py        # Per-field rules for that merge
 │   ├── link_rules.py            # Merge rules for links, images and media
 │   ├── relationship_merger.py   # Merges per-source relationship data

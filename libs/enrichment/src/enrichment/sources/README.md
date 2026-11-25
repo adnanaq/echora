@@ -123,7 +123,7 @@ Browser scraping via zendriver (CDP) + lxml XPath.
 
 | Module | Purpose |
 |---|---|
-| `mal_fetcher.py` | `MalFetcher` — raw `PageResponse` fetcher (`ANIME`, `CHARACTER`) |
+| `mal_fetcher.py` | `MalFetcher` — raw `PageResponse` fetcher (`ANIME`, `CHARACTER`, `EPISODE`) |
 | `mal_helper.py` | `MalHelper` — legacy helper entry point; orchestrates anime, episodes, characters |
 | `mal_anime_crawler.py` | `fetch_mal_anime(url)` — zendriver + lxml XPath |
 | `mal_episode_crawler.py` | `fetch_mal_episodes(urls, output_path)` — zendriver + lxml XPath |

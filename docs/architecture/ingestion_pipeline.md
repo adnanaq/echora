@@ -192,7 +192,7 @@ What exists today, and what the plan above still needs:
   - The PostgreSQL Service is planned. (P-ECHO-10)
   - The Temporal workflows are planned. (P-ECHO-12)
 - **Episodes and characters** are processed by the stage 2 and stage 5 scripts (`process_stage2_episodes.py`, `process_stage5_characters.py`), which are removed afterwards. (ECHO-123)
-  - Episode processing moves into `MergeEpisode`. (ECHO-109)
+  - ~~Episode processing moves into `MergeEpisode`. (ECHO-109)~~
   - Character processing moves into `MergeCharacter`. (ECHO-110)
 
 ---
