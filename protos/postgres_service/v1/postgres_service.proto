@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package postgres_service.v1;
 
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
 import "shared_proto/v1/anime.proto";
 import "shared_proto/v1/merge.proto";
 
@@ -30,6 +32,48 @@ service PostgresService {
 
   // Save a merged character with optimistic version checking and transactional outbox.
   rpc SaveCharacter(SaveCharacterRequest) returns (SaveCharacterResponse);
+
+  // List an entity's linked provider pages and their last fetch state.
+  rpc ListEntityPages(ListEntityPagesRequest) returns (ListEntityPagesResponse);
+
+  // Record a completed or failed refresh and update next_refresh_at.
+  rpc RecordRefresh(RecordRefreshRequest) returns (RecordRefreshResponse);
+
+  // Page through works due for refresh.
+  rpc ListDueAnime(ListDueRequest) returns (ListDueResponse);
+
+  // Page through episodes due for refresh.
+  rpc ListDueEpisodes(ListDueRequest) returns (ListDueResponse);
+
+  // Page through characters due for refresh.
+  rpc ListDueCharacters(ListDueRequest) returns (ListDueResponse);
+
+  // List episodes of ongoing and upcoming works airing within the tracking window.
+  rpc ListUpcomingEpisodes(ListUpcomingEpisodesRequest) returns (ListUpcomingEpisodesResponse);
+
+  // Page through works whose scores refresh daily.
+  rpc ListScoreAnime(ListScoreAnimeRequest) returns (ListScoreAnimeResponse);
+
+  // List entities whose merge_requested_at timestamp is set.
+  rpc ListRequestedMerges(ListRequestedMergesRequest) returns (ListRequestedMergesResponse);
+
+  // Read a merged, undeleted work with its version and next_refresh_at.
+  rpc GetAnime(GetEntityRequest) returns (GetAnimeResponse);
+
+  // Read a merged, undeleted episode with its version and next_refresh_at.
+  rpc GetEpisode(GetEntityRequest) returns (GetEpisodeResponse);
+
+  // List all merged, undeleted episodes of a work.
+  rpc ListEpisodes(GetEntityRequest) returns (ListEpisodesResponse);
+
+  // Read a merged, undeleted character with its version and next_refresh_at.
+  rpc GetCharacter(GetEntityRequest) returns (GetCharacterResponse);
+
+  // Page through visible entity versions for vector comparison.
+  rpc ListEntityVersions(ListEntityVersionsRequest) returns (ListEntityVersionsResponse);
+
+  // List due source pages of one budgeted provider in due order.
+  rpc ListDuePages(ListDuePagesRequest) returns (ListDuePagesResponse);
 }
 
 // Request carrying a fetched provider page to store.
@@ -137,4 +181,172 @@ message SaveCharacterRequest {
 message SaveCharacterResponse {
   bool has_changed = 1;
   int64 version = 2;
+}
+
+// Request to list an entity's linked provider pages.
+message ListEntityPagesRequest {
+  shared_proto.v1.EntityType entity_type = 1;
+  string entity_id = 2;
+}
+
+// Linked provider pages and their last fetch state for an entity.
+message ListEntityPagesResponse {
+  repeated EntityPage pages = 1;
+}
+
+// Provider page metadata returned by ListEntityPages.
+message EntityPage {
+  shared_proto.v1.PageKey page_key = 1;
+  bool is_partial_source = 2;
+  optional google.protobuf.Timestamp fetched_at = 3;
+  bool is_dead = 4;
+  optional google.protobuf.Timestamp fetch_failed_at = 5;
+  int32 fetch_failures = 6;
+}
+
+// Request to record the outcome of an entity refresh.
+message RecordRefreshRequest {
+  shared_proto.v1.EntityType entity_type = 1;
+  string entity_id = 2;
+  RefreshOutcome outcome = 3;
+  google.protobuf.Duration refresh_after = 4;
+}
+
+// Outcome of a refresh run recorded by RecordRefresh.
+enum RefreshOutcome {
+  REFRESH_OUTCOME_UNSPECIFIED = 0;
+  REFRESH_OUTCOME_SUCCEEDED = 1;
+  REFRESH_OUTCOME_PAGES_FAILED = 2;
+  REFRESH_OUTCOME_FAILED = 3;
+}
+
+// Empty response for RecordRefresh.
+message RecordRefreshResponse {}
+
+// Keyset-paged request for due entities.
+message ListDueRequest {
+  google.protobuf.Timestamp due_before = 1;
+  int32 older_after_years = 2;
+  int32 page_size = 3;
+  optional google.protobuf.Timestamp after_next_refresh_at = 4;
+  optional string after_id = 5;
+  int32 merge_version = 6;
+}
+
+// Keyset-paged response of due entities.
+message ListDueResponse {
+  repeated DueEntity entities = 1;
+}
+
+// Due entity identifier and its next_refresh_at cursor value.
+message DueEntity {
+  string entity_id = 1;
+  optional google.protobuf.Timestamp next_refresh_at = 2;
+}
+
+// Request for episodes airing within the tracking window.
+message ListUpcomingEpisodesRequest {
+  int32 window_days = 1;
+}
+
+// Upcoming episodes of ongoing and upcoming works.
+message ListUpcomingEpisodesResponse {
+  repeated UpcomingEpisode episodes = 1;
+}
+
+// Episode expected to air within the tracking window.
+message UpcomingEpisode {
+  string anime_id = 1;
+  optional string episode_id = 2;
+  int32 episode_number = 3;
+  google.protobuf.Timestamp expected_air_at = 4;
+}
+
+// Keyset-paged request for works whose scores refresh daily.
+message ListScoreAnimeRequest {
+  int32 lookback_days = 1;
+  int32 page_size = 2;
+  optional string after_id = 3;
+}
+
+// Keyset-paged response of work IDs for daily score refresh.
+message ListScoreAnimeResponse {
+  repeated string anime_ids = 1;
+}
+
+// Request for entities with merge_requested_at set.
+message ListRequestedMergesRequest {
+  shared_proto.v1.EntityType entity_type = 1;
+  int32 limit = 2;
+}
+
+// Entity IDs waiting on a requested merge.
+message ListRequestedMergesResponse {
+  repeated string entity_ids = 1;
+}
+
+// Request to read a visible entity by UUID.
+message GetEntityRequest {
+  string entity_id = 1;
+}
+
+// Visible work with its version and next_refresh_at.
+message GetAnimeResponse {
+  shared_proto.v1.Anime anime = 1;
+  int64 version = 2;
+  optional google.protobuf.Timestamp next_refresh_at = 3;
+}
+
+// Visible episode with its version and next_refresh_at.
+message GetEpisodeResponse {
+  shared_proto.v1.Episode episode = 1;
+  int64 version = 2;
+  optional google.protobuf.Timestamp next_refresh_at = 3;
+}
+
+// Visible character with its version and next_refresh_at.
+message GetCharacterResponse {
+  shared_proto.v1.Character character = 1;
+  int64 version = 2;
+  optional google.protobuf.Timestamp next_refresh_at = 3;
+}
+
+// Visible episodes belonging to a work.
+message ListEpisodesResponse {
+  repeated GetEpisodeResponse episodes = 1;
+}
+
+// Keyset-paged request for visible entity versions.
+message ListEntityVersionsRequest {
+  shared_proto.v1.EntityType entity_type = 1;
+  int32 page_size = 2;
+  optional string after_id = 3;
+}
+
+// Keyset-paged response of visible entity versions.
+message ListEntityVersionsResponse {
+  repeated EntityVersion entities = 1;
+}
+
+// Entity UUID and version for vector comparison.
+message EntityVersion {
+  string entity_id = 1;
+  int64 version = 2;
+}
+
+// Request for due source pages of one budgeted provider.
+message ListDuePagesRequest {
+  string provider = 1;
+  int32 page_size = 2;
+}
+
+// Due source pages of one budgeted provider in due order.
+message ListDuePagesResponse {
+  repeated DuePage pages = 1;
+}
+
+// Due source page and the work it merges into.
+message DuePage {
+  shared_proto.v1.PageKey page_key = 1;
+  string anime_id = 2;
 }
