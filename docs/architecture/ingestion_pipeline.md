@@ -170,7 +170,7 @@ Characters have their own list, as works have the cleaned seed. Every provider w
 2. **Load it.** `CreateCharacter` creates each new character with its name and page links. A page that already belongs to a character links the entry's other pages to that character instead, so a repeated load creates nothing twice. (ECHO-135)
 3. **Refresh.**
    - Each new character's `RefreshCharacterWorkflow` fetches its own pages, merges them and saves it. (ECHO-112)
-   - The merge reads the works the character appears in, and its role in each, from its own pages. (ECHO-110)
+   - ~~The merge reads the works the character appears in, and its role in each, from its own pages. (ECHO-110)~~
    - ~~`SaveCharacter` stores the merged character and sends `character.created`. It stores the works it appears in by each work's page, so the character joins every stored work whose page it names. (ECHO-104)~~
 
 Discovery adds characters the same way. A pass runs once a day over the works added or refreshed since the last one, so an airing work's character list is read about once a week, right after its weekly refresh. It creates the characters whose pages no character holds yet, and sends a known character a refetch when a work lists it that its appearances do not name yet. (ECHO-135)
@@ -193,7 +193,7 @@ What exists today, and what the plan above still needs:
   - The Temporal workflows are planned. (P-ECHO-12)
 - **Episodes and characters** are processed by the stage 2 and stage 5 scripts (`process_stage2_episodes.py`, `process_stage5_characters.py`), which are removed afterwards. (ECHO-123)
   - ~~Episode processing moves into `MergeEpisode`. (ECHO-109)~~
-  - Character processing moves into `MergeCharacter`. (ECHO-110)
+  - ~~Character processing moves into `MergeCharacter`. (ECHO-110)~~
 
 ---
 
