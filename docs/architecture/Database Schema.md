@@ -578,7 +578,7 @@ Each entity is stored **once** under a UUIDv7 ID:
 
 **IDs are assigned once,** when the entity is first created, and never change, so nothing is derived from provider URLs.
 
-- IDs are UUIDv7, from `uuid.uuid7()` through `generate_entity_id` in `libs/common`. (ECHO-88)
+- ~~IDs are UUIDv7, from `uuid.uuid7()` through `generate_entity_id` in `libs/common`. (ECHO-88)~~
 - A work from the seed gets its ID when the seed load creates it. (ECHO-107)
 - An episode or character gets its ID from the merge of the work that first lists it, and every later merge receives that ID and keeps it. (ECHO-105)
 - ~~Rows the PostgreSQL Service creates by itself, `source_material` and `company`, get `DEFAULT uuidv7()`. (ECHO-102)~~
@@ -2481,13 +2481,13 @@ Every field of the canonical models in `libs/common/src/common/models/anime.py` 
 
 ### Model changes this schema needs
 
-- **`Broadcast`**: typed fields. `day` becomes an ISO weekday, `time` merges into `jp_time` as a time, `timezone` becomes an IANA zone, and `sub_time` and `dub_time` become times. (ECHO-88)
-- **`AnimeHiatus`**: `hiatus_from` and `hiatus_until` become dates. (ECHO-88)
+- ~~**`Broadcast`**: typed fields. `day` becomes an ISO weekday, `time` merges into `jp_time` as a time, `timezone` becomes an IANA zone, and `sub_time` and `dub_time` become times. (ECHO-88)~~
+- ~~**`AnimeHiatus`**: `hiatus_from` and `hiatus_until` become dates. (ECHO-88)~~
 - ~~**Language and country codes**: every language field (`Anime.titles` and `Episode.titles` keys, `ExternalLink.language`, `StreamingEntry.subtitle_languages`, `VoiceActor.language`) holds a BCP 47 code, and `country_of_origin` an ISO 3166-1 alpha-2 code. The shared types `LanguageCode` and `CountryCode` in `libs/common` check and standardize the value with `langcodes`: a provider's `"Japanese"`, `ja_jp` or `jpn` becomes `ja`, and a word no code matches becomes `und` with a warning, as unmapped enum words fall back to `UNKNOWN`. (ECHO-133)~~
-- **IDs**: `generate_entity_id` uses `uuid.uuid7()`, and a merge receives the existing ID and keeps it. (ECHO-88)
+- ~~**IDs**: `generate_entity_id` uses `uuid.uuid7()`, and a merge receives the existing ID and keeps it. (ECHO-88)~~
 - **Derived IDs**: `merged_anime_id` and the deterministic episode and character IDs are removed. (ECHO-123)
-- **`StaffMember.enhancement_status`**: removed, since it records matching progress, not data. (ECHO-88)
-- **`Statistics`**: its docstring no longer says the values are mapped by AI. (ECHO-88)
+- ~~**`StaffMember.enhancement_status`**: removed, since it records matching progress, not data. (ECHO-88)~~
+- ~~**`Statistics`**: its docstring no longer says the values are mapped by AI. (ECHO-88)~~
 - ~~**Names**: `nsfw` → `is_nsfw`; `duration` → `duration_seconds` on `Anime` and `Episode`; `aired` → `aired_at`; `filler`, `recap` → `is_filler`, `is_recap`; `StreamingEntry.free`, `premium_required`, `dub_available` → `is_free`, `is_premium_required`, `has_dub`; `ContextualRank.all_time` → `is_all_time`; `TrailerEntry.thumbnail` → `thumbnail_source`; `EpisodeRange.start`, `end` → `range_start`, `range_end`, since `end` is a reserved word in SQL. The protos are renumbered without gaps. (ECHO-133)~~
 
 ---

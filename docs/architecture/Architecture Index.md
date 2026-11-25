@@ -189,7 +189,7 @@ CheckFranchiseLinksWorkflow, weekly and after a seed release
 Tracked in the Linear initiative "Catalogue platform". Cleanup issues follow the build: ECHO-116 and ECHO-123. The docs themselves are ECHO-86.
 
 1. **PostgreSQL Service** with the page, work, episode, character and outbox tables, and the store, load and save methods. ECHO-87, ECHO-93, ECHO-97, ECHO-98, ECHO-100 to ECHO-103, ECHO-133, ECHO-104, ECHO-107, ECHO-108
-2. **Enrichment methods** `FetchPage`, `MergeAnime`, `MergeEpisode` and `MergeCharacter`, with the merge taking the work's ID instead of deriving it. ECHO-88, ECHO-89, ECHO-94, ECHO-99, ECHO-105, ECHO-109, ECHO-110
+2. **Enrichment methods** `FetchPage`, `MergeAnime`, `MergeEpisode` and `MergeCharacter`, with the merge taking the work's ID instead of deriving it. ~~ECHO-88~~, ~~ECHO-89~~, ECHO-94, ECHO-99, ECHO-105, ECHO-109, ECHO-110
 3. **Update Service** refresh workflows, `SweepCatalogueWorkflow` and episode tracking, with queue rate limits, priority and fairness. ECHO-95, ECHO-111 to ECHO-113, ECHO-117 to ECHO-119
 4. **Cleaned seed and seed load**: write `cleaned_seed.jsonl`, then `LoadSeedReleaseWorkflow`; then the character list, built from works' character lists, and its load. ECHO-92, ECHO-120, ECHO-135
 5. **Vector Service consumers** for the catalogue events, with the version stored in each point. ECHO-90, ECHO-106, ECHO-114, ECHO-121, ECHO-122
