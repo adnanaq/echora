@@ -1,0 +1,31 @@
+abilities:
+- stretching
+age: '19'
+animeography:
+- role: main character in
+  title: One Piece
+  url: https://anidb.net/anime/69
+blood_type: F
+date_of_birth: '05.05'
+description: Captain of the Straw Hat Pirates.
+gender: male
+height: 174 cm
+looks:
+- scar under eye
+name_kanji: "ã\x83¢ã\x83³ã\x82­ã\x83¼ã\x83»ï¼¤ã\x83»ã\x83«ã\x83\x95ã\x82£"
+name_main: Monkey D. Luffy
+nicknames:
+- Straw Hat
+official_names:
+- Monkey D. Luffy
+personality:
+- cheerful
+picture: https://cdn-eu.anidb.net/images/main/201474.jpg
+role:
+- pirate
+seiyuu:
+- anime_url: https://anidb.net/anime/69
+  name: Tanaka Mayumi
+  url: https://anidb.net/creator/529
+supernatural_abilities:
+- Devil Fruit
