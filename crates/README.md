@@ -93,7 +93,7 @@ cargo llvm-cov --workspace --open
 
 ## Protos
 
-`postgres_service` builds its gRPC code from `protos/` in its own `build.rs`, with `tonic-prost-build`. Nothing generated is checked in. The Python stubs are generated separately:
+`postgres_service` and `update_service` build their gRPC code from `protos/` in their own `build.rs`, with `tonic-prost-build`. Nothing generated is checked in. The Python stubs are generated separately:
 
 ```bash
 uv run --extra dev python scripts/generate-proto.py

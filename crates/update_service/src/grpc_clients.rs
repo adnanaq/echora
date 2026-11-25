@@ -409,6 +409,29 @@ fn encode_json_raw_value<T: Serialize>(value: &T) -> Result<RawValue, PortError>
     })
 }
 
+/// Starts one top-level Temporal workflow with `USE_EXISTING`, priority, and `RefreshTrigger`.
+async fn start_top_level_workflow(
+    client: &Client,
+    task_queue: &str,
+    workflow_type: &str,
+    workflow_id: String,
+    priority: Priority,
+    search_attrs: SearchAttributes,
+    input: &ChildRefreshStartInput,
+) -> Result<(), PortError> {
+    let opts = WorkflowStartOptions::new(task_queue, workflow_id)
+        .id_conflict_policy(WorkflowIdConflictPolicy::UseExisting)
+        .priority(priority)
+        .search_attributes(search_attrs)
+        .build();
+    let raw_input = encode_json_raw_value(input)?;
+    client
+        .start_workflow(UntypedWorkflow::new(workflow_type), raw_input, opts)
+        .await
+        .map_err(|err| PortError::retryable(err.to_string()))?;
+    Ok(())
+}
+
 impl WorkflowStarterPort for TemporalWorkflowStarter {
     fn start_entity_workflows(
         &self,
@@ -435,47 +458,41 @@ impl WorkflowStarterPort for TemporalWorkflowStarter {
 
             for episode_id in input.episode_ids {
                 let wf_id = build_refresh_episode_workflow_id(&episode_id);
-                let opts = WorkflowStartOptions::new(UPDATE_SERVICE_TASK_QUEUE, wf_id)
-                    .id_conflict_policy(WorkflowIdConflictPolicy::UseExisting)
-                    .priority(priority.clone())
-                    .search_attributes(search_attrs.clone())
-                    .build();
-                let raw_input = encode_json_raw_value(&ChildRefreshStartInput {
+                let child_input = ChildRefreshStartInput {
                     entity_id: episode_id,
                     trigger: trigger_val.clone(),
                     priority: input.priority,
-                })?;
-                client
-                    .start_workflow(
-                        UntypedWorkflow::new("RefreshEpisodeWorkflow"),
-                        raw_input,
-                        opts,
-                    )
-                    .await
-                    .map_err(|err| PortError::retryable(err.to_string()))?;
+                };
+                start_top_level_workflow(
+                    &client,
+                    UPDATE_SERVICE_TASK_QUEUE,
+                    "RefreshEpisodeWorkflow",
+                    wf_id,
+                    priority.clone(),
+                    search_attrs.clone(),
+                    &child_input,
+                )
+                .await?;
                 started += 1;
             }
 
             if input.start_synopsis {
                 let wf_id = build_write_synopsis_workflow_id(&input.anime_id);
-                let opts = WorkflowStartOptions::new(AGENT_SERVICE_TASK_QUEUE, wf_id)
-                    .id_conflict_policy(WorkflowIdConflictPolicy::UseExisting)
-                    .priority(priority)
-                    .search_attributes(search_attrs)
-                    .build();
-                let raw_input = encode_json_raw_value(&ChildRefreshStartInput {
+                let child_input = ChildRefreshStartInput {
                     entity_id: input.anime_id,
                     trigger: trigger_val,
                     priority: input.priority,
-                })?;
-                client
-                    .start_workflow(
-                        UntypedWorkflow::new("WriteSynopsisWorkflow"),
-                        raw_input,
-                        opts,
-                    )
-                    .await
-                    .map_err(|err| PortError::retryable(err.to_string()))?;
+                };
+                start_top_level_workflow(
+                    &client,
+                    AGENT_SERVICE_TASK_QUEUE,
+                    "WriteSynopsisWorkflow",
+                    wf_id,
+                    priority,
+                    search_attrs,
+                    &child_input,
+                )
+                .await?;
                 started += 1;
             }
 

@@ -278,11 +278,11 @@ mod workflow_impl {
     use super::{
         ActivityOptions, DEFAULT_MERGE_FIRST_WAIT_MINUTES, DEFAULT_REFRESH_AFTER_DAYS, Duration,
         FetchRequestedSignal, LIST_PAGES_TIMEOUT, ListEntityPagesOutput, RefreshAnimeInput,
-        RefreshAnimeOutcome, RefreshOutcomeKind, SyncWorkflowContext, UPDATE_SERVICE_TASK_QUEUE,
+        RefreshAnimeOutcome, SyncWorkflowContext, UPDATE_SERVICE_TASK_QUEUE,
         UpdateServiceActivities, WorkflowContext, WorkflowContextView, WorkflowResult,
-        build_priority, call_record_refresh, finish_refresh, merge_priority,
-        run_merge_and_episodes, run_refresh_page_batch, select_pages_to_refresh,
-        standard_retry_policy, to_epoch_seconds, workflow, workflow_methods,
+        build_priority, finish_refresh, merge_priority, run_merge_or_record_failure,
+        run_refresh_page_batch, select_pages_to_refresh, standard_retry_policy, to_epoch_seconds,
+        workflow, workflow_methods,
     };
 
     /// Durable workflow refreshing one work (`refresh-anime-<anime_id>`).
@@ -418,25 +418,16 @@ mod workflow_impl {
                 if pending_merge || ctx.state(|state| state.merge_requested) {
                     ctx.state_mut(|state| state.merge_requested = false);
                     let merge_priority = ctx.state(|state| state.current_priority);
-                    if let Err(err) = run_merge_and_episodes(
+                    run_merge_or_record_failure(
                         ctx,
                         &input,
                         merge_priority,
+                        refresh_after_days,
                         &mut merges_run,
                         &mut episode_workflows_started,
                         &mut any_synopses_changed,
                     )
-                    .await
-                    {
-                        let _ = call_record_refresh(
-                            ctx,
-                            &input.anime_id,
-                            RefreshOutcomeKind::Failed,
-                            refresh_after_days,
-                        )
-                        .await;
-                        return Err(err);
-                    }
+                    .await?;
                 }
 
                 let more_work = ctx.state(|state| {
@@ -583,25 +574,16 @@ async fn run_refresh_page_batch(
                     *pending_merge = false;
                     ctx.state_mut(|state| state.merge_requested = false);
                     let merge_priority = ctx.state(|state| state.current_priority);
-                    if let Err(err) = run_merge_and_episodes(
+                    run_merge_or_record_failure(
                         ctx,
                         input,
                         merge_priority,
+                        refresh_after_days,
                         merges_run,
                         episode_workflows_started,
                         any_synopses_changed,
                     )
-                    .await
-                    {
-                        let _ = call_record_refresh(
-                            ctx,
-                            &input.anime_id,
-                            RefreshOutcomeKind::Failed,
-                            refresh_after_days,
-                        )
-                        .await;
-                        return Err(err);
-                    }
+                    .await?;
                 }
             }
         } else if let Some(page_res) = poll_any_ready(&mut page_futures).await {
@@ -653,6 +635,38 @@ fn handle_page_completion<E>(
             *pages_failed += 1;
         }
     }
+}
+
+/// Runs `run_merge_and_episodes` and records a `Failed` refresh outcome before propagating errors.
+async fn run_merge_or_record_failure(
+    ctx: &WorkflowContext<RefreshAnimeWorkflow>,
+    input: &RefreshAnimeInput,
+    priority: u32,
+    refresh_after_days: i64,
+    merges_run: &mut usize,
+    episode_workflows_started: &mut usize,
+    any_synopses_changed: &mut bool,
+) -> WorkflowResult<()> {
+    if let Err(err) = run_merge_and_episodes(
+        ctx,
+        input,
+        priority,
+        merges_run,
+        episode_workflows_started,
+        any_synopses_changed,
+    )
+    .await
+    {
+        let _ = call_record_refresh(
+            ctx,
+            &input.anime_id,
+            RefreshOutcomeKind::Failed,
+            refresh_after_days,
+        )
+        .await;
+        return Err(err);
+    }
+    Ok(())
 }
 
 /// Runs `merge_anime` and starts `RefreshEpisodeWorkflow` for created/updated episodes.
