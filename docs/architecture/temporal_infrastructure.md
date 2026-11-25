@@ -43,7 +43,7 @@ The Temporal Server keeps workflow state, timers and task queues, and dispatches
 
 - **Image:** `temporalio/server`, 1.31 or later, the first release with task queue priority and fairness generally available. Pin the release current at setup time from the [release page](https://github.com/temporalio/temporal/releases), and use the `temporalio/admin-tools` image of the same version. (ECHO-95)
 - **Databases:** PostgreSQL, with two databases of its own, `temporal` (executions and history) and `temporal_visibility` (what the UI lists and filters). No Elasticsearch is needed at this size.
-  - In development the CLI dev server keeps its own file database instead, see [[#Local Development]]. (ECHO-95)
+  - ~~In development the CLI dev server keeps its own file database instead, see [[#Local Development]]. (ECHO-95)~~
   - In production they get a cluster of their own, or at least their own connection budget, since Temporal writes and vacuums heavily. (P-ECHO-21)
 - **Deployment:** Docker containers in development and staging, Kubernetes in production with the official Helm chart, at a release that ships server 1.31 or later. (P-ECHO-21)
 
@@ -84,10 +84,10 @@ The Update Service, a Rust process built with the [Temporal Rust SDK](https://te
 
 | Setting | Value |
 |---------|-------|
-| Namespace | `echora` (ECHO-95) |
+| ~~Namespace~~ | ~~`echora` (ECHO-95)~~ |
 | Retention | 7 days. A week of refreshes is hundreds of thousands of closed workflows, and a longer retention multiplies what the visibility database holds and what its count queries scan; measured at full volume before production (ECHO-95) |
 | Archival | Disabled; enable for long-term audit if needed |
-| Search attribute | `RefreshTrigger`, a keyword, created with `temporal operator search-attribute create --namespace echora --name RefreshTrigger --type Keyword`, and with `--search-attribute RefreshTrigger=Keyword` on the dev server (ECHO-95) |
+| ~~Search attribute~~ | ~~`RefreshTrigger`, a keyword, created with `temporal operator search-attribute create --namespace echora --name RefreshTrigger --type Keyword`, and with `--search-attribute RefreshTrigger=Keyword` on the dev server (ECHO-95)~~ |
 
 ---
 

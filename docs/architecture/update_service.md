@@ -371,8 +371,8 @@ The workflows publish nothing themselves. After a save commits, the PostgreSQL S
 
 | Setting | Value |
 |---|---|
-| Task queues | `update-service` for workflows, merges and `start_entity_workflows`, one `provider-<name>` queue per provider for `refresh_page`, `agent-service` for AI activities (ECHO-95) |
-| Workers | A Rust SDK worker polls one task queue, so `crates/update_service` runs one worker per queue in one process, sharing one client. Each registers only what its queue runs: the `update-service` worker the workflows and the merge and start activities, each provider worker `refresh_page`, and the `agent-service` worker `write_synopsis`. Every replica runs the same set, so all workers polling a queue register the same types. (ECHO-95) |
+| ~~Task queues~~ | ~~`update-service` for workflows, merges and `start_entity_workflows`, one `provider-<name>` queue per provider for `refresh_page`, `agent-service` for AI activities (ECHO-95)~~ |
+| ~~Workers~~ | ~~A Rust SDK worker polls one task queue, so `crates/update_service` runs one worker per queue in one process, sharing one client. Each registers only what its queue runs: the `update-service` worker the workflows and the merge and start activities, each provider worker `refresh_page`, and the `agent-service` worker `write_synopsis`. Every replica runs the same set, so all workers polling a queue register the same types. (ECHO-95)~~ |
 | Schedules | Weekly sweep and daily scores, each with the `Skip` overlap policy (ECHO-117) |
 | Schedules | Daily episode tracking, with the `Skip` overlap policy (ECHO-118) |
 | Search attribute | `RefreshTrigger` (keyword: `user`, `episode`, `sweep`, `seed`), set on each refresh start, used to count the refreshes a sweep or seed load still has running (ECHO-95) |
@@ -380,9 +380,9 @@ The workflows publish nothing themselves. After a save commits, the PostgreSQL S
 | Workflow IDs | `refresh-anime-<id>`, `refresh-episode-<id>`, `refresh-character-<id>`, `track-episode-<anime_id>-<episode_number>`, `synopsis-anime-<id>`, `budgeted-fetch-<provider>`, all with conflict policy `USE_EXISTING`; `seed-release` with conflict policy `FAIL`, so a second seed load is refused while one runs (ECHO-95) |
 | Rate limit | A queue rate limit per provider queue, set with `temporal task-queue config set` from that provider's pacing (ECHO-113) |
 | Priority and fairness | Priority keys 1 to 3 and fairness keys as in [[#Provider rate limits]] (ECHO-113) |
-| Temporal namespace | `echora` (ECHO-95) |
+| ~~Temporal namespace~~ | ~~`echora` (ECHO-95)~~ |
 
-The workflows and activities live in `crates/temporal_workflows/`, and `crates/update_service/` runs them as a Temporal worker. See [[temporal_infrastructure|Temporal Infrastructure]] for server setup, and its [[temporal_infrastructure#Writing Workflow Code|Writing Workflow Code]] section for the Temporal Developer Skill to use when building these workflows. (ECHO-95)
+~~The workflows and activities live in `crates/temporal_workflows/`, and `crates/update_service/` runs them as a Temporal worker. See [[temporal_infrastructure|Temporal Infrastructure]] for server setup, and its [[temporal_infrastructure#Writing Workflow Code|Writing Workflow Code]] section for the Temporal Developer Skill to use when building these workflows. (ECHO-95)~~
 
 ---
 

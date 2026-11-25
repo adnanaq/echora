@@ -96,7 +96,7 @@ Nodes, edges, provenance, franchises and the SQL for each read are in [[Database
 | ~~Errors in apps~~ | ~~`anyhow`, and `postgres_service` turns library errors into gRPC statuses in one function (ECHO-97)~~ |
 | ~~Logs and traces~~ | ~~`tracing` with named events (`outbox.publish.failed`) and message templates, exported through OpenTelemetry like the other services (ECHO-87)~~ |
 | ~~Allocator of the PostgreSQL Service~~ | ~~`mimalloc` (ECHO-97)~~ |
-| Allocator of the Update Service | `mimalloc` (ECHO-95) |
+| ~~Allocator of the Update Service~~ | ~~`mimalloc` (ECHO-95)~~ |
 | ~~Generated gRPC code~~ | ~~`tonic-prost-build` in each crate's `build.rs` (ECHO-97)~~ |
 
 ~~Rust code follows the Microsoft Pragmatic Rust Guidelines, through the `ms-rust` skill. (ECHO-87)~~
@@ -118,9 +118,9 @@ echora/
     ├── postgres_db/                 # all SQL: pages, works, episodes, characters, corrections, approvals (ECHO-93)
     │   ├── migrations/              # sqlx migrations, the only schema source (ECHO-93)
     │   └── src/outbox.rs            # relay task that publishes outbox rows to NATS (ECHO-106)
-    ├── temporal_workflows/          # workflows and activities, see Update Service (ECHO-95)
+    ├── temporal_workflows/          # ~~workflows and activities, see Update Service (ECHO-95)~~
     ├── postgres_service/            # main.rs and gRPC handlers over postgres_db (ECHO-87)
-    └── update_service/              # main.rs: Temporal worker running temporal_workflows (ECHO-95)
+    └── update_service/              # ~~main.rs: Temporal worker running temporal_workflows (ECHO-95)~~
 ```
 
 - ~~**Generated gRPC code.** Each crate that needs gRPC types generates them from `protos/` in its own `build.rs`, the way `scripts/generate-proto.py` does for Python. The services exchange bytes, never Rust types, so no shared crate is needed. (ECHO-97)~~
@@ -160,7 +160,7 @@ Outbox IDs are UUIDv7, so rows written after a restore never reuse an ID that NA
 ## Database Layout
 
 - ~~In development, one PostgreSQL cluster holds the catalogue database, `echora`. (ECHO-93)~~
-- In development, Temporal runs as the CLI dev server with its own file database, so it needs no PostgreSQL. (ECHO-95)
+- ~~In development, Temporal runs as the CLI dev server with its own file database, so it needs no PostgreSQL. (ECHO-95)~~
 - In production, Temporal's databases get a cluster of their own, or at least their own connection budget. Temporal writes and vacuums heavily, and its spikes must not slow the catalogue's queries or trip the 2-second graph timeout. (P-ECHO-21)
 - The users service gets its own database when it is built, so catalogue and user data never share an owner. (P-ECHO-17)
 - Tables are described in [[Database Schema|Database Schema]].
