@@ -455,3 +455,30 @@ def map_kitsu_anime_episode_responses(
                 )
             )
     return episodes
+
+
+def map_kitsu_episode_responses(
+    responses: Sequence[PageResponse],
+) -> dict[str, Any]:
+    """Map stored Kitsu single-episode JSON:API responses into a canonical Episode dict.
+
+    Args:
+        responses: Stored PageResponse sequence containing a ``main`` JSON response.
+
+    Returns:
+        Dict of canonical Episode field values.
+
+    Raises:
+        ValueError: If the ``main`` response or its ``data`` payload is missing.
+    """
+    by_name = index_responses_by_name(responses)
+    main_response = by_name.get("main")
+    if main_response is None:
+        error_message = "Kitsu episode responses missing required 'main' response"
+        raise ValueError(error_message)
+    payload = parse_json_response(main_response)
+    ep_raw = payload.get("data")
+    if not isinstance(ep_raw, dict):
+        error_message = "Kitsu episode 'main' response missing 'data' object"
+        raise TypeError(error_message)
+    return episode_from_kitsu(KitsuEpisode.model_validate(ep_raw))

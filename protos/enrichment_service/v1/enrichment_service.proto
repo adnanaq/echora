@@ -17,6 +17,8 @@ service EnrichmentService {
   rpc FetchPage(FetchPageRequest) returns (FetchPageResponse);
   // Maps stored pages, merges them into one anime, and applies overrides.
   rpc MergeAnime(MergeAnimeRequest) returns (MergeAnimeResponse);
+  // Maps stored episode pages and list entries into one merged episode.
+  rpc MergeEpisode(MergeEpisodeRequest) returns (MergeEpisodeResponse);
 }
 
 // Empty request for health checks.
@@ -91,4 +93,18 @@ message MergeAnimeResponse {
   repeated shared_proto.v1.EpisodeReference episodes = 2;
   repeated shared_proto.v1.RelationClaim relation_claims = 3;
   string provider_synopses_hash = 4;
+}
+
+// Request to merge one episode from its stored pages, list entries, and corrections.
+message MergeEpisodeRequest {
+  string episode_id = 1;
+  string anime_id = 2;
+  repeated shared_proto.v1.StoredPage pages = 3;
+  repeated shared_proto.v1.FieldCorrection corrections = 4;
+  repeated shared_proto.v1.EpisodeListEntry list_entries = 5;
+}
+
+// Merged episode message.
+message MergeEpisodeResponse {
+  shared_proto.v1.Episode episode = 1;
 }

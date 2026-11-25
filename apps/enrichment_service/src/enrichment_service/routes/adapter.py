@@ -6,7 +6,7 @@ import grpc
 from enrichment_proto.v1 import enrichment_service_pb2, enrichment_service_pb2_grpc
 
 from ..runtime import EnrichmentRuntime
-from . import fetch_page, health, merge_anime, pipeline
+from . import fetch_page, health, merge_anime, merge_episode, pipeline
 
 
 class EnrichmentRoutes(enrichment_service_pb2_grpc.EnrichmentServiceServicer):
@@ -59,3 +59,19 @@ class EnrichmentRoutes(enrichment_service_pb2_grpc.EnrichmentServiceServicer):
             MergeAnimeResponse containing merged anime, episodes, and claims.
         """
         return await merge_anime.merge_anime(self.runtime, request, context)
+
+    async def MergeEpisode(
+        self,
+        request: enrichment_service_pb2.MergeEpisodeRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> enrichment_service_pb2.MergeEpisodeResponse:
+        """Handle MergeEpisode RPC by delegating to merge_episode route logic.
+
+        Args:
+            request: Incoming MergeEpisodeRequest message.
+            context: Active gRPC servicer context.
+
+        Returns:
+            MergeEpisodeResponse containing the merged episode.
+        """
+        return await merge_episode.merge_episode(self.runtime, request, context)
