@@ -909,3 +909,70 @@ def test_anime_from_anilist_missing_format_and_status_give_unknown() -> None:
     result = anime_from_anilist(_anime(format=None, status=None))
 
     assert (result["type"], result["status"]) == ("UNKNOWN", "UNKNOWN")
+
+
+def test_map_anilist_anime_and_character_responses() -> None:
+    import json
+
+    from enrichment.sources.anilist.anilist_mapper import (
+        map_anilist_anime_character_responses,
+        map_anilist_anime_responses,
+    )
+    from shared_proto.v1.merge_pb2 import PageResponse
+
+    responses = [
+        PageResponse(
+            request_name="main",
+            content_type="application/json",
+            body=json.dumps(
+                {
+                    "data": {
+                        "Media": {
+                            "id": 21,
+                            "title": {"romaji": "ONE PIECE", "english": "One Piece"},
+                            "format": "TV",
+                            "status": "RELEASING",
+                        }
+                    }
+                }
+            ).encode("utf-8"),
+        ),
+        PageResponse(
+            request_name="characters_page_1",
+            content_type="application/json",
+            body=json.dumps(
+                {
+                    "data": {
+                        "Media": {
+                            "characters": {
+                                "pageInfo": {"hasNextPage": False},
+                                "edges": [
+                                    {
+                                        "node": {
+                                            "id": 40,
+                                            "name": {"full": "Monkey D. Luffy"},
+                                        },
+                                        "role": "MAIN",
+                                        "voiceActorRoles": [],
+                                    }
+                                ],
+                            }
+                        }
+                    }
+                }
+            ).encode("utf-8"),
+        ),
+    ]
+    assert map_anilist_anime_responses(responses)["title"] == "ONE PIECE"
+    assert [c["name"] for c in map_anilist_anime_character_responses(responses)] == [
+        "Monkey D. Luffy"
+    ]
+
+    with pytest.raises(ValueError, match="main"):
+        map_anilist_anime_responses(
+            [
+                PageResponse(
+                    request_name="other", content_type="application/json", body=b"{}"
+                )
+            ]
+        )
