@@ -22,24 +22,30 @@ _runtime_version.ValidateProtobufRuntimeVersion(
 _sym_db = _symbol_database.Default()
 
 
+from google.protobuf import duration_pb2 as google_dot_protobuf_dot_duration__pb2
 from shared_proto.v1 import error_pb2 as shared__proto_dot_v1_dot_error__pb2
+from shared_proto.v1 import merge_pb2 as shared__proto_dot_v1_dot_merge__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1bv1/enrichment_service.proto\x12\x15\x65nrichment_service.v1\x1a\x1bshared_proto/v1/error.proto\"\x0f\n\rHealthRequest\"v\n\x0eHealthResponse\x12\x0f\n\x07healthy\x18\x01 \x01(\x08\x12\x0f\n\x07service\x18\x02 \x01(\t\x12\x14\n\x0c\x64\x65tails_json\x18\x03 \x01(\t\x12,\n\x05\x65rror\x18\x04 \x01(\x0b\x32\x1d.shared_proto.v1.ErrorDetails\"\xc5\x01\n\x12RunPipelineRequest\x12\x11\n\tfile_path\x18\x01 \x01(\t\x12\x12\n\x05index\x18\x02 \x01(\x05H\x00\x88\x01\x01\x12\r\n\x05title\x18\x03 \x01(\t\x12\x11\n\tagent_dir\x18\x04 \x01(\t\x12\x15\n\rskip_services\x18\x05 \x03(\t\x12\x15\n\ronly_services\x18\x06 \x03(\t\x12\x17\n\x0fskip_characters\x18\x07 \x01(\x08\x12\x15\n\rskip_episodes\x18\x08 \x01(\x08\x42\x08\n\x06_index\"~\n\x13RunPipelineResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x13\n\x0boutput_path\x18\x02 \x01(\t\x12\x13\n\x0bresult_json\x18\x03 \x01(\t\x12,\n\x05\x65rror\x18\x04 \x01(\x0b\x32\x1d.shared_proto.v1.ErrorDetails2\xd0\x01\n\x11\x45nrichmentService\x12U\n\x06Health\x12$.enrichment_service.v1.HealthRequest\x1a%.enrichment_service.v1.HealthResponse\x12\x64\n\x0bRunPipeline\x12).enrichment_service.v1.RunPipelineRequest\x1a*.enrichment_service.v1.RunPipelineResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1bv1/enrichment_service.proto\x12\x15\x65nrichment_service.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1bshared_proto/v1/error.proto\x1a\x1bshared_proto/v1/merge.proto\"\x0f\n\rHealthRequest\"v\n\x0eHealthResponse\x12\x0f\n\x07healthy\x18\x01 \x01(\x08\x12\x0f\n\x07service\x18\x02 \x01(\t\x12\x14\n\x0c\x64\x65tails_json\x18\x03 \x01(\t\x12,\n\x05\x65rror\x18\x04 \x01(\x0b\x32\x1d.shared_proto.v1.ErrorDetails\"\xc5\x01\n\x12RunPipelineRequest\x12\x11\n\tfile_path\x18\x01 \x01(\t\x12\x12\n\x05index\x18\x02 \x01(\x05H\x00\x88\x01\x01\x12\r\n\x05title\x18\x03 \x01(\t\x12\x11\n\tagent_dir\x18\x04 \x01(\t\x12\x15\n\rskip_services\x18\x05 \x03(\t\x12\x15\n\ronly_services\x18\x06 \x03(\t\x12\x17\n\x0fskip_characters\x18\x07 \x01(\x08\x12\x15\n\rskip_episodes\x18\x08 \x01(\x08\x42\x08\n\x06_index\"~\n\x13RunPipelineResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x13\n\x0boutput_path\x18\x02 \x01(\t\x12\x13\n\x0bresult_json\x18\x03 \x01(\t\x12,\n\x05\x65rror\x18\x04 \x01(\x0b\x32\x1d.shared_proto.v1.ErrorDetails\"j\n\x10\x46\x65tchPageRequest\x12*\n\x08page_key\x18\x01 \x01(\x0b\x32\x18.shared_proto.v1.PageKey\x12*\n\x07max_age\x18\x02 \x01(\x0b\x32\x19.google.protobuf.Duration\">\n\x11\x46\x65tchPageResponse\x12)\n\x04page\x18\x01 \x01(\x0b\x32\x1b.shared_proto.v1.StoredPage2\xb0\x02\n\x11\x45nrichmentService\x12U\n\x06Health\x12$.enrichment_service.v1.HealthRequest\x1a%.enrichment_service.v1.HealthResponse\x12\x64\n\x0bRunPipeline\x12).enrichment_service.v1.RunPipelineRequest\x1a*.enrichment_service.v1.RunPipelineResponse\x12^\n\tFetchPage\x12\'.enrichment_service.v1.FetchPageRequest\x1a(.enrichment_service.v1.FetchPageResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'v1.enrichment_service_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
-  _globals['_HEALTHREQUEST']._serialized_start=83
-  _globals['_HEALTHREQUEST']._serialized_end=98
-  _globals['_HEALTHRESPONSE']._serialized_start=100
-  _globals['_HEALTHRESPONSE']._serialized_end=218
-  _globals['_RUNPIPELINEREQUEST']._serialized_start=221
-  _globals['_RUNPIPELINEREQUEST']._serialized_end=418
-  _globals['_RUNPIPELINERESPONSE']._serialized_start=420
-  _globals['_RUNPIPELINERESPONSE']._serialized_end=546
-  _globals['_ENRICHMENTSERVICE']._serialized_start=549
-  _globals['_ENRICHMENTSERVICE']._serialized_end=757
+  _globals['_HEALTHREQUEST']._serialized_start=144
+  _globals['_HEALTHREQUEST']._serialized_end=159
+  _globals['_HEALTHRESPONSE']._serialized_start=161
+  _globals['_HEALTHRESPONSE']._serialized_end=279
+  _globals['_RUNPIPELINEREQUEST']._serialized_start=282
+  _globals['_RUNPIPELINEREQUEST']._serialized_end=479
+  _globals['_RUNPIPELINERESPONSE']._serialized_start=481
+  _globals['_RUNPIPELINERESPONSE']._serialized_end=607
+  _globals['_FETCHPAGEREQUEST']._serialized_start=609
+  _globals['_FETCHPAGEREQUEST']._serialized_end=715
+  _globals['_FETCHPAGERESPONSE']._serialized_start=717
+  _globals['_FETCHPAGERESPONSE']._serialized_end=779
+  _globals['_ENRICHMENTSERVICE']._serialized_start=782
+  _globals['_ENRICHMENTSERVICE']._serialized_end=1086
 # @@protoc_insertion_point(module_scope)

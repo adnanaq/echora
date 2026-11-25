@@ -106,7 +106,14 @@ async def serve() -> None:
 
         interceptors.append(AioServerInterceptor())
 
-    server = grpc.aio.server(interceptors=interceptors)
+    server = grpc.aio.server(
+        interceptors=interceptors,
+        options=[
+            ("grpc.max_send_message_length", 64 * 1024 * 1024),
+            ("grpc.max_receive_message_length", 64 * 1024 * 1024),
+        ],
+        compression=grpc.Compression.Gzip,
+    )
 
     servicer = EnrichmentRoutes(runtime=runtime)
     enrichment_service_pb2_grpc.add_EnrichmentServiceServicer_to_server(

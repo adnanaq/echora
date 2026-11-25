@@ -45,6 +45,11 @@ class EnrichmentServiceStub:
                 request_serializer=v1_dot_enrichment__service__pb2.RunPipelineRequest.SerializeToString,
                 response_deserializer=v1_dot_enrichment__service__pb2.RunPipelineResponse.FromString,
                 _registered_method=True)
+        self.FetchPage = channel.unary_unary(
+                '/enrichment_service.v1.EnrichmentService/FetchPage',
+                request_serializer=v1_dot_enrichment__service__pb2.FetchPageRequest.SerializeToString,
+                response_deserializer=v1_dot_enrichment__service__pb2.FetchPageResponse.FromString,
+                _registered_method=True)
 
 
 class EnrichmentServiceServicer:
@@ -65,6 +70,13 @@ class EnrichmentServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def FetchPage(self, request, context):
+        """Fetches raw provider page responses as received without mapping.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_EnrichmentServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -77,6 +89,11 @@ def add_EnrichmentServiceServicer_to_server(servicer, server):
                     servicer.RunPipeline,
                     request_deserializer=v1_dot_enrichment__service__pb2.RunPipelineRequest.FromString,
                     response_serializer=v1_dot_enrichment__service__pb2.RunPipelineResponse.SerializeToString,
+            ),
+            'FetchPage': grpc.unary_unary_rpc_method_handler(
+                    servicer.FetchPage,
+                    request_deserializer=v1_dot_enrichment__service__pb2.FetchPageRequest.FromString,
+                    response_serializer=v1_dot_enrichment__service__pb2.FetchPageResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -134,6 +151,33 @@ class EnrichmentService:
             '/enrichment_service.v1.EnrichmentService/RunPipeline',
             v1_dot_enrichment__service__pb2.RunPipelineRequest.SerializeToString,
             v1_dot_enrichment__service__pb2.RunPipelineResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def FetchPage(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/enrichment_service.v1.EnrichmentService/FetchPage',
+            v1_dot_enrichment__service__pb2.FetchPageRequest.SerializeToString,
+            v1_dot_enrichment__service__pb2.FetchPageResponse.FromString,
             options,
             channel_credentials,
             insecure,
