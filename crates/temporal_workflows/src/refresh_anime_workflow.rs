@@ -18,9 +18,10 @@ use crate::activities::{ProviderActivities, UpdateServiceActivities};
 use crate::provider_task_queue;
 use crate::refresh_anime_types::{
     DEFAULT_MERGE_FIRST_WAIT_MINUTES, DEFAULT_REFRESH_AFTER_DAYS, EntityPageSummary,
-    FetchRequestedSignal, ListEntityPagesOutput, MAX_PAGE_RETRY_BACKOFF_HOURS, MergeAnimeInput,
-    MergeAnimeOutput, RecordRefreshInput, RefreshAnimeInput, RefreshAnimeOutcome,
-    RefreshOutcomeKind, RefreshPageInput, RefreshPageKey, RefreshPageOutput,
+    FetchRequestedSignal, ListEntityPagesInput, ListEntityPagesOutput,
+    MAX_PAGE_RETRY_BACKOFF_HOURS, MergeEntityInput, MergeEntityOutput, RecordRefreshInput,
+    RefreshAnimeInput, RefreshAnimeOutcome, RefreshEntityInput, RefreshEntityKind,
+    RefreshEntityOutcome, RefreshOutcomeKind, RefreshPageInput, RefreshPageKey, RefreshPageOutput,
     StartEntityWorkflowsInput,
 };
 use crate::{AGENT_SERVICE_TASK_QUEUE, UPDATE_SERVICE_TASK_QUEUE};
@@ -280,28 +281,80 @@ pub fn select_pages_to_refresh(
         .collect()
 }
 
+/// Shared mutable state embedded inside entity refresh workflow structs.
+pub(crate) struct RefreshCoreState {
+    pub(crate) input: RefreshEntityInput,
+    pub(crate) current_priority: u32,
+    pub(crate) merge_requested: bool,
+    pub(crate) pending_fetch_requests: Vec<FetchRequestedSignal>,
+}
+
+impl RefreshCoreState {
+    /// Initializes refresh workflow state from `input`, defaulting priority `0` to `3`.
+    pub(crate) fn new(input: RefreshEntityInput) -> Self {
+        let initial_priority = if input.priority == 0 {
+            3
+        } else {
+            input.priority
+        };
+        Self {
+            input,
+            current_priority: initial_priority,
+            merge_requested: false,
+            pending_fetch_requests: Vec::new(),
+        }
+    }
+
+    /// Enqueues a `fetch_requested` signal and escalates `current_priority` when higher.
+    pub(crate) fn apply_fetch_requested(&mut self, signal: FetchRequestedSignal) {
+        self.current_priority = merge_priority(self.current_priority, signal.priority);
+        self.pending_fetch_requests.push(signal);
+    }
+
+    /// Records a `merge_requested` signal.
+    pub(crate) fn apply_merge_requested(&mut self) {
+        self.merge_requested = true;
+    }
+}
+
+/// Trait implemented by `RefreshAnimeWorkflow`, `RefreshEpisodeWorkflow`, and
+/// `RefreshCharacterWorkflow` so all three share one execution loop.
+pub(crate) trait EntityRefreshWorkflowState:
+    temporalio_sdk::workflows::WorkflowImplementation + Sized
+{
+    const ENTITY_KIND: RefreshEntityKind;
+    fn core_state(&self) -> &RefreshCoreState;
+    fn core_state_mut(&mut self) -> &mut RefreshCoreState;
+}
+
 #[allow(
     missing_docs,
     reason = "temporalio_macros generates undocumented associated constants"
 )]
 mod workflow_impl {
     use super::{
-        ActivityOptions, DEFAULT_MERGE_FIRST_WAIT_MINUTES, DEFAULT_REFRESH_AFTER_DAYS, Duration,
-        FetchRequestedSignal, LIST_PAGES_TIMEOUT, ListEntityPagesOutput, RefreshAnimeInput,
-        RefreshAnimeOutcome, SyncWorkflowContext, UPDATE_SERVICE_TASK_QUEUE,
-        UpdateServiceActivities, WorkflowContext, WorkflowContextView, WorkflowResult,
-        build_priority, finish_refresh, merge_priority, run_merge_or_record_failure,
-        run_refresh_page_batch, select_pages_to_refresh, standard_retry_policy, to_epoch_seconds,
-        workflow, workflow_methods,
+        EntityRefreshWorkflowState, FetchRequestedSignal, RefreshAnimeInput, RefreshAnimeOutcome,
+        RefreshCoreState, RefreshEntityInput, RefreshEntityKind, SyncWorkflowContext,
+        WorkflowContext, WorkflowContextView, WorkflowResult, run_entity_refresh, workflow,
+        workflow_methods,
     };
 
     /// Durable workflow refreshing one work (`refresh-anime-<anime_id>`).
     #[workflow]
     pub struct RefreshAnimeWorkflow {
-        input: RefreshAnimeInput,
-        pub(super) current_priority: u32,
-        pub(super) merge_requested: bool,
-        pending_fetch_requests: Vec<FetchRequestedSignal>,
+        core: RefreshCoreState,
+    }
+
+    impl EntityRefreshWorkflowState for RefreshAnimeWorkflow {
+        const ENTITY_KIND: RefreshEntityKind = RefreshEntityKind::Anime;
+
+        fn core_state(&self) -> &RefreshCoreState {
+            &self.core
+        }
+
+        fn core_state_mut(&mut self) -> &mut RefreshCoreState {
+            &mut self.core
+        }
     }
 
     #[workflow_methods]
@@ -309,156 +362,53 @@ mod workflow_impl {
         /// Initializes `RefreshAnimeWorkflow` from `input`.
         #[init]
         fn new(_ctx: &WorkflowContextView, input: RefreshAnimeInput) -> Self {
-            let initial_priority = if input.priority == 0 {
-                3
-            } else {
-                input.priority
-            };
             Self {
-                input,
-                current_priority: initial_priority,
-                merge_requested: false,
-                pending_fetch_requests: Vec::new(),
+                core: RefreshCoreState::new(RefreshEntityInput {
+                    entity_id: input.anime_id,
+                    trigger: input.trigger,
+                    priority: input.priority,
+                    refresh_after_days: input.refresh_after_days,
+                    merge_version: input.merge_version,
+                    merge_first_wait_seconds: input.merge_first_wait_seconds,
+                    pages_relinked: input.pages_relinked,
+                }),
             }
         }
 
-        /// Requests specific providers to refresh with a custom `max_age` and priority.
+        /// Handles a `fetch_requested` signal, enqueueing page refreshes and raising priority.
         #[signal]
         pub fn fetch_requested(
             &mut self,
             _ctx: &mut SyncWorkflowContext<Self>,
             signal: FetchRequestedSignal,
         ) {
-            self.current_priority = merge_priority(self.current_priority, signal.priority);
-            self.pending_fetch_requests.push(signal);
+            self.core.apply_fetch_requested(signal);
         }
 
-        /// Marks that the work needs a merge even if no provider page changed.
+        /// Handles a `merge_requested` signal by setting the merge flag checked before exit.
         #[signal]
         pub fn merge_requested(&mut self, _ctx: &mut SyncWorkflowContext<Self>) {
-            self.merge_requested = true;
+            self.core.apply_merge_requested();
         }
 
-        /// Runs the full refresh lifecycle and finishes with `record_refresh`.
+        /// Executes the full refresh lifecycle until no more merges or fetches are pending.
         ///
         /// # Errors
         ///
-        /// Returns a workflow failure when `list_pages`, `merge_anime`,
-        /// `start_entity_workflows`, or `record_refresh` fails.
+        /// Returns a workflow failure if `list_pages`, `merge_anime`, `start_entity_workflows`,
+        /// or `record_refresh` fails. Individual `refresh_page` failures do not fail the refresh.
         #[run]
-        #[allow(
-            clippy::too_many_lines,
-            reason = "workflow run loop coordinates page fetch, merge wait timer, and signal drain"
-        )]
         pub async fn run(ctx: &mut WorkflowContext<Self>) -> WorkflowResult<RefreshAnimeOutcome> {
-            let input = ctx.state(|state| state.input.clone());
-            let refresh_after_days = if input.refresh_after_days > 0 {
-                input.refresh_after_days
-            } else {
-                DEFAULT_REFRESH_AFTER_DAYS
-            };
-            let merge_first_wait = Duration::from_secs(
-                input
-                    .merge_first_wait_seconds
-                    .unwrap_or(DEFAULT_MERGE_FIRST_WAIT_MINUTES * 60),
-            );
-
-            let mut pages_refreshed = 0_usize;
-            let mut pages_failed = 0_usize;
-            let mut merges_run = 0_usize;
-            let mut episode_workflows_started = 0_usize;
-            let mut any_synopses_changed = false;
-            let mut first_cycle = true;
-            let mut pages_relinked = input.pages_relinked;
-
-            loop {
-                let priority_key = ctx.state(|state| state.current_priority);
-                let list_output: ListEntityPagesOutput = ctx
-                    .execute_activity(
-                        UpdateServiceActivities::list_pages,
-                        input.anime_id.clone(),
-                        ActivityOptions::with_start_to_close_timeout(LIST_PAGES_TIMEOUT)
-                            .task_queue(UPDATE_SERVICE_TASK_QUEUE.to_owned())
-                            .retry_policy(standard_retry_policy())
-                            .priority(build_priority(priority_key))
-                            .build(),
-                    )
-                    .await?;
-
-                let needs_remerge = first_cycle
-                    && input.merge_version > 0
-                    && list_output
-                        .entity_merge_version
-                        .is_none_or(|ver| ver < input.merge_version);
-
-                let pending_requests =
-                    ctx.state_mut(|state| std::mem::take(&mut state.pending_fetch_requests));
-                let now_epoch_seconds = to_epoch_seconds(ctx.workflow_time());
-                let pages_to_refresh = select_pages_to_refresh(
-                    &list_output.pages,
-                    now_epoch_seconds,
-                    refresh_after_days,
-                    &pending_requests,
-                    first_cycle,
-                );
-                first_cycle = false;
-
-                let mut pending_merge =
-                    pages_relinked || needs_remerge || ctx.state(|state| state.merge_requested);
-                pages_relinked = false;
-                ctx.state_mut(|state| state.merge_requested = false);
-
-                if !pages_to_refresh.is_empty() {
-                    run_refresh_page_batch(
-                        ctx,
-                        &input,
-                        pages_to_refresh,
-                        merge_first_wait,
-                        refresh_after_days,
-                        &mut pages_refreshed,
-                        &mut pages_failed,
-                        &mut pending_merge,
-                        &mut merges_run,
-                        &mut episode_workflows_started,
-                        &mut any_synopses_changed,
-                    )
-                    .await?;
-                }
-
-                if pending_merge || ctx.state(|state| state.merge_requested) {
-                    ctx.state_mut(|state| state.merge_requested = false);
-                    let merge_priority = ctx.state(|state| state.current_priority);
-                    run_merge_or_record_failure(
-                        ctx,
-                        &input,
-                        merge_priority,
-                        refresh_after_days,
-                        &mut merges_run,
-                        &mut episode_workflows_started,
-                        &mut any_synopses_changed,
-                    )
-                    .await?;
-                }
-
-                let more_work = ctx.state(|state| {
-                    state.merge_requested || !state.pending_fetch_requests.is_empty()
-                });
-                if !more_work {
-                    break;
-                }
-            }
-
-            finish_refresh(
-                ctx,
-                &input,
-                pages_refreshed,
-                pages_failed,
-                merges_run,
-                episode_workflows_started,
-                any_synopses_changed,
-                refresh_after_days,
-            )
-            .await
+            let summary = run_entity_refresh(ctx).await?;
+            Ok(RefreshAnimeOutcome {
+                anime_id: summary.outcome.entity_id,
+                pages_refreshed: summary.outcome.pages_refreshed,
+                pages_failed: summary.outcome.pages_failed,
+                merges_run: summary.outcome.merges_run,
+                episode_workflows_started: summary.episode_workflows_started,
+                synopsis_workflow_started: summary.synopsis_workflow_started,
+                final_outcome: summary.outcome.final_outcome,
+            })
         }
     }
 }
@@ -466,33 +416,164 @@ mod workflow_impl {
 #[doc(inline)]
 pub use workflow_impl::RefreshAnimeWorkflow;
 
+/// Internal execution summary returned by `run_entity_refresh`.
+pub(crate) struct SharedRefreshSummary {
+    pub(crate) outcome: RefreshEntityOutcome,
+    pub(crate) episode_workflows_started: usize,
+    pub(crate) synopsis_workflow_started: bool,
+}
+
+/// Shared orchestration loop executed by `RefreshAnimeWorkflow`, `RefreshEpisodeWorkflow`,
+/// and `RefreshCharacterWorkflow`.
+#[allow(
+    clippy::too_many_lines,
+    reason = "workflow run loop coordinates page fetch, merge wait timer, and signal drain"
+)]
+pub(crate) async fn run_entity_refresh<W: EntityRefreshWorkflowState>(
+    ctx: &mut WorkflowContext<W>,
+) -> WorkflowResult<SharedRefreshSummary> {
+    let input = ctx.state(|state| state.core_state().input.clone());
+    let refresh_after_days = if input.refresh_after_days > 0 {
+        input.refresh_after_days
+    } else {
+        DEFAULT_REFRESH_AFTER_DAYS
+    };
+    let merge_first_wait = Duration::from_secs(
+        input
+            .merge_first_wait_seconds
+            .unwrap_or(DEFAULT_MERGE_FIRST_WAIT_MINUTES * 60),
+    );
+
+    let mut pages_refreshed = 0_usize;
+    let mut pages_failed = 0_usize;
+    let mut merges_run = 0_usize;
+    let mut episode_workflows_started = 0_usize;
+    let mut any_synopses_changed = false;
+    let mut first_cycle = true;
+    let mut pages_relinked = input.pages_relinked;
+
+    loop {
+        let priority_key = ctx.state(|state| state.core_state().current_priority);
+        let list_output: ListEntityPagesOutput = ctx
+            .execute_activity(
+                UpdateServiceActivities::list_pages,
+                ListEntityPagesInput {
+                    entity_kind: W::ENTITY_KIND,
+                    entity_id: input.entity_id.clone(),
+                },
+                ActivityOptions::with_start_to_close_timeout(LIST_PAGES_TIMEOUT)
+                    .task_queue(UPDATE_SERVICE_TASK_QUEUE.to_owned())
+                    .retry_policy(standard_retry_policy())
+                    .priority(build_priority(priority_key))
+                    .build(),
+            )
+            .await?;
+
+        let needs_remerge = first_cycle
+            && input.merge_version > 0
+            && list_output
+                .entity_merge_version
+                .is_none_or(|ver| ver < input.merge_version);
+
+        let pending_requests = ctx
+            .state_mut(|state| std::mem::take(&mut state.core_state_mut().pending_fetch_requests));
+        let now_epoch_seconds = to_epoch_seconds(ctx.workflow_time());
+        let pages_to_refresh = select_pages_to_refresh(
+            &list_output.pages,
+            now_epoch_seconds,
+            refresh_after_days,
+            &pending_requests,
+            first_cycle,
+        );
+        first_cycle = false;
+
+        let mut pending_merge = pages_relinked
+            || needs_remerge
+            || ctx.state(|state| state.core_state().merge_requested);
+        pages_relinked = false;
+        ctx.state_mut(|state| state.core_state_mut().merge_requested = false);
+
+        if !pages_to_refresh.is_empty() {
+            run_refresh_page_batch(
+                ctx,
+                &input,
+                pages_to_refresh,
+                merge_first_wait,
+                refresh_after_days,
+                &mut pages_refreshed,
+                &mut pages_failed,
+                &mut pending_merge,
+                &mut merges_run,
+                &mut episode_workflows_started,
+                &mut any_synopses_changed,
+            )
+            .await?;
+        }
+
+        if pending_merge || ctx.state(|state| state.core_state().merge_requested) {
+            ctx.state_mut(|state| state.core_state_mut().merge_requested = false);
+            let merge_priority = ctx.state(|state| state.core_state().current_priority);
+            run_merge_or_record_failure(
+                ctx,
+                &input,
+                merge_priority,
+                refresh_after_days,
+                &mut merges_run,
+                &mut episode_workflows_started,
+                &mut any_synopses_changed,
+            )
+            .await?;
+        }
+
+        let more_work = ctx.state(|state| {
+            let core = state.core_state();
+            core.merge_requested || !core.pending_fetch_requests.is_empty()
+        });
+        if !more_work {
+            break;
+        }
+    }
+
+    finish_refresh(
+        ctx,
+        &input,
+        pages_refreshed,
+        pages_failed,
+        merges_run,
+        episode_workflows_started,
+        any_synopses_changed,
+        refresh_after_days,
+    )
+    .await
+}
+
 /// Starts `WriteSynopsisWorkflow` when provider synopses changed, then calls `record_refresh`.
 #[allow(
     clippy::too_many_arguments,
     reason = "gathers refresh summary fields for final recording"
 )]
-async fn finish_refresh(
-    ctx: &WorkflowContext<RefreshAnimeWorkflow>,
-    input: &RefreshAnimeInput,
+async fn finish_refresh<W: EntityRefreshWorkflowState>(
+    ctx: &WorkflowContext<W>,
+    input: &RefreshEntityInput,
     pages_refreshed: usize,
     pages_failed: usize,
     merges_run: usize,
     episode_workflows_started: usize,
     any_synopses_changed: bool,
     refresh_after_days: i64,
-) -> WorkflowResult<RefreshAnimeOutcome> {
+) -> WorkflowResult<SharedRefreshSummary> {
     let mut synopsis_workflow_started = false;
-    if any_synopses_changed {
-        let syn_priority = ctx.state(|state| state.current_priority);
+    if W::ENTITY_KIND == RefreshEntityKind::Anime && any_synopses_changed {
+        let syn_priority = ctx.state(|state| state.core_state().current_priority);
         let started = ctx
             .execute_activity(
                 UpdateServiceActivities::start_entity_workflows,
                 StartEntityWorkflowsInput {
-                    anime_id: input.anime_id.clone(),
-                    episode_ids: Vec::new(),
+                    anime_id: input.entity_id.clone(),
                     start_synopsis: true,
                     trigger: input.trigger.clone(),
                     priority: syn_priority,
+                    ..StartEntityWorkflowsInput::default()
                 },
                 ActivityOptions::with_start_to_close_timeout(START_WORKFLOWS_TIMEOUT)
                     .task_queue(AGENT_SERVICE_TASK_QUEUE.to_owned())
@@ -509,28 +590,31 @@ async fn finish_refresh(
     } else {
         RefreshOutcomeKind::Succeeded
     };
-    call_record_refresh(ctx, &input.anime_id, final_outcome, refresh_after_days).await?;
 
-    Ok(RefreshAnimeOutcome {
-        anime_id: input.anime_id.clone(),
-        pages_refreshed,
-        pages_failed,
-        merges_run,
+    call_record_refresh(ctx, &input.entity_id, final_outcome, refresh_after_days).await?;
+
+    Ok(SharedRefreshSummary {
+        outcome: RefreshEntityOutcome {
+            entity_id: input.entity_id.clone(),
+            pages_refreshed,
+            pages_failed,
+            merges_run,
+            final_outcome,
+        },
         episode_workflows_started,
         synopsis_workflow_started,
-        final_outcome,
     })
 }
 
-/// Runs one concurrent batch of `refresh_page` activities and triggers an early merge
+/// Runs `refresh_page` concurrently across provider queues and triggers an early merge
 /// if `merge_first_wait` expires before all pages settle.
 #[allow(
     clippy::too_many_arguments,
     reason = "workflow helper updates counters and merge state across a batch"
 )]
-async fn run_refresh_page_batch(
-    ctx: &WorkflowContext<RefreshAnimeWorkflow>,
-    input: &RefreshAnimeInput,
+async fn run_refresh_page_batch<W: EntityRefreshWorkflowState>(
+    ctx: &WorkflowContext<W>,
+    input: &RefreshEntityInput,
     pages_to_refresh: Vec<RefreshPageInput>,
     merge_first_wait: Duration,
     refresh_after_days: i64,
@@ -544,7 +628,7 @@ async fn run_refresh_page_batch(
     let mut page_futures = Vec::with_capacity(pages_to_refresh.len());
     for page_input in pages_to_refresh {
         let task_queue = provider_task_queue(&page_input.page_key.provider);
-        let act_priority = ctx.state(|state| state.current_priority);
+        let act_priority = ctx.state(|state| state.core_state().current_priority);
         let opts = ActivityOptions::with_start_to_close_timeout(REFRESH_PAGE_TIMEOUT)
             .task_queue(task_queue)
             .heartbeat_timeout(REFRESH_PAGE_HEARTBEAT_TIMEOUT)
@@ -580,10 +664,10 @@ async fn run_refresh_page_batch(
                 }
             } else {
                 first_wait_fired = true;
-                if *pending_merge || ctx.state(|state| state.merge_requested) {
+                if *pending_merge || ctx.state(|state| state.core_state().merge_requested) {
                     *pending_merge = false;
-                    ctx.state_mut(|state| state.merge_requested = false);
-                    let merge_priority = ctx.state(|state| state.current_priority);
+                    ctx.state_mut(|state| state.core_state_mut().merge_requested = false);
+                    let merge_priority = ctx.state(|state| state.core_state().current_priority);
                     run_merge_or_record_failure(
                         ctx,
                         input,
@@ -648,9 +732,9 @@ fn handle_page_completion<E>(
 }
 
 /// Runs `run_merge_and_episodes` and records a `Failed` refresh outcome before propagating errors.
-async fn run_merge_or_record_failure(
-    ctx: &WorkflowContext<RefreshAnimeWorkflow>,
-    input: &RefreshAnimeInput,
+async fn run_merge_or_record_failure<W: EntityRefreshWorkflowState>(
+    ctx: &WorkflowContext<W>,
+    input: &RefreshEntityInput,
     priority: u32,
     refresh_after_days: i64,
     merges_run: &mut usize,
@@ -669,7 +753,7 @@ async fn run_merge_or_record_failure(
     {
         let _ = call_record_refresh(
             ctx,
-            &input.anime_id,
+            &input.entity_id,
             RefreshOutcomeKind::Failed,
             refresh_after_days,
         )
@@ -679,46 +763,67 @@ async fn run_merge_or_record_failure(
     Ok(())
 }
 
-/// Runs `merge_anime` and starts `RefreshEpisodeWorkflow` for created/updated episodes.
-async fn run_merge_and_episodes(
-    ctx: &WorkflowContext<RefreshAnimeWorkflow>,
-    input: &RefreshAnimeInput,
+/// Runs `merge_anime` / `merge_episode` / `merge_character` and starts episode refreshes.
+async fn run_merge_and_episodes<W: EntityRefreshWorkflowState>(
+    ctx: &WorkflowContext<W>,
+    input: &RefreshEntityInput,
     priority_key: u32,
     merges_run: &mut usize,
     episode_workflows_started: &mut usize,
     any_synopses_changed: &mut bool,
 ) -> WorkflowResult<()> {
-    let merge_output: MergeAnimeOutput = ctx
-        .execute_activity(
-            UpdateServiceActivities::merge_anime,
-            MergeAnimeInput {
-                anime_id: input.anime_id.clone(),
-                merge_version: input.merge_version,
-            },
-            ActivityOptions::with_start_to_close_timeout(MERGE_ANIME_TIMEOUT)
-                .task_queue(UPDATE_SERVICE_TASK_QUEUE.to_owned())
-                .retry_policy(standard_retry_policy())
-                .priority(build_priority(priority_key))
-                .build(),
-        )
-        .await?;
+    let merge_input = MergeEntityInput {
+        entity_id: input.entity_id.clone(),
+        merge_version: input.merge_version,
+    };
+    let merge_opts = ActivityOptions::with_start_to_close_timeout(MERGE_ANIME_TIMEOUT)
+        .task_queue(UPDATE_SERVICE_TASK_QUEUE.to_owned())
+        .retry_policy(standard_retry_policy())
+        .priority(build_priority(priority_key))
+        .build();
+    let merge_output: MergeEntityOutput = match W::ENTITY_KIND {
+        RefreshEntityKind::Anime => {
+            ctx.execute_activity(
+                UpdateServiceActivities::merge_anime,
+                merge_input,
+                merge_opts,
+            )
+            .await?
+        }
+        RefreshEntityKind::Episode => {
+            ctx.execute_activity(
+                UpdateServiceActivities::merge_episode,
+                merge_input,
+                merge_opts,
+            )
+            .await?
+        }
+        RefreshEntityKind::Character => {
+            ctx.execute_activity(
+                UpdateServiceActivities::merge_character,
+                merge_input,
+                merge_opts,
+            )
+            .await?
+        }
+    };
 
     *merges_run += 1;
     if merge_output.has_changed_synopses {
         *any_synopses_changed = true;
     }
 
-    if !merge_output.changed_episode_ids.is_empty() {
-        let ep_priority = ctx.state(|state| state.current_priority);
+    if W::ENTITY_KIND == RefreshEntityKind::Anime && !merge_output.changed_episode_ids.is_empty() {
+        let ep_priority = ctx.state(|state| state.core_state().current_priority);
         let started = ctx
             .execute_activity(
                 UpdateServiceActivities::start_entity_workflows,
                 StartEntityWorkflowsInput {
-                    anime_id: input.anime_id.clone(),
+                    anime_id: input.entity_id.clone(),
                     episode_ids: merge_output.changed_episode_ids,
-                    start_synopsis: false,
                     trigger: input.trigger.clone(),
                     priority: ep_priority,
+                    ..StartEntityWorkflowsInput::default()
                 },
                 ActivityOptions::with_start_to_close_timeout(START_WORKFLOWS_TIMEOUT)
                     .task_queue(UPDATE_SERVICE_TASK_QUEUE.to_owned())
@@ -734,17 +839,18 @@ async fn run_merge_and_episodes(
 }
 
 /// Records the final refresh outcome via `UpdateServiceActivities::record_refresh`.
-async fn call_record_refresh(
-    ctx: &WorkflowContext<RefreshAnimeWorkflow>,
-    anime_id: &str,
+async fn call_record_refresh<W: EntityRefreshWorkflowState>(
+    ctx: &WorkflowContext<W>,
+    entity_id: &str,
     outcome: RefreshOutcomeKind,
     refresh_after_days: i64,
 ) -> WorkflowResult<()> {
-    let priority_key = ctx.state(|state| state.current_priority);
+    let priority_key = ctx.state(|state| state.core_state().current_priority);
     ctx.execute_activity(
         UpdateServiceActivities::record_refresh,
         RecordRefreshInput {
-            anime_id: anime_id.to_owned(),
+            entity_kind: W::ENTITY_KIND,
+            entity_id: entity_id.to_owned(),
             outcome,
             refresh_after_days,
         },

@@ -1,4 +1,4 @@
-//! Serializable workflow, signal, and activity payloads for `RefreshAnimeWorkflow`.
+//! Serializable workflow, signal, and activity payloads for entity refresh workflows.
 
 use serde::{Deserialize, Serialize};
 
@@ -10,6 +10,40 @@ pub const DEFAULT_MERGE_FIRST_WAIT_MINUTES: u64 = 10;
 
 /// Maximum exponential backoff hours (7 days = 168 hours) for failed page retries.
 pub const MAX_PAGE_RETRY_BACKOFF_HOURS: i64 = 168;
+
+/// Catalogue entity kind orchestrated by a refresh workflow.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Deserialize, Serialize)]
+pub enum RefreshEntityKind {
+    /// Anime work (`RefreshAnimeWorkflow`).
+    #[default]
+    Anime,
+    /// Episode (`RefreshEpisodeWorkflow`).
+    Episode,
+    /// Character (`RefreshCharacterWorkflow`).
+    Character,
+}
+
+impl RefreshEntityKind {
+    /// Returns the lowercase provider page entity type slug for this kind.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use temporal_workflows::RefreshEntityKind;
+    ///
+    /// assert_eq!(RefreshEntityKind::Anime.as_str(), "anime");
+    /// assert_eq!(RefreshEntityKind::Episode.as_str(), "episode");
+    /// assert_eq!(RefreshEntityKind::Character.as_str(), "character");
+    /// ```
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Anime => "anime",
+            Self::Episode => "episode",
+            Self::Character => "character",
+        }
+    }
+}
 
 /// Builds the fixed Temporal workflow ID for a work refresh.
 ///
@@ -43,6 +77,23 @@ pub fn build_refresh_anime_workflow_id(anime_id: &str) -> String {
 #[must_use]
 pub fn build_refresh_episode_workflow_id(episode_id: &str) -> String {
     format!("refresh-episode-{episode_id}")
+}
+
+/// Builds the fixed Temporal workflow ID for a character refresh.
+///
+/// # Examples
+///
+/// ```
+/// use temporal_workflows::build_refresh_character_workflow_id;
+///
+/// assert_eq!(
+///     build_refresh_character_workflow_id("char-789"),
+///     "refresh-character-char-789"
+/// );
+/// ```
+#[must_use]
+pub fn build_refresh_character_workflow_id(character_id: &str) -> String {
+    format!("refresh-character-{character_id}")
 }
 
 /// Builds the fixed Temporal workflow ID for a work's synopsis workflow.
@@ -95,6 +146,16 @@ pub struct EntityPageSummary {
     pub fetch_failures: i32,
 }
 
+/// Input passed to the `list_pages` activity.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct ListEntityPagesInput {
+    /// Catalogue entity kind.
+    #[serde(default)]
+    pub entity_kind: RefreshEntityKind,
+    /// Target entity UUID.
+    pub entity_id: String,
+}
+
 /// Output returned by the `list_pages` activity.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ListEntityPagesOutput {
@@ -129,19 +190,19 @@ pub struct RefreshPageOutput {
     pub has_failed: bool,
 }
 
-/// Input passed to the `merge_anime` activity.
+/// Input passed to `merge_anime`, `merge_episode`, and `merge_character` activities.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct MergeAnimeInput {
-    /// Target work UUID.
-    pub anime_id: String,
+pub struct MergeEntityInput {
+    /// Target entity UUID.
+    pub entity_id: String,
     /// Current merge code version written on save.
     #[serde(default)]
     pub merge_version: i32,
 }
 
-/// Claim-check output returned by the `merge_anime` activity.
+/// Claim-check output returned by merge activities.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
-pub struct MergeAnimeOutput {
+pub struct MergeEntityOutput {
     /// Whether the saved record changed.
     #[serde(default)]
     pub has_changed: bool,
@@ -153,14 +214,30 @@ pub struct MergeAnimeOutput {
     pub has_changed_synopses: bool,
 }
 
-/// Input passed to `start_entity_workflows` to launch top-level downstream workflows.
+/// Target known character notified via `fetch_requested` when discovered on a work.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct CharacterFetchTarget {
+    /// Target known character UUID.
+    pub character_id: String,
+    /// Fetch request signal delivered atomically with `USE_EXISTING` signal-with-start.
+    pub fetch: FetchRequestedSignal,
+}
+
+/// Input passed to `start_entity_workflows` to launch top-level downstream workflows.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 pub struct StartEntityWorkflowsInput {
     /// Parent work UUID (used when starting `WriteSynopsisWorkflow`).
+    #[serde(default)]
     pub anime_id: String,
     /// Episode UUIDs whose `RefreshEpisodeWorkflow` should be started.
     #[serde(default)]
     pub episode_ids: Vec<String>,
+    /// Newly created character UUIDs whose `RefreshCharacterWorkflow` should be started.
+    #[serde(default)]
+    pub character_ids: Vec<String>,
+    /// Known characters listed on a work that need a `fetch_requested` signal-with-start.
+    #[serde(default)]
+    pub character_fetch_requests: Vec<CharacterFetchTarget>,
     /// Whether to start `WriteSynopsisWorkflow` for `anime_id`.
     #[serde(default)]
     pub start_synopsis: bool,
@@ -186,8 +263,11 @@ pub enum RefreshOutcomeKind {
 /// Input passed to the `record_refresh` activity.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct RecordRefreshInput {
-    /// Target work UUID.
-    pub anime_id: String,
+    /// Target entity kind.
+    #[serde(default)]
+    pub entity_kind: RefreshEntityKind,
+    /// Target entity UUID.
+    pub entity_id: String,
     /// Final refresh outcome.
     pub outcome: RefreshOutcomeKind,
     /// `REFRESH_AFTER_DAYS` setting from `update_service`.
@@ -250,6 +330,47 @@ pub struct RefreshAnimeOutcome {
     pub episode_workflows_started: usize,
     /// Whether `WriteSynopsisWorkflow` was started after all pages settled.
     pub synopsis_workflow_started: bool,
+    /// Final outcome recorded via `record_refresh`.
+    pub final_outcome: RefreshOutcomeKind,
+}
+
+/// Input passed when starting `RefreshEpisodeWorkflow` or `RefreshCharacterWorkflow`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct RefreshEntityInput {
+    /// Target episode or character UUID.
+    pub entity_id: String,
+    /// `RefreshTrigger` search attribute value (`user`, `episode`, `sweep`, `seed`, `remerge`).
+    #[serde(default)]
+    pub trigger: String,
+    /// Initial priority key (`1..=5`, `0` uses default `3`).
+    #[serde(default)]
+    pub priority: u32,
+    /// `REFRESH_AFTER_DAYS` setting (`0` uses [`DEFAULT_REFRESH_AFTER_DAYS`]).
+    #[serde(default)]
+    pub refresh_after_days: i64,
+    /// Current `MERGE_VERSION` from settings; triggers a re-merge when stored version is older.
+    #[serde(default)]
+    pub merge_version: i32,
+    /// Seconds to wait after the first stored page before running the first merge
+    /// (`None` uses [`DEFAULT_MERGE_FIRST_WAIT_MINUTES`] * 60).
+    #[serde(default)]
+    pub merge_first_wait_seconds: Option<u64>,
+    /// Whether the entity's pages were recently relinked and require a merge even without fetches.
+    #[serde(default)]
+    pub pages_relinked: bool,
+}
+
+/// Final summary returned by `RefreshEpisodeWorkflow::run` and `RefreshCharacterWorkflow::run`.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct RefreshEntityOutcome {
+    /// Target episode or character UUID.
+    pub entity_id: String,
+    /// Number of `refresh_page` calls completed.
+    pub pages_refreshed: usize,
+    /// Number of `refresh_page` calls that ended in page failure.
+    pub pages_failed: usize,
+    /// Number of merge executions performed.
+    pub merges_run: usize,
     /// Final outcome recorded via `record_refresh`.
     pub final_outcome: RefreshOutcomeKind,
 }

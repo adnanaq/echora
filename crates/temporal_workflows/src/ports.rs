@@ -6,16 +6,16 @@ use std::sync::Arc;
 use futures::future::BoxFuture;
 
 use crate::refresh_anime_types::{
-    ListEntityPagesOutput, MergeAnimeOutput, RecordRefreshInput, RefreshPageKey, RefreshPageOutput,
-    StartEntityWorkflowsInput,
+    ListEntityPagesOutput, MergeEntityOutput, RecordRefreshInput, RefreshEntityKind,
+    RefreshPageKey, RefreshPageOutput, StartEntityWorkflowsInput,
 };
 
-/// Result of a single `LoadAnime` -> `MergeAnime` -> `SaveAnime` attempt.
+/// Result of a single `Load*` -> `Merge*` -> `Save*` attempt.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MergeAttemptOutcome {
     /// Merge and save succeeded (or no changes were needed).
-    Saved(MergeAnimeOutput),
-    /// `SaveAnime` returned `ABORTED` due to an optimistic concurrency conflict.
+    Saved(MergeEntityOutput),
+    /// `Save*` returned `ABORTED` due to an optimistic concurrency conflict.
     VersionConflict(String),
 }
 
@@ -111,7 +111,8 @@ pub trait CatalogueDataPort: Send + Sync {
     /// Lists an entity's linked provider pages via `PostgresService.ListEntityPages`.
     fn list_entity_pages(
         &self,
-        anime_id: String,
+        entity_kind: RefreshEntityKind,
+        entity_id: String,
     ) -> BoxFuture<'_, Result<ListEntityPagesOutput, PortError>>;
 
     /// Fetches a page via `EnrichmentService.FetchPage` and stores it via `PostgresService.StorePage`.
@@ -121,10 +122,11 @@ pub trait CatalogueDataPort: Send + Sync {
         max_age_seconds: i64,
     ) -> BoxFuture<'_, Result<RefreshPageOutput, PortError>>;
 
-    /// Executes one `LoadAnime` -> `MergeAnime` -> `SaveAnime` attempt.
-    fn merge_anime_attempt(
+    /// Executes one `Load*` -> `Merge*` -> `Save*` attempt for `entity_kind`.
+    fn merge_entity_attempt(
         &self,
-        anime_id: String,
+        entity_kind: RefreshEntityKind,
+        entity_id: String,
         merge_version: i32,
     ) -> BoxFuture<'_, Result<MergeAttemptOutcome, PortError>>;
 
@@ -184,7 +186,8 @@ struct NoopPort;
 impl CatalogueDataPort for NoopPort {
     fn list_entity_pages(
         &self,
-        _anime_id: String,
+        _entity_kind: RefreshEntityKind,
+        _entity_id: String,
     ) -> BoxFuture<'_, Result<ListEntityPagesOutput, PortError>> {
         Box::pin(async {
             Err(PortError::non_retryable(
@@ -205,9 +208,10 @@ impl CatalogueDataPort for NoopPort {
         })
     }
 
-    fn merge_anime_attempt(
+    fn merge_entity_attempt(
         &self,
-        _anime_id: String,
+        _entity_kind: RefreshEntityKind,
+        _entity_id: String,
         _merge_version: i32,
     ) -> BoxFuture<'_, Result<MergeAttemptOutcome, PortError>> {
         Box::pin(async {
