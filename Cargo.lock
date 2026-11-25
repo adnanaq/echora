@@ -2982,6 +2982,7 @@ name = "temporal_workflows"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "futures",
  "serde",
  "serde_json",
@@ -3722,14 +3723,24 @@ name = "update_service"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "common",
  "futures",
  "mimalloc",
+ "prost 0.14.6",
+ "prost-build",
+ "prost-types",
+ "protoc-bin-vendored",
+ "serde",
+ "serde_json",
  "temporal_workflows",
  "temporalio-client",
  "temporalio-common",
  "temporalio-sdk",
  "tokio",
+ "tonic 0.14.9",
+ "tonic-prost",
+ "tonic-prost-build",
  "tracing",
  "url",
 ]

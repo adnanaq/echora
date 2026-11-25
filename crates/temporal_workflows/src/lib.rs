@@ -4,8 +4,38 @@
 //! deployment-based worker versioning helpers, and SDK spike primitives used
 //! by `update_service`.
 
+mod activities;
+mod ports;
+mod refresh_anime_types;
+mod refresh_anime_workflow;
+
 use temporalio_common::worker::{WorkerDeploymentOptions, WorkerDeploymentVersion};
 use temporalio_sdk::WorkerOptions;
+
+#[doc(inline)]
+pub use activities::{
+    MAX_ABORTED_RETRIES_PER_ATTEMPT, ProviderActivities, REFRESH_PAGE_HEARTBEAT_INTERVAL,
+    UpdateServiceActivities,
+};
+#[doc(inline)]
+pub use ports::{
+    CatalogueDataPort, MergeAttemptOutcome, PortError, PortErrorKind, UpdateServicePorts,
+    WorkflowStarterPort, is_non_retryable_grpc_code,
+};
+#[doc(inline)]
+pub use refresh_anime_types::{
+    DEFAULT_MERGE_FIRST_WAIT_MINUTES, DEFAULT_REFRESH_AFTER_DAYS, EntityPageSummary,
+    FetchRequestedSignal, ListEntityPagesOutput, MAX_PAGE_RETRY_BACKOFF_HOURS, MergeAnimeInput,
+    MergeAnimeOutput, RecordRefreshInput, RefreshAnimeInput, RefreshAnimeOutcome,
+    RefreshOutcomeKind, RefreshPageInput, RefreshPageKey, RefreshPageOutput,
+    StartEntityWorkflowsInput, build_refresh_anime_workflow_id, build_refresh_episode_workflow_id,
+    build_write_synopsis_workflow_id,
+};
+#[doc(inline)]
+pub use refresh_anime_workflow::{
+    RefreshAnimeWorkflow, compute_page_backoff_seconds, is_page_due, matches_fetch_request,
+    merge_priority, select_pages_to_refresh,
+};
 
 /// Task queue for Update Service workflows, merges, and workflow starters.
 pub const UPDATE_SERVICE_TASK_QUEUE: &str = "update-service";
@@ -86,14 +116,19 @@ impl WorkerQueueSpec {
 /// # Examples
 ///
 /// ```
-/// use temporal_workflows::{WorkerQueueSpec, build_worker_options};
+/// use temporal_workflows::{UpdateServicePorts, WorkerQueueSpec, build_worker_options};
 /// use temporalio_common::worker::WorkerDeploymentVersion;
 ///
 /// let version = WorkerDeploymentVersion::builder()
 ///     .deployment_name("update-service".to_owned())
 ///     .build_id("0.1.0".to_owned())
 ///     .build();
-/// let opts = build_worker_options(&WorkerQueueSpec::UpdateService, version, true)?;
+/// let opts = build_worker_options(
+///     &WorkerQueueSpec::UpdateService,
+///     version,
+///     true,
+///     UpdateServicePorts::noop(),
+/// )?;
 /// assert_eq!(opts.task_queue, "update-service");
 /// # Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
 /// ```
@@ -101,19 +136,22 @@ pub fn build_worker_options(
     queue_spec: &WorkerQueueSpec,
     deployment_version: WorkerDeploymentVersion,
     use_worker_versioning: bool,
+    ports: UpdateServicePorts,
 ) -> Result<WorkerOptions, Box<dyn std::error::Error + Send + Sync>> {
     let task_queue = queue_spec.task_queue();
     let deployment_options = WorkerDeploymentOptions::new(deployment_version)
         .use_worker_versioning(use_worker_versioning)
         .build();
 
-    let builder = WorkerOptions::new(task_queue)
-        .deployment_options(deployment_options)
-        .register_activities(SpikeActivities);
+    let builder = WorkerOptions::new(task_queue).deployment_options(deployment_options);
 
     let builder = match queue_spec {
-        WorkerQueueSpec::UpdateService => builder.register_workflow::<SpikeWorkflow>()?,
-        WorkerQueueSpec::Provider(_) | WorkerQueueSpec::AgentService => builder,
+        WorkerQueueSpec::UpdateService => builder
+            .register_activities(UpdateServiceActivities::new(ports))
+            .register_workflow::<RefreshAnimeWorkflow>()?
+            .register_workflow::<SpikeWorkflow>()?,
+        WorkerQueueSpec::Provider(_) => builder.register_activities(ProviderActivities::new(ports)),
+        WorkerQueueSpec::AgentService => builder.register_activities(SpikeActivities),
     };
 
     Ok(builder.build())
