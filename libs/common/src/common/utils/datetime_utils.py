@@ -504,7 +504,7 @@ def parse_iana_timezone(timezone_value: str | None) -> str | None:
     candidate = _TIMEZONE_ABBREVIATIONS.get(trimmed.upper(), trimmed)
     try:
         ZoneInfo(candidate)
-    except ZoneInfoNotFoundError:
+    except ZoneInfoNotFoundError, ValueError:
         return None
     return candidate
 

@@ -377,3 +377,13 @@ class TestNormalizeToUtc:
         assert to_japan_time(datetime(2024, 3, 31, 15, 0)).isoformat() == (
             "2024-04-01T00:00:00+09:00"
         )
+
+
+def test_parse_iana_timezone_returns_none_for_malformed_keys() -> None:
+    from common.utils.datetime_utils import parse_iana_timezone
+
+    assert parse_iana_timezone("JST") == "Asia/Tokyo"
+    assert parse_iana_timezone("Asia/Tokyo") == "Asia/Tokyo"
+    assert parse_iana_timezone("/Asia/Tokyo") is None
+    assert parse_iana_timezone("../etc/passwd") is None
+    assert parse_iana_timezone("Invalid/Zone") is None
