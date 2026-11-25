@@ -3,6 +3,7 @@ syntax = "proto3";
 package enrichment_service.v1;
 
 import "google/protobuf/duration.proto";
+import "shared_proto/v1/anime.proto";
 import "shared_proto/v1/error.proto";
 import "shared_proto/v1/merge.proto";
 
@@ -14,6 +15,8 @@ service EnrichmentService {
   rpc RunPipeline(RunPipelineRequest) returns (RunPipelineResponse);
   // Fetches raw provider page responses as received without mapping.
   rpc FetchPage(FetchPageRequest) returns (FetchPageResponse);
+  // Maps stored pages, merges them into one anime, and applies overrides.
+  rpc MergeAnime(MergeAnimeRequest) returns (MergeAnimeResponse);
 }
 
 // Empty request for health checks.
@@ -70,4 +73,22 @@ message FetchPageRequest {
 // StoredPage containing raw responses as received from the provider.
 message FetchPageResponse {
   shared_proto.v1.StoredPage page = 1;
+}
+
+// Request to merge one anime from its stored pages, corrections, and generated text.
+message MergeAnimeRequest {
+  string anime_id = 1;
+  repeated shared_proto.v1.StoredPage source_pages = 2;
+  repeated shared_proto.v1.PageKey partial_source_pages = 3;
+  repeated shared_proto.v1.FieldCorrection corrections = 4;
+  repeated shared_proto.v1.GeneratedText generated_texts = 5;
+  repeated shared_proto.v1.EpisodeReference known_episodes = 6;
+}
+
+// Merged anime, its episode references, raw relation claims, and synopsis hash.
+message MergeAnimeResponse {
+  shared_proto.v1.Anime anime = 1;
+  repeated shared_proto.v1.EpisodeReference episodes = 2;
+  repeated shared_proto.v1.RelationClaim relation_claims = 3;
+  string provider_synopses_hash = 4;
 }

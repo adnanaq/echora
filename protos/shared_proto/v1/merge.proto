@@ -37,6 +37,13 @@ message FieldCorrection {
   google.protobuf.Timestamp approved_at = 4;
 }
 
+// AI-written text for one field, passed into a merge.
+message GeneratedText {
+  string field_path = 1;
+  string text = 2;
+  google.protobuf.Timestamp written_at = 3;
+}
+
 // One provider's own claim that the work relates to a target page.
 message RelationClaim {
   string provider = 1;
