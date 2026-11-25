@@ -49,8 +49,12 @@ pub struct UpdateServiceSettings {
     pub temporal_namespace: String,
     /// PostgreSQL Service gRPC URL (default `http://localhost:8004`).
     pub postgres_service_address: String,
-    /// Enrichment Service gRPC URL (default `http://localhost:8002`).
+    /// Default Enrichment Service gRPC URL (default `http://localhost:8002`).
     pub enrichment_service_address: String,
+    /// Enrichment fetch gRPC URL (`ENRICHMENT_FETCH_SERVICE_ADDRESS`, defaults to `enrichment_service_address`).
+    pub enrichment_fetch_service_address: String,
+    /// Enrichment merge gRPC URL (`ENRICHMENT_MERGE_SERVICE_ADDRESS`, defaults to `enrichment_service_address`).
+    pub enrichment_merge_service_address: String,
     /// Worker Deployment name for deployment-based Worker Versioning.
     pub deployment_name: String,
     /// Build identifier for deployment-based Worker Versioning.
@@ -96,13 +100,28 @@ impl UpdateServiceSettings {
         let raw_enrichment = lookup("ENRICHMENT_SERVICE_ADDRESS")
             .filter(|val| !val.trim().is_empty())
             .unwrap_or_else(|| DEFAULT_ENRICHMENT_SERVICE_ADDRESS.to_owned());
+        let enrichment_service_address = normalize_temporal_address(&raw_enrichment);
+        let enrichment_fetch_service_address = lookup("ENRICHMENT_FETCH_SERVICE_ADDRESS")
+            .filter(|val| !val.trim().is_empty())
+            .map_or_else(
+                || enrichment_service_address.clone(),
+                |val| normalize_temporal_address(&val),
+            );
+        let enrichment_merge_service_address = lookup("ENRICHMENT_MERGE_SERVICE_ADDRESS")
+            .filter(|val| !val.trim().is_empty())
+            .map_or_else(
+                || enrichment_service_address.clone(),
+                |val| normalize_temporal_address(&val),
+            );
         Self {
             temporal_address: normalize_temporal_address(&raw_address),
             temporal_namespace: lookup("TEMPORAL_NAMESPACE")
                 .filter(|val| !val.trim().is_empty())
                 .unwrap_or_else(|| DEFAULT_TEMPORAL_NAMESPACE.to_owned()),
             postgres_service_address: normalize_temporal_address(&raw_postgres),
-            enrichment_service_address: normalize_temporal_address(&raw_enrichment),
+            enrichment_service_address,
+            enrichment_fetch_service_address,
+            enrichment_merge_service_address,
             deployment_name: lookup("WORKER_DEPLOYMENT_NAME")
                 .filter(|val| !val.trim().is_empty())
                 .unwrap_or_else(|| DEFAULT_DEPLOYMENT_NAME.to_owned()),
@@ -218,12 +237,16 @@ pub async fn run_workers(
     let postgres_channel = Endpoint::from_shared(settings.postgres_service_address.clone())
         .context("POSTGRES_SERVICE_ADDRESS must be a valid URL")?
         .connect_lazy();
-    let enrichment_channel = Endpoint::from_shared(settings.enrichment_service_address.clone())
-        .context("ENRICHMENT_SERVICE_ADDRESS must be a valid URL")?
+    let fetch_channel = Endpoint::from_shared(settings.enrichment_fetch_service_address.clone())
+        .context("ENRICHMENT_FETCH_SERVICE_ADDRESS must be a valid URL")?
         .connect_lazy();
-    let catalogue_port = Arc::new(GrpcCatalogueAdapter::new(
+    let merge_channel = Endpoint::from_shared(settings.enrichment_merge_service_address.clone())
+        .context("ENRICHMENT_MERGE_SERVICE_ADDRESS must be a valid URL")?
+        .connect_lazy();
+    let catalogue_port = Arc::new(GrpcCatalogueAdapter::with_split_enrichment(
         build_postgres_client(postgres_channel),
-        build_enrichment_client(enrichment_channel),
+        build_enrichment_client(fetch_channel),
+        build_enrichment_client(merge_channel),
     ));
     let starter_port = Arc::new(TemporalWorkflowStarter::new(client.clone()));
     let worker_options = build_all_worker_options(

@@ -1,0 +1,44 @@
+# Temporal dynamic configuration for Echora Update Service queues.
+#
+# - Enables task queue fairness balancing across callers within each priority key.
+# - Pins every provider-<name> queue to 1 read and 1 write partition so priority
+#   and fairness ordering are exact (default is 4 partitions).
+
+matching.enableFairness:
+  - value: true
+
+matching.numTaskqueueReadPartitions:
+  - constraints: { namespace: "echora", taskQueueName: "provider-anidb" }
+    value: 1
+  - constraints: { namespace: "echora", taskQueueName: "provider-anilist" }
+    value: 1
+  - constraints: { namespace: "echora", taskQueueName: "provider-anime_planet" }
+    value: 1
+  - constraints: { namespace: "echora", taskQueueName: "provider-animeschedule" }
+    value: 1
+  - constraints: { namespace: "echora", taskQueueName: "provider-anisearch" }
+    value: 1
+  - constraints: { namespace: "echora", taskQueueName: "provider-kitsu" }
+    value: 1
+  - constraints: { namespace: "echora", taskQueueName: "provider-mal" }
+    value: 1
+  - constraints: { namespace: "echora", taskQueueName: "provider-syoboi" }
+    value: 1
+
+matching.numTaskqueueWritePartitions:
+  - constraints: { namespace: "echora", taskQueueName: "provider-anidb" }
+    value: 1
+  - constraints: { namespace: "echora", taskQueueName: "provider-anilist" }
+    value: 1
+  - constraints: { namespace: "echora", taskQueueName: "provider-anime_planet" }
+    value: 1
+  - constraints: { namespace: "echora", taskQueueName: "provider-animeschedule" }
+    value: 1
+  - constraints: { namespace: "echora", taskQueueName: "provider-anisearch" }
+    value: 1
+  - constraints: { namespace: "echora", taskQueueName: "provider-kitsu" }
+    value: 1
+  - constraints: { namespace: "echora", taskQueueName: "provider-mal" }
+    value: 1
+  - constraints: { namespace: "echora", taskQueueName: "provider-syoboi" }
+    value: 1
