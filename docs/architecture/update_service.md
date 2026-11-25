@@ -199,7 +199,22 @@ In practice each AniDB page refreshes about every 110 days, which is what the bu
 
 > **Linear:** ~~ECHO-113~~, ECHO-99
 
-Request pacing in `libs/enrichment` (`polite_http.py`) holds requests to a site apart across one process, not across processes, and a queue's rate limit counts pages, while one MAL page can be several requests. So each provider's pages are fetched by exactly one Enrichment process, and the queue's limit is set from that provider's pace divided by its requests per page. Merging holds no provider pacing, so merge processes scale freely. Fetching and merging run as two deployments of the Enrichment image: merges are CPU-heavy and would otherwise block the fetches' event loop, stalling heartbeats and health checks. The workers for browser-crawled providers (`provider-mal`, `provider-anime-planet`, `provider-anisearch`) cap how many activities they run at once, and the Enrichment Service sets its browser pool limit at startup, so slow crawls cannot pile up browsers until the process runs out of memory.
+Request pacing in `libs/enrichment` (`polite_http.py`) holds requests to a site apart across one process, not across processes, and a queue's rate limit counts pages, while one MAL page can be several requests. So each provider's pages are fetched by exactly one Enrichment process, and the queue's limit is set from that provider's pace divided by its requests per page. Merging holds no provider pacing, so merge processes scale freely. Fetching and merging run as two deployments of the Enrichment image when load warrants it: `update_service` reads `ENRICHMENT_FETCH_SERVICE_ADDRESS` and `ENRICHMENT_MERGE_SERVICE_ADDRESS` (both defaulting to `ENRICHMENT_SERVICE_ADDRESS` so single-container deployments require no extra setup). The workers for browser-crawled providers (`provider-mal`, `provider-anime-planet`, `provider-anisearch`, `provider-anidb`) cap how many activities they run at once, and the Enrichment Service calls `configure_browser_pool(enrichment_max_concurrent_browsers)` at startup, so slow crawls cannot pile up browsers until the process runs out of memory.
+
+#### Python intra-page delays vs. Temporal queue limits
+
+Temporal limits **pages per second** (`refresh_page` activities), whereas a single `FetchPage` call often issues multiple HTTP or browser requests (overview + episodes/characters, or paginated API pages). The Python delays in `libs/enrichment` remain active to prevent bursts inside a single page fetch and during standalone CLI runs:
+
+| Provider | Python Pacing & Module | Browser Pool | Block / 429 Handling | Temporal Queue Limit (`configure_temporal_queues.sh`) |
+| --- | --- | --- | --- | --- |
+| `anidb` | `anidb_fetcher.py` (`2.0s` / `anidb_min_request_interval`), `anidb_character_crawler.py` (`_INTER_REQUEST_DELAY = 2.5s`) | Characters (`zendriver`) | 555 ban cooldown (`300s`) / `ServiceRateLimitedError` | `0.00174` RPS (`150/day`, max 1 concurrent slot) |
+| `anilist` | `anilist_fetcher.py` (`_INTER_PAGE_SLEEP_S = 0.5s`) | No | Checks `RateLimit-Remaining < 5`, sleeps `60s` (`Retry-After`) up to 3x -> `ServiceRateLimitedError` | `0.50` RPS |
+| `anime_planet` | `anime_planet_character_crawler.py` (`_INTER_REQUEST_DELAY = 1.5s`) | Yes (`zendriver`) | `ServiceBlockedError` / `ServiceNetworkError` | `0.33` RPS (max 2 concurrent slots) |
+| `animeschedule` | `animeschedule_fetcher.py` (no fixed sleep; Redis HTTP cache) | No | HTTP error -> `ServiceNetworkError` | `1.0` RPS |
+| `anisearch` | `anisearch_http.py` via `PoliteHttpClient(min_interval = 3.0s)` | No | HTTP `403`/`423`/`429` or refused connection permanently marks process blocked (`ServiceBlockedError`) | `0.16` RPS (max 2 concurrent slots) |
+| `kitsu` | `kitsu_fetcher.py` (`_INTER_PAGE_SLEEP_S = 0.1s`, `Semaphore` for voices) | No | HTTP error -> `ServiceNetworkError` | `2.0` RPS |
+| `mal` | `mal_fetcher.py` / `mal_anime_crawler.py` / `mal_character_crawler.py` (`3.0s`), `mal_episode_crawler.py` (`1.5s`) | Yes (`zendriver`) | `ServiceBlockedError` / `ServiceNetworkError` | `0.10` RPS (max 2 concurrent slots) |
+| `syoboi` | `syoboi_fetcher.py` (no fixed sleep; Redis HTTP cache) | No | HTTP error -> `ServiceNetworkError` | `1.0` RPS |
 
 ### Activity timeouts
 
