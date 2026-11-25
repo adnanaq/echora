@@ -1,6 +1,7 @@
 """Shared page fetcher interface and raw response helpers for providers."""
 
 import json
+import re
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -167,6 +168,58 @@ def parse_json_response(response: PageResponse) -> dict[str, Any]:
         error_message = f"Expected JSON object in {response.request_name!r}, got {type(decoded).__name__}"
         raise TypeError(error_message)
     return decoded
+
+
+def parse_html_response(response: PageResponse) -> str:
+    """Decode an HTML PageResponse body into a UTF-8 string.
+
+    Args:
+        response: PageResponse holding UTF-8 HTML bytes.
+
+    Returns:
+        Decoded HTML string.
+    """
+    return response.body.decode("utf-8", errors="replace")
+
+
+_CANONICAL_REL_FIRST = re.compile(
+    r"""<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']""",
+    re.IGNORECASE,
+)
+_CANONICAL_HREF_FIRST = re.compile(
+    r"""<link[^>]+href=["']([^"']+)["'][^>]+rel=["']canonical["']""",
+    re.IGNORECASE,
+)
+
+
+def extract_canonical_url(html: str) -> str | None:
+    """Extract the canonical link href from an HTML document.
+
+    Args:
+        html: Rendered HTML string.
+
+    Returns:
+        Canonical URL string, or None when no canonical link tag is present.
+    """
+    match = _CANONICAL_REL_FIRST.search(html) or _CANONICAL_HREF_FIRST.search(html)
+    return match.group(1).strip() if match else None
+
+
+def build_html_response(request_name: str, html: str) -> PageResponse:
+    """Encode an HTML string into a text/html PageResponse message.
+
+    Args:
+        request_name: Request identifier such as ``"main"`` or ``"characters"``.
+        html: Rendered HTML document string.
+
+    Returns:
+        PageResponse holding UTF-8 encoded HTML bytes.
+    """
+    return PageResponse(
+        request_name=request_name,
+        content_type="text/html",
+        body=html.encode("utf-8"),
+    )
 
 
 def collect_paginated_responses(

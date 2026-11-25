@@ -17,6 +17,7 @@ Key AniSearch-specific details:
 """
 
 import re
+from collections.abc import Sequence
 from typing import Any
 
 from common.models.anime import (
@@ -56,7 +57,13 @@ from enrichment.sources.anisearch.anisearch_anime_models import (
 )
 from enrichment.sources.base.companies import companies_from_roles
 from enrichment.sources.base.external_links import external_link
+from enrichment.sources.base.page_fetcher import (
+    extract_canonical_url,
+    index_responses_by_name,
+    parse_html_response,
+)
 from enrichment.utils.text_utils import normalize_score
+from shared_proto.v1.merge_pb2 import PageResponse
 
 _ANISEARCH_BASE_URL = "https://www.anisearch.com/"
 _ANISEARCH_ANIME_ID_RE = re.compile(
@@ -394,3 +401,144 @@ def episode_from_anisearch(ep: AniSearchEpisode) -> dict[str, Any]:
         sources=[ep.source] if ep.source else [],
     )
     return episode.model_dump(mode="json", exclude_none=True)
+
+
+def map_anisearch_anime_responses(
+    responses: Sequence[PageResponse],
+    *,
+    source_url: str = "",
+) -> dict[str, Any]:
+    """Map stored AniSearch anime HTML responses into a canonical Anime dict.
+
+    Args:
+        responses: Stored PageResponse sequence containing a ``main`` HTML response.
+        source_url: Canonical AniSearch anime URL associated with the page.
+
+    Returns:
+        Dict of canonical Anime field values.
+
+    Raises:
+        ValueError: If the ``main`` response is missing or yields no anime data.
+    """
+    from enrichment.sources.anisearch.anisearch_anime_crawler import (
+        _build_anime_from_raw,
+        _extract_anime_from_html,
+        _extract_relations_from_html,
+        _parse_relations,
+    )
+
+    by_name = index_responses_by_name(responses)
+    main_response = by_name.get("main")
+    if main_response is None:
+        error_message = "AniSearch anime responses missing required 'main' response"
+        raise ValueError(error_message)
+    main_html = parse_html_response(main_response)
+    main_raw = _extract_anime_from_html(main_html)
+    if main_raw is None:
+        error_message = "AniSearch 'main' HTML yielded no anime data"
+        raise ValueError(error_message)
+
+    data = dict(main_raw)
+    rels_response = by_name.get("relations")
+    rels_raw = (
+        _extract_relations_from_html(parse_html_response(rels_response))
+        if rels_response is not None
+        else None
+    )
+    data["anime_relations"], data["manga_relations"] = _parse_relations(rels_raw)
+    resolved_url = source_url or extract_canonical_url(main_html) or ""
+    return anime_from_anisearch(_build_anime_from_raw(data, resolved_url))
+
+
+def map_anisearch_anime_episode_responses(
+    responses: Sequence[PageResponse],
+    *,
+    source_url: str = "",
+) -> list[dict[str, Any]]:
+    """Map stored AniSearch episodes HTML response into canonical Episode dicts.
+
+    Args:
+        responses: Stored PageResponse sequence containing an ``episodes`` HTML response.
+        source_url: Canonical AniSearch episodes page URL.
+
+    Returns:
+        List of canonical Episode field dicts.
+    """
+    from enrichment.sources.anisearch.anisearch_episode_crawler import (
+        _extract_episodes_from_html,
+        _parse_episode_row,
+    )
+
+    by_name = index_responses_by_name(responses)
+    episodes_response = by_name.get("episodes")
+    if episodes_response is None:
+        return []
+    extracted = _extract_episodes_from_html(parse_html_response(episodes_response))
+    if not extracted:
+        return []
+
+    mapped: list[dict[str, Any]] = []
+    for raw_row in extracted.get("episodes") or []:
+        parsed = _parse_episode_row(raw_row)
+        if parsed is not None:
+            mapped.append(
+                episode_from_anisearch(AniSearchEpisode(**parsed, source=source_url))
+            )
+    return mapped
+
+
+def map_anisearch_character_responses(
+    responses: Sequence[PageResponse],
+    *,
+    source_url: str = "",
+) -> dict[str, Any]:
+    """Map stored AniSearch character HTML responses into a canonical Character dict.
+
+    Args:
+        responses: Stored PageResponse sequence containing a ``main`` HTML response.
+        source_url: Canonical AniSearch character URL associated with the page.
+
+    Returns:
+        Dict of canonical Character field values.
+
+    Raises:
+        ValueError: If the ``main`` response is missing or yields no character data.
+    """
+    from enrichment.sources.anisearch.anisearch_character_crawler import (
+        _build_character_from_raw,
+        _extract_character_from_html,
+        _extract_ography_from_html,
+        _post_process_character,
+    )
+
+    by_name = index_responses_by_name(responses)
+    main_response = by_name.get("main")
+    if main_response is None:
+        error_message = "AniSearch character responses missing required 'main' response"
+        raise ValueError(error_message)
+    char_html = parse_html_response(main_response)
+    raw = _extract_character_from_html(char_html)
+    if raw is None:
+        error_message = "AniSearch 'main' HTML yielded no character data"
+        raise ValueError(error_message)
+
+    processed = _post_process_character(raw)
+    anime_ography = (
+        _extract_ography_from_html(parse_html_response(by_name["anime"]))
+        if "anime" in by_name
+        else None
+    )
+    manga_ography = (
+        _extract_ography_from_html(parse_html_response(by_name["manga"]))
+        if "manga" in by_name
+        else None
+    )
+    resolved_url = source_url or extract_canonical_url(char_html) or ""
+    return character_from_anisearch(
+        _build_character_from_raw(
+            processed,
+            resolved_url,
+            anime_ography=anime_ography,
+            manga_ography=manga_ography,
+        )
+    )
