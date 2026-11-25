@@ -18,8 +18,10 @@ The binary reads [`common`](../common/README.md) settings (`LOG_LEVEL`, `OTEL_*`
 | --- | --- | --- |
 | `TEMPORAL_ADDRESS` | `http://localhost:7233` | Temporal frontend gRPC URL |
 | `TEMPORAL_NAMESPACE` | `echora` | Temporal namespace |
-| `POSTGRES_SERVICE_URL` | `http://localhost:8004` | `postgres_service` gRPC URL |
-| `ENRICHMENT_SERVICE_URL` | `http://localhost:8002` | `enrichment_service` gRPC URL |
+| `POSTGRES_SERVICE_ADDRESS` | `http://localhost:8004` | `postgres_service` gRPC URL |
+| `ENRICHMENT_SERVICE_ADDRESS` | `http://localhost:8002` | Default `enrichment_service` gRPC URL |
+| `ENRICHMENT_FETCH_SERVICE_ADDRESS` | `ENRICHMENT_SERVICE_ADDRESS` | Optional dedicated URL for `FetchPage` (single fetch process per provider) |
+| `ENRICHMENT_MERGE_SERVICE_ADDRESS` | `ENRICHMENT_SERVICE_ADDRESS` | Optional dedicated URL for scalable `Merge*` RPCs |
 | `WORKER_DEPLOYMENT_NAME` | `update-service` | Worker deployment name |
 | `WORKER_BUILD_ID` | Crate version | Worker deployment build ID |
 | `WORKER_VERSIONING_ENABLED` | `false` | Opts in to Worker Deployment Versioning |

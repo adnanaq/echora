@@ -511,7 +511,7 @@ uv run python script.py
   - `apps/review_page` (HTTP on `127.0.0.1:8003`)
   - `crates/postgres_service` (gRPC on `:8004`)
   - `crates/temporal_workflows` (Temporal workflow and activity definitions: `RefreshAnimeWorkflow`, `RefreshEpisodeWorkflow`, `RefreshCharacterWorkflow`)
-  - `crates/update_service` (Temporal Rust worker process with gRPC clients for `PostgresService` and `EnrichmentService`)
+  - `crates/update_service` (Temporal Rust worker process with provider fallback RPS/concurrency caps, priority/fairness keys, and split-ready fetch/merge `enrichment_service` routing)
 - Active vector gRPC methods:
   - `VectorAdminService`: `Health`, `GetStats`
   - `VectorSearchService`: `Search`

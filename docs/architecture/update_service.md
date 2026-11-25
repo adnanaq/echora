@@ -163,7 +163,7 @@ Only an entity's own refresh workflow merges and saves it. Temporal allows at mo
 
 ### Provider rate limits
 
-> **Linear:** ECHO-113
+> **Linear:** ~~ECHO-113~~
 
 Every provider has its own Temporal task queue for `refresh_page`, and each queue has a rate limit on activities per second, set on the queue itself with `temporal task-queue config set --queue-rps-limit` (see [[temporal_infrastructure#Rate limits|Temporal Infrastructure]]). Temporal enforces that limit on the server, across every worker polling the queue, so adding workers never raises a provider's request rate. A limit set on the queue takes precedence over the workers' own `max_task_queue_activities_per_second`, so differently configured workers cannot fight over it.
 
@@ -188,7 +188,7 @@ So budgeted providers are fetched apart from work refreshes:
 
 - **Refreshes skip them.** A work's refresh fetches every due page except those of budgeted providers (`BUDGETED_PROVIDERS`, `anidb`), and merges with what the store already holds for them. (ECHO-117)
 - **One budgeted fetcher per provider.** A long-running `FetchBudgetedPagesWorkflow` (`budgeted-fetch-anidb`) takes pages in due order from `ListDuePages`, fetches them through `refresh_page` on the provider's queue, and sends the page's work `merge_requested` when a page changed. It continues as new between batches. (ECHO-119)
-- **An even pace, not a burst.** The `provider-anidb` queue's rate limit is 150 a day, one request about every 10 minutes. Pages beyond the budget wait in the queue for the next free slot, and a day of bursts is what gets an IP banned. (ECHO-113)
+- **An even pace, not a burst.** The `provider-anidb` queue's rate limit is 150 a day, one request about every 10 minutes. Pages beyond the budget wait in the queue for the next free slot, and a day of bursts is what gets an IP banned. (~~ECHO-113~~)
 - **Visits first.**
   - When a user opens a work whose AniDB page is due, the backend's refresh request reaches the fetcher as a `page_requested` signal. (P-ECHO-16)
   - The fetcher moves that page to the front of its queue. (ECHO-119)
@@ -197,7 +197,7 @@ In practice each AniDB page refreshes about every 110 days, which is what the bu
 
 ### One fetch process per provider
 
-> **Linear:** ECHO-113, ECHO-99
+> **Linear:** ~~ECHO-113~~, ECHO-99
 
 Request pacing in `libs/enrichment` (`polite_http.py`) holds requests to a site apart across one process, not across processes, and a queue's rate limit counts pages, while one MAL page can be several requests. So each provider's pages are fetched by exactly one Enrichment process, and the queue's limit is set from that provider's pace divided by its requests per page. Merging holds no provider pacing, so merge processes scale freely. Fetching and merging run as two deployments of the Enrichment image: merges are CPU-heavy and would otherwise block the fetches' event loop, stalling heartbeats and health checks. The workers for browser-crawled providers (`provider-mal`, `provider-anime-planet`, `provider-anisearch`) cap how many activities they run at once, and the Enrichment Service sets its browser pool limit at startup, so slow crawls cannot pile up browsers until the process runs out of memory.
 
@@ -378,8 +378,8 @@ The workflows publish nothing themselves. After a save commits, the PostgreSQL S
 | Search attribute | `RefreshTrigger` (keyword: `user`, `episode`, `sweep`, `seed`), set on each refresh start, used to count the refreshes a sweep or seed load still has running (ECHO-95) |
 | Workflow types | `RefreshAnimeWorkflow`, `RefreshEpisodeWorkflow`, `RefreshCharacterWorkflow`, `SweepCatalogueWorkflow` (weekly sweep, daily scores), `TrackEpisodesWorkflow` (daily) with one `track-episode` workflow per episode, `WriteSynopsisWorkflow`, `LoadSeedReleaseWorkflow` (loads a cleaned seed, see [[ingestion_pipeline|Ingestion Pipeline]]), `FetchBudgetedPagesWorkflow` (one per budgeted provider) (ECHO-95) |
 | Workflow IDs | `refresh-anime-<id>`, `refresh-episode-<id>`, `refresh-character-<id>`, `track-episode-<anime_id>-<episode_number>`, `synopsis-anime-<id>`, `budgeted-fetch-<provider>`, all with conflict policy `USE_EXISTING`; `seed-release` with conflict policy `FAIL`, so a second seed load is refused while one runs (ECHO-95) |
-| Rate limit | A queue rate limit per provider queue, set with `temporal task-queue config set` from that provider's pacing (ECHO-113) |
-| Priority and fairness | Priority keys 1 to 3 and fairness keys as in [[#Provider rate limits]] (ECHO-113) |
+| Rate limit | A queue rate limit per provider queue, set with `temporal task-queue config set` from that provider's pacing (~~ECHO-113~~) |
+| Priority and fairness | Priority keys 1 to 3 and fairness keys as in [[#Provider rate limits]] (~~ECHO-113~~) |
 | ~~Temporal namespace~~ | ~~`echora` (ECHO-95)~~ |
 
 ~~The workflows and activities live in `crates/temporal_workflows/`, and `crates/update_service/` runs them as a Temporal worker. See [[temporal_infrastructure|Temporal Infrastructure]] for server setup, and its [[temporal_infrastructure#Writing Workflow Code|Writing Workflow Code]] section for the Temporal Developer Skill to use when building these workflows. (ECHO-95)~~
@@ -397,7 +397,7 @@ The workflows publish nothing themselves. After a save commits, the PostgreSQL S
 | ~~`DEAD_PAGE_REVIEW`~~ | ~~`true` per provider~~ | ~~Missing pages go to review before they are marked dead; turned off for a provider once reviews keep confirming (ECHO-97)~~ |
 | `MERGE_FIRST_WAIT_MINUTES` | `10` | How long a refresh waits after its first stored page before merging without the pages still in flight (~~ECHO-111~~) |
 | `BUDGETED_PROVIDERS` | `anidb` | Providers fetched by a budgeted fetcher instead of by work refreshes (ECHO-119) |
-| `ANIDB_DAILY_BUDGET` | `150` | AniDB requests a day; the `provider-anidb` queue's rate limit is set from it (ECHO-113) |
+| `ANIDB_DAILY_BUDGET` | `150` | AniDB requests a day; the `provider-anidb` queue's rate limit is set from it (~~ECHO-113~~) |
 | `ON_DEMAND_REFRESH_AGE_YEARS` | `30` | Works first aired longer ago than this, with their episodes and characters, refresh only when opened (ECHO-117) |
 | `EPISODE_TRACKING_WINDOW_DAYS` | `7` | How far ahead episode tracking starts (ECHO-118) |
 | `EPISODE_FOLLOW_UP_DAYS` | `1,3,7` | Days after airing that an episode is refreshed again (ECHO-118) |
