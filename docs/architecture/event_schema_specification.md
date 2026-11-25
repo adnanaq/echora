@@ -351,14 +351,14 @@ service PostgresService {
   rpc DeleteAnime(DeleteAnimeRequest) returns (DeleteAnimeResponse);  // (ECHO-107)
 
   // What is due
-  rpc ListEntityPages(ListEntityPagesRequest) returns (ListEntityPagesResponse);  // (ECHO-108)
-  rpc RecordRefresh(RecordRefreshRequest) returns (RecordRefreshResponse);  // (ECHO-108)
-  rpc ListDueAnime(ListDueRequest) returns (ListDueResponse);  // (ECHO-108)
-  rpc ListDueEpisodes(ListDueRequest) returns (ListDueResponse);  // (ECHO-108)
-  rpc ListDueCharacters(ListDueRequest) returns (ListDueResponse);  // (ECHO-108)
-  rpc ListUpcomingEpisodes(ListUpcomingEpisodesRequest) returns (ListUpcomingEpisodesResponse);  // (ECHO-108)
-  rpc ListScoreAnime(ListScoreAnimeRequest) returns (ListScoreAnimeResponse);  // (ECHO-108)
-  rpc ListRequestedMerges(ListRequestedMergesRequest) returns (ListRequestedMergesResponse);  // (ECHO-108)
+  rpc ListEntityPages(ListEntityPagesRequest) returns (ListEntityPagesResponse);  // ~~(ECHO-108)~~
+  rpc RecordRefresh(RecordRefreshRequest) returns (RecordRefreshResponse);  // ~~(ECHO-108)~~
+  rpc ListDueAnime(ListDueRequest) returns (ListDueResponse);  // ~~(ECHO-108)~~
+  rpc ListDueEpisodes(ListDueRequest) returns (ListDueResponse);  // ~~(ECHO-108)~~
+  rpc ListDueCharacters(ListDueRequest) returns (ListDueResponse);  // ~~(ECHO-108)~~
+  rpc ListUpcomingEpisodes(ListUpcomingEpisodesRequest) returns (ListUpcomingEpisodesResponse);  // ~~(ECHO-108)~~
+  rpc ListScoreAnime(ListScoreAnimeRequest) returns (ListScoreAnimeResponse);  // ~~(ECHO-108)~~
+  rpc ListRequestedMerges(ListRequestedMergesRequest) returns (ListRequestedMergesResponse);  // ~~(ECHO-108)~~
   rpc MarkEpisodeAired(MarkEpisodeAiredRequest) returns (MarkEpisodeAiredResponse);  // (ECHO-103)
 
   // AI-written text
@@ -366,14 +366,14 @@ service PostgresService {
   rpc SaveGeneratedText(SaveGeneratedTextRequest) returns (SaveGeneratedTextResponse);  // (ECHO-115)
 
   // Reads, for event consumers and the backend
-  rpc GetAnime(GetEntityRequest) returns (GetAnimeResponse);  // (ECHO-108)
-  rpc GetEpisode(GetEntityRequest) returns (GetEpisodeResponse);  // (ECHO-108)
-  rpc ListEpisodes(GetEntityRequest) returns (ListEpisodesResponse);  // (ECHO-108)
-  rpc GetCharacter(GetEntityRequest) returns (GetCharacterResponse);  // (ECHO-108)
-  rpc ListEntityVersions(ListEntityVersionsRequest) returns (ListEntityVersionsResponse);  // (ECHO-108)
+  rpc GetAnime(GetEntityRequest) returns (GetAnimeResponse);  // ~~(ECHO-108)~~
+  rpc GetEpisode(GetEntityRequest) returns (GetEpisodeResponse);  // ~~(ECHO-108)~~
+  rpc ListEpisodes(GetEntityRequest) returns (ListEpisodesResponse);  // ~~(ECHO-108)~~
+  rpc GetCharacter(GetEntityRequest) returns (GetCharacterResponse);  // ~~(ECHO-108)~~
+  rpc ListEntityVersions(ListEntityVersionsRequest) returns (ListEntityVersionsResponse);  // ~~(ECHO-108)~~
 
   // Budgeted providers
-  rpc ListDuePages(ListDuePagesRequest) returns (ListDuePagesResponse);  // (ECHO-108)
+  rpc ListDuePages(ListDuePagesRequest) returns (ListDuePagesResponse);  // ~~(ECHO-108)~~
 
   // Knowledge graph reads, for the backend and the Agent Service; messages defined with that project
   rpc FindNeighbors(FindNeighborsRequest) returns (GraphNodesResponse);  // (P-ECHO-22)

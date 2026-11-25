@@ -974,8 +974,8 @@ CREATE INDEX anime_refresh_order_idx  -- (ECHO-98)
 CREATE VIEW anime_visible AS  -- (ECHO-98)
   SELECT * FROM anime WHERE merged_at IS NOT NULL AND deleted_at IS NULL;
 
--- The daily score refresh reads ongoing and recently finished works
-CREATE INDEX anime_score_sync_idx ON anime(status, aired_to)  -- (ECHO-108)
+-- ~~The daily score refresh reads ongoing and recently finished works~~
+CREATE INDEX anime_score_sync_idx ON anime(status, aired_to)  -- ~~(ECHO-108)~~
   WHERE deleted_at IS NULL AND status IN ('ONGOING', 'FINISHED');
 
 CREATE TABLE anime_title (  -- (ECHO-100) (ECHO-133)
@@ -1181,8 +1181,8 @@ CREATE TABLE anime_broadcast (  -- (ECHO-101)
   next_episode_number  int CHECK (next_episode_number >= 0)    -- the episode airing at next_episode_at
 );
 
--- Episode tracking finds works whose next episode airs soon
-CREATE INDEX anime_broadcast_next_episode_idx  -- (ECHO-108)
+-- ~~Episode tracking finds works whose next episode airs soon~~
+CREATE INDEX anime_broadcast_next_episode_idx  -- ~~(ECHO-108)~~
   ON anime_broadcast(next_episode_at)
   WHERE next_episode_at IS NOT NULL;
 
@@ -1854,7 +1854,7 @@ Until then, those model fields are not stored.
 
 ### Refresh Queries
 
-> **Linear:** ECHO-108
+> **Linear:** ~~ECHO-108~~
 
 ```sql
 -- ListDueAnime: works the weekly sweep refreshes, with keyset paging and a fixed cutoff per sweep.

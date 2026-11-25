@@ -16,6 +16,10 @@ The service is defined in `protos/postgres_service/v1/postgres_service.proto`.
 | `MarkEpisodeAired` | Writes the episode's aired notification once |
 | `LoadCharacter` | Returns a character's pages, corrections and version |
 | `SaveCharacter` | Saves a merged character, with the works its `animeography` names, each by its work page |
+| `ListEntityPages`, `RecordRefresh` | Lists linked provider pages for an entity, and records refresh outcomes |
+| `ListDueAnime`, `ListDueEpisodes`, `ListDueCharacters` | Pages through due works, ongoing/upcoming episodes, and characters |
+| `ListUpcomingEpisodes`, `ListScoreAnime`, `ListRequestedMerges`, `ListDuePages` | Lists upcoming episodes, daily score works, pending merges, and budgeted provider due pages |
+| `GetAnime`, `GetEpisode`, `ListEpisodes`, `GetCharacter`, `ListEntityVersions` | Reads visible merged entities with `version` and `next_refresh_at`, and pages entity versions |
 
 The server also answers `grpc.health.v1.Health`.
 
