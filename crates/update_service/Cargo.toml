@@ -1,0 +1,23 @@
+[package]
+name = "update_service"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow.workspace = true
+common.workspace = true
+futures.workspace = true
+mimalloc.workspace = true
+temporal_workflows.workspace = true
+temporalio-client.workspace = true
+temporalio-common.workspace = true
+temporalio-sdk.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+url.workspace = true

@@ -278,6 +278,22 @@ services:
       start_period: 15s
     restart: unless-stopped
 
+  update-service:
+    build:
+      context: ..
+      dockerfile: crates/update_service/Dockerfile.prd
+    container_name: echora-update-service
+    environment:
+      - ENVIRONMENT=production
+      - TEMPORAL_ADDRESS=${TEMPORAL_ADDRESS:?set TEMPORAL_ADDRESS in .env}
+      - TEMPORAL_NAMESPACE=${TEMPORAL_NAMESPACE:-echora}
+      - WORKER_VERSIONING_ENABLED=${WORKER_VERSIONING_ENABLED:-true}
+      # Off until a production collector exists (see vector-service).
+      - OTEL_ENABLED=false
+    networks:
+      - echora-network
+    restart: unless-stopped
+
 networks:
   echora-network:
     driver: bridge

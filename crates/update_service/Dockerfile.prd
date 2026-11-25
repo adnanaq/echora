@@ -1,0 +1,66 @@
+# syntax=docker/dockerfile:1.6
+# =============================================================================
+# Update Service — production image (multi-stage Rust build)
+#
+# Build directly: docker build -f crates/update_service/Dockerfile.prd .
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Stage 1 — build release binary
+# -----------------------------------------------------------------------------
+FROM rust:1-slim-bookworm AS builder
+
+ARG TARGETARCH
+
+RUN apt-get update && apt-get install -y --no-install-recommends curl unzip \
+    && rm -rf /var/lib/apt/lists/* \
+    && set -eux; \
+       arch="${TARGETARCH:-amd64}"; \
+       case "$arch" in \
+         amd64) protoc_arch="x86_64" ;; \
+         arm64) protoc_arch="aarch_64" ;; \
+         *) echo "Unsupported arch for protoc: $arch"; exit 1 ;; \
+       esac; \
+       curl -fsSL -o /tmp/protoc.zip \
+         "https://github.com/protocolbuffers/protobuf/releases/download/v29.3/protoc-29.3-linux-${protoc_arch}.zip"; \
+       unzip -q /tmp/protoc.zip -d /usr/local bin/protoc 'include/*'; \
+       rm /tmp/protoc.zip
+
+WORKDIR /build
+
+COPY Cargo.toml Cargo.lock ./
+COPY crates/common/ crates/common/
+COPY crates/postgres_db/ crates/postgres_db/
+COPY crates/postgres_service/ crates/postgres_service/
+COPY crates/temporal_workflows/ crates/temporal_workflows/
+COPY crates/update_service/ crates/update_service/
+
+ENV RUSTFLAGS="-C target-cpu=x86-64-v3"
+
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/build/target \
+    cargo build --release --locked -p update_service \
+    && cp /build/target/release/update_service /usr/local/bin/update_service
+
+# -----------------------------------------------------------------------------
+# Stage 2 — minimal non-root runtime image
+# -----------------------------------------------------------------------------
+FROM debian:bookworm-slim AS app
+
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates procps \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /usr/local/bin/update_service /usr/local/bin/update_service
+
+RUN groupadd --gid 1000 appuser \
+    && useradd --uid 1000 --gid appuser --no-create-home appuser
+
+USER appuser
+
+ENV ENVIRONMENT=production \
+    TEMPORAL_NAMESPACE=echora
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+  CMD pgrep -x update_service >/dev/null || exit 1
+
+ENTRYPOINT ["/usr/local/bin/update_service"]
