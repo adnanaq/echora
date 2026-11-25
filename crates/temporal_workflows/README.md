@@ -8,12 +8,19 @@ Temporal workflows, activities, task queue constants, and deployment-based Worke
 - `AGENT_SERVICE_TASK_QUEUE` (`agent-service`): AI activities executed against `agent_service`.
 - `PROVIDER_QUEUE_NAMES` and `provider_task_queue`: per-provider queues (`provider-anidb`, `provider-anilist`, `provider-anime_planet`, `provider-animeschedule`, `provider-anisearch`, `provider-kitsu`, `provider-mal`, `provider-syoboi`).
 - `REFRESH_TRIGGER_SEARCH_ATTRIBUTE` (`RefreshTrigger`): Keyword search attribute tracking what started a refresh.
-- `WorkerQueueSpec` and `build_worker_options`: constructs `WorkerOptions` with `WorkerDeploymentOptions` for a given queue profile.
+- `WorkerQueueSpec` and `build_worker_options`: constructs `WorkerOptions` with `WorkerDeploymentOptions` and `UpdateServicePorts` for a given queue profile.
+- `RefreshAnimeWorkflow`: orchestrates `list_pages`, concurrent per-provider `refresh_page` activities, `MERGE_FIRST_WAIT_MINUTES` early merge timer, `merge_anime` (with 10x in-attempt `ABORTED` retries), downstream `RefreshEpisodeWorkflow` / `WriteSynopsisWorkflow` starts, `fetch_requested` / `merge_requested` signal handling, and `record_refresh`.
+- `UpdateServiceActivities` and `ProviderActivities`: activity implementations backed by `CatalogueDataPort` and `WorkflowStarterPort` ports (with `refresh_page` 20s heartbeating and cancellation).
 - `SpikeWorkflow` and `SpikeActivities`: ECHO-95 SDK spike proving `USE_EXISTING`, `signal_with_start_workflow`, priority/fairness keys, `RefreshTrigger` visibility queries, and Worker Versioning.
 
 ## Layout
 
-- `src/lib.rs` exports queue constants, `WorkerQueueSpec`, `build_worker_options`, and spike primitives.
+- `src/lib.rs` exports queue constants, `WorkerQueueSpec`, `build_worker_options`, workflow/activity types, and spike primitives.
+- `src/refresh_anime_types.rs` defines claim-check workflow, signal, and activity payload types plus workflow ID helpers.
+- `src/refresh_anime_workflow.rs` implements `RefreshAnimeWorkflow` and deterministic due/backoff/priority helpers.
+- `src/activities.rs` implements `UpdateServiceActivities` and `ProviderActivities`.
+- `src/ports.rs` defines `CatalogueDataPort`, `WorkflowStarterPort`, `UpdateServicePorts`, and `PortError`.
+- `tests/refresh_anime.rs` runs unit and end-to-end Temporal workflow tests for `RefreshAnimeWorkflow`.
 - `tests/sdk_spike.rs` runs integration tests against the Temporal dev server.
 
 ## Tests

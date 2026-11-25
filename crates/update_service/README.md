@@ -18,11 +18,13 @@ The binary reads [`common`](../common/README.md) settings (`LOG_LEVEL`, `OTEL_*`
 | --- | --- | --- |
 | `TEMPORAL_ADDRESS` | `http://localhost:7233` | Temporal frontend gRPC URL |
 | `TEMPORAL_NAMESPACE` | `echora` | Temporal namespace |
+| `POSTGRES_SERVICE_URL` | `http://localhost:8004` | `postgres_service` gRPC URL |
+| `ENRICHMENT_SERVICE_URL` | `http://localhost:8002` | `enrichment_service` gRPC URL |
 | `WORKER_DEPLOYMENT_NAME` | `update-service` | Worker deployment name |
 | `WORKER_BUILD_ID` | Crate version | Worker deployment build ID |
 | `WORKER_VERSIONING_ENABLED` | `false` | Opts in to Worker Deployment Versioning |
 
-At startup, `run_workers` connects to Temporal, initializes one `Worker` per queue, and polls concurrently until `SIGINT` or `SIGTERM`.
+At startup, `run_workers` connects to Temporal, `postgres_service`, and `enrichment_service` (configuring 64 MiB gRPC message limits and gzip compression via `build_postgres_client` / `build_enrichment_client`), initializes one `Worker` per queue wired with `GrpcCatalogueAdapter` and `TemporalWorkflowStarter`, and polls concurrently until `SIGINT` or `SIGTERM`.
 
 ## Running
 
@@ -45,6 +47,8 @@ docker compose --env-file .env -f docker/docker-compose.dev.yml up -d --build up
 
 - `src/main.rs` initializes `MiMalloc`, telemetry, settings, and OS signal handlers.
 - `src/lib.rs` defines `UpdateServiceSettings`, `list_worker_queue_specs`, `build_all_worker_options`, and `run_workers`.
+- `src/grpc_clients.rs` implements `GrpcCatalogueAdapter`, `TemporalWorkflowStarter`, and 64 MiB gzip gRPC client builders.
+- `tests/grpc_integration.rs` verifies `GrpcCatalogueAdapter` against mock `PostgresService` / `EnrichmentService` servers and `TemporalWorkflowStarter` against Temporal.
 - `tests/worker_config.rs` verifies settings loading, queue registration, and queue configuration.
 - `tests/server.rs` verifies Temporal server connection, `SIGINT`/`SIGTERM` shutdown, and connection error handling.
 
