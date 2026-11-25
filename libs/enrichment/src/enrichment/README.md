@@ -19,6 +19,10 @@ libs/enrichment/src/enrichment/
 │   ├── fetch_summary.py         # FetchOutcome, FetchSummary — what a page fetch came to
 │   ├── id_extractor.py          # PlatformIDExtractor — source URLs → ids dict
 │   ├── metadata_merger.py       # Merges the seven provider records into one Anime
+│   ├── anime_merge.py           # Merges stored provider pages into MergeAnimeResponse
+│   ├── anime_proto_mapper.py    # Converts canonical Anime dicts to protobuf and sorts lists
+│   ├── anime_field_corrections.py # Applies FieldCorrection overrides onto merged Anime protos
+│   ├── episode_reference_merger.py # Extracts and matches EpisodeReferences from stored pages
 │   ├── metadata_rules.py        # Per-field rules for that merge
 │   ├── link_rules.py            # Merge rules for links, images and media
 │   ├── relationship_merger.py   # Merges per-source relationship data

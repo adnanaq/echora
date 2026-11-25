@@ -580,7 +580,7 @@ Each entity is stored **once** under a UUIDv7 ID:
 
 - ~~IDs are UUIDv7, from `uuid.uuid7()` through `generate_entity_id` in `libs/common`. (ECHO-88)~~
 - A work from the seed gets its ID when the seed load creates it. (ECHO-107)
-- An episode or character gets its ID from the merge of the work that first lists it, and every later merge receives that ID and keeps it. (ECHO-105)
+- ~~An episode or character gets its ID from the merge of the work that first lists it, and every later merge receives that ID and keeps it. (ECHO-105)~~
 - ~~Rows the PostgreSQL Service creates by itself, `source_material` and `company`, get `DEFAULT uuidv7()`. (ECHO-102)~~
 
 **Pages identify what arrives from outside.** Inside the system, only the UUID is used.
@@ -1655,7 +1655,7 @@ CREATE TABLE character_source (
   - ~~`LoadAnime` for a work. (ECHO-98)~~
   - ~~`LoadEpisode` for an episode. (ECHO-103)~~
   - ~~`LoadCharacter` for a character. (ECHO-104)~~
-- An entity's `sources` and `partial_sources` in the merged model come from these links. (ECHO-105)
+- ~~An entity's `sources` and `partial_sources` in the merged model come from these links. (ECHO-105)~~
 
 ---
 
@@ -1801,8 +1801,8 @@ CREATE INDEX outbox_unpublished_idx ON outbox(id) WHERE published_at IS NULL AND
 ```
 
 - ~~A correction holds one field's approved value. The load methods return an entity's corrections with its pages. (ECHO-98)~~
-- The merge applies them after merging, so a refresh never overwrites them. (ECHO-105)
-- `anime.synopsis` is set only from an approved correction or the latest `anime_generated_text` row, never from a provider. (ECHO-105)
+- ~~The merge applies them after merging, so a refresh never overwrites them. (ECHO-105)~~
+- ~~`anime.synopsis` is set only from an approved correction or the latest `anime_generated_text` row, never from a provider. (ECHO-105)~~
 - Provider synopses stay in the stored page responses as input for writing. See [[update_service#AI-Written Synopsis|Update Service]]. (ECHO-115)
 - The protobuf messages of proposals and decisions per approval kind are defined with the multi-user review page. (P-ECHO-15)
 - A correction can be made without review: `approval_request_id` stays empty and `approved_by` names who made it. (P-ECHO-15)

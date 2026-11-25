@@ -141,7 +141,7 @@ The `RefreshAnimeWorkflow` of a new work finds every page due, since none has be
    - ~~`PostgresService.StorePage` stores it. (ECHO-97)~~
 2. `merge_anime` runs once. (ECHO-111)
    - ~~`PostgresService.LoadAnime` loads the work's pages. (ECHO-98)~~
-   - `EnrichmentService.MergeAnime` merges them, and gives each episode the pages list a UUIDv7. (ECHO-105)
+   - ~~`EnrichmentService.MergeAnime` merges them, and gives each episode the pages list a UUIDv7. (ECHO-105)~~
    - ~~`PostgresService.SaveAnime` saves the work. (ECHO-98)~~
    - ~~The same save creates the new episodes. (ECHO-103)~~
 3. ~~`SaveAnime` saves the work and writes `anime.created` to the outbox in the same transaction. (ECHO-98)~~
@@ -185,7 +185,7 @@ What exists today, and what the plan above still needs:
 
 - **The cleaned seed is built only in memory, and only after the first pass.** `build_corrected_seed` in `libs/seed_cleaning` applies the first pass's corrections so the second pass can group split works. A cleaned seed with every correction applied, written to `cleaned_seed.jsonl`, is still to be added. (ECHO-92)
 - **Enrichment reads the raw seed.** `scripts/run_enrichment.py` reads `assets/seed_data/anime-offline-database.json` directly, one entry at a time, and writes per-agent folders under `temp/`. The script is removed once the new methods replace it. (ECHO-123)
-  - The merge (`merge_provider_records`) has no command-line entry point, derives the work's ID from its source URLs, reads `sources` from the offline database entry and merges provider synopses. All three change when `MergeAnime` is built. (ECHO-105)
+  - ~~The merge (`merge_provider_records`) has no command-line entry point, derives the work's ID from its source URLs, reads `sources` from the offline database entry and merges provider synopses. All three change when `MergeAnime` is built. (ECHO-105)~~
 - **Pages are fetched twice.** Seed cleaning fetches pages for their details (titles, type, links, episode counts) and keeps them in `data/seed_cleaning/provider_pages.jsonl`. Enrichment fetches the same pages again for their full responses. The shared HTTP cache serves the second fetch while its entries last, and the planned `StorePage` makes PostgreSQL the one page store. (ECHO-97) (ECHO-111)
 - **The planned methods do not exist yet.** `EnrichmentService` has only `Health` and `RunPipeline`.
   - `FetchPage` and the merge methods are planned. (P-ECHO-11)

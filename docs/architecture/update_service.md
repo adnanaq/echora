@@ -279,7 +279,7 @@ Echora never shows a provider's synopsis. A work's synopsis is written by the Ag
 A synopsis mostly changes before a work airs. An announced work has a line or two at most, and providers fill in a full synopsis around the first episodes. After that it rarely changes, so a work needs one or two writes over its life. (P-ECHO-14)
 
 - **Started by a merge.**
-  - `merge_anime` reports when the provider synopses differ from the ones the current synopsis was written from. (ECHO-105)
+  - ~~`merge_anime` reports when the provider synopses differ from the ones the current synopsis was written from (`MergeAnimeResponse.provider_synopses_hash`). (ECHO-105)~~
   - The work's refresh then starts a `WriteSynopsisWorkflow`. (ECHO-111)
   - The saved synopsis keeps a hash of its inputs, so a refresh that changes no provider synopsis calls no AI. (ECHO-115)
 - **Only with enough to go on.** Below a minimum amount of provider text, nothing is written, and the next change tries again. (ECHO-115)
@@ -299,15 +299,15 @@ WriteSynopsisWorkflow                          (ECHO-115)
 
 ### What a work shows
 
-> **Linear:** ECHO-105
+> **Linear:** ~~ECHO-105~~
 
-`MergeAnime` sets the synopsis from, in order:
+~~`MergeAnime` sets the synopsis from, in order:~~
 
-1. an approved correction of the field,
-2. the latest AI-written synopsis,
-3. nothing.
+1. ~~an approved correction of the field,~~
+2. ~~the latest AI-written synopsis,~~
+3. ~~nothing.~~
 
-The merge never falls back to a provider's synopsis.
+~~The merge never falls back to a provider's synopsis.~~
 
 ### Rules for the written text
 
@@ -321,7 +321,7 @@ The merge never falls back to a provider's synopsis.
 - Whether every written synopsis goes to the approval queue, a sample does, or none. (ECHO-115)
 - How close to a source counts as copied. (ECHO-96)
 - The minimum amount of provider text. (ECHO-115)
-- How `merge_anime` reports that the provider synopses changed: no field in `MergeAnimeResponse` or `SaveAnimeResponse` carries it yet. (ECHO-105)
+- ~~How `merge_anime` reports that the provider synopses changed: `MergeAnimeResponse.provider_synopses_hash` carries the SHA-256 hash of sorted non-empty provider synopses. (ECHO-105)~~
 
 Character attributes are planned the same way: the Agent Service extracts typed values from provider descriptions and web results, a disagreement it cannot settle becomes an approval item, and a value is extracted again only when its sources change. (P-ECHO-19)
 
