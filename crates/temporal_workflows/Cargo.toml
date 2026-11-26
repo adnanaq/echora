@@ -10,19 +10,33 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+# The #[workflow] and #[activities] macros expand to code naming futures and temporalio_workflow.
 futures.workspace = true
 serde.workspace = true
-serde_json.workspace = true
-temporalio-client.workspace = true
-temporalio-common.workspace = true
+temporalio-client = { workspace = true, optional = true, features = ["tls-ring"] }
+# vendored-protox compiles Temporal's protobuf files in Rust, so building needs no protoc.
+temporalio-common = { workspace = true, features = ["vendored-protox"] }
 temporalio-macros.workspace = true
 temporalio-sdk.workspace = true
+# Only for test-util: its tls-ring feature lets the SDK download the dev server over HTTPS.
+temporalio-sdk-core = { workspace = true, optional = true }
 temporalio-workflow.workspace = true
-tokio.workspace = true
-tracing.workspace = true
 
 [dev-dependencies]
 anyhow.workspace = true
-temporalio-sdk = { workspace = true, features = ["testing"] }
-url.workspace = true
+tokio.workspace = true
 uuid = { workspace = true, features = ["v7"] }
+
+[features]
+default = []
+spike = []
+test-util = [
+    "dep:temporalio-client",
+    "dep:temporalio-sdk-core",
+    "temporalio-sdk/testing",
+    "temporalio-sdk-core/tls-ring",
+]
+
+[[test]]
+name = "sdk_spike"
+required-features = ["spike", "test-util"]

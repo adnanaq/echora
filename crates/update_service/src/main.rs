@@ -19,7 +19,7 @@ static GLOBAL: MiMalloc = MiMalloc;
 async fn main() -> anyhow::Result<()> {
     let common_settings = CommonSettings::from_env()?;
     let _telemetry_guard = init_telemetry("update-service", &common_settings)?;
-    let settings = UpdateServiceSettings::from_env();
+    let settings = UpdateServiceSettings::from_env()?;
     let interrupt_signal = signal(SignalKind::interrupt())?;
     let terminate_signal = signal(SignalKind::terminate())?;
 

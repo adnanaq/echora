@@ -37,13 +37,13 @@ prost-build = { version = "0.14", default-features = false }
 prost-types = { version = "0.14", default-features = false }
 protoc-bin-vendored = { version = "3.2", default-features = false }
 serde = { version = "1.0", default-features = false, features = ["derive"] }
-serde_json = { version = "1.0", default-features = false, features = ["std"] }
 sha2 = { version = "0.10", default-features = false }
 sqlx = { version = "0.8", default-features = false }
 temporalio-client = { version = "1.3.0", default-features = false }
 temporalio-common = { version = "1.3.0", default-features = false }
 temporalio-macros = { version = "1.3.0", default-features = false }
 temporalio-sdk = { version = "1.3.0", default-features = false, features = ["envconfig"] }
+temporalio-sdk-core = { version = "=0.12.0", default-features = false }
 temporalio-workflow = { version = "1.3.0", default-features = false }
 tokio = { version = "1.45", default-features = false, features = ["macros", "rt-multi-thread", "signal"] }
 tonic = { version = "0.14", default-features = false, features = ["transport", "server", "router"] }
@@ -53,5 +53,4 @@ tonic-prost-build = { version = "0.14", default-features = false }
 tracing = { version = "0.1", default-features = false, features = ["std", "attributes"] }
 tracing-opentelemetry = { version = "0.31", default-features = false }
 tracing-subscriber = { version = "0.3", default-features = false, features = ["std", "fmt", "env-filter", "json", "ansi"] }
-url = { version = "2.5", default-features = false }
 uuid = { version = "1.16", default-features = false, features = ["v7"] }
