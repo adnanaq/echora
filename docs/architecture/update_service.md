@@ -375,12 +375,12 @@ The workflows publish nothing themselves. After a save commits, the PostgreSQL S
 | ~~Workers~~ | ~~A Rust SDK worker polls one task queue, so `crates/update_service` runs one worker per queue in one process, sharing one client. Each registers only what its queue runs: the `update-service` worker the workflows and the merge and start activities, each provider worker `refresh_page`, and the `agent-service` worker `write_synopsis`. Every replica runs the same set, so all workers polling a queue register the same types. (ECHO-95)~~ |
 | Schedules | Weekly sweep and daily scores, each with the `Skip` overlap policy (ECHO-117) |
 | Schedules | Daily episode tracking, with the `Skip` overlap policy (ECHO-118) |
-| Search attribute | `RefreshTrigger` (keyword: `user`, `episode`, `sweep`, `seed`), set on each refresh start, used to count the refreshes a sweep or seed load still has running (ECHO-95) |
-| Workflow types | `RefreshAnimeWorkflow`, `RefreshEpisodeWorkflow`, `RefreshCharacterWorkflow`, `SweepCatalogueWorkflow` (weekly sweep, daily scores), `TrackEpisodesWorkflow` (daily) with one `track-episode` workflow per episode, `WriteSynopsisWorkflow`, `LoadSeedReleaseWorkflow` (loads a cleaned seed, see [[ingestion_pipeline|Ingestion Pipeline]]), `FetchBudgetedPagesWorkflow` (one per budgeted provider) (ECHO-95) |
-| Workflow IDs | `refresh-anime-<id>`, `refresh-episode-<id>`, `refresh-character-<id>`, `track-episode-<anime_id>-<episode_number>`, `synopsis-anime-<id>`, `budgeted-fetch-<provider>`, all with conflict policy `USE_EXISTING`; `seed-release` with conflict policy `FAIL`, so a second seed load is refused while one runs (ECHO-95) |
+| Search attribute | `RefreshTrigger` (keyword: `user`, `episode`, `sweep`, `seed`), set on each refresh start, used to count the refreshes a sweep or seed load still has running (ECHO-111, ECHO-117, ECHO-120) |
+| Workflow types | `RefreshAnimeWorkflow`, `RefreshEpisodeWorkflow`, `RefreshCharacterWorkflow`, `SweepCatalogueWorkflow` (weekly sweep, daily scores), `TrackEpisodesWorkflow` (daily) with one `track-episode` workflow per episode, `WriteSynopsisWorkflow`, `LoadSeedReleaseWorkflow` (loads a cleaned seed, see [[ingestion_pipeline|Ingestion Pipeline]]), `FetchBudgetedPagesWorkflow` (one per budgeted provider) (ECHO-111, ECHO-112, ECHO-115, ECHO-117 to ECHO-120) |
+| Workflow IDs | `refresh-anime-<id>`, `refresh-episode-<id>`, `refresh-character-<id>`, `track-episode-<anime_id>-<episode_number>`, `synopsis-anime-<id>`, `budgeted-fetch-<provider>`, all with conflict policy `USE_EXISTING`; `seed-release` with conflict policy `FAIL`, so a second seed load is refused while one runs (ECHO-111, ECHO-112, ECHO-115, ECHO-118 to ECHO-120) |
 | Rate limit | A queue rate limit per provider queue, set with `temporal task-queue config set` from that provider's pacing (ECHO-113) |
 | Priority and fairness | Priority keys 1 to 3 and fairness keys as in [[#Provider rate limits]] (ECHO-113) |
-| ~~Temporal namespace~~ | ~~`echora` (ECHO-95)~~ |
+| ~~Temporal namespace~~ | ~~`echora` in production, `echora-dev` in development (ECHO-95)~~ |
 
 ~~The workflows and activities live in `crates/temporal_workflows/`, and `crates/update_service/` runs them as a Temporal worker. See [[temporal_infrastructure|Temporal Infrastructure]] for server setup, and its [[temporal_infrastructure#Writing Workflow Code|Writing Workflow Code]] section for the Temporal Developer Skill to use when building these workflows. (ECHO-95)~~
 
@@ -390,8 +390,8 @@ The workflows publish nothing themselves. After a save commits, the PostgreSQL S
 
 | Variable | Default | Description |
 |---|---|---|
-| `TEMPORAL_HOST` | `localhost:7233` | Temporal server address (ECHO-95) |
-| `TEMPORAL_NAMESPACE` | `echora` | Temporal namespace (ECHO-95) |
+| ~~`TEMPORAL_ADDRESS`~~ | ~~`localhost:7233`~~ | ~~Temporal server address, as `host:port` or a URL (ECHO-95)~~ |
+| ~~`TEMPORAL_NAMESPACE`~~ | ~~`echora-dev`~~ | ~~Temporal namespace; production sets `echora` (ECHO-95)~~ |
 | `REFRESH_AFTER_DAYS` | `7` | Age after which a work, episode or character counts as due, for the sweep and for opened pages (ECHO-111) |
 | `MERGE_VERSION` | — | Version of the mapping and merge code; raised with a fix that should reach every entity (ECHO-111) |
 | ~~`DEAD_PAGE_REVIEW`~~ | ~~`true` per provider~~ | ~~Missing pages go to review before they are marked dead; turned off for a provider once reviews keep confirming (ECHO-97)~~ |

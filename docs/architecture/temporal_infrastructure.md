@@ -41,7 +41,7 @@ Temporal is the **durable execution engine** that runs the [[update_service|Upda
 
 The Temporal Server keeps workflow state, timers and task queues, and dispatches tasks. It never runs workflow code; the workers do.
 
-- **Image:** `temporalio/server`, 1.31 or later, the first release with task queue priority and fairness generally available. Pin the release current at setup time from the [release page](https://github.com/temporalio/temporal/releases), and use the `temporalio/admin-tools` image of the same version. (ECHO-95)
+- **Image:** `temporalio/server`, 1.31 or later, the first release with task queue priority and fairness generally available. Pin the release current at setup time from the [release page](https://github.com/temporalio/temporal/releases), and use the `temporalio/admin-tools` image of the same version. (P-ECHO-21)
 - **Databases:** PostgreSQL, with two databases of its own, `temporal` (executions and history) and `temporal_visibility` (what the UI lists and filters). No Elasticsearch is needed at this size.
   - ~~In development the CLI dev server keeps its own file database instead, see [[#Local Development]]. (ECHO-95)~~
   - In production they get a cluster of their own, or at least their own connection budget, since Temporal writes and vacuums heavily. (P-ECHO-21)
@@ -57,7 +57,7 @@ The Temporal Server keeps workflow state, timers and task queues, and dispatches
 
 ### Temporal Worker
 
-The Update Service, a Rust process built with the [Temporal Rust SDK](https://temporal.io/blog/build-durable-applications-rust-temporal-rust-sdk-now-generally-available), registers the workflow and activity implementations and polls the Temporal Server for tasks. Its activities call the Enrichment Service, the Agent Service and the PostgreSQL Service over gRPC with `tonic`. (ECHO-95)
+The Update Service, a Rust process built with the [Temporal Rust SDK](https://temporal.io/blog/build-durable-applications-rust-temporal-rust-sdk-now-generally-available), registers the workflow and activity implementations and polls the Temporal Server for tasks. Its activities call the Enrichment Service, the Agent Service and the PostgreSQL Service over gRPC with `tonic`. (ECHO-111, ECHO-115)
 
 - **Task queues:** see [[update_service#Temporal Worker Configuration|Update Service]].
   - `update-service` for workflows and merges, and `agent-service` for AI activities. (ECHO-95)
@@ -76,7 +76,7 @@ The Update Service, a Rust process built with the [Temporal Rust SDK](https://te
 | **Schedule** | A recurring start: the weekly sweep, the daily score refresh and the daily episode tracking, each with the `Skip` overlap policy so a run still going is never started twice. |
 | **Signal** | A message to a running workflow, such as `merge_requested` sent to a work's refresh after a synopsis is written. |
 | **Priority and fairness** | The order tasks leave a queue: user requests first, then episode tracking, then the sweep and the seed load sharing what is left. |
-| **Namespace** | All Echora workflows run in the `echora` namespace. |
+| **Namespace** | Echora workflows run in the `echora` namespace in production and in `echora-dev` in development. |
 
 ---
 
@@ -84,8 +84,8 @@ The Update Service, a Rust process built with the [Temporal Rust SDK](https://te
 
 | Setting | Value |
 |---------|-------|
-| ~~Namespace~~ | ~~`echora` (ECHO-95)~~ |
-| Retention | 7 days. A week of refreshes is hundreds of thousands of closed workflows, and a longer retention multiplies what the visibility database holds and what its count queries scan; measured at full volume before production (ECHO-95) |
+| ~~Namespace~~ | ~~`echora` in production, `echora-dev` in development (ECHO-95)~~ |
+| Retention | 7 days. A week of refreshes is hundreds of thousands of closed workflows, and a longer retention multiplies what the visibility database holds and what its count queries scan; measured at full volume before production. Set on `echora` by the deployed `admin-tools` step; the dev server keeps Temporal's default (P-ECHO-21) |
 | Archival | Disabled; enable for long-term audit if needed |
 | ~~Search attribute~~ | ~~`RefreshTrigger`, a keyword, created with `temporal operator search-attribute create --namespace echora --name RefreshTrigger --type Keyword`, and with `--search-attribute RefreshTrigger=Keyword` on the dev server (ECHO-95)~~ |
 
@@ -148,7 +148,7 @@ A limit set this way takes precedence over `max_task_queue_activities_per_second
 - **Pinned:** refreshes and `WriteSynopsisWorkflow`, which finish in minutes, so an old worker version drains quickly.
 - **Moves to new code:** `SweepCatalogueWorkflow`, `LoadSeedReleaseWorkflow` and `FetchBudgetedPagesWorkflow` continue as new between batches and take the new version there. Episode trackers, which live up to two weeks, use auto-upgrade, with patching where their steps change.
 
-A one-day spike with the Rust SDK proves each feature the workflows use before the Update Service is built: the `USE_EXISTING` conflict policy, signal-with-start, schedules, search attributes and visibility counts, priority and fairness keys, and Worker Versioning. The Rust SDK's worker options take a deployment-based versioning strategy (`WorkerVersioningStrategy::WorkerDeploymentBased`).
+~~A one-day spike with the Rust SDK proves each feature the workflows use before the Update Service is built: the `USE_EXISTING` conflict policy, signal-with-start, schedules, search attributes and visibility counts, priority and fairness keys, and Worker Versioning. The Rust SDK's worker options take deployment-based versioning through `WorkerDeploymentOptions`. (ECHO-95)~~
 
 ---
 
@@ -156,11 +156,11 @@ A one-day spike with the Rust SDK proves each feature the workflows use before t
 
 > **Linear:** ECHO-95
 
-Local development uses the [Temporal CLI](https://docs.temporal.io/cli) dev server: one process with an in-memory or file database, the Web UI on port 8233, and no separate containers.
+~~Local development uses the [Temporal CLI](https://docs.temporal.io/cli) dev server, one process with an in-memory or file database, the Web UI on port 8233, and no separate containers. (ECHO-95)~~
 
 ```bash
 temporal server start-dev \
-  --namespace echora \
+  --namespace echora-dev \
   --db-filename .temporal/dev.db \
   --search-attribute RefreshTrigger=Keyword \
   --dynamic-config-value matching.enableFairness=true \
@@ -168,11 +168,11 @@ temporal server start-dev \
   --dynamic-config-value matching.numTaskqueueWritePartitions=1
 ```
 
-One partition for every queue is fine on a dev server, which runs a single process.
+~~One partition for every queue is fine on a dev server, which runs a single process. (ECHO-95)~~
 
-When the services run in containers through `docker/docker-compose.dev.yml`, the same dev server runs there too, from the `temporalio/temporal` image with the same flags and a volume for its file database, so the containerized Update Service worker reaches it inside Compose. The CLI dev server stays for running the worker on the host. Both are for development only.
+~~When the services run in containers through `docker/docker-compose.dev.yml`, the same dev server runs there too, from the `temporalio/temporal` image with the same flags and a volume for its file database, so the containerized Update Service worker reaches it inside Compose. The CLI dev server stays for running the worker on the host. Both are for development only. (ECHO-95)~~
 
-The Rust SDK's `testing` feature can also start and stop a dev server from tests.
+~~The Rust SDK's `testing` feature starts and stops a dev server from tests, through `temporal_workflows`' `test-util` feature. (ECHO-95)~~
 
 ## Deployed Setup
 
@@ -216,7 +216,7 @@ temporal-ui:
     - "8080:8080"
 ```
 
-The password comes from the environment file, never from the compose file. The dynamic config file sets `matching.enableFairness`, and a one-shot `admin-tools` step after the server starts creates the `echora` namespace when it is missing and applies the task queue rate limits.
+The password comes from the environment file, never from the compose file. The dynamic config file sets `matching.enableFairness`, and a one-shot `admin-tools` step after the server starts creates the `echora` namespace with a retention of 7 days when it is missing and applies the task queue rate limits.
 
 ---
 

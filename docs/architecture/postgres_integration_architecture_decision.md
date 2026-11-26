@@ -148,7 +148,8 @@ PostgreSQL holds the only copy of what cannot be fetched again: entity IDs, revi
 - **Qdrant needs no backup.** The vector service's comparison job rebuilds it from PostgreSQL (see [[event_driven_architecture#3. The vector service reacts|Event-Driven Architecture]]). (ECHO-121)
 - **NATS needs no backup.** It holds only notices, and PostgreSQL is current.
 - **Temporal's databases** can be lost.
-  - The Update Service creates its schedules and search attributes at startup if they are missing. (ECHO-95)
+  - ~~The Update Service creates the `RefreshTrigger` search attribute at startup if it is missing. (ECHO-95)~~
+  - The Update Service creates its schedules at startup if they are missing. (ECHO-117, ECHO-118)
   - The next sweep picks up refreshes that were in flight. (ECHO-117)
 
 Restore PostgreSQL first, then start the services, then run the vector comparison job. (P-ECHO-21)
