@@ -10,22 +10,6 @@
 # -----------------------------------------------------------------------------
 FROM rust:1-slim-bookworm AS builder
 
-ARG TARGETARCH
-
-RUN apt-get update && apt-get install -y --no-install-recommends curl unzip \
-    && rm -rf /var/lib/apt/lists/* \
-    && set -eux; \
-       arch="${TARGETARCH:-amd64}"; \
-       case "$arch" in \
-         amd64) protoc_arch="x86_64" ;; \
-         arm64) protoc_arch="aarch_64" ;; \
-         *) echo "Unsupported arch for protoc: $arch"; exit 1 ;; \
-       esac; \
-       curl -fsSL -o /tmp/protoc.zip \
-         "https://github.com/protocolbuffers/protobuf/releases/download/v29.3/protoc-29.3-linux-${protoc_arch}.zip"; \
-       unzip -q /tmp/protoc.zip -d /usr/local bin/protoc 'include/*'; \
-       rm /tmp/protoc.zip
-
 WORKDIR /build
 
 COPY Cargo.toml Cargo.lock ./

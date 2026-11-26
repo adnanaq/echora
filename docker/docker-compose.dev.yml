@@ -327,7 +327,7 @@ services:
       - server
       - start-dev
       - --namespace
-      - echora
+      - echora-dev
       - --db-filename
       - /data/dev.db
       - --ip
@@ -366,7 +366,7 @@ services:
     environment:
       - ENVIRONMENT=development
       - TEMPORAL_ADDRESS=http://temporal:7233
-      - TEMPORAL_NAMESPACE=echora
+      - TEMPORAL_NAMESPACE=echora-dev
       - OTEL_ENABLED=${OTEL_ENABLED:-false}
       - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
       - OTEL_ENABLE_TRACING=true
