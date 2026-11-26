@@ -1,0 +1,49 @@
+# syntax=docker/dockerfile:1.6
+# =============================================================================
+# Update Service — development image (multi-stage Rust debug build)
+#
+# Build directly: docker build -f crates/update_service/Dockerfile.dev .
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Stage 1 — build debug binary
+# -----------------------------------------------------------------------------
+FROM rust:1-slim-bookworm AS builder
+
+WORKDIR /build
+
+COPY Cargo.toml Cargo.lock ./
+COPY crates/common/ crates/common/
+COPY crates/postgres_db/ crates/postgres_db/
+COPY crates/postgres_service/ crates/postgres_service/
+COPY crates/temporal_workflows/ crates/temporal_workflows/
+COPY crates/update_service/ crates/update_service/
+
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/build/target \
+    cargo build --locked -p update_service \
+    && cp /build/target/debug/update_service /usr/local/bin/update_service
+
+# -----------------------------------------------------------------------------
+# Stage 2 — minimal non-root runtime image
+# -----------------------------------------------------------------------------
+FROM debian:bookworm-slim AS app
+
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates procps \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /usr/local/bin/update_service /usr/local/bin/update_service
+
+RUN groupadd --gid 1000 appuser \
+    && useradd --uid 1000 --gid appuser --no-create-home appuser
+
+USER appuser
+
+ENV ENVIRONMENT=development \
+    TEMPORAL_ADDRESS=http://temporal:7233 \
+    TEMPORAL_NAMESPACE=echora-dev
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+  CMD pgrep -x update_service >/dev/null || exit 1
+
+ENTRYPOINT ["/usr/local/bin/update_service"]

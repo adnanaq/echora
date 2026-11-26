@@ -1,0 +1,26 @@
+[package]
+name = "update_service"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow.workspace = true
+common.workspace = true
+futures.workspace = true
+mimalloc.workspace = true
+temporal_workflows = { workspace = true, features = ["spike"] }
+# tls-ring gives the client a TLS provider, which TEMPORAL_API_KEY and TEMPORAL_TLS need.
+temporalio-client = { workspace = true, features = ["envconfig", "tls-ring"] }
+temporalio-common = { workspace = true, features = ["envconfig"] }
+temporalio-sdk.workspace = true
+tokio = { workspace = true, features = ["sync"] }
+tracing.workspace = true
+
+[dev-dependencies]
+temporal_workflows = { workspace = true, features = ["spike", "test-util"] }

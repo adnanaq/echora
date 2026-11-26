@@ -158,6 +158,7 @@ docker compose -f docker/docker-compose.dev.yml up -d --build
 | enrichment_service (gRPC)             | `localhost:8002`                                        |
 | review page (HTTP, this machine only) | <http://127.0.0.1:8003>                                 |
 | postgres_service (gRPC)               | `localhost:8004`                                        |
+| Temporal (gRPC / UI)                  | `localhost:7233` / <http://localhost:8233>              |
 | Qdrant dashboard                      | <http://localhost:6333/dashboard>                       |
 | Redis                                 | `localhost:6379`                                        |
 | RedisInsight                          | <http://localhost:5540> (add host `redis`, port `6379`) |
@@ -184,6 +185,7 @@ docker compose -f docker/docker-compose.dev.yml up -d qdrant redis postgres
 ./pants run apps/enrichment_service:enrichment_service # gRPC on :8002
 ./pants run apps/review_page:review_page               # HTTP on 127.0.0.1:8003
 cargo run -p postgres_service                          # gRPC on :8004
+cargo run -p update_service                            # Temporal worker (TEMPORAL_ADDRESS, default :7233)
 ```
 
 Pants resolves its own interpreter from `PATH`, independently of the venv. If
@@ -508,6 +510,8 @@ uv run python script.py
   - `apps/enrichment_service` (gRPC on `:8002`)
   - `apps/review_page` (HTTP on `127.0.0.1:8003`)
   - `crates/postgres_service` (gRPC on `:8004`)
+  - `crates/temporal_workflows` (Temporal workflow and activity definitions)
+  - `crates/update_service` (Temporal Rust worker process)
 - Active vector gRPC methods:
   - `VectorAdminService`: `Health`, `GetStats`
   - `VectorSearchService`: `Search`
