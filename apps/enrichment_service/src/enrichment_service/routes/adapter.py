@@ -41,5 +41,13 @@ class EnrichmentRoutes(enrichment_service_pb2_grpc.EnrichmentServiceServicer):
         request: enrichment_service_pb2.FetchPageRequest,
         context: grpc.aio.ServicerContext,
     ) -> enrichment_service_pb2.FetchPageResponse:
-        """Handle FetchPage RPC by delegating to fetch_page route logic."""
+        """Handle FetchPage RPC by delegating to fetch_page route logic.
+
+        Args:
+            request: Incoming FetchPageRequest carrying page_key and max_age.
+            context: Active gRPC servicer context.
+
+        Returns:
+            FetchPageResponse holding the fetched StoredPage.
+        """
         return await fetch_page.fetch_page(self.runtime, request, context)
