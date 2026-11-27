@@ -10,6 +10,7 @@ from enrichment.sources.mal.mal_episode_crawler import (
     MalEpisodeCrawler,
     _build_episode_from_raw,
     _extract_episode_from_html,
+    _extract_episode_list_from_html,
     _fetch_episode_html,
     _fetch_mal_episode_data,
     _parse_episode_characters,
@@ -620,3 +621,61 @@ async def test_main_fetched_episode_returns_exit_code(
         ),
     ):
         assert await main() == exit_code
+
+
+@pytest.mark.parametrize(
+    "page_name",
+    [
+        "one_piece_episodes",
+        "one_piece_episodes_offset_100",
+        "one_piece_episodes_offset_200",
+        "cowboy_bebop_episodes",
+    ],
+)
+def test_extract_episode_list_from_html_saved_page_matches_saved_values(
+    read_page, data_regression, page_name: str
+) -> None:
+    data_regression.check(
+        {
+            "episodes": [
+                episode.model_dump(mode="json")
+                for episode in _extract_episode_list_from_html(read_page(page_name))
+            ]
+        },
+        basename=page_name,
+    )
+
+
+def test_extract_episode_list_from_html_reads_every_row_with_slug_url(
+    read_page,
+) -> None:
+    first_page = _extract_episode_list_from_html(read_page("one_piece_episodes"))
+    second_page = _extract_episode_list_from_html(
+        read_page("one_piece_episodes_offset_100")
+    )
+
+    assert [episode.episode_number for episode in first_page] == list(range(1, 101))
+    assert [episode.episode_number for episode in second_page] == list(range(101, 201))
+    assert first_page[49].source == (
+        "https://myanimelist.net/anime/21/One_Piece/episode/50"
+    )
+    assert first_page[49].filler is True
+    assert first_page[0].filler is False
+
+
+def test_extract_episode_list_from_html_empty_page_gives_no_episodes() -> None:
+    assert _extract_episode_list_from_html("") == []
+    assert _extract_episode_list_from_html("<html><body></body></html>") == []
+
+
+def test_extract_episode_list_from_html_recap_mark_sets_recap(read_page) -> None:
+    episodes_by_number = {
+        episode.episode_number: episode
+        for episode in _extract_episode_list_from_html(
+            read_page("one_piece_episodes_offset_200")
+        )
+    }
+
+    assert episodes_by_number[279].recap is True
+    assert episodes_by_number[279].filler is False
+    assert sum(episode.recap for episode in episodes_by_number.values()) == 5

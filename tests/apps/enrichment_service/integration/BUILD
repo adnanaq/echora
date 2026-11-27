@@ -1,5 +1,8 @@
 python_tests(
     name="integration",
+    # These files share the running dev services and database, so they run in one
+    # pytest process, one after another, instead of racing for the same pages.
+    batch_compatibility_tag="enrichment-service-dev-stack",
     dependencies=[
         "//:reqs0#pytest",
         "//:reqs0#pytest-asyncio",

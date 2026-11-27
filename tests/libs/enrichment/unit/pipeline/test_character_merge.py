@@ -296,6 +296,12 @@ def test_merge_character_across_providers_and_apply_corrections() -> None:
     assert page_sources_by_address[("mal", "40")] == (
         "https://myanimelist.net/character/40"
     )
+    assert page_sources_by_address[("anisearch", "100")] == (
+        "https://www.anisearch.com/character/100,monkey-d-luffy"
+    )
+    assert page_sources_by_address[("kitsu", "101")] == (
+        "https://kitsu.app/characters/monkey-d-luffy"
+    )
     assert all(page.source in char.sources for page in resp.page_sources)
 
     # All providers' One Piece URLs merged into a single animeography entry with MAIN role

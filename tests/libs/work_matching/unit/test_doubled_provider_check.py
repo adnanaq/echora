@@ -54,9 +54,9 @@ def _build_other_work(**fields) -> dict:
 
 def test_decide_doubled_providers_renamed_page_same_page(matching_cases) -> None:
     entries, pages = matching_cases["cocoon"]
-    decision = _index_decisions(entries[0], pages)["animeplanet"]
+    decision = _index_decisions(entries[0], pages)["anime_planet"]
     assert _read_verdict(decision) == (DoubledProviderOutcome.SAME_PAGE, ())
-    assert decision.page_keys == ("animeplanet:anime:cocoon-one-summer-of-girlhood",)
+    assert decision.page_keys == ("anime_planet:anime:cocoon-one-summer-of-girlhood",)
 
 
 def test_decide_doubled_providers_renamed_page_only_old_addresses_listed_current_address_missing(
@@ -72,7 +72,7 @@ def test_decide_doubled_providers_renamed_page_only_old_addresses_listed_current
         )
         for address in old_addresses
     ]
-    decision = _index_decisions(work_entry(MAL, *old_addresses), pages)["animeplanet"]
+    decision = _index_decisions(work_entry(MAL, *old_addresses), pages)["anime_planet"]
     assert _read_verdict(decision) == (
         DoubledProviderOutcome.SAME_PAGE,
         (DoubledProviderReviewReason.CURRENT_ADDRESS_MISSING,),
@@ -191,16 +191,16 @@ def test_decide_doubled_providers_music_and_special_pages_sharing_link_duplicate
 
 def test_decide_doubled_providers_page_without_links_undecided(matching_cases) -> None:
     entries, pages = matching_cases["ao_haru_ride_ova"]
-    decision = _index_decisions(entries[0], pages)["animeplanet"]
+    decision = _index_decisions(entries[0], pages)["anime_planet"]
     assert _read_verdict(decision) == (
         DoubledProviderOutcome.UNDECIDED,
         (DoubledProviderReviewReason.UNLINKED_PAGES,),
     )
     assert decision.belonging_page_keys == {
-        "animeplanet:anime:blue-spring-ride-page-13": frozenset({"mal:anime:24151"})
+        "anime_planet:anime:blue-spring-ride-page-13": frozenset({"mal:anime:24151"})
     }
     assert decision.unlinked_page_keys == (
-        "animeplanet:anime:blue-spring-ride-unwritten",
+        "anime_planet:anime:blue-spring-ride-unwritten",
     )
 
 
@@ -208,8 +208,8 @@ def test_decide_doubled_providers_no_links_records_title_and_year_type_matches(
     matching_cases,
 ) -> None:
     entries, pages = matching_cases["genshin_sigewinne"]
-    decision = _index_decisions(entries[0], pages)["animeplanet"]
-    sigewinne_page_key = "animeplanet:anime:genshin-impact-character-teaser-sigewinne-everyday-correspondence"
+    decision = _index_decisions(entries[0], pages)["anime_planet"]
+    sigewinne_page_key = "anime_planet:anime:genshin-impact-character-teaser-sigewinne-everyday-correspondence"
     assert decision.is_review_needed
     assert (decision.title_matches, decision.year_type_matches) == (
         (sigewinne_page_key,),
@@ -230,8 +230,8 @@ def test_decide_doubled_providers_no_links_records_season_matches(
             ("https://anime-planet.com/anime/second", "FALL"),
         )
     ]
-    decision = _index_decisions(entry, pages)["animeplanet"]
-    assert decision.season_matches == ("animeplanet:anime:first",)
+    decision = _index_decisions(entry, pages)["anime_planet"]
+    assert decision.season_matches == ("anime_planet:anime:first",)
 
 
 def test_decide_doubled_providers_applied_decision_records_no_matches(
@@ -571,10 +571,10 @@ def test_decide_doubled_providers_provider_type_falls_under_seed_type(
         linked_page(address).model_copy(update={"type": provider_type})
         for address, provider_type in zip(addresses, ("TV SHORT", "UNKNOWN", "MOVIE"))
     ]
-    decision = _index_decisions(work_entry(*addresses), pages)["animeplanet"]
+    decision = _index_decisions(work_entry(*addresses), pages)["anime_planet"]
     assert decision.year_type_matches == (
-        "animeplanet:anime:short",
-        "animeplanet:anime:unknown",
+        "anime_planet:anime:short",
+        "anime_planet:anime:unknown",
     )
 
 
@@ -594,7 +594,7 @@ def test_decide_doubled_providers_canonical_type_falls_under_one_seed_type(
         seed_type
         for seed_type in ("TV", "MOVIE", "OVA", "ONA", "SPECIAL")
         if _index_decisions(work_entry(*addresses, work_type=seed_type), pages)[
-            "animeplanet"
+            "anime_planet"
         ].year_type_matches
     ]
     assert len(seed_types) == 1
@@ -634,10 +634,10 @@ def test_decide_doubled_providers_renamed_page_only_old_address_keeps_details(
         ),
         linked_page("https://anime-planet.com/anime/other", MAL),
     ]
-    decision = _index_decisions(entry, pages)["animeplanet"]
+    decision = _index_decisions(entry, pages)["anime_planet"]
     assert (decision.outcome, set(decision.unrelated_pages)) == (
         DoubledProviderOutcome.PAGES_OF_OTHER_WORKS,
-        {"animeplanet:anime:new"},
+        {"anime_planet:anime:new"},
     )
 
 

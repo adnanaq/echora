@@ -78,7 +78,7 @@
         "is_dead": false
       },
       {
-        "key": "animeplanet:anime:poo-neko",
+        "key": "anime_planet:anime:poo-neko",
         "address": "https://anime-planet.com/anime/poo-neko",
         "titles": [
           "Poo-neko",
@@ -304,7 +304,7 @@
         "is_dead": false
       },
       {
-        "key": "animeplanet:anime:blue-spring-ride-page-13",
+        "key": "anime_planet:anime:blue-spring-ride-page-13",
         "address": "https://anime-planet.com/anime/blue-spring-ride-page-13",
         "titles": [
           "Blue Spring Ride: Page.13",
@@ -319,7 +319,7 @@
         "is_dead": false
       },
       {
-        "key": "animeplanet:anime:blue-spring-ride-unwritten",
+        "key": "anime_planet:anime:blue-spring-ride-unwritten",
         "address": "https://anime-planet.com/anime/blue-spring-ride-unwritten",
         "titles": [
           "Blue Spring Ride: Unwritten",
@@ -361,7 +361,7 @@
         "linked_page_keys": [
           "anidb:anime:10626",
           "anilist:anime:20900",
-          "animeplanet:anime:blue-spring-ride-page-13",
+          "anime_planet:anime:blue-spring-ride-page-13",
           "kitsu:anime:ao-haru-ride-ova"
         ],
         "renamed_to": null,
@@ -473,7 +473,7 @@
         "is_dead": false
       },
       {
-        "key": "animeplanet:anime:cocoon-aru-natsu-no-shoujo-tachi-yori",
+        "key": "anime_planet:anime:cocoon-aru-natsu-no-shoujo-tachi-yori",
         "address": "https://anime-planet.com/anime/cocoon-aru-natsu-no-shoujo-tachi-yori",
         "titles": [
           "Cocoon: One Summer of Girlhood",
@@ -483,12 +483,12 @@
         "year": 2025,
         "season": "SPRING",
         "linked_page_keys": [],
-        "renamed_to": "animeplanet:anime:cocoon-one-summer-of-girlhood",
+        "renamed_to": "anime_planet:anime:cocoon-one-summer-of-girlhood",
         "searched_by": [],
         "is_dead": false
       },
       {
-        "key": "animeplanet:anime:cocoon-one-summer-of-girlhood",
+        "key": "anime_planet:anime:cocoon-one-summer-of-girlhood",
         "address": "https://anime-planet.com/anime/cocoon-one-summer-of-girlhood",
         "titles": [
           "Cocoon: One Summer of Girlhood",
@@ -531,7 +531,7 @@
         "linked_page_keys": [
           "anidb:anime:18084",
           "anilist:anime:166527",
-          "animeplanet:anime:cocoon",
+          "anime_planet:anime:cocoon",
           "kitsu:anime:cocoon"
         ],
         "renamed_to": null,
@@ -594,7 +594,7 @@
     ],
     "pages": [
       {
-        "key": "animeplanet:anime:genshin-impact-character-teaser-sigewinne-everyday-correspondence",
+        "key": "anime_planet:anime:genshin-impact-character-teaser-sigewinne-everyday-correspondence",
         "address": "https://anime-planet.com/anime/genshin-impact-character-teaser-sigewinne-everyday-correspondence",
         "titles": [
           "Genshin Impact: Character Teaser - Sigewinne: Everyday Correspondence",
@@ -609,7 +609,7 @@
         "is_dead": false
       },
       {
-        "key": "animeplanet:anime:genshin-impact-character-teaser-varesa-the-legend-of-a-warrior",
+        "key": "anime_planet:anime:genshin-impact-character-teaser-varesa-the-legend-of-a-warrior",
         "address": "https://anime-planet.com/anime/genshin-impact-character-teaser-varesa-the-legend-of-a-warrior",
         "titles": [
           "Genshin Impact: Character Teaser - Varesa: The Legend of a Warrior",
@@ -642,7 +642,7 @@
     ],
     "pages": [
       {
-        "key": "animeplanet:anime:genshin-impact-outfit-teaser-teyvat-style-its-showtime",
+        "key": "anime_planet:anime:genshin-impact-outfit-teaser-teyvat-style-its-showtime",
         "address": "https://anime-planet.com/anime/genshin-impact-outfit-teaser-teyvat-style-its-showtime",
         "titles": [
           "Genshin Impact: Outfit Teaser - Teyvat Style: It's Showtime",
@@ -657,7 +657,7 @@
         "is_dead": false
       },
       {
-        "key": "animeplanet:anime:genshin-impact-outfit-teaser-teyvat-style-out-with-the-rime-in-with-the-sunshine",
+        "key": "anime_planet:anime:genshin-impact-outfit-teaser-teyvat-style-out-with-the-rime-in-with-the-sunshine",
         "address": "https://anime-planet.com/anime/genshin-impact-outfit-teaser-teyvat-style-out-with-the-rime-in-with-the-sunshine",
         "titles": [
           "Genshin Impact: Outfit Teaser - Teyvat Style: Out With the Rime, In With the Sunshine",
@@ -736,7 +736,7 @@
         "is_dead": false
       },
       {
-        "key": "animeplanet:anime:baki-dou-the-invincible-samurai",
+        "key": "anime_planet:anime:baki-dou-the-invincible-samurai",
         "address": "https://anime-planet.com/anime/baki-dou-the-invincible-samurai",
         "titles": [
           "BAKI-DOU: The Invincible Samurai",
@@ -782,7 +782,7 @@
         "linked_page_keys": [
           "anidb:anime:18579",
           "anilist:anime:176509",
-          "animeplanet:anime:baki-dou",
+          "anime_planet:anime:baki-dou",
           "kitsu:anime:baki-dou"
         ],
         "renamed_to": null,
@@ -901,7 +901,7 @@
         "is_dead": false
       },
       {
-        "key": "animeplanet:anime:cue",
+        "key": "anime_planet:anime:cue",
         "address": "https://anime-planet.com/anime/cue",
         "titles": [
           "Cue!"
@@ -941,7 +941,7 @@
         "linked_page_keys": [
           "anidb:anime:15827",
           "anilist:anime:125682",
-          "animeplanet:anime:cue",
+          "anime_planet:anime:cue",
           "kitsu:anime:cue"
         ],
         "renamed_to": null,
@@ -1055,7 +1055,7 @@
         "is_dead": false
       },
       {
-        "key": "animeplanet:anime:soul-land-2nd-season",
+        "key": "anime_planet:anime:soul-land-2nd-season",
         "address": "https://anime-planet.com/anime/soul-land-2nd-season",
         "titles": [
           "Soul Land 2nd Season",
@@ -1149,7 +1149,7 @@
         "linked_page_keys": [
           "anidb:anime:16548",
           "anilist:anime:137761",
-          "animeplanet:anime:douluo-dalu-2nd-season",
+          "anime_planet:anime:douluo-dalu-2nd-season",
           "kitsu:anime:douluo-dalu-chongfan-haotian",
           "mal:anime:37822"
         ],
@@ -1213,7 +1213,7 @@
         "linked_page_keys": [
           "anidb:anime:17442",
           "anilist:anime:152211",
-          "animeplanet:anime:douluo-dalu-2nd-season",
+          "anime_planet:anime:douluo-dalu-2nd-season",
           "kitsu:anime:douluo-dalu-ayin-fuhuo",
           "mal:anime:37822"
         ],
@@ -1276,7 +1276,7 @@
         "linked_page_keys": [
           "anidb:anime:17442",
           "anilist:anime:152212",
-          "animeplanet:anime:douluo-dalu-2nd-season",
+          "anime_planet:anime:douluo-dalu-2nd-season",
           "kitsu:anime:douluo-dalu-gui-zong-zhi-lu",
           "mal:anime:37822"
         ],
@@ -1350,7 +1350,7 @@
         "is_dead": false
       },
       {
-        "key": "animeplanet:anime:shin-oishinbo",
+        "key": "anime_planet:anime:shin-oishinbo",
         "address": "https://anime-planet.com/anime/shin-oishinbo",
         "titles": [
           "Shin Oishinbo",
@@ -1496,7 +1496,7 @@
         "is_dead": false
       },
       {
-        "key": "animeplanet:anime:ajin-movie-1-shoudou",
+        "key": "anime_planet:anime:ajin-movie-1-shoudou",
         "address": "https://anime-planet.com/anime/ajin-movie-1-shoudou",
         "titles": [
           "Ajin Movie 1: Shoudou",
@@ -1603,7 +1603,7 @@
         "is_dead": false
       },
       {
-        "key": "animeplanet:anime:ajin-movie-2-shoutotsu",
+        "key": "anime_planet:anime:ajin-movie-2-shoutotsu",
         "address": "https://anime-planet.com/anime/ajin-movie-2-shoutotsu",
         "titles": [
           "Ajin Movie 2: Shoutotsu",
@@ -1708,7 +1708,7 @@
         "is_dead": false
       },
       {
-        "key": "animeplanet:anime:ajin-movie-3-shougeki",
+        "key": "anime_planet:anime:ajin-movie-3-shougeki",
         "address": "https://anime-planet.com/anime/ajin-movie-3-shougeki",
         "titles": [
           "Ajin Movie 3: Shougeki",

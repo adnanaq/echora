@@ -1,20 +1,29 @@
 //! Integration tests for character loads, saves and the works a character appears in.
 
+#![expect(
+    clippy::expect_used,
+    reason = "a failed setup step stops the test, as a test's own expect does"
+)]
+
 mod support;
 
 use std::collections::BTreeMap;
 
 use chrono::{Duration, Utc};
 use postgres_db::{
-    CHARACTER_HASH_FORMAT, CharacterAnime, CharacterAppearanceInput, CharacterMangaographyInput,
-    EntityType, FetchOutcome, PageKey, PageObservation, PageResponse, Provider, SaveCharacterInput,
-    SaveCharacterOutcome, link_anime_source_page, list_character_anime, load_character,
-    record_page_observation, save_character,
+    AnimeRelationsAndGraphInput, AnimeSourceMaterialInput, CHARACTER_HASH_FORMAT, CharacterAnime,
+    CharacterAppearanceInput, CharacterMangaographyInput, EntityType, FetchOutcome, PageKey,
+    PageObservation, PageResponse, PageSource, Provider, SaveCharacterInput, SaveCharacterOutcome,
+    SourceMaterialXrefInput, link_anime_source_page, list_character_anime, load_character,
+    record_page_observation, save_anime, save_character,
 };
 use sqlx::PgPool;
+use url::Url;
 use uuid::Uuid;
 
-use crate::support::{insert_unmerged_anime, insert_unmerged_character, link_character_page};
+use crate::support::{
+    build_anime_save, insert_unmerged_anime, insert_unmerged_character, link_character_page,
+};
 
 fn build_character_save(
     character_id: Uuid,
@@ -46,21 +55,34 @@ fn build_character_save(
 
 fn build_appearance(provider: &str, address: &str, role: &str) -> CharacterAppearanceInput {
     CharacterAppearanceInput {
-        anime_page_provider: provider.to_owned(),
-        anime_page_address: address.to_owned(),
+        anime_page_source: PageSource {
+            page_key: PageKey::new(
+                provider.parse().expect("known provider"),
+                EntityType::Anime,
+                address,
+            )
+            .expect("valid page key"),
+            source: Some(
+                Url::parse(&format!("https://{provider}.test/anime/{address}")).expect("valid URL"),
+            ),
+            title: None,
+        },
         role: role.to_owned(),
     }
 }
 
-fn build_mangaography_entry(
-    provider: &str,
-    external_id: &str,
-    role: &str,
-) -> CharacterMangaographyInput {
+fn build_mangaography_entry(role: &str, pages: &[(&str, &str)]) -> CharacterMangaographyInput {
     CharacterMangaographyInput {
-        source_material_provider: provider.to_owned(),
-        source_material_external_id: external_id.to_owned(),
         role: role.to_owned(),
+        xrefs: pages
+            .iter()
+            .map(|&(provider, external_id)| SourceMaterialXrefInput {
+                provider: provider.to_owned(),
+                external_id: external_id.to_owned(),
+                url: format!("https://{provider}.test/manga/{external_id}"),
+                title: None,
+            })
+            .collect(),
     }
 }
 
@@ -535,9 +557,19 @@ async fn save_character_invalid_fields_return_invalid_argument(pool: PgPool) {
             },
         ),
         (
-            "blank appearance address",
+            "appearance naming a character page",
             SaveCharacterInput {
-                animeography: vec![build_appearance("mal", " ", "MAIN")],
+                animeography: vec![CharacterAppearanceInput {
+                    anime_page_source: PageSource {
+                        page_key: PageKey::new(Provider::Mal, EntityType::Character, "21")
+                            .expect("valid page key"),
+                        source: Some(
+                            Url::parse("https://myanimelist.net/character/21").expect("valid URL"),
+                        ),
+                        title: None,
+                    },
+                    role: "MAIN".to_owned(),
+                }],
                 ..valid_input.clone()
             },
         ),
@@ -551,21 +583,21 @@ async fn save_character_invalid_fields_return_invalid_argument(pool: PgPool) {
         (
             "blank mangaography role",
             SaveCharacterInput {
-                mangaography: vec![build_mangaography_entry("mal", "13", "")],
+                mangaography: vec![build_mangaography_entry("", &[("mal", "13")])],
                 ..valid_input.clone()
             },
         ),
         (
             "blank mangaography provider",
             SaveCharacterInput {
-                mangaography: vec![build_mangaography_entry(" ", "13", "MAIN")],
+                mangaography: vec![build_mangaography_entry("MAIN", &[(" ", "13")])],
                 ..valid_input.clone()
             },
         ),
         (
             "blank mangaography external id",
             SaveCharacterInput {
-                mangaography: vec![build_mangaography_entry("mal", "", "MAIN")],
+                mangaography: vec![build_mangaography_entry("MAIN", &[("mal", "")])],
                 ..valid_input.clone()
             },
         ),
@@ -807,10 +839,10 @@ async fn save_character_mangaography_before_source_material_stored_reaches_it_th
     let character_id = insert_unmerged_character(&pool, "Luffy").await;
     let mut input = build_character_save(character_id, 1, "hash");
     input.mangaography = vec![
-        build_mangaography_entry("anilist", "30013", "SUPPORTING"),
-        build_mangaography_entry("mal", "13", "BACKGROUND"),
-        build_mangaography_entry("mal", "13", "MAIN"),
-        build_mangaography_entry("mal", "999999", "UNKNOWN"),
+        build_mangaography_entry("SUPPORTING", &[("anilist", "30013")]),
+        build_mangaography_entry("BACKGROUND", &[("mal", "13")]),
+        build_mangaography_entry("MAIN", &[("mal", "13")]),
+        build_mangaography_entry("UNKNOWN", &[("mal", "999999")]),
     ];
 
     save_character(&pool, &input)
@@ -846,14 +878,13 @@ async fn save_character_mangaography_before_source_material_stored_reaches_it_th
         .await
         .expect("store the source material");
     sqlx::query(
-        "INSERT INTO source_material_xref (provider, external_id, source_material_id, source)
-         VALUES ('mal', '13', $1, 'https://myanimelist.net/manga/13'),
-                ('anilist', '30013', $1, 'https://anilist.co/manga/30013')",
+        "UPDATE source_material_xref SET source_material_id = $1
+         WHERE (provider, external_id) IN (('mal', '13'), ('anilist', '30013'))",
     )
     .bind(source_material_id)
     .execute(&pool)
     .await
-    .expect("store the cross-references");
+    .expect("attach the recorded pages");
 
     let reached_source_material: Vec<(Uuid, String)> = sqlx::query_as(
         "SELECT DISTINCT ON (xref.source_material_id) xref.source_material_id, entry.role
@@ -862,7 +893,7 @@ async fn save_character_mangaography_before_source_material_stored_reaches_it_th
            ON xref.provider = entry.source_material_provider
           AND xref.external_id = entry.source_material_external_id
          JOIN character_role role_order ON role_order.value = entry.role
-         WHERE entry.character_id = $1
+         WHERE entry.character_id = $1 AND xref.source_material_id IS NOT NULL
          ORDER BY xref.source_material_id, role_order.rank",
     )
     .bind(character_id)
@@ -994,4 +1025,106 @@ async fn save_character_named_page_being_linked_waits_for_link(pool: PgPool) {
         "the save must wait while the page is being linked"
     );
     assert!(saved.has_changed);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn save_character_mangaography_records_pages_a_work_save_attaches(pool: PgPool) {
+    let character_id = insert_unmerged_character(&pool, "Luffy").await;
+    let mut input = build_character_save(character_id, 1, "hash");
+    input.mangaography = vec![
+        build_mangaography_entry("MAIN", &[("anilist", "30881")]),
+        build_mangaography_entry("MAIN", &[("mal", "881")]),
+    ];
+    input.mangaography[0].xrefs[0].title = Some("CROSS EPOCH".to_owned());
+    save_character(&pool, &input)
+        .await
+        .expect("save the character");
+
+    let recorded_pages: Vec<(String, Option<Uuid>, String, Option<String>)> = sqlx::query_as(
+        "SELECT provider || ':' || external_id, source_material_id, source, title
+         FROM source_material_xref ORDER BY provider, external_id",
+    )
+    .fetch_all(&pool)
+    .await
+    .expect("read the recorded pages");
+    assert_eq!(
+        recorded_pages,
+        vec![
+            (
+                "anilist:30881".to_owned(),
+                None,
+                "https://anilist.test/manga/30881".to_owned(),
+                Some("CROSS EPOCH".to_owned()),
+            ),
+            (
+                "mal:881".to_owned(),
+                None,
+                "https://mal.test/manga/881".to_owned(),
+                None,
+            ),
+        ]
+    );
+
+    let anime_id = insert_unmerged_anime(&pool).await;
+    let mut work_save = build_anime_save(anime_id, 1, "work-v1", Vec::new());
+    work_save.relations_and_graph = AnimeRelationsAndGraphInput {
+        source_materials: vec![AnimeSourceMaterialInput {
+            relation_type: "OTHER".to_owned(),
+            title: "Cross Epoch".to_owned(),
+            title_english: None,
+            title_japanese: None,
+            source_material_type: "ONE SHOT".to_owned(),
+            status: None,
+            score: None,
+            chapters: None,
+            volumes: None,
+            images: Vec::new(),
+            xrefs: vec![
+                SourceMaterialXrefInput {
+                    provider: "anilist".to_owned(),
+                    external_id: "30881".to_owned(),
+                    url: "https://anilist.co/manga/30881".to_owned(),
+                    title: None,
+                },
+                SourceMaterialXrefInput {
+                    provider: "mal".to_owned(),
+                    external_id: "881".to_owned(),
+                    url: "https://myanimelist.net/manga/881/Cross_Epoch".to_owned(),
+                    title: None,
+                },
+            ],
+        }],
+        ..AnimeRelationsAndGraphInput::default()
+    };
+    save_anime(&pool, &work_save)
+        .await
+        .expect("the work's save attaches the recorded pages");
+
+    let attached_pages: Vec<(String, String, String, Option<String>)> = sqlx::query_as(
+        "SELECT xref.provider || ':' || xref.external_id, material.title, xref.source,
+                xref.title
+         FROM source_material_xref xref
+         JOIN source_material material ON material.id = xref.source_material_id
+         ORDER BY xref.provider, xref.external_id",
+    )
+    .fetch_all(&pool)
+    .await
+    .expect("read the attached pages");
+    assert_eq!(
+        attached_pages,
+        vec![
+            (
+                "anilist:30881".to_owned(),
+                "Cross Epoch".to_owned(),
+                "https://anilist.co/manga/30881".to_owned(),
+                Some("CROSS EPOCH".to_owned()),
+            ),
+            (
+                "mal:881".to_owned(),
+                "Cross Epoch".to_owned(),
+                "https://myanimelist.net/manga/881/Cross_Epoch".to_owned(),
+                None,
+            ),
+        ]
+    );
 }

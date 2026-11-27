@@ -5,6 +5,11 @@ resources(
     sources=["fixtures/**"],
 )
 
+resources(
+    name="saved_pages",
+    sources=["test_*/**"],
+)
+
 python_test_utils(
     name="conftest",
     sources=["conftest.py"],
@@ -23,7 +28,9 @@ python_tests(
         "//libs/common/src/common",
         "//libs/http_cache/src/http_cache",
         ":fixtures",
+        ":saved_pages",
         "//:reqs0#pytest-asyncio",
         "//:reqs0#pytest-mock",
+        "//:reqs0#pytest-regressions",
     ],
 )

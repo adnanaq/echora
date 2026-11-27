@@ -582,11 +582,11 @@ def test_find_surviving_entries_renamed_reference_page_found_by_current_key(
 ) -> None:
     entries = [work_entry("https://www.anime-planet.com/anime/old-name", ANN)]
     placements = {
-        "animeplanet:anime:new-name": PagePlacement("work 2"),
+        "anime_planet:anime:new-name": PagePlacement("work 2"),
         "ann:anime:1": PagePlacement("work 1"),
     }
     assert find_surviving_entries(
         entries,
         placements,
-        {"animeplanet:anime:old-name": "animeplanet:anime:new-name"},
-    ) == {"work 2": "animeplanet:anime:old-name"}
+        {"anime_planet:anime:old-name": "anime_planet:anime:new-name"},
+    ) == {"work 2": "anime_planet:anime:old-name"}

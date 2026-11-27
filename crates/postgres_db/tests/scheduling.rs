@@ -1,6 +1,6 @@
 //! Integration tests for scheduling, due queries, page listing, and refresh recording.
 
-#![allow(
+#![expect(
     clippy::expect_used,
     reason = "a failed setup step stops the test, as a test's own expect does"
 )]

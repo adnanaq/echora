@@ -5,10 +5,13 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 
 from enrichment.pipeline.anime_merge import merge_anime_pages, page_key_to_anime_url
 from enrichment.pipeline.episode_reference_merger import (
-    _parse_episode_page_key,
+    _find_episode_page_sources,
+    _list_provider_episodes,
+    _ListedEpisode,
     _pick_episode_title,
 )
 from enrichment_proto.v1.enrichment_service_pb2 import MergeAnimeRequest
@@ -24,6 +27,7 @@ from shared_proto.v1.merge_pb2 import (
     PageKey,
     PageResponse,
     PageSource,
+    RelationClaim,
     StoredPage,
 )
 
@@ -159,6 +163,7 @@ def test_merge_uses_passed_id_and_page_link_sources() -> None:
                 address="21",
             ),
             source="https://anilist.co/anime/21",
+            title="One Piece",
         ),
     ]
 
@@ -284,6 +289,18 @@ def test_episode_id_preservation_and_uuidv7_for_new_episodes() -> None:
     assert len(by_num[1].list_entries) == 1
     assert by_num[1].list_entries[0].provider == "kitsu"
     assert by_num[1].list_entries[0].duration_seconds == 1440
+    assert [
+        (
+            page_source.page_key.provider,
+            page_source.page_key.address,
+            page_source.source,
+        )
+        for episode_number in (1, 2)
+        for page_source in by_num[episode_number].page_sources
+    ] == [
+        ("kitsu", "501", "https://kitsu.app/anime/one-piece/episodes/1"),
+        ("kitsu", "502", "https://kitsu.app/anime/one-piece/episodes/2"),
+    ]
 
     new_uuid = uuid.UUID(by_num[2].episode_id)
     assert new_uuid.version == 7
@@ -341,7 +358,21 @@ def test_dead_not_found_unknown_provider_and_non_anime_claims() -> None:
         address="1",
     )
     assert page_key_to_anime_url(unknown_key) == ""
-    assert _parse_episode_page_key("https://anilist.co/anime/21") is None
+    assert (
+        _find_episode_page_sources({"sources": ["https://anilist.co/anime/21"]}) == []
+    )
+    assert _find_episode_page_sources(
+        {"sources": ["https://anidb.net/episode/412"]}
+    ) == [
+        PageSource(
+            page_key=PageKey(
+                provider="anidb",
+                entity_type=anime_pb2.ENTITY_TYPE_EPISODE,
+                address="412",
+            ),
+            source="https://anidb.net/episode/412",
+        )
+    ]
 
     manga_rel = [
         {
@@ -471,11 +502,13 @@ def test_anidb_and_anisearch_episode_extraction_and_page_key_matching() -> None:
                 episode_id=known_id,
                 episode_number=999,
                 title="Known Fallback",
-                page_keys=[
-                    PageKey(
-                        provider="anidb",
-                        entity_type=anime_pb2.ENTITY_TYPE_EPISODE,
-                        address="1001",
+                page_sources=[
+                    PageSource(
+                        page_key=PageKey(
+                            provider="anidb",
+                            entity_type=anime_pb2.ENTITY_TYPE_EPISODE,
+                            address="1001",
+                        )
                     )
                 ],
             )
@@ -533,8 +566,12 @@ def test_merge_helper_edge_cases_non_anime_claim_empty_source_and_missing_ep_num
     assert partial_page_sources == []
 
     with patch(
-        "enrichment.pipeline.episode_reference_merger._extract_provider_episodes",
-        return_value=[{"episode_number": None, "title": "Skip me"}],
+        "enrichment.pipeline.episode_reference_merger._list_provider_episodes",
+        return_value=[
+            _ListedEpisode(
+                page_sources=[], episode={"episode_number": None, "title": "Skip me"}
+            )
+        ],
     ):
         entries, keys = _collect_provider_episodes([_kitsu_page()], {})
     assert entries == {}
@@ -589,3 +626,75 @@ def test_build_linked_page_sources_choose_reported_or_canonical_url_per_linked_p
             source="https://kitsu.app/anime/one-piece-film/extra",
         )
     ]
+
+
+def test_extract_relation_claims_anime_planet_target_uses_stored_provider_name() -> (
+    None
+):
+    from enrichment.pipeline.anime_merge import _extract_relation_claims
+
+    claims = _extract_relation_claims(
+        {
+            "anime_planet": {
+                "related_anime": {
+                    "SEQUEL": [
+                        {
+                            "sources": [
+                                "https://www.anime-planet.com/anime/one-piece-film-z"
+                            ]
+                        }
+                    ]
+                }
+            }
+        }
+    )
+
+    assert claims == [
+        RelationClaim(
+            provider="anime_planet",
+            relation_type=anime_pb2.ANIME_RELATION_TYPE_SEQUEL,
+            target_page=PageKey(
+                provider="anime_planet",
+                entity_type=anime_pb2.ENTITY_TYPE_ANIME,
+                address="one-piece-film-z",
+            ),
+        )
+    ]
+
+
+def test_list_provider_episodes_mal_episode_list_gives_mal_episode_pages() -> None:
+    saved_list_page = (
+        Path(__file__).resolve().parents[1]
+        / "sources"
+        / "mal"
+        / "test_mal_episode_crawler"
+        / "one_piece_episodes.html"
+    )
+    mal_page = StoredPage(
+        page_key=PageKey(
+            provider="mal", entity_type=anime_pb2.ENTITY_TYPE_ANIME, address="21"
+        ),
+        responses=[
+            PageResponse(
+                request_name="episodes_page_1",
+                content_type="text/html",
+                body=saved_list_page.read_bytes(),
+            )
+        ],
+    )
+
+    listed_episodes = _list_provider_episodes(mal_page, "")
+
+    assert len(listed_episodes) == 100
+    assert listed_episodes[0].page_sources == [
+        PageSource(
+            page_key=PageKey(
+                provider="mal",
+                entity_type=anime_pb2.ENTITY_TYPE_EPISODE,
+                address="21:1",
+            ),
+            source="https://myanimelist.net/anime/21/One_Piece/episode/1",
+            title="I'm Luffy! The Man Who's Gonna Be King of the Pirates!",
+        )
+    ]
+    assert listed_episodes[49].episode["is_filler"] is True

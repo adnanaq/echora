@@ -19,6 +19,7 @@ use postgres_db::{
     SaveAnimeInput, SaveCharacterInput, SaveEpisodeInput,
 };
 use sqlx::PgPool;
+use url::Url;
 use uuid::Uuid;
 
 /// Inserts a work that exists only as an ID, as the seed load creates it.
@@ -95,7 +96,8 @@ pub async fn link_mal_anime_pages(pool: &PgPool, anime_id: Uuid, source_addresse
 pub fn build_mal_page_source(entity_type: EntityType, address: &str, source: &str) -> PageSource {
     PageSource {
         page_key: PageKey::new(Provider::Mal, entity_type, address).expect("valid page key"),
-        source: source.to_owned(),
+        source: Some(Url::parse(source).expect("valid URL")),
+        title: None,
     }
 }
 

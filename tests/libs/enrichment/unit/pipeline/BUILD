@@ -15,6 +15,9 @@ python_tests(
         "//:reqs0#pytest-mock",
     ],
     overrides={
+        "test_anime_merge.py": {
+            "dependencies": ["//tests/libs/enrichment/unit/sources/mal:saved_pages"],
+        },
         "test_character_merge.py": {
             "dependencies": ["//tests/libs/enrichment/unit/sources/anidb:fixtures"],
         },

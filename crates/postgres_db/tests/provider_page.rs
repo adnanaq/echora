@@ -1,6 +1,6 @@
 //! Integration tests for provider page observations against PostgreSQL.
 
-#![allow(
+#![expect(
     clippy::expect_used,
     reason = "a failed setup step stops the test, as a test's own expect does"
 )]
@@ -9,10 +9,11 @@ mod support;
 
 use chrono::{Duration, Utc};
 use postgres_db::{
-    EntityType, FetchOutcome, PageKey, PageObservation, PageResponse, Provider,
-    record_page_observation, save_anime,
+    AnimeRelationInput, AnimeRelationsAndGraphInput, EntityType, FetchOutcome, PageKey,
+    PageObservation, PageResponse, PageSource, Provider, record_page_observation, save_anime,
 };
 use sqlx::PgPool;
+use url::Url;
 use uuid::Uuid;
 
 use crate::support::{
@@ -341,12 +342,64 @@ async fn read_page_source(pool: &PgPool, address: &str) -> Option<String> {
     .expect("read page source")
 }
 
+async fn read_page_title(pool: &PgPool, address: &str) -> Option<String> {
+    sqlx::query_scalar(
+        "SELECT title FROM provider_page
+         WHERE provider = 'mal' AND entity_type = 'anime' AND address = $1",
+    )
+    .bind(address)
+    .fetch_one(pool)
+    .await
+    .expect("read page title")
+}
+
+async fn has_page_row(pool: &PgPool, address: &str) -> bool {
+    sqlx::query_scalar(
+        "SELECT EXISTS (
+             SELECT 1 FROM provider_page
+             WHERE provider = 'mal' AND entity_type = 'anime' AND address = $1
+         )",
+    )
+    .bind(address)
+    .fetch_one(pool)
+    .await
+    .expect("check page row")
+}
+
+fn build_relation_to(
+    relation_type: &str,
+    address: &str,
+    source: Option<&str>,
+    title: Option<&str>,
+) -> AnimeRelationInput {
+    AnimeRelationInput {
+        relation_type: relation_type.to_owned(),
+        target_page_source: PageSource {
+            page_key: PageKey::new(Provider::Mal, EntityType::Anime, address)
+                .expect("valid page key"),
+            source: source.map(|url| Url::parse(url).expect("valid URL")),
+            title: title.map(str::to_owned),
+        },
+    }
+}
+
+fn build_relations(relations: Vec<AnimeRelationInput>) -> AnimeRelationsAndGraphInput {
+    AnimeRelationsAndGraphInput {
+        relations,
+        ..AnimeRelationsAndGraphInput::default()
+    }
+}
+
 #[sqlx::test(migrations = "./migrations")]
-async fn save_anime_page_sources_refuse_blank_duplicate_and_other_entity_pages(pool: PgPool) {
+async fn save_anime_page_sources_refuse_missing_duplicate_and_other_entity_pages(pool: PgPool) {
     let anime_id = insert_unmerged_anime(&pool).await;
     link_mal_anime_pages(&pool, anime_id, &["1"]).await;
     let refused_page_sources = [
-        vec![build_mal_page_source(EntityType::Anime, "1", "  ")],
+        vec![PageSource {
+            page_key: PageKey::new(Provider::Mal, EntityType::Anime, "1").expect("valid page key"),
+            source: None,
+            title: None,
+        }],
         vec![
             build_mal_page_source(EntityType::Anime, "1", "https://myanimelist.net/anime/1"),
             build_mal_page_source(
@@ -471,4 +524,143 @@ async fn provider_and_entity_type_decode_from_text_and_refuse_unknown_values(poo
         matches!(mismatched_entity_column, sqlx::Error::ColumnDecode { .. }),
         "{mismatched_entity_column}"
     );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn save_anime_relation_url_fills_unheld_page_with_longest_url(pool: PgPool) {
+    let anime_id = insert_unmerged_anime(&pool).await;
+    link_mal_anime_pages(&pool, anime_id, &["1"]).await;
+    let mut save_input = build_anime_save(anime_id, 1, "v1", Vec::new());
+    save_input.relations_and_graph = build_relations(vec![
+        build_relation_to(
+            "SEQUEL",
+            "2",
+            Some("https://myanimelist.net/anime/2"),
+            Some("Sequel"),
+        ),
+        build_relation_to(
+            "SIDE_STORY",
+            "2",
+            Some("https://myanimelist.net/anime/2/Sequel"),
+            Some("Sequel (side story list)"),
+        ),
+        build_relation_to("PREQUEL", "3", None, None),
+    ]);
+
+    save_anime(&pool, &save_input).await.expect("save work");
+
+    assert_eq!(
+        read_page_source(&pool, "2").await.as_deref(),
+        Some("https://myanimelist.net/anime/2/Sequel")
+    );
+    assert_eq!(read_page_title(&pool, "2").await.as_deref(), Some("Sequel"));
+    assert!(!has_page_row(&pool, "3").await);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn save_anime_relation_url_yields_to_holder_url(pool: PgPool) {
+    let naming_anime_id = insert_unmerged_anime(&pool).await;
+    let holding_anime_id = insert_unmerged_anime(&pool).await;
+    link_mal_anime_pages(&pool, naming_anime_id, &["1"]).await;
+    link_mal_anime_pages(&pool, holding_anime_id, &["2"]).await;
+
+    let mut naming_save = build_anime_save(naming_anime_id, 1, "naming-v1", Vec::new());
+    naming_save.relations_and_graph = build_relations(vec![build_relation_to(
+        "SEQUEL",
+        "2",
+        Some("https://myanimelist.net/anime/2"),
+        Some("Named Sequel"),
+    )]);
+    let naming_outcome = save_anime(&pool, &naming_save).await.expect("naming save");
+    assert_eq!(
+        read_page_source(&pool, "2").await.as_deref(),
+        Some("https://myanimelist.net/anime/2")
+    );
+    assert_eq!(
+        read_page_title(&pool, "2").await.as_deref(),
+        Some("Named Sequel")
+    );
+
+    let mut holding_save = build_anime_save(holding_anime_id, 1, "holding-v1", Vec::new());
+    holding_save.page_sources = vec![build_mal_page_source(
+        EntityType::Anime,
+        "2",
+        "https://myanimelist.net/anime/2/Sequel",
+    )];
+    holding_save.page_sources[0].title = Some("Held Sequel".to_owned());
+    save_anime(&pool, &holding_save)
+        .await
+        .expect("holding save");
+    assert_eq!(
+        read_page_source(&pool, "2").await.as_deref(),
+        Some("https://myanimelist.net/anime/2/Sequel")
+    );
+    assert_eq!(
+        read_page_title(&pool, "2").await.as_deref(),
+        Some("Held Sequel")
+    );
+
+    let mut renaming_save = build_anime_save(
+        naming_anime_id,
+        naming_outcome.version,
+        "naming-v2",
+        Vec::new(),
+    );
+    renaming_save.relations_and_graph = build_relations(vec![build_relation_to(
+        "SEQUEL",
+        "2",
+        Some("https://myanimelist.net/anime/2/Longer_Other_Slug"),
+        Some("Renamed Sequel"),
+    )]);
+    save_anime(&pool, &renaming_save)
+        .await
+        .expect("renaming save");
+    assert_eq!(
+        read_page_source(&pool, "2").await.as_deref(),
+        Some("https://myanimelist.net/anime/2/Sequel")
+    );
+    assert_eq!(
+        read_page_title(&pool, "2").await.as_deref(),
+        Some("Held Sequel")
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn save_anime_relation_url_skips_page_row_locked_by_other_transaction(pool: PgPool) {
+    let anime_id = insert_unmerged_anime(&pool).await;
+    link_mal_anime_pages(&pool, anime_id, &["1"]).await;
+    sqlx::query(
+        "INSERT INTO provider_page (provider, entity_type, address) VALUES ('mal', 'anime', '2')",
+    )
+    .execute(&pool)
+    .await
+    .expect("insert unheld page");
+    let mut locking_tx = pool.begin().await.expect("begin locking transaction");
+    sqlx::query(
+        "SELECT 1 FROM provider_page
+         WHERE provider = 'mal' AND entity_type = 'anime' AND address = '2'
+         FOR NO KEY UPDATE",
+    )
+    .execute(&mut *locking_tx)
+    .await
+    .expect("lock page row");
+    let mut save_input = build_anime_save(anime_id, 1, "v1", Vec::new());
+    save_input.relations_and_graph = build_relations(vec![build_relation_to(
+        "SEQUEL",
+        "2",
+        Some("https://myanimelist.net/anime/2"),
+        Some("Sequel"),
+    )]);
+
+    tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        save_anime(&pool, &save_input),
+    )
+    .await
+    .expect("save does not wait for the locked page row")
+    .expect("save work");
+
+    assert_eq!(read_page_source(&pool, "2").await, None);
+    assert_eq!(read_page_title(&pool, "2").await, None);
+    locking_tx.rollback().await.expect("release lock");
 }

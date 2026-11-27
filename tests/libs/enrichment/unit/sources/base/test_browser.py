@@ -468,32 +468,36 @@ def test_crawler_sources_start_browsers_only_through_browser_session() -> None:
 
 
 def test_crawler_sources_keep_each_site_headless_setting() -> None:
-    sessions: dict[str, list[str]] = {}
+    headless_settings_by_site: dict[str, set[str]] = {}
     for path in _crawler_sources():
         site = path.relative_to(SOURCES_DIR).parts[0]
-        sessions.setdefault(site, []).extend(
+        headless_settings_by_site.setdefault(site, set()).update(
             re.findall(r"browser_session\(headless=(True|False)\b", path.read_text())
         )
 
-    assert sessions.get("anisearch", []) == []
-    assert sessions["anidb"] == ["False"]
-    assert sessions["mal"] == ["True"] * 9
-    assert sessions["anime_planet"] == ["True"] * 6
+    assert headless_settings_by_site.get("anisearch", set()) == set()
+    assert headless_settings_by_site["anidb"] == {"False"}
+    assert headless_settings_by_site["mal"] == {"True"}
+    assert headless_settings_by_site["anime_planet"] == {"False"}
 
 
-def test_crawler_sources_use_allowed_site_on_mal_only() -> None:
+def test_crawler_sources_use_allowed_site_on_every_mal_session_only() -> None:
     sites_with_rule = {
         path.relative_to(SOURCES_DIR).parts[0]
         for path in _crawler_sources()
         if "allowed_site=" in path.read_text()
     }
-    mal_sessions = sum(
-        path.read_text().count("allowed_site=MAL_DOMAIN")
-        for path in (SOURCES_DIR / "mal").glob("*.py")
+    mal_sources = [path.read_text() for path in (SOURCES_DIR / "mal").glob("*.py")]
+    mal_session_count = sum(
+        len(re.findall(r"browser_session\(", source)) for source in mal_sources
+    )
+    allowed_site_session_count = sum(
+        source.count("allowed_site=MAL_DOMAIN") for source in mal_sources
     )
 
     assert sites_with_rule == {"mal"}
-    assert mal_sessions == 9
+    assert mal_session_count > 0
+    assert allowed_site_session_count == mal_session_count
 
 
 RUNS = 10

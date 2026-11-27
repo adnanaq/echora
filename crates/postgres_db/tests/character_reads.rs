@@ -1,10 +1,5 @@
 //! Integration tests for visible character reads (`read_visible_character`).
 
-#![allow(
-    clippy::expect_used,
-    reason = "a failed setup step stops the test, as a test's own expect does"
-)]
-
 mod support;
 
 use std::collections::BTreeMap;
@@ -15,6 +10,7 @@ use postgres_db::{
     read_visible_character, save_anime, save_character,
 };
 use sqlx::PgPool;
+use url::Url;
 
 use crate::support::{
     build_anime_save, build_character_save, build_mal_page_source, insert_unmerged_anime,
@@ -50,7 +46,8 @@ async fn read_visible_character_lists_only_visible_works_with_titles(pool: PgPoo
         PageSource {
             page_key: PageKey::new(Provider::AniList, EntityType::Anime, "1")
                 .expect("valid page key"),
-            source: "https://anilist.co/anime/1".to_owned(),
+            source: Some(Url::parse("https://anilist.co/anime/1").expect("valid URL")),
+            title: None,
         },
     ];
     work_save.relations_and_graph.source_materials = vec![AnimeSourceMaterialInput {
@@ -69,11 +66,13 @@ async fn read_visible_character_lists_only_visible_works_with_titles(pool: PgPoo
                 provider: "anilist".to_owned(),
                 external_id: "30100".to_owned(),
                 url: "https://anilist.co/manga/30100".to_owned(),
+                title: None,
             },
             SourceMaterialXrefInput {
                 provider: "mal".to_owned(),
                 external_id: "100".to_owned(),
                 url: "https://myanimelist.net/manga/100".to_owned(),
+                title: None,
             },
         ],
     }];
@@ -88,8 +87,14 @@ async fn read_visible_character_lists_only_visible_works_with_titles(pool: PgPoo
             .is_not_found()
     );
     let appearance = |address: &str, role: &str| CharacterAppearanceInput {
-        anime_page_provider: "mal".to_owned(),
-        anime_page_address: address.to_owned(),
+        anime_page_source: PageSource {
+            page_key: PageKey::new(Provider::Mal, EntityType::Anime, address)
+                .expect("valid page key"),
+            source: Some(
+                Url::parse(&format!("https://myanimelist.net/anime/{address}")).expect("valid URL"),
+            ),
+            title: Some(format!("Anime {address}")),
+        },
         role: role.to_owned(),
     };
     let mut character_save = build_character_save(character_id, "Spike Spiegel");
@@ -114,26 +119,42 @@ async fn read_visible_character_lists_only_visible_works_with_titles(pool: PgPoo
         appearance("1", "MAIN"),
         appearance("2", "SUPPORTING"),
         CharacterAppearanceInput {
-            anime_page_provider: "anilist".to_owned(),
-            anime_page_address: "1".to_owned(),
+            anime_page_source: PageSource {
+                page_key: PageKey::new(Provider::AniList, EntityType::Anime, "1")
+                    .expect("valid page key"),
+                source: Some(Url::parse("https://anilist.co/anime/1").expect("valid URL")),
+                title: None,
+            },
             role: "SUPPORTING".to_owned(),
         },
     ];
     character_save.mangaography = vec![
         CharacterMangaographyInput {
-            source_material_provider: "mal".to_owned(),
-            source_material_external_id: "100".to_owned(),
             role: "MAIN".to_owned(),
+            xrefs: vec![SourceMaterialXrefInput {
+                provider: "mal".to_owned(),
+                external_id: "100".to_owned(),
+                url: "https://myanimelist.net/manga/100".to_owned(),
+                title: Some("Manga 100".to_owned()),
+            }],
         },
         CharacterMangaographyInput {
-            source_material_provider: "mal".to_owned(),
-            source_material_external_id: "999".to_owned(),
             role: "BACKGROUND".to_owned(),
+            xrefs: vec![SourceMaterialXrefInput {
+                provider: "mal".to_owned(),
+                external_id: "999".to_owned(),
+                url: "https://myanimelist.net/manga/999/Shooting_Star_Bebop".to_owned(),
+                title: Some("Shooting Star Bebop".to_owned()),
+            }],
         },
         CharacterMangaographyInput {
-            source_material_provider: "anilist".to_owned(),
-            source_material_external_id: "30100".to_owned(),
             role: "SUPPORTING".to_owned(),
+            xrefs: vec![SourceMaterialXrefInput {
+                provider: "anilist".to_owned(),
+                external_id: "30100".to_owned(),
+                url: "https://anilist.co/manga/30100".to_owned(),
+                title: None,
+            }],
         },
     ];
     save_character(&pool, &character_save)
@@ -178,9 +199,9 @@ async fn read_visible_character_lists_only_visible_works_with_titles(pool: PgPoo
                 ],
             },
             VisibleOgraphyEntry {
-                title: None,
+                title: Some("Anime 2".to_owned()),
                 role: "SUPPORTING".to_owned(),
-                sources: Vec::new(),
+                sources: vec!["https://myanimelist.net/anime/2".to_owned()],
             },
         ]
     );
@@ -196,9 +217,9 @@ async fn read_visible_character_lists_only_visible_works_with_titles(pool: PgPoo
                 ],
             },
             VisibleOgraphyEntry {
-                title: None,
+                title: Some("Shooting Star Bebop".to_owned()),
                 role: "BACKGROUND".to_owned(),
-                sources: Vec::new(),
+                sources: vec!["https://myanimelist.net/manga/999/Shooting_Star_Bebop".to_owned()],
             },
         ]
     );

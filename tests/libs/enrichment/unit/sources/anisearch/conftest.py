@@ -39,20 +39,13 @@ Each item reads ``<file>: <address>, captured <date>``.
   (extracted links only), captured on 2026-04-23.
 """
 
-from collections.abc import Callable, Iterator
-from functools import cache
-from pathlib import Path
+from collections.abc import Iterator
 from unittest.mock import patch
 
 import pytest
 from common.config import CacheConfig, RedisConfig
 from enrichment.sources.anisearch import anisearch_http
 from http_cache import configure_cache
-
-
-@pytest.fixture(scope="module")
-def read_page(original_datadir: Path) -> Callable[[str], str]:
-    return cache(lambda page_name: (original_datadir / f"{page_name}.html").read_text())
 
 
 @pytest.fixture(autouse=True)

@@ -1,10 +1,5 @@
 //! Integration tests for visible episode reads (`read_visible_episode`, `list_visible_episodes`).
 
-#![allow(
-    clippy::expect_used,
-    reason = "a failed setup step stops the test, as a test's own expect does"
-)]
-
 mod support;
 
 use postgres_db::{
@@ -13,6 +8,7 @@ use postgres_db::{
     list_visible_episodes, read_visible_episode, save_anime, save_character, save_episode,
 };
 use sqlx::PgPool;
+use url::Url;
 use uuid::Uuid;
 
 use crate::support::{
@@ -34,9 +30,11 @@ async fn read_visible_episode_returns_saved_fields_with_platform_and_character(p
                 episode_id,
                 episode_number: 1,
                 title: "Asteroid Blues".to_owned(),
-                page_keys: vec![
-                    PageKey::new(Provider::Mal, EntityType::Episode, "1:1").expect("key"),
-                ],
+                page_sources: vec![PageSource {
+                    page_key: PageKey::new(Provider::Mal, EntityType::Episode, "1:1").expect("key"),
+                    source: None,
+                    title: None,
+                }],
                 list_entries: Vec::new(),
             }],
         ),
@@ -63,7 +61,8 @@ async fn read_visible_episode_returns_saved_fields_with_platform_and_character(p
         PageSource {
             page_key: PageKey::new(Provider::AniList, EntityType::Character, "1")
                 .expect("valid page key"),
-            source: "https://anilist.co/character/1".to_owned(),
+            source: Some(Url::parse("https://anilist.co/character/1").expect("valid URL")),
+            title: None,
         },
     ];
     save_character(&pool, &character_save)
@@ -82,18 +81,30 @@ async fn read_visible_episode_returns_saved_fields_with_platform_and_character(p
     }];
     episode_save.characters = vec![
         EpisodeCharacterInput {
-            character_page_provider: "mal".to_owned(),
-            character_page_address: "1".to_owned(),
+            character_page_source: PageSource {
+                page_key: PageKey::new(Provider::Mal, EntityType::Character, "1")
+                    .expect("valid page key"),
+                source: Some(Url::parse("https://myanimelist.net/character/1").expect("valid URL")),
+                title: Some("Spike".to_owned()),
+            },
             role: "MAIN".to_owned(),
         },
         EpisodeCharacterInput {
-            character_page_provider: "anilist".to_owned(),
-            character_page_address: "1".to_owned(),
+            character_page_source: PageSource {
+                page_key: PageKey::new(Provider::AniList, EntityType::Character, "1")
+                    .expect("valid page key"),
+                source: Some(Url::parse("https://anilist.co/character/1").expect("valid URL")),
+                title: None,
+            },
             role: "SUPPORTING".to_owned(),
         },
         EpisodeCharacterInput {
-            character_page_provider: "mal".to_owned(),
-            character_page_address: "2".to_owned(),
+            character_page_source: PageSource {
+                page_key: PageKey::new(Provider::Mal, EntityType::Character, "2")
+                    .expect("valid page key"),
+                source: Some(Url::parse("https://myanimelist.net/character/2").expect("valid URL")),
+                title: Some("Jet Black".to_owned()),
+            },
             role: "SUPPORTING".to_owned(),
         },
     ];
@@ -128,9 +139,9 @@ async fn read_visible_episode_returns_saved_fields_with_platform_and_character(p
                 ],
             },
             VisibleEpisodeCharacter {
-                name: None,
+                name: Some("Jet Black".to_owned()),
                 role: "SUPPORTING".to_owned(),
-                sources: Vec::new(),
+                sources: vec!["https://myanimelist.net/character/2".to_owned()],
             },
         ]
     );
@@ -147,7 +158,7 @@ async fn list_visible_episodes_keeps_child_rows_with_their_episode(pool: PgPool)
             episode_id: *episode_id,
             episode_number,
             title: format!("Episode {episode_number}"),
-            page_keys: Vec::new(),
+            page_sources: Vec::new(),
             list_entries: Vec::new(),
         })
         .collect();

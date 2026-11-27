@@ -40,6 +40,7 @@ from shared_proto.v1.merge_pb2 import (
     EpisodeReference,
     PageKey,
     PageResponse,
+    PageSource,
     StoredPage,
 )
 
@@ -319,7 +320,7 @@ async def test_merge_episode_postgres_full_round_trip_end_to_end() -> None:
                             episode_id=episode_id,
                             episode_number=1,
                             title="I'm Luffy!",
-                            page_keys=[ep_page.page_key],
+                            page_sources=[PageSource(page_key=ep_page.page_key)],
                             list_entries=[
                                 EpisodeListEntry(
                                     provider="mal",

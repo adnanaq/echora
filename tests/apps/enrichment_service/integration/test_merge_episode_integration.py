@@ -329,7 +329,7 @@ async def test_five_episodes_per_provider_end_to_end() -> None:
                     page_key=PageKey(
                         provider="mal",
                         entity_type=anime_pb2.ENTITY_TYPE_EPISODE,
-                        address=str(ep_num),
+                        address=f"21:{ep_num}",
                     ),
                     fetched_at=now_ts,
                     responses=[
@@ -345,6 +345,7 @@ async def test_five_episodes_per_provider_end_to_end() -> None:
                     MergeEpisodeRequest(
                         episode_id=generate_entity_id(),
                         anime_id=anime_id,
+                        episode_number=ep_num,
                         pages=[mal_page],
                     )
                 )

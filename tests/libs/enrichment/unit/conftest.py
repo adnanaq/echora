@@ -1,5 +1,7 @@
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
+from functools import cache
+from pathlib import Path
 from types import ModuleType
 from unittest.mock import create_autospec, patch
 
@@ -7,6 +9,15 @@ import pytest
 import zendriver
 from enrichment.sources.base.browser import BrowserSession
 from lxml import html as lxml_html
+
+
+@pytest.fixture(scope="module")
+def read_page(original_datadir: Path) -> Callable[[str], str]:
+    return cache(
+        lambda page_name: (original_datadir / f"{page_name}.html").read_text(
+            encoding="utf-8"
+        )
+    )
 
 
 def _page_has(page_html: str, selector: str | None) -> bool:

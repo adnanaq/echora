@@ -1,10 +1,5 @@
 //! Integration tests for visible work reads (`read_visible_anime`).
 
-#![allow(
-    clippy::expect_used,
-    reason = "a failed setup step stops the test, as a test's own expect does"
-)]
-
 mod support;
 
 use chrono::{Duration, NaiveDate, NaiveTime, Utc};
@@ -18,6 +13,7 @@ use postgres_db::{
     read_visible_anime, save_anime,
 };
 use sqlx::PgPool;
+use url::Url;
 use uuid::Uuid;
 
 use crate::support::{
@@ -179,11 +175,13 @@ async fn read_visible_anime_returns_every_saved_field(pool: PgPool) {
                 provider: "anilist".to_owned(),
                 external_id: "30100".to_owned(),
                 url: "https://anilist.co/manga/30100".to_owned(),
+                title: None,
             },
             SourceMaterialXrefInput {
                 provider: "mal".to_owned(),
                 external_id: "100".to_owned(),
                 url: "https://myanimelist.net/manga/100".to_owned(),
+                title: None,
             },
         ],
     };
@@ -326,20 +324,31 @@ async fn read_visible_anime_relations_resolve_only_other_visible_works(pool: PgP
         PageSource {
             page_key: PageKey::new(Provider::AniList, EntityType::Anime, "22")
                 .expect("valid page key"),
-            source: "https://anilist.co/anime/22".to_owned(),
+            source: Some(Url::parse("https://anilist.co/anime/22").expect("valid URL")),
+            title: None,
         },
     ];
     save_anime(&pool, &sequel_save).await.expect("save sequel");
 
     let relation = |relation_type: &str, address: &str| AnimeRelationInput {
         relation_type: relation_type.to_owned(),
-        to_page_provider: "mal".to_owned(),
-        to_page_address: address.to_owned(),
+        target_page_source: PageSource {
+            page_key: PageKey::new(Provider::Mal, EntityType::Anime, address)
+                .expect("valid page key"),
+            source: Some(
+                Url::parse(&format!("https://myanimelist.net/anime/{address}")).expect("valid URL"),
+            ),
+            title: Some(format!("Work {address}")),
+        },
     };
     let anilist_relation = AnimeRelationInput {
         relation_type: "SEQUEL".to_owned(),
-        to_page_provider: "anilist".to_owned(),
-        to_page_address: "22".to_owned(),
+        target_page_source: PageSource {
+            page_key: PageKey::new(Provider::AniList, EntityType::Anime, "22")
+                .expect("valid page key"),
+            source: Some(Url::parse("https://anilist.co/anime/22").expect("valid URL")),
+            title: None,
+        },
     };
     let mut save_input = build_anime_save(anime_id, 1, "work-v1", Vec::new());
     save_input.relations_and_graph = AnimeRelationsAndGraphInput {
@@ -367,6 +376,7 @@ async fn read_visible_anime_relations_resolve_only_other_visible_works(pool: PgP
                     "https://anilist.co/anime/22".to_owned(),
                     "https://myanimelist.net/anime/2/Sequel".to_owned(),
                 ],
+                target_page_title: Some("Work 2".to_owned()),
                 target_anime: Some(RelatedAnimeSummary {
                     anime_id: sequel_id,
                     title: "Sequel".to_owned(),
@@ -378,22 +388,26 @@ async fn read_visible_anime_relations_resolve_only_other_visible_works(pool: PgP
             },
             VisibleAnimeRelation {
                 relation_type: "SIDE_STORY".to_owned(),
-                target_page_sources: Vec::new(),
+                target_page_sources: vec!["https://myanimelist.net/anime/3".to_owned()],
+                target_page_title: Some("Work 3".to_owned()),
                 target_anime: None,
             },
             VisibleAnimeRelation {
                 relation_type: "SPIN_OFF".to_owned(),
-                target_page_sources: Vec::new(),
+                target_page_sources: vec!["https://myanimelist.net/anime/4".to_owned()],
+                target_page_title: Some("Work 4".to_owned()),
                 target_anime: None,
             },
             VisibleAnimeRelation {
                 relation_type: "SPIN_OFF".to_owned(),
-                target_page_sources: Vec::new(),
+                target_page_sources: vec!["https://myanimelist.net/anime/5".to_owned()],
+                target_page_title: Some("Work 5".to_owned()),
                 target_anime: None,
             },
             VisibleAnimeRelation {
                 relation_type: "SUMMARY".to_owned(),
-                target_page_sources: Vec::new(),
+                target_page_sources: vec!["https://myanimelist.net/anime/1".to_owned()],
+                target_page_title: Some("Work 1".to_owned()),
                 target_anime: None,
             },
         ]

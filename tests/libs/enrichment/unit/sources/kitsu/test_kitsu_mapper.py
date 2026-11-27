@@ -1,11 +1,14 @@
 """Unit tests for kitsu_mapper.py."""
 
+import json
+
 import pytest
 from common.models.anime import ThemeEntry
 from enrichment.sources.kitsu.kitsu_mapper import (
     anime_from_kitsu,
     character_from_kitsu,
     episode_from_kitsu,
+    map_kitsu_episode_responses,
 )
 from enrichment.sources.kitsu.kitsu_models import (
     KitsuAnime,
@@ -28,6 +31,7 @@ from enrichment.sources.kitsu.kitsu_models import (
     KitsuProduction,
     KitsuTitles,
 )
+from shared_proto.v1.merge_pb2 import PageResponse
 
 # =============================================================================
 # Fixtures
@@ -661,6 +665,52 @@ def test_map_kitsu_anime_and_episode_responses() -> None:
     assert anime["title"] == "One Piece"
     assert anime["genres"] == ["Action"]
     assert anime["themes"][0]["name"] == "Pirates"
-    episodes = map_kitsu_anime_episode_responses(responses)
-    assert len(episodes) == 1
-    assert episodes[0]["title"] == "I'm Luffy!"
+    listed_episodes = map_kitsu_anime_episode_responses(responses)
+    assert [kitsu_episode_id for kitsu_episode_id, _ in listed_episodes] == ["101"]
+    assert listed_episodes[0][1]["title"] == "I'm Luffy!"
+    assert listed_episodes[0][1]["sources"] == [
+        "https://kitsu.app/anime/one-piece/episodes/1"
+    ]
+
+
+def test_map_kitsu_episode_responses_episode_with_included_work_gives_slug_url(
+    original_datadir,
+) -> None:
+    episode = map_kitsu_episode_responses(
+        [
+            PageResponse(
+                request_name="main",
+                content_type="application/vnd.api+json",
+                body=(
+                    original_datadir / "kitsu_episode_103482_with_media.json"
+                ).read_bytes(),
+            )
+        ]
+    )
+
+    assert episode["episode_number"] == 1
+    assert episode["sources"] == ["https://kitsu.app/anime/one-piece/episodes/1"]
+
+
+def test_map_kitsu_episode_responses_episode_without_included_work_gives_no_url() -> (
+    None
+):
+    episode = map_kitsu_episode_responses(
+        [
+            PageResponse(
+                request_name="main",
+                content_type="application/vnd.api+json",
+                body=json.dumps(
+                    {
+                        "data": {
+                            "id": "1",
+                            "type": "episodes",
+                            "attributes": {"number": 1},
+                        }
+                    }
+                ).encode("utf-8"),
+            )
+        ]
+    )
+
+    assert episode["sources"] == []

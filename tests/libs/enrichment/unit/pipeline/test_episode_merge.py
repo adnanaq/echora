@@ -83,7 +83,9 @@ def test_merge_episode_from_list_entries_without_pages() -> None:
 
 def test_merge_episode_with_mal_and_kitsu_pages_and_corrections() -> None:
     """Stored MAL HTML + Kitsu JSON pages merge with list_entries and corrections."""
-    mal_html = b"""<html><body>
+    mal_html = b"""<html><head>
+<meta property="og:url" content="https://myanimelist.net/anime/21/One_Piece/episode/1"/>
+</head><body>
 <h2 class="fs18"><span class="fw-n">#1 - </span>I'm Luffy!</h2>
 <div class="pt8 pb8">Romance Dawn</div>
 <table><tr><td class="td-title">Synopsis</td></tr></table>
@@ -108,7 +110,10 @@ def test_merge_episode_with_mal_and_kitsu_pages_and_corrections() -> None:
                 "length": 24,
                 "thumbnail": {"original": "https://cdn.kitsu.app/ep1.jpg"},
             },
-        }
+        },
+        "included": [
+            {"id": "12", "type": "anime", "attributes": {"slug": "one-piece"}}
+        ],
     }
     req = MergeEpisodeRequest(
         episode_id="0195b42a-0000-7000-8000-000000000102",
@@ -184,8 +189,8 @@ def test_merge_episode_with_mal_and_kitsu_pages_and_corrections() -> None:
     assert ep.is_recap is False
     assert list(ep.images) == ["https://cdn.kitsu.app/ep1.jpg"]
     assert list(ep.sources) == [
-        "https://kitsu.app/episodes/501",
-        "https://myanimelist.net/anime/21/episode/1",
+        "https://kitsu.app/anime/one-piece/episodes/1",
+        "https://myanimelist.net/anime/21/One_Piece/episode/1",
     ]
     assert list(resp.page_sources) == [
         PageSource(
@@ -194,7 +199,8 @@ def test_merge_episode_with_mal_and_kitsu_pages_and_corrections() -> None:
                 entity_type=anime_pb2.ENTITY_TYPE_EPISODE,
                 address="21:1",
             ),
-            source="https://myanimelist.net/anime/21/episode/1",
+            source="https://myanimelist.net/anime/21/One_Piece/episode/1",
+            title="I'm Luffy!",
         ),
         PageSource(
             page_key=PageKey(
@@ -202,7 +208,8 @@ def test_merge_episode_with_mal_and_kitsu_pages_and_corrections() -> None:
                 entity_type=anime_pb2.ENTITY_TYPE_EPISODE,
                 address="501",
             ),
-            source="https://kitsu.app/episodes/501",
+            source="https://kitsu.app/anime/one-piece/episodes/1",
+            title="I'm Luffy!",
         ),
     ]
 
@@ -255,8 +262,7 @@ def test_merge_episode_score_titles_streaming_and_unknown_provider() -> None:
     assert list(resp.page_sources) == []
 
 
-def test_merge_episode_mal_numeric_address_and_og_url() -> None:
-    """Numeric MAL episode PageKey falls back to og:url and extracts episode_number."""
+def test_merge_episode_mal_page_stores_og_url_with_slug() -> None:
     mal_html = b"""<html><head>
 <meta property="og:url" content="https://myanimelist.net/anime/21/One_Piece/episode/7"/>
 </head><body>
@@ -274,7 +280,7 @@ def test_merge_episode_mal_numeric_address_and_og_url() -> None:
                 page_key=PageKey(
                     provider="mal",
                     entity_type=anime_pb2.ENTITY_TYPE_EPISODE,
-                    address="7",
+                    address="21:7",
                 ),
                 responses=[
                     PageResponse(
@@ -291,7 +297,17 @@ def test_merge_episode_mal_numeric_address_and_og_url() -> None:
     assert (
         "https://myanimelist.net/anime/21/One_Piece/episode/7" in resp.episode.sources
     )
-    assert list(resp.page_sources) == []
+    assert list(resp.page_sources) == [
+        PageSource(
+            page_key=PageKey(
+                provider="mal",
+                entity_type=anime_pb2.ENTITY_TYPE_EPISODE,
+                address="21:7",
+            ),
+            source="https://myanimelist.net/anime/21/One_Piece/episode/7",
+            title="Ep 7",
+        )
+    ]
 
 
 def test_mal_and_kitsu_episode_response_mapper_errors() -> None:

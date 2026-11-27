@@ -33,7 +33,7 @@ def test_place_pages_without_review_renamed_page_keeps_current_page(
 ) -> None:
     entry, decisions, pages = matching_case_decisions("cocoon")
     assert place_pages_without_review(decisions) == {
-        "animeplanet:anime:cocoon-one-summer-of-girlhood": ENTRY
+        "anime_planet:anime:cocoon-one-summer-of-girlhood": ENTRY
     }
 
 
@@ -75,7 +75,7 @@ def test_list_placeable_page_keys_doubled_pages_first_then_other_pages(
 ) -> None:
     entry, decisions, _ = matching_case_decisions("cocoon")
     assert list_placeable_page_keys(entry, decisions) == (
-        "animeplanet:anime:cocoon-one-summer-of-girlhood",
+        "anime_planet:anime:cocoon-one-summer-of-girlhood",
         "anidb:anime:18084",
         "anilist:anime:166527",
         "animecountdown:anime:2196692",

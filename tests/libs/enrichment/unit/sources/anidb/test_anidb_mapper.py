@@ -716,7 +716,6 @@ def test_map_anidb_anime_responses_valid_xml_returns_canonical_anime() -> None:
                 request_name="main", content_type="application/xml", body=xml_body
             )
         ],
-        anidb_url="https://anidb.net/anime/23",
     )
 
     assert canonical["title"] == "Cowboy Bebop"

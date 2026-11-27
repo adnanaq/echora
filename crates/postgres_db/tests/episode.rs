@@ -1,13 +1,20 @@
 //! Integration tests for episode loads, saves and aired notifications against PostgreSQL.
 
+#![expect(
+    clippy::expect_used,
+    reason = "a failed setup step stops the test, as a test's own expect does"
+)]
+
 mod support;
 
 use postgres_db::{
     AnimeTitleInput, EPISODE_HASH_FORMAT, EntityType, EpisodeCharacterInput, EpisodeListEntryInput,
-    EpisodeReferenceInput, EpisodeStreamingInput, EpisodeTitleInput, PageKey, Provider,
-    SaveEpisodeInput, delete_episode, load_episode, mark_episode_aired, save_anime, save_episode,
+    EpisodeReferenceInput, EpisodeStreamingInput, EpisodeTitleInput, PageKey, PageSource, Provider,
+    SaveEpisodeInput, delete_episode, load_anime, load_episode, mark_episode_aired, save_anime,
+    save_episode,
 };
 use sqlx::PgPool;
+use url::Url;
 use uuid::Uuid;
 
 use crate::support::{CapturedLogs, build_anime_save, insert_unmerged_anime};
@@ -17,7 +24,7 @@ fn build_episode_reference(episode_id: Uuid, episode_number: i32) -> EpisodeRefe
         episode_id,
         episode_number,
         title: format!("Placeholder episode {episode_number}"),
-        page_keys: Vec::new(),
+        page_sources: Vec::new(),
         list_entries: Vec::new(),
     }
 }
@@ -131,8 +138,11 @@ async fn save_episode_score_rounding_to_one_thousand_returns_invalid_argument(po
 #[sqlx::test(migrations = "./migrations")]
 async fn load_episode_never_fetched_page_returns_no_pages(pool: PgPool) {
     let mut episode_reference = build_episode_reference(Uuid::now_v7(), 1);
-    episode_reference.page_keys =
-        vec![PageKey::new(Provider::Mal, EntityType::Episode, "21:1").expect("valid page key")];
+    episode_reference.page_sources = vec![PageSource {
+        page_key: PageKey::new(Provider::Mal, EntityType::Episode, "21:1").expect("valid page key"),
+        source: None,
+        title: None,
+    }];
     let episode_id = create_listed_episode(&pool, episode_reference)
         .await
         .expect("work save creates the episode");
@@ -151,9 +161,19 @@ async fn load_episode_never_fetched_page_returns_no_pages(pool: PgPool) {
 #[sqlx::test(migrations = "./migrations")]
 async fn save_anime_episode_pages_from_two_providers_links_both(pool: PgPool) {
     let mut episode_reference = build_episode_reference(Uuid::now_v7(), 1);
-    episode_reference.page_keys = vec![
-        PageKey::new(Provider::Mal, EntityType::Episode, "21:1").expect("valid page key"),
-        PageKey::new(Provider::AniDb, EntityType::Episode, "1").expect("valid page key"),
+    episode_reference.page_sources = vec![
+        PageSource {
+            page_key: PageKey::new(Provider::Mal, EntityType::Episode, "21:1")
+                .expect("valid page key"),
+            source: None,
+            title: None,
+        },
+        PageSource {
+            page_key: PageKey::new(Provider::AniDb, EntityType::Episode, "1")
+                .expect("valid page key"),
+            source: None,
+            title: None,
+        },
     ];
 
     let episode_id = create_listed_episode(&pool, episode_reference)
@@ -186,8 +206,12 @@ async fn save_episode_empty_lists_removes_previous_rows(pool: PgPool) {
         source: "https://example.com/watch/1".to_owned(),
     }];
     filled_save.characters = vec![EpisodeCharacterInput {
-        character_page_provider: "mal".to_owned(),
-        character_page_address: "1".to_owned(),
+        character_page_source: PageSource {
+            page_key: PageKey::new(Provider::Mal, EntityType::Character, "1")
+                .expect("valid page key"),
+            source: Some(Url::parse("https://myanimelist.net/character/1").expect("valid URL")),
+            title: None,
+        },
         role: "MAIN".to_owned(),
     }];
     save_episode(&pool, &filled_save)
@@ -364,7 +388,7 @@ async fn save_episode_unchanged_hash_from_newer_merge_records_merge_version(pool
 }
 
 #[sqlx::test(migrations = "./migrations")]
-async fn save_episode_number_held_by_another_episode_returns_unique_violation(pool: PgPool) {
+async fn save_episode_number_other_than_listed_number_returns_invalid_argument(pool: PgPool) {
     let anime_id = insert_unmerged_anime(&pool).await;
     let first_episode_id = Uuid::now_v7();
     let second_episode_id = Uuid::now_v7();
@@ -382,14 +406,23 @@ async fn save_episode_number_held_by_another_episode_returns_unique_violation(po
     )
     .await
     .expect("the work creates both episodes");
-    let mut renumbered_save = build_episode_save(second_episode_id, 1, "episode-v1");
-    renumbered_save.episode_number = 1;
 
-    let save_error = save_episode(&pool, &renumbered_save)
+    for other_number in [1, 0, 3] {
+        let mut renumbered_save = build_episode_save(second_episode_id, 1, "episode-v1");
+        renumbered_save.episode_number = other_number;
+
+        let save_error = save_episode(&pool, &renumbered_save)
+            .await
+            .expect_err("the work's list owns the number");
+
+        assert!(save_error.is_invalid_argument(), "number {other_number}");
+    }
+    let stored_number: i32 = sqlx::query_scalar("SELECT episode_number FROM episode WHERE id = $1")
+        .bind(second_episode_id)
+        .fetch_one(&pool)
         .await
-        .expect_err("episode 1 is taken");
-
-    assert!(save_error.is_unique_violation());
+        .expect("read the episode number");
+    assert_eq!(stored_number, 2);
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -459,4 +492,76 @@ async fn save_anime_and_save_episode_sharing_new_language_at_once_both_succeed(p
             );
         }
     }
+}
+
+async fn read_episode_page_source(pool: &PgPool, address: &str) -> Option<String> {
+    sqlx::query_scalar(
+        "SELECT source FROM provider_page
+         WHERE provider = 'mal' AND entity_type = 'episode' AND address = $1",
+    )
+    .bind(address)
+    .fetch_one(pool)
+    .await
+    .expect("read the episode page URL")
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn save_anime_listed_episode_page_url_waits_for_episode_url(pool: PgPool) {
+    let anime_id = insert_unmerged_anime(&pool).await;
+    let episode_id = Uuid::now_v7();
+    let listed_page = |source: &str| PageSource {
+        page_key: PageKey::new(Provider::Mal, EntityType::Episode, "21:1").expect("valid page key"),
+        source: Some(Url::parse(source).expect("valid URL")),
+        title: None,
+    };
+    let mut episode_reference = build_episode_reference(episode_id, 1);
+    episode_reference.page_sources = vec![listed_page(
+        "https://myanimelist.net/anime/21/One_Piece/episode/1",
+    )];
+    let first_work_save = save_anime(
+        &pool,
+        &build_anime_save(anime_id, 1, "work-v1", vec![episode_reference.clone()]),
+    )
+    .await
+    .expect("the work lists the episode");
+
+    assert_eq!(
+        read_episode_page_source(&pool, "21:1").await.as_deref(),
+        Some("https://myanimelist.net/anime/21/One_Piece/episode/1")
+    );
+    let known_episodes = load_anime(&pool, anime_id)
+        .await
+        .expect("load the work")
+        .known_episodes;
+    assert_eq!(
+        known_episodes[0].page_sources,
+        episode_reference.page_sources
+    );
+
+    let mut episode_save = build_episode_save(episode_id, 1, "episode-v1");
+    episode_save.page_sources = vec![listed_page(
+        "https://myanimelist.net/anime/21/One_Piece_Renamed/episode/1",
+    )];
+    save_episode(&pool, &episode_save)
+        .await
+        .expect("the episode's merge chooses its URL");
+    episode_reference.page_sources = vec![listed_page(
+        "https://myanimelist.net/anime/21/Old_List_Slug/episode/1",
+    )];
+    save_anime(
+        &pool,
+        &build_anime_save(
+            anime_id,
+            first_work_save.version,
+            "work-v2",
+            vec![episode_reference],
+        ),
+    )
+    .await
+    .expect("the work lists the episode again");
+
+    assert_eq!(
+        read_episode_page_source(&pool, "21:1").await.as_deref(),
+        Some("https://myanimelist.net/anime/21/One_Piece_Renamed/episode/1")
+    );
 }

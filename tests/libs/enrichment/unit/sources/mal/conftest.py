@@ -16,6 +16,22 @@ Fixtures are real captured HTML from live MAL pages:
 - mal_episode_filler_extracted:     XPath-extracted dict from mal_episode_filler_html
 - mal_episode_recap_extracted:      XPath-extracted dict from mal_episode_recap_html
 - mal_episode_no_synopsis_extracted: XPath-extracted dict from mal_episode_no_synopsis_html
+
+Saved pages read through ``read_page`` sit in the folder named after the test module
+that reads them, next to the values ``data_regression`` saved from them
+(``<page>.yml``). Regenerate those with plain pytest (``--force-regen``), not Pants,
+and review the diff. Each item reads ``<file>: <address>, captured <date>``.
+
+- test_mal_episode_crawler/one_piece_episodes.html:
+  https://myanimelist.net/anime/21/One_Piece/episode, captured on 2026-11-27.
+- test_mal_episode_crawler/one_piece_episodes_offset_100.html:
+  https://myanimelist.net/anime/21/One_Piece/episode?offset=100, captured on
+  2026-11-27.
+- test_mal_episode_crawler/one_piece_episodes_offset_200.html:
+  https://myanimelist.net/anime/21/One_Piece/episode?offset=200, captured on
+  2026-11-27.
+- test_mal_episode_crawler/cowboy_bebop_episodes.html:
+  https://myanimelist.net/anime/1/Cowboy_Bebop/episode, captured on 2026-11-27.
 """
 
 from pathlib import Path
