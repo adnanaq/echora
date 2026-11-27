@@ -1,0 +1,33 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id AS entity_id, next_refresh_at\n        FROM anime\n        WHERE deleted_at IS NULL\n          AND (\n                (coalesce(next_refresh_at, '-infinity'::timestamptz) < $1\n                 AND (year IS NULL OR year > extract(year FROM now())::int - $2))\n             OR coalesce(merge_version, 0) < $6\n          )\n          AND (coalesce(next_refresh_at, '-infinity'::timestamptz), id)\n              > (coalesce($3, '-infinity'::timestamptz), coalesce($4, '00000000-0000-0000-0000-000000000000'::uuid))\n        ORDER BY coalesce(next_refresh_at, '-infinity'::timestamptz), id\n        LIMIT $5\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "entity_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "next_refresh_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Timestamptz",
+        "Int4",
+        "Timestamptz",
+        "Uuid",
+        "Int8",
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false,
+      true
+    ]
+  },
+  "hash": "96fe03f934360c8b2edb2f34c08e4265e560638e939382ea052b31357fdc7f8e"
+}

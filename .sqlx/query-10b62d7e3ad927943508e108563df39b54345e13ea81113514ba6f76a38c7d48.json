@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT page.source AS \"source!\"\n        FROM character_source link\n        JOIN provider_page page USING (provider, entity_type, address)\n        WHERE link.character_id = $1 AND page.source IS NOT NULL\n        ORDER BY page.source\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "source!",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "10b62d7e3ad927943508e108563df39b54345e13ea81113514ba6f76a38c7d48"
+}

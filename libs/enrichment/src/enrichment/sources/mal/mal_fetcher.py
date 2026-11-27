@@ -107,7 +107,7 @@ class MalFetcher(PageFetcher):
         """Fetch raw HTML responses for a MAL anime, character, or episode page key.
 
         Args:
-            page_key: MAL PageKey (numeric for anime/character, ``'<anime_id>/episode/<num>'`` for episode).
+            page_key: MAL PageKey (numeric for anime/character, ``'<anime_id>:<episode_number>'`` for episode).
             max_age: Optional cache freshness bound (unused by live browser fetch).
 
         Returns:

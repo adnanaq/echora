@@ -13,6 +13,12 @@ use uuid::Uuid;
 use crate::anime_relations_mapping::build_relations_and_graph;
 use crate::anime_schedule_and_stats_mapping::build_schedule_and_stats;
 use crate::episode_mapping::build_episode_references;
+use crate::lookup_text::{
+    ANIME_RATING_LOOKUP_TEXTS, ANIME_SEASON_LOOKUP_TEXTS, ANIME_STATUS_LOOKUP_TEXTS,
+    ANIME_TYPE_LOOKUP_TEXTS, SOURCE_MATERIAL_TYPE_LOOKUP_TEXTS, find_specified_lookup_text,
+};
+use crate::service::parse_page_sources;
+use crate::service::postgres_service_proto::v1::SaveAnimeRequest;
 use crate::service::shared_proto::v1::{
     Anime, AnimeImages, AnimeRating, AnimeSeason, AnimeStatus, AnimeType, EntityType,
     EpisodeReference, RelationClaim, SourceMaterialType, ThemeEntry,
@@ -40,19 +46,25 @@ use crate::service::shared_proto::v1::{
 ///
 /// # Errors
 ///
-/// Returns `INVALID_ARGUMENT` for an invalid work ID, an unknown enum value, an invalid
-/// timestamp, or an invalid episode reference.
+/// Returns `INVALID_ARGUMENT` for an invalid work ID, a missing work, an unknown enum value,
+/// an invalid timestamp, an invalid episode reference, or an invalid page source.
 pub fn build_save_anime_input(
-    anime_id_text: &str,
-    expected_version: i64,
-    merge_version: i32,
-    anime: Anime,
-    relation_claims: Vec<RelationClaim>,
-    episodes: Vec<EpisodeReference>,
+    request: SaveAnimeRequest,
     traceparent: Option<String>,
 ) -> Result<SaveAnimeInput, Status> {
-    let anime_id = Uuid::parse_str(anime_id_text)
+    let SaveAnimeRequest {
+        anime_id: anime_id_text,
+        expected_version,
+        anime,
+        merge_version,
+        relation_claims,
+        episodes,
+        page_sources,
+    } = request;
+    let anime_id = Uuid::parse_str(&anime_id_text)
         .map_err(|err| Status::invalid_argument(format!("invalid anime_id UUID: {err}")))?;
+    let anime = anime.ok_or_else(|| Status::invalid_argument("anime must be provided"))?;
+    let page_sources = parse_page_sources(page_sources)?;
 
     let merged_record_hash = compute_save_record_hash(&anime, &relation_claims, &episodes);
     let mapped_episodes = build_episode_references(episodes)?;
@@ -205,6 +217,7 @@ pub fn build_save_anime_input(
         hash_format: ANIME_HASH_FORMAT,
         merge_version,
         traceparent,
+        page_sources,
         details,
         schedule_and_stats,
         relations_and_graph,
@@ -390,21 +403,14 @@ fn map_anime_type(enum_number: i32) -> Result<&'static str, Status> {
             "unknown AnimeType number {enum_number}"
         )));
     };
-    match anime_type {
-        AnimeType::Unspecified => Err(Status::invalid_argument("anime.type must be specified")),
-        AnimeType::Movie => Ok("MOVIE"),
-        AnimeType::Ona => Ok("ONA"),
-        AnimeType::Ova => Ok("OVA"),
-        AnimeType::Special => Ok("SPECIAL"),
-        AnimeType::Tv => Ok("TV"),
-        AnimeType::Unknown => Ok("UNKNOWN"),
-        AnimeType::Music => Ok("MUSIC"),
-        AnimeType::Pv => Ok("PV"),
-        AnimeType::TvSpecial => Ok("TV SPECIAL"),
-        AnimeType::TvShort => Ok("TV SHORT"),
-        AnimeType::Cm => Ok("CM"),
-        AnimeType::Other => Ok("OTHER"),
+    if anime_type == AnimeType::Unspecified {
+        return Err(Status::invalid_argument("anime.type must be specified"));
     }
+    Ok(find_specified_lookup_text(
+        ANIME_TYPE_LOOKUP_TEXTS,
+        anime_type,
+        "AnimeType",
+    ))
 }
 
 /// Converts an `AnimeStatus` enum number into its lookup text.
@@ -418,14 +424,14 @@ fn map_anime_status(enum_number: i32) -> Result<&'static str, Status> {
             "unknown AnimeStatus number {enum_number}"
         )));
     };
-    match anime_status {
-        AnimeStatus::Unspecified => Err(Status::invalid_argument("anime.status must be specified")),
-        AnimeStatus::Finished => Ok("FINISHED"),
-        AnimeStatus::Upcoming => Ok("UPCOMING"),
-        AnimeStatus::Ongoing => Ok("ONGOING"),
-        AnimeStatus::Unknown => Ok("UNKNOWN"),
-        AnimeStatus::Cancelled => Ok("CANCELLED"),
+    if anime_status == AnimeStatus::Unspecified {
+        return Err(Status::invalid_argument("anime.status must be specified"));
     }
+    Ok(find_specified_lookup_text(
+        ANIME_STATUS_LOOKUP_TEXTS,
+        anime_status,
+        "AnimeStatus",
+    ))
 }
 
 /// Converts an `AnimeRating` enum number into its lookup text.
@@ -439,15 +445,16 @@ fn map_anime_rating(enum_number: i32) -> Result<&'static str, Status> {
             "unknown AnimeRating number {enum_number}"
         )));
     };
-    match anime_rating {
-        AnimeRating::Unspecified | AnimeRating::Unknown => Ok("UNKNOWN"),
-        AnimeRating::G => Ok("G - All Ages"),
-        AnimeRating::Pg => Ok("PG - Children"),
-        AnimeRating::Pg13 => Ok("PG-13 - Teens 13 or older"),
-        AnimeRating::R => Ok("R - 17+ (violence & profanity)"),
-        AnimeRating::Rplus => Ok("R+ - Mild Nudity"),
-        AnimeRating::Rx => Ok("Rx - Hentai"),
-    }
+    let known_rating = if anime_rating == AnimeRating::Unspecified {
+        AnimeRating::Unknown
+    } else {
+        anime_rating
+    };
+    Ok(find_specified_lookup_text(
+        ANIME_RATING_LOOKUP_TEXTS,
+        known_rating,
+        "AnimeRating",
+    ))
 }
 
 /// Converts an `AnimeSeason` enum number into its lookup text.
@@ -461,15 +468,16 @@ fn map_anime_season(enum_number: i32) -> Result<&'static str, Status> {
             "unknown AnimeSeason number {enum_number}"
         )));
     };
-    match anime_season {
-        AnimeSeason::Unspecified => Err(Status::invalid_argument(
+    if anime_season == AnimeSeason::Unspecified {
+        return Err(Status::invalid_argument(
             "anime.season must be specified when set",
-        )),
-        AnimeSeason::Spring => Ok("SPRING"),
-        AnimeSeason::Summer => Ok("SUMMER"),
-        AnimeSeason::Fall => Ok("FALL"),
-        AnimeSeason::Winter => Ok("WINTER"),
+        ));
     }
+    Ok(find_specified_lookup_text(
+        ANIME_SEASON_LOOKUP_TEXTS,
+        anime_season,
+        "AnimeSeason",
+    ))
 }
 
 /// Converts a `SourceMaterialType` enum number into its lookup text.
@@ -483,39 +491,16 @@ pub(crate) fn map_source_material_type(enum_number: i32) -> Result<&'static str,
             "unknown SourceMaterialType number {enum_number}"
         )));
     };
-    match source_material {
-        SourceMaterialType::Unspecified => Err(Status::invalid_argument(
+    if source_material == SourceMaterialType::Unspecified {
+        return Err(Status::invalid_argument(
             "anime.source_material must be specified when set",
-        )),
-        SourceMaterialType::Original => Ok("ORIGINAL"),
-        SourceMaterialType::Manga => Ok("MANGA"),
-        SourceMaterialType::LightNovel => Ok("LIGHT NOVEL"),
-        SourceMaterialType::VisualNovel => Ok("VISUAL NOVEL"),
-        SourceMaterialType::Game => Ok("GAME"),
-        SourceMaterialType::WebManga => Ok("WEB MANGA"),
-        SourceMaterialType::WebNovel => Ok("WEB NOVEL"),
-        SourceMaterialType::Novel => Ok("NOVEL"),
-        SourceMaterialType::OneShot => Ok("ONE SHOT"),
-        SourceMaterialType::Doujinshi => Ok("DOUJINSHI"),
-        SourceMaterialType::Koma4 => Ok("4-KOMA"),
-        SourceMaterialType::MixedMedia => Ok("MIXED MEDIA"),
-        SourceMaterialType::Music => Ok("MUSIC"),
-        SourceMaterialType::Radio => Ok("RADIO"),
-        SourceMaterialType::Book => Ok("BOOK"),
-        SourceMaterialType::PictureBook => Ok("PICTURE BOOK"),
-        SourceMaterialType::CardGame => Ok("CARD GAME"),
-        SourceMaterialType::Other => Ok("OTHER"),
-        SourceMaterialType::Unknown => Ok("UNKNOWN"),
-        SourceMaterialType::Manhwa => Ok("MANHWA"),
-        SourceMaterialType::Manhua => Ok("MANHUA"),
-        SourceMaterialType::Comic => Ok("COMIC"),
-        SourceMaterialType::LiveAction => Ok("LIVE ACTION"),
-        SourceMaterialType::Illustration => Ok("ILLUSTRATION"),
-        SourceMaterialType::WesternMedia => Ok("WESTERN MEDIA"),
-        SourceMaterialType::Webtoon => Ok("WEBTOON"),
-        SourceMaterialType::FairyTale => Ok("FAIRY TALE"),
-        SourceMaterialType::ShortStory => Ok("SHORT STORY"),
+        ));
     }
+    Ok(find_specified_lookup_text(
+        SOURCE_MATERIAL_TYPE_LOOKUP_TEXTS,
+        source_material,
+        "SourceMaterialType",
+    ))
 }
 
 #[cfg(test)]
@@ -546,7 +531,7 @@ mod tests {
                 PageKey {
                     provider: "mal".to_owned(),
                     entity_type: EntityType::Episode as i32,
-                    address: "1".to_owned(),
+                    address: "21:1".to_owned(),
                 },
                 PageKey {
                     provider: "anilist".to_owned(),
@@ -620,12 +605,13 @@ mod tests {
         use crate::service::shared_proto::v1::AiredDates;
 
         let invalid_id_status = build_save_anime_input(
-            "not-a-uuid",
-            1,
-            1,
-            build_valid_anime(),
-            Vec::new(),
-            Vec::new(),
+            SaveAnimeRequest {
+                anime_id: "not-a-uuid".to_owned(),
+                expected_version: 1,
+                anime: Some(build_valid_anime()),
+                merge_version: 1,
+                ..SaveAnimeRequest::default()
+            },
             None,
         )
         .expect_err("an invalid work ID must be refused");
@@ -669,12 +655,13 @@ mod tests {
             break_rule(&mut broken_anime);
 
             let status = build_save_anime_input(
-                &Uuid::now_v7().to_string(),
-                1,
-                1,
-                broken_anime,
-                Vec::new(),
-                Vec::new(),
+                SaveAnimeRequest {
+                    anime_id: Uuid::now_v7().to_string(),
+                    expected_version: 1,
+                    anime: Some(broken_anime),
+                    merge_version: 1,
+                    ..SaveAnimeRequest::default()
+                },
                 None,
             )
             .expect_err("an invalid work must be refused");
@@ -784,12 +771,13 @@ mod tests {
             ..Anime::default()
         };
         let input = (build_save_anime_input(
-            &Uuid::now_v7().to_string(),
-            2,
-            7,
-            anime,
-            Vec::new(),
-            Vec::new(),
+            SaveAnimeRequest {
+                anime_id: Uuid::now_v7().to_string(),
+                expected_version: 2,
+                anime: Some(anime),
+                merge_version: 7,
+                ..SaveAnimeRequest::default()
+            },
             None,
         ))
         .expect("valid anime should map");

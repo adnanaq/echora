@@ -108,6 +108,7 @@ message SaveAnimeRequest {
   int32 merge_version = 4;
   repeated shared_proto.v1.RelationClaim relation_claims = 5;
   repeated shared_proto.v1.EpisodeReference episodes = 6;
+  repeated shared_proto.v1.PageSource page_sources = 7;
 }
 
 // Result of saving a merged work.
@@ -130,6 +131,8 @@ message LoadEpisodeResponse {
   repeated shared_proto.v1.StoredPage pages = 3;
   repeated shared_proto.v1.FieldCorrection corrections = 4;
   repeated shared_proto.v1.EpisodeListEntry list_entries = 5;
+  // Number the work's episode list assigned; the merged episode keeps it.
+  int32 episode_number = 6;
 }
 
 // Request to save a merged episode if stored version matches expected_version.
@@ -138,6 +141,7 @@ message SaveEpisodeRequest {
   int64 expected_version = 2;
   shared_proto.v1.Episode episode = 3;
   int32 merge_version = 4;
+  repeated shared_proto.v1.PageSource page_sources = 5;
 }
 
 // Result of saving a merged episode.
@@ -175,6 +179,7 @@ message SaveCharacterRequest {
   int64 expected_version = 2;
   shared_proto.v1.Character character = 3;
   int32 merge_version = 4;
+  repeated shared_proto.v1.PageSource page_sources = 5;
 }
 
 // Result of saving a merged character.

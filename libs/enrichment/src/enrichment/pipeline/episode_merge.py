@@ -19,6 +19,7 @@ from shared_proto.v1.merge_pb2 import (
     EpisodeListEntry,
     PageKey,
     PageResponse,
+    PageSource,
     StoredPage,
 )
 
@@ -160,14 +161,33 @@ def _populate_episode_maps(
                 ep.streaming[str(platform)] = str(url)
 
 
+def _build_episode_page_sources(request: MergeEpisodeRequest) -> list[PageSource]:
+    """Build the canonical URL of each linked episode page.
+
+    A page whose provider has no episode URL, or a MAL page without an episode number in
+    its address, gets none.
+
+    Args:
+        request: Incoming ``MergeEpisodeRequest`` message.
+
+    Returns:
+        One ``PageSource`` per linked page with a URL, in page order.
+    """
+    return [
+        PageSource(page_key=page.page_key, source=url)
+        for page in request.pages
+        if (url := _page_key_to_episode_url(page.page_key))
+    ]
+
+
 def _collect_episode_sources(
-    request: MergeEpisodeRequest,
+    page_sources: Sequence[PageSource],
     ranked: list[tuple[str, dict[str, Any]]],
 ) -> list[str]:
     """Collect and sort all canonical episode source URLs.
 
     Args:
-        request: Incoming ``MergeEpisodeRequest`` message.
+        page_sources: URL of each linked episode page.
         ranked: Combined provider records in priority order.
 
     Returns:
@@ -175,11 +195,7 @@ def _collect_episode_sources(
     """
     return sorted(
         {
-            *(
-                url
-                for page in request.pages
-                if (url := _page_key_to_episode_url(page.page_key))
-            ),
+            *(page_source.source for page_source in page_sources),
             *(
                 str(src)
                 for _, rec in ranked
@@ -193,17 +209,19 @@ def _collect_episode_sources(
 def _build_episode_proto(
     request: MergeEpisodeRequest,
     ranked: list[tuple[str, dict[str, Any]]],
+    page_sources: Sequence[PageSource],
 ) -> anime_pb2.Episode:
     """Assemble and deterministically sort a ``shared_proto.v1.Episode`` message.
 
     Args:
         request: Incoming ``MergeEpisodeRequest`` message.
         ranked: Combined provider records in priority order.
+        page_sources: URL of each linked episode page.
 
     Returns:
         Populated and sorted ``anime_pb2.Episode`` message.
     """
-    sources = _collect_episode_sources(request, ranked)
+    sources = _collect_episode_sources(page_sources, ranked)
     images = sorted(
         {str(img) for _, rec in ranked for img in (rec.get("images") or []) if img}
     )
@@ -211,7 +229,7 @@ def _build_episode_proto(
         id=request.episode_id,
         anime_id=request.anime_id,
         entity_type=anime_pb2.ENTITY_TYPE_EPISODE,
-        episode_number=int(_first_present(ranked, "episode_number") or 0),
+        episode_number=request.episode_number,
         title=str(_first_present(ranked, "title") or ""),
         is_filler=bool(
             next(
@@ -249,11 +267,13 @@ def merge_episode_pages(request: MergeEpisodeRequest) -> MergeEpisodeResponse:
         request: Incoming ``MergeEpisodeRequest`` protobuf message.
 
     Returns:
-        ``MergeEpisodeResponse`` holding the merged ``Episode`` message.
+        ``MergeEpisodeResponse`` holding the merged ``Episode`` message and the URL of
+        each linked page.
     """
     ranked = _combine_provider_sources(request.pages, request.list_entries)
-    episode_proto = _build_episode_proto(request, ranked)
+    page_sources = _build_episode_page_sources(request)
+    episode_proto = _build_episode_proto(request, ranked, page_sources)
     apply_field_corrections(episode_proto, request.corrections)
     episode_proto.images[:] = sorted(episode_proto.images)
     episode_proto.sources[:] = sorted(episode_proto.sources)
-    return MergeEpisodeResponse(episode=episode_proto)
+    return MergeEpisodeResponse(episode=episode_proto, page_sources=page_sources)

@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT reason, hiatus_from, hiatus_until\n         FROM anime_hiatus WHERE anime_id = $1\n         ORDER BY recorded_at DESC, id DESC LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "reason",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "hiatus_from",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 2,
+        "name": "hiatus_until",
+        "type_info": "Date"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "8810a915c6f42cdf0ecd2ba36e89069ab1f441cc3842dd10b51baf0d2e93fec7"
+}

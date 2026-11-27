@@ -17,6 +17,8 @@ use crate::anime_relations_mapping::{
     parse_anime_target_from_url, parse_source_material_target_from_url,
 };
 use crate::episode_mapping::map_character_role;
+use crate::service::parse_page_sources;
+use crate::service::postgres_service_proto::v1::SaveCharacterRequest;
 use crate::service::shared_proto::v1::{Character, Ography};
 
 /// Maps a `SaveCharacterRequest` payload into [`SaveCharacterInput`].
@@ -26,17 +28,25 @@ use crate::service::shared_proto::v1::{Character, Ography};
 ///
 /// # Errors
 ///
-/// Returns [`Status::invalid_argument`] when `character_id` is not a valid UUID, a role is
-/// unknown, or `favorites` does not fit the stored column.
+/// Returns [`Status::invalid_argument`] when `character_id` is not a valid UUID, the
+/// character is missing, a role is unknown, `favorites` does not fit the stored column, or a
+/// page source has no valid page key.
 pub fn build_save_character_input(
-    character_id_text: &str,
-    expected_version: i64,
-    merge_version: i32,
-    character: Character,
+    request: SaveCharacterRequest,
     traceparent: Option<String>,
 ) -> Result<SaveCharacterInput, Status> {
-    let character_id = Uuid::parse_str(character_id_text)
+    let SaveCharacterRequest {
+        character_id: character_id_text,
+        expected_version,
+        character,
+        merge_version,
+        page_sources,
+    } = request;
+    let character_id = Uuid::parse_str(&character_id_text)
         .map_err(|err| Status::invalid_argument(format!("invalid character_id UUID: {err}")))?;
+    let character =
+        character.ok_or_else(|| Status::invalid_argument("character must be provided"))?;
+    let page_sources = parse_page_sources(page_sources)?;
     let merged_record_hash = compute_save_character_hash(&character);
 
     let Character {
@@ -84,6 +94,7 @@ pub fn build_save_character_input(
         hash_format: CHARACTER_HASH_FORMAT,
         merge_version,
         traceparent,
+        page_sources,
     })
 }
 
@@ -268,10 +279,13 @@ mod tests {
         let character_id = Uuid::now_v7();
 
         let input = build_save_character_input(
-            &character_id.to_string(),
-            3,
-            2,
-            build_character(),
+            SaveCharacterRequest {
+                character_id: character_id.to_string(),
+                expected_version: 3,
+                character: Some(build_character()),
+                merge_version: 2,
+                page_sources: Vec::new(),
+            },
             Some("00-trace".to_owned()),
         )
         .expect("map the character");
@@ -337,10 +351,31 @@ mod tests {
             (valid_id.as_str(), unknown_manga_role),
             (valid_id.as_str(), oversized_favorites),
         ] {
-            let status = build_save_character_input(character_id_text, 1, 1, character, None)
-                .expect_err("the request is refused");
+            let status = build_save_character_input(
+                SaveCharacterRequest {
+                    character_id: character_id_text.to_owned(),
+                    expected_version: 1,
+                    character: Some(character),
+                    merge_version: 1,
+                    page_sources: Vec::new(),
+                },
+                None,
+            )
+            .expect_err("the request is refused");
             assert_eq!(status.code(), Code::InvalidArgument, "{status:?}");
         }
+        let missing_character_status = build_save_character_input(
+            SaveCharacterRequest {
+                character_id: valid_id,
+                expected_version: 1,
+                character: None,
+                merge_version: 1,
+                page_sources: Vec::new(),
+            },
+            None,
+        )
+        .expect_err("a request without a character is refused");
+        assert_eq!(missing_character_status.code(), Code::InvalidArgument);
     }
 
     #[test]

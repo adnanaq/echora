@@ -1,0 +1,46 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT company.name, company.description,\n               array_agg(credit.role ORDER BY credit.role) AS \"roles!\",\n               coalesce((SELECT array_agg(xref.provider ORDER BY xref.provider)\n                         FROM company_xref xref\n                         WHERE xref.company_id = company.id), '{}') AS \"xref_providers!\",\n               coalesce((SELECT array_agg(xref.source ORDER BY xref.provider)\n                         FROM company_xref xref\n                         WHERE xref.company_id = company.id), '{}') AS \"xref_sources!\"\n        FROM anime_company credit\n        JOIN company ON company.id = credit.company_id\n        WHERE credit.anime_id = $1\n        GROUP BY company.id\n        ORDER BY company.name, company.id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "roles!",
+        "type_info": "TextArray"
+      },
+      {
+        "ordinal": 3,
+        "name": "xref_providers!",
+        "type_info": "TextArray"
+      },
+      {
+        "ordinal": 4,
+        "name": "xref_sources!",
+        "type_info": "TextArray"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "a85284901e980c509ddff1eab18f417bad98ae86b60490d1f51dcdb5d58a8d59"
+}

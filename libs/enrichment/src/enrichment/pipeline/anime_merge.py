@@ -36,6 +36,7 @@ from shared_proto.v1.merge_pb2 import (
     GeneratedText,
     PageKey,
     PageResponse,
+    PageSource,
     RelationClaim,
     StoredPage,
 )
@@ -179,12 +180,37 @@ def _extract_relation_claims(records: dict[str, dict[str, Any]]) -> list[Relatio
     return [claims_by_key[key] for key in sorted(claims_by_key)]
 
 
-def _resolve_linked_urls(
+def _build_page_source(
+    page_key: PageKey, best_by_key: dict[str, str]
+) -> PageSource | None:
+    """Build the ``PageSource`` of one linked anime page.
+
+    Args:
+        page_key: The linked page's key.
+        best_by_key: Longest provider-reported URL for each resolved page key.
+
+    Returns:
+        The page with its reported or canonical URL, or ``None`` when the provider has
+        no URL template and reported none.
+    """
+    key_str = f"{page_key.provider}:anime:{page_key.address}"
+    url = best_by_key.get(key_str) or page_key_to_anime_url(page_key)
+    return PageSource(page_key=page_key, source=url) if url else None
+
+
+def _build_linked_page_sources(
     source_pages: Sequence[StoredPage],
     partial_source_pages: Sequence[PageKey],
     records: dict[str, dict[str, Any]],
-) -> tuple[list[str], list[str], dict[tuple[str, str], str]]:
-    """Build ``sources``, ``partial_sources``, and per-page canonical URLs from links.
+) -> tuple[list[PageSource], list[PageSource]]:
+    """Build the URL chosen for each linked source and partial-source page.
+
+    Each page gets one URL:
+
+    - the longest URL the mapped provider records report for the page, so a URL with
+      the provider's slug wins over the bare one;
+    - otherwise the provider's canonical anime page URL;
+    - a page whose provider has no URL template gets none.
 
     Args:
         source_pages: Linked full source pages for the work.
@@ -192,7 +218,7 @@ def _resolve_linked_urls(
         records: Mapped canonical Anime dicts keyed by provider.
 
     Returns:
-        Tuple of ``(sources, partial_sources, page_urls)``.
+        Tuple of ``(source_page_sources, partial_page_sources)``, each in page order.
     """
     best_by_key: dict[str, str] = {}
     for record in records.values():
@@ -203,23 +229,17 @@ def _resolve_linked_urls(
             if len(str(url)) > len(best_by_key.get(key, "")):
                 best_by_key[key] = str(url)
 
-    page_urls: dict[tuple[str, str], str] = {}
-    sources: set[str] = set()
-    for page in source_pages:
-        key_str = f"{page.page_key.provider}:anime:{page.page_key.address}"
-        url = best_by_key.get(key_str) or page_key_to_anime_url(page.page_key)
-        if url:
-            sources.add(url)
-            page_urls[(page.page_key.provider, page.page_key.address)] = url
-
-    partial_sources: set[str] = set()
-    for page_key in partial_source_pages:
-        key_str = f"{page_key.provider}:anime:{page_key.address}"
-        url = best_by_key.get(key_str) or page_key_to_anime_url(page_key)
-        if url:
-            partial_sources.add(url)
-
-    return sorted(sources), sorted(partial_sources), page_urls
+    source_page_sources = [
+        page_source
+        for page in source_pages
+        if (page_source := _build_page_source(page.page_key, best_by_key)) is not None
+    ]
+    partial_page_sources = [
+        page_source
+        for page_key in partial_source_pages
+        if (page_source := _build_page_source(page_key, best_by_key)) is not None
+    ]
+    return source_page_sources, partial_page_sources
 
 
 def _latest_generated_synopsis(generated_texts: Sequence[GeneratedText]) -> str | None:
@@ -251,8 +271,8 @@ def merge_anime_pages(request: MergeAnimeRequest) -> MergeAnimeResponse:
 
     Returns:
         ``MergeAnimeResponse`` containing the merged ``Anime``, sorted
-        ``EpisodeReference`` list, sorted ``RelationClaim`` list, and
-        ``provider_synopses_hash``.
+        ``EpisodeReference`` list, sorted ``RelationClaim`` list,
+        ``provider_synopses_hash``, and the URL chosen for each linked source page.
     """
     records: dict[str, dict[str, Any]] = {}
     for page in request.source_pages:
@@ -269,13 +289,14 @@ def merge_anime_pages(request: MergeAnimeRequest) -> MergeAnimeResponse:
     }
     merged = merge_provider_records(records_without_synopsis, offline_data=None)
 
-    sources, partial_sources, page_urls = _resolve_linked_urls(
+    source_page_sources, partial_page_sources = _build_linked_page_sources(
         request.source_pages,
         request.partial_source_pages,
         records,
     )
+    partial_sources = sorted({page.source for page in partial_page_sources})
     merged["id"] = request.anime_id
-    merged["sources"] = sources
+    merged["sources"] = sorted({page.source for page in source_page_sources})
     if partial_sources:
         merged["partial_sources"] = partial_sources
     else:
@@ -291,6 +312,10 @@ def merge_anime_pages(request: MergeAnimeRequest) -> MergeAnimeResponse:
     apply_field_corrections(anime_proto, request.corrections)
     sort_anime_proto_lists(anime_proto)
 
+    page_urls = {
+        (page.page_key.provider, page.page_key.address): page.source
+        for page in source_page_sources
+    }
     episodes = merge_episode_references(
         request.source_pages,
         page_urls,
@@ -301,4 +326,5 @@ def merge_anime_pages(request: MergeAnimeRequest) -> MergeAnimeResponse:
         episodes=episodes,
         relation_claims=relation_claims,
         provider_synopses_hash=provider_synopses_hash,
+        page_sources=source_page_sources,
     )

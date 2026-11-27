@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT version, anime_id\n        FROM episode\n        WHERE id = $1 AND deleted_at IS NULL\n        ",
+  "query": "\n        SELECT version, anime_id, episode_number\n        FROM episode\n        WHERE id = $1 AND deleted_at IS NULL\n        ",
   "describe": {
     "columns": [
       {
@@ -12,6 +12,11 @@
         "ordinal": 1,
         "name": "anime_id",
         "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "episode_number",
+        "type_info": "Int4"
       }
     ],
     "parameters": {
@@ -21,8 +26,9 @@
     },
     "nullable": [
       false,
+      false,
       false
     ]
   },
-  "hash": "44b4b58443583e8f7616c07efe2986af6e338ded2acc32f1b8f73d222480d0a5"
+  "hash": "1a5ce516cdeac429c5856087258cdbb815707be84355a2ad5bb5f542799d826b"
 }

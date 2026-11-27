@@ -13,6 +13,9 @@ CREATE TABLE provider_page (
   responses_hash  text,
   fetch_failed_at timestamptz,
   fetch_failures  int NOT NULL DEFAULT 0 CHECK (fetch_failures >= 0),
+  -- The URL the last merge of the page's owner chose: a provider-reported URL with its slug
+  -- when one is known, otherwise the provider's canonical page URL.
+  source          text,
   PRIMARY KEY (provider, entity_type, address),
   CHECK ((fetched_at IS NULL) = (responses_hash IS NULL))
 );

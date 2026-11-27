@@ -12,6 +12,9 @@ use uuid::Uuid;
 
 use crate::anime_mapping::parse_proto_timestamp;
 use crate::anime_relations_mapping::{map_entity_type, parse_character_target_from_url};
+use crate::lookup_text::{CHARACTER_ROLE_LOOKUP_TEXTS, find_specified_lookup_text};
+use crate::service::parse_page_sources;
+use crate::service::postgres_service_proto::v1::SaveEpisodeRequest;
 use crate::service::shared_proto::v1::{
     CharacterRole, Episode, EpisodeCharacter, EpisodeListEntry, EpisodeReference,
     PageKey as ProtoPageKey,
@@ -132,17 +135,23 @@ pub fn to_proto_episode_reference(known_episode: EpisodeReferenceInput) -> Episo
 ///
 /// # Errors
 ///
-/// Returns [`Status::invalid_argument`] if `episode_id` is not a valid UUID,
-/// if any enum or timestamp is invalid, or if required fields are missing.
+/// Returns [`Status::invalid_argument`] if `episode_id` is not a valid UUID, the episode is
+/// missing, an enum or timestamp is invalid, or a page source has no valid page key.
 pub fn build_save_episode_input(
-    episode_id_text: &str,
-    expected_version: i64,
-    merge_version: i32,
-    episode: Episode,
+    request: SaveEpisodeRequest,
     traceparent: Option<String>,
 ) -> Result<SaveEpisodeInput, Status> {
-    let episode_id = Uuid::parse_str(episode_id_text)
+    let SaveEpisodeRequest {
+        episode_id: episode_id_text,
+        expected_version,
+        episode,
+        merge_version,
+        page_sources,
+    } = request;
+    let episode_id = Uuid::parse_str(&episode_id_text)
         .map_err(|err| Status::invalid_argument(format!("invalid episode_id UUID: {err}")))?;
+    let episode = episode.ok_or_else(|| Status::invalid_argument("episode must be provided"))?;
+    let page_sources = parse_page_sources(page_sources)?;
 
     let merged_record_hash = compute_save_episode_hash(&episode);
 
@@ -212,6 +221,7 @@ pub fn build_save_episode_input(
         hash_format: EPISODE_HASH_FORMAT,
         merge_version,
         traceparent,
+        page_sources,
     })
 }
 
@@ -258,15 +268,14 @@ pub(crate) fn map_character_role(enum_number: i32) -> Result<&'static str, Statu
             "unknown CharacterRole number {enum_number}"
         )));
     };
-    match role {
-        CharacterRole::Unspecified => {
-            Err(Status::invalid_argument("CharacterRole must be specified"))
-        }
-        CharacterRole::Main => Ok("MAIN"),
-        CharacterRole::Supporting => Ok("SUPPORTING"),
-        CharacterRole::Background => Ok("BACKGROUND"),
-        CharacterRole::Unknown => Ok("UNKNOWN"),
+    if role == CharacterRole::Unspecified {
+        return Err(Status::invalid_argument("CharacterRole must be specified"));
     }
+    Ok(find_specified_lookup_text(
+        CHARACTER_ROLE_LOOKUP_TEXTS,
+        role,
+        "CharacterRole",
+    ))
 }
 
 /// Computes a deterministic SHA-256 hex digest over a canonicalized [`Episode`].
@@ -306,6 +315,10 @@ mod tests {
     use crate::service::shared_proto::v1::EntityType;
 
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "one episode covers every mapped field in two orders"
+    )]
     fn build_save_episode_input_maps_fields_and_is_order_independent() {
         let mut titles = BTreeMap::new();
         titles.insert("en".to_owned(), "Herr Dr. Tenma".to_owned());
@@ -379,9 +392,17 @@ mod tests {
             compute_save_episode_hash(&reseasoned_episode)
         );
 
-        let input =
-            build_save_episode_input(&Uuid::now_v7().to_string(), 1, 1, first_episode, None)
-                .expect("valid episode should map");
+        let input = build_save_episode_input(
+            SaveEpisodeRequest {
+                episode_id: Uuid::now_v7().to_string(),
+                expected_version: 1,
+                episode: Some(first_episode),
+                merge_version: 1,
+                page_sources: Vec::new(),
+            },
+            None,
+        )
+        .expect("valid episode should map");
         assert_eq!(input.episode_number, 1);
         assert_eq!(input.duration_seconds, Some(1440));
         assert!(!input.is_filler);
@@ -417,7 +438,7 @@ mod tests {
             page_keys: vec![ProtoPageKey {
                 provider: "mal".to_owned(),
                 entity_type: EntityType::Episode as i32,
-                address: "1".to_owned(),
+                address: "21:1".to_owned(),
             }],
             list_entries: vec![EpisodeListEntry {
                 provider: "mal".to_owned(),
@@ -496,10 +517,31 @@ mod tests {
         ];
 
         for (episode_id, episode) in invalid_cases {
-            let status = build_save_episode_input(&episode_id, 1, 1, episode, None)
-                .expect_err("an invalid episode must be refused");
+            let status = build_save_episode_input(
+                SaveEpisodeRequest {
+                    episode_id,
+                    expected_version: 1,
+                    episode: Some(episode),
+                    merge_version: 1,
+                    page_sources: Vec::new(),
+                },
+                None,
+            )
+            .expect_err("an invalid episode must be refused");
             assert_eq!(status.code(), Code::InvalidArgument);
         }
+        let missing_episode_status = build_save_episode_input(
+            SaveEpisodeRequest {
+                episode_id: Uuid::now_v7().to_string(),
+                expected_version: 1,
+                episode: None,
+                merge_version: 1,
+                page_sources: Vec::new(),
+            },
+            None,
+        )
+        .expect_err("a request without an episode is refused");
+        assert_eq!(missing_episode_status.code(), Code::InvalidArgument);
     }
 
     #[test]

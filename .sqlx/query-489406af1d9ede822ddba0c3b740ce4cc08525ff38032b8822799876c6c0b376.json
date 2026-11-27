@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT link.episode_id, page.source AS \"source!\"\n        FROM episode_source link\n        JOIN provider_page page USING (provider, entity_type, address)\n        WHERE link.episode_id = ANY($1) AND page.source IS NOT NULL\n        ORDER BY link.episode_id, page.source\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "episode_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "source!",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "UuidArray"
+      ]
+    },
+    "nullable": [
+      false,
+      true
+    ]
+  },
+  "hash": "489406af1d9ede822ddba0c3b740ce4cc08525ff38032b8822799876c6c0b376"
+}

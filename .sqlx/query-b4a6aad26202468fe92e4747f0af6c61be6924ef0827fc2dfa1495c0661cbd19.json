@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT content_warning FROM anime_content_warning\n         WHERE anime_id = $1 ORDER BY content_warning",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "content_warning",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "b4a6aad26202468fe92e4747f0af6c61be6924ef0827fc2dfa1495c0661cbd19"
+}

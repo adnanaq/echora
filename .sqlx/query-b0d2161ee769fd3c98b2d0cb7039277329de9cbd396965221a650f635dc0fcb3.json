@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id AS \"id!\"\n        FROM anime_visible\n        WHERE (status = 'ONGOING'\n               OR (status = 'FINISHED' AND aired_to >= now() - make_interval(days => $1)))\n          AND id > coalesce($2, '00000000-0000-0000-0000-000000000000'::uuid)\n        ORDER BY id\n        LIMIT $3\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Uuid",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "b0d2161ee769fd3c98b2d0cb7039277329de9cbd396965221a650f635dc0fcb3"
+}

@@ -13,6 +13,13 @@ message PageKey {
   string address = 3;
 }
 
+// The URL a merge chose for one linked provider page, a provider-reported URL with its
+// slug when one is known, or the provider's canonical page URL otherwise.
+message PageSource {
+  PageKey page_key = 1;
+  string source = 2;
+}
+
 // One raw response belonging to a provider page, as received from the provider.
 message PageResponse {
   string request_name = 1;

@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT anime.title AS \"title?\",\n               (array_agg(appearance.role ORDER BY role_order.rank))[1] AS \"role!\",\n               coalesce(\n                   array_agg(page.source ORDER BY page.source) FILTER (WHERE page.source IS NOT NULL),\n                   '{}'\n               ) AS \"sources!\"\n        FROM character_animeography appearance\n        JOIN character_role role_order ON role_order.value = appearance.role\n        LEFT JOIN provider_page page\n          ON page.provider = appearance.anime_page_provider\n         AND page.entity_type = 'anime'\n         AND page.address = appearance.anime_page_address\n        LEFT JOIN anime_source anime_page\n          ON anime_page.provider = appearance.anime_page_provider\n         AND anime_page.entity_type = 'anime'\n         AND anime_page.address = appearance.anime_page_address\n        LEFT JOIN anime_visible anime ON anime.id = anime_page.anime_id\n        WHERE appearance.character_id = $1\n        GROUP BY anime.id, anime.title,\n                 CASE WHEN anime.id IS NULL\n                      THEN appearance.anime_page_provider || ':' || appearance.anime_page_address END\n        ORDER BY min(role_order.rank), anime.title NULLS LAST,\n                 min(appearance.anime_page_provider || ':' || appearance.anime_page_address)\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "title?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "role!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "sources!",
+        "type_info": "TextArray"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true,
+      null,
+      null
+    ]
+  },
+  "hash": "3bd4137f45b325bbc1a3a77c4a6351e1f526685e90287740203282b12ec1dfb8"
+}

@@ -1,0 +1,30 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT visible.id AS \"entity_id!\", visible.version AS \"version!\"\n        FROM (\n            SELECT id, version FROM anime_visible WHERE $1 = 'anime'\n            UNION ALL\n            SELECT id, version FROM episode_visible WHERE $1 = 'episode'\n            UNION ALL\n            SELECT id, version FROM character_visible WHERE $1 = 'character'\n        ) visible\n        WHERE visible.id > coalesce($2, '00000000-0000-0000-0000-000000000000'::uuid)\n        ORDER BY visible.id\n        LIMIT $3\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "entity_id!",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "version!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Uuid",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      null,
+      null
+    ]
+  },
+  "hash": "4a3e3dc5fbbd492d1aa817234db927b602fcfa4efed7a5a323b97d3f9685275c"
+}

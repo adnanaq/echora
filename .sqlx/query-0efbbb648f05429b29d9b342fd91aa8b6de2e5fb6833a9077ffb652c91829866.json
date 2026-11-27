@@ -1,0 +1,43 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT page.provider AS \"provider: Provider\",\n               page.entity_type AS \"entity_type: EntityType\",\n               page.address,\n               link.anime_id\n        FROM provider_page page\n        JOIN anime_source link USING (provider, entity_type, address)\n        JOIN anime ON anime.id = link.anime_id\n        WHERE page.provider = $1\n          AND NOT page.is_dead\n          AND anime.deleted_at IS NULL\n          AND (page.fetch_failed_at IS NULL\n               OR page.fetch_failed_at < now() - make_interval(\n                      hours => least(power(2, least(page.fetch_failures, $3))::int, $4)))\n        ORDER BY page.fetched_at NULLS FIRST, page.address\n        LIMIT $2\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "provider: Provider",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "entity_type: EntityType",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "address",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "anime_id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int8",
+        "Int4",
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "0efbbb648f05429b29d9b342fd91aa8b6de2e5fb6833a9077ffb652c91829866"
+}

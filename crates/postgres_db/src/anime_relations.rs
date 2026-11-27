@@ -1233,7 +1233,7 @@ mod tests {
             |input| input.relation_claims[0].relation_type = "NOT_A_TYPE".to_owned(),
             |input| {
                 input.relation_claims[0].target_page =
-                    PageKey::new(Provider::Mal, EntityType::Episode, "2").unwrap();
+                    PageKey::new(Provider::Mal, EntityType::Episode, "21:2").unwrap();
             },
             |input| input.source_materials[0].title = " ".to_owned(),
             |input| input.source_materials[0].source_material_type = String::new(),

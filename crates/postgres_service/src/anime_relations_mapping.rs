@@ -11,6 +11,9 @@ use postgres_db::{
 use tonic::Status;
 
 use crate::anime_mapping::map_source_material_type;
+use crate::lookup_text::{
+    ANIME_STATUS_LOOKUP_TEXTS, COMPANY_ROLE_LOOKUP_TEXTS, find_specified_lookup_text,
+};
 use crate::service::map_db_error;
 use crate::service::shared_proto::v1::{
     AnimeRelationType, AnimeStatus, CompanyEntry, CompanyRole, EntityType, PageKey as ProtoPageKey,
@@ -327,13 +330,14 @@ fn map_company_role(enum_number: i32) -> Result<Option<&'static str>, Status> {
             "unknown CompanyRole number {enum_number}"
         )));
     };
-    match role {
-        CompanyRole::Unspecified => Ok(None),
-        CompanyRole::Studio => Ok(Some("STUDIO")),
-        CompanyRole::Producer => Ok(Some("PRODUCER")),
-        CompanyRole::Licensor => Ok(Some("LICENSOR")),
-        CompanyRole::Unknown => Ok(Some("UNKNOWN")),
+    if role == CompanyRole::Unspecified {
+        return Ok(None);
     }
+    Ok(Some(find_specified_lookup_text(
+        COMPANY_ROLE_LOOKUP_TEXTS,
+        role,
+        "CompanyRole",
+    )))
 }
 
 /// Converts an optional `AnimeStatus` enum number into its lookup text.
@@ -347,14 +351,14 @@ fn map_anime_status_optional(enum_number: i32) -> Result<Option<&'static str>, S
             "unknown AnimeStatus number {enum_number}"
         )));
     };
-    match anime_status {
-        AnimeStatus::Unspecified => Ok(None),
-        AnimeStatus::Finished => Ok(Some("FINISHED")),
-        AnimeStatus::Upcoming => Ok(Some("UPCOMING")),
-        AnimeStatus::Ongoing => Ok(Some("ONGOING")),
-        AnimeStatus::Unknown => Ok(Some("UNKNOWN")),
-        AnimeStatus::Cancelled => Ok(Some("CANCELLED")),
+    if anime_status == AnimeStatus::Unspecified {
+        return Ok(None);
     }
+    Ok(Some(find_specified_lookup_text(
+        ANIME_STATUS_LOOKUP_TEXTS,
+        anime_status,
+        "AnimeStatus",
+    )))
 }
 
 /// Finds the provider whose site a URL belongs to.

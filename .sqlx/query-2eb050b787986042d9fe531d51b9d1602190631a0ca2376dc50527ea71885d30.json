@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT material.title AS \"title?\",\n               (array_agg(appearance.role ORDER BY role_order.rank))[1] AS \"role!\",\n               coalesce(\n                   array_agg(xref.source ORDER BY xref.source) FILTER (WHERE xref.source IS NOT NULL),\n                   '{}'\n               ) AS \"sources!\"\n        FROM character_mangaography appearance\n        JOIN character_role role_order ON role_order.value = appearance.role\n        LEFT JOIN source_material_xref xref\n          ON xref.provider = appearance.source_material_provider\n         AND xref.external_id = appearance.source_material_external_id\n        LEFT JOIN source_material material ON material.id = xref.source_material_id\n        WHERE appearance.character_id = $1\n        GROUP BY material.id, material.title,\n                 CASE WHEN material.id IS NULL\n                      THEN appearance.source_material_provider || ':'\n                           || appearance.source_material_external_id END\n        ORDER BY min(role_order.rank), material.title NULLS LAST,\n                 min(appearance.source_material_provider || ':'\n                     || appearance.source_material_external_id)\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "title?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "role!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "sources!",
+        "type_info": "TextArray"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      null,
+      null
+    ]
+  },
+  "hash": "2eb050b787986042d9fe531d51b9d1602190631a0ca2376dc50527ea71885d30"
+}

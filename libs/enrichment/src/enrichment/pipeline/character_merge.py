@@ -24,7 +24,7 @@ from enrichment_proto.v1.enrichment_service_pb2 import (
     MergeCharacterResponse,
 )
 from shared_proto.v1 import anime_pb2
-from shared_proto.v1.merge_pb2 import PageKey, PageResponse, StoredPage
+from shared_proto.v1.merge_pb2 import PageKey, PageResponse, PageSource, StoredPage
 from work_matching import resolve_page_key
 
 _CHARACTER_URL_TEMPLATES: dict[str, str] = {
@@ -212,15 +212,34 @@ def _merge_ography(
     return merged
 
 
+def _build_character_page_sources(request: MergeCharacterRequest) -> list[PageSource]:
+    """Build the canonical URL of each linked character page.
+
+    Args:
+        request: Incoming ``MergeCharacterRequest`` message.
+
+    Returns:
+        One ``PageSource`` per linked page whose provider has a character URL, in page
+        order.
+    """
+    return [
+        PageSource(page_key=page.page_key, source=url)
+        for page in request.pages
+        if (url := _page_key_to_character_url(page.page_key))
+    ]
+
+
 def _build_character_proto(
     request: MergeCharacterRequest,
     ranked: list[tuple[str, dict[str, Any]]],
+    page_sources: Sequence[PageSource],
 ) -> anime_pb2.Character:
     """Assemble and deterministically sort a ``shared_proto.v1.Character`` message.
 
     Args:
         request: Incoming ``MergeCharacterRequest`` message.
         ranked: Ranked ``(provider, record)`` pairs.
+        page_sources: URL of each linked character page.
 
     Returns:
         Populated ``anime_pb2.Character`` message.
@@ -229,12 +248,10 @@ def _build_character_proto(
         (str(rec["name"]) for _, rec in ranked if rec.get("name")),
         "",
     )
-    page_sources = {
-        url
-        for page in request.pages
-        if (url := _page_key_to_character_url(page.page_key))
-    }
-    all_sources = sorted(page_sources | set(_union_strings(ranked, "sources")))
+    all_sources = sorted(
+        {page_source.source for page_source in page_sources}
+        | set(_union_strings(ranked, "sources"))
+    )
     msg = anime_pb2.Character(
         id=request.character_id,
         entity_type=anime_pb2.ENTITY_TYPE_CHARACTER,
@@ -279,13 +296,15 @@ def merge_character_pages(request: MergeCharacterRequest) -> MergeCharacterRespo
         request: Incoming ``MergeCharacterRequest`` protobuf message.
 
     Returns:
-        ``MergeCharacterResponse`` holding the merged ``Character`` message.
+        ``MergeCharacterResponse`` holding the merged ``Character`` message and the URL
+        of each linked page.
     """
     ranked = _rank_records(request.pages)
-    character_proto = _build_character_proto(request, ranked)
+    page_sources = _build_character_page_sources(request)
+    character_proto = _build_character_proto(request, ranked, page_sources)
     apply_field_corrections(character_proto, request.corrections)
     for field_name in ("traits", "images", "name_variations", "nicknames", "sources"):
         sorted_vals = sorted(getattr(character_proto, field_name))
         del getattr(character_proto, field_name)[:]
         getattr(character_proto, field_name).extend(sorted_vals)
-    return MergeCharacterResponse(character=character_proto)
+    return MergeCharacterResponse(character=character_proto, page_sources=page_sources)

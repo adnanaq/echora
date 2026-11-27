@@ -1,0 +1,88 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT weekday, timezone, jp_time, sub_time, dub_time,\n                sub_delay_days, dub_delay_days, premiere_jp, premiere_sub, premiere_dub,\n                next_episode_at, next_episode_number\n         FROM anime_broadcast WHERE anime_id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "weekday",
+        "type_info": "Int2"
+      },
+      {
+        "ordinal": 1,
+        "name": "timezone",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "jp_time",
+        "type_info": "Time"
+      },
+      {
+        "ordinal": 3,
+        "name": "sub_time",
+        "type_info": "Time"
+      },
+      {
+        "ordinal": 4,
+        "name": "dub_time",
+        "type_info": "Time"
+      },
+      {
+        "ordinal": 5,
+        "name": "sub_delay_days",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 6,
+        "name": "dub_delay_days",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 7,
+        "name": "premiere_jp",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 8,
+        "name": "premiere_sub",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 9,
+        "name": "premiere_dub",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 10,
+        "name": "next_episode_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 11,
+        "name": "next_episode_number",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "acc62c37b53f778252d89d14d6cd44cc4e8c04c3500789bbcf0334805381e4bf"
+}

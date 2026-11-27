@@ -1,0 +1,160 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id AS \"id!\", version AS \"version!\", next_refresh_at,\n               title AS \"title!\", title_english, title_japanese,\n               type AS \"anime_type!\", status AS \"status!\", rating AS \"rating!\", season,\n               source_material, year, month, episode_count AS \"episode_count!\",\n               duration_seconds, is_nsfw, country_of_origin, synopsis, background,\n               aired_from, aired_to,\n               score_weighted::float8 AS score_weighted,\n               score_mean::float8 AS score_mean,\n               score_median::float8 AS score_median\n        FROM anime_visible\n        WHERE id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "version!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "next_refresh_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 3,
+        "name": "title!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "title_english",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "title_japanese",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "anime_type!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "status!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "rating!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "season",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 10,
+        "name": "source_material",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 11,
+        "name": "year",
+        "type_info": "Int2"
+      },
+      {
+        "ordinal": 12,
+        "name": "month",
+        "type_info": "Int2"
+      },
+      {
+        "ordinal": 13,
+        "name": "episode_count!",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 14,
+        "name": "duration_seconds",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 15,
+        "name": "is_nsfw",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 16,
+        "name": "country_of_origin",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 17,
+        "name": "synopsis",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 18,
+        "name": "background",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 19,
+        "name": "aired_from",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 20,
+        "name": "aired_to",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 21,
+        "name": "score_weighted",
+        "type_info": "Float8"
+      },
+      {
+        "ordinal": 22,
+        "name": "score_mean",
+        "type_info": "Float8"
+      },
+      {
+        "ordinal": 23,
+        "name": "score_median",
+        "type_info": "Float8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "c08645c004d0389ec8145f9b2011084ce25a57dc2259f4eb279afce591e6de8d"
+}

@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                UPDATE anime\n                SET refreshed_at = now(),\n                    refresh_failures = 0,\n                    next_refresh_at = CASE\n                        WHEN $2 THEN coalesce(\n                            (SELECT min(page.fetch_failed_at + make_interval(\n                                        hours => least(power(2, least(page.fetch_failures, $4))::int, $5)))\n                             FROM anime_source link\n                             JOIN provider_page page USING (provider, entity_type, address)\n                             WHERE link.anime_id = anime.id\n                               AND NOT page.is_dead\n                               AND page.fetch_failed_at IS NOT NULL),\n                            now() + $3)\n                        ELSE now() + $3\n                    END\n                WHERE id = $1 AND deleted_at IS NULL\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Bool",
+        "Interval",
+        "Int4",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "3e699452e85b27f4f7561351fc249694a872807fe11b2a06a72cb20e2ea45df8"
+}

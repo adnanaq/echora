@@ -10,10 +10,11 @@ use uuid::Uuid;
 
 use crate::anime::{
     FieldCorrectionRecord, LoadedSourcePage, ProtoTimestamp, decompress_body,
-    insert_catalogue_outbox_event, parse_entity_type, to_proto_timestamp,
+    insert_catalogue_outbox_event, to_proto_timestamp,
 };
-use crate::read_transaction_time;
-use crate::{EntityType, Error, PageKey, PageResponse, Provider};
+use crate::provider_page::record_page_sources;
+use crate::{EntityType, Error, PageKey, PageResponse, PageSource, Provider};
+use crate::{begin_read_snapshot, read_transaction_time};
 
 /// Current canonical hash format version stored in `episode.hash_format`.
 pub const EPISODE_HASH_FORMAT: i16 = 1;
@@ -94,6 +95,8 @@ pub struct LoadEpisodeOutcome {
     pub version: i64,
     /// Owning work UUID.
     pub anime_id: Uuid,
+    /// Episode number the work's episode list assigned, which the merge keeps.
+    pub episode_number: i32,
     /// Linked episode provider pages with their raw responses.
     pub pages: Vec<LoadedSourcePage>,
     /// Approved per-field corrections to apply after merging.
@@ -149,6 +152,8 @@ pub struct SaveEpisodeInput {
     pub merge_version: i32,
     /// Optional W3C `traceparent` header propagated into outbox rows.
     pub traceparent: Option<String>,
+    /// URL the merge chose for each page the entity holds as a source.
+    pub page_sources: Vec<PageSource>,
 }
 
 /// Result returned by [`save_episode`].
@@ -185,9 +190,12 @@ struct ProtoEpisodeAiredNotification {
     aired_at: Option<ProtoTimestamp>,
 }
 
+/// The episodes a work's save created and the existing ones whose list entries changed.
 #[derive(Debug)]
 pub(crate) struct SyncAnimeEpisodesOutcome {
+    /// Episodes the save created, to refresh next.
     pub created_episode_ids: Vec<Uuid>,
+    /// Existing episodes whose list entries changed.
     pub updated_episode_ids: Vec<Uuid>,
 }
 
@@ -217,14 +225,11 @@ pub(crate) struct SyncAnimeEpisodesOutcome {
 /// Returns [`Error::is_not_found`] when `episode_id` does not exist or is
 /// deleted, or a database error when any query or decompression fails.
 pub async fn load_episode(pool: &PgPool, episode_id: Uuid) -> Result<LoadEpisodeOutcome, Error> {
-    let mut tx = pool.begin().await?;
-    sqlx::query!("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
-        .execute(&mut *tx)
-        .await?;
+    let mut tx = begin_read_snapshot(pool).await?;
 
     let episode_row = sqlx::query!(
         r#"
-        SELECT version, anime_id
+        SELECT version, anime_id, episode_number
         FROM episode
         WHERE id = $1 AND deleted_at IS NULL
         "#,
@@ -242,6 +247,7 @@ pub async fn load_episode(pool: &PgPool, episode_id: Uuid) -> Result<LoadEpisode
     Ok(LoadEpisodeOutcome {
         version: episode_row.version,
         anime_id: episode_row.anime_id,
+        episode_number: episode_row.episode_number,
         pages,
         corrections,
         list_entries,
@@ -290,7 +296,7 @@ async fn load_episode_pages(
             continue;
         };
         let provider: Provider = row.provider.parse()?;
-        let entity_type = parse_entity_type(&row.entity_type)?;
+        let entity_type: EntityType = row.entity_type.parse()?;
         let page_key = PageKey::new(provider, entity_type, &row.address)?;
         let responses = responses_by_page
             .remove(&(row.provider, row.address))
@@ -467,6 +473,7 @@ async fn load_episode_list_entries(
 ///     hash_format: EPISODE_HASH_FORMAT,
 ///     merge_version: 1,
 ///     traceparent: None,
+///     page_sources: Vec::new(),
 /// };
 /// let first_save = save_episode(pool, &input).await?;
 /// assert_eq!(first_save, SaveEpisodeOutcome { has_changed: true, version: 2 });
@@ -492,7 +499,15 @@ pub async fn save_episode(
     validate_save_episode_input(input)?;
 
     let mut tx = pool.begin().await?;
-    // Shared rows come before the episode's row lock, in the order a work's save writes them.
+    // Page rows, then shared rows, come before the episode's row lock, in the order a work's
+    // save writes them.
+    record_page_sources(
+        &mut tx,
+        EntityType::Episode,
+        input.episode_id,
+        &input.page_sources,
+    )
+    .await?;
     upsert_episode_shared_rows(&mut tx, input).await?;
     let existing = sqlx::query!(
         r#"
@@ -1669,6 +1684,7 @@ mod tests {
             hash_format: EPISODE_HASH_FORMAT,
             merge_version: 1,
             traceparent: Some("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01".to_owned()),
+            page_sources: Vec::new(),
         }
     }
 
@@ -1849,7 +1865,7 @@ mod tests {
 
     #[test]
     fn validate_anime_episode_references_enforces_invariants() {
-        let valid_page = PageKey::new(Provider::Mal, EntityType::Episode, "1").unwrap();
+        let valid_page = PageKey::new(Provider::Mal, EntityType::Episode, "21:1").unwrap();
         let wrong_kind_page = PageKey::new(Provider::Mal, EntityType::Anime, "1").unwrap();
 
         let neg_ep = EpisodeReferenceInput {
@@ -1922,7 +1938,7 @@ mod tests {
     #[sqlx::test]
     async fn load_episode_hydrates_pages_list_entries_and_corrections(pool: PgPool) {
         let (anime_id, episode_id) = seed_anime_and_episode(&pool, None).await;
-        let episode_page_key = PageKey::new(Provider::Mal, EntityType::Episode, "1").unwrap();
+        let episode_page_key = PageKey::new(Provider::Mal, EntityType::Episode, "21:1").unwrap();
         let fetched_at = Utc::now();
 
         record_page_observation(
@@ -1944,7 +1960,7 @@ mod tests {
 
         sqlx::query!(
             "INSERT INTO episode_source (episode_id, provider, entity_type, address)
-             VALUES ($1, 'mal', 'episode', '1')",
+             VALUES ($1, 'mal', 'episode', '21:1')",
             episode_id
         )
         .execute(&pool)
@@ -2111,14 +2127,14 @@ mod tests {
         let (_, episode_id) = seed_anime_and_episode(&pool, None).await;
 
         sqlx::query!(
-            "INSERT INTO provider_page (provider, entity_type, address) VALUES ('mal', 'episode', '10')"
+            "INSERT INTO provider_page (provider, entity_type, address) VALUES ('mal', 'episode', '21:10')"
         )
         .execute(&pool)
         .await
         .unwrap();
         sqlx::query!(
             "INSERT INTO episode_source (episode_id, provider, entity_type, address)
-             VALUES ($1, 'mal', 'episode', '10')",
+             VALUES ($1, 'mal', 'episode', '21:10')",
             episode_id
         )
         .execute(&pool)
@@ -2174,7 +2190,7 @@ mod tests {
             episode_id: listed_episode_id,
             episode_number: 2,
             title: "Stray Dog Strut".to_owned(),
-            page_keys: vec![PageKey::new(Provider::Mal, EntityType::Episode, "2").unwrap()],
+            page_keys: vec![PageKey::new(Provider::Mal, EntityType::Episode, "21:2").unwrap()],
             list_entries: vec![EpisodeListEntryInput {
                 provider: Provider::Mal,
                 title: Some("Stray Dog Strut".to_owned()),
@@ -2211,7 +2227,7 @@ mod tests {
 
         let mut moved_page_reference = listed_episode_reference.clone();
         moved_page_reference.page_keys =
-            vec![PageKey::new(Provider::Mal, EntityType::Episode, "200").unwrap()];
+            vec![PageKey::new(Provider::Mal, EntityType::Episode, "21:200").unwrap()];
         let mut tx = pool.begin().await.unwrap();
         let moved_page_outcome = sync_anime_episodes(
             &mut tx,
@@ -2239,14 +2255,14 @@ mod tests {
         .fetch_all(&pool)
         .await
         .unwrap();
-        assert_eq!(linked_addresses, vec!["200".to_owned()]);
+        assert_eq!(linked_addresses, vec!["21:200".to_owned()]);
 
         let other_episode_id = Uuid::now_v7();
         let conflicting_page_ref = EpisodeReferenceInput {
             episode_id: other_episode_id,
             episode_number: 3,
             title: "Honky Tonk Women".to_owned(),
-            page_keys: vec![PageKey::new(Provider::Mal, EntityType::Episode, "200").unwrap()],
+            page_keys: vec![PageKey::new(Provider::Mal, EntityType::Episode, "21:200").unwrap()],
             list_entries: Vec::new(),
         };
         let mut tx = pool.begin().await.unwrap();

@@ -1,0 +1,65 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT page.provider AS \"provider!: Provider\",\n               page.entity_type AS \"entity_type!: EntityType\",\n               page.address AS \"address!\",\n               link.is_partial_source AS \"is_partial_source!\",\n               page.fetched_at,\n               page.is_dead,\n               page.fetch_failed_at,\n               page.fetch_failures\n        FROM (\n            SELECT provider, entity_type, address, false AS is_partial_source\n            FROM anime_source WHERE $2 = 'anime' AND anime_id = $1\n            UNION ALL\n            SELECT provider, entity_type, address, true\n            FROM anime_partial_source WHERE $2 = 'anime' AND anime_id = $1\n            UNION ALL\n            SELECT provider, entity_type, address, false\n            FROM episode_source WHERE $2 = 'episode' AND episode_id = $1\n            UNION ALL\n            SELECT provider, entity_type, address, false\n            FROM character_source WHERE $2 = 'character' AND character_id = $1\n        ) link\n        JOIN provider_page page USING (provider, entity_type, address)\n        ORDER BY link.is_partial_source, page.provider, page.address\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "provider!: Provider",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "entity_type!: EntityType",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "address!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "is_partial_source!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 4,
+        "name": "fetched_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 5,
+        "name": "is_dead",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 6,
+        "name": "fetch_failed_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "fetch_failures",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      null,
+      true,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "37ab2260f7fd2e990900cae54050166951a1265d2e059b43d03ec4797338e2c7"
+}

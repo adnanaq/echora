@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT attribute_name, attribute_value FROM character_attribute\n         WHERE character_id = $1 ORDER BY attribute_name",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "attribute_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "attribute_value",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "e75a91193e22afe02473020ce7ea6279adffe64ee7acbd8d03b7c40b676b904d"
+}

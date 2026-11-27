@@ -10,8 +10,12 @@ use flate2::Compression;
 use flate2::write::GzEncoder;
 use prost::Message as _;
 use sha2::{Digest as _, Sha256};
-use sqlx::{PgPool, Postgres, Transaction};
+use sqlx::error::BoxDynError;
+use sqlx::postgres::{PgTypeInfo, PgValueRef};
+use sqlx::{Decode, PgPool, Postgres, Transaction, Type};
 use tracing::Level;
+
+use uuid::Uuid;
 
 use crate::Error;
 
@@ -102,28 +106,51 @@ impl Provider {
         }
     }
 
-    /// Validates that `address` matches this provider's address format.
+    /// Validates that `address` matches this provider's address format for `entity_type`.
+    ///
+    /// A MAL episode page has no ID of its own, so its address is the work's ID and the
+    /// episode number joined by a colon, as in `21:1`.
     ///
     /// # Examples
     ///
     /// ```
-    /// # use postgres_db::Provider;
-    /// assert!(Provider::Mal.validate_address("21").is_ok());
-    /// assert!(Provider::Kitsu.validate_address("cowboy-bebop").is_ok());
-    /// assert!(Provider::Mal.validate_address("not-numeric").is_err());
+    /// # use postgres_db::{EntityType, Provider};
+    /// assert!(Provider::Mal.validate_address(EntityType::Anime, "21").is_ok());
+    /// assert!(Provider::Mal.validate_address(EntityType::Episode, "21:1").is_ok());
+    /// assert!(Provider::Kitsu.validate_address(EntityType::Anime, "cowboy-bebop").is_ok());
+    /// assert!(Provider::Mal.validate_address(EntityType::Anime, "not-numeric").is_err());
     /// ```
     ///
     /// # Errors
     ///
     /// Returns an invalid-argument error when `address` is empty or violates
     /// the provider's numeric or slug constraints.
-    pub fn validate_address(self, address: impl AsRef<str>) -> Result<(), Error> {
+    pub fn validate_address(
+        self,
+        entity_type: EntityType,
+        address: impl AsRef<str>,
+    ) -> Result<(), Error> {
         let address = address.as_ref();
         if address.is_empty() {
             return Err(Error::invalid_argument("page address must not be empty"));
         }
 
         match self {
+            Self::Mal if entity_type == EntityType::Episode => {
+                let is_work_and_episode_number =
+                    address
+                        .split_once(':')
+                        .is_some_and(|(work_address, episode_number)| {
+                            is_numeric_address(work_address) && is_numeric_address(episode_number)
+                        });
+                if is_work_and_episode_number {
+                    Ok(())
+                } else {
+                    Err(Error::invalid_argument(format!(
+                        "provider mal requires an episode address of the form \"<work id>:<episode number>\", got {address:?}"
+                    )))
+                }
+            }
             Self::Mal
             | Self::AniList
             | Self::AniDb
@@ -133,7 +160,7 @@ impl Provider {
             | Self::Simkl
             | Self::AnimeCountdown
             | Self::Syoboi => {
-                if address.bytes().all(|byte| byte.is_ascii_digit()) {
+                if is_numeric_address(address) {
                     Ok(())
                 } else {
                     Err(Error::invalid_argument(format!(
@@ -157,6 +184,11 @@ impl Provider {
             }
         }
     }
+}
+
+/// Returns whether `address` is a non-empty run of ASCII digits.
+fn is_numeric_address(address: &str) -> bool {
+    !address.is_empty() && address.bytes().all(|byte| byte.is_ascii_digit())
 }
 
 impl AsRef<str> for Provider {
@@ -200,13 +232,13 @@ impl FromStr for Provider {
 pub struct Address(String);
 
 impl Address {
-    /// Creates a validated page address for `provider`.
+    /// Creates a validated page address for a `provider` page describing `entity_type`.
     ///
     /// # Examples
     ///
     /// ```
-    /// # use postgres_db::{Address, Provider};
-    /// let address = Address::new(Provider::Mal, "21")?;
+    /// # use postgres_db::{Address, EntityType, Provider};
+    /// let address = Address::new(Provider::Mal, EntityType::Anime, "21")?;
     /// assert_eq!(address.as_str(), "21");
     /// # Ok::<(), postgres_db::Error>(())
     /// ```
@@ -214,10 +246,14 @@ impl Address {
     /// # Errors
     ///
     /// Returns an invalid-argument error when `address` does not match
-    /// `provider`'s identifier rules.
-    pub fn new(provider: Provider, address: impl Into<String>) -> Result<Self, Error> {
+    /// `provider`'s identifier rules for `entity_type`.
+    pub fn new(
+        provider: Provider,
+        entity_type: EntityType,
+        address: impl Into<String>,
+    ) -> Result<Self, Error> {
         let address = address.into();
-        provider.validate_address(&address)?;
+        provider.validate_address(entity_type, &address)?;
         Ok(Self(address))
     }
 
@@ -226,9 +262,10 @@ impl Address {
     /// # Examples
     ///
     /// ```
-    /// use postgres_db::{Address, Provider};
+    /// use postgres_db::{Address, EntityType, Provider};
     ///
-    /// let address = Address::new(Provider::Mal, "21").expect("MAL addresses are numeric");
+    /// let address =
+    ///     Address::new(Provider::Mal, EntityType::Anime, "21").expect("MAL addresses are numeric");
     /// assert_eq!(address.as_str(), "21");
     /// ```
     #[must_use]
@@ -311,6 +348,164 @@ impl FromStr for EntityType {
     }
 }
 
+/// The URL a merge chose for one of an entity's own source pages.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PageSource {
+    /// The page's provider, entity type and address.
+    pub page_key: PageKey,
+    /// The page's URL, a provider-reported one with its slug when known.
+    pub source: String,
+}
+
+/// Records the URL of each page an entity holds as a source, where it changed.
+///
+/// A page's URL depends only on the page, so it is stored once on `provider_page`. Only the
+/// entity that holds a page as its source writes it, which leaves one writer per page; a page
+/// given here that the entity does not hold as a source is left unchanged. The owned page rows
+/// are locked in key order before the update, so two saves of one entity cannot deadlock.
+///
+/// Call it before the entity's own row is locked: every writer locks pages first, as
+/// `StorePage` does.
+///
+/// # Errors
+///
+/// Returns an invalid-argument error when a URL is blank, a page key is for another kind of
+/// entity, or a page key is given twice, or a database error when the update fails.
+pub(crate) async fn record_page_sources(
+    tx: &mut Transaction<'_, Postgres>,
+    entity_type: EntityType,
+    entity_id: Uuid,
+    page_sources: &[PageSource],
+) -> Result<(), Error> {
+    if page_sources.is_empty() {
+        return Ok(());
+    }
+    let mut seen_page_keys = HashSet::with_capacity(page_sources.len());
+    for page_source in page_sources {
+        let page_key = &page_source.page_key;
+        let page_label = format!(
+            "{}:{}:{}",
+            page_key.provider(),
+            page_key.entity_type(),
+            page_key.address()
+        );
+        if page_source.source.trim().is_empty() {
+            return Err(Error::invalid_argument(format!(
+                "page source URL for {page_label} must not be blank"
+            )));
+        }
+        if page_key.entity_type() != entity_type {
+            return Err(Error::invalid_argument(format!(
+                "page source {page_label} is not a {entity_type} page"
+            )));
+        }
+        if !seen_page_keys.insert(page_key) {
+            return Err(Error::invalid_argument(format!(
+                "page source {page_label} is given twice"
+            )));
+        }
+    }
+
+    let providers: Vec<String> = page_sources
+        .iter()
+        .map(|page_source| page_source.page_key.provider().as_str().to_owned())
+        .collect();
+    let addresses: Vec<String> = page_sources
+        .iter()
+        .map(|page_source| page_source.page_key.address().as_str().to_owned())
+        .collect();
+    let sources: Vec<String> = page_sources
+        .iter()
+        .map(|page_source| page_source.source.clone())
+        .collect();
+
+    sqlx::query!(
+        r#"
+        WITH given AS (
+            SELECT given.provider, $2::text AS entity_type, given.address, given.source
+            FROM unnest($3::text[], $4::text[], $5::text[]) AS given(provider, address, source)
+        ),
+        owned AS (
+            SELECT page.provider, page.entity_type, page.address
+            FROM provider_page page
+            JOIN given USING (provider, entity_type, address)
+            WHERE ($2 = 'anime' AND EXISTS (
+                      SELECT 1 FROM anime_source link
+                      WHERE link.anime_id = $1
+                        AND link.provider = page.provider
+                        AND link.entity_type = page.entity_type
+                        AND link.address = page.address))
+               OR ($2 = 'episode' AND EXISTS (
+                      SELECT 1 FROM episode_source link
+                      WHERE link.episode_id = $1
+                        AND link.provider = page.provider
+                        AND link.entity_type = page.entity_type
+                        AND link.address = page.address))
+               OR ($2 = 'character' AND EXISTS (
+                      SELECT 1 FROM character_source link
+                      WHERE link.character_id = $1
+                        AND link.provider = page.provider
+                        AND link.entity_type = page.entity_type
+                        AND link.address = page.address))
+            ORDER BY page.provider, page.entity_type, page.address
+            FOR NO KEY UPDATE OF page
+        )
+        UPDATE provider_page page
+        SET source = given.source
+        FROM given
+        JOIN owned USING (provider, entity_type, address)
+        WHERE page.provider = given.provider
+          AND page.entity_type = given.entity_type
+          AND page.address = given.address
+          AND page.source IS DISTINCT FROM given.source
+        "#,
+        entity_id,
+        entity_type.as_str(),
+        &providers,
+        &addresses,
+        &sources
+    )
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
+/// Reads a [`Provider`] from the `text` slug its `provider` lookup row holds.
+impl Type<Postgres> for Provider {
+    fn type_info() -> PgTypeInfo {
+        <&str as Type<Postgres>>::type_info()
+    }
+
+    fn compatible(column_type: &PgTypeInfo) -> bool {
+        <&str as Type<Postgres>>::compatible(column_type)
+    }
+}
+
+/// Reads a stored provider slug through [`Provider::from_str`].
+impl<'row> Decode<'row, Postgres> for Provider {
+    fn decode(value: PgValueRef<'row>) -> Result<Self, BoxDynError> {
+        Ok(<&str as Decode<Postgres>>::decode(value)?.parse()?)
+    }
+}
+
+/// Reads an [`EntityType`] from the `text` value its `entity_type` lookup row holds.
+impl Type<Postgres> for EntityType {
+    fn type_info() -> PgTypeInfo {
+        <&str as Type<Postgres>>::type_info()
+    }
+
+    fn compatible(column_type: &PgTypeInfo) -> bool {
+        <&str as Type<Postgres>>::compatible(column_type)
+    }
+}
+
+/// Reads a stored entity type through [`EntityType::from_str`].
+impl<'row> Decode<'row, Postgres> for EntityType {
+    fn decode(value: PgValueRef<'row>) -> Result<Self, BoxDynError> {
+        Ok(<&str as Decode<Postgres>>::decode(value)?.parse()?)
+    }
+}
+
 #[derive(PartialEq, prost::Message)]
 struct ProtoPageKey {
     #[prost(string, tag = "1")]
@@ -372,7 +567,7 @@ impl PageKey {
         entity_type: EntityType,
         address: impl Into<String>,
     ) -> Result<Self, Error> {
-        let address = Address::new(provider, address)?;
+        let address = Address::new(provider, entity_type, address)?;
         Ok(Self {
             provider,
             entity_type,
@@ -1116,12 +1311,66 @@ mod tests {
 
     #[test]
     fn provider_validates_numeric_and_slug_address() {
-        assert!(Provider::Mal.validate_address("21").is_ok());
-        assert!(Provider::AniDb.validate_address("12345").is_ok());
-        assert!(Provider::Mal.validate_address("21extra").is_err());
-        assert!(Provider::Kitsu.validate_address("cowboy-bebop").is_ok());
-        assert!(Provider::Kitsu.validate_address("bad/slug").is_err());
-        assert!(Provider::Kitsu.validate_address("").is_err());
+        assert!(
+            Provider::Mal
+                .validate_address(EntityType::Anime, "21")
+                .is_ok()
+        );
+        assert!(
+            Provider::AniDb
+                .validate_address(EntityType::Episode, "12345")
+                .is_ok()
+        );
+        assert!(
+            Provider::Mal
+                .validate_address(EntityType::Anime, "21extra")
+                .is_err()
+        );
+        assert!(
+            Provider::Mal
+                .validate_address(EntityType::Anime, "21:1")
+                .is_err()
+        );
+        assert!(
+            Provider::Mal
+                .validate_address(EntityType::Episode, "21:1")
+                .is_ok()
+        );
+        assert!(
+            Provider::Mal
+                .validate_address(EntityType::Episode, "21")
+                .is_err()
+        );
+        assert!(
+            Provider::Mal
+                .validate_address(EntityType::Episode, "21:")
+                .is_err()
+        );
+        assert!(
+            Provider::Mal
+                .validate_address(EntityType::Episode, ":1")
+                .is_err()
+        );
+        assert!(
+            Provider::Mal
+                .validate_address(EntityType::Episode, "21:1:2")
+                .is_err()
+        );
+        assert!(
+            Provider::Kitsu
+                .validate_address(EntityType::Anime, "cowboy-bebop")
+                .is_ok()
+        );
+        assert!(
+            Provider::Kitsu
+                .validate_address(EntityType::Anime, "bad/slug")
+                .is_err()
+        );
+        assert!(
+            Provider::Kitsu
+                .validate_address(EntityType::Anime, "")
+                .is_err()
+        );
         assert!("unknown_provider".parse::<Provider>().is_err());
     }
 

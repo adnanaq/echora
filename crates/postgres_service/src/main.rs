@@ -5,6 +5,7 @@ mod anime_relations_mapping;
 mod anime_schedule_and_stats_mapping;
 mod character_mapping;
 mod episode_mapping;
+mod lookup_text;
 mod read_mapping;
 mod service;
 

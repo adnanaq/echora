@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT name_variation FROM character_name_variation\n         WHERE character_id = $1 ORDER BY name_variation",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "name_variation",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "ee374d82cdb0aa6fc46e6ac5872f960099d8d2d233ca9c3f0caba6cbe4496741"
+}

@@ -22,49 +22,105 @@ _runtime_version.ValidateProtobufRuntimeVersion(
 _sym_db = _symbol_database.Default()
 
 
+from google.protobuf import duration_pb2 as google_dot_protobuf_dot_duration__pb2
+from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
 from shared_proto.v1 import anime_pb2 as shared__proto_dot_v1_dot_anime__pb2
 from shared_proto.v1 import merge_pb2 as shared__proto_dot_v1_dot_merge__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x19v1/postgres_service.proto\x12\x13postgres_service.v1\x1a\x1bshared_proto/v1/anime.proto\x1a\x1bshared_proto/v1/merge.proto\"=\n\x10StorePageRequest\x12)\n\x04page\x18\x01 \x01(\x0b\x32\x1b.shared_proto.v1.StoredPage\"(\n\x11StorePageResponse\x12\x13\n\x0bhas_changed\x18\x01 \x01(\x08\"$\n\x10LoadAnimeRequest\x12\x10\n\x08\x61nime_id\x18\x01 \x01(\t\"\x81\x02\n\x11LoadAnimeResponse\x12\x0f\n\x07version\x18\x01 \x01(\x03\x12\x31\n\x0csource_pages\x18\x02 \x03(\x0b\x32\x1b.shared_proto.v1.StoredPage\x12\x36\n\x14partial_source_pages\x18\x03 \x03(\x0b\x32\x18.shared_proto.v1.PageKey\x12\x35\n\x0b\x63orrections\x18\x04 \x03(\x0b\x32 .shared_proto.v1.FieldCorrection\x12\x39\n\x0eknown_episodes\x18\x05 \x03(\x0b\x32!.shared_proto.v1.EpisodeReference\"\xea\x01\n\x10SaveAnimeRequest\x12\x10\n\x08\x61nime_id\x18\x01 \x01(\t\x12\x18\n\x10\x65xpected_version\x18\x02 \x01(\x03\x12%\n\x05\x61nime\x18\x03 \x01(\x0b\x32\x16.shared_proto.v1.Anime\x12\x15\n\rmerge_version\x18\x04 \x01(\x05\x12\x37\n\x0frelation_claims\x18\x05 \x03(\x0b\x32\x1e.shared_proto.v1.RelationClaim\x12\x33\n\x08\x65pisodes\x18\x06 \x03(\x0b\x32!.shared_proto.v1.EpisodeReference\"s\n\x11SaveAnimeResponse\x12\x13\n\x0bhas_changed\x18\x01 \x01(\x08\x12\x0f\n\x07version\x18\x02 \x01(\x03\x12\x1b\n\x13\x63reated_episode_ids\x18\x03 \x03(\t\x12\x1b\n\x13updated_episode_ids\x18\x04 \x03(\t\"(\n\x12LoadEpisodeRequest\x12\x12\n\nepisode_id\x18\x01 \x01(\t\"\xd4\x01\n\x13LoadEpisodeResponse\x12\x0f\n\x07version\x18\x01 \x01(\x03\x12\x10\n\x08\x61nime_id\x18\x02 \x01(\t\x12*\n\x05pages\x18\x03 \x03(\x0b\x32\x1b.shared_proto.v1.StoredPage\x12\x35\n\x0b\x63orrections\x18\x04 \x03(\x0b\x32 .shared_proto.v1.FieldCorrection\x12\x37\n\x0clist_entries\x18\x05 \x03(\x0b\x32!.shared_proto.v1.EpisodeListEntry\"\x84\x01\n\x12SaveEpisodeRequest\x12\x12\n\nepisode_id\x18\x01 \x01(\t\x12\x18\n\x10\x65xpected_version\x18\x02 \x01(\x03\x12)\n\x07\x65pisode\x18\x03 \x01(\x0b\x32\x18.shared_proto.v1.Episode\x12\x15\n\rmerge_version\x18\x04 \x01(\x05\";\n\x13SaveEpisodeResponse\x12\x13\n\x0bhas_changed\x18\x01 \x01(\x08\x12\x0f\n\x07version\x18\x02 \x01(\x03\"-\n\x17MarkEpisodeAiredRequest\x12\x12\n\nepisode_id\x18\x01 \x01(\t\"0\n\x18MarkEpisodeAiredResponse\x12\x14\n\x0chas_notified\x18\x01 \x01(\x08\",\n\x14LoadCharacterRequest\x12\x14\n\x0c\x63haracter_id\x18\x01 \x01(\t\"\x8b\x01\n\x15LoadCharacterResponse\x12\x0f\n\x07version\x18\x01 \x01(\x03\x12*\n\x05pages\x18\x02 \x03(\x0b\x32\x1b.shared_proto.v1.StoredPage\x12\x35\n\x0b\x63orrections\x18\x03 \x03(\x0b\x32 .shared_proto.v1.FieldCorrection\"\x8c\x01\n\x14SaveCharacterRequest\x12\x14\n\x0c\x63haracter_id\x18\x01 \x01(\t\x12\x18\n\x10\x65xpected_version\x18\x02 \x01(\x03\x12-\n\tcharacter\x18\x03 \x01(\x0b\x32\x1a.shared_proto.v1.Character\x12\x15\n\rmerge_version\x18\x04 \x01(\x05\"=\n\x15SaveCharacterResponse\x12\x13\n\x0bhas_changed\x18\x01 \x01(\x08\x12\x0f\n\x07version\x18\x02 \x01(\x03\x32\xaa\x06\n\x0fPostgresService\x12Z\n\tStorePage\x12%.postgres_service.v1.StorePageRequest\x1a&.postgres_service.v1.StorePageResponse\x12Z\n\tLoadAnime\x12%.postgres_service.v1.LoadAnimeRequest\x1a&.postgres_service.v1.LoadAnimeResponse\x12Z\n\tSaveAnime\x12%.postgres_service.v1.SaveAnimeRequest\x1a&.postgres_service.v1.SaveAnimeResponse\x12`\n\x0bLoadEpisode\x12\'.postgres_service.v1.LoadEpisodeRequest\x1a(.postgres_service.v1.LoadEpisodeResponse\x12`\n\x0bSaveEpisode\x12\'.postgres_service.v1.SaveEpisodeRequest\x1a(.postgres_service.v1.SaveEpisodeResponse\x12o\n\x10MarkEpisodeAired\x12,.postgres_service.v1.MarkEpisodeAiredRequest\x1a-.postgres_service.v1.MarkEpisodeAiredResponse\x12\x66\n\rLoadCharacter\x12).postgres_service.v1.LoadCharacterRequest\x1a*.postgres_service.v1.LoadCharacterResponse\x12\x66\n\rSaveCharacter\x12).postgres_service.v1.SaveCharacterRequest\x1a*.postgres_service.v1.SaveCharacterResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x19v1/postgres_service.proto\x12\x13postgres_service.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bshared_proto/v1/anime.proto\x1a\x1bshared_proto/v1/merge.proto\"=\n\x10StorePageRequest\x12)\n\x04page\x18\x01 \x01(\x0b\x32\x1b.shared_proto.v1.StoredPage\"(\n\x11StorePageResponse\x12\x13\n\x0bhas_changed\x18\x01 \x01(\x08\"$\n\x10LoadAnimeRequest\x12\x10\n\x08\x61nime_id\x18\x01 \x01(\t\"\x81\x02\n\x11LoadAnimeResponse\x12\x0f\n\x07version\x18\x01 \x01(\x03\x12\x31\n\x0csource_pages\x18\x02 \x03(\x0b\x32\x1b.shared_proto.v1.StoredPage\x12\x36\n\x14partial_source_pages\x18\x03 \x03(\x0b\x32\x18.shared_proto.v1.PageKey\x12\x35\n\x0b\x63orrections\x18\x04 \x03(\x0b\x32 .shared_proto.v1.FieldCorrection\x12\x39\n\x0eknown_episodes\x18\x05 \x03(\x0b\x32!.shared_proto.v1.EpisodeReference\"\x9d\x02\n\x10SaveAnimeRequest\x12\x10\n\x08\x61nime_id\x18\x01 \x01(\t\x12\x18\n\x10\x65xpected_version\x18\x02 \x01(\x03\x12%\n\x05\x61nime\x18\x03 \x01(\x0b\x32\x16.shared_proto.v1.Anime\x12\x15\n\rmerge_version\x18\x04 \x01(\x05\x12\x37\n\x0frelation_claims\x18\x05 \x03(\x0b\x32\x1e.shared_proto.v1.RelationClaim\x12\x33\n\x08\x65pisodes\x18\x06 \x03(\x0b\x32!.shared_proto.v1.EpisodeReference\x12\x31\n\x0cpage_sources\x18\x07 \x03(\x0b\x32\x1b.shared_proto.v1.PageSource\"s\n\x11SaveAnimeResponse\x12\x13\n\x0bhas_changed\x18\x01 \x01(\x08\x12\x0f\n\x07version\x18\x02 \x01(\x03\x12\x1b\n\x13\x63reated_episode_ids\x18\x03 \x03(\t\x12\x1b\n\x13updated_episode_ids\x18\x04 \x03(\t\"(\n\x12LoadEpisodeRequest\x12\x12\n\nepisode_id\x18\x01 \x01(\t\"\xec\x01\n\x13LoadEpisodeResponse\x12\x0f\n\x07version\x18\x01 \x01(\x03\x12\x10\n\x08\x61nime_id\x18\x02 \x01(\t\x12*\n\x05pages\x18\x03 \x03(\x0b\x32\x1b.shared_proto.v1.StoredPage\x12\x35\n\x0b\x63orrections\x18\x04 \x03(\x0b\x32 .shared_proto.v1.FieldCorrection\x12\x37\n\x0clist_entries\x18\x05 \x03(\x0b\x32!.shared_proto.v1.EpisodeListEntry\x12\x16\n\x0e\x65pisode_number\x18\x06 \x01(\x05\"\xb7\x01\n\x12SaveEpisodeRequest\x12\x12\n\nepisode_id\x18\x01 \x01(\t\x12\x18\n\x10\x65xpected_version\x18\x02 \x01(\x03\x12)\n\x07\x65pisode\x18\x03 \x01(\x0b\x32\x18.shared_proto.v1.Episode\x12\x15\n\rmerge_version\x18\x04 \x01(\x05\x12\x31\n\x0cpage_sources\x18\x05 \x03(\x0b\x32\x1b.shared_proto.v1.PageSource\";\n\x13SaveEpisodeResponse\x12\x13\n\x0bhas_changed\x18\x01 \x01(\x08\x12\x0f\n\x07version\x18\x02 \x01(\x03\"-\n\x17MarkEpisodeAiredRequest\x12\x12\n\nepisode_id\x18\x01 \x01(\t\"0\n\x18MarkEpisodeAiredResponse\x12\x14\n\x0chas_notified\x18\x01 \x01(\x08\",\n\x14LoadCharacterRequest\x12\x14\n\x0c\x63haracter_id\x18\x01 \x01(\t\"\x8b\x01\n\x15LoadCharacterResponse\x12\x0f\n\x07version\x18\x01 \x01(\x03\x12*\n\x05pages\x18\x02 \x03(\x0b\x32\x1b.shared_proto.v1.StoredPage\x12\x35\n\x0b\x63orrections\x18\x03 \x03(\x0b\x32 .shared_proto.v1.FieldCorrection\"\xbf\x01\n\x14SaveCharacterRequest\x12\x14\n\x0c\x63haracter_id\x18\x01 \x01(\t\x12\x18\n\x10\x65xpected_version\x18\x02 \x01(\x03\x12-\n\tcharacter\x18\x03 \x01(\x0b\x32\x1a.shared_proto.v1.Character\x12\x15\n\rmerge_version\x18\x04 \x01(\x05\x12\x31\n\x0cpage_sources\x18\x05 \x03(\x0b\x32\x1b.shared_proto.v1.PageSource\"=\n\x15SaveCharacterResponse\x12\x13\n\x0bhas_changed\x18\x01 \x01(\x08\x12\x0f\n\x07version\x18\x02 \x01(\x03\"]\n\x16ListEntityPagesRequest\x12\x30\n\x0b\x65ntity_type\x18\x01 \x01(\x0e\x32\x1b.shared_proto.v1.EntityType\x12\x11\n\tentity_id\x18\x02 \x01(\t\"I\n\x17ListEntityPagesResponse\x12.\n\x05pages\x18\x01 \x03(\x0b\x32\x1f.postgres_service.v1.EntityPage\"\x8e\x02\n\nEntityPage\x12*\n\x08page_key\x18\x01 \x01(\x0b\x32\x18.shared_proto.v1.PageKey\x12\x19\n\x11is_partial_source\x18\x02 \x01(\x08\x12\x33\n\nfetched_at\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.TimestampH\x00\x88\x01\x01\x12\x0f\n\x07is_dead\x18\x04 \x01(\x08\x12\x38\n\x0f\x66\x65tch_failed_at\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.TimestampH\x01\x88\x01\x01\x12\x16\n\x0e\x66\x65tch_failures\x18\x06 \x01(\x05\x42\r\n\x0b_fetched_atB\x12\n\x10_fetch_failed_at\"\xc3\x01\n\x14RecordRefreshRequest\x12\x30\n\x0b\x65ntity_type\x18\x01 \x01(\x0e\x32\x1b.shared_proto.v1.EntityType\x12\x11\n\tentity_id\x18\x02 \x01(\t\x12\x34\n\x07outcome\x18\x03 \x01(\x0e\x32#.postgres_service.v1.RefreshOutcome\x12\x30\n\rrefresh_after\x18\x04 \x01(\x0b\x32\x19.google.protobuf.Duration\"\x17\n\x15RecordRefreshResponse\"\x83\x02\n\x0eListDueRequest\x12.\n\ndue_before\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x19\n\x11older_after_years\x18\x02 \x01(\x05\x12\x11\n\tpage_size\x18\x03 \x01(\x05\x12>\n\x15\x61\x66ter_next_refresh_at\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.TimestampH\x00\x88\x01\x01\x12\x15\n\x08\x61\x66ter_id\x18\x05 \x01(\tH\x01\x88\x01\x01\x12\x15\n\rmerge_version\x18\x06 \x01(\x05\x42\x18\n\x16_after_next_refresh_atB\x0b\n\t_after_id\"C\n\x0fListDueResponse\x12\x30\n\x08\x65ntities\x18\x01 \x03(\x0b\x32\x1e.postgres_service.v1.DueEntity\"l\n\tDueEntity\x12\x11\n\tentity_id\x18\x01 \x01(\t\x12\x38\n\x0fnext_refresh_at\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.TimestampH\x00\x88\x01\x01\x42\x12\n\x10_next_refresh_at\"2\n\x1bListUpcomingEpisodesRequest\x12\x13\n\x0bwindow_days\x18\x01 \x01(\x05\"V\n\x1cListUpcomingEpisodesResponse\x12\x36\n\x08\x65pisodes\x18\x01 \x03(\x0b\x32$.postgres_service.v1.UpcomingEpisode\"\x98\x01\n\x0fUpcomingEpisode\x12\x10\n\x08\x61nime_id\x18\x01 \x01(\t\x12\x17\n\nepisode_id\x18\x02 \x01(\tH\x00\x88\x01\x01\x12\x16\n\x0e\x65pisode_number\x18\x03 \x01(\x05\x12\x33\n\x0f\x65xpected_air_at\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.TimestampB\r\n\x0b_episode_id\"e\n\x15ListScoreAnimeRequest\x12\x15\n\rlookback_days\x18\x01 \x01(\x05\x12\x11\n\tpage_size\x18\x02 \x01(\x05\x12\x15\n\x08\x61\x66ter_id\x18\x03 \x01(\tH\x00\x88\x01\x01\x42\x0b\n\t_after_id\"+\n\x16ListScoreAnimeResponse\x12\x11\n\tanime_ids\x18\x01 \x03(\t\"]\n\x1aListRequestedMergesRequest\x12\x30\n\x0b\x65ntity_type\x18\x01 \x01(\x0e\x32\x1b.shared_proto.v1.EntityType\x12\r\n\x05limit\x18\x02 \x01(\x05\"1\n\x1bListRequestedMergesResponse\x12\x12\n\nentity_ids\x18\x01 \x03(\t\"%\n\x10GetEntityRequest\x12\x11\n\tentity_id\x18\x01 \x01(\t\"\x98\x01\n\x10GetAnimeResponse\x12%\n\x05\x61nime\x18\x01 \x01(\x0b\x32\x16.shared_proto.v1.Anime\x12\x0f\n\x07version\x18\x02 \x01(\x03\x12\x38\n\x0fnext_refresh_at\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.TimestampH\x00\x88\x01\x01\x42\x12\n\x10_next_refresh_at\"\x9e\x01\n\x12GetEpisodeResponse\x12)\n\x07\x65pisode\x18\x01 \x01(\x0b\x32\x18.shared_proto.v1.Episode\x12\x0f\n\x07version\x18\x02 \x01(\x03\x12\x38\n\x0fnext_refresh_at\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.TimestampH\x00\x88\x01\x01\x42\x12\n\x10_next_refresh_at\"\xa4\x01\n\x14GetCharacterResponse\x12-\n\tcharacter\x18\x01 \x01(\x0b\x32\x1a.shared_proto.v1.Character\x12\x0f\n\x07version\x18\x02 \x01(\x03\x12\x38\n\x0fnext_refresh_at\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.TimestampH\x00\x88\x01\x01\x42\x12\n\x10_next_refresh_at\"Q\n\x14ListEpisodesResponse\x12\x39\n\x08\x65pisodes\x18\x01 \x03(\x0b\x32\'.postgres_service.v1.GetEpisodeResponse\"\x84\x01\n\x19ListEntityVersionsRequest\x12\x30\n\x0b\x65ntity_type\x18\x01 \x01(\x0e\x32\x1b.shared_proto.v1.EntityType\x12\x11\n\tpage_size\x18\x02 \x01(\x05\x12\x15\n\x08\x61\x66ter_id\x18\x03 \x01(\tH\x00\x88\x01\x01\x42\x0b\n\t_after_id\"R\n\x1aListEntityVersionsResponse\x12\x34\n\x08\x65ntities\x18\x01 \x03(\x0b\x32\".postgres_service.v1.EntityVersion\"3\n\rEntityVersion\x12\x11\n\tentity_id\x18\x01 \x01(\t\x12\x0f\n\x07version\x18\x02 \x01(\x03\":\n\x13ListDuePagesRequest\x12\x10\n\x08provider\x18\x01 \x01(\t\x12\x11\n\tpage_size\x18\x02 \x01(\x05\"C\n\x14ListDuePagesResponse\x12+\n\x05pages\x18\x01 \x03(\x0b\x32\x1c.postgres_service.v1.DuePage\"G\n\x07\x44uePage\x12*\n\x08page_key\x18\x01 \x01(\x0b\x32\x18.shared_proto.v1.PageKey\x12\x10\n\x08\x61nime_id\x18\x02 \x01(\t*\x8e\x01\n\x0eRefreshOutcome\x12\x1f\n\x1bREFRESH_OUTCOME_UNSPECIFIED\x10\x00\x12\x1d\n\x19REFRESH_OUTCOME_SUCCEEDED\x10\x01\x12 \n\x1cREFRESH_OUTCOME_PAGES_FAILED\x10\x02\x12\x1a\n\x16REFRESH_OUTCOME_FAILED\x10\x03\x32\xd3\x11\n\x0fPostgresService\x12Z\n\tStorePage\x12%.postgres_service.v1.StorePageRequest\x1a&.postgres_service.v1.StorePageResponse\x12Z\n\tLoadAnime\x12%.postgres_service.v1.LoadAnimeRequest\x1a&.postgres_service.v1.LoadAnimeResponse\x12Z\n\tSaveAnime\x12%.postgres_service.v1.SaveAnimeRequest\x1a&.postgres_service.v1.SaveAnimeResponse\x12`\n\x0bLoadEpisode\x12\'.postgres_service.v1.LoadEpisodeRequest\x1a(.postgres_service.v1.LoadEpisodeResponse\x12`\n\x0bSaveEpisode\x12\'.postgres_service.v1.SaveEpisodeRequest\x1a(.postgres_service.v1.SaveEpisodeResponse\x12o\n\x10MarkEpisodeAired\x12,.postgres_service.v1.MarkEpisodeAiredRequest\x1a-.postgres_service.v1.MarkEpisodeAiredResponse\x12\x66\n\rLoadCharacter\x12).postgres_service.v1.LoadCharacterRequest\x1a*.postgres_service.v1.LoadCharacterResponse\x12\x66\n\rSaveCharacter\x12).postgres_service.v1.SaveCharacterRequest\x1a*.postgres_service.v1.SaveCharacterResponse\x12l\n\x0fListEntityPages\x12+.postgres_service.v1.ListEntityPagesRequest\x1a,.postgres_service.v1.ListEntityPagesResponse\x12\x66\n\rRecordRefresh\x12).postgres_service.v1.RecordRefreshRequest\x1a*.postgres_service.v1.RecordRefreshResponse\x12Y\n\x0cListDueAnime\x12#.postgres_service.v1.ListDueRequest\x1a$.postgres_service.v1.ListDueResponse\x12\\\n\x0fListDueEpisodes\x12#.postgres_service.v1.ListDueRequest\x1a$.postgres_service.v1.ListDueResponse\x12^\n\x11ListDueCharacters\x12#.postgres_service.v1.ListDueRequest\x1a$.postgres_service.v1.ListDueResponse\x12{\n\x14ListUpcomingEpisodes\x12\x30.postgres_service.v1.ListUpcomingEpisodesRequest\x1a\x31.postgres_service.v1.ListUpcomingEpisodesResponse\x12i\n\x0eListScoreAnime\x12*.postgres_service.v1.ListScoreAnimeRequest\x1a+.postgres_service.v1.ListScoreAnimeResponse\x12x\n\x13ListRequestedMerges\x12/.postgres_service.v1.ListRequestedMergesRequest\x1a\x30.postgres_service.v1.ListRequestedMergesResponse\x12X\n\x08GetAnime\x12%.postgres_service.v1.GetEntityRequest\x1a%.postgres_service.v1.GetAnimeResponse\x12\\\n\nGetEpisode\x12%.postgres_service.v1.GetEntityRequest\x1a\'.postgres_service.v1.GetEpisodeResponse\x12`\n\x0cListEpisodes\x12%.postgres_service.v1.GetEntityRequest\x1a).postgres_service.v1.ListEpisodesResponse\x12`\n\x0cGetCharacter\x12%.postgres_service.v1.GetEntityRequest\x1a).postgres_service.v1.GetCharacterResponse\x12u\n\x12ListEntityVersions\x12..postgres_service.v1.ListEntityVersionsRequest\x1a/.postgres_service.v1.ListEntityVersionsResponse\x12\x63\n\x0cListDuePages\x12(.postgres_service.v1.ListDuePagesRequest\x1a).postgres_service.v1.ListDuePagesResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'v1.postgres_service_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
-  _globals['_STOREPAGEREQUEST']._serialized_start=108
-  _globals['_STOREPAGEREQUEST']._serialized_end=169
-  _globals['_STOREPAGERESPONSE']._serialized_start=171
-  _globals['_STOREPAGERESPONSE']._serialized_end=211
-  _globals['_LOADANIMEREQUEST']._serialized_start=213
-  _globals['_LOADANIMEREQUEST']._serialized_end=249
-  _globals['_LOADANIMERESPONSE']._serialized_start=252
-  _globals['_LOADANIMERESPONSE']._serialized_end=509
-  _globals['_SAVEANIMEREQUEST']._serialized_start=512
-  _globals['_SAVEANIMEREQUEST']._serialized_end=746
-  _globals['_SAVEANIMERESPONSE']._serialized_start=748
-  _globals['_SAVEANIMERESPONSE']._serialized_end=863
-  _globals['_LOADEPISODEREQUEST']._serialized_start=865
-  _globals['_LOADEPISODEREQUEST']._serialized_end=905
-  _globals['_LOADEPISODERESPONSE']._serialized_start=908
-  _globals['_LOADEPISODERESPONSE']._serialized_end=1120
-  _globals['_SAVEEPISODEREQUEST']._serialized_start=1123
-  _globals['_SAVEEPISODEREQUEST']._serialized_end=1255
-  _globals['_SAVEEPISODERESPONSE']._serialized_start=1257
-  _globals['_SAVEEPISODERESPONSE']._serialized_end=1316
-  _globals['_MARKEPISODEAIREDREQUEST']._serialized_start=1318
-  _globals['_MARKEPISODEAIREDREQUEST']._serialized_end=1363
-  _globals['_MARKEPISODEAIREDRESPONSE']._serialized_start=1365
-  _globals['_MARKEPISODEAIREDRESPONSE']._serialized_end=1413
-  _globals['_LOADCHARACTERREQUEST']._serialized_start=1415
-  _globals['_LOADCHARACTERREQUEST']._serialized_end=1459
-  _globals['_LOADCHARACTERRESPONSE']._serialized_start=1462
-  _globals['_LOADCHARACTERRESPONSE']._serialized_end=1601
-  _globals['_SAVECHARACTERREQUEST']._serialized_start=1604
-  _globals['_SAVECHARACTERREQUEST']._serialized_end=1744
-  _globals['_SAVECHARACTERRESPONSE']._serialized_start=1746
-  _globals['_SAVECHARACTERRESPONSE']._serialized_end=1807
-  _globals['_POSTGRESSERVICE']._serialized_start=1810
-  _globals['_POSTGRESSERVICE']._serialized_end=2620
+  _globals['_REFRESHOUTCOME']._serialized_start=4827
+  _globals['_REFRESHOUTCOME']._serialized_end=4969
+  _globals['_STOREPAGEREQUEST']._serialized_start=173
+  _globals['_STOREPAGEREQUEST']._serialized_end=234
+  _globals['_STOREPAGERESPONSE']._serialized_start=236
+  _globals['_STOREPAGERESPONSE']._serialized_end=276
+  _globals['_LOADANIMEREQUEST']._serialized_start=278
+  _globals['_LOADANIMEREQUEST']._serialized_end=314
+  _globals['_LOADANIMERESPONSE']._serialized_start=317
+  _globals['_LOADANIMERESPONSE']._serialized_end=574
+  _globals['_SAVEANIMEREQUEST']._serialized_start=577
+  _globals['_SAVEANIMEREQUEST']._serialized_end=862
+  _globals['_SAVEANIMERESPONSE']._serialized_start=864
+  _globals['_SAVEANIMERESPONSE']._serialized_end=979
+  _globals['_LOADEPISODEREQUEST']._serialized_start=981
+  _globals['_LOADEPISODEREQUEST']._serialized_end=1021
+  _globals['_LOADEPISODERESPONSE']._serialized_start=1024
+  _globals['_LOADEPISODERESPONSE']._serialized_end=1260
+  _globals['_SAVEEPISODEREQUEST']._serialized_start=1263
+  _globals['_SAVEEPISODEREQUEST']._serialized_end=1446
+  _globals['_SAVEEPISODERESPONSE']._serialized_start=1448
+  _globals['_SAVEEPISODERESPONSE']._serialized_end=1507
+  _globals['_MARKEPISODEAIREDREQUEST']._serialized_start=1509
+  _globals['_MARKEPISODEAIREDREQUEST']._serialized_end=1554
+  _globals['_MARKEPISODEAIREDRESPONSE']._serialized_start=1556
+  _globals['_MARKEPISODEAIREDRESPONSE']._serialized_end=1604
+  _globals['_LOADCHARACTERREQUEST']._serialized_start=1606
+  _globals['_LOADCHARACTERREQUEST']._serialized_end=1650
+  _globals['_LOADCHARACTERRESPONSE']._serialized_start=1653
+  _globals['_LOADCHARACTERRESPONSE']._serialized_end=1792
+  _globals['_SAVECHARACTERREQUEST']._serialized_start=1795
+  _globals['_SAVECHARACTERREQUEST']._serialized_end=1986
+  _globals['_SAVECHARACTERRESPONSE']._serialized_start=1988
+  _globals['_SAVECHARACTERRESPONSE']._serialized_end=2049
+  _globals['_LISTENTITYPAGESREQUEST']._serialized_start=2051
+  _globals['_LISTENTITYPAGESREQUEST']._serialized_end=2144
+  _globals['_LISTENTITYPAGESRESPONSE']._serialized_start=2146
+  _globals['_LISTENTITYPAGESRESPONSE']._serialized_end=2219
+  _globals['_ENTITYPAGE']._serialized_start=2222
+  _globals['_ENTITYPAGE']._serialized_end=2492
+  _globals['_RECORDREFRESHREQUEST']._serialized_start=2495
+  _globals['_RECORDREFRESHREQUEST']._serialized_end=2690
+  _globals['_RECORDREFRESHRESPONSE']._serialized_start=2692
+  _globals['_RECORDREFRESHRESPONSE']._serialized_end=2715
+  _globals['_LISTDUEREQUEST']._serialized_start=2718
+  _globals['_LISTDUEREQUEST']._serialized_end=2977
+  _globals['_LISTDUERESPONSE']._serialized_start=2979
+  _globals['_LISTDUERESPONSE']._serialized_end=3046
+  _globals['_DUEENTITY']._serialized_start=3048
+  _globals['_DUEENTITY']._serialized_end=3156
+  _globals['_LISTUPCOMINGEPISODESREQUEST']._serialized_start=3158
+  _globals['_LISTUPCOMINGEPISODESREQUEST']._serialized_end=3208
+  _globals['_LISTUPCOMINGEPISODESRESPONSE']._serialized_start=3210
+  _globals['_LISTUPCOMINGEPISODESRESPONSE']._serialized_end=3296
+  _globals['_UPCOMINGEPISODE']._serialized_start=3299
+  _globals['_UPCOMINGEPISODE']._serialized_end=3451
+  _globals['_LISTSCOREANIMEREQUEST']._serialized_start=3453
+  _globals['_LISTSCOREANIMEREQUEST']._serialized_end=3554
+  _globals['_LISTSCOREANIMERESPONSE']._serialized_start=3556
+  _globals['_LISTSCOREANIMERESPONSE']._serialized_end=3599
+  _globals['_LISTREQUESTEDMERGESREQUEST']._serialized_start=3601
+  _globals['_LISTREQUESTEDMERGESREQUEST']._serialized_end=3694
+  _globals['_LISTREQUESTEDMERGESRESPONSE']._serialized_start=3696
+  _globals['_LISTREQUESTEDMERGESRESPONSE']._serialized_end=3745
+  _globals['_GETENTITYREQUEST']._serialized_start=3747
+  _globals['_GETENTITYREQUEST']._serialized_end=3784
+  _globals['_GETANIMERESPONSE']._serialized_start=3787
+  _globals['_GETANIMERESPONSE']._serialized_end=3939
+  _globals['_GETEPISODERESPONSE']._serialized_start=3942
+  _globals['_GETEPISODERESPONSE']._serialized_end=4100
+  _globals['_GETCHARACTERRESPONSE']._serialized_start=4103
+  _globals['_GETCHARACTERRESPONSE']._serialized_end=4267
+  _globals['_LISTEPISODESRESPONSE']._serialized_start=4269
+  _globals['_LISTEPISODESRESPONSE']._serialized_end=4350
+  _globals['_LISTENTITYVERSIONSREQUEST']._serialized_start=4353
+  _globals['_LISTENTITYVERSIONSREQUEST']._serialized_end=4485
+  _globals['_LISTENTITYVERSIONSRESPONSE']._serialized_start=4487
+  _globals['_LISTENTITYVERSIONSRESPONSE']._serialized_end=4569
+  _globals['_ENTITYVERSION']._serialized_start=4571
+  _globals['_ENTITYVERSION']._serialized_end=4622
+  _globals['_LISTDUEPAGESREQUEST']._serialized_start=4624
+  _globals['_LISTDUEPAGESREQUEST']._serialized_end=4682
+  _globals['_LISTDUEPAGESRESPONSE']._serialized_start=4684
+  _globals['_LISTDUEPAGESRESPONSE']._serialized_end=4751
+  _globals['_DUEPAGE']._serialized_start=4753
+  _globals['_DUEPAGE']._serialized_end=4824
+  _globals['_POSTGRESSERVICE']._serialized_start=4972
+  _globals['_POSTGRESSERVICE']._serialized_end=7231
 # @@protoc_insertion_point(module_scope)

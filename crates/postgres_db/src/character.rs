@@ -19,10 +19,11 @@ use uuid::Uuid;
 
 use crate::anime::{
     FieldCorrectionRecord, LoadedSourcePage, decompress_body, insert_catalogue_outbox_event,
-    parse_entity_type,
 };
 use crate::anime_relations::lock_anime_pages_shared;
-use crate::{Error, PageKey, PageResponse, Provider};
+use crate::begin_read_snapshot;
+use crate::provider_page::record_page_sources;
+use crate::{EntityType, Error, PageKey, PageResponse, PageSource, Provider};
 
 /// Current canonical hash format version stored in `character.hash_format`.
 pub const CHARACTER_HASH_FORMAT: i16 = 1;
@@ -44,7 +45,7 @@ pub struct CharacterAppearanceInput {
     pub role: String,
 }
 
-/// A manga or novel a character's pages name, by its provider identifier, with the role there.
+/// A manga or novel a character's pages name, with the character's role there.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CharacterMangaographyInput {
     /// Provider of the manga or novel page.
@@ -114,6 +115,8 @@ pub struct SaveCharacterInput {
     pub merge_version: i32,
     /// Optional W3C `traceparent` header propagated into outbox rows.
     pub traceparent: Option<String>,
+    /// URL the merge chose for each page the entity holds as a source.
+    pub page_sources: Vec<PageSource>,
 }
 
 /// Result returned by [`save_character`].
@@ -151,10 +154,7 @@ pub async fn load_character(
     pool: &PgPool,
     character_id: Uuid,
 ) -> Result<LoadCharacterOutcome, Error> {
-    let mut tx = pool.begin().await?;
-    sqlx::query!("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
-        .execute(&mut *tx)
-        .await?;
+    let mut tx = begin_read_snapshot(pool).await?;
 
     let version = sqlx::query_scalar!(
         "SELECT version FROM character WHERE id = $1 AND deleted_at IS NULL",
@@ -216,7 +216,7 @@ async fn load_character_pages(
             continue;
         };
         let provider: Provider = row.provider.parse()?;
-        let entity_type = parse_entity_type(&row.entity_type)?;
+        let entity_type: EntityType = row.entity_type.parse()?;
         let page_key = PageKey::new(provider, entity_type, &row.address)?;
         let responses = responses_by_page
             .remove(&(row.provider, row.address))
@@ -355,6 +355,7 @@ async fn load_character_corrections(
 ///     hash_format: CHARACTER_HASH_FORMAT,
 ///     merge_version: 1,
 ///     traceparent: None,
+///     page_sources: Vec::new(),
 /// };
 /// let first_save = save_character(pool, &input).await?;
 /// assert_eq!(first_save, SaveCharacterOutcome { has_changed: true, version: 2 });
@@ -391,6 +392,13 @@ pub async fn save_character(
         })
         .collect();
     lock_anime_pages_shared(&mut tx, &anime_pages).await?;
+    record_page_sources(
+        &mut tx,
+        EntityType::Character,
+        input.character_id,
+        &input.page_sources,
+    )
+    .await?;
     insert_traits(&mut tx, &input.traits).await?;
 
     let existing = sqlx::query!(
@@ -969,7 +977,7 @@ pub(crate) async fn notify_characters_naming_anime_page(
     Ok(u64::try_from(updated_characters.len()).unwrap_or(u64::MAX))
 }
 
-/// Lists the works a character appears in, with the strongest role its pages give in each.
+/// Lists the works a character appears in, each with its strongest role.
 ///
 /// The result holds several anime, one [`CharacterAnime`] per anime the character reaches.
 ///

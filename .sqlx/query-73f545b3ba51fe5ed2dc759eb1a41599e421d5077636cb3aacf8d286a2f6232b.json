@@ -1,0 +1,112 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT episode.id AS \"id!\", episode.anime_id AS \"anime_id!\",\n               episode.version AS \"version!\", episode.next_refresh_at,\n               episode.episode_number AS \"episode_number!\", episode.season_number,\n               coalesce(episode.title, '') AS \"title!\", episode.title_japanese,\n               episode.title_romaji, episode.synopsis, episode.description, episode.aired_at,\n               episode.duration_seconds, episode.is_filler AS \"is_filler!\",\n               episode.is_recap AS \"is_recap!\", episode.score::float8 AS score\n        FROM episode_visible episode\n        JOIN anime_visible anime ON anime.id = episode.anime_id\n        WHERE episode.anime_id = $1\n        ORDER BY episode.episode_number, episode.id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "anime_id!",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "version!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "next_refresh_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "episode_number!",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 5,
+        "name": "season_number",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 6,
+        "name": "title!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "title_japanese",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "title_romaji",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "synopsis",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 10,
+        "name": "description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 11,
+        "name": "aired_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 12,
+        "name": "duration_seconds",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 13,
+        "name": "is_filler!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 14,
+        "name": "is_recap!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 15,
+        "name": "score",
+        "type_info": "Float8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      null,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      null
+    ]
+  },
+  "hash": "73f545b3ba51fe5ed2dc759eb1a41599e421d5077636cb3aacf8d286a2f6232b"
+}

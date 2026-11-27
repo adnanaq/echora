@@ -1,0 +1,100 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT relation.relation_type, material.id, material.title, material.title_english,\n               material.title_japanese, material.type AS source_material_type, material.status,\n               material.score::float8 AS score, material.chapters, material.volumes,\n               coalesce((SELECT array_agg(image.source ORDER BY image.source)\n                         FROM source_material_image image\n                         WHERE image.source_material_id = material.id), '{}') AS \"images!\",\n               coalesce((SELECT array_agg(xref.provider ORDER BY xref.provider)\n                         FROM source_material_xref xref\n                         WHERE xref.source_material_id = material.id), '{}') AS \"xref_providers!\",\n               coalesce((SELECT array_agg(xref.external_id ORDER BY xref.provider)\n                         FROM source_material_xref xref\n                         WHERE xref.source_material_id = material.id), '{}') AS \"xref_external_ids!\",\n               coalesce((SELECT array_agg(xref.source ORDER BY xref.provider)\n                         FROM source_material_xref xref\n                         WHERE xref.source_material_id = material.id), '{}') AS \"xref_sources!\"\n        FROM anime_related_source_material relation\n        JOIN source_material material ON material.id = relation.source_material_id\n        WHERE relation.anime_id = $1\n        ORDER BY relation.relation_type, material.title, material.id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "relation_type",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "title",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "title_english",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "title_japanese",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "source_material_type",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "status",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "score",
+        "type_info": "Float8"
+      },
+      {
+        "ordinal": 8,
+        "name": "chapters",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 9,
+        "name": "volumes",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 10,
+        "name": "images!",
+        "type_info": "TextArray"
+      },
+      {
+        "ordinal": 11,
+        "name": "xref_providers!",
+        "type_info": "TextArray"
+      },
+      {
+        "ordinal": 12,
+        "name": "xref_external_ids!",
+        "type_info": "TextArray"
+      },
+      {
+        "ordinal": 13,
+        "name": "xref_sources!",
+        "type_info": "TextArray"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      true,
+      null,
+      true,
+      true,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "4f0ab29b307d33498d6ba8eded12ea30bab778be6e63800b7f3ac2e13cbad80d"
+}

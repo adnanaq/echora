@@ -21,6 +21,14 @@ class PageKey(_message.Message):
     address: str
     def __init__(self, provider: _Optional[str] = ..., entity_type: _Optional[_Union[_anime_pb2.EntityType, str]] = ..., address: _Optional[str] = ...) -> None: ...
 
+class PageSource(_message.Message):
+    __slots__ = ("page_key", "source")
+    PAGE_KEY_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_FIELD_NUMBER: _ClassVar[int]
+    page_key: PageKey
+    source: str
+    def __init__(self, page_key: _Optional[_Union[PageKey, _Mapping]] = ..., source: _Optional[str] = ...) -> None: ...
+
 class PageResponse(_message.Message):
     __slots__ = ("request_name", "content_type", "body")
     REQUEST_NAME_FIELD_NUMBER: _ClassVar[int]

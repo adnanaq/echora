@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                UPDATE character\n                SET refresh_failed_at = now(),\n                    refresh_failures = refresh_failures + 1,\n                    next_refresh_at = now() + make_interval(\n                        hours => least(power(2, least(refresh_failures + 1, $2))::int, $3))\n                WHERE id = $1 AND deleted_at IS NULL\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int4",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6d311d059bfeea77010b9ef2a0b574632e0ecaff0ffece6aef6f7e36994ad26a"
+}

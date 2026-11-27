@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT streaming.episode_id, external_source.platform, streaming.source\n        FROM episode_streaming streaming\n        JOIN external_source ON external_source.source = streaming.source\n        WHERE streaming.episode_id = ANY($1)\n        ORDER BY streaming.episode_id, streaming.source\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "episode_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "platform",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "source",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "UuidArray"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "1d9e3086b818381eec094fd9bdee8102fcc07611b8384b4c41ab1af379a9fd2a"
+}
