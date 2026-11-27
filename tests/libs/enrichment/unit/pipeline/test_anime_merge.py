@@ -667,7 +667,7 @@ def test_list_provider_episodes_mal_episode_list_gives_mal_episode_pages() -> No
         Path(__file__).resolve().parents[1]
         / "sources"
         / "mal"
-        / "test_mal_episode_crawler"
+        / "test_mal_episode_parser"
         / "one_piece_episodes.html"
     )
     mal_page = StoredPage(

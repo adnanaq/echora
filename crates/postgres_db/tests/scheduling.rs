@@ -9,10 +9,10 @@ mod support;
 
 use chrono::{Duration, Utc};
 use postgres_db::{
-    DueEntitiesQuery, EntityType, PageKey, Provider, RefreshOutcome, list_due_anime,
-    list_due_characters, list_due_episodes, list_due_pages, list_entity_pages,
-    list_entity_versions, list_requested_merges, list_score_anime, list_upcoming_episodes,
-    record_refresh, save_anime,
+    DueEntitiesQuery, EntityType, MAX_OLDER_AFTER_YEARS, MAX_WINDOW_DAYS, PageKey, Provider,
+    RefreshOutcome, list_due_anime, list_due_characters, list_due_episodes, list_due_pages,
+    list_entity_pages, list_entity_versions, list_requested_merges, list_score_anime,
+    list_upcoming_episodes, record_refresh, save_anime,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -194,6 +194,24 @@ async fn list_entity_pages_and_record_refresh_cover_all_entities_and_outcomes(po
             .await
             .expect("read next_refresh_at");
     assert!(next_after_pages_failed < now + Duration::hours(5));
+    assert!(next_after_pages_failed > now + Duration::hours(3));
+    record_refresh(
+        &pool,
+        EntityType::Anime,
+        anime_id,
+        RefreshOutcome::PagesFailed,
+        Duration::hours(1),
+    )
+    .await
+    .expect("record pages failed with short refresh_after");
+    let capped_next_refresh_at: chrono::DateTime<Utc> =
+        sqlx::query_scalar("SELECT next_refresh_at FROM anime WHERE id = $1")
+            .bind(anime_id)
+            .fetch_one(&pool)
+            .await
+            .expect("read capped next_refresh_at");
+    assert!(capped_next_refresh_at > now + Duration::minutes(50));
+    assert!(capped_next_refresh_at <= Utc::now() + Duration::hours(1));
 
     // RecordRefresh: Succeeded sets +refresh_after and resets failures
     record_refresh(
@@ -377,25 +395,41 @@ async fn list_due_entities_covers_paging_age_status_and_merge_version(pool: PgPo
     assert_eq!(due_eps.len(), 1);
     assert_eq!(due_eps[0].entity_id, ep_ongoing);
 
-    // Characters: included when at least one undeleted work is ongoing/upcoming and not all works are older
+    let old_ongoing = insert_unmerged_anime(&pool).await;
+    sqlx::query(
+        "UPDATE anime SET status = 'ONGOING', year = 1969, merge_version = 2 WHERE id = $1",
+    )
+    .bind(old_ongoing)
+    .execute(&pool)
+    .await
+    .expect("update old_ongoing");
     let char_ongoing = insert_unmerged_character(&pool, "Ongoing Hero").await;
     let char_finished_only = insert_unmerged_character(&pool, "Finished Hero").await;
+    let char_old_ongoing_and_finished_recent =
+        insert_unmerged_character(&pool, "Long Running Hero").await;
     insert_page(&pool, "mal", "anime", "ongoing_a", None, false, None, 0).await;
     insert_page(&pool, "mal", "anime", "finished_a", None, false, None, 0).await;
-    sqlx::query("INSERT INTO anime_source (anime_id, provider, entity_type, address) VALUES ($1, 'mal', 'anime', 'ongoing_a'), ($2, 'mal', 'anime', 'finished_a')")
+    insert_page(&pool, "mal", "anime", "old_ongoing_a", None, false, None, 0).await;
+    sqlx::query("INSERT INTO anime_source (anime_id, provider, entity_type, address) VALUES ($1, 'mal', 'anime', 'ongoing_a'), ($2, 'mal', 'anime', 'finished_a'), ($3, 'mal', 'anime', 'old_ongoing_a')")
         .bind(ongoing_recent)
         .bind(finished_recent)
+        .bind(old_ongoing)
         .execute(&pool)
         .await
         .expect("link anime sources");
-    sqlx::query("INSERT INTO character_animeography (character_id, anime_page_provider, anime_page_address, role) VALUES ($1, 'mal', 'ongoing_a', 'MAIN'), ($2, 'mal', 'finished_a', 'MAIN')")
+    sqlx::query("INSERT INTO character_animeography (character_id, anime_page_provider, anime_page_address, role) VALUES ($1, 'mal', 'ongoing_a', 'MAIN'), ($2, 'mal', 'finished_a', 'MAIN'), ($3, 'mal', 'old_ongoing_a', 'MAIN'), ($3, 'mal', 'finished_a', 'SUPPORTING')")
         .bind(char_ongoing)
         .bind(char_finished_only)
+        .bind(char_old_ongoing_and_finished_recent)
         .execute(&pool)
         .await
         .expect("link animeography");
     sqlx::query("UPDATE character SET merge_version = 2 WHERE id = ANY($1)")
-        .bind(vec![char_ongoing, char_finished_only])
+        .bind(vec![
+            char_ongoing,
+            char_finished_only,
+            char_old_ongoing_and_finished_recent,
+        ])
         .execute(&pool)
         .await
         .expect("set current character merge version");
@@ -473,6 +507,44 @@ async fn list_due_entities_covers_paging_age_status_and_merge_version(pool: PgPo
         .await
         .expect_err("negative older_after_years")
         .is_invalid_argument()
+    );
+    for older_after_years in [MAX_OLDER_AFTER_YEARS + 1, i32::MAX] {
+        assert!(
+            list_due_characters(
+                &pool,
+                &DueEntitiesQuery {
+                    due_before: now,
+                    older_after_years,
+                    page_size: 10,
+                    after_next_refresh_at: None,
+                    after_id: None,
+                    merge_version: 1,
+                },
+            )
+            .await
+            .expect_err("older_after_years above bound")
+            .is_invalid_argument()
+        );
+    }
+    for window_days in [MAX_WINDOW_DAYS + 1, i32::MAX] {
+        assert!(
+            list_upcoming_episodes(&pool, window_days)
+                .await
+                .expect_err("window_days above bound")
+                .is_invalid_argument()
+        );
+        assert!(
+            list_score_anime(&pool, window_days, 10, None)
+                .await
+                .expect_err("lookback_days above bound")
+                .is_invalid_argument()
+        );
+    }
+    assert!(list_upcoming_episodes(&pool, MAX_WINDOW_DAYS).await.is_ok());
+    assert!(
+        list_score_anime(&pool, MAX_WINDOW_DAYS, 10, None)
+            .await
+            .is_ok()
     );
 }
 

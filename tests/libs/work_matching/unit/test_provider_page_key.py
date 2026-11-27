@@ -276,3 +276,7 @@ def test_build_page_address_unrecognised_key_gives_none() -> None:
 
 def test_build_page_address_mal_episode_key_gives_none() -> None:
     assert build_page_address("mal:episode:21:1") is None
+
+
+def test_build_page_address_kitsu_episode_id_key_gives_none() -> None:
+    assert build_page_address("kitsu:episode:103482") is None

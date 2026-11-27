@@ -561,6 +561,7 @@ async fn load_and_save_anime_enforce_versions_hashes_visibility_and_outbox() -> 
         merge_version: 1,
         traceparent: Some("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01".to_owned()),
         page_sources: Vec::new(),
+        partial_page_sources: Vec::new(),
         details: AnimeDetailsInput::default(),
         schedule_and_stats: AnimeScheduleAndStatsInput::default(),
         relations_and_graph: AnimeRelationsAndGraphInput::default(),
@@ -776,6 +777,7 @@ async fn store_page_bumps_linked_anime_version_and_blocks_stale_save() -> Result
             merge_version: 1,
             traceparent: None,
             page_sources: Vec::new(),
+            partial_page_sources: Vec::new(),
             details: AnimeDetailsInput::default(),
             schedule_and_stats: AnimeScheduleAndStatsInput::default(),
             relations_and_graph: AnimeRelationsAndGraphInput::default(),
@@ -850,6 +852,7 @@ async fn save_anime_replaces_names_classification_themes_and_images() -> Result<
         merge_version: 1,
         traceparent: None,
         page_sources: Vec::new(),
+        partial_page_sources: Vec::new(),
         details: AnimeDetailsInput {
             titles: vec![
                 AnimeTitleInput {
@@ -929,6 +932,7 @@ async fn save_anime_replaces_names_classification_themes_and_images() -> Result<
     let second_input = SaveAnimeInput {
         expected_version: 2,
         merged_record_hash: "details-v2".to_owned(),
+        partial_page_sources: Vec::new(),
         details: AnimeDetailsInput {
             titles: vec![AnimeTitleInput {
                 language: "es".to_owned(),
@@ -1082,6 +1086,7 @@ async fn save_anime_stores_songs_links_streaming_stats_broadcast_and_hiatus() ->
         merge_version: 1,
         traceparent: None,
         page_sources: Vec::new(),
+        partial_page_sources: Vec::new(),
         details: AnimeDetailsInput::default(),
         schedule_and_stats: AnimeScheduleAndStatsInput {
             opening_themes: vec![AnimeThemeSongInput {
@@ -1320,6 +1325,7 @@ async fn save_anime_and_link_page_persist_relations_xrefs_and_graph_edges() -> R
         merge_version: 1,
         traceparent: None,
         page_sources: Vec::new(),
+        partial_page_sources: Vec::new(),
         details: AnimeDetailsInput::default(),
         schedule_and_stats: AnimeScheduleAndStatsInput::default(),
         relations_and_graph: AnimeRelationsAndGraphInput {
@@ -1590,6 +1596,7 @@ async fn save_anime_and_episode_lifecycle_load_save_mark_aired_and_delete()
         merge_version: 1,
         traceparent: None,
         page_sources: Vec::new(),
+        partial_page_sources: Vec::new(),
         details: AnimeDetailsInput::default(),
         schedule_and_stats: AnimeScheduleAndStatsInput::default(),
         relations_and_graph: AnimeRelationsAndGraphInput::default(),
@@ -1911,6 +1918,7 @@ async fn sync_anime_episodes_validates_page_ownership_replacement_and_timestamp_
         merge_version: 1,
         traceparent: None,
         page_sources: Vec::new(),
+        partial_page_sources: Vec::new(),
         details: AnimeDetailsInput::default(),
         schedule_and_stats: AnimeScheduleAndStatsInput::default(),
         relations_and_graph: AnimeRelationsAndGraphInput::default(),

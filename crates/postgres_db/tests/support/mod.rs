@@ -191,6 +191,7 @@ pub fn build_anime_save(
         merge_version: 1,
         traceparent: None,
         page_sources: Vec::new(),
+        partial_page_sources: Vec::new(),
         details: AnimeDetailsInput::default(),
         schedule_and_stats: AnimeScheduleAndStatsInput::default(),
         relations_and_graph: AnimeRelationsAndGraphInput::default(),

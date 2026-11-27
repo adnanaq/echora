@@ -683,7 +683,7 @@ def test_map_mal_character_responses_canonical_link_with_equals_spaces_populates
 def test_map_mal_anime_episode_responses_orders_list_pages_by_page_number(
     original_datadir,
 ) -> None:
-    episode_list_dir = original_datadir.parent / "test_mal_episode_crawler"
+    episode_list_dir = original_datadir.parent / "test_mal_episode_parser"
 
     def build_list_response(request_name: str, page_name: str) -> PageResponse:
         return PageResponse(

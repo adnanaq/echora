@@ -601,6 +601,21 @@ async fn save_character_invalid_fields_return_invalid_argument(pool: PgPool) {
                 ..valid_input.clone()
             },
         ),
+        (
+            "blank mangaography URL",
+            SaveCharacterInput {
+                mangaography: vec![CharacterMangaographyInput {
+                    role: "MAIN".to_owned(),
+                    xrefs: vec![SourceMaterialXrefInput {
+                        provider: "mal".to_owned(),
+                        external_id: "13".to_owned(),
+                        url: " ".to_owned(),
+                        title: None,
+                    }],
+                }],
+                ..valid_input.clone()
+            },
+        ),
     ];
 
     for (case_name, invalid_input) in invalid_inputs {

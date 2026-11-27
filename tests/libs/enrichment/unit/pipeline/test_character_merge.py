@@ -302,7 +302,7 @@ def test_merge_character_across_providers_and_apply_corrections() -> None:
     assert page_sources_by_address[("kitsu", "101")] == (
         "https://kitsu.app/characters/monkey-d-luffy"
     )
-    assert all(page.source in char.sources for page in resp.page_sources)
+    assert list(char.sources) == sorted({page.source for page in resp.page_sources})
 
     # All providers' One Piece URLs merged into a single animeography entry with MAIN role
     assert len(char.animeography) >= 1

@@ -415,19 +415,25 @@ async fn read_visible_anime_relations_resolve_only_other_visible_works(pool: PgP
 }
 
 #[sqlx::test(migrations = "./migrations")]
-async fn read_visible_anime_partial_source_url_comes_from_owner_save(pool: PgPool) {
+async fn read_visible_anime_partial_source_url_prefers_owner_save_over_partial_save(pool: PgPool) {
     let owner_id = insert_unmerged_anime(&pool).await;
     let part_id = insert_unmerged_anime(&pool).await;
     link_mal_anime_pages(&pool, owner_id, &["10"]).await;
     link_mal_anime_pages(&pool, part_id, &["11"]).await;
     sqlx::query(
+        "INSERT INTO provider_page (provider, entity_type, address) VALUES ('mal', 'anime', '12')",
+    )
+    .execute(&pool)
+    .await
+    .expect("insert unheld page");
+    sqlx::query(
         "INSERT INTO anime_partial_source (anime_id, provider, entity_type, address)
-         VALUES ($1, 'mal', 'anime', '10')",
+         VALUES ($1, 'mal', 'anime', '10'), ($1, 'mal', 'anime', '12')",
     )
     .bind(part_id)
     .execute(&pool)
     .await
-    .expect("link partial source");
+    .expect("link partial sources");
 
     let mut part_save = build_anime_save(part_id, 1, "part-v1", Vec::new());
     part_save.page_sources = vec![
@@ -438,13 +444,27 @@ async fn read_visible_anime_partial_source_url_comes_from_owner_save(pool: PgPoo
         ),
         build_mal_page_source(EntityType::Anime, "10", "https://example.org/not-the-owner"),
     ];
+    part_save.partial_page_sources = vec![
+        build_mal_page_source(EntityType::Anime, "10", "https://myanimelist.net/anime/10"),
+        build_mal_page_source(
+            EntityType::Anime,
+            "12",
+            "https://myanimelist.net/anime/12/Unheld_Part",
+        ),
+    ];
     save_anime(&pool, &part_save).await.expect("save part");
     let part_before_owner = read_visible_anime(&pool, part_id).await.expect("read part");
     assert_eq!(
         part_before_owner.sources,
         vec!["https://myanimelist.net/anime/11/Part"]
     );
-    assert_eq!(part_before_owner.partial_sources, Vec::<String>::new());
+    assert_eq!(
+        part_before_owner.partial_sources,
+        vec![
+            "https://myanimelist.net/anime/10",
+            "https://myanimelist.net/anime/12/Unheld_Part",
+        ]
+    );
 
     let mut owner_save = build_anime_save(owner_id, 1, "owner-v1", Vec::new());
     owner_save.page_sources = vec![build_mal_page_source(
@@ -456,6 +476,9 @@ async fn read_visible_anime_partial_source_url_comes_from_owner_save(pool: PgPoo
     let part_after_owner = read_visible_anime(&pool, part_id).await.expect("read part");
     assert_eq!(
         part_after_owner.partial_sources,
-        vec!["https://myanimelist.net/anime/10/Whole_Work"]
+        vec![
+            "https://myanimelist.net/anime/10/Whole_Work",
+            "https://myanimelist.net/anime/12/Unheld_Part",
+        ]
     );
 }

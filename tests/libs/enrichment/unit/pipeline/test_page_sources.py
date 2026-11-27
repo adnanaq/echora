@@ -1,5 +1,9 @@
 import pytest
-from enrichment.pipeline.page_sources import build_page_sources, build_stored_page_key
+from enrichment.pipeline.page_sources import (
+    build_page_sources,
+    build_stored_page_key,
+    read_page_urls,
+)
 from shared_proto.v1 import anime_pb2
 from shared_proto.v1.merge_pb2 import PageKey, PageSource
 
@@ -130,6 +134,48 @@ def test_build_page_sources_page_without_url_or_template_left_out() -> None:
             source="https://myanimelist.net/character/40",
             title="Page of mal",
         )
+    ]
+
+
+def test_build_page_sources_page_with_title_and_no_url_keeps_empty_url() -> None:
+    kitsu_page_key = PageKey(
+        provider="kitsu",
+        entity_type=anime_pb2.ENTITY_TYPE_CHARACTER,
+        address="2",
+    )
+
+    page_sources = build_page_sources(
+        [kitsu_page_key],
+        {"kitsu": {"sources": [], "title": "Page of kitsu"}},
+        lambda page_key: "",
+        "title",
+    )
+
+    assert page_sources == [
+        PageSource(page_key=kitsu_page_key, source="", title="Page of kitsu")
+    ]
+
+
+def test_read_page_urls_skips_empty_and_repeated_urls() -> None:
+    page_sources = [
+        PageSource(
+            page_key=_build_mal_character_key("40"),
+            source="https://myanimelist.net/character/40/Luffy",
+        ),
+        PageSource(page_key=_build_mal_character_key("41"), source=""),
+        PageSource(
+            page_key=_build_mal_character_key("39"),
+            source="https://myanimelist.net/character/39",
+        ),
+        PageSource(
+            page_key=_build_mal_character_key("40"),
+            source="https://myanimelist.net/character/40/Luffy",
+        ),
+    ]
+
+    assert read_page_urls(page_sources) == [
+        "https://myanimelist.net/character/39",
+        "https://myanimelist.net/character/40/Luffy",
     ]
 
 

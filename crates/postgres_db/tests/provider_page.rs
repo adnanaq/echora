@@ -391,15 +391,10 @@ fn build_relations(relations: Vec<AnimeRelationInput>) -> AnimeRelationsAndGraph
 }
 
 #[sqlx::test(migrations = "./migrations")]
-async fn save_anime_page_sources_refuse_missing_duplicate_and_other_entity_pages(pool: PgPool) {
+async fn save_anime_page_sources_refuse_duplicate_and_other_entity_pages(pool: PgPool) {
     let anime_id = insert_unmerged_anime(&pool).await;
     link_mal_anime_pages(&pool, anime_id, &["1"]).await;
     let refused_page_sources = [
-        vec![PageSource {
-            page_key: PageKey::new(Provider::Mal, EntityType::Anime, "1").expect("valid page key"),
-            source: None,
-            title: None,
-        }],
         vec![
             build_mal_page_source(EntityType::Anime, "1", "https://myanimelist.net/anime/1"),
             build_mal_page_source(
@@ -588,7 +583,7 @@ async fn save_anime_relation_url_yields_to_holder_url(pool: PgPool) {
         "https://myanimelist.net/anime/2/Sequel",
     )];
     holding_save.page_sources[0].title = Some("Held Sequel".to_owned());
-    save_anime(&pool, &holding_save)
+    let holding_outcome = save_anime(&pool, &holding_save)
         .await
         .expect("holding save");
     assert_eq!(
@@ -622,6 +617,29 @@ async fn save_anime_relation_url_yields_to_holder_url(pool: PgPool) {
     assert_eq!(
         read_page_title(&pool, "2").await.as_deref(),
         Some("Held Sequel")
+    );
+
+    let mut retitling_save = build_anime_save(
+        holding_anime_id,
+        holding_outcome.version,
+        "holding-v2",
+        Vec::new(),
+    );
+    retitling_save.page_sources = vec![PageSource {
+        page_key: PageKey::new(Provider::Mal, EntityType::Anime, "2").expect("valid page key"),
+        source: None,
+        title: Some("Sequel Retitled".to_owned()),
+    }];
+    save_anime(&pool, &retitling_save)
+        .await
+        .expect("retitling save without URL");
+    assert_eq!(
+        read_page_source(&pool, "2").await.as_deref(),
+        Some("https://myanimelist.net/anime/2/Sequel")
+    );
+    assert_eq!(
+        read_page_title(&pool, "2").await.as_deref(),
+        Some("Sequel Retitled")
     );
 }
 
