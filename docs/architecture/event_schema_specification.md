@@ -145,6 +145,13 @@ message PageKey {  // (ECHO-97) (ECHO-133)
   string address = 3;                        // e.g. '21'
 }
 
+// The URL a merge chose for one linked provider page, a provider-reported URL with its
+// slug when one is known, or the provider's canonical page URL otherwise.
+message PageSource {  // (ECHO-108)
+  PageKey page_key = 1;
+  string source = 2;                         // stored in provider_page.source
+}
+
 // One response of a page, exactly as the provider sent it.
 message PageResponse {  // (ECHO-97)
   string request_name = 1;                   // e.g. 'main', 'characters', 'episodes_page_2'
@@ -253,6 +260,7 @@ message MergeAnimeResponse {  // (ECHO-105)
   repeated shared_proto.v1.EpisodeReference episodes = 2;     // every episode the pages list
   repeated shared_proto.v1.RelationClaim relation_claims = 3;  // each provider's relations, before the merge picks one type (ECHO-105)
   string provider_synopses_hash = 4;                           // SHA-256 of sorted non-empty provider synopses (ECHO-105)
+  repeated shared_proto.v1.PageSource page_sources = 5;        // URL of each source page; a partial source's URL comes from its owner's merge (ECHO-108)
 }
 
 message MergeEpisodeRequest {  // (ECHO-109)
@@ -265,6 +273,7 @@ message MergeEpisodeRequest {  // (ECHO-109)
 
 message MergeEpisodeResponse {  // (ECHO-109)
   shared_proto.v1.Episode episode = 1;
+  repeated shared_proto.v1.PageSource page_sources = 2;  // canonical URL of each linked page (ECHO-108)
 }
 
 message MergeCharacterRequest {  // (ECHO-110)
@@ -275,6 +284,7 @@ message MergeCharacterRequest {  // (ECHO-110)
 
 message MergeCharacterResponse {  // (ECHO-110)
   shared_proto.v1.Character character = 1;
+  repeated shared_proto.v1.PageSource page_sources = 2;  // canonical URL of each linked page (ECHO-108)
 }
 ```
 
@@ -418,6 +428,7 @@ message SaveAnimeRequest {  // (ECHO-98)
   int32 merge_version = 4;                   // the mapping and merge code that produced the save
   repeated shared_proto.v1.RelationClaim relation_claims = 5;  // stored in anime_related_anime_claim (ECHO-102) (ECHO-133)
   repeated shared_proto.v1.EpisodeReference episodes = 6;      // (ECHO-103)
+  repeated shared_proto.v1.PageSource page_sources = 7;        // from MergeAnimeResponse (ECHO-108)
 }
 
 message SaveAnimeResponse {  // (ECHO-98)
@@ -444,6 +455,7 @@ message SaveEpisodeRequest {  // (ECHO-103)
   int64 expected_version = 2;
   shared_proto.v1.Episode episode = 3;
   int32 merge_version = 4;
+  repeated shared_proto.v1.PageSource page_sources = 5;  // from MergeEpisodeResponse (ECHO-108)
 }
 
 message LoadCharacterRequest {  // (ECHO-104)
@@ -461,6 +473,7 @@ message SaveCharacterRequest {  // (ECHO-104)
   int64 expected_version = 2;
   shared_proto.v1.Character character = 3;
   int32 merge_version = 4;
+  repeated shared_proto.v1.PageSource page_sources = 5;  // from MergeCharacterResponse (ECHO-108)
 }
 
 // SaveEpisode, SaveCharacter and DeleteAnime each have their own response, since buf's

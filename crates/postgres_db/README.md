@@ -16,7 +16,6 @@ The migrations in `migrations/` are the only source of the schema, and are writt
 | `..._create_anime_relations_source_material_companies_graph_tables.sql` | Related anime and their claims, related source material, companies and `graph_edge` |
 | `..._create_episode_tables.sql` | `episode`, `episode_visible`, its pages, list entries, titles, images, streaming, characters and corrections |
 | `..._create_character_tables.sql` | `character`, `character_visible`, its pages, the works it appears in (`character_animeography`), names, nicknames, traits, images, attributes, spoilers, mangaography and corrections |
-| `..._add_scheduling_indexes.sql` | `anime_score_sync_idx` and `anime_broadcast_next_episode_idx` |
 
 Every table and column is named after the model field it stores, by the rule in `docs/architecture/Database Schema.md` (Naming Rule), which `scripts/check_postgres_schema.py` checks in CI. A value shared across works, such as a URL's platform or a theme's description, is stored once in a shared table, and a relation stores only its target page, so the target work is always found by a join. A character stores the works it appears in the same way, by each work's page.
 
@@ -39,7 +38,7 @@ A migration that builds an index with `CREATE INDEX CONCURRENTLY` starts with `-
 | `list_entity_pages`, `record_refresh` | List an entity's linked pages with fetch metadata, and record refresh outcomes onto `next_refresh_at` |
 | `list_due_anime`, `list_due_episodes`, `list_due_characters` | Keyset-paged due queries with `older_after_years` and `merge_version` filters |
 | `list_upcoming_episodes`, `list_score_anime`, `list_requested_merges`, `list_due_pages` | Tracking window episodes, daily score works, pending merge requests, and budgeted provider due pages |
-| `read_visible_anime`, `read_visible_episode`, `list_visible_episodes`, `read_visible_character`, `list_entity_versions` | Read merged, undeleted entities and visible entity versions through `*_visible` views |
+| `read_visible_anime`, `read_visible_episode`, `list_visible_episodes`, `read_visible_character`, `list_entity_versions` | Read merged, undeleted entities through `*_visible` views, each in one read-only snapshot, with page URLs from `provider_page.source` and the rows that name one target grouped into one entry; and page visible entity versions |
 
 ## Rules Every Save Follows
 

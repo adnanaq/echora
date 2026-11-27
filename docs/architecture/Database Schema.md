@@ -673,22 +673,35 @@ WHERE r.from_anime_id = 'uuid-a';
 
 - The seed load creates the work with its ID and page links, and nothing has been fetched. A linked page that was never fetched has a NULL `fetched_at` and `responses_hash`, which also makes it due. (ECHO-107)
 - ~~The work's `merged_at` is NULL, so `title`, `type` and `status` may be empty, and a check constraint requires all three once `merged_at` is set. The save that first sets `merged_at` writes the `created` event; every later changing save writes `updated`. (ECHO-98)~~
-- Every read for consumers and the backend (`Get*`, `ListEpisodes`, `ListScoreAnime`, `ListUpcomingEpisodes`, the graph primitives) reads the `*_visible` views, which skip rows whose `merged_at` is NULL. The due queries do not: an unmerged work has never been refreshed, so it is due. (ECHO-108)
+- ~~Every read for consumers and the backend (`Get*`, `ListEpisodes`, `ListScoreAnime`, `ListUpcomingEpisodes`, the graph primitives) reads the `*_visible` views, which skip rows whose `merged_at` is NULL. The due queries do not: an unmerged work has never been refreshed, so it is due. (ECHO-108)~~
+
+**Reading an entity.** ~~`GetAnime`, `GetEpisode`, `ListEpisodes` and `GetCharacter` return the stored entity in the shape of its merged model. (ECHO-108)~~
+
+- ~~Each read runs in one `REPEATABLE READ READ ONLY` transaction, so an entity's row and its detail rows come from the same committed save. `ListEpisodes` reads the detail rows of all the work's episodes with one query per table (`episode_id = ANY($1)`). (ECHO-108)~~
+- ~~`sources` and `partial_sources` are the `provider_page.source` URLs of the linked pages. A page whose URL no merge of its owner has chosen yet is left out. (ECHO-108)~~
+- Rows that name pages of the same target form one entry, with every page URL and the most prominent role:
+  - ~~a relation's target pages, grouped by the visible work that holds them, which is never the work itself; the entry takes that work's title, type, status, year and episode count; (ECHO-108)~~
+  - ~~a character's animeography, grouped by the visible work holding each page, with its title; (ECHO-108)~~
+  - ~~a character's mangaography, grouped by the stored source material each identifier names, with its title; (ECHO-108)~~
+  - ~~an episode's characters, grouped by the visible character holding each page, with its name. (ECHO-108)~~
+- A target that no visible entity holds stays an entry of its own, with its page URL when one is stored. The URL of a page no stored work owns is not stored, so such an entry has neither a title nor a URL. (ECHO-108)
+- ~~A character's `anime_ids` and `roles` are the visible works its animeography names and its most prominent role in each. (ECHO-108)~~
+- ~~Enum fields are stored as their lookup text (`TV SPECIAL`, `PG-13 - Teens 13 or older`), not as proto value names. One table per enum in the PostgreSQL service maps both ways, for saves and reads, and a stored value with no proto value fails the read with `INTERNAL`. (ECHO-108)~~
 
 **Recording a refresh.** `RecordRefresh`, the last activity of every refresh, sets `next_refresh_at`, the one column every due check reads:
 
-- **Every page fetched or not due:** `refreshed_at = now()`, `refresh_failures = 0`, and `next_refresh_at = now() + REFRESH_AFTER_DAYS`, whether the merge changed something, changed nothing or did not run. (ECHO-108)
-- **Some pages failed:** the same, except `next_refresh_at` is the earliest time a failed page may be tried again, `2^fetch_failures` hours after its failure, at most a week. A page that failed is not hidden until the next weekly sweep. (ECHO-108)
-- **The refresh failed:** `refresh_failed_at = now()`, one more `refresh_failures`, and `next_refresh_at = now() + 2^refresh_failures` hours, at most a week, so a work that keeps failing is not picked by every sweep and every open. (ECHO-108)
+- **Every page fetched or not due:** ~~`refreshed_at = now()`, `refresh_failures = 0`, and `next_refresh_at = now() + REFRESH_AFTER_DAYS`, whether the merge changed something, changed nothing or did not run. (ECHO-108)~~
+- **Some pages failed:** ~~the same, except `next_refresh_at` is the earliest time a failed page may be tried again, `2^fetch_failures` hours after its failure, at most a week. A page that failed is not hidden until the next weekly sweep. (ECHO-108)~~
+- **The refresh failed:** ~~`refresh_failed_at = now()`, one more `refresh_failures`, and `next_refresh_at = now() + 2^refresh_failures` hours, at most a week, so a work that keeps failing is not picked by every sweep and every open. (ECHO-108)~~
 
-The workflow passes `REFRESH_AFTER_DAYS` with the call, since the setting belongs to the Update Service. (ECHO-108)
+~~The workflow passes `REFRESH_AFTER_DAYS` with the call, since the setting belongs to the Update Service. (ECHO-108)~~
 
 ~~A page that fails every fetch attempt records `fetch_failed_at` and `fetch_failures` through `StorePage`, and the refresh goes on without it. (ECHO-97)~~
 
 **Visible rows.** Reads for consumers and the backend go through the `anime_visible`, `episode_visible` and `character_visible` views, which hold only merged, undeleted rows.
 
 - ~~The views are created with their tables. (ECHO-98)~~
-- Loads for merging, `ListEntityPages` and the due queries read the tables, since unmerged entities must be loaded and are due. (ECHO-108)
+- ~~Loads for merging, `ListEntityPages` and the due queries read the tables, since unmerged entities must be loaded and are due. (ECHO-108)~~
 
 **Purging deleted rows.** A deleted entity keeps its own row for good, with its ID, version, `deleted_at` and `merged_into_anime_id`, so old links and users' lists can be redirected. Its detail rows (titles, genres, images and the others) are purged 30 days after the delete by the cleanup job. Unique constraints that a deleted row could block, such as an episode's number, count only undeleted rows. (ECHO-116)
 
@@ -697,7 +710,7 @@ The workflow passes `REFRESH_AFTER_DAYS` with the call, since the setting belong
 **Merges the database requests.** A change made in the database that the next merge must see sets `merge_requested_at` on the entity in the same transaction: `CreateAnime`, `RelinkPages`, a new AI-written text, and an approved correction, dead page or character merge. The caller also sends the entity's refresh `merge_requested` at once, so the merge usually runs within seconds. The column guarantees it runs even when that signal is lost or nothing is refreshing the entity, such as a finished work's episode the sweep skips.
 
 - ~~The save that follows clears the column, changed or not. (ECHO-98)~~
-- `ListRequestedMerges` returns such entities whatever their age, status or `next_refresh_at`. (ECHO-108)
+- ~~`ListRequestedMerges` returns such entities whatever their age, status or `next_refresh_at`. (ECHO-108)~~
 - A pass every 15 minutes reads `ListRequestedMerges` and sends each entity's refresh `merge_requested`. (ECHO-117)
 
 **Approvals apply themselves.** `DecideApproval` records a reviewer's decision and, when approved, applies it in the same transaction: inserts the correction, moves the pages, sets `is_dead`, or merges two characters, and sets `merge_requested_at` on every entity it touched. It refuses a correction whose `field_path` the model does not have. Renaming a field includes a migration that renames the stored paths, and the daily cleanup job reports any stored correction whose path no longer names a field. (P-ECHO-15)
@@ -711,14 +724,14 @@ The workflow passes `REFRESH_AFTER_DAYS` with the call, since the setting belong
 **The merge version.** A mapping fix reaches every entity this way, including finished works and those over 30 years old, with no separate workflow.
 
 - ~~Each entity stores the `merge_version` of the code that last merged it. (ECHO-98)~~
-- The due queries also return entities whose `merge_version` is older than the current one, whatever their age, status or `next_refresh_at`. Raising the version makes every entity due at once. (ECHO-108)
+- ~~The due queries also return entities whose `merge_version` is older than the current one, whatever their age, status or `next_refresh_at`. Raising the version makes every entity due at once. (ECHO-108)~~
 - Their refresh merges them from stored pages without fetching, so they cannot use up any provider's rate. They run at priority 4 with the fairness key `remerge`, below the sweep's priority 3, so the weekly refreshes go first. (ECHO-111)
 
 ~~**The change hash.** `merged_record_hash` is computed over a canonical form of everything the save writes: the merged entity and its episode and character lists. Maps are encoded in key order (`prost` is configured to generate `BTreeMap` for map fields, since its default `HashMap` encodes in a different order on every run), and the merge returns every list sorted. `hash_format` records the form used, so changing it is a planned re-save of every entity, not an accident. (ECHO-98)~~
 
 ~~**`updated_at`.** The save that changes a row sets `updated_at = now()` in the same statement. There is no trigger. (ECHO-98)~~
 
-A page view writes nothing: the backend decides whether an entity is due from the `next_refresh_at` that `Get*` returns. (ECHO-108)
+~~A page view writes nothing: the backend decides whether an entity is due from the `next_refresh_at` that `Get*` returns. (ECHO-108)~~
 
 **Deleting an entity.** An entity is removed by setting `deleted_at`, never by deleting its row, so consumers can still read its version. Foreign keys with `ON DELETE CASCADE` do not fire on a soft delete, so the deleting transaction removes what hangs off the entity itself:
 
@@ -728,7 +741,7 @@ A page view writes nothing: the backend decides whether an entity is due from th
 - **A character** (by the character merge or the cleanup job): its page links, its `character_animeography` rows and every `graph_edge` row from or to it are deleted. (P-ECHO-23) (ECHO-116)
 - In every case the version increases once more, and the `deleted` event is written to the outbox, by the method that deletes the entity.
 
-Every query that joins an entity filters out deleted rows. (ECHO-108)
+~~Every query that joins an entity filters out deleted rows. (ECHO-108)~~
 
 ---
 
@@ -1561,6 +1574,7 @@ CREATE TABLE provider_page (  -- (ECHO-97)
   responses_hash text,                       -- hash of the uncompressed responses; StorePage compares it
   fetch_failed_at timestamptz,               -- last fetch that failed every attempt
   fetch_failures  int NOT NULL DEFAULT 0 CHECK (fetch_failures >= 0),  -- failures since the last success
+  source          text,                      -- URL the last merge of the page's owner chose; NULL until a save writes it (ECHO-108)
   PRIMARY KEY (provider, entity_type, address),
   CHECK ((fetched_at IS NULL) = (responses_hash IS NULL))
 );
@@ -1656,6 +1670,7 @@ CREATE TABLE character_source (
   - ~~`LoadEpisode` for an episode. (ECHO-103)~~
   - ~~`LoadCharacter` for a character. (ECHO-104)~~
 - ~~An entity's `sources` and `partial_sources` in the merged model come from these links. (ECHO-105)~~
+- ~~A page's URL is a fact about the page, so it is stored once, in `provider_page.source`, and not on the link tables. The merge chooses it: a URL a provider reported, with its slug, when one is known, otherwise the provider's canonical page URL. Each save writes the URLs of the pages its entity holds as sources (`page_sources`), and only where they changed. A page is the source of at most one entity, so each URL has one writer. A partial source's URL is written by the work that holds the page as its source. (ECHO-108)~~
 
 ---
 
@@ -1882,39 +1897,45 @@ ORDER BY merge_requested_at
 LIMIT $1;
 
 -- ListUpcomingEpisodes: episodes of ongoing works airing in the next EPISODE_TRACKING_WINDOW_DAYS,
--- both those the work lists and the next episode its broadcast names but no row holds yet
-SELECT e.id, e.anime_id, e.episode_number, e.aired_at AS expected_air_at
-FROM episode e
-JOIN anime a ON a.id = e.anime_id
-WHERE a.status IN ('ONGOING', 'UPCOMING') AND a.deleted_at IS NULL AND e.deleted_at IS NULL
+-- both those the work lists and the next episode its broadcast names. Only merged works and
+-- episodes are read. An episode row exists before its first merge with no air date, so the
+-- broadcast row is skipped only when a merged episode already has a date; it then carries the
+-- unmerged row's ID when one exists.
+SELECT e.anime_id, e.id AS episode_id, e.episode_number, e.aired_at AS expected_air_at
+FROM episode_visible e
+JOIN anime_visible a ON a.id = e.anime_id
+WHERE a.status IN ('ONGOING', 'UPCOMING')
   AND e.aired_at BETWEEN now() - interval '24 hours' AND now() + make_interval(days => $1)
   AND e.aired_notified_at IS NULL                                -- a delayed episode stays tracked
 UNION ALL
-SELECT NULL, b.anime_id, b.next_episode_number, b.next_episode_at
+SELECT b.anime_id,
+       (SELECT pending.id FROM episode pending
+        WHERE pending.anime_id = b.anime_id AND pending.episode_number = b.next_episode_number
+          AND pending.deleted_at IS NULL),
+       b.next_episode_number, b.next_episode_at
 FROM anime_broadcast b
-JOIN anime a ON a.id = b.anime_id
-WHERE a.status IN ('ONGOING', 'UPCOMING') AND a.deleted_at IS NULL
+JOIN anime_visible a ON a.id = b.anime_id
+WHERE a.status IN ('ONGOING', 'UPCOMING')
   AND b.next_episode_number IS NOT NULL
   AND b.next_episode_at BETWEEN now() - interval '24 hours' AND now() + make_interval(days => $1)
   AND NOT EXISTS (
-    SELECT 1 FROM episode e
-    WHERE e.anime_id = b.anime_id AND e.episode_number = b.next_episode_number
-      AND e.deleted_at IS NULL
+    SELECT 1 FROM episode_visible dated
+    WHERE dated.anime_id = b.anime_id AND dated.episode_number = b.next_episode_number
+      AND dated.aired_at IS NOT NULL
   )
-ORDER BY expected_air_at;
+ORDER BY expected_air_at, anime_id, episode_number;
 
--- ListScoreAnime: works whose scores refresh daily, ongoing or finished within the lookback.
+-- ListScoreAnime: merged works whose scores refresh daily, ongoing or finished within the lookback.
 -- A finished work with no end date is left out; its scores refresh in the weekly sweep.
-SELECT id FROM anime
-WHERE deleted_at IS NULL
-  AND (status = 'ONGOING'
+SELECT id FROM anime_visible
+WHERE (status = 'ONGOING'
        OR (status = 'FINISHED' AND aired_to >= now() - make_interval(days => $1)))
   AND id > $2                                                    -- keyset: the last id of the previous page
 ORDER BY id
 LIMIT $3;
 ```
 
-The same due queries exist for `episode` and `character`. An episode is older when its work is, and a character when every work it appears in is.
+~~The same due queries exist for `episode` and `character`. An episode is older when its work is, and a character when every work it appears in is. An entity merged by older code is due whatever its age or its works' status, as for works. (ECHO-108)~~
 
 ```sql
 -- ListDuePages: the pages of one budgeted provider (AniDB) in due order, for the budgeted
@@ -1990,15 +2011,23 @@ JOIN anime_source work_page
 JOIN anime a ON a.id = work_page.anime_id AND a.deleted_at IS NULL
 WHERE appearance.character_id = $1;
 
--- Relations the work's own pages list, with those no stored work holds shown by their page.
--- The inverses other works assert are in graph_edge. (ECHO-133)
-SELECT r.relation_type, r.to_page_provider, r.to_page_address, t.id, t.title, t.type, t.year
+-- Relations the work's own pages list, one per related visible work with every target page URL;
+-- a page no visible work holds stays a relation of its own. The inverses other works assert are
+-- in graph_edge. (ECHO-133) (ECHO-108)
+SELECT r.relation_type, t.id, t.title, t.type, t.status, t.year, t.episode_count,
+       coalesce(array_agg(page.source ORDER BY page.source) FILTER (WHERE page.source IS NOT NULL),
+                '{}') AS target_page_sources
 FROM anime_related_anime r
+LEFT JOIN provider_page page
+  ON page.provider = r.to_page_provider AND page.entity_type = 'anime'
+ AND page.address = r.to_page_address
 LEFT JOIN anime_source target
   ON target.provider = r.to_page_provider AND target.entity_type = 'anime'
  AND target.address = r.to_page_address AND target.anime_id <> r.from_anime_id
-LEFT JOIN anime t ON t.id = target.anime_id AND t.deleted_at IS NULL
-WHERE r.from_anime_id = $1;
+LEFT JOIN anime_visible t ON t.id = target.anime_id
+WHERE r.from_anime_id = $1
+GROUP BY r.relation_type, t.id, t.title, t.type, t.status, t.year, t.episode_count,
+         CASE WHEN t.id IS NULL THEN r.to_page_provider || ':' || r.to_page_address END;
 
 -- Works by genre
 SELECT a.* FROM anime a
@@ -2438,7 +2467,7 @@ Every field of the canonical models in `libs/common/src/common/models/anime.py` 
 - Scalars → columns of `anime` with the same names, such as `is_nsfw` and `duration_seconds`. `month` → a month number.
 - `id` → `anime.id`, assigned when the work is first created.
 - `entity_type` → *read*, always `anime`.
-- `sources` → `anime_source`. `partial_sources` → `anime_partial_source`.
+- `sources` → `anime_source`. `partial_sources` → `anime_partial_source`. ~~Each URL → `provider_page.source` of the linked page (ECHO-108).~~
 - `synopsis` → `anime.synopsis`, from a correction or `anime_generated_text` only.
 - `score` → `score_weighted`, `score_mean`, `score_median`.
 - `aired_dates` → `aired_from`, `aired_to`.
@@ -2462,7 +2491,7 @@ Every field of the canonical models in `libs/common/src/common/models/anime.py` 
 - Scalars → columns of `episode` with the same names, such as `aired_at`, `is_filler`, `is_recap` and `duration_seconds`.
 - `id` → `episode.id`, assigned when the episode is first created. `anime_id` → `episode.anime_id`.
 - `entity_type` → *read*, always `episode`.
-- `sources` → `episode_source`.
+- `sources` → `episode_source`. ~~Each URL → `provider_page.source` of the linked page (ECHO-108).~~
 - `titles` → `episode_title`, keyed by a code in `language`. `images` → `episode_image`. `streaming` → `episode_streaming`, with each URL's platform, the map's key, in `external_source`.
 - `characters` → `episode_character`, by the character's page; the character is found by the join. Their voice actors → people tables, planned last.
 - `staff` → people tables, planned last.
@@ -2471,7 +2500,7 @@ Every field of the canonical models in `libs/common/src/common/models/anime.py` 
 - Scalars → columns of `character`.
 - `id` → `character.id`, assigned when the character is first created.
 - `entity_type` → *read*, always `character`.
-- `sources` → `character_source`.
+- `sources` → `character_source`. ~~Each URL → `provider_page.source` of the linked page (ECHO-108).~~
 - `roles`, `anime_ids` → *read* from `character_animeography`, joined to `anime_source`.
 - `animeography` → `character_animeography`, each work held by its page.
 - `mangaography` → `character_mangaography`, each manga or novel held by its provider identifier.
