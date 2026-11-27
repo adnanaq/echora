@@ -17,6 +17,7 @@ from shared_proto.v1.merge_pb2 import (
     FieldCorrection,
     PageKey,
     PageResponse,
+    PageSource,
     StoredPage,
 )
 
@@ -46,6 +47,7 @@ def test_merge_episode_from_list_entries_without_pages() -> None:
     req = MergeEpisodeRequest(
         episode_id="0195b42a-0000-7000-8000-000000000101",
         anime_id="0195b42a-0000-7000-8000-000000000001",
+        episode_number=4,
         list_entries=[
             EpisodeListEntry(
                 provider="kitsu",
@@ -69,12 +71,14 @@ def test_merge_episode_from_list_entries_without_pages() -> None:
     assert ep.id == "0195b42a-0000-7000-8000-000000000101"
     assert ep.anime_id == "0195b42a-0000-7000-8000-000000000001"
     assert ep.entity_type == anime_pb2.ENTITY_TYPE_EPISODE
+    assert ep.episode_number == 4
     assert ep.title == "AniDB Preferred Title"
     assert ep.duration_seconds == 1450
     assert ep.is_filler is True
     assert ep.is_recap is False
     assert ep.aired_at.seconds > 0
     assert list(ep.sources) == []
+    assert list(resp.page_sources) == []
 
 
 def test_merge_episode_with_mal_and_kitsu_pages_and_corrections() -> None:
@@ -109,6 +113,7 @@ def test_merge_episode_with_mal_and_kitsu_pages_and_corrections() -> None:
     req = MergeEpisodeRequest(
         episode_id="0195b42a-0000-7000-8000-000000000102",
         anime_id="0195b42a-0000-7000-8000-000000000001",
+        episode_number=1,
         pages=[
             StoredPage(
                 page_key=PageKey(
@@ -182,6 +187,24 @@ def test_merge_episode_with_mal_and_kitsu_pages_and_corrections() -> None:
         "https://kitsu.app/episodes/501",
         "https://myanimelist.net/anime/21/episode/1",
     ]
+    assert list(resp.page_sources) == [
+        PageSource(
+            page_key=PageKey(
+                provider="mal",
+                entity_type=anime_pb2.ENTITY_TYPE_EPISODE,
+                address="21:1",
+            ),
+            source="https://myanimelist.net/anime/21/episode/1",
+        ),
+        PageSource(
+            page_key=PageKey(
+                provider="kitsu",
+                entity_type=anime_pb2.ENTITY_TYPE_EPISODE,
+                address="501",
+            ),
+            source="https://kitsu.app/episodes/501",
+        ),
+    ]
 
 
 def test_merge_episode_score_titles_streaming_and_unknown_provider() -> None:
@@ -191,6 +214,7 @@ def test_merge_episode_score_titles_streaming_and_unknown_provider() -> None:
     req = MergeEpisodeRequest(
         episode_id="ep-3",
         anime_id="anime-3",
+        episode_number=3,
         pages=[
             StoredPage(
                 page_key=PageKey(
@@ -214,7 +238,7 @@ def test_merge_episode_score_titles_streaming_and_unknown_provider() -> None:
     with patch(
         "enrichment.pipeline.episode_merge._map_stored_episode_page",
         return_value={
-            "episode_number": 3,
+            "episode_number": 30,
             "score": 9.1,
             "titles": {"de": "Folge 3"},
             "streaming": {"crunchyroll": "https://crunchyroll.com/ep3"},
@@ -228,6 +252,7 @@ def test_merge_episode_score_titles_streaming_and_unknown_provider() -> None:
     assert ep.titles["de"] == "Folge 3"
     assert ep.streaming["crunchyroll"] == "https://crunchyroll.com/ep3"
     assert ep.is_recap is True
+    assert list(resp.page_sources) == []
 
 
 def test_merge_episode_mal_numeric_address_and_og_url() -> None:
@@ -243,6 +268,7 @@ def test_merge_episode_mal_numeric_address_and_og_url() -> None:
     req = MergeEpisodeRequest(
         episode_id="ep-7",
         anime_id="anime-21",
+        episode_number=7,
         pages=[
             StoredPage(
                 page_key=PageKey(
@@ -265,6 +291,7 @@ def test_merge_episode_mal_numeric_address_and_og_url() -> None:
     assert (
         "https://myanimelist.net/anime/21/One_Piece/episode/7" in resp.episode.sources
     )
+    assert list(resp.page_sources) == []
 
 
 def test_mal_and_kitsu_episode_response_mapper_errors() -> None:

@@ -50,6 +50,7 @@ fn build_episode_save(
         hash_format: EPISODE_HASH_FORMAT,
         merge_version: 1,
         traceparent: None,
+        page_sources: Vec::new(),
     }
 }
 
@@ -131,7 +132,7 @@ async fn save_episode_score_rounding_to_one_thousand_returns_invalid_argument(po
 async fn load_episode_never_fetched_page_returns_no_pages(pool: PgPool) {
     let mut episode_reference = build_episode_reference(Uuid::now_v7(), 1);
     episode_reference.page_keys =
-        vec![PageKey::new(Provider::Mal, EntityType::Episode, "1").expect("valid page key")];
+        vec![PageKey::new(Provider::Mal, EntityType::Episode, "21:1").expect("valid page key")];
     let episode_id = create_listed_episode(&pool, episode_reference)
         .await
         .expect("work save creates the episode");
@@ -151,7 +152,7 @@ async fn load_episode_never_fetched_page_returns_no_pages(pool: PgPool) {
 async fn save_anime_episode_pages_from_two_providers_links_both(pool: PgPool) {
     let mut episode_reference = build_episode_reference(Uuid::now_v7(), 1);
     episode_reference.page_keys = vec![
-        PageKey::new(Provider::Mal, EntityType::Episode, "1").expect("valid page key"),
+        PageKey::new(Provider::Mal, EntityType::Episode, "21:1").expect("valid page key"),
         PageKey::new(Provider::AniDb, EntityType::Episode, "1").expect("valid page key"),
     ];
 

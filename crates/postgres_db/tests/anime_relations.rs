@@ -81,7 +81,7 @@ async fn link_anime_source_page_invalid_link_returns_error(pool: PgPool) {
     let other_anime_id = insert_unmerged_anime(&pool).await;
     let anime_page = PageKey::new(Provider::Mal, EntityType::Anime, "21").expect("valid page key");
     let episode_page =
-        PageKey::new(Provider::Mal, EntityType::Episode, "21").expect("valid page key");
+        PageKey::new(Provider::Mal, EntityType::Episode, "21:21").expect("valid page key");
     link_anime_source_page(&pool, owning_anime_id, &anime_page)
         .await
         .expect("first link succeeds");

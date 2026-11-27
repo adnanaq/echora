@@ -1,17 +1,23 @@
 //! Integration tests for provider page observations against PostgreSQL.
 
+#![allow(
+    clippy::expect_used,
+    reason = "a failed setup step stops the test, as a test's own expect does"
+)]
+
 mod support;
 
 use chrono::{Duration, Utc};
 use postgres_db::{
     EntityType, FetchOutcome, PageKey, PageObservation, PageResponse, Provider,
-    record_page_observation,
+    record_page_observation, save_anime,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::support::{
-    CapturedLogs, insert_unmerged_anime, insert_unmerged_character, link_character_page,
+    CapturedLogs, build_anime_save, build_mal_page_source, insert_unmerged_anime,
+    insert_unmerged_character, link_character_page, link_mal_anime_pages,
 };
 
 fn build_success(body: &[u8]) -> FetchOutcome {
@@ -84,7 +90,8 @@ async fn record_page_observation_not_found_keeps_responses_and_page_alive(pool: 
 async fn record_page_observation_changed_episode_page_queues_episode_merge(pool: PgPool) {
     let anime_id = Uuid::now_v7();
     let episode_id = Uuid::now_v7();
-    let page_key = PageKey::new(Provider::Mal, EntityType::Episode, "7").expect("valid page key");
+    let page_key =
+        PageKey::new(Provider::Mal, EntityType::Episode, "21:7").expect("valid page key");
     sqlx::query("INSERT INTO anime (id) VALUES ($1)")
         .bind(anime_id)
         .execute(&pool)
@@ -97,14 +104,14 @@ async fn record_page_observation_changed_episode_page_queues_episode_merge(pool:
         .await
         .expect("insert placeholder episode");
     sqlx::query(
-        "INSERT INTO provider_page (provider, entity_type, address) VALUES ('mal', 'episode', '7')",
+        "INSERT INTO provider_page (provider, entity_type, address) VALUES ('mal', 'episode', '21:7')",
     )
     .execute(&pool)
     .await
     .expect("insert placeholder page");
     sqlx::query(
         "INSERT INTO episode_source (episode_id, provider, entity_type, address)
-         VALUES ($1, 'mal', 'episode', '7')",
+         VALUES ($1, 'mal', 'episode', '21:7')",
     )
     .bind(episode_id)
     .execute(&pool)
@@ -321,4 +328,147 @@ async fn record_page_observation_changed_or_first_fetched_character_page_request
     .await
     .expect("read the characters");
     assert_eq!(character_states, vec![(2, true), (1, false), (2, true)]);
+}
+
+async fn read_page_source(pool: &PgPool, address: &str) -> Option<String> {
+    sqlx::query_scalar(
+        "SELECT source FROM provider_page
+         WHERE provider = 'mal' AND entity_type = 'anime' AND address = $1",
+    )
+    .bind(address)
+    .fetch_one(pool)
+    .await
+    .expect("read page source")
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn save_anime_page_sources_refuse_blank_duplicate_and_other_entity_pages(pool: PgPool) {
+    let anime_id = insert_unmerged_anime(&pool).await;
+    link_mal_anime_pages(&pool, anime_id, &["1"]).await;
+    let refused_page_sources = [
+        vec![build_mal_page_source(EntityType::Anime, "1", "  ")],
+        vec![
+            build_mal_page_source(EntityType::Anime, "1", "https://myanimelist.net/anime/1"),
+            build_mal_page_source(
+                EntityType::Anime,
+                "1",
+                "https://myanimelist.net/anime/1/Slug",
+            ),
+        ],
+        vec![build_mal_page_source(
+            EntityType::Episode,
+            "1:1",
+            "https://myanimelist.net/anime/1/episode/1",
+        )],
+    ];
+    for page_sources in refused_page_sources {
+        let mut save_input = build_anime_save(anime_id, 1, "v1", Vec::new());
+        save_input.page_sources = page_sources;
+        let error = save_anime(&pool, &save_input)
+            .await
+            .expect_err("invalid page sources must be refused");
+        assert!(error.is_invalid_argument(), "{error}");
+    }
+    assert_eq!(read_page_source(&pool, "1").await, None);
+    let anime_version: i64 = sqlx::query_scalar("SELECT version FROM anime WHERE id = $1")
+        .bind(anime_id)
+        .fetch_one(&pool)
+        .await
+        .expect("read version");
+    assert_eq!(anime_version, 1);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn save_anime_page_sources_write_owned_pages_on_unchanged_hash(pool: PgPool) {
+    let anime_id = insert_unmerged_anime(&pool).await;
+    let other_anime_id = insert_unmerged_anime(&pool).await;
+    link_mal_anime_pages(&pool, anime_id, &["1"]).await;
+    link_mal_anime_pages(&pool, other_anime_id, &["2"]).await;
+
+    let first_save = build_anime_save(anime_id, 1, "same-hash", Vec::new());
+    let first_outcome = save_anime(&pool, &first_save).await.expect("first save");
+    assert_eq!(read_page_source(&pool, "1").await, None);
+
+    let mut repeated_save =
+        build_anime_save(anime_id, first_outcome.version, "same-hash", Vec::new());
+    repeated_save.page_sources = vec![
+        build_mal_page_source(
+            EntityType::Anime,
+            "1",
+            "https://myanimelist.net/anime/1/Slug",
+        ),
+        build_mal_page_source(EntityType::Anime, "2", "https://example.org/not-owned"),
+        build_mal_page_source(EntityType::Anime, "3", "https://example.org/no-page"),
+    ];
+    let repeated_outcome = save_anime(&pool, &repeated_save)
+        .await
+        .expect("repeated save");
+    assert!(!repeated_outcome.has_changed);
+    assert_eq!(repeated_outcome.version, first_outcome.version);
+    assert_eq!(
+        read_page_source(&pool, "1").await.as_deref(),
+        Some("https://myanimelist.net/anime/1/Slug")
+    );
+    assert_eq!(read_page_source(&pool, "2").await, None);
+
+    let mut renamed_save =
+        build_anime_save(anime_id, repeated_outcome.version, "same-hash", Vec::new());
+    renamed_save.page_sources = vec![build_mal_page_source(
+        EntityType::Anime,
+        "1",
+        "https://myanimelist.net/anime/1/New_Slug",
+    )];
+    save_anime(&pool, &renamed_save)
+        .await
+        .expect("renamed save");
+    assert_eq!(
+        read_page_source(&pool, "1").await.as_deref(),
+        Some("https://myanimelist.net/anime/1/New_Slug")
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn provider_and_entity_type_decode_from_text_and_refuse_unknown_values(pool: PgPool) {
+    let (provider, entity_type): (Provider, EntityType) =
+        sqlx::query_as("SELECT 'anime_planet'::text, 'character'::text")
+            .fetch_one(&pool)
+            .await
+            .expect("decode known values");
+    assert_eq!(
+        (provider, entity_type),
+        (Provider::AnimePlanet, EntityType::Character)
+    );
+
+    let unknown_provider = sqlx::query_scalar::<_, Provider>("SELECT 'myanimelist'::text")
+        .fetch_one(&pool)
+        .await
+        .expect_err("unknown provider slug");
+    assert!(
+        matches!(unknown_provider, sqlx::Error::ColumnDecode { .. }),
+        "{unknown_provider}"
+    );
+    let unknown_entity_type = sqlx::query_scalar::<_, EntityType>("SELECT 'manga'::text")
+        .fetch_one(&pool)
+        .await
+        .expect_err("unknown entity type");
+    assert!(
+        matches!(unknown_entity_type, sqlx::Error::ColumnDecode { .. }),
+        "{unknown_entity_type}"
+    );
+    let mismatched_column = sqlx::query_scalar::<_, Provider>("SELECT 1::int4")
+        .fetch_one(&pool)
+        .await
+        .expect_err("integer column");
+    assert!(
+        matches!(mismatched_column, sqlx::Error::ColumnDecode { .. }),
+        "{mismatched_column}"
+    );
+    let mismatched_entity_column = sqlx::query_scalar::<_, EntityType>("SELECT 1::int4")
+        .fetch_one(&pool)
+        .await
+        .expect_err("integer column");
+    assert!(
+        matches!(mismatched_entity_column, sqlx::Error::ColumnDecode { .. }),
+        "{mismatched_entity_column}"
+    );
 }

@@ -40,6 +40,7 @@ fn build_character_save(
         hash_format: CHARACTER_HASH_FORMAT,
         merge_version: 1,
         traceparent: None,
+        page_sources: Vec::new(),
     }
 }
 

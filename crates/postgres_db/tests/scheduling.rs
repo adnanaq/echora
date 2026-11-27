@@ -21,7 +21,7 @@ use crate::support::{
     build_anime_save, insert_unmerged_anime, insert_unmerged_character, link_character_page,
 };
 
-#[allow(
+#[expect(
     clippy::too_many_arguments,
     reason = "test fixture inserts all provider_page columns"
 )]
@@ -144,8 +144,8 @@ async fn list_entity_pages_and_record_refresh_cover_all_entities_and_outcomes(po
         .execute(&pool)
         .await
         .expect("insert episode");
-    insert_page(&pool, "mal", "episode", "101", None, false, None, 0).await;
-    sqlx::query("INSERT INTO episode_source (episode_id, provider, entity_type, address) VALUES ($1, 'mal', 'episode', '101')")
+    insert_page(&pool, "mal", "episode", "21:101", None, false, None, 0).await;
+    sqlx::query("INSERT INTO episode_source (episode_id, provider, entity_type, address) VALUES ($1, 'mal', 'episode', '21:101')")
         .bind(episode_id)
         .execute(&pool)
         .await
@@ -394,6 +394,11 @@ async fn list_due_entities_covers_paging_age_status_and_merge_version(pool: PgPo
         .execute(&pool)
         .await
         .expect("link animeography");
+    sqlx::query("UPDATE character SET merge_version = 2 WHERE id = ANY($1)")
+        .bind(vec![char_ongoing, char_finished_only])
+        .execute(&pool)
+        .await
+        .expect("set current character merge version");
     let due_chars = list_due_characters(
         &pool,
         &DueEntitiesQuery {
@@ -409,6 +414,32 @@ async fn list_due_entities_covers_paging_age_status_and_merge_version(pool: PgPo
     .expect("list_due_characters");
     assert_eq!(due_chars.len(), 1);
     assert_eq!(due_chars[0].entity_id, char_ongoing);
+    sqlx::query("UPDATE character SET merge_version = 1 WHERE id = $1")
+        .bind(char_finished_only)
+        .execute(&pool)
+        .await
+        .expect("set older character merge version");
+    let due_with_older_merge = list_due_characters(
+        &pool,
+        &DueEntitiesQuery {
+            due_before: now,
+            older_after_years: 30,
+            page_size: 10,
+            after_next_refresh_at: None,
+            after_id: None,
+            merge_version: 2,
+        },
+    )
+    .await
+    .expect("list_due_characters with older merge version");
+    let mut due_character_ids: Vec<Uuid> = due_with_older_merge
+        .iter()
+        .map(|due_character| due_character.entity_id)
+        .collect();
+    due_character_ids.sort();
+    let mut expected_character_ids = vec![char_ongoing, char_finished_only];
+    expected_character_ids.sort();
+    assert_eq!(due_character_ids, expected_character_ids);
 
     // Invalid parameters
     assert!(
@@ -476,8 +507,8 @@ async fn list_upcoming_score_requested_versions_and_due_pages_cover_all_rules(po
     let ep1 = Uuid::now_v7();
     let ep_notified = Uuid::now_v7();
     sqlx::query(
-        "INSERT INTO episode (id, anime_id, episode_number, aired_at, aired_notified_at)
-         VALUES ($1, $2, 1, $3, NULL), ($4, $2, 3, $3, $3)",
+        "INSERT INTO episode (id, anime_id, episode_number, aired_at, aired_notified_at, merged_at)
+         VALUES ($1, $2, 1, $3, NULL, $3), ($4, $2, 3, $3, $3, $3)",
     )
     .bind(ep1)
     .bind(ongoing_id)
@@ -524,7 +555,7 @@ async fn list_upcoming_score_requested_versions_and_due_pages_cover_all_rules(po
             .await
             .expect("list episode versions")
             .len(),
-        0
+        2
     );
     assert_eq!(
         list_entity_versions(&pool, EntityType::Character, 10, None)
@@ -624,4 +655,472 @@ async fn list_upcoming_score_requested_versions_and_due_pages_cover_all_rules(po
     .await
     .expect("save anime");
     assert!(saved.has_changed);
+}
+
+async fn merge_test_anime(pool: &PgPool, anime_id: Uuid, status: &str) {
+    sqlx::query(
+        "UPDATE anime SET title = 'Work', type = 'TV', status = $2, merged_at = now()
+         WHERE id = $1",
+    )
+    .bind(anime_id)
+    .bind(status)
+    .execute(pool)
+    .await
+    .expect("merge work");
+}
+
+async fn insert_test_episode(
+    pool: &PgPool,
+    anime_id: Uuid,
+    episode_number: i32,
+    aired_at: Option<chrono::DateTime<Utc>>,
+    is_merged: bool,
+) -> Uuid {
+    let episode_id = Uuid::now_v7();
+    sqlx::query(
+        "INSERT INTO episode (id, anime_id, episode_number, aired_at, merged_at)
+         VALUES ($1, $2, $3, $4, CASE WHEN $5 THEN now() END)",
+    )
+    .bind(episode_id)
+    .bind(anime_id)
+    .bind(episode_number)
+    .bind(aired_at)
+    .bind(is_merged)
+    .execute(pool)
+    .await
+    .expect("insert episode");
+    episode_id
+}
+
+async fn insert_test_broadcast(
+    pool: &PgPool,
+    anime_id: Uuid,
+    next_episode_number: i32,
+    next_episode_at: chrono::DateTime<Utc>,
+) {
+    sqlx::query(
+        "INSERT INTO anime_broadcast (anime_id, next_episode_at, next_episode_number)
+         VALUES ($1, $2, $3)",
+    )
+    .bind(anime_id)
+    .bind(next_episode_at)
+    .bind(next_episode_number)
+    .execute(pool)
+    .await
+    .expect("insert broadcast");
+}
+
+async fn read_anime_refresh_state(pool: &PgPool, anime_id: Uuid) -> (chrono::DateTime<Utc>, i32) {
+    sqlx::query_as("SELECT next_refresh_at, refresh_failures FROM anime WHERE id = $1")
+        .bind(anime_id)
+        .fetch_one(pool)
+        .await
+        .expect("read refresh state")
+}
+
+async fn read_transaction_now(pool: &PgPool) -> chrono::DateTime<Utc> {
+    sqlx::query_scalar("SELECT now()")
+        .fetch_one(pool)
+        .await
+        .expect("read now")
+}
+
+fn assert_close(actual: chrono::DateTime<Utc>, expected: chrono::DateTime<Utc>) {
+    assert!(
+        (actual - expected).num_seconds().abs() <= 5,
+        "{actual} is not within five seconds of {expected}"
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn record_refresh_pages_failed_without_failed_page_uses_refresh_interval(pool: PgPool) {
+    let anime_id = insert_unmerged_anime(&pool).await;
+    let now = read_transaction_now(&pool).await;
+    insert_page(&pool, "mal", "anime", "1", Some(now), false, None, 0).await;
+    insert_page(&pool, "kitsu", "anime", "2", None, false, Some(now), 1).await;
+    insert_page(&pool, "anilist", "anime", "3", None, true, Some(now), 1).await;
+    sqlx::query(
+        "INSERT INTO anime_source (anime_id, provider, entity_type, address)
+         VALUES ($1, 'mal', 'anime', '1'), ($1, 'anilist', 'anime', '3')",
+    )
+    .bind(anime_id)
+    .execute(&pool)
+    .await
+    .expect("link sources");
+    sqlx::query(
+        "INSERT INTO anime_partial_source (anime_id, provider, entity_type, address)
+         VALUES ($1, 'kitsu', 'anime', '2')",
+    )
+    .bind(anime_id)
+    .execute(&pool)
+    .await
+    .expect("link partial source");
+
+    record_refresh(
+        &pool,
+        EntityType::Anime,
+        anime_id,
+        RefreshOutcome::PagesFailed,
+        Duration::days(7),
+    )
+    .await
+    .expect("record pages failed");
+    let (next_refresh_at, refresh_failures) = read_anime_refresh_state(&pool, anime_id).await;
+    assert_close(next_refresh_at, now + Duration::days(7));
+    assert_eq!(refresh_failures, 0);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn record_refresh_pages_failed_takes_earliest_retry_capped_at_week(pool: PgPool) {
+    let anime_id = insert_unmerged_anime(&pool).await;
+    let now = read_transaction_now(&pool).await;
+    let long_failed_at = now - Duration::days(1);
+    let recent_failed_at = now - Duration::hours(1);
+    insert_page(
+        &pool,
+        "mal",
+        "anime",
+        "1",
+        None,
+        false,
+        Some(long_failed_at),
+        30,
+    )
+    .await;
+    insert_page(
+        &pool,
+        "kitsu",
+        "anime",
+        "2",
+        None,
+        false,
+        Some(recent_failed_at),
+        2,
+    )
+    .await;
+    sqlx::query(
+        "INSERT INTO anime_source (anime_id, provider, entity_type, address)
+         VALUES ($1, 'mal', 'anime', '1'), ($1, 'kitsu', 'anime', '2')",
+    )
+    .bind(anime_id)
+    .execute(&pool)
+    .await
+    .expect("link sources");
+
+    record_refresh(
+        &pool,
+        EntityType::Anime,
+        anime_id,
+        RefreshOutcome::PagesFailed,
+        Duration::days(7),
+    )
+    .await
+    .expect("record pages failed");
+    let (next_refresh_at, _) = read_anime_refresh_state(&pool, anime_id).await;
+    assert_close(next_refresh_at, recent_failed_at + Duration::hours(4));
+
+    sqlx::query("DELETE FROM anime_source WHERE address = '2'")
+        .execute(&pool)
+        .await
+        .expect("unlink recent page");
+    record_refresh(
+        &pool,
+        EntityType::Anime,
+        anime_id,
+        RefreshOutcome::PagesFailed,
+        Duration::days(7),
+    )
+    .await
+    .expect("record pages failed");
+    let (capped_refresh_at, _) = read_anime_refresh_state(&pool, anime_id).await;
+    assert_close(capped_refresh_at, long_failed_at + Duration::hours(168));
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn record_refresh_failed_doubles_backoff_up_to_week_and_success_resets(pool: PgPool) {
+    let anime_id = insert_unmerged_anime(&pool).await;
+    let mut expected_backoff_hours = Vec::new();
+    let mut recorded_backoff_hours = Vec::new();
+    for refresh_failures in 1..=9 {
+        record_refresh(
+            &pool,
+            EntityType::Anime,
+            anime_id,
+            RefreshOutcome::Failed,
+            Duration::days(7),
+        )
+        .await
+        .expect("record failed");
+        let now = read_transaction_now(&pool).await;
+        let (next_refresh_at, stored_failures) = read_anime_refresh_state(&pool, anime_id).await;
+        assert_eq!(stored_failures, refresh_failures);
+        expected_backoff_hours.push((1_i64 << refresh_failures).min(168));
+        recorded_backoff_hours.push((next_refresh_at - now + Duration::minutes(1)).num_hours());
+    }
+    assert_eq!(recorded_backoff_hours, expected_backoff_hours);
+
+    sqlx::query("UPDATE anime SET refresh_failures = 2147483646 WHERE id = $1")
+        .bind(anime_id)
+        .execute(&pool)
+        .await
+        .expect("set huge failure count");
+    record_refresh(
+        &pool,
+        EntityType::Anime,
+        anime_id,
+        RefreshOutcome::Failed,
+        Duration::days(7),
+    )
+    .await
+    .expect("record failed at huge count");
+    let now = read_transaction_now(&pool).await;
+    let (capped_refresh_at, _) = read_anime_refresh_state(&pool, anime_id).await;
+    assert_close(capped_refresh_at, now + Duration::hours(168));
+
+    record_refresh(
+        &pool,
+        EntityType::Anime,
+        anime_id,
+        RefreshOutcome::Succeeded,
+        Duration::days(3),
+    )
+    .await
+    .expect("record succeeded");
+    let now = read_transaction_now(&pool).await;
+    let (next_refresh_at, refresh_failures) = read_anime_refresh_state(&pool, anime_id).await;
+    assert_close(next_refresh_at, now + Duration::days(3));
+    assert_eq!(refresh_failures, 0);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn record_refresh_interval_postgresql_cannot_hold_returns_invalid_argument(pool: PgPool) {
+    let anime_id = insert_unmerged_anime(&pool).await;
+    for refresh_after in [Duration::nanoseconds(1), Duration::MAX] {
+        let error = record_refresh(
+            &pool,
+            EntityType::Anime,
+            anime_id,
+            RefreshOutcome::Succeeded,
+            refresh_after,
+        )
+        .await
+        .expect_err("unrepresentable interval");
+        assert!(error.is_invalid_argument(), "{error}");
+    }
+    record_refresh(
+        &pool,
+        EntityType::Anime,
+        anime_id,
+        RefreshOutcome::Succeeded,
+        Duration::zero(),
+    )
+    .await
+    .expect("zero interval is due now");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn list_upcoming_episodes_broadcast_branch_follows_merged_air_dates(pool: PgPool) {
+    let now = read_transaction_now(&pool).await;
+    let in_two_days = now + Duration::days(2);
+    let pending_work = insert_unmerged_anime(&pool).await;
+    let dated_work = insert_unmerged_anime(&pool).await;
+    let deleted_episode_work = insert_unmerged_anime(&pool).await;
+    let unmerged_work = insert_unmerged_anime(&pool).await;
+    let finished_work = insert_unmerged_anime(&pool).await;
+    let late_work = insert_unmerged_anime(&pool).await;
+    for (anime_id, status) in [
+        (pending_work, "ONGOING"),
+        (dated_work, "UPCOMING"),
+        (deleted_episode_work, "ONGOING"),
+        (finished_work, "FINISHED"),
+        (late_work, "ONGOING"),
+    ] {
+        merge_test_anime(&pool, anime_id, status).await;
+    }
+    sqlx::query("UPDATE anime SET status = 'ONGOING' WHERE id = $1")
+        .bind(unmerged_work)
+        .execute(&pool)
+        .await
+        .expect("set unmerged status");
+
+    let pending_episode = insert_test_episode(&pool, pending_work, 5, None, false).await;
+    let dated_episode =
+        insert_test_episode(&pool, dated_work, 2, Some(now + Duration::days(1)), true).await;
+    let deleted_episode = insert_test_episode(&pool, deleted_episode_work, 7, None, true).await;
+    sqlx::query("UPDATE episode SET deleted_at = now() WHERE id = $1")
+        .bind(deleted_episode)
+        .execute(&pool)
+        .await
+        .expect("delete episode");
+    insert_test_episode(&pool, unmerged_work, 1, Some(now + Duration::days(1)), true).await;
+    insert_test_episode(&pool, finished_work, 1, Some(now + Duration::days(1)), true).await;
+    insert_test_episode(&pool, late_work, 1, Some(now + Duration::days(30)), true).await;
+    insert_test_episode(&pool, late_work, 2, Some(now - Duration::hours(30)), true).await;
+
+    insert_test_broadcast(&pool, pending_work, 5, in_two_days).await;
+    insert_test_broadcast(&pool, dated_work, 2, in_two_days).await;
+    insert_test_broadcast(&pool, deleted_episode_work, 7, in_two_days).await;
+    insert_test_broadcast(&pool, unmerged_work, 2, in_two_days).await;
+    insert_test_broadcast(&pool, finished_work, 2, in_two_days).await;
+    insert_test_broadcast(&pool, late_work, 3, now + Duration::days(9)).await;
+
+    let upcoming: Vec<(Uuid, Option<Uuid>, i32)> = list_upcoming_episodes(&pool, 7)
+        .await
+        .expect("list upcoming episodes")
+        .into_iter()
+        .map(|upcoming_episode| {
+            (
+                upcoming_episode.anime_id,
+                upcoming_episode.episode_id,
+                upcoming_episode.episode_number,
+            )
+        })
+        .collect();
+    let mut expected_two_day_rows = vec![
+        (pending_work, Some(pending_episode), 5),
+        (deleted_episode_work, None, 7),
+    ];
+    expected_two_day_rows.sort();
+    let mut expected = vec![(dated_work, Some(dated_episode), 2)];
+    expected.extend(expected_two_day_rows);
+    assert_eq!(upcoming, expected);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn list_due_episodes_older_merge_version_returns_episode_of_finished_work(pool: PgPool) {
+    let finished_work = insert_unmerged_anime(&pool).await;
+    merge_test_anime(&pool, finished_work, "FINISHED").await;
+    sqlx::query("UPDATE anime SET year = 1990 WHERE id = $1")
+        .bind(finished_work)
+        .execute(&pool)
+        .await
+        .expect("set old year");
+    let current_episode = insert_test_episode(&pool, finished_work, 1, None, true).await;
+    let stale_episode = insert_test_episode(&pool, finished_work, 2, None, true).await;
+    sqlx::query(
+        "UPDATE episode SET merge_version = CASE WHEN id = $1 THEN 1 ELSE 2 END,
+                            next_refresh_at = now() + interval '30 days'
+         WHERE anime_id = $2",
+    )
+    .bind(stale_episode)
+    .bind(finished_work)
+    .execute(&pool)
+    .await
+    .expect("set merge versions");
+
+    let due_episodes = list_due_episodes(
+        &pool,
+        &DueEntitiesQuery {
+            due_before: Utc::now(),
+            older_after_years: 10,
+            page_size: 10,
+            after_next_refresh_at: None,
+            after_id: None,
+            merge_version: 2,
+        },
+    )
+    .await
+    .expect("list due episodes");
+    let due_episode_ids: Vec<Uuid> = due_episodes
+        .iter()
+        .map(|due_episode| due_episode.entity_id)
+        .collect();
+    assert_eq!(due_episode_ids, vec![stale_episode]);
+    assert!(!due_episode_ids.contains(&current_episode));
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn list_score_anime_skips_unmerged_and_undated_works_and_pages_by_id(pool: PgPool) {
+    let now = read_transaction_now(&pool).await;
+    let mut visible_ids = Vec::new();
+    for _ in 0..3 {
+        let anime_id = insert_unmerged_anime(&pool).await;
+        merge_test_anime(&pool, anime_id, "ONGOING").await;
+        visible_ids.push(anime_id);
+    }
+    let unmerged_id = insert_unmerged_anime(&pool).await;
+    sqlx::query("UPDATE anime SET status = 'ONGOING' WHERE id = $1")
+        .bind(unmerged_id)
+        .execute(&pool)
+        .await
+        .expect("set unmerged status");
+    let undated_id = insert_unmerged_anime(&pool).await;
+    merge_test_anime(&pool, undated_id, "FINISHED").await;
+    let deleted_id = insert_unmerged_anime(&pool).await;
+    merge_test_anime(&pool, deleted_id, "ONGOING").await;
+    sqlx::query("UPDATE anime SET deleted_at = $2 WHERE id = $1")
+        .bind(deleted_id)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .expect("delete work");
+    visible_ids.sort();
+
+    let first_page = list_score_anime(&pool, 90, 2, None)
+        .await
+        .expect("first page");
+    let second_page = list_score_anime(&pool, 90, 2, first_page.last().copied())
+        .await
+        .expect("second page");
+    assert_eq!(first_page, visible_ids[..2]);
+    assert_eq!(second_page, visible_ids[2..]);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn record_refresh_every_outcome_updates_each_entity_type(pool: PgPool) {
+    let anime_id = insert_unmerged_anime(&pool).await;
+    let episode_id = insert_test_episode(&pool, anime_id, 1, None, false).await;
+    let character_id = insert_unmerged_character(&pool, "Spike").await;
+    for (entity_type, entity_id, table) in [
+        (EntityType::Anime, anime_id, "anime"),
+        (EntityType::Episode, episode_id, "episode"),
+        (EntityType::Character, character_id, "character"),
+    ] {
+        let mut recorded_states = Vec::new();
+        for outcome in [
+            RefreshOutcome::Failed,
+            RefreshOutcome::PagesFailed,
+            RefreshOutcome::Failed,
+            RefreshOutcome::Succeeded,
+        ] {
+            record_refresh(&pool, entity_type, entity_id, outcome, Duration::days(7))
+                .await
+                .expect("record refresh");
+            let refresh_state: (i32, bool, bool) = sqlx::query_as(&format!(
+                "SELECT refresh_failures, refreshed_at IS NOT NULL, refresh_failed_at IS NOT NULL
+                 FROM {table} WHERE id = $1"
+            ))
+            .bind(entity_id)
+            .fetch_one(&pool)
+            .await
+            .expect("read refresh state");
+            recorded_states.push(refresh_state);
+        }
+        assert_eq!(
+            recorded_states,
+            vec![
+                (1, false, true),
+                (0, true, true),
+                (1, true, true),
+                (0, true, true)
+            ],
+            "{table}"
+        );
+        for outcome in [
+            RefreshOutcome::Succeeded,
+            RefreshOutcome::PagesFailed,
+            RefreshOutcome::Failed,
+        ] {
+            let error = record_refresh(
+                &pool,
+                entity_type,
+                Uuid::now_v7(),
+                outcome,
+                Duration::days(7),
+            )
+            .await
+            .expect_err("missing entity");
+            assert!(error.is_not_found(), "{table}: {error}");
+        }
+    }
 }

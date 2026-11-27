@@ -91,6 +91,7 @@ async def test_merge_episode_with_postgres_store_page_end_to_end() -> None:
                 MergeEpisodeRequest(
                     episode_id=ep_id,
                     anime_id=anime_id,
+                    episode_number=1,
                     pages=[page],
                     list_entries=[
                         EpisodeListEntry(
@@ -314,6 +315,7 @@ async def test_five_episodes_per_provider_end_to_end() -> None:
                         MergeEpisodeRequest(
                             episode_id=ref.episode_id,
                             anime_id=anime_id,
+                            episode_number=ref.episode_number,
                             pages=pages,
                             list_entries=ref.list_entries,
                         )

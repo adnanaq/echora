@@ -101,6 +101,7 @@ async def test_merge_episode_end_to_end_over_grpc_transport() -> None:
                 MergeEpisodeRequest(
                     episode_id="ep-1",
                     anime_id="anime-1",
+                    episode_number=1,
                     pages=[
                         StoredPage(
                             page_key=PageKey(

@@ -18,7 +18,9 @@ async fn load_anime_returns_undeleted_known_episodes(pool: PgPool) {
         episode_id: Uuid::now_v7(),
         episode_number: 1,
         title: "Placeholder episode 1".to_owned(),
-        page_keys: vec![PageKey::new(Provider::Mal, EntityType::Episode, "1").expect("valid key")],
+        page_keys: vec![
+            PageKey::new(Provider::Mal, EntityType::Episode, "21:1").expect("valid key"),
+        ],
         list_entries: vec![EpisodeListEntryInput {
             provider: Provider::Mal,
             title: Some("Placeholder episode 1".to_owned()),

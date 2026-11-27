@@ -23,6 +23,7 @@ from shared_proto.v1.merge_pb2 import (
     GeneratedText,
     PageKey,
     PageResponse,
+    PageSource,
     StoredPage,
 )
 
@@ -32,6 +33,7 @@ def _anilist_page(
     *,
     synopsis: str = "Provider AniList synopsis.",
     relations: list[dict[str, object]] | None = None,
+    site_url: str | None = None,
 ) -> StoredPage:
     payload = {
         "data": {
@@ -48,7 +50,7 @@ def _anilist_page(
                 "episodes": 1100,
                 "genres": ["Action", "Adventure"],
                 "relations": {"edges": relations or []},
-                "siteUrl": f"https://anilist.co/anime/{address}",
+                "siteUrl": site_url or f"https://anilist.co/anime/{address}",
             }
         }
     }
@@ -149,6 +151,16 @@ def test_merge_uses_passed_id_and_page_link_sources() -> None:
     assert list(resp.anime.sources) == ["https://anilist.co/anime/21"]
     assert list(resp.anime.partial_sources) == ["https://anidb.net/anime/69"]
     assert resp.anime.synopsis == ""
+    assert list(resp.page_sources) == [
+        PageSource(
+            page_key=PageKey(
+                provider="anilist",
+                entity_type=anime_pb2.ENTITY_TYPE_ANIME,
+                address="21",
+            ),
+            source="https://anilist.co/anime/21",
+        ),
+    ]
 
 
 def test_synopsis_precedence_correction_then_latest_generated_text() -> None:
@@ -371,6 +383,13 @@ def test_dead_not_found_unknown_provider_and_non_anime_claims() -> None:
     resp = merge_anime_pages(req)
     assert resp.relation_claims == []
     assert "https://myanimelist.net/anime/21" in resp.anime.sources
+    page_sources_by_provider = {
+        page.page_key.provider: page.source for page in resp.page_sources
+    }
+    assert page_sources_by_provider == {
+        "anilist": "https://anilist.co/anime/21",
+        "mal": "https://myanimelist.net/anime/21",
+    }
 
 
 def test_anidb_and_anisearch_episode_extraction_and_page_key_matching() -> None:
@@ -489,8 +508,8 @@ def test_merge_helper_edge_cases_non_anime_claim_empty_source_and_missing_ep_num
     from unittest.mock import patch
 
     from enrichment.pipeline.anime_merge import (
+        _build_linked_page_sources,
         _extract_relation_claims,
-        _resolve_linked_urls,
     )
     from enrichment.pipeline.episode_reference_merger import _collect_provider_episodes
 
@@ -505,14 +524,13 @@ def test_merge_helper_edge_cases_non_anime_claim_empty_source_and_missing_ep_num
     )
     assert claims == []
 
-    sources, partial_sources, page_urls = _resolve_linked_urls(
+    source_page_sources, partial_page_sources = _build_linked_page_sources(
         [],
         [],
         {"anilist": {"sources": ["", "https://anilist.co/anime/21"]}},
     )
-    assert sources == []
-    assert partial_sources == []
-    assert page_urls == {}
+    assert source_page_sources == []
+    assert partial_page_sources == []
 
     with patch(
         "enrichment.pipeline.episode_reference_merger._extract_provider_episodes",
@@ -521,3 +539,53 @@ def test_merge_helper_edge_cases_non_anime_claim_empty_source_and_missing_ep_num
         entries, keys = _collect_provider_episodes([_kitsu_page()], {})
     assert entries == {}
     assert keys == {}
+
+
+def test_build_linked_page_sources_choose_reported_or_canonical_url_per_linked_page() -> (
+    None
+):
+    from enrichment.pipeline.anime_merge import _build_linked_page_sources
+
+    def build_anime_page_key(provider: str, address: str) -> PageKey:
+        return PageKey(
+            provider=provider,
+            entity_type=anime_pb2.ENTITY_TYPE_ANIME,
+            address=address,
+        )
+
+    records = {
+        "mal": {
+            "sources": [
+                "https://myanimelist.net/anime/21",
+                "https://myanimelist.net/anime/21/One_Piece",
+                "https://myanimelist.net/anime/999/Unlinked_Work",
+            ]
+        },
+        "kitsu": {"sources": ["https://kitsu.app/anime/one-piece-film/extra"]},
+    }
+    source_page_sources, partial_page_sources = _build_linked_page_sources(
+        [
+            StoredPage(page_key=build_anime_page_key("mal", "21")),
+            StoredPage(page_key=build_anime_page_key("anilist", "21")),
+            StoredPage(page_key=build_anime_page_key("unknown_site", "1")),
+        ],
+        [build_anime_page_key("kitsu", "one-piece-film")],
+        records,
+    )
+
+    assert source_page_sources == [
+        PageSource(
+            page_key=build_anime_page_key("mal", "21"),
+            source="https://myanimelist.net/anime/21/One_Piece",
+        ),
+        PageSource(
+            page_key=build_anime_page_key("anilist", "21"),
+            source="https://anilist.co/anime/21",
+        ),
+    ]
+    assert partial_page_sources == [
+        PageSource(
+            page_key=build_anime_page_key("kitsu", "one-piece-film"),
+            source="https://kitsu.app/anime/one-piece-film/extra",
+        )
+    ]
