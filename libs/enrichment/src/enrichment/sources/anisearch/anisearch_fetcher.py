@@ -4,6 +4,7 @@ from datetime import timedelta
 from typing import ClassVar
 
 from enrichment.sources.anisearch.anisearch_http import fetch_anisearch_page
+from enrichment.sources.base.exceptions import ServiceNetworkError
 from enrichment.sources.base.page_fetcher import (
     FetchedPage,
     PageFetcher,
@@ -81,11 +82,13 @@ class AniSearchFetcher(PageFetcher):
         Returns:
             FetchedPage holding raw HTML responses or not-found status.
         """
-        main_page = await fetch_anisearch_page(
-            f"{_ANISEARCH_BASE}/anime/{page_key.address}"
-        )
-        if main_page is None or not main_page.html:
+        main_url = f"{_ANISEARCH_BASE}/anime/{page_key.address}"
+        main_page = await fetch_anisearch_page(main_url)
+        if main_page is None:
             return FetchedPage(page_key=page_key, responses=(), is_not_found=True)
+        if not main_page.html:
+            empty_message = f"no HTML from {main_url}"
+            raise ServiceNetworkError(service="anisearch", cause=empty_message)
 
         sub_responses = await self._fetch_sub_pages(
             main_page.url,
@@ -107,11 +110,13 @@ class AniSearchFetcher(PageFetcher):
         Returns:
             FetchedPage holding raw HTML responses or not-found status.
         """
-        main_page = await fetch_anisearch_page(
-            f"{_ANISEARCH_BASE}/character/{page_key.address}"
-        )
-        if main_page is None or not main_page.html:
+        main_url = f"{_ANISEARCH_BASE}/character/{page_key.address}"
+        main_page = await fetch_anisearch_page(main_url)
+        if main_page is None:
             return FetchedPage(page_key=page_key, responses=(), is_not_found=True)
+        if not main_page.html:
+            empty_message = f"no HTML from {main_url}"
+            raise ServiceNetworkError(service="anisearch", cause=empty_message)
 
         sub_responses = await self._fetch_sub_pages(
             main_page.url,

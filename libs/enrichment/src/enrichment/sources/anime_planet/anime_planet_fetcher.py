@@ -31,19 +31,19 @@ async def _fetch_ap_page(
     browser: Any,
     url: str,
     selector: str,
-    *,
-    required: bool = True,
-) -> tuple[str, str] | None:
+) -> tuple[str, str]:
     """Navigate to an Anime-Planet URL, clear Cloudflare if needed, and return HTML.
 
     Args:
         browser: Active zendriver browser instance.
         url: Target Anime-Planet URL.
         selector: CSS readiness selector to wait for.
-        required: When True, raise ServiceNetworkError on navigation failure.
 
     Returns:
-        Tuple of HTML string and final URL, or None when optional and unavailable.
+        Tuple of HTML string and final URL.
+
+    Raises:
+        ServiceNetworkError: If navigation fails or yields empty HTML.
     """
     try:
         page = await browser.get(url)
@@ -51,16 +51,36 @@ async def _fetch_ap_page(
         final_url = page.url or url
         html = await page.get_content()
     except Exception as exc:
-        if required:
-            cause_message = f"navigation failed for {url}: {exc}"
-            raise ServiceNetworkError(
-                service="anime_planet", cause=cause_message
-            ) from exc
+        cause_message = f"navigation failed for {url}: {exc}"
+        raise ServiceNetworkError(
+            service="anime_planet", cause=cause_message
+        ) from exc
+    if not html:
+        empty_message = f"no HTML from {url}"
+        raise ServiceNetworkError(service="anime_planet", cause=empty_message)
+    return html, final_url
+
+
+async def _fetch_optional_ap_page(
+    browser: Any,
+    url: str,
+    selector: str,
+) -> tuple[str, str] | None:
+    """Navigate to an optional Anime-Planet sub-page, returning None on failure.
+
+    Args:
+        browser: Active zendriver browser instance.
+        url: Target Anime-Planet URL.
+        selector: CSS readiness selector to wait for.
+
+    Returns:
+        Tuple of HTML string and final URL, or None when unavailable.
+    """
+    try:
+        return await _fetch_ap_page(browser, url, selector)
+    except ServiceNetworkError as exc:
         logger.warning(f"Optional Anime-Planet page failed for {url}: {exc}")
         return None
-    if not html:
-        return None
-    return html, final_url
 
 
 class AnimePlanetFetcher(PageFetcher):
@@ -103,21 +123,17 @@ class AnimePlanetFetcher(PageFetcher):
         """
         url = f"{_AP_BASE_URL}/anime/{page_key.address}"
         async with browser_session(headless=True) as session:
-            main_result = await _fetch_ap_page(
-                session.browser, url, _ANIME_SELECTOR, required=True
+            main_html, final_url = await _fetch_ap_page(
+                session.browser, url, _ANIME_SELECTOR
             )
-            if main_result is None:
-                return FetchedPage(page_key=page_key, responses=(), is_not_found=True)
-            main_html, final_url = main_result
             if urlsplit(final_url).path == _SEARCH_PAGE_PATH:
                 return FetchedPage(page_key=page_key, responses=(), is_not_found=True)
 
             responses = [build_html_response("main", main_html)]
-            chars_result = await _fetch_ap_page(
+            chars_result = await _fetch_optional_ap_page(
                 session.browser,
                 f"{final_url.rstrip('/')}/characters",
                 _CHAR_REFS_SELECTOR,
-                required=False,
             )
             if (
                 chars_result is not None
@@ -137,12 +153,9 @@ class AnimePlanetFetcher(PageFetcher):
         """
         url = f"{_AP_BASE_URL}/characters/{page_key.address}"
         async with browser_session(headless=True) as session:
-            result = await _fetch_ap_page(
-                session.browser, url, _CHARACTER_SELECTOR, required=True
+            html, final_url = await _fetch_ap_page(
+                session.browser, url, _CHARACTER_SELECTOR
             )
-        if result is None:
-            return FetchedPage(page_key=page_key, responses=(), is_not_found=True)
-        html, final_url = result
         if urlsplit(final_url).path == _SEARCH_PAGE_PATH:
             return FetchedPage(page_key=page_key, responses=(), is_not_found=True)
         return FetchedPage(

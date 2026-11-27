@@ -473,16 +473,18 @@ def map_anisearch_anime_episode_responses(
     episodes_response = by_name.get("episodes")
     if episodes_response is None:
         return []
-    extracted = _extract_episodes_from_html(parse_html_response(episodes_response))
+    episodes_html = parse_html_response(episodes_response)
+    extracted = _extract_episodes_from_html(episodes_html)
     if not extracted:
         return []
 
+    resolved_url = source_url or extract_canonical_url(episodes_html) or ""
     mapped: list[dict[str, Any]] = []
     for raw_row in extracted.get("episodes") or []:
         parsed = _parse_episode_row(raw_row)
         if parsed is not None:
             mapped.append(
-                episode_from_anisearch(AniSearchEpisode(**parsed, source=source_url))
+                episode_from_anisearch(AniSearchEpisode(**parsed, source=resolved_url))
             )
     return mapped
 

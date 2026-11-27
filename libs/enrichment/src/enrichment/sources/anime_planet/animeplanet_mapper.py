@@ -16,6 +16,7 @@ Key AP-specific details:
 - All other manga entries → related_source_material (OTHER)
 """
 
+import re
 from collections.abc import Sequence
 from typing import Any
 
@@ -56,6 +57,22 @@ from enrichment.sources.base.page_fetcher import (
 from shared_proto.v1.merge_pb2 import PageResponse
 
 _AP_BASE_URL = "https://www.anime-planet.com"
+_ANIME_SLUG_PATTERN = re.compile(r"/anime/([^/?#]+)")
+
+
+def _extract_anime_slug(url: str | None) -> str:
+    """Extract the Anime-Planet anime slug segment from a URL.
+
+    Args:
+        url: Candidate Anime-Planet anime URL, or None.
+
+    Returns:
+        Extracted anime slug string, or an empty string when absent.
+    """
+    if not url:
+        return ""
+    match = _ANIME_SLUG_PATTERN.search(url)
+    return match.group(1) if match else ""
 
 
 def anime_from_animeplanet(anime: AnimePlanetAnime) -> dict[str, Any]:
@@ -330,17 +347,18 @@ def map_animeplanet_anime_responses(
         error_message = "Anime-Planet 'main' HTML yielded no anime data"
         raise ValueError(error_message)
     raw_data = dict(raw)
-    resolved_slug = slug
-    if not resolved_slug:
-        canonical = extract_canonical_url(html) or ""
-        if "/anime/" in canonical:
-            resolved_slug = canonical.rstrip("/").rsplit("/anime/", maxsplit=1)[-1]
-    if resolved_slug:
-        raw_data["slug"] = resolved_slug
+    canonical_url = extract_canonical_url(html)
+    json_ld_url = raw_data.get("url")
+    resolved_slug = (
+        slug
+        or _extract_anime_slug(canonical_url)
+        or _extract_anime_slug(json_ld_url if isinstance(json_ld_url, str) else None)
+    )
+    raw_data["slug"] = resolved_slug
     model = _build_anime_from_raw(raw_data)
     if not model.url:
-        if canonical := extract_canonical_url(html):
-            model.url = canonical
+        if canonical_url:
+            model.url = canonical_url
         elif resolved_slug:
             model.url = f"{_AP_BASE_URL}/anime/{resolved_slug}"
     return anime_from_animeplanet(model)

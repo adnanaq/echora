@@ -183,11 +183,11 @@ def parse_html_response(response: PageResponse) -> str:
 
 
 _CANONICAL_REL_FIRST = re.compile(
-    r"""<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']""",
+    r"""<link[^>]*\srel\s*=\s*["']canonical["'][^>]*\shref\s*=\s*["']([^"']+)["']""",
     re.IGNORECASE,
 )
 _CANONICAL_HREF_FIRST = re.compile(
-    r"""<link[^>]+href=["']([^"']+)["'][^>]+rel=["']canonical["']""",
+    r"""<link[^>]*\shref\s*=\s*["']([^"']+)["'][^>]*\srel\s*=\s*["']canonical["']""",
     re.IGNORECASE,
 )
 
