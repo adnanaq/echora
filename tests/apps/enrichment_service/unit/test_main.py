@@ -3,10 +3,14 @@ from __future__ import annotations
 import asyncio
 import signal
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, create_autospec
 
 import pytest
+from common.config import EnrichmentConfig
+from enrichment.sources.base.page_fetcher import PageFetcher
 from enrichment_service import main
+from enrichment_service.runtime import EnrichmentRuntime
+from http_cache import HTTPCacheManager
 
 
 def test_setup_observability_calls_telemetry_bootstrap(monkeypatch) -> None:
@@ -64,3 +68,21 @@ async def test_register_sigterm_shutdown_stops_server_with_grace() -> None:
     await asyncio.sleep(0)
 
     server.stop.assert_awaited_once_with(grace=5)
+
+
+@pytest.mark.asyncio
+async def test_close_page_fetchers_closes_every_registered_fetcher() -> None:
+    first_fetcher = create_autospec(PageFetcher, instance=True)
+    second_fetcher = create_autospec(PageFetcher, instance=True)
+    runtime = EnrichmentRuntime(
+        default_file_path="db.json",
+        output_dir="out",
+        enrichment=EnrichmentConfig(),
+        cache=create_autospec(HTTPCacheManager, instance=True),
+        page_fetchers={"anilist": first_fetcher, "kitsu": second_fetcher},
+    )
+
+    await main._close_page_fetchers(runtime)
+
+    first_fetcher.close.assert_awaited_once()
+    second_fetcher.close.assert_awaited_once()

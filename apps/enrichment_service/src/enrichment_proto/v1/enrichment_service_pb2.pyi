@@ -1,4 +1,8 @@
+import datetime
+
+from google.protobuf import duration_pb2 as _duration_pb2
 from shared_proto.v1 import error_pb2 as _error_pb2
+from shared_proto.v1 import merge_pb2 as _merge_pb2
 from google.protobuf.internal import containers as _containers
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
@@ -54,3 +58,17 @@ class RunPipelineResponse(_message.Message):
     result_json: str
     error: _error_pb2.ErrorDetails
     def __init__(self, success: _Optional[bool] = ..., output_path: _Optional[str] = ..., result_json: _Optional[str] = ..., error: _Optional[_Union[_error_pb2.ErrorDetails, _Mapping]] = ...) -> None: ...
+
+class FetchPageRequest(_message.Message):
+    __slots__ = ("page_key", "max_age")
+    PAGE_KEY_FIELD_NUMBER: _ClassVar[int]
+    MAX_AGE_FIELD_NUMBER: _ClassVar[int]
+    page_key: _merge_pb2.PageKey
+    max_age: _duration_pb2.Duration
+    def __init__(self, page_key: _Optional[_Union[_merge_pb2.PageKey, _Mapping]] = ..., max_age: _Optional[_Union[datetime.timedelta, _duration_pb2.Duration, _Mapping]] = ...) -> None: ...
+
+class FetchPageResponse(_message.Message):
+    __slots__ = ("page",)
+    PAGE_FIELD_NUMBER: _ClassVar[int]
+    page: _merge_pb2.StoredPage
+    def __init__(self, page: _Optional[_Union[_merge_pb2.StoredPage, _Mapping]] = ...) -> None: ...

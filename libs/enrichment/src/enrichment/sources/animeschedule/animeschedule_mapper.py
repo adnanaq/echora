@@ -10,6 +10,7 @@ Key quirks handled here:
   MAL/AniList fill in the real title during consolidation
 """
 
+from collections.abc import Sequence
 from typing import Any
 
 from common.models.anime import (
@@ -37,7 +38,12 @@ from common.utils.datetime_utils import (
 from enrichment.sources.animeschedule.animeschedule_models import AnimeScheduleAnime
 from enrichment.sources.base.companies import companies_from_roles
 from enrichment.sources.base.external_links import external_link
+from enrichment.sources.base.page_fetcher import (
+    index_responses_by_name,
+    parse_json_response,
+)
 from enrichment.utils.text_utils import normalize_score
+from shared_proto.v1.merge_pb2 import PageResponse
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
@@ -218,3 +224,26 @@ def anime_from_animeschedule(anime: AnimeScheduleAnime) -> dict[str, Any]:
     )
 
     return result.model_dump(mode="json", exclude_none=True)
+
+
+def map_animeschedule_anime_responses(
+    responses: Sequence[PageResponse],
+) -> dict[str, Any]:
+    """Map stored AnimeSchedule JSON response into a canonical Anime dict.
+
+    Args:
+        responses: Stored PageResponse sequence containing a ``main`` JSON response.
+
+    Returns:
+        Dict of canonical Anime field values.
+
+    Raises:
+        ValueError: If the ``main`` response is missing.
+    """
+    by_name = index_responses_by_name(responses)
+    main_response = by_name.get("main")
+    if main_response is None:
+        error_message = "AnimeSchedule anime responses missing required 'main' response"
+        raise ValueError(error_message)
+    raw_data = parse_json_response(main_response)
+    return anime_from_animeschedule(AnimeScheduleAnime.model_validate(raw_data))

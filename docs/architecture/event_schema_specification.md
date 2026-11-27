@@ -280,7 +280,7 @@ message MergeCharacterResponse {  // (ECHO-110)
 - **Mapping happens in the merge.** `MergeAnime` runs each provider's mapper on the stored responses, merges the results with `merge_provider_records` from `libs/enrichment`, then applies the corrections and the generated text. (ECHO-105)
   - ~~Nothing mapped is stored, because the fetchers return pages as received. AniList and Kitsu move first. (ECHO-89)~~
   - ~~MAL, Anime-Planet and aniSearch follow. (ECHO-94)~~
-  - AniDB, AnimeSchedule and Syoboi follow. (ECHO-99)
+  - ~~AniDB, AnimeSchedule and Syoboi follow. (ECHO-99)~~
 - **IDs are assigned at the merge.** The work's ID is passed in. An episode the pages list keeps its ID when `known_episodes` already has it, matched by page key or episode number. One the work has never listed gets a new UUIDv7. A work's merge lists no characters: a character comes from the character list and is created by `CreateCharacter`. (ECHO-105) (ECHO-135)
 - **The merge keeps no provider synopsis.** `Anime.synopsis` comes from a correction, else the latest generated text, else stays empty. (ECHO-105)
 - The work's `sources` and `partial_sources` come from the page links, so the merge no longer reads the offline database entry. (ECHO-105)

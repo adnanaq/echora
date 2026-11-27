@@ -11,7 +11,11 @@ functions only:
 """
 
 import logging
-from typing import Any
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from shared_proto.v1.merge_pb2 import PageResponse
 
 from common.models.anime import (
     AiredDates,
@@ -448,3 +452,98 @@ def _apply_page_data(result: dict[str, Any], page: AniDBCharacterPage) -> None:
 
     if page.gender:
         result.setdefault("attributes", {})["gender"] = page.gender
+
+
+def map_anidb_anime_responses(
+    responses: Sequence[PageResponse],
+    *,
+    anidb_url: str = "",
+) -> dict[str, Any]:
+    """Map stored AniDB anime XML response into a canonical Anime dict.
+
+    Args:
+        responses: Stored PageResponse sequence containing a ``main`` XML response.
+        anidb_url: Optional canonical AniDB anime URL.
+
+    Returns:
+        Dict of canonical Anime field values.
+
+    Raises:
+        ValueError: If the ``main`` response is missing or invalid XML.
+    """
+    from enrichment.sources.anidb.anidb_xml_parser import parse_anime_xml
+    from enrichment.sources.base.page_fetcher import (
+        index_responses_by_name,
+        parse_html_response,
+    )
+
+    by_name = index_responses_by_name(responses)
+    main_response = by_name.get("main")
+    if main_response is None:
+        error_message = "AniDB anime responses missing required 'main' response"
+        raise ValueError(error_message)
+    anime_model = parse_anime_xml(parse_html_response(main_response))
+    resolved_url = anidb_url or (
+        f"https://anidb.net/anime/{anime_model.id}" if anime_model.id else ""
+    )
+    return anime_from_anidb(anime_model, anidb_url=resolved_url)
+
+
+def map_anidb_anime_episode_responses(
+    responses: Sequence[PageResponse],
+) -> list[dict[str, Any]]:
+    """Map stored AniDB anime XML response into canonical Episode dicts.
+
+    Args:
+        responses: Stored PageResponse sequence containing a ``main`` XML response.
+
+    Returns:
+        List of canonical Episode field dicts.
+    """
+    from enrichment.sources.anidb.anidb_xml_parser import parse_anime_xml
+    from enrichment.sources.base.page_fetcher import (
+        index_responses_by_name,
+        parse_html_response,
+    )
+
+    by_name = index_responses_by_name(responses)
+    main_response = by_name.get("main")
+    if main_response is None:
+        return []
+    anime_model = parse_anime_xml(parse_html_response(main_response))
+    return [
+        ep
+        for entry in anime_model.episodes
+        if (ep := episode_from_anidb(entry)) is not None
+    ]
+
+
+def map_anidb_character_page_responses(
+    responses: Sequence[PageResponse],
+) -> AniDBCharacterPage | None:
+    """Parse stored AniDB character HTML response into an AniDBCharacterPage model.
+
+    Args:
+        responses: Stored PageResponse sequence containing a ``main`` HTML response.
+
+    Returns:
+        Parsed AniDBCharacterPage model, or None when no character fields exist.
+
+    Raises:
+        ValueError: If the ``main`` response is missing.
+    """
+    from enrichment.sources.anidb.anidb_character_crawler import _extract_from_html
+    from enrichment.sources.base.page_fetcher import (
+        index_responses_by_name,
+        parse_html_response,
+    )
+
+    by_name = index_responses_by_name(responses)
+    main_response = by_name.get("main")
+    if main_response is None:
+        error_message = "AniDB character responses missing required 'main' response"
+        raise ValueError(error_message)
+    character_page = _extract_from_html(parse_html_response(main_response))
+    if character_page is None or not any(character_page.model_dump().values()):
+        return None
+    return character_page

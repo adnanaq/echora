@@ -6,7 +6,7 @@ import grpc
 from enrichment_proto.v1 import enrichment_service_pb2, enrichment_service_pb2_grpc
 
 from ..runtime import EnrichmentRuntime
-from . import health, pipeline
+from . import fetch_page, health, pipeline
 
 
 class EnrichmentRoutes(enrichment_service_pb2_grpc.EnrichmentServiceServicer):
@@ -35,3 +35,19 @@ class EnrichmentRoutes(enrichment_service_pb2_grpc.EnrichmentServiceServicer):
     ) -> enrichment_service_pb2.RunPipelineResponse:
         """Handle RunPipeline RPC by delegating to pipeline route logic."""
         return await pipeline.run_pipeline(self.runtime, request, context)
+
+    async def FetchPage(
+        self,
+        request: enrichment_service_pb2.FetchPageRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> enrichment_service_pb2.FetchPageResponse:
+        """Handle FetchPage RPC by delegating to fetch_page route logic.
+
+        Args:
+            request: Incoming FetchPageRequest carrying page_key and max_age.
+            context: Active gRPC servicer context.
+
+        Returns:
+            FetchPageResponse holding the fetched StoredPage.
+        """
+        return await fetch_page.fetch_page(self.runtime, request, context)

@@ -4,6 +4,9 @@ from enrichment.sources.anidb.anidb_mapper import (
     anime_from_anidb,
     character_from_anidb,
     episode_from_anidb,
+    map_anidb_anime_episode_responses,
+    map_anidb_anime_responses,
+    map_anidb_character_page_responses,
 )
 from enrichment.sources.anidb.anidb_models import (
     AniDBAnime,
@@ -17,6 +20,7 @@ from enrichment.sources.anidb.anidb_models import (
     AniDBSeiyuu,
     AniDBTag,
 )
+from shared_proto.v1.merge_pb2 import PageResponse
 
 CDN_BASE = "https://cdn-eu.anidb.net/images/main"
 ANIDB_URL = "https://anidb.net/anime/69"
@@ -692,3 +696,113 @@ def test_anime_from_anidb_same_setting_relation_kept_apart_from_side_story() -> 
     related = result["related_anime"]
     assert [entry["title"] for entry in related["SAME_SETTING"]] == ["Other Cast"]
     assert [entry["title"] for entry in related["SIDE_STORY"]] == ["Movie"]
+
+
+def test_map_anidb_anime_responses_valid_xml_returns_canonical_anime() -> None:
+    xml_body = b"""<?xml version="1.0" encoding="UTF-8"?>
+    <anime id="23" restricted="false">
+      <type>TV Series</type>
+      <episodecount>26</episodecount>
+      <startdate>1998-04-03</startdate>
+      <enddate>1999-04-24</enddate>
+      <titles>
+        <title xml:lang="x-jat" type="main">Cowboy Bebop</title>
+      </titles>
+    </anime>
+    """
+    canonical = map_anidb_anime_responses(
+        [
+            PageResponse(
+                request_name="main", content_type="application/xml", body=xml_body
+            )
+        ],
+        anidb_url="https://anidb.net/anime/23",
+    )
+
+    assert canonical["title"] == "Cowboy Bebop"
+    assert canonical["episode_count"] == 26
+    assert canonical["sources"] == ["https://anidb.net/anime/23"]
+
+
+def test_map_anidb_anime_responses_missing_main_raises_value_error() -> None:
+    with pytest.raises(ValueError, match="main"):
+        map_anidb_anime_responses(
+            [
+                PageResponse(
+                    request_name="other", content_type="application/xml", body=b"<x/>"
+                )
+            ]
+        )
+
+
+def test_map_anidb_anime_episode_responses_valid_xml_returns_regular_episodes() -> None:
+    xml_body = b"""<?xml version="1.0" encoding="UTF-8"?>
+    <anime id="23" restricted="false">
+      <titles>
+        <title xml:lang="x-jat" type="main">Cowboy Bebop</title>
+      </titles>
+      <episodes>
+        <episode id="101">
+          <epno type="1">1</epno>
+          <length>25</length>
+          <airdate>1998-04-03</airdate>
+          <title xml:lang="en">Asteroid Blues</title>
+        </episode>
+      </episodes>
+    </anime>
+    """
+    episodes = map_anidb_anime_episode_responses(
+        [
+            PageResponse(
+                request_name="main", content_type="application/xml", body=xml_body
+            )
+        ]
+    )
+
+    assert len(episodes) == 1
+    assert episodes[0]["title"] == "Asteroid Blues"
+
+
+def test_map_anidb_character_page_responses_valid_html_extracts_fields() -> None:
+    char_html = b"""
+    <html><body>
+      <div id="tab_1_pane">
+        <table>
+          <tr class="mainname"><td><span itemprop="name">Spike Spiegel</span></td></tr>
+          <tr><td><span itemprop="gender">male</span></td></tr>
+        </table>
+      </div>
+    </body></html>
+    """
+    character_page = map_anidb_character_page_responses(
+        [PageResponse(request_name="main", content_type="text/html", body=char_html)]
+    )
+
+    assert character_page is not None
+    assert character_page.name_main == "Spike Spiegel"
+    assert character_page.gender == "male"
+
+
+def test_map_anidb_character_page_responses_empty_html_returns_none() -> None:
+    character_page = map_anidb_character_page_responses(
+        [
+            PageResponse(
+                request_name="main",
+                content_type="text/html",
+                body=b"<html><body></body></html>",
+            )
+        ]
+    )
+
+    assert character_page is None
+
+
+def test_map_anidb_character_page_responses_missing_main_raises_value_error() -> None:
+    with pytest.raises(ValueError, match="main"):
+        map_anidb_character_page_responses(
+            [
+                PageResponse(
+                    request_name="other", content_type="text/html", body=b"<html/>"
+                )
+            ]
+        )
