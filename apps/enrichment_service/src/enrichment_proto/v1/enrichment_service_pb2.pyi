@@ -1,6 +1,7 @@
 import datetime
 
 from google.protobuf import duration_pb2 as _duration_pb2
+from shared_proto.v1 import anime_pb2 as _anime_pb2
 from shared_proto.v1 import error_pb2 as _error_pb2
 from shared_proto.v1 import merge_pb2 as _merge_pb2
 from google.protobuf.internal import containers as _containers
@@ -72,3 +73,31 @@ class FetchPageResponse(_message.Message):
     PAGE_FIELD_NUMBER: _ClassVar[int]
     page: _merge_pb2.StoredPage
     def __init__(self, page: _Optional[_Union[_merge_pb2.StoredPage, _Mapping]] = ...) -> None: ...
+
+class MergeAnimeRequest(_message.Message):
+    __slots__ = ("anime_id", "source_pages", "partial_source_pages", "corrections", "generated_texts", "known_episodes")
+    ANIME_ID_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_PAGES_FIELD_NUMBER: _ClassVar[int]
+    PARTIAL_SOURCE_PAGES_FIELD_NUMBER: _ClassVar[int]
+    CORRECTIONS_FIELD_NUMBER: _ClassVar[int]
+    GENERATED_TEXTS_FIELD_NUMBER: _ClassVar[int]
+    KNOWN_EPISODES_FIELD_NUMBER: _ClassVar[int]
+    anime_id: str
+    source_pages: _containers.RepeatedCompositeFieldContainer[_merge_pb2.StoredPage]
+    partial_source_pages: _containers.RepeatedCompositeFieldContainer[_merge_pb2.PageKey]
+    corrections: _containers.RepeatedCompositeFieldContainer[_merge_pb2.FieldCorrection]
+    generated_texts: _containers.RepeatedCompositeFieldContainer[_merge_pb2.GeneratedText]
+    known_episodes: _containers.RepeatedCompositeFieldContainer[_merge_pb2.EpisodeReference]
+    def __init__(self, anime_id: _Optional[str] = ..., source_pages: _Optional[_Iterable[_Union[_merge_pb2.StoredPage, _Mapping]]] = ..., partial_source_pages: _Optional[_Iterable[_Union[_merge_pb2.PageKey, _Mapping]]] = ..., corrections: _Optional[_Iterable[_Union[_merge_pb2.FieldCorrection, _Mapping]]] = ..., generated_texts: _Optional[_Iterable[_Union[_merge_pb2.GeneratedText, _Mapping]]] = ..., known_episodes: _Optional[_Iterable[_Union[_merge_pb2.EpisodeReference, _Mapping]]] = ...) -> None: ...
+
+class MergeAnimeResponse(_message.Message):
+    __slots__ = ("anime", "episodes", "relation_claims", "provider_synopses_hash")
+    ANIME_FIELD_NUMBER: _ClassVar[int]
+    EPISODES_FIELD_NUMBER: _ClassVar[int]
+    RELATION_CLAIMS_FIELD_NUMBER: _ClassVar[int]
+    PROVIDER_SYNOPSES_HASH_FIELD_NUMBER: _ClassVar[int]
+    anime: _anime_pb2.Anime
+    episodes: _containers.RepeatedCompositeFieldContainer[_merge_pb2.EpisodeReference]
+    relation_claims: _containers.RepeatedCompositeFieldContainer[_merge_pb2.RelationClaim]
+    provider_synopses_hash: str
+    def __init__(self, anime: _Optional[_Union[_anime_pb2.Anime, _Mapping]] = ..., episodes: _Optional[_Iterable[_Union[_merge_pb2.EpisodeReference, _Mapping]]] = ..., relation_claims: _Optional[_Iterable[_Union[_merge_pb2.RelationClaim, _Mapping]]] = ..., provider_synopses_hash: _Optional[str] = ...) -> None: ...
