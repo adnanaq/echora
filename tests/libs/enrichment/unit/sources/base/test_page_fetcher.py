@@ -7,8 +7,11 @@ import pytest
 from enrichment.sources.base.page_fetcher import (
     FetchedPage,
     build_cache_headers,
+    build_html_response,
     collect_paginated_responses,
+    extract_canonical_url,
     index_responses_by_name,
+    parse_html_response,
     parse_json_response,
     read_response_bytes,
     validate_page_key,
@@ -146,3 +149,48 @@ def test_collect_paginated_responses_orders_numerically() -> None:
         {"p": 2},
         {"p": 10},
     ]
+
+
+def test_build_and_parse_html_response_round_trips_utf8() -> None:
+    html = "<html><body>ワンピース</body></html>"
+    response = build_html_response("main", html)
+
+    assert response.request_name == "main"
+    assert response.content_type == "text/html"
+    assert parse_html_response(response) == html
+
+
+@pytest.mark.parametrize(
+    "html",
+    [
+        '<link rel="canonical" href="https://myanimelist.net/character/3/Jet_Black">',
+        "<link href='https://myanimelist.net/character/3/Jet_Black' rel='canonical'>",
+        '<link rel = "canonical" href = "https://myanimelist.net/character/3/Jet_Black">',
+        '<link rel ="canonical" href ="https://myanimelist.net/character/3/Jet_Black">',
+        '<link href = "https://myanimelist.net/character/3/Jet_Black" rel = "canonical">',
+        "<link href ='https://myanimelist.net/character/3/Jet_Black' rel ='canonical'>",
+    ],
+)
+def test_extract_canonical_url_attribute_orders_and_equals_whitespace_returns_url(
+    html: str,
+) -> None:
+    assert (
+        extract_canonical_url(f"<html><head>{html}</head></html>")
+        == "https://myanimelist.net/character/3/Jet_Black"
+    )
+
+
+def test_extract_canonical_url_missing_or_prefixed_attribute_returns_none() -> None:
+    assert extract_canonical_url("<html><head></head></html>") is None
+    assert (
+        extract_canonical_url(
+            '<link data-rel="canonical" href="https://myanimelist.net/anime/1">'
+        )
+        is None
+    )
+    assert (
+        extract_canonical_url(
+            '<link rel="canonical" data-href="https://myanimelist.net/anime/1">'
+        )
+        is None
+    )

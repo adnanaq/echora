@@ -344,7 +344,7 @@ A scheduled `CheckFranchiseLinksWorkflow` looks for franchise links a reviewer s
 
 ## Providers Fetched
 
-> **Linear:** ~~ECHO-89~~, ECHO-94, ECHO-99
+> **Linear:** ~~ECHO-89~~, ~~ECHO-94~~, ECHO-99
 
 `EnrichmentService.FetchPage` uses the fetchers in `libs/enrichment`, one page at a time, and returns the responses as received. The mappers run later, inside each merge.
 

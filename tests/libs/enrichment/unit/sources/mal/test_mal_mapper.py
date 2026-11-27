@@ -4,6 +4,8 @@ from enrichment.sources.mal.mal_mapper import (
     anime_from_mal,
     character_from_mal,
     episode_from_mal,
+    map_mal_anime_responses,
+    map_mal_character_responses,
 )
 from enrichment.sources.mal.mal_models import (
     EpisodeCharacterRef,
@@ -21,6 +23,7 @@ from enrichment.sources.mal.mal_models import (
     MalTrailer,
     MalVoiceActorRef,
 )
+from shared_proto.v1.merge_pb2 import PageResponse
 
 ONE_PIECE_URL = "https://myanimelist.net/anime/21"
 LUFFY_URL = "https://myanimelist.net/character/40"
@@ -595,3 +598,85 @@ def test_episode_from_mal_anime_id_added_when_given() -> None:
 
 def test_episode_from_mal_output_keys_are_episode_fields() -> None:
     assert set(episode_from_mal(_episode())) <= set(Episode.model_fields)
+
+
+def test_map_mal_anime_responses_valid_html_returns_canonical_anime() -> None:
+    anime_html = b"""
+    <html><head><link rel="canonical" href="https://myanimelist.net/anime/1/Cowboy_Bebop" /></head>
+    <body>
+      <h1 class="title-name"><strong>Cowboy Bebop</strong></h1>
+      <div class="spaceit_pad"><span class="dark_text">Type:</span> <a href="/topanime.php?type=tv">TV</a></div>
+      <div class="spaceit_pad"><span class="dark_text">Episodes:</span> 26</div>
+      <div class="spaceit_pad"><span class="dark_text">Status:</span> Finished Airing</div>
+    </body></html>
+    """
+    canonical = map_mal_anime_responses(
+        [PageResponse(request_name="main", content_type="text/html", body=anime_html)],
+        source_url="https://myanimelist.net/anime/1/Cowboy_Bebop",
+    )
+
+    assert canonical["title"] == "Cowboy Bebop"
+    assert canonical["episode_count"] == 26
+    assert canonical["sources"] == ["https://myanimelist.net/anime/1/Cowboy_Bebop"]
+
+
+def test_map_mal_anime_responses_missing_main_raises_value_error() -> None:
+    with pytest.raises(ValueError, match="main"):
+        map_mal_anime_responses(
+            [
+                PageResponse(
+                    request_name="pics", content_type="text/html", body=b"<html/>"
+                )
+            ]
+        )
+
+
+def test_map_mal_character_responses_valid_html_returns_canonical_character() -> None:
+    char_html = """
+    <html><body>
+      <h2 class="normal_header">Jet Black <small>(ジェット・ブラック)</small></h2>
+      <div id="content"><table border="0"><tr><td class="borderClass">
+        <div style="text-align: center;"><img class="portrait" src="https://cdn.myanimelist.net/images/characters/1.jpg" /></div>
+      </td><td>
+        <h2 class="normal_header">Jet Black</h2>
+        Member Favorites: 1,234
+      </td></tr></table></div>
+    </body></html>
+    """.encode()
+    canonical = map_mal_character_responses(
+        [PageResponse(request_name="main", content_type="text/html", body=char_html)],
+        source_url="https://myanimelist.net/character/3/Jet_Black",
+    )
+
+    assert canonical["name"] == "Jet Black"
+    assert canonical["sources"] == ["https://myanimelist.net/character/3/Jet_Black"]
+
+
+def test_map_mal_character_responses_omitted_source_url_uses_canonical_link() -> None:
+    char_html = b"""
+    <html>
+      <head><link rel="canonical" href="https://myanimelist.net/character/3/Jet_Black" /></head>
+      <body><h2 class="normal_header">Jet Black</h2></body>
+    </html>
+    """
+    canonical = map_mal_character_responses(
+        [PageResponse(request_name="main", content_type="text/html", body=char_html)]
+    )
+
+    assert canonical["sources"] == ["https://myanimelist.net/character/3/Jet_Black"]
+
+
+def test_map_mal_character_responses_canonical_link_with_equals_spaces_populates_sources() -> (
+    None
+):
+    char_html = b"""
+    <html>
+      <head><link rel ="canonical" href ="https://myanimelist.net/character/3/Jet_Black" /></head>
+      <body><h2 class="normal_header">Jet Black</h2></body>
+    </html>
+    """
+    canonical = map_mal_character_responses(
+        [PageResponse(request_name="main", content_type="text/html", body=char_html)]
+    )
+
+    assert canonical["sources"] == ["https://myanimelist.net/character/3/Jet_Black"]

@@ -477,8 +477,8 @@ def test_crawler_sources_keep_each_site_headless_setting() -> None:
 
     assert sessions.get("anisearch", []) == []
     assert sessions["anidb"] == ["False"]
-    assert sessions["mal"] == ["True"] * 7
-    assert sessions["anime_planet"] == ["True"] * 4
+    assert sessions["mal"] == ["True"] * 9
+    assert sessions["anime_planet"] == ["True"] * 6
 
 
 def test_crawler_sources_use_allowed_site_on_mal_only() -> None:
@@ -493,7 +493,7 @@ def test_crawler_sources_use_allowed_site_on_mal_only() -> None:
     )
 
     assert sites_with_rule == {"mal"}
-    assert mal_sessions == 7
+    assert mal_sessions == 9
 
 
 RUNS = 10

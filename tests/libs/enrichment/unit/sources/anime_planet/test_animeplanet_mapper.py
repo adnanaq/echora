@@ -18,7 +18,10 @@ from enrichment.sources.anime_planet.anime_planet_models import (
 from enrichment.sources.anime_planet.animeplanet_mapper import (
     anime_from_animeplanet,
     character_from_animeplanet,
+    map_animeplanet_anime_responses,
+    map_animeplanet_character_responses,
 )
+from shared_proto.v1.merge_pb2 import PageResponse
 
 LUFFY_URL = "https://www.anime-planet.com/characters/monkey-d-luffy"
 
@@ -573,3 +576,142 @@ def test_anime_from_animeplanet_side_story_label_kept_as_side_story() -> None:
     related = mapped["related_anime"]
     assert [entry["title"] for entry in related["SIDE_STORY"]] == ["Bonus", "Spin"]
     assert [entry["title"] for entry in related["SAME_FRANCHISE"]] == ["Franchise"]
+
+
+def test_map_animeplanet_anime_responses_explicit_slug_returns_canonical_anime() -> (
+    None
+):
+    anime_html = b"""
+    <html>
+      <head>
+        <script type="application/ld+json">
+          {"@type": "TVSeries", "name": "Cowboy Bebop", "numberOfEpisodes": 26}
+        </script>
+      </head>
+      <body>
+        <section class="entryBar"><span class="type">TV (26 eps)</span></section>
+      </body>
+    </html>
+    """
+    canonical = map_animeplanet_anime_responses(
+        [PageResponse(request_name="main", content_type="text/html", body=anime_html)],
+        slug="cowboy-bebop",
+    )
+
+    assert canonical["title"] == "Cowboy Bebop"
+    assert canonical["sources"] == ["https://www.anime-planet.com/anime/cowboy-bebop"]
+
+
+def test_map_animeplanet_anime_responses_missing_main_raises_value_error() -> None:
+    with pytest.raises(ValueError, match="main"):
+        map_animeplanet_anime_responses(
+            [
+                PageResponse(
+                    request_name="characters", content_type="text/html", body=b"<html/>"
+                )
+            ]
+        )
+
+
+def test_map_animeplanet_anime_responses_omitted_slug_uses_canonical_link() -> None:
+    anime_html = b"""
+    <html>
+      <head>
+        <link rel="canonical" href="https://www.anime-planet.com/anime/cowboy-bebop" />
+        <script type="application/ld+json">
+          {"@type": "TVSeries", "name": "Cowboy Bebop", "numberOfEpisodes": 26}
+        </script>
+      </head>
+      <body><section class="entryBar"><span class="type">TV (26 eps)</span></section></body>
+    </html>
+    """
+    canonical = map_animeplanet_anime_responses(
+        [PageResponse(request_name="main", content_type="text/html", body=anime_html)]
+    )
+
+    assert canonical["sources"] == ["https://www.anime-planet.com/anime/cowboy-bebop"]
+
+
+def test_map_animeplanet_anime_responses_omitted_slug_without_canonical_uses_json_ld_url() -> (
+    None
+):
+    anime_html = b"""
+    <html>
+      <head>
+        <script type="application/ld+json">
+          {
+            "@type": "TVSeries",
+            "name": "Cowboy Bebop",
+            "url": "https://www.anime-planet.com/anime/cowboy-bebop",
+            "numberOfEpisodes": 26
+          }
+        </script>
+      </head>
+      <body><section class="entryBar"><span class="type">TV (26 eps)</span></section></body>
+    </html>
+    """
+    canonical = map_animeplanet_anime_responses(
+        [PageResponse(request_name="main", content_type="text/html", body=anime_html)]
+    )
+
+    assert canonical["title"] == "Cowboy Bebop"
+    assert canonical["sources"] == ["https://www.anime-planet.com/anime/cowboy-bebop"]
+
+
+def test_map_animeplanet_anime_responses_without_slug_canonical_or_url_maps_empty_sources() -> (
+    None
+):
+    anime_html = b"""
+    <html>
+      <head>
+        <script type="application/ld+json">
+          {"@type": "TVSeries", "name": "Cowboy Bebop", "numberOfEpisodes": 26}
+        </script>
+      </head>
+      <body><section class="entryBar"><span class="type">TV (26 eps)</span></section></body>
+    </html>
+    """
+    canonical = map_animeplanet_anime_responses(
+        [PageResponse(request_name="main", content_type="text/html", body=anime_html)]
+    )
+
+    assert canonical["title"] == "Cowboy Bebop"
+    assert canonical["sources"] == []
+
+
+def test_map_animeplanet_character_responses_explicit_source_url_returns_character() -> (
+    None
+):
+    char_html = b"""
+    <html><body>
+      <h1 itemprop="name">Spike Spiegel</h1>
+      <div class="pure-g entryBar"><div class="pure-1 md-1-5">Gender: Male</div></div>
+    </body></html>
+    """
+    canonical = map_animeplanet_character_responses(
+        [PageResponse(request_name="main", content_type="text/html", body=char_html)],
+        source_url="https://www.anime-planet.com/characters/spike-spiegel",
+    )
+
+    assert canonical["name"] == "Spike Spiegel"
+    assert canonical["sources"] == [
+        "https://www.anime-planet.com/characters/spike-spiegel"
+    ]
+
+
+def test_map_animeplanet_character_responses_omitted_source_url_uses_canonical_link() -> (
+    None
+):
+    char_html = b"""
+    <html>
+      <head><link rel="canonical" href="https://www.anime-planet.com/characters/spike-spiegel" /></head>
+      <body><h1 itemprop="name">Spike Spiegel</h1></body>
+    </html>
+    """
+    canonical = map_animeplanet_character_responses(
+        [PageResponse(request_name="main", content_type="text/html", body=char_html)]
+    )
+
+    assert canonical["sources"] == [
+        "https://www.anime-planet.com/characters/spike-spiegel"
+    ]

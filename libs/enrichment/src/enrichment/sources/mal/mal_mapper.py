@@ -12,6 +12,7 @@ models wherever possible, these functions only:
 Field names are NOT renamed here — that's already handled at the model level.
 """
 
+from collections.abc import Sequence
 from typing import Any
 
 from common.models.anime import (
@@ -49,11 +50,17 @@ from common.utils.datetime_utils import (
 )
 from enrichment.sources.base.companies import companies_from_roles
 from enrichment.sources.base.external_links import external_link
+from enrichment.sources.base.page_fetcher import (
+    extract_canonical_url,
+    index_responses_by_name,
+    parse_html_response,
+)
 from enrichment.sources.mal.mal_models import (
     MalAnime,
     MalCharacter,
     MalEpisode,
 )
+from shared_proto.v1.merge_pb2 import PageResponse
 
 
 def anime_from_mal(anime: MalAnime) -> dict[str, Any]:
@@ -388,3 +395,81 @@ def episode_from_mal(
     )
 
     return episode.model_dump(mode="json", exclude_none=True)
+
+
+def map_mal_anime_responses(
+    responses: Sequence[PageResponse],
+    *,
+    source_url: str = "",
+) -> dict[str, Any]:
+    """Map stored MAL anime HTML responses into a canonical Anime dict.
+
+    Args:
+        responses: Stored PageResponse sequence containing a ``main`` HTML response.
+        source_url: Canonical MAL anime URL associated with the page.
+
+    Returns:
+        Dict of canonical Anime field values.
+
+    Raises:
+        ValueError: If the ``main`` response is missing or yields no anime data.
+    """
+    from enrichment.sources.mal.mal_anime_crawler import (
+        _build_anime_from_raw,
+        _extract_anime_from_html,
+        _extract_pics_from_html,
+    )
+
+    by_name = index_responses_by_name(responses)
+    main_response = by_name.get("main")
+    if main_response is None:
+        error_message = "MAL anime responses missing required 'main' response"
+        raise ValueError(error_message)
+    raw = _extract_anime_from_html(parse_html_response(main_response))
+    if raw is None:
+        error_message = "MAL 'main' HTML yielded no anime data"
+        raise ValueError(error_message)
+
+    picture_urls = (
+        _extract_pics_from_html(parse_html_response(pics_response))
+        if (pics_response := by_name.get("pics")) is not None
+        else []
+    )
+    resolved_url = source_url or raw.get("canonical_url") or ""
+    return anime_from_mal(_build_anime_from_raw(raw, resolved_url, picture_urls))
+
+
+def map_mal_character_responses(
+    responses: Sequence[PageResponse],
+    *,
+    source_url: str = "",
+) -> dict[str, Any]:
+    """Map stored MAL character HTML responses into a canonical Character dict.
+
+    Args:
+        responses: Stored PageResponse sequence containing a ``main`` HTML response.
+        source_url: Canonical MAL character URL associated with the page.
+
+    Returns:
+        Dict of canonical Character field values.
+
+    Raises:
+        ValueError: If the ``main`` response is missing or yields no character data.
+    """
+    from enrichment.sources.mal.mal_character_crawler import (
+        _build_character_from_raw,
+        _extract_character_from_html,
+    )
+
+    by_name = index_responses_by_name(responses)
+    main_response = by_name.get("main")
+    if main_response is None:
+        error_message = "MAL character responses missing required 'main' response"
+        raise ValueError(error_message)
+    html = parse_html_response(main_response)
+    raw = _extract_character_from_html(html)
+    if raw is None:
+        error_message = "MAL 'main' HTML yielded no character data"
+        raise ValueError(error_message)
+    resolved_url = source_url or extract_canonical_url(html) or ""
+    return character_from_mal(_build_character_from_raw(raw, resolved_url))

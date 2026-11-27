@@ -123,7 +123,8 @@ Browser scraping via zendriver (CDP) + lxml XPath.
 
 | Module | Purpose |
 |---|---|
-| `mal_helper.py` | `MalHelper` — entry point; orchestrates anime, episodes, characters |
+| `mal_fetcher.py` | `MalFetcher` — raw `PageResponse` fetcher (`ANIME`, `CHARACTER`) |
+| `mal_helper.py` | `MalHelper` — legacy helper entry point; orchestrates anime, episodes, characters |
 | `mal_anime_crawler.py` | `fetch_mal_anime(url)` — zendriver + lxml XPath |
 | `mal_episode_crawler.py` | `fetch_mal_episodes(urls, output_path)` — zendriver + lxml XPath |
 | `mal_episode_count_crawler.py` | `fetch_mal_episode_count(url)` — resolves "Unknown" counts |
@@ -214,7 +215,8 @@ refuses every connection from that IP.
 
 | Module | Purpose |
 |---|---|
-| `anisearch_helper.py` | `AniSearchHelper` — anime, episodes, characters |
+| `anisearch_fetcher.py` | `AniSearchFetcher` — raw `PageResponse` fetcher (`ANIME`, `CHARACTER`) |
+| `anisearch_helper.py` | `AniSearchHelper` — legacy helper entry point (anime, episodes, characters) |
 | `anisearch_anime_crawler.py` | `fetch_anisearch_anime(url, output_path)` |
 | `anisearch_episode_crawler.py` | `fetch_anisearch_episodes(url, output_path)` |
 | `anisearch_character_refs_crawler.py` | Character list page → URL list |
@@ -240,7 +242,8 @@ Browser scraping via zendriver (CDP) + lxml XPath. Behind Cloudflare, which norm
 
 | Module | Purpose |
 |---|---|
-| `anime_planet_helper.py` | `AnimePlanetHelper` — anime + characters |
+| `anime_planet_fetcher.py` | `AnimePlanetFetcher` — raw `PageResponse` fetcher (`ANIME`, `CHARACTER`) |
+| `anime_planet_helper.py` | `AnimePlanetHelper` — legacy helper entry point (anime + characters) |
 | `anime_planet_anime_crawler.py` | `fetch_animeplanet_anime(url, output_path)` |
 | `anime_planet_character_refs_crawler.py` | Characters list page → URL list |
 | `anime_planet_character_crawler.py` | `fetch_animeplanet_characters(urls, output_path)` |

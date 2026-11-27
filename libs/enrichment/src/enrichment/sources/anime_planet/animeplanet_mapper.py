@@ -16,6 +16,8 @@ Key AP-specific details:
 - All other manga entries → related_source_material (OTHER)
 """
 
+import re
+from collections.abc import Sequence
 from typing import Any
 
 from common.models.anime import (
@@ -47,8 +49,30 @@ from enrichment.sources.anime_planet.anime_planet_character_models import (
 )
 from enrichment.sources.anime_planet.anime_planet_models import AnimePlanetAnime
 from enrichment.sources.base.companies import companies_from_roles
+from enrichment.sources.base.page_fetcher import (
+    extract_canonical_url,
+    index_responses_by_name,
+    parse_html_response,
+)
+from shared_proto.v1.merge_pb2 import PageResponse
 
 _AP_BASE_URL = "https://www.anime-planet.com"
+_ANIME_SLUG_PATTERN = re.compile(r"/anime/([^/?#]+)")
+
+
+def _extract_anime_slug(url: str | None) -> str:
+    """Extract the Anime-Planet anime slug segment from a URL.
+
+    Args:
+        url: Candidate Anime-Planet anime URL, or None.
+
+    Returns:
+        Extracted anime slug string, or an empty string when absent.
+    """
+    if not url:
+        return ""
+    match = _ANIME_SLUG_PATTERN.search(url)
+    return match.group(1) if match else ""
 
 
 def anime_from_animeplanet(anime: AnimePlanetAnime) -> dict[str, Any]:
@@ -288,3 +312,91 @@ def character_from_animeplanet(char: AnimePlanetCharacter) -> dict[str, Any]:
 
     character = Character.model_validate(result)
     return character.model_dump(mode="json", exclude_none=True)
+
+
+def map_animeplanet_anime_responses(
+    responses: Sequence[PageResponse],
+    *,
+    slug: str = "",
+) -> dict[str, Any]:
+    """Map stored Anime-Planet anime HTML responses into a canonical Anime dict.
+
+    Args:
+        responses: Stored PageResponse sequence containing a ``main`` HTML response.
+        slug: Canonical Anime-Planet anime slug associated with the page.
+
+    Returns:
+        Dict of canonical Anime field values.
+
+    Raises:
+        ValueError: If the ``main`` response is missing or yields no anime data.
+    """
+    from enrichment.sources.anime_planet.anime_planet_anime_crawler import (
+        _build_anime_from_raw,
+        _extract_anime_from_html,
+    )
+
+    by_name = index_responses_by_name(responses)
+    main_response = by_name.get("main")
+    if main_response is None:
+        error_message = "Anime-Planet anime responses missing required 'main' response"
+        raise ValueError(error_message)
+    html = parse_html_response(main_response)
+    raw = _extract_anime_from_html(html)
+    if not raw:
+        error_message = "Anime-Planet 'main' HTML yielded no anime data"
+        raise ValueError(error_message)
+    raw_data = dict(raw)
+    canonical_url = extract_canonical_url(html)
+    json_ld_url = raw_data.get("url")
+    resolved_slug = (
+        slug
+        or _extract_anime_slug(canonical_url)
+        or _extract_anime_slug(json_ld_url if isinstance(json_ld_url, str) else None)
+    )
+    raw_data["slug"] = resolved_slug
+    model = _build_anime_from_raw(raw_data)
+    if not model.url:
+        if canonical_url:
+            model.url = canonical_url
+        elif resolved_slug:
+            model.url = f"{_AP_BASE_URL}/anime/{resolved_slug}"
+    return anime_from_animeplanet(model)
+
+
+def map_animeplanet_character_responses(
+    responses: Sequence[PageResponse],
+    *,
+    source_url: str = "",
+) -> dict[str, Any]:
+    """Map stored Anime-Planet character HTML response into a canonical Character dict.
+
+    Args:
+        responses: Stored PageResponse sequence containing a ``main`` HTML response.
+        source_url: Canonical Anime-Planet character URL associated with the page.
+
+    Returns:
+        Dict of canonical Character field values.
+
+    Raises:
+        ValueError: If the ``main`` response is missing or yields no character data.
+    """
+    from enrichment.sources.anime_planet.anime_planet_character_crawler import (
+        _build_character_from_raw,
+        _extract_character_from_html,
+    )
+
+    by_name = index_responses_by_name(responses)
+    main_response = by_name.get("main")
+    if main_response is None:
+        error_message = (
+            "Anime-Planet character responses missing required 'main' response"
+        )
+        raise ValueError(error_message)
+    html = parse_html_response(main_response)
+    raw = _extract_character_from_html(html)
+    if raw is None:
+        error_message = "Anime-Planet 'main' HTML yielded no character data"
+        raise ValueError(error_message)
+    resolved_url = source_url or extract_canonical_url(html) or ""
+    return character_from_animeplanet(_build_character_from_raw(raw, resolved_url))

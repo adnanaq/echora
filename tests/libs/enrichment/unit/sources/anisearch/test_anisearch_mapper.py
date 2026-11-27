@@ -12,7 +12,11 @@ from enrichment.sources.anisearch.anisearch_mapper import (
     anime_from_anisearch,
     character_from_anisearch,
     episode_from_anisearch,
+    map_anisearch_anime_episode_responses,
+    map_anisearch_anime_responses,
+    map_anisearch_character_responses,
 )
+from shared_proto.v1.merge_pb2 import PageResponse
 
 ONE_PIECE_URL = "https://www.anisearch.com/anime/2227,one-piece"
 ONE_PIECE_EPISODES_URL = f"{ONE_PIECE_URL}/episodes"
@@ -615,3 +619,180 @@ def test_episode_from_anisearch_without_episodes_page_gives_no_sources() -> None
 
 def test_episode_from_anisearch_output_has_no_anime_id() -> None:
     assert "anime_id" not in episode_from_anisearch(_episode())
+
+
+def test_map_anisearch_anime_responses_valid_html_returns_canonical_anime() -> None:
+    main_html = b"""
+    <html><body>
+      <section id="information">
+        <div class="title" lang="en"><strong class="f16">Tanjou Debut</strong></div>
+        <div class="type">OVA, 2 (1994)</div>
+        <div class="status">Completed</div>
+      </section>
+    </body></html>
+    """
+    relations_html = (
+        b"<html><body><section id='relations_anime'></section></body></html>"
+    )
+    canonical = map_anisearch_anime_responses(
+        [
+            PageResponse(request_name="main", content_type="text/html", body=main_html),
+            PageResponse(
+                request_name="relations",
+                content_type="text/html",
+                body=relations_html,
+            ),
+        ],
+        source_url="https://www.anisearch.com/anime/475,tanjou-debut",
+    )
+
+    assert canonical["title"] == "Tanjou Debut"
+    assert canonical["sources"] == ["https://www.anisearch.com/anime/475,tanjou-debut"]
+
+
+def test_map_anisearch_anime_responses_missing_main_raises_value_error() -> None:
+    with pytest.raises(ValueError, match="main"):
+        map_anisearch_anime_responses(
+            [
+                PageResponse(
+                    request_name="episodes", content_type="text/html", body=b"<html/>"
+                )
+            ]
+        )
+
+
+def test_map_anisearch_anime_responses_omitted_source_url_uses_canonical_link() -> None:
+    anime_html = b"""
+    <html>
+      <head><link rel="canonical" href="https://www.anisearch.com/anime/475,tanjou-debut" /></head>
+      <body>
+        <section id="information">
+          <div class="title" lang="en"><strong class="f16">Tanjou Debut</strong></div>
+          <div class="type">OVA, 2 (1994)</div>
+          <div class="status">Completed</div>
+        </section>
+      </body>
+    </html>
+    """
+    canonical = map_anisearch_anime_responses(
+        [PageResponse(request_name="main", content_type="text/html", body=anime_html)]
+    )
+
+    assert canonical["sources"] == ["https://www.anisearch.com/anime/475,tanjou-debut"]
+
+
+def test_map_anisearch_anime_episode_responses_valid_html_returns_canonical_episodes() -> (
+    None
+):
+    episodes_html = b"""
+    <html><body>
+      <table class="episodes"><tbody>
+        <tr data-episode="true">
+          <th itemprop="episodeNumber">1</th>
+          <td data-title="Title"><div lang="en"><span itemprop="name">A new love</span></div></td>
+          <td data-title="Runtime"><div lang="ja">25 min.</div></td>
+          <td data-title="Date of Original Release"><div lang="ja">21.12.1994</div></td>
+        </tr>
+      </tbody></table>
+    </body></html>
+    """
+    episodes = map_anisearch_anime_episode_responses(
+        [
+            PageResponse(
+                request_name="episodes",
+                content_type="text/html",
+                body=episodes_html,
+            )
+        ],
+        source_url="https://www.anisearch.com/anime/475,tanjou-debut/episodes",
+    )
+
+    assert len(episodes) == 1
+    assert episodes[0]["title"] == "A new love"
+    assert episodes[0]["sources"] == [
+        "https://www.anisearch.com/anime/475,tanjou-debut/episodes"
+    ]
+
+
+def test_map_anisearch_anime_episode_responses_omitted_source_url_uses_canonical_link() -> (
+    None
+):
+    episodes_html = b"""
+    <html>
+      <head><link rel="canonical" href="https://www.anisearch.com/anime/475,tanjou-debut/episodes" /></head>
+      <body>
+        <table class="episodes"><tbody>
+          <tr data-episode="true">
+            <th itemprop="episodeNumber">1</th>
+            <td data-title="Title"><div lang="en"><span itemprop="name">A new love</span></div></td>
+            <td data-title="Runtime"><div lang="ja">25 min.</div></td>
+            <td data-title="Date of Original Release"><div lang="ja">21.12.1994</div></td>
+          </tr>
+        </tbody></table>
+      </body>
+    </html>
+    """
+    episodes = map_anisearch_anime_episode_responses(
+        [
+            PageResponse(
+                request_name="episodes",
+                content_type="text/html",
+                body=episodes_html,
+            )
+        ]
+    )
+
+    assert len(episodes) == 1
+    assert episodes[0]["sources"] == [
+        "https://www.anisearch.com/anime/475,tanjou-debut/episodes"
+    ]
+
+
+def test_map_anisearch_character_responses_valid_html_returns_canonical_character() -> (
+    None
+):
+    char_html = b"""
+    <html><body>
+      <h1 id="htitle">Spike Spiegel</h1>
+      <section id="description"><div lang="en" class="textblock">Space cowboy.</div></section>
+    </body></html>
+    """
+    canonical = map_anisearch_character_responses(
+        [
+            PageResponse(request_name="main", content_type="text/html", body=char_html),
+            PageResponse(
+                request_name="anime",
+                content_type="text/html",
+                body=b"<html><body></body></html>",
+            ),
+            PageResponse(
+                request_name="manga",
+                content_type="text/html",
+                body=b"<html><body></body></html>",
+            ),
+        ],
+        source_url="https://www.anisearch.com/character/10,spike-spiegel",
+    )
+
+    assert canonical["name"] == "Spike Spiegel"
+    assert canonical["sources"] == [
+        "https://www.anisearch.com/character/10,spike-spiegel"
+    ]
+
+
+def test_map_anisearch_character_responses_omitted_source_url_uses_canonical_link() -> (
+    None
+):
+    char_html = b"""
+    <html>
+      <head><link rel="canonical" href="https://www.anisearch.com/character/10,spike-spiegel" /></head>
+      <body><h1 id="htitle">Spike Spiegel</h1></body>
+    </html>
+    """
+    canonical = map_anisearch_character_responses(
+        [PageResponse(request_name="main", content_type="text/html", body=char_html)]
+    )
+
+    assert canonical["sources"] == [
+        "https://www.anisearch.com/character/10,spike-spiegel"
+    ]
