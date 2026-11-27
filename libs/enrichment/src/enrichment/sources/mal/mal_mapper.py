@@ -56,6 +56,11 @@ from enrichment.sources.base.page_fetcher import (
     index_responses_by_name,
     parse_html_response,
 )
+from enrichment.sources.mal.mal_episode_parser import (
+    build_episode_from_raw,
+    extract_episode_from_html,
+    extract_episode_list_from_html,
+)
 from enrichment.sources.mal.mal_models import (
     MalAnime,
     MalCharacter,
@@ -484,14 +489,10 @@ def map_mal_anime_episode_responses(
     Returns:
         One canonical Episode dict per listed episode, in list order.
     """
-    from enrichment.sources.mal.mal_episode_crawler import (
-        _extract_episode_list_from_html,
-    )
-
     return [
         episode_from_mal(episode)
         for list_page in find_paginated_responses(responses, "episodes_page_")
-        for episode in _extract_episode_list_from_html(parse_html_response(list_page))
+        for episode in extract_episode_list_from_html(parse_html_response(list_page))
     ]
 
 
@@ -511,18 +512,13 @@ def map_mal_episode_responses(
     """
     import re
 
-    from enrichment.sources.mal.mal_episode_crawler import (
-        _build_episode_from_raw,
-        _extract_episode_from_html,
-    )
-
     by_name = index_responses_by_name(responses)
     main_response = by_name.get("main")
     if main_response is None:
         error_message = "MAL episode responses missing required 'main' response"
         raise ValueError(error_message)
     html = parse_html_response(main_response)
-    raw = _extract_episode_from_html(html)
+    raw = extract_episode_from_html(html)
     if raw is None:
         error_message = "MAL 'main' HTML yielded no episode data"
         raise ValueError(error_message)
@@ -539,4 +535,4 @@ def map_mal_episode_responses(
         r"<h2[^>]*>.*?#(\d+)\s*-", html, re.DOTALL
     )
     episode_number = int(ep_match.group(1)) if ep_match else 1
-    return episode_from_mal(_build_episode_from_raw(raw, episode_number, resolved_url))
+    return episode_from_mal(build_episode_from_raw(raw, episode_number, resolved_url))
