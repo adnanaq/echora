@@ -4,7 +4,7 @@ from datetime import timedelta
 from typing import ClassVar
 
 import aiohttp
-from enrichment.sources.base.exceptions import ServiceNetworkError
+from enrichment.sources.base.exceptions import ServiceNetworkError, ServiceParseError
 from enrichment.sources.base.page_fetcher import (
     FetchedPage,
     PageFetcher,
@@ -21,19 +21,23 @@ _SYOBOI_DB_URL = "https://cal.syoboi.jp/db.php"
 
 
 def _has_title_items(xml_bytes: bytes) -> bool:
-    """Return True when a Syoboi TitleLookup XML response contains a TitleItem.
+    """Check whether a Syoboi TitleLookup XML response contains a TitleItem.
 
     Args:
         xml_bytes: Raw UTF-8 XML bytes from ``Command=TitleLookup``.
 
     Returns:
-        True if at least one ``TitleItem`` element is present, False otherwise.
+        True if at least one ``TitleItem`` element is present, False when valid
+        XML holds no title items.
+
+    Raises:
+        ServiceParseError: If ``xml_bytes`` is malformed or truncated XML.
     """
     try:
         parser = etree.XMLParser(resolve_entities=False)
         root = etree.fromstring(xml_bytes, parser=parser)
-    except etree.XMLSyntaxError:
-        return False
+    except etree.XMLSyntaxError as exc:
+        raise ServiceParseError(service="syoboi", cause=exc) from exc
     return root.find(".//TitleItem") is not None
 
 

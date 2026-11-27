@@ -543,4 +543,7 @@ def map_anidb_character_page_responses(
     if main_response is None:
         error_message = "AniDB character responses missing required 'main' response"
         raise ValueError(error_message)
-    return _extract_from_html(parse_html_response(main_response))
+    character_page = _extract_from_html(parse_html_response(main_response))
+    if character_page is None or not any(character_page.model_dump().values()):
+        return None
+    return character_page

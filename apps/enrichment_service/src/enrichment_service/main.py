@@ -19,7 +19,7 @@ from http_cache import close_cache
 from observability import setup_telemetry
 
 from .routes import EnrichmentRoutes
-from .runtime import build_runtime
+from .runtime import EnrichmentRuntime, build_runtime
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +79,16 @@ def _register_sigterm_shutdown(
         logger.warning("SIGTERM handler is not supported on this platform")
     except RuntimeError:
         logger.warning("Unable to register SIGTERM handler without a running loop")
+
+
+async def _close_page_fetchers(runtime: EnrichmentRuntime) -> None:
+    """Close open transport sessions held by registered provider fetchers.
+
+    Args:
+        runtime: Enrichment runtime owning the registered page fetchers.
+    """
+    for page_fetcher in runtime.page_fetchers.values():
+        await page_fetcher.close()
 
 
 async def serve() -> None:
@@ -141,6 +151,7 @@ async def serve() -> None:
     finally:
         logger.info("Shutting down enrichment_service gRPC server")
         await server.stop(grace=5)
+        await _close_page_fetchers(runtime)
         await close_cache()
         from observability import stop_logging
 

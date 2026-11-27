@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from ..runtime import EnrichmentRuntime
 
 logger = logging.getLogger(__name__)
+_MAX_DURATION_NANOS = 999_999_999
 
 
 def build_page_fetchers(runtime: EnrichmentRuntime) -> dict[str, PageFetcher]:
@@ -57,20 +58,33 @@ def build_page_fetchers(runtime: EnrichmentRuntime) -> dict[str, PageFetcher]:
 
 
 def _read_max_age(request: enrichment_service_pb2.FetchPageRequest) -> timedelta | None:
-    """Convert an optional protobuf Duration into a timedelta.
+    """Validate and convert an optional protobuf Duration into a timedelta.
 
     Args:
         request: Incoming FetchPageRequest protobuf message.
 
     Returns:
         Timedelta freshness bound, or None when max_age is unset.
+
+    Raises:
+        ValueError: If max_age holds out-of-range seconds, invalid nanos, or
+            mismatched signs.
     """
     if not request.HasField("max_age"):
         return None
-    return timedelta(
-        seconds=request.max_age.seconds,
-        microseconds=request.max_age.nanos // 1000,
-    )
+    seconds = request.max_age.seconds
+    nanos = request.max_age.nanos
+    if abs(nanos) > _MAX_DURATION_NANOS:
+        error_message = f"max_age nanos out of range: {nanos}"
+        raise ValueError(error_message)
+    if (seconds > 0 and nanos < 0) or (seconds < 0 and nanos > 0):
+        error_message = "max_age seconds and nanos must share the same sign"
+        raise ValueError(error_message)
+    try:
+        return timedelta(seconds=seconds, microseconds=int(nanos / 1000))
+    except OverflowError as exc:
+        error_message = f"max_age duration out of range: {seconds}s"
+        raise ValueError(error_message) from exc
 
 
 async def fetch_page(
@@ -90,6 +104,7 @@ async def fetch_page(
     """
     if not request.HasField("page_key"):
         await context.abort(grpc.StatusCode.INVALID_ARGUMENT, "page_key is required")
+        return enrichment_service_pb2.FetchPageResponse()
 
     page_key = request.page_key
     fetchers = runtime.page_fetchers or build_page_fetchers(runtime)
@@ -99,7 +114,7 @@ async def fetch_page(
             grpc.StatusCode.INVALID_ARGUMENT,
             f"unknown provider {page_key.provider!r}",
         )
-    assert fetcher is not None  # noqa: S101
+        return enrichment_service_pb2.FetchPageResponse()
 
     try:
         fetched = await fetcher.fetch_page(page_key, max_age=_read_max_age(request))

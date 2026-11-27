@@ -66,7 +66,9 @@ class AnimeScheduleFetcher(PageFetcher):
         }
         url = f"{_ANIME_DETAIL_BASE_URL}/{page_key.address}"
         try:
-            async with self._cache.get_aiohttp_session("animeschedule") as session:
+            async with self._cache.get_aiohttp_session(
+                "animeschedule", timeout=aiohttp.ClientTimeout(total=30)
+            ) as session:
                 async with session.get(url, headers=headers) as response:
                     if response.status == 404:
                         return FetchedPage(
@@ -74,7 +76,7 @@ class AnimeScheduleFetcher(PageFetcher):
                         )
                     response.raise_for_status()
                     raw_bytes, content_type = await read_response_bytes(response)
-        except aiohttp.ClientError as exc:
+        except (aiohttp.ClientError, TimeoutError) as exc:
             raise ServiceNetworkError(service="animeschedule", cause=exc) from exc
 
         return FetchedPage(
