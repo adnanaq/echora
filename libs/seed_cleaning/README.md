@@ -396,7 +396,7 @@ A page the rules keep in its entry, under the address it has now:
 ```json
 {
   "entry_reference_page": "mal:anime:127",
-  "page_key": "animeplanet:anime:gate-keepers",
+  "page_key": "anime_planet:anime:gate-keepers",
   "address": "https://anime-planet.com/anime/gate-keepers",
   "placement_word": "work 1",
   "renamed_to": null,
@@ -419,10 +419,10 @@ one (`renamed_to`):
 ```json
 {
   "entry_reference_page": "mal:anime:127",
-  "page_key": "animeplanet:anime:gatekeepers",
+  "page_key": "anime_planet:anime:gatekeepers",
   "address": "https://anime-planet.com/anime/gatekeepers",
   "placement_word": "work 1",
-  "renamed_to": "animeplanet:anime:gate-keepers",
+  "renamed_to": "anime_planet:anime:gate-keepers",
   "target_entry_reference_page": null,
   "named_entry_page_key": null,
   "new_entry_key": null,

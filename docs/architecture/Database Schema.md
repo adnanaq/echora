@@ -638,6 +638,8 @@ WHERE r.from_anime_id = 'uuid-a';
 
 ~~Source material needs no unresolved state: a related source work always carries a title and type, so `SaveAnime` creates or finds its row through `source_material_xref` in the same transaction. (ECHO-102)~~
 
+~~A character's mangaography names a manga or novel by its provider pages. `SaveCharacter` records each page in `source_material_xref` with its URL, the title the character's pages give it, and no source material, so it never creates a source material. A work's save that later relates the source material attaches those pages to it. A page already recorded keeps its URL, and gets the title only while it has none. (ECHO-108)~~
+
 **Who asserts an edge:**
 - ~~`anime_relation` holds only what each work's own provider pages say, in one direction, from that work. When work A lists B as a sequel and B lists A as a prequel, there are two rows, one asserted by each work. (ECHO-102)~~ ~~The table is `anime_related_anime`. (ECHO-133)~~
 - ~~`SaveAnime` replaces the work's own `anime_relation` rows with what the merge produced. It never touches rows another work asserted. (ECHO-102)~~
@@ -672,6 +674,7 @@ WHERE r.from_anime_id = 'uuid-a';
 **Not yet merged.** A work exists before its first merge. Episodes a work's save creates, and characters the character load creates, follow the same rule: they exist from a list, and their own first merge sets `merged_at`. (ECHO-103) (ECHO-135)
 
 - The seed load creates the work with its ID and page links, and nothing has been fetched. A linked page that was never fetched has a NULL `fetched_at` and `responses_hash`, which also makes it due. (ECHO-107)
+- ~~An episode's number is the one its work's episode list assigned. `LoadEpisode` returns it and the episode merge keeps it; `SaveEpisode` refuses a different number, so only the work's save renumbers. (ECHO-108)~~
 - ~~The work's `merged_at` is NULL, so `title`, `type` and `status` may be empty, and a check constraint requires all three once `merged_at` is set. The save that first sets `merged_at` writes the `created` event; every later changing save writes `updated`. (ECHO-98)~~
 - ~~Every read for consumers and the backend (`Get*`, `ListEpisodes`, `ListScoreAnime`, `ListUpcomingEpisodes`, the graph primitives) reads the `*_visible` views, which skip rows whose `merged_at` is NULL. The due queries do not: an unmerged work has never been refreshed, so it is due. (ECHO-108)~~
 
@@ -682,9 +685,9 @@ WHERE r.from_anime_id = 'uuid-a';
 - Rows that name pages of the same target form one entry, with every page URL and the most prominent role:
   - ~~a relation's target pages, grouped by the visible work that holds them, which is never the work itself; the entry takes that work's title, type, status, year and episode count; (ECHO-108)~~
   - ~~a character's animeography, grouped by the visible work holding each page, with its title; (ECHO-108)~~
-  - ~~a character's mangaography, grouped by the stored source material each identifier names, with its title; (ECHO-108)~~
+  - ~~a character's mangaography, grouped by the stored source material each identifier names, with its title; a page no work has related yet is an entry of its own; (ECHO-108)~~
   - ~~an episode's characters, grouped by the visible character holding each page, with its name. (ECHO-108)~~
-- A target that no visible entity holds stays an entry of its own, with its page URL when one is stored. The URL of a page no stored work owns is not stored, so such an entry has neither a title nor a URL. (ECHO-108)
+- ~~A target that no visible entity holds stays an entry of its own, with the URL and title stored on its page (`provider_page.source` and `title`, or `source_material_xref.source` and `title` for a manga page). The page's title is what its provider calls the page; once an entity holding the page is stored, the entry takes that entity's title instead. Type and year are not stored for such a page, and pages of one such target read as separate entries until an entity holds them. (ECHO-108)~~
 - ~~A character's `anime_ids` and `roles` are the visible works its animeography names and its most prominent role in each. (ECHO-108)~~
 - ~~Enum fields are stored as their lookup text (`TV SPECIAL`, `PG-13 - Teens 13 or older`), not as proto value names. One table per enum in the PostgreSQL service maps both ways, for saves and reads, and a stored value with no proto value fails the read with `INTERNAL`. (ECHO-108)~~
 
@@ -1265,8 +1268,9 @@ CREATE TABLE source_material (  -- (ECHO-102)
 CREATE TABLE source_material_xref (  -- (ECHO-102)
   provider            text NOT NULL REFERENCES provider(value),
   external_id         text NOT NULL,
-  source_material_id  uuid NOT NULL REFERENCES source_material(id) ON DELETE CASCADE,
+  source_material_id  uuid REFERENCES source_material(id) ON DELETE CASCADE,  -- NULL until a work's save relates the page (ECHO-108)
   source              text NOT NULL,
+  title               text,  -- the title the page's provider gives, from a character's mangaography (ECHO-108)
   PRIMARY KEY (provider, external_id),
   UNIQUE (source_material_id, provider)
 );
@@ -1575,6 +1579,7 @@ CREATE TABLE provider_page (  -- (ECHO-97)
   fetch_failed_at timestamptz,               -- last fetch that failed every attempt
   fetch_failures  int NOT NULL DEFAULT 0 CHECK (fetch_failures >= 0),  -- failures since the last success
   source          text,                      -- URL the last merge of the page's owner chose; NULL until a save writes it (ECHO-108)
+  title           text,                      -- title the page's provider gives it; the holder writes it, a save naming the page fills it while empty (ECHO-108)
   PRIMARY KEY (provider, entity_type, address),
   CHECK ((fetched_at IS NULL) = (responses_hash IS NULL))
 );
@@ -1670,7 +1675,10 @@ CREATE TABLE character_source (
   - ~~`LoadEpisode` for an episode. (ECHO-103)~~
   - ~~`LoadCharacter` for a character. (ECHO-104)~~
 - ~~An entity's `sources` and `partial_sources` in the merged model come from these links. (ECHO-105)~~
-- ~~A page's URL is a fact about the page, so it is stored once, in `provider_page.source`, and not on the link tables. The merge chooses it: a URL a provider reported, with its slug, when one is known, otherwise the provider's canonical page URL. Each save writes the URLs of the pages its entity holds as sources (`page_sources`), and only where they changed. A page is the source of at most one entity, so each URL has one writer. A partial source's URL is written by the work that holds the page as its source. (ECHO-108)~~
+- ~~A page's URL is a fact about the page, so it is stored once, in `provider_page.source`, and not on the link tables. The merge chooses it, in this order: the longest URL any provider record reports for the page, so a URL with the provider's slug wins; for a page whose URL does not hold its key, such as a Kitsu episode keyed by its id, the longest URL its own provider record reports for a page of its provider and kind; otherwise the provider's canonical page URL. MAL and Kitsu episode pages have no canonical URL, since their URL needs the work's slug, which the key does not hold. (ECHO-108)~~
+- ~~The entity that holds a page as its source writes the page's URL (`page_sources`), only where it changed, and replaces any URL stored before. A partial source's URL is written by the work that holds the page as its source. (ECHO-108)~~
+- ~~A save that names a page it does not hold fills the page's URL while none is stored: `SaveAnime` for its relations' target pages and the episode pages its episode list names (`EpisodeReference.page_sources`), `SaveCharacter` for its works' pages, `SaveEpisode` for its characters' pages. It adds the page row when missing with `ON CONFLICT DO NOTHING` and fills only rows it can lock at once (`FOR NO KEY UPDATE SKIP LOCKED`), so it never waits on a page row another save holds. A page row no entity holds is never fetched, since due pages are found through `anime_source`. (ECHO-108)~~
+- ~~A page's address is the provider's own id for it. A MAL episode page has none, so its address is the work's id and the episode number joined by a colon (`21:1`), and the address check depends on the page's entity type. A Kitsu episode page's address is its Kitsu episode id. (ECHO-108)~~
 
 ---
 

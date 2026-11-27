@@ -145,11 +145,12 @@ message PageKey {  // (ECHO-97) (ECHO-133)
   string address = 3;                        // e.g. '21'
 }
 
-// The URL a merge chose for one linked provider page, a provider-reported URL with its
-// slug when one is known, or the provider's canonical page URL otherwise.
+// A provider page with its URL and title: a provider-reported URL with its slug when one is
+// known, or the provider's canonical page URL otherwise, and the title its provider gives it.
 message PageSource {  // (ECHO-108)
   PageKey page_key = 1;
-  string source = 2;                         // stored in provider_page.source
+  string source = 2;                         // stored in provider_page.source; empty when no URL is known
+  string title = 3;                          // stored in provider_page.title; a character page's name; empty when unknown
 }
 
 // One response of a page, exactly as the provider sent it.
@@ -188,7 +189,7 @@ message EpisodeReference {  // (ECHO-105)
   string episode_id = 1;                     // existing ID, or a new UUIDv7 from the merge
   int32 episode_number = 2;
   string title = 3;
-  repeated PageKey page_keys = 4;
+  repeated PageSource page_sources = 4;      // each page the work's lists name, with the URL they link it by (ECHO-108)
   repeated EpisodeListEntry list_entries = 5;  // what each provider's work page says about it
 }
 
@@ -269,6 +270,7 @@ message MergeEpisodeRequest {  // (ECHO-109)
   repeated shared_proto.v1.StoredPage pages = 3;
   repeated shared_proto.v1.FieldCorrection corrections = 4;
   repeated shared_proto.v1.EpisodeListEntry list_entries = 5;  // merged with the pages, so an episode with no page of its own still merges
+  int32 episode_number = 6;                                    // from LoadEpisodeResponse (ECHO-108)
 }
 
 message MergeEpisodeResponse {  // (ECHO-109)
@@ -448,6 +450,7 @@ message LoadEpisodeResponse {  // (ECHO-103)
   repeated shared_proto.v1.StoredPage pages = 3;
   repeated shared_proto.v1.FieldCorrection corrections = 4;
   repeated shared_proto.v1.EpisodeListEntry list_entries = 5;
+  int32 episode_number = 6;                  // the number the work's list assigned; the merge keeps it (ECHO-108)
 }
 
 message SaveEpisodeRequest {  // (ECHO-103)

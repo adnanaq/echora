@@ -65,7 +65,7 @@ Whatever the rules cannot settle becomes a review case, answered by a person
 | **Provider page**      | One page on a provider about one work, such as `https://myanimelist.net/anime/21`.                                                                                                                                                                                                                                                 |
 | **Page**               | Short for provider page. In code, `page` always holds a page's fetched details (`ProviderPage`) and `page_key` holds its key.                                                                                                                                                                                                      |
 | **Address**            | The URL of a provider page. One page can have several addresses: an old address that redirects, or another spelling such as a Kitsu slug for a page the seed lists by number.                                                                                                                                                      |
-| **Page key**           | The name of a provider page, whatever the spelling of its address: `mal:anime:21` for `https://www.myanimelist.net/anime/21/One_Piece`. It is `provider:kind:id`, where the kind is `anime` or `manga`. Pages are always compared by key.                                                                                          |
+| **Page key**           | The name of a provider page, whatever the spelling of its address: `mal:anime:21` for `https://www.myanimelist.net/anime/21/One_Piece`. It is `provider:kind:id`, where the kind is `anime`, `manga`, `character` or `episode`. A MAL or Kitsu episode page sits under its work, so its id is the work's id or slug and the episode number joined by a colon (`mal:episode:21:1`). Pages are always compared by key.                                                                                          |
 | **Current key**        | The key a page resolves to now. A renamed page, or a page reached by another spelling (such as a Kitsu slug when the seed lists Kitsu by number), resolves to a different current key found when fetching the page (`ProviderPage.current_key`).                                                                                   |
 | **Seed**               | The downloaded anime-offline-database file the enrichment pipeline starts from.                                                                                                                                                                                                                                                    |
 | **Seed entry**         | One row of the seed: a title, type, year, season and a list of provider pages.                                                                                                                                                                                                                                                     |
@@ -304,8 +304,8 @@ entry, "Other Example", has `mal:anime:9`, and its year and type agree with
 | --------------------------------- | --------------- | -------------------------------- |
 | `kitsu:anime:3`                   | → `mal:anime:3` |                                  |
 | `kitsu:anime:4`                   | → `mal:anime:9` |                                  |
-| `animeplanet:anime:example`       | none            | Example, TV, 2020 (as the entry) |
-| `animeplanet:anime:example-movie` | none            | Example Movie, MOVIE, 2020       |
+| `anime_planet:anime:example`       | none            | Example, TV, 2020 (as the entry) |
+| `anime_planet:anime:example-movie` | none            | Example Movie, MOVIE, 2020       |
 
 For Kitsu: `kitsu:anime:3` belongs. `kitsu:anime:4` links `mal:anime:9`, a MAL
 page the entry does not have, so it is unrelated, and its move to "Other
@@ -314,15 +314,15 @@ so the rules apply it.
 
 For Anime-Planet: neither page has links either way, so both are unlinked. The
 outcome is `UNDECIDED`, with the review reason `UNLINKED_PAGES`. The match
-fields point the reviewer at `animeplanet:anime:example`, but do not decide.
+fields point the reviewer at `anime_planet:anime:example`, but do not decide.
 
 ```text
 provider     outcome               review reasons  result
 kitsu        PAGES_OF_OTHER_WORKS  (none)          belonging: kitsu:anime:3 -> {mal:anime:3}
                                                    unrelated: kitsu:anime:4 -> links {mal:anime:9}, moves to "Other Example"
-animeplanet  UNDECIDED             UNLINKED_PAGES  unlinked: animeplanet:anime:example, animeplanet:anime:example-movie
-                                                   title_matches: animeplanet:anime:example
-                                                   year_type_matches: animeplanet:anime:example
+anime_planet UNDECIDED             UNLINKED_PAGES  unlinked: anime_planet:anime:example, anime_planet:anime:example-movie
+                                                   title_matches: anime_planet:anime:example
+                                                   year_type_matches: anime_planet:anime:example
 ```
 
 The entry still goes to review as one case, because the Anime-Planet decision
@@ -1003,7 +1003,7 @@ from work_matching import (
     find_unheld_linked_page_keys,
 )
 
-fetched_providers = {"mal", "anilist", "kitsu", "anidb", "animeplanet", "anisearch"}
+fetched_providers = {"mal", "anilist", "kitsu", "anidb", "anime_planet", "anisearch"}
 linked_page_keys = find_unheld_linked_page_keys(entry, pages, known_work_entries, fetched_providers)
 entry_details = LinkingEntryDetails(
     entry, find_entry_episode_count(entry, pages), linked_page_keys
