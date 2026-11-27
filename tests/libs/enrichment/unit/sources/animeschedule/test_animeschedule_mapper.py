@@ -4,10 +4,15 @@ AnimeSchedule is the only provider that reports a premiere month, so anything
 the mapper drops here is lost for good.
 """
 
+import json
+
+import pytest
 from enrichment.sources.animeschedule.animeschedule_mapper import (
     anime_from_animeschedule,
+    map_animeschedule_anime_responses,
 )
 from enrichment.sources.animeschedule.animeschedule_models import AnimeScheduleAnime
+from shared_proto.v1.merge_pb2 import PageResponse
 
 
 def _anime(**fields: object) -> AnimeScheduleAnime:
@@ -136,3 +141,40 @@ def test_anime_from_animeschedule_own_page_listed_first_in_sources() -> None:
         "https://myanimelist.net/anime/21",
         "https://anilist.co/anime/21",
     ]
+
+
+def test_map_animeschedule_anime_responses_valid_json_returns_canonical_anime() -> None:
+    payload = {
+        "id": "as-1",
+        "title": "Cowboy Bebop",
+        "route": "cowboy-bebop",
+        "episodes": 26,
+        "websites": {"mal": "myanimelist.net/anime/1"},
+    }
+    canonical = map_animeschedule_anime_responses(
+        [
+            PageResponse(
+                request_name="main",
+                content_type="application/json",
+                body=json.dumps(payload).encode("utf-8"),
+            )
+        ]
+    )
+
+    assert canonical["title"] == "Cowboy Bebop"
+    assert canonical["episode_count"] == 26
+    assert canonical["sources"] == [
+        "https://animeschedule.net/anime/cowboy-bebop",
+        "https://myanimelist.net/anime/1",
+    ]
+
+
+def test_map_animeschedule_anime_responses_missing_main_raises_value_error() -> None:
+    with pytest.raises(ValueError, match="main"):
+        map_animeschedule_anime_responses(
+            [
+                PageResponse(
+                    request_name="other", content_type="application/json", body=b"{}"
+                )
+            ]
+        )

@@ -1,66 +1,54 @@
-"""Unit tests for SyoboiFetcher."""
-
 from datetime import timedelta
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import create_autospec
 
+import aiohttp
 import pytest
+from enrichment.sources.base.exceptions import ServiceNetworkError, ServiceParseError
 from enrichment.sources.syoboi.syoboi_fetcher import SyoboiFetcher
+from http_cache import HTTPCacheManager
 from shared_proto.v1.anime_pb2 import EntityType
 from shared_proto.v1.merge_pb2 import PageKey
 
 
-def _mock_syoboi_cache(
+def _build_syoboi_cache(
     responses_by_command: dict[str, tuple[int, str]],
-) -> tuple[MagicMock, list[dict[str, Any]]]:
-    recorded: list[dict[str, Any]] = []
+    *,
+    get_error: Exception | None = None,
+) -> tuple[HTTPCacheManager, list[dict[str, object]]]:
+    recorded_calls: list[dict[str, object]] = []
 
-    def _make_session() -> MagicMock:
-        session = MagicMock()
+    def _make_session(_service: str, **_kwargs: object) -> aiohttp.ClientSession:
+        session = create_autospec(aiohttp.ClientSession, instance=True)
+        session.__aenter__.return_value = session
+        session.__aexit__.return_value = False
 
-        def _get(
+        def _record_get(
             url: str, *, params: dict[str, str], headers: dict[str, str]
-        ) -> MagicMock:
-            recorded.append({"url": url, "params": params, "headers": headers})
+        ) -> aiohttp.ClientResponse:
+            recorded_calls.append(
+                {"url": url, "params": dict(params), "headers": dict(headers)}
+            )
+            if get_error is not None:
+                raise get_error
             status, body_text = responses_by_command[params["Command"]]
-            response = MagicMock()
+            response = create_autospec(aiohttp.ClientResponse, instance=True)
             response.status = status
             response.headers = {"Content-Type": "application/xml; charset=UTF-8"}
-            response.read = AsyncMock(return_value=body_text.encode("utf-8"))
-            response.raise_for_status = MagicMock()
+            response.read.return_value = body_text.encode("utf-8")
+            response.__aenter__.return_value = response
+            response.__aexit__.return_value = False
+            return response
 
-            resp_cm = MagicMock()
+        session.get.side_effect = _record_get
+        return session
 
-            async def _resp_aenter(_self: object) -> MagicMock:
-                return response
-
-            async def _resp_aexit(_self: object, *_args: object) -> bool:
-                return False
-
-            resp_cm.__aenter__ = _resp_aenter
-            resp_cm.__aexit__ = _resp_aexit
-            return resp_cm
-
-        session.get = _get
-        sess_cm = MagicMock()
-
-        async def _sess_aenter(_self: object) -> MagicMock:
-            return session
-
-        async def _sess_aexit(_self: object, *_args: object) -> bool:
-            return False
-
-        sess_cm.__aenter__ = _sess_aenter
-        sess_cm.__aexit__ = _sess_aexit
-        return sess_cm
-
-    cache = MagicMock()
-    cache.get_aiohttp_session.side_effect = lambda *_a, **_kw: _make_session()
-    return cache, recorded
+    cache = create_autospec(HTTPCacheManager, instance=True)
+    cache.get_aiohttp_session.side_effect = _make_session
+    return cache, recorded_calls
 
 
 @pytest.mark.asyncio
-async def test_syoboi_fetcher_fetches_title_and_programs_xml() -> None:
+async def test_syoboi_fetcher_valid_tid_returns_title_and_programs_xml() -> None:
     title_xml = (
         '<?xml version="1.0" encoding="UTF-8"?>'
         "<TitleLookupResponse><Result><Code>200</Code></Result>"
@@ -73,30 +61,35 @@ async def test_syoboi_fetcher_fetches_title_and_programs_xml() -> None:
         '<ProgItem id="26"><TID>1</TID><StTime>2003-03-28 02:07:00</StTime></ProgItem>'
         "</ProgItems><Result><Code>200</Code></Result></ProgLookupResponse>"
     )
-    cache, calls = _mock_syoboi_cache(
+    cache, calls = _build_syoboi_cache(
         {"TitleLookup": (200, title_xml), "ProgLookup": (200, prog_xml)}
     )
     fetcher = SyoboiFetcher(cache)
-    key = PageKey(
+    page_key = PageKey(
         provider="syoboi", entity_type=EntityType.ENTITY_TYPE_ANIME, address="1"
     )
 
-    fetched = await fetcher.fetch_page(key, max_age=timedelta(0))
+    fetched = await fetcher.fetch_page(page_key, max_age=timedelta(0))
 
     assert fetched.is_not_found is False
-    assert [r.request_name for r in fetched.responses] == ["main", "programs"]
-    assert all(r.content_type == "application/xml" for r in fetched.responses)
-    assert calls[0]["headers"]["Cache-Control"] == "no-cache"
+    assert [response.request_name for response in fetched.responses] == [
+        "main",
+        "programs",
+    ]
+    assert all(
+        response.content_type == "application/xml" for response in fetched.responses
+    )
+    assert calls[0]["headers"] == {"Cache-Control": "no-cache"}
 
 
 @pytest.mark.asyncio
-async def test_syoboi_fetcher_reports_not_found_when_no_title_items() -> None:
+async def test_syoboi_fetcher_empty_title_items_returns_not_found() -> None:
     empty_xml = (
         '<?xml version="1.0" encoding="UTF-8"?>'
         "<TitleLookupResponse><Result><Code>200</Code></Result>"
         "<TitleItems></TitleItems></TitleLookupResponse>"
     )
-    cache, _ = _mock_syoboi_cache({"TitleLookup": (200, empty_xml)})
+    cache, _ = _build_syoboi_cache({"TitleLookup": (200, empty_xml)})
     fetcher = SyoboiFetcher(cache)
 
     fetched = await fetcher.fetch_page(
@@ -109,3 +102,34 @@ async def test_syoboi_fetcher_reports_not_found_when_no_title_items() -> None:
 
     assert fetched.is_not_found is True
     assert fetched.responses == ()
+
+
+@pytest.mark.asyncio
+async def test_syoboi_fetcher_malformed_xml_raises_parse_error() -> None:
+    truncated_xml = "<TitleLookupResponse><TitleItems><TitleItem"
+    cache, _ = _build_syoboi_cache({"TitleLookup": (200, truncated_xml)})
+    fetcher = SyoboiFetcher(cache)
+
+    with pytest.raises(ServiceParseError):
+        await fetcher.fetch_page(
+            PageKey(
+                provider="syoboi",
+                entity_type=EntityType.ENTITY_TYPE_ANIME,
+                address="1",
+            )
+        )
+
+
+@pytest.mark.asyncio
+async def test_syoboi_fetcher_timeout_raises_network_error() -> None:
+    cache, _ = _build_syoboi_cache({}, get_error=TimeoutError("timed out"))
+    fetcher = SyoboiFetcher(cache)
+
+    with pytest.raises(ServiceNetworkError):
+        await fetcher.fetch_page(
+            PageKey(
+                provider="syoboi",
+                entity_type=EntityType.ENTITY_TYPE_ANIME,
+                address="1",
+            )
+        )
