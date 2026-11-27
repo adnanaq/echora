@@ -694,7 +694,7 @@ WHERE r.from_anime_id = 'uuid-a';
 **Recording a refresh.** `RecordRefresh`, the last activity of every refresh, sets `next_refresh_at`, the one column every due check reads:
 
 - **Every page fetched or not due:** ~~`refreshed_at = now()`, `refresh_failures = 0`, and `next_refresh_at = now() + REFRESH_AFTER_DAYS`, whether the merge changed something, changed nothing or did not run. (ECHO-108)~~
-- **Some pages failed:** ~~the same, except `next_refresh_at` is the earliest time a failed page may be tried again, `2^fetch_failures` hours after its failure, at most a week. A page that failed is not hidden until the next weekly sweep. (ECHO-108)~~
+- **Some pages failed:** ~~the same, except `next_refresh_at` is the earliest time a failed page may be tried again, `2^fetch_failures` hours after its failure, at most a week. A page that failed is not hidden until the next weekly sweep. It is never later than `now() + refresh_after`, so one page's long backoff does not hold back the entity's healthy pages. (ECHO-108)~~
 - **The refresh failed:** ~~`refresh_failed_at = now()`, one more `refresh_failures`, and `next_refresh_at = now() + 2^refresh_failures` hours, at most a week, so a work that keeps failing is not picked by every sweep and every open. (ECHO-108)~~
 
 ~~The workflow passes `REFRESH_AFTER_DAYS` with the call, since the setting belongs to the Update Service. (ECHO-108)~~
@@ -1676,8 +1676,8 @@ CREATE TABLE character_source (
   - ~~`LoadCharacter` for a character. (ECHO-104)~~
 - ~~An entity's `sources` and `partial_sources` in the merged model come from these links. (ECHO-105)~~
 - ~~A page's URL is a fact about the page, so it is stored once, in `provider_page.source`, and not on the link tables. The merge chooses it, in this order: the longest URL any provider record reports for the page, so a URL with the provider's slug wins; for a page whose URL does not hold its key, such as a Kitsu episode keyed by its id, the longest URL its own provider record reports for a page of its provider and kind; otherwise the provider's canonical page URL. MAL and Kitsu episode pages have no canonical URL, since their URL needs the work's slug, which the key does not hold. (ECHO-108)~~
-- ~~The entity that holds a page as its source writes the page's URL (`page_sources`), only where it changed, and replaces any URL stored before. A partial source's URL is written by the work that holds the page as its source. (ECHO-108)~~
-- ~~A save that names a page it does not hold fills the page's URL while none is stored: `SaveAnime` for its relations' target pages and the episode pages its episode list names (`EpisodeReference.page_sources`), `SaveCharacter` for its works' pages, `SaveEpisode` for its characters' pages. It adds the page row when missing with `ON CONFLICT DO NOTHING` and fills only rows it can lock at once (`FOR NO KEY UPDATE SKIP LOCKED`), so it never waits on a page row another save holds. A page row no entity holds is never fetched, since due pages are found through `anime_source`. (ECHO-108)~~
+- ~~The entity that holds a page as its source writes the page's URL and title (`page_sources`), only where they changed, and replaces what was stored before. A URL or title the merge did not learn this time is sent empty and keeps the stored one. A partial source's URL is written by the work that holds the page as its source; `SaveAnime` also fills it from `Anime.partial_sources` while none is stored, so a partial-source page no work holds still reads with its URL. (ECHO-108)~~
+- ~~A save that names a page it does not hold fills the page's URL and title while none is stored: `SaveAnime` for its relations' target pages and the episode pages its episode list names (`EpisodeReference.page_sources`), `SaveCharacter` for its works' pages, `SaveEpisode` for its characters' pages. It adds the page row when missing with `ON CONFLICT DO NOTHING` and fills only rows it can lock at once (`FOR NO KEY UPDATE SKIP LOCKED`), so it never waits on a page row another save holds. A page row no entity holds is never fetched, since due pages are found through `anime_source`. (ECHO-108)~~
 - ~~A page's address is the provider's own id for it. A MAL episode page has none, so its address is the work's id and the episode number joined by a colon (`21:1`), and the address check depends on the page's entity type. A Kitsu episode page's address is its Kitsu episode id. (ECHO-108)~~
 
 ---
@@ -1943,7 +1943,7 @@ ORDER BY id
 LIMIT $3;
 ```
 
-~~The same due queries exist for `episode` and `character`. An episode is older when its work is, and a character when every work it appears in is. An entity merged by older code is due whatever its age or its works' status, as for works. (ECHO-108)~~
+~~The same due queries exist for `episode` and `character`. An episode is older when its work is. A character is due only through a work that is due itself, one that is ongoing or upcoming and not older. An entity merged by older code is due whatever its age or its works' status, as for works. (ECHO-108)~~
 
 ```sql
 -- ListDuePages: the pages of one budgeted provider (AniDB) in due order, for the budgeted
@@ -1959,7 +1959,7 @@ ORDER BY p.fetched_at NULLS FIRST, p.address
 LIMIT $2;
 ```
 
-`ListDueEpisodes` and `ListDueCharacters` return only the episodes and characters of ongoing and upcoming works. A character shared by several works counts as ongoing when any of its undeleted works is ongoing or upcoming. Those of finished works refresh when a user opens them, or when the work's weekly merge changes what it says about them: a changed `episode_list_entry` row, or a character added to or changed in the work's cast, sets that entity's `next_refresh_at` to NULL in the same save, and `SaveAnime` returns its ID so the work's refresh starts its refresh at once. The sweep does not pick up these entities, so the returned ID is what refreshes them. MAL alone lists about 420,000 episodes, and refreshing them all weekly at MAL's pace of one request every 1.5 seconds would need more than a day's capacity every day.
+`ListDueEpisodes` and `ListDueCharacters` return only the episodes and characters of ongoing and upcoming works. A character shared by several works is due when any of its undeleted works is ongoing or upcoming and not older. Those of finished works refresh when a user opens them, or when the work's weekly merge changes what it says about them: a changed `episode_list_entry` row, or a character added to or changed in the work's cast, sets that entity's `next_refresh_at` to NULL in the same save, and `SaveAnime` returns its ID so the work's refresh starts its refresh at once. The sweep does not pick up these entities, so the returned ID is what refreshes them. MAL alone lists about 420,000 episodes, and refreshing them all weekly at MAL's pace of one request every 1.5 seconds would need more than a day's capacity every day.
 
 ### Airing Schedule Queries
 

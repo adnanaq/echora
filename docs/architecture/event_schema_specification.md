@@ -557,7 +557,7 @@ message DeleteAnimeRequest {  // (ECHO-107)
 
 message ListDueRequest {  // (ECHO-108)
   google.protobuf.Timestamp due_before = 1;  // the sweep's fixed cutoff, compared with next_refresh_at
-  int32 older_after_years = 2;               // entities older than this refresh only when opened
+  int32 older_after_years = 2;               // entities older than this refresh only when opened; 0 to 1000
   int32 page_size = 3;
   optional google.protobuf.Timestamp after_next_refresh_at = 4;  // keyset: the last row of the previous page
   optional string after_id = 5;
@@ -574,7 +574,7 @@ message DueEntity {  // (ECHO-108)
 }
 
 message ListUpcomingEpisodesRequest {  // (ECHO-108)
-  int32 window_days = 1;
+  int32 window_days = 1;                     // 0 to 36500
 }
 
 message ListUpcomingEpisodesResponse {  // (ECHO-108)
@@ -623,7 +623,7 @@ enum RefreshOutcome {  // (ECHO-108)
 message RecordRefreshResponse {}  // (ECHO-108)
 
 message ListScoreAnimeRequest {  // (ECHO-108)
-  int32 lookback_days = 1;                   // finished works stay in for this many days after aired_to
+  int32 lookback_days = 1;                   // finished works stay in for this many days after aired_to; 0 to 36500
   int32 page_size = 2;
   optional string after_id = 3;              // keyset: the last ID of the previous page
 }
