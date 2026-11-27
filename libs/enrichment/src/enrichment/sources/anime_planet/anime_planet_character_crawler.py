@@ -407,7 +407,7 @@ async def _fetch_character_data(url: str) -> dict[str, Any] | None:
     Returns:
         Raw extraction dict, or None on failure.
     """
-    async with browser_session(headless=True) as session:
+    async with browser_session(headless=False) as session:
         browser = session.browser
         try:
             html = await _fetch_page_html(browser, url)
@@ -506,7 +506,7 @@ async def fetch_animeplanet_characters(
     missing_indices = sorted(set(missing_indices))
     missing_urls = [urls[i] for i in missing_indices]
 
-    async with browser_session(headless=True) as session:
+    async with browser_session(headless=False) as session:
         browser = session.browser
         for i, url in enumerate(missing_urls):
             if i > 0:

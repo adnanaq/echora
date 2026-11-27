@@ -104,6 +104,8 @@ from work_matching.provider_page_key import (
     build_page_address,
     is_mal_page,
     rank_by_provider_trust,
+    read_page_id,
+    read_page_kind,
     read_page_provider,
     resolve_page_key,
 )
@@ -200,6 +202,8 @@ __all__ = [
     "read_answer_placements",
     "read_group_answer_placements",
     "read_linked_page_answer",
+    "read_page_id",
+    "read_page_kind",
     "read_page_provider",
     "read_placement",
     "read_placements",

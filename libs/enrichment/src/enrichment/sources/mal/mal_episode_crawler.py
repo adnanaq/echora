@@ -53,6 +53,7 @@ _XPATHS: dict[str, str] = {
     "staff_tables": (
         "//table[contains(@class,'fl-l')][preceding::h2[1][normalize-space()='Staff']]"
     ),
+    "episode_list_rows": "//tr[contains(@class,'episode-list-data')]",
 }
 
 
@@ -188,18 +189,90 @@ def _parse_title_info(
 
         title = raw_title.strip()
 
-    title_japanese: str | None = None
-    title_romaji: str | None = None
-
-    if subtitle_text:
-        jp_m = re.search(r"\(([^)]+)\)\s*$", subtitle_text)
-        if jp_m:
-            title_japanese = jp_m.group(1).strip()
-            title_romaji = subtitle_text[: jp_m.start()].strip()
-        else:
-            title_romaji = subtitle_text.strip()
-
+    title_romaji, title_japanese = _split_romaji_and_japanese_titles(subtitle_text)
     return title, title_japanese, title_romaji, is_filler, is_recap
+
+
+def _split_romaji_and_japanese_titles(
+    subtitle_text: str | None,
+) -> tuple[str | None, str | None]:
+    """Split MAL's ``Romaji Title (Japanese Title)`` text into its two titles.
+
+    Args:
+        subtitle_text: The text under an episode title, or ``None`` when absent.
+
+    Returns:
+        Tuple of ``(title_romaji, title_japanese)``; a title MAL does not give is
+        ``None``.
+    """
+    if not subtitle_text or not subtitle_text.strip():
+        return None, None
+    subtitle_text = " ".join(subtitle_text.split())
+    japanese_match = re.search(r"\(([^)]+)\)\s*$", subtitle_text)
+    if japanese_match is None:
+        return subtitle_text, None
+    title_romaji = subtitle_text[: japanese_match.start()].strip() or None
+    return title_romaji, japanese_match.group(1).strip()
+
+
+def _extract_episode_list_from_html(html: str) -> list[MalEpisode]:
+    """Extract every episode row of a MAL episode list page.
+
+    Each row gives the episode's number, its page URL with the work's slug, its
+    titles, its air date, and MAL's ``Filler`` or ``Recap`` mark.
+
+    Args:
+        html: Full HTML of a MAL episode list page.
+
+    Returns:
+        One ``MalEpisode`` per row with an episode number and a page link, in list
+        order.
+    """
+    if not html:
+        return []
+    tree = etree.fromstring(html.encode(), etree.HTMLParser(encoding="utf-8"))
+    episodes: list[MalEpisode] = []
+    for row in cast(list[Any], tree.xpath(_XPATHS["episode_list_rows"])):
+        number_text = str(row.xpath("string(td[contains(@class,'episode-number')])"))
+        title_links = cast(
+            list[Any], row.xpath("td[contains(@class,'episode-title')]/a[@href]")
+        )
+        if not number_text.strip().isdigit() or not title_links:
+            continue
+        marks = {
+            mark.strip()
+            for mark in cast(
+                list[str],
+                row.xpath(
+                    "td[contains(@class,'episode-title')]"
+                    "/span[contains(@class,'icon-episode-type-bg')]/text()"
+                ),
+            )
+        }
+        title_romaji, title_japanese = _split_romaji_and_japanese_titles(
+            str(
+                row.xpath(
+                    "string(td[contains(@class,'episode-title')]"
+                    "/span[contains(@class,'di-ib')])"
+                )
+            )
+        )
+        episode_number = int(number_text.strip())
+        episodes.append(
+            MalEpisode(
+                episode_number=episode_number,
+                source=title_links[0].get("href"),
+                title=_tc(title_links[0]) or f"Episode {episode_number}",
+                title_japanese=title_japanese,
+                title_romaji=title_romaji,
+                aired=parse_iso_date(
+                    str(row.xpath("string(td[contains(@class,'episode-aired')])"))
+                ),
+                filler="Filler" in marks,
+                recap="Recap" in marks,
+            )
+        )
+    return episodes
 
 
 def _parse_episode_characters(

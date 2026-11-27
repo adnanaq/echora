@@ -36,7 +36,7 @@ _HELPER_BY_PROVIDER = {
     "anilist": _EnrichmentHelper("anilist", "anilist_url"),
     "kitsu": _EnrichmentHelper("kitsu", "kitsu_url"),
     "anidb": _EnrichmentHelper("anidb", "anidb_url"),
-    "animeplanet": _EnrichmentHelper("anime_planet", "anime_planet_url"),
+    "anime_planet": _EnrichmentHelper("anime_planet", "anime_planet_url"),
     "anisearch": _EnrichmentHelper("anisearch", "anisearch_url"),
 }
 # The providers whose pages are fetched, so a page of theirs can be checked live.

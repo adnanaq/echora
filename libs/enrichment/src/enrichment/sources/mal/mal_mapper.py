@@ -52,6 +52,7 @@ from enrichment.sources.base.companies import companies_from_roles
 from enrichment.sources.base.external_links import external_link
 from enrichment.sources.base.page_fetcher import (
     extract_canonical_url,
+    find_paginated_responses,
     index_responses_by_name,
     parse_html_response,
 )
@@ -399,14 +400,11 @@ def episode_from_mal(
 
 def map_mal_anime_responses(
     responses: Sequence[PageResponse],
-    *,
-    source_url: str = "",
 ) -> dict[str, Any]:
     """Map stored MAL anime HTML responses into a canonical Anime dict.
 
     Args:
         responses: Stored PageResponse sequence containing a ``main`` HTML response.
-        source_url: Canonical MAL anime URL associated with the page.
 
     Returns:
         Dict of canonical Anime field values.
@@ -435,20 +433,17 @@ def map_mal_anime_responses(
         if (pics_response := by_name.get("pics")) is not None
         else []
     )
-    resolved_url = source_url or raw.get("canonical_url") or ""
+    resolved_url = raw.get("canonical_url") or ""
     return anime_from_mal(_build_anime_from_raw(raw, resolved_url, picture_urls))
 
 
 def map_mal_character_responses(
     responses: Sequence[PageResponse],
-    *,
-    source_url: str = "",
 ) -> dict[str, Any]:
     """Map stored MAL character HTML responses into a canonical Character dict.
 
     Args:
         responses: Stored PageResponse sequence containing a ``main`` HTML response.
-        source_url: Canonical MAL character URL associated with the page.
 
     Returns:
         Dict of canonical Character field values.
@@ -471,20 +466,42 @@ def map_mal_character_responses(
     if raw is None:
         error_message = "MAL 'main' HTML yielded no character data"
         raise ValueError(error_message)
-    resolved_url = source_url or extract_canonical_url(html) or ""
+    resolved_url = extract_canonical_url(html) or ""
     return character_from_mal(_build_character_from_raw(raw, resolved_url))
+
+
+def map_mal_anime_episode_responses(
+    responses: Sequence[PageResponse],
+) -> list[dict[str, Any]]:
+    """Map a MAL work's stored episode list pages into canonical Episode dicts.
+
+    The list pages are stored as ``episodes_page_<n>`` responses, one per 100
+    episodes. A work whose list was not fetched has none, and maps to no episodes.
+
+    Args:
+        responses: Stored PageResponse sequence of a MAL anime page.
+
+    Returns:
+        One canonical Episode dict per listed episode, in list order.
+    """
+    from enrichment.sources.mal.mal_episode_crawler import (
+        _extract_episode_list_from_html,
+    )
+
+    return [
+        episode_from_mal(episode)
+        for list_page in find_paginated_responses(responses, "episodes_page_")
+        for episode in _extract_episode_list_from_html(parse_html_response(list_page))
+    ]
 
 
 def map_mal_episode_responses(
     responses: Sequence[PageResponse],
-    *,
-    source_url: str = "",
 ) -> dict[str, Any]:
     """Map stored MAL episode HTML responses into a canonical Episode dict.
 
     Args:
         responses: Stored PageResponse sequence containing a ``main`` HTML response.
-        source_url: Canonical MAL episode URL associated with the page.
 
     Returns:
         Dict of canonical Episode field values.
@@ -509,7 +526,7 @@ def map_mal_episode_responses(
     if raw is None:
         error_message = "MAL 'main' HTML yielded no episode data"
         raise ValueError(error_message)
-    resolved_url = source_url or extract_canonical_url(html) or ""
+    resolved_url = extract_canonical_url(html) or ""
     if not re.search(r"/episode/(\d+)", resolved_url):
         og_match = re.search(
             r'<meta[^>]+property=["\']og:url["\'][^>]+content=["\']([^"\']+)["\']',

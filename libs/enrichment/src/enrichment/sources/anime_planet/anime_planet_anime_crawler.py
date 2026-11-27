@@ -404,7 +404,7 @@ async def _fetch_anime_html(url: str) -> str | None:
     Raises:
         ServiceNetworkError: If the page does not load.
     """
-    async with browser_session(headless=True) as session:
+    async with browser_session(headless=False) as session:
         try:
             page = await session.browser.get(url)
             await wait_for_page(

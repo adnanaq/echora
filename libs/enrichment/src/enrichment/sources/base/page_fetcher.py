@@ -222,6 +222,31 @@ def build_html_response(request_name: str, html: str) -> PageResponse:
     )
 
 
+def find_paginated_responses(
+    responses: Sequence[PageResponse],
+    prefix: str,
+) -> list[PageResponse]:
+    """Find the paginated responses whose request_name starts with a prefix.
+
+    Args:
+        responses: Sequence of PageResponse messages from a stored page.
+        prefix: Request name prefix such as ``"characters_page_"``.
+
+    Returns:
+        The matching responses ordered by page suffix number.
+    """
+    matching = [
+        response for response in responses if response.request_name.startswith(prefix)
+    ]
+
+    def _page_sort_key(page_response: PageResponse) -> int:
+        suffix = page_response.request_name.removeprefix(prefix)
+        return int(suffix) if suffix.isdigit() else 0
+
+    matching.sort(key=_page_sort_key)
+    return matching
+
+
 def collect_paginated_responses(
     responses: Sequence[PageResponse],
     prefix: str,
@@ -235,13 +260,7 @@ def collect_paginated_responses(
     Returns:
         List of decoded JSON dictionaries ordered by page suffix number.
     """
-    matching = [
-        response for response in responses if response.request_name.startswith(prefix)
+    return [
+        parse_json_response(response)
+        for response in find_paginated_responses(responses, prefix)
     ]
-
-    def _page_sort_key(page_response: PageResponse) -> int:
-        suffix = page_response.request_name.removeprefix(prefix)
-        return int(suffix) if suffix.isdigit() else 0
-
-    matching.sort(key=_page_sort_key)
-    return [parse_json_response(response) for response in matching]

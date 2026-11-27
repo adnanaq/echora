@@ -65,7 +65,7 @@ async def _fetch_refs_html(url: str) -> str | None:
     Returns:
         Rendered page HTML, or None on navigation failure.
     """
-    async with browser_session(headless=True) as session:
+    async with browser_session(headless=False) as session:
         browser = session.browser
         try:
             page = await browser.get(url)

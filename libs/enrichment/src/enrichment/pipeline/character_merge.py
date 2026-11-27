@@ -6,6 +6,7 @@ from collections.abc import Callable, Sequence
 from typing import Any
 
 from enrichment.pipeline.anime_field_corrections import apply_field_corrections
+from enrichment.pipeline.page_sources import build_page_sources
 from enrichment.pipeline.relationship_merger import PROVIDER_PRIORITY, normalize_title
 from enrichment.sources.anidb.anidb_mapper import map_anidb_character_responses
 from enrichment.sources.anilist.anilist_mapper import (
@@ -69,21 +70,14 @@ def _map_stored_character_page(page: StoredPage) -> dict[str, Any] | None:
     if page.is_dead or page.is_not_found or not page.responses:
         return None
     provider = page.page_key.provider
-    fallback_url = _page_key_to_character_url(page.page_key)
     responses: Sequence[PageResponse] = page.responses
     mappers: dict[str, Callable[[], dict[str, Any]]] = {
-        "mal": lambda: map_mal_character_responses(responses, source_url=fallback_url),
+        "mal": lambda: map_mal_character_responses(responses),
         "anilist": lambda: map_anilist_character_page_responses(responses),
         "kitsu": lambda: map_kitsu_character_page_responses(responses),
-        "anidb": lambda: map_anidb_character_responses(
-            responses, source_url=fallback_url
-        ),
-        "anime_planet": lambda: map_animeplanet_character_responses(
-            responses, source_url=fallback_url
-        ),
-        "anisearch": lambda: map_anisearch_character_responses(
-            responses, source_url=fallback_url
-        ),
+        "anidb": lambda: map_anidb_character_responses(responses),
+        "anime_planet": lambda: map_animeplanet_character_responses(responses),
+        "anisearch": lambda: map_anisearch_character_responses(responses),
     }
     mapper = mappers.get(provider)
     return mapper() if mapper is not None else None
@@ -212,21 +206,29 @@ def _merge_ography(
     return merged
 
 
-def _build_character_page_sources(request: MergeCharacterRequest) -> list[PageSource]:
-    """Build the canonical URL of each linked character page.
+def _build_character_page_sources(
+    request: MergeCharacterRequest,
+    ranked: list[tuple[str, dict[str, Any]]],
+) -> list[PageSource]:
+    """Build the URL and title chosen for each linked character page.
+
+    ``build_page_sources`` chooses each URL from every URL the mapped provider
+    records report, falling back to the provider's canonical character page URL, and
+    takes each page's title from its own provider record's ``name``.
 
     Args:
         request: Incoming ``MergeCharacterRequest`` message.
+        ranked: Ranked ``(provider, record)`` pairs.
 
     Returns:
-        One ``PageSource`` per linked page whose provider has a character URL, in page
-        order.
+        One ``PageSource`` per linked page with a URL, in page order.
     """
-    return [
-        PageSource(page_key=page.page_key, source=url)
-        for page in request.pages
-        if (url := _page_key_to_character_url(page.page_key))
-    ]
+    return build_page_sources(
+        [page.page_key for page in request.pages],
+        dict(ranked),
+        _page_key_to_character_url,
+        "name",
+    )
 
 
 def _build_character_proto(
@@ -300,7 +302,7 @@ def merge_character_pages(request: MergeCharacterRequest) -> MergeCharacterRespo
         of each linked page.
     """
     ranked = _rank_records(request.pages)
-    page_sources = _build_character_page_sources(request)
+    page_sources = _build_character_page_sources(request, ranked)
     character_proto = _build_character_proto(request, ranked, page_sources)
     apply_field_corrections(character_proto, request.corrections)
     for field_name in ("traits", "images", "name_variations", "nicknames", "sources"):

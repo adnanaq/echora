@@ -405,14 +405,11 @@ def episode_from_anisearch(ep: AniSearchEpisode) -> dict[str, Any]:
 
 def map_anisearch_anime_responses(
     responses: Sequence[PageResponse],
-    *,
-    source_url: str = "",
 ) -> dict[str, Any]:
     """Map stored AniSearch anime HTML responses into a canonical Anime dict.
 
     Args:
         responses: Stored PageResponse sequence containing a ``main`` HTML response.
-        source_url: Canonical AniSearch anime URL associated with the page.
 
     Returns:
         Dict of canonical Anime field values.
@@ -446,7 +443,7 @@ def map_anisearch_anime_responses(
         else None
     )
     data["anime_relations"], data["manga_relations"] = _parse_relations(rels_raw)
-    resolved_url = source_url or extract_canonical_url(main_html) or ""
+    resolved_url = extract_canonical_url(main_html) or ""
     return anime_from_anisearch(_build_anime_from_raw(data, resolved_url))
 
 
@@ -491,14 +488,11 @@ def map_anisearch_anime_episode_responses(
 
 def map_anisearch_character_responses(
     responses: Sequence[PageResponse],
-    *,
-    source_url: str = "",
 ) -> dict[str, Any]:
     """Map stored AniSearch character HTML responses into a canonical Character dict.
 
     Args:
         responses: Stored PageResponse sequence containing a ``main`` HTML response.
-        source_url: Canonical AniSearch character URL associated with the page.
 
     Returns:
         Dict of canonical Character field values.
@@ -535,7 +529,7 @@ def map_anisearch_character_responses(
         if "manga" in by_name
         else None
     )
-    resolved_url = source_url or extract_canonical_url(char_html) or ""
+    resolved_url = extract_canonical_url(char_html) or ""
     return character_from_anisearch(
         _build_character_from_raw(
             processed,

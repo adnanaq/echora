@@ -7,6 +7,7 @@ from typing import Any
 
 from enrichment.pipeline.anime_field_corrections import apply_field_corrections
 from enrichment.pipeline.anime_proto_mapper import to_proto_timestamp
+from enrichment.pipeline.page_sources import build_page_sources
 from enrichment.pipeline.relationship_merger import PROVIDER_PRIORITY
 from enrichment.sources.kitsu.kitsu_mapper import map_kitsu_episode_responses
 from enrichment.sources.mal.mal_mapper import map_mal_episode_responses
@@ -23,9 +24,9 @@ from shared_proto.v1.merge_pb2 import (
     StoredPage,
 )
 
+# A MAL or Kitsu episode's URL needs its work's slug, which its page key does not hold,
+# so neither has a template and their URL comes from the fetched episode.
 _EPISODE_URL_TEMPLATES: dict[str, str] = {
-    "mal": "https://myanimelist.net/anime/{address}",
-    "kitsu": "https://kitsu.app/episodes/{address}",
     "anidb": "https://anidb.net/episode/{address}",
 }
 
@@ -39,11 +40,6 @@ def _page_key_to_episode_url(page_key: PageKey) -> str:
     Returns:
         Canonical URL string, or empty string for an unknown provider.
     """
-    if page_key.provider == "mal":
-        if ":" in page_key.address:
-            anime_id, _, ep_num = page_key.address.partition(":")
-            return f"https://myanimelist.net/anime/{anime_id}/episode/{ep_num}"
-        return ""
     template = _EPISODE_URL_TEMPLATES.get(page_key.provider)
     return template.format(address=page_key.address) if template else ""
 
@@ -60,10 +56,9 @@ def _map_stored_episode_page(page: StoredPage) -> dict[str, Any] | None:
     if page.is_dead or page.is_not_found or not page.responses:
         return None
     provider = page.page_key.provider
-    fallback_url = _page_key_to_episode_url(page.page_key)
     responses: Sequence[PageResponse] = page.responses
     mappers: dict[str, Callable[[], dict[str, Any]]] = {
-        "mal": lambda: map_mal_episode_responses(responses, source_url=fallback_url),
+        "mal": lambda: map_mal_episode_responses(responses),
         "kitsu": lambda: map_kitsu_episode_responses(responses),
     }
     mapper = mappers.get(provider)
@@ -161,23 +156,29 @@ def _populate_episode_maps(
                 ep.streaming[str(platform)] = str(url)
 
 
-def _build_episode_page_sources(request: MergeEpisodeRequest) -> list[PageSource]:
-    """Build the canonical URL of each linked episode page.
+def _build_episode_page_sources(
+    request: MergeEpisodeRequest,
+    ranked: list[tuple[str, dict[str, Any]]],
+) -> list[PageSource]:
+    """Build the URL and title chosen for each linked episode page.
 
-    A page whose provider has no episode URL, or a MAL page without an episode number in
-    its address, gets none.
+    ``build_page_sources`` chooses each URL from every URL the mapped provider
+    records report, falling back to the provider's canonical episode page URL, and
+    takes each page's title from its own provider record's ``title``.
 
     Args:
         request: Incoming ``MergeEpisodeRequest`` message.
+        ranked: Combined provider records in priority order.
 
     Returns:
         One ``PageSource`` per linked page with a URL, in page order.
     """
-    return [
-        PageSource(page_key=page.page_key, source=url)
-        for page in request.pages
-        if (url := _page_key_to_episode_url(page.page_key))
-    ]
+    return build_page_sources(
+        [page.page_key for page in request.pages],
+        dict(ranked),
+        _page_key_to_episode_url,
+        "title",
+    )
 
 
 def _collect_episode_sources(
@@ -271,7 +272,7 @@ def merge_episode_pages(request: MergeEpisodeRequest) -> MergeEpisodeResponse:
         each linked page.
     """
     ranked = _combine_provider_sources(request.pages, request.list_entries)
-    page_sources = _build_episode_page_sources(request)
+    page_sources = _build_episode_page_sources(request, ranked)
     episode_proto = _build_episode_proto(request, ranked, page_sources)
     apply_field_corrections(episode_proto, request.corrections)
     episode_proto.images[:] = sorted(episode_proto.images)

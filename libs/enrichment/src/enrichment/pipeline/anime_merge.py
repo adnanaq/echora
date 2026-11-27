@@ -16,6 +16,7 @@ from enrichment.pipeline.anime_proto_mapper import (
 )
 from enrichment.pipeline.episode_reference_merger import merge_episode_references
 from enrichment.pipeline.metadata_merger import merge_provider_records
+from enrichment.pipeline.page_sources import build_page_sources, build_stored_page_key
 from enrichment.sources.anidb.anidb_mapper import map_anidb_anime_responses
 from enrichment.sources.anilist.anilist_mapper import map_anilist_anime_responses
 from enrichment.sources.anime_planet.animeplanet_mapper import (
@@ -87,20 +88,17 @@ def _map_stored_anime_page(page: StoredPage) -> dict[str, Any] | None:
     if page.is_dead or page.is_not_found or not page.responses:
         return None
     provider = page.page_key.provider
-    fallback_url = page_key_to_anime_url(page.page_key)
     responses: Sequence[PageResponse] = page.responses
 
     mappers: dict[str, Callable[[], dict[str, Any]]] = {
         "anilist": lambda: map_anilist_anime_responses(responses),
         "kitsu": lambda: map_kitsu_anime_responses(responses),
-        "mal": lambda: map_mal_anime_responses(responses, source_url=fallback_url),
+        "mal": lambda: map_mal_anime_responses(responses),
         "anime_planet": lambda: map_animeplanet_anime_responses(
             responses, slug=page.page_key.address
         ),
-        "anisearch": lambda: map_anisearch_anime_responses(
-            responses, source_url=fallback_url
-        ),
-        "anidb": lambda: map_anidb_anime_responses(responses, anidb_url=fallback_url),
+        "anisearch": lambda: map_anisearch_anime_responses(responses),
+        "anidb": lambda: map_anidb_anime_responses(responses),
         "animeschedule": lambda: map_animeschedule_anime_responses(responses),
     }
     mapper = mappers.get(provider)
@@ -152,22 +150,18 @@ def _extract_relation_claims(records: dict[str, dict[str, Any]]) -> list[Relatio
             )
             for entry in entries or []:
                 for url in entry.get("sources") or []:
-                    resolved = resolve_page_key(str(url))
-                    target_prov, _, rest = resolved.partition(":")
-                    kind, _, target_addr = rest.partition(":")
-                    if kind != "anime" or not target_prov or not target_addr:
+                    target_page = build_stored_page_key(resolve_page_key(str(url)))
+                    if (
+                        target_page is None
+                        or target_page.entity_type != anime_pb2.ENTITY_TYPE_ANIME
+                    ):
                         continue
-                    target_page = PageKey(
-                        provider=target_prov,
-                        entity_type=anime_pb2.ENTITY_TYPE_ANIME,
-                        address=target_addr,
-                    )
                     dedup_key = (
                         provider,
                         proto_rel_type,
-                        target_prov,
-                        anime_pb2.ENTITY_TYPE_ANIME,
-                        target_addr,
+                        target_page.provider,
+                        target_page.entity_type,
+                        target_page.address,
                     )
                     claims_by_key.setdefault(
                         dedup_key,
@@ -180,37 +174,16 @@ def _extract_relation_claims(records: dict[str, dict[str, Any]]) -> list[Relatio
     return [claims_by_key[key] for key in sorted(claims_by_key)]
 
 
-def _build_page_source(
-    page_key: PageKey, best_by_key: dict[str, str]
-) -> PageSource | None:
-    """Build the ``PageSource`` of one linked anime page.
-
-    Args:
-        page_key: The linked page's key.
-        best_by_key: Longest provider-reported URL for each resolved page key.
-
-    Returns:
-        The page with its reported or canonical URL, or ``None`` when the provider has
-        no URL template and reported none.
-    """
-    key_str = f"{page_key.provider}:anime:{page_key.address}"
-    url = best_by_key.get(key_str) or page_key_to_anime_url(page_key)
-    return PageSource(page_key=page_key, source=url) if url else None
-
-
 def _build_linked_page_sources(
     source_pages: Sequence[StoredPage],
     partial_source_pages: Sequence[PageKey],
     records: dict[str, dict[str, Any]],
 ) -> tuple[list[PageSource], list[PageSource]]:
-    """Build the URL chosen for each linked source and partial-source page.
+    """Build the URL and title chosen for each linked source and partial-source page.
 
-    Each page gets one URL:
-
-    - the longest URL the mapped provider records report for the page, so a URL with
-      the provider's slug wins over the bare one;
-    - otherwise the provider's canonical anime page URL;
-    - a page whose provider has no URL template gets none.
+    ``build_page_sources`` chooses each URL from every URL the mapped provider
+    records report, falling back to the provider's canonical anime page URL, and
+    takes each page's title from its own provider record's ``title``.
 
     Args:
         source_pages: Linked full source pages for the work.
@@ -220,25 +193,15 @@ def _build_linked_page_sources(
     Returns:
         Tuple of ``(source_page_sources, partial_page_sources)``, each in page order.
     """
-    best_by_key: dict[str, str] = {}
-    for record in records.values():
-        for url in record.get("sources") or []:
-            if not url:
-                continue
-            key = resolve_page_key(str(url))
-            if len(str(url)) > len(best_by_key.get(key, "")):
-                best_by_key[key] = str(url)
-
-    source_page_sources = [
-        page_source
-        for page in source_pages
-        if (page_source := _build_page_source(page.page_key, best_by_key)) is not None
-    ]
-    partial_page_sources = [
-        page_source
-        for page_key in partial_source_pages
-        if (page_source := _build_page_source(page_key, best_by_key)) is not None
-    ]
+    source_page_sources = build_page_sources(
+        [page.page_key for page in source_pages],
+        records,
+        page_key_to_anime_url,
+        "title",
+    )
+    partial_page_sources = build_page_sources(
+        partial_source_pages, records, page_key_to_anime_url, "title"
+    )
     return source_page_sources, partial_page_sources
 
 

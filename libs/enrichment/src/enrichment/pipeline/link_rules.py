@@ -37,7 +37,7 @@ _ID_SEED_ORDER: tuple[str, ...] = (
     "anilist",
     "anidb",
     "kitsu",
-    "animeplanet",
+    "anime_planet",
     "anisearch",
 )
 

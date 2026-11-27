@@ -366,14 +366,11 @@ def map_animeplanet_anime_responses(
 
 def map_animeplanet_character_responses(
     responses: Sequence[PageResponse],
-    *,
-    source_url: str = "",
 ) -> dict[str, Any]:
     """Map stored Anime-Planet character HTML response into a canonical Character dict.
 
     Args:
         responses: Stored PageResponse sequence containing a ``main`` HTML response.
-        source_url: Canonical Anime-Planet character URL associated with the page.
 
     Returns:
         Dict of canonical Character field values.
@@ -398,5 +395,5 @@ def map_animeplanet_character_responses(
     if raw is None:
         error_message = "Anime-Planet 'main' HTML yielded no character data"
         raise ValueError(error_message)
-    resolved_url = source_url or extract_canonical_url(html) or ""
+    resolved_url = extract_canonical_url(html) or ""
     return character_from_animeplanet(_build_character_from_raw(raw, resolved_url))

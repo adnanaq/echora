@@ -122,7 +122,7 @@ class AnimePlanetFetcher(PageFetcher):
             FetchedPage holding raw HTML responses or not-found status.
         """
         url = f"{_AP_BASE_URL}/anime/{page_key.address}"
-        async with browser_session(headless=True) as session:
+        async with browser_session(headless=False) as session:
             main_html, final_url = await _fetch_ap_page(
                 session.browser, url, _ANIME_SELECTOR
             )
@@ -152,7 +152,7 @@ class AnimePlanetFetcher(PageFetcher):
             FetchedPage holding raw main HTML response or not-found status.
         """
         url = f"{_AP_BASE_URL}/characters/{page_key.address}"
-        async with browser_session(headless=True) as session:
+        async with browser_session(headless=False) as session:
             html, final_url = await _fetch_ap_page(
                 session.browser, url, _CHARACTER_SELECTOR
             )
