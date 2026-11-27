@@ -96,7 +96,7 @@ An episode's or a character's refresh is the same with its own pages: `ListEntit
 
 ~~An episode's load also returns its list entries, what each provider's work page says about it, since only MAL and aniSearch have a page per episode. (ECHO-103)~~
 
-The episode merges its own pages and those entries together, so an episode with no page of its own still merges. (ECHO-109)
+~~The episode merges its own pages and those entries together, so an episode with no page of its own still merges. (ECHO-109)~~
 
 - **Due pages.** A page is due when it was never fetched, or was fetched longer than `REFRESH_AFTER_DAYS` ago, and is not dead. A page whose fetches keep failing waits `2^failures` hours, at most a week, before it is tried again, and `RecordRefresh` makes the work due again at that time, so a failed page is not left until the next weekly sweep. (ECHO-111)
 - **Requested pages.** A page a `fetch_requested` signal names is fetched when its `fetched_at` is older than the request's `max_age`, whatever `REFRESH_AFTER_DAYS` says. A `max_age` of 0 always fetches. (ECHO-111)

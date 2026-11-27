@@ -91,7 +91,11 @@ class MalFetcher(PageFetcher):
 
     provider: ClassVar[str] = "mal"
     supported_entity_types: ClassVar[frozenset[EntityType]] = frozenset(
-        {EntityType.ENTITY_TYPE_ANIME, EntityType.ENTITY_TYPE_CHARACTER}
+        {
+            EntityType.ENTITY_TYPE_ANIME,
+            EntityType.ENTITY_TYPE_CHARACTER,
+            EntityType.ENTITY_TYPE_EPISODE,
+        }
     )
 
     async def fetch_page(
@@ -100,24 +104,27 @@ class MalFetcher(PageFetcher):
         *,
         max_age: timedelta | None = None,
     ) -> FetchedPage:
-        """Fetch raw HTML responses for a MAL anime or character page key.
+        """Fetch raw HTML responses for a MAL anime, character, or episode page key.
 
         Args:
-            page_key: MAL PageKey with a numeric address.
+            page_key: MAL PageKey (numeric for anime/character, ``'<anime_id>/episode/<num>'`` for episode).
             max_age: Optional cache freshness bound (unused by live browser fetch).
 
         Returns:
             FetchedPage holding raw HTML PageResponse objects or not-found status.
         """
         del max_age
+        is_episode = page_key.entity_type == EntityType.ENTITY_TYPE_EPISODE
         validate_page_key(
             page_key,
             self.provider,
             self.supported_entity_types,
-            numeric_address=True,
+            numeric_address=not is_episode,
         )
         if page_key.entity_type == EntityType.ENTITY_TYPE_ANIME:
             return await self._fetch_anime_page(page_key)
+        if is_episode:
+            return await self._fetch_episode_page(page_key)
         return await self._fetch_character_page(page_key)
 
     async def _fetch_anime_page(self, page_key: PageKey) -> FetchedPage:
@@ -176,6 +183,38 @@ class MalFetcher(PageFetcher):
                 url,
                 f"{_CHARACTER_HEADER_SELECTOR}, {_NOT_FOUND_SELECTOR}",
             )
+        if _NOT_FOUND_MARKER.search(html):
+            return FetchedPage(page_key=page_key, responses=(), is_not_found=True)
+        return FetchedPage(
+            page_key=page_key, responses=(build_html_response("main", html),)
+        )
+
+    async def _fetch_episode_page(self, page_key: PageKey) -> FetchedPage:
+        """Fetch raw MAL episode detail HTML response.
+
+        Args:
+            page_key: MAL episode PageKey (``'<anime_id>:<episode_number>'``).
+
+        Returns:
+            FetchedPage holding the main HTML response or not-found status.
+
+        Raises:
+            ValueError: When ``page_key.address`` is not ``'<anime_id>:<episode_number>'``.
+        """
+        anime_id, sep, ep_num = page_key.address.partition(":")
+        if not sep or not anime_id.isdigit() or not ep_num.isdigit():
+            error_message = f"MAL episode address must be '<anime_id>:<episode_number>', got {page_key.address!r}"
+            raise ValueError(error_message)
+        url = f"https://myanimelist.net/anime/{anime_id}/episode/{ep_num}"
+        async with browser_session(headless=True, allowed_site=MAL_DOMAIN) as session:
+            result = await _navigate_and_read(
+                session.browser,
+                url,
+                f"h2.fs18, {_NOT_FOUND_SELECTOR}",
+                required=True,
+            )
+        assert result is not None  # noqa: S101
+        html, _ = result
         if _NOT_FOUND_MARKER.search(html):
             return FetchedPage(page_key=page_key, responses=(), is_not_found=True)
         return FetchedPage(

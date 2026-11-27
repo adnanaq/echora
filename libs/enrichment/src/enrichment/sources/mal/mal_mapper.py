@@ -473,3 +473,53 @@ def map_mal_character_responses(
         raise ValueError(error_message)
     resolved_url = source_url or extract_canonical_url(html) or ""
     return character_from_mal(_build_character_from_raw(raw, resolved_url))
+
+
+def map_mal_episode_responses(
+    responses: Sequence[PageResponse],
+    *,
+    source_url: str = "",
+) -> dict[str, Any]:
+    """Map stored MAL episode HTML responses into a canonical Episode dict.
+
+    Args:
+        responses: Stored PageResponse sequence containing a ``main`` HTML response.
+        source_url: Canonical MAL episode URL associated with the page.
+
+    Returns:
+        Dict of canonical Episode field values.
+
+    Raises:
+        ValueError: If the ``main`` response is missing or yields no episode data.
+    """
+    import re
+
+    from enrichment.sources.mal.mal_episode_crawler import (
+        _build_episode_from_raw,
+        _extract_episode_from_html,
+    )
+
+    by_name = index_responses_by_name(responses)
+    main_response = by_name.get("main")
+    if main_response is None:
+        error_message = "MAL episode responses missing required 'main' response"
+        raise ValueError(error_message)
+    html = parse_html_response(main_response)
+    raw = _extract_episode_from_html(html)
+    if raw is None:
+        error_message = "MAL 'main' HTML yielded no episode data"
+        raise ValueError(error_message)
+    resolved_url = source_url or extract_canonical_url(html) or ""
+    if not re.search(r"/episode/(\d+)", resolved_url):
+        og_match = re.search(
+            r'<meta[^>]+property=["\']og:url["\'][^>]+content=["\']([^"\']+)["\']',
+            html,
+            re.IGNORECASE,
+        )
+        if og_match:
+            resolved_url = og_match.group(1).strip()
+    ep_match = re.search(r"/episode/(\d+)", resolved_url) or re.search(
+        r"<h2[^>]*>.*?#(\d+)\s*-", html, re.DOTALL
+    )
+    episode_number = int(ep_match.group(1)) if ep_match else 1
+    return episode_from_mal(_build_episode_from_raw(raw, episode_number, resolved_url))
