@@ -7,7 +7,7 @@ from typing import Any
 
 from enrichment.pipeline.anime_field_corrections import apply_field_corrections
 from enrichment.pipeline.anime_proto_mapper import to_proto_timestamp
-from enrichment.pipeline.page_sources import build_page_sources
+from enrichment.pipeline.page_sources import build_page_sources, read_page_urls
 from enrichment.pipeline.relationship_merger import PROVIDER_PRIORITY
 from enrichment.sources.kitsu.kitsu_mapper import map_kitsu_episode_responses
 from enrichment.sources.mal.mal_mapper import map_mal_episode_responses
@@ -181,32 +181,6 @@ def _build_episode_page_sources(
     )
 
 
-def _collect_episode_sources(
-    page_sources: Sequence[PageSource],
-    ranked: list[tuple[str, dict[str, Any]]],
-) -> list[str]:
-    """Collect and sort all canonical episode source URLs.
-
-    Args:
-        page_sources: URL of each linked episode page.
-        ranked: Combined provider records in priority order.
-
-    Returns:
-        Sorted list of unique canonical episode URLs.
-    """
-    return sorted(
-        {
-            *(page_source.source for page_source in page_sources),
-            *(
-                str(src)
-                for _, rec in ranked
-                for src in (rec.get("sources") or [])
-                if src
-            ),
-        }
-    )
-
-
 def _build_episode_proto(
     request: MergeEpisodeRequest,
     ranked: list[tuple[str, dict[str, Any]]],
@@ -222,7 +196,7 @@ def _build_episode_proto(
     Returns:
         Populated and sorted ``anime_pb2.Episode`` message.
     """
-    sources = _collect_episode_sources(page_sources, ranked)
+    sources = read_page_urls(page_sources)
     images = sorted(
         {str(img) for _, rec in ranked for img in (rec.get("images") or []) if img}
     )

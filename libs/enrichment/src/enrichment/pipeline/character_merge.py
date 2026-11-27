@@ -6,7 +6,7 @@ from collections.abc import Callable, Sequence
 from typing import Any
 
 from enrichment.pipeline.anime_field_corrections import apply_field_corrections
-from enrichment.pipeline.page_sources import build_page_sources
+from enrichment.pipeline.page_sources import build_page_sources, read_page_urls
 from enrichment.pipeline.relationship_merger import PROVIDER_PRIORITY, normalize_title
 from enrichment.sources.anidb.anidb_mapper import map_anidb_character_responses
 from enrichment.sources.anilist.anilist_mapper import (
@@ -250,10 +250,7 @@ def _build_character_proto(
         (str(rec["name"]) for _, rec in ranked if rec.get("name")),
         "",
     )
-    all_sources = sorted(
-        {page_source.source for page_source in page_sources}
-        | set(_union_strings(ranked, "sources"))
-    )
+    all_sources = read_page_urls(page_sources)
     msg = anime_pb2.Character(
         id=request.character_id,
         entity_type=anime_pb2.ENTITY_TYPE_CHARACTER,

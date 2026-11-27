@@ -48,7 +48,8 @@ _KITSU_EPISODE_PAGE = re.compile(
 # Episode page addresses, filled with an episode key's id, or with the work id and
 # episode number its id joins with a colon. MAL has none: an episode page needs the
 # work's slug in its path, which the key does not hold, and without it MAL serves the
-# work's own page.
+# work's own page. A Kitsu episode keyed by its Kitsu episode id has none either, since
+# its URL holds its work's slug and episode number instead.
 _EPISODE_ADDRESS_BY_PROVIDER = {
     "kitsu": "https://kitsu.app/anime/{work_id}/episodes/{episode_number}",
     "anidb": "https://anidb.net/episode/{id}",
@@ -237,7 +238,8 @@ def build_page_address(page_key: str) -> str | None:
         page_key: A page key, as ``resolve_page_key`` gives it.
 
     Returns:
-        The page address, or None when the key is not a known provider's page.
+        The page address, or None when the key is not a known provider's page
+        or its provider has no URL template for it, such as a MAL episode.
 
     Examples:
         >>> build_page_address("mal:anime:21")
@@ -253,7 +255,9 @@ def build_page_address(page_key: str) -> str | None:
         episode_address = _EPISODE_ADDRESS_BY_PROVIDER.get(provider)
         if episode_address is None:
             return None
-        work_id, _, episode_number = page_id.partition(":")
+        work_id, separator, episode_number = page_id.partition(":")
+        if "{work_id}" in episode_address and not separator:
+            return None
         return episode_address.format(
             id=page_id, work_id=work_id, episode_number=episode_number
         )

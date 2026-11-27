@@ -65,8 +65,9 @@ def build_page_sources(
       episode keyed by its id while its URL holds its work's slug and number;
     - the URL ``build_template_url`` builds from the page key.
 
-    A page with none of these gets no ``PageSource``. The page's title is the
-    ``title_field`` of its own provider's record, or empty when that record has none.
+    A page with none of these keeps an empty URL, which the save reads as unknown. The
+    page's title is the ``title_field`` of its own provider's record, or empty when that
+    record has none. A page with neither a URL nor a title gets no ``PageSource``.
 
     Args:
         page_keys: Linked pages, in the order their sources are returned.
@@ -78,7 +79,7 @@ def build_page_sources(
             ``"name"``.
 
     Returns:
-        One ``PageSource`` per page with a URL, in page order.
+        One ``PageSource`` per page with a URL or a title, in page order.
     """
     reported_urls_by_provider = {
         provider: [str(url) for url in record.get("sources") or [] if url]
@@ -104,13 +105,28 @@ def build_page_sources(
         page_url = max(
             exact_urls or own_kind_urls or [""], key=len
         ) or build_template_url(page_key)
-        if page_url:
-            own_record = records_by_provider.get(page_key.provider) or {}
+        own_record = records_by_provider.get(page_key.provider) or {}
+        page_title = str(own_record.get(title_field) or "")
+        if page_url or page_title:
             page_sources.append(
-                PageSource(
-                    page_key=page_key,
-                    source=page_url,
-                    title=str(own_record.get(title_field) or ""),
-                )
+                PageSource(page_key=page_key, source=page_url, title=page_title)
             )
     return page_sources
+
+
+def read_page_urls(page_sources: Sequence[PageSource]) -> list[str]:
+    """Read the sorted, distinct URLs of the given page sources.
+
+    A merged record's ``sources`` lists one URL per linked page, the one
+    ``build_page_sources`` chose, so a page reported both with and without its slug is
+    listed once. A page whose URL is unknown is left out.
+
+    Args:
+        page_sources: The linked pages with their chosen URLs.
+
+    Returns:
+        The non-empty URLs, sorted and each listed once.
+    """
+    return sorted(
+        {page_source.source for page_source in page_sources if page_source.source}
+    )

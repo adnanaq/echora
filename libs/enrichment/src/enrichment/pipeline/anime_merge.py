@@ -16,7 +16,11 @@ from enrichment.pipeline.anime_proto_mapper import (
 )
 from enrichment.pipeline.episode_reference_merger import merge_episode_references
 from enrichment.pipeline.metadata_merger import merge_provider_records
-from enrichment.pipeline.page_sources import build_page_sources, build_stored_page_key
+from enrichment.pipeline.page_sources import (
+    build_page_sources,
+    build_stored_page_key,
+    read_page_urls,
+)
 from enrichment.sources.anidb.anidb_mapper import map_anidb_anime_responses
 from enrichment.sources.anilist.anilist_mapper import map_anilist_anime_responses
 from enrichment.sources.anime_planet.animeplanet_mapper import (
@@ -257,9 +261,9 @@ def merge_anime_pages(request: MergeAnimeRequest) -> MergeAnimeResponse:
         request.partial_source_pages,
         records,
     )
-    partial_sources = sorted({page.source for page in partial_page_sources})
+    partial_sources = read_page_urls(partial_page_sources)
     merged["id"] = request.anime_id
-    merged["sources"] = sorted({page.source for page in source_page_sources})
+    merged["sources"] = read_page_urls(source_page_sources)
     if partial_sources:
         merged["partial_sources"] = partial_sources
     else:
