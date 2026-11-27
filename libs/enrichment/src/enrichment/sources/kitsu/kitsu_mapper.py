@@ -482,3 +482,133 @@ def map_kitsu_episode_responses(
         error_message = "Kitsu episode 'main' response missing 'data' object"
         raise TypeError(error_message)
     return episode_from_kitsu(KitsuEpisode.model_validate(ep_raw))
+
+
+def _extract_kitsu_character_ography(
+    responses: Sequence[PageResponse],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Extract animeography and mangaography from Kitsu media-characters pages.
+
+    Args:
+        responses: Stored PageResponse sequence containing ``media_characters_page_*``.
+
+    Returns:
+        Tuple of ``(animeography, mangaography)`` normalized dicts.
+    """
+    animeography: list[dict[str, Any]] = []
+    mangaography: list[dict[str, Any]] = []
+    for mc_page in collect_paginated_responses(responses, "media_characters_page_"):
+        included_media = {
+            (item.get("type"), str(item.get("id"))): item
+            for item in mc_page.get("included") or []
+        }
+        for item in mc_page.get("data") or []:
+            rel_media = ((item.get("relationships") or {}).get("media") or {}).get(
+                "data"
+            ) or {}
+            media_type = str(rel_media.get("type") or "anime")
+            media_id = str(rel_media.get("id") or "")
+            media_obj = included_media.get((media_type, media_id)) or {}
+            media_title = (media_obj.get("attributes") or {}).get(
+                "canonicalTitle"
+            ) or ""
+            if not media_id or not media_title:
+                continue
+            role = CharacterRole(
+                str((item.get("attributes") or {}).get("role") or "unknown")
+            )
+            entry = Ography(
+                title=media_title,
+                role=role,
+                sources=[_kitsu_page(media_type, media_id)],
+            ).model_dump(mode="json", exclude_none=True)
+            (mangaography if media_type == "manga" else animeography).append(entry)
+    return animeography, mangaography
+
+
+def _extract_kitsu_character_voices(
+    responses: Sequence[PageResponse],
+) -> list[dict[str, Any]]:
+    """Extract voice actor entries from Kitsu ``voices_*`` responses.
+
+    Args:
+        responses: Stored PageResponse sequence containing ``voices_*`` responses.
+
+    Returns:
+        List of normalized ``VoiceActor`` dicts.
+    """
+    voice_actors: list[dict[str, Any]] = []
+    for resp in responses:
+        if not resp.request_name.startswith("voices_"):
+            continue
+        voice_payload = parse_json_response(resp)
+        people = {
+            str(item.get("id")): item
+            for item in voice_payload.get("included") or []
+            if item.get("type") == "people"
+        }
+        for casting in voice_payload.get("data") or []:
+            person_ref = ((casting.get("relationships") or {}).get("person") or {}).get(
+                "data"
+            ) or {}
+            person_id = str(person_ref.get("id") or "")
+            person = people.get(person_id) or {}
+            person_name = (person.get("attributes") or {}).get("name")
+            if person_name:
+                voice_actors.append(
+                    VoiceActor(
+                        name=person_name,
+                        language=(casting.get("attributes") or {}).get("locale"),
+                        sources=[f"https://kitsu.app/people/{person_id}"],
+                    ).model_dump(mode="json", exclude_none=True)
+                )
+    return voice_actors
+
+
+def map_kitsu_character_page_responses(
+    responses: Sequence[PageResponse],
+) -> dict[str, Any]:
+    """Map stored Kitsu character page responses into a canonical Character dict.
+
+    Args:
+        responses: Stored PageResponse sequence containing ``main``,
+            ``media_characters_page_*``, and optional ``voices_*_page_*`` items.
+
+    Returns:
+        Dict of canonical Character field values.
+
+    Raises:
+        ValueError: If the ``main`` response is missing.
+        TypeError: If ``main`` does not contain a ``data`` object.
+    """
+    by_name = index_responses_by_name(responses)
+    main_response = by_name.get("main")
+    if main_response is None:
+        error_message = "Kitsu character responses missing required 'main' response"
+        raise ValueError(error_message)
+    payload = parse_json_response(main_response)
+    char_raw = payload.get("data")
+    if not isinstance(char_raw, dict):
+        error_message = "Kitsu character 'main' response missing 'data' object"
+        raise TypeError(error_message)
+
+    attrs = char_raw.get("attributes") or {}
+    names = attrs.get("names") or {}
+    slug = attrs.get("slug") or char_raw.get("id")
+    sources = [f"https://kitsu.app/characters/{slug}"] if slug else []
+    image_obj = attrs.get("image") or {}
+    images = [image_obj["original"]] if image_obj.get("original") else []
+    animeography, mangaography = _extract_kitsu_character_ography(responses)
+
+    char_model = Character(
+        name=attrs.get("canonicalName") or attrs.get("name") or "",
+        name_native=names.get("ja_jp"),
+        name_variations=[str(v) for v in (attrs.get("otherNames") or []) if v],
+        description=attrs.get("description"),
+        images=images,
+        sources=sources,
+        animeography=animeography,
+        mangaography=mangaography,
+        voice_actors=_extract_kitsu_character_voices(responses),
+    )
+    return char_model.model_dump(mode="json", exclude_none=True)

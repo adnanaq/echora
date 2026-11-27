@@ -19,6 +19,8 @@ service EnrichmentService {
   rpc MergeAnime(MergeAnimeRequest) returns (MergeAnimeResponse);
   // Maps stored episode pages and list entries into one merged episode.
   rpc MergeEpisode(MergeEpisodeRequest) returns (MergeEpisodeResponse);
+  // Maps stored character pages and applies corrections into one character.
+  rpc MergeCharacter(MergeCharacterRequest) returns (MergeCharacterResponse);
 }
 
 // Empty request for health checks.
@@ -107,4 +109,16 @@ message MergeEpisodeRequest {
 // Merged episode message.
 message MergeEpisodeResponse {
   shared_proto.v1.Episode episode = 1;
+}
+
+// Request to merge one character from its stored pages and corrections.
+message MergeCharacterRequest {
+  string character_id = 1;
+  repeated shared_proto.v1.StoredPage pages = 2;
+  repeated shared_proto.v1.FieldCorrection corrections = 3;
+}
+
+// Merged character message.
+message MergeCharacterResponse {
+  shared_proto.v1.Character character = 1;
 }

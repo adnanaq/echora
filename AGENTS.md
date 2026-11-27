@@ -128,6 +128,7 @@ cargo test --workspace
 DATABASE_URL=postgres://<user>:<password>@127.0.0.1:5432/<db> cargo test --workspace
 DATABASE_URL=postgres://<user>:<password>@127.0.0.1:5432/<db> cargo sqlx prepare --workspace -- --all-targets
 cargo run -p postgres_service                        # gRPC on :8004 (requires DATABASE_URL)
+cargo run -p update_service                          # Temporal worker (requires TEMPORAL_ADDRESS, default :7233)
 ./pants package crates/postgres_service:postgres-service-image
 
 # Proto stubs & PostgreSQL schema check: lookup enums and stored field names (uv and Pants equivalents)
@@ -231,7 +232,7 @@ echora/
 │   └── work_matching/             # Which provider pages belong to the same work
 │
 ├── tests/                         # Test suite (mirrors libs/)
-├── crates/                        # Rust workspace (active: common, postgres_db, postgres_service; planned: temporal_workflows, update_service, backend)
+├── crates/                        # Rust workspace (active: common, postgres_db, postgres_service, temporal_workflows, update_service; planned: backend)
 ├── data/                          # Data files & Qdrant storage
 ├── docker/                        # Docker Compose configurations
 └── scripts/                       # Utility scripts

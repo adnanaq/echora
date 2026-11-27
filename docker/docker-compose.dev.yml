@@ -318,6 +318,67 @@ services:
       start_period: 15s
     restart: unless-stopped
 
+  temporal:
+    # Temporal CLI 1.10.1 bundles Temporal Server 1.32.2 and UI 2.56.4.
+    image: temporalio/temporal:1.10.1
+    container_name: echora-dev-temporal
+    user: "0:0"
+    command:
+      - server
+      - start-dev
+      - --namespace
+      - echora-dev
+      - --db-filename
+      - /data/dev.db
+      - --ip
+      - 0.0.0.0
+      - --ui-ip
+      - 0.0.0.0
+      - --search-attribute
+      - RefreshTrigger=Keyword
+      - --dynamic-config-value
+      - matching.enableFairness=true
+      - --dynamic-config-value
+      - matching.numTaskqueueReadPartitions=1
+      - --dynamic-config-value
+      - matching.numTaskqueueWritePartitions=1
+    ports:
+      - "7233:7233"
+      - "8233:8233"
+    volumes:
+      - temporal-dev-data:/data
+    networks:
+      - echora-network
+    healthcheck:
+      test: ["CMD", "temporal", "operator", "cluster", "health", "--address", "localhost:7233"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  update-service:
+    build:
+      context: ..
+      dockerfile: crates/update_service/Dockerfile.dev
+    image: echora-update-service:dev
+    container_name: echora-dev-update-service
+    environment:
+      - ENVIRONMENT=development
+      - TEMPORAL_ADDRESS=http://temporal:7233
+      - TEMPORAL_NAMESPACE=echora-dev
+      - OTEL_ENABLED=${OTEL_ENABLED:-false}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+      - OTEL_ENABLE_TRACING=true
+      - OTEL_ENABLE_METRICS=true
+      - OTEL_ENABLE_LOGGING=true
+    networks:
+      - echora-network
+    depends_on:
+      temporal:
+        condition: service_healthy
+    restart: unless-stopped
+
 networks:
   echora-network:
     driver: bridge
@@ -330,6 +391,8 @@ volumes:
   qdrant-data:
     driver: local
   redisinsight-data:
+    driver: local
+  temporal-dev-data:
     driver: local
   # Model cache for embedding models (BGE-M3 + ViT-L-14, ~4 GB total).
   # Plain named volume, matching docker-compose.prd.yml. Docker creates it on
