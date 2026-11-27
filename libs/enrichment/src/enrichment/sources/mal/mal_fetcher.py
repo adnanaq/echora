@@ -35,19 +35,19 @@ async def _navigate_and_read(
     browser: Any,
     url: str,
     selector: str,
-    *,
-    required: bool = True,
-) -> tuple[str, str] | None:
-    """Navigate to a MAL page, wait for a selector, and return HTML + final URL.
+) -> tuple[str, str]:
+    """Navigate to a MAL page, wait for a selector, and return HTML and final URL.
 
     Args:
         browser: Active zendriver browser instance.
         url: Target MAL URL.
         selector: CSS readiness selector to wait for.
-        required: When True, raise ServiceNetworkError on navigation/empty failure.
 
     Returns:
-        Tuple of rendered HTML and final URL, or None when optional and unavailable.
+        Tuple of rendered HTML and final URL.
+
+    Raises:
+        ServiceNetworkError: If navigation fails or yields empty HTML.
     """
     try:
         page = await browser.get(url)
@@ -55,18 +55,35 @@ async def _navigate_and_read(
         html = await page.get_content()
         final_url = page.url or url
     except Exception as exc:
-        if required:
-            cause_message = f"navigation failed for {url}: {exc}"
-            raise ServiceNetworkError(service="mal", cause=cause_message) from exc
-        logger.warning(f"Optional MAL page failed for {url}: {exc}")
-        return None
+        cause_message = f"navigation failed for {url}: {exc}"
+        raise ServiceNetworkError(service="mal", cause=cause_message) from exc
 
     if not html:
-        if required:
-            empty_message = f"no HTML from {url}"
-            raise ServiceNetworkError(service="mal", cause=empty_message)
-        return None
+        empty_message = f"no HTML from {url}"
+        raise ServiceNetworkError(service="mal", cause=empty_message)
     return html, final_url
+
+
+async def _navigate_and_read_optional(
+    browser: Any,
+    url: str,
+    selector: str,
+) -> tuple[str, str] | None:
+    """Navigate to an optional MAL sub-page, returning None on failure.
+
+    Args:
+        browser: Active zendriver browser instance.
+        url: Target MAL URL.
+        selector: CSS readiness selector to wait for.
+
+    Returns:
+        Tuple of rendered HTML and final URL, or None when unavailable.
+    """
+    try:
+        return await _navigate_and_read(browser, url, selector)
+    except ServiceNetworkError as exc:
+        logger.warning(f"Optional MAL page failed for {url}: {exc}")
+        return None
 
 
 class MalFetcher(PageFetcher):
@@ -115,11 +132,9 @@ class MalFetcher(PageFetcher):
         url = f"https://myanimelist.net/anime/{page_key.address}"
         async with browser_session(headless=True, allowed_site=MAL_DOMAIN) as session:
             browser = session.browser
-            main_result = await _navigate_and_read(
-                browser, url, f"{_TITLE_SELECTOR}, {_NOT_FOUND_SELECTOR}", required=True
+            main_html, final_url = await _navigate_and_read(
+                browser, url, f"{_TITLE_SELECTOR}, {_NOT_FOUND_SELECTOR}"
             )
-            assert main_result is not None  # noqa: S101
-            main_html, final_url = main_result
             if _NOT_FOUND_MARKER.search(main_html):
                 return FetchedPage(page_key=page_key, responses=(), is_not_found=True)
 
@@ -128,18 +143,17 @@ class MalFetcher(PageFetcher):
             responses = [build_html_response("main", main_html)]
 
             await asyncio.sleep(_INTER_REQUEST_DELAY)
-            pics_result = await _navigate_and_read(
-                browser, f"{canonical_base}/pics", _GALLERY_SELECTOR, required=False
+            pics_result = await _navigate_and_read_optional(
+                browser, f"{canonical_base}/pics", _GALLERY_SELECTOR
             )
             if pics_result is not None:
                 responses.append(build_html_response("pics", pics_result[0]))
 
             await asyncio.sleep(_INTER_REQUEST_DELAY)
-            chars_result = await _navigate_and_read(
+            chars_result = await _navigate_and_read_optional(
                 browser,
                 f"{canonical_base}/characters",
                 _CHARACTERS_SELECTOR,
-                required=False,
             )
             if chars_result is not None:
                 responses.append(build_html_response("characters", chars_result[0]))
@@ -157,14 +171,11 @@ class MalFetcher(PageFetcher):
         """
         url = f"https://myanimelist.net/character/{page_key.address}"
         async with browser_session(headless=True, allowed_site=MAL_DOMAIN) as session:
-            result = await _navigate_and_read(
+            html, _ = await _navigate_and_read(
                 session.browser,
                 url,
                 f"{_CHARACTER_HEADER_SELECTOR}, {_NOT_FOUND_SELECTOR}",
-                required=True,
             )
-        assert result is not None  # noqa: S101
-        html, _ = result
         if _NOT_FOUND_MARKER.search(html):
             return FetchedPage(page_key=page_key, responses=(), is_not_found=True)
         return FetchedPage(
