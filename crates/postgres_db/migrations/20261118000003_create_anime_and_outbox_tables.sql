@@ -57,6 +57,10 @@ CREATE INDEX anime_refresh_order_idx
   ON anime((coalesce(next_refresh_at, '-infinity'::timestamptz)), id)
   WHERE deleted_at IS NULL;
 
+-- The daily score refresh reads ongoing and recently finished works.
+CREATE INDEX anime_score_sync_idx ON anime(status, aired_to)
+  WHERE deleted_at IS NULL AND status IN ('ONGOING', 'FINISHED');
+
 CREATE VIEW anime_visible AS
   SELECT *
   FROM anime
