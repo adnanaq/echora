@@ -14,4 +14,9 @@ python_tests(
         "//:reqs0#pytest-asyncio",
         "//:reqs0#pytest-mock",
     ],
+    overrides={
+        "test_character_merge.py": {
+            "dependencies": ["//tests/libs/enrichment/unit/sources/anidb:fixtures"],
+        },
+    },
 )

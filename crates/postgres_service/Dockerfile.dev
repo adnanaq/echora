@@ -21,6 +21,8 @@ COPY protos/ protos/
 COPY crates/common/ crates/common/
 COPY crates/postgres_db/ crates/postgres_db/
 COPY crates/postgres_service/ crates/postgres_service/
+COPY crates/temporal_workflows/ crates/temporal_workflows/
+COPY crates/update_service/ crates/update_service/
 
 ENV SQLX_OFFLINE=true
 
