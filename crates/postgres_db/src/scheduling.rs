@@ -18,7 +18,7 @@ use sqlx::PgPool;
 use sqlx::postgres::types::PgInterval;
 use uuid::Uuid;
 
-use crate::{EntityType, Error, PageKey, Provider};
+use crate::{EntityType, Error, PageKey, Provider, begin_read_snapshot};
 
 /// Longest wait, in hours, before a failed page or a failed refresh is tried again.
 ///
@@ -59,6 +59,19 @@ pub struct EntityPageRecord {
     /// Failed fetches since the last successful one.
     pub fetch_failures: i32,
 }
+
+/// Largest `older_after_years` a due query accepts.
+///
+/// No anime first aired more than a thousand years ago, so a larger value means the same as
+/// this one. Bounding it keeps `extract(year FROM now())::int - older_after_years` inside
+/// PostgreSQL's integer range, so a caller's mistake is refused rather than failing the query.
+pub const MAX_OLDER_AFTER_YEARS: i32 = 1_000;
+
+/// Largest day window `ListUpcomingEpisodes` and `ListScoreAnime` accept.
+///
+/// A window of a hundred years covers every schedule and lookback the services use. Bounding
+/// it keeps `make_interval(days => ...)` added to `now()` inside PostgreSQL's timestamp range.
+pub const MAX_WINDOW_DAYS: i32 = 36_500;
 
 /// Parameters of one page of a due query.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -120,7 +133,8 @@ pub struct DuePageRecord {
 /// Lists an entity's linked provider pages with their last fetch state.
 ///
 /// Reads the link tables, not the visible views, so an entity that was never merged can be
-/// refreshed. A work lists its source pages first, then its partial-source pages; episodes and
+/// refreshed. The existence check and the page rows come from one read-only snapshot, so an
+/// entity deleted between them is not reported as present with no pages. A work lists its source pages first, then its partial-source pages; episodes and
 /// characters have source pages only. Each group is ordered by provider and address.
 ///
 /// # Examples
@@ -145,6 +159,7 @@ pub async fn list_entity_pages(
     entity_type: EntityType,
     entity_id: Uuid,
 ) -> Result<Vec<EntityPageRecord>, Error> {
+    let mut tx = begin_read_snapshot(pool).await?;
     let is_present = sqlx::query_scalar!(
         r#"
         SELECT EXISTS (SELECT 1 FROM anime
@@ -158,7 +173,7 @@ pub async fn list_entity_pages(
         entity_id,
         entity_type.as_str()
     )
-    .fetch_one(pool)
+    .fetch_one(&mut *tx)
     .await?;
     if !is_present {
         return Err(Error::not_found());
@@ -193,7 +208,7 @@ pub async fn list_entity_pages(
         entity_id,
         entity_type.as_str()
     )
-    .fetch_all(pool)
+    .fetch_all(&mut *tx)
     .await?;
 
     page_rows
@@ -219,8 +234,9 @@ pub async fn list_entity_pages(
 ///   `next_refresh_at = now() + refresh_after`.
 /// - `PagesFailed`: the same, except `next_refresh_at` is the earliest time a failed source
 ///   page may be fetched again, `2^fetch_failures` hours after its failure and at most a week.
-///   Dead and partial-source pages are left out. With no failed page left it is
-///   `now() + refresh_after`.
+///   Dead and partial-source pages are left out. It is never later than
+///   `now() + refresh_after`, so a page's long backoff does not delay the entity's healthy
+///   pages past their normal refresh, and with no failed page left it is that time.
 /// - `Failed`: `refresh_failed_at = now()`, one more `refresh_failures`, and
 ///   `next_refresh_at = now() + 2^refresh_failures` hours, at most a week.
 ///
@@ -303,7 +319,7 @@ async fn record_finished_refresh(
                 SET refreshed_at = now(),
                     refresh_failures = 0,
                     next_refresh_at = CASE
-                        WHEN $2 THEN coalesce(
+                        WHEN $2 THEN least(coalesce(
                             (SELECT min(page.fetch_failed_at + make_interval(
                                         hours => least(power(2, least(page.fetch_failures, $4))::int, $5)))
                              FROM anime_source link
@@ -311,7 +327,7 @@ async fn record_finished_refresh(
                              WHERE link.anime_id = anime.id
                                AND NOT page.is_dead
                                AND page.fetch_failed_at IS NOT NULL),
-                            now() + $3)
+                            now() + $3), now() + $3)
                         ELSE now() + $3
                     END
                 WHERE id = $1 AND deleted_at IS NULL
@@ -332,7 +348,7 @@ async fn record_finished_refresh(
                 SET refreshed_at = now(),
                     refresh_failures = 0,
                     next_refresh_at = CASE
-                        WHEN $2 THEN coalesce(
+                        WHEN $2 THEN least(coalesce(
                             (SELECT min(page.fetch_failed_at + make_interval(
                                         hours => least(power(2, least(page.fetch_failures, $4))::int, $5)))
                              FROM episode_source link
@@ -340,7 +356,7 @@ async fn record_finished_refresh(
                              WHERE link.episode_id = episode.id
                                AND NOT page.is_dead
                                AND page.fetch_failed_at IS NOT NULL),
-                            now() + $3)
+                            now() + $3), now() + $3)
                         ELSE now() + $3
                     END
                 WHERE id = $1 AND deleted_at IS NULL
@@ -361,7 +377,7 @@ async fn record_finished_refresh(
                 SET refreshed_at = now(),
                     refresh_failures = 0,
                     next_refresh_at = CASE
-                        WHEN $2 THEN coalesce(
+                        WHEN $2 THEN least(coalesce(
                             (SELECT min(page.fetch_failed_at + make_interval(
                                         hours => least(power(2, least(page.fetch_failures, $4))::int, $5)))
                              FROM character_source link
@@ -369,7 +385,7 @@ async fn record_finished_refresh(
                              WHERE link.character_id = character.id
                                AND NOT page.is_dead
                                AND page.fetch_failed_at IS NOT NULL),
-                            now() + $3)
+                            now() + $3), now() + $3)
                         ELSE now() + $3
                     END
                 WHERE id = $1 AND deleted_at IS NULL
@@ -454,10 +470,10 @@ fn validate_due_query(query: &DueEntitiesQuery) -> Result<(), Error> {
     if query.page_size <= 0 {
         return Err(Error::invalid_argument("page_size must be positive"));
     }
-    if query.older_after_years < 0 {
-        return Err(Error::invalid_argument(
-            "older_after_years must not be negative",
-        ));
+    if !(0..=MAX_OLDER_AFTER_YEARS).contains(&query.older_after_years) {
+        return Err(Error::invalid_argument(format!(
+            "older_after_years must be between 0 and {MAX_OLDER_AFTER_YEARS}"
+        )));
     }
     Ok(())
 }
@@ -498,7 +514,7 @@ fn validate_due_query(query: &DueEntitiesQuery) -> Result<(), Error> {
 /// # Errors
 ///
 /// Returns an invalid-argument error when `page_size` is not positive or `older_after_years`
-/// is negative, or a database error when the query fails.
+/// is negative or above [`MAX_OLDER_AFTER_YEARS`], or a database error when the query fails.
 pub async fn list_due_anime(
     pool: &PgPool,
     query: &DueEntitiesQuery,
@@ -559,7 +575,7 @@ pub async fn list_due_anime(
 /// # Errors
 ///
 /// Returns an invalid-argument error when `page_size` is not positive or `older_after_years`
-/// is negative, or a database error when the query fails.
+/// is negative or above [`MAX_OLDER_AFTER_YEARS`], or a database error when the query fails.
 pub async fn list_due_episodes(
     pool: &PgPool,
     query: &DueEntitiesQuery,
@@ -599,9 +615,10 @@ pub async fn list_due_episodes(
 /// Lists due characters of ongoing and upcoming works, paged like [`list_due_anime`].
 ///
 /// A character's works are found through its `character_animeography` pages. A character is
-/// ongoing when any of its undeleted works is ongoing or upcoming, and older only when every
-/// one of those works is older. Unless older merge code merged it, a character with no ongoing
-/// work is left out.
+/// due through a work that the sweep refreshes itself: an undeleted work that is ongoing or
+/// upcoming and not older. A character whose ongoing works are all older is left out, as those
+/// works are, whatever its finished works' age. Unless older merge code merged it, a character
+/// with no such work is left out.
 ///
 /// # Examples
 ///
@@ -625,7 +642,7 @@ pub async fn list_due_episodes(
 /// # Errors
 ///
 /// Returns an invalid-argument error when `page_size` is not positive or `older_after_years`
-/// is negative, or a database error when the query fails.
+/// is negative or above [`MAX_OLDER_AFTER_YEARS`], or a database error when the query fails.
 pub async fn list_due_characters(
     pool: &PgPool,
     query: &DueEntitiesQuery,
@@ -697,14 +714,16 @@ pub async fn list_due_characters(
 ///
 /// # Errors
 ///
-/// Returns an invalid-argument error when `window_days` is negative, or a database error when
-/// the query fails.
+/// Returns an invalid-argument error when `window_days` is negative or above
+/// [`MAX_WINDOW_DAYS`], or a database error when the query fails.
 pub async fn list_upcoming_episodes(
     pool: &PgPool,
     window_days: i32,
 ) -> Result<Vec<UpcomingEpisodeRecord>, Error> {
-    if window_days < 0 {
-        return Err(Error::invalid_argument("window_days must not be negative"));
+    if !(0..=MAX_WINDOW_DAYS).contains(&window_days) {
+        return Err(Error::invalid_argument(format!(
+            "window_days must be between 0 and {MAX_WINDOW_DAYS}"
+        )));
     }
 
     let upcoming_episodes = sqlx::query_as!(
@@ -770,18 +789,19 @@ pub async fn list_upcoming_episodes(
 ///
 /// # Errors
 ///
-/// Returns an invalid-argument error when `lookback_days` is negative or `page_size` is not
-/// positive, or a database error when the query fails.
+/// Returns an invalid-argument error when `lookback_days` is negative or above
+/// [`MAX_WINDOW_DAYS`] or `page_size` is not positive, or a database error when the query
+/// fails.
 pub async fn list_score_anime(
     pool: &PgPool,
     lookback_days: i32,
     page_size: i32,
     after_id: Option<Uuid>,
 ) -> Result<Vec<Uuid>, Error> {
-    if lookback_days < 0 {
-        return Err(Error::invalid_argument(
-            "lookback_days must not be negative",
-        ));
+    if !(0..=MAX_WINDOW_DAYS).contains(&lookback_days) {
+        return Err(Error::invalid_argument(format!(
+            "lookback_days must be between 0 and {MAX_WINDOW_DAYS}"
+        )));
     }
     if page_size <= 0 {
         return Err(Error::invalid_argument("page_size must be positive"));

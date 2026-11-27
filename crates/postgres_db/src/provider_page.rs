@@ -365,13 +365,14 @@ pub struct PageSource {
     pub title: Option<String>,
 }
 
-/// Records the URL of each page an entity holds as a source, where it changed.
+/// Records the URL and title of each page an entity holds as a source, where they changed.
 ///
-/// A page's URL depends only on the page, so it is stored once on `provider_page`. The entity
-/// that holds a page as its source chooses its URL and replaces whatever is stored; a save
-/// that only names the page fills it while it is empty, through
-/// [`record_referenced_page_sources`]. A page given here that the entity does not hold as a
-/// source is left unchanged. The owned page rows
+/// A page's URL and title depend only on the page, so they are stored once on
+/// `provider_page`. The entity that holds a page as its source chooses them and replaces what
+/// is stored; a save that only names the page fills them while they are empty, through
+/// [`record_referenced_page_sources`]. A URL or title given as `None` keeps the stored one,
+/// since the merge did not learn it this time. A page given here that the entity does not
+/// hold as a source is left unchanged. The owned page rows
 /// are locked in key order before the update, so two saves of one entity cannot deadlock.
 ///
 /// Call it before the entity's own row is locked: every writer locks pages first, as
@@ -379,8 +380,8 @@ pub struct PageSource {
 ///
 /// # Errors
 ///
-/// Returns an invalid-argument error when a URL is blank, a page key is for another kind of
-/// entity, or a page key is given twice, or a database error when the update fails.
+/// Returns an invalid-argument error when a page key is for another kind of entity or is
+/// given twice, or a database error when the update fails.
 pub(crate) async fn record_page_sources(
     tx: &mut Transaction<'_, Postgres>,
     entity_type: EntityType,
@@ -399,11 +400,6 @@ pub(crate) async fn record_page_sources(
             page_key.entity_type(),
             page_key.address()
         );
-        if page_source.source.is_none() {
-            return Err(Error::invalid_argument(format!(
-                "page source URL for {page_label} must be given"
-            )));
-        }
         if page_key.entity_type() != entity_type {
             return Err(Error::invalid_argument(format!(
                 "page source {page_label} is not a {entity_type} page"
@@ -424,9 +420,9 @@ pub(crate) async fn record_page_sources(
         .iter()
         .map(|page_source| page_source.page_key.address().as_str().to_owned())
         .collect();
-    let sources: Vec<&str> = page_sources
+    let sources: Vec<Option<&str>> = page_sources
         .iter()
-        .filter_map(|page_source| page_source.source.as_ref().map(Url::as_str))
+        .map(|page_source| page_source.source.as_ref().map(Url::as_str))
         .collect();
     let titles: Vec<Option<&str>> = page_sources
         .iter()
@@ -467,21 +463,21 @@ pub(crate) async fn record_page_sources(
             FOR NO KEY UPDATE OF page
         )
         UPDATE provider_page page
-        SET source = given.source,
+        SET source = coalesce(given.source, page.source),
             title = coalesce(given.title, page.title)
         FROM given
         JOIN owned USING (provider, entity_type, address)
         WHERE page.provider = given.provider
           AND page.entity_type = given.entity_type
           AND page.address = given.address
-          AND (page.source IS DISTINCT FROM given.source
+          AND (page.source IS DISTINCT FROM coalesce(given.source, page.source)
                OR page.title IS DISTINCT FROM coalesce(given.title, page.title))
         "#,
         entity_id,
         entity_type.as_str(),
         &providers,
         &addresses,
-        &sources as &[&str],
+        &sources as &[Option<&str>],
         &titles as &[Option<&str>]
     )
     .execute(&mut **tx)
@@ -491,34 +487,33 @@ pub(crate) async fn record_page_sources(
 
 /// The URL and title a save gives for one page it names.
 #[derive(Debug, Default)]
-struct NamedPageDetails<'a> {
+pub(crate) struct NamedPageDetails<'a> {
     /// The longest URL given for the page.
-    source: Option<&'a str>,
+    pub(crate) source: Option<&'a str>,
     /// The first title given for the page.
-    title: Option<&'a str>,
+    pub(crate) title: Option<&'a str>,
 }
 
-/// Collects the URL and title given for each named page, in page key order.
+/// Collects the URL and title given for each named page, in key order.
 ///
 /// Several entries can name one page through different spellings of its URL. The longest
 /// keeps the provider's slug, the same choice the merges make for an entity's own pages, and
 /// the first title given is kept. The sorted keys give every writer one row order. A page
-/// given with neither is left out.
-fn collect_named_page_details<'a>(
-    named_page_sources: impl IntoIterator<Item = &'a PageSource>,
-) -> BTreeMap<&'a PageKey, NamedPageDetails<'a>> {
-    let mut details_by_page: BTreeMap<&'a PageKey, NamedPageDetails<'a>> = BTreeMap::new();
-    for page_source in named_page_sources {
-        let source = page_source.source.as_ref().map(Url::as_str);
-        let title = page_source.title.as_deref();
-        if source.is_none() && title.is_none() {
+/// given with neither is left out. Provider pages are keyed by their [`PageKey`], and manga
+/// pages by their provider and external ID.
+pub(crate) fn collect_named_page_details<'a, K: Ord>(
+    named_pages: impl IntoIterator<Item = (K, NamedPageDetails<'a>)>,
+) -> BTreeMap<K, NamedPageDetails<'a>> {
+    let mut details_by_page: BTreeMap<K, NamedPageDetails<'a>> = BTreeMap::new();
+    for (page_key, named_details) in named_pages {
+        if named_details.source.is_none() && named_details.title.is_none() {
             continue;
         }
-        let page_details = details_by_page.entry(&page_source.page_key).or_default();
-        if source.map(str::len) > page_details.source.map(str::len) {
-            page_details.source = source;
+        let page_details = details_by_page.entry(page_key).or_default();
+        if named_details.source.map(str::len) > page_details.source.map(str::len) {
+            page_details.source = named_details.source;
         }
-        page_details.title = page_details.title.or(title);
+        page_details.title = page_details.title.or(named_details.title);
     }
     details_by_page
 }
@@ -542,7 +537,16 @@ pub(crate) async fn record_referenced_page_sources<'a>(
     tx: &mut Transaction<'_, Postgres>,
     named_page_sources: impl IntoIterator<Item = &'a PageSource>,
 ) -> Result<(), Error> {
-    let details_by_page = collect_named_page_details(named_page_sources);
+    let details_by_page =
+        collect_named_page_details(named_page_sources.into_iter().map(|page_source| {
+            (
+                &page_source.page_key,
+                NamedPageDetails {
+                    source: page_source.source.as_ref().map(Url::as_str),
+                    title: page_source.title.as_deref(),
+                },
+            )
+        }));
     if details_by_page.is_empty() {
         return Ok(());
     }
@@ -1466,7 +1470,16 @@ mod tests {
             page_source(Provider::Mal, "3", None, None),
         ];
 
-        let details_by_page = collect_named_page_details(&named_page_sources);
+        let details_by_page =
+            collect_named_page_details(named_page_sources.iter().map(|page_source| {
+                (
+                    &page_source.page_key,
+                    NamedPageDetails {
+                        source: page_source.source.as_ref().map(Url::as_str),
+                        title: page_source.title.as_deref(),
+                    },
+                )
+            }));
 
         assert_eq!(
             details_by_page

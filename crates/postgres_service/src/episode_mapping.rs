@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use crate::anime_mapping::parse_proto_timestamp;
 use crate::anime_relations_mapping::{build_page_source_from_url, parse_character_target_from_url};
-use crate::lookup_text::{CHARACTER_ROLE_LOOKUP_TEXTS, find_specified_lookup_text};
+use crate::lookup_text::LookupText as _;
 use crate::service::parse_page_sources;
 use crate::service::postgres_service_proto::v1::SaveEpisodeRequest;
 use crate::service::shared_proto::v1::{
@@ -273,14 +273,8 @@ pub(crate) fn map_character_role(enum_number: i32) -> Result<&'static str, Statu
             "unknown CharacterRole number {enum_number}"
         )));
     };
-    if role == CharacterRole::Unspecified {
-        return Err(Status::invalid_argument("CharacterRole must be specified"));
-    }
-    Ok(find_specified_lookup_text(
-        CHARACTER_ROLE_LOOKUP_TEXTS,
-        role,
-        "CharacterRole",
-    ))
+    role.find_lookup_text()
+        .ok_or_else(|| Status::invalid_argument("CharacterRole must be specified"))
 }
 
 /// Computes a deterministic SHA-256 hex digest over a canonicalized [`Episode`].

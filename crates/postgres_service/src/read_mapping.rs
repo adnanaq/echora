@@ -11,20 +11,17 @@ use postgres_db::{
 };
 use tonic::Status;
 
-use crate::lookup_text::{
-    ANIME_RATING_LOOKUP_TEXTS, ANIME_SEASON_LOOKUP_TEXTS, ANIME_STATUS_LOOKUP_TEXTS,
-    ANIME_TYPE_LOOKUP_TEXTS, CHARACTER_ROLE_LOOKUP_TEXTS, COMPANY_ROLE_LOOKUP_TEXTS,
-    SOURCE_MATERIAL_TYPE_LOOKUP_TEXTS, read_enum_number,
-};
+use crate::lookup_text::read_enum_number;
 use crate::service::postgres_service_proto::v1::{
     GetAnimeResponse, GetCharacterResponse, GetEpisodeResponse, ListEpisodesResponse,
 };
 use crate::service::shared_proto::v1::{
-    AiredDates, Anime, AnimeHiatus, AnimeImages, Broadcast, Character, CompanyEntry,
-    ContextualRank, EntityType as ProtoEntityType, Episode, EpisodeCharacter, EpisodeRange,
-    ExternalLink, Ography, RelatedAnime, RelatedAnimeList, RelatedSourceMaterial,
-    RelatedSourceMaterialList, ScoreCalculations, Statistics, StreamingEntry, ThemeEntry,
-    ThemeSong, TrailerEntry,
+    AiredDates, Anime, AnimeHiatus, AnimeImages, AnimeRating, AnimeSeason, AnimeStatus, AnimeType,
+    Broadcast, Character, CharacterRole, CompanyEntry, CompanyRole, ContextualRank,
+    EntityType as ProtoEntityType, Episode, EpisodeCharacter, EpisodeRange, ExternalLink, Ography,
+    RelatedAnime, RelatedAnimeList, RelatedSourceMaterial, RelatedSourceMaterialList,
+    ScoreCalculations, SourceMaterialType, Statistics, StreamingEntry, ThemeEntry, ThemeSong,
+    TrailerEntry,
 };
 use crate::service::to_proto_timestamp;
 
@@ -40,23 +37,19 @@ use crate::service::to_proto_timestamp;
 pub(crate) fn build_get_anime_response(
     record: VisibleAnimeRecord,
 ) -> Result<GetAnimeResponse, Status> {
-    let anime_type = read_enum_number(ANIME_TYPE_LOOKUP_TEXTS, &record.anime_type, "anime.type")?;
-    let status = read_enum_number(ANIME_STATUS_LOOKUP_TEXTS, &record.status, "anime.status")?;
-    let rating = read_enum_number(ANIME_RATING_LOOKUP_TEXTS, &record.rating, "anime.rating")?;
+    let anime_type = read_enum_number::<AnimeType>(&record.anime_type, "anime.type")?;
+    let status = read_enum_number::<AnimeStatus>(&record.status, "anime.status")?;
+    let rating = read_enum_number::<AnimeRating>(&record.rating, "anime.rating")?;
     let season = record
         .season
         .as_deref()
-        .map(|season| read_enum_number(ANIME_SEASON_LOOKUP_TEXTS, season, "anime.season"))
+        .map(|season| read_enum_number::<AnimeSeason>(season, "anime.season"))
         .transpose()?;
     let source_material = record
         .source_material
         .as_deref()
         .map(|source_material| {
-            read_enum_number(
-                SOURCE_MATERIAL_TYPE_LOOKUP_TEXTS,
-                source_material,
-                "anime.source_material",
-            )
+            read_enum_number::<SourceMaterialType>(source_material, "anime.source_material")
         })
         .transpose()?;
 
@@ -113,7 +106,7 @@ pub(crate) fn build_get_anime_response(
         tags: record.tags,
         sources: record.sources,
         partial_sources: record.partial_sources,
-        images: Some(build_anime_images(record.images)),
+        images: Some(build_anime_images(record.images)?),
         opening_themes: build_theme_songs(record.opening_themes),
         ending_themes: build_theme_songs(record.ending_themes),
         trailers: build_trailers(record.trailers),
@@ -261,12 +254,13 @@ pub(crate) fn build_get_character_response(
 
 /// Converts stored character role text into its proto enum number.
 fn read_character_role(role: &str) -> Result<i32, Status> {
-    read_enum_number(CHARACTER_ROLE_LOOKUP_TEXTS, role, "character role")
+    read_enum_number::<CharacterRole>(role, "character role")
 }
 
 /// Converts an episode's character appearance into an [`EpisodeCharacter`].
 ///
-/// The name is empty while no visible character holds the page the episode names.
+/// The name is the visible character's, or otherwise the name the character's page gives,
+/// and is empty while neither is stored.
 fn build_episode_character(
     episode_character: VisibleEpisodeCharacter,
 ) -> Result<EpisodeCharacter, Status> {
@@ -280,7 +274,8 @@ fn build_episode_character(
 
 /// Converts animeography or mangaography entries into [`Ography`] messages.
 ///
-/// The title is empty while no visible work or stored source material matches the entry.
+/// The title is the visible work's or the stored source material's, or otherwise the title
+/// the entry's page gives, and is empty while none is stored.
 fn build_ography(ography_entries: Vec<VisibleOgraphyEntry>) -> Result<Vec<Ography>, Status> {
     ography_entries
         .into_iter()
@@ -296,18 +291,25 @@ fn build_ography(ography_entries: Vec<VisibleOgraphyEntry>) -> Result<Vec<Ograph
 
 /// Groups a work's images into cover, poster and banner lists.
 ///
-/// The `image_type` lookup holds only these three values, so no other type can be stored.
-fn build_anime_images(anime_images: Vec<AnimeImageInput>) -> AnimeImages {
+/// # Errors
+///
+/// Returns `INTERNAL` for a stored image type with no list here, like every other lookup
+/// value a read cannot map, so an image type added to the lookup table is not dropped unseen.
+fn build_anime_images(anime_images: Vec<AnimeImageInput>) -> Result<AnimeImages, Status> {
     let mut images = AnimeImages::default();
     for anime_image in anime_images {
         match anime_image.image_type.as_str() {
             "cover" => images.covers.push(anime_image.url),
             "poster" => images.posters.push(anime_image.url),
             "banner" => images.banners.push(anime_image.url),
-            _ => {}
+            other_image_type => {
+                return Err(Status::internal(format!(
+                    "stored anime image type {other_image_type:?} has no proto list"
+                )));
+            }
         }
     }
-    images
+    Ok(images)
 }
 
 /// Converts stored opening or ending theme songs into protobuf [`ThemeSong`] entries.
@@ -467,14 +469,12 @@ fn build_related_anime(
         let related_entry = match target_anime {
             Some(target_anime) => RelatedAnime {
                 title: target_anime.title,
-                r#type: read_enum_number(
-                    ANIME_TYPE_LOOKUP_TEXTS,
+                r#type: read_enum_number::<AnimeType>(
                     &target_anime.anime_type,
                     "related anime type",
                 )?,
                 sources: target_page_sources,
-                status: Some(read_enum_number(
-                    ANIME_STATUS_LOOKUP_TEXTS,
+                status: Some(read_enum_number::<AnimeStatus>(
                     &target_anime.status,
                     "related anime status",
                 )?),
@@ -485,8 +485,13 @@ fn build_related_anime(
             },
             None => RelatedAnime {
                 title: target_page_title.unwrap_or_default(),
+                r#type: AnimeType::Unspecified.into(),
                 sources: target_page_sources,
-                ..RelatedAnime::default()
+                status: None,
+                year: None,
+                score: None,
+                images: Vec::new(),
+                episode_count: None,
             },
         };
         related_anime
@@ -510,8 +515,7 @@ fn build_related_source_material(
     for source_material in source_materials {
         let related_entry = RelatedSourceMaterial {
             title: source_material.title,
-            r#type: read_enum_number(
-                SOURCE_MATERIAL_TYPE_LOOKUP_TEXTS,
+            r#type: read_enum_number::<SourceMaterialType>(
                 &source_material.source_material_type,
                 "related source material type",
             )?,
@@ -524,11 +528,7 @@ fn build_related_source_material(
                 .status
                 .as_deref()
                 .map(|status| {
-                    read_enum_number(
-                        ANIME_STATUS_LOOKUP_TEXTS,
-                        status,
-                        "related source material status",
-                    )
+                    read_enum_number::<AnimeStatus>(status, "related source material status")
                 })
                 .transpose()?,
             score: source_material.score.map(|score| score as f32),
@@ -557,7 +557,7 @@ fn build_company_entries(companies: Vec<AnimeCompanyInput>) -> Result<Vec<Compan
                 roles: company
                     .roles
                     .iter()
-                    .map(|role| read_enum_number(COMPANY_ROLE_LOOKUP_TEXTS, role, "company role"))
+                    .map(|role| read_enum_number::<CompanyRole>(role, "company role"))
                     .collect::<Result<Vec<_>, Status>>()?,
             })
         })
@@ -963,16 +963,10 @@ mod tests {
             name: "Space".to_owned(),
             description: Some("Outer space".to_owned()),
         }];
-        record.images = vec![
-            AnimeImageInput {
-                image_type: "poster".to_owned(),
-                url: "https://cdn.example/poster.jpg".to_owned(),
-            },
-            AnimeImageInput {
-                image_type: "thumbnail".to_owned(),
-                url: "https://cdn.example/thumbnail.jpg".to_owned(),
-            },
-        ];
+        record.images = vec![AnimeImageInput {
+            image_type: "poster".to_owned(),
+            url: "https://cdn.example/poster.jpg".to_owned(),
+        }];
         record.opening_themes = vec![AnimeThemeSongInput {
             position: 0,
             title: "Tank!".to_owned(),
@@ -1228,6 +1222,11 @@ mod tests {
             roles: vec!["ANIMATOR".to_owned()],
             xrefs: Vec::new(),
         }];
+        let mut unknown_image_type = build_anime_record("TV", "UNKNOWN");
+        unknown_image_type.images = vec![AnimeImageInput {
+            image_type: "thumbnail".to_owned(),
+            url: "https://cdn.example/thumbnail.jpg".to_owned(),
+        }];
         for record in [
             unknown_season,
             unknown_source_material,
@@ -1237,6 +1236,7 @@ mod tests {
             unknown_material_type,
             unknown_material_status,
             unknown_company_role,
+            unknown_image_type,
         ] {
             let status = build_get_anime_response(record).expect_err("unknown stored text");
             assert_eq!(status.code(), Code::Internal, "{}", status.message());

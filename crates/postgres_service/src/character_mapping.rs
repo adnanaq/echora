@@ -15,7 +15,7 @@ use tonic::Status;
 use uuid::Uuid;
 
 use crate::anime_relations_mapping::{
-    build_page_source_from_url, parse_anime_target_from_url, parse_source_material_target_from_url,
+    build_page_source_from_url, build_source_material_xref_from_url, parse_anime_target_from_url,
 };
 use crate::episode_mapping::map_character_role;
 use crate::service::parse_page_sources;
@@ -156,15 +156,7 @@ fn map_character_mangaography(
         let mapped_role = map_character_role(role)?;
         let xrefs: Vec<SourceMaterialXrefInput> = sources
             .into_iter()
-            .filter_map(|source_url| {
-                let (provider, external_id) = parse_source_material_target_from_url(&source_url)?;
-                Some(SourceMaterialXrefInput {
-                    provider: provider.to_owned(),
-                    external_id,
-                    url: source_url,
-                    title: Some(title.clone()).filter(|page_title| !page_title.is_empty()),
-                })
-            })
+            .filter_map(|source_url| build_source_material_xref_from_url(source_url, &title))
             .collect();
         if !xrefs.is_empty() {
             entries.push(CharacterMangaographyInput {

@@ -155,6 +155,11 @@ pub struct SaveAnimeInput {
     pub traceparent: Option<String>,
     /// URL the merge chose for each page the entity holds as a source.
     pub page_sources: Vec<PageSource>,
+    /// URL of each page the work holds as a partial source.
+    ///
+    /// The work holding the page as a source owns its URL, so the save fills a URL only while
+    /// none is stored. A partial-source page no work holds as a source gets its URL this way.
+    pub partial_page_sources: Vec<PageSource>,
     /// Work names, classification lists, themes, and images.
     pub details: AnimeDetailsInput,
     /// Theme songs, trailers, links, streaming, statistics, broadcast, and hiatus.
@@ -525,6 +530,7 @@ async fn save_anime_in_tx(
             .relations
             .iter()
             .map(|relation| &relation.target_page_source)
+            .chain(&input.partial_page_sources)
             .chain(
                 input
                     .episodes
@@ -1050,6 +1056,7 @@ mod tests {
             merge_version: 1,
             traceparent: Some("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01".to_owned()),
             page_sources: Vec::new(),
+            partial_page_sources: Vec::new(),
             details: AnimeDetailsInput {
                 titles: vec![AnimeTitleInput {
                     language: "en".to_owned(),

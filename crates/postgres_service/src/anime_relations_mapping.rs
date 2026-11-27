@@ -1,6 +1,7 @@
 //! Protobuf-to-SQL mapping for anime relations, relation claims, source material,
 //! and companies.
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 
 use postgres_db::{
@@ -12,14 +13,12 @@ use tonic::Status;
 use url::Url;
 
 use crate::anime_mapping::map_source_material_type;
-use crate::lookup_text::{
-    ANIME_STATUS_LOOKUP_TEXTS, COMPANY_ROLE_LOOKUP_TEXTS, find_specified_lookup_text,
-};
-use crate::service::map_db_error;
+use crate::lookup_text::LookupText as _;
 use crate::service::shared_proto::v1::{
     AnimeRelationType, AnimeStatus, CompanyEntry, CompanyRole, EntityType, PageKey as ProtoPageKey,
     RelatedAnimeList, RelatedSourceMaterial, RelatedSourceMaterialList, RelationClaim,
 };
+use crate::service::{map_db_error, parse_page_title};
 
 /// Collects a work's relations, claims, source material and companies for the save.
 ///
@@ -63,7 +62,7 @@ fn map_related_anime(
                     &source_url,
                     &item.title,
                     DbEntityType::Anime,
-                    parse_provider_target_from_url,
+                    parse_anime_target_from_url,
                 ) {
                     anime_relations.push(AnimeRelationInput {
                         relation_type: relation_type.to_owned(),
@@ -146,16 +145,7 @@ fn map_related_source_material(
                 .map(str::to_owned);
             let xrefs: Vec<SourceMaterialXrefInput> = sources
                 .into_iter()
-                .filter_map(|url| {
-                    parse_provider_target_from_url(&url).map(|(provider, external_id)| {
-                        SourceMaterialXrefInput {
-                            provider: provider.to_owned(),
-                            external_id,
-                            url,
-                            title: None,
-                        }
-                    })
-                })
+                .filter_map(|source_url| build_source_material_xref_from_url(source_url, ""))
                 .collect();
             if xrefs.is_empty() {
                 continue;
@@ -201,7 +191,8 @@ fn map_companies(companies: Vec<CompanyEntry>) -> Result<Vec<AnimeCompanyInput>,
         let xrefs: Vec<CompanyXrefInput> = sources
             .into_iter()
             .filter_map(|url| {
-                parse_provider_from_url(&url).map(|provider| CompanyXrefInput {
+                let page_url = Url::parse(&url).ok()?;
+                find_url_provider(&page_url).map(|provider| CompanyXrefInput {
                     provider: provider.to_owned(),
                     url,
                 })
@@ -336,14 +327,7 @@ fn map_company_role(enum_number: i32) -> Result<Option<&'static str>, Status> {
             "unknown CompanyRole number {enum_number}"
         )));
     };
-    if role == CompanyRole::Unspecified {
-        return Ok(None);
-    }
-    Ok(Some(find_specified_lookup_text(
-        COMPANY_ROLE_LOOKUP_TEXTS,
-        role,
-        "CompanyRole",
-    )))
+    Ok(role.find_lookup_text())
 }
 
 /// Converts an optional `AnimeStatus` enum number into its lookup text.
@@ -357,25 +341,18 @@ fn map_anime_status_optional(enum_number: i32) -> Result<Option<&'static str>, S
             "unknown AnimeStatus number {enum_number}"
         )));
     };
-    if anime_status == AnimeStatus::Unspecified {
-        return Ok(None);
-    }
-    Ok(Some(find_specified_lookup_text(
-        ANIME_STATUS_LOOKUP_TEXTS,
-        anime_status,
-        "AnimeStatus",
-    )))
+    Ok(anime_status.find_lookup_text())
 }
 
-/// Finds the provider whose site a URL belongs to.
-fn parse_provider_from_url(url: &str) -> Option<&'static str> {
-    let without_scheme = url
-        .trim()
-        .strip_prefix("https://")
-        .or_else(|| url.trim().strip_prefix("http://"))?;
-    let host_part = without_scheme.split('/').next()?;
-    let host = host_part.strip_prefix("www.").unwrap_or(host_part);
-    match host {
+/// Finds the provider whose site a parsed `http` or `https` URL belongs to.
+///
+/// [`Url::parse`] has already lowercased the host, so only a leading `www.` is dropped.
+fn find_url_provider(page_url: &Url) -> Option<&'static str> {
+    if !matches!(page_url.scheme(), "http" | "https") {
+        return None;
+    }
+    let host = page_url.host_str()?;
+    match host.strip_prefix("www.").unwrap_or(host) {
         "myanimelist.net" => Some("mal"),
         "anilist.co" => Some("anilist"),
         "kitsu.app" | "kitsu.io" => Some("kitsu"),
@@ -392,7 +369,7 @@ fn parse_provider_from_url(url: &str) -> Option<&'static str> {
     }
 }
 
-/// Builds the page a URL names, of `entity_type`, with the URL as its source.
+/// Builds the page a URL names, of `entity_type`, with the parsed URL as its source.
 ///
 /// `page_title` is the title the save's record gives the page's entity, kept so a read of a
 /// page no stored entity holds yet shows a title; an empty title gives none. `parse_target`
@@ -403,66 +380,71 @@ pub(crate) fn build_page_source_from_url(
     source_url: &str,
     page_title: &str,
     entity_type: DbEntityType,
-    parse_target: fn(&str) -> Option<(&'static str, String)>,
+    parse_target: fn(&Url) -> Option<(&'static str, String)>,
 ) -> Option<PageSource> {
-    let (provider, address) = parse_target(source_url)?;
+    let page_url = Url::parse(source_url).ok()?;
+    let (provider, address) = parse_target(&page_url)?;
     let page_key = PageKey::new(provider.parse().ok()?, entity_type, address).ok()?;
     Some(PageSource {
         page_key,
-        source: Some(Url::parse(source_url).ok()?),
-        title: Some(page_title.to_owned()).filter(|title| !title.is_empty()),
+        source: Some(page_url),
+        title: parse_page_title(page_title),
     })
 }
 
-/// Finds the provider and work address a work page URL names.
-pub(crate) fn parse_provider_target_from_url(url: &str) -> Option<(&'static str, String)> {
-    parse_provider_target_with_path_segments(url, &["anime", "manga", "light-novels"])
+/// Builds the cross-reference a manga or novel page URL names, with the page's title.
+///
+/// An empty `page_title` gives none. A URL that names no manga or novel page, or text that
+/// is not a URL, gives `None`.
+pub(crate) fn build_source_material_xref_from_url(
+    source_url: String,
+    page_title: &str,
+) -> Option<SourceMaterialXrefInput> {
+    let page_url = Url::parse(&source_url).ok()?;
+    let (provider, external_id) = parse_source_material_target_from_url(&page_url)?;
+    Some(SourceMaterialXrefInput {
+        provider: provider.to_owned(),
+        external_id,
+        url: source_url,
+        title: parse_page_title(page_title),
+    })
 }
 
 /// Finds the provider and work address an anime page URL names, refusing manga and novels.
-pub(crate) fn parse_anime_target_from_url(url: &str) -> Option<(&'static str, String)> {
-    parse_provider_target_with_path_segments(url, &["anime"])
+pub(crate) fn parse_anime_target_from_url(page_url: &Url) -> Option<(&'static str, String)> {
+    parse_provider_target_with_path_segments(page_url, &["anime"])
 }
 
 /// Finds the provider and identifier a manga or novel page URL names, refusing anime.
-pub(crate) fn parse_source_material_target_from_url(url: &str) -> Option<(&'static str, String)> {
-    parse_provider_target_with_path_segments(url, &["manga", "light-novels"])
+fn parse_source_material_target_from_url(page_url: &Url) -> Option<(&'static str, String)> {
+    parse_provider_target_with_path_segments(page_url, &["manga", "light-novels"])
 }
 
 /// Finds the provider and character address a character page URL names.
 ///
 /// Kitsu and Anime-Planet write the segment in the plural (`/characters/…`), the others in
 /// the singular.
-pub(crate) fn parse_character_target_from_url(url: &str) -> Option<(&'static str, String)> {
-    parse_provider_target_with_path_segments(url, &["character", "characters"])
+pub(crate) fn parse_character_target_from_url(page_url: &Url) -> Option<(&'static str, String)> {
+    parse_provider_target_with_path_segments(page_url, &["character", "characters"])
 }
 
 /// Finds the provider and address a URL names, if its first path segment is allowed.
 fn parse_provider_target_with_path_segments(
-    url: &str,
+    page_url: &Url,
     allowed_segments: &[&str],
 ) -> Option<(&'static str, String)> {
-    let provider = parse_provider_from_url(url)?;
-    let without_scheme = url
-        .trim()
-        .strip_prefix("https://")
-        .or_else(|| url.trim().strip_prefix("http://"))?;
-    let path_and_query = without_scheme.split_once('/')?.1;
-    let path = path_and_query
-        .split(['?', '#'])
-        .next()
-        .unwrap_or(path_and_query);
-    let segments: Vec<&str> = path
-        .split('/')
+    let provider = find_url_provider(page_url)?;
+    let segments: Vec<&str> = page_url
+        .path_segments()?
         .filter(|segment| !segment.is_empty())
         .collect();
 
-    let raw_id = match provider {
+    let raw_id: Cow<'_, str> = match provider {
         "mal" | "anilist" | "anisearch" | "anidb" | "kitsu" | "anime_planet" | "livechart"
         | "simkl" => {
             if segments.len() >= 2 {
                 if allowed_segments.contains(&segments[0]) {
-                    segments[1]
+                    Cow::Borrowed(segments[1])
                 } else {
                     return None;
                 }
@@ -474,30 +456,24 @@ fn parse_provider_target_with_path_segments(
                 ) {
                     return None;
                 }
-                first_segment
+                Cow::Borrowed(first_segment)
             }
         }
-        "animecountdown" => segments.first().copied()?,
-        "ann" => {
-            let query = path_and_query.split_once('?')?.1;
-            query
-                .split('&')
-                .find_map(|pair| pair.strip_prefix("id="))?
-                .split('#')
-                .next()
-                .unwrap_or_default()
-        }
-        _ => segments.last().copied()?,
+        "animecountdown" => Cow::Borrowed(segments.first().copied()?),
+        "ann" => page_url
+            .query_pairs()
+            .find_map(|(query_name, query_value)| (query_name == "id").then_some(query_value))?,
+        _ => Cow::Borrowed(segments.last().copied()?),
     };
 
-    let id = match provider {
+    let id: &str = match provider {
         // Numbered providers (including AniSearch `/anime/123,slug`) key by leading digits.
         "mal" | "anilist" | "anisearch" | "anidb" | "ann" | "livechart" | "simkl"
         | "animecountdown" => raw_id
-            .split(|ch: char| !ch.is_ascii_digit())
+            .split(|id_char: char| !id_char.is_ascii_digit())
             .next()
             .unwrap_or(""),
-        _ => raw_id,
+        _ => &raw_id,
     };
 
     if id.is_empty() {
@@ -511,6 +487,10 @@ fn parse_provider_target_with_path_segments(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn parse_test_url(url_text: &str) -> Url {
+        Url::parse(url_text).expect("valid URL")
+    }
     use crate::service::shared_proto::v1::{RelatedAnime, SourceMaterialType};
 
     #[test]
@@ -521,7 +501,10 @@ mod tests {
             RelatedAnimeList {
                 items: vec![RelatedAnime {
                     title: "Spin Off".to_owned(),
-                    sources: vec!["https://myanimelist.net/anime/21/One_Piece".to_owned()],
+                    sources: vec![
+                        "https://myanimelist.net/anime/21/One_Piece".to_owned(),
+                        "https://myanimelist.net/manga/13/One_Piece".to_owned(),
+                    ],
                     ..RelatedAnime::default()
                 }],
             },
@@ -534,7 +517,10 @@ mod tests {
                 items: vec![RelatedSourceMaterial {
                     title: "Manga".to_owned(),
                     r#type: SourceMaterialType::Manga as i32,
-                    sources: vec!["https://myanimelist.net/manga/13/One_Piece".to_owned()],
+                    sources: vec![
+                        "https://myanimelist.net/manga/13/One_Piece".to_owned(),
+                        "https://myanimelist.net/anime/21/One_Piece".to_owned(),
+                    ],
                     status: Some(AnimeStatus::Ongoing as i32),
                     score: Some(9.2),
                     images: vec!["https://example.com/m.jpg".to_owned()],
@@ -582,6 +568,7 @@ mod tests {
         );
         assert_eq!(mapped.relation_claims.len(), 1);
         assert_eq!(mapped.source_materials.len(), 1);
+        assert_eq!(mapped.source_materials[0].xrefs.len(), 1);
         assert_eq!(mapped.source_materials[0].xrefs[0].external_id, "13");
         assert_eq!(mapped.companies.len(), 1);
         assert_eq!(mapped.companies[0].roles, vec!["STUDIO"]);
@@ -590,56 +577,81 @@ mod tests {
     #[test]
     fn parse_anime_and_source_material_targets_accept_only_their_path_segments() {
         assert_eq!(
-            parse_anime_target_from_url("https://myanimelist.net/anime/21/One_Piece"),
+            parse_anime_target_from_url(&parse_test_url(
+                "https://myanimelist.net/anime/21/One_Piece"
+            )),
             Some(("mal", "21".to_owned()))
         );
         assert_eq!(
-            parse_anime_target_from_url("https://myanimelist.net/manga/13"),
+            parse_anime_target_from_url(&parse_test_url("https://myanimelist.net/manga/13")),
             None
         );
         assert_eq!(
-            parse_anime_target_from_url("https://www.anime-planet.com/anime/One-Piece"),
+            parse_anime_target_from_url(&parse_test_url(
+                "https://www.anime-planet.com/anime/One-Piece"
+            )),
             Some(("anime_planet", "one-piece".to_owned()))
         );
         assert_eq!(
-            parse_anime_target_from_url("https://kitsu.io/anime/One-Piece"),
+            parse_anime_target_from_url(&parse_test_url("https://kitsu.io/anime/One-Piece")),
             Some(("kitsu", "one-piece".to_owned()))
         );
         assert_eq!(
-            parse_source_material_target_from_url("https://myanimelist.net/manga/13/One_Piece"),
+            parse_source_material_target_from_url(&parse_test_url(
+                "https://myanimelist.net/manga/13/One_Piece"
+            )),
             Some(("mal", "13".to_owned()))
         );
         assert_eq!(
-            parse_source_material_target_from_url("https://anilist.co/light-novels/7"),
+            parse_source_material_target_from_url(&parse_test_url(
+                "https://anilist.co/light-novels/7"
+            )),
             Some(("anilist", "7".to_owned()))
         );
         assert_eq!(
-            parse_source_material_target_from_url("https://myanimelist.net/anime/21"),
+            parse_source_material_target_from_url(&parse_test_url(
+                "https://myanimelist.net/anime/21"
+            )),
             None
         );
     }
 
     #[test]
-    fn parse_provider_target_from_url_rejects_character_urls() {
-        assert!(parse_provider_target_from_url("https://myanimelist.net/character/42").is_none());
-        assert!(parse_character_target_from_url("https://kitsu.app/anime/42").is_none());
+    fn parse_target_from_url_character_and_work_segments_reject_each_other() {
+        assert!(
+            parse_anime_target_from_url(&parse_test_url("https://myanimelist.net/character/42"))
+                .is_none()
+        );
+        assert!(
+            parse_character_target_from_url(&parse_test_url("https://kitsu.app/anime/42"))
+                .is_none()
+        );
         assert_eq!(
-            parse_character_target_from_url("https://myanimelist.net/character/42"),
+            parse_character_target_from_url(&parse_test_url(
+                "https://myanimelist.net/character/42"
+            )),
             Some(("mal", "42".to_owned()))
         );
         assert_eq!(
-            parse_character_target_from_url("https://kitsu.io/characters/monkey-d-luffy"),
+            parse_character_target_from_url(&parse_test_url(
+                "https://kitsu.io/characters/monkey-d-luffy"
+            )),
             Some(("kitsu", "monkey-d-luffy".to_owned()))
         );
         assert_eq!(
-            parse_character_target_from_url("https://www.anime-planet.com/characters/brook"),
+            parse_character_target_from_url(&parse_test_url(
+                "https://www.anime-planet.com/characters/brook"
+            )),
             Some(("anime_planet", "brook".to_owned()))
         );
-        assert!(parse_provider_target_from_url("https://kitsu.io/characters/brook").is_none());
+        assert!(
+            parse_anime_target_from_url(&parse_test_url("https://kitsu.io/characters/brook"))
+                .is_none()
+        );
     }
 
     #[test]
-    fn parse_provider_target_from_url_returns_provider_and_address() {
+    fn parse_anime_target_from_url_returns_provider_and_address() {
         for (url, expected_target) in [
             (
                 "https://myanimelist.net/anime/21/One_Piece",
@@ -688,7 +700,9 @@ mod tests {
             ),
             ("https://myanimelist.net/anime/abc", None),
         ] {
-            let parsed_target = parse_provider_target_from_url(url);
+            let parsed_target = Url::parse(url)
+                .ok()
+                .and_then(|page_url| parse_anime_target_from_url(&page_url));
             assert_eq!(
                 parsed_target
                     .as_ref()

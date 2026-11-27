@@ -703,13 +703,23 @@ fn map_refresh_outcome(raw: i32) -> Result<RefreshOutcome, Status> {
     }
 }
 
-/// Converts an optional `google.protobuf.Duration` to `chrono::Duration`.
+/// Converts the optional `refresh_after` duration to a `chrono::Duration`.
+///
+/// The request value is untrusted, so the conversion never panics. `prost_types` normalizes
+/// the seconds and nanoseconds and refuses a negative duration, and `chrono` refuses one
+/// longer than it can hold.
+///
+/// # Errors
+///
+/// Returns `INVALID_ARGUMENT` when the duration is missing, negative or too long.
 fn parse_proto_duration(duration: Option<prost_types::Duration>) -> Result<ChronoDuration, Status> {
     let duration =
         duration.ok_or_else(|| Status::invalid_argument("refresh_after must be provided"))?;
-    let seconds_dur = ChronoDuration::seconds(duration.seconds);
-    let nanos_dur = ChronoDuration::nanoseconds(i64::from(duration.nanos));
-    Ok(seconds_dur + nanos_dur)
+    let std_duration = std::time::Duration::try_from(duration).map_err(|err| {
+        Status::invalid_argument(format!("refresh_after must not be negative: {err}"))
+    })?;
+    ChronoDuration::from_std(std_duration)
+        .map_err(|err| Status::invalid_argument(format!("refresh_after is too long: {err}")))
 }
 
 /// Parses a [`ListDueRequest`] into [`DueEntitiesQuery`].
@@ -940,10 +950,15 @@ pub(crate) fn parse_page_sources(
             Ok(PageSource {
                 page_key: parse_page_key(proto_key)?,
                 source: parse_page_url(&proto_page_source.source)?,
-                title: Some(proto_page_source.title).filter(|page_title| !page_title.is_empty()),
+                title: parse_page_title(&proto_page_source.title),
             })
         })
         .collect()
+}
+
+/// Reads a page title from its proto text, where an empty text means no title is known.
+pub(crate) fn parse_page_title(page_title: &str) -> Option<String> {
+    (!page_title.is_empty()).then(|| page_title.to_owned())
 }
 
 /// Parses a page URL from its proto text, empty meaning no URL.
@@ -2459,8 +2474,44 @@ mod tests {
     }
 
     #[test]
+    fn parse_proto_duration_out_of_range_values_return_invalid_argument() {
+        assert_eq!(
+            parse_proto_duration(Some(prost_types::Duration {
+                seconds: 90,
+                nanos: 500_000_000,
+            }))
+            .unwrap(),
+            ChronoDuration::milliseconds(90_500)
+        );
+        for refresh_after in [
+            prost_types::Duration {
+                seconds: i64::MAX,
+                nanos: 0,
+            },
+            prost_types::Duration {
+                seconds: 1,
+                nanos: -1_000_000_001,
+            },
+            prost_types::Duration {
+                seconds: -1,
+                nanos: 0,
+            },
+        ] {
+            assert_eq!(
+                parse_proto_duration(Some(refresh_after))
+                    .expect_err("out-of-range refresh_after")
+                    .code(),
+                tonic::Code::InvalidArgument,
+                "{refresh_after:?}"
+            );
+        }
+    }
+
+    #[test]
     fn parse_page_url_empty_text_gives_none_and_malformed_url_returns_invalid_argument() {
         assert_eq!(parse_page_url("").unwrap(), None);
+        assert_eq!(parse_page_title(""), None);
+        assert_eq!(parse_page_title("One Piece"), Some("One Piece".to_owned()));
         assert_eq!(
             parse_page_url("https://myanimelist.net/anime/21/One_Piece")
                 .unwrap()

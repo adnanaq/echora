@@ -1,0 +1,19 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        WITH given AS (\n            SELECT given.provider, $2::text AS entity_type, given.address, given.source,\n                   given.title\n            FROM unnest($3::text[], $4::text[], $5::text[], $6::text[])\n                 AS given(provider, address, source, title)\n        ),\n        owned AS (\n            SELECT page.provider, page.entity_type, page.address\n            FROM provider_page page\n            JOIN given USING (provider, entity_type, address)\n            WHERE ($2 = 'anime' AND EXISTS (\n                      SELECT 1 FROM anime_source link\n                      WHERE link.anime_id = $1\n                        AND link.provider = page.provider\n                        AND link.entity_type = page.entity_type\n                        AND link.address = page.address))\n               OR ($2 = 'episode' AND EXISTS (\n                      SELECT 1 FROM episode_source link\n                      WHERE link.episode_id = $1\n                        AND link.provider = page.provider\n                        AND link.entity_type = page.entity_type\n                        AND link.address = page.address))\n               OR ($2 = 'character' AND EXISTS (\n                      SELECT 1 FROM character_source link\n                      WHERE link.character_id = $1\n                        AND link.provider = page.provider\n                        AND link.entity_type = page.entity_type\n                        AND link.address = page.address))\n            ORDER BY page.provider, page.entity_type, page.address\n            FOR NO KEY UPDATE OF page\n        )\n        UPDATE provider_page page\n        SET source = coalesce(given.source, page.source),\n            title = coalesce(given.title, page.title)\n        FROM given\n        JOIN owned USING (provider, entity_type, address)\n        WHERE page.provider = given.provider\n          AND page.entity_type = given.entity_type\n          AND page.address = given.address\n          AND (page.source IS DISTINCT FROM coalesce(given.source, page.source)\n               OR page.title IS DISTINCT FROM coalesce(given.title, page.title))\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "TextArray",
+        "TextArray",
+        "TextArray",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "17e068ed93934be058d4551a280206fb2e93df8ea48d4a94544566fd7c23d4d8"
+}

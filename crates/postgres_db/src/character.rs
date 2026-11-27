@@ -22,7 +22,10 @@ use crate::anime::{
 };
 use crate::anime_relations::{SourceMaterialXrefInput, lock_anime_pages_shared};
 use crate::begin_read_snapshot;
-use crate::provider_page::{record_page_sources, record_referenced_page_sources};
+use crate::provider_page::{
+    NamedPageDetails, collect_named_page_details, record_page_sources,
+    record_referenced_page_sources,
+};
 use crate::{EntityType, Error, PageKey, PageResponse, PageSource, Provider};
 
 /// Current canonical hash format version stored in `character.hash_format`.
@@ -572,13 +575,14 @@ fn validate_save_character_input(input: &SaveCharacterInput) -> Result<(), Error
     }
     if input.mangaography.iter().any(|entry| {
         entry.role.trim().is_empty()
-            || entry
-                .xrefs
-                .iter()
-                .any(|xref| xref.provider.trim().is_empty() || xref.external_id.trim().is_empty())
+            || entry.xrefs.iter().any(|xref| {
+                xref.provider.trim().is_empty()
+                    || xref.external_id.trim().is_empty()
+                    || xref.url.trim().is_empty()
+            })
     }) {
         return Err(Error::invalid_argument(
-            "character_mangaography provider, external ID and role must not be empty",
+            "character_mangaography provider, external ID, URL and role must not be empty",
         ));
     }
     Ok(())
@@ -604,16 +608,20 @@ async fn record_mangaography_pages(
     tx: &mut Transaction<'_, Postgres>,
     mangaography: &[CharacterMangaographyInput],
 ) -> Result<(), Error> {
-    let mut details_by_page: BTreeMap<(&str, &str), (&str, Option<&str>)> = BTreeMap::new();
-    for xref in mangaography.iter().flat_map(|entry| entry.xrefs.iter()) {
-        let (page_url, page_title) = details_by_page
-            .entry((xref.provider.as_str(), xref.external_id.as_str()))
-            .or_insert((xref.url.as_str(), None));
-        if xref.url.len() > page_url.len() {
-            *page_url = xref.url.as_str();
-        }
-        *page_title = page_title.or(xref.title.as_deref());
-    }
+    let details_by_page = collect_named_page_details(
+        mangaography
+            .iter()
+            .flat_map(|entry| entry.xrefs.iter())
+            .map(|xref| {
+                (
+                    (xref.provider.as_str(), xref.external_id.as_str()),
+                    NamedPageDetails {
+                        source: Some(xref.url.as_str()),
+                        title: xref.title.as_deref(),
+                    },
+                )
+            }),
+    );
     if details_by_page.is_empty() {
         return Ok(());
     }
@@ -621,11 +629,11 @@ async fn record_mangaography_pages(
     let mut external_ids = Vec::with_capacity(details_by_page.len());
     let mut sources = Vec::with_capacity(details_by_page.len());
     let mut titles = Vec::with_capacity(details_by_page.len());
-    for ((provider, external_id), (source, title)) in details_by_page {
+    for ((provider, external_id), page_details) in details_by_page {
         providers.push(provider);
         external_ids.push(external_id);
-        sources.push(source);
-        titles.push(title);
+        sources.push(page_details.source);
+        titles.push(page_details.title);
     }
     sqlx::query!(
         r#"
@@ -657,7 +665,7 @@ async fn record_mangaography_pages(
         "#,
         &providers as &[&str],
         &external_ids as &[&str],
-        &sources as &[&str],
+        &sources as &[Option<&str>],
         &titles as &[Option<&str>],
     )
     .execute(&mut **tx)
