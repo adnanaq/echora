@@ -5,10 +5,11 @@ use std::collections::BTreeMap;
 
 use postgres_db::{
     AnimeCompanyInput, AnimeRelationClaimInput, AnimeRelationInput, AnimeRelationsAndGraphInput,
-    AnimeSourceMaterialInput, CompanyXrefInput, EntityType as DbEntityType, PageKey, Provider,
-    SourceMaterialXrefInput,
+    AnimeSourceMaterialInput, CompanyXrefInput, EntityType as DbEntityType, PageKey, PageSource,
+    Provider, SourceMaterialXrefInput,
 };
 use tonic::Status;
+use url::Url;
 
 use crate::anime_mapping::map_source_material_type;
 use crate::lookup_text::{
@@ -58,11 +59,15 @@ fn map_related_anime(
         let relation_type = normalize_anime_relation_type(&raw_relation_type)?;
         for item in items {
             for source_url in item.sources {
-                if let Some((provider, address)) = parse_provider_target_from_url(&source_url) {
+                if let Some(target_page_source) = build_page_source_from_url(
+                    &source_url,
+                    &item.title,
+                    DbEntityType::Anime,
+                    parse_provider_target_from_url,
+                ) {
                     anime_relations.push(AnimeRelationInput {
                         relation_type: relation_type.to_owned(),
-                        to_page_provider: provider.to_owned(),
-                        to_page_address: address,
+                        target_page_source,
                     });
                 }
             }
@@ -147,6 +152,7 @@ fn map_related_source_material(
                             provider: provider.to_owned(),
                             external_id,
                             url,
+                            title: None,
                         }
                     })
                 })
@@ -386,6 +392,28 @@ fn parse_provider_from_url(url: &str) -> Option<&'static str> {
     }
 }
 
+/// Builds the page a URL names, of `entity_type`, with the URL as its source.
+///
+/// `page_title` is the title the save's record gives the page's entity, kept so a read of a
+/// page no stored entity holds yet shows a title; an empty title gives none. `parse_target`
+/// finds the provider and address the URL names. A URL that names no page,
+/// a page whose provider or address is not valid, or text that is not a URL gives `None`,
+/// so it is left out like any other URL that names no such page.
+pub(crate) fn build_page_source_from_url(
+    source_url: &str,
+    page_title: &str,
+    entity_type: DbEntityType,
+    parse_target: fn(&str) -> Option<(&'static str, String)>,
+) -> Option<PageSource> {
+    let (provider, address) = parse_target(source_url)?;
+    let page_key = PageKey::new(provider.parse().ok()?, entity_type, address).ok()?;
+    Some(PageSource {
+        page_key,
+        source: Some(Url::parse(source_url).ok()?),
+        title: Some(page_title.to_owned()).filter(|title| !title.is_empty()),
+    })
+}
+
 /// Finds the provider and work address a work page URL names.
 pub(crate) fn parse_provider_target_from_url(url: &str) -> Option<(&'static str, String)> {
     parse_provider_target_with_path_segments(url, &["anime", "manga", "light-novels"])
@@ -536,7 +564,22 @@ mod tests {
         let mapped = build_relations_and_graph(related_anime, related_sources, companies, claims)
             .expect("valid ECHO-102 payload should map");
         assert_eq!(mapped.relations.len(), 1);
-        assert_eq!(mapped.relations[0].to_page_address, "21");
+        assert_eq!(
+            mapped.relations[0]
+                .target_page_source
+                .page_key
+                .address()
+                .as_str(),
+            "21"
+        );
+        assert_eq!(
+            mapped.relations[0]
+                .target_page_source
+                .source
+                .as_ref()
+                .map(Url::as_str),
+            Some("https://myanimelist.net/anime/21/One_Piece")
+        );
         assert_eq!(mapped.relation_claims.len(), 1);
         assert_eq!(mapped.source_materials.len(), 1);
         assert_eq!(mapped.source_materials[0].xrefs[0].external_id, "13");

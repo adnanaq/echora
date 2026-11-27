@@ -20,9 +20,9 @@ use uuid::Uuid;
 use crate::anime::{
     FieldCorrectionRecord, LoadedSourcePage, decompress_body, insert_catalogue_outbox_event,
 };
-use crate::anime_relations::lock_anime_pages_shared;
+use crate::anime_relations::{SourceMaterialXrefInput, lock_anime_pages_shared};
 use crate::begin_read_snapshot;
-use crate::provider_page::record_page_sources;
+use crate::provider_page::{record_page_sources, record_referenced_page_sources};
 use crate::{EntityType, Error, PageKey, PageResponse, PageSource, Provider};
 
 /// Current canonical hash format version stored in `character.hash_format`.
@@ -37,23 +37,24 @@ const CHARACTER_UPDATED_SUBJECT: &str = "character.updated";
 /// A work a character's pages name, by the work's page, with the character's role there.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CharacterAppearanceInput {
-    /// Provider of the work's page.
-    pub anime_page_provider: String,
-    /// Address of the work's page on `anime_page_provider`.
-    pub anime_page_address: String,
+    /// The work's page, with the URL the merge reported for it.
+    ///
+    /// The page keeps that URL until a work holds the page.
+    pub anime_page_source: PageSource,
     /// Canonical `character_role` lookup value (for example `"MAIN"`).
     pub role: String,
 }
 
 /// A manga or novel a character's pages name, with the character's role there.
+///
+/// The entry is named by the manga's provider pages. A page no work has related yet is
+/// recorded with its URL and no source material, so a read shows its URL.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CharacterMangaographyInput {
-    /// Provider of the manga or novel page.
-    pub source_material_provider: String,
-    /// Identifier of the manga or novel on `source_material_provider`.
-    pub source_material_external_id: String,
     /// Canonical `character_role` lookup value (for example `"MAIN"`).
     pub role: String,
+    /// The manga's or novel's provider pages, with their URLs.
+    pub xrefs: Vec<SourceMaterialXrefInput>,
 }
 
 /// One anime a character appears in, with the strongest role its pages give there.
@@ -310,6 +311,49 @@ async fn load_character_corrections(
         .collect())
 }
 
+/// Takes a character save's page locks and records its page URLs, before any row lock.
+///
+/// The work pages the character appears in are locked shared, so a page link waits for the
+/// save. Then the URLs of the character's own pages, and of the work pages its appearances
+/// name, are recorded.
+///
+/// # Errors
+///
+/// Returns an invalid-argument error for an invalid page URL, or a database error when a lock
+/// or a write fails.
+async fn record_character_save_pages(
+    tx: &mut Transaction<'_, Postgres>,
+    input: &SaveCharacterInput,
+) -> Result<(), Error> {
+    let anime_pages: BTreeSet<(&str, &str)> = input
+        .animeography
+        .iter()
+        .map(|appearance| {
+            let anime_page_key = &appearance.anime_page_source.page_key;
+            (
+                anime_page_key.provider().as_str(),
+                anime_page_key.address().as_str(),
+            )
+        })
+        .collect();
+    lock_anime_pages_shared(tx, &anime_pages).await?;
+    record_page_sources(
+        tx,
+        EntityType::Character,
+        input.character_id,
+        &input.page_sources,
+    )
+    .await?;
+    record_referenced_page_sources(
+        tx,
+        input
+            .animeography
+            .iter()
+            .map(|appearance| &appearance.anime_page_source),
+    )
+    .await
+}
+
 /// Validates and persists a merged character when its canonical hash changed.
 ///
 /// The save stores every field, replaces the works the character appears in, recomputes
@@ -326,12 +370,13 @@ async fn load_character_corrections(
 /// ```no_run
 /// # use std::collections::BTreeMap;
 /// # use sqlx::PgPool;
+/// # use url::Url;
 /// # use uuid::Uuid;
 /// # use postgres_db::{
-/// #     CHARACTER_HASH_FORMAT, CharacterAppearanceInput, SaveCharacterInput,
-/// #     SaveCharacterOutcome, save_character,
+/// #     CHARACTER_HASH_FORMAT, CharacterAppearanceInput, EntityType, PageKey, PageSource,
+/// #     Provider, SaveCharacterInput, SaveCharacterOutcome, save_character,
 /// # };
-/// # async fn example(pool: &PgPool, character_id: Uuid) -> Result<(), postgres_db::Error> {
+/// # async fn example(pool: &PgPool, character_id: Uuid) -> Result<(), Box<dyn std::error::Error>> {
 /// let input = SaveCharacterInput {
 ///     character_id,
 ///     expected_version: 1,
@@ -346,8 +391,11 @@ async fn load_character_corrections(
 ///     attributes: BTreeMap::from([("Age".to_owned(), "19".to_owned())]),
 ///     spoilers: BTreeMap::new(),
 ///     animeography: vec![CharacterAppearanceInput {
-///         anime_page_provider: "mal".to_owned(),
-///         anime_page_address: "21".to_owned(),
+///         anime_page_source: PageSource {
+///             page_key: PageKey::new(Provider::Mal, EntityType::Anime, "21")?,
+///             source: Some(Url::parse("https://myanimelist.net/anime/21/One_Piece")?),
+///             title: Some("One Piece".to_owned()),
+///         },
 ///         role: "MAIN".to_owned(),
 ///     }],
 ///     mangaography: Vec::new(),
@@ -381,25 +429,9 @@ pub async fn save_character(
     validate_save_character_input(input)?;
 
     let mut tx = pool.begin().await?;
-    let anime_pages: BTreeSet<(&str, &str)> = input
-        .animeography
-        .iter()
-        .map(|appearance| {
-            (
-                appearance.anime_page_provider.as_str(),
-                appearance.anime_page_address.as_str(),
-            )
-        })
-        .collect();
-    lock_anime_pages_shared(&mut tx, &anime_pages).await?;
-    record_page_sources(
-        &mut tx,
-        EntityType::Character,
-        input.character_id,
-        &input.page_sources,
-    )
-    .await?;
+    record_character_save_pages(&mut tx, input).await?;
     insert_traits(&mut tx, &input.traits).await?;
+    record_mangaography_pages(&mut tx, &input.mangaography).await?;
 
     let existing = sqlx::query!(
         r#"
@@ -531,23 +563,105 @@ fn validate_save_character_input(input: &SaveCharacterInput) -> Result<(), Error
         }
     }
     if input.animeography.iter().any(|appearance| {
-        appearance.anime_page_provider.trim().is_empty()
-            || appearance.anime_page_address.trim().is_empty()
+        appearance.anime_page_source.page_key.entity_type() != EntityType::Anime
             || appearance.role.trim().is_empty()
     }) {
         return Err(Error::invalid_argument(
-            "character_animeography provider, address and role must not be empty",
+            "character_animeography must name an anime page with a role",
         ));
     }
     if input.mangaography.iter().any(|entry| {
-        entry.source_material_provider.trim().is_empty()
-            || entry.source_material_external_id.trim().is_empty()
-            || entry.role.trim().is_empty()
+        entry.role.trim().is_empty()
+            || entry
+                .xrefs
+                .iter()
+                .any(|xref| xref.provider.trim().is_empty() || xref.external_id.trim().is_empty())
     }) {
         return Err(Error::invalid_argument(
             "character_mangaography provider, external ID and role must not be empty",
         ));
     }
+    Ok(())
+}
+
+/// Records each manga or novel page a character's mangaography names, with its URL and title.
+///
+/// A page no work has related yet is added to `source_material_xref` with its URL, its title
+/// and no source material, so a read shows the entry's URL and title. A work's save that later
+/// relates the source material attaches the page to it. Several entries naming one page give
+/// the longest URL and the first title. The rows are written in page key order:
+///
+/// - A missing row is added with `ON CONFLICT DO NOTHING`, which does not lock a row that
+///   already exists.
+/// - A recorded row keeps its URL, which the work relating the page owns, and gets the title
+///   only while its title is empty. The fill takes rows locked with `SKIP LOCKED`, so the save
+///   never waits on a row another transaction writes; a later save fills a row skipped here.
+///
+/// # Errors
+///
+/// Returns a database error when a statement fails.
+async fn record_mangaography_pages(
+    tx: &mut Transaction<'_, Postgres>,
+    mangaography: &[CharacterMangaographyInput],
+) -> Result<(), Error> {
+    let mut details_by_page: BTreeMap<(&str, &str), (&str, Option<&str>)> = BTreeMap::new();
+    for xref in mangaography.iter().flat_map(|entry| entry.xrefs.iter()) {
+        let (page_url, page_title) = details_by_page
+            .entry((xref.provider.as_str(), xref.external_id.as_str()))
+            .or_insert((xref.url.as_str(), None));
+        if xref.url.len() > page_url.len() {
+            *page_url = xref.url.as_str();
+        }
+        *page_title = page_title.or(xref.title.as_deref());
+    }
+    if details_by_page.is_empty() {
+        return Ok(());
+    }
+    let mut providers = Vec::with_capacity(details_by_page.len());
+    let mut external_ids = Vec::with_capacity(details_by_page.len());
+    let mut sources = Vec::with_capacity(details_by_page.len());
+    let mut titles = Vec::with_capacity(details_by_page.len());
+    for ((provider, external_id), (source, title)) in details_by_page {
+        providers.push(provider);
+        external_ids.push(external_id);
+        sources.push(source);
+        titles.push(title);
+    }
+    sqlx::query!(
+        r#"
+        WITH named AS (
+            SELECT provider, external_id, source, title
+            FROM UNNEST($1::text[], $2::text[], $3::text[], $4::text[])
+                 AS page(provider, external_id, source, title)
+        ),
+        added AS (
+            INSERT INTO source_material_xref (provider, external_id, source, title)
+            SELECT provider, external_id, source, title
+            FROM named
+            ON CONFLICT (provider, external_id) DO NOTHING
+        ),
+        untitled AS (
+            SELECT xref.provider, xref.external_id
+            FROM source_material_xref xref
+            JOIN named USING (provider, external_id)
+            WHERE xref.title IS NULL AND named.title IS NOT NULL
+            ORDER BY xref.provider, xref.external_id
+            FOR NO KEY UPDATE OF xref SKIP LOCKED
+        )
+        UPDATE source_material_xref xref
+        SET title = named.title
+        FROM named
+        JOIN untitled USING (provider, external_id)
+        WHERE xref.provider = named.provider
+          AND xref.external_id = named.external_id
+        "#,
+        &providers as &[&str],
+        &external_ids as &[&str],
+        &sources as &[&str],
+        &titles as &[Option<&str>],
+    )
+    .execute(&mut **tx)
+    .await?;
     Ok(())
 }
 
@@ -775,11 +889,11 @@ async fn replace_character_animeography(
 ) -> Result<(), Error> {
     let providers: Vec<&str> = animeography
         .iter()
-        .map(|appearance| appearance.anime_page_provider.as_str())
+        .map(|appearance| appearance.anime_page_source.page_key.provider().as_str())
         .collect();
     let addresses: Vec<&str> = animeography
         .iter()
-        .map(|appearance| appearance.anime_page_address.as_str())
+        .map(|appearance| appearance.anime_page_source.page_key.address().as_str())
         .collect();
     let roles: Vec<&str> = animeography
         .iter()
@@ -826,18 +940,17 @@ async fn replace_character_mangaography(
     character_id: Uuid,
     mangaography: &[CharacterMangaographyInput],
 ) -> Result<(), Error> {
-    let providers: Vec<&str> = mangaography
-        .iter()
-        .map(|entry| entry.source_material_provider.as_str())
-        .collect();
-    let external_ids: Vec<&str> = mangaography
-        .iter()
-        .map(|entry| entry.source_material_external_id.as_str())
-        .collect();
-    let roles: Vec<&str> = mangaography
-        .iter()
-        .map(|entry| entry.role.as_str())
-        .collect();
+    let page_count: usize = mangaography.iter().map(|entry| entry.xrefs.len()).sum();
+    let mut providers: Vec<&str> = Vec::with_capacity(page_count);
+    let mut external_ids: Vec<&str> = Vec::with_capacity(page_count);
+    let mut roles: Vec<&str> = Vec::with_capacity(page_count);
+    for entry in mangaography {
+        for xref in &entry.xrefs {
+            providers.push(&xref.provider);
+            external_ids.push(&xref.external_id);
+            roles.push(&entry.role);
+        }
+    }
 
     sqlx::query!(
         "DELETE FROM character_mangaography WHERE character_id = $1",

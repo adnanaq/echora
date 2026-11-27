@@ -6,13 +6,14 @@ use chrono::{DateTime, Timelike as _, Utc};
 use prost::Message as _;
 use sqlx::{PgPool, Postgres, Transaction};
 use tracing::Level;
+use url::Url;
 use uuid::Uuid;
 
 use crate::anime::{
     FieldCorrectionRecord, LoadedSourcePage, ProtoTimestamp, decompress_body,
     insert_catalogue_outbox_event, to_proto_timestamp,
 };
-use crate::provider_page::record_page_sources;
+use crate::provider_page::{record_page_sources, record_referenced_page_sources};
 use crate::{EntityType, Error, PageKey, PageResponse, PageSource, Provider};
 use crate::{begin_read_snapshot, read_transaction_time};
 
@@ -52,8 +53,11 @@ pub struct EpisodeReferenceInput {
     pub episode_number: i32,
     /// Display title from the work's episode list.
     pub title: String,
-    /// Episode provider page keys linked to this episode.
-    pub page_keys: Vec<PageKey>,
+    /// The episode's provider pages, each with the URL the work's episode list links it by.
+    ///
+    /// `SaveAnime` stores a URL on its page while the page has none; a known episode's page
+    /// whose URL is not stored has no URL.
+    pub page_sources: Vec<PageSource>,
     /// Per-provider episode list entries from the work's pages.
     pub list_entries: Vec<EpisodeListEntryInput>,
 }
@@ -80,10 +84,10 @@ pub struct EpisodeStreamingInput {
 /// Character appearance in an episode stored in `episode_character`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EpisodeCharacterInput {
-    /// Provider of the character's page.
-    pub character_page_provider: String,
-    /// Address of the character's page on `character_page_provider`.
-    pub character_page_address: String,
+    /// The character's page, with the URL the merge reported for it.
+    ///
+    /// The page keeps that URL until a character holds the page.
+    pub character_page_source: PageSource,
     /// Canonical `character_role` lookup value (for example `"MAIN"`).
     pub role: String,
 }
@@ -112,7 +116,10 @@ pub struct SaveEpisodeInput {
     pub episode_id: Uuid,
     /// Optimistic concurrency version expected in PostgreSQL.
     pub expected_version: i64,
-    /// Episode number (`>= 0`).
+    /// Episode number the work's episode list assigned.
+    ///
+    /// The work's save owns the number, so a save whose number differs from the stored one
+    /// is refused instead of renumbering the episode.
     pub episode_number: i32,
     /// Season number (`> 0`), if known.
     pub season_number: Option<i32>,
@@ -438,6 +445,36 @@ async fn load_episode_list_entries(
         .collect()
 }
 
+/// Records an episode save's page URLs, before any row lock.
+///
+/// The URLs of the episode's own pages come first, then those of the character pages its
+/// characters name.
+///
+/// # Errors
+///
+/// Returns an invalid-argument error for an invalid page URL, or a database error when a
+/// write fails.
+async fn record_episode_save_pages(
+    tx: &mut Transaction<'_, Postgres>,
+    input: &SaveEpisodeInput,
+) -> Result<(), Error> {
+    record_page_sources(
+        tx,
+        EntityType::Episode,
+        input.episode_id,
+        &input.page_sources,
+    )
+    .await?;
+    record_referenced_page_sources(
+        tx,
+        input
+            .characters
+            .iter()
+            .map(|character_entry| &character_entry.character_page_source),
+    )
+    .await
+}
+
 /// Validates and persists a merged episode when its canonical hash changed.
 ///
 /// An unchanged hash clears `merge_requested_at` and records `merge_version`, so the
@@ -501,18 +538,13 @@ pub async fn save_episode(
     let mut tx = pool.begin().await?;
     // Page rows, then shared rows, come before the episode's row lock, in the order a work's
     // save writes them.
-    record_page_sources(
-        &mut tx,
-        EntityType::Episode,
-        input.episode_id,
-        &input.page_sources,
-    )
-    .await?;
+    record_episode_save_pages(&mut tx, input).await?;
     upsert_episode_shared_rows(&mut tx, input).await?;
     let existing = sqlx::query!(
         r#"
         SELECT
             anime_id,
+            episode_number,
             version,
             merged_record_hash,
             hash_format,
@@ -531,6 +563,12 @@ pub async fn save_episode(
         return Err(Error::version_conflict(format!(
             "expected version {}, stored version {}",
             input.expected_version, existing.version
+        )));
+    }
+    if existing.episode_number != input.episode_number {
+        return Err(Error::invalid_argument(format!(
+            "episode_number {} differs from {}, the number the work's episode list assigned",
+            input.episode_number, existing.episode_number
         )));
     }
 
@@ -675,12 +713,11 @@ fn validate_save_episode_input(input: &SaveEpisodeInput) -> Result<(), Error> {
         }
     }
     for character_entry in &input.characters {
-        if character_entry.character_page_provider.trim().is_empty()
-            || character_entry.character_page_address.trim().is_empty()
+        if character_entry.character_page_source.page_key.entity_type() != EntityType::Character
             || character_entry.role.trim().is_empty()
         {
             return Err(Error::invalid_argument(
-                "episode_character provider, address, and role must not be empty",
+                "episode_character must name a character page with a role",
             ));
         }
     }
@@ -704,29 +741,27 @@ async fn update_episode_row(
         r#"
         UPDATE episode
         SET
-            episode_number = $2,
-            season_number = $3,
-            title = $4,
-            title_japanese = $5,
-            title_romaji = $6,
-            synopsis = $7,
-            description = $8,
-            aired_at = $9,
-            duration_seconds = $10,
-            is_filler = $11,
-            is_recap = $12,
-            score = $13::float8::numeric(5, 2),
-            version = $14,
-            merged_record_hash = $15,
-            hash_format = $16,
-            merge_version = $17,
+            season_number = $2,
+            title = $3,
+            title_japanese = $4,
+            title_romaji = $5,
+            synopsis = $6,
+            description = $7,
+            aired_at = $8,
+            duration_seconds = $9,
+            is_filler = $10,
+            is_recap = $11,
+            score = $12::float8::numeric(5, 2),
+            version = $13,
+            merged_record_hash = $14,
+            hash_format = $15,
+            merge_version = $16,
             merge_requested_at = NULL,
-            merged_at = COALESCE(merged_at, $18),
-            updated_at = $18
+            merged_at = COALESCE(merged_at, $17),
+            updated_at = $17
         WHERE id = $1
         "#,
         input.episode_id,
-        input.episode_number,
         input.season_number,
         (!input.title.trim().is_empty()).then_some(input.title.as_str()),
         input.title_japanese,
@@ -916,10 +951,11 @@ async fn replace_episode_characters(
     let deduplicated_characters: BTreeMap<(&str, &str), &str> = characters
         .iter()
         .map(|entry| {
+            let character_page_key = &entry.character_page_source.page_key;
             (
                 (
-                    entry.character_page_provider.as_str(),
-                    entry.character_page_address.as_str(),
+                    character_page_key.provider().as_str(),
+                    character_page_key.address().as_str(),
                 ),
                 entry.role.as_str(),
             )
@@ -1179,10 +1215,10 @@ pub(crate) fn validate_anime_episode_references(
         if episode.episode_number < 0 {
             return Err(Error::invalid_argument("episode_number must be >= 0"));
         }
-        for page_key in &episode.page_keys {
-            if page_key.entity_type() != EntityType::Episode {
+        for page_source in &episode.page_sources {
+            if page_source.page_key.entity_type() != EntityType::Episode {
                 return Err(Error::invalid_argument(
-                    "episode page_keys must have EntityType::Episode",
+                    "episode page_sources must have EntityType::Episode",
                 ));
             }
         }
@@ -1242,7 +1278,7 @@ pub(crate) async fn sync_anime_episodes(
                     )));
                 }
                 let pages_changed =
-                    link_episode_pages(tx, episode.episode_id, &episode.page_keys).await?;
+                    link_episode_pages(tx, episode.episode_id, &episode.page_sources).await?;
                 let entries_changed =
                     replace_list_entries_if_changed(tx, episode.episode_id, &episode.list_entries)
                         .await?;
@@ -1300,7 +1336,7 @@ async fn insert_new_episode_from_anime(
     .execute(&mut **tx)
     .await?;
 
-    link_episode_pages(tx, episode.episode_id, &episode.page_keys).await?;
+    link_episode_pages(tx, episode.episode_id, &episode.page_sources).await?;
     insert_episode_list_entries(tx, episode.episode_id, &episode.list_entries).await?;
     Ok(())
 }
@@ -1316,9 +1352,12 @@ async fn insert_new_episode_from_anime(
 async fn link_episode_pages(
     tx: &mut Transaction<'_, Postgres>,
     episode_id: Uuid,
-    page_keys: &[PageKey],
+    page_sources: &[PageSource],
 ) -> Result<bool, Error> {
-    let mut sorted_keys: Vec<&PageKey> = page_keys.iter().collect();
+    let mut sorted_keys: Vec<&PageKey> = page_sources
+        .iter()
+        .map(|page_source| &page_source.page_key)
+        .collect();
     sorted_keys.sort_by(|left, right| {
         (left.provider().as_str(), left.address().as_str())
             .cmp(&(right.provider().as_str(), right.address().as_str()))
@@ -1527,7 +1566,7 @@ pub(crate) async fn load_known_episodes(
     )
     .fetch_all(&mut **tx)
     .await?;
-    let mut page_keys_by_episode = load_page_keys_by_episode(tx, anime_id).await?;
+    let mut page_sources_by_episode = load_page_sources_by_episode(tx, anime_id).await?;
     let mut list_entries_by_episode = load_list_entries_by_episode(tx, anime_id).await?;
 
     Ok(episode_rows
@@ -1536,7 +1575,7 @@ pub(crate) async fn load_known_episodes(
             episode_id: episode_row.id,
             episode_number: episode_row.episode_number,
             title: episode_row.title.unwrap_or_default(),
-            page_keys: page_keys_by_episode
+            page_sources: page_sources_by_episode
                 .remove(&episode_row.id)
                 .unwrap_or_default(),
             list_entries: list_entries_by_episode
@@ -1546,42 +1585,58 @@ pub(crate) async fn load_known_episodes(
         .collect())
 }
 
-/// Loads the page keys of every undeleted episode of `anime_id`, grouped by episode.
+/// Loads the pages of every undeleted episode of `anime_id` with their URLs and titles.
+///
+/// A page whose URL or title is not stored has none.
 ///
 /// # Errors
 ///
 /// Returns a database error when the query fails, or an invalid-argument error when a
-/// stored provider or address no longer passes validation.
-async fn load_page_keys_by_episode(
+/// stored provider, address or URL no longer passes validation.
+async fn load_page_sources_by_episode(
     tx: &mut Transaction<'_, Postgres>,
     anime_id: Uuid,
-) -> Result<HashMap<Uuid, Vec<PageKey>>, Error> {
+) -> Result<HashMap<Uuid, Vec<PageSource>>, Error> {
     let page_rows = sqlx::query!(
         r#"
-        SELECT source.episode_id, source.provider, source.address
-        FROM episode_source source
-        JOIN episode e ON e.id = source.episode_id
+        SELECT link.episode_id, link.provider, link.address, page.source, page.title
+        FROM episode_source link
+        JOIN episode e ON e.id = link.episode_id
+        JOIN provider_page page USING (provider, entity_type, address)
         WHERE e.anime_id = $1 AND e.deleted_at IS NULL
-        ORDER BY source.episode_id, source.provider, source.address
+        ORDER BY link.episode_id, link.provider, link.address
         "#,
         anime_id
     )
     .fetch_all(&mut **tx)
     .await?;
 
-    let mut page_keys_by_episode: HashMap<Uuid, Vec<PageKey>> = HashMap::new();
+    let mut page_sources_by_episode: HashMap<Uuid, Vec<PageSource>> = HashMap::new();
     for page_row in page_rows {
         let page_key = PageKey::new(
             page_row.provider.parse()?,
             EntityType::Episode,
             page_row.address,
         )?;
-        page_keys_by_episode
+        page_sources_by_episode
             .entry(page_row.episode_id)
             .or_default()
-            .push(page_key);
+            .push(PageSource {
+                page_key,
+                source: page_row
+                    .source
+                    .map(|source| {
+                        Url::parse(&source).map_err(|err| {
+                            Error::invalid_argument(format!(
+                                "stored page URL {source:?} is not a URL: {err}"
+                            ))
+                        })
+                    })
+                    .transpose()?,
+                title: page_row.title,
+            });
     }
-    Ok(page_keys_by_episode)
+    Ok(page_sources_by_episode)
 }
 
 /// Loads the list entries of every undeleted episode of `anime_id`, grouped by episode.
@@ -1676,8 +1731,14 @@ mod tests {
                 source: "https://crunchyroll.com/watch/1".to_owned(),
             }],
             characters: vec![EpisodeCharacterInput {
-                character_page_provider: "mal".to_owned(),
-                character_page_address: "1".to_owned(),
+                character_page_source: PageSource {
+                    page_key: PageKey::new(Provider::Mal, EntityType::Character, "1")
+                        .expect("valid page key"),
+                    source: Some(
+                        Url::parse("https://myanimelist.net/character/1").expect("valid URL"),
+                    ),
+                    title: None,
+                },
                 role: "MAIN".to_owned(),
             }],
             merged_record_hash: "hash-v1".to_owned(),
@@ -1812,8 +1873,11 @@ mod tests {
 
         let mut bad_char = sample_save_episode_input(id, 0);
         bad_char.characters.push(EpisodeCharacterInput {
-            character_page_provider: "mal".to_owned(),
-            character_page_address: String::new(),
+            character_page_source: PageSource {
+                page_key: PageKey::new(Provider::Mal, EntityType::Anime, "21").unwrap(),
+                source: None,
+                title: None,
+            },
             role: "MAIN".to_owned(),
         });
         assert!(
@@ -1872,7 +1936,11 @@ mod tests {
             episode_id: Uuid::now_v7(),
             episode_number: -1,
             title: "Ep -1".to_owned(),
-            page_keys: vec![valid_page.clone()],
+            page_sources: vec![PageSource {
+                page_key: valid_page.clone(),
+                source: None,
+                title: None,
+            }],
             list_entries: Vec::new(),
         };
         assert!(
@@ -1885,7 +1953,11 @@ mod tests {
             episode_id: Uuid::now_v7(),
             episode_number: 0,
             title: "Special".to_owned(),
-            page_keys: vec![wrong_kind_page],
+            page_sources: vec![PageSource {
+                page_key: wrong_kind_page,
+                source: None,
+                title: None,
+            }],
             list_entries: Vec::new(),
         };
         assert!(
@@ -1898,7 +1970,11 @@ mod tests {
             episode_id: Uuid::now_v7(),
             episode_number: 1,
             title: "Ep 1".to_owned(),
-            page_keys: vec![valid_page],
+            page_sources: vec![PageSource {
+                page_key: valid_page,
+                source: None,
+                title: None,
+            }],
             list_entries: vec![EpisodeListEntryInput {
                 provider: Provider::Mal,
                 title: None,
@@ -2190,7 +2266,11 @@ mod tests {
             episode_id: listed_episode_id,
             episode_number: 2,
             title: "Stray Dog Strut".to_owned(),
-            page_keys: vec![PageKey::new(Provider::Mal, EntityType::Episode, "21:2").unwrap()],
+            page_sources: vec![PageSource {
+                page_key: PageKey::new(Provider::Mal, EntityType::Episode, "21:2").unwrap(),
+                source: None,
+                title: None,
+            }],
             list_entries: vec![EpisodeListEntryInput {
                 provider: Provider::Mal,
                 title: Some("Stray Dog Strut".to_owned()),
@@ -2226,8 +2306,11 @@ mod tests {
         assert_eq!(unchanged_outcome.updated_episode_ids, Vec::<Uuid>::new());
 
         let mut moved_page_reference = listed_episode_reference.clone();
-        moved_page_reference.page_keys =
-            vec![PageKey::new(Provider::Mal, EntityType::Episode, "21:200").unwrap()];
+        moved_page_reference.page_sources = vec![PageSource {
+            page_key: PageKey::new(Provider::Mal, EntityType::Episode, "21:200").unwrap(),
+            source: None,
+            title: None,
+        }];
         let mut tx = pool.begin().await.unwrap();
         let moved_page_outcome = sync_anime_episodes(
             &mut tx,
@@ -2262,7 +2345,11 @@ mod tests {
             episode_id: other_episode_id,
             episode_number: 3,
             title: "Honky Tonk Women".to_owned(),
-            page_keys: vec![PageKey::new(Provider::Mal, EntityType::Episode, "21:200").unwrap()],
+            page_sources: vec![PageSource {
+                page_key: PageKey::new(Provider::Mal, EntityType::Episode, "21:200").unwrap(),
+                source: None,
+                title: None,
+            }],
             list_entries: Vec::new(),
         };
         let mut tx = pool.begin().await.unwrap();

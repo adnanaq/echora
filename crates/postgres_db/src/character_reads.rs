@@ -14,7 +14,8 @@ use crate::{CharacterAnime, Error, begin_read_snapshot};
 /// material, form one entry. An entry no stored work or source material matches stays on its own.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VisibleOgraphyEntry {
-    /// Title of the visible work or the stored source material, when one is found.
+    /// Title of the visible work or the stored source material, or otherwise the title the
+    /// entry's page gives, when one is stored.
     pub title: Option<String>,
     /// The character's most prominent role lookup text among the grouped entries.
     pub role: String,
@@ -237,6 +238,8 @@ async fn read_visible_character_anime(
 }
 
 /// Reads a character's animeography, one entry per visible work, with its title and page URLs.
+///
+/// An anime page no visible work holds is an entry of its own, titled by its page's title.
 async fn read_character_animeography(
     tx: &mut Transaction<'_, Postgres>,
     character_id: Uuid,
@@ -244,7 +247,12 @@ async fn read_character_animeography(
     let animeography = sqlx::query_as!(
         VisibleOgraphyEntry,
         r#"
-        SELECT anime.title AS "title?",
+        SELECT coalesce(
+                   anime.title,
+                   (array_agg(page.title ORDER BY appearance.anime_page_provider,
+                                                  appearance.anime_page_address)
+                        FILTER (WHERE page.title IS NOT NULL))[1]
+               ) AS "title?",
                (array_agg(appearance.role ORDER BY role_order.rank))[1] AS "role!",
                coalesce(
                    array_agg(page.source ORDER BY page.source) FILTER (WHERE page.source IS NOT NULL),
@@ -277,6 +285,8 @@ async fn read_character_animeography(
 
 /// Reads a character's mangaography, one entry per stored source material, with its title and
 /// the URLs of the identifiers the character names.
+///
+/// A manga page no work has related yet is an entry of its own, titled by its page's title.
 async fn read_character_mangaography(
     tx: &mut Transaction<'_, Postgres>,
     character_id: Uuid,
@@ -284,7 +294,12 @@ async fn read_character_mangaography(
     let mangaography = sqlx::query_as!(
         VisibleOgraphyEntry,
         r#"
-        SELECT material.title AS "title?",
+        SELECT coalesce(
+                   material.title,
+                   (array_agg(xref.title ORDER BY appearance.source_material_provider,
+                                                  appearance.source_material_external_id)
+                        FILTER (WHERE xref.title IS NOT NULL))[1]
+               ) AS "title?",
                (array_agg(appearance.role ORDER BY role_order.rank))[1] AS "role!",
                coalesce(
                    array_agg(xref.source ORDER BY xref.source) FILTER (WHERE xref.source IS NOT NULL),

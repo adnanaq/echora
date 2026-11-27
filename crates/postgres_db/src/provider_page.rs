@@ -1,6 +1,6 @@
 //! Provider page storage, response compression, and dead-page tracking.
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::fmt::{self, Write as _};
 use std::io::Write as _;
 use std::str::FromStr;
@@ -15,6 +15,7 @@ use sqlx::postgres::{PgTypeInfo, PgValueRef};
 use sqlx::{Decode, PgPool, Postgres, Transaction, Type};
 use tracing::Level;
 
+use url::Url;
 use uuid::Uuid;
 
 use crate::Error;
@@ -34,7 +35,7 @@ const MIN_MISSING_DURATION: TimeDelta = TimeDelta::days(1);
 const MAX_FETCH_CLOCK_AHEAD: TimeDelta = TimeDelta::minutes(5);
 
 /// Supported external anime metadata providers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Provider {
     /// `MyAnimeList` (`"mal"`).
     Mal,
@@ -228,7 +229,7 @@ impl FromStr for Provider {
 }
 
 /// Validated provider-specific page identifier or slug.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Address(String);
 
 impl Address {
@@ -289,7 +290,7 @@ impl fmt::Display for Address {
 /// Type of catalogue entity, which is also what a provider page describes.
 ///
 /// Matches `EntityType` in the canonical model and `shared_proto.v1.EntityType`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum EntityType {
     /// A work (anime).
     Anime,
@@ -348,20 +349,29 @@ impl FromStr for EntityType {
     }
 }
 
-/// The URL a merge chose for one of an entity's own source pages.
+/// A provider page with its URL.
+///
+/// A merge chooses the URL of each page its entity holds; a save that only names a page
+/// passes the URL its merge reported, which the page keeps until its holder chooses one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PageSource {
     /// The page's provider, entity type and address.
     pub page_key: PageKey,
-    /// The page's URL, a provider-reported one with its slug when known.
-    pub source: String,
+    /// The page's URL, a provider-reported one with its slug when known, or `None` when no
+    /// URL is known, such as a known episode's page whose URL is not stored.
+    pub source: Option<Url>,
+    /// The title the page's provider gives it (a character's name for a character page), or
+    /// `None` when unknown.
+    pub title: Option<String>,
 }
 
 /// Records the URL of each page an entity holds as a source, where it changed.
 ///
-/// A page's URL depends only on the page, so it is stored once on `provider_page`. Only the
-/// entity that holds a page as its source writes it, which leaves one writer per page; a page
-/// given here that the entity does not hold as a source is left unchanged. The owned page rows
+/// A page's URL depends only on the page, so it is stored once on `provider_page`. The entity
+/// that holds a page as its source chooses its URL and replaces whatever is stored; a save
+/// that only names the page fills it while it is empty, through
+/// [`record_referenced_page_sources`]. A page given here that the entity does not hold as a
+/// source is left unchanged. The owned page rows
 /// are locked in key order before the update, so two saves of one entity cannot deadlock.
 ///
 /// Call it before the entity's own row is locked: every writer locks pages first, as
@@ -389,9 +399,9 @@ pub(crate) async fn record_page_sources(
             page_key.entity_type(),
             page_key.address()
         );
-        if page_source.source.trim().is_empty() {
+        if page_source.source.is_none() {
             return Err(Error::invalid_argument(format!(
-                "page source URL for {page_label} must not be blank"
+                "page source URL for {page_label} must be given"
             )));
         }
         if page_key.entity_type() != entity_type {
@@ -414,16 +424,22 @@ pub(crate) async fn record_page_sources(
         .iter()
         .map(|page_source| page_source.page_key.address().as_str().to_owned())
         .collect();
-    let sources: Vec<String> = page_sources
+    let sources: Vec<&str> = page_sources
         .iter()
-        .map(|page_source| page_source.source.clone())
+        .filter_map(|page_source| page_source.source.as_ref().map(Url::as_str))
+        .collect();
+    let titles: Vec<Option<&str>> = page_sources
+        .iter()
+        .map(|page_source| page_source.title.as_deref())
         .collect();
 
     sqlx::query!(
         r#"
         WITH given AS (
-            SELECT given.provider, $2::text AS entity_type, given.address, given.source
-            FROM unnest($3::text[], $4::text[], $5::text[]) AS given(provider, address, source)
+            SELECT given.provider, $2::text AS entity_type, given.address, given.source,
+                   given.title
+            FROM unnest($3::text[], $4::text[], $5::text[], $6::text[])
+                 AS given(provider, address, source, title)
         ),
         owned AS (
             SELECT page.provider, page.entity_type, page.address
@@ -451,19 +467,135 @@ pub(crate) async fn record_page_sources(
             FOR NO KEY UPDATE OF page
         )
         UPDATE provider_page page
-        SET source = given.source
+        SET source = given.source,
+            title = coalesce(given.title, page.title)
         FROM given
         JOIN owned USING (provider, entity_type, address)
         WHERE page.provider = given.provider
           AND page.entity_type = given.entity_type
           AND page.address = given.address
-          AND page.source IS DISTINCT FROM given.source
+          AND (page.source IS DISTINCT FROM given.source
+               OR page.title IS DISTINCT FROM coalesce(given.title, page.title))
         "#,
         entity_id,
         entity_type.as_str(),
         &providers,
         &addresses,
-        &sources
+        &sources as &[&str],
+        &titles as &[Option<&str>]
+    )
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
+/// The URL and title a save gives for one page it names.
+#[derive(Debug, Default)]
+struct NamedPageDetails<'a> {
+    /// The longest URL given for the page.
+    source: Option<&'a str>,
+    /// The first title given for the page.
+    title: Option<&'a str>,
+}
+
+/// Collects the URL and title given for each named page, in page key order.
+///
+/// Several entries can name one page through different spellings of its URL. The longest
+/// keeps the provider's slug, the same choice the merges make for an entity's own pages, and
+/// the first title given is kept. The sorted keys give every writer one row order. A page
+/// given with neither is left out.
+fn collect_named_page_details<'a>(
+    named_page_sources: impl IntoIterator<Item = &'a PageSource>,
+) -> BTreeMap<&'a PageKey, NamedPageDetails<'a>> {
+    let mut details_by_page: BTreeMap<&'a PageKey, NamedPageDetails<'a>> = BTreeMap::new();
+    for page_source in named_page_sources {
+        let source = page_source.source.as_ref().map(Url::as_str);
+        let title = page_source.title.as_deref();
+        if source.is_none() && title.is_none() {
+            continue;
+        }
+        let page_details = details_by_page.entry(&page_source.page_key).or_default();
+        if source.map(str::len) > page_details.source.map(str::len) {
+            page_details.source = source;
+        }
+        page_details.title = page_details.title.or(title);
+    }
+    details_by_page
+}
+
+/// Records the URL and title of each named page, where none is stored.
+///
+/// A relation, an appearance or an episode's character names a page by its key, and the
+/// merge reports the URL it came from. Storing that URL lets a read show the link before
+/// any entity holds the page. The entity that later holds the page replaces it with the URL
+/// its own merge chooses, through [`record_page_sources`].
+///
+/// A missing page row is added with `ON CONFLICT DO NOTHING`, which does not lock a row that
+/// already exists. An empty URL or title is filled only on rows locked with `SKIP LOCKED`: a row
+/// another save holds is skipped, since that save is the page's holder or another save
+/// filling the same URL. The save therefore never waits on a page row another save holds.
+///
+/// # Errors
+///
+/// Returns a database error when the insert or the update fails.
+pub(crate) async fn record_referenced_page_sources<'a>(
+    tx: &mut Transaction<'_, Postgres>,
+    named_page_sources: impl IntoIterator<Item = &'a PageSource>,
+) -> Result<(), Error> {
+    let details_by_page = collect_named_page_details(named_page_sources);
+    if details_by_page.is_empty() {
+        return Ok(());
+    }
+    let mut providers = Vec::with_capacity(details_by_page.len());
+    let mut entity_types = Vec::with_capacity(details_by_page.len());
+    let mut addresses = Vec::with_capacity(details_by_page.len());
+    let mut sources = Vec::with_capacity(details_by_page.len());
+    let mut titles = Vec::with_capacity(details_by_page.len());
+    for (page_key, page_details) in details_by_page {
+        providers.push(page_key.provider().as_str());
+        entity_types.push(page_key.entity_type().as_str());
+        addresses.push(page_key.address().as_str());
+        sources.push(page_details.source);
+        titles.push(page_details.title);
+    }
+
+    sqlx::query!(
+        r#"
+        WITH named AS (
+            SELECT named.provider, named.entity_type, named.address, named.source,
+                   named.title
+            FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[])
+                 AS named(provider, entity_type, address, source, title)
+        ),
+        added AS (
+            INSERT INTO provider_page (provider, entity_type, address, source, title)
+            SELECT provider, entity_type, address, source, title
+            FROM named
+            ON CONFLICT (provider, entity_type, address) DO NOTHING
+        ),
+        unnamed AS (
+            SELECT page.provider, page.entity_type, page.address
+            FROM provider_page page
+            JOIN named USING (provider, entity_type, address)
+            WHERE (page.source IS NULL AND named.source IS NOT NULL)
+               OR (page.title IS NULL AND named.title IS NOT NULL)
+            ORDER BY page.provider, page.entity_type, page.address
+            FOR NO KEY UPDATE OF page SKIP LOCKED
+        )
+        UPDATE provider_page page
+        SET source = coalesce(page.source, named.source),
+            title = coalesce(page.title, named.title)
+        FROM named
+        JOIN unnamed USING (provider, entity_type, address)
+        WHERE page.provider = named.provider
+          AND page.entity_type = named.entity_type
+          AND page.address = named.address
+        "#,
+        &providers as &[&str],
+        &entity_types as &[&str],
+        &addresses as &[&str],
+        &sources as &[Option<&str>],
+        &titles as &[Option<&str>]
     )
     .execute(&mut **tx)
     .await?;
@@ -539,7 +671,7 @@ pub fn encode_page_key_proto(page_key: &PageKey) -> Vec<u8> {
 }
 
 /// Identifies a provider page by provider, entity type, and address.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct PageKey {
     provider: Provider,
     entity_type: EntityType,
@@ -1308,6 +1440,55 @@ async fn record_success(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn collect_named_page_details_keeps_longest_url_first_title_and_skips_empty_pages() {
+        let page_source =
+            |provider, address: &str, source: Option<&str>, title: Option<&str>| PageSource {
+                page_key: PageKey::new(provider, EntityType::Anime, address).unwrap(),
+                source: source.map(|url| Url::parse(url).unwrap()),
+                title: title.map(str::to_owned),
+            };
+        let named_page_sources = [
+            page_source(
+                Provider::Mal,
+                "2",
+                Some("https://myanimelist.net/anime/2"),
+                Some("Sequel"),
+            ),
+            page_source(
+                Provider::Mal,
+                "2",
+                Some("https://myanimelist.net/anime/2/Sequel"),
+                Some("Sequel (other list)"),
+            ),
+            page_source(Provider::AniList, "2", None, Some("Sequel")),
+            page_source(Provider::Mal, "3", None, None),
+        ];
+
+        let details_by_page = collect_named_page_details(&named_page_sources);
+
+        assert_eq!(
+            details_by_page
+                .iter()
+                .map(|(page_key, page_details)| (
+                    page_key.provider(),
+                    page_key.address().as_str(),
+                    page_details.source,
+                    page_details.title,
+                ))
+                .collect::<Vec<_>>(),
+            vec![
+                (
+                    Provider::Mal,
+                    "2",
+                    Some("https://myanimelist.net/anime/2/Sequel"),
+                    Some("Sequel"),
+                ),
+                (Provider::AniList, "2", None, Some("Sequel")),
+            ]
+        );
+    }
 
     #[test]
     fn provider_validates_numeric_and_slug_address() {

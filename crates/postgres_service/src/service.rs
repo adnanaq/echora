@@ -18,6 +18,7 @@ use postgres_db::{
 use prost::Message as _;
 use sqlx::PgPool;
 use tonic::{Request, Response, Status};
+use url::Url;
 use uuid::Uuid;
 
 use crate::anime_mapping::{build_save_anime_input, parse_proto_timestamp};
@@ -938,10 +939,25 @@ pub(crate) fn parse_page_sources(
             })?;
             Ok(PageSource {
                 page_key: parse_page_key(proto_key)?,
-                source: proto_page_source.source,
+                source: parse_page_url(&proto_page_source.source)?,
+                title: Some(proto_page_source.title).filter(|page_title| !page_title.is_empty()),
             })
         })
         .collect()
+}
+
+/// Parses a page URL from its proto text, empty meaning no URL.
+///
+/// # Errors
+///
+/// Returns `INVALID_ARGUMENT` when the text is not a URL.
+pub(crate) fn parse_page_url(source: &str) -> Result<Option<Url>, Status> {
+    if source.is_empty() {
+        return Ok(None);
+    }
+    Url::parse(source).map(Some).map_err(|err| {
+        Status::invalid_argument(format!("page source {source:?} is not a URL: {err}"))
+    })
 }
 
 /// Converts the proto fetch time of a page into a UTC timestamp.
@@ -1050,10 +1066,14 @@ mod tests {
             episode_id: episode_id.to_string(),
             episode_number: 1,
             title: "Placeholder episode 1".to_owned(),
-            page_keys: vec![build_page_key(
-                ProtoEntityType::Episode,
-                EPISODE_PAGE_ADDRESS,
-            )],
+            page_sources: vec![ProtoPageSource {
+                page_key: Some(build_page_key(
+                    ProtoEntityType::Episode,
+                    EPISODE_PAGE_ADDRESS,
+                )),
+                source: String::new(),
+                title: String::new(),
+            }],
             list_entries: vec![EpisodeListEntry {
                 provider: "mal".to_owned(),
                 title: Some("Placeholder episode 1".to_owned()),
@@ -1927,7 +1947,7 @@ mod tests {
             episode_id: episode_id.to_string(),
             episode_number: 1,
             title: "Ep 1".to_owned(),
-            page_keys: Vec::new(),
+            page_sources: Vec::new(),
             list_entries: Vec::new(),
         }];
         service
@@ -2244,6 +2264,7 @@ mod tests {
         missing_key_request.page_sources = vec![ProtoPageSource {
             page_key: None,
             source: "https://myanimelist.net/anime/21/One_Piece".to_owned(),
+            title: String::new(),
         }];
         let missing_key_status = service
             .save_anime(Request::new(missing_key_request))
@@ -2259,6 +2280,7 @@ mod tests {
                 address: WORK_PAGE_ADDRESS.to_owned(),
             }),
             source: "https://myanimelist.net/anime/21/One_Piece".to_owned(),
+            title: String::new(),
         }];
         service
             .save_anime(Request::new(save_request))
@@ -2434,6 +2456,22 @@ mod tests {
             .map(|rpc_result| rpc_result.map_or_else(|status| status.code(), |()| tonic::Code::Ok))
             .collect();
         assert_eq!(status_codes, vec![tonic::Code::Internal; 22]);
+    }
+
+    #[test]
+    fn parse_page_url_empty_text_gives_none_and_malformed_url_returns_invalid_argument() {
+        assert_eq!(parse_page_url("").unwrap(), None);
+        assert_eq!(
+            parse_page_url("https://myanimelist.net/anime/21/One_Piece")
+                .unwrap()
+                .as_ref()
+                .map(Url::as_str),
+            Some("https://myanimelist.net/anime/21/One_Piece")
+        );
+        assert_eq!(
+            parse_page_url("not a url").unwrap_err().code(),
+            tonic::Code::InvalidArgument
+        );
     }
 
     #[sqlx::test(migrations = "../postgres_db/migrations")]

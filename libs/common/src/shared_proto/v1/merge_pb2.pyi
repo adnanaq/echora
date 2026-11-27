@@ -22,12 +22,14 @@ class PageKey(_message.Message):
     def __init__(self, provider: _Optional[str] = ..., entity_type: _Optional[_Union[_anime_pb2.EntityType, str]] = ..., address: _Optional[str] = ...) -> None: ...
 
 class PageSource(_message.Message):
-    __slots__ = ("page_key", "source")
+    __slots__ = ("page_key", "source", "title")
     PAGE_KEY_FIELD_NUMBER: _ClassVar[int]
     SOURCE_FIELD_NUMBER: _ClassVar[int]
+    TITLE_FIELD_NUMBER: _ClassVar[int]
     page_key: PageKey
     source: str
-    def __init__(self, page_key: _Optional[_Union[PageKey, _Mapping]] = ..., source: _Optional[str] = ...) -> None: ...
+    title: str
+    def __init__(self, page_key: _Optional[_Union[PageKey, _Mapping]] = ..., source: _Optional[str] = ..., title: _Optional[str] = ...) -> None: ...
 
 class PageResponse(_message.Message):
     __slots__ = ("request_name", "content_type", "body")
@@ -102,15 +104,15 @@ class EpisodeListEntry(_message.Message):
     def __init__(self, provider: _Optional[str] = ..., title: _Optional[str] = ..., aired_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., duration_seconds: _Optional[int] = ..., is_filler: _Optional[bool] = ..., is_recap: _Optional[bool] = ...) -> None: ...
 
 class EpisodeReference(_message.Message):
-    __slots__ = ("episode_id", "episode_number", "title", "page_keys", "list_entries")
+    __slots__ = ("episode_id", "episode_number", "title", "page_sources", "list_entries")
     EPISODE_ID_FIELD_NUMBER: _ClassVar[int]
     EPISODE_NUMBER_FIELD_NUMBER: _ClassVar[int]
     TITLE_FIELD_NUMBER: _ClassVar[int]
-    PAGE_KEYS_FIELD_NUMBER: _ClassVar[int]
+    PAGE_SOURCES_FIELD_NUMBER: _ClassVar[int]
     LIST_ENTRIES_FIELD_NUMBER: _ClassVar[int]
     episode_id: str
     episode_number: int
     title: str
-    page_keys: _containers.RepeatedCompositeFieldContainer[PageKey]
+    page_sources: _containers.RepeatedCompositeFieldContainer[PageSource]
     list_entries: _containers.RepeatedCompositeFieldContainer[EpisodeListEntry]
-    def __init__(self, episode_id: _Optional[str] = ..., episode_number: _Optional[int] = ..., title: _Optional[str] = ..., page_keys: _Optional[_Iterable[_Union[PageKey, _Mapping]]] = ..., list_entries: _Optional[_Iterable[_Union[EpisodeListEntry, _Mapping]]] = ...) -> None: ...
+    def __init__(self, episode_id: _Optional[str] = ..., episode_number: _Optional[int] = ..., title: _Optional[str] = ..., page_sources: _Optional[_Iterable[_Union[PageSource, _Mapping]]] = ..., list_entries: _Optional[_Iterable[_Union[EpisodeListEntry, _Mapping]]] = ...) -> None: ...

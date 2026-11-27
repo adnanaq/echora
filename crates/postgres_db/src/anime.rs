@@ -17,7 +17,7 @@ use crate::episode::{
     SyncAnimeEpisodesOutcome, load_known_episodes, sync_anime_episodes,
     validate_anime_episode_references,
 };
-use crate::provider_page::record_page_sources;
+use crate::provider_page::{record_page_sources, record_referenced_page_sources};
 use crate::{
     AnimeDetailsInput, AnimeRelationsAndGraphInput, AnimeScheduleAndStatsInput, EntityType,
     EpisodeReferenceInput, Error, PageKey, PageResponse, PageSource, Provider,
@@ -518,6 +518,21 @@ async fn save_anime_in_tx(
     crate::anime_relations::lock_relation_target_pages(tx, &input.relations_and_graph.relations)
         .await?;
     record_page_sources(tx, EntityType::Anime, input.anime_id, &input.page_sources).await?;
+    record_referenced_page_sources(
+        tx,
+        input
+            .relations_and_graph
+            .relations
+            .iter()
+            .map(|relation| &relation.target_page_source)
+            .chain(
+                input
+                    .episodes
+                    .iter()
+                    .flat_map(|episode| episode.page_sources.iter()),
+            ),
+    )
+    .await?;
     upsert_anime_shared_rows(tx, input).await?;
     let existing_anime = sqlx::query!(
         r#"

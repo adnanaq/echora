@@ -332,12 +332,16 @@ pub fn compute_save_record_hash(
 
     let mut canonical_episodes = episodes.to_vec();
     for episode in &mut canonical_episodes {
-        episode.page_keys.sort_by(|left, right| {
-            (&left.provider, left.entity_type, &left.address).cmp(&(
-                &right.provider,
-                right.entity_type,
-                &right.address,
-            ))
+        episode.page_sources.sort_by(|left, right| {
+            let left_key = left
+                .page_key
+                .as_ref()
+                .map(|page_key| (&page_key.provider, page_key.entity_type, &page_key.address));
+            let right_key = right
+                .page_key
+                .as_ref()
+                .map(|page_key| (&page_key.provider, page_key.entity_type, &page_key.address));
+            left_key.cmp(&right_key)
         });
         episode
             .list_entries
@@ -511,7 +515,9 @@ mod tests {
 
     #[test]
     fn canonical_hash_is_order_independent_on_set_lists() {
-        use crate::service::shared_proto::v1::{EntityType, EpisodeListEntry, PageKey};
+        use crate::service::shared_proto::v1::{
+            EntityType, EpisodeListEntry, PageKey, PageSource as ProtoPageSource,
+        };
 
         let mut first_anime = Anime {
             title: "Monster".to_owned(),
@@ -527,16 +533,24 @@ mod tests {
             episode_id: "01950000-0000-7000-8000-000000000001".to_owned(),
             episode_number: 1,
             title: "Ep 1".to_owned(),
-            page_keys: vec![
-                PageKey {
-                    provider: "mal".to_owned(),
-                    entity_type: EntityType::Episode as i32,
-                    address: "21:1".to_owned(),
+            page_sources: vec![
+                ProtoPageSource {
+                    page_key: Some(PageKey {
+                        provider: "mal".to_owned(),
+                        entity_type: EntityType::Episode as i32,
+                        address: "21:1".to_owned(),
+                    }),
+                    source: String::new(),
+                    title: String::new(),
                 },
-                PageKey {
-                    provider: "anilist".to_owned(),
-                    entity_type: EntityType::Episode as i32,
-                    address: "2".to_owned(),
+                ProtoPageSource {
+                    page_key: Some(PageKey {
+                        provider: "anilist".to_owned(),
+                        entity_type: EntityType::Episode as i32,
+                        address: "2".to_owned(),
+                    }),
+                    source: String::new(),
+                    title: String::new(),
                 },
             ],
             list_entries: vec![
@@ -551,7 +565,7 @@ mod tests {
             ],
         }];
         let mut second_episodes = first_episodes.clone();
-        second_episodes[0].page_keys.reverse();
+        second_episodes[0].page_sources.reverse();
         second_episodes[0].list_entries.reverse();
 
         assert_eq!(

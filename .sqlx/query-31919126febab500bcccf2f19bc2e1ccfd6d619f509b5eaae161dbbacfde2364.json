@@ -1,0 +1,46 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT link.episode_id, link.provider, link.address, page.source, page.title\n        FROM episode_source link\n        JOIN episode e ON e.id = link.episode_id\n        JOIN provider_page page USING (provider, entity_type, address)\n        WHERE e.anime_id = $1 AND e.deleted_at IS NULL\n        ORDER BY link.episode_id, link.provider, link.address\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "episode_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "provider",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "address",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "source",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "title",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "31919126febab500bcccf2f19bc2e1ccfd6d619f509b5eaae161dbbacfde2364"
+}

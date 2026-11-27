@@ -24,6 +24,10 @@ pub struct VisibleAnimeRelation {
     pub relation_type: String,
     /// URLs of the target pages, where a merge of each page's owner chose one.
     pub target_page_sources: Vec<String>,
+    /// The title a target page's provider gives, first in page key order, when one is stored.
+    ///
+    /// A relation whose target no visible work holds shows this title.
+    pub target_page_title: Option<String>,
     /// The visible work that holds the target pages as sources, other than the work itself.
     pub target_anime: Option<RelatedAnimeSummary>,
 }
@@ -629,7 +633,7 @@ async fn read_anime_broadcast_and_hiatus(
 /// The target is whichever visible work holds a target page as a source when the read runs,
 /// other than the work itself. Relation rows of one type that name pages of the same target form
 /// one relation with every target page URL. A target page that no visible work holds stays a
-/// relation of its own, shown by its page URL when one is stored.
+/// relation of its own, shown by its page URL and title when they are stored.
 async fn read_related_anime(
     tx: &mut Transaction<'_, Postgres>,
     anime_id: Uuid,
@@ -644,7 +648,10 @@ async fn read_related_anime(
                    array_agg(target_page.source ORDER BY target_page.source)
                        FILTER (WHERE target_page.source IS NOT NULL),
                    '{}'
-               ) AS "target_page_sources!"
+               ) AS "target_page_sources!",
+               (array_agg(target_page.title
+                          ORDER BY relation.to_page_provider, relation.to_page_address)
+                    FILTER (WHERE target_page.title IS NOT NULL))[1] AS "target_page_title?"
         FROM anime_related_anime relation
         LEFT JOIN provider_page target_page
           ON target_page.provider = relation.to_page_provider
@@ -697,6 +704,7 @@ async fn read_related_anime(
             VisibleAnimeRelation {
                 relation_type: relation_row.relation_type,
                 target_page_sources: relation_row.target_page_sources,
+                target_page_title: relation_row.target_page_title,
                 target_anime,
             }
         })
@@ -756,6 +764,7 @@ async fn read_related_source_material(
                     provider,
                     external_id,
                     url,
+                    title: None,
                 })
                 .collect(),
         })

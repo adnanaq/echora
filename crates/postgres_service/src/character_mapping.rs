@@ -6,7 +6,8 @@
 //! identifiers in the same way, which the database joins to `source_material_xref`.
 
 use postgres_db::{
-    CHARACTER_HASH_FORMAT, CharacterAppearanceInput, CharacterMangaographyInput, SaveCharacterInput,
+    CHARACTER_HASH_FORMAT, CharacterAppearanceInput, CharacterMangaographyInput,
+    EntityType as DbEntityType, SaveCharacterInput, SourceMaterialXrefInput,
 };
 use prost::Message as _;
 use sha2::{Digest as _, Sha256};
@@ -14,7 +15,7 @@ use tonic::Status;
 use uuid::Uuid;
 
 use crate::anime_relations_mapping::{
-    parse_anime_target_from_url, parse_source_material_target_from_url,
+    build_page_source_from_url, parse_anime_target_from_url, parse_source_material_target_from_url,
 };
 use crate::episode_mapping::map_character_role;
 use crate::service::parse_page_sources;
@@ -110,17 +111,21 @@ fn map_character_animeography(
 ) -> Result<Vec<CharacterAppearanceInput>, Status> {
     let mut appearances = Vec::new();
     for Ography {
-        title: _,
+        title,
         role,
         sources,
     } in animeography
     {
         let mapped_role = map_character_role(role)?;
         for source_url in sources {
-            if let Some((provider, address)) = parse_anime_target_from_url(&source_url) {
+            if let Some(anime_page_source) = build_page_source_from_url(
+                &source_url,
+                &title,
+                DbEntityType::Anime,
+                parse_anime_target_from_url,
+            ) {
                 appearances.push(CharacterAppearanceInput {
-                    anime_page_provider: provider.to_owned(),
-                    anime_page_address: address,
+                    anime_page_source,
                     role: mapped_role.to_owned(),
                 });
             }
@@ -129,10 +134,11 @@ fn map_character_animeography(
     Ok(appearances)
 }
 
-/// Converts the manga and novels a character appears in into source material identifiers.
+/// Converts the manga and novels a character appears in into mangaography entries.
 ///
-/// Each URL that names a provider's manga or novel page becomes one identifier with the
-/// entry's role, and any other URL is left out.
+/// Each entry keeps its role, and the URLs that name a provider's manga or novel page become
+/// its cross-references, each with the title the character's pages give. Any other URL is left
+/// out, and an entry with no such URL is dropped.
 ///
 /// # Errors
 ///
@@ -142,22 +148,29 @@ fn map_character_mangaography(
 ) -> Result<Vec<CharacterMangaographyInput>, Status> {
     let mut entries = Vec::new();
     for Ography {
-        title: _,
+        title,
         role,
         sources,
     } in mangaography
     {
         let mapped_role = map_character_role(role)?;
-        for source_url in sources {
-            if let Some((provider, external_id)) =
-                parse_source_material_target_from_url(&source_url)
-            {
-                entries.push(CharacterMangaographyInput {
-                    source_material_provider: provider.to_owned(),
-                    source_material_external_id: external_id,
-                    role: mapped_role.to_owned(),
-                });
-            }
+        let xrefs: Vec<SourceMaterialXrefInput> = sources
+            .into_iter()
+            .filter_map(|source_url| {
+                let (provider, external_id) = parse_source_material_target_from_url(&source_url)?;
+                Some(SourceMaterialXrefInput {
+                    provider: provider.to_owned(),
+                    external_id,
+                    url: source_url,
+                    title: Some(title.clone()).filter(|page_title| !page_title.is_empty()),
+                })
+            })
+            .collect();
+        if !xrefs.is_empty() {
+            entries.push(CharacterMangaographyInput {
+                role: mapped_role.to_owned(),
+                xrefs,
+            });
         }
     }
     Ok(entries)
@@ -213,6 +226,9 @@ mod tests {
     use tonic::Code;
 
     use std::collections::BTreeMap;
+
+    use postgres_db::{PageKey, PageSource, Provider};
+    use url::Url;
 
     use super::*;
     use crate::service::shared_proto::v1::CharacterRole;
@@ -307,31 +323,47 @@ mod tests {
             input.animeography,
             vec![
                 CharacterAppearanceInput {
-                    anime_page_provider: "mal".to_owned(),
-                    anime_page_address: "21".to_owned(),
+                    anime_page_source: PageSource {
+                        page_key: PageKey::new(Provider::Mal, DbEntityType::Anime, "21")
+                            .expect("valid page key"),
+                        source: Some(
+                            Url::parse("https://myanimelist.net/anime/21/One_Piece")
+                                .expect("valid URL")
+                        ),
+                        title: Some("One Piece".to_owned()),
+                    },
                     role: "MAIN".to_owned(),
                 },
                 CharacterAppearanceInput {
-                    anime_page_provider: "anilist".to_owned(),
-                    anime_page_address: "21".to_owned(),
+                    anime_page_source: PageSource {
+                        page_key: PageKey::new(Provider::AniList, DbEntityType::Anime, "21")
+                            .expect("valid page key"),
+                        source: Some(Url::parse("https://anilist.co/anime/21").expect("valid URL")),
+                        title: Some("One Piece".to_owned()),
+                    },
                     role: "MAIN".to_owned(),
                 },
             ]
         );
         assert_eq!(
             input.mangaography,
-            vec![
-                CharacterMangaographyInput {
-                    source_material_provider: "mal".to_owned(),
-                    source_material_external_id: "13".to_owned(),
-                    role: "MAIN".to_owned(),
-                },
-                CharacterMangaographyInput {
-                    source_material_provider: "anilist".to_owned(),
-                    source_material_external_id: "30013".to_owned(),
-                    role: "MAIN".to_owned(),
-                },
-            ]
+            vec![CharacterMangaographyInput {
+                role: "MAIN".to_owned(),
+                xrefs: vec![
+                    SourceMaterialXrefInput {
+                        provider: "mal".to_owned(),
+                        external_id: "13".to_owned(),
+                        url: "https://myanimelist.net/manga/13/One_Piece".to_owned(),
+                        title: Some("One Piece".to_owned()),
+                    },
+                    SourceMaterialXrefInput {
+                        provider: "anilist".to_owned(),
+                        external_id: "30013".to_owned(),
+                        url: "https://anilist.co/manga/30013".to_owned(),
+                        title: Some("One Piece".to_owned()),
+                    },
+                ],
+            },]
         );
     }
 

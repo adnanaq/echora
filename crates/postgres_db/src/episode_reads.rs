@@ -61,7 +61,8 @@ pub struct VisibleEpisodeRecord {
 /// an entry of its own.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VisibleEpisodeCharacter {
-    /// Name of the visible character holding the pages, when one does.
+    /// Name of the visible character holding the pages, or otherwise the name the character's
+    /// page gives, when one is stored.
     pub name: Option<String>,
     /// The most prominent character role lookup text among the grouped pages.
     pub role: String,
@@ -350,6 +351,9 @@ async fn read_episode_page_sources(
 }
 
 /// Reads the characters of the given episodes, each with the visible character holding its page.
+///
+/// A character page no visible character holds is a character of its own, named by its page's
+/// title.
 async fn read_episode_characters(
     tx: &mut Transaction<'_, Postgres>,
     episode_ids: &[Uuid],
@@ -357,7 +361,13 @@ async fn read_episode_characters(
 ) -> Result<(), Error> {
     let character_rows = sqlx::query!(
         r#"
-        SELECT appearance.episode_id AS "episode_id!", character.name AS "name?",
+        SELECT appearance.episode_id AS "episode_id!",
+               coalesce(
+                   character.name,
+                   (array_agg(page.title ORDER BY appearance.character_page_provider,
+                                                  appearance.character_page_address)
+                        FILTER (WHERE page.title IS NOT NULL))[1]
+               ) AS "name?",
                (array_agg(appearance.role ORDER BY role_order.rank))[1] AS "role!",
                coalesce(
                    array_agg(page.source ORDER BY page.source) FILTER (WHERE page.source IS NOT NULL),

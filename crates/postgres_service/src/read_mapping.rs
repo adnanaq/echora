@@ -451,8 +451,8 @@ fn build_hiatus(hiatus: AnimeHiatusInput) -> AnimeHiatus {
 
 /// Groups a work's relations by relation type.
 ///
-/// A relation whose target pages no visible work holds keeps their page URLs, when stored,
-/// with an empty title and an unspecified type.
+/// A relation whose target pages no visible work holds keeps their page URLs and title, when
+/// stored, with an unspecified type.
 fn build_related_anime(
     relations: Vec<VisibleAnimeRelation>,
 ) -> Result<BTreeMap<String, RelatedAnimeList>, Status> {
@@ -460,6 +460,7 @@ fn build_related_anime(
     for VisibleAnimeRelation {
         relation_type,
         target_page_sources,
+        target_page_title,
         target_anime,
     } in relations
     {
@@ -483,6 +484,7 @@ fn build_related_anime(
                 episode_count: Some(target_anime.episode_count),
             },
             None => RelatedAnime {
+                title: target_page_title.unwrap_or_default(),
                 sources: target_page_sources,
                 ..RelatedAnime::default()
             },
@@ -648,6 +650,7 @@ mod tests {
             VisibleAnimeRelation {
                 relation_type: "SEQUEL".to_owned(),
                 target_page_sources: vec!["https://myanimelist.net/anime/2/Movie".to_owned()],
+                target_page_title: None,
                 target_anime: Some(RelatedAnimeSummary {
                     anime_id: sequel_id,
                     title: "Movie".to_owned(),
@@ -660,6 +663,7 @@ mod tests {
             VisibleAnimeRelation {
                 relation_type: "SEQUEL".to_owned(),
                 target_page_sources: vec!["https://anilist.co/anime/3".to_owned()],
+                target_page_title: Some("Third".to_owned()),
                 target_anime: None,
             },
         ];
@@ -678,6 +682,7 @@ mod tests {
                 provider: "mal".to_owned(),
                 external_id: "100".to_owned(),
                 url: "https://myanimelist.net/manga/100".to_owned(),
+                title: None,
             }],
         }];
         record.companies = vec![AnimeCompanyInput {
@@ -724,6 +729,7 @@ mod tests {
                     episode_count: Some(1),
                 },
                 RelatedAnime {
+                    title: "Third".to_owned(),
                     sources: vec!["https://anilist.co/anime/3".to_owned()],
                     ..RelatedAnime::default()
                 },
@@ -1168,6 +1174,7 @@ mod tests {
         unknown_related_type.related_anime = vec![VisibleAnimeRelation {
             relation_type: "SEQUEL".to_owned(),
             target_page_sources: Vec::new(),
+            target_page_title: None,
             target_anime: Some(RelatedAnimeSummary {
                 anime_id: Uuid::now_v7(),
                 title: "Sequel".to_owned(),
@@ -1181,6 +1188,7 @@ mod tests {
         unknown_related_status.related_anime = vec![VisibleAnimeRelation {
             relation_type: "SEQUEL".to_owned(),
             target_page_sources: Vec::new(),
+            target_page_title: None,
             target_anime: Some(RelatedAnimeSummary {
                 anime_id: Uuid::now_v7(),
                 title: "Sequel".to_owned(),

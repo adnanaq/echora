@@ -13,11 +13,14 @@ message PageKey {
   string address = 3;
 }
 
-// The URL a merge chose for one linked provider page, a provider-reported URL with its
-// slug when one is known, or the provider's canonical page URL otherwise.
+// A provider page with its URL: a provider-reported URL with its slug when one is known,
+// or the provider's canonical page URL otherwise.
 message PageSource {
   PageKey page_key = 1;
   string source = 2;
+  // The title the page's provider gives it (a character's name for a character page);
+  // empty when unknown.
+  string title = 3;
 }
 
 // One raw response belonging to a provider page, as received from the provider.
@@ -73,6 +76,8 @@ message EpisodeReference {
   string episode_id = 1;
   int32 episode_number = 2;
   string title = 3;
-  repeated PageKey page_keys = 4;
+  // The episode's provider pages, each with the URL the work's episode list links it by;
+  // empty for a known episode's page whose URL is not stored.
+  repeated PageSource page_sources = 4;
   repeated EpisodeListEntry list_entries = 5;
 }
