@@ -371,6 +371,8 @@ services:
       - ENVIRONMENT=development
       - TEMPORAL_ADDRESS=http://temporal:7233
       - TEMPORAL_NAMESPACE=echora-dev
+      - POSTGRES_SERVICE_ADDRESS=http://postgres-service:8004
+      - ENRICHMENT_SERVICE_ADDRESS=http://enrichment-service:8002
       - OTEL_ENABLED=${OTEL_ENABLED:-false}
       - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
       - OTEL_ENABLE_TRACING=true

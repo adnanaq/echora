@@ -13,6 +13,7 @@ FROM rust:1-slim-bookworm AS builder
 WORKDIR /build
 
 COPY Cargo.toml Cargo.lock ./
+COPY protos/ protos/
 COPY crates/common/ crates/common/
 COPY crates/postgres_db/ crates/postgres_db/
 COPY crates/postgres_service/ crates/postgres_service/

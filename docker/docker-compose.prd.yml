@@ -291,6 +291,8 @@ services:
       - ENVIRONMENT=production
       - TEMPORAL_ADDRESS=${TEMPORAL_ADDRESS:?set TEMPORAL_ADDRESS in .env}
       - TEMPORAL_NAMESPACE=${TEMPORAL_NAMESPACE:-echora}
+      - POSTGRES_SERVICE_ADDRESS=${POSTGRES_SERVICE_ADDRESS:-http://postgres-service:8004}
+      - ENRICHMENT_SERVICE_ADDRESS=${ENRICHMENT_SERVICE_ADDRESS:-http://enrichment-service:8002}
       - WORKER_VERSIONING_ENABLED=${WORKER_VERSIONING_ENABLED:-true}
       - WORKER_BUILD_ID=${WORKER_BUILD_ID:?set WORKER_BUILD_ID to the deployed commit}
       # Off until a production collector exists (see vector-service).
