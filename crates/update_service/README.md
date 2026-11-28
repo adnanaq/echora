@@ -6,7 +6,7 @@ The Temporal worker binary for Echora's Update Service. It opens one Temporal cl
 
 | Queue | What runs on it |
 | --- | --- |
-| `update-service` | `RefreshAnimeWorkflow`, `list_pages`, `merge_anime`, `start_entity_workflows`, and `record_refresh` |
+| `update-service` | `RefreshAnimeWorkflow`, `list_pages`, `record_page_failure`, `merge_anime`, `start_entity_workflows`, and `record_refresh` |
 | `provider-<slug>` | `refresh_page` fetches for that provider, one queue per provider |
 
 ## Configuration

@@ -51,45 +51,57 @@ A work's refresh runs these activities (~~ECHO-111~~):
 ```
 list_pages(anime_id)
   PostgresService.ListEntityPages    every page of the work with its role, fetched_at,
-                                     is_dead and last failure; never-fetched pages have
-                                     no fetched_at, so they are due
+                                     is_dead, last failure, and stored merge_version
+                                     (malformed stored page keys are skipped and logged);
+                                     never-fetched pages have no fetched_at, so they are due;
+                                     also returns the worker's refresh settings
+                                     (REFRESH_AFTER_DAYS, MERGE_VERSION, MERGE_FIRST_WAIT_MINUTES)
+                                     into workflow history so callers only need anime_id
 
 for each source page that is due, or that a fetch_requested signal names,
 on that provider's task queue, all at once:
   refresh_page(page_key, max_age)
     EnrichmentService.FetchPage      fetch the page's responses, as received; the response
                                      cache answers only with a response younger than max_age
-    PostgresService.StorePage        store them with fetched_at; an older fetch is ignored;
-                                     a page that failed every attempt records the failure
+    PostgresService.StorePage        store them with fetched_at; an older fetch is ignored
     returns                          the page key, and whether the page changed
+  on any non-cancellation refresh_page failure (provider block, permanent gRPC status,
+  exhausted 5 attempts, or start-to-close/heartbeat timeout), on update-service:
+    record_page_failure(page_key)
+      PostgresService.StorePage      records the failure with empty responses and backoff
 
-merge when every page has finished, or MERGE_FIRST_WAIT_MINUTES (10) after the first
-page was stored, whichever comes first, if a page changed, the work's pages were
-relinked, or a merge was requested:
+merge when every page has finished, MERGE_FIRST_WAIT_MINUTES (10) after the first page was
+stored, or a mid-batch merge_requested signal arrives, whichever comes first, if a page
+changed, the work's pages were relinked, entity merge_version < MERGE_VERSION, or a merge
+was requested:
   merge_anime(anime_id)
     PostgresService.LoadAnime         pages, corrections, AI text, known episodes,
                                      and the work's version
     EnrichmentService.MergeAnime      map the pages, merge them, apply corrections and AI text;
                                      known episodes keep their IDs, new ones get a UUIDv7
-    PostgresService.SaveAnime         save if the version still matches; the same transaction
+    PostgresService.SaveAnime         save if the version still matches (writes worker
+                                     MERGE_VERSION; rejects <= 0); the same transaction
                                      creates new episodes and writes the outbox rows
     returns                          the new episode IDs, and whether the provider
                                      synopses changed
 
 each page that finishes after that merge sets the merge flag again; pages that finish
-close together are merged once
+close together are merged once (unused timers are cancelled when the batch finishes)
 
 then, through start_entity_workflows on the update-service queue:
   start RefreshEpisodeWorkflow for each new or changed episode, after each merge
   start WriteSynopsisWorkflow once every page has finished or failed, if any merge of this
   refresh reported changed provider synopses
 
-before ending, while merge_requested or fetch_requested is set: fetch and merge again
-
 record_refresh(anime_id, outcome)
   PostgresService.RecordRefresh      sets next_refresh_at: REFRESH_AFTER_DAYS ahead on success,
                                      changed or not; the first failed page's retry time when
                                      pages failed; a backoff when the refresh failed
+                                     (also runs with a detached cancellation token on any
+                                     failure or workflow cancellation before returning)
+
+finally, right before returning (after synopsis start and record_refresh):
+  if merge_requested or fetch_requested is set, loop and run another cycle so no signal is lost
 ```
 
 An episode's or a character's refresh is the same with its own pages: `ListEntityPages`, `refresh_page` for each due page, `LoadEpisode`, `MergeEpisode`, `SaveEpisode` or `LoadCharacter`, `MergeCharacter`, `SaveCharacter`, then `RecordRefresh`. (ECHO-112)
@@ -111,7 +123,7 @@ An episode's or a character's refresh is the same with its own pages: `ListEntit
   - `FetchPage` reports the provider's own "not found" as `is_not_found`. (ECHO-99)
   - ~~`StorePage` marks the page missing, keeps its last data in the merge, and after two answers a day apart sends it for review as a `dead_page`. With the provider's `DEAD_PAGE_REVIEW` setting turned off, once reviews keep confirming, it marks the page dead directly. (ECHO-97)~~
   - Otherwise only an approval marks it dead. (P-ECHO-15)
-- **A failed page does not fail the refresh.** `refresh_page` records the failure through `StorePage` and returns, and the merge uses the pages that were stored. Only a failed merge or save fails the refresh, which `RecordRefresh` then records. (~~ECHO-111~~)
+- **A failed page does not fail the refresh.** When `refresh_page` fails for any non-cancellation reason (provider block, permanent gRPC status, exhausted attempts, or timeout), the workflow records the failure through `record_page_failure` (`PostgresService.StorePage` with empty responses) and continues with the pages that were stored. Only a failed `list_pages`, `record_page_failure`, merge, save, downstream start, or workflow cancellation fails the refresh, which `RecordRefresh(Failed)` then records (using a detached cancellation token so cancellation also records backoff). (~~ECHO-111~~)
 
 A partial-source page is linked to a work but never merged into it, so a change to it starts no merge. (~~ECHO-111~~)
 
@@ -208,17 +220,17 @@ Starting values, tuned once real runs are measured:
 | Activity | Start-to-close | Heartbeat | Retries |
 |---|---|---|---|
 | `refresh_page` | 5 minutes (browser-crawled pages are slow) | 1 minute | Exponential backoff, at most 5 attempts (~~ECHO-111~~) |
-| `list_pages`, `record_refresh` | 30 seconds | — | Exponential backoff, at most 5 attempts (~~ECHO-111~~) |
-| `merge_anime` | 2 minutes | — | At most 5 attempts; `ABORTED` is retried inside the attempt (~~ECHO-111~~) |
+| `list_pages`, `record_page_failure`, `record_refresh` | 30 seconds | — | Exponential backoff, at most 5 attempts (~~ECHO-111~~) |
+| `merge_anime` | 2 minutes | — | At most 5 attempts; `ABORTED` is retried up to 10 times inside the attempt (~~ECHO-111~~) |
 | `merge_episode`, `merge_character` | 2 minutes | — | At most 5 attempts; `ABORTED` is retried inside the attempt (ECHO-112) |
 | `start_entity_workflows` | 1 minute | — | Exponential backoff, at most 5 attempts (~~ECHO-111~~) |
 | `write_synopsis` | 10 minutes | 1 minute | 3 attempts (ECHO-115) |
 
-- **Heartbeats during a gRPC call.** `refresh_page` and `write_synopsis` each wait on one long gRPC call. While it runs, the activity records a heartbeat every 20 seconds and watches `ctx.cancelled()`, with `tokio::select!` over the call, a heartbeat interval and the cancellation. Without this loop, Temporal would time the activity out after the 1-minute heartbeat timeout. With it, a crashed worker is noticed within a minute instead of after 5 or 10, and a cancelled workflow stops the call.
-  - ~~`refresh_page` runs this loop. (ECHO-111)~~
+- **Heartbeats during a gRPC call.** Long-running activities record a heartbeat every 20 seconds and watch `ctx.cancelled()` (checking cancellation before starting each attempt), with `tokio::select!` over the call, a heartbeat interval and cancellation. Without this loop, Temporal would time `refresh_page` or `write_synopsis` out after the 1-minute heartbeat timeout. With it, a crashed worker is noticed within a minute instead of after 5 or 10, and a cancelled workflow or graceful worker shutdown stops the call promptly.
+  - ~~`refresh_page`, `merge_anime` (across its `ABORTED` retry loop), and `start_entity_workflows` run this loop. (ECHO-111)~~
   - `write_synopsis` runs this loop. (ECHO-115)
 - **`ABORTED` inside the merge.** A Temporal retry policy has one attempt limit for every error, so a version conflict cannot get its own limit there. The merge activity therefore loads, merges and saves again itself when `SaveAnime` returns `ABORTED`, up to 10 times in one attempt. Conflicts last only as long as the other change, so this ends quickly, and the policy's 5 attempts count only other failures. (~~ECHO-111~~)
-- **Bans fail fast.** After a block, `polite_http` sends nothing more to that site from the process. A fetch then fails at once without a request, and is recorded as a page failure with backoff, so a ban is never pressed further. (~~ECHO-111~~) Workers also set their own `max_task_queue_activities_per_second` from the provider's pace, which applies when a queue has no limit set, such as in a new environment before the limit script ran. (ECHO-113)
+- **Bans fail fast.** After a block, `polite_http` sends nothing more to that site from the process. `EnrichmentService.FetchPage` returns `UNAVAILABLE` with trailing metadata `x-echora-fetch-error: provider_blocked`, which `refresh_page` maps to a non-retryable failure on attempt 1; the workflow then records the page failure with backoff via `record_page_failure`, so a ban is never pressed further. (~~ECHO-111~~) Workers also set their own `max_task_queue_activities_per_second` from the provider's pace, which applies when a queue has no limit set, such as in a new environment before the limit script ran. (ECHO-113)
 - **Permanent errors are not retried.** An activity returns `ApplicationFailure::non_retryable` for a gRPC status that a retry cannot fix: `INVALID_ARGUMENT`, `NOT_FOUND`, `FAILED_PRECONDITION`, `PERMISSION_DENIED`, `UNIMPLEMENTED`, and `RESOURCE_EXHAUSTED`, which our services return only for a message over the 64 MB limit. `UNAVAILABLE`, `DEADLINE_EXCEEDED` and `INTERNAL` stay retryable, and a provider's throttling arrives as `UNAVAILABLE`. (~~ECHO-111~~)
 
 ---
@@ -396,6 +408,7 @@ The workflows publish nothing themselves. After a save commits, the PostgreSQL S
 | ~~`MERGE_VERSION`~~ | ~~`1`~~ | ~~Version of the mapping and merge code; raised with a fix that should reach every entity (ECHO-111)~~ |
 | ~~`DEAD_PAGE_REVIEW`~~ | ~~`true` per provider~~ | ~~Missing pages go to review before they are marked dead; turned off for a provider once reviews keep confirming (ECHO-97)~~ |
 | ~~`MERGE_FIRST_WAIT_MINUTES`~~ | ~~`10`~~ | ~~How long a refresh waits after its first stored page before merging without the pages still in flight (ECHO-111)~~ |
+| ~~`WORKER_GRACEFUL_SHUTDOWN_SECONDS`~~ | ~~`20`~~ | ~~Grace period before Temporal cancels in-flight activities during worker drain (ECHO-111)~~ |
 | `BUDGETED_PROVIDERS` | `anidb` | Providers fetched by a budgeted fetcher instead of by work refreshes (ECHO-119) |
 | `ANIDB_DAILY_BUDGET` | `150` | AniDB requests a day; the `provider-anidb` queue's rate limit is set from it (ECHO-113) |
 | `ON_DEMAND_REFRESH_AGE_YEARS` | `30` | Works first aired longer ago than this, with their episodes and characters, refresh only when opened (ECHO-117) |

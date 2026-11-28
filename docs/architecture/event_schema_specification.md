@@ -427,7 +427,7 @@ message SaveAnimeRequest {  // (ECHO-98)
   string anime_id = 1;
   int64 expected_version = 2;
   shared_proto.v1.Anime anime = 3;
-  int32 merge_version = 4;                   // the mapping and merge code that produced the save
+  int32 merge_version = 4;                   // the mapping and merge code that produced the save; must be positive (> 0), else INVALID_ARGUMENT (~~ECHO-111~~)
   repeated shared_proto.v1.RelationClaim relation_claims = 5;  // stored in anime_related_anime_claim (ECHO-102) (ECHO-133)
   repeated shared_proto.v1.EpisodeReference episodes = 6;      // (ECHO-103)
   repeated shared_proto.v1.PageSource page_sources = 7;        // from MergeAnimeResponse (ECHO-108)
@@ -594,7 +594,7 @@ message ListEntityPagesRequest {  // (ECHO-108)
 }
 
 message ListEntityPagesResponse {  // (~~ECHO-108~~, ~~ECHO-111~~)
-  repeated EntityPage pages = 1;
+  repeated EntityPage pages = 1;             // malformed stored page keys are skipped and logged rather than blocking the entity
   optional int32 merge_version = 2;          // entity's stored merge_version; unset before first merge
 }
 

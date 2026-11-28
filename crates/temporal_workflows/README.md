@@ -12,7 +12,7 @@ Temporal workflows, activities, and the names every Echora worker and client mus
 - `WorkerQueueSpec`: the queue a worker polls.
 - `EntityType`, `RefreshTrigger`, `RefreshOutcome`, `RefreshPageKey`, `RefreshAnimeInput`, `RefreshAnimeOutcome`, `FetchRequestedSignal`: strongly typed inputs, outputs, signals, and enums for `RefreshAnimeWorkflow`.
 - `CatalogueDataPort`, `WorkflowStarterPort`, `UpdateServicePorts`, `PortError`: dependency-injected port traits and structured error type keeping workflow and activity logic independent of gRPC clients.
-- `UpdateServiceActivities`, `ProviderActivities`, `RefreshAnimeWorkflow`: the work-refresh workflow, its activity bundles (`list_pages`, `refresh_page`, `merge_anime`, `start_entity_workflows`, `record_refresh`), and deterministic scheduling helpers (`is_page_due`, `matches_fetch_request`, `select_pages_to_refresh`, `compute_page_backoff_seconds`, `build_priority`).
+- `UpdateServiceActivities`, `ProviderActivities`, `RefreshAnimeWorkflow`: the work-refresh workflow, its activity bundles (`list_pages`, `refresh_page`, `record_page_failure`, `merge_anime`, `start_entity_workflows`, `record_refresh`), and deterministic scheduling helpers (`is_page_due`, `matches_fetch_request`, `select_pages_to_refresh`, `compute_page_backoff_seconds`, `build_priority`).
 - `build_worker_options` and `build_update_service_worker_options`: configure one queue with Worker Versioning, graceful shutdown drain (`graceful_shutdown_period`), and workflow/activity registration. `None` leaves the worker unversioned and `Some(behavior)` turns versioning on with that default behavior, so the two Temporal settings cannot disagree.
 
 ## Features

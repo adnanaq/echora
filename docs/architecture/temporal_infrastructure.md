@@ -242,10 +242,10 @@ The rules these workflows follow, each explained in [[update_service|Update Serv
 
 - Other workflows are started through the client in an activity, never as child workflows. (~~ECHO-111~~)
 - An activity waiting on a long gRPC call heartbeats while it waits.
-  - `refresh_page` heartbeats while `FetchPage` runs. (~~ECHO-111~~)
+  - `refresh_page`, `merge_anime`, and `start_entity_workflows` heartbeat every 20 seconds and watch cancellation. (~~ECHO-111~~)
   - `write_synopsis` heartbeats while `WriteSynopsis` runs. (ECHO-115)
 - A gRPC status a retry cannot fix is returned as a non-retryable failure. (~~ECHO-111~~)
-- A workflow checks for a pending `merge_requested` before it ends. (~~ECHO-111~~)
+- A workflow checks for pending `merge_requested` or `fetch_requested` signals after every final activity (`start_entity_workflows` and `record_refresh`), right before it returns. (~~ECHO-111~~)
 
 ---
 
