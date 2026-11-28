@@ -17,11 +17,12 @@ use crate::episode::{
     SyncAnimeEpisodesOutcome, load_known_episodes, sync_anime_episodes,
     validate_anime_episode_references,
 };
-use crate::read_transaction_time;
+use crate::provider_page::{record_page_sources, record_referenced_page_sources};
 use crate::{
     AnimeDetailsInput, AnimeRelationsAndGraphInput, AnimeScheduleAndStatsInput, EntityType,
-    EpisodeReferenceInput, Error, PageKey, PageResponse, Provider,
+    EpisodeReferenceInput, Error, PageKey, PageResponse, PageSource, Provider,
 };
+use crate::{begin_read_snapshot, read_transaction_time};
 
 /// Current canonical hash format version stored in `anime.hash_format`.
 ///
@@ -152,6 +153,13 @@ pub struct SaveAnimeInput {
     pub merge_version: i32,
     /// Optional W3C `traceparent` header propagated into outbox rows.
     pub traceparent: Option<String>,
+    /// URL the merge chose for each page the entity holds as a source.
+    pub page_sources: Vec<PageSource>,
+    /// URL of each page the work holds as a partial source.
+    ///
+    /// The work holding the page as a source owns its URL, so the save fills a URL only while
+    /// none is stored. A partial-source page no work holds as a source gets its URL this way.
+    pub partial_page_sources: Vec<PageSource>,
     /// Work names, classification lists, themes, and images.
     pub details: AnimeDetailsInput,
     /// Theme songs, trailers, links, streaming, statistics, broadcast, and hiatus.
@@ -175,6 +183,7 @@ pub struct SaveAnimeOutcome {
     pub updated_episode_ids: Vec<Uuid>,
 }
 
+/// A `google.protobuf.Timestamp`, encoded into the outbox event payloads.
 #[derive(PartialEq, prost::Message)]
 pub(crate) struct ProtoTimestamp {
     #[prost(int64, tag = "1")]
@@ -241,12 +250,9 @@ struct ProtoAnimeStatusChangedNotification {
 /// Returns [`Error::is_not_found`] when `anime_id` does not exist or is
 /// deleted, or a database error when any query or decompression fails.
 pub async fn load_anime(pool: &PgPool, anime_id: Uuid) -> Result<LoadAnimeOutcome, Error> {
-    let mut tx = pool.begin().await?;
     // Read version, linked page metadata, response bodies, and corrections from
     // one consistent snapshot so concurrent store_page calls cannot mix fields.
-    sqlx::query!("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
-        .execute(&mut *tx)
-        .await?;
+    let mut tx = begin_read_snapshot(pool).await?;
 
     let version = sqlx::query_scalar!(
         r#"
@@ -315,7 +321,7 @@ async fn load_linked_pages(
             continue;
         };
         let provider: Provider = row.provider.parse()?;
-        let entity_type = parse_entity_type(&row.entity_type)?;
+        let entity_type: EntityType = row.entity_type.parse()?;
         let page_key = PageKey::new(provider, entity_type, &row.address)?;
         let responses = responses_by_page
             .remove(&(row.provider, row.entity_type, row.address))
@@ -344,7 +350,7 @@ async fn load_linked_pages(
     let mut partial_source_pages = Vec::with_capacity(partial_source_rows.len());
     for row in partial_source_rows {
         let provider: Provider = row.provider.parse()?;
-        let entity_type = parse_entity_type(&row.entity_type)?;
+        let entity_type: EntityType = row.entity_type.parse()?;
         partial_source_pages.push(PageKey::new(provider, entity_type, &row.address)?);
     }
 
@@ -516,6 +522,23 @@ async fn save_anime_in_tx(
     // always lock in the same order; see lock_relation_target_pages.
     crate::anime_relations::lock_relation_target_pages(tx, &input.relations_and_graph.relations)
         .await?;
+    record_page_sources(tx, EntityType::Anime, input.anime_id, &input.page_sources).await?;
+    record_referenced_page_sources(
+        tx,
+        input
+            .relations_and_graph
+            .relations
+            .iter()
+            .map(|relation| &relation.target_page_source)
+            .chain(&input.partial_page_sources)
+            .chain(
+                input
+                    .episodes
+                    .iter()
+                    .flat_map(|episode| episode.page_sources.iter()),
+            ),
+    )
+    .await?;
     upsert_anime_shared_rows(tx, input).await?;
     let existing_anime = sqlx::query!(
         r#"
@@ -917,22 +940,6 @@ pub(crate) async fn insert_catalogue_outbox_event(
     .await
 }
 
-/// Converts stored `entity_type` lookup text into a [`EntityType`].
-///
-/// # Errors
-///
-/// Returns an invalid-argument error for text no migration defines.
-pub(crate) fn parse_entity_type(entity_type_text: &str) -> Result<EntityType, Error> {
-    match entity_type_text {
-        "anime" => Ok(EntityType::Anime),
-        "episode" => Ok(EntityType::Episode),
-        "character" => Ok(EntityType::Character),
-        other => Err(Error::invalid_argument(format!(
-            "unknown stored entity_type {other:?}"
-        ))),
-    }
-}
-
 /// Converts stored `anime_status` lookup text into its proto enum number.
 ///
 /// # Errors
@@ -1048,6 +1055,8 @@ mod tests {
             hash_format: ANIME_HASH_FORMAT,
             merge_version: 1,
             traceparent: Some("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01".to_owned()),
+            page_sources: Vec::new(),
+            partial_page_sources: Vec::new(),
             details: AnimeDetailsInput {
                 titles: vec![AnimeTitleInput {
                     language: "en".to_owned(),
@@ -1133,13 +1142,16 @@ mod tests {
 
     #[test]
     fn helpers_reject_unknown_values_and_corrupt_gzip() {
-        assert_eq!(parse_entity_type("anime").ok(), Some(EntityType::Anime));
-        assert_eq!(parse_entity_type("episode").ok(), Some(EntityType::Episode));
+        assert_eq!("anime".parse::<EntityType>().ok(), Some(EntityType::Anime));
         assert_eq!(
-            parse_entity_type("character").ok(),
+            "episode".parse::<EntityType>().ok(),
+            Some(EntityType::Episode)
+        );
+        assert_eq!(
+            "character".parse::<EntityType>().ok(),
             Some(EntityType::Character)
         );
-        assert!(matches!(parse_entity_type("unknown"), Err(e) if e.is_invalid_argument()));
+        assert!(matches!("unknown".parse::<EntityType>(), Err(e) if e.is_invalid_argument()));
 
         assert_eq!(status_to_proto_i32("FINISHED").ok(), Some(1));
         assert_eq!(status_to_proto_i32("UPCOMING").ok(), Some(2));

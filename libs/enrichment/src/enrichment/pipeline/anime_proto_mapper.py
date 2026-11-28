@@ -4,130 +4,44 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import UTC, date, datetime, time
-from enum import Enum
 from typing import Any
 
+from enrichment.pipeline.proto_enum_maps import (
+    ANIME_RATING_MAP as _ANIME_RATING_MAP,
+)
+from enrichment.pipeline.proto_enum_maps import (
+    ANIME_RELATION_TYPE_MAP,
+)
+from enrichment.pipeline.proto_enum_maps import (
+    ANIME_SEASON_MAP as _ANIME_SEASON_MAP,
+)
+from enrichment.pipeline.proto_enum_maps import (
+    ANIME_STATUS_MAP as _ANIME_STATUS_MAP,
+)
+from enrichment.pipeline.proto_enum_maps import (
+    ANIME_TYPE_MAP as _ANIME_TYPE_MAP,
+)
+from enrichment.pipeline.proto_enum_maps import (
+    COMPANY_ROLE_MAP as _COMPANY_ROLE_MAP,
+)
+from enrichment.pipeline.proto_enum_maps import (
+    ENTITY_TYPE_MAP as _ENTITY_TYPE_MAP,
+)
+from enrichment.pipeline.proto_enum_maps import (
+    SOURCE_MATERIAL_MAP as _SOURCE_MATERIAL_MAP,
+)
+from enrichment.pipeline.proto_enum_maps import (
+    resolve_enum_key as _enum_key,
+)
 from google.protobuf.timestamp_pb2 import Timestamp  # ty: ignore[unresolved-import]
 from shared_proto.v1 import anime_pb2
 
-_ENTITY_TYPE_MAP: dict[str, anime_pb2.EntityType] = {
-    "ANIME": anime_pb2.ENTITY_TYPE_ANIME,
-    "CHARACTER": anime_pb2.ENTITY_TYPE_CHARACTER,
-    "EPISODE": anime_pb2.ENTITY_TYPE_EPISODE,
-}
-
-_ANIME_STATUS_MAP: dict[str, anime_pb2.AnimeStatus] = {
-    "FINISHED": anime_pb2.ANIME_STATUS_FINISHED,
-    "UPCOMING": anime_pb2.ANIME_STATUS_UPCOMING,
-    "ONGOING": anime_pb2.ANIME_STATUS_ONGOING,
-    "UNKNOWN": anime_pb2.ANIME_STATUS_UNKNOWN,
-    "CANCELLED": anime_pb2.ANIME_STATUS_CANCELLED,
-}
-
-_ANIME_TYPE_MAP: dict[str, anime_pb2.AnimeType] = {
-    "MOVIE": anime_pb2.ANIME_TYPE_MOVIE,
-    "ONA": anime_pb2.ANIME_TYPE_ONA,
-    "OVA": anime_pb2.ANIME_TYPE_OVA,
-    "SPECIAL": anime_pb2.ANIME_TYPE_SPECIAL,
-    "TV": anime_pb2.ANIME_TYPE_TV,
-    "UNKNOWN": anime_pb2.ANIME_TYPE_UNKNOWN,
-    "MUSIC": anime_pb2.ANIME_TYPE_MUSIC,
-    "PV": anime_pb2.ANIME_TYPE_PV,
-    "TV_SPECIAL": anime_pb2.ANIME_TYPE_TV_SPECIAL,
-    "TV_SHORT": anime_pb2.ANIME_TYPE_TV_SHORT,
-    "CM": anime_pb2.ANIME_TYPE_CM,
-    "OTHER": anime_pb2.ANIME_TYPE_OTHER,
-}
-
-_ANIME_RATING_MAP: dict[str, anime_pb2.AnimeRating] = {
-    "G": anime_pb2.ANIME_RATING_G,
-    "PG": anime_pb2.ANIME_RATING_PG,
-    "PG13": anime_pb2.ANIME_RATING_PG13,
-    "PG-13": anime_pb2.ANIME_RATING_PG13,
-    "R": anime_pb2.ANIME_RATING_R,
-    "RPLUS": anime_pb2.ANIME_RATING_RPLUS,
-    "R+": anime_pb2.ANIME_RATING_RPLUS,
-    "RX": anime_pb2.ANIME_RATING_RX,
-    "UNKNOWN": anime_pb2.ANIME_RATING_UNKNOWN,
-}
-
-_ANIME_SEASON_MAP: dict[str, anime_pb2.AnimeSeason] = {
-    "SPRING": anime_pb2.ANIME_SEASON_SPRING,
-    "SUMMER": anime_pb2.ANIME_SEASON_SUMMER,
-    "FALL": anime_pb2.ANIME_SEASON_FALL,
-    "AUTUMN": anime_pb2.ANIME_SEASON_FALL,
-    "WINTER": anime_pb2.ANIME_SEASON_WINTER,
-}
-
-_SOURCE_MATERIAL_MAP: dict[str, anime_pb2.SourceMaterialType] = {
-    "ORIGINAL": anime_pb2.SOURCE_MATERIAL_TYPE_ORIGINAL,
-    "MANGA": anime_pb2.SOURCE_MATERIAL_TYPE_MANGA,
-    "LIGHT_NOVEL": anime_pb2.SOURCE_MATERIAL_TYPE_LIGHT_NOVEL,
-    "VISUAL_NOVEL": anime_pb2.SOURCE_MATERIAL_TYPE_VISUAL_NOVEL,
-    "GAME": anime_pb2.SOURCE_MATERIAL_TYPE_GAME,
-    "WEB_MANGA": anime_pb2.SOURCE_MATERIAL_TYPE_WEB_MANGA,
-    "WEB_NOVEL": anime_pb2.SOURCE_MATERIAL_TYPE_WEB_NOVEL,
-    "NOVEL": anime_pb2.SOURCE_MATERIAL_TYPE_NOVEL,
-    "ONE_SHOT": anime_pb2.SOURCE_MATERIAL_TYPE_ONE_SHOT,
-    "DOUJINSHI": anime_pb2.SOURCE_MATERIAL_TYPE_DOUJINSHI,
-    "KOMA_4": anime_pb2.SOURCE_MATERIAL_TYPE_KOMA_4,
-    "4-KOMA": anime_pb2.SOURCE_MATERIAL_TYPE_KOMA_4,
-    "MIXED_MEDIA": anime_pb2.SOURCE_MATERIAL_TYPE_MIXED_MEDIA,
-    "MUSIC": anime_pb2.SOURCE_MATERIAL_TYPE_MUSIC,
-    "RADIO": anime_pb2.SOURCE_MATERIAL_TYPE_RADIO,
-    "BOOK": anime_pb2.SOURCE_MATERIAL_TYPE_BOOK,
-    "PICTURE_BOOK": anime_pb2.SOURCE_MATERIAL_TYPE_PICTURE_BOOK,
-    "CARD_GAME": anime_pb2.SOURCE_MATERIAL_TYPE_CARD_GAME,
-    "OTHER": anime_pb2.SOURCE_MATERIAL_TYPE_OTHER,
-    "UNKNOWN": anime_pb2.SOURCE_MATERIAL_TYPE_UNKNOWN,
-    "MANHWA": anime_pb2.SOURCE_MATERIAL_TYPE_MANHWA,
-    "MANHUA": anime_pb2.SOURCE_MATERIAL_TYPE_MANHUA,
-    "COMIC": anime_pb2.SOURCE_MATERIAL_TYPE_COMIC,
-    "LIVE_ACTION": anime_pb2.SOURCE_MATERIAL_TYPE_LIVE_ACTION,
-    "ILLUSTRATION": anime_pb2.SOURCE_MATERIAL_TYPE_ILLUSTRATION,
-    "WESTERN_MEDIA": anime_pb2.SOURCE_MATERIAL_TYPE_WESTERN_MEDIA,
-    "WEBTOON": anime_pb2.SOURCE_MATERIAL_TYPE_WEBTOON,
-    "FAIRY_TALE": anime_pb2.SOURCE_MATERIAL_TYPE_FAIRY_TALE,
-    "SHORT_STORY": anime_pb2.SOURCE_MATERIAL_TYPE_SHORT_STORY,
-}
-
-_COMPANY_ROLE_MAP: dict[str, anime_pb2.CompanyRole] = {
-    "STUDIO": anime_pb2.COMPANY_ROLE_STUDIO,
-    "PRODUCER": anime_pb2.COMPANY_ROLE_PRODUCER,
-    "LICENSOR": anime_pb2.COMPANY_ROLE_LICENSOR,
-    "UNKNOWN": anime_pb2.COMPANY_ROLE_UNKNOWN,
-}
-
-ANIME_RELATION_TYPE_MAP: dict[str, anime_pb2.AnimeRelationType] = {
-    "ADAPTATION": anime_pb2.ANIME_RELATION_TYPE_ADAPTATION,
-    "ALTERNATIVE_VERSION": anime_pb2.ANIME_RELATION_TYPE_ALTERNATIVE_VERSION,
-    "ALTERNATIVE_SETTING": anime_pb2.ANIME_RELATION_TYPE_ALTERNATIVE_SETTING,
-    "CHARACTER": anime_pb2.ANIME_RELATION_TYPE_CHARACTER,
-    "CROSSOVER": anime_pb2.ANIME_RELATION_TYPE_CROSSOVER,
-    "FULL_STORY": anime_pb2.ANIME_RELATION_TYPE_FULL_STORY,
-    "OTHER": anime_pb2.ANIME_RELATION_TYPE_OTHER,
-    "PARENT_STORY": anime_pb2.ANIME_RELATION_TYPE_PARENT_STORY,
-    "PREQUEL": anime_pb2.ANIME_RELATION_TYPE_PREQUEL,
-    "SAME_FRANCHISE": anime_pb2.ANIME_RELATION_TYPE_SAME_FRANCHISE,
-    "SAME_SETTING": anime_pb2.ANIME_RELATION_TYPE_SAME_SETTING,
-    "SEQUEL": anime_pb2.ANIME_RELATION_TYPE_SEQUEL,
-    "SIDE_STORY": anime_pb2.ANIME_RELATION_TYPE_SIDE_STORY,
-    "SPIN_OFF": anime_pb2.ANIME_RELATION_TYPE_SPIN_OFF,
-    "SUMMARY": anime_pb2.ANIME_RELATION_TYPE_SUMMARY,
-}
-
-
-def _enum_key(value: Any) -> str:
-    """Normalize an enum member or string into an upper-case lookup key.
-
-    Args:
-        value: Raw enum or string value.
-
-    Returns:
-        Upper-case key string.
-    """
-    raw = value.value if isinstance(value, Enum) else str(value)
-    return raw.strip().upper().replace(" ", "_")
+__all__ = [
+    "ANIME_RELATION_TYPE_MAP",
+    "build_anime_proto",
+    "sort_anime_proto_lists",
+    "to_proto_timestamp",
+]
 
 
 def to_proto_timestamp(value: datetime | str | None) -> Timestamp | None:
@@ -575,6 +489,102 @@ def build_anime_proto(record: dict[str, Any]) -> anime_pb2.Anime:
     return msg
 
 
+def _sort_anime_nested_lists(anime: anime_pb2.Anime) -> None:
+    """Sort nested repeated fields inside composite entries on ``Anime``.
+
+    Args:
+        anime: Target ``anime_pb2.Anime`` message mutated in place.
+    """
+    for theme_list in (anime.opening_themes, anime.ending_themes):
+        for theme_song in theme_list:
+            theme_song.episodes.sort(
+                key=lambda ep_range: (
+                    ep_range.range_start,
+                    ep_range.HasField("range_end"),
+                    ep_range.range_end,
+                )
+            )
+    for stats_entry in anime.statistics.values():
+        stats_entry.contextual_ranks.sort(
+            key=lambda rank_entry: (
+                rank_entry.rank,
+                rank_entry.context,
+                rank_entry.format,
+                rank_entry.year,
+                rank_entry.season,
+                rank_entry.is_all_time,
+            )
+        )
+    for streaming_entry in anime.streaming_sources:
+        streaming_entry.subtitle_languages[:] = sorted(
+            streaming_entry.subtitle_languages
+        )
+    for company in anime.companies:
+        company.sources[:] = sorted(company.sources)
+        company.roles[:] = sorted(company.roles)
+    for rel_list in anime.related_anime.values():
+        for related in rel_list.items:
+            related.sources[:] = sorted(related.sources)
+            related.images[:] = sorted(related.images)
+    for rel_list in anime.related_source_material.values():
+        for related in rel_list.items:
+            related.sources[:] = sorted(related.sources)
+            related.images[:] = sorted(related.images)
+
+
+def _sort_anime_relations(anime: anime_pb2.Anime) -> None:
+    """Sort related anime and source-material item lists on ``Anime``.
+
+    Args:
+        anime: Target ``anime_pb2.Anime`` message mutated in place.
+    """
+    for rel_list in anime.related_anime.values():
+        rel_list.items.sort(
+            key=lambda rel: (
+                rel.title,
+                rel.type,
+                tuple(rel.sources),
+                rel.status,
+                rel.year,
+                rel.score,
+                rel.episode_count,
+                tuple(rel.images),
+            )
+        )
+    for rel_list in anime.related_source_material.values():
+        rel_list.items.sort(
+            key=lambda rel: (
+                rel.title,
+                rel.type,
+                tuple(rel.sources),
+                rel.status,
+                rel.score,
+                rel.chapters,
+                rel.volumes,
+                tuple(rel.images),
+            )
+        )
+
+
+def _theme_sort_key(theme: anime_pb2.ThemeSong) -> tuple[Any, ...]:
+    """Build a deterministic comparison key for a ``ThemeSong`` message.
+
+    Args:
+        theme: Protobuf ``ThemeSong`` message with sorted episode ranges.
+
+    Returns:
+        Tuple of title, artist, and episode range tuples.
+    """
+    return (
+        theme.title,
+        theme.artist,
+        tuple(
+            (ep.range_start, ep.HasField("range_end"), ep.range_end)
+            for ep in theme.episodes
+        ),
+    )
+
+
 def sort_anime_proto_lists(anime: anime_pb2.Anime) -> None:
     """Sort every repeated field on ``Anime`` for deterministic change hashing.
 
@@ -593,19 +603,36 @@ def sort_anime_proto_lists(anime: anime_pb2.Anime) -> None:
         items = sorted(getattr(anime, scalar_list))
         del getattr(anime, scalar_list)[:]
         getattr(anime, scalar_list).extend(items)
-
     anime.images.covers[:] = sorted(anime.images.covers)
     anime.images.posters[:] = sorted(anime.images.posters)
     anime.images.banners[:] = sorted(anime.images.banners)
-
-    anime.opening_themes.sort(key=lambda t: (t.title, t.artist))
-    anime.ending_themes.sort(key=lambda t: (t.title, t.artist))
-    anime.themes.sort(key=lambda t: (t.name, t.description))
-    anime.trailers.sort(key=lambda t: (t.source, t.title))
-    anime.external_sources.sort(key=lambda e: (e.platform, e.source, e.label))
-    anime.streaming_sources.sort(key=lambda s: (s.platform, s.source, s.region))
-    anime.companies.sort(key=lambda c: c.name)
-    for rel_list in anime.related_anime.values():
-        rel_list.items.sort(key=lambda r: (r.title, tuple(r.sources)))
-    for rel_list in anime.related_source_material.values():
-        rel_list.items.sort(key=lambda r: (r.title, tuple(r.sources)))
+    _sort_anime_nested_lists(anime)
+    anime.opening_themes.sort(key=_theme_sort_key)
+    anime.ending_themes.sort(key=_theme_sort_key)
+    anime.themes.sort(key=lambda theme: (theme.name, theme.description))
+    anime.trailers.sort(
+        key=lambda trailer: (trailer.source, trailer.title, trailer.thumbnail_source)
+    )
+    anime.external_sources.sort(
+        key=lambda link: (link.platform, link.source, link.label, link.language)
+    )
+    anime.streaming_sources.sort(
+        key=lambda entry: (
+            entry.platform,
+            entry.source,
+            entry.region,
+            entry.is_free,
+            entry.is_premium_required,
+            entry.has_dub,
+            tuple(entry.subtitle_languages),
+        )
+    )
+    anime.companies.sort(
+        key=lambda company: (
+            company.name,
+            tuple(company.roles),
+            tuple(company.sources),
+            company.description,
+        )
+    )
+    _sort_anime_relations(anime)

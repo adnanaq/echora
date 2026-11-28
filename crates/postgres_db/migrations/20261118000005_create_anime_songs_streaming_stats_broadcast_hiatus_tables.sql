@@ -144,6 +144,11 @@ CREATE TABLE anime_broadcast (
   next_episode_number  int CHECK (next_episode_number >= 0)
 );
 
+-- Episode tracking finds works whose next episode airs soon.
+CREATE INDEX anime_broadcast_next_episode_idx
+  ON anime_broadcast(next_episode_at)
+  WHERE next_episode_at IS NOT NULL;
+
 CREATE TABLE anime_hiatus (
   id            bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   anime_id      uuid NOT NULL REFERENCES anime(id) ON DELETE CASCADE,

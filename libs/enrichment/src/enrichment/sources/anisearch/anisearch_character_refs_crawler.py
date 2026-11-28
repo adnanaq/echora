@@ -11,6 +11,7 @@ import logging
 from typing import cast
 
 from enrichment.sources.anisearch.anisearch_http import fetch_anisearch_page
+from enrichment.sources.base.page_fetcher import parse_html_document
 from http_cache.result_cache import cached_result
 
 logger = logging.getLogger(__name__)
@@ -38,13 +39,8 @@ _XPATHS: dict[str, str] = {
 
 def _extract_refs_from_html(html_text: str) -> dict[str, list[str]] | None:
     """Parse a /characters page into a {section_id: [href, ...]} dict."""
-    from lxml import etree
-
     try:
-        parser = etree.HTMLParser()
-        tree = etree.fromstring(html_text.encode(), parser)
-        if tree is None:  # pragma: no cover
-            return None  # pragma: no cover
+        tree = parse_html_document(html_text)
     except Exception:  # pragma: no cover
         return None  # pragma: no cover
 

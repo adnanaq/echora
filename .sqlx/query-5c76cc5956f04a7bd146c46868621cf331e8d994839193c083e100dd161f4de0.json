@@ -1,0 +1,33 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT character.id AS entity_id, character.next_refresh_at\n        FROM character\n        WHERE character.deleted_at IS NULL\n          AND (\n                (coalesce(character.next_refresh_at, '-infinity'::timestamptz) < $1\n                 AND EXISTS (\n                     SELECT 1\n                     FROM character_animeography appearance\n                     JOIN anime_source work_page\n                       ON work_page.provider = appearance.anime_page_provider\n                      AND work_page.entity_type = 'anime'\n                      AND work_page.address = appearance.anime_page_address\n                     JOIN anime ON anime.id = work_page.anime_id\n                     WHERE appearance.character_id = character.id\n                       AND anime.deleted_at IS NULL\n                       AND anime.status IN ('ONGOING', 'UPCOMING')\n                       AND (anime.year IS NULL OR anime.year > extract(year FROM now())::int - $2)\n                 ))\n             OR coalesce(character.merge_version, 0) < $6\n          )\n          AND (coalesce(character.next_refresh_at, '-infinity'::timestamptz), character.id)\n              > (coalesce($3, '-infinity'::timestamptz), coalesce($4, '00000000-0000-0000-0000-000000000000'::uuid))\n        ORDER BY coalesce(character.next_refresh_at, '-infinity'::timestamptz), character.id\n        LIMIT $5\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "entity_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "next_refresh_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Timestamptz",
+        "Int4",
+        "Timestamptz",
+        "Uuid",
+        "Int8",
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false,
+      true
+    ]
+  },
+  "hash": "5c76cc5956f04a7bd146c46868621cf331e8d994839193c083e100dd161f4de0"
+}

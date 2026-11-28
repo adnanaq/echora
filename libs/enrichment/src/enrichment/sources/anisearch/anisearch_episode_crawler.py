@@ -29,6 +29,7 @@ from enrichment.sources.base.framework import (
     BaseCrawler,
     NullRepository,
 )
+from enrichment.sources.base.page_fetcher import parse_html_document
 from enrichment.sources.base.utils import parse_iso_date, sanitize_output_path
 from http_cache.result_cache import cached_result
 
@@ -69,13 +70,9 @@ def _extract_episodes_from_html(html_text: str) -> dict[str, Any] | None:
     labels in one string (e.g. "279FillerRecap"), which the regex detection
     in _parse_episode_row relies on.
     """
-    from lxml import etree
 
     try:
-        parser = etree.HTMLParser()
-        tree = etree.fromstring(html_text.encode(), parser)
-        if tree is None:  # pragma: no cover
-            return None  # pragma: no cover
+        tree = parse_html_document(html_text)
     except Exception:  # pragma: no cover
         return None  # pragma: no cover
 
@@ -88,7 +85,7 @@ def _extract_episodes_from_html(html_text: str) -> dict[str, Any] | None:
             els = cast(list[Any], row.xpath(xpath))
             if not els:
                 return None
-            return "".join(els[0].itertext()).strip() or None
+            return str(els[0].text_content()).strip() or None
 
         episodes.append(
             {

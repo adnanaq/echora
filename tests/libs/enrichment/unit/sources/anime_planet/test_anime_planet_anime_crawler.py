@@ -30,7 +30,6 @@ from enrichment.sources.anime_planet.anime_planet_models import (
 )
 from enrichment.sources.base.exceptions import ServiceNetworkError, ServiceParseError
 from enrichment.sources.base.framework import NullRepository
-from lxml import etree
 
 ONE_PIECE_URL = "https://www.anime-planet.com/anime/one-piece"
 DANDADAN_URL = "https://www.anime-planet.com/anime/dandadan"
@@ -62,7 +61,9 @@ def _page(json_ld: dict, entry_bar: str | None = None) -> str:
 
 
 def _related_element(html: str, *, is_manga: bool = False) -> dict[str, Any]:
-    tree = etree.fromstring(html, etree.HTMLParser())
+    from enrichment.sources.base.page_fetcher import parse_html_document
+
+    tree = parse_html_document(html)
     elements = cast(list[Any], tree.xpath("//a[contains(@class,'RelatedEntry')]"))
     return _parse_related_entry_element(elements[0], is_manga=is_manga)
 

@@ -43,11 +43,15 @@ CREATE TABLE source_material (
   updated_at      timestamptz NOT NULL DEFAULT now()
 );
 
+-- A provider page of a source material, with its URL and the title its provider gives it.
+-- A page a character's mangaography names before any work relates the source material has
+-- no source material yet; the work's save attaches it.
 CREATE TABLE source_material_xref (
   provider            text NOT NULL REFERENCES provider(value),
   external_id         text NOT NULL,
-  source_material_id  uuid NOT NULL REFERENCES source_material(id) ON DELETE CASCADE,
+  source_material_id  uuid REFERENCES source_material(id) ON DELETE CASCADE,
   source              text NOT NULL,
+  title               text,
   PRIMARY KEY (provider, external_id),
   UNIQUE (source_material_id, provider)
 );

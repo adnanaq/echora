@@ -13,6 +13,10 @@ CREATE TABLE provider_page (
   responses_hash  text,
   fetch_failed_at timestamptz,
   fetch_failures  int NOT NULL DEFAULT 0 CHECK (fetch_failures >= 0),
+  -- The page's URL and the title its provider gives it. The entity holding the page writes
+  -- both from its merge; a save that only names the page fills each while it is empty.
+  source          text,
+  title           text,
   PRIMARY KEY (provider, entity_type, address),
   CHECK ((fetched_at IS NULL) = (responses_hash IS NULL))
 );

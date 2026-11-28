@@ -225,7 +225,7 @@ Starting values, tuned once real runs are measured:
 
 ## What Triggers a Refresh
 
-A work is **older** when it first aired more than `ON_DEMAND_REFRESH_AGE_YEARS` (30) years ago. An older work, and its episodes and characters, refresh only when a user opens their page. A work with no known year counts as not older. A character counts as older only when every work it appears in is older. (ECHO-117)
+A work is **older** when it first aired more than `ON_DEMAND_REFRESH_AGE_YEARS` (30) years ago. An older work, and its episodes and characters, refresh only when a user opens their page. A work with no known year counts as not older. A character is refreshed by the sweep only through a work the sweep refreshes, one that is ongoing or upcoming and not older. (ECHO-117)
 
 | Trigger | Entities | When |
 |---|---|---|

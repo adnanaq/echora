@@ -23,6 +23,7 @@ from enrichment.sources.base.framework import (
     FileRepository,
     NullRepository,
 )
+from enrichment.sources.base.page_fetcher import parse_html_document
 from enrichment.sources.base.page_readiness import wait_for_page
 from enrichment.sources.mal.mal_base import (
     MAL_DOMAIN,
@@ -36,6 +37,7 @@ from enrichment.sources.mal.mal_models import (
     MalVoiceActorRef,
 )
 from http_cache.result_cache import cached_result
+from lxml import etree
 
 logger = logging.getLogger(__name__)
 
@@ -79,18 +81,13 @@ def _extract_character_from_html(html: str) -> dict[str, Any] | None:
         The content block is parsed here rather than retained, so the dict does
         not carry page markup.
     """
-    from lxml import etree
-
     try:
-        parser = etree.HTMLParser(encoding="utf-8")
-        tree = etree.fromstring(html.encode(), parser)
-        if tree is None:  # pragma: no cover
-            return None  # pragma: no cover
+        tree = parse_html_document(html)
     except Exception:  # pragma: no cover
         return None  # pragma: no cover
 
     name_els = cast(list[Any], tree.xpath(_XPATHS["name_header"]))
-    name_header = "".join(name_els[0].itertext()).strip() if name_els else None
+    name_header = str(name_els[0].text_content()).strip() if name_els else None
 
     img_vals = cast(list[str], tree.xpath(_XPATHS["image_src"]))
     image_src = img_vals[0].strip() if img_vals else None
@@ -98,7 +95,7 @@ def _extract_character_from_html(html: str) -> dict[str, Any] | None:
     fav_tds = cast(list[Any], tree.xpath(_XPATHS["favorites_td"]))
     favorites: str | None = None
     if fav_tds:
-        fav_text = "".join(fav_tds[0].itertext())
+        fav_text = str(fav_tds[0].text_content())
         m = re.search(r"Member Favorites:\s*([\d,]+)", fav_text)
         favorites = m.group(1) if m else None
 

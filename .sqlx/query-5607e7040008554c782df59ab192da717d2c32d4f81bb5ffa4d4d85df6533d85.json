@@ -1,0 +1,58 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT provider, context, rank, is_all_time, format, season, year\n         FROM anime_statistics_contextual_rank\n         WHERE anime_id = $1 ORDER BY provider, context",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "provider",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "context",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "rank",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 3,
+        "name": "is_all_time",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 4,
+        "name": "format",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "season",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "year",
+        "type_info": "Int2"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "5607e7040008554c782df59ab192da717d2c32d4f81bb5ffa4d4d85df6533d85"
+}

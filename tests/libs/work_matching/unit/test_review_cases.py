@@ -25,9 +25,9 @@ from work_matching.split_work_check import (
     list_split_work_review_reasons,
 )
 
-SIGEWINNE = "animeplanet:anime:genshin-impact-character-teaser-sigewinne-everyday-correspondence"
+SIGEWINNE = "anime_planet:anime:genshin-impact-character-teaser-sigewinne-everyday-correspondence"
 VARESA = (
-    "animeplanet:anime:genshin-impact-character-teaser-varesa-the-legend-of-a-warrior"
+    "anime_planet:anime:genshin-impact-character-teaser-varesa-the-legend-of-a-warrior"
 )
 
 
@@ -96,8 +96,8 @@ def test_review_case_build_entry_group_case_single_entry_one_case_for_every_prov
     case = ReviewCase.build_entry_group_case([entries[0]], decisions, (), pages)
     assert case.case_name == (
         "doubled provider: anilist:anime:20837 anilist:anime:20900"
-        " animeplanet:anime:blue-spring-ride-page-13"
-        " animeplanet:anime:blue-spring-ride-unwritten in mal:anime:24151"
+        " anime_planet:anime:blue-spring-ride-page-13"
+        " anime_planet:anime:blue-spring-ride-unwritten in mal:anime:24151"
     )
     assert case.reasons == ("PART_PAGES", "UNDECIDED", "UNLINKED_PAGES")
 
@@ -234,7 +234,7 @@ def test_review_case_build_entry_group_case_keeps_renamed_page(
         },
     )
     case = build_group_case(entries, [renamed_page])
-    assert [page.key for page in case.pages] == ["animeplanet:anime:old"]
+    assert [page.key for page in case.pages] == ["anime_planet:anime:old"]
 
 
 def test_review_case_build_entry_group_case_names_group_case_by_every_page(

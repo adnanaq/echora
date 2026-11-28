@@ -976,3 +976,33 @@ def test_map_anilist_anime_and_character_responses() -> None:
                 )
             ]
         )
+
+    with pytest.raises(TypeError, match="data.Media"):
+        map_anilist_anime_responses(
+            [
+                PageResponse(
+                    request_name="main",
+                    content_type="application/json",
+                    body=b'{"data": {"Media": null}}',
+                )
+            ]
+        )
+
+    bad_edge_page = PageResponse(
+        request_name="characters_page_1",
+        content_type="application/json",
+        body=json.dumps(
+            {
+                "data": {
+                    "Media": {
+                        "characters": {
+                            "edges": [
+                                {"node": "not-a-dict"},
+                            ]
+                        }
+                    }
+                }
+            }
+        ).encode("utf-8"),
+    )
+    assert map_anilist_anime_character_responses([bad_edge_page]) == []

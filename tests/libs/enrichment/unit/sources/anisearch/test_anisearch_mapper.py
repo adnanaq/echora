@@ -623,7 +623,8 @@ def test_episode_from_anisearch_output_has_no_anime_id() -> None:
 
 def test_map_anisearch_anime_responses_valid_html_returns_canonical_anime() -> None:
     main_html = b"""
-    <html><body>
+    <html><head><link rel="canonical" href="https://www.anisearch.com/anime/475,tanjou-debut" /></head>
+    <body>
       <section id="information">
         <div class="title" lang="en"><strong class="f16">Tanjou Debut</strong></div>
         <div class="type">OVA, 2 (1994)</div>
@@ -643,7 +644,6 @@ def test_map_anisearch_anime_responses_valid_html_returns_canonical_anime() -> N
                 body=relations_html,
             ),
         ],
-        source_url="https://www.anisearch.com/anime/475,tanjou-debut",
     )
 
     assert canonical["title"] == "Tanjou Debut"
@@ -752,7 +752,8 @@ def test_map_anisearch_character_responses_valid_html_returns_canonical_characte
     None
 ):
     char_html = b"""
-    <html><body>
+    <html><head><link rel="canonical" href="https://www.anisearch.com/character/10,spike-spiegel" /></head>
+    <body>
       <h1 id="htitle">Spike Spiegel</h1>
       <section id="description"><div lang="en" class="textblock">Space cowboy.</div></section>
     </body></html>
@@ -771,7 +772,6 @@ def test_map_anisearch_character_responses_valid_html_returns_canonical_characte
                 body=b"<html><body></body></html>",
             ),
         ],
-        source_url="https://www.anisearch.com/character/10,spike-spiegel",
     )
 
     assert canonical["name"] == "Spike Spiegel"
@@ -796,3 +796,28 @@ def test_map_anisearch_character_responses_omitted_source_url_uses_canonical_lin
     assert canonical["sources"] == [
         "https://www.anisearch.com/character/10,spike-spiegel"
     ]
+
+
+def test_map_anisearch_responses_missing_or_empty_html_error_and_empty_branches() -> (
+    None
+):
+    empty_main = [PageResponse(request_name="main", content_type="text/html", body=b"")]
+    with pytest.raises(ValueError, match="yielded no anime data"):
+        map_anisearch_anime_responses(empty_main)
+    assert map_anisearch_anime_episode_responses([]) == []
+    assert (
+        map_anisearch_anime_episode_responses(
+            [
+                PageResponse(
+                    request_name="episodes",
+                    content_type="text/html",
+                    body=b"",
+                )
+            ]
+        )
+        == []
+    )
+    with pytest.raises(ValueError, match="missing required 'main'"):
+        map_anisearch_character_responses([])
+    with pytest.raises(ValueError, match="yielded no character data"):
+        map_anisearch_character_responses(empty_main)

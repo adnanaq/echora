@@ -1,13 +1,19 @@
 //! Integration tests for work relations, source material and companies against PostgreSQL.
 
+#![expect(
+    clippy::expect_used,
+    reason = "a failed setup step stops the test, as a test's own expect does"
+)]
+
 mod support;
 
 use postgres_db::{
     AnimeCompanyInput, AnimeRelationInput, AnimeRelationsAndGraphInput, AnimeSourceMaterialInput,
-    CompanyXrefInput, EntityType, PageKey, Provider, SourceMaterialXrefInput,
+    CompanyXrefInput, EntityType, PageKey, PageSource, Provider, SourceMaterialXrefInput,
     link_anime_source_page, save_anime,
 };
 use sqlx::PgPool;
+use url::Url;
 use uuid::Uuid;
 
 use crate::support::{build_anime_save, insert_unmerged_anime};
@@ -30,6 +36,7 @@ fn build_source_material(title: &str, xrefs: &[(&str, &str)]) -> AnimeSourceMate
                 provider: (*provider).to_owned(),
                 external_id: (*external_id).to_owned(),
                 url: format!("https://example.com/{provider}/{external_id}"),
+                title: None,
             })
             .collect(),
     }
@@ -81,7 +88,7 @@ async fn link_anime_source_page_invalid_link_returns_error(pool: PgPool) {
     let other_anime_id = insert_unmerged_anime(&pool).await;
     let anime_page = PageKey::new(Provider::Mal, EntityType::Anime, "21").expect("valid page key");
     let episode_page =
-        PageKey::new(Provider::Mal, EntityType::Episode, "21").expect("valid page key");
+        PageKey::new(Provider::Mal, EntityType::Episode, "21:21").expect("valid page key");
     link_anime_source_page(&pool, owning_anime_id, &anime_page)
         .await
         .expect("first link succeeds");
@@ -136,8 +143,12 @@ async fn save_anime_relation_to_stored_anime_resolves_then_clears_graph_edges(po
     let sequel_relation = AnimeRelationsAndGraphInput {
         relations: vec![AnimeRelationInput {
             relation_type: "SEQUEL".to_owned(),
-            to_page_provider: "mal".to_owned(),
-            to_page_address: "2".to_owned(),
+            target_page_source: PageSource {
+                page_key: PageKey::new(Provider::Mal, EntityType::Anime, "2")
+                    .expect("valid page key"),
+                source: Some(Url::parse("https://myanimelist.net/anime/2").expect("valid URL")),
+                title: None,
+            },
         }],
         ..AnimeRelationsAndGraphInput::default()
     };
@@ -392,8 +403,15 @@ async fn link_anime_source_page_partial_source_links_respect_roles(pool: PgPool)
 fn build_relation_to(page_address: &str) -> AnimeRelationInput {
     AnimeRelationInput {
         relation_type: "SEQUEL".to_owned(),
-        to_page_provider: "mal".to_owned(),
-        to_page_address: page_address.to_owned(),
+        target_page_source: PageSource {
+            page_key: PageKey::new(Provider::Mal, EntityType::Anime, page_address)
+                .expect("valid page key"),
+            source: Some(
+                Url::parse(&format!("https://myanimelist.net/anime/{page_address}"))
+                    .expect("valid URL"),
+            ),
+            title: None,
+        },
     }
 }
 

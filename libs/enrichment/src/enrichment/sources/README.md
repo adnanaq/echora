@@ -238,7 +238,7 @@ uv run python -m enrichment.sources.anisearch.anisearch_episode_crawler https://
 
 ### Anime-Planet (`sources/anime_planet/`)
 
-Browser scraping via zendriver (CDP) + lxml XPath. Behind Cloudflare, which normally only runs an invisible check. A challenge shown instead of a page is waited out and solved only if it stays (`base/cloudflare_challenge.py`); a character batch stops at a challenge that does not clear.
+Browser scraping via zendriver (CDP) + lxml XPath, in a headed browser. Behind Cloudflare, whose challenge a headless browser does not get past, while a headed one clears it. A challenge shown instead of a page is waited out and solved only if it stays (`base/cloudflare_challenge.py`); a character batch stops at a challenge that does not clear.
 
 | Module | Purpose |
 |---|---|

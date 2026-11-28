@@ -31,6 +31,7 @@ from enrichment.sources.base.framework import (
     IRepository,
     NullRepository,
 )
+from enrichment.sources.base.page_fetcher import parse_html_document
 from http_cache.result_cache import cached_result
 
 logger = logging.getLogger(__name__)
@@ -96,6 +97,7 @@ _LANG_CODE_MAP: dict[str, str] = {
 _DESCRIPTION_PLACEHOLDER_RE = re.compile(
     r"would help many anime and manga fans", re.IGNORECASE
 )
+
 _STRIP_TAGS_RE = re.compile(r"<[^>]+>")
 
 # ---------------------------------------------------------------------------
@@ -110,13 +112,8 @@ def _extract_character_from_html(html: str) -> dict[str, Any] | None:
     helpers (_post_process_character, _build_character_from_raw, etc.) are
     unchanged. Returns None if the HTML cannot be parsed.
     """
-    from lxml import etree
-
     try:
-        parser = etree.HTMLParser()
-        tree = etree.fromstring(html.encode(), parser)
-        if tree is None:
-            return None
+        tree = parse_html_document(html)
     except Exception:  # pragma: no cover
         return None  # pragma: no cover
 
@@ -140,9 +137,9 @@ def _extract_character_from_html(html: str) -> dict[str, Any] | None:
 
     tag_els = cast(list[Any], tree.xpath(_XPATHS["tags"]))
     tags = [
-        {"name": " ".join(el.itertext()).strip()}
+        {"name": tag_text}
         for el in tag_els
-        if " ".join(el.itertext()).strip()
+        if (tag_text := " ".join(el.itertext()).strip())
     ]
 
     desc_els = cast(list[Any], tree.xpath(_XPATHS["description"]))
@@ -192,11 +189,8 @@ def _extract_ography_from_html(html: str) -> list[dict[str, Any]] | None:
     Returns a list of {url, title} dicts with absolute URLs, or None if the
     HTML cannot be parsed or contains no entries.
     """
-    from lxml import etree
-
     try:
-        parser = etree.HTMLParser()
-        tree = etree.fromstring(html.encode(), parser)
+        tree = parse_html_document(html)
     except Exception:  # pragma: no cover
         return None  # pragma: no cover
 

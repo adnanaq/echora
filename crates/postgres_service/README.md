@@ -16,6 +16,10 @@ The service is defined in `protos/postgres_service/v1/postgres_service.proto`.
 | `MarkEpisodeAired` | Writes the episode's aired notification once |
 | `LoadCharacter` | Returns a character's pages, corrections and version |
 | `SaveCharacter` | Saves a merged character, with the works its `animeography` names, each by its work page |
+| `ListEntityPages`, `RecordRefresh` | Lists linked provider pages for an entity, and records refresh outcomes |
+| `ListDueAnime`, `ListDueEpisodes`, `ListDueCharacters` | Pages through due works, ongoing/upcoming episodes, and characters |
+| `ListUpcomingEpisodes`, `ListScoreAnime`, `ListRequestedMerges`, `ListDuePages` | Lists upcoming episodes, daily score works, pending merges, and budgeted provider due pages |
+| `GetAnime`, `GetEpisode`, `ListEpisodes`, `GetCharacter`, `ListEntityVersions` | Reads visible merged entities with `version` and `next_refresh_at`, and pages entity versions |
 
 The server also answers `grpc.health.v1.Health`.
 
@@ -24,7 +28,11 @@ The server also answers `grpc.health.v1.Health`.
 - Every proto message is taken apart with each field named and no `..`, and every enum value has its own arm with no `_`. A field or value added to the proto fails the build until the mapping handles it.
 - An enum number this build does not know is refused with `INVALID_ARGUMENT`.
 - `SaveAnime`, `SaveEpisode` and `SaveCharacter` hash a canonical form of the merged record. A character's `roles` and `anime_ids` are left out, since they are read through the works its pages name. Maps are encoded in key order, which is why `build.rs` asks `prost` for `BTreeMap`.
-- `SaveCharacter` turns each `animeography` URL into a work page key and each `mangaography` URL into a source material identifier. The database joins them to `anime_source` and `source_material_xref`, so a work or source material stored after the character still reaches it. A URL that names no such page is left out.
+- The three saves also take `page_sources`, the URL and title the merge chose for each page the entity holds as a source. Each URL is parsed here, and a malformed one is refused with `INVALID_ARGUMENT`; an empty URL or title means it is not known, and the stored one is kept. Each is stored on its page (`provider_page.source` and `title`), only where it changed, on both the changed and the unchanged path, since neither is part of the record hash. `SaveAnime` also records each partial-source page's URL from `Anime.partial_sources`, while the page has none.
+- A relation target, an `animeography` work and an episode character are each turned from their URL into a `PageSource`: the page key the URL names, validated, with the URL and the entry's title or name. A URL that names no valid page is left out. The database joins the page to `anime_source` or `character_source`, so an entity stored later still reaches it, and the save stores the URL and title on the page while none is stored.
+- `SaveCharacter` turns each `mangaography` entry into the source material identifiers its URLs name, each with the entry's title. The database records each identifier's page with its URL and title and no source material, until a work's save relating it attaches it.
+- `SaveEpisode` refuses an `episode_number` other than the one the work's episode list assigned, which `LoadEpisode` returns.
+- Enum fields are stored as their lookup text (`TV SPECIAL`, `PG-13 - Teens 13 or older`), which differs from the proto value names. `lookup_text.rs` holds one table per enum, used by both the saves and the reads, so the two directions cannot drift. Each table becomes a complete `match`, so a value added to the proto fails the build until its table lists it. A save refuses an unspecified type, status, season, source material or character role, stores an unspecified rating as `UNKNOWN`, and leaves out an unspecified company role; a read returns `INTERNAL` for stored text that has no proto value.
 - A page key's address is lowercased, as work matching builds page keys, so a slug written with capitals names the same stored page. Character page URLs are read in the singular (`/character/`) and in the plural (`/characters/`, as Kitsu and Anime-Planet write them).
 - `StorePage` refuses a page marked dead. Only a review or the provider's two "not found" answers mark a page dead.
 
@@ -80,7 +88,9 @@ Pants builds the production image:
 
 - `src/main.rs` starts the server and waits for a stop signal.
 - `src/service.rs` holds the gRPC handlers, the status mapping and the dead-page review setting.
-- `src/anime_mapping.rs`, `src/anime_relations_mapping.rs`, `src/anime_schedule_and_stats_mapping.rs` and `src/episode_mapping.rs` turn proto messages into `postgres_db` inputs.
+- `src/anime_mapping.rs`, `src/anime_relations_mapping.rs`, `src/anime_schedule_and_stats_mapping.rs`, `src/episode_mapping.rs` and `src/character_mapping.rs` turn proto messages into `postgres_db` inputs.
+- `src/read_mapping.rs` turns stored entities back into proto messages for the reads.
+- `src/lookup_text.rs` holds the lookup text stored for each proto enum value, used by saves and reads.
 - `tests/server.rs` starts the built binary and checks how it starts and stops.
 
 ## Tests

@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT demographic FROM anime_demographic WHERE anime_id = $1 ORDER BY demographic",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "demographic",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "2d6917fdb9d5d7b82d84a167a182bc9e2e2a3fbaea1447ede811be62a9b6aaf1"
+}

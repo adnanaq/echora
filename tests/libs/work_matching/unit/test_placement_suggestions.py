@@ -50,7 +50,7 @@ def test_suggest_page_placements_unlinked_page_left_out(
         *matching_case_decisions("ao_haru_ride_ova")[:2]
     )
     assert suggestion == {
-        "animeplanet:anime:blue-spring-ride-page-13": "work 1",
+        "anime_planet:anime:blue-spring-ride-page-13": "work 1",
         "kitsu:anime:8488": "work 1",
         "mal:anime:24151": "work 1",
     }

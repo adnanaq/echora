@@ -3,8 +3,8 @@
 mod support;
 
 use postgres_db::{
-    EntityType, EpisodeListEntryInput, EpisodeReferenceInput, PageKey, Provider, delete_episode,
-    load_anime, save_anime,
+    EntityType, EpisodeListEntryInput, EpisodeReferenceInput, PageKey, PageSource, Provider,
+    delete_episode, load_anime, save_anime,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -18,7 +18,11 @@ async fn load_anime_returns_undeleted_known_episodes(pool: PgPool) {
         episode_id: Uuid::now_v7(),
         episode_number: 1,
         title: "Placeholder episode 1".to_owned(),
-        page_keys: vec![PageKey::new(Provider::Mal, EntityType::Episode, "1").expect("valid key")],
+        page_sources: vec![PageSource {
+            page_key: PageKey::new(Provider::Mal, EntityType::Episode, "21:1").expect("valid key"),
+            source: None,
+            title: None,
+        }],
         list_entries: vec![EpisodeListEntryInput {
             provider: Provider::Mal,
             title: Some("Placeholder episode 1".to_owned()),
@@ -32,7 +36,7 @@ async fn load_anime_returns_undeleted_known_episodes(pool: PgPool) {
         episode_id: Uuid::now_v7(),
         episode_number: 2,
         title: "Placeholder episode 2".to_owned(),
-        page_keys: Vec::new(),
+        page_sources: Vec::new(),
         list_entries: Vec::new(),
     };
     save_anime(
@@ -122,7 +126,7 @@ async fn save_anime_timestamps_share_transaction_time(pool: PgPool) {
         episode_id: Uuid::now_v7(),
         episode_number: 1,
         title: "Placeholder episode 1".to_owned(),
-        page_keys: Vec::new(),
+        page_sources: Vec::new(),
         list_entries: Vec::new(),
     };
     save_anime(

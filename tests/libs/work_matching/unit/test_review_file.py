@@ -31,9 +31,9 @@ from work_matching.review_file import (
     replace_file_lines,
 )
 
-SIGEWINNE = "animeplanet:anime:genshin-impact-character-teaser-sigewinne-everyday-correspondence"
+SIGEWINNE = "anime_planet:anime:genshin-impact-character-teaser-sigewinne-everyday-correspondence"
 VARESA = (
-    "animeplanet:anime:genshin-impact-character-teaser-varesa-the-legend-of-a-warrior"
+    "anime_planet:anime:genshin-impact-character-teaser-varesa-the-legend-of-a-warrior"
 )
 INVALID_ANSWERS = [
     {SIGEWINNE: "maybe"},
@@ -97,7 +97,7 @@ def test_review_file_attach_kept_answer_provider_gaining_page_reopens_case(
         update={
             "addresses_by_page_key": {
                 **entries[0].addresses_by_page_key,
-                "animeplanet:anime:genshin-impact-third-teaser": third_page,
+                "anime_planet:anime:genshin-impact-third-teaser": third_page,
             }
         }
     )

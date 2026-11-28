@@ -679,18 +679,16 @@ def test_map_animeplanet_anime_responses_without_slug_canonical_or_url_maps_empt
     assert canonical["sources"] == []
 
 
-def test_map_animeplanet_character_responses_explicit_source_url_returns_character() -> (
-    None
-):
+def test_map_animeplanet_character_responses_canonical_link_populates_sources() -> None:
     char_html = b"""
-    <html><body>
+    <html><head><link rel="canonical" href="https://www.anime-planet.com/characters/spike-spiegel" /></head>
+    <body>
       <h1 itemprop="name">Spike Spiegel</h1>
       <div class="pure-g entryBar"><div class="pure-1 md-1-5">Gender: Male</div></div>
     </body></html>
     """
     canonical = map_animeplanet_character_responses(
         [PageResponse(request_name="main", content_type="text/html", body=char_html)],
-        source_url="https://www.anime-planet.com/characters/spike-spiegel",
     )
 
     assert canonical["name"] == "Spike Spiegel"
@@ -715,3 +713,17 @@ def test_map_animeplanet_character_responses_omitted_source_url_uses_canonical_l
     assert canonical["sources"] == [
         "https://www.anime-planet.com/characters/spike-spiegel"
     ]
+
+
+def test_map_animeplanet_responses_missing_or_empty_html_raises_value_error() -> None:
+    empty_main = [
+        PageResponse(
+            request_name="main", content_type="text/html", body=b"<html></html>"
+        )
+    ]
+    with pytest.raises(ValueError, match="yielded no anime data"):
+        map_animeplanet_anime_responses(empty_main)
+    with pytest.raises(ValueError, match="missing required 'main'"):
+        map_animeplanet_character_responses([])
+    with pytest.raises(ValueError, match="yielded no character data"):
+        map_animeplanet_character_responses(empty_main)

@@ -1,34 +1,40 @@
-"""Unit tests for EnrichmentService.MergeCharacter gRPC route."""
-
 from __future__ import annotations
 
 import json
-from types import SimpleNamespace
-from typing import TYPE_CHECKING, cast
-from unittest.mock import AsyncMock, patch
+import threading
+from unittest.mock import create_autospec, patch
 
 import grpc
 import pytest
 from enrichment_proto.v1 import enrichment_service_pb2_grpc
-from enrichment_proto.v1.enrichment_service_pb2 import MergeCharacterRequest
+from enrichment_proto.v1.enrichment_service_pb2 import (
+    MergeCharacterRequest,
+    MergeCharacterResponse,
+)
 from enrichment_service.routes.adapter import EnrichmentRoutes
+from enrichment_service.runtime import EnrichmentRuntime
 from shared_proto.v1 import anime_pb2
 from shared_proto.v1.merge_pb2 import PageKey, PageResponse, StoredPage
 
-if TYPE_CHECKING:
-    from enrichment_service.runtime import EnrichmentRuntime
-
 
 class _AbortCalledError(Exception):
-    """Sentinel raised when mock context.abort is invoked."""
+    pass
+
+
+def _build_routes() -> EnrichmentRoutes:
+    return EnrichmentRoutes(runtime=create_autospec(EnrichmentRuntime, instance=True))
+
+
+def _build_context() -> grpc.aio.ServicerContext:
+    context = create_autospec(grpc.aio.ServicerContext, instance=True)
+    context.abort.side_effect = _AbortCalledError()
+    return context
 
 
 @pytest.mark.asyncio
-async def test_merge_character_route_validation_and_error_mapping() -> None:
-    """MergeCharacter validates character_id and maps ValueError/Exception to gRPC status."""
-    routes = EnrichmentRoutes(runtime=cast("EnrichmentRuntime", SimpleNamespace()))
-    context = AsyncMock()
-    context.abort.side_effect = _AbortCalledError()
+async def test_merge_character_invalid_id_and_errors_map_to_expected_status() -> None:
+    routes = _build_routes()
+    context = _build_context()
 
     with pytest.raises(_AbortCalledError):
         await routes.MergeCharacter(MergeCharacterRequest(character_id=""), context)
@@ -36,23 +42,26 @@ async def test_merge_character_route_validation_and_error_mapping() -> None:
         grpc.StatusCode.INVALID_ARGUMENT, "character_id is required"
     )
 
-    context.abort.reset_mock()
-    with patch(
-        "enrichment_service.routes.merge_character.merge_character_pages",
-        side_effect=ValueError("invalid character page"),
-    ):
-        with pytest.raises(_AbortCalledError):
-            await routes.MergeCharacter(
-                MergeCharacterRequest(character_id="char-1"),
-                context,
+    for error in (ValueError("invalid character page"), TypeError("bad payload")):
+        context.abort.reset_mock()
+        with patch(
+            "enrichment_service.routes.merge_character.merge_character_pages",
+            autospec=True,
+            side_effect=error,
+        ):
+            with pytest.raises(_AbortCalledError):
+                await routes.MergeCharacter(
+                    MergeCharacterRequest(character_id="char-1"),
+                    context,
+                )
+            context.abort.assert_awaited_with(
+                grpc.StatusCode.INVALID_ARGUMENT, str(error)
             )
-        context.abort.assert_awaited_with(
-            grpc.StatusCode.INVALID_ARGUMENT, "invalid character page"
-        )
 
     context.abort.reset_mock()
     with patch(
         "enrichment_service.routes.merge_character.merge_character_pages",
+        autospec=True,
         side_effect=RuntimeError("boom"),
     ):
         with pytest.raises(_AbortCalledError):
@@ -66,11 +75,78 @@ async def test_merge_character_route_validation_and_error_mapping() -> None:
 
 
 @pytest.mark.asyncio
-async def test_merge_character_end_to_end_over_grpc_transport() -> None:
-    """End-to-end gRPC server -> stub call merges stored character pages."""
+@pytest.mark.parametrize(
+    ("provider", "body"),
+    [
+        ("anilist", b"[]"),
+        ("anilist", b'{"data": {"Character": null}}'),
+        ("anilist", b'{"data": {"Character": {"id": 1, "name": "oops"}}}'),
+        ("kitsu", b'{"data": null}'),
+        ("kitsu", b'{"data": {"id": "1", "attributes": "oops"}}'),
+    ],
+)
+async def test_merge_character_malformed_json_payloads_abort_invalid_argument(
+    provider: str,
+    body: bytes,
+) -> None:
+    routes = _build_routes()
+    context = _build_context()
+    request = MergeCharacterRequest(
+        character_id="char-bad",
+        pages=[
+            StoredPage(
+                page_key=PageKey(
+                    provider=provider,
+                    entity_type=anime_pb2.ENTITY_TYPE_CHARACTER,
+                    address="40",
+                ),
+                responses=[
+                    PageResponse(
+                        request_name="main",
+                        content_type="application/json",
+                        body=body,
+                    )
+                ],
+            )
+        ],
+    )
+    with pytest.raises(_AbortCalledError):
+        await routes.MergeCharacter(request, context)
+    assert context.abort.await_args is not None
+    assert context.abort.await_args.args[0] == grpc.StatusCode.INVALID_ARGUMENT
+
+
+@pytest.mark.asyncio
+async def test_merge_character_executes_off_event_loop_thread() -> None:
+    routes = _build_routes()
+    context = _build_context()
+    loop_thread_id = threading.get_ident()
+    observed_thread_ids: list[int] = []
+
+    def _record_thread(request: MergeCharacterRequest) -> MergeCharacterResponse:
+        del request
+        observed_thread_ids.append(threading.get_ident())
+        return MergeCharacterResponse()
+
+    with patch(
+        "enrichment_service.routes.merge_character.merge_character_pages",
+        autospec=True,
+        side_effect=_record_thread,
+    ):
+        await routes.MergeCharacter(
+            MergeCharacterRequest(character_id="char-1"),
+            context,
+        )
+
+    assert observed_thread_ids
+    assert observed_thread_ids[0] != loop_thread_id
+
+
+@pytest.mark.asyncio
+async def test_merge_character_grpc_transport_merges_stored_pages() -> None:
     server = grpc.aio.server()
     enrichment_service_pb2_grpc.add_EnrichmentServiceServicer_to_server(
-        EnrichmentRoutes(runtime=cast("EnrichmentRuntime", SimpleNamespace())),
+        _build_routes(),
         server,
     )
     port = server.add_insecure_port("127.0.0.1:0")
@@ -78,7 +154,7 @@ async def test_merge_character_end_to_end_over_grpc_transport() -> None:
     try:
         async with grpc.aio.insecure_channel(f"127.0.0.1:{port}") as channel:
             stub = enrichment_service_pb2_grpc.EnrichmentServiceStub(channel)
-            resp = await stub.MergeCharacter(
+            response = await stub.MergeCharacter(
                 MergeCharacterRequest(
                     character_id="char-40",
                     pages=[
@@ -115,7 +191,7 @@ async def test_merge_character_end_to_end_over_grpc_transport() -> None:
                     ],
                 )
             )
-            assert resp.character.id == "char-40"
-            assert resp.character.name == "Monkey D. Luffy"
+            assert response.character.id == "char-40"
+            assert response.character.name == "Monkey D. Luffy"
     finally:
         await server.stop(grace=0)

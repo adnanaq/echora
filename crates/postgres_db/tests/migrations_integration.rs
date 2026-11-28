@@ -10,10 +10,11 @@ use postgres_db::{
     AnimeScheduleAndStatsInput, AnimeSourceMaterialInput, AnimeStatisticsInput,
     AnimeStreamingSourceInput, AnimeThemeInput, AnimeThemeSongInput, AnimeTitleInput,
     AnimeTrailerInput, CompanyXrefInput, EntityType, EpisodeRangeInput, Error, FetchOutcome,
-    PageKey, PageObservation, PageResponse, Provider, SaveAnimeInput, SourceMaterialXrefInput,
-    connect_pool, link_anime_source_page, load_anime, record_page_observation, run_migrations,
-    save_anime,
+    PageKey, PageObservation, PageResponse, PageSource, Provider, SaveAnimeInput,
+    SourceMaterialXrefInput, connect_pool, link_anime_source_page, load_anime,
+    record_page_observation, run_migrations, save_anime,
 };
+use url::Url;
 use uuid::Uuid;
 
 #[tokio::test]
@@ -559,6 +560,8 @@ async fn load_and_save_anime_enforce_versions_hashes_visibility_and_outbox() -> 
         hash_format: ANIME_HASH_FORMAT,
         merge_version: 1,
         traceparent: Some("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01".to_owned()),
+        page_sources: Vec::new(),
+        partial_page_sources: Vec::new(),
         details: AnimeDetailsInput::default(),
         schedule_and_stats: AnimeScheduleAndStatsInput::default(),
         relations_and_graph: AnimeRelationsAndGraphInput::default(),
@@ -773,6 +776,8 @@ async fn store_page_bumps_linked_anime_version_and_blocks_stale_save() -> Result
             hash_format: 1,
             merge_version: 1,
             traceparent: None,
+            page_sources: Vec::new(),
+            partial_page_sources: Vec::new(),
             details: AnimeDetailsInput::default(),
             schedule_and_stats: AnimeScheduleAndStatsInput::default(),
             relations_and_graph: AnimeRelationsAndGraphInput::default(),
@@ -846,6 +851,8 @@ async fn save_anime_replaces_names_classification_themes_and_images() -> Result<
         hash_format: ANIME_HASH_FORMAT,
         merge_version: 1,
         traceparent: None,
+        page_sources: Vec::new(),
+        partial_page_sources: Vec::new(),
         details: AnimeDetailsInput {
             titles: vec![
                 AnimeTitleInput {
@@ -925,6 +932,7 @@ async fn save_anime_replaces_names_classification_themes_and_images() -> Result<
     let second_input = SaveAnimeInput {
         expected_version: 2,
         merged_record_hash: "details-v2".to_owned(),
+        partial_page_sources: Vec::new(),
         details: AnimeDetailsInput {
             titles: vec![AnimeTitleInput {
                 language: "es".to_owned(),
@@ -1077,6 +1085,8 @@ async fn save_anime_stores_songs_links_streaming_stats_broadcast_and_hiatus() ->
         hash_format: ANIME_HASH_FORMAT,
         merge_version: 1,
         traceparent: None,
+        page_sources: Vec::new(),
+        partial_page_sources: Vec::new(),
         details: AnimeDetailsInput::default(),
         schedule_and_stats: AnimeScheduleAndStatsInput {
             opening_themes: vec![AnimeThemeSongInput {
@@ -1314,13 +1324,26 @@ async fn save_anime_and_link_page_persist_relations_xrefs_and_graph_edges() -> R
         hash_format: ANIME_HASH_FORMAT,
         merge_version: 1,
         traceparent: None,
+        page_sources: Vec::new(),
+        partial_page_sources: Vec::new(),
         details: AnimeDetailsInput::default(),
         schedule_and_stats: AnimeScheduleAndStatsInput::default(),
         relations_and_graph: AnimeRelationsAndGraphInput {
             relations: vec![AnimeRelationInput {
                 relation_type: "SPIN_OFF".to_owned(),
-                to_page_provider: "mal".to_owned(),
-                to_page_address: target_address.clone(),
+                target_page_source: PageSource {
+                    page_key: PageKey::new(
+                        Provider::Mal,
+                        EntityType::Anime,
+                        target_address.clone(),
+                    )
+                    .expect("valid page key"),
+                    source: Some(
+                        Url::parse(&format!("https://myanimelist.net/anime/{target_address}"))
+                            .expect("valid URL"),
+                    ),
+                    title: None,
+                },
             }],
             relation_claims: vec![AnimeRelationClaimInput {
                 provider: Provider::Mal,
@@ -1346,6 +1369,7 @@ async fn save_anime_and_link_page_persist_relations_xrefs_and_graph_edges() -> R
                     provider: "mal".to_owned(),
                     external_id: manga_id_ext.clone(),
                     url: format!("https://myanimelist.net/manga/{manga_id_ext}"),
+                    title: None,
                 }],
             }],
             companies: vec![AnimeCompanyInput {
@@ -1532,7 +1556,7 @@ async fn save_anime_and_episode_lifecycle_load_save_mark_aired_and_delete()
     let anime_id = Uuid::now_v7();
     let episode_id = Uuid::now_v7();
     let suffix = anime_id.as_u128() % 1_000_000_000;
-    let episode_address = format!("7{suffix:09}");
+    let episode_address = format!("7{suffix:09}:1");
 
     sqlx::query!("INSERT INTO anime (id) VALUES ($1)", anime_id)
         .execute(&pool)
@@ -1571,6 +1595,8 @@ async fn save_anime_and_episode_lifecycle_load_save_mark_aired_and_delete()
         hash_format: ANIME_HASH_FORMAT,
         merge_version: 1,
         traceparent: None,
+        page_sources: Vec::new(),
+        partial_page_sources: Vec::new(),
         details: AnimeDetailsInput::default(),
         schedule_and_stats: AnimeScheduleAndStatsInput::default(),
         relations_and_graph: AnimeRelationsAndGraphInput::default(),
@@ -1578,7 +1604,11 @@ async fn save_anime_and_episode_lifecycle_load_save_mark_aired_and_delete()
             episode_id,
             episode_number: 1,
             title: "Herr Dr. Tenma".to_owned(),
-            page_keys: vec![episode_page_key.clone()],
+            page_sources: vec![PageSource {
+                page_key: episode_page_key.clone(),
+                source: None,
+                title: None,
+            }],
             list_entries: vec![EpisodeListEntryInput {
                 provider: Provider::Mal,
                 title: Some("Herr Dr. Tenma".to_owned()),
@@ -1615,7 +1645,11 @@ async fn save_anime_and_episode_lifecycle_load_save_mark_aired_and_delete()
             episode_id,
             episode_number: 1,
             title: "Herr Dr. Tenma".to_owned(),
-            page_keys: vec![episode_page_key.clone()],
+            page_sources: vec![PageSource {
+                page_key: episode_page_key.clone(),
+                source: None,
+                title: None,
+            }],
             list_entries: vec![EpisodeListEntryInput {
                 provider: Provider::Mal,
                 title: Some("Herr Dr. Tenma (Revised)".to_owned()),
@@ -1690,14 +1724,21 @@ async fn save_anime_and_episode_lifecycle_load_save_mark_aired_and_delete()
             source: "https://crunchyroll.com/watch/1".to_owned(),
         }],
         characters: vec![EpisodeCharacterInput {
-            character_page_provider: "mal".to_owned(),
-            character_page_address: "42".to_owned(),
+            character_page_source: PageSource {
+                page_key: PageKey::new(Provider::Mal, EntityType::Character, "42")
+                    .expect("valid page key"),
+                source: Some(
+                    Url::parse("https://myanimelist.net/character/42").expect("valid URL"),
+                ),
+                title: None,
+            },
             role: "MAIN".to_owned(),
         }],
         merged_record_hash: "ep-hash-1".to_owned(),
         hash_format: postgres_db::EPISODE_HASH_FORMAT,
         merge_version: 1,
         traceparent: None,
+        page_sources: Vec::new(),
     };
 
     let overflow_score_result = save_episode(
@@ -1837,8 +1878,8 @@ async fn sync_anime_episodes_validates_page_ownership_replacement_and_timestamp_
     let first_episode_id = Uuid::now_v7();
     let second_episode_id = Uuid::now_v7();
     let suffix = anime_id.as_u128() % 1_000_000_000;
-    let first_address = format!("6{suffix:09}");
-    let second_address = format!("5{suffix:09}");
+    let first_address = format!("6{suffix:09}:1");
+    let second_address = format!("5{suffix:09}:1");
 
     sqlx::query!("INSERT INTO anime (id) VALUES ($1)", anime_id)
         .execute(&pool)
@@ -1876,6 +1917,8 @@ async fn sync_anime_episodes_validates_page_ownership_replacement_and_timestamp_
         hash_format: ANIME_HASH_FORMAT,
         merge_version: 1,
         traceparent: None,
+        page_sources: Vec::new(),
+        partial_page_sources: Vec::new(),
         details: AnimeDetailsInput::default(),
         schedule_and_stats: AnimeScheduleAndStatsInput::default(),
         relations_and_graph: AnimeRelationsAndGraphInput::default(),
@@ -1883,11 +1926,11 @@ async fn sync_anime_episodes_validates_page_ownership_replacement_and_timestamp_
             episode_id: first_episode_id,
             episode_number: 1,
             title: "Ep 1".to_owned(),
-            page_keys: vec![PageKey::new(
-                Provider::Mal,
-                EntityType::Episode,
-                first_address.clone(),
-            )?],
+            page_sources: vec![PageSource {
+                page_key: PageKey::new(Provider::Mal, EntityType::Episode, first_address.clone())?,
+                source: None,
+                title: None,
+            }],
             list_entries: vec![EpisodeListEntryInput {
                 provider: Provider::Mal,
                 title: Some("Ep 1".to_owned()),
@@ -1907,11 +1950,11 @@ async fn sync_anime_episodes_validates_page_ownership_replacement_and_timestamp_
             episode_id: first_episode_id,
             episode_number: 1,
             title: "Ep 1".to_owned(),
-            page_keys: vec![PageKey::new(
-                Provider::Mal,
-                EntityType::Episode,
-                second_address.clone(),
-            )?],
+            page_sources: vec![PageSource {
+                page_key: PageKey::new(Provider::Mal, EntityType::Episode, second_address.clone())?,
+                source: None,
+                title: None,
+            }],
             list_entries: vec![EpisodeListEntryInput {
                 provider: Provider::Mal,
                 title: Some("Ep 1".to_owned()),
@@ -1942,11 +1985,11 @@ async fn sync_anime_episodes_validates_page_ownership_replacement_and_timestamp_
             episode_id: second_episode_id,
             episode_number: 2,
             title: "Ep 2".to_owned(),
-            page_keys: vec![PageKey::new(
-                Provider::Mal,
-                EntityType::Episode,
-                second_address.clone(),
-            )?],
+            page_sources: vec![PageSource {
+                page_key: PageKey::new(Provider::Mal, EntityType::Episode, second_address.clone())?,
+                source: None,
+                title: None,
+            }],
             list_entries: Vec::new(),
         }],
         ..base_save

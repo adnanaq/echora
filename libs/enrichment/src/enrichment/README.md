@@ -24,6 +24,7 @@ libs/enrichment/src/enrichment/
 │   ├── anime_field_corrections.py # Applies FieldCorrection overrides onto merged Anime protos
 │   ├── episode_reference_merger.py # Extracts and matches EpisodeReferences from stored pages
 │   ├── episode_merge.py         # Merges stored episode pages and list entries into MergeEpisodeResponse
+│   ├── page_sources.py          # Stored page keys from resolved keys, and the URL and title of each linked page
 │   ├── character_merge.py       # Merges stored character pages and corrections into MergeCharacterResponse
 │   ├── metadata_rules.py        # Per-field rules for that merge
 │   ├── link_rules.py            # Merge rules for links, images and media
@@ -247,8 +248,9 @@ async with browser_session(headless=True) as session:
 `browser_session()` closes the browser in tens of milliseconds, holds a slot from
 the process-wide limit `EnrichmentConfig.enrichment_max_concurrent_browsers`
 (`ENRICHMENT_MAX_CONCURRENT_BROWSERS`, default 4) while it is open, and marks the
-browser's profile so a later run can clean up after a killed one. AniDB passes
-`headless=False`; a batch that hits a browser crash calls `session.restart()`,
+browser's profile so a later run can clean up after a killed one. AniDB and
+Anime-Planet pass `headless=False`, since their Cloudflare challenges clear only
+in a headed browser; a batch that hits a browser crash calls `session.restart()`,
 which keeps the session's settings.
 
 AniSearch needs no browser: its pages arrive complete over plain HTTP. Every

@@ -5,9 +5,9 @@
    "reference_page": "mal:anime:57822",
    "title": "Atashin'chi Next",
    "doubled_providers": {
-    "animeplanet": [
-     "animeplanet:anime:atashinchi-next",
-     "animeplanet:anime:atashinchi-next-2025"
+    "anime_planet": [
+     "anime_planet:anime:atashinchi-next",
+     "anime_planet:anime:atashinchi-next-2025"
     ],
     "simkl": [
      "animecountdown:anime:2466820",
@@ -35,9 +35,9 @@
    "reference_page": "mal:anime:2090",
    "title": "Choujikuu Seiki Orguss 02",
    "doubled_providers": {
-    "animeplanet": [
-     "animeplanet:anime:orguss-02",
-     "animeplanet:anime:super-dimension-century-orguss-02"
+    "anime_planet": [
+     "anime_planet:anime:orguss-02",
+     "anime_planet:anime:super-dimension-century-orguss-02"
     ]
    }
   },
@@ -55,9 +55,9 @@
    "reference_page": "mal:anime:40815",
    "title": "Honzuki no Gekokujou: Shisho ni Naru Tame ni wa Shudan wo Erandeiraremasen 2nd Season",
    "doubled_providers": {
-    "animeplanet": [
-     "animeplanet:anime:ascendance-of-a-bookworm-season-2",
-     "animeplanet:anime:ascendance-of-a-bookworm-season-2-ill-do-anything-to-become-a-librarian"
+    "anime_planet": [
+     "anime_planet:anime:ascendance-of-a-bookworm-season-2",
+     "anime_planet:anime:ascendance-of-a-bookworm-season-2-ill-do-anything-to-become-a-librarian"
     ]
    }
   },
@@ -65,9 +65,9 @@
    "reference_page": "mal:anime:42429",
    "title": "Honzuki no Gekokujou: Shisho ni Naru Tame ni wa Shudan wo Erandeiraremasen 3rd Season",
    "doubled_providers": {
-    "animeplanet": [
-     "animeplanet:anime:ascendance-of-a-bookworm-season-3",
-     "animeplanet:anime:ascendance-of-a-bookworm-season-3-ill-do-anything-to-become-a-librarian"
+    "anime_planet": [
+     "anime_planet:anime:ascendance-of-a-bookworm-season-3",
+     "anime_planet:anime:ascendance-of-a-bookworm-season-3-ill-do-anything-to-become-a-librarian"
     ]
    }
   },
@@ -85,9 +85,9 @@
    "reference_page": "mal:anime:61418",
    "title": "Kusunoki no Bannin",
    "doubled_providers": {
-    "animeplanet": [
-     "animeplanet:anime:kusunoki-no-bannin",
-     "animeplanet:anime:the-keeper-of-the-camphor-tree"
+    "anime_planet": [
+     "anime_planet:anime:kusunoki-no-bannin",
+     "anime_planet:anime:the-keeper-of-the-camphor-tree"
     ]
    }
   },
@@ -95,9 +95,9 @@
    "reference_page": "mal:anime:61202",
    "title": "Mononoke Movie 3: Hebigami",
    "doubled_providers": {
-    "animeplanet": [
-     "animeplanet:anime:mononoke-movie-3-hebigami",
-     "animeplanet:anime:mononoke-the-movie-chapter-iii-the-curse-of-the-serpent"
+    "anime_planet": [
+     "anime_planet:anime:mononoke-movie-3-hebigami",
+     "anime_planet:anime:mononoke-the-movie-chapter-iii-the-curse-of-the-serpent"
     ]
    }
   },
@@ -105,9 +105,9 @@
    "reference_page": "mal:anime:62193",
    "title": "Paris ni Saku Etoile",
    "doubled_providers": {
-    "animeplanet": [
-     "animeplanet:anime:paris-ni-saku-ltoile",
-     "animeplanet:anime:samurai-ballerina"
+    "anime_planet": [
+     "anime_planet:anime:paris-ni-saku-ltoile",
+     "anime_planet:anime:samurai-ballerina"
     ]
    }
   },
@@ -152,10 +152,10 @@
      "year": 2024,
      "season": "SPRING",
      "addresses_by_page_key": {
-      "animeplanet:anime:atashinchi-next": "https://anime-planet.com/anime/atashinchi-next",
+      "anime_planet:anime:atashinchi-next": "https://anime-planet.com/anime/atashinchi-next",
       "anidb:anime:18633": "https://anidb.net/anime/18633",
       "anilist:anime:173313": "https://anilist.co/anime/173313",
-      "animeplanet:anime:atashinchi-next-2025": "https://anime-planet.com/anime/atashinchi-next-2025",
+      "anime_planet:anime:atashinchi-next-2025": "https://anime-planet.com/anime/atashinchi-next-2025",
       "animecountdown:anime:2466820": "https://animecountdown.com/2466820",
       "animecountdown:anime:3021866": "https://animecountdown.com/3021866",
       "ann:anime:31487": "https://animenewsnetwork.com/encyclopedia/anime.php?id=31487",

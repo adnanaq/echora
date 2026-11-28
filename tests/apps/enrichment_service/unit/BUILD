@@ -9,5 +9,6 @@ python_tests(
         "//:reqs0#pytest",
         "//:reqs0#pytest-asyncio",
         "//apps/enrichment_service/src/enrichment_service:enrichment_service",
+        "//tests/libs/enrichment/unit/sources/mal:fixtures",
     ],
 )

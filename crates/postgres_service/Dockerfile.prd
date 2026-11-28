@@ -22,6 +22,8 @@ COPY protos/ protos/
 COPY crates/common/ crates/common/
 COPY crates/postgres_db/ crates/postgres_db/
 COPY crates/postgres_service/ crates/postgres_service/
+COPY crates/temporal_workflows/ crates/temporal_workflows/
+COPY crates/update_service/ crates/update_service/
 
 ENV RUSTFLAGS="-C target-cpu=x86-64-v3" \
     SQLX_OFFLINE=true

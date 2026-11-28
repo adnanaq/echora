@@ -1,0 +1,64 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT streaming.id, external_source.platform, streaming.source, streaming.region,\n               streaming.is_free, streaming.is_premium_required, streaming.has_dub,\n               coalesce(\n                   array_agg(subtitle.language ORDER BY subtitle.language)\n                       FILTER (WHERE subtitle.language IS NOT NULL),\n                   '{}'\n               ) AS \"subtitle_languages!\"\n        FROM anime_streaming_source streaming\n        JOIN external_source ON external_source.source = streaming.source\n        LEFT JOIN anime_streaming_source_subtitle_language subtitle\n          ON subtitle.streaming_source_id = streaming.id\n        WHERE streaming.anime_id = $1\n        GROUP BY streaming.id, external_source.platform\n        ORDER BY streaming.source, streaming.id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "platform",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "source",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "region",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "is_free",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 5,
+        "name": "is_premium_required",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 6,
+        "name": "has_dub",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 7,
+        "name": "subtitle_languages!",
+        "type_info": "TextArray"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      null
+    ]
+  },
+  "hash": "9336ae1f9160210168666cd46adc3249621e2bbd8386991bceca7b5a12bbdafe"
+}

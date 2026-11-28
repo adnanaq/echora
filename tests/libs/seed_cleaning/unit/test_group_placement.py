@@ -134,8 +134,8 @@ def test_correct_entry_groups_renamed_page_points_to_current_page(
         (correction.page_key, correction.renamed_to, correction.reason)
         for correction in placement_corrections.corrections
     ] == [
-        ("animeplanet:anime:new-name", None, "SAME_PAGE"),
-        ("animeplanet:anime:old-name", "animeplanet:anime:new-name", "SAME_PAGE"),
+        ("anime_planet:anime:new-name", None, "SAME_PAGE"),
+        ("anime_planet:anime:old-name", "anime_planet:anime:new-name", "SAME_PAGE"),
     ]
 
 
@@ -228,7 +228,7 @@ def test_correct_entry_groups_answer_places_renamed_single_page_by_listed_key(
         "kitsu:anime:1": "work 1",
         "kitsu:anime:2": "work 2",
         "mal:anime:1": "work 1",
-        "animeplanet:anime:old-name": "work 2",
+        "anime_planet:anime:old-name": "work 2",
     }
     path.write_text(
         case.model_copy(update={"answer": answer}).model_dump_json() + "\n",
@@ -238,7 +238,7 @@ def test_correct_entry_groups_answer_places_renamed_single_page_by_listed_key(
     assert [
         (correction.placement_word, correction.renamed_to)
         for correction in corrections
-        if correction.page_key == "animeplanet:anime:old-name"
+        if correction.page_key == "anime_planet:anime:old-name"
     ] == [("work 2", None)]
 
 
@@ -282,8 +282,8 @@ def test_correct_entry_groups_answer_keeps_renamed_page_when_current_not_listed(
     path = tmp_path / "review.jsonl"
     [case] = _correct(entry, store, works, ReviewFile(path)).review_cases
     answer = {
-        "animeplanet:anime:new-name": "work 1",
-        "animeplanet:anime:other-name": "other work",
+        "anime_planet:anime:new-name": "work 1",
+        "anime_planet:anime:other-name": "other work",
     }
     path.write_text(
         case.model_copy(update={"answer": answer}).model_dump_json() + "\n",
@@ -291,11 +291,11 @@ def test_correct_entry_groups_answer_keeps_renamed_page_when_current_not_listed(
     )
     corrections = _correct(entry, store, works, ReviewFile(path)).corrections
     [corrected_entry] = build_corrected_entries(corrections, works, store)[:1]
-    assert "animeplanet:anime:old-name" in corrected_entry.entry.addresses_by_page_key
+    assert "anime_planet:anime:old-name" in corrected_entry.entry.addresses_by_page_key
     assert [
         (correction.placement_word, correction.renamed_to)
         for correction in corrections
-        if correction.page_key == "animeplanet:anime:old-name"
+        if correction.page_key == "anime_planet:anime:old-name"
     ] == [("work 1", None)]
 
 
@@ -534,7 +534,7 @@ def test_correct_entry_groups_split_answer_gives_each_work_its_entry(
         "kitsu:anime:1": "work 1",
         "kitsu:anime:2": "work 2",
         "mal:anime:1": "work 1, partial in work 2",
-        "animeplanet:anime:show": "work 1",
+        "anime_planet:anime:show": "work 1",
     }
     path.write_text(
         case.model_copy(update={"answer": answer}).model_dump_json() + "\n",
@@ -549,7 +549,7 @@ def test_correct_entry_groups_split_answer_gives_each_work_its_entry(
         for corrected_entry in build_corrected_entries(corrections, works, store)
         if corrected_entry.entry is not None
     ] == [
-        (["mal:anime:1", "kitsu:anime:1", "animeplanet:anime:show"], []),
+        (["mal:anime:1", "kitsu:anime:1", "anime_planet:anime:show"], []),
         (["kitsu:anime:2"], ["mal:anime:1"]),
     ]
 
@@ -570,7 +570,7 @@ def test_correct_entry_groups_renamed_reference_page_in_later_work_keeps_entry(
     path = tmp_path / "review.jsonl"
     [case] = _correct(entry, store, works, ReviewFile(path)).review_cases
     answer = {
-        "animeplanet:anime:new-name": "work 2",
+        "anime_planet:anime:new-name": "work 2",
         "ann:anime:1": "work 1",
         "ann:anime:2": "work 2",
         "simkl:anime:1": "work 1",
@@ -589,7 +589,7 @@ def test_correct_entry_groups_renamed_reference_page_in_later_work_keeps_entry(
         )
         for corrected_entry in build_corrected_entries(corrections, works, store)
     ] == [
-        ("animeplanet:anime:old-name", ["animeplanet:anime:new-name", "ann:anime:2"]),
+        ("anime_planet:anime:old-name", ["anime_planet:anime:new-name", "ann:anime:2"]),
         (None, ["ann:anime:1", "simkl:anime:1"]),
     ]
 

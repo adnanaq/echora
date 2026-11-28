@@ -1,31 +1,136 @@
 abilities:
-- stretching
-age: '19'
+- leadership
+- poison resistance
+age: 17-19
 animeography:
+- role: cameo appearance in
+  title: Bakuman.
+  url: https://anidb.net/anime/7251
+- role: cameo appearance in
+  title: Bakuman. (2012)
+  url: https://anidb.net/anime/8836
+- role: main character in
+  title: 'Gekijouban One Piece: Stampede'
+  url: https://anidb.net/anime/14318
+- role: cameo appearance in
+  title: Inuyasha
+  url: https://anidb.net/anime/144
+- role: appears in
+  title: Kyuutai Panic Adventure!
+  url: https://anidb.net/anime/11447
 - role: main character in
   title: One Piece
   url: https://anidb.net/anime/69
-blood_type: F
-date_of_birth: '05.05'
-description: Captain of the Straw Hat Pirates.
+- role: main character in
+  title: One Piece (2000)
+  url: https://anidb.net/anime/411
+- role: main character in
+  title: 'One Piece 3D: Mugiwara Chase'
+  url: https://anidb.net/anime/8010
+- role: main character in
+  title: 'One Piece Film: Gold'
+  url: https://anidb.net/anime/11529
+- role: main character in
+  title: 'One Piece Film: Red'
+  url: https://anidb.net/anime/16983
+- role: main character in
+  title: 'One Piece Film: Strong World'
+  url: https://anidb.net/anime/6537
+- role: appears in
+  title: 'One Piece Film: Strong World - Episode 0'
+  url: https://anidb.net/anime/7538
+- role: main character in
+  title: 'One Piece Film: Z'
+  url: https://anidb.net/anime/8940
+- role: main character in
+  title: 'One Piece Special: Romance Dawn Story'
+  url: https://anidb.net/anime/6199
+- role: main character in
+  title: 'One Piece The Movie: Dead End no Bouken'
+  url: https://anidb.net/anime/1254
+- role: main character in
+  title: 'One Piece The Movie: Episode of Chopper Plus - Fuyu ni Saku, Kiseki no Sakura'
+  url: https://anidb.net/anime/5691
+- role: main character in
+  title: 'One Piece The Movie: Karakurijou no Mecha Kyohei'
+  url: https://anidb.net/anime/4097
+- role: main character in
+  title: 'One Piece: Chinjuujima no Chopper Oukoku'
+  url: https://anidb.net/anime/1253
+- role: main character in
+  title: 'One Piece: Episode of Arabasta - Sabaku no Oujo to Kaizoku-tachi'
+  url: https://anidb.net/anime/4851
+- role: main character in
+  title: 'One Piece: Nejimakijima no Bouken'
+  url: https://anidb.net/anime/893
+- role: main character in
+  title: 'One Piece: Norowareta Seiken'
+  url: https://anidb.net/anime/2036
+- role: main character in
+  title: 'One Piece: Omatsuri Danshaku to Himitsu no Shima'
+  url: https://anidb.net/anime/2644
+- role: main character in
+  title: 'One Piece: Taose! Kaizoku Ganzack'
+  url: https://anidb.net/anime/2736
+- role: main character in
+  title: The One Piece
+  url: https://anidb.net/anime/18325
+- role: main character in
+  title: 'Tokyo One Piece Tower: Tongarijima no Dai Hihou'
+  url: https://anidb.net/anime/14737
+- role: cameo appearance in
+  title: Toriko (2011)
+  url: https://anidb.net/anime/8142
+blood_type: B
+date_of_birth: 05.05.????
+description: Monkey D. Luffy is a fictional character and the main protagonist in
+  the anime and manga series One Piece created by Oda Eiichiro . He is a boy whose
+  body is made of rubber after he ate a devil's fruit and acquired the accursed ability.
+  In the anime and manga, Luffy is captain of the Straw Hat Pirates , a group of pirates
+  he assembles himself as he quests to find the "One Piece" and become the King of
+  the Pirates. His primary motivation throughout the series is to reach the goal with
+  all of his comrades, a task he pursues no matter what stands in his way. While he
+  is goofy and reckless, he gets quite serious when anyone is in serious danger, notably
+  his crew, whom he considers his friends. Luffy has additionally appeared in all
+  of the featured movies in the series and other media relating to the series, including
+  several video games and specials. His blood type is F in XFS blood group system
+  used in his world. It is equivalent to B in ABO blood group system.
 gender: male
-height: 174 cm
+height: 172-174
 looks:
-- scar under eye
-name_kanji: "ã\x83¢ã\x83³ã\x82­ã\x83¼ã\x83»ï¼¤ã\x83»ã\x83«ã\x83\x95ã\x82£"
+- black eyes
+- black hair
+- scars
+name_kanji: モンキー・D・ルフィ
 name_main: Monkey D. Luffy
 nicknames:
-- Straw Hat
+- Straw Hat, Straw Hat Luffy, 麦わら, 麦わらのルフィ
 official_names:
-- Monkey D. Luffy
+- モンキー・D・ルフィ
+- Monkey D. Ruffy
+- Drake
+- Rubber
+- مانکی دی لوفی
 personality:
-- cheerful
-picture: https://cdn-eu.anidb.net/images/main/201474.jpg
+- charismatic
+- energetic
+- extrovert
+- inspirational
+- iron-willed
+- loyal
+- simple-minded
+picture: https://cdn.anidb.net/images/main/77294.jpg
 role:
 - pirate
+- captain -- TO BE SPLIT AND DELETED
+- prisoner
 seiyuu:
-- anime_url: https://anidb.net/anime/69
+- anime_url: https://anidb.net/anime/2736
+  name: Takano Urara
+  url: https://anidb.net/creator/685
+- anime_url: https://anidb.net/anime/14318
   name: Tanaka Mayumi
-  url: https://anidb.net/creator/529
+  url: https://anidb.net/creator/322
 supernatural_abilities:
-- Devil Fruit
+- devil fruit
+- elasticity

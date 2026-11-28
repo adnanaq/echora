@@ -2,8 +2,7 @@
 
 use postgres_db::{
     EPISODE_HASH_FORMAT, EntityType as DbEntityType, EpisodeCharacterInput, EpisodeListEntryInput,
-    EpisodeReferenceInput, EpisodeStreamingInput, EpisodeTitleInput, PageKey, Provider,
-    SaveEpisodeInput,
+    EpisodeReferenceInput, EpisodeStreamingInput, EpisodeTitleInput, PageSource, SaveEpisodeInput,
 };
 use prost::Message as _;
 use sha2::{Digest as _, Sha256};
@@ -11,10 +10,13 @@ use tonic::Status;
 use uuid::Uuid;
 
 use crate::anime_mapping::parse_proto_timestamp;
-use crate::anime_relations_mapping::{map_entity_type, parse_character_target_from_url};
+use crate::anime_relations_mapping::{build_page_source_from_url, parse_character_target_from_url};
+use crate::lookup_text::LookupText as _;
+use crate::service::parse_page_sources;
+use crate::service::postgres_service_proto::v1::SaveEpisodeRequest;
 use crate::service::shared_proto::v1::{
     CharacterRole, Episode, EpisodeCharacter, EpisodeListEntry, EpisodeReference,
-    PageKey as ProtoPageKey,
+    PageSource as ProtoPageSource,
 };
 use crate::service::{map_db_error, to_proto_episode_list_entry, to_proto_page_key};
 
@@ -35,34 +37,22 @@ pub fn build_episode_references(
                  episode_id,
                  episode_number,
                  title,
-                 page_keys,
+                 page_sources,
                  list_entries,
              }| {
                 let parsed_episode_id = Uuid::parse_str(&episode_id).map_err(|err| {
                     Status::invalid_argument(format!("invalid episode_id UUID: {err}"))
                 })?;
 
-                let mapped_page_keys = page_keys
-                    .into_iter()
-                    .map(
-                        |ProtoPageKey {
-                             provider,
-                             entity_type,
-                             address,
-                         }| {
-                            let provider: Provider =
-                                provider.parse().map_err(|err| map_db_error(&err))?;
-                            let mapped_entity_type = map_entity_type(entity_type)?;
-                            if mapped_entity_type != DbEntityType::Episode {
-                                return Err(Status::invalid_argument(
-                                    "EpisodeReference.page_keys must use EntityType::Episode",
-                                ));
-                            }
-                            PageKey::new(provider, mapped_entity_type, address)
-                                .map_err(|err| map_db_error(&err))
-                        },
-                    )
-                    .collect::<Result<Vec<_>, Status>>()?;
+                let mapped_page_sources = parse_page_sources(page_sources)?;
+                if mapped_page_sources
+                    .iter()
+                    .any(|page_source| page_source.page_key.entity_type() != DbEntityType::Episode)
+                {
+                    return Err(Status::invalid_argument(
+                        "EpisodeReference.page_sources must use EntityType::Episode",
+                    ));
+                }
 
                 let mapped_list_entries = list_entries
                     .into_iter()
@@ -96,7 +86,7 @@ pub fn build_episode_references(
                     episode_id: parsed_episode_id,
                     episode_number,
                     title,
-                    page_keys: mapped_page_keys,
+                    page_sources: mapped_page_sources,
                     list_entries: mapped_list_entries,
                 })
             },
@@ -107,20 +97,34 @@ pub fn build_episode_references(
 /// Converts a known episode of a work into its proto reference for `LoadAnime`.
 ///
 /// The work's merge reads these to keep each episode's ID, matching by episode number or
-/// page key, so the reference carries the episode's page keys and list entries as stored.
+/// page key, so the reference carries the episode's pages with their stored URLs and its
+/// list entries.
 pub fn to_proto_episode_reference(known_episode: EpisodeReferenceInput) -> EpisodeReference {
     let EpisodeReferenceInput {
         episode_id,
         episode_number,
         title,
-        page_keys,
+        page_sources,
         list_entries,
     } = known_episode;
     EpisodeReference {
         episode_id: episode_id.to_string(),
         episode_number,
         title,
-        page_keys: page_keys.iter().map(to_proto_page_key).collect(),
+        page_sources: page_sources
+            .into_iter()
+            .map(
+                |PageSource {
+                     page_key,
+                     source,
+                     title,
+                 }| ProtoPageSource {
+                    page_key: Some(to_proto_page_key(&page_key)),
+                    source: source.map(String::from).unwrap_or_default(),
+                    title: title.unwrap_or_default(),
+                },
+            )
+            .collect(),
         list_entries: list_entries
             .into_iter()
             .map(to_proto_episode_list_entry)
@@ -132,17 +136,23 @@ pub fn to_proto_episode_reference(known_episode: EpisodeReferenceInput) -> Episo
 ///
 /// # Errors
 ///
-/// Returns [`Status::invalid_argument`] if `episode_id` is not a valid UUID,
-/// if any enum or timestamp is invalid, or if required fields are missing.
+/// Returns [`Status::invalid_argument`] if `episode_id` is not a valid UUID, the episode is
+/// missing, an enum or timestamp is invalid, or a page source has no valid page key.
 pub fn build_save_episode_input(
-    episode_id_text: &str,
-    expected_version: i64,
-    merge_version: i32,
-    episode: Episode,
+    request: SaveEpisodeRequest,
     traceparent: Option<String>,
 ) -> Result<SaveEpisodeInput, Status> {
-    let episode_id = Uuid::parse_str(episode_id_text)
+    let SaveEpisodeRequest {
+        episode_id: episode_id_text,
+        expected_version,
+        episode,
+        merge_version,
+        page_sources,
+    } = request;
+    let episode_id = Uuid::parse_str(&episode_id_text)
         .map_err(|err| Status::invalid_argument(format!("invalid episode_id UUID: {err}")))?;
+    let episode = episode.ok_or_else(|| Status::invalid_argument("episode must be provided"))?;
+    let page_sources = parse_page_sources(page_sources)?;
 
     let merged_record_hash = compute_save_episode_hash(&episode);
 
@@ -212,6 +222,7 @@ pub fn build_save_episode_input(
         hash_format: EPISODE_HASH_FORMAT,
         merge_version,
         traceparent,
+        page_sources,
     })
 }
 
@@ -227,7 +238,7 @@ fn map_episode_characters(
 ) -> Result<Vec<EpisodeCharacterInput>, Status> {
     let mut mapped_characters = Vec::new();
     for EpisodeCharacter {
-        name: _,
+        name,
         role,
         sources,
         voice_actors: _,
@@ -235,10 +246,14 @@ fn map_episode_characters(
     {
         let mapped_role = map_character_role(role)?.to_owned();
         for source_url in sources {
-            if let Some((provider, address)) = parse_character_target_from_url(&source_url) {
+            if let Some(character_page_source) = build_page_source_from_url(
+                &source_url,
+                &name,
+                DbEntityType::Character,
+                parse_character_target_from_url,
+            ) {
                 mapped_characters.push(EpisodeCharacterInput {
-                    character_page_provider: provider.to_owned(),
-                    character_page_address: address,
+                    character_page_source,
                     role: mapped_role.clone(),
                 });
             }
@@ -258,15 +273,8 @@ pub(crate) fn map_character_role(enum_number: i32) -> Result<&'static str, Statu
             "unknown CharacterRole number {enum_number}"
         )));
     };
-    match role {
-        CharacterRole::Unspecified => {
-            Err(Status::invalid_argument("CharacterRole must be specified"))
-        }
-        CharacterRole::Main => Ok("MAIN"),
-        CharacterRole::Supporting => Ok("SUPPORTING"),
-        CharacterRole::Background => Ok("BACKGROUND"),
-        CharacterRole::Unknown => Ok("UNKNOWN"),
-    }
+    role.find_lookup_text()
+        .ok_or_else(|| Status::invalid_argument("CharacterRole must be specified"))
 }
 
 /// Computes a deterministic SHA-256 hex digest over a canonicalized [`Episode`].
@@ -302,10 +310,17 @@ mod tests {
 
     use tonic::Code;
 
+    use postgres_db::{PageKey, Provider};
+    use url::Url;
+
     use super::*;
-    use crate::service::shared_proto::v1::EntityType;
+    use crate::service::shared_proto::v1::{EntityType, PageKey as ProtoPageKey};
 
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "one episode covers every mapped field in two orders"
+    )]
     fn build_save_episode_input_maps_fields_and_is_order_independent() {
         let mut titles = BTreeMap::new();
         titles.insert("en".to_owned(), "Herr Dr. Tenma".to_owned());
@@ -334,7 +349,7 @@ mod tests {
                 EpisodeCharacter {
                     name: "Kenzo Tenma".to_owned(),
                     role: CharacterRole::Main as i32,
-                    sources: vec!["https://myanimelist.net/character/42".to_owned()],
+                    sources: vec!["https://myanimelist.net/character/42/Kenzo_Tenma".to_owned()],
                     voice_actors: Vec::new(),
                 },
                 EpisodeCharacter {
@@ -379,34 +394,66 @@ mod tests {
             compute_save_episode_hash(&reseasoned_episode)
         );
 
-        let input =
-            build_save_episode_input(&Uuid::now_v7().to_string(), 1, 1, first_episode, None)
-                .expect("valid episode should map");
+        let input = build_save_episode_input(
+            SaveEpisodeRequest {
+                episode_id: Uuid::now_v7().to_string(),
+                expected_version: 1,
+                episode: Some(first_episode),
+                merge_version: 1,
+                page_sources: Vec::new(),
+            },
+            None,
+        )
+        .expect("valid episode should map");
         assert_eq!(input.episode_number, 1);
         assert_eq!(input.duration_seconds, Some(1440));
         assert!(!input.is_filler);
         assert!(!input.is_recap);
         assert_eq!(input.titles.len(), 1);
         assert_eq!(input.streaming.len(), 1);
-        let character_roles: Vec<(&str, &str, &str)> = input
+        let character_pages: Vec<(&str, &str, &str, &str)> = input
             .characters
             .iter()
             .map(|character| {
+                let page_source = &character.character_page_source;
                 (
-                    character.character_page_provider.as_str(),
-                    character.character_page_address.as_str(),
+                    page_source.page_key.provider().as_str(),
+                    page_source.page_key.address().as_str(),
+                    page_source.source.as_ref().map_or("", Url::as_str),
                     character.role.as_str(),
                 )
             })
             .collect();
         assert_eq!(
-            character_roles,
+            character_pages,
             vec![
-                ("mal", "42", "MAIN"),
-                ("mal", "43", "SUPPORTING"),
-                ("anilist", "44", "BACKGROUND"),
+                (
+                    "mal",
+                    "42",
+                    "https://myanimelist.net/character/42/Kenzo_Tenma",
+                    "MAIN"
+                ),
+                (
+                    "mal",
+                    "43",
+                    "https://myanimelist.net/character/43",
+                    "SUPPORTING"
+                ),
+                (
+                    "anilist",
+                    "44",
+                    "https://anilist.co/character/44",
+                    "BACKGROUND"
+                ),
             ]
         );
+    }
+
+    fn first_page_key(reference: &mut EpisodeReference) -> &mut ProtoPageKey {
+        reference.page_sources[0]
+            .page_key
+            .as_mut()
+            .expect("the valid reference names one page")
     }
 
     fn build_valid_reference() -> EpisodeReference {
@@ -414,10 +461,14 @@ mod tests {
             episode_id: Uuid::now_v7().to_string(),
             episode_number: 1,
             title: "Placeholder".to_owned(),
-            page_keys: vec![ProtoPageKey {
-                provider: "mal".to_owned(),
-                entity_type: EntityType::Episode as i32,
-                address: "1".to_owned(),
+            page_sources: vec![ProtoPageSource {
+                page_key: Some(ProtoPageKey {
+                    provider: "mal".to_owned(),
+                    entity_type: EntityType::Episode as i32,
+                    address: "21:1".to_owned(),
+                }),
+                source: String::new(),
+                title: String::new(),
             }],
             list_entries: vec![EpisodeListEntry {
                 provider: "mal".to_owned(),
@@ -431,9 +482,10 @@ mod tests {
         assert!(build_episode_references(vec![build_valid_reference()]).is_ok());
         let breaking_changes: Vec<fn(&mut EpisodeReference)> = vec![
             |reference| reference.episode_id = "not-a-uuid".to_owned(),
-            |reference| reference.page_keys[0].provider = "not_a_provider".to_owned(),
-            |reference| reference.page_keys[0].entity_type = EntityType::Anime as i32,
-            |reference| reference.page_keys[0].address = "not-numeric".to_owned(),
+            |reference| first_page_key(reference).provider = "not_a_provider".to_owned(),
+            |reference| first_page_key(reference).entity_type = EntityType::Anime as i32,
+            |reference| first_page_key(reference).address = "not-numeric".to_owned(),
+            |reference| reference.page_sources[0].page_key = None,
             |reference| reference.list_entries[0].provider = "not_a_provider".to_owned(),
             |reference| {
                 reference.list_entries[0].aired_at = Some(prost_types::Timestamp {
@@ -496,10 +548,31 @@ mod tests {
         ];
 
         for (episode_id, episode) in invalid_cases {
-            let status = build_save_episode_input(&episode_id, 1, 1, episode, None)
-                .expect_err("an invalid episode must be refused");
+            let status = build_save_episode_input(
+                SaveEpisodeRequest {
+                    episode_id,
+                    expected_version: 1,
+                    episode: Some(episode),
+                    merge_version: 1,
+                    page_sources: Vec::new(),
+                },
+                None,
+            )
+            .expect_err("an invalid episode must be refused");
             assert_eq!(status.code(), Code::InvalidArgument);
         }
+        let missing_episode_status = build_save_episode_input(
+            SaveEpisodeRequest {
+                episode_id: Uuid::now_v7().to_string(),
+                expected_version: 1,
+                episode: None,
+                merge_version: 1,
+                page_sources: Vec::new(),
+            },
+            None,
+        )
+        .expect_err("a request without an episode is refused");
+        assert_eq!(missing_episode_status.code(), Code::InvalidArgument);
     }
 
     #[test]
@@ -508,7 +581,11 @@ mod tests {
             episode_id: Uuid::now_v7(),
             episode_number: 3,
             title: "Placeholder episode 3".to_owned(),
-            page_keys: vec![PageKey::new(Provider::AniDb, DbEntityType::Episode, "3").unwrap()],
+            page_sources: vec![PageSource {
+                page_key: PageKey::new(Provider::AniDb, DbEntityType::Episode, "3").unwrap(),
+                source: Some(Url::parse("https://anidb.net/episode/3").expect("valid URL")),
+                title: None,
+            }],
             list_entries: vec![EpisodeListEntryInput {
                 provider: Provider::Mal,
                 title: Some("Placeholder episode 3".to_owned()),

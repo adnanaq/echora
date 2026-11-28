@@ -8,6 +8,12 @@ requires reducing every spelling of a page to a single canonical key. When a
 provider such as Kitsu supports both numeric and slug identifiers for the same
 page, the seed's numeric identifier is recorded as the canonical form.
 
+Character and episode pages reduce the same way, to a ``character`` or
+``episode`` kind, so a merge can tell which reported URL names which linked
+page. A MAL or Kitsu episode web page sits under its work, so its id is the
+work's id or slug and the episode number joined by a colon, as in
+``mal:episode:21:1`` or ``kitsu:episode:one-piece:1``.
+
 The enrichment pipeline uses these same keys to merge provider records and
 derive anime identifiers.
 """
@@ -25,17 +31,52 @@ _SLUG_ID = r"(?P<id>[^/?#]+)"
 _NUMBERED_PAGE = re.compile(rf"/(?P<kind>anime|manga)/{_NUMERIC_ID}")
 _SLUG_PAGE = re.compile(rf"/(?P<kind>anime|manga)/{_SLUG_ID}")
 _NUMBERED_ANIME_PAGE = re.compile(rf"/(?P<kind>anime)/{_NUMERIC_ID}")
+_NUMBERED_CHARACTER_PAGE = re.compile(rf"/(?P<kind>character)/{_NUMERIC_ID}")
+# Kitsu and Anime-Planet write the character path in the plural.
+_PLURAL_CHARACTER_PATH_PROVIDERS = frozenset({"kitsu", "anime_planet"})
+_SLUG_CHARACTER_PAGE = re.compile(rf"/(?P<kind>character)s/{_SLUG_ID}")
+_NUMBERED_EPISODE_PAGE = re.compile(rf"/(?P<kind>episode)/{_NUMERIC_ID}")
+# A MAL episode page sits under its work, with or without the work's slug.
+_MAL_EPISODE_PAGE = re.compile(
+    r"/anime/(?P<work_id>\d+)(?:/[^/?#]+)?/(?P<kind>episode)/(?P<episode_number>\d+)(?!\w)"
+)
+# A Kitsu episode's web page sits under its work's slug; Kitsu's own episode id is
+# not in the address.
+_KITSU_EPISODE_PAGE = re.compile(
+    r"/anime/(?P<work_id>[^/?#]+)/(?P<kind>episode)s/(?P<episode_number>\d+)(?!\w)"
+)
+# Episode page addresses, filled with an episode key's id, or with the work id and
+# episode number its id joins with a colon. MAL has none: an episode page needs the
+# work's slug in its path, which the key does not hold, and without it MAL serves the
+# work's own page. A Kitsu episode keyed by its Kitsu episode id has none either, since
+# its URL holds its work's slug and episode number instead.
+_EPISODE_ADDRESS_BY_PROVIDER = {
+    "kitsu": "https://kitsu.app/anime/{work_id}/episodes/{episode_number}",
+    "anidb": "https://anidb.net/episode/{id}",
+}
 
 # The pages each host serves, matched against the address after the host. Every
 # pattern names the id explicitly; prefix comparison is not safe, because
 # "/anime/466" is a prefix of "/anime/46633", two unrelated works. A pattern
 # without a kind names an anime page.
 _PAGE_PATTERNS: dict[str, tuple[tuple[str, re.Pattern[str]], ...]] = {
-    "myanimelist.net": (("mal", _NUMBERED_PAGE),),
-    "anisearch.com": (("anisearch", _NUMBERED_PAGE),),
-    "anilist.co": (("anilist", _NUMBERED_PAGE),),
+    "myanimelist.net": (
+        ("mal", _MAL_EPISODE_PAGE),
+        ("mal", _NUMBERED_PAGE),
+        ("mal", _NUMBERED_CHARACTER_PAGE),
+    ),
+    "anisearch.com": (
+        ("anisearch", _NUMBERED_PAGE),
+        ("anisearch", _NUMBERED_CHARACTER_PAGE),
+    ),
+    "anilist.co": (
+        ("anilist", _NUMBERED_PAGE),
+        ("anilist", _NUMBERED_CHARACTER_PAGE),
+    ),
     "anidb.net": (
         ("anidb", _NUMBERED_ANIME_PAGE),
+        ("anidb", _NUMBERED_CHARACTER_PAGE),
+        ("anidb", _NUMBERED_EPISODE_PAGE),
         # AniDB's old address for the same page, which MAL still links.
         (
             "anidb",
@@ -45,9 +86,20 @@ _PAGE_PATTERNS: dict[str, tuple[tuple[str, re.Pattern[str]], ...]] = {
             ),
         ),
     ),
-    "kitsu.app": (("kitsu", _SLUG_PAGE),),
-    "kitsu.io": (("kitsu", _SLUG_PAGE),),
-    "anime-planet.com": (("animeplanet", _SLUG_PAGE),),
+    "kitsu.app": (
+        ("kitsu", _KITSU_EPISODE_PAGE),
+        ("kitsu", _SLUG_PAGE),
+        ("kitsu", _SLUG_CHARACTER_PAGE),
+    ),
+    "kitsu.io": (
+        ("kitsu", _KITSU_EPISODE_PAGE),
+        ("kitsu", _SLUG_PAGE),
+        ("kitsu", _SLUG_CHARACTER_PAGE),
+    ),
+    "anime-planet.com": (
+        ("anime_planet", _SLUG_PAGE),
+        ("anime_planet", _SLUG_CHARACTER_PAGE),
+    ),
     # ANN puts the id in the query, where its position varies.
     "animenewsnetwork.com": (
         (
@@ -75,7 +127,7 @@ _SEED_ADDRESS_BY_PROVIDER = {
     "anilist": "https://anilist.co/{kind}/{id}",
     "anidb": "https://anidb.net/{kind}/{id}",
     "kitsu": "https://kitsu.app/{kind}/{id}",
-    "animeplanet": "https://anime-planet.com/{kind}/{id}",
+    "anime_planet": "https://anime-planet.com/{kind}/{id}",
     "ann": "https://animenewsnetwork.com/encyclopedia/{kind}.php?id={id}",
     "livechart": "https://livechart.me/{kind}/{id}",
     "simkl": "https://simkl.com/{kind}/{id}",
@@ -89,7 +141,7 @@ REFERENCE_ORDER: tuple[str, ...] = (
     "anilist",
     "anidb",
     "kitsu",
-    "animeplanet",
+    "anime_planet",
     "anisearch",
     "ann",
     "livechart",
@@ -142,6 +194,10 @@ def resolve_page_key(address: str) -> str:
         'mal:anime:21'
         >>> resolve_page_key("https://anidb.net/perl-bin/animedb.pl?show=anime&aid=69")
         'anidb:anime:69'
+        >>> resolve_page_key("https://myanimelist.net/character/40/Luffy_Monkey_D")
+        'mal:character:40'
+        >>> resolve_page_key("https://myanimelist.net/anime/21/One_Piece/episode/1")
+        'mal:episode:21:1'
     """
     scheme, scheme_separator, address_after_scheme = address.partition("://")
     host, _, path = address_after_scheme.partition("/")
@@ -150,10 +206,26 @@ def resolve_page_key(address: str) -> str:
         for provider, pattern in _PAGE_PATTERNS.get(host, ()):
             if page_match := pattern.match(f"/{path}"):
                 page_kind = page_match.groupdict().get("kind") or "anime"
-                return f"{provider}:{page_kind}:{page_match['id'].lower()}"
+                return f"{provider}:{page_kind}:{_read_matched_page_id(page_match)}"
     if not scheme_separator:
         return address.rstrip("/")
     return f"{scheme.lower()}://{host}/{path}".rstrip("/")
+
+
+def _read_matched_page_id(page_match: re.Match[str]) -> str:
+    """Read the page id from a matched page address, lowercased.
+
+    Args:
+        page_match: A match of one of the ``_PAGE_PATTERNS`` patterns.
+
+    Returns:
+        The ``id`` group, or for an episode page under its work the work id and the
+        episode number joined by a colon.
+    """
+    page_id = page_match.groupdict().get("id")
+    if page_id is None:
+        page_id = f"{page_match['work_id']}:{page_match['episode_number']}"
+    return page_id.lower()
 
 
 def build_page_address(page_key: str) -> str | None:
@@ -166,7 +238,8 @@ def build_page_address(page_key: str) -> str | None:
         page_key: A page key, as ``resolve_page_key`` gives it.
 
     Returns:
-        The page address, or None when the key is not a known provider's page.
+        The page address, or None when the key is not a known provider's page
+        or its provider has no URL template for it, such as a MAL episode.
 
     Examples:
         >>> build_page_address("mal:anime:21")
@@ -178,6 +251,18 @@ def build_page_address(page_key: str) -> str | None:
     if provider is None:
         return None
     _, page_kind, page_id = page_key.split(":", 2)
+    if page_kind == "episode":
+        episode_address = _EPISODE_ADDRESS_BY_PROVIDER.get(provider)
+        if episode_address is None:
+            return None
+        work_id, separator, episode_number = page_id.partition(":")
+        if "{work_id}" in episode_address and not separator:
+            return None
+        return episode_address.format(
+            id=page_id, work_id=work_id, episode_number=episode_number
+        )
+    if page_kind == "character" and provider in _PLURAL_CHARACTER_PATH_PROVIDERS:
+        page_kind = "characters"
     return _SEED_ADDRESS_BY_PROVIDER[provider].format(kind=page_kind, id=page_id)
 
 
@@ -217,13 +302,14 @@ def is_mal_page(page_key: str) -> bool:
 
 
 def read_page_kind(page_key: str) -> str | None:
-    """Return the media kind (``anime`` or ``manga``) from a recognised page key.
+    """Return the page kind from a recognised page key.
 
     Args:
         page_key: A page key, as ``resolve_page_key`` gives it.
 
     Returns:
-        ``anime`` or ``manga``, or None when the key is not a known provider's page.
+        ``anime``, ``manga``, ``character`` or ``episode``, or None when the key is
+        not a known provider's page.
 
     Examples:
         >>> read_page_kind("anilist:manga:119534")

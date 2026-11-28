@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT requested.id AS \"id!\"\n        FROM (\n            SELECT id, merge_requested_at FROM anime\n            WHERE $1 = 'anime' AND merge_requested_at IS NOT NULL AND deleted_at IS NULL\n            UNION ALL\n            SELECT id, merge_requested_at FROM episode\n            WHERE $1 = 'episode' AND merge_requested_at IS NOT NULL AND deleted_at IS NULL\n            UNION ALL\n            SELECT id, merge_requested_at FROM character\n            WHERE $1 = 'character' AND merge_requested_at IS NOT NULL AND deleted_at IS NULL\n        ) requested\n        ORDER BY requested.merge_requested_at, requested.id\n        LIMIT $2\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "439e06b83c3bca06f25ea135d5dc57d300d8f9ac94c0cbda3b454bd9a8341ea9"
+}

@@ -1,12 +1,9 @@
-"""Integration tests for EnrichmentService.MergeEpisode with PostgresService."""
-
 from __future__ import annotations
 
 import json
 import os
 from datetime import UTC, datetime
-from types import SimpleNamespace
-from typing import TYPE_CHECKING, cast
+from unittest.mock import create_autospec
 
 import grpc
 import pytest
@@ -15,6 +12,7 @@ from enrichment.pipeline.anime_proto_mapper import to_proto_timestamp
 from enrichment_proto.v1 import enrichment_service_pb2_grpc
 from enrichment_proto.v1.enrichment_service_pb2 import MergeEpisodeRequest
 from enrichment_service.routes.adapter import EnrichmentRoutes
+from enrichment_service.runtime import EnrichmentRuntime
 from postgres_proto.v1 import postgres_service_pb2_grpc
 from postgres_proto.v1.postgres_service_pb2 import StorePageRequest
 from shared_proto.v1 import anime_pb2
@@ -25,18 +23,14 @@ from shared_proto.v1.merge_pb2 import (
     StoredPage,
 )
 
-if TYPE_CHECKING:
-    from enrichment_service.runtime import EnrichmentRuntime
-
 pytestmark = pytest.mark.integration
 
 
 @pytest.mark.asyncio
 async def test_merge_episode_with_postgres_store_page_end_to_end() -> None:
-    """Store an episode page in PostgresService and merge via MergeEpisode."""
     server = grpc.aio.server()
     enrichment_service_pb2_grpc.add_EnrichmentServiceServicer_to_server(
-        EnrichmentRoutes(runtime=cast("EnrichmentRuntime", SimpleNamespace())),
+        EnrichmentRoutes(runtime=create_autospec(EnrichmentRuntime, instance=True)),
         server,
     )
     port = server.add_insecure_port("127.0.0.1:0")
@@ -91,6 +85,7 @@ async def test_merge_episode_with_postgres_store_page_end_to_end() -> None:
                 MergeEpisodeRequest(
                     episode_id=ep_id,
                     anime_id=anime_id,
+                    episode_number=1,
                     pages=[page],
                     list_entries=[
                         EpisodeListEntry(
@@ -115,14 +110,13 @@ async def test_merge_episode_with_postgres_store_page_end_to_end() -> None:
 
 @pytest.mark.asyncio
 async def test_five_episodes_per_provider_end_to_end() -> None:
-    """Store and merge 5 episodes from each provider (AniDB, AniSearch, Kitsu, MAL)."""
     from pathlib import Path
 
     from enrichment_proto.v1.enrichment_service_pb2 import MergeAnimeRequest
 
     server = grpc.aio.server()
     enrichment_service_pb2_grpc.add_EnrichmentServiceServicer_to_server(
-        EnrichmentRoutes(runtime=cast("EnrichmentRuntime", SimpleNamespace())),
+        EnrichmentRoutes(runtime=create_autospec(EnrichmentRuntime, instance=True)),
         server,
     )
     port = server.add_insecure_port("127.0.0.1:0")
@@ -314,6 +308,7 @@ async def test_five_episodes_per_provider_end_to_end() -> None:
                         MergeEpisodeRequest(
                             episode_id=ref.episode_id,
                             anime_id=anime_id,
+                            episode_number=ref.episode_number,
                             pages=pages,
                             list_entries=ref.list_entries,
                         )
@@ -327,7 +322,7 @@ async def test_five_episodes_per_provider_end_to_end() -> None:
                     page_key=PageKey(
                         provider="mal",
                         entity_type=anime_pb2.ENTITY_TYPE_EPISODE,
-                        address=str(ep_num),
+                        address=f"21:{ep_num}",
                     ),
                     fetched_at=now_ts,
                     responses=[
@@ -343,6 +338,7 @@ async def test_five_episodes_per_provider_end_to_end() -> None:
                     MergeEpisodeRequest(
                         episode_id=generate_entity_id(),
                         anime_id=anime_id,
+                        episode_number=ep_num,
                         pages=[mal_page],
                     )
                 )

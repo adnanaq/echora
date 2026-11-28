@@ -2,14 +2,18 @@
 
 mod anime;
 mod anime_details;
+mod anime_reads;
 mod anime_relations;
 mod anime_schedule_and_stats;
 mod character;
+mod character_reads;
 mod episode;
+mod episode_reads;
 mod error;
 mod graph_projection;
 mod language_code;
 mod provider_page;
+mod scheduling;
 
 #[doc(inline)]
 pub use anime::{
@@ -18,6 +22,10 @@ pub use anime::{
 };
 #[doc(inline)]
 pub use anime_details::{AnimeDetailsInput, AnimeImageInput, AnimeThemeInput, AnimeTitleInput};
+#[doc(inline)]
+pub use anime_reads::{
+    RelatedAnimeSummary, VisibleAnimeRecord, VisibleAnimeRelation, read_visible_anime,
+};
 #[doc(inline)]
 pub use anime_relations::{
     AnimeCompanyInput, AnimeRelationClaimInput, AnimeRelationInput, AnimeRelationsAndGraphInput,
@@ -35,6 +43,8 @@ pub use character::{
     LoadCharacterOutcome, SaveCharacterInput, SaveCharacterOutcome, list_character_anime,
     load_character, save_character,
 };
+#[doc(inline)]
+pub use character_reads::{VisibleCharacterRecord, VisibleOgraphyEntry, read_visible_character};
 use chrono::{DateTime, Utc};
 #[doc(inline)]
 pub use episode::{
@@ -44,11 +54,23 @@ pub use episode::{
     save_episode,
 };
 #[doc(inline)]
+pub use episode_reads::{
+    VisibleEpisodeCharacter, VisibleEpisodeRecord, list_visible_episodes, read_visible_episode,
+};
+#[doc(inline)]
 pub use error::Error;
 #[doc(inline)]
 pub use provider_page::{
-    Address, EntityType, FetchOutcome, PageKey, PageObservation, PageResponse, Provider,
-    compute_responses_hash, encode_page_key_proto, record_page_observation,
+    Address, EntityType, FetchOutcome, PageKey, PageObservation, PageResponse, PageSource,
+    Provider, compute_responses_hash, encode_page_key_proto, record_page_observation,
+};
+#[doc(inline)]
+pub use scheduling::{
+    DueEntitiesQuery, DueEntityRecord, DuePageRecord, EntityPageRecord, EntityVersionRecord,
+    MAX_OLDER_AFTER_YEARS, MAX_WINDOW_DAYS, RefreshOutcome, UpcomingEpisodeRecord, list_due_anime,
+    list_due_characters, list_due_episodes, list_due_pages, list_entity_pages,
+    list_entity_versions, list_requested_merges, list_score_anime, list_upcoming_episodes,
+    record_refresh,
 };
 use sqlx::migrate::Migrator;
 use sqlx::postgres::PgPoolOptions;
@@ -118,10 +140,30 @@ pub async fn run_migrations(pool: &PgPool) -> Result<(), Error> {
     Ok(())
 }
 
+/// Begins a read-only transaction that sees one consistent snapshot of the database.
+///
+/// Every query in the transaction sees the same committed state, so a read made of several
+/// queries never mixes an entity's row with child rows from a later save.
+///
+/// # Errors
+///
+/// Returns a database error when no connection can be acquired or the transaction cannot begin.
+pub(crate) async fn begin_read_snapshot(
+    pool: &PgPool,
+) -> Result<Transaction<'static, Postgres>, Error> {
+    Ok(pool
+        .begin_with("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        .await?)
+}
+
 /// Reads the start time of `tx`, which PostgreSQL's `now()` returns throughout it.
 ///
 /// Every timestamp one write sets comes from this clock, so the rows and events of
 /// one save agree with each other and with `now()` defaults, whichever replica wrote them.
+///
+/// # Errors
+///
+/// Returns a database error when the query fails.
 pub(crate) async fn read_transaction_time(
     tx: &mut Transaction<'_, Postgres>,
 ) -> Result<DateTime<Utc>, Error> {

@@ -22,6 +22,7 @@ from enrichment.sources.base.framework import (
     FileRepository,
     NullRepository,
 )
+from enrichment.sources.base.page_fetcher import parse_html_document
 from http_cache.result_cache import cached_result
 
 logger = logging.getLogger(__name__)
@@ -100,7 +101,7 @@ def _read_synonym_names(element: Any) -> list[str]:
         if isinstance(node, str):
             synonym_name = node.strip().strip(",").strip()
         elif node.tag == "i":
-            synonym_name = "".join(node.itertext()).strip()
+            synonym_name = str(node.text_content()).strip()
         elif node.tag == "span" and "header" not in (node.get("class") or "").split():
             synonym_names.extend(_read_synonym_names(node))
             continue
@@ -125,18 +126,14 @@ def _extract_anime_from_html(html_text: str) -> dict[str, Any] | None:
 
     Returns None if the HTML cannot be parsed.
     """
-    from lxml import etree
 
     try:
-        parser = etree.HTMLParser()
-        tree = etree.fromstring(html_text.encode(), parser)
-        if tree is None:  # pragma: no cover
-            return None  # pragma: no cover
+        tree = parse_html_document(html_text)
     except Exception:  # pragma: no cover
         return None  # pragma: no cover
 
     def _element_text(element: Any) -> str:
-        return re.sub(r" {2,}", " ", "".join(element.itertext())).strip()
+        return re.sub(r" {2,}", " ", str(element.text_content())).strip()
 
     def _text(key: str) -> str | None:
         els = cast(list[Any], tree.xpath(_XPATHS[key]))
@@ -175,13 +172,13 @@ def _extract_anime_from_html(html_text: str) -> dict[str, Any] | None:
 
     def _names(key: str) -> list[str]:
         elements = cast(list[Any], tree.xpath(_XPATHS[key]))
-        names = ("".join(el.itertext()).strip() for el in elements)
+        names = (str(el.text_content()).strip() for el in elements)
         return [name for name in names if name]
 
     website_els = cast(list[Any], tree.xpath(_XPATHS["websites"]))
     websites = [
         {
-            "name": "".join(el.itertext()).strip(),
+            "name": str(el.text_content()).strip(),
             "url": el.get("href") or "",
         }
         for el in website_els
@@ -222,13 +219,9 @@ def _extract_relations_from_html(html_text: str) -> dict[str, Any] | None:
     of {relation_type, title, url, details, rating, image} dicts.
     Returns None if the HTML cannot be parsed.
     """
-    from lxml import etree
 
     try:
-        parser = etree.HTMLParser()
-        tree = etree.fromstring(html_text.encode(), parser)
-        if tree is None:  # pragma: no cover
-            return None  # pragma: no cover
+        tree = parse_html_document(html_text)
     except Exception:  # pragma: no cover
         return None  # pragma: no cover
 
@@ -237,15 +230,15 @@ def _extract_relations_from_html(html_text: str) -> dict[str, Any] | None:
         result = []
         for row in rows:
             span = row.xpath(".//th//span")
-            relation_type = "".join(span[0].itertext()).strip() if span else None
+            relation_type = str(span[0].text_content()).strip() if span else None
 
             a = row.xpath(".//th//a")
-            title = "".join(a[0].itertext()).strip() if a else None
+            title = str(a[0].text_content()).strip() if a else None
             url = a[0].get("href") or None if a else None
 
             details_els = row.xpath(".//td[@data-title='Type / Episodes / Year']")
             details = (
-                "".join(details_els[0].itertext()).strip() if details_els else None
+                str(details_els[0].text_content()).strip() if details_els else None
             )
 
             rating_els = row.xpath(

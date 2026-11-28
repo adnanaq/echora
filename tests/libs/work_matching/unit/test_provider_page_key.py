@@ -42,6 +42,32 @@ from work_matching.provider_page_key import (
             "https://animenewsnetwork.com/encyclopedia/anime.php?id=836",
         ),
         ("https://www.animecountdown.com/38636", "https://animecountdown.com/38636"),
+        (
+            "https://myanimelist.net/character/40/Luffy_Monkey_D",
+            "https://myanimelist.net/character/40",
+        ),
+        (
+            "https://anilist.co/character/40/Monkey-D-Luffy",
+            "https://anilist.co/character/40",
+        ),
+        (
+            "https://www.anisearch.com/character/4852,monkey-d-ruffy",
+            "https://anisearch.com/character/4852",
+        ),
+        ("https://anidb.net/character/1954/", "https://anidb.net/character/1954"),
+        (
+            "https://kitsu.io/characters/monkey-d-luffy",
+            "https://kitsu.app/characters/monkey-d-luffy",
+        ),
+        (
+            "https://www.anime-planet.com/characters/monkey-d-luffy",
+            "https://anime-planet.com/characters/monkey-d-luffy",
+        ),
+        (
+            "https://myanimelist.net/anime/21/One_Piece/episode/1",
+            "https://myanimelist.net/anime/21/episode/1",
+        ),
+        ("https://www.anidb.net/episode/412", "https://anidb.net/episode/412"),
     ],
 )
 def test_resolve_page_key_two_spellings_give_one_key(
@@ -53,6 +79,33 @@ def test_resolve_page_key_two_spellings_give_one_key(
 def test_resolve_page_key_recognised_page_gives_provider_kind_and_id() -> None:
     assert (
         resolve_page_key("https://myanimelist.net/anime/21/One_Piece") == "mal:anime:21"
+    )
+
+
+def test_resolve_page_key_character_page_gives_character_kind() -> None:
+    assert (
+        resolve_page_key("https://myanimelist.net/character/40/Luffy_Monkey_D")
+        == "mal:character:40"
+    )
+
+
+def test_resolve_page_key_character_and_anime_with_same_id_stay_apart() -> None:
+    assert resolve_page_key("https://myanimelist.net/character/21") != (
+        resolve_page_key("https://myanimelist.net/anime/21")
+    )
+
+
+def test_resolve_page_key_mal_episode_page_gives_work_id_and_episode_number() -> None:
+    assert (
+        resolve_page_key("https://myanimelist.net/anime/21/One_Piece/episode/1")
+        == "mal:episode:21:1"
+    )
+
+
+def test_resolve_page_key_mal_episode_list_keeps_anime_kind() -> None:
+    assert (
+        resolve_page_key("https://myanimelist.net/anime/21/One_Piece/episode")
+        == "mal:anime:21"
     )
 
 
@@ -135,7 +188,7 @@ def test_reference_order_starts_with_merged_id_providers() -> None:
         "anilist",
         "anidb",
         "kitsu",
-        "animeplanet",
+        "anime_planet",
         "anisearch",
     )
 
@@ -159,6 +212,8 @@ def test_has_repeated_provider_counts_pages_of_known_providers(
     [
         ("anilist:manga:119534", "manga"),
         ("mal:anime:21", "anime"),
+        ("mal:character:40", "character"),
+        ("mal:episode:21:1", "episode"),
         ("https://example.com/show", None),
     ],
 )
@@ -177,7 +232,7 @@ def test_read_page_id_unrecognised_key_gives_key() -> None:
 
 
 def test_read_page_id_id_with_colon_kept_whole() -> None:
-    assert read_page_id("animeplanet:anime:re:zero") == "re:zero"
+    assert read_page_id("anime_planet:anime:re:zero") == "re:zero"
 
 
 @pytest.mark.parametrize(
@@ -195,6 +250,11 @@ def test_read_page_id_id_with_colon_kept_whole() -> None:
         "https://livechart.me/anime/12932",
         "https://simkl.com/anime/48858",
         "https://animecountdown.com/48858",
+        "https://myanimelist.net/character/40",
+        "https://kitsu.app/characters/monkey-d-luffy",
+        "https://anime-planet.com/characters/monkey-d-luffy",
+        "https://kitsu.app/anime/one-piece/episodes/1",
+        "https://anidb.net/episode/412",
     ],
 )
 def test_build_page_address_seed_address_key_gives_seed_address(address: str) -> None:
@@ -212,3 +272,11 @@ def test_build_page_address_every_provider_gives_address_with_same_key() -> None
 
 def test_build_page_address_unrecognised_key_gives_none() -> None:
     assert build_page_address("https://animeschedule.net/anime/one-piece") is None
+
+
+def test_build_page_address_mal_episode_key_gives_none() -> None:
+    assert build_page_address("mal:episode:21:1") is None
+
+
+def test_build_page_address_kitsu_episode_id_key_gives_none() -> None:
+    assert build_page_address("kitsu:episode:103482") is None

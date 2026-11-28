@@ -25,6 +25,7 @@ from enrichment.sources.base.framework import (
     FileRepository,
     NullRepository,
 )
+from enrichment.sources.base.page_fetcher import parse_html_document
 from enrichment.sources.base.page_readiness import wait_for_page
 from enrichment.sources.mal.mal_base import (
     MAL_BASE_URL,
@@ -42,6 +43,7 @@ from enrichment.sources.mal.mal_models import (
     MalTrailer,
 )
 from http_cache.result_cache import cached_result
+from lxml import etree
 
 logger = logging.getLogger(__name__)
 
@@ -137,13 +139,8 @@ def _extract_anime_from_html(html_text: str) -> dict[str, Any] | None:
     Returns:
         Dict of raw extracted fields, or None if parsing fails entirely.
     """
-    from lxml import etree
-
     try:
-        parser = etree.HTMLParser(encoding="utf-8")
-        tree = etree.fromstring(html_text.encode(), parser)
-        if tree is None:  # pragma: no cover
-            return None  # pragma: no cover
+        tree = parse_html_document(html_text)
     except Exception:  # pragma: no cover
         return None  # pragma: no cover
 
@@ -151,7 +148,7 @@ def _extract_anime_from_html(html_text: str) -> dict[str, Any] | None:
         els = cast(list[Any], tree.xpath(_XPATHS[key]))
         if not els:
             return None
-        return "".join(els[0].itertext()).strip() or None
+        return str(els[0].text_content()).strip() or None
 
     def _attr(key: str) -> str | None:
         vals = cast(list[str], tree.xpath(_XPATHS[key]))
@@ -173,32 +170,32 @@ def _extract_anime_from_html(html_text: str) -> dict[str, Any] | None:
     def _company_list(key: str) -> list[dict[str, str]]:
         els = cast(list[Any], tree.xpath(_XPATHS[key]))
         return [
-            {"name": "".join(el.itertext()).strip(), "source": el.get("href") or ""}
+            {"name": company_name, "source": el.get("href") or ""}
             for el in els
-            if "".join(el.itertext()).strip()
+            if (company_name := str(el.text_content()).strip())
         ]
 
     def _name_list(key: str) -> list[dict[str, str]]:
         els = cast(list[Any], tree.xpath(_XPATHS[key]))
         return [
-            {"name": "".join(el.itertext()).strip()}
+            {"name": item_name}
             for el in els
-            if "".join(el.itertext()).strip()
+            if (item_name := str(el.text_content()).strip())
         ]
 
     def _theme_rows(key: str) -> list[dict[str, Any]]:
         rows = []
         for tr in cast(list[Any], tree.xpath(_XPATHS[key])):
             td2 = cast(list[Any], tr.xpath(".//td[2]"))
-            title_text = "".join(td2[0].itertext()).strip() if td2 else ""
+            title_text = str(td2[0].text_content()).strip() if td2 else ""
             artist_els = cast(
                 list[Any], tr.xpath(".//span[contains(@class,'theme-song-artist')]")
             )
-            artist = "".join(artist_els[0].itertext()).strip() if artist_els else None
+            artist = str(artist_els[0].text_content()).strip() if artist_els else None
             ep_els = cast(
                 list[Any], tr.xpath(".//span[contains(@class,'theme-song-episode')]")
             )
-            episodes = "".join(ep_els[0].itertext()).strip() if ep_els else None
+            episodes = str(ep_els[0].text_content()).strip() if ep_els else None
             rows.append(
                 {"title_text": title_text, "artist": artist, "episodes": episodes}
             )
@@ -208,13 +205,13 @@ def _extract_anime_from_html(html_text: str) -> dict[str, Any] | None:
     tile_entries = []
     for entry in cast(list[Any], tree.xpath(_XPATHS["related_tile_entries"])):
         rel_els = cast(list[Any], entry.xpath(".//div[contains(@class,'relation')]"))
-        relation_raw = "".join(rel_els[0].itertext()).strip() if rel_els else ""
+        relation_raw = str(rel_els[0].text_content()).strip() if rel_els else ""
 
         title_anchors = cast(
             list[Any], entry.xpath(".//div[contains(@class,'title')]/a")
         )
         title_text = (
-            "".join(title_anchors[0].itertext()).strip() if title_anchors else ""
+            str(title_anchors[0].text_content()).strip() if title_anchors else ""
         )
 
         tile_entries.append(
@@ -229,7 +226,7 @@ def _extract_anime_from_html(html_text: str) -> dict[str, Any] | None:
     table_entries = []
     for row in cast(list[Any], tree.xpath(_XPATHS["related_table_rows"])):
         td1 = cast(list[Any], row.xpath("./td[1]"))
-        relation = "".join(td1[0].itertext()).strip() if td1 else ""
+        relation = str(td1[0].text_content()).strip() if td1 else ""
         td2 = cast(list[Any], row.xpath("./td[2]"))
         links_html = (
             etree.tostring(td2[0], encoding="unicode", method="html") if td2 else ""
@@ -240,7 +237,7 @@ def _extract_anime_from_html(html_text: str) -> dict[str, Any] | None:
     external_sources_raw = []
     for a in cast(list[Any], tree.xpath(_XPATHS["external_source_anchors"])):
         cap = cast(list[Any], a.xpath(".//div[contains(@class,'caption')]"))
-        name = "".join(cap[0].itertext()).strip() if cap else ""
+        name = str(cap[0].text_content()).strip() if cap else ""
         external_sources_raw.append({"name": name, "source": a.get("href") or ""})
 
     # Streaming links
@@ -305,13 +302,8 @@ def _extract_pics_from_html(html_text: str) -> list[str]:
         List of full-size image URLs from the gallery. Empty list on parse failure
         or if the page was captured before the gallery JS rendered.
     """
-    from lxml import etree
-
     try:
-        parser = etree.HTMLParser(encoding="utf-8")
-        tree = etree.fromstring(html_text.encode(), parser)
-        if tree is None:  # pragma: no cover
-            return []  # pragma: no cover
+        tree = parse_html_document(html_text)
     except Exception:  # pragma: no cover
         return []  # pragma: no cover
 

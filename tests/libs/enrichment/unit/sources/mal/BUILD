@@ -2,7 +2,7 @@
 
 resources(
     name="fixtures",
-    sources=["fixtures/**"],
+    sources=["fixtures/**", "test_*/**"],
 )
 
 python_test_utils(
@@ -25,5 +25,6 @@ python_tests(
         ":fixtures",
         "//:reqs0#pytest-asyncio",
         "//:reqs0#pytest-mock",
+        "//:reqs0#pytest-regressions",
     ],
 )

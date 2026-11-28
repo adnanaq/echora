@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        WITH named AS (\n            SELECT named.provider, named.entity_type, named.address, named.source,\n                   named.title\n            FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[])\n                 AS named(provider, entity_type, address, source, title)\n        ),\n        added AS (\n            INSERT INTO provider_page (provider, entity_type, address, source, title)\n            SELECT provider, entity_type, address, source, title\n            FROM named\n            ON CONFLICT (provider, entity_type, address) DO NOTHING\n        ),\n        unnamed AS (\n            SELECT page.provider, page.entity_type, page.address\n            FROM provider_page page\n            JOIN named USING (provider, entity_type, address)\n            WHERE (page.source IS NULL AND named.source IS NOT NULL)\n               OR (page.title IS NULL AND named.title IS NOT NULL)\n            ORDER BY page.provider, page.entity_type, page.address\n            FOR NO KEY UPDATE OF page SKIP LOCKED\n        )\n        UPDATE provider_page page\n        SET source = coalesce(page.source, named.source),\n            title = coalesce(page.title, named.title)\n        FROM named\n        JOIN unnamed USING (provider, entity_type, address)\n        WHERE page.provider = named.provider\n          AND page.entity_type = named.entity_type\n          AND page.address = named.address\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "TextArray",
+        "TextArray",
+        "TextArray",
+        "TextArray",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e64271a8abdce2c91821d86a04dd71b3aaa1d4e1cf5396920a137ac6bea295c7"
+}

@@ -54,6 +54,10 @@ from enrichment.sources.base.external_links import (
     external_link,
     page_link,
 )
+from enrichment.sources.base.page_fetcher import (
+    index_responses_by_name,
+    parse_html_response,
+)
 
 _CDN_BASE = "https://cdn-eu.anidb.net/images/main"
 
@@ -406,8 +410,12 @@ def _apply_page_data(result: dict[str, Any], page: AniDBCharacterPage) -> None:
     """Merge AniDBCharacterPage fields into a canonical character result dict.
 
     Fields here come from the web page. Gender is the exception: the XML also
-    carries it, so this merges into any existing attributes rather than
-    replacing them. Called by character_from_anidb.
+    carries gender, so this merges into any existing attributes rather than
+    replacing them. Called by ``character_from_anidb``.
+
+    Args:
+        result: Canonical character dictionary updated in place.
+        page: Extracted ``AniDBCharacterPage`` model from the character web page.
     """
     if page.name_kanji:
         result["name_native"] = page.name_kanji
@@ -429,26 +437,7 @@ def _apply_page_data(result: dict[str, Any], page: AniDBCharacterPage) -> None:
         result["traits"] = traits
 
     if page.animeography:
-        ography_entries = [
-            Ography(
-                title=e["title"],
-                role=CharacterRole(e.get("role", "")),
-                sources=[e["url"]] if e.get("url") else [],
-            )
-            for e in page.animeography
-            if e.get("title")
-        ]
-        result["animeography"] = ography_entries
-
-        # Derive unique roles from all anime appearances and merge with any
-        # role already set from the XML API (e.g. role for the queried anime).
-        existing = list(result.get("roles", []))
-        from_ography = [
-            e.role.value for e in ography_entries if e.role != CharacterRole.UNKNOWN
-        ]
-        merged = list(dict.fromkeys(existing + from_ography))
-        if merged:
-            result["roles"] = merged
+        _apply_page_animeography(result, page.animeography)
 
     if page.gender:
         result.setdefault("attributes", {})["gender"] = page.gender
@@ -473,16 +462,47 @@ def _apply_page_data(result: dict[str, Any], page: AniDBCharacterPage) -> None:
         ]
 
 
+def _apply_page_animeography(
+    result: dict[str, Any], animeography: list[dict[str, str]]
+) -> None:
+    """Set a character's animeography and roles from the anime its web page lists.
+
+    Each listed anime with a title becomes an ``Ography`` entry. The roles are the
+    character's roles in those anime, added after any role the XML API already set
+    for the queried anime, each kept once.
+
+    Args:
+        result: Canonical character result dict, updated in place.
+        animeography: The anime entries the AniDB character page lists.
+    """
+    ography_entries = [
+        Ography(
+            title=anime_entry["title"],
+            role=CharacterRole(anime_entry.get("role", "")),
+            sources=[anime_entry["url"]] if anime_entry.get("url") else [],
+        )
+        for anime_entry in animeography
+        if anime_entry.get("title")
+    ]
+    result["animeography"] = ography_entries
+    xml_roles = list(result.get("roles", []))
+    animeography_roles = [
+        ography_entry.role.value
+        for ography_entry in ography_entries
+        if ography_entry.role != CharacterRole.UNKNOWN
+    ]
+    character_roles = list(dict.fromkeys(xml_roles + animeography_roles))
+    if character_roles:
+        result["roles"] = character_roles
+
+
 def map_anidb_anime_responses(
     responses: Sequence[PageResponse],
-    *,
-    anidb_url: str = "",
 ) -> dict[str, Any]:
     """Map stored AniDB anime XML response into a canonical Anime dict.
 
     Args:
         responses: Stored PageResponse sequence containing a ``main`` XML response.
-        anidb_url: Optional canonical AniDB anime URL.
 
     Returns:
         Dict of canonical Anime field values.
@@ -491,10 +511,6 @@ def map_anidb_anime_responses(
         ValueError: If the ``main`` response is missing or invalid XML.
     """
     from enrichment.sources.anidb.anidb_xml_parser import parse_anime_xml
-    from enrichment.sources.base.page_fetcher import (
-        index_responses_by_name,
-        parse_html_response,
-    )
 
     by_name = index_responses_by_name(responses)
     main_response = by_name.get("main")
@@ -502,9 +518,7 @@ def map_anidb_anime_responses(
         error_message = "AniDB anime responses missing required 'main' response"
         raise ValueError(error_message)
     anime_model = parse_anime_xml(parse_html_response(main_response))
-    resolved_url = anidb_url or (
-        f"https://anidb.net/anime/{anime_model.id}" if anime_model.id else ""
-    )
+    resolved_url = f"https://anidb.net/anime/{anime_model.id}" if anime_model.id else ""
     return anime_from_anidb(anime_model, anidb_url=resolved_url)
 
 
@@ -520,10 +534,6 @@ def map_anidb_anime_episode_responses(
         List of canonical Episode field dicts.
     """
     from enrichment.sources.anidb.anidb_xml_parser import parse_anime_xml
-    from enrichment.sources.base.page_fetcher import (
-        index_responses_by_name,
-        parse_html_response,
-    )
 
     by_name = index_responses_by_name(responses)
     main_response = by_name.get("main")
@@ -552,10 +562,6 @@ def map_anidb_character_page_responses(
         ValueError: If the ``main`` response is missing.
     """
     from enrichment.sources.anidb.anidb_character_crawler import _extract_from_html
-    from enrichment.sources.base.page_fetcher import (
-        index_responses_by_name,
-        parse_html_response,
-    )
 
     by_name = index_responses_by_name(responses)
     main_response = by_name.get("main")
@@ -570,14 +576,11 @@ def map_anidb_character_page_responses(
 
 def map_anidb_character_responses(
     responses: Sequence[PageResponse],
-    *,
-    source_url: str = "",
 ) -> dict[str, Any]:
     """Map stored AniDB character HTML response into a canonical Character dict.
 
     Args:
         responses: Stored PageResponse sequence containing a ``main`` HTML response.
-        source_url: Canonical AniDB character URL.
 
     Returns:
         Dict of canonical Character field values.
@@ -590,7 +593,4 @@ def map_anidb_character_responses(
         error_message = "AniDB character 'main' HTML yielded no character data"
         raise ValueError(error_message)
     char_model = AniDBCharacter(name=page_data.name_main)
-    mapped = character_from_anidb(char_model, page_data=page_data)
-    if source_url and source_url not in (mapped.get("sources") or []):
-        mapped["sources"] = [*mapped.get("sources", []), source_url]
-    return mapped
+    return character_from_anidb(char_model, page_data=page_data)

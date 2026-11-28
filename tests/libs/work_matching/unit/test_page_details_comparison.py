@@ -153,7 +153,7 @@ def _build_dated_page(
         ),
         pytest.param(
             _build_dated_page(
-                "animeplanet:anime:aware-meisaku-kun", "TV", 39, "2016-04-07"
+                "anime_planet:anime:aware-meisaku-kun", "TV", 39, "2016-04-07"
             ),
             _build_dated_page("mal:anime:32956", "TV", 230, "2016-04-07", "2022-03-03"),
             MalPageComparison.DETAILS_UNKNOWN,

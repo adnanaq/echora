@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT episode.anime_id AS \"anime_id!\",\n               episode.id AS \"episode_id?\",\n               episode.episode_number AS \"episode_number!\",\n               episode.aired_at AS \"expected_air_at!\"\n        FROM episode_visible episode\n        JOIN anime_visible anime ON anime.id = episode.anime_id\n        WHERE anime.status IN ('ONGOING', 'UPCOMING')\n          AND episode.aired_at BETWEEN now() - interval '24 hours' AND now() + make_interval(days => $1)\n          AND episode.aired_notified_at IS NULL\n        UNION ALL\n        SELECT broadcast.anime_id AS \"anime_id!\",\n               (SELECT pending.id\n                FROM episode pending\n                WHERE pending.anime_id = broadcast.anime_id\n                  AND pending.episode_number = broadcast.next_episode_number\n                  AND pending.deleted_at IS NULL) AS \"episode_id?\",\n               broadcast.next_episode_number AS \"episode_number!\",\n               broadcast.next_episode_at AS \"expected_air_at!\"\n        FROM anime_broadcast broadcast\n        JOIN anime_visible anime ON anime.id = broadcast.anime_id\n        WHERE anime.status IN ('ONGOING', 'UPCOMING')\n          AND broadcast.next_episode_number IS NOT NULL\n          AND broadcast.next_episode_at BETWEEN now() - interval '24 hours' AND now() + make_interval(days => $1)\n          AND NOT EXISTS (\n              SELECT 1\n              FROM episode_visible dated\n              WHERE dated.anime_id = broadcast.anime_id\n                AND dated.episode_number = broadcast.next_episode_number\n                AND dated.aired_at IS NOT NULL\n          )\n        ORDER BY 4, 1, 3\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "anime_id!",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "episode_id?",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "episode_number!",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 3,
+        "name": "expected_air_at!",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4"
+      ]
+    },
+    "nullable": [
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "97320b4a60736793b0fdd88bc109ee2b2eccd56f3c72c236fd836593f29f08df"
+}

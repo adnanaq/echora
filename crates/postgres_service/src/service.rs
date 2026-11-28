@@ -3,22 +3,32 @@
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use opentelemetry::global;
 use opentelemetry::metrics::Gauge;
 use postgres_db::{
-    EntityType, EpisodeListEntryInput, FetchOutcome, FieldCorrectionRecord, LoadedSourcePage,
-    PageKey, PageObservation, PageResponse, Provider, load_anime, load_character, load_episode,
-    mark_episode_aired, record_page_observation, save_anime, save_character, save_episode,
+    DueEntitiesQuery, EntityType, EpisodeListEntryInput, FetchOutcome, FieldCorrectionRecord,
+    LoadedSourcePage, PageKey, PageObservation, PageResponse, PageSource, Provider, RefreshOutcome,
+    list_due_anime, list_due_characters, list_due_episodes, list_due_pages, list_entity_pages,
+    list_entity_versions, list_requested_merges, list_score_anime, list_upcoming_episodes,
+    list_visible_episodes, load_anime, load_character, load_episode, mark_episode_aired,
+    read_visible_anime, read_visible_character, read_visible_episode, record_page_observation,
+    record_refresh, save_anime, save_character, save_episode,
 };
 use prost::Message as _;
 use sqlx::PgPool;
 use tonic::{Request, Response, Status};
+use url::Url;
 use uuid::Uuid;
 
-use crate::anime_mapping::build_save_anime_input;
+use crate::anime_mapping::{build_save_anime_input, parse_proto_timestamp};
+use crate::anime_relations_mapping::map_entity_type;
 use crate::character_mapping::build_save_character_input;
 use crate::episode_mapping::{build_save_episode_input, to_proto_episode_reference};
+use crate::read_mapping::{
+    build_get_anime_response, build_get_character_response, build_get_episode_response,
+    build_list_episodes_response,
+};
 
 #[allow(
     clippy::all,
@@ -47,15 +57,24 @@ pub mod postgres_service_proto {
 
 use postgres_service_proto::v1::postgres_service_server::PostgresService;
 use postgres_service_proto::v1::{
-    LoadAnimeRequest, LoadAnimeResponse, LoadCharacterRequest, LoadCharacterResponse,
-    LoadEpisodeRequest, LoadEpisodeResponse, MarkEpisodeAiredRequest, MarkEpisodeAiredResponse,
-    SaveAnimeRequest, SaveAnimeResponse, SaveCharacterRequest, SaveCharacterResponse,
-    SaveEpisodeRequest, SaveEpisodeResponse, StorePageRequest, StorePageResponse,
+    DueEntity as ProtoDueEntity, DuePage as ProtoDuePage, EntityPage as ProtoEntityPage,
+    EntityVersion as ProtoEntityVersion, GetAnimeResponse, GetCharacterResponse, GetEntityRequest,
+    GetEpisodeResponse, ListDuePagesRequest, ListDuePagesResponse, ListDueRequest, ListDueResponse,
+    ListEntityPagesRequest, ListEntityPagesResponse, ListEntityVersionsRequest,
+    ListEntityVersionsResponse, ListEpisodesResponse, ListRequestedMergesRequest,
+    ListRequestedMergesResponse, ListScoreAnimeRequest, ListScoreAnimeResponse,
+    ListUpcomingEpisodesRequest, ListUpcomingEpisodesResponse, LoadAnimeRequest, LoadAnimeResponse,
+    LoadCharacterRequest, LoadCharacterResponse, LoadEpisodeRequest, LoadEpisodeResponse,
+    MarkEpisodeAiredRequest, MarkEpisodeAiredResponse, RecordRefreshRequest, RecordRefreshResponse,
+    RefreshOutcome as ProtoRefreshOutcome, SaveAnimeRequest, SaveAnimeResponse,
+    SaveCharacterRequest, SaveCharacterResponse, SaveEpisodeRequest, SaveEpisodeResponse,
+    StorePageRequest, StorePageResponse, UpcomingEpisode as ProtoUpcomingEpisode,
 };
 use shared_proto::v1::{
     EntityType as ProtoEntityType, EpisodeListEntry as ProtoEpisodeListEntry,
     FieldCorrection as ProtoFieldCorrection, PageKey as ProtoPageKey,
-    PageResponse as ProtoPageResponse, StoredPage as ProtoStoredPage,
+    PageResponse as ProtoPageResponse, PageSource as ProtoPageSource,
+    StoredPage as ProtoStoredPage,
 };
 
 /// Maximum gRPC message size (64 MiB) for RPCs carrying raw provider page bodies.
@@ -207,20 +226,7 @@ impl PostgresService for PostgresGrpcService {
         request: Request<SaveAnimeRequest>,
     ) -> Result<Response<SaveAnimeResponse>, Status> {
         let traceparent = extract_traceparent(&request);
-        let req = request.into_inner();
-        let anime = req
-            .anime
-            .ok_or_else(|| Status::invalid_argument("anime must be provided"))?;
-
-        let input = build_save_anime_input(
-            &req.anime_id,
-            req.expected_version,
-            req.merge_version,
-            anime,
-            req.relation_claims,
-            req.episodes,
-            traceparent,
-        )?;
+        let input = build_save_anime_input(request.into_inner(), traceparent)?;
 
         let outcome = save_anime(&self.pool, &input)
             .await
@@ -262,6 +268,7 @@ impl PostgresService for PostgresGrpcService {
         let response = LoadEpisodeResponse {
             version: outcome.version,
             anime_id: outcome.anime_id.to_string(),
+            episode_number: outcome.episode_number,
             pages: to_proto_stored_pages(outcome.pages),
             corrections: to_proto_corrections(outcome.corrections),
             list_entries: outcome
@@ -286,18 +293,7 @@ impl PostgresService for PostgresGrpcService {
         request: Request<SaveEpisodeRequest>,
     ) -> Result<Response<SaveEpisodeResponse>, Status> {
         let traceparent = extract_traceparent(&request);
-        let req = request.into_inner();
-        let episode = req
-            .episode
-            .ok_or_else(|| Status::invalid_argument("episode must be provided"))?;
-
-        let input = build_save_episode_input(
-            &req.episode_id,
-            req.expected_version,
-            req.merge_version,
-            episode,
-            traceparent,
-        )?;
+        let input = build_save_episode_input(request.into_inner(), traceparent)?;
 
         let outcome = save_episode(&self.pool, &input)
             .await
@@ -369,18 +365,7 @@ impl PostgresService for PostgresGrpcService {
         request: Request<SaveCharacterRequest>,
     ) -> Result<Response<SaveCharacterResponse>, Status> {
         let traceparent = extract_traceparent(&request);
-        let save_request = request.into_inner();
-        let character = save_request
-            .character
-            .ok_or_else(|| Status::invalid_argument("character must be provided"))?;
-
-        let input = build_save_character_input(
-            &save_request.character_id,
-            save_request.expected_version,
-            save_request.merge_version,
-            character,
-            traceparent,
-        )?;
+        let input = build_save_character_input(request.into_inner(), traceparent)?;
 
         let outcome = save_character(&self.pool, &input)
             .await
@@ -390,6 +375,389 @@ impl PostgresService for PostgresGrpcService {
             has_changed: outcome.has_changed,
             version: outcome.version,
         }))
+    }
+
+    /// Lists an entity's linked provider pages and their last fetch state.
+    ///
+    /// # Errors
+    ///
+    /// Returns `INVALID_ARGUMENT` for an unknown entity type or invalid UUID, `NOT_FOUND`
+    /// when the entity does not exist or is deleted, or the mapped status of a database error.
+    async fn list_entity_pages(
+        &self,
+        request: Request<ListEntityPagesRequest>,
+    ) -> Result<Response<ListEntityPagesResponse>, Status> {
+        let req = request.into_inner();
+        let entity_type = map_entity_type(req.entity_type)?;
+        let entity_id = parse_uuid_arg(&req.entity_id, "entity_id")?;
+        let pages = list_entity_pages(&self.pool, entity_type, entity_id)
+            .await
+            .map_err(|err| map_db_error(&err))?;
+
+        Ok(Response::new(ListEntityPagesResponse {
+            pages: pages
+                .into_iter()
+                .map(|page| ProtoEntityPage {
+                    page_key: Some(to_proto_page_key(&page.page_key)),
+                    is_partial_source: page.is_partial_source,
+                    fetched_at: page.fetched_at.map(to_proto_timestamp),
+                    is_dead: page.is_dead,
+                    fetch_failed_at: page.fetch_failed_at.map(to_proto_timestamp),
+                    fetch_failures: page.fetch_failures,
+                })
+                .collect(),
+        }))
+    }
+
+    /// Records the outcome of an entity refresh and updates `next_refresh_at`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `INVALID_ARGUMENT` for an unknown entity type, invalid UUID, unspecified
+    /// outcome, or missing/negative duration; `NOT_FOUND` when the entity is missing; or
+    /// the mapped status of a database error.
+    async fn record_refresh(
+        &self,
+        request: Request<RecordRefreshRequest>,
+    ) -> Result<Response<RecordRefreshResponse>, Status> {
+        let req = request.into_inner();
+        let entity_type = map_entity_type(req.entity_type)?;
+        let entity_id = parse_uuid_arg(&req.entity_id, "entity_id")?;
+        let outcome = map_refresh_outcome(req.outcome)?;
+        let refresh_after = parse_proto_duration(req.refresh_after)?;
+
+        record_refresh(&self.pool, entity_type, entity_id, outcome, refresh_after)
+            .await
+            .map_err(|err| map_db_error(&err))?;
+
+        Ok(Response::new(RecordRefreshResponse {}))
+    }
+
+    /// Pages through works due for refresh.
+    ///
+    /// # Errors
+    ///
+    /// Returns `INVALID_ARGUMENT` when `due_before` is missing, `page_size <= 0`, or a
+    /// cursor is invalid, or the mapped status of a database error.
+    async fn list_due_anime(
+        &self,
+        request: Request<ListDueRequest>,
+    ) -> Result<Response<ListDueResponse>, Status> {
+        let query = parse_due_query(&request.into_inner())?;
+        let due = list_due_anime(&self.pool, &query)
+            .await
+            .map_err(|err| map_db_error(&err))?;
+        Ok(Response::new(to_list_due_response(due)))
+    }
+
+    /// Pages through episodes of ongoing and upcoming works due for refresh.
+    ///
+    /// # Errors
+    ///
+    /// Returns `INVALID_ARGUMENT` when `due_before` is missing, `page_size <= 0`, or a
+    /// cursor is invalid, or the mapped status of a database error.
+    async fn list_due_episodes(
+        &self,
+        request: Request<ListDueRequest>,
+    ) -> Result<Response<ListDueResponse>, Status> {
+        let query = parse_due_query(&request.into_inner())?;
+        let due = list_due_episodes(&self.pool, &query)
+            .await
+            .map_err(|err| map_db_error(&err))?;
+        Ok(Response::new(to_list_due_response(due)))
+    }
+
+    /// Pages through characters of ongoing and upcoming works due for refresh.
+    ///
+    /// # Errors
+    ///
+    /// Returns `INVALID_ARGUMENT` when `due_before` is missing, `page_size <= 0`, or a
+    /// cursor is invalid, or the mapped status of a database error.
+    async fn list_due_characters(
+        &self,
+        request: Request<ListDueRequest>,
+    ) -> Result<Response<ListDueResponse>, Status> {
+        let query = parse_due_query(&request.into_inner())?;
+        let due = list_due_characters(&self.pool, &query)
+            .await
+            .map_err(|err| map_db_error(&err))?;
+        Ok(Response::new(to_list_due_response(due)))
+    }
+
+    /// Lists episodes of ongoing and upcoming works airing within `window_days`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `INVALID_ARGUMENT` when `window_days < 0`, or the mapped status of a database
+    /// error.
+    async fn list_upcoming_episodes(
+        &self,
+        request: Request<ListUpcomingEpisodesRequest>,
+    ) -> Result<Response<ListUpcomingEpisodesResponse>, Status> {
+        let req = request.into_inner();
+        let episodes = list_upcoming_episodes(&self.pool, req.window_days)
+            .await
+            .map_err(|err| map_db_error(&err))?;
+
+        Ok(Response::new(ListUpcomingEpisodesResponse {
+            episodes: episodes
+                .into_iter()
+                .map(|ep| ProtoUpcomingEpisode {
+                    anime_id: ep.anime_id.to_string(),
+                    episode_id: ep.episode_id.map(|id| id.to_string()),
+                    episode_number: ep.episode_number,
+                    expected_air_at: Some(to_proto_timestamp(ep.expected_air_at)),
+                })
+                .collect(),
+        }))
+    }
+
+    /// Pages through works whose scores refresh daily.
+    ///
+    /// # Errors
+    ///
+    /// Returns `INVALID_ARGUMENT` when `lookback_days < 0`, `page_size <= 0`, or `after_id`
+    /// is invalid, or the mapped status of a database error.
+    async fn list_score_anime(
+        &self,
+        request: Request<ListScoreAnimeRequest>,
+    ) -> Result<Response<ListScoreAnimeResponse>, Status> {
+        let req = request.into_inner();
+        let after_id = req
+            .after_id
+            .as_deref()
+            .map(|id| parse_uuid_arg(id, "after_id"))
+            .transpose()?;
+        let anime_ids = list_score_anime(&self.pool, req.lookback_days, req.page_size, after_id)
+            .await
+            .map_err(|err| map_db_error(&err))?;
+
+        Ok(Response::new(ListScoreAnimeResponse {
+            anime_ids: anime_ids.into_iter().map(|id| id.to_string()).collect(),
+        }))
+    }
+
+    /// Lists entities whose `merge_requested_at` timestamp is set.
+    ///
+    /// # Errors
+    ///
+    /// Returns `INVALID_ARGUMENT` for an unknown entity type or `limit <= 0`, or the mapped
+    /// status of a database error.
+    async fn list_requested_merges(
+        &self,
+        request: Request<ListRequestedMergesRequest>,
+    ) -> Result<Response<ListRequestedMergesResponse>, Status> {
+        let req = request.into_inner();
+        let entity_type = map_entity_type(req.entity_type)?;
+        let ids = list_requested_merges(&self.pool, entity_type, req.limit)
+            .await
+            .map_err(|err| map_db_error(&err))?;
+
+        Ok(Response::new(ListRequestedMergesResponse {
+            entity_ids: ids.into_iter().map(|id| id.to_string()).collect(),
+        }))
+    }
+
+    /// Reads a merged, undeleted work from `anime_visible`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `INVALID_ARGUMENT` for an invalid UUID, `NOT_FOUND` when unmerged, deleted,
+    /// or missing, or the mapped status of a database error.
+    async fn get_anime(
+        &self,
+        request: Request<GetEntityRequest>,
+    ) -> Result<Response<GetAnimeResponse>, Status> {
+        let anime_id = parse_uuid_arg(&request.into_inner().entity_id, "entity_id")?;
+        let record = read_visible_anime(&self.pool, anime_id)
+            .await
+            .map_err(|err| map_db_error(&err))?;
+        Ok(Response::new(build_get_anime_response(record)?))
+    }
+
+    /// Reads a merged, undeleted episode from `episode_visible`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `INVALID_ARGUMENT` for an invalid UUID, `NOT_FOUND` when unmerged, deleted,
+    /// or missing, or the mapped status of a database error.
+    async fn get_episode(
+        &self,
+        request: Request<GetEntityRequest>,
+    ) -> Result<Response<GetEpisodeResponse>, Status> {
+        let episode_id = parse_uuid_arg(&request.into_inner().entity_id, "entity_id")?;
+        let record = read_visible_episode(&self.pool, episode_id)
+            .await
+            .map_err(|err| map_db_error(&err))?;
+        Ok(Response::new(build_get_episode_response(record)?))
+    }
+
+    /// Lists all merged, undeleted episodes of a work from `episode_visible`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `INVALID_ARGUMENT` for an invalid UUID, or the mapped status of a database error.
+    async fn list_episodes(
+        &self,
+        request: Request<GetEntityRequest>,
+    ) -> Result<Response<ListEpisodesResponse>, Status> {
+        let anime_id = parse_uuid_arg(&request.into_inner().entity_id, "entity_id")?;
+        let records = list_visible_episodes(&self.pool, anime_id)
+            .await
+            .map_err(|err| map_db_error(&err))?;
+        Ok(Response::new(build_list_episodes_response(records)?))
+    }
+
+    /// Reads a merged, undeleted character from `character_visible`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `INVALID_ARGUMENT` for an invalid UUID, `NOT_FOUND` when unmerged, deleted,
+    /// or missing, or the mapped status of a database error.
+    async fn get_character(
+        &self,
+        request: Request<GetEntityRequest>,
+    ) -> Result<Response<GetCharacterResponse>, Status> {
+        let character_id = parse_uuid_arg(&request.into_inner().entity_id, "entity_id")?;
+        let record = read_visible_character(&self.pool, character_id)
+            .await
+            .map_err(|err| map_db_error(&err))?;
+        Ok(Response::new(build_get_character_response(record)?))
+    }
+
+    /// Pages through visible entity versions for vector comparison.
+    ///
+    /// # Errors
+    ///
+    /// Returns `INVALID_ARGUMENT` for an unknown entity type, `page_size <= 0`, or an
+    /// invalid cursor UUID, or the mapped status of a database error.
+    async fn list_entity_versions(
+        &self,
+        request: Request<ListEntityVersionsRequest>,
+    ) -> Result<Response<ListEntityVersionsResponse>, Status> {
+        let req = request.into_inner();
+        let entity_type = map_entity_type(req.entity_type)?;
+        let after_id = req
+            .after_id
+            .as_deref()
+            .map(|id| parse_uuid_arg(id, "after_id"))
+            .transpose()?;
+        let versions = list_entity_versions(&self.pool, entity_type, req.page_size, after_id)
+            .await
+            .map_err(|err| map_db_error(&err))?;
+
+        Ok(Response::new(ListEntityVersionsResponse {
+            entities: versions
+                .into_iter()
+                .map(|entry| ProtoEntityVersion {
+                    entity_id: entry.entity_id.to_string(),
+                    version: entry.version,
+                })
+                .collect(),
+        }))
+    }
+
+    /// Lists due source pages of one budgeted provider in due order.
+    ///
+    /// # Errors
+    ///
+    /// Returns `INVALID_ARGUMENT` for an unknown provider or `page_size <= 0`, or the mapped
+    /// status of a database error.
+    async fn list_due_pages(
+        &self,
+        request: Request<ListDuePagesRequest>,
+    ) -> Result<Response<ListDuePagesResponse>, Status> {
+        let req = request.into_inner();
+        let provider: Provider = req.provider.parse().map_err(|err| map_db_error(&err))?;
+        let pages = list_due_pages(&self.pool, provider, req.page_size)
+            .await
+            .map_err(|err| map_db_error(&err))?;
+
+        Ok(Response::new(ListDuePagesResponse {
+            pages: pages
+                .into_iter()
+                .map(|entry| ProtoDuePage {
+                    page_key: Some(to_proto_page_key(&entry.page_key)),
+                    anime_id: entry.anime_id.to_string(),
+                })
+                .collect(),
+        }))
+    }
+}
+
+/// Parses a UUID string argument for an RPC field, returning `INVALID_ARGUMENT` on failure.
+fn parse_uuid_arg(raw: &str, field_name: &str) -> Result<Uuid, Status> {
+    Uuid::parse_str(raw)
+        .map_err(|err| Status::invalid_argument(format!("invalid {field_name} UUID: {err}")))
+}
+
+/// Maps a proto `RefreshOutcome` enum value to `postgres_db::RefreshOutcome`.
+fn map_refresh_outcome(raw: i32) -> Result<RefreshOutcome, Status> {
+    match ProtoRefreshOutcome::try_from(raw) {
+        Ok(ProtoRefreshOutcome::Succeeded) => Ok(RefreshOutcome::Succeeded),
+        Ok(ProtoRefreshOutcome::PagesFailed) => Ok(RefreshOutcome::PagesFailed),
+        Ok(ProtoRefreshOutcome::Failed) => Ok(RefreshOutcome::Failed),
+        Ok(ProtoRefreshOutcome::Unspecified) | Err(_) => Err(Status::invalid_argument(
+            "outcome must be SUCCEEDED, PAGES_FAILED, or FAILED",
+        )),
+    }
+}
+
+/// Converts the optional `refresh_after` duration to a `chrono::Duration`.
+///
+/// The request value is untrusted, so the conversion never panics. `prost_types` normalizes
+/// the seconds and nanoseconds and refuses a negative duration, and `chrono` refuses one
+/// longer than it can hold.
+///
+/// # Errors
+///
+/// Returns `INVALID_ARGUMENT` when the duration is missing, negative or too long.
+fn parse_proto_duration(duration: Option<prost_types::Duration>) -> Result<ChronoDuration, Status> {
+    let duration =
+        duration.ok_or_else(|| Status::invalid_argument("refresh_after must be provided"))?;
+    let std_duration = std::time::Duration::try_from(duration).map_err(|err| {
+        Status::invalid_argument(format!("refresh_after must not be negative: {err}"))
+    })?;
+    ChronoDuration::from_std(std_duration)
+        .map_err(|err| Status::invalid_argument(format!("refresh_after is too long: {err}")))
+}
+
+/// Parses a [`ListDueRequest`] into [`DueEntitiesQuery`].
+fn parse_due_query(req: &ListDueRequest) -> Result<DueEntitiesQuery, Status> {
+    let due_before = req
+        .due_before
+        .ok_or_else(|| Status::invalid_argument("due_before must be provided"))?;
+    let due_before = parse_proto_timestamp("due_before", due_before)?;
+    let after_next_refresh_at = req
+        .after_next_refresh_at
+        .map(|ts| parse_proto_timestamp("after_next_refresh_at", ts))
+        .transpose()?;
+    let after_id = req
+        .after_id
+        .as_deref()
+        .map(|id| parse_uuid_arg(id, "after_id"))
+        .transpose()?;
+
+    Ok(DueEntitiesQuery {
+        due_before,
+        older_after_years: req.older_after_years,
+        page_size: req.page_size,
+        after_next_refresh_at,
+        after_id,
+        merge_version: req.merge_version,
+    })
+}
+
+/// Converts due-entity records into a [`ListDueResponse`].
+fn to_list_due_response(records: Vec<postgres_db::DueEntityRecord>) -> ListDueResponse {
+    ListDueResponse {
+        entities: records
+            .into_iter()
+            .map(|entry| ProtoDueEntity {
+                entity_id: entry.entity_id.to_string(),
+                next_refresh_at: entry.next_refresh_at.map(to_proto_timestamp),
+            })
+            .collect(),
     }
 }
 
@@ -467,7 +835,7 @@ pub(crate) fn to_proto_page_key(key: &PageKey) -> ProtoPageKey {
 }
 
 /// Converts a UTC timestamp into a protobuf `Timestamp`.
-fn to_proto_timestamp(timestamp: DateTime<Utc>) -> prost_types::Timestamp {
+pub(crate) fn to_proto_timestamp(timestamp: DateTime<Utc>) -> prost_types::Timestamp {
     prost_types::Timestamp {
         seconds: timestamp.timestamp(),
         nanos: i32::try_from(timestamp.timestamp_subsec_nanos()).unwrap_or(0),
@@ -565,6 +933,48 @@ fn parse_page_key(proto_key: ProtoPageKey) -> Result<PageKey, Status> {
     PageKey::new(provider, entity_type, proto_key.address).map_err(|err| map_db_error(&err))
 }
 
+/// Converts a save request's page URLs into validated [`PageSource`]s.
+///
+/// # Errors
+///
+/// Returns `INVALID_ARGUMENT` when a page source has no page key or an invalid one.
+pub(crate) fn parse_page_sources(
+    proto_page_sources: Vec<ProtoPageSource>,
+) -> Result<Vec<PageSource>, Status> {
+    proto_page_sources
+        .into_iter()
+        .map(|proto_page_source| {
+            let proto_key = proto_page_source.page_key.ok_or_else(|| {
+                Status::invalid_argument("page_sources.page_key must be provided")
+            })?;
+            Ok(PageSource {
+                page_key: parse_page_key(proto_key)?,
+                source: parse_page_url(&proto_page_source.source)?,
+                title: parse_page_title(&proto_page_source.title),
+            })
+        })
+        .collect()
+}
+
+/// Reads a page title from its proto text, where an empty text means no title is known.
+pub(crate) fn parse_page_title(page_title: &str) -> Option<String> {
+    (!page_title.is_empty()).then(|| page_title.to_owned())
+}
+
+/// Parses a page URL from its proto text, empty meaning no URL.
+///
+/// # Errors
+///
+/// Returns `INVALID_ARGUMENT` when the text is not a URL.
+pub(crate) fn parse_page_url(source: &str) -> Result<Option<Url>, Status> {
+    if source.is_empty() {
+        return Ok(None);
+    }
+    Url::parse(source).map(Some).map_err(|err| {
+        Status::invalid_argument(format!("page source {source:?} is not a URL: {err}"))
+    })
+}
+
 /// Converts the proto fetch time of a page into a UTC timestamp.
 ///
 /// # Errors
@@ -616,7 +1026,7 @@ mod tests {
     };
 
     const WORK_PAGE_ADDRESS: &str = "21";
-    const EPISODE_PAGE_ADDRESS: &str = "1";
+    const EPISODE_PAGE_ADDRESS: &str = "21:1";
 
     fn build_service(pool: PgPool) -> PostgresGrpcService {
         PostgresGrpcService::new(pool, HashSet::new())
@@ -662,6 +1072,7 @@ mod tests {
             merge_version: 1,
             relation_claims: Vec::new(),
             episodes: Vec::new(),
+            page_sources: Vec::new(),
         }
     }
 
@@ -670,10 +1081,14 @@ mod tests {
             episode_id: episode_id.to_string(),
             episode_number: 1,
             title: "Placeholder episode 1".to_owned(),
-            page_keys: vec![build_page_key(
-                ProtoEntityType::Episode,
-                EPISODE_PAGE_ADDRESS,
-            )],
+            page_sources: vec![ProtoPageSource {
+                page_key: Some(build_page_key(
+                    ProtoEntityType::Episode,
+                    EPISODE_PAGE_ADDRESS,
+                )),
+                source: String::new(),
+                title: String::new(),
+            }],
             list_entries: vec![EpisodeListEntry {
                 provider: "mal".to_owned(),
                 title: Some("Placeholder episode 1".to_owned()),
@@ -714,6 +1129,7 @@ mod tests {
                 ..Episode::default()
             }),
             merge_version: 1,
+            page_sources: Vec::new(),
         }
     }
 
@@ -770,6 +1186,7 @@ mod tests {
                 ..Character::default()
             }),
             merge_version: 1,
+            page_sources: Vec::new(),
         }
     }
 
@@ -816,16 +1233,17 @@ mod tests {
 
     #[test]
     fn to_proto_page_key_keeps_every_entity_type() {
-        for (entity_type, proto_entity_type) in [
-            (EntityType::Anime, ProtoEntityType::Anime),
-            (EntityType::Episode, ProtoEntityType::Episode),
-            (EntityType::Character, ProtoEntityType::Character),
+        for (entity_type, proto_entity_type, address) in [
+            (EntityType::Anime, ProtoEntityType::Anime, "40"),
+            (EntityType::Episode, ProtoEntityType::Episode, "40:1"),
+            (EntityType::Character, ProtoEntityType::Character, "40"),
         ] {
-            let page_key = PageKey::new(Provider::Mal, entity_type, "40").expect("valid page key");
+            let page_key =
+                PageKey::new(Provider::Mal, entity_type, address).expect("valid page key");
 
             let proto_page_key = to_proto_page_key(&page_key);
 
-            assert_eq!(proto_page_key, build_page_key(proto_entity_type, "40"));
+            assert_eq!(proto_page_key, build_page_key(proto_entity_type, address));
         }
     }
 
@@ -1479,6 +1897,672 @@ mod tests {
             let status = (build_page_observation(incomplete_page, &HashSet::new()))
                 .expect_err("incomplete page must be refused");
             assert_eq!(status.code(), tonic::Code::InvalidArgument);
+        }
+    }
+
+    #[sqlx::test(migrations = "../postgres_db/migrations")]
+    async fn scheduling_and_read_rpcs_cover_success_and_error_paths(pool: PgPool) {
+        let service = PostgresGrpcService::new(pool.clone(), HashSet::new());
+        let anime_id = insert_unmerged_anime(&pool).await;
+
+        // Store and link a page so SaveAnime & ListEntityPages & ListDuePages work
+        service
+            .store_page(Request::new(StorePageRequest {
+                page: Some(build_stored_page(vec![build_main_response()])),
+            }))
+            .await
+            .expect("store page");
+        sqlx::query(
+            "INSERT INTO anime_source (anime_id, provider, entity_type, address)
+             VALUES ($1, 'mal', 'anime', '21')",
+        )
+        .bind(anime_id)
+        .execute(&pool)
+        .await
+        .expect("link anime page");
+
+        // Get* before merge -> NotFound
+        let not_found_anime = service
+            .get_anime(Request::new(GetEntityRequest {
+                entity_id: anime_id.to_string(),
+            }))
+            .await
+            .expect_err("unmerged anime must be NotFound");
+        assert_eq!(not_found_anime.code(), tonic::Code::NotFound);
+
+        let missing_id = Uuid::now_v7().to_string();
+        assert_eq!(
+            service
+                .get_episode(Request::new(GetEntityRequest {
+                    entity_id: missing_id.clone(),
+                }))
+                .await
+                .expect_err("missing episode")
+                .code(),
+            tonic::Code::NotFound
+        );
+        assert_eq!(
+            service
+                .get_character(Request::new(GetEntityRequest {
+                    entity_id: missing_id,
+                }))
+                .await
+                .expect_err("missing character")
+                .code(),
+            tonic::Code::NotFound
+        );
+
+        // Save anime + 1 episode
+        let episode_id = Uuid::now_v7();
+        let mut save_req = build_anime_save_request(anime_id, 1);
+        if let Some(ref mut anime) = save_req.anime {
+            anime.status = shared_proto::v1::AnimeStatus::Ongoing as i32;
+        }
+        save_req.episodes = vec![shared_proto::v1::EpisodeReference {
+            episode_id: episode_id.to_string(),
+            episode_number: 1,
+            title: "Ep 1".to_owned(),
+            page_sources: Vec::new(),
+            list_entries: Vec::new(),
+        }];
+        service
+            .save_anime(Request::new(save_req))
+            .await
+            .expect("save anime");
+        service
+            .save_episode(Request::new(build_episode_save_request(
+                episode_id,
+                1_700_000_000,
+            )))
+            .await
+            .expect("save episode");
+
+        // Save character
+        let character_id = insert_character_with_page(&pool, "1").await;
+        service
+            .save_character(Request::new(build_character_save_request(character_id)))
+            .await
+            .expect("save character");
+
+        // ListEntityPages
+        let pages_resp = service
+            .list_entity_pages(Request::new(ListEntityPagesRequest {
+                entity_type: ProtoEntityType::Anime as i32,
+                entity_id: anime_id.to_string(),
+            }))
+            .await
+            .expect("list_entity_pages")
+            .into_inner();
+        assert_eq!(pages_resp.pages.len(), 1);
+
+        // RecordRefresh (Succeeded, PagesFailed, Failed)
+        for outcome in [
+            ProtoRefreshOutcome::Succeeded as i32,
+            ProtoRefreshOutcome::PagesFailed as i32,
+            ProtoRefreshOutcome::Failed as i32,
+        ] {
+            service
+                .record_refresh(Request::new(RecordRefreshRequest {
+                    entity_type: ProtoEntityType::Anime as i32,
+                    entity_id: anime_id.to_string(),
+                    outcome,
+                    refresh_after: Some(prost_types::Duration {
+                        seconds: 7 * 86_400,
+                        nanos: 0,
+                    }),
+                }))
+                .await
+                .expect("record_refresh");
+        }
+
+        // ListDueAnime / ListDueEpisodes / ListDueCharacters
+        let future_ts = prost_types::Timestamp {
+            seconds: Utc::now().timestamp() + 3600,
+            nanos: 0,
+        };
+        let due_anime = service
+            .list_due_anime(Request::new(ListDueRequest {
+                due_before: Some(future_ts),
+                older_after_years: 30,
+                page_size: 10,
+                after_next_refresh_at: None,
+                after_id: None,
+                merge_version: 2,
+            }))
+            .await
+            .expect("list_due_anime")
+            .into_inner();
+        assert_eq!(due_anime.entities.len(), 1);
+
+        let due_episodes = service
+            .list_due_episodes(Request::new(ListDueRequest {
+                due_before: Some(future_ts),
+                older_after_years: 30,
+                page_size: 10,
+                after_next_refresh_at: None,
+                after_id: None,
+                merge_version: 2,
+            }))
+            .await
+            .expect("list_due_episodes")
+            .into_inner();
+        assert_eq!(due_episodes.entities.len(), 1);
+
+        let due_characters = service
+            .list_due_characters(Request::new(ListDueRequest {
+                due_before: Some(future_ts),
+                older_after_years: 30,
+                page_size: 10,
+                after_next_refresh_at: None,
+                after_id: None,
+                merge_version: 2,
+            }))
+            .await
+            .expect("list_due_characters")
+            .into_inner();
+        assert_eq!(due_characters.entities.len(), 1);
+
+        // ListUpcomingEpisodes (with broadcast next episode), ListScoreAnime, ListRequestedMerges
+        let now = Utc::now();
+        sqlx::query(
+            "INSERT INTO anime_broadcast (anime_id, next_episode_at, next_episode_number)
+             VALUES ($1, $2, 2)",
+        )
+        .bind(anime_id)
+        .bind(now + chrono::Duration::days(1))
+        .execute(&pool)
+        .await
+        .expect("insert broadcast");
+        sqlx::query("UPDATE anime SET merge_requested_at = $2 WHERE id = $1")
+            .bind(anime_id)
+            .bind(now)
+            .execute(&pool)
+            .await
+            .expect("set merge_requested_at");
+
+        let upcoming = service
+            .list_upcoming_episodes(Request::new(ListUpcomingEpisodesRequest { window_days: 7 }))
+            .await
+            .expect("list_upcoming_episodes")
+            .into_inner();
+        assert_eq!(upcoming.episodes.len(), 1);
+
+        let scores = service
+            .list_score_anime(Request::new(ListScoreAnimeRequest {
+                lookback_days: 90,
+                page_size: 10,
+                after_id: Some(Uuid::nil().to_string()),
+            }))
+            .await
+            .expect("list_score_anime")
+            .into_inner();
+        assert_eq!(scores.anime_ids, vec![anime_id.to_string()]);
+
+        let merges = service
+            .list_requested_merges(Request::new(ListRequestedMergesRequest {
+                entity_type: ProtoEntityType::Anime as i32,
+                limit: 10,
+            }))
+            .await
+            .expect("list_requested_merges")
+            .into_inner();
+        assert_eq!(merges.entity_ids, vec![anime_id.to_string()]);
+
+        // GetAnime, GetEpisode, ListEpisodes, GetCharacter
+        let got_anime = service
+            .get_anime(Request::new(GetEntityRequest {
+                entity_id: anime_id.to_string(),
+            }))
+            .await
+            .expect("get_anime")
+            .into_inner();
+        assert_eq!(got_anime.anime.expect("anime").id, anime_id.to_string());
+
+        let got_ep = service
+            .get_episode(Request::new(GetEntityRequest {
+                entity_id: episode_id.to_string(),
+            }))
+            .await
+            .expect("get_episode")
+            .into_inner();
+        assert_eq!(got_ep.episode.expect("episode").episode_number, 1);
+
+        let listed_eps = service
+            .list_episodes(Request::new(GetEntityRequest {
+                entity_id: anime_id.to_string(),
+            }))
+            .await
+            .expect("list_episodes")
+            .into_inner();
+        assert_eq!(listed_eps.episodes.len(), 1);
+
+        let got_char = service
+            .get_character(Request::new(GetEntityRequest {
+                entity_id: character_id.to_string(),
+            }))
+            .await
+            .expect("get_character")
+            .into_inner();
+        assert_eq!(
+            got_char.character.expect("character").name,
+            "Monkey D. Luffy"
+        );
+
+        // ListEntityVersions & ListDuePages
+        let versions = service
+            .list_entity_versions(Request::new(ListEntityVersionsRequest {
+                entity_type: ProtoEntityType::Anime as i32,
+                page_size: 10,
+                after_id: None,
+            }))
+            .await
+            .expect("list_entity_versions")
+            .into_inner();
+        assert_eq!(versions.entities.len(), 1);
+
+        let due_pages = service
+            .list_due_pages(Request::new(ListDuePagesRequest {
+                provider: "mal".to_owned(),
+                page_size: 10,
+            }))
+            .await
+            .expect("list_due_pages")
+            .into_inner();
+        assert_eq!(due_pages.pages.len(), 1);
+
+        // Invalid argument checks
+        assert_eq!(
+            service
+                .get_anime(Request::new(GetEntityRequest {
+                    entity_id: "bad-uuid".to_owned(),
+                }))
+                .await
+                .expect_err("bad uuid")
+                .code(),
+            tonic::Code::InvalidArgument
+        );
+        assert_eq!(
+            service
+                .record_refresh(Request::new(RecordRefreshRequest {
+                    entity_type: ProtoEntityType::Anime as i32,
+                    entity_id: anime_id.to_string(),
+                    outcome: ProtoRefreshOutcome::Unspecified as i32,
+                    refresh_after: None,
+                }))
+                .await
+                .expect_err("unspecified outcome")
+                .code(),
+            tonic::Code::InvalidArgument
+        );
+        assert_eq!(
+            service
+                .record_refresh(Request::new(RecordRefreshRequest {
+                    entity_type: ProtoEntityType::Anime as i32,
+                    entity_id: anime_id.to_string(),
+                    outcome: ProtoRefreshOutcome::Succeeded as i32,
+                    refresh_after: None,
+                }))
+                .await
+                .expect_err("missing refresh_after")
+                .code(),
+            tonic::Code::InvalidArgument
+        );
+        assert_eq!(
+            service
+                .list_due_anime(Request::new(ListDueRequest {
+                    due_before: Some(future_ts),
+                    older_after_years: 30,
+                    page_size: 10,
+                    after_next_refresh_at: Some(prost_types::Timestamp {
+                        seconds: Utc::now().timestamp() + 365 * 86_400,
+                        nanos: 0,
+                    }),
+                    after_id: Some(Uuid::nil().to_string()),
+                    merge_version: 2,
+                }))
+                .await
+                .expect("due anime with cursor")
+                .into_inner()
+                .entities
+                .len(),
+            0
+        );
+        assert_eq!(
+            service
+                .list_due_anime(Request::new(ListDueRequest {
+                    due_before: None,
+                    older_after_years: 30,
+                    page_size: 10,
+                    after_next_refresh_at: None,
+                    after_id: None,
+                    merge_version: 1,
+                }))
+                .await
+                .expect_err("missing due_before")
+                .code(),
+            tonic::Code::InvalidArgument
+        );
+        assert_eq!(
+            service
+                .list_due_pages(Request::new(ListDuePagesRequest {
+                    provider: "unknown".to_owned(),
+                    page_size: 10,
+                }))
+                .await
+                .expect_err("unknown provider")
+                .code(),
+            tonic::Code::InvalidArgument
+        );
+    }
+
+    #[sqlx::test(migrations = "../postgres_db/migrations")]
+    async fn save_anime_page_sources_store_urls_and_refuse_missing_page_key(pool: PgPool) {
+        let service = build_service(pool.clone());
+        let anime_id = insert_unmerged_anime(&pool).await;
+        service
+            .store_page(Request::new(StorePageRequest {
+                page: Some(build_stored_page(vec![build_main_response()])),
+            }))
+            .await
+            .expect("store page");
+        sqlx::query(
+            "INSERT INTO anime_source (anime_id, provider, entity_type, address)
+             VALUES ($1, 'mal', 'anime', $2)",
+        )
+        .bind(anime_id)
+        .bind(WORK_PAGE_ADDRESS)
+        .execute(&pool)
+        .await
+        .expect("link anime page");
+
+        let mut missing_key_request = build_anime_save_request(anime_id, 1);
+        missing_key_request.page_sources = vec![ProtoPageSource {
+            page_key: None,
+            source: "https://myanimelist.net/anime/21/One_Piece".to_owned(),
+            title: String::new(),
+        }];
+        let missing_key_status = service
+            .save_anime(Request::new(missing_key_request))
+            .await
+            .expect_err("a page source without a page key must be refused");
+        assert_eq!(missing_key_status.code(), tonic::Code::InvalidArgument);
+
+        let mut save_request = build_anime_save_request(anime_id, 1);
+        save_request.page_sources = vec![ProtoPageSource {
+            page_key: Some(ProtoPageKey {
+                provider: "mal".to_owned(),
+                entity_type: ProtoEntityType::Anime as i32,
+                address: WORK_PAGE_ADDRESS.to_owned(),
+            }),
+            source: "https://myanimelist.net/anime/21/One_Piece".to_owned(),
+            title: String::new(),
+        }];
+        service
+            .save_anime(Request::new(save_request))
+            .await
+            .expect("save anime");
+        let anime = service
+            .get_anime(Request::new(GetEntityRequest {
+                entity_id: anime_id.to_string(),
+            }))
+            .await
+            .expect("get anime")
+            .into_inner()
+            .anime
+            .expect("anime");
+        assert_eq!(
+            anime.sources,
+            vec!["https://myanimelist.net/anime/21/One_Piece"]
+        );
+        assert_eq!(anime.r#type, AnimeType::Tv as i32);
+    }
+
+    #[sqlx::test(migrations = "../postgres_db/migrations")]
+    async fn every_rpc_database_failure_returns_internal(_pool: PgPool) {
+        let unreachable_pool = sqlx::postgres::PgPoolOptions::new()
+            .acquire_timeout(std::time::Duration::from_millis(200))
+            .connect_lazy("postgres://echora@127.0.0.1:1/echora")
+            .expect("build lazy pool");
+        let service = build_service(unreachable_pool);
+        let entity_id = Uuid::now_v7().to_string();
+        let due_request = || ListDueRequest {
+            due_before: Some(to_proto_timestamp(Utc::now())),
+            older_after_years: 30,
+            page_size: 10,
+            after_next_refresh_at: Some(to_proto_timestamp(Utc::now())),
+            after_id: Some(Uuid::now_v7().to_string()),
+            merge_version: 1,
+        };
+        let entity_request = || GetEntityRequest {
+            entity_id: entity_id.clone(),
+        };
+        let statuses = vec![
+            service
+                .store_page(Request::new(StorePageRequest {
+                    page: Some(build_stored_page(vec![build_main_response()])),
+                }))
+                .await
+                .map(|_| ()),
+            service
+                .load_anime(Request::new(LoadAnimeRequest {
+                    anime_id: entity_id.clone(),
+                }))
+                .await
+                .map(|_| ()),
+            service
+                .save_anime(Request::new(build_anime_save_request(Uuid::now_v7(), 1)))
+                .await
+                .map(|_| ()),
+            service
+                .load_episode(Request::new(LoadEpisodeRequest {
+                    episode_id: entity_id.clone(),
+                }))
+                .await
+                .map(|_| ()),
+            service
+                .save_episode(Request::new(build_episode_save_request(
+                    Uuid::now_v7(),
+                    1_700_000_000,
+                )))
+                .await
+                .map(|_| ()),
+            service
+                .mark_episode_aired(Request::new(MarkEpisodeAiredRequest {
+                    episode_id: entity_id.clone(),
+                }))
+                .await
+                .map(|_| ()),
+            service
+                .load_character(Request::new(LoadCharacterRequest {
+                    character_id: entity_id.clone(),
+                }))
+                .await
+                .map(|_| ()),
+            service
+                .save_character(Request::new(build_character_save_request(Uuid::now_v7())))
+                .await
+                .map(|_| ()),
+            service
+                .list_entity_pages(Request::new(ListEntityPagesRequest {
+                    entity_type: ProtoEntityType::Anime as i32,
+                    entity_id: entity_id.clone(),
+                }))
+                .await
+                .map(|_| ()),
+            service
+                .record_refresh(Request::new(RecordRefreshRequest {
+                    entity_type: ProtoEntityType::Anime as i32,
+                    entity_id: entity_id.clone(),
+                    outcome: ProtoRefreshOutcome::Succeeded as i32,
+                    refresh_after: Some(prost_types::Duration {
+                        seconds: 60,
+                        nanos: 0,
+                    }),
+                }))
+                .await
+                .map(|_| ()),
+            service
+                .list_due_anime(Request::new(due_request()))
+                .await
+                .map(|_| ()),
+            service
+                .list_due_episodes(Request::new(due_request()))
+                .await
+                .map(|_| ()),
+            service
+                .list_due_characters(Request::new(due_request()))
+                .await
+                .map(|_| ()),
+            service
+                .list_upcoming_episodes(Request::new(ListUpcomingEpisodesRequest {
+                    window_days: 7,
+                }))
+                .await
+                .map(|_| ()),
+            service
+                .list_score_anime(Request::new(ListScoreAnimeRequest {
+                    lookback_days: 90,
+                    page_size: 10,
+                    after_id: None,
+                }))
+                .await
+                .map(|_| ()),
+            service
+                .list_requested_merges(Request::new(ListRequestedMergesRequest {
+                    entity_type: ProtoEntityType::Anime as i32,
+                    limit: 10,
+                }))
+                .await
+                .map(|_| ()),
+            service
+                .get_anime(Request::new(entity_request()))
+                .await
+                .map(|_| ()),
+            service
+                .get_episode(Request::new(entity_request()))
+                .await
+                .map(|_| ()),
+            service
+                .list_episodes(Request::new(entity_request()))
+                .await
+                .map(|_| ()),
+            service
+                .get_character(Request::new(entity_request()))
+                .await
+                .map(|_| ()),
+            service
+                .list_entity_versions(Request::new(ListEntityVersionsRequest {
+                    entity_type: ProtoEntityType::Anime as i32,
+                    page_size: 10,
+                    after_id: Some(Uuid::now_v7().to_string()),
+                }))
+                .await
+                .map(|_| ()),
+            service
+                .list_due_pages(Request::new(ListDuePagesRequest {
+                    provider: "anidb".to_owned(),
+                    page_size: 10,
+                }))
+                .await
+                .map(|_| ()),
+        ];
+        let status_codes: Vec<tonic::Code> = statuses
+            .into_iter()
+            .map(|rpc_result| rpc_result.map_or_else(|status| status.code(), |()| tonic::Code::Ok))
+            .collect();
+        assert_eq!(status_codes, vec![tonic::Code::Internal; 22]);
+    }
+
+    #[test]
+    fn parse_proto_duration_out_of_range_values_return_invalid_argument() {
+        assert_eq!(
+            parse_proto_duration(Some(prost_types::Duration {
+                seconds: 90,
+                nanos: 500_000_000,
+            }))
+            .unwrap(),
+            ChronoDuration::milliseconds(90_500)
+        );
+        for refresh_after in [
+            prost_types::Duration {
+                seconds: i64::MAX,
+                nanos: 0,
+            },
+            prost_types::Duration {
+                seconds: 1,
+                nanos: -1_000_000_001,
+            },
+            prost_types::Duration {
+                seconds: -1,
+                nanos: 0,
+            },
+        ] {
+            assert_eq!(
+                parse_proto_duration(Some(refresh_after))
+                    .expect_err("out-of-range refresh_after")
+                    .code(),
+                tonic::Code::InvalidArgument,
+                "{refresh_after:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_page_url_empty_text_gives_none_and_malformed_url_returns_invalid_argument() {
+        assert_eq!(parse_page_url("").unwrap(), None);
+        assert_eq!(parse_page_title(""), None);
+        assert_eq!(parse_page_title("One Piece"), Some("One Piece".to_owned()));
+        assert_eq!(
+            parse_page_url("https://myanimelist.net/anime/21/One_Piece")
+                .unwrap()
+                .as_ref()
+                .map(Url::as_str),
+            Some("https://myanimelist.net/anime/21/One_Piece")
+        );
+        assert_eq!(
+            parse_page_url("not a url").unwrap_err().code(),
+            tonic::Code::InvalidArgument
+        );
+    }
+
+    #[sqlx::test(migrations = "../postgres_db/migrations")]
+    async fn list_due_anime_invalid_cursor_returns_invalid_argument(pool: PgPool) {
+        let service = build_service(pool);
+        let valid_request = ListDueRequest {
+            due_before: Some(to_proto_timestamp(Utc::now())),
+            older_after_years: 30,
+            page_size: 10,
+            after_next_refresh_at: None,
+            after_id: None,
+            merge_version: 1,
+        };
+        for invalid_request in [
+            ListDueRequest {
+                after_next_refresh_at: Some(prost_types::Timestamp {
+                    seconds: 0,
+                    nanos: -1,
+                }),
+                ..valid_request.clone()
+            },
+            ListDueRequest {
+                after_id: Some("not-a-uuid".to_owned()),
+                ..valid_request.clone()
+            },
+            ListDueRequest {
+                due_before: None,
+                ..valid_request
+            },
+        ] {
+            let status = service
+                .list_due_anime(Request::new(invalid_request))
+                .await
+                .expect_err("invalid cursor");
+            assert_eq!(
+                status.code(),
+                tonic::Code::InvalidArgument,
+                "{}",
+                status.message()
+            );
         }
     }
 }

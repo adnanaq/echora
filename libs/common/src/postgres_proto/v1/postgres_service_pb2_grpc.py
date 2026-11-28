@@ -75,6 +75,76 @@ class PostgresServiceStub:
                 request_serializer=v1_dot_postgres__service__pb2.SaveCharacterRequest.SerializeToString,
                 response_deserializer=v1_dot_postgres__service__pb2.SaveCharacterResponse.FromString,
                 _registered_method=True)
+        self.ListEntityPages = channel.unary_unary(
+                '/postgres_service.v1.PostgresService/ListEntityPages',
+                request_serializer=v1_dot_postgres__service__pb2.ListEntityPagesRequest.SerializeToString,
+                response_deserializer=v1_dot_postgres__service__pb2.ListEntityPagesResponse.FromString,
+                _registered_method=True)
+        self.RecordRefresh = channel.unary_unary(
+                '/postgres_service.v1.PostgresService/RecordRefresh',
+                request_serializer=v1_dot_postgres__service__pb2.RecordRefreshRequest.SerializeToString,
+                response_deserializer=v1_dot_postgres__service__pb2.RecordRefreshResponse.FromString,
+                _registered_method=True)
+        self.ListDueAnime = channel.unary_unary(
+                '/postgres_service.v1.PostgresService/ListDueAnime',
+                request_serializer=v1_dot_postgres__service__pb2.ListDueRequest.SerializeToString,
+                response_deserializer=v1_dot_postgres__service__pb2.ListDueResponse.FromString,
+                _registered_method=True)
+        self.ListDueEpisodes = channel.unary_unary(
+                '/postgres_service.v1.PostgresService/ListDueEpisodes',
+                request_serializer=v1_dot_postgres__service__pb2.ListDueRequest.SerializeToString,
+                response_deserializer=v1_dot_postgres__service__pb2.ListDueResponse.FromString,
+                _registered_method=True)
+        self.ListDueCharacters = channel.unary_unary(
+                '/postgres_service.v1.PostgresService/ListDueCharacters',
+                request_serializer=v1_dot_postgres__service__pb2.ListDueRequest.SerializeToString,
+                response_deserializer=v1_dot_postgres__service__pb2.ListDueResponse.FromString,
+                _registered_method=True)
+        self.ListUpcomingEpisodes = channel.unary_unary(
+                '/postgres_service.v1.PostgresService/ListUpcomingEpisodes',
+                request_serializer=v1_dot_postgres__service__pb2.ListUpcomingEpisodesRequest.SerializeToString,
+                response_deserializer=v1_dot_postgres__service__pb2.ListUpcomingEpisodesResponse.FromString,
+                _registered_method=True)
+        self.ListScoreAnime = channel.unary_unary(
+                '/postgres_service.v1.PostgresService/ListScoreAnime',
+                request_serializer=v1_dot_postgres__service__pb2.ListScoreAnimeRequest.SerializeToString,
+                response_deserializer=v1_dot_postgres__service__pb2.ListScoreAnimeResponse.FromString,
+                _registered_method=True)
+        self.ListRequestedMerges = channel.unary_unary(
+                '/postgres_service.v1.PostgresService/ListRequestedMerges',
+                request_serializer=v1_dot_postgres__service__pb2.ListRequestedMergesRequest.SerializeToString,
+                response_deserializer=v1_dot_postgres__service__pb2.ListRequestedMergesResponse.FromString,
+                _registered_method=True)
+        self.GetAnime = channel.unary_unary(
+                '/postgres_service.v1.PostgresService/GetAnime',
+                request_serializer=v1_dot_postgres__service__pb2.GetEntityRequest.SerializeToString,
+                response_deserializer=v1_dot_postgres__service__pb2.GetAnimeResponse.FromString,
+                _registered_method=True)
+        self.GetEpisode = channel.unary_unary(
+                '/postgres_service.v1.PostgresService/GetEpisode',
+                request_serializer=v1_dot_postgres__service__pb2.GetEntityRequest.SerializeToString,
+                response_deserializer=v1_dot_postgres__service__pb2.GetEpisodeResponse.FromString,
+                _registered_method=True)
+        self.ListEpisodes = channel.unary_unary(
+                '/postgres_service.v1.PostgresService/ListEpisodes',
+                request_serializer=v1_dot_postgres__service__pb2.GetEntityRequest.SerializeToString,
+                response_deserializer=v1_dot_postgres__service__pb2.ListEpisodesResponse.FromString,
+                _registered_method=True)
+        self.GetCharacter = channel.unary_unary(
+                '/postgres_service.v1.PostgresService/GetCharacter',
+                request_serializer=v1_dot_postgres__service__pb2.GetEntityRequest.SerializeToString,
+                response_deserializer=v1_dot_postgres__service__pb2.GetCharacterResponse.FromString,
+                _registered_method=True)
+        self.ListEntityVersions = channel.unary_unary(
+                '/postgres_service.v1.PostgresService/ListEntityVersions',
+                request_serializer=v1_dot_postgres__service__pb2.ListEntityVersionsRequest.SerializeToString,
+                response_deserializer=v1_dot_postgres__service__pb2.ListEntityVersionsResponse.FromString,
+                _registered_method=True)
+        self.ListDuePages = channel.unary_unary(
+                '/postgres_service.v1.PostgresService/ListDuePages',
+                request_serializer=v1_dot_postgres__service__pb2.ListDuePagesRequest.SerializeToString,
+                response_deserializer=v1_dot_postgres__service__pb2.ListDuePagesResponse.FromString,
+                _registered_method=True)
 
 
 class PostgresServiceServicer:
@@ -137,6 +207,104 @@ class PostgresServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ListEntityPages(self, request, context):
+        """List an entity's linked provider pages and their last fetch state.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RecordRefresh(self, request, context):
+        """Record a completed or failed refresh and update next_refresh_at.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListDueAnime(self, request, context):
+        """Page through works due for refresh.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListDueEpisodes(self, request, context):
+        """Page through episodes due for refresh.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListDueCharacters(self, request, context):
+        """Page through characters due for refresh.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListUpcomingEpisodes(self, request, context):
+        """List episodes of ongoing and upcoming works airing within the tracking window.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListScoreAnime(self, request, context):
+        """Page through works whose scores refresh daily.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListRequestedMerges(self, request, context):
+        """List entities whose merge_requested_at timestamp is set.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetAnime(self, request, context):
+        """Read a merged, undeleted work with its version and next_refresh_at.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetEpisode(self, request, context):
+        """Read a merged, undeleted episode with its version and next_refresh_at.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListEpisodes(self, request, context):
+        """List all merged, undeleted episodes of a work.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetCharacter(self, request, context):
+        """Read a merged, undeleted character with its version and next_refresh_at.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListEntityVersions(self, request, context):
+        """Page through visible entity versions for vector comparison.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListDuePages(self, request, context):
+        """List due source pages of one budgeted provider in due order.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_PostgresServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -179,6 +347,76 @@ def add_PostgresServiceServicer_to_server(servicer, server):
                     servicer.SaveCharacter,
                     request_deserializer=v1_dot_postgres__service__pb2.SaveCharacterRequest.FromString,
                     response_serializer=v1_dot_postgres__service__pb2.SaveCharacterResponse.SerializeToString,
+            ),
+            'ListEntityPages': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListEntityPages,
+                    request_deserializer=v1_dot_postgres__service__pb2.ListEntityPagesRequest.FromString,
+                    response_serializer=v1_dot_postgres__service__pb2.ListEntityPagesResponse.SerializeToString,
+            ),
+            'RecordRefresh': grpc.unary_unary_rpc_method_handler(
+                    servicer.RecordRefresh,
+                    request_deserializer=v1_dot_postgres__service__pb2.RecordRefreshRequest.FromString,
+                    response_serializer=v1_dot_postgres__service__pb2.RecordRefreshResponse.SerializeToString,
+            ),
+            'ListDueAnime': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListDueAnime,
+                    request_deserializer=v1_dot_postgres__service__pb2.ListDueRequest.FromString,
+                    response_serializer=v1_dot_postgres__service__pb2.ListDueResponse.SerializeToString,
+            ),
+            'ListDueEpisodes': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListDueEpisodes,
+                    request_deserializer=v1_dot_postgres__service__pb2.ListDueRequest.FromString,
+                    response_serializer=v1_dot_postgres__service__pb2.ListDueResponse.SerializeToString,
+            ),
+            'ListDueCharacters': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListDueCharacters,
+                    request_deserializer=v1_dot_postgres__service__pb2.ListDueRequest.FromString,
+                    response_serializer=v1_dot_postgres__service__pb2.ListDueResponse.SerializeToString,
+            ),
+            'ListUpcomingEpisodes': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListUpcomingEpisodes,
+                    request_deserializer=v1_dot_postgres__service__pb2.ListUpcomingEpisodesRequest.FromString,
+                    response_serializer=v1_dot_postgres__service__pb2.ListUpcomingEpisodesResponse.SerializeToString,
+            ),
+            'ListScoreAnime': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListScoreAnime,
+                    request_deserializer=v1_dot_postgres__service__pb2.ListScoreAnimeRequest.FromString,
+                    response_serializer=v1_dot_postgres__service__pb2.ListScoreAnimeResponse.SerializeToString,
+            ),
+            'ListRequestedMerges': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListRequestedMerges,
+                    request_deserializer=v1_dot_postgres__service__pb2.ListRequestedMergesRequest.FromString,
+                    response_serializer=v1_dot_postgres__service__pb2.ListRequestedMergesResponse.SerializeToString,
+            ),
+            'GetAnime': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetAnime,
+                    request_deserializer=v1_dot_postgres__service__pb2.GetEntityRequest.FromString,
+                    response_serializer=v1_dot_postgres__service__pb2.GetAnimeResponse.SerializeToString,
+            ),
+            'GetEpisode': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetEpisode,
+                    request_deserializer=v1_dot_postgres__service__pb2.GetEntityRequest.FromString,
+                    response_serializer=v1_dot_postgres__service__pb2.GetEpisodeResponse.SerializeToString,
+            ),
+            'ListEpisodes': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListEpisodes,
+                    request_deserializer=v1_dot_postgres__service__pb2.GetEntityRequest.FromString,
+                    response_serializer=v1_dot_postgres__service__pb2.ListEpisodesResponse.SerializeToString,
+            ),
+            'GetCharacter': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetCharacter,
+                    request_deserializer=v1_dot_postgres__service__pb2.GetEntityRequest.FromString,
+                    response_serializer=v1_dot_postgres__service__pb2.GetCharacterResponse.SerializeToString,
+            ),
+            'ListEntityVersions': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListEntityVersions,
+                    request_deserializer=v1_dot_postgres__service__pb2.ListEntityVersionsRequest.FromString,
+                    response_serializer=v1_dot_postgres__service__pb2.ListEntityVersionsResponse.SerializeToString,
+            ),
+            'ListDuePages': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListDuePages,
+                    request_deserializer=v1_dot_postgres__service__pb2.ListDuePagesRequest.FromString,
+                    response_serializer=v1_dot_postgres__service__pb2.ListDuePagesResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -398,6 +636,384 @@ class PostgresService:
             '/postgres_service.v1.PostgresService/SaveCharacter',
             v1_dot_postgres__service__pb2.SaveCharacterRequest.SerializeToString,
             v1_dot_postgres__service__pb2.SaveCharacterResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListEntityPages(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/postgres_service.v1.PostgresService/ListEntityPages',
+            v1_dot_postgres__service__pb2.ListEntityPagesRequest.SerializeToString,
+            v1_dot_postgres__service__pb2.ListEntityPagesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RecordRefresh(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/postgres_service.v1.PostgresService/RecordRefresh',
+            v1_dot_postgres__service__pb2.RecordRefreshRequest.SerializeToString,
+            v1_dot_postgres__service__pb2.RecordRefreshResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListDueAnime(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/postgres_service.v1.PostgresService/ListDueAnime',
+            v1_dot_postgres__service__pb2.ListDueRequest.SerializeToString,
+            v1_dot_postgres__service__pb2.ListDueResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListDueEpisodes(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/postgres_service.v1.PostgresService/ListDueEpisodes',
+            v1_dot_postgres__service__pb2.ListDueRequest.SerializeToString,
+            v1_dot_postgres__service__pb2.ListDueResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListDueCharacters(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/postgres_service.v1.PostgresService/ListDueCharacters',
+            v1_dot_postgres__service__pb2.ListDueRequest.SerializeToString,
+            v1_dot_postgres__service__pb2.ListDueResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListUpcomingEpisodes(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/postgres_service.v1.PostgresService/ListUpcomingEpisodes',
+            v1_dot_postgres__service__pb2.ListUpcomingEpisodesRequest.SerializeToString,
+            v1_dot_postgres__service__pb2.ListUpcomingEpisodesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListScoreAnime(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/postgres_service.v1.PostgresService/ListScoreAnime',
+            v1_dot_postgres__service__pb2.ListScoreAnimeRequest.SerializeToString,
+            v1_dot_postgres__service__pb2.ListScoreAnimeResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListRequestedMerges(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/postgres_service.v1.PostgresService/ListRequestedMerges',
+            v1_dot_postgres__service__pb2.ListRequestedMergesRequest.SerializeToString,
+            v1_dot_postgres__service__pb2.ListRequestedMergesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetAnime(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/postgres_service.v1.PostgresService/GetAnime',
+            v1_dot_postgres__service__pb2.GetEntityRequest.SerializeToString,
+            v1_dot_postgres__service__pb2.GetAnimeResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetEpisode(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/postgres_service.v1.PostgresService/GetEpisode',
+            v1_dot_postgres__service__pb2.GetEntityRequest.SerializeToString,
+            v1_dot_postgres__service__pb2.GetEpisodeResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListEpisodes(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/postgres_service.v1.PostgresService/ListEpisodes',
+            v1_dot_postgres__service__pb2.GetEntityRequest.SerializeToString,
+            v1_dot_postgres__service__pb2.ListEpisodesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetCharacter(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/postgres_service.v1.PostgresService/GetCharacter',
+            v1_dot_postgres__service__pb2.GetEntityRequest.SerializeToString,
+            v1_dot_postgres__service__pb2.GetCharacterResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListEntityVersions(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/postgres_service.v1.PostgresService/ListEntityVersions',
+            v1_dot_postgres__service__pb2.ListEntityVersionsRequest.SerializeToString,
+            v1_dot_postgres__service__pb2.ListEntityVersionsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListDuePages(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/postgres_service.v1.PostgresService/ListDuePages',
+            v1_dot_postgres__service__pb2.ListDuePagesRequest.SerializeToString,
+            v1_dot_postgres__service__pb2.ListDuePagesResponse.FromString,
             options,
             channel_credentials,
             insecure,

@@ -6,7 +6,8 @@
 //! identifiers in the same way, which the database joins to `source_material_xref`.
 
 use postgres_db::{
-    CHARACTER_HASH_FORMAT, CharacterAppearanceInput, CharacterMangaographyInput, SaveCharacterInput,
+    CHARACTER_HASH_FORMAT, CharacterAppearanceInput, CharacterMangaographyInput,
+    EntityType as DbEntityType, SaveCharacterInput, SourceMaterialXrefInput,
 };
 use prost::Message as _;
 use sha2::{Digest as _, Sha256};
@@ -14,9 +15,11 @@ use tonic::Status;
 use uuid::Uuid;
 
 use crate::anime_relations_mapping::{
-    parse_anime_target_from_url, parse_source_material_target_from_url,
+    build_page_source_from_url, build_source_material_xref_from_url, parse_anime_target_from_url,
 };
 use crate::episode_mapping::map_character_role;
+use crate::service::parse_page_sources;
+use crate::service::postgres_service_proto::v1::SaveCharacterRequest;
 use crate::service::shared_proto::v1::{Character, Ography};
 
 /// Maps a `SaveCharacterRequest` payload into [`SaveCharacterInput`].
@@ -26,17 +29,25 @@ use crate::service::shared_proto::v1::{Character, Ography};
 ///
 /// # Errors
 ///
-/// Returns [`Status::invalid_argument`] when `character_id` is not a valid UUID, a role is
-/// unknown, or `favorites` does not fit the stored column.
+/// Returns [`Status::invalid_argument`] when `character_id` is not a valid UUID, the
+/// character is missing, a role is unknown, `favorites` does not fit the stored column, or a
+/// page source has no valid page key.
 pub fn build_save_character_input(
-    character_id_text: &str,
-    expected_version: i64,
-    merge_version: i32,
-    character: Character,
+    request: SaveCharacterRequest,
     traceparent: Option<String>,
 ) -> Result<SaveCharacterInput, Status> {
-    let character_id = Uuid::parse_str(character_id_text)
+    let SaveCharacterRequest {
+        character_id: character_id_text,
+        expected_version,
+        character,
+        merge_version,
+        page_sources,
+    } = request;
+    let character_id = Uuid::parse_str(&character_id_text)
         .map_err(|err| Status::invalid_argument(format!("invalid character_id UUID: {err}")))?;
+    let character =
+        character.ok_or_else(|| Status::invalid_argument("character must be provided"))?;
+    let page_sources = parse_page_sources(page_sources)?;
     let merged_record_hash = compute_save_character_hash(&character);
 
     let Character {
@@ -84,6 +95,7 @@ pub fn build_save_character_input(
         hash_format: CHARACTER_HASH_FORMAT,
         merge_version,
         traceparent,
+        page_sources,
     })
 }
 
@@ -99,17 +111,21 @@ fn map_character_animeography(
 ) -> Result<Vec<CharacterAppearanceInput>, Status> {
     let mut appearances = Vec::new();
     for Ography {
-        title: _,
+        title,
         role,
         sources,
     } in animeography
     {
         let mapped_role = map_character_role(role)?;
         for source_url in sources {
-            if let Some((provider, address)) = parse_anime_target_from_url(&source_url) {
+            if let Some(anime_page_source) = build_page_source_from_url(
+                &source_url,
+                &title,
+                DbEntityType::Anime,
+                parse_anime_target_from_url,
+            ) {
                 appearances.push(CharacterAppearanceInput {
-                    anime_page_provider: provider.to_owned(),
-                    anime_page_address: address,
+                    anime_page_source,
                     role: mapped_role.to_owned(),
                 });
             }
@@ -118,10 +134,11 @@ fn map_character_animeography(
     Ok(appearances)
 }
 
-/// Converts the manga and novels a character appears in into source material identifiers.
+/// Converts the manga and novels a character appears in into mangaography entries.
 ///
-/// Each URL that names a provider's manga or novel page becomes one identifier with the
-/// entry's role, and any other URL is left out.
+/// Each entry keeps its role, and the URLs that name a provider's manga or novel page become
+/// its cross-references, each with the title the character's pages give. Any other URL is left
+/// out, and an entry with no such URL is dropped.
 ///
 /// # Errors
 ///
@@ -131,22 +148,21 @@ fn map_character_mangaography(
 ) -> Result<Vec<CharacterMangaographyInput>, Status> {
     let mut entries = Vec::new();
     for Ography {
-        title: _,
+        title,
         role,
         sources,
     } in mangaography
     {
         let mapped_role = map_character_role(role)?;
-        for source_url in sources {
-            if let Some((provider, external_id)) =
-                parse_source_material_target_from_url(&source_url)
-            {
-                entries.push(CharacterMangaographyInput {
-                    source_material_provider: provider.to_owned(),
-                    source_material_external_id: external_id,
-                    role: mapped_role.to_owned(),
-                });
-            }
+        let xrefs: Vec<SourceMaterialXrefInput> = sources
+            .into_iter()
+            .filter_map(|source_url| build_source_material_xref_from_url(source_url, &title))
+            .collect();
+        if !xrefs.is_empty() {
+            entries.push(CharacterMangaographyInput {
+                role: mapped_role.to_owned(),
+                xrefs,
+            });
         }
     }
     Ok(entries)
@@ -182,6 +198,36 @@ pub fn compute_save_character_hash(character: &Character) -> String {
             (&left.title, left.role, &left.sources).cmp(&(&right.title, right.role, &right.sources))
         });
     }
+    for voice_actor in &mut canonical_character.voice_actors {
+        voice_actor.sources.sort();
+        voice_actor.character_assignments.sort();
+    }
+    canonical_character.voice_actors.sort_by(|left, right| {
+        (
+            &left.name,
+            &left.language,
+            &left.native_name,
+            &left.id,
+            &left.image,
+            &left.biography,
+            &left.birth_date,
+            &left.blood_type,
+            &left.character_assignments,
+            &left.sources,
+        )
+            .cmp(&(
+                &right.name,
+                &right.language,
+                &right.native_name,
+                &right.id,
+                &right.image,
+                &right.biography,
+                &right.birth_date,
+                &right.blood_type,
+                &right.character_assignments,
+                &right.sources,
+            ))
+    });
 
     let encoded_bytes = canonical_character.encode_to_vec();
     let mut hasher = Sha256::new();
@@ -202,6 +248,9 @@ mod tests {
     use tonic::Code;
 
     use std::collections::BTreeMap;
+
+    use postgres_db::{PageKey, PageSource, Provider};
+    use url::Url;
 
     use super::*;
     use crate::service::shared_proto::v1::CharacterRole;
@@ -268,10 +317,13 @@ mod tests {
         let character_id = Uuid::now_v7();
 
         let input = build_save_character_input(
-            &character_id.to_string(),
-            3,
-            2,
-            build_character(),
+            SaveCharacterRequest {
+                character_id: character_id.to_string(),
+                expected_version: 3,
+                character: Some(build_character()),
+                merge_version: 2,
+                page_sources: Vec::new(),
+            },
             Some("00-trace".to_owned()),
         )
         .expect("map the character");
@@ -293,31 +345,47 @@ mod tests {
             input.animeography,
             vec![
                 CharacterAppearanceInput {
-                    anime_page_provider: "mal".to_owned(),
-                    anime_page_address: "21".to_owned(),
+                    anime_page_source: PageSource {
+                        page_key: PageKey::new(Provider::Mal, DbEntityType::Anime, "21")
+                            .expect("valid page key"),
+                        source: Some(
+                            Url::parse("https://myanimelist.net/anime/21/One_Piece")
+                                .expect("valid URL")
+                        ),
+                        title: Some("One Piece".to_owned()),
+                    },
                     role: "MAIN".to_owned(),
                 },
                 CharacterAppearanceInput {
-                    anime_page_provider: "anilist".to_owned(),
-                    anime_page_address: "21".to_owned(),
+                    anime_page_source: PageSource {
+                        page_key: PageKey::new(Provider::AniList, DbEntityType::Anime, "21")
+                            .expect("valid page key"),
+                        source: Some(Url::parse("https://anilist.co/anime/21").expect("valid URL")),
+                        title: Some("One Piece".to_owned()),
+                    },
                     role: "MAIN".to_owned(),
                 },
             ]
         );
         assert_eq!(
             input.mangaography,
-            vec![
-                CharacterMangaographyInput {
-                    source_material_provider: "mal".to_owned(),
-                    source_material_external_id: "13".to_owned(),
-                    role: "MAIN".to_owned(),
-                },
-                CharacterMangaographyInput {
-                    source_material_provider: "anilist".to_owned(),
-                    source_material_external_id: "30013".to_owned(),
-                    role: "MAIN".to_owned(),
-                },
-            ]
+            vec![CharacterMangaographyInput {
+                role: "MAIN".to_owned(),
+                xrefs: vec![
+                    SourceMaterialXrefInput {
+                        provider: "mal".to_owned(),
+                        external_id: "13".to_owned(),
+                        url: "https://myanimelist.net/manga/13/One_Piece".to_owned(),
+                        title: Some("One Piece".to_owned()),
+                    },
+                    SourceMaterialXrefInput {
+                        provider: "anilist".to_owned(),
+                        external_id: "30013".to_owned(),
+                        url: "https://anilist.co/manga/30013".to_owned(),
+                        title: Some("One Piece".to_owned()),
+                    },
+                ],
+            },]
         );
     }
 
@@ -337,10 +405,31 @@ mod tests {
             (valid_id.as_str(), unknown_manga_role),
             (valid_id.as_str(), oversized_favorites),
         ] {
-            let status = build_save_character_input(character_id_text, 1, 1, character, None)
-                .expect_err("the request is refused");
+            let status = build_save_character_input(
+                SaveCharacterRequest {
+                    character_id: character_id_text.to_owned(),
+                    expected_version: 1,
+                    character: Some(character),
+                    merge_version: 1,
+                    page_sources: Vec::new(),
+                },
+                None,
+            )
+            .expect_err("the request is refused");
             assert_eq!(status.code(), Code::InvalidArgument, "{status:?}");
         }
+        let missing_character_status = build_save_character_input(
+            SaveCharacterRequest {
+                character_id: valid_id,
+                expected_version: 1,
+                character: None,
+                merge_version: 1,
+                page_sources: Vec::new(),
+            },
+            None,
+        )
+        .expect_err("a request without a character is refused");
+        assert_eq!(missing_character_status.code(), Code::InvalidArgument);
     }
 
     #[test]
@@ -372,6 +461,48 @@ mod tests {
         assert_ne!(
             character_hash,
             compute_save_character_hash(&recast_character)
+        );
+    }
+
+    #[test]
+    fn compute_save_character_hash_ignores_voice_actor_order_and_tracks_content() {
+        use crate::service::shared_proto::v1::VoiceActor;
+
+        let mut character = build_character();
+        character.voice_actors = vec![
+            VoiceActor {
+                name: "Mayumi Tanaka".to_owned(),
+                language: Some("ja".to_owned()),
+                sources: vec![
+                    "https://myanimelist.net/people/75".to_owned(),
+                    "https://anilist.co/staff/95075".to_owned(),
+                ],
+                character_assignments: vec!["Monkey D. Luffy".to_owned(), "Krillin".to_owned()],
+                ..VoiceActor::default()
+            },
+            VoiceActor {
+                name: "Colleen Clinkenbeard".to_owned(),
+                language: Some("en".to_owned()),
+                sources: vec!["https://myanimelist.net/people/181".to_owned()],
+                character_assignments: vec!["Monkey D. Luffy".to_owned()],
+                ..VoiceActor::default()
+            },
+        ];
+        let mut reordered = character.clone();
+        reordered.voice_actors.reverse();
+        reordered.voice_actors[1].sources.reverse();
+        reordered.voice_actors[1].character_assignments.reverse();
+
+        let mut edited = character.clone();
+        edited.voice_actors[0].language = Some("jp".to_owned());
+
+        assert_eq!(
+            compute_save_character_hash(&character),
+            compute_save_character_hash(&reordered)
+        );
+        assert_ne!(
+            compute_save_character_hash(&character),
+            compute_save_character_hash(&edited)
         );
     }
 }

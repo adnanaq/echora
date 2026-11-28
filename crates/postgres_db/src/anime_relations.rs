@@ -10,17 +10,17 @@ use crate::graph_projection::{
     invert_anime_relation_type, recompute_anime_pair_graph_edges, replace_company_graph_edges,
     replace_source_material_graph_edges,
 };
-use crate::provider_page::{EntityType, PageKey, Provider};
+use crate::provider_page::{EntityType, PageKey, PageSource, Provider};
 
 /// Directed anime-to-anime relation stored in `anime_related_anime`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AnimeRelationInput {
     /// Canonical `anime_relation_type` lookup value.
     pub relation_type: String,
-    /// Target provider name (for example `"mal"`).
-    pub to_page_provider: String,
-    /// Target provider page address (for example `"21"`).
-    pub to_page_address: String,
+    /// The target work's page, with the URL the merge reported for it.
+    ///
+    /// The page keeps that URL until a work holds the page.
+    pub target_page_source: PageSource,
 }
 
 /// Provider-specific relation provenance stored in `anime_related_anime_claim`.
@@ -43,6 +43,11 @@ pub struct SourceMaterialXrefInput {
     pub external_id: String,
     /// Canonical provider URL for the source material.
     pub url: String,
+    /// The title the provider's page gives, when the save knows it.
+    ///
+    /// A character's mangaography gives it, so a page no work has related yet reads with a
+    /// title; a work's save leaves it out, since its source material holds the title.
+    pub title: Option<String>,
 }
 
 /// Related source material entry and its link to the anime.
@@ -118,10 +123,9 @@ pub(crate) fn validate_relations_and_graph(
 ) -> Result<(), Error> {
     for relation in &input.relations {
         invert_anime_relation_type(&relation.relation_type)?;
-        if relation.to_page_provider.trim().is_empty() || relation.to_page_address.trim().is_empty()
-        {
+        if relation.target_page_source.page_key.entity_type() != EntityType::Anime {
             return Err(Error::invalid_argument(
-                "anime_related_anime target provider and address must be non-empty",
+                "anime_related_anime target page must be an anime page",
             ));
         }
     }
@@ -487,9 +491,10 @@ pub(crate) async fn lock_relation_target_pages(
     let target_pages: BTreeSet<(&str, &str)> = relations
         .iter()
         .map(|relation| {
+            let target_page_key = &relation.target_page_source.page_key;
             (
-                relation.to_page_provider.as_str(),
-                relation.to_page_address.as_str(),
+                target_page_key.provider().as_str(),
+                target_page_key.address().as_str(),
             )
         })
         .collect();
@@ -561,13 +566,12 @@ async fn replace_anime_relations(
     anime_id: Uuid,
     relations: &[AnimeRelationInput],
 ) -> Result<BTreeSet<(Uuid, Uuid)>, Error> {
-    let deduplicated_relations: BTreeSet<(&str, &str, &str)> = relations
+    let deduplicated_relations: BTreeSet<(&str, &PageKey)> = relations
         .iter()
         .map(|relation| {
             (
                 relation.relation_type.as_str(),
-                relation.to_page_provider.as_str(),
-                relation.to_page_address.as_str(),
+                &relation.target_page_source.page_key,
             )
         })
         .collect();
@@ -593,10 +597,10 @@ async fn replace_anime_relations(
         let mut relation_types = Vec::with_capacity(deduplicated_relations.len());
         let mut to_page_providers = Vec::with_capacity(deduplicated_relations.len());
         let mut to_page_addresses = Vec::with_capacity(deduplicated_relations.len());
-        for (relation_type, to_page_provider, to_page_address) in deduplicated_relations {
-            relation_types.push(relation_type.to_owned());
-            to_page_providers.push(to_page_provider.to_owned());
-            to_page_addresses.push(to_page_address.to_owned());
+        for (relation_type, target_page_key) in deduplicated_relations {
+            relation_types.push(relation_type);
+            to_page_providers.push(target_page_key.provider().as_str());
+            to_page_addresses.push(target_page_key.address().as_str());
         }
         sqlx::query!(
             "INSERT INTO anime_related_anime (
@@ -606,9 +610,9 @@ async fn replace_anime_relations(
              FROM UNNEST($2::text[], $3::text[], $4::text[])
                AS entry(relation_type, to_page_provider, to_page_address)",
             anime_id,
-            &relation_types,
-            &to_page_providers,
-            &to_page_addresses,
+            &relation_types as &[&str],
+            &to_page_providers as &[&str],
+            &to_page_addresses as &[&str],
         )
         .execute(&mut **tx)
         .await?;
@@ -837,6 +841,9 @@ async fn replace_anime_source_materials(
 
 /// Finds the stored source material that any of `xrefs` already identifies.
 ///
+/// A page a character's mangaography recorded before any work related it belongs to no source
+/// material, so it identifies none.
+///
 /// # Errors
 ///
 /// Returns a database error when a query fails.
@@ -847,9 +854,9 @@ async fn resolve_existing_source_material_id(
     let mut resolved_ids: BTreeSet<Uuid> = BTreeSet::new();
     for xref in xrefs {
         if let Some(found_id) = sqlx::query_scalar!(
-            "SELECT source_material_id
-             FROM source_material_xref
-             WHERE provider = $1 AND external_id = $2",
+            r#"SELECT source_material_id AS "source_material_id!"
+               FROM source_material_xref
+               WHERE provider = $1 AND external_id = $2 AND source_material_id IS NOT NULL"#,
             xref.provider,
             xref.external_id,
         )
@@ -868,6 +875,9 @@ async fn resolve_existing_source_material_id(
 }
 
 /// Creates or updates a source material row and its cross-references.
+///
+/// A cross-reference a character's mangaography recorded without a source material is
+/// attached to this one.
 ///
 /// # Errors
 ///
@@ -931,10 +941,15 @@ async fn upsert_source_material_by_xref(
     let mut canonical_id = source_material_id;
     for xref in sorted_xrefs {
         canonical_id = sqlx::query_scalar!(
-            "INSERT INTO source_material_xref (provider, external_id, source_material_id, source)
-             VALUES ($1, $2, $3, $4)
-             ON CONFLICT (provider, external_id) DO UPDATE SET source = EXCLUDED.source
-             RETURNING source_material_id",
+            r#"INSERT INTO source_material_xref (provider, external_id, source_material_id, source)
+               VALUES ($1, $2, $3, $4)
+               ON CONFLICT (provider, external_id) DO UPDATE
+                 SET source = EXCLUDED.source,
+                     source_material_id = coalesce(
+                         source_material_xref.source_material_id,
+                         EXCLUDED.source_material_id
+                     )
+               RETURNING source_material_id AS "source_material_id!""#,
             xref.provider,
             xref.external_id,
             canonical_id,
@@ -1178,14 +1193,20 @@ async fn upsert_company_by_xref(
 
 #[cfg(test)]
 mod tests {
+    use url::Url;
+
     use super::*;
 
     fn build_valid_relations() -> AnimeRelationsAndGraphInput {
         AnimeRelationsAndGraphInput {
             relations: vec![AnimeRelationInput {
                 relation_type: "SEQUEL".to_owned(),
-                to_page_provider: "mal".to_owned(),
-                to_page_address: "2".to_owned(),
+                target_page_source: PageSource {
+                    page_key: PageKey::new(Provider::Mal, EntityType::Anime, "2")
+                        .expect("valid page key"),
+                    source: Some(Url::parse("https://myanimelist.net/anime/2").expect("valid URL")),
+                    title: None,
+                },
             }],
             relation_claims: vec![AnimeRelationClaimInput {
                 provider: Provider::Mal,
@@ -1207,6 +1228,7 @@ mod tests {
                     provider: "mal".to_owned(),
                     external_id: "13".to_owned(),
                     url: "https://myanimelist.net/manga/13".to_owned(),
+                    title: None,
                 }],
             }],
             companies: vec![AnimeCompanyInput {
@@ -1228,12 +1250,14 @@ mod tests {
 
         let breaking_changes: Vec<fn(&mut AnimeRelationsAndGraphInput)> = vec![
             |input| input.relations[0].relation_type = "NOT_A_TYPE".to_owned(),
-            |input| input.relations[0].to_page_provider = " ".to_owned(),
-            |input| input.relations[0].to_page_address = String::new(),
+            |input| {
+                input.relations[0].target_page_source.page_key =
+                    PageKey::new(Provider::Mal, EntityType::Character, "2").unwrap();
+            },
             |input| input.relation_claims[0].relation_type = "NOT_A_TYPE".to_owned(),
             |input| {
                 input.relation_claims[0].target_page =
-                    PageKey::new(Provider::Mal, EntityType::Episode, "2").unwrap();
+                    PageKey::new(Provider::Mal, EntityType::Episode, "21:2").unwrap();
             },
             |input| input.source_materials[0].title = " ".to_owned(),
             |input| input.source_materials[0].source_material_type = String::new(),

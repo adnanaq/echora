@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        WITH named AS (\n            SELECT provider, external_id, source, title\n            FROM UNNEST($1::text[], $2::text[], $3::text[], $4::text[])\n                 AS page(provider, external_id, source, title)\n        ),\n        added AS (\n            INSERT INTO source_material_xref (provider, external_id, source, title)\n            SELECT provider, external_id, source, title\n            FROM named\n            ON CONFLICT (provider, external_id) DO NOTHING\n        ),\n        untitled AS (\n            SELECT xref.provider, xref.external_id\n            FROM source_material_xref xref\n            JOIN named USING (provider, external_id)\n            WHERE xref.title IS NULL AND named.title IS NOT NULL\n            ORDER BY xref.provider, xref.external_id\n            FOR NO KEY UPDATE OF xref SKIP LOCKED\n        )\n        UPDATE source_material_xref xref\n        SET title = named.title\n        FROM named\n        JOIN untitled USING (provider, external_id)\n        WHERE xref.provider = named.provider\n          AND xref.external_id = named.external_id\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "TextArray",
+        "TextArray",
+        "TextArray",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f2ee016aa9abfd3dda4b719b16c6dcd572e933263bb46b413c9b01fd86084f60"
+}

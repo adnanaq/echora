@@ -1,14 +1,16 @@
-"""Unit tests for stored-page anime merging (ECHO-105)."""
-
 from __future__ import annotations
 
 import json
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 
+import pytest
 from enrichment.pipeline.anime_merge import merge_anime_pages, page_key_to_anime_url
 from enrichment.pipeline.episode_reference_merger import (
-    _parse_episode_page_key,
+    _find_episode_page_sources,
+    _list_provider_episodes,
+    _ListedEpisode,
     _pick_episode_title,
 )
 from enrichment_proto.v1.enrichment_service_pb2 import MergeAnimeRequest
@@ -23,6 +25,8 @@ from shared_proto.v1.merge_pb2 import (
     GeneratedText,
     PageKey,
     PageResponse,
+    PageSource,
+    RelationClaim,
     StoredPage,
 )
 
@@ -32,6 +36,7 @@ def _anilist_page(
     *,
     synopsis: str = "Provider AniList synopsis.",
     relations: list[dict[str, object]] | None = None,
+    site_url: str | None = None,
 ) -> StoredPage:
     payload = {
         "data": {
@@ -48,7 +53,7 @@ def _anilist_page(
                 "episodes": 1100,
                 "genres": ["Action", "Adventure"],
                 "relations": {"edges": relations or []},
-                "siteUrl": f"https://anilist.co/anime/{address}",
+                "siteUrl": site_url or f"https://anilist.co/anime/{address}",
             }
         }
     }
@@ -130,7 +135,6 @@ def _ts(year: int, month: int, day: int) -> Timestamp:
 
 
 def test_merge_uses_passed_id_and_page_link_sources() -> None:
-    """Merge must use request.anime_id and derive sources/partial_sources from links."""
     work_id = "0195b42a-0000-7000-8000-000000000001"
     req = MergeAnimeRequest(
         anime_id=work_id,
@@ -149,10 +153,20 @@ def test_merge_uses_passed_id_and_page_link_sources() -> None:
     assert list(resp.anime.sources) == ["https://anilist.co/anime/21"]
     assert list(resp.anime.partial_sources) == ["https://anidb.net/anime/69"]
     assert resp.anime.synopsis == ""
+    assert list(resp.page_sources) == [
+        PageSource(
+            page_key=PageKey(
+                provider="anilist",
+                entity_type=anime_pb2.ENTITY_TYPE_ANIME,
+                address="21",
+            ),
+            source="https://anilist.co/anime/21",
+            title="One Piece",
+        ),
+    ]
 
 
 def test_synopsis_precedence_correction_then_latest_generated_text() -> None:
-    """Synopsis uses FieldCorrection, else latest GeneratedText, never providers."""
     base_pages = [_anilist_page(synopsis="Provider text should be ignored.")]
 
     older = GeneratedText(
@@ -196,7 +210,6 @@ def test_synopsis_precedence_correction_then_latest_generated_text() -> None:
 
 
 def test_provider_synopses_hash_detects_changes_deterministically() -> None:
-    """provider_synopses_hash is order-independent and changes when synopsis text changes."""
     req_a = MergeAnimeRequest(
         anime_id="0195b42a-0000-7000-8000-000000000003",
         source_pages=[
@@ -228,7 +241,6 @@ def test_provider_synopses_hash_detects_changes_deterministically() -> None:
 
 
 def test_episode_id_preservation_and_uuidv7_for_new_episodes() -> None:
-    """Known episodes keep their IDs; newly listed episodes receive a UUIDv7."""
     known_ep_id = "0195b42a-0000-7000-8000-000000000101"
     kitsu_episodes = [
         {
@@ -272,6 +284,18 @@ def test_episode_id_preservation_and_uuidv7_for_new_episodes() -> None:
     assert len(by_num[1].list_entries) == 1
     assert by_num[1].list_entries[0].provider == "kitsu"
     assert by_num[1].list_entries[0].duration_seconds == 1440
+    assert [
+        (
+            page_source.page_key.provider,
+            page_source.page_key.address,
+            page_source.source,
+        )
+        for episode_number in (1, 2)
+        for page_source in by_num[episode_number].page_sources
+    ] == [
+        ("kitsu", "501", "https://kitsu.app/anime/one-piece/episodes/1"),
+        ("kitsu", "502", "https://kitsu.app/anime/one-piece/episodes/2"),
+    ]
 
     new_uuid = uuid.UUID(by_num[2].episode_id)
     assert new_uuid.version == 7
@@ -279,7 +303,6 @@ def test_episode_id_preservation_and_uuidv7_for_new_episodes() -> None:
 
 
 def test_relation_claims_and_sorted_lists() -> None:
-    """Relation claims preserve provider types and all output lists are sorted."""
     relations = [
         {
             "relationType": "SEQUEL",
@@ -322,14 +345,27 @@ def test_relation_claims_and_sorted_lists() -> None:
 
 
 def test_dead_not_found_unknown_provider_and_non_anime_claims() -> None:
-    """Dead, not-found, unknown-provider pages and non-anime claims are skipped safely."""
     unknown_key = PageKey(
         provider="unknown_site",
         entity_type=anime_pb2.ENTITY_TYPE_ANIME,
         address="1",
     )
     assert page_key_to_anime_url(unknown_key) == ""
-    assert _parse_episode_page_key("https://anilist.co/anime/21") is None
+    assert (
+        _find_episode_page_sources({"sources": ["https://anilist.co/anime/21"]}) == []
+    )
+    assert _find_episode_page_sources(
+        {"sources": ["https://anidb.net/episode/412"]}
+    ) == [
+        PageSource(
+            page_key=PageKey(
+                provider="anidb",
+                entity_type=anime_pb2.ENTITY_TYPE_EPISODE,
+                address="412",
+            ),
+            source="https://anidb.net/episode/412",
+        )
+    ]
 
     manga_rel = [
         {
@@ -370,11 +406,212 @@ def test_dead_not_found_unknown_provider_and_non_anime_claims() -> None:
     )
     resp = merge_anime_pages(req)
     assert resp.relation_claims == []
-    assert "https://myanimelist.net/anime/21" in resp.anime.sources
+    assert "https://myanimelist.net/anime/21" not in resp.anime.sources
+    page_sources_by_provider = {
+        page.page_key.provider: page.source for page in resp.page_sources
+    }
+    assert page_sources_by_provider == {
+        "anilist": "https://anilist.co/anime/21",
+    }
+
+
+def test_merge_anime_pages_not_found_with_stored_responses_still_merges_and_lists_episodes() -> (
+    None
+):
+    anidb_xml = Path(
+        "tests/libs/enrichment/unit/sources/anidb/fixtures/onepiece_anidb_raw.xml"
+    ).read_bytes()
+    req = MergeAnimeRequest(
+        anime_id="0195b42a-0000-7000-8000-000000000018",
+        source_pages=[
+            StoredPage(
+                page_key=PageKey(
+                    provider="anidb",
+                    entity_type=anime_pb2.ENTITY_TYPE_ANIME,
+                    address="69",
+                ),
+                is_not_found=True,
+                responses=[
+                    PageResponse(
+                        request_name="main",
+                        content_type="application/xml",
+                        body=anidb_xml,
+                    )
+                ],
+            )
+        ],
+    )
+    resp = merge_anime_pages(req)
+    assert resp.anime.title == "One Piece"
+    assert len(resp.episodes) > 1000
+    assert "https://anidb.net/anime/69" in resp.anime.sources
+
+
+def test_merge_anime_pages_real_mal_one_piece_preserves_pg13_rating() -> None:
+    mal_html = Path(
+        "tests/libs/enrichment/unit/sources/mal/fixtures/mal_anime_21.html"
+    ).read_bytes()
+    response = merge_anime_pages(
+        MergeAnimeRequest(
+            anime_id="0195b42a-0000-7000-8000-000000000019",
+            source_pages=[
+                StoredPage(
+                    page_key=PageKey(
+                        provider="mal",
+                        entity_type=anime_pb2.ENTITY_TYPE_ANIME,
+                        address="21",
+                    ),
+                    responses=[
+                        PageResponse(
+                            request_name="main",
+                            content_type="text/html",
+                            body=mal_html,
+                        )
+                    ],
+                )
+            ],
+        )
+    )
+    assert response.anime.rating == anime_pb2.ANIME_RATING_PG13
+
+
+def test_merge_anime_pages_renumbered_anidb_episode_never_duplicates_episode_id() -> (
+    None
+):
+    anidb_xml = Path(
+        "tests/libs/enrichment/unit/sources/anidb/fixtures/onepiece_anidb_raw.xml"
+    ).read_bytes()
+    initial = merge_anime_pages(
+        MergeAnimeRequest(
+            anime_id="0195b42a-0000-7000-8000-000000000020",
+            source_pages=[
+                StoredPage(
+                    page_key=PageKey(
+                        provider="anidb",
+                        entity_type=anime_pb2.ENTITY_TYPE_ANIME,
+                        address="69",
+                    ),
+                    responses=[
+                        PageResponse(
+                            request_name="main",
+                            content_type="application/xml",
+                            body=anidb_xml,
+                        )
+                    ],
+                )
+            ],
+        )
+    )
+    by_number = {episode.episode_number: episode for episode in initial.episodes}
+    known_ep4 = by_number[4]
+    known_ep5 = by_number[5]
+    known_shifted = [
+        EpisodeReference(
+            episode_id="0195b42a-0000-7000-8000-000000000905",
+            episode_number=5,
+            title=known_ep4.title,
+            page_sources=list(known_ep4.page_sources),
+        ),
+        EpisodeReference(
+            episode_id="0195b42a-0000-7000-8000-000000000901",
+            episode_number=1,
+            title=known_ep5.title,
+            page_sources=list(known_ep5.page_sources),
+        ),
+    ]
+    rematched = merge_anime_pages(
+        MergeAnimeRequest(
+            anime_id="0195b42a-0000-7000-8000-000000000020",
+            source_pages=[
+                StoredPage(
+                    page_key=PageKey(
+                        provider="anidb",
+                        entity_type=anime_pb2.ENTITY_TYPE_ANIME,
+                        address="69",
+                    ),
+                    responses=[
+                        PageResponse(
+                            request_name="main",
+                            content_type="application/xml",
+                            body=anidb_xml,
+                        )
+                    ],
+                )
+            ],
+            known_episodes=known_shifted,
+        )
+    )
+    episode_ids = [episode.episode_id for episode in rematched.episodes]
+    assert len(episode_ids) == len(set(episode_ids))
+    rematched_by_number = {ep.episode_number: ep for ep in rematched.episodes}
+    assert rematched_by_number[4].episode_id == "0195b42a-0000-7000-8000-000000000905"
+    assert rematched_by_number[5].episode_id == "0195b42a-0000-7000-8000-000000000901"
+    assert rematched_by_number[1].episode_id != "0195b42a-0000-7000-8000-000000000901"
+
+
+def test_merge_anime_pages_no_mappable_pages_raises_clear_value_error() -> None:
+    request = MergeAnimeRequest(
+        anime_id="0195b42a-0000-7000-8000-000000000021",
+        source_pages=[
+            StoredPage(
+                page_key=PageKey(
+                    provider="mal",
+                    entity_type=anime_pb2.ENTITY_TYPE_ANIME,
+                    address="21",
+                ),
+                is_dead=True,
+            )
+        ],
+    )
+    with pytest.raises(ValueError, match="No mappable source pages for anime"):
+        merge_anime_pages(request)
+
+
+def test_merge_anime_pages_empty_newest_generated_synopsis_clears_older_synopsis() -> (
+    None
+):
+    from google.protobuf.timestamp_pb2 import Timestamp
+
+    mal_html = Path(
+        "tests/libs/enrichment/unit/sources/mal/fixtures/mal_anime_21.html"
+    ).read_bytes()
+    response = merge_anime_pages(
+        MergeAnimeRequest(
+            anime_id="0195b42a-0000-7000-8000-000000000022",
+            source_pages=[
+                StoredPage(
+                    page_key=PageKey(
+                        provider="mal",
+                        entity_type=anime_pb2.ENTITY_TYPE_ANIME,
+                        address="21",
+                    ),
+                    responses=[
+                        PageResponse(
+                            request_name="main",
+                            content_type="text/html",
+                            body=mal_html,
+                        )
+                    ],
+                )
+            ],
+            generated_texts=[
+                GeneratedText(
+                    field_path="synopsis",
+                    text="Older synopsis",
+                    written_at=Timestamp(seconds=100),
+                ),
+                GeneratedText(
+                    field_path="synopsis",
+                    text="",
+                    written_at=Timestamp(seconds=200),
+                ),
+            ],
+        )
+    )
+    assert response.anime.synopsis == ""
 
 
 def test_anidb_and_anisearch_episode_extraction_and_page_key_matching() -> None:
-    """AniDB XML and AniSearch HTML episode lists merge and match by PageKey."""
     anidb_xml = b"""<?xml version="1.0" encoding="UTF-8"?>
 <anime id="69" restricted="false">
   <type>TV Series</type>
@@ -452,11 +689,13 @@ def test_anidb_and_anisearch_episode_extraction_and_page_key_matching() -> None:
                 episode_id=known_id,
                 episode_number=999,
                 title="Known Fallback",
-                page_keys=[
-                    PageKey(
-                        provider="anidb",
-                        entity_type=anime_pb2.ENTITY_TYPE_EPISODE,
-                        address="1001",
+                page_sources=[
+                    PageSource(
+                        page_key=PageKey(
+                            provider="anidb",
+                            entity_type=anime_pb2.ENTITY_TYPE_EPISODE,
+                            address="1001",
+                        )
                     )
                 ],
             )
@@ -485,12 +724,11 @@ def test_anidb_and_anisearch_episode_extraction_and_page_key_matching() -> None:
 def test_merge_helper_edge_cases_non_anime_claim_empty_source_and_missing_ep_num() -> (
     None
 ):
-    """Cover non-anime relation URLs, empty source URLs, and missing episode numbers."""
     from unittest.mock import patch
 
     from enrichment.pipeline.anime_merge import (
+        _build_linked_page_sources,
         _extract_relation_claims,
-        _resolve_linked_urls,
     )
     from enrichment.pipeline.episode_reference_merger import _collect_provider_episodes
 
@@ -505,19 +743,163 @@ def test_merge_helper_edge_cases_non_anime_claim_empty_source_and_missing_ep_num
     )
     assert claims == []
 
-    sources, partial_sources, page_urls = _resolve_linked_urls(
+    source_page_sources, partial_page_sources = _build_linked_page_sources(
         [],
         [],
         {"anilist": {"sources": ["", "https://anilist.co/anime/21"]}},
     )
-    assert sources == []
-    assert partial_sources == []
-    assert page_urls == {}
+    assert source_page_sources == []
+    assert partial_page_sources == []
 
     with patch(
-        "enrichment.pipeline.episode_reference_merger._extract_provider_episodes",
-        return_value=[{"episode_number": None, "title": "Skip me"}],
+        "enrichment.pipeline.episode_reference_merger._list_provider_episodes",
+        return_value=[
+            _ListedEpisode(
+                page_sources=[], episode={"episode_number": None, "title": "Skip me"}
+            )
+        ],
     ):
         entries, keys = _collect_provider_episodes([_kitsu_page()], {})
     assert entries == {}
     assert keys == {}
+
+
+def test_build_linked_page_sources_choose_reported_or_canonical_url_per_linked_page() -> (
+    None
+):
+    from enrichment.pipeline.anime_merge import _build_linked_page_sources
+
+    def build_anime_page_key(provider: str, address: str) -> PageKey:
+        return PageKey(
+            provider=provider,
+            entity_type=anime_pb2.ENTITY_TYPE_ANIME,
+            address=address,
+        )
+
+    records = {
+        "mal": {
+            "sources": [
+                "https://myanimelist.net/anime/21",
+                "https://myanimelist.net/anime/21/One_Piece",
+                "https://myanimelist.net/anime/999/Unlinked_Work",
+            ]
+        },
+        "kitsu": {"sources": ["https://kitsu.app/anime/one-piece-film/extra"]},
+    }
+    source_page_sources, partial_page_sources = _build_linked_page_sources(
+        [
+            StoredPage(page_key=build_anime_page_key("mal", "21")),
+            StoredPage(page_key=build_anime_page_key("anilist", "21")),
+            StoredPage(page_key=build_anime_page_key("unknown_site", "1")),
+        ],
+        [build_anime_page_key("kitsu", "one-piece-film")],
+        records,
+    )
+
+    assert source_page_sources == [
+        PageSource(
+            page_key=build_anime_page_key("mal", "21"),
+            source="https://myanimelist.net/anime/21/One_Piece",
+        ),
+        PageSource(
+            page_key=build_anime_page_key("anilist", "21"),
+            source="https://anilist.co/anime/21",
+        ),
+    ]
+    assert partial_page_sources == [
+        PageSource(
+            page_key=build_anime_page_key("kitsu", "one-piece-film"),
+            source="https://kitsu.app/anime/one-piece-film/extra",
+        )
+    ]
+
+
+def test_extract_relation_claims_anime_planet_target_uses_stored_provider_name() -> (
+    None
+):
+    from enrichment.pipeline.anime_merge import _extract_relation_claims
+
+    claims = _extract_relation_claims(
+        {
+            "anime_planet": {
+                "related_anime": {
+                    "SEQUEL": [
+                        {
+                            "sources": [
+                                "https://www.anime-planet.com/anime/one-piece-film-z"
+                            ]
+                        }
+                    ]
+                }
+            }
+        }
+    )
+
+    assert claims == [
+        RelationClaim(
+            provider="anime_planet",
+            relation_type=anime_pb2.ANIME_RELATION_TYPE_SEQUEL,
+            target_page=PageKey(
+                provider="anime_planet",
+                entity_type=anime_pb2.ENTITY_TYPE_ANIME,
+                address="one-piece-film-z",
+            ),
+        )
+    ]
+
+
+def test_list_provider_episodes_mal_episode_list_gives_mal_episode_pages() -> None:
+    saved_list_page = (
+        Path(__file__).resolve().parents[1]
+        / "sources"
+        / "mal"
+        / "test_mal_episode_parser"
+        / "one_piece_episodes.html"
+    )
+    mal_page = StoredPage(
+        page_key=PageKey(
+            provider="mal", entity_type=anime_pb2.ENTITY_TYPE_ANIME, address="21"
+        ),
+        responses=[
+            PageResponse(
+                request_name="episodes_page_1",
+                content_type="text/html",
+                body=saved_list_page.read_bytes(),
+            )
+        ],
+    )
+
+    listed_episodes = _list_provider_episodes(mal_page, "")
+
+    assert len(listed_episodes) == 100
+    assert listed_episodes[0].page_sources == [
+        PageSource(
+            page_key=PageKey(
+                provider="mal",
+                entity_type=anime_pb2.ENTITY_TYPE_EPISODE,
+                address="21:1",
+            ),
+            source="https://myanimelist.net/anime/21/One_Piece/episode/1",
+            title="I'm Luffy! The Man Who's Gonna Be King of the Pirates!",
+        )
+    ]
+    assert listed_episodes[49].episode["is_filler"] is True
+
+
+def test_merge_anime_pages_repeated_source_page_provider_raises_value_error() -> None:
+    request = MergeAnimeRequest(
+        anime_id="0195b42a-0000-7000-8000-000000000001",
+        source_pages=[
+            _anilist_page(),
+            StoredPage(
+                page_key=PageKey(
+                    provider="anilist",
+                    entity_type=anime_pb2.ENTITY_TYPE_ANIME,
+                    address="22",
+                ),
+                is_dead=True,
+            ),
+        ],
+    )
+    with pytest.raises(ValueError, match=r"^source_pages .* anilist$"):
+        merge_anime_pages(request)

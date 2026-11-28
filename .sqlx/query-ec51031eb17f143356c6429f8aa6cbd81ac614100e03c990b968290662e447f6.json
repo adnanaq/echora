@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT ending_theme_id AS theme_song_id, range_start, range_end\n         FROM anime_ending_theme_episode\n         WHERE ending_theme_id = ANY($1) ORDER BY range_start",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "theme_song_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "range_start",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 2,
+        "name": "range_end",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8Array"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "ec51031eb17f143356c6429f8aa6cbd81ac614100e03c990b968290662e447f6"
+}

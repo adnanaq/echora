@@ -51,7 +51,7 @@ def test_provider_page_read_canonical_record_renamed_page_names_new_key(
     page = ProviderPage.read_canonical_record(
         ANIME_PLANET_OLD, canonical_records[ANIME_PLANET_OLD]
     )
-    assert page.renamed_to == "animeplanet:anime:cocoon-one-summer-of-girlhood"
+    assert page.renamed_to == "anime_planet:anime:cocoon-one-summer-of-girlhood"
     assert page.linked_page_keys == ()
 
 
@@ -115,7 +115,7 @@ def test_provider_page_current_key_renamed_page_gives_new_key(
     )
     plain_page = ProviderPage.read_canonical_record(MAL, canonical_records[MAL])
     assert (renamed_page.current_key, plain_page.current_key) == (
-        "animeplanet:anime:cocoon-one-summer-of-girlhood",
+        "anime_planet:anime:cocoon-one-summer-of-girlhood",
         "mal:anime:21",
     )
 
@@ -187,7 +187,7 @@ def test_index_pages_by_current_page_key_renamed_page_found_under_new_key(
     )
     plain_page = ProviderPage.read_canonical_record(MAL, canonical_records[MAL])
     assert index_pages_by_current_page_key([renamed_page, plain_page]) == {
-        "animeplanet:anime:cocoon-one-summer-of-girlhood": renamed_page,
+        "anime_planet:anime:cocoon-one-summer-of-girlhood": renamed_page,
         "mal:anime:21": plain_page,
     }
 
@@ -211,8 +211,8 @@ def test_provider_page_unknown_field_rejected() -> None:
     with pytest.raises(ValidationError, match="lands_on"):
         ProviderPage.model_validate(
             {
-                "key": "animeplanet:anime:old",
+                "key": "anime_planet:anime:old",
                 "address": "https://www.anime-planet.com/anime/old",
-                "lands_on": "animeplanet:anime:new",
+                "lands_on": "anime_planet:anime:new",
             }
         )

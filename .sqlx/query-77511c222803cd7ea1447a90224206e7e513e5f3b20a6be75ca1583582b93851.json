@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT image_type, source AS url FROM anime_image\n           WHERE anime_id = $1 ORDER BY image_type, source",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "image_type",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "url",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "77511c222803cd7ea1447a90224206e7e513e5f3b20a6be75ca1583582b93851"
+}

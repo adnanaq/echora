@@ -34,7 +34,7 @@ The catalogue database is owned by one service, the **PostgreSQL Service**, writ
 - **Writes events through an outbox.** See [[event_driven_architecture|Event-Driven Architecture]].
   - ~~A change and its outbox row commit in one transaction. (ECHO-98)~~
   - A relay task in the same process publishes the rows to NATS. (ECHO-106)
-- **Answers reads** for the vector service, the backend and the update service's sweep. (ECHO-108)
+- ~~**Answers reads** for the vector service, the backend and the update service's sweep. (ECHO-108)~~
 
 ## What the Service Does Not Do
 
@@ -51,8 +51,8 @@ The service exposes gRPC only. The planned methods are listed in [[event_schema_
 |---|---|---|
 | ~~Update Service activities (Temporal)~~ | ~~`StorePage`~~ | ~~Store each fetched page (ECHO-97)~~ |
 | ~~Update Service activities (Temporal)~~ | ~~`LoadAnime`, `SaveAnime`~~ | ~~Load, merge and save a work (ECHO-98)~~ |
-| Update Service activities (Temporal) | `ListDueAnime` | Find the works the sweep refreshes (ECHO-108) |
-| Vector Service | `GetAnime`, `GetEpisode`, `GetCharacter`, `ListEntityVersions` | Read the current state after an event, and compare Qdrant with PostgreSQL (ECHO-108) |
+| ~~Update Service activities (Temporal)~~ | ~~`ListDueAnime`~~ | ~~Find the works the sweep refreshes (ECHO-108)~~ |
+| ~~Vector Service~~ | ~~`GetAnime`, `GetEpisode`, `GetCharacter`, `ListEntityVersions`~~ | ~~Read the current state after an event, and compare Qdrant with PostgreSQL (ECHO-108)~~ |
 | Backend | Reads for pages the frontend shows, defined with the backend | Serve the frontend (P-ECHO-16) |
 | Backend | Knowledge graph reads (`FindNeighbors`, `FindReachable`, `FindPath`, `CompareEntities`) | Franchise pages, related works, a studio's other works (P-ECHO-22) |
 | Agent Service (planned) | The same knowledge graph reads | Answer questions that follow links between works (P-ECHO-22) |

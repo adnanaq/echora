@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT anime_theme.theme AS name, theme.description\n        FROM anime_theme\n        JOIN theme ON theme.name = anime_theme.theme\n        WHERE anime_theme.anime_id = $1\n        ORDER BY anime_theme.theme\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "description",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      true
+    ]
+  },
+  "hash": "8b0ee6d2d2d4bf11b1d3d607118d29a355bbc6eb2e127f670b6449a2f70e2f01"
+}

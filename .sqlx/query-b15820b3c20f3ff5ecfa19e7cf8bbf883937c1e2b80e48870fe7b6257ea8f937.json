@@ -1,0 +1,33 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT episode.id AS entity_id, episode.next_refresh_at\n        FROM episode\n        JOIN anime ON anime.id = episode.anime_id\n        WHERE episode.deleted_at IS NULL\n          AND anime.deleted_at IS NULL\n          AND (\n                (coalesce(episode.next_refresh_at, '-infinity'::timestamptz) < $1\n                 AND anime.status IN ('ONGOING', 'UPCOMING')\n                 AND (anime.year IS NULL OR anime.year > extract(year FROM now())::int - $2))\n             OR coalesce(episode.merge_version, 0) < $6\n          )\n          AND (coalesce(episode.next_refresh_at, '-infinity'::timestamptz), episode.id)\n              > (coalesce($3, '-infinity'::timestamptz), coalesce($4, '00000000-0000-0000-0000-000000000000'::uuid))\n        ORDER BY coalesce(episode.next_refresh_at, '-infinity'::timestamptz), episode.id\n        LIMIT $5\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "entity_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "next_refresh_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Timestamptz",
+        "Int4",
+        "Timestamptz",
+        "Uuid",
+        "Int8",
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false,
+      true
+    ]
+  },
+  "hash": "b15820b3c20f3ff5ecfa19e7cf8bbf883937c1e2b80e48870fe7b6257ea8f937"
+}

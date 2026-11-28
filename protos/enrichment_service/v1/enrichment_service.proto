@@ -89,12 +89,15 @@ message MergeAnimeRequest {
   repeated shared_proto.v1.EpisodeReference known_episodes = 6;
 }
 
-// Merged anime, its episode references, raw relation claims, and synopsis hash.
+// Merged anime, its episode references, raw relation claims, synopsis hash, and the URL
+// chosen for each linked source page. A partial-source page's URL is chosen by the merge of
+// the work that holds it as a source.
 message MergeAnimeResponse {
   shared_proto.v1.Anime anime = 1;
   repeated shared_proto.v1.EpisodeReference episodes = 2;
   repeated shared_proto.v1.RelationClaim relation_claims = 3;
   string provider_synopses_hash = 4;
+  repeated shared_proto.v1.PageSource page_sources = 5;
 }
 
 // Request to merge one episode from its stored pages, list entries, and corrections.
@@ -104,11 +107,14 @@ message MergeEpisodeRequest {
   repeated shared_proto.v1.StoredPage pages = 3;
   repeated shared_proto.v1.FieldCorrection corrections = 4;
   repeated shared_proto.v1.EpisodeListEntry list_entries = 5;
+  // Number the work's episode list assigned; the merged episode keeps it.
+  int32 episode_number = 6;
 }
 
-// Merged episode message.
+// Merged episode and the URL chosen for each of its linked pages.
 message MergeEpisodeResponse {
   shared_proto.v1.Episode episode = 1;
+  repeated shared_proto.v1.PageSource page_sources = 2;
 }
 
 // Request to merge one character from its stored pages and corrections.
@@ -118,7 +124,8 @@ message MergeCharacterRequest {
   repeated shared_proto.v1.FieldCorrection corrections = 3;
 }
 
-// Merged character message.
+// Merged character and the URL chosen for each of its linked pages.
 message MergeCharacterResponse {
   shared_proto.v1.Character character = 1;
+  repeated shared_proto.v1.PageSource page_sources = 2;
 }

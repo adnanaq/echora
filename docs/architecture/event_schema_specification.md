@@ -145,6 +145,14 @@ message PageKey {  // (ECHO-97) (ECHO-133)
   string address = 3;                        // e.g. '21'
 }
 
+// A provider page with its URL and title: a provider-reported URL with its slug when one is
+// known, or the provider's canonical page URL otherwise, and the title its provider gives it.
+message PageSource {  // (ECHO-108)
+  PageKey page_key = 1;
+  string source = 2;                         // stored in provider_page.source; empty when no URL is known
+  string title = 3;                          // stored in provider_page.title; a character page's name; empty when unknown
+}
+
 // One response of a page, exactly as the provider sent it.
 message PageResponse {  // (ECHO-97)
   string request_name = 1;                   // e.g. 'main', 'characters', 'episodes_page_2'
@@ -181,7 +189,7 @@ message EpisodeReference {  // (ECHO-105)
   string episode_id = 1;                     // existing ID, or a new UUIDv7 from the merge
   int32 episode_number = 2;
   string title = 3;
-  repeated PageKey page_keys = 4;
+  repeated PageSource page_sources = 4;      // each page the work's lists name, with the URL they link it by (ECHO-108)
   repeated EpisodeListEntry list_entries = 5;  // what each provider's work page says about it
 }
 
@@ -253,6 +261,7 @@ message MergeAnimeResponse {  // (ECHO-105)
   repeated shared_proto.v1.EpisodeReference episodes = 2;     // every episode the pages list
   repeated shared_proto.v1.RelationClaim relation_claims = 3;  // each provider's relations, before the merge picks one type (ECHO-105)
   string provider_synopses_hash = 4;                           // SHA-256 of sorted non-empty provider synopses (ECHO-105)
+  repeated shared_proto.v1.PageSource page_sources = 5;        // URL of each source page; a partial source's URL comes from its owner's merge (ECHO-108)
 }
 
 message MergeEpisodeRequest {  // (ECHO-109)
@@ -261,10 +270,12 @@ message MergeEpisodeRequest {  // (ECHO-109)
   repeated shared_proto.v1.StoredPage pages = 3;
   repeated shared_proto.v1.FieldCorrection corrections = 4;
   repeated shared_proto.v1.EpisodeListEntry list_entries = 5;  // merged with the pages, so an episode with no page of its own still merges
+  int32 episode_number = 6;                                    // from LoadEpisodeResponse (ECHO-108)
 }
 
 message MergeEpisodeResponse {  // (ECHO-109)
   shared_proto.v1.Episode episode = 1;
+  repeated shared_proto.v1.PageSource page_sources = 2;  // canonical URL of each linked page (ECHO-108)
 }
 
 message MergeCharacterRequest {  // (ECHO-110)
@@ -275,6 +286,7 @@ message MergeCharacterRequest {  // (ECHO-110)
 
 message MergeCharacterResponse {  // (ECHO-110)
   shared_proto.v1.Character character = 1;
+  repeated shared_proto.v1.PageSource page_sources = 2;  // canonical URL of each linked page (ECHO-108)
 }
 ```
 
@@ -351,14 +363,14 @@ service PostgresService {
   rpc DeleteAnime(DeleteAnimeRequest) returns (DeleteAnimeResponse);  // (ECHO-107)
 
   // What is due
-  rpc ListEntityPages(ListEntityPagesRequest) returns (ListEntityPagesResponse);  // (ECHO-108)
-  rpc RecordRefresh(RecordRefreshRequest) returns (RecordRefreshResponse);  // (ECHO-108)
-  rpc ListDueAnime(ListDueRequest) returns (ListDueResponse);  // (ECHO-108)
-  rpc ListDueEpisodes(ListDueRequest) returns (ListDueResponse);  // (ECHO-108)
-  rpc ListDueCharacters(ListDueRequest) returns (ListDueResponse);  // (ECHO-108)
-  rpc ListUpcomingEpisodes(ListUpcomingEpisodesRequest) returns (ListUpcomingEpisodesResponse);  // (ECHO-108)
-  rpc ListScoreAnime(ListScoreAnimeRequest) returns (ListScoreAnimeResponse);  // (ECHO-108)
-  rpc ListRequestedMerges(ListRequestedMergesRequest) returns (ListRequestedMergesResponse);  // (ECHO-108)
+  rpc ListEntityPages(ListEntityPagesRequest) returns (ListEntityPagesResponse);  // ~~(ECHO-108)~~
+  rpc RecordRefresh(RecordRefreshRequest) returns (RecordRefreshResponse);  // ~~(ECHO-108)~~
+  rpc ListDueAnime(ListDueRequest) returns (ListDueResponse);  // ~~(ECHO-108)~~
+  rpc ListDueEpisodes(ListDueRequest) returns (ListDueResponse);  // ~~(ECHO-108)~~
+  rpc ListDueCharacters(ListDueRequest) returns (ListDueResponse);  // ~~(ECHO-108)~~
+  rpc ListUpcomingEpisodes(ListUpcomingEpisodesRequest) returns (ListUpcomingEpisodesResponse);  // ~~(ECHO-108)~~
+  rpc ListScoreAnime(ListScoreAnimeRequest) returns (ListScoreAnimeResponse);  // ~~(ECHO-108)~~
+  rpc ListRequestedMerges(ListRequestedMergesRequest) returns (ListRequestedMergesResponse);  // ~~(ECHO-108)~~
   rpc MarkEpisodeAired(MarkEpisodeAiredRequest) returns (MarkEpisodeAiredResponse);  // (ECHO-103)
 
   // AI-written text
@@ -366,14 +378,14 @@ service PostgresService {
   rpc SaveGeneratedText(SaveGeneratedTextRequest) returns (SaveGeneratedTextResponse);  // (ECHO-115)
 
   // Reads, for event consumers and the backend
-  rpc GetAnime(GetEntityRequest) returns (GetAnimeResponse);  // (ECHO-108)
-  rpc GetEpisode(GetEntityRequest) returns (GetEpisodeResponse);  // (ECHO-108)
-  rpc ListEpisodes(GetEntityRequest) returns (ListEpisodesResponse);  // (ECHO-108)
-  rpc GetCharacter(GetEntityRequest) returns (GetCharacterResponse);  // (ECHO-108)
-  rpc ListEntityVersions(ListEntityVersionsRequest) returns (ListEntityVersionsResponse);  // (ECHO-108)
+  rpc GetAnime(GetEntityRequest) returns (GetAnimeResponse);  // ~~(ECHO-108)~~
+  rpc GetEpisode(GetEntityRequest) returns (GetEpisodeResponse);  // ~~(ECHO-108)~~
+  rpc ListEpisodes(GetEntityRequest) returns (ListEpisodesResponse);  // ~~(ECHO-108)~~
+  rpc GetCharacter(GetEntityRequest) returns (GetCharacterResponse);  // ~~(ECHO-108)~~
+  rpc ListEntityVersions(ListEntityVersionsRequest) returns (ListEntityVersionsResponse);  // ~~(ECHO-108)~~
 
   // Budgeted providers
-  rpc ListDuePages(ListDuePagesRequest) returns (ListDuePagesResponse);  // (ECHO-108)
+  rpc ListDuePages(ListDuePagesRequest) returns (ListDuePagesResponse);  // ~~(ECHO-108)~~
 
   // Knowledge graph reads, for the backend and the Agent Service; messages defined with that project
   rpc FindNeighbors(FindNeighborsRequest) returns (GraphNodesResponse);  // (P-ECHO-22)
@@ -418,6 +430,7 @@ message SaveAnimeRequest {  // (ECHO-98)
   int32 merge_version = 4;                   // the mapping and merge code that produced the save
   repeated shared_proto.v1.RelationClaim relation_claims = 5;  // stored in anime_related_anime_claim (ECHO-102) (ECHO-133)
   repeated shared_proto.v1.EpisodeReference episodes = 6;      // (ECHO-103)
+  repeated shared_proto.v1.PageSource page_sources = 7;        // from MergeAnimeResponse (ECHO-108)
 }
 
 message SaveAnimeResponse {  // (ECHO-98)
@@ -437,6 +450,7 @@ message LoadEpisodeResponse {  // (ECHO-103)
   repeated shared_proto.v1.StoredPage pages = 3;
   repeated shared_proto.v1.FieldCorrection corrections = 4;
   repeated shared_proto.v1.EpisodeListEntry list_entries = 5;
+  int32 episode_number = 6;                  // the number the work's list assigned; the merge keeps it (ECHO-108)
 }
 
 message SaveEpisodeRequest {  // (ECHO-103)
@@ -444,6 +458,7 @@ message SaveEpisodeRequest {  // (ECHO-103)
   int64 expected_version = 2;
   shared_proto.v1.Episode episode = 3;
   int32 merge_version = 4;
+  repeated shared_proto.v1.PageSource page_sources = 5;  // from MergeEpisodeResponse (ECHO-108)
 }
 
 message LoadCharacterRequest {  // (ECHO-104)
@@ -461,6 +476,7 @@ message SaveCharacterRequest {  // (ECHO-104)
   int64 expected_version = 2;
   shared_proto.v1.Character character = 3;
   int32 merge_version = 4;
+  repeated shared_proto.v1.PageSource page_sources = 5;  // from MergeCharacterResponse (ECHO-108)
 }
 
 // SaveEpisode, SaveCharacter and DeleteAnime each have their own response, since buf's
@@ -541,7 +557,7 @@ message DeleteAnimeRequest {  // (ECHO-107)
 
 message ListDueRequest {  // (ECHO-108)
   google.protobuf.Timestamp due_before = 1;  // the sweep's fixed cutoff, compared with next_refresh_at
-  int32 older_after_years = 2;               // entities older than this refresh only when opened
+  int32 older_after_years = 2;               // entities older than this refresh only when opened; 0 to 1000
   int32 page_size = 3;
   optional google.protobuf.Timestamp after_next_refresh_at = 4;  // keyset: the last row of the previous page
   optional string after_id = 5;
@@ -558,7 +574,7 @@ message DueEntity {  // (ECHO-108)
 }
 
 message ListUpcomingEpisodesRequest {  // (ECHO-108)
-  int32 window_days = 1;
+  int32 window_days = 1;                     // 0 to 36500
 }
 
 message ListUpcomingEpisodesResponse {  // (ECHO-108)
@@ -607,7 +623,7 @@ enum RefreshOutcome {  // (ECHO-108)
 message RecordRefreshResponse {}  // (ECHO-108)
 
 message ListScoreAnimeRequest {  // (ECHO-108)
-  int32 lookback_days = 1;                   // finished works stay in for this many days after aired_to
+  int32 lookback_days = 1;                   // finished works stay in for this many days after aired_to; 0 to 36500
   int32 page_size = 2;
   optional string after_id = 3;              // keyset: the last ID of the previous page
 }

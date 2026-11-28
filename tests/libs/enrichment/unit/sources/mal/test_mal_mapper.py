@@ -4,6 +4,7 @@ from enrichment.sources.mal.mal_mapper import (
     anime_from_mal,
     character_from_mal,
     episode_from_mal,
+    map_mal_anime_episode_responses,
     map_mal_anime_responses,
     map_mal_character_responses,
 )
@@ -612,7 +613,6 @@ def test_map_mal_anime_responses_valid_html_returns_canonical_anime() -> None:
     """
     canonical = map_mal_anime_responses(
         [PageResponse(request_name="main", content_type="text/html", body=anime_html)],
-        source_url="https://myanimelist.net/anime/1/Cowboy_Bebop",
     )
 
     assert canonical["title"] == "Cowboy Bebop"
@@ -645,14 +645,12 @@ def test_map_mal_character_responses_valid_html_returns_canonical_character() ->
     """.encode()
     canonical = map_mal_character_responses(
         [PageResponse(request_name="main", content_type="text/html", body=char_html)],
-        source_url="https://myanimelist.net/character/3/Jet_Black",
     )
 
     assert canonical["name"] == "Jet Black"
-    assert canonical["sources"] == ["https://myanimelist.net/character/3/Jet_Black"]
 
 
-def test_map_mal_character_responses_omitted_source_url_uses_canonical_link() -> None:
+def test_map_mal_character_responses_canonical_link_populates_sources() -> None:
     char_html = b"""
     <html>
       <head><link rel="canonical" href="https://myanimelist.net/character/3/Jet_Black" /></head>
@@ -680,3 +678,44 @@ def test_map_mal_character_responses_canonical_link_with_equals_spaces_populates
     )
 
     assert canonical["sources"] == ["https://myanimelist.net/character/3/Jet_Black"]
+
+
+def test_map_mal_anime_episode_responses_orders_list_pages_by_page_number(
+    original_datadir,
+) -> None:
+    episode_list_dir = original_datadir.parent / "test_mal_episode_parser"
+
+    def build_list_response(request_name: str, page_name: str) -> PageResponse:
+        return PageResponse(
+            request_name=request_name,
+            content_type="text/html",
+            body=(episode_list_dir / f"{page_name}.html").read_bytes(),
+        )
+
+    episodes = map_mal_anime_episode_responses(
+        [
+            build_list_response("episodes_page_2", "one_piece_episodes_offset_100"),
+            build_list_response("main", "one_piece_episodes"),
+            build_list_response("episodes_page_1", "one_piece_episodes"),
+        ]
+    )
+
+    assert [episode["episode_number"] for episode in episodes] == list(range(1, 201))
+    assert episodes[0]["sources"] == [
+        "https://myanimelist.net/anime/21/One_Piece/episode/1"
+    ]
+    assert episodes[49]["is_filler"] is True
+
+
+def test_map_mal_anime_episode_responses_without_list_pages_gives_no_episodes() -> None:
+    assert map_mal_anime_episode_responses([]) == []
+
+
+def test_map_mal_responses_missing_or_empty_html_raises_value_error() -> None:
+    empty_main = [PageResponse(request_name="main", content_type="text/html", body=b"")]
+    with pytest.raises(ValueError, match="yielded no anime data"):
+        map_mal_anime_responses(empty_main)
+    with pytest.raises(ValueError, match="missing required 'main'"):
+        map_mal_character_responses([])
+    with pytest.raises(ValueError, match="yielded no character data"):
+        map_mal_character_responses(empty_main)

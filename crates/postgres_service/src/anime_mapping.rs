@@ -3,16 +3,21 @@
 use chrono::{DateTime, Utc};
 use postgres_db::{
     ANIME_HASH_FORMAT, AnimeDetailsInput, AnimeImageInput, AnimeThemeInput, AnimeTitleInput,
-    SaveAnimeInput,
+    EntityType as DbEntityType, SaveAnimeInput,
 };
 use prost::Message as _;
 use sha2::{Digest as _, Sha256};
 use tonic::Status;
 use uuid::Uuid;
 
-use crate::anime_relations_mapping::build_relations_and_graph;
+use crate::anime_relations_mapping::{
+    build_page_source_from_url, build_relations_and_graph, parse_anime_target_from_url,
+};
 use crate::anime_schedule_and_stats_mapping::build_schedule_and_stats;
 use crate::episode_mapping::build_episode_references;
+use crate::lookup_text::LookupText as _;
+use crate::service::parse_page_sources;
+use crate::service::postgres_service_proto::v1::SaveAnimeRequest;
 use crate::service::shared_proto::v1::{
     Anime, AnimeImages, AnimeRating, AnimeSeason, AnimeStatus, AnimeType, EntityType,
     EpisodeReference, RelationClaim, SourceMaterialType, ThemeEntry,
@@ -40,19 +45,25 @@ use crate::service::shared_proto::v1::{
 ///
 /// # Errors
 ///
-/// Returns `INVALID_ARGUMENT` for an invalid work ID, an unknown enum value, an invalid
-/// timestamp, or an invalid episode reference.
+/// Returns `INVALID_ARGUMENT` for an invalid work ID, a missing work, an unknown enum value,
+/// an invalid timestamp, an invalid episode reference, or an invalid page source.
 pub fn build_save_anime_input(
-    anime_id_text: &str,
-    expected_version: i64,
-    merge_version: i32,
-    anime: Anime,
-    relation_claims: Vec<RelationClaim>,
-    episodes: Vec<EpisodeReference>,
+    request: SaveAnimeRequest,
     traceparent: Option<String>,
 ) -> Result<SaveAnimeInput, Status> {
-    let anime_id = Uuid::parse_str(anime_id_text)
+    let SaveAnimeRequest {
+        anime_id: anime_id_text,
+        expected_version,
+        anime,
+        merge_version,
+        relation_claims,
+        episodes,
+        page_sources,
+    } = request;
+    let anime_id = Uuid::parse_str(&anime_id_text)
         .map_err(|err| Status::invalid_argument(format!("invalid anime_id UUID: {err}")))?;
+    let anime = anime.ok_or_else(|| Status::invalid_argument("anime must be provided"))?;
+    let page_sources = parse_page_sources(page_sources)?;
 
     let merged_record_hash = compute_save_record_hash(&anime, &relation_claims, &episodes);
     let mapped_episodes = build_episode_references(episodes)?;
@@ -99,8 +110,19 @@ pub fn build_save_anime_input(
         hiatus,
         titles,
         companies,
-        partial_sources: _,
+        partial_sources,
     } = anime;
+    let partial_page_sources = partial_sources
+        .iter()
+        .filter_map(|source_url| {
+            build_page_source_from_url(
+                source_url,
+                "",
+                DbEntityType::Anime,
+                parse_anime_target_from_url,
+            )
+        })
+        .collect();
 
     validate_entity_type(entity_type)?;
     let anime_type = map_anime_type(r#type)?.to_owned();
@@ -205,6 +227,8 @@ pub fn build_save_anime_input(
         hash_format: ANIME_HASH_FORMAT,
         merge_version,
         traceparent,
+        page_sources,
+        partial_page_sources,
         details,
         schedule_and_stats,
         relations_and_graph,
@@ -268,7 +292,9 @@ fn build_anime_details(
 /// Computes the change hash of a work save as a SHA-256 hex digest.
 ///
 /// The hash covers the canonical [`Anime`], its sorted [`RelationClaim`] list and its sorted
-/// episode list, so a save whose hash matches the stored one changes nothing.
+/// episode list, so a save whose hash matches the stored one changes nothing. An episode's
+/// pages count by their page keys alone: the save stores a listed page's URL and title only
+/// while the page has none, so a changed URL or title changes nothing stored.
 #[must_use]
 pub fn compute_save_record_hash(
     anime: &Anime,
@@ -319,12 +345,20 @@ pub fn compute_save_record_hash(
 
     let mut canonical_episodes = episodes.to_vec();
     for episode in &mut canonical_episodes {
-        episode.page_keys.sort_by(|left, right| {
-            (&left.provider, left.entity_type, &left.address).cmp(&(
-                &right.provider,
-                right.entity_type,
-                &right.address,
-            ))
+        for page_source in &mut episode.page_sources {
+            page_source.source.clear();
+            page_source.title.clear();
+        }
+        episode.page_sources.sort_by(|left, right| {
+            let left_key = left
+                .page_key
+                .as_ref()
+                .map(|page_key| (&page_key.provider, page_key.entity_type, &page_key.address));
+            let right_key = right
+                .page_key
+                .as_ref()
+                .map(|page_key| (&page_key.provider, page_key.entity_type, &page_key.address));
+            left_key.cmp(&right_key)
         });
         episode
             .list_entries
@@ -390,21 +424,9 @@ fn map_anime_type(enum_number: i32) -> Result<&'static str, Status> {
             "unknown AnimeType number {enum_number}"
         )));
     };
-    match anime_type {
-        AnimeType::Unspecified => Err(Status::invalid_argument("anime.type must be specified")),
-        AnimeType::Movie => Ok("MOVIE"),
-        AnimeType::Ona => Ok("ONA"),
-        AnimeType::Ova => Ok("OVA"),
-        AnimeType::Special => Ok("SPECIAL"),
-        AnimeType::Tv => Ok("TV"),
-        AnimeType::Unknown => Ok("UNKNOWN"),
-        AnimeType::Music => Ok("MUSIC"),
-        AnimeType::Pv => Ok("PV"),
-        AnimeType::TvSpecial => Ok("TV SPECIAL"),
-        AnimeType::TvShort => Ok("TV SHORT"),
-        AnimeType::Cm => Ok("CM"),
-        AnimeType::Other => Ok("OTHER"),
-    }
+    anime_type
+        .find_lookup_text()
+        .ok_or_else(|| Status::invalid_argument("anime.type must be specified"))
 }
 
 /// Converts an `AnimeStatus` enum number into its lookup text.
@@ -418,14 +440,9 @@ fn map_anime_status(enum_number: i32) -> Result<&'static str, Status> {
             "unknown AnimeStatus number {enum_number}"
         )));
     };
-    match anime_status {
-        AnimeStatus::Unspecified => Err(Status::invalid_argument("anime.status must be specified")),
-        AnimeStatus::Finished => Ok("FINISHED"),
-        AnimeStatus::Upcoming => Ok("UPCOMING"),
-        AnimeStatus::Ongoing => Ok("ONGOING"),
-        AnimeStatus::Unknown => Ok("UNKNOWN"),
-        AnimeStatus::Cancelled => Ok("CANCELLED"),
-    }
+    anime_status
+        .find_lookup_text()
+        .ok_or_else(|| Status::invalid_argument("anime.status must be specified"))
 }
 
 /// Converts an `AnimeRating` enum number into its lookup text.
@@ -439,15 +456,14 @@ fn map_anime_rating(enum_number: i32) -> Result<&'static str, Status> {
             "unknown AnimeRating number {enum_number}"
         )));
     };
-    match anime_rating {
-        AnimeRating::Unspecified | AnimeRating::Unknown => Ok("UNKNOWN"),
-        AnimeRating::G => Ok("G - All Ages"),
-        AnimeRating::Pg => Ok("PG - Children"),
-        AnimeRating::Pg13 => Ok("PG-13 - Teens 13 or older"),
-        AnimeRating::R => Ok("R - 17+ (violence & profanity)"),
-        AnimeRating::Rplus => Ok("R+ - Mild Nudity"),
-        AnimeRating::Rx => Ok("Rx - Hentai"),
-    }
+    let known_rating = if anime_rating == AnimeRating::Unspecified {
+        AnimeRating::Unknown
+    } else {
+        anime_rating
+    };
+    known_rating
+        .find_lookup_text()
+        .ok_or_else(|| Status::internal("AnimeRating::Unknown has no lookup text"))
 }
 
 /// Converts an `AnimeSeason` enum number into its lookup text.
@@ -461,15 +477,9 @@ fn map_anime_season(enum_number: i32) -> Result<&'static str, Status> {
             "unknown AnimeSeason number {enum_number}"
         )));
     };
-    match anime_season {
-        AnimeSeason::Unspecified => Err(Status::invalid_argument(
-            "anime.season must be specified when set",
-        )),
-        AnimeSeason::Spring => Ok("SPRING"),
-        AnimeSeason::Summer => Ok("SUMMER"),
-        AnimeSeason::Fall => Ok("FALL"),
-        AnimeSeason::Winter => Ok("WINTER"),
-    }
+    anime_season
+        .find_lookup_text()
+        .ok_or_else(|| Status::invalid_argument("anime.season must be specified when set"))
 }
 
 /// Converts a `SourceMaterialType` enum number into its lookup text.
@@ -483,50 +493,24 @@ pub(crate) fn map_source_material_type(enum_number: i32) -> Result<&'static str,
             "unknown SourceMaterialType number {enum_number}"
         )));
     };
-    match source_material {
-        SourceMaterialType::Unspecified => Err(Status::invalid_argument(
-            "anime.source_material must be specified when set",
-        )),
-        SourceMaterialType::Original => Ok("ORIGINAL"),
-        SourceMaterialType::Manga => Ok("MANGA"),
-        SourceMaterialType::LightNovel => Ok("LIGHT NOVEL"),
-        SourceMaterialType::VisualNovel => Ok("VISUAL NOVEL"),
-        SourceMaterialType::Game => Ok("GAME"),
-        SourceMaterialType::WebManga => Ok("WEB MANGA"),
-        SourceMaterialType::WebNovel => Ok("WEB NOVEL"),
-        SourceMaterialType::Novel => Ok("NOVEL"),
-        SourceMaterialType::OneShot => Ok("ONE SHOT"),
-        SourceMaterialType::Doujinshi => Ok("DOUJINSHI"),
-        SourceMaterialType::Koma4 => Ok("4-KOMA"),
-        SourceMaterialType::MixedMedia => Ok("MIXED MEDIA"),
-        SourceMaterialType::Music => Ok("MUSIC"),
-        SourceMaterialType::Radio => Ok("RADIO"),
-        SourceMaterialType::Book => Ok("BOOK"),
-        SourceMaterialType::PictureBook => Ok("PICTURE BOOK"),
-        SourceMaterialType::CardGame => Ok("CARD GAME"),
-        SourceMaterialType::Other => Ok("OTHER"),
-        SourceMaterialType::Unknown => Ok("UNKNOWN"),
-        SourceMaterialType::Manhwa => Ok("MANHWA"),
-        SourceMaterialType::Manhua => Ok("MANHUA"),
-        SourceMaterialType::Comic => Ok("COMIC"),
-        SourceMaterialType::LiveAction => Ok("LIVE ACTION"),
-        SourceMaterialType::Illustration => Ok("ILLUSTRATION"),
-        SourceMaterialType::WesternMedia => Ok("WESTERN MEDIA"),
-        SourceMaterialType::Webtoon => Ok("WEBTOON"),
-        SourceMaterialType::FairyTale => Ok("FAIRY TALE"),
-        SourceMaterialType::ShortStory => Ok("SHORT STORY"),
-    }
+    source_material
+        .find_lookup_text()
+        .ok_or_else(|| Status::invalid_argument("anime.source_material must be specified when set"))
 }
 
 #[cfg(test)]
 mod tests {
+    use postgres_db::{PageKey, PageSource, Provider};
     use tonic::Code;
+    use url::Url;
 
     use super::*;
 
     #[test]
-    fn canonical_hash_is_order_independent_on_set_lists() {
-        use crate::service::shared_proto::v1::{EntityType, EpisodeListEntry, PageKey};
+    fn compute_save_record_hash_list_order_and_episode_page_urls_keep_hash() {
+        use crate::service::shared_proto::v1::{
+            EntityType, EpisodeListEntry, PageKey, PageSource as ProtoPageSource,
+        };
 
         let mut first_anime = Anime {
             title: "Monster".to_owned(),
@@ -542,16 +526,24 @@ mod tests {
             episode_id: "01950000-0000-7000-8000-000000000001".to_owned(),
             episode_number: 1,
             title: "Ep 1".to_owned(),
-            page_keys: vec![
-                PageKey {
-                    provider: "mal".to_owned(),
-                    entity_type: EntityType::Episode as i32,
-                    address: "1".to_owned(),
+            page_sources: vec![
+                ProtoPageSource {
+                    page_key: Some(PageKey {
+                        provider: "mal".to_owned(),
+                        entity_type: EntityType::Episode as i32,
+                        address: "21:1".to_owned(),
+                    }),
+                    source: String::new(),
+                    title: String::new(),
                 },
-                PageKey {
-                    provider: "anilist".to_owned(),
-                    entity_type: EntityType::Episode as i32,
-                    address: "2".to_owned(),
+                ProtoPageSource {
+                    page_key: Some(PageKey {
+                        provider: "anilist".to_owned(),
+                        entity_type: EntityType::Episode as i32,
+                        address: "2".to_owned(),
+                    }),
+                    source: String::new(),
+                    title: String::new(),
                 },
             ],
             list_entries: vec![
@@ -566,8 +558,11 @@ mod tests {
             ],
         }];
         let mut second_episodes = first_episodes.clone();
-        second_episodes[0].page_keys.reverse();
+        second_episodes[0].page_sources.reverse();
         second_episodes[0].list_entries.reverse();
+        second_episodes[0].page_sources[0].source =
+            "https://anilist.co/anime/21/episodes/2".to_owned();
+        second_episodes[0].page_sources[1].title = "Renamed episode".to_owned();
 
         assert_eq!(
             compute_save_record_hash(&first_anime, &[], &first_episodes),
@@ -620,12 +615,13 @@ mod tests {
         use crate::service::shared_proto::v1::AiredDates;
 
         let invalid_id_status = build_save_anime_input(
-            "not-a-uuid",
-            1,
-            1,
-            build_valid_anime(),
-            Vec::new(),
-            Vec::new(),
+            SaveAnimeRequest {
+                anime_id: "not-a-uuid".to_owned(),
+                expected_version: 1,
+                anime: Some(build_valid_anime()),
+                merge_version: 1,
+                ..SaveAnimeRequest::default()
+            },
             None,
         )
         .expect_err("an invalid work ID must be refused");
@@ -669,12 +665,13 @@ mod tests {
             break_rule(&mut broken_anime);
 
             let status = build_save_anime_input(
-                &Uuid::now_v7().to_string(),
-                1,
-                1,
-                broken_anime,
-                Vec::new(),
-                Vec::new(),
+                SaveAnimeRequest {
+                    anime_id: Uuid::now_v7().to_string(),
+                    expected_version: 1,
+                    anime: Some(broken_anime),
+                    merge_version: 1,
+                    ..SaveAnimeRequest::default()
+                },
                 None,
             )
             .expect_err("an invalid work must be refused");
@@ -781,15 +778,20 @@ mod tests {
                 mean: Some(8.4),
                 median: Some(9.0),
             }),
+            partial_sources: vec![
+                "https://myanimelist.net/anime/19/Monster".to_owned(),
+                "https://myanimelist.net/manga/1".to_owned(),
+            ],
             ..Anime::default()
         };
         let input = (build_save_anime_input(
-            &Uuid::now_v7().to_string(),
-            2,
-            7,
-            anime,
-            Vec::new(),
-            Vec::new(),
+            SaveAnimeRequest {
+                anime_id: Uuid::now_v7().to_string(),
+                expected_version: 2,
+                anime: Some(anime),
+                merge_version: 7,
+                ..SaveAnimeRequest::default()
+            },
             None,
         ))
         .expect("valid anime should map");
@@ -814,5 +816,16 @@ mod tests {
         assert_eq!(input.details.images[0].image_type, "cover");
         assert_eq!(input.details.images[1].image_type, "poster");
         assert_eq!(input.details.images[2].image_type, "banner");
+        assert_eq!(
+            input.partial_page_sources,
+            vec![PageSource {
+                page_key: PageKey::new(Provider::Mal, DbEntityType::Anime, "19")
+                    .expect("valid page key"),
+                source: Some(
+                    Url::parse("https://myanimelist.net/anime/19/Monster").expect("valid URL")
+                ),
+                title: None,
+            }]
+        );
     }
 }

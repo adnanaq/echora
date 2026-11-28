@@ -91,36 +91,42 @@ class MergeAnimeRequest(_message.Message):
     def __init__(self, anime_id: _Optional[str] = ..., source_pages: _Optional[_Iterable[_Union[_merge_pb2.StoredPage, _Mapping]]] = ..., partial_source_pages: _Optional[_Iterable[_Union[_merge_pb2.PageKey, _Mapping]]] = ..., corrections: _Optional[_Iterable[_Union[_merge_pb2.FieldCorrection, _Mapping]]] = ..., generated_texts: _Optional[_Iterable[_Union[_merge_pb2.GeneratedText, _Mapping]]] = ..., known_episodes: _Optional[_Iterable[_Union[_merge_pb2.EpisodeReference, _Mapping]]] = ...) -> None: ...
 
 class MergeAnimeResponse(_message.Message):
-    __slots__ = ("anime", "episodes", "relation_claims", "provider_synopses_hash")
+    __slots__ = ("anime", "episodes", "relation_claims", "provider_synopses_hash", "page_sources")
     ANIME_FIELD_NUMBER: _ClassVar[int]
     EPISODES_FIELD_NUMBER: _ClassVar[int]
     RELATION_CLAIMS_FIELD_NUMBER: _ClassVar[int]
     PROVIDER_SYNOPSES_HASH_FIELD_NUMBER: _ClassVar[int]
+    PAGE_SOURCES_FIELD_NUMBER: _ClassVar[int]
     anime: _anime_pb2.Anime
     episodes: _containers.RepeatedCompositeFieldContainer[_merge_pb2.EpisodeReference]
     relation_claims: _containers.RepeatedCompositeFieldContainer[_merge_pb2.RelationClaim]
     provider_synopses_hash: str
-    def __init__(self, anime: _Optional[_Union[_anime_pb2.Anime, _Mapping]] = ..., episodes: _Optional[_Iterable[_Union[_merge_pb2.EpisodeReference, _Mapping]]] = ..., relation_claims: _Optional[_Iterable[_Union[_merge_pb2.RelationClaim, _Mapping]]] = ..., provider_synopses_hash: _Optional[str] = ...) -> None: ...
+    page_sources: _containers.RepeatedCompositeFieldContainer[_merge_pb2.PageSource]
+    def __init__(self, anime: _Optional[_Union[_anime_pb2.Anime, _Mapping]] = ..., episodes: _Optional[_Iterable[_Union[_merge_pb2.EpisodeReference, _Mapping]]] = ..., relation_claims: _Optional[_Iterable[_Union[_merge_pb2.RelationClaim, _Mapping]]] = ..., provider_synopses_hash: _Optional[str] = ..., page_sources: _Optional[_Iterable[_Union[_merge_pb2.PageSource, _Mapping]]] = ...) -> None: ...
 
 class MergeEpisodeRequest(_message.Message):
-    __slots__ = ("episode_id", "anime_id", "pages", "corrections", "list_entries")
+    __slots__ = ("episode_id", "anime_id", "pages", "corrections", "list_entries", "episode_number")
     EPISODE_ID_FIELD_NUMBER: _ClassVar[int]
     ANIME_ID_FIELD_NUMBER: _ClassVar[int]
     PAGES_FIELD_NUMBER: _ClassVar[int]
     CORRECTIONS_FIELD_NUMBER: _ClassVar[int]
     LIST_ENTRIES_FIELD_NUMBER: _ClassVar[int]
+    EPISODE_NUMBER_FIELD_NUMBER: _ClassVar[int]
     episode_id: str
     anime_id: str
     pages: _containers.RepeatedCompositeFieldContainer[_merge_pb2.StoredPage]
     corrections: _containers.RepeatedCompositeFieldContainer[_merge_pb2.FieldCorrection]
     list_entries: _containers.RepeatedCompositeFieldContainer[_merge_pb2.EpisodeListEntry]
-    def __init__(self, episode_id: _Optional[str] = ..., anime_id: _Optional[str] = ..., pages: _Optional[_Iterable[_Union[_merge_pb2.StoredPage, _Mapping]]] = ..., corrections: _Optional[_Iterable[_Union[_merge_pb2.FieldCorrection, _Mapping]]] = ..., list_entries: _Optional[_Iterable[_Union[_merge_pb2.EpisodeListEntry, _Mapping]]] = ...) -> None: ...
+    episode_number: int
+    def __init__(self, episode_id: _Optional[str] = ..., anime_id: _Optional[str] = ..., pages: _Optional[_Iterable[_Union[_merge_pb2.StoredPage, _Mapping]]] = ..., corrections: _Optional[_Iterable[_Union[_merge_pb2.FieldCorrection, _Mapping]]] = ..., list_entries: _Optional[_Iterable[_Union[_merge_pb2.EpisodeListEntry, _Mapping]]] = ..., episode_number: _Optional[int] = ...) -> None: ...
 
 class MergeEpisodeResponse(_message.Message):
-    __slots__ = ("episode",)
+    __slots__ = ("episode", "page_sources")
     EPISODE_FIELD_NUMBER: _ClassVar[int]
+    PAGE_SOURCES_FIELD_NUMBER: _ClassVar[int]
     episode: _anime_pb2.Episode
-    def __init__(self, episode: _Optional[_Union[_anime_pb2.Episode, _Mapping]] = ...) -> None: ...
+    page_sources: _containers.RepeatedCompositeFieldContainer[_merge_pb2.PageSource]
+    def __init__(self, episode: _Optional[_Union[_anime_pb2.Episode, _Mapping]] = ..., page_sources: _Optional[_Iterable[_Union[_merge_pb2.PageSource, _Mapping]]] = ...) -> None: ...
 
 class MergeCharacterRequest(_message.Message):
     __slots__ = ("character_id", "pages", "corrections")
@@ -133,7 +139,9 @@ class MergeCharacterRequest(_message.Message):
     def __init__(self, character_id: _Optional[str] = ..., pages: _Optional[_Iterable[_Union[_merge_pb2.StoredPage, _Mapping]]] = ..., corrections: _Optional[_Iterable[_Union[_merge_pb2.FieldCorrection, _Mapping]]] = ...) -> None: ...
 
 class MergeCharacterResponse(_message.Message):
-    __slots__ = ("character",)
+    __slots__ = ("character", "page_sources")
     CHARACTER_FIELD_NUMBER: _ClassVar[int]
+    PAGE_SOURCES_FIELD_NUMBER: _ClassVar[int]
     character: _anime_pb2.Character
-    def __init__(self, character: _Optional[_Union[_anime_pb2.Character, _Mapping]] = ...) -> None: ...
+    page_sources: _containers.RepeatedCompositeFieldContainer[_merge_pb2.PageSource]
+    def __init__(self, character: _Optional[_Union[_anime_pb2.Character, _Mapping]] = ..., page_sources: _Optional[_Iterable[_Union[_merge_pb2.PageSource, _Mapping]]] = ...) -> None: ...

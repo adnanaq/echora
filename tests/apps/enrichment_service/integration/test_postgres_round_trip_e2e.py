@@ -24,6 +24,7 @@ from enrichment_proto.v1.enrichment_service_pb2 import (
 from google.protobuf.wrappers_pb2 import StringValue
 from postgres_proto.v1 import postgres_service_pb2_grpc
 from postgres_proto.v1.postgres_service_pb2 import (
+    GetEntityRequest,
     LoadAnimeRequest,
     LoadCharacterRequest,
     LoadEpisodeRequest,
@@ -39,6 +40,7 @@ from shared_proto.v1.merge_pb2 import (
     EpisodeReference,
     PageKey,
     PageResponse,
+    PageSource,
     StoredPage,
 )
 
@@ -70,7 +72,7 @@ def _run_psql(sql: str, variables: dict[str, str] | None = None) -> str:
 
 @pytest.mark.asyncio
 async def test_merge_anime_postgres_full_round_trip_end_to_end() -> None:
-    """Verify FetchPage, StorePage, LoadAnime, MergeAnime, SaveAnime, and locking."""
+    """Verify FetchPage, StorePage, LoadAnime, MergeAnime, SaveAnime, GetAnime, and locking."""
     enrichment_target = os.getenv("ENRICHMENT_SERVICE_ADDR", "localhost:8002")
     postgres_target = os.getenv("POSTGRES_SERVICE_ADDR", "localhost:8004")
     anime_id = generate_entity_id()
@@ -132,10 +134,31 @@ async def test_merge_anime_postgres_full_round_trip_end_to_end() -> None:
                     anime=merged_1.anime,
                     relation_claims=merged_1.relation_claims,
                     episodes=merged_1.episodes,
+                    page_sources=merged_1.page_sources,
                 )
             )
             assert saved_1.has_changed is True
             assert saved_1.version == loaded_1.version + 1
+            assert [
+                (page_source.page_key.provider, page_source.page_key.address)
+                for page_source in merged_1.page_sources
+            ] == [("anilist", "21")]
+
+            got_1 = await postgres_stub.GetAnime(GetEntityRequest(entity_id=anime_id))
+            assert got_1.version == saved_1.version
+            assert list(got_1.anime.sources) == [
+                page_source.source for page_source in merged_1.page_sources
+            ]
+            assert (
+                got_1.anime.type
+                == merged_1.anime.type
+                != anime_pb2.ANIME_TYPE_UNSPECIFIED
+            )
+            assert (
+                got_1.anime.status
+                == merged_1.anime.status
+                != anime_pb2.ANIME_STATUS_UNSPECIFIED
+            )
 
             loaded_2 = await postgres_stub.LoadAnime(
                 LoadAnimeRequest(anime_id=anime_id)
@@ -157,6 +180,7 @@ async def test_merge_anime_postgres_full_round_trip_end_to_end() -> None:
                     anime=merged_2.anime,
                     relation_claims=merged_2.relation_claims,
                     episodes=merged_2.episodes,
+                    page_sources=merged_2.page_sources,
                 )
             )
             assert saved_2.has_changed is False
@@ -196,6 +220,7 @@ async def test_merge_anime_postgres_full_round_trip_end_to_end() -> None:
                     anime=merged_3.anime,
                     relation_claims=merged_3.relation_claims,
                     episodes=merged_3.episodes,
+                    page_sources=merged_3.page_sources,
                 )
             )
             assert saved_3.has_changed is True
@@ -295,7 +320,7 @@ async def test_merge_episode_postgres_full_round_trip_end_to_end() -> None:
                             episode_id=episode_id,
                             episode_number=1,
                             title="I'm Luffy!",
-                            page_keys=[ep_page.page_key],
+                            page_sources=[PageSource(page_key=ep_page.page_key)],
                             list_entries=[
                                 EpisodeListEntry(
                                     provider="mal",
@@ -318,6 +343,7 @@ async def test_merge_episode_postgres_full_round_trip_end_to_end() -> None:
                 MergeEpisodeRequest(
                     episode_id=episode_id,
                     anime_id=loaded_1.anime_id,
+                    episode_number=loaded_1.episode_number,
                     pages=loaded_1.pages,
                     corrections=loaded_1.corrections,
                     list_entries=loaded_1.list_entries,
@@ -344,6 +370,7 @@ async def test_merge_episode_postgres_full_round_trip_end_to_end() -> None:
                 MergeEpisodeRequest(
                     episode_id=episode_id,
                     anime_id=loaded_2.anime_id,
+                    episode_number=loaded_2.episode_number,
                     pages=loaded_2.pages,
                     corrections=loaded_2.corrections,
                     list_entries=loaded_2.list_entries,
@@ -389,6 +416,7 @@ async def test_merge_episode_postgres_full_round_trip_end_to_end() -> None:
                 MergeEpisodeRequest(
                     episode_id=episode_id,
                     anime_id=loaded_3.anime_id,
+                    episode_number=loaded_3.episode_number,
                     pages=loaded_3.pages,
                     corrections=loaded_3.corrections,
                     list_entries=loaded_3.list_entries,

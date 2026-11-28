@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            anime_id,\n            episode_number,\n            version,\n            merged_record_hash,\n            hash_format,\n            merged_at\n        FROM episode\n        WHERE id = $1 AND deleted_at IS NULL\n        FOR UPDATE\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "anime_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "episode_number",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 2,
+        "name": "version",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "merged_record_hash",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "hash_format",
+        "type_info": "Int2"
+      },
+      {
+        "ordinal": 5,
+        "name": "merged_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "78512923cd3e9edbe5eb4051fa025a727eb5ae871fbf0788f1a2dba67882dea7"
+}

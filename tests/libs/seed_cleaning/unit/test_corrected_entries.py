@@ -170,7 +170,7 @@ def test_build_corrected_entries_page_moved_into_entry_corrected_itself_joins_co
     ]
     assert list(target_entry.addresses_by_page_key) == [
         "mal:anime:9",
-        "animeplanet:anime:new-name",
+        "anime_planet:anime:new-name",
         "kitsu:anime:2",
     ]
 
@@ -191,7 +191,7 @@ def test_build_corrected_entries_renamed_old_address_dropped(
     [corrected_entry] = build_corrected_entries(corrections, works, store)
     assert list(corrected_entry.entry.addresses_by_page_key) == [
         "mal:anime:1",
-        "animeplanet:anime:new-name",
+        "anime_planet:anime:new-name",
     ]
 
 

@@ -208,10 +208,10 @@ def test_build_correction_panel_renamed_page_links_current_address(
     )
     assert panel is not None
     renamed_row = {row.page_key: row for row in panel.rows}[
-        "animeplanet:anime:orguss-02"
+        "anime_planet:anime:orguss-02"
     ]
     assert (renamed_row.destination_label, renamed_row.destination_address) == (
-        "current address animeplanet:anime:super-dimension-century-orguss-02",
+        "current address anime_planet:anime:super-dimension-century-orguss-02",
         "https://anime-planet.com/anime/super-dimension-century-orguss-02",
     )
 
@@ -225,7 +225,7 @@ def test_build_correction_panel_answer_rows_show_place_and_source(
     assert panel is not None
     rows = {row.page_key: row for row in panel.rows}
     assert (
-        rows["animeplanet:anime:atashinchi-next"].place,
+        rows["anime_planet:anime:atashinchi-next"].place,
         rows["ann:anime:31487"].place,
         rows["mal:anime:57822"].change_label,
         rows["mal:anime:57822"].destination_label,

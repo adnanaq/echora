@@ -35,6 +35,10 @@ A migration that builds an index with `CREATE INDEX CONCURRENTLY` starts with `-
 | `list_character_anime` | List the stored works a character appears in, with the strongest role its pages give in each |
 | `delete_episode` | Remove an episode, its page links and its graph edges, and send `episode.deleted` |
 | `compute_responses_hash` | Hash a page's responses the way `record_page_observation` compares them |
+| `list_entity_pages`, `record_refresh` | List an entity's linked pages with fetch metadata, and record refresh outcomes onto `next_refresh_at` |
+| `list_due_anime`, `list_due_episodes`, `list_due_characters` | Keyset-paged due queries with `older_after_years` and `merge_version` filters |
+| `list_upcoming_episodes`, `list_score_anime`, `list_requested_merges`, `list_due_pages` | Tracking window episodes, daily score works, pending merge requests, and budgeted provider due pages |
+| `read_visible_anime`, `read_visible_episode`, `list_visible_episodes`, `read_visible_character`, `list_entity_versions` | Read merged, undeleted entities through `*_visible` views, each in one read-only snapshot, with page URLs from `provider_page.source` and the rows that name one target grouped into one entry; and page visible entity versions |
 
 ## Rules Every Save Follows
 

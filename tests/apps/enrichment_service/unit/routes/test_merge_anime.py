@@ -1,16 +1,18 @@
-"""Unit tests for the EnrichmentService MergeAnime gRPC route."""
-
 from __future__ import annotations
 
 import json
-from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+import threading
+from unittest.mock import create_autospec, patch
 
 import grpc
 import pytest
 from enrichment_proto.v1 import enrichment_service_pb2_grpc
-from enrichment_proto.v1.enrichment_service_pb2 import MergeAnimeRequest
+from enrichment_proto.v1.enrichment_service_pb2 import (
+    MergeAnimeRequest,
+    MergeAnimeResponse,
+)
 from enrichment_service.routes.adapter import EnrichmentRoutes
+from enrichment_service.runtime import EnrichmentRuntime
 from shared_proto.v1 import anime_pb2
 from shared_proto.v1.merge_pb2 import (
     EpisodeReference,
@@ -22,15 +24,23 @@ from shared_proto.v1.merge_pb2 import (
 
 
 class _AbortCalledError(Exception):
-    """Sentinel raised when mock context.abort is invoked."""
+    pass
+
+
+def _build_routes() -> EnrichmentRoutes:
+    return EnrichmentRoutes(runtime=create_autospec(EnrichmentRuntime, instance=True))
+
+
+def _build_context() -> grpc.aio.ServicerContext:
+    context = create_autospec(grpc.aio.ServicerContext, instance=True)
+    context.abort.side_effect = _AbortCalledError()
+    return context
 
 
 @pytest.mark.asyncio
-async def test_merge_anime_route_requires_anime_id() -> None:
-    """MergeAnime aborts with INVALID_ARGUMENT when anime_id is empty."""
-    routes = EnrichmentRoutes(runtime=SimpleNamespace())  # type: ignore[arg-type]
-    context = AsyncMock()
-    context.abort.side_effect = _AbortCalledError()
+async def test_merge_anime_empty_anime_id_aborts_invalid_argument() -> None:
+    routes = _build_routes()
+    context = _build_context()
 
     with pytest.raises(_AbortCalledError):
         await routes.MergeAnime(MergeAnimeRequest(anime_id=""), context)
@@ -41,10 +51,9 @@ async def test_merge_anime_route_requires_anime_id() -> None:
 
 
 @pytest.mark.asyncio
-async def test_merge_anime_route_returns_merged_response() -> None:
-    """MergeAnime delegates to merge_anime_pages and returns MergeAnimeResponse."""
-    routes = EnrichmentRoutes(runtime=SimpleNamespace())  # type: ignore[arg-type]
-    context = AsyncMock()
+async def test_merge_anime_valid_page_returns_merged_response() -> None:
+    routes = _build_routes()
+    context = _build_context()
     page = StoredPage(
         page_key=PageKey(
             provider="anilist",
@@ -72,39 +81,41 @@ async def test_merge_anime_route_returns_merged_response() -> None:
             )
         ],
     )
-    resp = await routes.MergeAnime(
+    response = await routes.MergeAnime(
         MergeAnimeRequest(
             anime_id="0195b42a-0000-7000-8000-000000000099",
             source_pages=[page],
         ),
         context,
     )
-    assert resp.anime.id == "0195b42a-0000-7000-8000-000000000099"
-    assert resp.anime.title == "One Piece"
-    assert resp.anime.synopsis == ""
-    assert resp.provider_synopses_hash
+    assert response.anime.id == "0195b42a-0000-7000-8000-000000000099"
+    assert response.anime.title == "One Piece"
+    assert response.anime.synopsis == ""
+    assert response.provider_synopses_hash
 
 
 @pytest.mark.asyncio
-async def test_merge_anime_route_maps_value_and_internal_errors() -> None:
-    """MergeAnime maps ValueError to INVALID_ARGUMENT and other errors to INTERNAL."""
-    routes = EnrichmentRoutes(runtime=SimpleNamespace())  # type: ignore[arg-type]
-    context = AsyncMock()
-    context.abort.side_effect = _AbortCalledError()
+async def test_merge_anime_errors_map_to_invalid_argument_and_internal() -> None:
+    routes = _build_routes()
+    context = _build_context()
 
-    with patch(
-        "enrichment_service.routes.merge_anime.merge_anime_pages",
-        side_effect=ValueError("bad page payload"),
-    ):
-        with pytest.raises(_AbortCalledError):
-            await routes.MergeAnime(MergeAnimeRequest(anime_id="work-1"), context)
-        context.abort.assert_awaited_with(
-            grpc.StatusCode.INVALID_ARGUMENT, "bad page payload"
-        )
+    for error in (ValueError("bad page payload"), TypeError("bad json shape")):
+        context.abort.reset_mock()
+        with patch(
+            "enrichment_service.routes.merge_anime.merge_anime_pages",
+            autospec=True,
+            side_effect=error,
+        ):
+            with pytest.raises(_AbortCalledError):
+                await routes.MergeAnime(MergeAnimeRequest(anime_id="work-1"), context)
+            context.abort.assert_awaited_with(
+                grpc.StatusCode.INVALID_ARGUMENT, str(error)
+            )
 
     context.abort.reset_mock()
     with patch(
         "enrichment_service.routes.merge_anime.merge_anime_pages",
+        autospec=True,
         side_effect=RuntimeError("boom"),
     ):
         with pytest.raises(_AbortCalledError):
@@ -113,11 +124,33 @@ async def test_merge_anime_route_maps_value_and_internal_errors() -> None:
 
 
 @pytest.mark.asyncio
-async def test_merge_anime_end_to_end_over_grpc_transport() -> None:
-    """End-to-end gRPC server -> stub call merges pages, episodes, claims, and synopsis."""
+async def test_merge_anime_executes_off_event_loop_thread() -> None:
+    routes = _build_routes()
+    context = _build_context()
+    loop_thread_id = threading.get_ident()
+    observed_thread_ids: list[int] = []
+
+    def _record_thread(request: MergeAnimeRequest) -> MergeAnimeResponse:
+        del request
+        observed_thread_ids.append(threading.get_ident())
+        return MergeAnimeResponse()
+
+    with patch(
+        "enrichment_service.routes.merge_anime.merge_anime_pages",
+        autospec=True,
+        side_effect=_record_thread,
+    ):
+        await routes.MergeAnime(MergeAnimeRequest(anime_id="work-1"), context)
+
+    assert observed_thread_ids
+    assert observed_thread_ids[0] != loop_thread_id
+
+
+@pytest.mark.asyncio
+async def test_merge_anime_grpc_transport_returns_merged_anime() -> None:
     server = grpc.aio.server()
     enrichment_service_pb2_grpc.add_EnrichmentServiceServicer_to_server(
-        EnrichmentRoutes(runtime=SimpleNamespace()),  # type: ignore[arg-type]
+        _build_routes(),
         server,
     )
     port = server.add_insecure_port("127.0.0.1:0")

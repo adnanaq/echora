@@ -24,10 +24,10 @@ def test_provider_page_links_renamed_page_answers_to_current_key(
 ) -> None:
     _, pages = matching_cases["cocoon"]
     links = ProviderPageLinks(pages)
-    old_key = "animeplanet:anime:cocoon-aru-natsu-no-shoujo-tachi-yori"
+    old_key = "anime_planet:anime:cocoon-aru-natsu-no-shoujo-tachi-yori"
     assert (
         links.get_current_page_key(old_key)
-        == "animeplanet:anime:cocoon-one-summer-of-girlhood"
+        == "anime_planet:anime:cocoon-one-summer-of-girlhood"
     )
     assert links.get_current_page_key("mal:anime:55779") == "mal:anime:55779"
 
@@ -41,8 +41,8 @@ def test_provider_page_links_link_to_renamed_page_reaches_current_key(
     kitsu_page = linked_page(
         "https://kitsu.app/anime/1", "https://anime-planet.com/anime/old"
     )
-    links = ProviderPageLinks([renamed_page, kitsu_page], ["animeplanet:anime:new"])
-    assert links.get_linked_page_keys("animeplanet:anime:new") == frozenset(
+    links = ProviderPageLinks([renamed_page, kitsu_page], ["anime_planet:anime:new"])
+    assert links.get_linked_page_keys("anime_planet:anime:new") == frozenset(
         {"kitsu:anime:1"}
     )
 
@@ -107,9 +107,9 @@ def test_provider_page_links_searched_page_with_renamed_searched_by_page_counts_
         searched_by_address="https://anime-planet.com/anime/old",
     )
     links = ProviderPageLinks(
-        [renamed_page, found_page], ["animeplanet:anime:new", "mal:anime:1"]
+        [renamed_page, found_page], ["anime_planet:anime:new", "mal:anime:1"]
     )
-    assert links.get_linked_page_keys("animeplanet:anime:new") == frozenset(
+    assert links.get_linked_page_keys("anime_planet:anime:new") == frozenset(
         {"mal:anime:1"}
     )
 

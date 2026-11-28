@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT spoiler_name, spoiler_value FROM character_spoiler\n         WHERE character_id = $1 ORDER BY spoiler_name",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "spoiler_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "spoiler_value",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "0997905be29d6a86f3c309ad671960c6e43ab2fe79fc863a96f7585ffcc4298a"
+}

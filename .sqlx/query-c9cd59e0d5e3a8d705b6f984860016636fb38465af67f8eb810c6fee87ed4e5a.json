@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT anime_trailer.source, trailer.title, trailer.thumbnail_source\n        FROM anime_trailer\n        JOIN trailer ON trailer.source = anime_trailer.source\n        WHERE anime_trailer.anime_id = $1\n        ORDER BY anime_trailer.source\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "source",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "title",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "thumbnail_source",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "c9cd59e0d5e3a8d705b6f984860016636fb38465af67f8eb810c6fee87ed4e5a"
+}

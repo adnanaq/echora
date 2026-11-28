@@ -1,8 +1,3 @@
-"""Unit tests for anidb_character_crawler.py — pure / sync functions.
-
-Covers: _extract_from_html, _is_blocked, _has_character_data.
-"""
-
 from unittest.mock import patch
 
 import pytest
@@ -11,10 +6,6 @@ from enrichment.sources.anidb.anidb_character_crawler import (
     _has_character_data,
     _is_blocked,
 )
-
-# ---------------------------------------------------------------------------
-# HTML fixtures
-# ---------------------------------------------------------------------------
 
 _FULL_HTML = """<html><head><meta charset="utf-8"></head><body>
 <table><tr class="mainname"><td><span itemprop="name">Monkey D. Luffy</span></td></tr></table>
@@ -32,7 +23,7 @@ _FULL_HTML = """<html><head><meta charset="utf-8"></head><body>
 </div>
 <span itemprop="gender">Male</span>
 <div class="desc" itemprop="description">The future King of the Pirates.</div>
-<table>
+<table id="animelist_474" class="animelist">
   <thead><tr><th class="anime">Anime</th><th class="type">Type</th></tr></thead>
   <tbody>
     <tr>
@@ -55,11 +46,6 @@ _FULL_HTML = """<html><head><meta charset="utf-8"></head><body>
 </body></html>"""
 
 _EMPTY_HTML = "<html><body><p>Nothing here</p></body></html>"
-
-
-# =============================================================================
-# _extract_from_html
-# =============================================================================
 
 
 def test_extract_full_html_all_fields() -> None:
@@ -122,7 +108,7 @@ def test_extract_animeography_empty_title_skipped() -> None:
 def test_extract_animeography_no_role_cell() -> None:
     html = """<html><body>
     <div id="tab_1_pane"><span itemprop="name">X</span></div>
-    <table>
+    <table class="animelist">
       <thead><tr><th class="anime">A</th></tr></thead>
       <tbody>
         <tr><td class="name anime"><a href="/anime/1">Show</a></td></tr>
@@ -163,9 +149,93 @@ def test_extract_lxml_parse_error_returns_none() -> None:
         assert _extract_from_html("<html/>") is None
 
 
-# =============================================================================
-# _is_blocked
-# =============================================================================
+def test_extract_from_html_class_token_boundary_avoids_substring_collisions() -> None:
+    html = """<html><head><meta charset="utf-8"></head><body>
+    <div id="tab_1_pane">
+      <table>
+        <tr class="image"><td>NOT_AN_AGE</td></tr>
+        <tr class="age range"><td>adolescent</td></tr>
+        <tr class="line_height"><td>NOT_HEIGHT</td></tr>
+        <tr class="g_odd birthdate"><td><time>05.05.1999</time></td></tr>
+        <tr class="age"><td><span>19</span></td></tr>
+        <tr class="bloodtype"><td><span>F</span></td></tr>
+        <tr class="height"><td><span itemprop="height">174 cm</span></td></tr>
+      </table>
+    </div>
+    </body></html>"""
+    page = _extract_from_html(html)
+    assert page is not None
+    assert page.date_of_birth == "05.05.1999"
+    assert page.age == "19"
+    assert page.blood_type == "F"
+    assert page.height == "174 cm"
+
+
+def test_extract_from_html_resolves_protocol_and_bare_relative_urls() -> None:
+    html = """<html><head><meta charset="utf-8"></head><body>
+    <div id="tab_1_pane">
+      <tr class="official verified yes">
+        <td><label itemprop="alternateName">モンキー・Ｄ・ルフィ</label></td>
+      </tr>
+    </div>
+    <table class="seiyuulist">
+      <tbody>
+        <tr>
+          <td class="name creator"><a href="//anidb.net/creator/456">Protocol Relative</a></td>
+          <td class="name anime"><a href="anime/77">Bare Anime</a></td>
+        </tr>
+        <tr>
+          <td class="name creator"><a href="creator/123">Bare Creator</a></td>
+          <td class="name anime"><a href="//anidb.net/anime/88">Protocol Anime</a></td>
+        </tr>
+        <tr>
+          <td class="name creator"><a href="/creator/999">   </a></td>
+          <td class="name anime"><a href="/anime/99">Ignored Anime</a></td>
+        </tr>
+      </tbody>
+    </table>
+    <table class="animelist">
+      <tbody>
+        <tr>
+          <td class="type relation">main character in</td>
+          <td class="name anime"><a href="anime/77">Bare Anime</a></td>
+          <td class="type anime">TV Series</td>
+        </tr>
+        <tr>
+          <td class="type relation">appears in</td>
+          <td class="name anime"><a href="//anidb.net/anime/88">Protocol Anime</a></td>
+          <td class="type anime">Movie</td>
+        </tr>
+      </tbody>
+    </table>
+    </body></html>"""
+    page = _extract_from_html(html)
+    assert page is not None
+    assert page.name_kanji == "モンキー・Ｄ・ルフィ"
+    assert page.seiyuu == [
+        {
+            "name": "Protocol Relative",
+            "url": "https://anidb.net/creator/456",
+            "anime_url": "https://anidb.net/anime/77",
+        },
+        {
+            "name": "Bare Creator",
+            "url": "https://anidb.net/creator/123",
+            "anime_url": "https://anidb.net/anime/88",
+        },
+    ]
+    assert page.animeography == [
+        {
+            "title": "Bare Anime",
+            "role": "main character in",
+            "url": "https://anidb.net/anime/77",
+        },
+        {
+            "title": "Protocol Anime",
+            "role": "appears in",
+            "url": "https://anidb.net/anime/88",
+        },
+    ]
 
 
 @pytest.mark.parametrize(
@@ -186,21 +256,11 @@ def test_is_blocked_clean_html_returns_false() -> None:
     assert _is_blocked("<html><body>Normal page</body></html>") is False
 
 
-# =============================================================================
-# _has_character_data
-# =============================================================================
-
-
 def test_has_character_data_tab_pane() -> None:
     assert _has_character_data('<div id="tab_1_pane">content</div>') is True
 
 
 def test_has_character_data_itemprop_name_alone_is_not_enough() -> None:
-    """The antileech page carries itemprop="name" in its header too.
-
-    Treating that marker as character data made antileech blocks look like real
-    pages, so only #tab_1_pane counts.
-    """
     assert _has_character_data('<span itemprop="name">Luffy</span>') is False
 
 

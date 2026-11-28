@@ -37,6 +37,7 @@ from enrichment.sources.base.page_fetcher import (
     collect_paginated_responses,
     index_responses_by_name,
     parse_json_response,
+    require_json_object,
 )
 from enrichment.sources.kitsu.kitsu_models import (
     KitsuAnime,
@@ -300,8 +301,8 @@ def episode_from_kitsu(
     Args:
         ep: Validated Kitsu episode model.
         anime_slug: Kitsu anime slug (e.g. ``"DAN-DA-DAN"``). When provided, the
-            source URL is ``https://kitsu.app/anime/{slug}/episodes/{number}``.
-            Falls back to the numeric episode ID URL when omitted.
+            source URL is ``https://kitsu.app/anime/{slug}/episodes/{number}``;
+            without it the episode has no source URL.
 
     Returns:
         Dict of canonical field name → normalized value.
@@ -337,7 +338,7 @@ def episode_from_kitsu(
         ),
         sources=[source] if source else [],
     )
-    return result.model_dump(mode="json", exclude_none=True)
+    return result.model_dump(mode="json", exclude_none=True, exclude_unset=True)
 
 
 def _extract_kitsu_productions(
@@ -430,14 +431,17 @@ def map_kitsu_anime_responses(
 
 def map_kitsu_anime_episode_responses(
     responses: Sequence[PageResponse],
-) -> list[dict[str, Any]]:
-    """Map stored Kitsu anime episode responses into canonical Episode dicts.
+) -> list[tuple[str, dict[str, Any]]]:
+    """Map stored Kitsu anime episode responses into Kitsu IDs and Episode dicts.
+
+    A Kitsu episode page is named by its Kitsu episode ID, which its URL does not
+    hold, so each listed episode comes with that ID.
 
     Args:
         responses: Stored PageResponse sequence containing ``main`` and ``episodes_page_*``.
 
     Returns:
-        List of canonical Episode field dicts.
+        One ``(kitsu_episode_id, canonical Episode dict)`` pair per listed episode.
     """
     by_name = index_responses_by_name(responses)
     anime_slug: str | None = None
@@ -446,21 +450,24 @@ def map_kitsu_anime_episode_responses(
         if isinstance(anime_data, dict):
             anime_slug = (anime_data.get("attributes") or {}).get("slug")
 
-    episodes: list[dict[str, Any]] = []
-    for page in collect_paginated_responses(responses, "episodes_page_"):
-        for ep_raw in page.get("data", []):
-            episodes.append(
-                episode_from_kitsu(
-                    KitsuEpisode.model_validate(ep_raw), anime_slug=anime_slug
-                )
-            )
-    return episodes
+    listed_episodes = [
+        KitsuEpisode.model_validate(ep_raw)
+        for page in collect_paginated_responses(responses, "episodes_page_")
+        for ep_raw in page.get("data", [])
+    ]
+    return [
+        (episode.id, episode_from_kitsu(episode, anime_slug=anime_slug))
+        for episode in listed_episodes
+    ]
 
 
 def map_kitsu_episode_responses(
     responses: Sequence[PageResponse],
 ) -> dict[str, Any]:
     """Map stored Kitsu single-episode JSON:API responses into a canonical Episode dict.
+
+    The ``main`` response is ``/episodes/{id}?include=media``, so the work it belongs
+    to is included and its slug gives the episode's URL.
 
     Args:
         responses: Stored PageResponse sequence containing a ``main`` JSON response.
@@ -481,7 +488,19 @@ def map_kitsu_episode_responses(
     if not isinstance(ep_raw, dict):
         error_message = "Kitsu episode 'main' response missing 'data' object"
         raise TypeError(error_message)
-    return episode_from_kitsu(KitsuEpisode.model_validate(ep_raw))
+    anime_slug = next(
+        (
+            require_json_object(
+                included.get("attributes"), "Kitsu included 'attributes'"
+            ).get("slug")
+            for included in payload.get("included") or []
+            if isinstance(included, dict) and included.get("type") == "anime"
+        ),
+        None,
+    )
+    return episode_from_kitsu(
+        KitsuEpisode.model_validate(ep_raw), anime_slug=anime_slug
+    )
 
 
 def _extract_kitsu_character_ography(
@@ -592,11 +611,13 @@ def map_kitsu_character_page_responses(
         error_message = "Kitsu character 'main' response missing 'data' object"
         raise TypeError(error_message)
 
-    attrs = char_raw.get("attributes") or {}
-    names = attrs.get("names") or {}
+    attrs = require_json_object(
+        char_raw.get("attributes"), "Kitsu character 'attributes'"
+    )
+    names = require_json_object(attrs.get("names"), "Kitsu character 'names'")
     slug = attrs.get("slug") or char_raw.get("id")
     sources = [f"https://kitsu.app/characters/{slug}"] if slug else []
-    image_obj = attrs.get("image") or {}
+    image_obj = require_json_object(attrs.get("image"), "Kitsu character 'image'")
     images = [image_obj["original"]] if image_obj.get("original") else []
     animeography, mangaography = _extract_kitsu_character_ography(responses)
 
