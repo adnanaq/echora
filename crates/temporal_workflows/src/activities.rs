@@ -39,13 +39,25 @@ mod definitions {
     #[derive(Debug)]
     pub struct UpdateServiceActivities {
         ports: UpdateServicePorts,
+        heartbeat_interval: Duration,
     }
 
     impl UpdateServiceActivities {
-        /// Creates core Update Service activities backed by `ports`.
+        /// Creates core Update Service activities backed by `ports` with a 20-second heartbeat.
         #[must_use]
         pub fn new(ports: UpdateServicePorts) -> Self {
-            Self { ports }
+            Self {
+                ports,
+                heartbeat_interval: REFRESH_PAGE_HEARTBEAT_INTERVAL,
+            }
+        }
+
+        /// Overrides the heartbeat interval for fast tests.
+        #[cfg(feature = "test-util")]
+        #[must_use]
+        pub fn with_heartbeat_interval(mut self, interval: Duration) -> Self {
+            self.heartbeat_interval = interval;
+            self
         }
     }
 
@@ -84,33 +96,50 @@ mod definitions {
         max_attempts > 0 && info.attempt >= max_attempts
     }
 
-    /// Drives `operation` while emitting heartbeats every `heartbeat_interval` and watching `ctx.cancelled()`.
+    /// Drives the future returned by `start_operation` while heartbeating and watching cancellation.
+    ///
+    /// Returns [`ActivityError::Cancelled`] before calling `start_operation` if the context is
+    /// already cancelled, so cancelled retries never start a new RPC.
     async fn run_with_heartbeats<T, F>(
         ctx: &ActivityContext,
         heartbeat_interval: Duration,
         heartbeat_detail: &str,
-        operation: F,
+        start_operation: impl FnOnce() -> F,
     ) -> Result<T, ActivityError>
     where
         F: Future<Output = Result<T, PortError>>,
     {
+        if ctx.is_cancelled() {
+            return Err(ActivityError::Cancelled { details: None });
+        }
+
         let mut heartbeat_ticker = tokio::time::interval(heartbeat_interval);
         heartbeat_ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         // Consume the immediate first tick so heartbeats fire at each interval.
         heartbeat_ticker.tick().await;
 
+        let operation = start_operation();
         tokio::pin!(operation);
 
         loop {
             tokio::select! {
+                biased;
+                () = ctx.cancelled() => {
+                    return Err(ActivityError::Cancelled { details: None });
+                }
                 outcome = &mut operation => {
                     return outcome.map_err(PortError::into_activity_error);
                 }
                 _ = heartbeat_ticker.tick() => {
-                    let _ = ctx.record_heartbeat(heartbeat_detail.to_owned()).await;
-                }
-                () = ctx.cancelled() => {
-                    return Err(ActivityError::Cancelled { details: None });
+                    if let Err(err) = ctx.record_heartbeat(heartbeat_detail.to_owned()).await {
+                        event!(
+                            name: "update_service.activity.heartbeat_failed",
+                            Level::DEBUG,
+                            heartbeat.detail = heartbeat_detail,
+                            error.message = %err,
+                            "failed to encode activity heartbeat {{heartbeat.detail}}: {{error.message}}",
+                        );
+                    }
                 }
             }
         }
@@ -139,23 +168,28 @@ mod definitions {
 
         /// Loads, merges, and saves an anime, retrying `ABORTED` conflicts up to 10 times.
         ///
+        /// Emits heartbeats every 20 seconds and watches `ctx.cancelled()` across all retry
+        /// attempts so workflow cancellations and graceful worker shutdowns stop promptly.
+        ///
         /// # Errors
         ///
-        /// Returns a retryable [`ActivityError`] after 10 consecutive version conflicts or on
-        /// transient gRPC failures, or a non-retryable error on permanent gRPC statuses.
+        /// Returns [`ActivityError::Cancelled`] when Temporal cancels the activity, a retryable
+        /// [`ActivityError`] after 10 consecutive version conflicts or on transient gRPC failures,
+        /// or a non-retryable error on permanent gRPC statuses.
         #[activity]
         pub async fn merge_anime(
             self: Arc<Self>,
-            _ctx: ActivityContext,
+            ctx: ActivityContext,
             input: MergeAnimeInput,
         ) -> Result<MergeAnimeOutput, ActivityError> {
             for attempt in 1..=MAX_ABORTED_RETRIES_PER_ATTEMPT {
-                match self
-                    .ports
-                    .catalogue()
-                    .merge_anime_attempt(input.anime_id.clone(), input.merge_version)
-                    .await
-                    .map_err(PortError::into_activity_error)?
+                let heartbeat_detail = format!("merge:{}:{attempt}", input.anime_id);
+                match run_with_heartbeats(&ctx, self.heartbeat_interval, &heartbeat_detail, || {
+                    self.ports
+                        .catalogue()
+                        .merge_anime_attempt(input.anime_id.clone(), input.merge_version)
+                })
+                .await?
                 {
                     MergeAttemptOutcome::Saved(output) => return Ok(output),
                     MergeAttemptOutcome::VersionConflict(reason) => {
@@ -179,20 +213,24 @@ mod definitions {
 
         /// Starts top-level downstream workflows (`RefreshEpisodeWorkflow` / `WriteSynopsisWorkflow`).
         ///
+        /// Emits heartbeats every 20 seconds and watches `ctx.cancelled()` while starting large
+        /// episode batches.
+        ///
         /// # Errors
         ///
-        /// Returns an [`ActivityError`] if the Temporal client fails to start any workflow.
+        /// Returns [`ActivityError::Cancelled`] on cancellation, or an [`ActivityError`] if the
+        /// Temporal client fails to start any workflow.
         #[activity]
         pub async fn start_entity_workflows(
             self: Arc<Self>,
-            _ctx: ActivityContext,
+            ctx: ActivityContext,
             input: StartEntityWorkflowsInput,
         ) -> Result<usize, ActivityError> {
-            self.ports
-                .starter()
-                .start_entity_workflows(input)
-                .await
-                .map_err(PortError::into_activity_error)
+            let heartbeat_detail = format!("start:{}:{}", input.anime_id, input.episode_ids.len());
+            run_with_heartbeats(&ctx, self.heartbeat_interval, &heartbeat_detail, || {
+                self.ports.starter().start_entity_workflows(input)
+            })
+            .await
         }
 
         /// Records the final refresh outcome via `PostgresService.RecordRefresh`.
@@ -237,15 +275,13 @@ mod definitions {
         ) -> Result<RefreshPageOutput, ActivityError> {
             let page_key = input.page_key;
             let heartbeat_detail = format!("{}:{}", page_key.provider, page_key.address);
-            let fetch_outcome = run_with_heartbeats(
-                &ctx,
-                self.heartbeat_interval,
-                &heartbeat_detail,
-                self.ports
-                    .catalogue()
-                    .fetch_and_store_page(page_key.clone(), input.max_age_seconds),
-            )
-            .await;
+            let fetch_outcome =
+                run_with_heartbeats(&ctx, self.heartbeat_interval, &heartbeat_detail, || {
+                    self.ports
+                        .catalogue()
+                        .fetch_and_store_page(page_key.clone(), input.max_age_seconds)
+                })
+                .await;
 
             match fetch_outcome {
                 Ok(output) => Ok(output),
@@ -269,12 +305,9 @@ mod definitions {
                         activity.attempt = ctx.info().attempt,
                         "recording page fetch failure for {{provider}}:{{page.address}} on attempt {{activity.attempt}}",
                     );
-                    run_with_heartbeats(
-                        &ctx,
-                        self.heartbeat_interval,
-                        &heartbeat_detail,
-                        self.ports.catalogue().record_page_failure(page_key.clone()),
-                    )
+                    run_with_heartbeats(&ctx, self.heartbeat_interval, &heartbeat_detail, || {
+                        self.ports.catalogue().record_page_failure(page_key.clone())
+                    })
                     .await?;
                     Ok(RefreshPageOutput {
                         page_key,

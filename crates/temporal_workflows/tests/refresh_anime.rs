@@ -569,6 +569,117 @@ async fn merge_anime_exceeding_aborted_limit_returns_retryable_failure() {
 }
 
 #[tokio::test]
+async fn merge_anime_cancels_cleanly_when_activity_context_is_cancelled() {
+    let fake = FakePorts::default();
+    fake.state.lock().expect("lock").aborted_remaining = 4;
+    let ports = UpdateServicePorts::new(fake.clone(), fake.clone());
+
+    let env = ActivityEnvironment::builder()
+        .register_activities(
+            UpdateServiceActivities::new(ports).with_heartbeat_interval(Duration::from_millis(15)),
+        )
+        .build();
+    env.cancel();
+
+    let outcome = env
+        .run(
+            UpdateServiceActivities::merge_anime,
+            MergeAnimeInput {
+                anime_id: "anime-cancel".to_owned(),
+                merge_version: 2,
+            },
+        )
+        .await;
+    assert!(matches!(
+        outcome,
+        Err(ActivityEnvironmentError::Activity(
+            ActivityError::Cancelled { .. }
+        ))
+    ));
+    assert_eq!(fake.state.lock().expect("lock").merge_calls, 0);
+}
+
+#[tokio::test]
+async fn start_entity_workflows_cancels_cleanly_when_activity_context_is_cancelled() {
+    let fake = FakePorts::default();
+    let ports = UpdateServicePorts::new(fake.clone(), fake.clone());
+
+    let env = ActivityEnvironment::builder()
+        .register_activities(
+            UpdateServiceActivities::new(ports).with_heartbeat_interval(Duration::from_millis(15)),
+        )
+        .build();
+    env.cancel();
+
+    let outcome = env
+        .run(
+            UpdateServiceActivities::start_entity_workflows,
+            StartEntityWorkflowsInput {
+                anime_id: "anime-cancel".to_owned(),
+                episode_ids: vec!["ep-1".to_owned(), "ep-2".to_owned()],
+                start_synopsis: false,
+                trigger: RefreshTrigger::User,
+                priority: 1,
+            },
+        )
+        .await;
+    assert!(matches!(
+        outcome,
+        Err(ActivityEnvironmentError::Activity(
+            ActivityError::Cancelled { .. }
+        ))
+    ));
+    assert_eq!(fake.state.lock().expect("lock").started_batches.len(), 0);
+}
+
+#[tokio::test]
+async fn refresh_page_unlimited_retries_never_records_failure() {
+    let fake = FakePorts::default();
+    fake.state
+        .lock()
+        .expect("lock")
+        .page_errors
+        .insert(Provider::Mal, PageErrorMode::Transient);
+    let ports = UpdateServicePorts::new(fake.clone(), fake.clone());
+
+    let unlimited_info = TestActivityInfoOptions::builder()
+        .attempt(50)
+        .retry_policy(RetryPolicy::builder().maximum_attempts(0).build())
+        .build();
+    let env = ActivityEnvironment::builder()
+        .info(unlimited_info)
+        .register_activities(ProviderActivities::new(ports))
+        .build();
+    let err = env
+        .run(
+            ProviderActivities::refresh_page,
+            RefreshPageInput {
+                page_key: RefreshPageKey {
+                    provider: Provider::Mal,
+                    entity_type: EntityType::Anime,
+                    address: "99".to_owned(),
+                },
+                max_age_seconds: 0,
+            },
+        )
+        .await
+        .expect_err("maximum_attempts=0 must stay retryable");
+    assert!(matches!(
+        err,
+        ActivityEnvironmentError::Activity(ActivityError::Application(ref failure))
+            if !failure.is_non_retryable()
+    ));
+    assert_eq!(
+        fake.state
+            .lock()
+            .expect("lock")
+            .recorded_page_failures
+            .len(),
+        0
+    );
+}
+
+#[tokio::test]
 async fn noop_ports_reject_all_operations() {
     let ports = UpdateServicePorts::noop();
     let key = RefreshPageKey {
