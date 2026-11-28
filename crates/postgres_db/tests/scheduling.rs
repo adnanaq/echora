@@ -549,6 +549,58 @@ async fn list_due_entities_covers_paging_age_status_and_merge_version(pool: PgPo
 }
 
 #[sqlx::test(migrations = "./migrations")]
+async fn list_due_anime_paging_through_tied_refresh_times_returns_each_work_once(pool: PgPool) {
+    let now = Utc::now();
+    let tied_refresh_at = now - Duration::hours(2);
+    let mut never_refreshed = Vec::new();
+    let mut refreshed_at_same_time = Vec::new();
+    for _ in 0..3 {
+        never_refreshed.push(insert_unmerged_anime(&pool).await);
+        refreshed_at_same_time.push(insert_unmerged_anime(&pool).await);
+    }
+    sqlx::query("UPDATE anime SET status = 'ONGOING', year = 2025, merge_version = 2, next_refresh_at = NULL WHERE id = ANY($1)")
+        .bind(&never_refreshed)
+        .execute(&pool)
+        .await
+        .expect("update never_refreshed");
+    sqlx::query("UPDATE anime SET status = 'ONGOING', year = 2025, merge_version = 2, next_refresh_at = $2 WHERE id = ANY($1)")
+        .bind(&refreshed_at_same_time)
+        .bind(tied_refresh_at)
+        .execute(&pool)
+        .await
+        .expect("update refreshed_at_same_time");
+
+    let mut paged_ids = Vec::new();
+    let mut query = DueEntitiesQuery {
+        due_before: now,
+        older_after_years: 30,
+        page_size: 1,
+        after_next_refresh_at: None,
+        after_id: None,
+        merge_version: 2,
+    };
+    for _ in 0..10 {
+        let due_page = list_due_anime(&pool, &query)
+            .await
+            .expect("list_due_anime page");
+        let Some(last_row) = due_page.last() else {
+            break;
+        };
+        query.after_next_refresh_at = last_row.next_refresh_at;
+        query.after_id = Some(last_row.entity_id);
+        paged_ids.extend(due_page.iter().map(|row| row.entity_id));
+    }
+
+    never_refreshed.sort();
+    refreshed_at_same_time.sort();
+    let expected_ids: Vec<Uuid> = never_refreshed
+        .into_iter()
+        .chain(refreshed_at_same_time)
+        .collect();
+    assert_eq!(paged_ids, expected_ids);
+}
+
+#[sqlx::test(migrations = "./migrations")]
 async fn list_upcoming_score_requested_versions_and_due_pages_cover_all_rules(pool: PgPool) {
     let now = Utc::now();
     let ongoing_id = insert_unmerged_anime(&pool).await;
