@@ -232,7 +232,7 @@ echora/
 │   └── work_matching/             # Which provider pages belong to the same work
 │
 ├── tests/                         # Test suite (mirrors libs/)
-├── crates/                        # Rust workspace (active: common, echora_protos, postgres_db, postgres_service, temporal_workflows, update_service; planned: backend)
+├── crates/                        # Rust workspace (active: common, echora_domain, echora_protos, postgres_db, postgres_service, temporal_workflows, update_service; planned: backend)
 ├── data/                          # Data files & Qdrant storage
 ├── docker/                        # Docker Compose configurations
 └── scripts/                       # Utility scripts
