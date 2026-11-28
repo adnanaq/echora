@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::io::Read as _;
 
 use chrono::{DateTime, Utc};
+use echora_domain::{EntityType, PageKey, Provider};
 use flate2::read::GzDecoder;
 use prost::Message as _;
 use sqlx::{PgPool, Postgres, Transaction};
@@ -19,8 +20,8 @@ use crate::episode::{
 };
 use crate::provider_page::{record_page_sources, record_referenced_page_sources};
 use crate::{
-    AnimeDetailsInput, AnimeRelationsAndGraphInput, AnimeScheduleAndStatsInput, EntityType,
-    EpisodeReferenceInput, Error, PageKey, PageResponse, PageSource, Provider,
+    AnimeDetailsInput, AnimeRelationsAndGraphInput, AnimeScheduleAndStatsInput,
+    EpisodeReferenceInput, Error, PageResponse, PageSource,
 };
 use crate::{begin_read_snapshot, read_transaction_time};
 
@@ -229,7 +230,8 @@ struct ProtoAnimeStatusChangedNotification {
 /// ```no_run
 /// # use sqlx::PgPool;
 /// # use uuid::Uuid;
-/// # use postgres_db::{load_anime, PageKey, EntityType, Provider};
+/// # use echora_domain::{EntityType, PageKey, Provider};
+/// # use postgres_db::load_anime;
 /// # async fn example(pool: &PgPool, anime_id: Uuid) -> Result<(), postgres_db::Error> {
 /// // A work the seed load just created: its MAL page is linked but not fetched yet, and
 /// // an AniDB page listing the larger work it is part of is linked as a partial source.
@@ -1021,9 +1023,10 @@ fn encode_status_changed_notification(
 mod tests {
     use super::*;
     use crate::provider_page::{
-        FetchOutcome, PageKey, PageObservation, PageResponse, Provider, record_page_observation,
+        FetchOutcome, PageObservation, PageResponse, record_page_observation,
     };
     use crate::{AnimeImageInput, AnimeThemeInput, AnimeTitleInput};
+    use echora_domain::{PageKey, Provider};
 
     fn sample_save_input(anime_id: Uuid, expected_version: i64) -> SaveAnimeInput {
         SaveAnimeInput {
@@ -1151,7 +1154,12 @@ mod tests {
             "character".parse::<EntityType>().ok(),
             Some(EntityType::Character)
         );
-        assert!(matches!("unknown".parse::<EntityType>(), Err(e) if e.is_invalid_argument()));
+        assert!(
+            "unknown"
+                .parse::<EntityType>()
+                .map_err(Error::from)
+                .is_err_and(|error| error.is_invalid_argument())
+        );
 
         assert_eq!(status_to_proto_i32("FINISHED").ok(), Some(1));
         assert_eq!(status_to_proto_i32("UPCOMING").ok(), Some(2));

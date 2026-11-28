@@ -13,6 +13,7 @@ workspace = true
 anyhow.workspace = true
 chrono = { workspace = true, features = ["std"] }
 common.workspace = true
+echora_domain = { workspace = true, features = ["proto"] }
 echora_protos.workspace = true
 mimalloc.workspace = true
 opentelemetry = { workspace = true, features = ["metrics"] }

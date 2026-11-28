@@ -8,9 +8,10 @@
 mod support;
 
 use chrono::{Duration, Utc};
+use echora_domain::{EntityType, PageKey, Provider};
 use postgres_db::{
-    AnimeRelationInput, AnimeRelationsAndGraphInput, EntityType, FetchOutcome, PageKey,
-    PageObservation, PageResponse, PageSource, Provider, record_page_observation, save_anime,
+    AnimeRelationInput, AnimeRelationsAndGraphInput, FetchOutcome, PageObservation, PageResponse,
+    PageSource, record_page_observation, save_anime,
 };
 use sqlx::PgPool;
 use url::Url;

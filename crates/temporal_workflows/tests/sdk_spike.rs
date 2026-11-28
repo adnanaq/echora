@@ -4,12 +4,13 @@ use std::collections::HashSet;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context as _, bail, ensure};
+use echora_domain::Provider;
 use futures::StreamExt as _;
 use temporal_workflows::testing::start_local_environment;
 use temporal_workflows::{
-    AGENT_SERVICE_TASK_QUEUE, DEFAULT_TEMPORAL_NAMESPACE, Provider,
+    AGENT_SERVICE_TASK_QUEUE, DEFAULT_TEMPORAL_NAMESPACE, PAGE_FETCH_PROVIDERS,
     REFRESH_TRIGGER_SEARCH_ATTRIBUTE, SpikeInput, SpikeWorkflow, UPDATE_SERVICE_TASK_QUEUE,
-    WorkerQueueSpec, build_spike_worker_options, build_worker_options,
+    WorkerQueueSpec, build_spike_worker_options, build_worker_options, has_page_fetcher,
 };
 use temporalio_client::schedules::{
     CreateScheduleOptions, DeleteScheduleOptions, PauseScheduleOptions, ScheduleAction,
@@ -157,49 +158,45 @@ async fn wait_for_schedule(
     }
 }
 
-const fn provider_declaration_position(provider: Provider) -> usize {
-    match provider {
-        Provider::AniDb => 0,
-        Provider::AniList => 1,
-        Provider::AnimePlanet => 2,
-        Provider::AnimeSchedule => 3,
-        Provider::AniSearch => 4,
-        Provider::Kitsu => 5,
-        Provider::Mal => 6,
-        Provider::Syoboi => 7,
-    }
-}
-
 #[test]
-fn provider_all_lists_every_provider_once_in_declaration_order() {
-    for (position, provider) in Provider::ALL.into_iter().enumerate() {
-        assert_eq!(provider_declaration_position(provider), position);
-    }
-    let distinct_providers: HashSet<Provider> = Provider::ALL.into_iter().collect();
-    assert_eq!(distinct_providers.len(), Provider::ALL.len());
-}
-
-#[test]
-fn provider_task_queue_every_provider_prefixes_own_slug() {
+fn page_fetch_providers_lists_each_provider_once_sorted_by_name() {
+    let provider_names: Vec<&str> = PAGE_FETCH_PROVIDERS
+        .into_iter()
+        .map(Provider::as_str)
+        .collect();
+    assert!(provider_names.is_sorted());
+    let distinct_providers: HashSet<Provider> = PAGE_FETCH_PROVIDERS.into_iter().collect();
+    assert_eq!(distinct_providers.len(), PAGE_FETCH_PROVIDERS.len());
     for provider in Provider::ALL {
         assert_eq!(
-            provider.task_queue(),
-            format!("provider-{}", provider.slug())
+            has_page_fetcher(provider),
+            PAGE_FETCH_PROVIDERS.contains(&provider)
         );
-        assert_eq!(provider.to_string(), provider.slug());
     }
 }
 
 #[test]
-fn provider_slug_every_provider_distinct_lowercase_ascii() {
-    let slugs: HashSet<&str> = Provider::ALL.into_iter().map(Provider::slug).collect();
-    assert_eq!(slugs.len(), Provider::ALL.len());
-    for slug in slugs {
-        assert_ne!(slug, "");
+fn worker_queue_spec_task_queue_every_provider_prefixes_own_name() {
+    for provider in Provider::ALL {
+        assert_eq!(
+            WorkerQueueSpec::Provider(provider).task_queue(),
+            format!("provider-{}", provider.as_str())
+        );
+        assert_eq!(provider.to_string(), provider.as_str());
+    }
+}
+
+#[test]
+fn provider_as_str_every_provider_distinct_lowercase_ascii() {
+    let provider_names: HashSet<&str> = Provider::ALL.into_iter().map(Provider::as_str).collect();
+    assert_eq!(provider_names.len(), Provider::ALL.len());
+    for provider_name in provider_names {
+        assert_ne!(provider_name, "");
         assert!(
-            slug.chars()
+            provider_name
+                .chars()
                 .all(|character| character.is_ascii_lowercase() || character == '_'),
-            "slug {slug:?} must be lowercase ASCII letters or underscores"
+            "provider name {provider_name:?} must be lowercase ASCII letters or underscores"
         );
     }
 }

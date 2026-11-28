@@ -6,14 +6,14 @@ use std::fmt;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
+use echora_domain::{KeyError, PageKey};
 use futures::future::BoxFuture;
 use temporalio_sdk::ApplicationFailure;
 use temporalio_sdk::activities::ActivityError;
 use uuid::Uuid;
 
 use crate::refresh_anime_types::{
-    EntityPages, MergeAnimeOutput, RefreshOutcome, RefreshPageKey, RefreshPageOutput,
-    StartEntityWorkflowsInput,
+    EntityPages, MergeAnimeOutput, RefreshOutcome, RefreshPageOutput, StartEntityWorkflowsInput,
 };
 
 /// Result of one `LoadAnime` -> `MergeAnime` -> `SaveAnime` attempt.
@@ -169,6 +169,15 @@ impl fmt::Display for PortError {
     }
 }
 
+/// Treats a refused provider, entity type or page address as a permanent failure.
+///
+/// A malformed page key fails the same way on every retry, so Temporal must not retry it.
+impl From<KeyError> for PortError {
+    fn from(err: KeyError) -> Self {
+        Self::non_retryable(format!("invalid page key: {err}")).with_source(err)
+    }
+}
+
 impl StdError for PortError {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         self.source
@@ -207,7 +216,7 @@ pub trait CatalogueDataPort: Send + Sync {
     /// [`PortError`] on transient upstream failures.
     fn fetch_and_store_page(
         &self,
-        page_key: RefreshPageKey,
+        page_key: PageKey,
         max_age: Duration,
     ) -> BoxFuture<'_, Result<RefreshPageOutput, PortError>>;
 
@@ -219,7 +228,7 @@ pub trait CatalogueDataPort: Send + Sync {
     /// retryable [`PortError`] on transient `PostgresService` failures.
     fn record_page_failure(
         &self,
-        page_key: RefreshPageKey,
+        page_key: PageKey,
         failed_at: SystemTime,
     ) -> BoxFuture<'_, Result<(), PortError>>;
 
@@ -331,7 +340,7 @@ impl CatalogueDataPort for NoopPort {
 
     fn fetch_and_store_page(
         &self,
-        _page_key: RefreshPageKey,
+        _page_key: PageKey,
         _max_age: Duration,
     ) -> BoxFuture<'_, Result<RefreshPageOutput, PortError>> {
         not_configured("CatalogueDataPort")
@@ -339,7 +348,7 @@ impl CatalogueDataPort for NoopPort {
 
     fn record_page_failure(
         &self,
-        _page_key: RefreshPageKey,
+        _page_key: PageKey,
         _failed_at: SystemTime,
     ) -> BoxFuture<'_, Result<(), PortError>> {
         not_configured("CatalogueDataPort")

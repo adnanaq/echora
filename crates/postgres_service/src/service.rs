@@ -4,16 +4,17 @@ use std::collections::HashSet;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
+use echora_domain::{KeyError, PageKey, Provider};
 use opentelemetry::global;
 use opentelemetry::metrics::Gauge;
 use postgres_db::{
-    DueEntitiesQuery, EntityType, EpisodeListEntryInput, FetchOutcome, FieldCorrectionRecord,
-    LoadedSourcePage, PageKey, PageObservation, PageResponse, PageSource, Provider, RefreshOutcome,
-    list_due_anime, list_due_characters, list_due_episodes, list_due_pages, list_entity_pages,
-    list_entity_versions, list_requested_merges, list_score_anime, list_upcoming_episodes,
-    list_visible_episodes, load_anime, load_character, load_episode, mark_episode_aired,
-    read_visible_anime, read_visible_character, read_visible_episode, record_page_observation,
-    record_refresh, save_anime, save_character, save_episode,
+    DueEntitiesQuery, EpisodeListEntryInput, FetchOutcome, FieldCorrectionRecord, LoadedSourcePage,
+    PageObservation, PageResponse, PageSource, RefreshOutcome, list_due_anime, list_due_characters,
+    list_due_episodes, list_due_pages, list_entity_pages, list_entity_versions,
+    list_requested_merges, list_score_anime, list_upcoming_episodes, list_visible_episodes,
+    load_anime, load_character, load_episode, mark_episode_aired, read_visible_anime,
+    read_visible_character, read_visible_episode, record_page_observation, record_refresh,
+    save_anime, save_character, save_episode,
 };
 use prost::Message as _;
 use sqlx::PgPool;
@@ -48,9 +49,8 @@ use postgres_service_proto::v1::{
     StorePageRequest, StorePageResponse, UpcomingEpisode as ProtoUpcomingEpisode,
 };
 use shared_proto::v1::{
-    EntityType as ProtoEntityType, EpisodeListEntry as ProtoEpisodeListEntry,
-    FieldCorrection as ProtoFieldCorrection, PageKey as ProtoPageKey,
-    PageResponse as ProtoPageResponse, PageSource as ProtoPageSource,
+    EpisodeListEntry as ProtoEpisodeListEntry, FieldCorrection as ProtoFieldCorrection,
+    PageKey as ProtoPageKey, PageResponse as ProtoPageResponse, PageSource as ProtoPageSource,
     StoredPage as ProtoStoredPage,
 };
 
@@ -170,7 +170,7 @@ impl PostgresService for PostgresGrpcService {
         let partial_source_pages = outcome
             .partial_source_pages
             .iter()
-            .map(to_proto_page_key)
+            .map(ProtoPageKey::from)
             .collect();
 
         let corrections = to_proto_corrections(outcome.corrections);
@@ -376,7 +376,7 @@ impl PostgresService for PostgresGrpcService {
                 .pages
                 .into_iter()
                 .map(|page| ProtoEntityPage {
-                    page_key: Some(to_proto_page_key(&page.page_key)),
+                    page_key: Some(ProtoPageKey::from(&page.page_key)),
                     is_partial_source: page.is_partial_source,
                     fetched_at: page.fetched_at.map(to_proto_timestamp),
                     is_dead: page.is_dead,
@@ -647,7 +647,7 @@ impl PostgresService for PostgresGrpcService {
         request: Request<ListDuePagesRequest>,
     ) -> Result<Response<ListDuePagesResponse>, Status> {
         let req = request.into_inner();
-        let provider: Provider = req.provider.parse().map_err(|err| map_db_error(&err))?;
+        let provider: Provider = req.provider.parse().map_err(map_key_error)?;
         let pages = list_due_pages(&self.pool, provider, req.page_size)
             .await
             .map_err(|err| map_db_error(&err))?;
@@ -656,7 +656,7 @@ impl PostgresService for PostgresGrpcService {
             pages: pages
                 .into_iter()
                 .map(|entry| ProtoDuePage {
-                    page_key: Some(to_proto_page_key(&entry.page_key)),
+                    page_key: Some(ProtoPageKey::from(&entry.page_key)),
                     anime_id: entry.anime_id.to_string(),
                 })
                 .collect(),
@@ -754,7 +754,7 @@ fn to_proto_stored_pages(pages: Vec<LoadedSourcePage>) -> Vec<ProtoStoredPage> {
     pages
         .into_iter()
         .map(|page| ProtoStoredPage {
-            page_key: Some(to_proto_page_key(&page.page_key)),
+            page_key: Some(ProtoPageKey::from(&page.page_key)),
             fetched_at: Some(to_proto_timestamp(page.fetched_at)),
             is_dead: page.is_dead,
             responses: page
@@ -799,18 +799,9 @@ pub(crate) fn to_proto_episode_list_entry(entry: EpisodeListEntryInput) -> Proto
     }
 }
 
-/// Converts a page key into its proto message.
-pub(crate) fn to_proto_page_key(key: &PageKey) -> ProtoPageKey {
-    let entity_type = match key.entity_type() {
-        EntityType::Anime => ProtoEntityType::Anime,
-        EntityType::Episode => ProtoEntityType::Episode,
-        EntityType::Character => ProtoEntityType::Character,
-    };
-    ProtoPageKey {
-        provider: key.provider().as_str().to_owned(),
-        entity_type: entity_type as i32,
-        address: key.address().as_str().to_owned(),
-    }
+/// Maps a refused provider name, entity type or page address to `INVALID_ARGUMENT`.
+pub(crate) fn map_key_error(err: KeyError) -> Status {
+    map_db_error(&postgres_db::Error::from(err))
 }
 
 /// Converts a UTC timestamp into a protobuf `Timestamp`.
@@ -895,21 +886,13 @@ fn build_page_observation(
 /// Returns `INVALID_ARGUMENT` for an unknown provider, an unspecified or unknown entity type,
 /// or an address the provider's pattern does not allow.
 fn parse_page_key(proto_key: ProtoPageKey) -> Result<PageKey, Status> {
-    let provider: Provider = proto_key
-        .provider
-        .parse()
-        .map_err(|err| map_db_error(&err))?;
-    let entity_type = match ProtoEntityType::try_from(proto_key.entity_type) {
-        Ok(ProtoEntityType::Anime) => EntityType::Anime,
-        Ok(ProtoEntityType::Episode) => EntityType::Episode,
-        Ok(ProtoEntityType::Character) => EntityType::Character,
-        Ok(ProtoEntityType::Unspecified) | Err(_) => {
-            return Err(Status::invalid_argument(
-                "page.page_key.entity_type must be specified",
-            ));
+    PageKey::try_from(proto_key).map_err(|err| {
+        if err.is_unspecified_entity_type() || err.is_unknown_entity_type() {
+            Status::invalid_argument("page.page_key.entity_type must be specified")
+        } else {
+            map_key_error(err)
         }
-    };
-    PageKey::new(provider, entity_type, proto_key.address).map_err(|err| map_db_error(&err))
+    })
 }
 
 /// Converts a save request's page URLs into validated [`PageSource`]s.
@@ -998,10 +981,12 @@ mod tests {
 
     use tonic::metadata::MetadataValue;
 
+    use echora_domain::EntityType;
+
     use super::*;
     use crate::service::shared_proto::v1::{
-        Anime, AnimeStatus, AnimeType, Character, CharacterRole, Episode, EpisodeListEntry,
-        EpisodeReference, Ography,
+        Anime, AnimeStatus, AnimeType, Character, CharacterRole, EntityType as ProtoEntityType,
+        Episode, EpisodeListEntry, EpisodeReference, Ography,
     };
 
     const WORK_PAGE_ADDRESS: &str = "21";
@@ -1211,7 +1196,7 @@ mod tests {
     }
 
     #[test]
-    fn to_proto_page_key_keeps_every_entity_type() {
+    fn proto_page_key_from_keeps_every_entity_type() {
         for (entity_type, proto_entity_type, address) in [
             (EntityType::Anime, ProtoEntityType::Anime, "40"),
             (EntityType::Episode, ProtoEntityType::Episode, "40:1"),
@@ -1220,7 +1205,7 @@ mod tests {
             let page_key =
                 PageKey::new(Provider::Mal, entity_type, address).expect("valid page key");
 
-            let proto_page_key = to_proto_page_key(&page_key);
+            let proto_page_key = ProtoPageKey::from(&page_key);
 
             assert_eq!(proto_page_key, build_page_key(proto_entity_type, address));
         }

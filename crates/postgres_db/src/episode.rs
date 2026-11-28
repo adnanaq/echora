@@ -3,6 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use chrono::{DateTime, Timelike as _, Utc};
+use echora_domain::{EntityType, PageKey, Provider};
 use prost::Message as _;
 use sqlx::{PgPool, Postgres, Transaction};
 use tracing::Level;
@@ -14,7 +15,7 @@ use crate::anime::{
     insert_catalogue_outbox_event, to_proto_timestamp,
 };
 use crate::provider_page::{record_page_sources, record_referenced_page_sources};
-use crate::{EntityType, Error, PageKey, PageResponse, PageSource, Provider};
+use crate::{Error, PageResponse, PageSource};
 use crate::{begin_read_snapshot, read_transaction_time};
 
 /// Current canonical hash format version stored in `episode.hash_format`.

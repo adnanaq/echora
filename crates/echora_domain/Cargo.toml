@@ -1,0 +1,26 @@
+[package]
+name = "echora_domain"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+# Conversions to and from the `shared_proto.v1` messages in `echora_protos`.
+proto = ["dep:echora_protos"]
+# `Serialize` and `Deserialize` for Temporal payloads, using the lookup names.
+serde = ["dep:serde"]
+# `sqlx` `Type` and `Decode` for reading the PostgreSQL lookup columns.
+sqlx = ["dep:sqlx"]
+
+[dependencies]
+echora_protos = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+sqlx = { workspace = true, optional = true, features = ["postgres"] }
+
+[dev-dependencies]
+serde_json.workspace = true

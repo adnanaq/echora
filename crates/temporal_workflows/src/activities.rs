@@ -13,6 +13,7 @@ mod definitions {
     use std::sync::Arc;
     use std::time::{Duration, SystemTime};
 
+    use echora_domain::PageKey;
     use temporalio_macros::activities;
     use temporalio_sdk::activities::{ActivityContext, ActivityError};
     use tracing::{Level, event};
@@ -21,7 +22,7 @@ mod definitions {
     use crate::ports::{MergeAttemptOutcome, PortError, UpdateServicePorts};
     use crate::refresh_anime_types::{
         ListEntityPagesOutput, MergeAnimeOutput, RecordRefreshInput, RefreshPageInput,
-        RefreshPageKey, RefreshPageOutput, RefreshSettings, StartEntityWorkflowsInput,
+        RefreshPageOutput, RefreshSettings, StartEntityWorkflowsInput,
     };
 
     /// Maximum `LoadAnime` -> `MergeAnime` -> `SaveAnime` retries inside one `merge_anime` attempt.
@@ -198,7 +199,7 @@ mod definitions {
         pub async fn record_page_failure(
             self: Arc<Self>,
             _ctx: ActivityContext,
-            page_key: RefreshPageKey,
+            page_key: PageKey,
         ) -> Result<(), ActivityError> {
             self.deps
                 .ports
@@ -330,7 +331,7 @@ mod definitions {
             input: RefreshPageInput,
         ) -> Result<RefreshPageOutput, ActivityError> {
             let page_key = input.page_key;
-            let heartbeat_detail = format!("{}:{}", page_key.provider, page_key.address);
+            let heartbeat_detail = format!("{}:{}", page_key.provider(), page_key.address());
             run_with_heartbeats(
                 &ctx,
                 self.deps.heartbeat_interval,

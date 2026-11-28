@@ -2,6 +2,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use echora_domain::{EntityType, PageKey, Provider};
 use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
@@ -10,7 +11,7 @@ use crate::graph_projection::{
     invert_anime_relation_type, recompute_anime_pair_graph_edges, replace_company_graph_edges,
     replace_source_material_graph_edges,
 };
-use crate::provider_page::{EntityType, PageKey, PageSource, Provider};
+use crate::provider_page::PageSource;
 
 /// Directed anime-to-anime relation stored in `anime_related_anime`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -229,7 +230,8 @@ fn validate_companies(companies: &[AnimeCompanyInput]) -> Result<(), Error> {
 /// ```no_run
 /// # use sqlx::PgPool;
 /// # use uuid::Uuid;
-/// # use postgres_db::{link_anime_source_page, PageKey, EntityType, Provider};
+/// # use echora_domain::{EntityType, PageKey, Provider};
+/// # use postgres_db::link_anime_source_page;
 /// # async fn example(pool: &PgPool, anime_id: Uuid) -> Result<(), postgres_db::Error> {
 /// // One other work already lists MAL page 21 as its sequel.
 /// let key = PageKey::new(Provider::Mal, EntityType::Anime, "21")?;

@@ -5,9 +5,10 @@
 //! after the character still reaches it. `mangaography` URLs become source material
 //! identifiers in the same way, which the database joins to `source_material_xref`.
 
+use echora_domain::EntityType as DbEntityType;
 use postgres_db::{
     CHARACTER_HASH_FORMAT, CharacterAppearanceInput, CharacterMangaographyInput,
-    EntityType as DbEntityType, SaveCharacterInput, SourceMaterialXrefInput,
+    SaveCharacterInput, SourceMaterialXrefInput,
 };
 use prost::Message as _;
 use sha2::{Digest as _, Sha256};
@@ -249,7 +250,8 @@ mod tests {
 
     use std::collections::BTreeMap;
 
-    use postgres_db::{PageKey, PageSource, Provider};
+    use echora_domain::{PageKey, Provider};
+    use postgres_db::PageSource;
     use url::Url;
 
     use super::*;

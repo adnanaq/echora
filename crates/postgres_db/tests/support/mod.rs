@@ -13,10 +13,11 @@ use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
 use std::collections::BTreeMap;
 
+use echora_domain::{EntityType, PageKey, Provider};
 use postgres_db::{
     ANIME_HASH_FORMAT, AnimeDetailsInput, AnimeRelationsAndGraphInput, AnimeScheduleAndStatsInput,
-    EPISODE_HASH_FORMAT, EntityType, EpisodeReferenceInput, PageKey, PageSource, Provider,
-    SaveAnimeInput, SaveCharacterInput, SaveEpisodeInput,
+    EPISODE_HASH_FORMAT, EpisodeReferenceInput, PageSource, SaveAnimeInput, SaveCharacterInput,
+    SaveEpisodeInput,
 };
 use sqlx::PgPool;
 use url::Url;

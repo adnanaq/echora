@@ -2,10 +2,11 @@
 
 mod support;
 
+use echora_domain::{EntityType, PageKey, Provider};
 use postgres_db::{
-    EntityType, EpisodeCharacterInput, EpisodeReferenceInput, EpisodeStreamingInput,
-    EpisodeTitleInput, PageKey, PageSource, Provider, VisibleEpisodeCharacter,
-    list_visible_episodes, read_visible_episode, save_anime, save_character, save_episode,
+    EpisodeCharacterInput, EpisodeReferenceInput, EpisodeStreamingInput, EpisodeTitleInput,
+    PageSource, VisibleEpisodeCharacter, list_visible_episodes, read_visible_episode, save_anime,
+    save_character, save_episode,
 };
 use sqlx::PgPool;
 use url::Url;

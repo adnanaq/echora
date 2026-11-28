@@ -7,10 +7,10 @@
 
 mod support;
 
+use echora_domain::{EntityType, PageKey, Provider};
 use postgres_db::{
     AnimeCompanyInput, AnimeRelationInput, AnimeRelationsAndGraphInput, AnimeSourceMaterialInput,
-    CompanyXrefInput, EntityType, PageKey, PageSource, Provider, SourceMaterialXrefInput,
-    link_anime_source_page, save_anime,
+    CompanyXrefInput, PageSource, SourceMaterialXrefInput, link_anime_source_page, save_anime,
 };
 use sqlx::PgPool;
 use url::Url;

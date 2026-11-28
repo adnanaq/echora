@@ -13,6 +13,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use chrono::{DateTime, Utc};
+use echora_domain::{EntityType, PageKey, Provider};
 use sqlx::{PgPool, Postgres, Transaction};
 use tracing::Level;
 use uuid::Uuid;
@@ -26,7 +27,7 @@ use crate::provider_page::{
     NamedPageDetails, collect_named_page_details, record_page_sources,
     record_referenced_page_sources,
 };
-use crate::{EntityType, Error, PageKey, PageResponse, PageSource, Provider};
+use crate::{Error, PageResponse, PageSource};
 
 /// Current canonical hash format version stored in `character.hash_format`.
 pub const CHARACTER_HASH_FORMAT: i16 = 1;
@@ -375,9 +376,10 @@ async fn record_character_save_pages(
 /// # use sqlx::PgPool;
 /// # use url::Url;
 /// # use uuid::Uuid;
+/// # use echora_domain::{EntityType, PageKey, Provider};
 /// # use postgres_db::{
-/// #     CHARACTER_HASH_FORMAT, CharacterAppearanceInput, EntityType, PageKey, PageSource,
-/// #     Provider, SaveCharacterInput, SaveCharacterOutcome, save_character,
+/// #     CHARACTER_HASH_FORMAT, CharacterAppearanceInput, PageSource, SaveCharacterInput,
+/// #     SaveCharacterOutcome, save_character,
 /// # };
 /// # async fn example(pool: &PgPool, character_id: Uuid) -> Result<(), Box<dyn std::error::Error>> {
 /// let input = SaveCharacterInput {

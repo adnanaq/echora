@@ -7,6 +7,7 @@ use std::pin::Pin;
 use std::task::Poll;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use echora_domain::PageKey;
 use futures::FutureExt as _;
 use temporalio_common::{Priority, RetryPolicy};
 use temporalio_macros::{workflow, workflow_methods};
@@ -20,14 +21,14 @@ use temporalio_workflow::{
 };
 use tracing::{Level, event};
 
-use crate::UPDATE_SERVICE_TASK_QUEUE;
 use crate::activities::{ProviderActivities, UpdateServiceActivities};
 use crate::refresh_anime_types::{
     EntityPageSummary, FetchRequestedSignal, ListEntityPagesOutput, MAX_PAGE_RETRY_BACKOFF_HOURS,
     MergeAnimeOutput, RecordRefreshInput, RefreshAnimeInput, RefreshAnimeOutcome, RefreshOutcome,
-    RefreshPageInput, RefreshPageKey, RefreshPageOutput, RefreshSettings, RefreshTrigger,
-    SECONDS_PER_DAY, StartEntityWorkflowsInput,
+    RefreshPageInput, RefreshPageOutput, RefreshSettings, RefreshTrigger, SECONDS_PER_DAY,
+    StartEntityWorkflowsInput,
 };
+use crate::{UPDATE_SERVICE_TASK_QUEUE, WorkerQueueSpec, has_page_fetcher};
 
 /// Seconds in one hour, used to convert backoff hours into seconds.
 const SECONDS_PER_HOUR: i64 = 3_600;
@@ -185,14 +186,11 @@ pub fn compute_page_backoff_seconds(fetch_failures: i32) -> i64 {
 /// # Examples
 ///
 /// ```
-/// use temporal_workflows::{EntityType, EntityPageSummary, Provider, RefreshPageKey, is_page_due};
+/// use echora_domain::{EntityType, PageKey, Provider};
+/// use temporal_workflows::{EntityPageSummary, is_page_due};
 ///
 /// let page = EntityPageSummary {
-///     page_key: RefreshPageKey {
-///         provider: Provider::Mal,
-///         entity_type: EntityType::Anime,
-///         address: "1".to_owned(),
-///     },
+///     page_key: PageKey::new(Provider::Mal, EntityType::Anime, "1").expect("valid page key"),
 ///     is_partial_source: false,
 ///     fetched_at_epoch_seconds: None,
 ///     is_dead: false,
@@ -237,17 +235,11 @@ pub fn is_page_due(
 /// use std::num::NonZeroU32;
 /// use std::time::Duration;
 ///
-/// use temporal_workflows::{
-///     EntityType, EntityPageSummary, FetchRequestedSignal, Provider, RefreshPageKey,
-///     matches_fetch_request,
-/// };
+/// use echora_domain::{EntityType, PageKey, Provider};
+/// use temporal_workflows::{EntityPageSummary, FetchRequestedSignal, matches_fetch_request};
 ///
 /// let page = EntityPageSummary {
-///     page_key: RefreshPageKey {
-///         provider: Provider::Kitsu,
-///         entity_type: EntityType::Anime,
-///         address: "1".to_owned(),
-///     },
+///     page_key: PageKey::new(Provider::Kitsu, EntityType::Anime, "1").expect("valid page key"),
 ///     is_partial_source: false,
 ///     fetched_at_epoch_seconds: Some(1_700_000_000),
 ///     is_dead: false,
@@ -270,7 +262,7 @@ pub fn matches_fetch_request(
     if page.is_partial_source || page.is_dead {
         return false;
     }
-    if !request.providers.is_empty() && !request.providers.contains(&page.page_key.provider) {
+    if !request.providers.is_empty() && !request.providers.contains(&page.page_key.provider()) {
         return false;
     }
     if request.max_age.is_zero() {
@@ -285,27 +277,27 @@ pub fn matches_fetch_request(
 
 /// Selects the deduplicated list of [`RefreshPageInput`] tasks to run.
 ///
+/// Pages of a provider outside [`crate::PAGE_FETCH_PROVIDERS`] are never selected, since no
+/// worker polls a task queue for their fetches.
+///
 /// # Examples
 ///
 /// ```
-/// use temporal_workflows::{
-///     EntityType, EntityPageSummary, Provider, RefreshPageKey, select_pages_to_refresh,
-/// };
+/// use echora_domain::{EntityType, PageKey, Provider};
+/// use temporal_workflows::{EntityPageSummary, select_pages_to_refresh};
 ///
-/// let page = EntityPageSummary {
-///     page_key: RefreshPageKey {
-///         provider: Provider::Mal,
-///         entity_type: EntityType::Anime,
-///         address: "1".to_owned(),
-///     },
+/// let build_page = |provider, address| EntityPageSummary {
+///     page_key: PageKey::new(provider, EntityType::Anime, address).expect("valid page key"),
 ///     is_partial_source: false,
 ///     fetched_at_epoch_seconds: None,
 ///     is_dead: false,
 ///     fetch_failed_at_epoch_seconds: None,
 ///     fetch_failures: 0,
 /// };
-/// let selected = select_pages_to_refresh(&[page], 1_700_000_000, 7, &[], true);
+/// let pages = [build_page(Provider::Mal, "1"), build_page(Provider::Ann, "2")];
+/// let selected = select_pages_to_refresh(&pages, 1_700_000_000, 7, &[], true);
 /// assert_eq!(selected.len(), 1);
+/// assert_eq!(selected[0].page_key.provider(), Provider::Mal);
 /// ```
 #[must_use]
 pub fn select_pages_to_refresh(
@@ -315,12 +307,15 @@ pub fn select_pages_to_refresh(
     requests: &[FetchRequestedSignal],
     include_due_pages: bool,
 ) -> Vec<RefreshPageInput> {
-    let mut selected: BTreeMap<RefreshPageKey, Duration> = BTreeMap::new();
+    let mut selected: BTreeMap<PageKey, Duration> = BTreeMap::new();
     let default_max_age = Duration::from_secs(
         u64::try_from(refresh_after_days.max(0).saturating_mul(SECONDS_PER_DAY)).unwrap_or(0),
     );
 
-    for page in pages {
+    for page in pages
+        .iter()
+        .filter(|page| has_page_fetcher(page.page_key.provider()))
+    {
         if include_due_pages && is_page_due(page, now_epoch_seconds, refresh_after_days) {
             selected.insert(page.page_key.clone(), default_max_age);
         }
@@ -583,7 +578,7 @@ async fn finish_cycle(
 
 /// Pending `refresh_page` activity paired with its page key for workflow-side failure recording.
 struct PendingPageFetch<F> {
-    page_key: RefreshPageKey,
+    page_key: PageKey,
     future: Pin<Box<F>>,
 }
 
@@ -602,7 +597,7 @@ async fn run_refresh_page_batch(
     let mut page_futures = Vec::with_capacity(pages_to_refresh.len());
     for page_input in pages_to_refresh {
         let page_key = page_input.page_key.clone();
-        let task_queue = page_key.provider.task_queue();
+        let task_queue = WorkerQueueSpec::Provider(page_key.provider()).task_queue();
         let activity_priority_key = ctx.state(|state| state.current_priority);
         let options = ActivityOptions::with_start_to_close_timeout(page_timeout)
             .task_queue(task_queue)
@@ -690,7 +685,7 @@ fn resolve_refresh_page_timeout(settings: RefreshSettings) -> Duration {
 enum BatchEvent {
     Cancelled,
     PageCompleted(
-        RefreshPageKey,
+        PageKey,
         Box<Result<RefreshPageOutput, ActivityExecutionError>>,
     ),
     TriggerMerge,
@@ -747,7 +742,7 @@ fn cancel_batch_handles<F>(
 ///
 /// Uses a manual poll loop instead of `FuturesUnordered` because `FuturesUnordered` allocates
 /// its own wakers, which trips Temporal's `SdkGuardedFuture` nondeterminism detector.
-async fn poll_any_ready<F>(pending: &mut Vec<PendingPageFetch<F>>) -> (RefreshPageKey, F::Output)
+async fn poll_any_ready<F>(pending: &mut Vec<PendingPageFetch<F>>) -> (PageKey, F::Output)
 where
     F: Future,
 {
@@ -767,7 +762,7 @@ where
 async fn handle_page_completion(
     ctx: &WorkflowContext<RefreshAnimeWorkflow>,
     input: &RefreshAnimeInput,
-    page_key: RefreshPageKey,
+    page_key: PageKey,
     page_result: Result<RefreshPageOutput, ActivityExecutionError>,
     progress: &mut RefreshProgress,
 ) -> WorkflowResult<bool> {
@@ -790,8 +785,8 @@ async fn handle_page_completion(
                 name: "update_service.refresh_page.recording_failure",
                 Level::WARN,
                 anime.id = %input.anime_id,
-                provider = %page_key.provider,
-                page.address = %page_key.address,
+                provider = %page_key.provider(),
+                page.address = %page_key.address(),
                 error.message = %activity_err,
                 "recording page fetch failure for {{provider}}:{{page.address}} on {{anime.id}}: {{error.message}}",
             );

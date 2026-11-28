@@ -2,9 +2,10 @@
 
 mod support;
 
+use echora_domain::{EntityType, PageKey, Provider};
 use postgres_db::{
-    EntityType, EpisodeListEntryInput, EpisodeReferenceInput, PageKey, PageSource, Provider,
-    delete_episode, load_anime, save_anime,
+    EpisodeListEntryInput, EpisodeReferenceInput, PageSource, delete_episode, load_anime,
+    save_anime,
 };
 use sqlx::PgPool;
 use uuid::Uuid;

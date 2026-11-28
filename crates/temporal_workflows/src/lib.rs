@@ -5,7 +5,7 @@
 //! - the development namespace, `echora-dev` ([`DEFAULT_TEMPORAL_NAMESPACE`]); production
 //!   runs in `echora`, set through `TEMPORAL_NAMESPACE`,
 //! - the task queues ([`UPDATE_SERVICE_TASK_QUEUE`], [`AGENT_SERVICE_TASK_QUEUE`] and one
-//!   `provider-<slug>` queue per [`Provider`]),
+//!   `provider-<name>` queue per provider in [`PAGE_FETCH_PROVIDERS`]),
 //! - the `RefreshTrigger` search attribute ([`REFRESH_TRIGGER_SEARCH_ATTRIBUTE`]).
 //!
 //! [`build_worker_options`] starts a Temporal `WorkerOptionsBuilder` for one queue with
@@ -26,10 +26,9 @@ mod refresh_anime_types;
 mod refresh_anime_workflow;
 
 use std::fmt;
-use std::str::FromStr;
 use std::time::Duration;
 
-use serde::{Deserialize, Serialize};
+use echora_domain::Provider;
 use temporalio_common::worker::{
     VersioningBehavior, WorkerDeploymentOptions, WorkerDeploymentVersion,
 };
@@ -48,11 +47,11 @@ pub use ports::{
 #[doc(inline)]
 pub use refresh_anime_types::{
     DEFAULT_MERGE_COALESCE_WAIT_SECONDS, DEFAULT_MERGE_FIRST_WAIT_MINUTES, DEFAULT_MERGE_VERSION,
-    DEFAULT_REFRESH_AFTER_DAYS, EntityPageSummary, EntityPages, EntityType, FetchRequestedSignal,
+    DEFAULT_REFRESH_AFTER_DAYS, EntityPageSummary, EntityPages, FetchRequestedSignal,
     ListEntityPagesOutput, MAX_PAGE_RETRY_BACKOFF_HOURS, MergeAnimeOutput, ParseSlugError,
     RecordRefreshInput, RefreshAnimeInput, RefreshAnimeOutcome, RefreshOutcome, RefreshPageInput,
-    RefreshPageKey, RefreshPageOutput, RefreshSettings, RefreshTrigger, SECONDS_PER_DAY,
-    StartEntityWorkflowsInput, build_refresh_anime_workflow_id, build_refresh_episode_workflow_id,
+    RefreshPageOutput, RefreshSettings, RefreshTrigger, SECONDS_PER_DAY, StartEntityWorkflowsInput,
+    build_refresh_anime_workflow_id, build_refresh_episode_workflow_id,
     build_write_synopsis_workflow_id,
 };
 #[doc(inline)]
@@ -76,145 +75,40 @@ pub const AGENT_SERVICE_TASK_QUEUE: &str = "agent-service";
 /// Temporal Keyword search attribute recording the trigger of a refresh.
 pub const REFRESH_TRIGGER_SEARCH_ATTRIBUTE: &str = "RefreshTrigger";
 
-/// Metadata provider that receives a dedicated `provider-<slug>` task queue.
+/// Providers whose pages the enrichment service fetches, sorted by name.
 ///
-/// Each provider has its own queue so its request rate can be limited on the
-/// Temporal server, independent of the other providers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Deserialize, Serialize)]
-#[serde(try_from = "String", into = "&'static str")]
-pub enum Provider {
-    /// `AniDB` (`provider-anidb`).
-    AniDb,
-    /// `AniList` (`provider-anilist`).
-    AniList,
-    /// Anime-Planet (`provider-anime_planet`).
-    AnimePlanet,
-    /// `AnimeSchedule` (`provider-animeschedule`).
-    AnimeSchedule,
-    /// aniSearch (`provider-anisearch`).
-    AniSearch,
-    /// Kitsu (`provider-kitsu`).
-    Kitsu,
-    /// `MyAnimeList` (`provider-mal`).
-    Mal,
-    /// Syoboi Calendar (`provider-syoboi`).
-    Syoboi,
-}
+/// Each one has a `provider-<name>` task queue that an Update Service worker polls. A refresh
+/// skips the pages of every other [`Provider`], since no worker would take their fetches.
+// TODO: add each remaining provider here once the enrichment service fetches its pages,
+// which ECHO-80 (Simkl), ECHO-81 (LiveChart) and ECHO-82 (Anime News Network) cover.
+// AnimeCountdown has no fetcher issue yet. Once every provider has a fetcher, remove this
+// list and `has_page_fetcher`, start a worker for each of `Provider::ALL`, and let
+// `select_pages_to_refresh` accept pages of every provider.
+pub const PAGE_FETCH_PROVIDERS: [Provider; 8] = [
+    Provider::AniDb,
+    Provider::AniList,
+    Provider::AnimePlanet,
+    Provider::AnimeSchedule,
+    Provider::AniSearch,
+    Provider::Kitsu,
+    Provider::Mal,
+    Provider::Syoboi,
+];
 
-impl Provider {
-    /// Single source of truth pairing each provider with its wire slug and task queue name.
-    const METADATA: [(Self, &'static str, &'static str); 8] = [
-        (Self::AniDb, "anidb", "provider-anidb"),
-        (Self::AniList, "anilist", "provider-anilist"),
-        (Self::AnimePlanet, "anime_planet", "provider-anime_planet"),
-        (
-            Self::AnimeSchedule,
-            "animeschedule",
-            "provider-animeschedule",
-        ),
-        (Self::AniSearch, "anisearch", "provider-anisearch"),
-        (Self::Kitsu, "kitsu", "provider-kitsu"),
-        (Self::Mal, "mal", "provider-mal"),
-        (Self::Syoboi, "syoboi", "provider-syoboi"),
-    ];
-
-    /// Every supported metadata provider, each listed once.
-    pub const ALL: [Self; 8] = [
-        Self::AniDb,
-        Self::AniList,
-        Self::AnimePlanet,
-        Self::AnimeSchedule,
-        Self::AniSearch,
-        Self::Kitsu,
-        Self::Mal,
-        Self::Syoboi,
-    ];
-
-    const fn index(self) -> usize {
-        match self {
-            Self::AniDb => 0,
-            Self::AniList => 1,
-            Self::AnimePlanet => 2,
-            Self::AnimeSchedule => 3,
-            Self::AniSearch => 4,
-            Self::Kitsu => 5,
-            Self::Mal => 6,
-            Self::Syoboi => 7,
-        }
-    }
-
-    /// Returns the provider slug used in queue names and stored page keys.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use temporal_workflows::Provider;
-    ///
-    /// assert_eq!(Provider::AnimePlanet.slug(), "anime_planet");
-    /// ```
-    #[must_use]
-    pub const fn slug(self) -> &'static str {
-        Self::METADATA[self.index()].1
-    }
-
-    /// Returns the `provider-<slug>` task queue name for this provider.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use temporal_workflows::Provider;
-    ///
-    /// assert_eq!(Provider::AniDb.task_queue(), "provider-anidb");
-    /// ```
-    #[must_use]
-    pub const fn task_queue(self) -> &'static str {
-        Self::METADATA[self.index()].2
-    }
-
-    /// Parses a provider slug, returning `None` for unknown values.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use temporal_workflows::Provider;
-    ///
-    /// assert_eq!(Provider::from_slug("mal"), Some(Provider::Mal));
-    /// assert_eq!(Provider::from_slug("unknown"), None);
-    /// ```
-    #[must_use]
-    pub fn from_slug(slug: &str) -> Option<Self> {
-        Self::METADATA
-            .into_iter()
-            .find_map(|(provider, known_slug, _)| (known_slug == slug).then_some(provider))
-    }
-}
-
-impl From<Provider> for &'static str {
-    fn from(value: Provider) -> Self {
-        value.slug()
-    }
-}
-
-impl TryFrom<String> for Provider {
-    type Error = ParseSlugError;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        value.parse()
-    }
-}
-
-impl fmt::Display for Provider {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.slug())
-    }
-}
-
-impl FromStr for Provider {
-    type Err = ParseSlugError;
-
-    fn from_str(input: &str) -> Result<Self, Self::Err> {
-        Self::from_slug(input).ok_or_else(|| ParseSlugError::new("provider", input))
-    }
+/// Returns whether the enrichment service fetches pages of `provider`.
+///
+/// # Examples
+///
+/// ```
+/// use echora_domain::Provider;
+/// use temporal_workflows::has_page_fetcher;
+///
+/// assert!(has_page_fetcher(Provider::Mal));
+/// assert!(!has_page_fetcher(Provider::Ann));
+/// ```
+#[must_use]
+pub fn has_page_fetcher(provider: Provider) -> bool {
+    PAGE_FETCH_PROVIDERS.contains(&provider)
 }
 
 /// Task queue a worker polls, which decides what the worker registers.
@@ -234,7 +128,8 @@ impl WorkerQueueSpec {
     /// # Examples
     ///
     /// ```
-    /// use temporal_workflows::{Provider, WorkerQueueSpec};
+    /// use echora_domain::Provider;
+    /// use temporal_workflows::WorkerQueueSpec;
     ///
     /// assert_eq!(WorkerQueueSpec::UpdateService.task_queue(), "update-service");
     /// assert_eq!(
@@ -246,7 +141,20 @@ impl WorkerQueueSpec {
     pub const fn task_queue(self) -> &'static str {
         match self {
             Self::UpdateService => UPDATE_SERVICE_TASK_QUEUE,
-            Self::Provider(provider) => provider.task_queue(),
+            Self::Provider(provider) => match provider {
+                Provider::Mal => "provider-mal",
+                Provider::AniList => "provider-anilist",
+                Provider::AniDb => "provider-anidb",
+                Provider::AniSearch => "provider-anisearch",
+                Provider::Ann => "provider-ann",
+                Provider::LiveChart => "provider-livechart",
+                Provider::Simkl => "provider-simkl",
+                Provider::AnimeCountdown => "provider-animecountdown",
+                Provider::Syoboi => "provider-syoboi",
+                Provider::Kitsu => "provider-kitsu",
+                Provider::AnimePlanet => "provider-anime_planet",
+                Provider::AnimeSchedule => "provider-animeschedule",
+            },
             Self::AgentService => AGENT_SERVICE_TASK_QUEUE,
         }
     }

@@ -61,8 +61,8 @@ pub use episode_reads::{
 pub use error::Error;
 #[doc(inline)]
 pub use provider_page::{
-    Address, EntityType, FetchOutcome, PageKey, PageObservation, PageResponse, PageSource,
-    Provider, compute_responses_hash, encode_page_key_proto, record_page_observation,
+    FetchOutcome, PageObservation, PageResponse, PageSource, compute_responses_hash,
+    encode_page_key_proto, record_page_observation,
 };
 #[doc(inline)]
 pub use scheduling::{

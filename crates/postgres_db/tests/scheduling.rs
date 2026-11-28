@@ -8,11 +8,12 @@
 mod support;
 
 use chrono::{Duration, Utc};
+use echora_domain::{EntityType, PageKey, Provider};
 use postgres_db::{
-    DueEntitiesQuery, EntityType, MAX_OLDER_AFTER_YEARS, MAX_WINDOW_DAYS, PageKey, Provider,
-    RefreshOutcome, list_due_anime, list_due_characters, list_due_episodes, list_due_pages,
-    list_entity_pages, list_entity_versions, list_requested_merges, list_score_anime,
-    list_upcoming_episodes, record_refresh, save_anime,
+    DueEntitiesQuery, MAX_OLDER_AFTER_YEARS, MAX_WINDOW_DAYS, RefreshOutcome, list_due_anime,
+    list_due_characters, list_due_episodes, list_due_pages, list_entity_pages,
+    list_entity_versions, list_requested_merges, list_score_anime, list_upcoming_episodes,
+    record_refresh, save_anime,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -306,10 +307,12 @@ async fn list_entity_pages_and_record_refresh_cover_all_entities_and_outcomes(po
     .await
     .expect("record character pages failed");
     assert!(
-        "invalid"
-            .parse::<EntityType>()
-            .expect_err("unknown entity type")
-            .is_invalid_argument()
+        postgres_db::Error::from(
+            "invalid"
+                .parse::<EntityType>()
+                .expect_err("unknown entity type")
+        )
+        .is_invalid_argument()
     );
 
     // Negative duration -> InvalidArgument; missing entity -> NotFound

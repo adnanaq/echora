@@ -14,11 +14,12 @@
 //! hold only merged, undeleted rows.
 
 use chrono::{DateTime, Duration, Utc};
+use echora_domain::{EntityType, PageKey, Provider};
 use sqlx::PgPool;
 use sqlx::postgres::types::PgInterval;
 use uuid::Uuid;
 
-use crate::{EntityType, Error, PageKey, Provider, begin_read_snapshot};
+use crate::{Error, begin_read_snapshot};
 
 /// Longest wait, in hours, before a failed page or a failed refresh is tried again.
 ///
@@ -153,7 +154,7 @@ pub struct DuePageRecord {
 /// # use uuid::Uuid;
 /// # async fn example(pool: &sqlx::PgPool, anime_id: Uuid) -> Result<(), postgres_db::Error> {
 /// let entity_pages =
-///     postgres_db::list_entity_pages(pool, postgres_db::EntityType::Anime, anime_id).await?;
+///     postgres_db::list_entity_pages(pool, echora_domain::EntityType::Anime, anime_id).await?;
 /// let due_pages = entity_pages
 ///     .pages
 ///     .iter()
@@ -286,7 +287,7 @@ pub async fn list_entity_pages(
 /// # async fn example(pool: &sqlx::PgPool, anime_id: Uuid) -> Result<(), postgres_db::Error> {
 /// postgres_db::record_refresh(
 ///     pool,
-///     postgres_db::EntityType::Anime,
+///     echora_domain::EntityType::Anime,
 ///     anime_id,
 ///     postgres_db::RefreshOutcome::Succeeded,
 ///     Duration::days(7),
@@ -872,7 +873,7 @@ pub async fn list_score_anime(
 /// ```no_run
 /// # async fn example(pool: &sqlx::PgPool) -> Result<(), postgres_db::Error> {
 /// let anime_ids =
-///     postgres_db::list_requested_merges(pool, postgres_db::EntityType::Anime, 100).await?;
+///     postgres_db::list_requested_merges(pool, echora_domain::EntityType::Anime, 100).await?;
 /// assert!(anime_ids.len() <= 100);
 /// # Ok(())
 /// # }
@@ -924,7 +925,7 @@ pub async fn list_requested_merges(
 /// ```no_run
 /// # async fn example(pool: &sqlx::PgPool) -> Result<(), postgres_db::Error> {
 /// let versions =
-///     postgres_db::list_entity_versions(pool, postgres_db::EntityType::Anime, 100, None).await?;
+///     postgres_db::list_entity_versions(pool, echora_domain::EntityType::Anime, 100, None).await?;
 /// assert!(versions.windows(2).all(|pair| pair[0].entity_id < pair[1].entity_id));
 /// # Ok(())
 /// # }
@@ -977,7 +978,7 @@ pub async fn list_entity_versions(
 ///
 /// ```no_run
 /// # async fn example(pool: &sqlx::PgPool) -> Result<(), postgres_db::Error> {
-/// let due_pages = postgres_db::list_due_pages(pool, postgres_db::Provider::AniDb, 50).await?;
+/// let due_pages = postgres_db::list_due_pages(pool, echora_domain::Provider::AniDb, 50).await?;
 /// assert!(due_pages.len() <= 50);
 /// # Ok(())
 /// # }

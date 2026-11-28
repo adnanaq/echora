@@ -1,9 +1,10 @@
 //! Exhaustive protobuf-to-SQL mapping and canonical hashing for `Anime`.
 
 use chrono::{DateTime, Utc};
+use echora_domain::EntityType as DbEntityType;
 use postgres_db::{
     ANIME_HASH_FORMAT, AnimeDetailsInput, AnimeImageInput, AnimeThemeInput, AnimeTitleInput,
-    EntityType as DbEntityType, SaveAnimeInput,
+    SaveAnimeInput,
 };
 use prost::Message as _;
 use sha2::{Digest as _, Sha256};
@@ -503,7 +504,8 @@ pub(crate) fn map_source_material_type(enum_number: i32) -> Result<&'static str,
 
 #[cfg(test)]
 mod tests {
-    use postgres_db::{PageKey, PageSource, Provider};
+    use echora_domain::{PageKey, Provider};
+    use postgres_db::PageSource;
     use tonic::Code;
     use url::Url;
 

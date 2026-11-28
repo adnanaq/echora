@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime};
 
+use echora_domain::PageKey;
 pub use echora_protos::{enrichment_service_proto, postgres_service_proto, shared_proto};
 use enrichment_service_proto::v1::enrichment_service_client::EnrichmentServiceClient;
 use enrichment_service_proto::v1::{FetchPageRequest, MergeAnimeRequest};
@@ -22,11 +23,10 @@ use prost::Message as _;
 use serde::Serialize;
 use shared_proto::v1::{EntityType as ProtoEntityType, PageKey as ProtoPageKey, StoredPage};
 use temporal_workflows::{
-    CatalogueDataPort, EntityPageSummary, EntityPages, EntityType, MergeAnimeOutput,
-    MergeAttemptOutcome, PortError, Provider, REFRESH_TRIGGER_SEARCH_ATTRIBUTE, RefreshOutcome,
-    RefreshPageKey, RefreshPageOutput, RefreshTrigger, SECONDS_PER_DAY, StartEntityWorkflowsInput,
-    UPDATE_SERVICE_TASK_QUEUE, WorkflowStarterPort, build_priority,
-    build_refresh_episode_workflow_id, build_write_synopsis_workflow_id,
+    CatalogueDataPort, EntityPageSummary, EntityPages, MergeAnimeOutput, MergeAttemptOutcome,
+    PortError, REFRESH_TRIGGER_SEARCH_ATTRIBUTE, RefreshOutcome, RefreshPageOutput, RefreshTrigger,
+    SECONDS_PER_DAY, StartEntityWorkflowsInput, UPDATE_SERVICE_TASK_QUEUE, WorkflowStarterPort,
+    build_priority, build_refresh_episode_workflow_id, build_write_synopsis_workflow_id,
 };
 use temporalio_client::{Client, UntypedWorkflow, WorkflowIdConflictPolicy, WorkflowStartOptions};
 use temporalio_common::Priority;
@@ -215,43 +215,6 @@ impl fmt::Debug for GrpcCatalogueAdapter {
     }
 }
 
-/// Converts a [`RefreshPageKey`] into a proto `PageKey`.
-fn to_proto_page_key(key: &RefreshPageKey) -> ProtoPageKey {
-    let entity_type = match key.entity_type {
-        EntityType::Anime => ProtoEntityType::Anime as i32,
-        EntityType::Character => ProtoEntityType::Character as i32,
-        EntityType::Episode => ProtoEntityType::Episode as i32,
-    };
-    ProtoPageKey {
-        provider: key.provider.slug().to_owned(),
-        entity_type,
-        address: key.address.clone(),
-    }
-}
-
-/// Converts a proto `PageKey` into a strongly typed [`RefreshPageKey`].
-fn from_proto_page_key(key: ProtoPageKey) -> Result<RefreshPageKey, PortError> {
-    let provider = Provider::from_slug(&key.provider).ok_or_else(|| {
-        PortError::non_retryable(format!("unknown provider in PageKey: {:?}", key.provider))
-    })?;
-    let entity_type = match ProtoEntityType::try_from(key.entity_type) {
-        Ok(ProtoEntityType::Anime) => EntityType::Anime,
-        Ok(ProtoEntityType::Character) => EntityType::Character,
-        Ok(ProtoEntityType::Episode) => EntityType::Episode,
-        Ok(ProtoEntityType::Unspecified) | Err(_) => {
-            return Err(PortError::non_retryable(format!(
-                "invalid entity_type in PageKey: {}",
-                key.entity_type
-            )));
-        }
-    };
-    Ok(RefreshPageKey {
-        provider,
-        entity_type,
-        address: key.address,
-    })
-}
-
 impl CatalogueDataPort for GrpcCatalogueAdapter {
     fn list_entity_pages(&self, anime_id: Uuid) -> BoxFuture<'_, Result<EntityPages, PortError>> {
         let mut postgres = self.postgres.clone();
@@ -271,7 +234,7 @@ impl CatalogueDataPort for GrpcCatalogueAdapter {
                     PortError::non_retryable("ListEntityPages response item missing page_key")
                 })?;
                 pages.push(EntityPageSummary {
-                    page_key: from_proto_page_key(raw_key)?,
+                    page_key: PageKey::try_from(raw_key)?,
                     is_partial_source: page.is_partial_source,
                     fetched_at_epoch_seconds: page.fetched_at.map(|ts| ts.seconds),
                     is_dead: page.is_dead,
@@ -289,14 +252,14 @@ impl CatalogueDataPort for GrpcCatalogueAdapter {
 
     fn fetch_and_store_page(
         &self,
-        page_key: RefreshPageKey,
+        page_key: PageKey,
         max_age: Duration,
     ) -> BoxFuture<'_, Result<RefreshPageOutput, PortError>> {
         let mut enrichment = self.enrichment.clone();
         let mut postgres = self.postgres.clone();
         let adapter = self.clone();
         Box::pin(async move {
-            let proto_key = to_proto_page_key(&page_key);
+            let proto_key = ProtoPageKey::from(&page_key);
             let fetched_page = enrichment
                 .fetch_page(FetchPageRequest {
                     page_key: Some(proto_key),
@@ -328,7 +291,7 @@ impl CatalogueDataPort for GrpcCatalogueAdapter {
 
     fn record_page_failure(
         &self,
-        page_key: RefreshPageKey,
+        page_key: PageKey,
         failed_at: SystemTime,
     ) -> BoxFuture<'_, Result<(), PortError>> {
         let mut postgres = self.postgres.clone();
@@ -336,7 +299,7 @@ impl CatalogueDataPort for GrpcCatalogueAdapter {
             postgres
                 .store_page(StorePageRequest {
                     page: Some(StoredPage {
-                        page_key: Some(to_proto_page_key(&page_key)),
+                        page_key: Some(ProtoPageKey::from(&page_key)),
                         fetched_at: Some(prost_types::Timestamp::from(failed_at)),
                         is_not_found: false,
                         is_dead: false,
