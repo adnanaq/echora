@@ -184,6 +184,37 @@ async fn list_entity_pages_and_record_refresh_cover_all_entities_and_outcomes(po
             .is_not_found()
     );
 
+    insert_page(
+        &pool,
+        "anilist",
+        "anime",
+        "not-a-number",
+        None,
+        false,
+        None,
+        0,
+    )
+    .await;
+    sqlx::query(
+        "INSERT INTO anime_partial_source (anime_id, provider, entity_type, address) \
+         VALUES ($1, 'anilist', 'anime', 'not-a-number')",
+    )
+    .bind(anime_id)
+    .execute(&pool)
+    .await
+    .expect("link malformed page");
+    let filtered_pages = list_entity_pages(&pool, EntityType::Anime, anime_id)
+        .await
+        .expect("malformed page key must be skipped rather than failing the work");
+    assert_eq!(filtered_pages.pages.len(), 4);
+    sqlx::query(
+        "DELETE FROM anime_partial_source WHERE anime_id = $1 AND provider = 'anilist' AND address = 'not-a-number'",
+    )
+    .bind(anime_id)
+    .execute(&pool)
+    .await
+    .expect("unlink malformed page");
+
     // RecordRefresh: PagesFailed picks earliest failed non-dead source page (2^2 = 4h after fetch_failed_at)
     record_refresh(
         &pool,

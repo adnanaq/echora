@@ -229,19 +229,32 @@ pub async fn list_entity_pages(
     .fetch_all(&mut *tx)
     .await?;
 
-    let pages = page_rows
-        .into_iter()
-        .map(|page_row| {
-            Ok(EntityPageRecord {
-                page_key: PageKey::new(page_row.provider, page_row.entity_type, page_row.address)?,
-                is_partial_source: page_row.is_partial_source,
-                fetched_at: page_row.fetched_at,
-                is_dead: page_row.is_dead,
-                fetch_failed_at: page_row.fetch_failed_at,
-                fetch_failures: page_row.fetch_failures,
-            })
-        })
-        .collect::<Result<Vec<_>, Error>>()?;
+    let mut pages = Vec::with_capacity(page_rows.len());
+    for page_row in page_rows {
+        let page_key = match PageKey::new(page_row.provider, page_row.entity_type, page_row.address)
+        {
+            Ok(page_key) => page_key,
+            Err(err) => {
+                tracing::event!(
+                    name: "postgres_db.list_entity_pages.invalid_page_key",
+                    tracing::Level::WARN,
+                    entity.id = %entity_id,
+                    provider = %page_row.provider.as_str(),
+                    error.message = %err,
+                    "skipping malformed page key on {{entity.id}} ({{provider}}): {{error.message}}",
+                );
+                continue;
+            }
+        };
+        pages.push(EntityPageRecord {
+            page_key,
+            is_partial_source: page_row.is_partial_source,
+            fetched_at: page_row.fetched_at,
+            is_dead: page_row.is_dead,
+            fetch_failed_at: page_row.fetch_failed_at,
+            fetch_failures: page_row.fetch_failures,
+        });
+    }
 
     Ok(EntityPagesRecord {
         pages,
