@@ -87,7 +87,7 @@ async def _navigate_and_read_optional(
 
 
 class MalFetcher(PageFetcher):
-    """Fetches raw MyAnimeList HTML responses for anime and character pages."""
+    """Fetches raw MyAnimeList HTML responses for anime, character, and episode pages."""
 
     provider: ClassVar[str] = "mal"
     supported_entity_types: ClassVar[frozenset[EntityType]] = frozenset(
@@ -202,19 +202,22 @@ class MalFetcher(PageFetcher):
             ValueError: When ``page_key.address`` is not ``'<anime_id>:<episode_number>'``.
         """
         anime_id, sep, ep_num = page_key.address.partition(":")
-        if not sep or not anime_id.isdigit() or not ep_num.isdigit():
+        if (
+            not sep
+            or not (anime_id.isascii() and anime_id.isdigit())
+            or not (ep_num.isascii() and ep_num.isdigit())
+        ):
             error_message = f"MAL episode address must be '<anime_id>:<episode_number>', got {page_key.address!r}"
             raise ValueError(error_message)
-        url = f"https://myanimelist.net/anime/{anime_id}/episode/{ep_num}"
+        # MAL requires a non-empty slug segment between the anime ID and /episode/<n>;
+        # any placeholder routes to the episode page and exposes the canonical og:url.
+        url = f"https://myanimelist.net/anime/{anime_id}/_/episode/{ep_num}"
         async with browser_session(headless=True, allowed_site=MAL_DOMAIN) as session:
-            result = await _navigate_and_read(
+            html, _ = await _navigate_and_read(
                 session.browser,
                 url,
                 f"h2.fs18, {_NOT_FOUND_SELECTOR}",
-                required=True,
             )
-        assert result is not None  # noqa: S101
-        html, _ = result
         if _NOT_FOUND_MARKER.search(html):
             return FetchedPage(page_key=page_key, responses=(), is_not_found=True)
         return FetchedPage(

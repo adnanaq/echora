@@ -12,6 +12,7 @@ models wherever possible, these functions only:
 Field names are NOT renamed here — that's already handled at the model level.
 """
 
+import re
 from collections.abc import Sequence
 from typing import Any
 
@@ -52,6 +53,7 @@ from enrichment.sources.base.companies import companies_from_roles
 from enrichment.sources.base.external_links import external_link
 from enrichment.sources.base.page_fetcher import (
     extract_canonical_url,
+    extract_og_url,
     find_paginated_responses,
     index_responses_by_name,
     parse_html_response,
@@ -496,6 +498,32 @@ def map_mal_anime_episode_responses(
     ]
 
 
+def _resolve_mal_episode_url_and_number(html: str) -> tuple[str, int]:
+    """Resolve canonical URL and episode number from a MAL episode HTML document.
+
+    Args:
+        html: Decoded HTML markup of a MAL episode detail page.
+
+    Returns:
+        Tuple of ``(resolved_url, episode_number)``.
+
+    Raises:
+        ValueError: When neither the page URL nor header contains an episode number.
+    """
+    resolved_url = extract_canonical_url(html) or ""
+    if not re.search(r"/episode/(\d+)", resolved_url):
+        og_url = extract_og_url(html)
+        if og_url:
+            resolved_url = og_url
+    episode_match = re.search(r"/episode/(\d+)", resolved_url) or re.search(
+        r"<h2[^>]*>.*?#(\d+)\s*-", html, re.DOTALL
+    )
+    if episode_match is None:
+        error_message = "MAL episode HTML yielded no episode number"
+        raise ValueError(error_message)
+    return resolved_url, int(episode_match.group(1))
+
+
 def map_mal_episode_responses(
     responses: Sequence[PageResponse],
 ) -> dict[str, Any]:
@@ -508,10 +536,9 @@ def map_mal_episode_responses(
         Dict of canonical Episode field values.
 
     Raises:
-        ValueError: If the ``main`` response is missing or yields no episode data.
+        ValueError: If the ``main`` response is missing, yields no episode data,
+            or contains no episode number.
     """
-    import re
-
     by_name = index_responses_by_name(responses)
     main_response = by_name.get("main")
     if main_response is None:
@@ -522,17 +549,5 @@ def map_mal_episode_responses(
     if raw is None:
         error_message = "MAL 'main' HTML yielded no episode data"
         raise ValueError(error_message)
-    resolved_url = extract_canonical_url(html) or ""
-    if not re.search(r"/episode/(\d+)", resolved_url):
-        og_match = re.search(
-            r'<meta[^>]+property=["\']og:url["\'][^>]+content=["\']([^"\']+)["\']',
-            html,
-            re.IGNORECASE,
-        )
-        if og_match:
-            resolved_url = og_match.group(1).strip()
-    ep_match = re.search(r"/episode/(\d+)", resolved_url) or re.search(
-        r"<h2[^>]*>.*?#(\d+)\s*-", html, re.DOTALL
-    )
-    episode_number = int(ep_match.group(1)) if ep_match else 1
+    resolved_url, episode_number = _resolve_mal_episode_url_and_number(html)
     return episode_from_mal(build_episode_from_raw(raw, episode_number, resolved_url))

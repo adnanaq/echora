@@ -12,7 +12,7 @@ python_tests(
         "test_merge_episode_integration.py": {
             "dependencies": [
                 "//tests/libs/enrichment/unit/sources/anidb:fixtures",
-                "//tests/libs/enrichment/unit/sources/anisearch:saved_pages",
+                "//tests/libs/enrichment/unit/sources/anisearch:fixtures",
                 "//tests/libs/enrichment/unit/sources/mal:fixtures",
             ],
         },

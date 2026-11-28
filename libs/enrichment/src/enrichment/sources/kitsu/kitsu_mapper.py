@@ -37,6 +37,7 @@ from enrichment.sources.base.page_fetcher import (
     collect_paginated_responses,
     index_responses_by_name,
     parse_json_response,
+    require_json_object,
 )
 from enrichment.sources.kitsu.kitsu_models import (
     KitsuAnime,
@@ -337,7 +338,7 @@ def episode_from_kitsu(
         ),
         sources=[source] if source else [],
     )
-    return result.model_dump(mode="json", exclude_none=True)
+    return result.model_dump(mode="json", exclude_none=True, exclude_unset=True)
 
 
 def _extract_kitsu_productions(
@@ -489,9 +490,11 @@ def map_kitsu_episode_responses(
         raise TypeError(error_message)
     anime_slug = next(
         (
-            (included.get("attributes") or {}).get("slug")
+            require_json_object(
+                included.get("attributes"), "Kitsu included 'attributes'"
+            ).get("slug")
             for included in payload.get("included") or []
-            if included.get("type") == "anime"
+            if isinstance(included, dict) and included.get("type") == "anime"
         ),
         None,
     )
@@ -608,11 +611,13 @@ def map_kitsu_character_page_responses(
         error_message = "Kitsu character 'main' response missing 'data' object"
         raise TypeError(error_message)
 
-    attrs = char_raw.get("attributes") or {}
-    names = attrs.get("names") or {}
+    attrs = require_json_object(
+        char_raw.get("attributes"), "Kitsu character 'attributes'"
+    )
+    names = require_json_object(attrs.get("names"), "Kitsu character 'names'")
     slug = attrs.get("slug") or char_raw.get("id")
     sources = [f"https://kitsu.app/characters/{slug}"] if slug else []
-    image_obj = attrs.get("image") or {}
+    image_obj = require_json_object(attrs.get("image"), "Kitsu character 'image'")
     images = [image_obj["original"]] if image_obj.get("original") else []
     animeography, mangaography = _extract_kitsu_character_ography(responses)
 

@@ -13,9 +13,9 @@ from typing import Any, cast
 
 from enrichment.sources.anime_planet.anime_planet_anime_crawler import ANIME_PLANET_SITE
 from enrichment.sources.base.browser import browser_session
+from enrichment.sources.base.page_fetcher import parse_html_document
 from enrichment.sources.base.page_readiness import wait_for_page
 from http_cache.result_cache import cached_result
-from lxml import etree
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ def _extract_refs_from_html(html: str) -> list[dict[str, str]] | None:
     if not html:
         return None
     try:
-        tree = etree.fromstring(html.encode(), etree.HTMLParser(encoding="utf-8"))
+        tree = parse_html_document(html)
     except Exception:
         logger.exception("Failed to parse character refs HTML")
         return None

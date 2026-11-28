@@ -1,5 +1,3 @@
-"""Unit tests for shared page fetcher abstractions and helpers."""
-
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
@@ -10,10 +8,13 @@ from enrichment.sources.base.page_fetcher import (
     build_html_response,
     collect_paginated_responses,
     extract_canonical_url,
+    extract_og_url,
     index_responses_by_name,
+    parse_html_document,
     parse_html_response,
     parse_json_response,
     read_response_bytes,
+    require_json_object,
     validate_page_key,
 )
 from shared_proto.v1.anime_pb2 import EntityType
@@ -194,3 +195,52 @@ def test_extract_canonical_url_missing_or_prefixed_attribute_returns_none() -> N
         )
         is None
     )
+
+
+def test_parse_json_response_non_object_payload_raises_type_error() -> None:
+    array_response = PageResponse(
+        request_name="main",
+        content_type="application/json",
+        body=b"[1, 2, 3]",
+    )
+    with pytest.raises(TypeError, match="Expected JSON object"):
+        parse_json_response(array_response)
+
+
+def test_require_json_object_validates_none_dict_and_invalid_types() -> None:
+    assert require_json_object(None, "payload") == {}
+    payload = {"id": 21}
+    assert require_json_object(payload, "payload") is payload
+    with pytest.raises(TypeError, match="Expected JSON object for payload"):
+        require_json_object(["bad"], "payload")
+
+
+def test_parse_html_document_preserves_utf8_text_content() -> None:
+    document = parse_html_document(
+        "<html><body><p>モンキー・D・ルフィ</p></body></html>"
+    )
+    assert document.text_content().strip() == "モンキー・D・ルフィ"
+
+
+@pytest.mark.parametrize(
+    ("html", "expected"),
+    [
+        ("", None),
+        ("   ", None),
+        ("<html><head></head></html>", None),
+        ('<meta property="og:url" content="   " />', None),
+        (
+            '<meta property="og:url" content="https://myanimelist.net/anime/21/One_Piece/episode/1" />',
+            "https://myanimelist.net/anime/21/One_Piece/episode/1",
+        ),
+        (
+            "<meta content='https://myanimelist.net/anime/21/One_Piece/episode/2' property='OG:URL' />",
+            "https://myanimelist.net/anime/21/One_Piece/episode/2",
+        ),
+    ],
+)
+def test_extract_og_url_handles_variants_and_missing_values(
+    html: str,
+    expected: str | None,
+) -> None:
+    assert extract_og_url(html) == expected

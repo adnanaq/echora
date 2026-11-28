@@ -796,3 +796,28 @@ def test_map_anisearch_character_responses_omitted_source_url_uses_canonical_lin
     assert canonical["sources"] == [
         "https://www.anisearch.com/character/10,spike-spiegel"
     ]
+
+
+def test_map_anisearch_responses_missing_or_empty_html_error_and_empty_branches() -> (
+    None
+):
+    empty_main = [PageResponse(request_name="main", content_type="text/html", body=b"")]
+    with pytest.raises(ValueError, match="yielded no anime data"):
+        map_anisearch_anime_responses(empty_main)
+    assert map_anisearch_anime_episode_responses([]) == []
+    assert (
+        map_anisearch_anime_episode_responses(
+            [
+                PageResponse(
+                    request_name="episodes",
+                    content_type="text/html",
+                    body=b"",
+                )
+            ]
+        )
+        == []
+    )
+    with pytest.raises(ValueError, match="missing required 'main'"):
+        map_anisearch_character_responses([])
+    with pytest.raises(ValueError, match="yielded no character data"):
+        map_anisearch_character_responses(empty_main)

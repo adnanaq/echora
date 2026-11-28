@@ -230,7 +230,7 @@ def character_from_animeplanet(char: AnimePlanetCharacter) -> dict[str, Any]:
     """
     result: dict[str, Any] = {
         "name": char.name,
-        "sources": [char.url],
+        "sources": [char.url] if char.url else [],
     }
 
     if char.loved_count is not None:

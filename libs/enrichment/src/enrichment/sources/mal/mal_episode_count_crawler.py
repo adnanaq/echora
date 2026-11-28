@@ -13,10 +13,10 @@ import re
 from typing import Any, cast
 
 from enrichment.sources.base.browser import browser_session
+from enrichment.sources.base.page_fetcher import parse_html_document
 from enrichment.sources.base.page_readiness import wait_for_page
 from enrichment.sources.mal.mal_base import MAL_DOMAIN
 from http_cache.result_cache import cached_result
-from lxml import etree
 
 logger = logging.getLogger(__name__)
 
@@ -36,17 +36,18 @@ def _extract_episode_count(html: str) -> str | None:
         Raw counter string e.g. ``"(1,155/Unknown)"`` or ``"(12/12)"``,
         or None if the span is not found.
     """
+
     if not html:
         return None
     try:
-        tree = etree.fromstring(html.encode(), etree.HTMLParser(encoding="utf-8"))
+        tree = parse_html_document(html)
     except Exception:
         logger.exception("Failed to parse episode count HTML")
         return None
     els = cast(list[Any], tree.xpath(_EPISODE_COUNT_XPATH))
     if not els:
         return None
-    return "".join(els[0].itertext()).strip()
+    return str(els[0].text_content()).strip()
 
 
 async def _fetch_episode_count_html(url: str) -> str | None:

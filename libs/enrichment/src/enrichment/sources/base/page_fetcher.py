@@ -6,8 +6,9 @@ from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 
+from lxml import html as lxml_html
 from shared_proto.v1.anime_pb2 import EntityType
 from shared_proto.v1.merge_pb2 import PageKey, PageResponse, StoredPage
 
@@ -161,13 +162,82 @@ def parse_json_response(response: PageResponse) -> dict[str, Any]:
         Decoded JSON object as a dictionary.
 
     Raises:
-        ValueError: When the decoded JSON payload is not a dictionary.
+        TypeError: When the decoded JSON payload is not a dictionary.
     """
     decoded = json.loads(response.body.decode("utf-8"))
     if not isinstance(decoded, dict):
         error_message = f"Expected JSON object in {response.request_name!r}, got {type(decoded).__name__}"
         raise TypeError(error_message)
     return decoded
+
+
+def require_json_object(value: Any, context: str) -> dict[str, Any]:
+    """Validate that an optional JSON field is either null or a JSON object.
+
+    Args:
+        value: Raw decoded JSON value to check.
+        context: Human-readable field label used in error messages.
+
+    Returns:
+        The dictionary itself, or an empty dictionary when ``value`` is ``None``.
+
+    Raises:
+        TypeError: When ``value`` is neither ``None`` nor a ``dict``.
+    """
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        error_message = (
+            f"Expected JSON object for {context}, got {type(value).__name__}"
+        )
+        raise TypeError(error_message)
+    return value
+
+
+def parse_html_document(html: str) -> lxml_html.HtmlElement:
+    """Parse an HTML string into an ``lxml.html.HtmlElement`` using UTF-8 encoding.
+
+    Args:
+        html: Rendered HTML document string.
+
+    Returns:
+        Parsed ``lxml.html.HtmlElement`` root node supporting ``text_content()``.
+    """
+    return cast(
+        lxml_html.HtmlElement,
+        lxml_html.fromstring(
+            html.encode("utf-8"),
+            parser=lxml_html.HTMLParser(encoding="utf-8"),
+        ),
+    )
+
+
+def extract_og_url(html: str) -> str | None:
+    """Extract the Open Graph ``og:url`` meta content from an HTML document.
+
+    Uses an HTML parser instead of regex so attribute ordering and quoting style
+    do not affect extraction.
+
+    Args:
+        html: Rendered HTML document string.
+
+    Returns:
+        Stripped ``og:url`` string, or ``None`` when absent or blank.
+    """
+    if not html or not html.strip():
+        return None
+    tree = parse_html_document(html)
+    matches = cast(
+        list[str],
+        tree.xpath(
+            "//meta[translate(@property, 'OG:URL', 'og:url')='og:url']/@content"
+        ),
+    )
+    for match in matches:
+        cleaned = str(match).strip()
+        if cleaned:
+            return cleaned
+    return None
 
 
 def parse_html_response(response: PageResponse) -> str:

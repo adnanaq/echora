@@ -231,6 +231,8 @@ def merge_provider_records(
     records: dict[str, dict[str, Any]],
     offline_data: dict[str, Any] | None = None,
     config: EnrichmentConfig | None = None,
+    *,
+    anime_id: str | None = None,
 ) -> dict[str, Any]:
     """Merge per-provider anime records already in memory into one record.
 
@@ -241,6 +243,8 @@ def merge_provider_records(
             providers' to report.
         config: Supplies the weighted score baseline. Defaults to the
             values in code.
+        anime_id: Optional authoritative anime ID to assign directly instead of
+            deriving a URL-based ID from merged sources.
 
     Returns:
         A canonical ``Anime``-shaped dict, relations included.
@@ -340,7 +344,9 @@ def merge_provider_records(
             merged["score"] = score
 
     merged.update(merge_relationships(records))
-    merged["id"] = merged_anime_id(merged["sources"])
+    merged["id"] = (
+        anime_id if anime_id is not None else merged_anime_id(merged["sources"])
+    )
     return merged
 
 

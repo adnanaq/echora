@@ -1,7 +1,7 @@
 """Kitsu source unit tests."""
 
 resources(
-    name="saved_pages",
+    name="fixtures",
     sources=["test_*/**"],
 )
 
@@ -13,7 +13,7 @@ python_test_utils(
 python_tests(
     dependencies=[
         ":conftest",
-        ":saved_pages",
+        ":fixtures",
         "//:reqs0#pytest-regressions",
         "//tests/libs/enrichment/unit:conftest",
         "//libs/enrichment/src/enrichment",

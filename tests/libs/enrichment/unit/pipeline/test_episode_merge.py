@@ -1,9 +1,8 @@
-"""Unit tests for MergeEpisode stored-page and list-entry merging (ECHO-109)."""
-
 from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 from enrichment.pipeline.episode_merge import merge_episode_pages
@@ -43,7 +42,6 @@ def _pack_bool(value: bool) -> AnyProto:
 
 
 def test_merge_episode_from_list_entries_without_pages() -> None:
-    """An episode with list_entries and no stored page still merges cleanly."""
     req = MergeEpisodeRequest(
         episode_id="0195b42a-0000-7000-8000-000000000101",
         anime_id="0195b42a-0000-7000-8000-000000000001",
@@ -82,7 +80,6 @@ def test_merge_episode_from_list_entries_without_pages() -> None:
 
 
 def test_merge_episode_with_mal_and_kitsu_pages_and_corrections() -> None:
-    """Stored MAL HTML + Kitsu JSON pages merge with list_entries and corrections."""
     mal_html = b"""<html><head>
 <meta property="og:url" content="https://myanimelist.net/anime/21/One_Piece/episode/1"/>
 </head><body>
@@ -215,7 +212,6 @@ def test_merge_episode_with_mal_and_kitsu_pages_and_corrections() -> None:
 
 
 def test_merge_episode_score_titles_streaming_and_unknown_provider() -> None:
-    """Cover score, titles map, streaming map, and unknown-provider page handling."""
     from unittest.mock import patch
 
     req = MergeEpisodeRequest(
@@ -310,8 +306,99 @@ def test_merge_episode_mal_page_stores_og_url_with_slug() -> None:
     ]
 
 
+def test_merge_episode_pages_not_found_with_responses_and_dead_anidb_excluded() -> None:
+    mal_html = Path(
+        "tests/libs/enrichment/unit/sources/mal/fixtures/mal_episode_1.html"
+    ).read_bytes()
+    response = merge_episode_pages(
+        MergeEpisodeRequest(
+            episode_id="ep-1-not-found",
+            anime_id="anime-21",
+            episode_number=1,
+            pages=[
+                StoredPage(
+                    page_key=PageKey(
+                        provider="mal",
+                        entity_type=anime_pb2.ENTITY_TYPE_EPISODE,
+                        address="21:1",
+                    ),
+                    is_not_found=True,
+                    responses=[
+                        PageResponse(
+                            request_name="main",
+                            content_type="text/html",
+                            body=mal_html,
+                        )
+                    ],
+                ),
+                StoredPage(
+                    page_key=PageKey(
+                        provider="anidb",
+                        entity_type=anime_pb2.ENTITY_TYPE_EPISODE,
+                        address="999",
+                    ),
+                    is_dead=True,
+                ),
+            ],
+        )
+    )
+    assert response.episode.title
+    assert "https://anidb.net/episode/999" not in response.episode.sources
+    assert [source.page_key.provider for source in response.page_sources] == ["mal"]
+
+
+def test_merge_episode_pages_real_mal_episode_populates_sorted_characters_and_staff() -> (
+    None
+):
+    mal_html = Path(
+        "tests/libs/enrichment/unit/sources/mal/fixtures/mal_episode_1.html"
+    ).read_bytes()
+    response = merge_episode_pages(
+        MergeEpisodeRequest(
+            episode_id="ep-1-cast",
+            anime_id="anime-21",
+            episode_number=1,
+            pages=[
+                StoredPage(
+                    page_key=PageKey(
+                        provider="mal",
+                        entity_type=anime_pb2.ENTITY_TYPE_EPISODE,
+                        address="21:1",
+                    ),
+                    responses=[
+                        PageResponse(
+                            request_name="main",
+                            content_type="text/html",
+                            body=mal_html,
+                        )
+                    ],
+                )
+            ],
+        )
+    )
+    episode = response.episode
+    assert len(episode.characters) == 10
+    assert len(episode.staff) == 13
+    assert [
+        (character.name, character.role, tuple(character.sources))
+        for character in episode.characters
+    ] == sorted(
+        (character.name, character.role, tuple(character.sources))
+        for character in episode.characters
+    )
+    assert [
+        (member.name, member.role, tuple(member.sources)) for member in episode.staff
+    ] == sorted(
+        (member.name, member.role, tuple(member.sources)) for member in episode.staff
+    )
+    luffy = next(
+        character for character in episode.characters if "Luffy" in character.name
+    )
+    assert luffy.role == anime_pb2.CHARACTER_ROLE_MAIN
+    assert len(luffy.voice_actors) >= 1
+
+
 def test_mal_and_kitsu_episode_response_mapper_errors() -> None:
-    """Episode response mappers raise explicit errors for missing/invalid payloads."""
     from enrichment.sources.kitsu.kitsu_mapper import map_kitsu_episode_responses
     from enrichment.sources.mal.mal_mapper import map_mal_episode_responses
 
@@ -344,10 +431,7 @@ def test_mal_and_kitsu_episode_response_mapper_errors() -> None:
         )
 
 
-def test_map_mal_episode_responses_header_and_default_episode_number_fallbacks() -> (
-    None
-):
-    """map_mal_episode_responses falls back to <h2>#N -</h2> then 1 when URL lacks /episode/."""
+def test_map_mal_episode_responses_header_fallback_and_missing_number_error() -> None:
     from enrichment.sources.mal.mal_mapper import map_mal_episode_responses
 
     header_only_html = b"""<html><body>
@@ -367,17 +451,121 @@ def test_map_mal_episode_responses_header_and_default_episode_number_fallbacks()
     )
     assert mapped_header["episode_number"] == 42
 
-    special_html = b"""<html><body>
-<h2 class="fs18">#Special</h2>
-<div class="pt8 pb8">Sub</div>
+    swapped_og_html = b"""<html><head>
+<meta content="https://myanimelist.net/anime/21/One_Piece/episode/9" property="og:url" />
+</head><body>
+<h2 class="fs18"><span class="fw-n">#9 - </span>Swapped Meta</h2>
 </body></html>"""
-    mapped_default = map_mal_episode_responses(
+    mapped_swapped = map_mal_episode_responses(
         [
             PageResponse(
                 request_name="main",
                 content_type="text/html",
-                body=special_html,
+                body=swapped_og_html,
             )
         ]
     )
-    assert mapped_default["episode_number"] == 1
+    assert mapped_swapped["episode_number"] == 9
+    assert mapped_swapped["sources"] == [
+        "https://myanimelist.net/anime/21/One_Piece/episode/9"
+    ]
+
+    special_html = b"""<html><body>
+<h2 class="fs18">#Special</h2>
+<div class="pt8 pb8">Sub</div>
+</body></html>"""
+    with pytest.raises(ValueError, match="yielded no episode number"):
+        map_mal_episode_responses(
+            [
+                PageResponse(
+                    request_name="main",
+                    content_type="text/html",
+                    body=special_html,
+                )
+            ]
+        )
+
+
+def test_merge_episode_pages_kitsu_page_preserves_list_entry_filler_and_recap_flags() -> (
+    None
+):
+    kitsu_body = json.dumps(
+        {
+            "data": {
+                "id": "103482",
+                "type": "episodes",
+                "attributes": {
+                    "number": 50,
+                    "canonicalTitle": "Usopp vs. Daddy",
+                    "synopsis": "Filler episode.",
+                    "length": 24,
+                },
+            }
+        }
+    ).encode("utf-8")
+    response = merge_episode_pages(
+        MergeEpisodeRequest(
+            episode_id="ep-50-kitsu",
+            anime_id="anime-21",
+            episode_number=50,
+            pages=[
+                StoredPage(
+                    page_key=PageKey(
+                        provider="kitsu",
+                        entity_type=anime_pb2.ENTITY_TYPE_EPISODE,
+                        address="103482",
+                    ),
+                    responses=[
+                        PageResponse(
+                            request_name="main",
+                            content_type="application/json",
+                            body=kitsu_body,
+                        )
+                    ],
+                )
+            ],
+            list_entries=[
+                EpisodeListEntry(
+                    provider="kitsu",
+                    title="Usopp vs. Daddy",
+                    is_filler=True,
+                    is_recap=True,
+                )
+            ],
+        )
+    )
+    assert response.episode.is_filler is True
+    assert response.episode.is_recap is True
+
+
+def test_merge_episode_pages_repeated_page_provider_raises_value_error() -> None:
+    mal_page = StoredPage(
+        page_key=PageKey(
+            provider="mal",
+            entity_type=anime_pb2.ENTITY_TYPE_EPISODE,
+            address="21:1",
+        ),
+        is_dead=True,
+    )
+    request = MergeEpisodeRequest(
+        episode_id="0195b42a-0000-7000-8000-000000000101",
+        anime_id="0195b42a-0000-7000-8000-000000000001",
+        episode_number=1,
+        pages=[mal_page, mal_page],
+    )
+    with pytest.raises(ValueError, match=r"^pages .* mal$"):
+        merge_episode_pages(request)
+
+
+def test_merge_episode_pages_repeated_list_entry_provider_raises_value_error() -> None:
+    request = MergeEpisodeRequest(
+        episode_id="0195b42a-0000-7000-8000-000000000101",
+        anime_id="0195b42a-0000-7000-8000-000000000001",
+        episode_number=1,
+        list_entries=[
+            EpisodeListEntry(provider="kitsu", title="First"),
+            EpisodeListEntry(provider="kitsu", title="Second"),
+        ],
+    )
+    with pytest.raises(ValueError, match=r"^list_entries .* kitsu$"):
+        merge_episode_pages(request)

@@ -7,7 +7,10 @@ from typing import Any, NamedTuple
 
 from common.utils.id_generation import generate_entity_id
 from enrichment.pipeline.anime_proto_mapper import to_proto_timestamp
-from enrichment.pipeline.page_sources import build_stored_page_key
+from enrichment.pipeline.page_sources import (
+    build_stored_page_key,
+    is_mappable_stored_page,
+)
 from enrichment.pipeline.relationship_merger import PROVIDER_PRIORITY
 from enrichment.sources.anidb.anidb_mapper import map_anidb_anime_episode_responses
 from enrichment.sources.anisearch.anisearch_mapper import (
@@ -160,29 +163,49 @@ def _pick_episode_title(
     return known_match.title if known_match is not None else ""
 
 
-def _match_known_episode(
-    page_keys: Sequence[PageKey],
-    episode_number: int,
+def _match_known_episodes(
+    sorted_numbers: Sequence[int],
+    grouped_sources: dict[int, dict[tuple[str, int, str], PageSource]],
     by_page_key: dict[tuple[str, int, str], EpisodeReference],
     by_number: dict[int, EpisodeReference],
-) -> EpisodeReference | None:
-    """Find a matching known episode by page key first, then episode number.
+) -> dict[int, EpisodeReference]:
+    """Match listed episode numbers to known episodes without reusing an ID.
+
+    Pass one matches every listed episode by provider page key and claims each
+    matched ``episode_id``. Pass two falls back to matching remaining episodes
+    by episode number only when that known ``episode_id`` has not already been
+    claimed by a page-key match, preventing duplicate IDs after a renumber.
 
     Args:
-        page_keys: Episode ``PageKey``s extracted from stored pages.
-        episode_number: Episode number.
+        sorted_numbers: Ascending listed episode numbers.
+        grouped_sources: Episode ``PageSource`` map per episode number.
         by_page_key: Index of known episodes by ``(provider, entity_type, address)``.
         by_number: Index of known episodes by ``episode_number``.
 
     Returns:
-        Matching ``EpisodeReference`` if found, otherwise ``None``.
+        Mapping from episode number to its matched ``EpisodeReference``.
     """
-    for key in page_keys:
-        if (
-            match := by_page_key.get((key.provider, key.entity_type, key.address))
-        ) is not None:
-            return match
-    return by_number.get(episode_number)
+    matched_by_number: dict[int, EpisodeReference] = {}
+    claimed_episode_ids: set[str] = set()
+
+    for episode_number in sorted_numbers:
+        source_map = grouped_sources.get(episode_number, {})
+        for identity in sorted(source_map):
+            known = by_page_key.get(identity)
+            if known is not None and known.episode_id not in claimed_episode_ids:
+                matched_by_number[episode_number] = known
+                claimed_episode_ids.add(known.episode_id)
+                break
+
+    for episode_number in sorted_numbers:
+        if episode_number in matched_by_number:
+            continue
+        known = by_number.get(episode_number)
+        if known is not None and known.episode_id not in claimed_episode_ids:
+            matched_by_number[episode_number] = known
+            claimed_episode_ids.add(known.episode_id)
+
+    return matched_by_number
 
 
 def _index_known_episodes(
@@ -227,7 +250,7 @@ def _collect_provider_episodes(
     grouped_entries: dict[int, dict[str, EpisodeListEntry]] = {}
     grouped_sources: dict[int, dict[tuple[str, int, str], PageSource]] = {}
     for page in source_pages:
-        if page.is_dead or page.is_not_found or not page.responses:
+        if not is_mappable_stored_page(page):
             continue
         provider = page.page_key.provider
         page_url = page_urls.get((provider, page.page_key.address), "")
@@ -271,34 +294,34 @@ def merge_episode_references(
         source_pages, page_urls
     )
 
+    sorted_numbers = sorted(grouped_entries)
+    matched_by_number = _match_known_episodes(
+        sorted_numbers, grouped_sources, by_page_key, by_number
+    )
+
     references: list[EpisodeReference] = []
-    for ep_number in sorted(grouped_entries):
+    for episode_number in sorted_numbers:
         sorted_entries = sorted(
-            grouped_entries[ep_number].values(),
+            grouped_entries[episode_number].values(),
             key=lambda entry: entry.provider,
         )
         sorted_sources = [
-            grouped_sources[ep_number][identity]
-            for identity in sorted(grouped_sources.get(ep_number, {}))
+            grouped_sources[episode_number][identity]
+            for identity in sorted(grouped_sources.get(episode_number, {}))
         ]
-        known_match = _match_known_episode(
-            [page_source.page_key for page_source in sorted_sources],
-            ep_number,
-            by_page_key,
-            by_number,
-        )
+        known_match = matched_by_number.get(episode_number)
         episode_id = (
             known_match.episode_id if known_match is not None else generate_entity_id()
         )
         references.append(
             EpisodeReference(
                 episode_id=episode_id,
-                episode_number=ep_number,
+                episode_number=episode_number,
                 title=_pick_episode_title(sorted_entries, known_match),
                 page_sources=sorted_sources,
                 list_entries=sorted_entries,
             )
         )
 
-    references.sort(key=lambda ep: ep.episode_id)
+    references.sort(key=lambda episode_ref: episode_ref.episode_id)
     return references

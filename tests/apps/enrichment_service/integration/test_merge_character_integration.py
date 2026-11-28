@@ -1,5 +1,3 @@
-"""Integration tests for EnrichmentService.MergeCharacter with PostgresService."""
-
 from __future__ import annotations
 
 import asyncio
@@ -8,8 +6,7 @@ import os
 import shutil
 import subprocess
 from datetime import UTC, datetime
-from types import SimpleNamespace
-from typing import TYPE_CHECKING, cast
+from unittest.mock import create_autospec
 
 import grpc
 import pytest
@@ -21,6 +18,7 @@ from enrichment_proto.v1.enrichment_service_pb2 import (
     MergeCharacterRequest,
 )
 from enrichment_service.routes.adapter import EnrichmentRoutes
+from enrichment_service.runtime import EnrichmentRuntime
 from postgres_proto.v1 import postgres_service_pb2_grpc
 from postgres_proto.v1.postgres_service_pb2 import (
     LoadCharacterRequest,
@@ -29,9 +27,6 @@ from postgres_proto.v1.postgres_service_pb2 import (
 )
 from shared_proto.v1 import anime_pb2
 from shared_proto.v1.merge_pb2 import PageKey, PageResponse, StoredPage
-
-if TYPE_CHECKING:
-    from enrichment_service.runtime import EnrichmentRuntime
 
 pytestmark = pytest.mark.integration
 
@@ -55,7 +50,6 @@ _FIVE_CHARACTERS_PER_PROVIDER: list[tuple[str, list[str]]] = [
 
 
 def _run_psql(sql: str, variables: dict[str, str] | None = None) -> str:
-    """Execute SQL inside the dev PostgreSQL container and return stdout."""
     docker_bin = shutil.which("docker") or "/usr/bin/docker"
     var_flags = "".join(f" -v {key}={val}" for key, val in (variables or {}).items())
     proc = subprocess.run(  # noqa: S603
@@ -79,10 +73,9 @@ def _run_psql(sql: str, variables: dict[str, str] | None = None) -> str:
 
 @pytest.mark.asyncio
 async def test_merge_character_with_postgres_store_page_end_to_end() -> None:
-    """Store character pages in PostgresService and merge via MergeCharacter."""
     server = grpc.aio.server()
     enrichment_service_pb2_grpc.add_EnrichmentServiceServicer_to_server(
-        EnrichmentRoutes(runtime=cast("EnrichmentRuntime", SimpleNamespace())),
+        EnrichmentRoutes(runtime=create_autospec(EnrichmentRuntime, instance=True)),
         server,
     )
     port = server.add_insecure_port("127.0.0.1:0")
@@ -163,7 +156,6 @@ async def test_merge_character_with_postgres_store_page_end_to_end() -> None:
 
 @pytest.mark.asyncio
 async def test_merge_character_five_per_provider_end_to_end() -> None:
-    """Fetch, store, load, merge, and idempotently save 5 characters per provider."""
     enrichment_target = os.getenv("ENRICHMENT_SERVICE_ADDR", "localhost:8002")
     postgres_target = os.getenv("POSTGRES_SERVICE_ADDR", "localhost:8004")
     created_ids: list[str] = []

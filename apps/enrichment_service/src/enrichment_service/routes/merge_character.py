@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 import grpc
 from enrichment.pipeline.character_merge import merge_character_pages
 from enrichment_proto.v1 import enrichment_service_pb2
 
+from .merge_runner import execute_merge_rpc
+
 if TYPE_CHECKING:
     from ..runtime import EnrichmentRuntime
-
-logger = logging.getLogger(__name__)
 
 
 async def merge_character(
@@ -35,11 +34,6 @@ async def merge_character(
         return await context.abort(
             grpc.StatusCode.INVALID_ARGUMENT, "character_id is required"
         )
-
-    try:
-        return merge_character_pages(request)
-    except ValueError as exc:
-        return await context.abort(grpc.StatusCode.INVALID_ARGUMENT, str(exc))
-    except Exception:
-        logger.exception("MergeCharacter failed unexpectedly")
-        return await context.abort(grpc.StatusCode.INTERNAL, "MergeCharacter failed")
+    return await execute_merge_rpc(
+        merge_character_pages, request, context, "MergeCharacter"
+    )

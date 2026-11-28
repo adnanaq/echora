@@ -2,10 +2,14 @@ import pytest
 from enrichment.pipeline.page_sources import (
     build_page_sources,
     build_stored_page_key,
+    collect_live_page_keys,
+    is_mappable_stored_page,
+    rank_provider_priority,
     read_page_urls,
+    validate_one_page_per_provider,
 )
 from shared_proto.v1 import anime_pb2
-from shared_proto.v1.merge_pb2 import PageKey, PageSource
+from shared_proto.v1.merge_pb2 import PageKey, PageResponse, PageSource, StoredPage
 
 
 def _build_mal_character_key(address: str) -> PageKey:
@@ -262,3 +266,60 @@ def test_build_page_sources_page_key_url_lacks_takes_own_record_url() -> None:
             title="Page of kitsu",
         )
     ]
+
+
+def test_is_mappable_stored_page_accepts_not_found_with_responses() -> None:
+    response = PageResponse(
+        request_name="main", content_type="text/html", body=b"<html/>"
+    )
+    not_found_with_body = StoredPage(
+        page_key=_build_mal_character_key("40"),
+        is_not_found=True,
+        responses=[response],
+    )
+    not_found_empty = StoredPage(
+        page_key=_build_mal_character_key("40"),
+        is_not_found=True,
+    )
+    dead_with_body = StoredPage(
+        page_key=_build_mal_character_key("40"),
+        is_dead=True,
+        responses=[response],
+    )
+
+    assert is_mappable_stored_page(not_found_with_body) is True
+    assert is_mappable_stored_page(not_found_empty) is False
+    assert is_mappable_stored_page(dead_with_body) is False
+
+
+def test_collect_live_page_keys_omits_dead_pages() -> None:
+    live_key = _build_mal_character_key("40")
+    dead_key = _build_mal_character_key("41")
+
+    live_keys = collect_live_page_keys(
+        [
+            StoredPage(page_key=live_key, is_not_found=True),
+            StoredPage(page_key=dead_key, is_dead=True),
+        ]
+    )
+
+    assert live_keys == [live_key]
+
+
+def test_rank_provider_priority_places_known_before_unknown() -> None:
+    assert rank_provider_priority("mal") < rank_provider_priority("kitsu")
+    assert rank_provider_priority("kitsu") < rank_provider_priority("unknown_source")
+
+
+def test_validate_one_page_per_provider_distinct_providers_passes() -> None:
+    validate_one_page_per_provider(["mal", "anilist", "kitsu"], "pages")
+
+
+def test_validate_one_page_per_provider_repeated_providers_raises_value_error() -> None:
+    with pytest.raises(
+        ValueError,
+        match=r"^pages holds more than one entry for provider\(s\) kitsu, mal$",
+    ):
+        validate_one_page_per_provider(
+            ["mal", "kitsu", "mal", "anilist", "kitsu"], "pages"
+        )

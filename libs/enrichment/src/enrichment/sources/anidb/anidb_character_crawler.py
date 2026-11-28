@@ -27,6 +27,7 @@ import time
 from collections.abc import AsyncGenerator
 from contextlib import AsyncExitStack, aclosing
 from typing import Any, cast
+from urllib.parse import urljoin
 
 from enrichment.sources.anidb.anidb_mapper import character_from_anidb
 from enrichment.sources.anidb.anidb_models import AniDBCharacter, AniDBCharacterPage
@@ -38,6 +39,7 @@ from enrichment.sources.base.cloudflare_challenge import (
     wait_through_challenge,
 )
 from enrichment.sources.base.cloudflare_clearance import save_clearance
+from enrichment.sources.base.page_fetcher import parse_html_document
 from enrichment.sources.base.utils import sanitize_output_path
 from http_cache.result_cache import cached_result
 
@@ -59,59 +61,81 @@ _ANTILEECH_TITLE = "<title>AniDB AntiLeech"
 _UNBAN_BUTTON_TEXT = "Please Unban Me"
 _INTER_REQUEST_DELAY = 2.5  # seconds; keeps session trusted and avoids CF re-trigger
 
+
+def _class_token_xpath(token: str) -> str:
+    """Build a token-boundary XPath predicate matching one CSS class name.
+
+    Args:
+        token: Exact CSS class token to match.
+
+    Returns:
+        XPath predicate expression matching ``token`` as a whole class name.
+    """
+    return f"contains(concat(' ', normalize-space(@class), ' '), ' {token} ')"
+
+
 # ---------------------------------------------------------------------------
 # XPath selectors — anchored on structural attributes (itemprop, id, class)
 # rather than CSS class names that change frequently.
 # ---------------------------------------------------------------------------
 _XPATHS: dict[str, str] = {
     # Description block
-    "description": "//div[contains(@class,'desc')][@itemprop='description']",
+    "description": f"//div[{_class_token_xpath('desc')}][@itemprop='description']",
     # Tab 1: primary names and attributes
-    "name_main": "//tr[contains(@class,'mainname')]//span[@itemprop='name']/text()",
+    "name_main": (
+        f"//tr[{_class_token_xpath('mainname')}]//span[@itemprop='name']/text()"
+    ),
     "name_kanji": (
         "//*[@id='tab_1_pane']"
-        "//tr[contains(@class,'official') and contains(@class,'verified') and contains(@class,'yes')]"
+        f"//tr[{_class_token_xpath('official')} and {_class_token_xpath('verified')} and {_class_token_xpath('yes')}]"
         "//label[@itemprop='alternateName']/text()"
     ),
     "gender": "//span[@itemprop='gender']/text()",
-    "picture": "//div[contains(@class,'info')]//div[contains(@class,'image')]//img/@src",
-    "date_of_birth": "//*[@id='tab_1_pane']//tr[contains(@class,'birthdate')]//td/text()",
-    "age": "//*[@id='tab_1_pane']//tr[contains(@class,'age')]//td/text()",
-    "blood_type": "//*[@id='tab_1_pane']//tr[contains(@class,'bloodtype')]//td/text()",
-    "height": "//*[@id='tab_1_pane']//tr[contains(@class,'height')]//td/text()",
-    "seiyuu_rows": "//table[contains(@class,'seiyuu')]//tr[td]",
+    "picture": (
+        f"//div[{_class_token_xpath('info')}]"
+        f"//div[{_class_token_xpath('image')}]//img/@src"
+    ),
+    "date_of_birth": f"//*[@id='tab_1_pane']//tr[{_class_token_xpath('birthdate')}]//td",
+    "age": (
+        "//*[@id='tab_1_pane']"
+        f"//tr[{_class_token_xpath('age')} and not({_class_token_xpath('range')})]//td"
+    ),
+    "blood_type": f"//*[@id='tab_1_pane']//tr[{_class_token_xpath('bloodtype')}]//td",
+    "height": f"//*[@id='tab_1_pane']//tr[{_class_token_xpath('height')}]//td",
+    "seiyuu_rows": f"(//table[{_class_token_xpath('seiyuulist')}])[1]//tr[td]",
     # Tag categories
     "abilities": (
         "//*[@id='tab_1_pane']"
-        "//tr[contains(@class,'abilities') and not(contains(@class,'supernatural'))]"
-        "//span[contains(@class,'tagname')]/text()"
+        f"//tr[{_class_token_xpath('abilities')} and not({_class_token_xpath('supernatural')})]"
+        f"//span[{_class_token_xpath('tagname')}]/text()"
     ),
     "supernatural_abilities": (
-        "//*[@id='tab_1_pane']//tr[contains(@class,'supernatural')]"
-        "//span[contains(@class,'tagname')]/text()"
+        f"//*[@id='tab_1_pane']//tr[{_class_token_xpath('supernatural')}]"
+        f"//span[{_class_token_xpath('tagname')}]/text()"
     ),
     "looks": (
-        "//*[@id='tab_1_pane']//tr[contains(@class,'looks')]"
-        "//span[contains(@class,'tagname')]/text()"
+        f"//*[@id='tab_1_pane']//tr[{_class_token_xpath('looks')}]"
+        f"//span[{_class_token_xpath('tagname')}]/text()"
     ),
     "personality": (
-        "//*[@id='tab_1_pane']//tr[contains(@class,'personality')]"
-        "//span[contains(@class,'tagname')]/text()"
+        f"//*[@id='tab_1_pane']//tr[{_class_token_xpath('personality')}]"
+        f"//span[{_class_token_xpath('tagname')}]/text()"
     ),
     "role": (
-        "//*[@id='tab_1_pane']//tr[contains(@class,'role')]"
-        "//span[contains(@class,'tagname')]/text()"
+        f"//*[@id='tab_1_pane']//tr[{_class_token_xpath('role')}]"
+        f"//span[{_class_token_xpath('tagname')}]/text()"
     ),
-    # Anime appearances table
-    "animeography_rows": "//table[.//th[contains(@class,'anime')]]//tr[td]",
+    # Anime appearances table: the first animelist table is the character's own;
+    # later ones belong to related characters.
+    "animeography_rows": (f"(//table[{_class_token_xpath('animelist')}])[1]//tr[td]"),
     # Tab 2: alternate names
     "official_names": (
-        "//*[@id='tab_2_pane']//tr[contains(@class,'official')]"
+        f"//*[@id='tab_2_pane']//tr[{_class_token_xpath('official')}]"
         "//label[@itemprop='alternateName']/text()"
     ),
     "nicknames": (
-        "//*[@id='tab_2_pane']//tr[contains(@class,'nick')]"
-        "//td[contains(@class,'value')]/text()"
+        f"//*[@id='tab_2_pane']//tr[{_class_token_xpath('nick')}]"
+        f"//td[{_class_token_xpath('value')}]/text()"
     ),
 }
 
@@ -121,104 +145,184 @@ _XPATHS: dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 
+def _resolve_anidb_url(href: str) -> str:
+    """Resolve an AniDB anchor ``href`` against ``https://anidb.net/``.
+
+    Args:
+        href: Raw ``href`` attribute value from an HTML anchor element.
+
+    Returns:
+        Absolute AniDB URL string, or empty string when ``href`` is blank.
+    """
+    cleaned = href.strip()
+    return urljoin("https://anidb.net/", cleaned) if cleaned else ""
+
+
+def _extract_text_list(tree: Any, xpath_key: str) -> list[str]:
+    """Extract non-empty stripped strings matching an XPath text selector.
+
+    Args:
+        tree: Parsed lxml HTML element tree.
+        xpath_key: Key into ``_XPATHS``.
+
+    Returns:
+        List of non-empty stripped text values.
+    """
+    return [
+        text.strip()
+        for text in cast(list[str], tree.xpath(_XPATHS[xpath_key]))
+        if text.strip()
+    ]
+
+
+def _extract_profile_field(tree: Any, xpath_key: str) -> str | None:
+    """Extract the full text of the first profile table cell matching ``xpath_key``.
+
+    Nested elements such as ``<span>`` and ``<time>`` inside the ``<td>`` are
+    included by joining ``itertext()`` and collapsing whitespace.
+
+    Args:
+        tree: Parsed lxml HTML element tree.
+        xpath_key: Key into ``_XPATHS`` selecting ``<td>`` elements.
+
+    Returns:
+        Collapsed cell text, or ``None`` when no matching non-empty cell exists.
+    """
+    for cell in cast(list[Any], tree.xpath(_XPATHS[xpath_key])):
+        text = " ".join(" ".join(cell.itertext()).split())
+        if text:
+            return text
+    return None
+
+
+def _extract_character_description(tree: Any) -> str | None:
+    """Extract normalized character description text from the parsed HTML tree.
+
+    Args:
+        tree: Parsed lxml HTML element tree.
+
+    Returns:
+        Whitespace-collapsed description string, or ``None`` when absent.
+    """
+    nodes = cast(list[Any], tree.xpath(_XPATHS["description"]))
+    if not nodes:
+        return None
+    return " ".join(" ".join(nodes[0].itertext()).split()) or None
+
+
+def _extract_animeography_entries(tree: Any) -> list[dict[str, str]]:
+    """Extract anime appearance entries from the character's primary anime table.
+
+    Args:
+        tree: Parsed lxml HTML element tree.
+
+    Returns:
+        List of dicts carrying ``title``, ``role``, and absolute ``url``.
+    """
+    rows = cast(list[Any], tree.xpath(_XPATHS["animeography_rows"]))
+    entries: list[dict[str, str]] = []
+    for row in rows:
+        title_elements = cast(
+            list[Any],
+            row.xpath(
+                f".//td[{_class_token_xpath('name')} and {_class_token_xpath('anime')}]//a"
+            ),
+        )
+        if not title_elements:
+            continue
+        title = " ".join(title_elements[0].itertext()).strip()
+        if not title:
+            continue
+        role_cells = cast(
+            list[Any],
+            row.xpath(
+                f".//td[{_class_token_xpath('type')} and {_class_token_xpath('relation')}]"
+            ),
+        ) or cast(list[Any], row.xpath(f".//td[{_class_token_xpath('type')}]"))
+        role = (
+            " ".join(" ".join(role_cells[0].itertext()).split()) if role_cells else ""
+        )
+        entries.append(
+            {
+                "title": title,
+                "role": role,
+                "url": _resolve_anidb_url(title_elements[0].get("href", "")),
+            }
+        )
+    return entries
+
+
+def _extract_seiyuu_entries(tree: Any) -> list[dict[str, str]]:
+    """Extract voice actor entries from the character's primary seiyuu table.
+
+    Args:
+        tree: Parsed lxml HTML element tree.
+
+    Returns:
+        List of dicts carrying ``name``, absolute ``url``, and optional ``anime_url``.
+    """
+    rows = cast(list[Any], tree.xpath(_XPATHS["seiyuu_rows"]))
+    entries: list[dict[str, str]] = []
+    for row in rows:
+        creator_elements = cast(
+            list[Any],
+            row.xpath(f".//td[{_class_token_xpath('creator')}]//a"),
+        )
+        if not creator_elements:
+            continue
+        name = " ".join(creator_elements[0].itertext()).strip()
+        if not name:
+            continue
+        creator_url = _resolve_anidb_url(creator_elements[0].get("href", ""))
+        anime_elements = cast(
+            list[Any],
+            row.xpath(f".//td[{_class_token_xpath('anime')}]//a"),
+        )
+        anime_url = (
+            _resolve_anidb_url(anime_elements[0].get("href", ""))
+            if anime_elements
+            else ""
+        )
+        entry: dict[str, str] = {"name": name, "url": creator_url}
+        if anime_url:
+            entry["anime_url"] = anime_url
+        entries.append(entry)
+    return entries
+
+
 def _extract_from_html(html: str) -> AniDBCharacterPage | None:
     """Extract character fields from AniDB character page HTML via XPath.
 
-    Returns None if the HTML cannot be parsed or contains no character data.
-    """
-    from lxml import etree
+    Args:
+        html: Raw HTML markup of an AniDB character page.
 
+    Returns:
+        Parsed ``AniDBCharacterPage``, or ``None`` if HTML parsing fails.
+    """
     try:
-        parser = etree.HTMLParser()
-        tree = etree.fromstring(html.encode(), parser)
+        tree = parse_html_document(html)
     except Exception:
         return None
 
-    def _texts(key: str) -> list[str]:
-        return [
-            t.strip() for t in cast(list[str], tree.xpath(_XPATHS[key])) if t.strip()
-        ]
-
-    def _first(key: str) -> str | None:
-        return next(iter(_texts(key)), None)
-
-    def _animeography() -> list[dict[str, str]]:
-        entries = []
-        for row in cast(list[Any], tree.xpath(_XPATHS["animeography_rows"])):
-            title_els = cast(
-                list[Any],
-                row.xpath(
-                    './/td[contains(@class,"name") and contains(@class,"anime")]//a'
-                ),
-            )
-            role_parts = cast(
-                list[str], row.xpath('.//td[contains(@class,"type")]//text()')
-            )
-            if not title_els:
-                continue
-            title = " ".join(title_els[0].itertext()).strip()
-            href = title_els[0].get("href", "")
-            role = role_parts[0].strip() if role_parts else ""
-            url = f"https://anidb.net{href}" if href.startswith("/") else href
-            if title:
-                entries.append({"title": title, "role": role, "url": url})
-        return entries
-
-    def _seiyuu() -> list[dict[str, str]]:
-        entries: list[dict[str, str]] = []
-        for row in cast(list[Any], tree.xpath(_XPATHS["seiyuu_rows"])):
-            creator_els = cast(
-                list[Any],
-                row.xpath('.//td[contains(@class,"creator")]//a'),
-            )
-            if not creator_els:
-                continue
-            name = " ".join(creator_els[0].itertext()).strip()
-            href = creator_els[0].get("href", "")
-            creator_url = f"https://anidb.net{href}" if href.startswith("/") else href
-            anime_els = cast(
-                list[Any],
-                row.xpath('.//td[contains(@class,"anime")]//a'),
-            )
-            anime_href = anime_els[0].get("href", "") if anime_els else ""
-            anime_url = (
-                f"https://anidb.net{anime_href}"
-                if anime_href.startswith("/")
-                else anime_href
-            )
-            if name:
-                entry: dict[str, str] = {"name": name, "url": creator_url}
-                if anime_url:
-                    entry["anime_url"] = anime_url
-                entries.append(entry)
-        return entries
-
-    def _description() -> str | None:
-        nodes = cast(list[Any], tree.xpath(_XPATHS["description"]))
-        if not nodes:
-            return None
-        raw = " ".join(nodes[0].itertext()).split()
-        return " ".join(raw) or None
-
     return AniDBCharacterPage(
-        name_main=_first("name_main"),
-        name_kanji=_first("name_kanji"),
-        description=_description(),
-        picture=_first("picture"),
-        gender=_first("gender"),
-        date_of_birth=_first("date_of_birth"),
-        age=_first("age"),
-        blood_type=_first("blood_type"),
-        height=_first("height"),
-        abilities=_texts("abilities"),
-        supernatural_abilities=_texts("supernatural_abilities"),
-        looks=_texts("looks"),
-        personality=_texts("personality"),
-        role=_texts("role"),
-        official_names=_texts("official_names"),
-        nicknames=_texts("nicknames"),
-        animeography=_animeography(),
-        seiyuu=_seiyuu(),
+        name_main=next(iter(_extract_text_list(tree, "name_main")), None),
+        name_kanji=next(iter(_extract_text_list(tree, "name_kanji")), None),
+        description=_extract_character_description(tree),
+        picture=next(iter(_extract_text_list(tree, "picture")), None),
+        gender=next(iter(_extract_text_list(tree, "gender")), None),
+        date_of_birth=_extract_profile_field(tree, "date_of_birth"),
+        age=_extract_profile_field(tree, "age"),
+        blood_type=_extract_profile_field(tree, "blood_type"),
+        height=_extract_profile_field(tree, "height"),
+        abilities=_extract_text_list(tree, "abilities"),
+        supernatural_abilities=_extract_text_list(tree, "supernatural_abilities"),
+        looks=_extract_text_list(tree, "looks"),
+        personality=_extract_text_list(tree, "personality"),
+        role=_extract_text_list(tree, "role"),
+        official_names=_extract_text_list(tree, "official_names"),
+        nicknames=_extract_text_list(tree, "nicknames"),
+        animeography=_extract_animeography_entries(tree),
+        seiyuu=_extract_seiyuu_entries(tree),
     )
 
 

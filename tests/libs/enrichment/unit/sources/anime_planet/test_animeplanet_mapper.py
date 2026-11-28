@@ -713,3 +713,17 @@ def test_map_animeplanet_character_responses_omitted_source_url_uses_canonical_l
     assert canonical["sources"] == [
         "https://www.anime-planet.com/characters/spike-spiegel"
     ]
+
+
+def test_map_animeplanet_responses_missing_or_empty_html_raises_value_error() -> None:
+    empty_main = [
+        PageResponse(
+            request_name="main", content_type="text/html", body=b"<html></html>"
+        )
+    ]
+    with pytest.raises(ValueError, match="yielded no anime data"):
+        map_animeplanet_anime_responses(empty_main)
+    with pytest.raises(ValueError, match="missing required 'main'"):
+        map_animeplanet_character_responses([])
+    with pytest.raises(ValueError, match="yielded no character data"):
+        map_animeplanet_character_responses(empty_main)

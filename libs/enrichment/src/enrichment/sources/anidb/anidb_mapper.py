@@ -54,6 +54,10 @@ from enrichment.sources.base.external_links import (
     external_link,
     page_link,
 )
+from enrichment.sources.base.page_fetcher import (
+    index_responses_by_name,
+    parse_html_response,
+)
 
 _CDN_BASE = "https://cdn-eu.anidb.net/images/main"
 
@@ -406,8 +410,12 @@ def _apply_page_data(result: dict[str, Any], page: AniDBCharacterPage) -> None:
     """Merge AniDBCharacterPage fields into a canonical character result dict.
 
     Fields here come from the web page. Gender is the exception: the XML also
-    carries it, so this merges into any existing attributes rather than
-    replacing them. Called by character_from_anidb.
+    carries gender, so this merges into any existing attributes rather than
+    replacing them. Called by ``character_from_anidb``.
+
+    Args:
+        result: Canonical character dictionary updated in place.
+        page: Extracted ``AniDBCharacterPage`` model from the character web page.
     """
     if page.name_kanji:
         result["name_native"] = page.name_kanji
@@ -503,10 +511,6 @@ def map_anidb_anime_responses(
         ValueError: If the ``main`` response is missing or invalid XML.
     """
     from enrichment.sources.anidb.anidb_xml_parser import parse_anime_xml
-    from enrichment.sources.base.page_fetcher import (
-        index_responses_by_name,
-        parse_html_response,
-    )
 
     by_name = index_responses_by_name(responses)
     main_response = by_name.get("main")
@@ -530,10 +534,6 @@ def map_anidb_anime_episode_responses(
         List of canonical Episode field dicts.
     """
     from enrichment.sources.anidb.anidb_xml_parser import parse_anime_xml
-    from enrichment.sources.base.page_fetcher import (
-        index_responses_by_name,
-        parse_html_response,
-    )
 
     by_name = index_responses_by_name(responses)
     main_response = by_name.get("main")
@@ -562,10 +562,6 @@ def map_anidb_character_page_responses(
         ValueError: If the ``main`` response is missing.
     """
     from enrichment.sources.anidb.anidb_character_crawler import _extract_from_html
-    from enrichment.sources.base.page_fetcher import (
-        index_responses_by_name,
-        parse_html_response,
-    )
 
     by_name = index_responses_by_name(responses)
     main_response = by_name.get("main")

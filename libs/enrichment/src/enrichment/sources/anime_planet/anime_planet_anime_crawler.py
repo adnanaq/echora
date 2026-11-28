@@ -33,9 +33,9 @@ from enrichment.sources.base.framework import (
     FileRepository,
     NullRepository,
 )
+from enrichment.sources.base.page_fetcher import parse_html_document
 from enrichment.sources.base.page_readiness import wait_for_page
 from http_cache.result_cache import cached_result
-from lxml import etree
 
 logger = logging.getLogger(__name__)
 
@@ -75,8 +75,8 @@ _REL_VOLCH_XPATH = ".//li[.//i[contains(@class,'fa-book-open')]]//span[contains(
 
 
 def _tc(el: Any) -> str:
-    """Return all text content of an lxml element, stripped."""
-    return "".join(el.itertext()).strip()
+    """Return all text content of an lxml HTML element, stripped."""
+    return str(el.text_content()).strip()
 
 
 def _normalize_anime_url(anime_identifier: str) -> str:
@@ -102,7 +102,8 @@ def _normalize_anime_url(anime_identifier: str) -> str:
         )
 
     if not url.startswith(BASE_ANIME_URL):
-        raise ValueError(f"Not an anime-planet anime URL: {url!r}")
+        error_message = f"Not an anime-planet anime URL: {url!r}"
+        raise ValueError(error_message)
     return url
 
 
@@ -114,7 +115,8 @@ def _extract_slug_from_url(url: str) -> str:
     """
     match = re.search(r"/anime/([^/?#]+)", url)
     if not match:
-        raise ValueError(f"No anime slug in URL: {url!r}")
+        error_message = f"No anime slug in URL: {url!r}"
+        raise ValueError(error_message)
     return match.group(1)
 
 
@@ -281,7 +283,7 @@ def _extract_anime_from_html(html: str) -> dict[str, Any] | None:
         return None
 
     try:
-        tree = etree.fromstring(html.encode(), etree.HTMLParser(encoding="utf-8"))
+        tree = parse_html_document(html)
     except Exception:
         logger.exception("Failed to parse anime page HTML")
         return None

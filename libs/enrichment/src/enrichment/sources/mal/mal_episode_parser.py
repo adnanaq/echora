@@ -11,6 +11,7 @@ so both share one parser:
 import re
 from typing import Any, cast
 
+from enrichment.sources.base.page_fetcher import parse_html_document
 from enrichment.sources.base.utils import parse_iso_date
 from enrichment.sources.mal.mal_base import parse_duration_seconds
 from enrichment.sources.mal.mal_models import (
@@ -42,12 +43,12 @@ def _read_element_text(el: Any) -> str:
     """Read an element's text with its children's text, stripped.
 
     Args:
-        el: An lxml element.
+        el: An lxml HTML element.
 
     Returns:
         The element's whole text.
     """
-    return "".join(el.itertext()).strip()
+    return str(el.text_content()).strip()
 
 
 def extract_episode_from_html(html: str) -> dict[str, Any] | None:
@@ -63,7 +64,7 @@ def extract_episode_from_html(html: str) -> dict[str, Any] | None:
     """
     if not html:
         return None
-    tree = etree.fromstring(html, etree.HTMLParser(encoding="utf-8"))
+    tree = parse_html_document(html)
 
     title_els = cast(list[Any], tree.xpath(MAL_EPISODE_XPATHS["title_header"]))
     if not title_els:
@@ -252,7 +253,7 @@ def extract_episode_list_from_html(html: str) -> list[MalEpisode]:
     """
     if not html:
         return []
-    tree = etree.fromstring(html.encode(), etree.HTMLParser(encoding="utf-8"))
+    tree = parse_html_document(html)
     episodes: list[MalEpisode] = []
     for row in cast(list[Any], tree.xpath(MAL_EPISODE_XPATHS["episode_list_rows"])):
         number_text = str(row.xpath("string(td[contains(@class,'episode-number')])"))

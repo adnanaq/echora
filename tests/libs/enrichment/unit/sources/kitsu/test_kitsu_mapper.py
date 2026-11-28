@@ -714,3 +714,110 @@ def test_map_kitsu_episode_responses_episode_without_included_work_gives_no_url(
     )
 
     assert episode["sources"] == []
+
+
+def test_map_kitsu_responses_productions_errors_and_incomplete_character_ography() -> (
+    None
+):
+    from enrichment.sources.kitsu.kitsu_mapper import (
+        map_kitsu_anime_responses,
+        map_kitsu_character_page_responses,
+    )
+
+    with pytest.raises(ValueError, match="missing required 'main'"):
+        map_kitsu_anime_responses([])
+    with pytest.raises(TypeError, match="missing 'data' object"):
+        map_kitsu_anime_responses(
+            [
+                PageResponse(
+                    request_name="main",
+                    content_type="application/vnd.api+json",
+                    body=b'{"data": null}',
+                )
+            ]
+        )
+
+    anime = map_kitsu_anime_responses(
+        [
+            PageResponse(
+                request_name="main",
+                content_type="application/vnd.api+json",
+                body=json.dumps(
+                    {
+                        "data": {
+                            "id": "12",
+                            "type": "anime",
+                            "attributes": {
+                                "slug": "one-piece",
+                                "canonicalTitle": "One Piece",
+                                "subtype": "TV",
+                                "status": "current",
+                            },
+                        }
+                    }
+                ).encode("utf-8"),
+            ),
+            PageResponse(
+                request_name="productions_page_1",
+                content_type="application/vnd.api+json",
+                body=json.dumps(
+                    {
+                        "data": [
+                            {
+                                "attributes": {"role": "studio"},
+                                "relationships": {"producer": {"data": {"id": "1"}}},
+                            },
+                            {
+                                "attributes": {"role": "producer"},
+                                "relationships": {"producer": {"data": {"id": "999"}}},
+                            },
+                        ],
+                        "included": [
+                            {
+                                "id": "1",
+                                "type": "producers",
+                                "attributes": {"name": "Toei Animation"},
+                            }
+                        ],
+                    }
+                ).encode("utf-8"),
+            ),
+        ]
+    )
+    assert [company["name"] for company in anime["companies"]] == ["Toei Animation"]
+
+    character = map_kitsu_character_page_responses(
+        [
+            PageResponse(
+                request_name="main",
+                content_type="application/vnd.api+json",
+                body=json.dumps(
+                    {
+                        "data": {
+                            "id": "101",
+                            "type": "characters",
+                            "attributes": {"canonicalName": "Luffy"},
+                        }
+                    }
+                ).encode("utf-8"),
+            ),
+            PageResponse(
+                request_name="media_characters_page_1",
+                content_type="application/vnd.api+json",
+                body=json.dumps(
+                    {
+                        "data": [
+                            {
+                                "attributes": {"role": "main"},
+                                "relationships": {
+                                    "media": {"data": {"id": "12", "type": "anime"}}
+                                },
+                            }
+                        ],
+                        "included": [],
+                    }
+                ).encode("utf-8"),
+            ),
+        ]
+    )
+    assert character["animeography"] == []

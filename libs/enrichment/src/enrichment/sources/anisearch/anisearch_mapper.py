@@ -294,7 +294,7 @@ def character_from_anisearch(char: AniSearchCharacter) -> dict[str, Any]:
     """
     result: dict[str, Any] = {
         "name": char.name or "",
-        "sources": [char.source],
+        "sources": [char.source] if char.source else [],
     }
 
     if char.name_native:

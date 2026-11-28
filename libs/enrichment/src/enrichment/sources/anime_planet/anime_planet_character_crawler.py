@@ -31,9 +31,9 @@ from enrichment.sources.base.framework import (
     FileRepository,
     NullRepository,
 )
+from enrichment.sources.base.page_fetcher import parse_html_document
 from enrichment.sources.base.page_readiness import wait_for_page
 from http_cache.result_cache import cached_result
-from lxml import etree
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +104,6 @@ _VA_FLAG_RE = re.compile(
     r'<a[^>]+href="(/people/[^"?#]+)"[^>]*>([^<]+)</a>',
     re.DOTALL | re.IGNORECASE,
 )
-
 
 # ---------------------------------------------------------------------------
 # Regex helper functions (unchanged)
@@ -284,11 +283,11 @@ def _extract_character_from_html(html: str) -> dict[str, Any] | None:
         return None
 
     html = remove_ad_annotations(html)
-    tree = etree.fromstring(html, etree.HTMLParser(encoding="utf-8"))
+    tree = parse_html_document(html)
 
     def _t(key: str) -> str | None:
         els = cast(list[Any], tree.xpath(_XPATHS[key]))
-        return "".join(els[0].itertext()).strip() if els else None
+        return str(els[0].text_content()).strip() if els else None
 
     def _a(key: str) -> str | None:
         vals = cast(list[Any], tree.xpath(_XPATHS[key]))

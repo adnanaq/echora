@@ -3,6 +3,8 @@
 Fixtures are real captured data from AniDB:
 - onepiece_anidb_raw.xml: https://anidb.net/anime/69 (One Piece, aid=69, captured 2026-06-05)
                           Note: <enddate>2030-06-01</enddate> injected — One Piece is ongoing.
+- test_anidb_character_luffy_regression/anidb_character_474.html:
+                          https://anidb.net/character/474 (Monkey D. Luffy, cid=474, captured 2026-11-27)
 """
 
 from pathlib import Path

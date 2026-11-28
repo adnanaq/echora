@@ -1,7 +1,7 @@
 """AniSearch source unit tests."""
 
 resources(
-    name="saved_pages",
+    name="fixtures",
     sources=["test_*/**"],
 )
 
@@ -11,7 +11,7 @@ python_test_utils(
     dependencies=[
         "//libs/enrichment/src/enrichment",
         "//libs/common/src/common",
-        ":saved_pages",
+        ":fixtures",
     ],
 )
 
@@ -22,7 +22,7 @@ python_tests(
         "//libs/enrichment/src/enrichment",
         "//libs/common/src/common",
         "//libs/http_cache/src/http_cache",
-        ":saved_pages",
+        ":fixtures",
         "//:reqs0#pytest-asyncio",
         "//:reqs0#pytest-mock",
         "//:reqs0#pytest-regressions",

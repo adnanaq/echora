@@ -52,9 +52,7 @@ async def _fetch_ap_page(
         html = await page.get_content()
     except Exception as exc:
         cause_message = f"navigation failed for {url}: {exc}"
-        raise ServiceNetworkError(
-            service="anime_planet", cause=cause_message
-        ) from exc
+        raise ServiceNetworkError(service="anime_planet", cause=cause_message) from exc
     if not html:
         empty_message = f"no HTML from {url}"
         raise ServiceNetworkError(service="anime_planet", cause=empty_message)

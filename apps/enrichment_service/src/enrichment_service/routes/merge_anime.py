@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 import grpc
 from enrichment.pipeline.anime_merge import merge_anime_pages
 from enrichment_proto.v1 import enrichment_service_pb2
 
+from .merge_runner import execute_merge_rpc
+
 if TYPE_CHECKING:
     from ..runtime import EnrichmentRuntime
-
-logger = logging.getLogger(__name__)
 
 
 async def merge_anime(
@@ -32,12 +31,7 @@ async def merge_anime(
     """
     del runtime
     if not request.anime_id.strip():
-        await context.abort(grpc.StatusCode.INVALID_ARGUMENT, "anime_id is required")
-
-    try:
-        return merge_anime_pages(request)
-    except ValueError as exc:
-        await context.abort(grpc.StatusCode.INVALID_ARGUMENT, str(exc))
-    except Exception:
-        logger.exception("MergeAnime failed unexpectedly")
-        return await context.abort(grpc.StatusCode.INTERNAL, "MergeAnime failed")
+        return await context.abort(
+            grpc.StatusCode.INVALID_ARGUMENT, "anime_id is required"
+        )
+    return await execute_merge_rpc(merge_anime_pages, request, context, "MergeAnime")

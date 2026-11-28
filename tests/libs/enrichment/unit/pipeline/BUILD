@@ -16,10 +16,23 @@ python_tests(
     ],
     overrides={
         "test_anime_merge.py": {
-            "dependencies": ["//tests/libs/enrichment/unit/sources/mal:saved_pages"],
+            "dependencies": [
+                "//tests/libs/enrichment/unit/sources/anidb:fixtures",
+                "//tests/libs/enrichment/unit/sources/mal:fixtures",
+            ],
+        },
+        "test_episode_merge.py": {
+            "dependencies": [
+                "//tests/libs/enrichment/unit/sources/mal:fixtures",
+            ],
         },
         "test_character_merge.py": {
-            "dependencies": ["//tests/libs/enrichment/unit/sources/anidb:fixtures"],
+            "dependencies": [
+                "//tests/libs/enrichment/unit/sources/anidb:fixtures",
+                "//tests/libs/enrichment/unit/sources/anime_planet:fixtures",
+                "//tests/libs/enrichment/unit/sources/anisearch:fixtures",
+                "//tests/libs/enrichment/unit/sources/mal:fixtures",
+            ],
         },
     },
 )

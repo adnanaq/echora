@@ -709,3 +709,13 @@ def test_map_mal_anime_episode_responses_orders_list_pages_by_page_number(
 
 def test_map_mal_anime_episode_responses_without_list_pages_gives_no_episodes() -> None:
     assert map_mal_anime_episode_responses([]) == []
+
+
+def test_map_mal_responses_missing_or_empty_html_raises_value_error() -> None:
+    empty_main = [PageResponse(request_name="main", content_type="text/html", body=b"")]
+    with pytest.raises(ValueError, match="yielded no anime data"):
+        map_mal_anime_responses(empty_main)
+    with pytest.raises(ValueError, match="missing required 'main'"):
+        map_mal_character_responses([])
+    with pytest.raises(ValueError, match="yielded no character data"):
+        map_mal_character_responses(empty_main)
