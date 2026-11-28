@@ -5,10 +5,9 @@ use std::num::NonZeroU32;
 use std::str::FromStr;
 use std::time::Duration;
 
+use echora_domain::{PageKey, Provider};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-
-use crate::Provider;
 
 /// Seconds in one day, shared across due-page calculations and gRPC duration conversions.
 pub const SECONDS_PER_DAY: i64 = 86_400;
@@ -62,7 +61,7 @@ mod duration_seconds {
     }
 }
 
-/// Error returned when parsing a provider, entity type, or trigger slug fails.
+/// Error returned when parsing a refresh trigger name fails.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParseSlugError {
     expected: &'static str,
@@ -87,74 +86,6 @@ impl fmt::Display for ParseSlugError {
 }
 
 impl std::error::Error for ParseSlugError {}
-
-/// Type of catalogue entity tracked by refresh workflows and stored provider pages.
-///
-/// Matches `shared_proto.v1.EntityType` and `postgres_db::EntityType`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Deserialize, Serialize)]
-#[serde(try_from = "String", into = "&'static str")]
-pub enum EntityType {
-    /// An anime work.
-    Anime,
-    /// An episode belonging to a work.
-    Episode,
-    /// A character appearing in works.
-    Character,
-}
-
-impl EntityType {
-    /// Every supported catalogue entity type, each listed once.
-    pub const ALL: [Self; 3] = [Self::Anime, Self::Episode, Self::Character];
-
-    /// Returns the lowercase wire slug for this entity type.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use temporal_workflows::EntityType;
-    ///
-    /// assert_eq!(EntityType::Anime.as_str(), "anime");
-    /// ```
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Anime => "anime",
-            Self::Episode => "episode",
-            Self::Character => "character",
-        }
-    }
-}
-
-impl From<EntityType> for &'static str {
-    fn from(value: EntityType) -> Self {
-        value.as_str()
-    }
-}
-
-impl TryFrom<String> for EntityType {
-    type Error = ParseSlugError;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        value.parse()
-    }
-}
-
-impl fmt::Display for EntityType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-impl FromStr for EntityType {
-    type Err = ParseSlugError;
-
-    fn from_str(input: &str) -> Result<Self, Self::Err> {
-        Self::ALL
-            .into_iter()
-            .find(|entity_type| entity_type.as_str() == input)
-            .ok_or_else(|| ParseSlugError::new("entity type", input))
-    }
-}
 
 /// Origin that started a refresh workflow, mapped to priority and fairness keys.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Deserialize, Serialize)]
@@ -384,22 +315,11 @@ pub fn build_write_synopsis_workflow_id(anime_id: Uuid) -> String {
     format!("synopsis-anime-{anime_id}")
 }
 
-/// Claim-check reference identifying one provider page without its body.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Deserialize, Serialize)]
-pub struct RefreshPageKey {
-    /// Metadata provider owning the page.
-    pub provider: Provider,
-    /// Catalogue entity type (`anime`, `episode`, or `character`).
-    pub entity_type: EntityType,
-    /// Canonical provider address or numeric ID.
-    pub address: String,
-}
-
 /// Page metadata returned by the `list_pages` activity.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct EntityPageSummary {
     /// Provider page reference.
-    pub page_key: RefreshPageKey,
+    pub page_key: PageKey,
     /// Whether this page is a partial source (never fetched or merged for this work).
     #[serde(default)]
     pub is_partial_source: bool,
@@ -446,7 +366,7 @@ pub struct ListEntityPagesOutput {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct RefreshPageInput {
     /// Provider page to fetch and store.
-    pub page_key: RefreshPageKey,
+    pub page_key: PageKey,
     /// Maximum acceptable cache age (`Duration::ZERO` bypasses the HTTP cache).
     #[serde(default, rename = "max_age_seconds", with = "duration_seconds")]
     pub max_age: Duration,
@@ -456,7 +376,7 @@ pub struct RefreshPageInput {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct RefreshPageOutput {
     /// Provider page that was refreshed.
-    pub page_key: RefreshPageKey,
+    pub page_key: PageKey,
     /// Whether the stored response hash changed.
     #[serde(default)]
     pub has_changed: bool,

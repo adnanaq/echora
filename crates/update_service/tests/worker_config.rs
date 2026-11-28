@@ -7,11 +7,12 @@ use std::time::Duration;
 
 use anyhow::{Context as _, ensure};
 use common::{CommonSettings, ObservabilitySettings};
+use echora_domain::Provider;
 use support::{complete_refresh_workflow, find_free_port, start_mock_grpc_server};
 use temporal_workflows::testing::start_local_environment;
 use temporal_workflows::{
-    DEFAULT_TEMPORAL_NAMESPACE, Provider, REFRESH_TRIGGER_SEARCH_ATTRIBUTE, UpdateServicePorts,
-    WorkerQueueSpec,
+    DEFAULT_TEMPORAL_NAMESPACE, PAGE_FETCH_PROVIDERS, REFRESH_TRIGGER_SEARCH_ATTRIBUTE,
+    UpdateServicePorts, WorkerQueueSpec, has_page_fetcher,
 };
 use temporalio_client::tonic::Request;
 use temporalio_client::{Client, ClientOptions};
@@ -385,12 +386,22 @@ fn settings_debug_api_key_redacted() -> anyhow::Result<()> {
 }
 
 #[test]
-fn list_worker_queue_specs_update_service_then_every_provider() {
+fn list_worker_queue_specs_update_service_then_every_page_fetch_provider() {
     let expected_specs: Vec<WorkerQueueSpec> = std::iter::once(WorkerQueueSpec::UpdateService)
-        .chain(Provider::ALL.into_iter().map(WorkerQueueSpec::Provider))
+        .chain(
+            PAGE_FETCH_PROVIDERS
+                .into_iter()
+                .map(WorkerQueueSpec::Provider),
+        )
         .collect();
     assert_eq!(list_worker_queue_specs(), expected_specs);
     assert!(!list_worker_queue_specs().contains(&WorkerQueueSpec::AgentService));
+    for provider in Provider::ALL {
+        assert_eq!(
+            list_worker_queue_specs().contains(&WorkerQueueSpec::Provider(provider)),
+            has_page_fetcher(provider)
+        );
+    }
 }
 
 #[test]

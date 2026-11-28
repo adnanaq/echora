@@ -12,6 +12,7 @@ workspace = true
 [dependencies]
 anyhow.workspace = true
 common.workspace = true
+echora_domain = { workspace = true, features = ["proto"] }
 echora_protos.workspace = true
 futures.workspace = true
 mimalloc.workspace = true

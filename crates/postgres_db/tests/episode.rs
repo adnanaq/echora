@@ -7,11 +7,11 @@
 
 mod support;
 
+use echora_domain::{EntityType, PageKey, Provider};
 use postgres_db::{
-    AnimeTitleInput, EPISODE_HASH_FORMAT, EntityType, EpisodeCharacterInput, EpisodeListEntryInput,
-    EpisodeReferenceInput, EpisodeStreamingInput, EpisodeTitleInput, PageKey, PageSource, Provider,
-    SaveEpisodeInput, delete_episode, load_anime, load_episode, mark_episode_aired, save_anime,
-    save_episode,
+    AnimeTitleInput, EPISODE_HASH_FORMAT, EpisodeCharacterInput, EpisodeListEntryInput,
+    EpisodeReferenceInput, EpisodeStreamingInput, EpisodeTitleInput, PageSource, SaveEpisodeInput,
+    delete_episode, load_anime, load_episode, mark_episode_aired, save_anime, save_episode,
 };
 use sqlx::PgPool;
 use url::Url;

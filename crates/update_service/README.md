@@ -1,13 +1,13 @@
 # `update_service`
 
-The Temporal worker binary for Echora's Update Service. It opens one Temporal client and runs one worker per task queue it owns, `update-service` and each `provider-<slug>` queue. The `agent-service` queue belongs to `agent_service` and is not polled here.
+The Temporal worker binary for Echora's Update Service. It opens one Temporal client and runs one worker per task queue it owns, `update-service` and a `provider-<name>` queue for each provider in `PAGE_FETCH_PROVIDERS`. The `agent-service` queue belongs to `agent_service` and is not polled here.
 
 ## Task Queues
 
 | Queue | What runs on it |
 | --- | --- |
 | `update-service` | `RefreshAnimeWorkflow`, `list_pages`, `record_page_failure`, `merge_anime`, `start_entity_workflows`, and `record_refresh` |
-| `provider-<slug>` | `refresh_page` fetches for that provider, one queue per provider |
+| `provider-<name>` | `refresh_page` fetches for that provider, one queue per provider the enrichment service fetches |
 
 ## Configuration
 

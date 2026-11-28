@@ -1,8 +1,9 @@
 //! Protobuf-to-SQL mapping and canonical hashing for `Episode` and `EpisodeReference`.
 
+use echora_domain::EntityType as DbEntityType;
 use postgres_db::{
-    EPISODE_HASH_FORMAT, EntityType as DbEntityType, EpisodeCharacterInput, EpisodeListEntryInput,
-    EpisodeReferenceInput, EpisodeStreamingInput, EpisodeTitleInput, PageSource, SaveEpisodeInput,
+    EPISODE_HASH_FORMAT, EpisodeCharacterInput, EpisodeListEntryInput, EpisodeReferenceInput,
+    EpisodeStreamingInput, EpisodeTitleInput, PageSource, SaveEpisodeInput,
 };
 use prost::Message as _;
 use sha2::{Digest as _, Sha256};
@@ -16,9 +17,9 @@ use crate::service::parse_page_sources;
 use crate::service::postgres_service_proto::v1::SaveEpisodeRequest;
 use crate::service::shared_proto::v1::{
     CharacterRole, Episode, EpisodeCharacter, EpisodeListEntry, EpisodeReference,
-    PageSource as ProtoPageSource,
+    PageKey as ProtoPageKey, PageSource as ProtoPageSource,
 };
-use crate::service::{map_db_error, to_proto_episode_list_entry, to_proto_page_key};
+use crate::service::{map_key_error, to_proto_episode_list_entry};
 
 /// Maps repeated `EpisodeReference` proto messages into [`EpisodeReferenceInput`]s.
 ///
@@ -71,7 +72,7 @@ pub fn build_episode_references(
                                 })
                                 .transpose()?;
                             Ok(EpisodeListEntryInput {
-                                provider: provider.parse().map_err(|err| map_db_error(&err))?,
+                                provider: provider.parse().map_err(map_key_error)?,
                                 title: entry_title,
                                 aired_at: parsed_aired_at,
                                 duration_seconds,
@@ -119,7 +120,7 @@ pub fn to_proto_episode_reference(known_episode: EpisodeReferenceInput) -> Episo
                      source,
                      title,
                  }| ProtoPageSource {
-                    page_key: Some(to_proto_page_key(&page_key)),
+                    page_key: Some(ProtoPageKey::from(&page_key)),
                     source: source.map(String::from).unwrap_or_default(),
                     title: title.unwrap_or_default(),
                 },
@@ -310,7 +311,7 @@ mod tests {
 
     use tonic::Code;
 
-    use postgres_db::{PageKey, Provider};
+    use echora_domain::{PageKey, Provider};
     use url::Url;
 
     use super::*;

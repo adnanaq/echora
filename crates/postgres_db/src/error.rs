@@ -14,6 +14,7 @@ pub struct Error {
 enum ErrorKind {
     NotFound,
     InvalidArgument(String),
+    InvalidKey(Box<echora_domain::KeyError>),
     VersionConflict(String),
     UniqueViolation(String),
     ForeignKeyViolation(String),
@@ -160,7 +161,10 @@ impl Error {
     /// ```
     #[must_use]
     pub fn is_invalid_argument(&self) -> bool {
-        matches!(self.kind, ErrorKind::InvalidArgument(_))
+        matches!(
+            self.kind,
+            ErrorKind::InvalidArgument(_) | ErrorKind::InvalidKey(_)
+        )
     }
 
     /// Returns `true` when an optimistic concurrency or serialization conflict occurred.
@@ -257,6 +261,7 @@ impl fmt::Display for Error {
         match &self.kind {
             ErrorKind::NotFound => write!(formatter, "record not found"),
             ErrorKind::InvalidArgument(message) => write!(formatter, "invalid argument: {message}"),
+            ErrorKind::InvalidKey(err) => write!(formatter, "invalid argument: {err}"),
             ErrorKind::VersionConflict(message) => write!(formatter, "version conflict: {message}"),
             ErrorKind::UniqueViolation(message) => {
                 write!(formatter, "unique constraint violation: {message}")
@@ -282,6 +287,7 @@ impl std::error::Error for Error {
         match &self.kind {
             ErrorKind::Migration(err) => Some(err),
             ErrorKind::Database(err) => Some(err),
+            ErrorKind::InvalidKey(err) => Some(err.as_ref()),
             ErrorKind::NotFound
             | ErrorKind::InvalidArgument(_)
             | ErrorKind::VersionConflict(_)
@@ -353,6 +359,13 @@ impl From<sqlx::migrate::MigrateError> for Error {
     }
 }
 
+/// Treats a refused provider, entity type or page address as an invalid argument.
+impl From<echora_domain::KeyError> for Error {
+    fn from(err: echora_domain::KeyError) -> Self {
+        Self::from_kind(ErrorKind::InvalidKey(Box::new(err)))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::error::Error as _;
@@ -377,6 +390,19 @@ mod tests {
         assert!(database.is_database());
         assert!(database.source().is_some());
         assert!(database.to_string().contains("database error"));
+
+        let invalid_key = Error::from(
+            "myanimelist"
+                .parse::<echora_domain::Provider>()
+                .unwrap_err(),
+        );
+        assert!(invalid_key.is_invalid_argument());
+        assert!(invalid_key.source().is_some());
+        assert!(
+            invalid_key
+                .to_string()
+                .starts_with("invalid argument: unknown provider \"myanimelist\"")
+        );
 
         let migration = Error::from(sqlx::migrate::MigrateError::VersionMissing(42));
         assert!(migration.is_migration());

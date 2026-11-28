@@ -3,16 +3,16 @@
 use std::env;
 
 use chrono::{DateTime, Duration, NaiveDate, NaiveTime, Utc};
+use echora_domain::{EntityType, PageKey, Provider};
 use postgres_db::{
     ANIME_HASH_FORMAT, AnimeBroadcastInput, AnimeCompanyInput, AnimeContextualRankInput,
     AnimeDetailsInput, AnimeExternalSourceInput, AnimeHiatusInput, AnimeImageInput,
     AnimeRelationClaimInput, AnimeRelationInput, AnimeRelationsAndGraphInput,
     AnimeScheduleAndStatsInput, AnimeSourceMaterialInput, AnimeStatisticsInput,
     AnimeStreamingSourceInput, AnimeThemeInput, AnimeThemeSongInput, AnimeTitleInput,
-    AnimeTrailerInput, CompanyXrefInput, EntityType, EpisodeRangeInput, Error, FetchOutcome,
-    PageKey, PageObservation, PageResponse, PageSource, Provider, SaveAnimeInput,
-    SourceMaterialXrefInput, connect_pool, link_anime_source_page, load_anime,
-    record_page_observation, run_migrations, save_anime,
+    AnimeTrailerInput, CompanyXrefInput, EpisodeRangeInput, Error, FetchOutcome, PageObservation,
+    PageResponse, PageSource, SaveAnimeInput, SourceMaterialXrefInput, connect_pool,
+    link_anime_source_page, load_anime, record_page_observation, run_migrations, save_anime,
 };
 use url::Url;
 use uuid::Uuid;

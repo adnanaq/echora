@@ -5,12 +5,13 @@ Echora's Rust code is one Cargo workspace. The workspace file is `Cargo.toml` at
 | Crate | Kind | What it holds |
 | --- | --- | --- |
 | [`common`](common/README.md) | Library | Settings from the environment, the shared error type, and logging and OpenTelemetry setup |
+| [`echora_domain`](echora_domain/README.md) | Library | Domain types every service shares: `Provider`, `EntityType` and `PageKey` |
 | [`postgres_db`](postgres_db/README.md) | Library | The PostgreSQL schema as `sqlx` migrations, and every query the catalogue runs |
 | [`postgres_service`](postgres_service/README.md) | Binary | The PostgreSQL Service, a gRPC server over `postgres_db` |
 | [`temporal_workflows`](temporal_workflows/README.md) | Library | Temporal workflows, activities, task queues, and Worker Versioning helpers |
 | [`update_service`](update_service/README.md) | Binary | Temporal Rust worker process polling `update-service`, provider, and `agent-service` queues |
 
-`postgres_service` depends on both libraries. `postgres_db` depends on neither of the others, so it can be tested on its own.
+`postgres_service` depends on both libraries. `postgres_db` depends only on `echora_domain` and `echora_protos`, so it can be tested on its own.
 
 ## Workspace Rules
 

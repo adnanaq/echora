@@ -10,6 +10,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+echora_domain = { workspace = true, features = ["serde"] }
 # The #[workflow] and #[activities] macros expand to code naming futures and temporalio_workflow.
 futures.workspace = true
 serde.workspace = true

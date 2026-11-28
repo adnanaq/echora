@@ -44,7 +44,7 @@ pub use grpc_clients::{
 };
 use temporal_workflows::{
     DEFAULT_MERGE_COALESCE_WAIT_SECONDS, DEFAULT_MERGE_FIRST_WAIT_MINUTES, DEFAULT_MERGE_VERSION,
-    DEFAULT_REFRESH_AFTER_DAYS, DEFAULT_TEMPORAL_NAMESPACE, Provider,
+    DEFAULT_REFRESH_AFTER_DAYS, DEFAULT_TEMPORAL_NAMESPACE, PAGE_FETCH_PROVIDERS,
     REFRESH_TRIGGER_SEARCH_ATTRIBUTE, RefreshSettings, UPDATE_SERVICE_TASK_QUEUE,
     UpdateServicePorts, UpdateServiceWorkerConfig, WorkerQueueSpec,
     build_update_service_worker_options,
@@ -311,23 +311,29 @@ impl fmt::Debug for UpdateServiceSettings {
 
 /// Lists every task queue the Update Service polls, `update-service` first.
 ///
+/// One provider queue follows for each provider in [`PAGE_FETCH_PROVIDERS`], in that order.
+///
 /// `agent-service` is left out, since `agent_service` polls it.
 ///
 /// # Examples
 ///
 /// ```
-/// use temporal_workflows::{Provider, WorkerQueueSpec};
+/// use temporal_workflows::{PAGE_FETCH_PROVIDERS, WorkerQueueSpec};
 /// use update_service::list_worker_queue_specs;
 ///
 /// let specs = list_worker_queue_specs();
-/// assert_eq!(specs.len(), 1 + Provider::ALL.len());
+/// assert_eq!(specs.len(), 1 + PAGE_FETCH_PROVIDERS.len());
 /// assert_eq!(specs[0], WorkerQueueSpec::UpdateService);
 /// ```
 #[must_use]
 pub fn list_worker_queue_specs() -> Vec<WorkerQueueSpec> {
-    let mut specs = Vec::with_capacity(1 + Provider::ALL.len());
+    let mut specs = Vec::with_capacity(1 + PAGE_FETCH_PROVIDERS.len());
     specs.push(WorkerQueueSpec::UpdateService);
-    specs.extend(Provider::ALL.into_iter().map(WorkerQueueSpec::Provider));
+    specs.extend(
+        PAGE_FETCH_PROVIDERS
+            .into_iter()
+            .map(WorkerQueueSpec::Provider),
+    );
     specs
 }
 
@@ -389,12 +395,12 @@ pub fn build_runtime_options(common_settings: &CommonSettings) -> anyhow::Result
 /// # fn example() -> anyhow::Result<()> {
 /// use std::collections::HashMap;
 ///
-/// use temporal_workflows::{Provider, UpdateServicePorts};
+/// use temporal_workflows::{PAGE_FETCH_PROVIDERS, UpdateServicePorts};
 /// use update_service::{UpdateServiceSettings, build_all_worker_options};
 ///
 /// let settings = UpdateServiceSettings::from_vars(&HashMap::new())?;
 /// let options = build_all_worker_options(&settings, &UpdateServicePorts::noop())?;
-/// assert_eq!(options.len(), 1 + Provider::ALL.len());
+/// assert_eq!(options.len(), 1 + PAGE_FETCH_PROVIDERS.len());
 /// # Ok(())
 /// # }
 /// ```

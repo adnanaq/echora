@@ -16,19 +16,19 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
 use anyhow::ensure;
+use echora_domain::{EntityType, PageKey, Provider};
 use futures::future::{BoxFuture, join_all};
 use temporal_workflows::testing::start_local_environment;
 use temporal_workflows::{
-    CatalogueDataPort, EntityPageSummary, EntityPages, EntityType, FetchRequestedSignal,
+    CatalogueDataPort, EntityPageSummary, EntityPages, FetchRequestedSignal,
     MAX_ABORTED_RETRIES_PER_ATTEMPT, MAX_PAGE_RETRY_BACKOFF_HOURS, MergeAnimeOutput,
-    MergeAttemptOutcome, PortError, Provider, ProviderActivities, RefreshAnimeInput,
-    RefreshAnimeOutcome, RefreshAnimeWorkflow, RefreshOutcome, RefreshPageInput, RefreshPageKey,
-    RefreshPageOutput, RefreshSettings, RefreshTrigger, StartEntityWorkflowsInput,
-    UPDATE_SERVICE_TASK_QUEUE, UpdateServiceActivities, UpdateServicePorts,
-    UpdateServiceWorkerConfig, WorkerQueueSpec, WorkflowStarterPort, build_priority,
-    build_refresh_anime_workflow_id, build_update_service_worker_options, build_worker_options,
-    compute_page_backoff_seconds, is_page_due, matches_fetch_request, merge_priority,
-    select_pages_to_refresh,
+    MergeAttemptOutcome, PortError, ProviderActivities, RefreshAnimeInput, RefreshAnimeOutcome,
+    RefreshAnimeWorkflow, RefreshOutcome, RefreshPageInput, RefreshPageOutput, RefreshSettings,
+    RefreshTrigger, StartEntityWorkflowsInput, UPDATE_SERVICE_TASK_QUEUE, UpdateServiceActivities,
+    UpdateServicePorts, UpdateServiceWorkerConfig, WorkerQueueSpec, WorkflowStarterPort,
+    build_priority, build_refresh_anime_workflow_id, build_update_service_worker_options,
+    build_worker_options, compute_page_backoff_seconds, is_page_due, matches_fetch_request,
+    merge_priority, select_pages_to_refresh,
 };
 use temporalio_client::{
     Client, WorkflowCancelOptions, WorkflowGetResultOptions, WorkflowIdConflictPolicy,
@@ -64,8 +64,8 @@ struct FakeState {
     record_refresh_entered: Option<Arc<Notify>>,
     synopsis_delay: Duration,
     synopsis_entered: Option<Arc<Notify>>,
-    fetch_calls: Vec<(RefreshPageKey, Duration)>,
-    recorded_page_failures: Vec<RefreshPageKey>,
+    fetch_calls: Vec<(PageKey, Duration)>,
+    recorded_page_failures: Vec<PageKey>,
     merge_calls: usize,
     merge_versions_seen: Vec<i32>,
     started_batches: Vec<StartEntityWorkflowsInput>,
@@ -98,7 +98,7 @@ impl CatalogueDataPort for FakePorts {
 
     fn fetch_and_store_page(
         &self,
-        page_key: RefreshPageKey,
+        page_key: PageKey,
         max_age: Duration,
     ) -> BoxFuture<'_, Result<RefreshPageOutput, PortError>> {
         let state = self.state.clone();
@@ -108,21 +108,21 @@ impl CatalogueDataPort for FakePorts {
                 guard.fetch_calls.push((page_key.clone(), max_age));
                 let delay = guard
                     .page_delays
-                    .get(&page_key.provider)
+                    .get(&page_key.provider())
                     .copied()
                     .unwrap_or(Duration::ZERO);
-                let error_mode = guard.page_errors.get(&page_key.provider).copied();
+                let error_mode = guard.page_errors.get(&page_key.provider()).copied();
                 let has_changed = guard
                     .page_changes
-                    .get(&page_key.provider)
+                    .get(&page_key.provider())
                     .copied()
                     .unwrap_or(true);
                 let has_failed = guard
                     .page_reported_failed
-                    .get(&page_key.provider)
+                    .get(&page_key.provider())
                     .copied()
                     .unwrap_or(false);
-                let started_notify = guard.page_started.get(&page_key.provider).cloned();
+                let started_notify = guard.page_started.get(&page_key.provider()).cloned();
                 (delay, error_mode, has_changed, has_failed, started_notify)
             };
             if let Some(notify) = started_notify {
@@ -152,7 +152,7 @@ impl CatalogueDataPort for FakePorts {
 
     fn record_page_failure(
         &self,
-        page_key: RefreshPageKey,
+        page_key: PageKey,
         _failed_at: SystemTime,
     ) -> BoxFuture<'_, Result<(), PortError>> {
         let should_fail = {
@@ -273,11 +273,7 @@ fn build_page_summary(
     fetched_at_epoch_seconds: Option<i64>,
 ) -> EntityPageSummary {
     EntityPageSummary {
-        page_key: RefreshPageKey {
-            provider,
-            entity_type: EntityType::Anime,
-            address: address.to_owned(),
-        },
+        page_key: PageKey::new(provider, EntityType::Anime, address).expect("valid page key"),
         is_partial_source,
         fetched_at_epoch_seconds,
         is_dead: false,
@@ -402,12 +398,12 @@ fn scheduling_helpers_compute_backoff_priority_and_parse_slugs() {
     assert_eq!(remerge_priority.fairness_key.as_deref(), Some("remerge"));
 
     for provider in Provider::ALL {
-        assert_eq!(Provider::from_str(provider.slug()).ok(), Some(provider));
+        assert_eq!(Provider::from_str(provider.as_str()).ok(), Some(provider));
         assert_eq!(
-            Provider::try_from(provider.slug().to_owned()).ok(),
+            Provider::try_from(provider.as_str().to_owned()).ok(),
             Some(provider)
         );
-        assert_eq!(<&'static str>::from(provider), provider.slug());
+        assert_eq!(<&'static str>::from(provider), provider.as_str());
     }
     assert!(Provider::from_str("unknown").is_err());
 
@@ -442,6 +438,15 @@ fn scheduling_helpers_compute_backoff_priority_and_parse_slugs() {
         PortError::retryable("boom").with_source(std::io::Error::other("io failure"));
     assert!(err_with_source.source().is_some());
     assert!(format!("{err_with_source:?}").contains("has_source: true"));
+    let invalid_key_error =
+        PortError::from(Provider::from_str("bad").expect_err("invalid provider"));
+    assert!(invalid_key_error.is_non_retryable());
+    assert!(invalid_key_error.source().is_some());
+    assert!(
+        invalid_key_error
+            .to_string()
+            .starts_with("invalid page key: unknown provider")
+    );
     assert_eq!(format!("{}", EntityType::Anime), "anime");
     assert_eq!(format!("{}", RefreshTrigger::User), "user");
     assert!(
@@ -535,7 +540,11 @@ fn scheduling_helpers_select_due_and_requested_pages() {
     ));
 
     let selected = select_pages_to_refresh(
-        &[fresh, build_page_summary(Provider::Mal, "9", false, None)],
+        &[
+            fresh,
+            build_page_summary(Provider::Mal, "9", false, None),
+            build_page_summary(Provider::Ann, "10", false, None),
+        ],
         now,
         7,
         &[
@@ -545,7 +554,7 @@ fn scheduling_helpers_select_due_and_requested_pages() {
                 priority: NonZeroU32::new(3),
             },
             FetchRequestedSignal {
-                providers: vec![Provider::Kitsu],
+                providers: vec![Provider::Kitsu, Provider::Ann],
                 max_age: Duration::ZERO,
                 priority: NonZeroU32::new(1),
             },
@@ -553,6 +562,11 @@ fn scheduling_helpers_select_due_and_requested_pages() {
         true,
     );
     assert_eq!(selected.len(), 2);
+    assert!(
+        selected
+            .iter()
+            .all(|page_input| page_input.page_key.provider() != Provider::Ann)
+    );
     assert!(matches_fetch_request(
         &build_page_summary(Provider::Mal, "9", false, None),
         &FetchRequestedSignal {
@@ -580,11 +594,8 @@ async fn refresh_page_transient_error_returns_retryable_failure() {
         .run(
             ProviderActivities::refresh_page,
             RefreshPageInput {
-                page_key: RefreshPageKey {
-                    provider: Provider::Mal,
-                    entity_type: EntityType::Anime,
-                    address: "21".to_owned(),
-                },
+                page_key: PageKey::new(Provider::Mal, EntityType::Anime, "21")
+                    .expect("valid page key"),
                 max_age: Duration::ZERO,
             },
         )
@@ -613,11 +624,8 @@ async fn refresh_page_provider_blocked_returns_non_retryable_failure() {
         .run(
             ProviderActivities::refresh_page,
             RefreshPageInput {
-                page_key: RefreshPageKey {
-                    provider: Provider::AniSearch,
-                    entity_type: EntityType::Anime,
-                    address: "100".to_owned(),
-                },
+                page_key: PageKey::new(Provider::AniSearch, EntityType::Anime, "100")
+                    .expect("valid page key"),
                 max_age: Duration::ZERO,
             },
         )
@@ -646,11 +654,8 @@ async fn refresh_page_permanent_error_returns_non_retryable_failure() {
         .run(
             ProviderActivities::refresh_page,
             RefreshPageInput {
-                page_key: RefreshPageKey {
-                    provider: Provider::AniList,
-                    entity_type: EntityType::Anime,
-                    address: "bad".to_owned(),
-                },
+                page_key: PageKey::new(Provider::AniList, EntityType::Anime, "1")
+                    .expect("valid page key"),
                 max_age: Duration::ZERO,
             },
         )
@@ -698,11 +703,8 @@ async fn refresh_page_emits_heartbeats_and_cancels_cleanly() {
         .run(
             ProviderActivities::refresh_page,
             RefreshPageInput {
-                page_key: RefreshPageKey {
-                    provider: Provider::Mal,
-                    entity_type: EntityType::Anime,
-                    address: "42".to_owned(),
-                },
+                page_key: PageKey::new(Provider::Mal, EntityType::Anime, "42")
+                    .expect("valid page key"),
                 max_age: Duration::ZERO,
             },
         )
@@ -805,11 +807,7 @@ async fn start_entity_workflows_cancels_cleanly_when_activity_context_is_cancell
 async fn noop_ports_reject_all_operations() {
     let ports = UpdateServicePorts::noop();
     let anime_id = Uuid::now_v7();
-    let key = RefreshPageKey {
-        provider: Provider::Mal,
-        entity_type: EntityType::Anime,
-        address: "1".to_owned(),
-    };
+    let key = PageKey::new(Provider::Mal, EntityType::Anime, "1").expect("valid page key");
     assert!(ports.catalogue().list_entity_pages(anime_id).await.is_err());
     assert!(
         ports
@@ -1122,7 +1120,7 @@ async fn refresh_anime_workflow_signals_during_record_refresh_and_synopsis_trigg
         state
             .fetch_calls
             .iter()
-            .any(|(key, _)| key.provider == Provider::Kitsu)
+            .any(|(key, _)| key.provider() == Provider::Kitsu)
     );
     ensure!(state.recorded_outcomes.len() >= 2);
     Ok(())
@@ -1208,7 +1206,7 @@ async fn refresh_anime_workflow_handles_early_merge_wait_condition_and_blocked_p
     ensure!(outcome.merges_run >= 2);
     let state = fake.state.lock().expect("lock");
     ensure!(state.recorded_page_failures.len() == 1);
-    ensure!(state.recorded_page_failures[0].provider == Provider::AniList);
+    ensure!(state.recorded_page_failures[0].provider() == Provider::AniList);
     Ok(())
 }
 
@@ -1273,13 +1271,13 @@ async fn refresh_anime_workflow_records_page_failures_for_non_retryable_and_time
         state
             .recorded_page_failures
             .iter()
-            .any(|key| key.provider == Provider::AniList)
+            .any(|key| key.provider() == Provider::AniList)
     );
     ensure!(
         state
             .recorded_page_failures
             .iter()
-            .any(|key| key.provider == Provider::Mal)
+            .any(|key| key.provider() == Provider::Mal)
     );
     Ok(())
 }

@@ -4,10 +4,10 @@
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 
+use echora_domain::{EntityType as DbEntityType, PageKey, Provider};
 use postgres_db::{
     AnimeCompanyInput, AnimeRelationClaimInput, AnimeRelationInput, AnimeRelationsAndGraphInput,
-    AnimeSourceMaterialInput, CompanyXrefInput, EntityType as DbEntityType, PageKey, PageSource,
-    Provider, SourceMaterialXrefInput,
+    AnimeSourceMaterialInput, CompanyXrefInput, PageSource, SourceMaterialXrefInput,
 };
 use tonic::Status;
 use url::Url;
@@ -15,10 +15,10 @@ use url::Url;
 use crate::anime_mapping::map_source_material_type;
 use crate::lookup_text::LookupText as _;
 use crate::service::shared_proto::v1::{
-    AnimeRelationType, AnimeStatus, CompanyEntry, CompanyRole, EntityType, PageKey as ProtoPageKey,
+    AnimeRelationType, AnimeStatus, CompanyEntry, CompanyRole, PageKey as ProtoPageKey,
     RelatedAnimeList, RelatedSourceMaterial, RelatedSourceMaterialList, RelationClaim,
 };
-use crate::service::{map_db_error, parse_page_title};
+use crate::service::{map_key_error, parse_page_title};
 
 /// Collects a work's relations, claims, source material and companies for the save.
 ///
@@ -90,8 +90,7 @@ fn map_relation_claims(claims: Vec<RelationClaim>) -> Result<Vec<AnimeRelationCl
                  relation_type,
                  target_page,
              }| {
-                let claiming_provider: Provider =
-                    provider.parse().map_err(|err| map_db_error(&err))?;
+                let claiming_provider: Provider = provider.parse().map_err(map_key_error)?;
                 let relation_type_text = map_anime_relation_type(relation_type)?.to_owned();
                 let ProtoPageKey {
                     provider: target_provider,
@@ -102,13 +101,13 @@ fn map_relation_claims(claims: Vec<RelationClaim>) -> Result<Vec<AnimeRelationCl
                 })?;
 
                 let parsed_target_provider: Provider =
-                    target_provider.parse().map_err(|err| map_db_error(&err))?;
+                    target_provider.parse().map_err(map_key_error)?;
                 let mapped_entity_type = map_entity_type(entity_type)?;
                 Ok(AnimeRelationClaimInput {
                     provider: claiming_provider,
                     relation_type: relation_type_text,
                     target_page: PageKey::new(parsed_target_provider, mapped_entity_type, address)
-                        .map_err(|err| map_db_error(&err))?,
+                        .map_err(map_key_error)?,
                 })
             },
         )
@@ -295,25 +294,19 @@ fn map_anime_relation_type(enum_number: i32) -> Result<&'static str, Status> {
     }
 }
 
-/// Converts an `EntityType` enum number into a `postgres_db` entity type.
+/// Converts a `shared_proto.v1.EntityType` enum number into an entity type.
 ///
 /// # Errors
 ///
 /// Returns `INVALID_ARGUMENT` for an unspecified or unknown value.
 pub(crate) fn map_entity_type(enum_number: i32) -> Result<DbEntityType, Status> {
-    let Ok(entity_type) = EntityType::try_from(enum_number) else {
-        return Err(Status::invalid_argument(format!(
-            "unknown EntityType number {enum_number}"
-        )));
-    };
-    match entity_type {
-        EntityType::Unspecified => Err(Status::invalid_argument(
-            "relation_claim.target_page.entity_type must be specified",
-        )),
-        EntityType::Anime => Ok(DbEntityType::Anime),
-        EntityType::Episode => Ok(DbEntityType::Episode),
-        EntityType::Character => Ok(DbEntityType::Character),
-    }
+    DbEntityType::try_from(enum_number).map_err(|err| {
+        if err.is_unspecified_entity_type() {
+            Status::invalid_argument("relation_claim.target_page.entity_type must be specified")
+        } else {
+            Status::invalid_argument(format!("unknown EntityType number {enum_number}"))
+        }
+    })
 }
 
 /// Converts a `CompanyRole` enum number into its lookup text, if it has one.
@@ -491,7 +484,7 @@ mod tests {
     fn parse_test_url(url_text: &str) -> Url {
         Url::parse(url_text).expect("valid URL")
     }
-    use crate::service::shared_proto::v1::{RelatedAnime, SourceMaterialType};
+    use crate::service::shared_proto::v1::{EntityType, RelatedAnime, SourceMaterialType};
 
     #[test]
     fn build_relations_and_graph_maps_relations_claims_sources_and_companies() {

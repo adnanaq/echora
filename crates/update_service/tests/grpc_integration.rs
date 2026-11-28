@@ -12,17 +12,18 @@ use std::num::NonZeroU32;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
+use echora_domain::{EntityType, PageKey, Provider};
 use support::{MockCatalogueState, start_configurable_mock_grpc_server};
 use temporal_workflows::testing::start_local_environment;
 use temporal_workflows::{
-    CatalogueDataPort, EntityType, MergeAttemptOutcome, Provider, RefreshOutcome, RefreshPageKey,
-    RefreshTrigger, StartEntityWorkflowsInput, WorkflowStarterPort,
+    CatalogueDataPort, MergeAttemptOutcome, RefreshOutcome, RefreshTrigger,
+    StartEntityWorkflowsInput, WorkflowStarterPort,
 };
 use tonic::metadata::MetadataValue;
 use tonic::transport::Channel;
 use tonic::{Code, Status};
 use update_service::postgres_service_proto::v1::EntityPage;
-use update_service::shared_proto::v1::{EntityType as ProtoEntityType, PageKey};
+use update_service::shared_proto::v1::{EntityType as ProtoEntityType, PageKey as ProtoPageKey};
 use update_service::{
     FETCH_ERROR_METADATA_KEY, FETCH_ERROR_PROVIDER_BLOCKED, GrpcCatalogueAdapter,
     TemporalWorkflowStarter, build_enrichment_client, build_postgres_client, map_grpc_status,
@@ -74,7 +75,7 @@ async fn grpc_catalogue_adapter_covers_happy_blocked_transient_aborted_and_page_
     let state = Arc::new(Mutex::new(MockCatalogueState {
         pages: vec![
             EntityPage {
-                page_key: Some(PageKey {
+                page_key: Some(ProtoPageKey {
                     provider: "mal".to_owned(),
                     entity_type: ProtoEntityType::Anime as i32,
                     address: "1".to_owned(),
@@ -86,7 +87,7 @@ async fn grpc_catalogue_adapter_covers_happy_blocked_transient_aborted_and_page_
                 fetch_failures: 0,
             },
             EntityPage {
-                page_key: Some(PageKey {
+                page_key: Some(ProtoPageKey {
                     provider: "kitsu".to_owned(),
                     entity_type: ProtoEntityType::Episode as i32,
                     address: "e1".to_owned(),
@@ -98,10 +99,10 @@ async fn grpc_catalogue_adapter_covers_happy_blocked_transient_aborted_and_page_
                 fetch_failures: 0,
             },
             EntityPage {
-                page_key: Some(PageKey {
+                page_key: Some(ProtoPageKey {
                     provider: "anilist".to_owned(),
                     entity_type: ProtoEntityType::Character as i32,
-                    address: "c1".to_owned(),
+                    address: "3".to_owned(),
                 }),
                 is_partial_source: true,
                 fetched_at: None,
@@ -153,11 +154,7 @@ async fn grpc_catalogue_adapter_covers_happy_blocked_transient_aborted_and_page_
     assert!(missing_key_err.is_non_retryable());
     state.lock().expect("lock").missing_page_key = false;
 
-    let page_key = RefreshPageKey {
-        provider: Provider::Mal,
-        entity_type: EntityType::Anime,
-        address: "1".to_owned(),
-    };
+    let page_key = PageKey::new(Provider::Mal, EntityType::Anime, "1").expect("valid page key");
     let refreshed = adapter
         .fetch_and_store_page(page_key.clone(), Duration::from_secs(3600))
         .await?;
@@ -182,18 +179,14 @@ async fn grpc_catalogue_adapter_covers_happy_blocked_transient_aborted_and_page_
     state.lock().expect("lock").fail_fetch_page_blocked = false;
 
     let failed_at = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
-    for entity_type in [
-        EntityType::Anime,
-        EntityType::Episode,
-        EntityType::Character,
+    for (entity_type, address) in [
+        (EntityType::Anime, "1"),
+        (EntityType::Episode, "1:1"),
+        (EntityType::Character, "1"),
     ] {
         adapter
             .record_page_failure(
-                RefreshPageKey {
-                    provider: Provider::Mal,
-                    entity_type,
-                    address: "1".to_owned(),
-                },
+                PageKey::new(Provider::Mal, entity_type, address).expect("valid page key"),
                 failed_at,
             )
             .await?;

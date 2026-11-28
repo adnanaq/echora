@@ -20,6 +20,7 @@ COPY Cargo.toml Cargo.lock ./
 COPY .sqlx/ .sqlx/
 COPY protos/ protos/
 COPY crates/common/ crates/common/
+COPY crates/echora_domain/ crates/echora_domain/
 COPY crates/echora_protos/ crates/echora_protos/
 COPY crates/postgres_db/ crates/postgres_db/
 COPY crates/postgres_service/ crates/postgres_service/
