@@ -62,6 +62,9 @@ pub fn build_save_anime_input(
     } = request;
     let anime_id = Uuid::parse_str(&anime_id_text)
         .map_err(|err| Status::invalid_argument(format!("invalid anime_id UUID: {err}")))?;
+    if merge_version <= 0 {
+        return Err(Status::invalid_argument("merge_version must be positive"));
+    }
     let anime = anime.ok_or_else(|| Status::invalid_argument("anime must be provided"))?;
     let page_sources = parse_page_sources(page_sources)?;
 
@@ -827,5 +830,23 @@ mod tests {
                 title: None,
             }]
         );
+    }
+
+    #[test]
+    fn build_save_anime_input_rejects_non_positive_merge_version() {
+        for invalid_version in [0, -1] {
+            let err = build_save_anime_input(
+                SaveAnimeRequest {
+                    anime_id: Uuid::now_v7().to_string(),
+                    expected_version: 0,
+                    anime: Some(Anime::default()),
+                    merge_version: invalid_version,
+                    ..SaveAnimeRequest::default()
+                },
+                None,
+            )
+            .expect_err("non-positive merge_version must fail");
+            assert_eq!(err.code(), tonic::Code::InvalidArgument);
+        }
     }
 }

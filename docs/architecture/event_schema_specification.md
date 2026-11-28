@@ -427,7 +427,7 @@ message SaveAnimeRequest {  // (ECHO-98)
   string anime_id = 1;
   int64 expected_version = 2;
   shared_proto.v1.Anime anime = 3;
-  int32 merge_version = 4;                   // the mapping and merge code that produced the save
+  int32 merge_version = 4;                   // the mapping and merge code that produced the save; must be positive (> 0), else INVALID_ARGUMENT (~~ECHO-111~~)
   repeated shared_proto.v1.RelationClaim relation_claims = 5;  // stored in anime_related_anime_claim (ECHO-102) (ECHO-133)
   repeated shared_proto.v1.EpisodeReference episodes = 6;      // (ECHO-103)
   repeated shared_proto.v1.PageSource page_sources = 7;        // from MergeAnimeResponse (ECHO-108)
@@ -593,8 +593,9 @@ message ListEntityPagesRequest {  // (ECHO-108)
   string entity_id = 2;
 }
 
-message ListEntityPagesResponse {  // (ECHO-108)
-  repeated EntityPage pages = 1;
+message ListEntityPagesResponse {  // (~~ECHO-108~~, ~~ECHO-111~~)
+  repeated EntityPage pages = 1;             // malformed stored page keys are skipped and logged rather than blocking the entity
+  optional int32 merge_version = 2;          // entity's stored merge_version; unset before first merge
 }
 
 message EntityPage {  // (ECHO-108)
@@ -738,7 +739,7 @@ message DuePage {  // (ECHO-108)
   - ~~`SaveEpisode` checks it. (ECHO-103)~~
   - ~~`SaveCharacter` checks it. (ECHO-104)~~
   - `DeleteAnime` checks it. (ECHO-107)
-  - On `ABORTED`, the merge activity loads, merges and saves again within the same attempt. (ECHO-111)
+  - On `ABORTED`, the merge activity loads, merges and saves again within the same attempt. (~~ECHO-111~~)
   - ~~A save that changes nothing writes nothing and sends nothing. (ECHO-98)~~
   - `RecordRefresh`, the refresh's last call, records that it finished. (ECHO-108)
 - **`SaveAnime` creates what the work lists.**
@@ -770,7 +771,7 @@ message DuePage {  // (ECHO-108)
 - **Message size.** Every method that carries page bodies (`StorePage`, `LoadAnime`, `MergeAnime`, `MergeEpisode`, `MergeCharacter` and their loads) runs with a 64 MB limit, set on every server and every client: `max_decoding_message_size` and `max_encoding_message_size` in `tonic`, whose decoding limit defaults to 4 MB on both ends, and `grpc.max_receive_message_length` and `grpc.max_send_message_length` in `grpcio`. Messages are gzip-compressed.
   - ~~The PostgreSQL Service sets the limit and compression on its server. It returns `RESOURCE_EXHAUSTED` only for a message over the limit, never for a passing condition, so it is not retried. (ECHO-97)~~
   - The Enrichment Service sets them on its server, and returns a provider's throttling as `UNAVAILABLE`. (ECHO-99)
-  - The Update Service sets them on its clients. (ECHO-111)
+  - ~~The Update Service sets them on its clients. (ECHO-111)~~
 - **`DeleteAnime`** removes the work's page links, its own relations and every `graph_edge` row from or to it, all in one transaction. Relations other works assert towards it keep their target page and need no change, since the target is found by the page's current owner. (ECHO-133) A work merged into another keeps `merged_into_anime_id`, so its old links can redirect. See [[Database Schema#4. Writes and Deletes|Database Schema]]. (ECHO-107)
 - **A page view writes nothing.** The backend decides from `next_refresh_at` in the `Get*` response whether an opened entity is due, so a view costs one read, and a cached one none. (ECHO-108)
 - **`ListRequestedMerges`** returns the entities whose `merge_requested_at` is set, through a partial index. The sweep starts their refreshes before paging the due queries. (ECHO-108)

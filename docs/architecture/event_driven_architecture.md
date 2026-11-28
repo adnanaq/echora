@@ -184,7 +184,7 @@ Each save stores the merged entity in its tables (see [[Database Schema]]) and w
 - ~~`SaveCharacter` for a character (ECHO-104).~~
 
 - **Version check.** The save writes only if the entity's version still equals `expected_version` from its load. Otherwise it returns `ABORTED`. Every save checks it, as listed under [[event_schema_specification#PostgresService (planned)|Event Schema Specification]].
-  - The merge activity then loads, merges and saves again. (ECHO-111)
+  - The merge activity then loads, merges and saves again. (~~ECHO-111~~)
 - ~~**Change check.** The entity's `merged_record_hash` tells whether anything changed. When nothing did, the save writes nothing and sends nothing. (ECHO-98)~~
   - The refresh's last call, `RecordRefresh`, records that it finished either way. (ECHO-108)
 

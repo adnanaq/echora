@@ -210,6 +210,8 @@ services:
       - ANIDB_CLIENT=${ANIDB_CLIENT:?set ANIDB_CLIENT in .env}
       - ANIDB_CLIENTVER=${ANIDB_CLIENTVER:?set ANIDB_CLIENTVER in .env}
       - ANIDB_PROTOVER=${ANIDB_PROTOVER:-1}
+      # AnimeSchedule app token; without it AnimeSchedule leaves out the provider links.
+      - ANIMESCHEDULE_TOKEN=${ANIMESCHEDULE_TOKEN:?set ANIMESCHEDULE_TOKEN in .env}
       # Observability
       # Observability — OFF by default; see the vector-service block above.
       - OTEL_ENABLED=${OTEL_ENABLED:-false}
@@ -371,6 +373,8 @@ services:
       - ENVIRONMENT=development
       - TEMPORAL_ADDRESS=http://temporal:7233
       - TEMPORAL_NAMESPACE=echora-dev
+      - POSTGRES_SERVICE_ADDRESS=http://postgres-service:8004
+      - ENRICHMENT_SERVICE_ADDRESS=http://enrichment-service:8002
       - OTEL_ENABLED=${OTEL_ENABLED:-false}
       - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
       - OTEL_ENABLE_TRACING=true

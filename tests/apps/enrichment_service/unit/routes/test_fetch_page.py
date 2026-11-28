@@ -236,3 +236,9 @@ async def test_fetch_page_maps_errors_to_expected_grpc_codes(
         await fetch_page(runtime, request_factory(), context)  # type: ignore[operator]
 
     assert context.abort.call_args.args[0] == expected_code
+    if isinstance(fetcher_error, ServiceBlockedError):
+        assert context.abort.call_args.kwargs["trailing_metadata"] == (
+            ("x-echora-fetch-error", "provider_blocked"),
+        )
+    else:
+        assert "trailing_metadata" not in context.abort.call_args.kwargs

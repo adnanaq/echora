@@ -32,6 +32,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 _MAX_DURATION_NANOS = 999_999_999
+# Must stay in sync with FETCH_ERROR_METADATA_KEY / FETCH_ERROR_PROVIDER_BLOCKED
+# in crates/update_service/src/grpc_clients.rs.
+FETCH_ERROR_METADATA_KEY = "x-echora-fetch-error"
+FETCH_ERROR_PROVIDER_BLOCKED = "provider_blocked"
 
 
 def build_page_fetchers(runtime: EnrichmentRuntime) -> dict[str, PageFetcher]:
@@ -120,7 +124,15 @@ async def fetch_page(
         fetched = await fetcher.fetch_page(page_key, max_age=_read_max_age(request))
     except ValueError as exc:
         await context.abort(grpc.StatusCode.INVALID_ARGUMENT, str(exc))
-    except (ServiceRateLimitedError, ServiceBlockedError) as exc:
+    except ServiceBlockedError as exc:
+        await context.abort(
+            grpc.StatusCode.UNAVAILABLE,
+            str(exc),
+            trailing_metadata=(
+                (FETCH_ERROR_METADATA_KEY, FETCH_ERROR_PROVIDER_BLOCKED),
+            ),
+        )
+    except ServiceRateLimitedError as exc:
         await context.abort(grpc.StatusCode.UNAVAILABLE, str(exc))
     except ServiceNotConfiguredError as exc:
         await context.abort(grpc.StatusCode.FAILED_PRECONDITION, str(exc))

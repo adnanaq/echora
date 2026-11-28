@@ -1,17 +1,20 @@
-//! Tests for `update_service` settings, worker options, and the worker runner.
+//! Tests for `update_service` settings, worker options, OpenTelemetry runtime options, and runner.
+
+mod support;
 
 use std::collections::HashMap;
-use std::net::TcpListener;
 use std::time::Duration;
 
 use anyhow::{Context as _, ensure};
+use common::{CommonSettings, ObservabilitySettings};
+use support::{complete_refresh_workflow, find_free_port, start_mock_grpc_server};
 use temporal_workflows::testing::start_local_environment;
 use temporal_workflows::{
-    DEFAULT_TEMPORAL_NAMESPACE, Provider, REFRESH_TRIGGER_SEARCH_ATTRIBUTE, SpikeInput,
-    SpikeWorkflow, UPDATE_SERVICE_TASK_QUEUE, WorkerQueueSpec,
+    DEFAULT_TEMPORAL_NAMESPACE, Provider, REFRESH_TRIGGER_SEARCH_ATTRIBUTE, UpdateServicePorts,
+    WorkerQueueSpec,
 };
 use temporalio_client::tonic::Request;
-use temporalio_client::{Client, ClientOptions, WorkflowGetResultOptions, WorkflowStartOptions};
+use temporalio_client::{Client, ClientOptions};
 use temporalio_common::protos::temporal::api::enums::v1::IndexedValueType;
 use temporalio_common::protos::temporal::api::operatorservice::v1::{
     AddSearchAttributesRequest, ListSearchAttributesRequest,
@@ -19,8 +22,10 @@ use temporalio_common::protos::temporal::api::operatorservice::v1::{
 use temporalio_common::worker::VersioningBehavior;
 use temporalio_sdk::testing::{LocalServer, LocalWorkflowEnvironmentOptions, WorkflowEnvironment};
 use update_service::{
-    UpdateServiceSettings, build_all_worker_options, list_worker_queue_specs, run_workers,
+    UpdateServiceSettings, build_all_worker_options, build_runtime_options,
+    list_worker_queue_specs, run_workers,
 };
+use uuid::Uuid;
 
 const WORKFLOW_WAIT: Duration = Duration::from_secs(30);
 
@@ -35,15 +40,21 @@ fn load_settings(pairs: &[(&str, &str)]) -> anyhow::Result<UpdateServiceSettings
     UpdateServiceSettings::from_vars(&build_vars(pairs))
 }
 
+fn otel_disabled_common_settings() -> CommonSettings {
+    CommonSettings {
+        observability: ObservabilitySettings {
+            otel_enabled: false,
+            ..ObservabilitySettings::default()
+        },
+        ..CommonSettings::default()
+    }
+}
+
 fn load_settings_error(pairs: &[(&str, &str)]) -> String {
     match load_settings(pairs) {
         Ok(settings) => panic!("expected settings error for {pairs:?}, loaded {settings:?}"),
         Err(settings_error) => format!("{settings_error:#}"),
     }
-}
-
-fn find_free_port() -> anyhow::Result<u16> {
-    Ok(TcpListener::bind("127.0.0.1:0")?.local_addr()?.port())
 }
 
 async fn start_bare_environment(port: u16) -> anyhow::Result<WorkflowEnvironment<LocalServer>> {
@@ -101,6 +112,18 @@ fn settings_from_vars_no_vars_uses_defaults() -> anyhow::Result<()> {
         env!("CARGO_PKG_VERSION")
     );
     assert_eq!(settings.versioning_behavior, None);
+    assert_eq!(
+        settings.postgres_service_address.as_str(),
+        "http://localhost:8004/"
+    );
+    assert_eq!(
+        settings.enrichment_service_address.as_str(),
+        "http://localhost:8002/"
+    );
+    assert_eq!(settings.refresh_after_days, 7);
+    assert_eq!(settings.merge_version, 1);
+    assert_eq!(settings.merge_first_wait_minutes, 10);
+    assert_eq!(settings.graceful_shutdown_period, Duration::from_secs(20));
     Ok(())
 }
 
@@ -109,12 +132,30 @@ fn settings_from_vars_overrides_replace_defaults() -> anyhow::Result<()> {
     let settings = load_settings(&[
         ("TEMPORAL_ADDRESS", "temporal:7233"),
         ("TEMPORAL_NAMESPACE", "echora"),
+        ("POSTGRES_SERVICE_ADDRESS", "postgres-service:8004"),
+        ("ENRICHMENT_SERVICE_ADDRESS", "https://enrichment:8002"),
+        ("REFRESH_AFTER_DAYS", "14"),
+        ("MERGE_VERSION", "3"),
+        ("MERGE_FIRST_WAIT_MINUTES", "5"),
+        ("WORKER_GRACEFUL_SHUTDOWN_SECONDS", "25"),
         ("WORKER_DEPLOYMENT_NAME", "custom-worker"),
         ("WORKER_BUILD_ID", "build-42"),
         ("WORKER_VERSIONING_ENABLED", "true"),
     ])?;
     assert_eq!(settings.connection.target.as_str(), "http://temporal:7233/");
     assert_eq!(settings.namespace, "echora");
+    assert_eq!(
+        settings.postgres_service_address.as_str(),
+        "http://postgres-service:8004/"
+    );
+    assert_eq!(
+        settings.enrichment_service_address.as_str(),
+        "https://enrichment:8002/"
+    );
+    assert_eq!(settings.refresh_after_days, 14);
+    assert_eq!(settings.merge_version, 3);
+    assert_eq!(settings.merge_first_wait_minutes, 5);
+    assert_eq!(settings.graceful_shutdown_period, Duration::from_secs(25));
     assert_eq!(settings.deployment_version.deployment_name, "custom-worker");
     assert_eq!(settings.deployment_version.build_id, "build-42");
     assert_eq!(
@@ -178,6 +219,21 @@ fn settings_from_vars_invalid_address_fails() {
         assert!(
             settings_error.contains("invalid Temporal connection settings"),
             "address {address:?} gave {settings_error}"
+        );
+    }
+    for (var, bad_value) in [
+        ("POSTGRES_SERVICE_ADDRESS", "postgres:8004/path"),
+        ("POSTGRES_SERVICE_ADDRESS", "http://[::1"),
+        ("ENRICHMENT_SERVICE_ADDRESS", "ftp://enrichment:8002"),
+        ("REFRESH_AFTER_DAYS", "0"),
+        ("MERGE_VERSION", "-1"),
+        ("MERGE_FIRST_WAIT_MINUTES", "abc"),
+        ("WORKER_GRACEFUL_SHUTDOWN_SECONDS", "-5"),
+    ] {
+        let settings_error = load_settings_error(&[(var, bad_value)]);
+        assert!(
+            settings_error.contains(var),
+            "{var}={bad_value:?} gave {settings_error}"
         );
     }
 }
@@ -339,6 +395,7 @@ fn list_worker_queue_specs_update_service_then_every_provider() {
 
 #[test]
 fn build_all_worker_options_one_option_per_queue_with_shared_deployment() -> anyhow::Result<()> {
+    let ports = UpdateServicePorts::noop();
     for versioning_pairs in [
         vec![],
         vec![
@@ -348,7 +405,7 @@ fn build_all_worker_options_one_option_per_queue_with_shared_deployment() -> any
         ],
     ] {
         let settings = load_settings(&versioning_pairs)?;
-        let all_options = build_all_worker_options(&settings)?;
+        let all_options = build_all_worker_options(&settings, &ports)?;
         let task_queues: Vec<&str> = all_options
             .iter()
             .map(|options| options.task_queue.as_str())
@@ -371,8 +428,40 @@ fn build_all_worker_options_one_option_per_queue_with_shared_deployment() -> any
                 options.deployment_options.default_versioning_behavior,
                 settings.versioning_behavior
             );
+            assert_eq!(
+                options.graceful_shutdown_period,
+                Some(settings.graceful_shutdown_period)
+            );
         }
     }
+    Ok(())
+}
+
+#[tokio::test]
+async fn build_runtime_options_supports_disabled_and_otlp_metrics() -> anyhow::Result<()> {
+    let disabled = otel_disabled_common_settings();
+    let _default_opts = build_runtime_options(&disabled)?;
+    let enabled = CommonSettings {
+        environment: "production".to_owned(),
+        observability: ObservabilitySettings {
+            otel_enabled: true,
+            otel_enable_metrics: true,
+            otel_exporter_otlp_endpoint: "http://127.0.0.1:4317".to_owned(),
+            ..ObservabilitySettings::default()
+        },
+        ..CommonSettings::default()
+    };
+    let _otel_opts = build_runtime_options(&enabled)?;
+    let bad_endpoint = CommonSettings {
+        observability: ObservabilitySettings {
+            otel_enabled: true,
+            otel_enable_metrics: true,
+            otel_exporter_otlp_endpoint: "http://[::1".to_owned(),
+            ..ObservabilitySettings::default()
+        },
+        ..CommonSettings::default()
+    };
+    assert!(build_runtime_options(&bad_endpoint).is_err());
     Ok(())
 }
 
@@ -380,39 +469,24 @@ fn build_all_worker_options_one_option_per_queue_with_shared_deployment() -> any
 async fn run_workers_running_workers_complete_workflow_then_stop_cleanly() -> anyhow::Result<()> {
     let port = find_free_port()?;
     let environment = start_local_environment(Some(port)).await?;
+    let grpc_endpoint = start_mock_grpc_server().await?;
     let address = format!("127.0.0.1:{port}");
-    let settings = load_settings(&[("TEMPORAL_ADDRESS", address.as_str())])?;
+    let settings = load_settings(&[
+        ("TEMPORAL_ADDRESS", address.as_str()),
+        ("POSTGRES_SERVICE_ADDRESS", grpc_endpoint.as_str()),
+        ("ENRICHMENT_SERVICE_ADDRESS", grpc_endpoint.as_str()),
+    ])?;
     let client = environment.client().clone();
 
     let (shutdown_sender, shutdown_receiver) = tokio::sync::oneshot::channel::<()>();
     let workflow_check = async {
-        let check_outcome = tokio::time::timeout(WORKFLOW_WAIT, async {
-            let handle = client
-                .signal_with_start_workflow(
-                    SpikeWorkflow::run,
-                    SpikeInput {
-                        label: "runner".to_owned(),
-                    },
-                    SpikeWorkflow::finish,
-                    "done".to_owned(),
-                    WorkflowStartOptions::new(UPDATE_SERVICE_TASK_QUEUE, "run-workers-check")
-                        .build(),
-                )
-                .await?;
-            let workflow_output = handle
-                .get_result(WorkflowGetResultOptions::default())
-                .await?;
-            ensure!(workflow_output == "runner:done");
-            Ok(())
-        })
-        .await
-        .context("workers never completed the workflow")
-        .and_then(|workflow_outcome| workflow_outcome);
+        let check_outcome = complete_refresh_workflow(&client, Uuid::now_v7(), WORKFLOW_WAIT).await;
         let _ = shutdown_sender.send(());
         check_outcome
     };
+    let common_settings = otel_disabled_common_settings();
     let (run_outcome, check_outcome) = tokio::join!(
-        run_workers(&settings, async {
+        run_workers(&settings, &common_settings, async {
             drop(shutdown_receiver.await);
         }),
         workflow_check,
@@ -426,7 +500,9 @@ async fn run_workers_running_workers_complete_workflow_then_stop_cleanly() -> an
 #[tokio::test]
 async fn run_workers_unreachable_server_fails_with_address() -> anyhow::Result<()> {
     let settings = load_settings(&[("TEMPORAL_ADDRESS", "127.0.0.1:1")])?;
-    let Err(run_error) = run_workers(&settings, std::future::pending()).await else {
+    let common_settings = otel_disabled_common_settings();
+    let Err(run_error) = run_workers(&settings, &common_settings, std::future::pending()).await
+    else {
         anyhow::bail!("run_workers must fail without a server");
     };
     let run_message = format!("{run_error:#}");
@@ -446,9 +522,10 @@ async fn run_workers_unknown_namespace_fails_before_polling() -> anyhow::Result<
         ("TEMPORAL_ADDRESS", address.as_str()),
         ("TEMPORAL_NAMESPACE", "missing-namespace"),
     ])?;
+    let common_settings = otel_disabled_common_settings();
     let run_outcome = tokio::time::timeout(
         WORKFLOW_WAIT,
-        run_workers(&settings, std::future::pending()),
+        run_workers(&settings, &common_settings, std::future::pending()),
     )
     .await
     .context("run_workers kept running against a missing namespace")?;
@@ -470,12 +547,13 @@ async fn run_workers_missing_search_attribute_creates_keyword_once() -> anyhow::
     let environment = start_bare_environment(port).await?;
     let address = format!("127.0.0.1:{port}");
     let settings = load_settings(&[("TEMPORAL_ADDRESS", address.as_str())])?;
+    let common_settings = otel_disabled_common_settings();
     let client = environment.client().clone();
     ensure!(find_refresh_trigger_type(&client).await?.is_none());
 
     for _ in 0..2 {
         let (run_outcome, wait_outcome) = tokio::join!(
-            run_workers(&settings, async {
+            run_workers(&settings, &common_settings, async {
                 let _ = wait_for_refresh_trigger(&client).await;
             }),
             wait_for_refresh_trigger(&client),
@@ -505,8 +583,10 @@ async fn run_workers_refresh_trigger_wrong_type_fails() -> anyhow::Result<()> {
         .await?;
     let address = format!("127.0.0.1:{port}");
     let settings = load_settings(&[("TEMPORAL_ADDRESS", address.as_str())])?;
+    let common_settings = otel_disabled_common_settings();
 
-    let Err(run_error) = run_workers(&settings, std::future::pending()).await else {
+    let Err(run_error) = run_workers(&settings, &common_settings, std::future::pending()).await
+    else {
         anyhow::bail!("run_workers must fail when RefreshTrigger is not a keyword");
     };
     let run_message = format!("{run_error:#}");
@@ -526,10 +606,11 @@ async fn run_workers_shutdown_during_startup_returns_promptly() -> anyhow::Resul
         }
     });
     let settings = load_settings(&[("TEMPORAL_ADDRESS", address.as_str())])?;
+    let common_settings = otel_disabled_common_settings();
 
     let run_outcome = tokio::time::timeout(
         Duration::from_secs(5),
-        run_workers(&settings, std::future::ready(())),
+        run_workers(&settings, &common_settings, std::future::ready(())),
     )
     .await
     .context("startup ignored shutdown while Temporal did not answer")?;

@@ -1,10 +1,10 @@
-//! Compiles protobuf definitions for `postgres_service`.
+//! Compiles shared protobuf and gRPC service definitions once for the Rust workspace.
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rerun-if-changed=../../protos/postgres_service/v1/postgres_service.proto");
+    println!("cargo:rerun-if-changed=../../protos/enrichment_service/v1/enrichment_service.proto");
     println!("cargo:rerun-if-changed=../../protos/shared_proto/v1/anime.proto");
     println!("cargo:rerun-if-changed=../../protos/shared_proto/v1/merge.proto");
-    println!("cargo:rerun-if-changed=../../protos/events/v1/events.proto");
 
     let protoc_path = protoc_bin_vendored::protoc_bin_path()?;
     let mut prost_config = prost_build::Config::new();
@@ -15,7 +15,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         prost_config,
         &[
             "../../protos/postgres_service/v1/postgres_service.proto",
-            "../../protos/events/v1/events.proto",
+            "../../protos/enrichment_service/v1/enrichment_service.proto",
         ],
         &["../../protos"],
     )?;

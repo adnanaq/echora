@@ -66,11 +66,11 @@ pub use provider_page::{
 };
 #[doc(inline)]
 pub use scheduling::{
-    DueEntitiesQuery, DueEntityRecord, DuePageRecord, EntityPageRecord, EntityVersionRecord,
-    MAX_OLDER_AFTER_YEARS, MAX_WINDOW_DAYS, RefreshOutcome, UpcomingEpisodeRecord, list_due_anime,
-    list_due_characters, list_due_episodes, list_due_pages, list_entity_pages,
-    list_entity_versions, list_requested_merges, list_score_anime, list_upcoming_episodes,
-    record_refresh,
+    DueEntitiesQuery, DueEntityRecord, DuePageRecord, EntityPageRecord, EntityPagesRecord,
+    EntityVersionRecord, MAX_OLDER_AFTER_YEARS, MAX_WINDOW_DAYS, RefreshOutcome,
+    UpcomingEpisodeRecord, list_due_anime, list_due_characters, list_due_episodes, list_due_pages,
+    list_entity_pages, list_entity_versions, list_requested_merges, list_score_anime,
+    list_upcoming_episodes, record_refresh,
 };
 use sqlx::migrate::Migrator;
 use sqlx::postgres::PgPoolOptions;

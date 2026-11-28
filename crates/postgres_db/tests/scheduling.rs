@@ -126,48 +126,55 @@ async fn list_entity_pages_and_record_refresh_cover_all_entities_and_outcomes(po
     let anime_pages = list_entity_pages(&pool, EntityType::Anime, anime_id)
         .await
         .expect("list anime pages");
-    assert_eq!(anime_pages.len(), 4);
+    assert_eq!(anime_pages.merge_version, None);
+    assert_eq!(anime_pages.pages.len(), 4);
     assert_eq!(
-        anime_pages.iter().filter(|p| !p.is_partial_source).count(),
+        anime_pages
+            .pages
+            .iter()
+            .filter(|page| !page.is_partial_source)
+            .count(),
         3
     );
     assert_eq!(
-        anime_pages.iter().filter(|p| p.is_partial_source).count(),
+        anime_pages
+            .pages
+            .iter()
+            .filter(|page| page.is_partial_source)
+            .count(),
         1
     );
 
     // Episode pages
     let episode_id = Uuid::now_v7();
-    sqlx::query("INSERT INTO episode (id, anime_id, episode_number) VALUES ($1, $2, 1)")
-        .bind(episode_id)
-        .bind(anime_id)
-        .execute(&pool)
-        .await
-        .expect("insert episode");
+    sqlx::query(
+        "INSERT INTO episode (id, anime_id, episode_number, merge_version) VALUES ($1, $2, 1, 3)",
+    )
+    .bind(episode_id)
+    .bind(anime_id)
+    .execute(&pool)
+    .await
+    .expect("insert episode");
     insert_page(&pool, "mal", "episode", "21:101", None, false, None, 0).await;
     sqlx::query("INSERT INTO episode_source (episode_id, provider, entity_type, address) VALUES ($1, 'mal', 'episode', '21:101')")
         .bind(episode_id)
         .execute(&pool)
         .await
         .expect("link episode page");
-    assert_eq!(
-        list_entity_pages(&pool, EntityType::Episode, episode_id)
-            .await
-            .expect("list episode pages")
-            .len(),
-        1
-    );
+    let episode_pages = list_entity_pages(&pool, EntityType::Episode, episode_id)
+        .await
+        .expect("list episode pages");
+    assert_eq!(episode_pages.pages.len(), 1);
+    assert_eq!(episode_pages.merge_version, Some(3));
 
     // Character pages
     let character_id = insert_unmerged_character(&pool, "Spike").await;
     link_character_page(&pool, character_id, "mal", "102").await;
-    assert_eq!(
-        list_entity_pages(&pool, EntityType::Character, character_id)
-            .await
-            .expect("list character pages")
-            .len(),
-        1
-    );
+    let character_pages = list_entity_pages(&pool, EntityType::Character, character_id)
+        .await
+        .expect("list character pages");
+    assert_eq!(character_pages.pages.len(), 1);
+    assert_eq!(character_pages.merge_version, None);
 
     // Missing entity -> NotFound
     assert!(
@@ -176,6 +183,37 @@ async fn list_entity_pages_and_record_refresh_cover_all_entities_and_outcomes(po
             .expect_err("missing entity")
             .is_not_found()
     );
+
+    insert_page(
+        &pool,
+        "anilist",
+        "anime",
+        "not-a-number",
+        None,
+        false,
+        None,
+        0,
+    )
+    .await;
+    sqlx::query(
+        "INSERT INTO anime_partial_source (anime_id, provider, entity_type, address) \
+         VALUES ($1, 'anilist', 'anime', 'not-a-number')",
+    )
+    .bind(anime_id)
+    .execute(&pool)
+    .await
+    .expect("link malformed page");
+    let filtered_pages = list_entity_pages(&pool, EntityType::Anime, anime_id)
+        .await
+        .expect("malformed page key must be skipped rather than failing the work");
+    assert_eq!(filtered_pages.pages.len(), 4);
+    sqlx::query(
+        "DELETE FROM anime_partial_source WHERE anime_id = $1 AND provider = 'anilist' AND address = 'not-a-number'",
+    )
+    .bind(anime_id)
+    .execute(&pool)
+    .await
+    .expect("unlink malformed page");
 
     // RecordRefresh: PagesFailed picks earliest failed non-dead source page (2^2 = 4h after fetch_failed_at)
     record_refresh(

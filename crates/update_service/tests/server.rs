@@ -1,14 +1,15 @@
 //! Tests that run the `update_service` binary against a local Temporal dev server.
 
-use std::net::TcpListener;
+mod support;
+
 use std::path::Path;
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context as _, bail, ensure};
+use support::{complete_refresh_workflow, find_free_port, start_mock_grpc_server};
 use temporal_workflows::testing::start_local_environment;
-use temporal_workflows::{SpikeInput, SpikeWorkflow, UPDATE_SERVICE_TASK_QUEUE};
-use temporalio_client::{Client, WorkflowGetResultOptions, WorkflowStartOptions};
+use uuid::Uuid;
 
 const PROCESS_WAIT: Duration = Duration::from_secs(30);
 const POLL_INTERVAL: Duration = Duration::from_millis(100);
@@ -35,6 +36,9 @@ fn start_worker_process(extra_vars: &[(&str, &str)]) -> anyhow::Result<WorkerPro
         .env("OTEL_ENABLED", "false")
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
+    if let Ok(profile_file) = std::env::var("LLVM_PROFILE_FILE") {
+        command.env("LLVM_PROFILE_FILE", profile_file);
+    }
     for (key, value) in extra_vars {
         command.env(key, value);
     }
@@ -74,38 +78,19 @@ fn send_signal(worker: &Child, signal_name: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn complete_spike_workflow(client: &Client, workflow_id: &str) -> anyhow::Result<()> {
-    let workflow_output = tokio::time::timeout(PROCESS_WAIT, async {
-        let handle = client
-            .signal_with_start_workflow(
-                SpikeWorkflow::run,
-                SpikeInput {
-                    label: "binary".to_owned(),
-                },
-                SpikeWorkflow::finish,
-                "ready".to_owned(),
-                WorkflowStartOptions::new(UPDATE_SERVICE_TASK_QUEUE, workflow_id).build(),
-            )
-            .await?;
-        handle
-            .get_result(WorkflowGetResultOptions::default())
-            .await
-            .map_err(anyhow::Error::from)
-    })
-    .await
-    .context("update_service never completed the workflow")??;
-    ensure!(workflow_output == "binary:ready");
-    Ok(())
-}
-
 #[tokio::test]
 async fn update_service_each_shutdown_signal_drains_workers_and_exits_zero() -> anyhow::Result<()> {
-    let port = TcpListener::bind("127.0.0.1:0")?.local_addr()?.port();
+    let port = find_free_port()?;
     let environment = start_local_environment(Some(port)).await?;
+    let grpc_endpoint = start_mock_grpc_server().await?;
     let address = format!("127.0.0.1:{port}");
     for signal_name in ["TERM", "INT"] {
-        let mut worker = start_worker_process(&[("TEMPORAL_ADDRESS", address.as_str())])?;
-        complete_spike_workflow(environment.client(), &format!("binary-{signal_name}")).await?;
+        let mut worker = start_worker_process(&[
+            ("TEMPORAL_ADDRESS", address.as_str()),
+            ("POSTGRES_SERVICE_ADDRESS", grpc_endpoint.as_str()),
+            ("ENRICHMENT_SERVICE_ADDRESS", grpc_endpoint.as_str()),
+        ])?;
+        complete_refresh_workflow(environment.client(), Uuid::now_v7(), PROCESS_WAIT).await?;
 
         send_signal(&worker.child, signal_name)?;
         let exit_status = wait_for_exit(&mut worker.child).await?;

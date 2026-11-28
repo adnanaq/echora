@@ -25,6 +25,7 @@ async fn main() -> anyhow::Result<()> {
 
     run_workers(
         &settings,
+        &common_settings,
         wait_for_shutdown(interrupt_signal, terminate_signal),
     )
     .await
