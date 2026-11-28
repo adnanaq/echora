@@ -53,6 +53,13 @@ services:
       - echora-network
       - observability-network
 
+  update-service:
+    environment:
+      - OTEL_ENABLED=true
+    networks:
+      - echora-network
+      - observability-network
+
 networks:
   observability-network:
     name: echora_observability-network
