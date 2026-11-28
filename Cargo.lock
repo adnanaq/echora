@@ -1871,6 +1871,8 @@ dependencies = [
  "portable-atomic",
  "rand 0.9.5",
  "thiserror",
+ "tokio",
+ "tokio-stream",
 ]
 
 [[package]]
@@ -3333,6 +3335,7 @@ dependencies = [
  "temporalio-sdk-core",
  "temporalio-workflow",
  "tokio",
+ "tracing",
  "uuid",
 ]
 
@@ -3385,7 +3388,9 @@ dependencies = [
  "erased-serde",
  "futures",
  "futures-channel",
+ "opentelemetry 0.32.0",
  "opentelemetry-otlp 0.32.0",
+ "opentelemetry_sdk 0.32.1",
  "parking_lot",
  "prost 0.14.6",
  "prost-types",
@@ -4084,15 +4089,27 @@ name = "update_service"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "common",
  "futures",
  "mimalloc",
+ "opentelemetry 0.30.0",
+ "prost 0.14.6",
+ "prost-build",
+ "prost-types",
+ "protoc-bin-vendored",
+ "serde",
  "temporal_workflows",
  "temporalio-client",
  "temporalio-common",
  "temporalio-sdk",
  "tokio",
+ "tonic 0.14.9",
+ "tonic-prost",
+ "tonic-prost-build",
  "tracing",
+ "url",
+ "uuid",
 ]
 
 [[package]]
