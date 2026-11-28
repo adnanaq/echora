@@ -230,6 +230,8 @@ services:
       - ANIDB_CLIENT=${ANIDB_CLIENT:?set ANIDB_CLIENT in .env}
       - ANIDB_CLIENTVER=${ANIDB_CLIENTVER:?set ANIDB_CLIENTVER in .env}
       - ANIDB_PROTOVER=${ANIDB_PROTOVER:-1}
+      # AnimeSchedule app token; without it AnimeSchedule leaves out the provider links.
+      - ANIMESCHEDULE_TOKEN=${ANIMESCHEDULE_TOKEN:?set ANIMESCHEDULE_TOKEN in .env}
       - CACHE_ENABLED=true
       - REDIS_URL=${REDIS_URL:?set REDIS_URL in .env}
       # Off until a production collector exists (see vector-service).
