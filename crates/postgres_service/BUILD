@@ -12,6 +12,7 @@ docker_image(
     dependencies=[
         "//:rust_workspace",
         "//crates/common:sources",
+        "//crates/echora_domain:sources",
         "//crates/echora_protos:sources",
         "//crates/postgres_db:sources",
         ":sources",
