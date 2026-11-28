@@ -19,7 +19,7 @@ use anyhow::ensure;
 use futures::future::{BoxFuture, join_all};
 use temporal_workflows::testing::start_local_environment;
 use temporal_workflows::{
-    CatalogueDataPort, EntityPageSummary, EntityType, FetchRequestedSignal, ListEntityPagesOutput,
+    CatalogueDataPort, EntityPageSummary, EntityPages, EntityType, FetchRequestedSignal,
     MAX_ABORTED_RETRIES_PER_ATTEMPT, MAX_PAGE_RETRY_BACKOFF_HOURS, MergeAnimeOutput,
     MergeAttemptOutcome, PortError, Provider, ProviderActivities, RefreshAnimeInput,
     RefreshAnimeOutcome, RefreshAnimeWorkflow, RefreshOutcome, RefreshPageInput, RefreshPageKey,
@@ -46,7 +46,7 @@ const TEST_WAIT: Duration = Duration::from_secs(30);
 
 #[derive(Default)]
 struct FakeState {
-    pages: ListEntityPagesOutput,
+    pages: EntityPages,
     list_pages_fail: bool,
     aborted_remaining: usize,
     merge_fail_non_retryable: bool,
@@ -85,10 +85,7 @@ struct FakePorts {
 }
 
 impl CatalogueDataPort for FakePorts {
-    fn list_entity_pages(
-        &self,
-        _anime_id: Uuid,
-    ) -> BoxFuture<'_, Result<ListEntityPagesOutput, PortError>> {
+    fn list_entity_pages(&self, _anime_id: Uuid) -> BoxFuture<'_, Result<EntityPages, PortError>> {
         let guard = self.state.lock().expect("lock");
         if guard.list_pages_fail {
             return Box::pin(async {
@@ -866,13 +863,12 @@ async fn refresh_anime_workflow_refreshes_due_pages_retries_aborted_and_starts_d
         guard.aborted_remaining = 2;
         guard.has_changed_synopses = true;
         guard.changed_episode_ids = vec!["ep-1".to_owned()];
-        guard.pages = ListEntityPagesOutput {
+        guard.pages = EntityPages {
             pages: vec![
                 build_page_summary(Provider::Mal, "1", false, None),
                 build_page_summary(Provider::Kitsu, "2", true, None),
             ],
             entity_merge_version: Some(1),
-            refresh_settings: RefreshSettings::default(),
         };
     }
 
@@ -937,7 +933,7 @@ async fn refresh_anime_workflow_default_input_uses_worker_merge_version_and_swee
     let fake = FakePorts::default();
     {
         let mut guard = fake.state.lock().expect("lock");
-        guard.pages = ListEntityPagesOutput {
+        guard.pages = EntityPages {
             pages: vec![build_page_summary(
                 Provider::Mal,
                 "1",
@@ -945,7 +941,6 @@ async fn refresh_anime_workflow_default_input_uses_worker_merge_version_and_swee
                 Some(i64::MAX / 2),
             )],
             entity_merge_version: Some(1),
-            refresh_settings: RefreshSettings::default(),
         };
     }
 
@@ -997,10 +992,9 @@ async fn refresh_anime_workflow_remerge_trigger_skips_due_pages_and_merges_store
     let fake = FakePorts::default();
     {
         let mut guard = fake.state.lock().expect("lock");
-        guard.pages = ListEntityPagesOutput {
+        guard.pages = EntityPages {
             pages: vec![build_page_summary(Provider::Mal, "1", false, None)],
             entity_merge_version: Some(1),
-            refresh_settings: RefreshSettings::default(),
         };
     }
 
@@ -1054,13 +1048,12 @@ async fn refresh_anime_workflow_signals_during_record_refresh_and_synopsis_trigg
     {
         let mut guard = fake.state.lock().expect("lock");
         guard.has_changed_synopses = true;
-        guard.pages = ListEntityPagesOutput {
+        guard.pages = EntityPages {
             pages: vec![
                 build_page_summary(Provider::Mal, "1", false, None),
                 build_page_summary(Provider::Kitsu, "2", false, Some(i64::MAX / 2)),
             ],
             entity_merge_version: Some(1),
-            refresh_settings: RefreshSettings::default(),
         };
         guard.synopsis_delay = Duration::from_millis(600);
         guard.synopsis_entered = Some(synopsis_entered.clone());
@@ -1147,13 +1140,12 @@ async fn refresh_anime_workflow_handles_early_merge_wait_condition_and_blocked_p
         guard
             .page_errors
             .insert(Provider::AniList, PageErrorMode::Blocked);
-        guard.pages = ListEntityPagesOutput {
+        guard.pages = EntityPages {
             pages: vec![
                 build_page_summary(Provider::Mal, "1", false, None),
                 build_page_summary(Provider::AniList, "2", false, None),
             ],
             entity_merge_version: Some(2),
-            refresh_settings: RefreshSettings::default(),
         };
     }
 
@@ -1232,13 +1224,12 @@ async fn refresh_anime_workflow_records_page_failures_for_non_retryable_and_time
         guard
             .page_delays
             .insert(Provider::Mal, Duration::from_secs(5));
-        guard.pages = ListEntityPagesOutput {
+        guard.pages = EntityPages {
             pages: vec![
                 build_page_summary(Provider::AniList, "1", false, None),
                 build_page_summary(Provider::Mal, "2", false, None),
             ],
             entity_merge_version: Some(1),
-            refresh_settings: RefreshSettings::default(),
         };
     }
 
@@ -1391,13 +1382,12 @@ async fn refresh_anime_workflow_cancellation_cancels_in_flight_pages_and_records
         guard
             .page_started
             .insert(Provider::Mal, mal_started.clone());
-        guard.pages = ListEntityPagesOutput {
+        guard.pages = EntityPages {
             pages: vec![
                 build_page_summary(Provider::Kitsu, "1", false, None),
                 build_page_summary(Provider::Mal, "2", false, None),
             ],
             entity_merge_version: Some(1),
-            refresh_settings: RefreshSettings::default(),
         };
     }
 
@@ -1457,14 +1447,13 @@ async fn refresh_anime_workflow_coalesces_late_pages_and_cancels_unused_timer() 
             .page_delays
             .insert(Provider::AniList, Duration::from_millis(1_700));
         guard.page_changes.insert(Provider::AniList, false);
-        guard.pages = ListEntityPagesOutput {
+        guard.pages = EntityPages {
             pages: vec![
                 build_page_summary(Provider::Mal, "1", false, None),
                 build_page_summary(Provider::Kitsu, "2", false, None),
                 build_page_summary(Provider::AniList, "3", false, None),
             ],
             entity_merge_version: Some(1),
-            refresh_settings: RefreshSettings::default(),
         };
     }
 
@@ -1513,10 +1502,9 @@ async fn refresh_anime_workflow_record_refresh_failure_does_not_double_record() 
     {
         let mut guard = fake.state.lock().expect("lock");
         guard.record_refresh_fail = true;
-        guard.pages = ListEntityPagesOutput {
+        guard.pages = EntityPages {
             pages: Vec::new(),
             entity_merge_version: Some(1),
-            refresh_settings: RefreshSettings::default(),
         };
     }
 
@@ -1567,13 +1555,12 @@ async fn refresh_anime_workflow_mid_batch_merge_failure_cancels_remaining_pages(
         guard
             .page_delays
             .insert(Provider::AniList, Duration::from_secs(10));
-        guard.pages = ListEntityPagesOutput {
+        guard.pages = EntityPages {
             pages: vec![
                 build_page_summary(Provider::Mal, "1", false, None),
                 build_page_summary(Provider::AniList, "2", false, None),
             ],
             entity_merge_version: Some(1),
-            refresh_settings: RefreshSettings::default(),
         };
     }
 
@@ -1629,13 +1616,12 @@ async fn refresh_anime_workflow_mid_batch_merge_signal_cancels_timer_and_tracks_
             .page_started
             .insert(Provider::Kitsu, kitsu_started.clone());
         guard.page_reported_failed.insert(Provider::Kitsu, true);
-        guard.pages = ListEntityPagesOutput {
+        guard.pages = EntityPages {
             pages: vec![
                 build_page_summary(Provider::Mal, "1", false, None),
                 build_page_summary(Provider::Kitsu, "2", false, None),
             ],
             entity_merge_version: Some(1),
-            refresh_settings: RefreshSettings::default(),
         };
     }
 
@@ -1699,13 +1685,12 @@ async fn refresh_anime_workflow_record_page_failure_error_cancels_remaining_page
         guard
             .page_delays
             .insert(Provider::Mal, Duration::from_secs(10));
-        guard.pages = ListEntityPagesOutput {
+        guard.pages = EntityPages {
             pages: vec![
                 build_page_summary(Provider::AniList, "1", false, None),
                 build_page_summary(Provider::Mal, "2", false, None),
             ],
             entity_merge_version: Some(1),
-            refresh_settings: RefreshSettings::default(),
         };
     }
 

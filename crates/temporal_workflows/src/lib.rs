@@ -48,7 +48,7 @@ pub use ports::{
 #[doc(inline)]
 pub use refresh_anime_types::{
     DEFAULT_MERGE_COALESCE_WAIT_SECONDS, DEFAULT_MERGE_FIRST_WAIT_MINUTES, DEFAULT_MERGE_VERSION,
-    DEFAULT_REFRESH_AFTER_DAYS, EntityPageSummary, EntityType, FetchRequestedSignal,
+    DEFAULT_REFRESH_AFTER_DAYS, EntityPageSummary, EntityPages, EntityType, FetchRequestedSignal,
     ListEntityPagesOutput, MAX_PAGE_RETRY_BACKOFF_HOURS, MergeAnimeOutput, ParseSlugError,
     RecordRefreshInput, RefreshAnimeInput, RefreshAnimeOutcome, RefreshOutcome, RefreshPageInput,
     RefreshPageKey, RefreshPageOutput, RefreshSettings, RefreshTrigger, SECONDS_PER_DAY,

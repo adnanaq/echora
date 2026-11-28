@@ -417,7 +417,18 @@ pub struct EntityPageSummary {
     pub fetch_failures: i32,
 }
 
-/// Output returned by the `list_pages` activity.
+/// Entity page list and stored `merge_version` returned by [`crate::CatalogueDataPort::list_entity_pages`].
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct EntityPages {
+    /// All linked pages of the entity.
+    #[serde(default)]
+    pub pages: Vec<EntityPageSummary>,
+    /// Stored `merge_version` of the entity (`None` when never merged).
+    #[serde(default)]
+    pub entity_merge_version: Option<i32>,
+}
+
+/// Output returned by the `list_pages` activity, combining stored pages with worker settings.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ListEntityPagesOutput {
     /// All linked pages of the entity.

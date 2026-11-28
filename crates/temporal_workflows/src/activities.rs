@@ -171,15 +171,18 @@ mod definitions {
             _ctx: ActivityContext,
             anime_id: Uuid,
         ) -> Result<ListEntityPagesOutput, ActivityError> {
-            let mut output = self
+            let entity_pages = self
                 .deps
                 .ports
                 .catalogue()
                 .list_entity_pages(anime_id)
                 .await
                 .map_err(PortError::into_activity_error)?;
-            output.refresh_settings = self.deps.settings;
-            Ok(output)
+            Ok(ListEntityPagesOutput {
+                pages: entity_pages.pages,
+                entity_merge_version: entity_pages.entity_merge_version,
+                refresh_settings: self.deps.settings,
+            })
         }
 
         /// Records a failed page fetch via `PostgresService.StorePage` with empty responses.

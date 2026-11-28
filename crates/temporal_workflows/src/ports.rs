@@ -12,7 +12,7 @@ use temporalio_sdk::activities::ActivityError;
 use uuid::Uuid;
 
 use crate::refresh_anime_types::{
-    ListEntityPagesOutput, MergeAnimeOutput, RefreshOutcome, RefreshPageKey, RefreshPageOutput,
+    EntityPages, MergeAnimeOutput, RefreshOutcome, RefreshPageKey, RefreshPageOutput,
     StartEntityWorkflowsInput,
 };
 
@@ -196,10 +196,7 @@ pub trait CatalogueDataPort: Send + Sync {
     ///
     /// Returns a non-retryable [`PortError`] if the entity does not exist or its stored
     /// page metadata cannot be decoded, or a retryable [`PortError`] on transient RPC errors.
-    fn list_entity_pages(
-        &self,
-        anime_id: Uuid,
-    ) -> BoxFuture<'_, Result<ListEntityPagesOutput, PortError>>;
+    fn list_entity_pages(&self, anime_id: Uuid) -> BoxFuture<'_, Result<EntityPages, PortError>>;
 
     /// Fetches a page via `EnrichmentService.FetchPage` and stores it via `PostgresService.StorePage`.
     ///
@@ -328,10 +325,7 @@ fn not_configured<T: Send + 'static>(
 
 #[cfg(feature = "test-util")]
 impl CatalogueDataPort for NoopPort {
-    fn list_entity_pages(
-        &self,
-        _anime_id: Uuid,
-    ) -> BoxFuture<'_, Result<ListEntityPagesOutput, PortError>> {
+    fn list_entity_pages(&self, _anime_id: Uuid) -> BoxFuture<'_, Result<EntityPages, PortError>> {
         not_configured("CatalogueDataPort")
     }
 

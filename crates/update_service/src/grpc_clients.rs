@@ -22,10 +22,10 @@ use prost::Message as _;
 use serde::Serialize;
 use shared_proto::v1::{EntityType as ProtoEntityType, PageKey as ProtoPageKey, StoredPage};
 use temporal_workflows::{
-    CatalogueDataPort, EntityPageSummary, EntityType, ListEntityPagesOutput, MergeAnimeOutput,
+    CatalogueDataPort, EntityPageSummary, EntityPages, EntityType, MergeAnimeOutput,
     MergeAttemptOutcome, PortError, Provider, REFRESH_TRIGGER_SEARCH_ATTRIBUTE, RefreshOutcome,
-    RefreshPageKey, RefreshPageOutput, RefreshSettings, RefreshTrigger, SECONDS_PER_DAY,
-    StartEntityWorkflowsInput, UPDATE_SERVICE_TASK_QUEUE, WorkflowStarterPort, build_priority,
+    RefreshPageKey, RefreshPageOutput, RefreshTrigger, SECONDS_PER_DAY, StartEntityWorkflowsInput,
+    UPDATE_SERVICE_TASK_QUEUE, WorkflowStarterPort, build_priority,
     build_refresh_episode_workflow_id, build_write_synopsis_workflow_id,
 };
 use temporalio_client::{Client, UntypedWorkflow, WorkflowIdConflictPolicy, WorkflowStartOptions};
@@ -253,10 +253,7 @@ fn from_proto_page_key(key: ProtoPageKey) -> Result<RefreshPageKey, PortError> {
 }
 
 impl CatalogueDataPort for GrpcCatalogueAdapter {
-    fn list_entity_pages(
-        &self,
-        anime_id: Uuid,
-    ) -> BoxFuture<'_, Result<ListEntityPagesOutput, PortError>> {
+    fn list_entity_pages(&self, anime_id: Uuid) -> BoxFuture<'_, Result<EntityPages, PortError>> {
         let mut postgres = self.postgres.clone();
         Box::pin(async move {
             let response = postgres
@@ -283,10 +280,9 @@ impl CatalogueDataPort for GrpcCatalogueAdapter {
                 });
             }
 
-            Ok(ListEntityPagesOutput {
+            Ok(EntityPages {
                 pages,
                 entity_merge_version: response.merge_version,
-                refresh_settings: RefreshSettings::default(),
             })
         })
     }
