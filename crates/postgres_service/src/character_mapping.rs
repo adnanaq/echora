@@ -198,6 +198,36 @@ pub fn compute_save_character_hash(character: &Character) -> String {
             (&left.title, left.role, &left.sources).cmp(&(&right.title, right.role, &right.sources))
         });
     }
+    for voice_actor in &mut canonical_character.voice_actors {
+        voice_actor.sources.sort();
+        voice_actor.character_assignments.sort();
+    }
+    canonical_character.voice_actors.sort_by(|left, right| {
+        (
+            &left.name,
+            &left.language,
+            &left.native_name,
+            &left.id,
+            &left.image,
+            &left.biography,
+            &left.birth_date,
+            &left.blood_type,
+            &left.character_assignments,
+            &left.sources,
+        )
+            .cmp(&(
+                &right.name,
+                &right.language,
+                &right.native_name,
+                &right.id,
+                &right.image,
+                &right.biography,
+                &right.birth_date,
+                &right.blood_type,
+                &right.character_assignments,
+                &right.sources,
+            ))
+    });
 
     let encoded_bytes = canonical_character.encode_to_vec();
     let mut hasher = Sha256::new();
@@ -431,6 +461,48 @@ mod tests {
         assert_ne!(
             character_hash,
             compute_save_character_hash(&recast_character)
+        );
+    }
+
+    #[test]
+    fn compute_save_character_hash_ignores_voice_actor_order_and_tracks_content() {
+        use crate::service::shared_proto::v1::VoiceActor;
+
+        let mut character = build_character();
+        character.voice_actors = vec![
+            VoiceActor {
+                name: "Mayumi Tanaka".to_owned(),
+                language: Some("ja".to_owned()),
+                sources: vec![
+                    "https://myanimelist.net/people/75".to_owned(),
+                    "https://anilist.co/staff/95075".to_owned(),
+                ],
+                character_assignments: vec!["Monkey D. Luffy".to_owned(), "Krillin".to_owned()],
+                ..VoiceActor::default()
+            },
+            VoiceActor {
+                name: "Colleen Clinkenbeard".to_owned(),
+                language: Some("en".to_owned()),
+                sources: vec!["https://myanimelist.net/people/181".to_owned()],
+                character_assignments: vec!["Monkey D. Luffy".to_owned()],
+                ..VoiceActor::default()
+            },
+        ];
+        let mut reordered = character.clone();
+        reordered.voice_actors.reverse();
+        reordered.voice_actors[1].sources.reverse();
+        reordered.voice_actors[1].character_assignments.reverse();
+
+        let mut edited = character.clone();
+        edited.voice_actors[0].language = Some("jp".to_owned());
+
+        assert_eq!(
+            compute_save_character_hash(&character),
+            compute_save_character_hash(&reordered)
+        );
+        assert_ne!(
+            compute_save_character_hash(&character),
+            compute_save_character_hash(&edited)
         );
     }
 }
