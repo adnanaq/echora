@@ -198,3 +198,71 @@ async fn list_visible_episodes_keeps_child_rows_with_their_episode(pool: PgPool)
         Vec::new()
     );
 }
+
+#[sqlx::test(migrations = "./migrations")]
+async fn read_and_list_visible_episodes_omit_dead_source_pages(pool: PgPool) {
+    let episode_id = Uuid::now_v7();
+    let anime_id = insert_unmerged_anime(&pool).await;
+    save_anime(
+        &pool,
+        &build_anime_save(
+            anime_id,
+            1,
+            "work-dead-ep-v1",
+            vec![EpisodeReferenceInput {
+                episode_id,
+                episode_number: 1,
+                title: "Asteroid Blues".to_owned(),
+                page_sources: vec![PageSource {
+                    page_key: PageKey::new(Provider::Mal, EntityType::Episode, "1:1").expect("key"),
+                    source: None,
+                    title: None,
+                }],
+                list_entries: Vec::new(),
+            }],
+        ),
+    )
+    .await
+    .expect("save work");
+    sqlx::query(
+        "INSERT INTO provider_page (provider, entity_type, address, source, is_dead)
+         VALUES ('anidb', 'episode', '999', 'https://anidb.net/episode/999', true)",
+    )
+    .execute(&pool)
+    .await
+    .expect("insert dead episode page");
+    sqlx::query(
+        "INSERT INTO episode_source (episode_id, provider, entity_type, address)
+         VALUES ($1, 'anidb', 'episode', '999')",
+    )
+    .bind(episode_id)
+    .execute(&pool)
+    .await
+    .expect("link dead episode page");
+
+    let mut episode_save = build_episode_save(episode_id, 1, "Asteroid Blues");
+    episode_save.page_sources = vec![build_mal_page_source(
+        EntityType::Episode,
+        "1:1",
+        "https://myanimelist.net/anime/1/Cowboy_Bebop/episode/1",
+    )];
+    save_episode(&pool, &episode_save)
+        .await
+        .expect("save episode");
+
+    let visible_episode = read_visible_episode(&pool, episode_id)
+        .await
+        .expect("read episode");
+    assert_eq!(
+        visible_episode.sources,
+        vec!["https://myanimelist.net/anime/1/Cowboy_Bebop/episode/1"]
+    );
+    let listed = list_visible_episodes(&pool, anime_id)
+        .await
+        .expect("list episodes");
+    assert_eq!(listed.len(), 1);
+    assert_eq!(
+        listed[0].sources,
+        vec!["https://myanimelist.net/anime/1/Cowboy_Bebop/episode/1"]
+    );
+}

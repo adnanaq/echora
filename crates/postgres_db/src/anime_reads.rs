@@ -346,7 +346,7 @@ async fn read_anime_classification(
     })
 }
 
-/// Reads the URLs of a work's source and partial-source pages.
+/// Reads the URLs of a work's live source pages and partial-source pages.
 ///
 /// A page whose URL no merge has chosen yet is left out until its owner's next save writes it.
 async fn read_anime_page_sources(
@@ -358,7 +358,7 @@ async fn read_anime_page_sources(
         SELECT page.source AS "source!", false AS "is_partial_source!"
         FROM anime_source link
         JOIN provider_page page USING (provider, entity_type, address)
-        WHERE link.anime_id = $1 AND page.source IS NOT NULL
+        WHERE link.anime_id = $1 AND NOT page.is_dead AND page.source IS NOT NULL
         UNION ALL
         SELECT page.source AS "source!", true AS "is_partial_source!"
         FROM anime_partial_source link

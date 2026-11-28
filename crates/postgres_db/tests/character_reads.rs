@@ -224,3 +224,42 @@ async fn read_visible_character_lists_only_visible_works_with_titles(pool: PgPoo
         ]
     );
 }
+
+#[sqlx::test(migrations = "./migrations")]
+async fn read_visible_character_omits_dead_source_pages_from_sources(pool: PgPool) {
+    let character_id = insert_unmerged_character(&pool, "Spike Spiegel").await;
+    link_character_page(&pool, character_id, "mal", "1").await;
+    sqlx::query(
+        "INSERT INTO provider_page (provider, entity_type, address, source, is_dead)
+         VALUES ('anidb', 'character', '474', 'https://anidb.net/character/474', true)",
+    )
+    .execute(&pool)
+    .await
+    .expect("insert dead character page");
+    sqlx::query(
+        "INSERT INTO character_source (character_id, provider, entity_type, address)
+         VALUES ($1, 'anidb', 'character', '474')",
+    )
+    .bind(character_id)
+    .execute(&pool)
+    .await
+    .expect("link dead character page");
+
+    let mut character_save = build_character_save(character_id, "Spike Spiegel");
+    character_save.page_sources = vec![build_mal_page_source(
+        EntityType::Character,
+        "1",
+        "https://myanimelist.net/character/1/Spike_Spiegel",
+    )];
+    save_character(&pool, &character_save)
+        .await
+        .expect("save character");
+
+    let visible_character = read_visible_character(&pool, character_id)
+        .await
+        .expect("read character");
+    assert_eq!(
+        visible_character.sources,
+        vec!["https://myanimelist.net/character/1/Spike_Spiegel"]
+    );
+}

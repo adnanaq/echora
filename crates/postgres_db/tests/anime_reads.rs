@@ -482,3 +482,40 @@ async fn read_visible_anime_partial_source_url_prefers_owner_save_over_partial_s
         ]
     );
 }
+
+#[sqlx::test(migrations = "./migrations")]
+async fn read_visible_anime_omits_dead_source_pages_from_sources(pool: PgPool) {
+    let anime_id = insert_unmerged_anime(&pool).await;
+    link_mal_anime_pages(&pool, anime_id, &["1"]).await;
+    sqlx::query(
+        "INSERT INTO provider_page (provider, entity_type, address, source, is_dead)
+         VALUES ('anidb', 'anime', '69', 'https://anidb.net/anime/69', true)",
+    )
+    .execute(&pool)
+    .await
+    .expect("insert dead page");
+    sqlx::query(
+        "INSERT INTO anime_source (anime_id, provider, entity_type, address)
+         VALUES ($1, 'anidb', 'anime', '69')",
+    )
+    .bind(anime_id)
+    .execute(&pool)
+    .await
+    .expect("link dead source page");
+
+    let mut save_input = build_anime_save(anime_id, 1, "cb-dead-v1", Vec::new());
+    save_input.page_sources = vec![build_mal_page_source(
+        EntityType::Anime,
+        "1",
+        "https://myanimelist.net/anime/1/Cowboy_Bebop",
+    )];
+    save_anime(&pool, &save_input).await.expect("save anime");
+
+    let visible_anime = read_visible_anime(&pool, anime_id)
+        .await
+        .expect("read visible anime");
+    assert_eq!(
+        visible_anime.sources,
+        vec!["https://myanimelist.net/anime/1/Cowboy_Bebop"]
+    );
+}

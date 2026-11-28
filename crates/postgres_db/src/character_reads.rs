@@ -106,7 +106,7 @@ pub async fn read_visible_character(
         SELECT page.source AS "source!"
         FROM character_source link
         JOIN provider_page page USING (provider, entity_type, address)
-        WHERE link.character_id = $1 AND page.source IS NOT NULL
+        WHERE link.character_id = $1 AND NOT page.is_dead AND page.source IS NOT NULL
         ORDER BY page.source
         "#,
         character_id

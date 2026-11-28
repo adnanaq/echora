@@ -321,7 +321,7 @@ async fn read_episode_streaming(
     Ok(())
 }
 
-/// Reads the URLs of the given episodes' source pages, where a merge chose one.
+/// Reads the URLs of the given episodes' live source pages, where a merge chose one.
 async fn read_episode_page_sources(
     tx: &mut Transaction<'_, Postgres>,
     episode_ids: &[Uuid],
@@ -332,7 +332,7 @@ async fn read_episode_page_sources(
         SELECT link.episode_id, page.source AS "source!"
         FROM episode_source link
         JOIN provider_page page USING (provider, entity_type, address)
-        WHERE link.episode_id = ANY($1) AND page.source IS NOT NULL
+        WHERE link.episode_id = ANY($1) AND NOT page.is_dead AND page.source IS NOT NULL
         ORDER BY link.episode_id, page.source
         "#,
         episode_ids

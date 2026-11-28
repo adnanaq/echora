@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT page.source AS \"source!\", false AS \"is_partial_source!\"\n        FROM anime_source link\n        JOIN provider_page page USING (provider, entity_type, address)\n        WHERE link.anime_id = $1 AND NOT page.is_dead AND page.source IS NOT NULL\n        UNION ALL\n        SELECT page.source AS \"source!\", true AS \"is_partial_source!\"\n        FROM anime_partial_source link\n        JOIN provider_page page USING (provider, entity_type, address)\n        WHERE link.anime_id = $1 AND page.source IS NOT NULL\n        ORDER BY 1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "source!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "is_partial_source!",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null,
+      null
+    ]
+  },
+  "hash": "4fa7ccb274a0bf9b6e27720228cb73651e549e1f9ffb79485f7f5641d1561a27"
+}
