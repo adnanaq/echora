@@ -24,11 +24,11 @@ Ingestion fills the catalogue from a seed release, the offline anime database. I
 1. **Clean the seed.** Seed cleaning decides which provider pages make up each work, and sends what the rules cannot settle to review. (ECHO-92)
 2. **Load the works.** A Temporal workflow turns the cleaned seed into works and page links in PostgreSQL. (ECHO-120)
 3. **Enrich each new work.**
-   - The same `RefreshAnimeWorkflow` that keeps works current fetches every page of a new work, merges it and saves it. (ECHO-111)
+   - The same `RefreshAnimeWorkflow` that keeps works current fetches every page of a new work, merges it and saves it. (~~ECHO-111~~)
    - Each episode the work lists then gets its own first refresh. (ECHO-112)
 4. **Load the characters.** A character list is built from every work's character lists on each provider, deduplicated across providers, and loaded with `CreateCharacter`. Each new character gets its own first refresh, whose merge reads the works it appears in from its own pages. (ECHO-135) (ECHO-112)
 
-There is no separate ingestion service and no separate enrichment path. A first enrichment is a refresh in which every page is due, so ingestion and updates share one code path, one set of provider rate limits and one history in Temporal. See [[update_service|Update Service]]. (ECHO-111)
+There is no separate ingestion service and no separate enrichment path. A first enrichment is a refresh in which every page is due, so ingestion and updates share one code path, one set of provider rate limits and one history in Temporal. See [[update_service|Update Service]]. (~~ECHO-111~~)
 
 Seed cleaning is temporary. Once discovery finds new works and pages directly from providers, the seed and `libs/seed_cleaning` are removed, and discovery feeds the same load step. `libs/work_matching`, which decides which pages belong to one work, stays: discovery uses the same rules. (P-ECHO-8)
 
@@ -136,10 +136,10 @@ The weekly sweep keeps them current. (ECHO-117)
 
 The `RefreshAnimeWorkflow` of a new work finds every page due, since none has been fetched into PostgreSQL yet:
 
-1. `refresh_page` runs once per page, on that provider's task queue. (ECHO-111)
+1. `refresh_page` runs once per page, on that provider's task queue. (~~ECHO-111~~)
    - ~~`EnrichmentService.FetchPage` fetches the page. (ECHO-99)~~
    - ~~`PostgresService.StorePage` stores it. (ECHO-97)~~
-2. `merge_anime` runs once. (ECHO-111)
+2. `merge_anime` runs once. (~~ECHO-111~~)
    - ~~`PostgresService.LoadAnime` loads the work's pages. (ECHO-98)~~
    - ~~`EnrichmentService.MergeAnime` merges them, and gives each episode the pages list a UUIDv7. (ECHO-105)~~
    - ~~`PostgresService.SaveAnime` saves the work. (ECHO-98)~~
@@ -186,7 +186,7 @@ What exists today, and what the plan above still needs:
 - **The cleaned seed is built only in memory, and only after the first pass.** `build_corrected_seed` in `libs/seed_cleaning` applies the first pass's corrections so the second pass can group split works. A cleaned seed with every correction applied, written to `cleaned_seed.jsonl`, is still to be added. (ECHO-92)
 - **Enrichment reads the raw seed.** `scripts/run_enrichment.py` reads `assets/seed_data/anime-offline-database.json` directly, one entry at a time, and writes per-agent folders under `temp/`. The script is removed once the new methods replace it. (ECHO-123)
   - ~~The merge (`merge_provider_records`) has no command-line entry point, derives the work's ID from its source URLs, reads `sources` from the offline database entry and merges provider synopses. All three change when `MergeAnime` is built. (ECHO-105)~~
-- **Pages are fetched twice.** Seed cleaning fetches pages for their details (titles, type, links, episode counts) and keeps them in `data/seed_cleaning/provider_pages.jsonl`. Enrichment fetches the same pages again for their full responses. The shared HTTP cache serves the second fetch while its entries last, and the planned `StorePage` makes PostgreSQL the one page store. (ECHO-97) (ECHO-111)
+- **Pages are fetched twice.** Seed cleaning fetches pages for their details (titles, type, links, episode counts) and keeps them in `data/seed_cleaning/provider_pages.jsonl`. Enrichment fetches the same pages again for their full responses. The shared HTTP cache serves the second fetch while its entries last, and the planned `StorePage` makes PostgreSQL the one page store. (~~ECHO-97~~) (~~ECHO-111~~)
 - **The planned methods do not exist yet.** `EnrichmentService` has only `Health` and `RunPipeline`.
   - `FetchPage` and the merge methods are planned. (P-ECHO-11)
   - The PostgreSQL Service is planned. (P-ECHO-10)

@@ -57,7 +57,7 @@ The Temporal Server keeps workflow state, timers and task queues, and dispatches
 
 ### Temporal Worker
 
-The Update Service, a Rust process built with the [Temporal Rust SDK](https://temporal.io/blog/build-durable-applications-rust-temporal-rust-sdk-now-generally-available), registers the workflow and activity implementations and polls the Temporal Server for tasks. Its activities call the Enrichment Service, the Agent Service and the PostgreSQL Service over gRPC with `tonic`. (ECHO-111, ECHO-115)
+The Update Service, a Rust process built with the [Temporal Rust SDK](https://temporal.io/blog/build-durable-applications-rust-temporal-rust-sdk-now-generally-available), registers the workflow and activity implementations and polls the Temporal Server for tasks. Its activities call the Enrichment Service, the Agent Service and the PostgreSQL Service over gRPC with `tonic`. (~~ECHO-111~~, ECHO-115)
 
 - **Task queues:** see [[update_service#Temporal Worker Configuration|Update Service]].
   - `update-service` for workflows and merges, and `agent-service` for AI activities. (ECHO-95)
@@ -223,11 +223,11 @@ The password comes from the environment file, never from the compose file. The d
 ## Operational Notes
 
 - **Workflow determinism**: workflow code never reads the system clock, draws random numbers or does I/O. It uses the SDK's workflow time and runs every side effect as an activity. (P-ECHO-12)
-- **Activity retries and timeouts**: set per activity. Starting values are in [[update_service#Activity timeouts|Update Service]]. (ECHO-111)
+- **Activity retries and timeouts**: set per activity. Starting values are in [[update_service#Activity timeouts|Update Service]]. (~~ECHO-111~~)
 - **Workflow timeouts**: long-running workflows continue as new instead of growing one history.
   - The weekly sweep continues as new between pages. (ECHO-117)
   - The seed load continues as new between batches. (ECHO-120)
-- **Payload size**: activities pass only IDs, keys and flags, never page bodies or merged records. See [[update_service#Only references pass through Temporal|Update Service]]. (ECHO-111)
+- **Payload size**: activities pass only IDs, keys and flags, never page bodies or merged records. See [[update_service#Only references pass through Temporal|Update Service]]. (~~ECHO-111~~)
 
 ---
 
@@ -240,12 +240,12 @@ Use the [Temporal Developer Skill](https://temporal.io/blog/introducing-temporal
 
 The rules these workflows follow, each explained in [[update_service|Update Service]]:
 
-- Other workflows are started through the client in an activity, never as child workflows. (ECHO-111)
+- Other workflows are started through the client in an activity, never as child workflows. (~~ECHO-111~~)
 - An activity waiting on a long gRPC call heartbeats while it waits.
-  - `refresh_page` heartbeats while `FetchPage` runs. (ECHO-111)
+  - `refresh_page` heartbeats while `FetchPage` runs. (~~ECHO-111~~)
   - `write_synopsis` heartbeats while `WriteSynopsis` runs. (ECHO-115)
-- A gRPC status a retry cannot fix is returned as a non-retryable failure. (ECHO-111)
-- A workflow checks for a pending `merge_requested` before it ends. (ECHO-111)
+- A gRPC status a retry cannot fix is returned as a non-retryable failure. (~~ECHO-111~~)
+- A workflow checks for a pending `merge_requested` before it ends. (~~ECHO-111~~)
 
 ---
 
