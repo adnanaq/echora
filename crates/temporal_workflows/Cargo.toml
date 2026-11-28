@@ -21,6 +21,8 @@ temporalio-sdk.workspace = true
 # Only for test-util: its tls-ring feature lets the SDK download the dev server over HTTPS.
 temporalio-sdk-core = { workspace = true, optional = true }
 temporalio-workflow.workspace = true
+tokio = { workspace = true, features = ["macros", "sync", "time"] }
+tracing.workspace = true
 
 [dev-dependencies]
 anyhow.workspace = true
@@ -40,3 +42,7 @@ test-util = [
 [[test]]
 name = "sdk_spike"
 required-features = ["spike", "test-util"]
+
+[[test]]
+name = "refresh_anime"
+required-features = ["test-util"]
