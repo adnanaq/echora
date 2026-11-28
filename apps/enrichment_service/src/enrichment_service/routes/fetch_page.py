@@ -32,6 +32,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 _MAX_DURATION_NANOS = 999_999_999
+# Must stay in sync with FETCH_ERROR_METADATA_KEY / FETCH_ERROR_PROVIDER_BLOCKED
+# in crates/update_service/src/grpc_clients.rs.
 FETCH_ERROR_METADATA_KEY = "x-echora-fetch-error"
 FETCH_ERROR_PROVIDER_BLOCKED = "provider_blocked"
 

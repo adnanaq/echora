@@ -84,9 +84,15 @@ use shared_proto::v1::{EntityType as ProtoEntityType, PageKey as ProtoPageKey, S
 pub const MAX_GRPC_MESSAGE_BYTES: usize = 64 * 1024 * 1024;
 
 /// Trailing gRPC metadata key set by `EnrichmentService.FetchPage` on provider-specific errors.
+///
+/// Must stay in sync with `FETCH_ERROR_METADATA_KEY` in
+/// `apps/enrichment_service/src/enrichment_service/routes/fetch_page.py`.
 pub const FETCH_ERROR_METADATA_KEY: &str = "x-echora-fetch-error";
 
 /// Metadata value indicating `polite_http` rejected the fetch because the provider is blocked.
+///
+/// Must stay in sync with `FETCH_ERROR_PROVIDER_BLOCKED` in
+/// `apps/enrichment_service/src/enrichment_service/routes/fetch_page.py`.
 pub const FETCH_ERROR_PROVIDER_BLOCKED: &str = "provider_blocked";
 
 /// Maximum concurrent `start_workflow` RPCs issued inside one `start_entity_workflows` batch.
@@ -438,8 +444,8 @@ impl CatalogueDataPort for GrpcCatalogueAdapter {
                     Ok(MergeAttemptOutcome::Saved(MergeAnimeOutput {
                         has_changed: saved.has_changed,
                         changed_episode_ids,
-                        // ECHO-115 adds LoadAnimeResponse.generated_texts so the merge can
-                        // compare provider_synopses_hash against the stored synopsis input hash.
+                        // TODO(ECHO-115): compare `merged.provider_synopses_hash` against the
+                        // stored synopsis input hash once `LoadAnimeResponse.generated_texts` lands.
                         has_changed_synopses: false,
                     }))
                 }
