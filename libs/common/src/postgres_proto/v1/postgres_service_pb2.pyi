@@ -189,10 +189,12 @@ class ListEntityPagesRequest(_message.Message):
     def __init__(self, entity_type: _Optional[_Union[_anime_pb2.EntityType, str]] = ..., entity_id: _Optional[str] = ...) -> None: ...
 
 class ListEntityPagesResponse(_message.Message):
-    __slots__ = ("pages",)
+    __slots__ = ("pages", "merge_version")
     PAGES_FIELD_NUMBER: _ClassVar[int]
+    MERGE_VERSION_FIELD_NUMBER: _ClassVar[int]
     pages: _containers.RepeatedCompositeFieldContainer[EntityPage]
-    def __init__(self, pages: _Optional[_Iterable[_Union[EntityPage, _Mapping]]] = ...) -> None: ...
+    merge_version: int
+    def __init__(self, pages: _Optional[_Iterable[_Union[EntityPage, _Mapping]]] = ..., merge_version: _Optional[int] = ...) -> None: ...
 
 class EntityPage(_message.Message):
     __slots__ = ("page_key", "is_partial_source", "fetched_at", "is_dead", "fetch_failed_at", "fetch_failures")

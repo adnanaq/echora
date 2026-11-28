@@ -43,6 +43,15 @@ pub enum RefreshOutcome {
     Failed,
 }
 
+/// Linked provider pages and stored merge version of an entity.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EntityPagesRecord {
+    /// Linked provider pages with their last fetch state.
+    pub pages: Vec<EntityPageRecord>,
+    /// Merge code version that last saved the entity, or `None` when never merged.
+    pub merge_version: Option<i32>,
+}
+
 /// A provider page linked to an entity, with its last fetch state.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EntityPageRecord {
@@ -130,21 +139,26 @@ pub struct DuePageRecord {
     pub anime_id: Uuid,
 }
 
-/// Lists an entity's linked provider pages with their last fetch state.
+/// Lists an entity's linked provider pages, fetch state, and stored merge version.
 ///
 /// Reads the link tables, not the visible views, so an entity that was never merged can be
-/// refreshed. The existence check and the page rows come from one read-only snapshot, so an
-/// entity deleted between them is not reported as present with no pages. A work lists its source pages first, then its partial-source pages; episodes and
-/// characters have source pages only. Each group is ordered by provider and address.
+/// refreshed. The entity check and the page rows come from one read-only snapshot, so an
+/// entity deleted between them is not reported as present with no pages. A work lists its
+/// source pages first, then its partial-source pages; episodes and characters have source
+/// pages only. Each group is ordered by provider and address.
 ///
 /// # Examples
 ///
 /// ```no_run
 /// # use uuid::Uuid;
 /// # async fn example(pool: &sqlx::PgPool, anime_id: Uuid) -> Result<(), postgres_db::Error> {
-/// let pages = postgres_db::list_entity_pages(pool, postgres_db::EntityType::Anime, anime_id).await?;
-/// let due_pages = pages.iter().filter(|page| !page.is_partial_source && !page.is_dead);
-/// assert!(due_pages.count() <= pages.len());
+/// let entity_pages =
+///     postgres_db::list_entity_pages(pool, postgres_db::EntityType::Anime, anime_id).await?;
+/// let due_pages = entity_pages
+///     .pages
+///     .iter()
+///     .filter(|page| !page.is_partial_source && !page.is_dead);
+/// assert!(due_pages.count() <= entity_pages.pages.len());
 /// # Ok(())
 /// # }
 /// ```
@@ -158,26 +172,30 @@ pub async fn list_entity_pages(
     pool: &PgPool,
     entity_type: EntityType,
     entity_id: Uuid,
-) -> Result<Vec<EntityPageRecord>, Error> {
+) -> Result<EntityPagesRecord, Error> {
     let mut tx = begin_read_snapshot(pool).await?;
-    let is_present = sqlx::query_scalar!(
+    let entity_row = sqlx::query!(
         r#"
-        SELECT EXISTS (SELECT 1 FROM anime
-                       WHERE $2 = 'anime' AND id = $1 AND deleted_at IS NULL)
-            OR EXISTS (SELECT 1 FROM episode
-                       WHERE $2 = 'episode' AND id = $1 AND deleted_at IS NULL)
-            OR EXISTS (SELECT 1 FROM character
-                       WHERE $2 = 'character' AND id = $1 AND deleted_at IS NULL)
-            AS "is_present!"
+        SELECT merge_version
+        FROM anime
+        WHERE $2 = 'anime' AND id = $1 AND deleted_at IS NULL
+        UNION ALL
+        SELECT merge_version
+        FROM episode
+        WHERE $2 = 'episode' AND id = $1 AND deleted_at IS NULL
+        UNION ALL
+        SELECT merge_version
+        FROM character
+        WHERE $2 = 'character' AND id = $1 AND deleted_at IS NULL
         "#,
         entity_id,
         entity_type.as_str()
     )
-    .fetch_one(&mut *tx)
+    .fetch_optional(&mut *tx)
     .await?;
-    if !is_present {
+    let Some(entity_row) = entity_row else {
         return Err(Error::not_found());
-    }
+    };
 
     let page_rows = sqlx::query!(
         r#"
@@ -211,7 +229,7 @@ pub async fn list_entity_pages(
     .fetch_all(&mut *tx)
     .await?;
 
-    page_rows
+    let pages = page_rows
         .into_iter()
         .map(|page_row| {
             Ok(EntityPageRecord {
@@ -223,7 +241,12 @@ pub async fn list_entity_pages(
                 fetch_failures: page_row.fetch_failures,
             })
         })
-        .collect()
+        .collect::<Result<Vec<_>, Error>>()?;
+
+    Ok(EntityPagesRecord {
+        pages,
+        merge_version: entity_row.merge_version,
+    })
 }
 
 /// Records how a refresh ended and sets the entity's `next_refresh_at`.

@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT merge_version\n        FROM anime\n        WHERE $2 = 'anime' AND id = $1 AND deleted_at IS NULL\n        UNION ALL\n        SELECT merge_version\n        FROM episode\n        WHERE $2 = 'episode' AND id = $1 AND deleted_at IS NULL\n        UNION ALL\n        SELECT merge_version\n        FROM character\n        WHERE $2 = 'character' AND id = $1 AND deleted_at IS NULL\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "merge_version",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "365698ea8737bdf3e2cda6d2a63b0f06d92d733db237647026446d8bf4ea6d80"
+}

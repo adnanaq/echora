@@ -390,12 +390,13 @@ impl PostgresService for PostgresGrpcService {
         let req = request.into_inner();
         let entity_type = map_entity_type(req.entity_type)?;
         let entity_id = parse_uuid_arg(&req.entity_id, "entity_id")?;
-        let pages = list_entity_pages(&self.pool, entity_type, entity_id)
+        let entity_pages = list_entity_pages(&self.pool, entity_type, entity_id)
             .await
             .map_err(|err| map_db_error(&err))?;
 
         Ok(Response::new(ListEntityPagesResponse {
-            pages: pages
+            pages: entity_pages
+                .pages
                 .into_iter()
                 .map(|page| ProtoEntityPage {
                     page_key: Some(to_proto_page_key(&page.page_key)),
@@ -406,6 +407,7 @@ impl PostgresService for PostgresGrpcService {
                     fetch_failures: page.fetch_failures,
                 })
                 .collect(),
+            merge_version: entity_pages.merge_version,
         }))
     }
 
@@ -1994,6 +1996,7 @@ mod tests {
             .expect("list_entity_pages")
             .into_inner();
         assert_eq!(pages_resp.pages.len(), 1);
+        assert_eq!(pages_resp.merge_version, Some(1));
 
         // RecordRefresh (Succeeded, PagesFailed, Failed)
         for outcome in [

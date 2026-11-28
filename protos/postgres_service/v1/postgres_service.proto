@@ -194,9 +194,10 @@ message ListEntityPagesRequest {
   string entity_id = 2;
 }
 
-// Linked provider pages and their last fetch state for an entity.
+// Linked provider pages, their last fetch state, and stored merge version for an entity.
 message ListEntityPagesResponse {
   repeated EntityPage pages = 1;
+  optional int32 merge_version = 2;
 }
 
 // Provider page metadata returned by ListEntityPages.
