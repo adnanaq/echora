@@ -185,3 +185,36 @@ groups:
         annotations:
           summary: "Prometheus scrape target down"
           description: "Target {{ $labels.instance }} (job={{ $labels.job }}) is unreachable."
+
+  # ---------------------------------------------------------------------------
+  # Update Service: Temporal workflow and activity health
+  # ---------------------------------------------------------------------------
+  - name: echora.update_service
+    rules:
+      - alert: UpdateServiceWorkflowTaskFailures
+        expr: sum(rate(temporal_workflow_task_execution_failed_total[5m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+          service: update-service
+        annotations:
+          summary: "Update Service workflow tasks are failing"
+          description: >
+            Temporal workflow tasks are failing at {{ $value | humanize }}/sec.
+            Check for nondeterminism errors or unhandled workflow panics.
+
+      - alert: UpdateServiceActivityHighFailureRate
+        expr: |
+          (
+            sum(rate(temporal_activity_execution_failed_total[10m]))
+            / clamp_min(sum(rate(temporal_activity_task_received_total[10m])), 0.001)
+          ) > 0.25
+        for: 10m
+        labels:
+          severity: warning
+          service: update-service
+        annotations:
+          summary: "Update Service activity failure rate above 25%"
+          description: >
+            {{ $value | humanizePercentage }} of Temporal activities are failing.
+            Check postgres_service, enrichment_service, and provider availability.

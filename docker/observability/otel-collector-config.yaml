@@ -30,6 +30,7 @@ processors:
   transform/environment-label:
     metric_statements:
       - set(datapoint.attributes["deployment.environment"], resource.attributes["deployment.environment"]) where resource.attributes["deployment.environment"] != nil
+      - set(datapoint.attributes["deployment.environment"], resource.attributes["deployment.environment.name"]) where datapoint.attributes["deployment.environment"] == nil and resource.attributes["deployment.environment.name"] != nil
 
 exporters:
   otlp/tempo:

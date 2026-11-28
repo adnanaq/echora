@@ -1,0 +1,309 @@
+{
+  "id": null,
+  "uid": "echora-update-service-overview",
+  "title": "Echora Update Service Overview",
+  "tags": [
+    "echora",
+    "update-service",
+    "temporal"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "15s",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Workflow Outcomes Rate",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (workflow_type) (rate(temporal_workflow_completed_total{deployment_environment=~\"$environment\"}[5m]))",
+          "legendFormat": "completed ({{workflow_type}})"
+        },
+        {
+          "expr": "sum by (workflow_type) (rate(temporal_workflow_failed_total{deployment_environment=~\"$environment\"}[5m]))",
+          "legendFormat": "failed ({{workflow_type}})"
+        },
+        {
+          "expr": "sum by (workflow_type) (rate(temporal_workflow_canceled_total{deployment_environment=~\"$environment\"}[5m]))",
+          "legendFormat": "canceled ({{workflow_type}})"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Workflow End-to-End Latency P95 (s)",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, workflow_type) (rate(temporal_workflow_endtoend_latency_seconds_bucket{deployment_environment=~\"$environment\"}[5m])))",
+          "legendFormat": "p95 ({{workflow_type}})"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Activity Schedule-to-Start Latency P95 by Queue (s)",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, task_queue) (rate(temporal_activity_schedule_to_start_latency_seconds_bucket{deployment_environment=~\"$environment\"}[5m])))",
+          "legendFormat": "{{task_queue}}"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Activity Execution Latency P95 by Activity (s)",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, activity_type, task_queue) (rate(temporal_activity_execution_latency_seconds_bucket{deployment_environment=~\"$environment\"}[5m])))",
+          "legendFormat": "{{activity_type}} ({{task_queue}})"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Activity & Workflow Task Failures Rate",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (activity_type, task_queue) (rate(temporal_activity_execution_failed_total{deployment_environment=~\"$environment\"}[5m]))",
+          "legendFormat": "activity failed: {{activity_type}} ({{task_queue}})"
+        },
+        {
+          "expr": "sum by (task_queue) (rate(temporal_workflow_task_execution_failed_total{deployment_environment=~\"$environment\"}[5m]))",
+          "legendFormat": "workflow task failed ({{task_queue}})"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Worker Slots & Active Pollers",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (worker_type, task_queue) (temporal_worker_task_slots_used{deployment_environment=~\"$environment\"})",
+          "legendFormat": "used {{worker_type}} ({{task_queue}})"
+        },
+        {
+          "expr": "sum by (worker_type, task_queue) (temporal_worker_task_slots_available{deployment_environment=~\"$environment\"})",
+          "legendFormat": "available {{worker_type}} ({{task_queue}})"
+        },
+        {
+          "expr": "sum by (poller_type, task_queue) (temporal_num_pollers{deployment_environment=~\"$environment\"})",
+          "legendFormat": "pollers {{poller_type}} ({{task_queue}})"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Workflow Task Replay & Execution Latency P95 (s)",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, task_queue) (rate(temporal_workflow_task_replay_latency_seconds_bucket{deployment_environment=~\"$environment\"}[5m])))",
+          "legendFormat": "replay p95 ({{task_queue}})"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, task_queue) (rate(temporal_workflow_task_execution_latency_seconds_bucket{deployment_environment=~\"$environment\"}[5m])))",
+          "legendFormat": "exec p95 ({{task_queue}})"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Largest gRPC Message Seen (bytes)",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "max(update_service_grpc_max_message_bytes{deployment_environment=~\"$environment\"})",
+          "legendFormat": "Max gRPC message"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      }
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "environment",
+        "label": "Environment",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": "label_values(temporal_worker_task_slots_available, deployment_environment)",
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "refresh": 2
+      }
+    ]
+  },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  }
+}
