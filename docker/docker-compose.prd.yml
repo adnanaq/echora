@@ -226,6 +226,10 @@ services:
       - ENRICHMENT_SERVICE_PORT=8002
       - ENRICHMENT_DEFAULT_FILE_PATH=/app/assets/seed_data/anime-offline-database.json
       - ENRICHMENT_OUTPUT_DIR=/app/assets/seed_data
+      # AniDB HTTP API client registration; AniDB refuses requests without it.
+      - ANIDB_CLIENT=${ANIDB_CLIENT:?set ANIDB_CLIENT in .env}
+      - ANIDB_CLIENTVER=${ANIDB_CLIENTVER:?set ANIDB_CLIENTVER in .env}
+      - ANIDB_PROTOVER=${ANIDB_PROTOVER:-1}
       - CACHE_ENABLED=true
       - REDIS_URL=${REDIS_URL:?set REDIS_URL in .env}
       # Off until a production collector exists (see vector-service).
