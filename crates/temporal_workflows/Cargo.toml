@@ -23,11 +23,12 @@ temporalio-sdk-core = { workspace = true, optional = true }
 temporalio-workflow.workspace = true
 tokio = { workspace = true, features = ["macros", "sync", "time"] }
 tracing.workspace = true
+uuid = { workspace = true, features = ["serde"] }
 
 [dev-dependencies]
 anyhow.workspace = true
 tokio.workspace = true
-uuid = { workspace = true, features = ["v7"] }
+uuid = { workspace = true, features = ["serde", "v7"] }
 
 [features]
 default = []

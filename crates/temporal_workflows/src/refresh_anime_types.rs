@@ -1,16 +1,27 @@
 //! Serializable workflow, signal, and activity payloads for `RefreshAnimeWorkflow`.
 
 use std::fmt;
+use std::num::NonZeroU32;
 use std::str::FromStr;
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::Provider;
+
+/// Seconds in one day, shared across due-page calculations and gRPC duration conversions.
+pub const SECONDS_PER_DAY: i64 = 86_400;
 
 /// Default days before a stored page or work counts as due for refresh.
 ///
 /// Matches `REFRESH_AFTER_DAYS` in `docs/architecture/update_service.md`.
 pub const DEFAULT_REFRESH_AFTER_DAYS: i64 = 7;
+
+/// Default `MERGE_VERSION` written on entity saves when unset.
+///
+/// Matches `MERGE_VERSION` in `docs/architecture/update_service.md`.
+pub const DEFAULT_MERGE_VERSION: i32 = 1;
 
 /// Default minutes to wait after the first stored page before running the first merge.
 ///
@@ -28,6 +39,28 @@ pub const DEFAULT_MERGE_COALESCE_WAIT_SECONDS: u64 = 5;
 ///
 /// Matches the 1-week cap in `docs/architecture/update_service.md` and `postgres_db`.
 pub const MAX_PAGE_RETRY_BACKOFF_HOURS: i64 = 168;
+
+mod duration_seconds {
+    use std::time::Duration;
+
+    use serde::{Deserialize as _, Deserializer, Serializer};
+
+    pub(crate) fn serialize<S>(duration: &Duration, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_u64(duration.as_secs())
+    }
+
+    pub(crate) fn deserialize<'de, D>(deserializer: D) -> Result<Duration, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let seconds = i64::deserialize(deserializer)?;
+        let non_negative = u64::try_from(seconds.max(0)).unwrap_or(0);
+        Ok(Duration::from_secs(non_negative))
+    }
+}
 
 /// Error returned when parsing a provider, entity type, or trigger slug fails.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -59,7 +92,7 @@ impl std::error::Error for ParseSlugError {}
 ///
 /// Matches `shared_proto.v1.EntityType` and `postgres_db::EntityType`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(try_from = "String", into = "&'static str")]
 pub enum EntityType {
     /// An anime work.
     Anime,
@@ -70,6 +103,9 @@ pub enum EntityType {
 }
 
 impl EntityType {
+    /// Every supported catalogue entity type, each listed once.
+    pub const ALL: [Self; 3] = [Self::Anime, Self::Episode, Self::Character];
+
     /// Returns the lowercase wire slug for this entity type.
     ///
     /// # Examples
@@ -89,6 +125,20 @@ impl EntityType {
     }
 }
 
+impl From<EntityType> for &'static str {
+    fn from(value: EntityType) -> Self {
+        value.as_str()
+    }
+}
+
+impl TryFrom<String> for EntityType {
+    type Error = ParseSlugError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        value.parse()
+    }
+}
+
 impl fmt::Display for EntityType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
@@ -99,18 +149,16 @@ impl FromStr for EntityType {
     type Err = ParseSlugError;
 
     fn from_str(input: &str) -> Result<Self, Self::Err> {
-        match input {
-            "anime" => Ok(Self::Anime),
-            "episode" => Ok(Self::Episode),
-            "character" => Ok(Self::Character),
-            _ => Err(ParseSlugError::new("entity type", input)),
-        }
+        Self::ALL
+            .into_iter()
+            .find(|entity_type| entity_type.as_str() == input)
+            .ok_or_else(|| ParseSlugError::new("entity type", input))
     }
 }
 
 /// Origin that started a refresh workflow, mapped to priority and fairness keys.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(try_from = "String", into = "&'static str")]
 pub enum RefreshTrigger {
     /// Work opened by a user (priority 1, fairness `user`).
     User,
@@ -128,6 +176,16 @@ pub enum RefreshTrigger {
 }
 
 impl RefreshTrigger {
+    /// Every supported refresh trigger, each listed once.
+    pub const ALL: [Self; 6] = [
+        Self::User,
+        Self::Episode,
+        Self::Review,
+        Self::Sweep,
+        Self::Seed,
+        Self::Remerge,
+    ];
+
     /// Returns the keyword value stored in the `RefreshTrigger` search attribute.
     ///
     /// # Examples
@@ -186,6 +244,20 @@ impl RefreshTrigger {
     }
 }
 
+impl From<RefreshTrigger> for &'static str {
+    fn from(value: RefreshTrigger) -> Self {
+        value.as_str()
+    }
+}
+
+impl TryFrom<String> for RefreshTrigger {
+    type Error = ParseSlugError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        value.parse()
+    }
+}
+
 impl fmt::Display for RefreshTrigger {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
@@ -196,15 +268,65 @@ impl FromStr for RefreshTrigger {
     type Err = ParseSlugError;
 
     fn from_str(input: &str) -> Result<Self, Self::Err> {
-        match input {
-            "user" => Ok(Self::User),
-            "episode" => Ok(Self::Episode),
-            "review" => Ok(Self::Review),
-            "sweep" => Ok(Self::Sweep),
-            "seed" => Ok(Self::Seed),
-            "remerge" => Ok(Self::Remerge),
-            _ => Err(ParseSlugError::new("refresh trigger", input)),
+        Self::ALL
+            .into_iter()
+            .find(|trigger| trigger.as_str() == input)
+            .ok_or_else(|| ParseSlugError::new("refresh trigger", input))
+    }
+}
+
+/// Worker-level refresh policy settings applied deterministically via `list_pages`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+pub struct RefreshSettings {
+    /// Age in days before a stored page or work counts as due (`REFRESH_AFTER_DAYS`).
+    pub refresh_after_days: i64,
+    /// Current mapping and merge code version (`MERGE_VERSION`).
+    pub merge_version: i32,
+    /// Seconds to wait after the first stored page before running the first merge.
+    pub merge_first_wait_seconds: u64,
+    /// Seconds to coalesce late-arriving pages after the first merge has run.
+    pub merge_coalesce_wait_seconds: u64,
+    #[cfg(feature = "test-util")]
+    #[serde(default)]
+    pub(crate) refresh_page_timeout_seconds: Option<u64>,
+}
+
+impl RefreshSettings {
+    /// Creates worker refresh settings from explicit day, version, and merge-wait values.
+    #[must_use]
+    pub const fn new(
+        refresh_after_days: i64,
+        merge_version: i32,
+        merge_first_wait_seconds: u64,
+        merge_coalesce_wait_seconds: u64,
+    ) -> Self {
+        Self {
+            refresh_after_days,
+            merge_version,
+            merge_first_wait_seconds,
+            merge_coalesce_wait_seconds,
+            #[cfg(feature = "test-util")]
+            refresh_page_timeout_seconds: None,
         }
+    }
+
+    /// Overrides the `refresh_page` start-to-close timeout for fast timeout tests.
+    #[cfg(feature = "test-util")]
+    #[must_use]
+    pub const fn with_refresh_page_timeout(mut self, timeout_seconds: u64) -> Self {
+        self.refresh_page_timeout_seconds = Some(timeout_seconds);
+        self
+    }
+}
+
+impl Default for RefreshSettings {
+    fn default() -> Self {
+        Self::new(
+            DEFAULT_REFRESH_AFTER_DAYS,
+            DEFAULT_MERGE_VERSION,
+            DEFAULT_MERGE_FIRST_WAIT_MINUTES * 60,
+            DEFAULT_MERGE_COALESCE_WAIT_SECONDS,
+        )
     }
 }
 
@@ -214,14 +336,16 @@ impl FromStr for RefreshTrigger {
 ///
 /// ```
 /// use temporal_workflows::build_refresh_anime_workflow_id;
+/// use uuid::Uuid;
 ///
+/// let anime_id = Uuid::nil();
 /// assert_eq!(
-///     build_refresh_anime_workflow_id("anime-123"),
-///     "refresh-anime-anime-123"
+///     build_refresh_anime_workflow_id(anime_id),
+///     "refresh-anime-00000000-0000-0000-0000-000000000000"
 /// );
 /// ```
 #[must_use]
-pub fn build_refresh_anime_workflow_id(anime_id: &str) -> String {
+pub fn build_refresh_anime_workflow_id(anime_id: Uuid) -> String {
     format!("refresh-anime-{anime_id}")
 }
 
@@ -248,14 +372,15 @@ pub fn build_refresh_episode_workflow_id(episode_id: &str) -> String {
 ///
 /// ```
 /// use temporal_workflows::build_write_synopsis_workflow_id;
+/// use uuid::Uuid;
 ///
 /// assert_eq!(
-///     build_write_synopsis_workflow_id("anime-123"),
-///     "synopsis-anime-anime-123"
+///     build_write_synopsis_workflow_id(Uuid::nil()),
+///     "synopsis-anime-00000000-0000-0000-0000-000000000000"
 /// );
 /// ```
 #[must_use]
-pub fn build_write_synopsis_workflow_id(anime_id: &str) -> String {
+pub fn build_write_synopsis_workflow_id(anime_id: Uuid) -> String {
     format!("synopsis-anime-{anime_id}")
 }
 
@@ -301,6 +426,9 @@ pub struct ListEntityPagesOutput {
     /// Stored `merge_version` of the entity (`None` when never merged).
     #[serde(default)]
     pub entity_merge_version: Option<i32>,
+    /// Worker refresh policy settings recorded deterministically in workflow history.
+    #[serde(default)]
+    pub refresh_settings: RefreshSettings,
 }
 
 /// Input passed to the `refresh_page` activity.
@@ -308,9 +436,9 @@ pub struct ListEntityPagesOutput {
 pub struct RefreshPageInput {
     /// Provider page to fetch and store.
     pub page_key: RefreshPageKey,
-    /// Maximum acceptable cache age in seconds (`0` bypasses the HTTP cache).
-    #[serde(default)]
-    pub max_age_seconds: i64,
+    /// Maximum acceptable cache age (`Duration::ZERO` bypasses the HTTP cache).
+    #[serde(default, rename = "max_age_seconds", with = "duration_seconds")]
+    pub max_age: Duration,
 }
 
 /// Claim-check output returned by the `refresh_page` activity.
@@ -324,16 +452,6 @@ pub struct RefreshPageOutput {
     /// Whether every fetch attempt failed (recorded on the page; does not fail the refresh).
     #[serde(default)]
     pub has_failed: bool,
-}
-
-/// Input passed to the `merge_anime` activity.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct MergeAnimeInput {
-    /// Target work UUID.
-    pub anime_id: String,
-    /// Current merge code version written on save.
-    #[serde(default)]
-    pub merge_version: i32,
 }
 
 /// Claim-check output returned by the `merge_anime` activity.
@@ -354,7 +472,7 @@ pub struct MergeAnimeOutput {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct StartEntityWorkflowsInput {
     /// Parent work UUID (used when starting `WriteSynopsisWorkflow`).
-    pub anime_id: String,
+    pub anime_id: Uuid,
     /// Episode UUIDs whose `RefreshEpisodeWorkflow` should be started.
     #[serde(default)]
     pub episode_ids: Vec<String>,
@@ -366,7 +484,7 @@ pub struct StartEntityWorkflowsInput {
     pub trigger: RefreshTrigger,
     /// Temporal priority key (`1` = highest, `5` = lowest) inherited by started workflows.
     #[serde(default)]
-    pub priority: u32,
+    pub priority: Option<NonZeroU32>,
 }
 
 /// Outcome recorded at the end of a refresh via `record_refresh`.
@@ -376,7 +494,7 @@ pub enum RefreshOutcome {
     Succeeded,
     /// Merge completed, but one or more source pages failed every attempt.
     PagesFailed,
-    /// Merge or save failed.
+    /// Merge, save, or refresh orchestration failed.
     Failed,
 }
 
@@ -384,12 +502,9 @@ pub enum RefreshOutcome {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct RecordRefreshInput {
     /// Target work UUID.
-    pub anime_id: String,
+    pub anime_id: Uuid,
     /// Final refresh outcome.
     pub outcome: RefreshOutcome,
-    /// `REFRESH_AFTER_DAYS` setting from `update_service`.
-    #[serde(default)]
-    pub refresh_after_days: i64,
 }
 
 /// Signal payload requesting specific provider pages (`fetch_requested`).
@@ -398,39 +513,25 @@ pub struct FetchRequestedSignal {
     /// Providers requested to refresh (empty means all non-dead source pages).
     #[serde(default)]
     pub providers: Vec<Provider>,
-    /// Maximum acceptable cache age in seconds (`0` always fetches).
+    /// Maximum acceptable cache age (`Duration::ZERO` always fetches).
+    #[serde(default, rename = "max_age_seconds", with = "duration_seconds")]
+    pub max_age: Duration,
+    /// Priority key requested by the caller (`1` = highest, `None` keeps current priority).
     #[serde(default)]
-    pub max_age_seconds: i64,
-    /// Priority key requested by the caller (`1` = highest, `0` keeps current priority).
-    #[serde(default)]
-    pub priority: u32,
+    pub priority: Option<NonZeroU32>,
 }
 
 /// Input passed when starting `RefreshAnimeWorkflow`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 pub struct RefreshAnimeInput {
     /// Target work UUID.
-    pub anime_id: String,
+    pub anime_id: Uuid,
     /// `RefreshTrigger` search attribute value (`user`, `episode`, `review`, `sweep`, `seed`, `remerge`).
     #[serde(default)]
     pub trigger: RefreshTrigger,
-    /// Initial priority key (`1..=5`, `0` uses `trigger.default_priority_key()`).
+    /// Initial priority key (`1..=5`, `None` uses `trigger.default_priority_key()`).
     #[serde(default)]
-    pub priority: u32,
-    /// `REFRESH_AFTER_DAYS` setting (`0` uses [`DEFAULT_REFRESH_AFTER_DAYS`]).
-    #[serde(default)]
-    pub refresh_after_days: i64,
-    /// Current `MERGE_VERSION` from settings; triggers a re-merge when stored version is older.
-    #[serde(default)]
-    pub merge_version: i32,
-    /// Seconds to wait after the first stored page before running the first merge
-    /// (`None` uses [`DEFAULT_MERGE_FIRST_WAIT_MINUTES`] * 60).
-    #[serde(default)]
-    pub merge_first_wait_seconds: Option<u64>,
-    /// Seconds to coalesce late-arriving pages after the first merge
-    /// (`None` uses [`DEFAULT_MERGE_COALESCE_WAIT_SECONDS`]).
-    #[serde(default)]
-    pub merge_coalesce_wait_seconds: Option<u64>,
+    pub priority: Option<NonZeroU32>,
     /// Whether the work's pages were recently relinked and require a merge even without fetches.
     #[serde(default)]
     pub pages_relinked: bool,
@@ -440,7 +541,7 @@ pub struct RefreshAnimeInput {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct RefreshAnimeOutcome {
     /// Target work UUID.
-    pub anime_id: String,
+    pub anime_id: Uuid,
     /// Number of `refresh_page` calls completed.
     pub pages_refreshed: usize,
     /// Number of `refresh_page` calls that ended in page failure.

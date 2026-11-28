@@ -25,6 +25,7 @@ use update_service::{
     UpdateServiceSettings, build_all_worker_options, build_runtime_options,
     list_worker_queue_specs, run_workers,
 };
+use uuid::Uuid;
 
 const WORKFLOW_WAIT: Duration = Duration::from_secs(30);
 
@@ -222,6 +223,7 @@ fn settings_from_vars_invalid_address_fails() {
     }
     for (var, bad_value) in [
         ("POSTGRES_SERVICE_ADDRESS", "postgres:8004/path"),
+        ("POSTGRES_SERVICE_ADDRESS", "http://[::1"),
         ("ENRICHMENT_SERVICE_ADDRESS", "ftp://enrichment:8002"),
         ("REFRESH_AFTER_DAYS", "0"),
         ("MERGE_VERSION", "-1"),
@@ -450,6 +452,16 @@ async fn build_runtime_options_supports_disabled_and_otlp_metrics() -> anyhow::R
         ..CommonSettings::default()
     };
     let _otel_opts = build_runtime_options(&enabled)?;
+    let bad_endpoint = CommonSettings {
+        observability: ObservabilitySettings {
+            otel_enabled: true,
+            otel_enable_metrics: true,
+            otel_exporter_otlp_endpoint: "http://[::1".to_owned(),
+            ..ObservabilitySettings::default()
+        },
+        ..CommonSettings::default()
+    };
+    assert!(build_runtime_options(&bad_endpoint).is_err());
     Ok(())
 }
 
@@ -468,8 +480,7 @@ async fn run_workers_running_workers_complete_workflow_then_stop_cleanly() -> an
 
     let (shutdown_sender, shutdown_receiver) = tokio::sync::oneshot::channel::<()>();
     let workflow_check = async {
-        let check_outcome =
-            complete_refresh_workflow(&client, "runner-anime-1", WORKFLOW_WAIT).await;
+        let check_outcome = complete_refresh_workflow(&client, Uuid::now_v7(), WORKFLOW_WAIT).await;
         let _ = shutdown_sender.send(());
         check_outcome
     };

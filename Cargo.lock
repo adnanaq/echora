@@ -538,6 +538,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
 
 [[package]]
+name = "echora_protos"
+version = "0.1.0"
+dependencies = [
+ "prost 0.14.6",
+ "prost-build",
+ "prost-types",
+ "protoc-bin-vendored",
+ "tonic 0.14.9",
+ "tonic-prost",
+ "tonic-prost-build",
+]
+
+[[package]]
 name = "either"
 version = "1.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2064,20 +2077,17 @@ dependencies = [
  "anyhow",
  "chrono",
  "common",
+ "echora_protos",
  "mimalloc",
  "opentelemetry 0.30.0",
  "postgres_db",
  "prost 0.14.6",
- "prost-build",
  "prost-types",
- "protoc-bin-vendored",
  "sha2",
  "sqlx",
  "tokio",
  "tonic 0.14.9",
  "tonic-health",
- "tonic-prost",
- "tonic-prost-build",
  "tracing",
  "url",
  "uuid",
@@ -4089,15 +4099,13 @@ name = "update_service"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "chrono",
  "common",
+ "echora_protos",
  "futures",
  "mimalloc",
  "opentelemetry 0.30.0",
  "prost 0.14.6",
- "prost-build",
  "prost-types",
- "protoc-bin-vendored",
  "serde",
  "temporal_workflows",
  "temporalio-client",
@@ -4105,8 +4113,6 @@ dependencies = [
  "temporalio-sdk",
  "tokio",
  "tonic 0.14.9",
- "tonic-prost",
- "tonic-prost-build",
  "tracing",
  "url",
  "uuid",
@@ -4147,6 +4153,7 @@ checksum = "3c14b15dffa2f4bd712103e857140aa04a4f2ff6e955c77d7eb8e53ee02a3b64"
 dependencies = [
  "getrandom 0.4.3",
  "js-sys",
+ "serde_core",
  "wasm-bindgen",
 ]
 

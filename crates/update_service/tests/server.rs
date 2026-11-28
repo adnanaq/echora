@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Context as _, bail, ensure};
 use support::{complete_refresh_workflow, find_free_port, start_mock_grpc_server};
 use temporal_workflows::testing::start_local_environment;
+use uuid::Uuid;
 
 const PROCESS_WAIT: Duration = Duration::from_secs(30);
 const POLL_INTERVAL: Duration = Duration::from_millis(100);
@@ -35,6 +36,9 @@ fn start_worker_process(extra_vars: &[(&str, &str)]) -> anyhow::Result<WorkerPro
         .env("OTEL_ENABLED", "false")
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
+    if let Ok(profile_file) = std::env::var("LLVM_PROFILE_FILE") {
+        command.env("LLVM_PROFILE_FILE", profile_file);
+    }
     for (key, value) in extra_vars {
         command.env(key, value);
     }
@@ -86,12 +90,7 @@ async fn update_service_each_shutdown_signal_drains_workers_and_exits_zero() -> 
             ("POSTGRES_SERVICE_ADDRESS", grpc_endpoint.as_str()),
             ("ENRICHMENT_SERVICE_ADDRESS", grpc_endpoint.as_str()),
         ])?;
-        complete_refresh_workflow(
-            environment.client(),
-            &format!("binary-{signal_name}"),
-            PROCESS_WAIT,
-        )
-        .await?;
+        complete_refresh_workflow(environment.client(), Uuid::now_v7(), PROCESS_WAIT).await?;
 
         send_signal(&worker.child, signal_name)?;
         let exit_status = wait_for_exit(&mut worker.child).await?;

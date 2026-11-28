@@ -18,7 +18,7 @@
 //!   `build_spike_worker_options`, which registers them.
 //! - `test-util`: `testing::start_local_environment`, which starts a Temporal CLI dev server
 //!   configured like the development server in `docker/docker-compose.dev.yml`, plus
-//!   `UpdateServicePorts::noop` and `ProviderActivities::with_heartbeat_interval`.
+//!   `UpdateServicePorts::noop` and `with_heartbeat_interval`.
 
 mod activities;
 mod ports;
@@ -47,12 +47,12 @@ pub use ports::{
 };
 #[doc(inline)]
 pub use refresh_anime_types::{
-    DEFAULT_MERGE_COALESCE_WAIT_SECONDS, DEFAULT_MERGE_FIRST_WAIT_MINUTES,
+    DEFAULT_MERGE_COALESCE_WAIT_SECONDS, DEFAULT_MERGE_FIRST_WAIT_MINUTES, DEFAULT_MERGE_VERSION,
     DEFAULT_REFRESH_AFTER_DAYS, EntityPageSummary, EntityType, FetchRequestedSignal,
-    ListEntityPagesOutput, MAX_PAGE_RETRY_BACKOFF_HOURS, MergeAnimeInput, MergeAnimeOutput,
-    ParseSlugError, RecordRefreshInput, RefreshAnimeInput, RefreshAnimeOutcome, RefreshOutcome,
-    RefreshPageInput, RefreshPageKey, RefreshPageOutput, RefreshTrigger, StartEntityWorkflowsInput,
-    build_refresh_anime_workflow_id, build_refresh_episode_workflow_id,
+    ListEntityPagesOutput, MAX_PAGE_RETRY_BACKOFF_HOURS, MergeAnimeOutput, ParseSlugError,
+    RecordRefreshInput, RefreshAnimeInput, RefreshAnimeOutcome, RefreshOutcome, RefreshPageInput,
+    RefreshPageKey, RefreshPageOutput, RefreshSettings, RefreshTrigger, SECONDS_PER_DAY,
+    StartEntityWorkflowsInput, build_refresh_anime_workflow_id, build_refresh_episode_workflow_id,
     build_write_synopsis_workflow_id,
 };
 #[doc(inline)]
@@ -81,34 +81,43 @@ pub const REFRESH_TRIGGER_SEARCH_ATTRIBUTE: &str = "RefreshTrigger";
 /// Each provider has its own queue so its request rate can be limited on the
 /// Temporal server, independent of the other providers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Deserialize, Serialize)]
+#[serde(try_from = "String", into = "&'static str")]
 pub enum Provider {
     /// `AniDB` (`provider-anidb`).
-    #[serde(rename = "anidb")]
     AniDb,
     /// `AniList` (`provider-anilist`).
-    #[serde(rename = "anilist")]
     AniList,
     /// Anime-Planet (`provider-anime_planet`).
-    #[serde(rename = "anime_planet")]
     AnimePlanet,
     /// `AnimeSchedule` (`provider-animeschedule`).
-    #[serde(rename = "animeschedule")]
     AnimeSchedule,
     /// aniSearch (`provider-anisearch`).
-    #[serde(rename = "anisearch")]
     AniSearch,
     /// Kitsu (`provider-kitsu`).
-    #[serde(rename = "kitsu")]
     Kitsu,
     /// `MyAnimeList` (`provider-mal`).
-    #[serde(rename = "mal")]
     Mal,
     /// Syoboi Calendar (`provider-syoboi`).
-    #[serde(rename = "syoboi")]
     Syoboi,
 }
 
 impl Provider {
+    /// Single source of truth pairing each provider with its wire slug and task queue name.
+    const METADATA: [(Self, &'static str, &'static str); 8] = [
+        (Self::AniDb, "anidb", "provider-anidb"),
+        (Self::AniList, "anilist", "provider-anilist"),
+        (Self::AnimePlanet, "anime_planet", "provider-anime_planet"),
+        (
+            Self::AnimeSchedule,
+            "animeschedule",
+            "provider-animeschedule",
+        ),
+        (Self::AniSearch, "anisearch", "provider-anisearch"),
+        (Self::Kitsu, "kitsu", "provider-kitsu"),
+        (Self::Mal, "mal", "provider-mal"),
+        (Self::Syoboi, "syoboi", "provider-syoboi"),
+    ];
+
     /// Every supported metadata provider, each listed once.
     pub const ALL: [Self; 8] = [
         Self::AniDb,
@@ -121,6 +130,19 @@ impl Provider {
         Self::Syoboi,
     ];
 
+    const fn index(self) -> usize {
+        match self {
+            Self::AniDb => 0,
+            Self::AniList => 1,
+            Self::AnimePlanet => 2,
+            Self::AnimeSchedule => 3,
+            Self::AniSearch => 4,
+            Self::Kitsu => 5,
+            Self::Mal => 6,
+            Self::Syoboi => 7,
+        }
+    }
+
     /// Returns the provider slug used in queue names and stored page keys.
     ///
     /// # Examples
@@ -132,16 +154,7 @@ impl Provider {
     /// ```
     #[must_use]
     pub const fn slug(self) -> &'static str {
-        match self {
-            Self::AniDb => "anidb",
-            Self::AniList => "anilist",
-            Self::AnimePlanet => "anime_planet",
-            Self::AnimeSchedule => "animeschedule",
-            Self::AniSearch => "anisearch",
-            Self::Kitsu => "kitsu",
-            Self::Mal => "mal",
-            Self::Syoboi => "syoboi",
-        }
+        Self::METADATA[self.index()].1
     }
 
     /// Returns the `provider-<slug>` task queue name for this provider.
@@ -155,16 +168,7 @@ impl Provider {
     /// ```
     #[must_use]
     pub const fn task_queue(self) -> &'static str {
-        match self {
-            Self::AniDb => "provider-anidb",
-            Self::AniList => "provider-anilist",
-            Self::AnimePlanet => "provider-anime_planet",
-            Self::AnimeSchedule => "provider-animeschedule",
-            Self::AniSearch => "provider-anisearch",
-            Self::Kitsu => "provider-kitsu",
-            Self::Mal => "provider-mal",
-            Self::Syoboi => "provider-syoboi",
-        }
+        Self::METADATA[self.index()].2
     }
 
     /// Parses a provider slug, returning `None` for unknown values.
@@ -179,17 +183,23 @@ impl Provider {
     /// ```
     #[must_use]
     pub fn from_slug(slug: &str) -> Option<Self> {
-        match slug {
-            "anidb" => Some(Self::AniDb),
-            "anilist" => Some(Self::AniList),
-            "anime_planet" => Some(Self::AnimePlanet),
-            "animeschedule" => Some(Self::AnimeSchedule),
-            "anisearch" => Some(Self::AniSearch),
-            "kitsu" => Some(Self::Kitsu),
-            "mal" => Some(Self::Mal),
-            "syoboi" => Some(Self::Syoboi),
-            _ => None,
-        }
+        Self::METADATA
+            .into_iter()
+            .find_map(|(provider, known_slug, _)| (known_slug == slug).then_some(provider))
+    }
+}
+
+impl From<Provider> for &'static str {
+    fn from(value: Provider) -> Self {
+        value.slug()
+    }
+}
+
+impl TryFrom<String> for Provider {
+    type Error = ParseSlugError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        value.parse()
     }
 }
 
@@ -246,6 +256,21 @@ impl fmt::Display for WorkerQueueSpec {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.task_queue())
     }
+}
+
+/// Configuration bundle passed to [`build_update_service_worker_options`].
+#[derive(Debug, Clone)]
+pub struct UpdateServiceWorkerConfig {
+    /// Worker Deployment name and build ID reported to Temporal.
+    pub deployment_version: WorkerDeploymentVersion,
+    /// Default versioning behavior, or `None` when Worker Versioning is disabled.
+    pub versioning_behavior: Option<VersioningBehavior>,
+    /// Grace period before Temporal cancels in-flight activities on worker shutdown.
+    pub graceful_shutdown_period: Option<Duration>,
+    /// External service and workflow-starter ports injected into activities.
+    pub ports: UpdateServicePorts,
+    /// Worker-level refresh policy settings supplied to `UpdateServiceActivities`.
+    pub refresh_settings: RefreshSettings,
 }
 
 /// Starts worker options for `queue_spec` with Worker Versioning applied.
@@ -308,21 +333,22 @@ pub fn build_worker_options(
 /// # fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// use std::time::Duration;
 /// use temporal_workflows::{
-///     UpdateServicePorts, WorkerQueueSpec, build_update_service_worker_options,
+///     RefreshSettings, UpdateServicePorts, UpdateServiceWorkerConfig, WorkerQueueSpec,
+///     build_update_service_worker_options,
 /// };
 /// use temporalio_common::worker::WorkerDeploymentVersion;
 ///
-/// let version = WorkerDeploymentVersion::builder()
-///     .deployment_name("update-service".to_owned())
-///     .build_id("0.1.0".to_owned())
-///     .build();
-/// let options = build_update_service_worker_options(
-///     WorkerQueueSpec::UpdateService,
-///     version,
-///     None,
-///     Some(Duration::from_secs(20)),
-///     UpdateServicePorts::noop(),
-/// )?;
+/// let config = UpdateServiceWorkerConfig {
+///     deployment_version: WorkerDeploymentVersion::builder()
+///         .deployment_name("update-service".to_owned())
+///         .build_id("0.1.0".to_owned())
+///         .build(),
+///     versioning_behavior: None,
+///     graceful_shutdown_period: Some(Duration::from_secs(20)),
+///     ports: UpdateServicePorts::noop(),
+///     refresh_settings: RefreshSettings::default(),
+/// };
+/// let options = build_update_service_worker_options(WorkerQueueSpec::UpdateService, &config)?;
 /// assert_eq!(options.task_queue, "update-service");
 /// assert_eq!(options.graceful_shutdown_period, Some(Duration::from_secs(20)));
 /// # Ok(())
@@ -330,19 +356,25 @@ pub fn build_worker_options(
 /// ```
 pub fn build_update_service_worker_options(
     queue_spec: WorkerQueueSpec,
-    deployment_version: WorkerDeploymentVersion,
-    versioning_behavior: Option<VersioningBehavior>,
-    graceful_shutdown_period: Option<Duration>,
-    ports: UpdateServicePorts,
+    config: &UpdateServiceWorkerConfig,
 ) -> Result<WorkerOptions, WorkflowRegistrationError> {
-    let builder = build_worker_options(queue_spec, deployment_version, versioning_behavior)
-        .maybe_graceful_shutdown_period(graceful_shutdown_period);
+    let builder = build_worker_options(
+        queue_spec,
+        config.deployment_version.clone(),
+        config.versioning_behavior,
+    )
+    .maybe_graceful_shutdown_period(config.graceful_shutdown_period);
 
     let builder = match queue_spec {
         WorkerQueueSpec::UpdateService => builder
-            .register_activities(UpdateServiceActivities::new(ports))
+            .register_activities(UpdateServiceActivities::with_settings(
+                config.ports.clone(),
+                config.refresh_settings,
+            ))
             .register_workflow::<RefreshAnimeWorkflow>()?,
-        WorkerQueueSpec::Provider(_) => builder.register_activities(ProviderActivities::new(ports)),
+        WorkerQueueSpec::Provider(_) => {
+            builder.register_activities(ProviderActivities::new(config.ports.clone()))
+        }
         WorkerQueueSpec::AgentService => builder,
     };
 

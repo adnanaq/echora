@@ -11,16 +11,17 @@
 mod definitions {
     use std::future::Future;
     use std::sync::Arc;
-    use std::time::Duration;
+    use std::time::{Duration, SystemTime};
 
     use temporalio_macros::activities;
-    use temporalio_sdk::activities::{ActivityContext, ActivityError, ActivityInfo};
+    use temporalio_sdk::activities::{ActivityContext, ActivityError};
     use tracing::{Level, event};
+    use uuid::Uuid;
 
     use crate::ports::{MergeAttemptOutcome, PortError, UpdateServicePorts};
     use crate::refresh_anime_types::{
-        ListEntityPagesOutput, MergeAnimeInput, MergeAnimeOutput, RecordRefreshInput,
-        RefreshPageInput, RefreshPageOutput, StartEntityWorkflowsInput,
+        ListEntityPagesOutput, MergeAnimeOutput, RecordRefreshInput, RefreshPageInput,
+        RefreshPageKey, RefreshPageOutput, RefreshSettings, StartEntityWorkflowsInput,
     };
 
     /// Maximum `LoadAnime` -> `MergeAnime` -> `SaveAnime` retries inside one `merge_anime` attempt.
@@ -29,26 +30,48 @@ mod definitions {
     /// quickly and should not consume the Temporal retry policy's 5-attempt budget.
     pub const MAX_ABORTED_RETRIES_PER_ATTEMPT: usize = 10;
 
-    /// Interval between `refresh_page` heartbeats while `FetchPage` + `StorePage` run.
+    /// Interval between activity heartbeats while long-running RPCs execute.
     ///
     /// Set to one third of the 60-second heartbeat timeout so a healthy fetch always delivers
     /// multiple heartbeats while a crashed worker is detected within a minute.
     pub const REFRESH_PAGE_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(20);
 
-    /// Core Update Service activities running on the `update-service` task queue.
-    #[derive(Debug)]
-    pub struct UpdateServiceActivities {
+    /// Shared dependencies wrapped by both core and provider activity bundles.
+    #[derive(Debug, Clone)]
+    struct ActivityDependencies {
         ports: UpdateServicePorts,
+        settings: RefreshSettings,
         heartbeat_interval: Duration,
     }
 
-    impl UpdateServiceActivities {
-        /// Creates core Update Service activities backed by `ports` with a 20-second heartbeat.
-        #[must_use]
-        pub fn new(ports: UpdateServicePorts) -> Self {
+    impl ActivityDependencies {
+        fn new(ports: UpdateServicePorts, settings: RefreshSettings) -> Self {
             Self {
                 ports,
+                settings,
                 heartbeat_interval: REFRESH_PAGE_HEARTBEAT_INTERVAL,
+            }
+        }
+    }
+
+    /// Core Update Service activities running on the `update-service` task queue.
+    #[derive(Debug)]
+    pub struct UpdateServiceActivities {
+        deps: ActivityDependencies,
+    }
+
+    impl UpdateServiceActivities {
+        /// Creates core Update Service activities backed by `ports` and default settings.
+        #[must_use]
+        pub fn new(ports: UpdateServicePorts) -> Self {
+            Self::with_settings(ports, RefreshSettings::default())
+        }
+
+        /// Creates core Update Service activities with explicit worker `settings`.
+        #[must_use]
+        pub fn with_settings(ports: UpdateServicePorts, settings: RefreshSettings) -> Self {
+            Self {
+                deps: ActivityDependencies::new(ports, settings),
             }
         }
 
@@ -56,7 +79,7 @@ mod definitions {
         #[cfg(feature = "test-util")]
         #[must_use]
         pub fn with_heartbeat_interval(mut self, interval: Duration) -> Self {
-            self.heartbeat_interval = interval;
+            self.deps.heartbeat_interval = interval;
             self
         }
     }
@@ -64,8 +87,7 @@ mod definitions {
     /// Provider page-fetch activities running on each `provider-<slug>` task queue.
     #[derive(Debug)]
     pub struct ProviderActivities {
-        ports: UpdateServicePorts,
-        heartbeat_interval: Duration,
+        deps: ActivityDependencies,
     }
 
     impl ProviderActivities {
@@ -73,8 +95,7 @@ mod definitions {
         #[must_use]
         pub fn new(ports: UpdateServicePorts) -> Self {
             Self {
-                ports,
-                heartbeat_interval: REFRESH_PAGE_HEARTBEAT_INTERVAL,
+                deps: ActivityDependencies::new(ports, RefreshSettings::default()),
             }
         }
 
@@ -82,18 +103,9 @@ mod definitions {
         #[cfg(feature = "test-util")]
         #[must_use]
         pub fn with_heartbeat_interval(mut self, interval: Duration) -> Self {
-            self.heartbeat_interval = interval;
+            self.deps.heartbeat_interval = interval;
             self
         }
-    }
-
-    /// Returns `true` when this attempt is the final retry allowed by the activity's policy.
-    fn is_final_attempt(info: &ActivityInfo) -> bool {
-        let max_attempts = info
-            .retry_policy
-            .as_ref()
-            .map_or(0, temporalio_common::RetryPolicy::maximum_attempts);
-        max_attempts > 0 && info.attempt >= max_attempts
     }
 
     /// Drives the future returned by `start_operation` while heartbeating and watching cancellation.
@@ -147,7 +159,7 @@ mod definitions {
 
     #[activities]
     impl UpdateServiceActivities {
-        /// Lists an entity's linked pages, fetch state, and stored `merge_version`.
+        /// Lists an entity's linked pages, stored `merge_version`, and worker refresh settings.
         ///
         /// # Errors
         ///
@@ -157,11 +169,38 @@ mod definitions {
         pub async fn list_pages(
             self: Arc<Self>,
             _ctx: ActivityContext,
-            anime_id: String,
+            anime_id: Uuid,
         ) -> Result<ListEntityPagesOutput, ActivityError> {
-            self.ports
+            let mut output = self
+                .deps
+                .ports
                 .catalogue()
                 .list_entity_pages(anime_id)
+                .await
+                .map_err(PortError::into_activity_error)?;
+            output.refresh_settings = self.deps.settings;
+            Ok(output)
+        }
+
+        /// Records a failed page fetch via `PostgresService.StorePage` with empty responses.
+        ///
+        /// Called by `RefreshAnimeWorkflow` after `refresh_page` fails for any non-cancellation
+        /// reason (provider block, permanent error, exhausted retries, or activity timeout).
+        ///
+        /// # Errors
+        ///
+        /// Returns a non-retryable [`ActivityError`] on invalid arguments, or a retryable
+        /// [`ActivityError`] on transient `PostgresService` failures.
+        #[activity]
+        pub async fn record_page_failure(
+            self: Arc<Self>,
+            _ctx: ActivityContext,
+            page_key: RefreshPageKey,
+        ) -> Result<(), ActivityError> {
+            self.deps
+                .ports
+                .catalogue()
+                .record_page_failure(page_key, SystemTime::now())
                 .await
                 .map_err(PortError::into_activity_error)
         }
@@ -180,15 +219,22 @@ mod definitions {
         pub async fn merge_anime(
             self: Arc<Self>,
             ctx: ActivityContext,
-            input: MergeAnimeInput,
+            anime_id: Uuid,
         ) -> Result<MergeAnimeOutput, ActivityError> {
+            let merge_version = self.deps.settings.merge_version;
             for attempt in 1..=MAX_ABORTED_RETRIES_PER_ATTEMPT {
-                let heartbeat_detail = format!("merge:{}:{attempt}", input.anime_id);
-                match run_with_heartbeats(&ctx, self.heartbeat_interval, &heartbeat_detail, || {
-                    self.ports
-                        .catalogue()
-                        .merge_anime_attempt(input.anime_id.clone(), input.merge_version)
-                })
+                let heartbeat_detail = format!("merge:{anime_id}:{attempt}");
+                match run_with_heartbeats(
+                    &ctx,
+                    self.deps.heartbeat_interval,
+                    &heartbeat_detail,
+                    || {
+                        self.deps
+                            .ports
+                            .catalogue()
+                            .merge_anime_attempt(anime_id, merge_version)
+                    },
+                )
                 .await?
                 {
                     MergeAttemptOutcome::Saved(output) => return Ok(output),
@@ -196,7 +242,7 @@ mod definitions {
                         event!(
                             name: "update_service.merge_anime.version_conflict",
                             Level::DEBUG,
-                            anime.id = %input.anime_id,
+                            anime.id = %anime_id,
                             merge.attempt = attempt,
                             conflict.reason = %reason,
                             "retrying merge_anime for {{anime.id}} after ABORTED attempt {{merge.attempt}}: {{conflict.reason}}",
@@ -205,8 +251,7 @@ mod definitions {
                 }
             }
             Err(PortError::retryable(format!(
-                "merge_anime exceeded {MAX_ABORTED_RETRIES_PER_ATTEMPT} ABORTED retries for {}",
-                input.anime_id
+                "merge_anime exceeded {MAX_ABORTED_RETRIES_PER_ATTEMPT} ABORTED retries for {anime_id}"
             ))
             .into_activity_error())
         }
@@ -227,9 +272,12 @@ mod definitions {
             input: StartEntityWorkflowsInput,
         ) -> Result<usize, ActivityError> {
             let heartbeat_detail = format!("start:{}:{}", input.anime_id, input.episode_ids.len());
-            run_with_heartbeats(&ctx, self.heartbeat_interval, &heartbeat_detail, || {
-                self.ports.starter().start_entity_workflows(input)
-            })
+            run_with_heartbeats(
+                &ctx,
+                self.deps.heartbeat_interval,
+                &heartbeat_detail,
+                || self.deps.ports.starter().start_entity_workflows(input),
+            )
             .await
         }
 
@@ -245,9 +293,14 @@ mod definitions {
             _ctx: ActivityContext,
             input: RecordRefreshInput,
         ) -> Result<(), ActivityError> {
-            self.ports
+            self.deps
+                .ports
                 .catalogue()
-                .record_refresh(input)
+                .record_refresh(
+                    input.anime_id,
+                    input.outcome,
+                    self.deps.settings.refresh_after_days,
+                )
                 .await
                 .map_err(PortError::into_activity_error)
         }
@@ -258,15 +311,15 @@ mod definitions {
         /// Fetches and stores one provider page while heartbeating every 20 seconds.
         ///
         /// Transient fetch failures are returned to Temporal for exponential retry up to the
-        /// policy's maximum attempts. On a provider block (`ServiceBlockedError`) or on the
-        /// final allowed attempt, the failure is recorded through `StorePage` and returned as
-        /// `has_failed = true` so the refresh continues with the remaining pages.
+        /// policy's maximum attempts. Provider blocks and permanent gRPC errors return
+        /// non-retryable failures immediately; `RefreshAnimeWorkflow` records every terminal
+        /// page failure uniformly through `UpdateServiceActivities::record_page_failure`.
         ///
         /// # Errors
         ///
         /// Returns [`ActivityError::Cancelled`] when Temporal cancels the activity, a
-        /// non-retryable [`ActivityError`] on permanent gRPC statuses, or a retryable
-        /// [`ActivityError`] while retry attempts remain.
+        /// non-retryable [`ActivityError`] on provider blocks or permanent gRPC statuses, or a
+        /// retryable [`ActivityError`] on transient upstream failures.
         #[activity]
         pub async fn refresh_page(
             self: Arc<Self>,
@@ -275,60 +328,18 @@ mod definitions {
         ) -> Result<RefreshPageOutput, ActivityError> {
             let page_key = input.page_key;
             let heartbeat_detail = format!("{}:{}", page_key.provider, page_key.address);
-            let fetch_outcome =
-                run_with_heartbeats(&ctx, self.heartbeat_interval, &heartbeat_detail, || {
-                    self.ports
+            run_with_heartbeats(
+                &ctx,
+                self.deps.heartbeat_interval,
+                &heartbeat_detail,
+                || {
+                    self.deps
+                        .ports
                         .catalogue()
-                        .fetch_and_store_page(page_key.clone(), input.max_age_seconds)
-                })
-                .await;
-
-            match fetch_outcome {
-                Ok(output) => Ok(output),
-                Err(ActivityError::Cancelled { details }) => {
-                    Err(ActivityError::Cancelled { details })
-                }
-                Err(activity_error) => {
-                    let port_error = activity_error.downcast_port_error();
-                    let should_record_failure = port_error.is_some_and(|err| {
-                        err.is_provider_blocked()
-                            || (err.is_retryable() && is_final_attempt(ctx.info()))
-                    });
-                    if !should_record_failure {
-                        return Err(activity_error);
-                    }
-                    event!(
-                        name: "update_service.refresh_page.recording_failure",
-                        Level::WARN,
-                        provider = %page_key.provider,
-                        page.address = %page_key.address,
-                        activity.attempt = ctx.info().attempt,
-                        "recording page fetch failure for {{provider}}:{{page.address}} on attempt {{activity.attempt}}",
-                    );
-                    run_with_heartbeats(&ctx, self.heartbeat_interval, &heartbeat_detail, || {
-                        self.ports.catalogue().record_page_failure(page_key.clone())
-                    })
-                    .await?;
-                    Ok(RefreshPageOutput {
-                        page_key,
-                        has_changed: false,
-                        has_failed: true,
-                    })
-                }
-            }
-        }
-    }
-
-    trait ActivityErrorExt {
-        fn downcast_port_error(&self) -> Option<&PortError>;
-    }
-
-    impl ActivityErrorExt for ActivityError {
-        fn downcast_port_error(&self) -> Option<&PortError> {
-            match self {
-                Self::Application(failure) => failure.source_error().downcast_ref::<PortError>(),
-                Self::Cancelled { .. } | Self::WillCompleteAsync | _ => None,
-            }
+                        .fetch_and_store_page(page_key, input.max_age)
+                },
+            )
+            .await
         }
     }
 }

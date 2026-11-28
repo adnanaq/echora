@@ -13,6 +13,7 @@ workspace = true
 anyhow.workspace = true
 chrono = { workspace = true, features = ["std"] }
 common.workspace = true
+echora_protos.workspace = true
 mimalloc.workspace = true
 opentelemetry = { workspace = true, features = ["metrics"] }
 postgres_db.workspace = true
@@ -23,7 +24,6 @@ sqlx = { workspace = true, features = ["postgres"] }
 tokio.workspace = true
 tonic = { workspace = true, features = ["gzip"] }
 tonic-health.workspace = true
-tonic-prost.workspace = true
 url.workspace = true
 tracing.workspace = true
 uuid.workspace = true
@@ -31,8 +31,3 @@ uuid.workspace = true
 [dev-dependencies]
 sqlx = { workspace = true, features = ["runtime-tokio", "tls-rustls", "postgres", "migrate", "macros", "chrono", "uuid"] }
 postgres_db = { workspace = true, features = ["test-util"] }
-
-[build-dependencies]
-prost-build.workspace = true
-protoc-bin-vendored.workspace = true
-tonic-prost-build.workspace = true

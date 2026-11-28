@@ -1,4 +1,4 @@
-//! Compiles `postgres_service`, `enrichment_service`, and `shared_proto` definitions for `update_service`.
+//! Compiles shared protobuf and gRPC service definitions once for the Rust workspace.
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rerun-if-changed=../../protos/postgres_service/v1/postgres_service.proto");

@@ -43,9 +43,11 @@ pub use grpc_clients::{
     shared_proto,
 };
 use temporal_workflows::{
-    DEFAULT_MERGE_FIRST_WAIT_MINUTES, DEFAULT_REFRESH_AFTER_DAYS, DEFAULT_TEMPORAL_NAMESPACE,
-    Provider, REFRESH_TRIGGER_SEARCH_ATTRIBUTE, UPDATE_SERVICE_TASK_QUEUE, UpdateServicePorts,
-    WorkerQueueSpec, build_update_service_worker_options,
+    DEFAULT_MERGE_COALESCE_WAIT_SECONDS, DEFAULT_MERGE_FIRST_WAIT_MINUTES, DEFAULT_MERGE_VERSION,
+    DEFAULT_REFRESH_AFTER_DAYS, DEFAULT_TEMPORAL_NAMESPACE, Provider,
+    REFRESH_TRIGGER_SEARCH_ATTRIBUTE, RefreshSettings, UPDATE_SERVICE_TASK_QUEUE,
+    UpdateServicePorts, UpdateServiceWorkerConfig, WorkerQueueSpec,
+    build_update_service_worker_options,
 };
 use temporalio_client::tonic::{Code, Request};
 use temporalio_client::{Client, ClientOptions, ConnectionOptions};
@@ -72,9 +74,6 @@ const DEFAULT_POSTGRES_SERVICE_ADDRESS: &str = "http://localhost:8004";
 
 /// Default Enrichment Service gRPC URL for local development.
 const DEFAULT_ENRICHMENT_SERVICE_ADDRESS: &str = "http://localhost:8002";
-
-/// Default `MERGE_VERSION` written on entity saves when unset.
-const DEFAULT_MERGE_VERSION: i32 = 1;
 
 /// Default graceful shutdown window before Temporal cancels in-flight activities.
 ///
@@ -228,25 +227,29 @@ impl UpdateServiceSettings {
                 .unwrap_or(DEFAULT_ENRICHMENT_SERVICE_ADDRESS),
         )?;
 
-        let refresh_after_days = parse_positive_int(
+        let refresh_after_days = parse_min_int(
             "REFRESH_AFTER_DAYS",
             find_non_blank(&lookup, "REFRESH_AFTER_DAYS"),
             DEFAULT_REFRESH_AFTER_DAYS,
+            1,
         )?;
-        let merge_version = parse_positive_int(
+        let merge_version = parse_min_int(
             "MERGE_VERSION",
             find_non_blank(&lookup, "MERGE_VERSION"),
             DEFAULT_MERGE_VERSION,
+            1,
         )?;
-        let merge_first_wait_minutes = parse_u64(
+        let merge_first_wait_minutes = parse_min_int(
             "MERGE_FIRST_WAIT_MINUTES",
             find_non_blank(&lookup, "MERGE_FIRST_WAIT_MINUTES"),
             DEFAULT_MERGE_FIRST_WAIT_MINUTES,
+            0,
         )?;
-        let graceful_shutdown_seconds = parse_u64(
+        let graceful_shutdown_seconds = parse_min_int(
             "WORKER_GRACEFUL_SHUTDOWN_SECONDS",
             find_non_blank(&lookup, "WORKER_GRACEFUL_SHUTDOWN_SECONDS"),
             DEFAULT_GRACEFUL_SHUTDOWN_SECONDS,
+            0,
         )?;
 
         Ok(Self {
@@ -264,6 +267,17 @@ impl UpdateServiceSettings {
             merge_first_wait_minutes,
             graceful_shutdown_period: Duration::from_secs(graceful_shutdown_seconds),
         })
+    }
+
+    /// Returns the worker refresh policy settings passed into Update Service activities.
+    #[must_use]
+    pub const fn refresh_settings(&self) -> RefreshSettings {
+        RefreshSettings::new(
+            self.refresh_after_days,
+            self.merge_version,
+            self.merge_first_wait_minutes.saturating_mul(60),
+            DEFAULT_MERGE_COALESCE_WAIT_SECONDS,
+        )
     }
 }
 
@@ -388,17 +402,18 @@ pub fn build_all_worker_options(
     settings: &UpdateServiceSettings,
     ports: &UpdateServicePorts,
 ) -> anyhow::Result<Vec<WorkerOptions>> {
+    let config = UpdateServiceWorkerConfig {
+        deployment_version: settings.deployment_version.clone(),
+        versioning_behavior: settings.versioning_behavior,
+        graceful_shutdown_period: Some(settings.graceful_shutdown_period),
+        ports: ports.clone(),
+        refresh_settings: settings.refresh_settings(),
+    };
     list_worker_queue_specs()
         .into_iter()
         .map(|spec| {
-            build_update_service_worker_options(
-                spec,
-                settings.deployment_version.clone(),
-                settings.versioning_behavior,
-                Some(settings.graceful_shutdown_period),
-                ports.clone(),
-            )
-            .with_context(|| format!("failed to build worker options for {spec}"))
+            build_update_service_worker_options(spec, &config)
+                .with_context(|| format!("failed to build worker options for {spec}"))
         })
         .collect()
 }
@@ -652,13 +667,14 @@ fn parse_grpc_endpoint_url(name: &str, raw_value: &str) -> anyhow::Result<Url> {
     Ok(parsed)
 }
 
-fn parse_positive_int<T>(
+fn parse_min_int<T>(
     name: &str,
     raw_value: Option<String>,
     default_value: T,
+    min_value: T,
 ) -> anyhow::Result<T>
 where
-    T: std::str::FromStr + PartialOrd + Default,
+    T: std::str::FromStr + PartialOrd + Copy + fmt::Display,
     T::Err: std::error::Error + Send + Sync + 'static,
 {
     let Some(value) = raw_value else {
@@ -668,19 +684,10 @@ where
         .parse::<T>()
         .with_context(|| format!("invalid {name}: {value:?} must be an integer"))?;
     ensure!(
-        parsed > T::default(),
-        "invalid {name}: must be greater than 0"
+        parsed >= min_value,
+        "invalid {name}: must be at least {min_value}"
     );
     Ok(parsed)
-}
-
-fn parse_u64(name: &str, raw_value: Option<String>, default_value: u64) -> anyhow::Result<u64> {
-    let Some(value) = raw_value else {
-        return Ok(default_value);
-    };
-    value
-        .parse::<u64>()
-        .with_context(|| format!("invalid {name}: {value:?} must be a non-negative integer"))
 }
 
 fn resolve_versioning_behavior(

@@ -1,15 +1,18 @@
 //! Service port traits decoupling Temporal activities from gRPC and Temporal client I/O.
 
 use std::backtrace::Backtrace;
+use std::error::Error as StdError;
 use std::fmt;
 use std::sync::Arc;
+use std::time::{Duration, SystemTime};
 
 use futures::future::BoxFuture;
 use temporalio_sdk::ApplicationFailure;
 use temporalio_sdk::activities::ActivityError;
+use uuid::Uuid;
 
 use crate::refresh_anime_types::{
-    ListEntityPagesOutput, MergeAnimeOutput, RecordRefreshInput, RefreshPageKey, RefreshPageOutput,
+    ListEntityPagesOutput, MergeAnimeOutput, RefreshOutcome, RefreshPageKey, RefreshPageOutput,
     StartEntityWorkflowsInput,
 };
 
@@ -35,11 +38,12 @@ enum PortErrorKind {
 
 /// Canonical error returned by [`CatalogueDataPort`] or [`WorkflowStarterPort`].
 ///
-/// Carries a retry classification, contextual message, and optional backtrace so
-/// activities can convert directly into [`ActivityError`] via `From`.
+/// Carries a retry classification, contextual message, optional upstream cause, and
+/// captured backtrace so activities convert directly into [`ActivityError`].
 pub struct PortError {
     kind: PortErrorKind,
     message: String,
+    source: Option<Box<dyn StdError + Send + Sync>>,
     backtrace: Backtrace,
 }
 
@@ -57,11 +61,7 @@ impl PortError {
     /// ```
     #[must_use]
     pub fn non_retryable(message: impl Into<String>) -> Self {
-        Self {
-            kind: PortErrorKind::NonRetryable,
-            message: message.into(),
-            backtrace: Backtrace::capture(),
-        }
+        Self::new(PortErrorKind::NonRetryable, message)
     }
 
     /// Creates a transient error converted into a retryable `ApplicationFailure`.
@@ -77,11 +77,7 @@ impl PortError {
     /// ```
     #[must_use]
     pub fn retryable(message: impl Into<String>) -> Self {
-        Self {
-            kind: PortErrorKind::Retryable,
-            message: message.into(),
-            backtrace: Backtrace::capture(),
-        }
+        Self::new(PortErrorKind::Retryable, message)
     }
 
     /// Creates a provider-block error signaling `refresh_page` to fail fast without retries.
@@ -96,11 +92,36 @@ impl PortError {
     /// ```
     #[must_use]
     pub fn provider_blocked(message: impl Into<String>) -> Self {
+        Self::new(PortErrorKind::ProviderBlocked, message)
+    }
+
+    fn new(kind: PortErrorKind, message: impl Into<String>) -> Self {
         Self {
-            kind: PortErrorKind::ProviderBlocked,
+            kind,
             message: message.into(),
+            source: None,
             backtrace: Backtrace::capture(),
         }
+    }
+
+    /// Attaches an upstream error as [`std::error::Error::source`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::error::Error as _;
+    /// use std::io;
+    ///
+    /// use temporal_workflows::PortError;
+    ///
+    /// let io_err = io::Error::other("connection reset");
+    /// let error = PortError::retryable("rpc failed").with_source(io_err);
+    /// assert!(error.source().is_some());
+    /// ```
+    #[must_use]
+    pub fn with_source(mut self, source: impl StdError + Send + Sync + 'static) -> Self {
+        self.source = Some(Box::new(source));
+        self
     }
 
     /// Returns `true` when Temporal must not retry this failure.
@@ -120,6 +141,7 @@ impl PortError {
     pub const fn is_provider_blocked(&self) -> bool {
         matches!(self.kind, PortErrorKind::ProviderBlocked)
     }
+
     /// Converts this error into an [`ActivityError`] preserving its retry classification.
     #[must_use]
     pub fn into_activity_error(self) -> ActivityError {
@@ -132,6 +154,7 @@ impl fmt::Debug for PortError {
         f.debug_struct("PortError")
             .field("kind", &self.kind)
             .field("message", &self.message)
+            .field("has_source", &self.source.is_some())
             .finish_non_exhaustive()
     }
 }
@@ -146,7 +169,13 @@ impl fmt::Display for PortError {
     }
 }
 
-impl std::error::Error for PortError {}
+impl StdError for PortError {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        self.source
+            .as_deref()
+            .map(|err| err as &(dyn StdError + 'static))
+    }
+}
 
 impl From<PortError> for ApplicationFailure {
     fn from(error: PortError) -> Self {
@@ -162,36 +191,75 @@ impl From<PortError> for ApplicationFailure {
 /// Port wrapping `PostgresService` and `EnrichmentService` gRPC calls used by activities.
 pub trait CatalogueDataPort: Send + Sync {
     /// Lists an entity's linked provider pages and stored `merge_version`.
+    ///
+    /// # Errors
+    ///
+    /// Returns a non-retryable [`PortError`] if the entity does not exist or its stored
+    /// page metadata cannot be decoded, or a retryable [`PortError`] on transient RPC errors.
     fn list_entity_pages(
         &self,
-        anime_id: String,
+        anime_id: Uuid,
     ) -> BoxFuture<'_, Result<ListEntityPagesOutput, PortError>>;
 
     /// Fetches a page via `EnrichmentService.FetchPage` and stores it via `PostgresService.StorePage`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PortError::provider_blocked`] when the provider is blocked, a non-retryable
+    /// [`PortError`] on permanent gRPC statuses or malformed responses, or a retryable
+    /// [`PortError`] on transient upstream failures.
     fn fetch_and_store_page(
         &self,
         page_key: RefreshPageKey,
-        max_age_seconds: i64,
+        max_age: Duration,
     ) -> BoxFuture<'_, Result<RefreshPageOutput, PortError>>;
 
     /// Records a failed page fetch via `PostgresService.StorePage` with empty responses.
-    fn record_page_failure(&self, page_key: RefreshPageKey)
-    -> BoxFuture<'_, Result<(), PortError>>;
+    ///
+    /// # Errors
+    ///
+    /// Returns a non-retryable [`PortError`] on invalid arguments or missing targets, or a
+    /// retryable [`PortError`] on transient `PostgresService` failures.
+    fn record_page_failure(
+        &self,
+        page_key: RefreshPageKey,
+        failed_at: SystemTime,
+    ) -> BoxFuture<'_, Result<(), PortError>>;
 
     /// Runs one `LoadAnime` -> `MergeAnime` -> `SaveAnime` attempt.
+    ///
+    /// # Errors
+    ///
+    /// Returns a non-retryable [`PortError`] on permanent validation or missing-entity errors,
+    /// or a retryable [`PortError`] on transient `PostgresService` or `EnrichmentService` errors.
     fn merge_anime_attempt(
         &self,
-        anime_id: String,
+        anime_id: Uuid,
         merge_version: i32,
     ) -> BoxFuture<'_, Result<MergeAttemptOutcome, PortError>>;
 
     /// Records the final refresh outcome via `PostgresService.RecordRefresh`.
-    fn record_refresh(&self, input: RecordRefreshInput) -> BoxFuture<'_, Result<(), PortError>>;
+    ///
+    /// # Errors
+    ///
+    /// Returns a non-retryable [`PortError`] when the entity is missing or arguments are
+    /// invalid, or a retryable [`PortError`] on transient `PostgresService` failures.
+    fn record_refresh(
+        &self,
+        anime_id: Uuid,
+        outcome: RefreshOutcome,
+        refresh_after_days: i64,
+    ) -> BoxFuture<'_, Result<(), PortError>>;
 }
 
 /// Port wrapping top-level Temporal workflow starts with `USE_EXISTING` conflict policy.
 pub trait WorkflowStarterPort: Send + Sync {
     /// Starts `RefreshEpisodeWorkflow` and/or `WriteSynopsisWorkflow` as top-level workflows.
+    ///
+    /// # Errors
+    ///
+    /// Returns a non-retryable [`PortError`] if workflow input serialization fails, or a
+    /// retryable [`PortError`] if Temporal rejects or fails to accept any start request.
     fn start_entity_workflows(
         &self,
         input: StartEntityWorkflowsInput,
@@ -248,59 +316,56 @@ impl fmt::Debug for UpdateServicePorts {
 struct NoopPort;
 
 #[cfg(feature = "test-util")]
+fn not_configured<T: Send + 'static>(
+    port_name: &'static str,
+) -> BoxFuture<'static, Result<T, PortError>> {
+    Box::pin(async move {
+        Err(PortError::non_retryable(format!(
+            "{port_name} is not configured"
+        )))
+    })
+}
+
+#[cfg(feature = "test-util")]
 impl CatalogueDataPort for NoopPort {
     fn list_entity_pages(
         &self,
-        _anime_id: String,
+        _anime_id: Uuid,
     ) -> BoxFuture<'_, Result<ListEntityPagesOutput, PortError>> {
-        Box::pin(async {
-            Err(PortError::non_retryable(
-                "CatalogueDataPort is not configured",
-            ))
-        })
+        not_configured("CatalogueDataPort")
     }
 
     fn fetch_and_store_page(
         &self,
         _page_key: RefreshPageKey,
-        _max_age_seconds: i64,
+        _max_age: Duration,
     ) -> BoxFuture<'_, Result<RefreshPageOutput, PortError>> {
-        Box::pin(async {
-            Err(PortError::non_retryable(
-                "CatalogueDataPort is not configured",
-            ))
-        })
+        not_configured("CatalogueDataPort")
     }
 
     fn record_page_failure(
         &self,
         _page_key: RefreshPageKey,
+        _failed_at: SystemTime,
     ) -> BoxFuture<'_, Result<(), PortError>> {
-        Box::pin(async {
-            Err(PortError::non_retryable(
-                "CatalogueDataPort is not configured",
-            ))
-        })
+        not_configured("CatalogueDataPort")
     }
 
     fn merge_anime_attempt(
         &self,
-        _anime_id: String,
+        _anime_id: Uuid,
         _merge_version: i32,
     ) -> BoxFuture<'_, Result<MergeAttemptOutcome, PortError>> {
-        Box::pin(async {
-            Err(PortError::non_retryable(
-                "CatalogueDataPort is not configured",
-            ))
-        })
+        not_configured("CatalogueDataPort")
     }
 
-    fn record_refresh(&self, _input: RecordRefreshInput) -> BoxFuture<'_, Result<(), PortError>> {
-        Box::pin(async {
-            Err(PortError::non_retryable(
-                "CatalogueDataPort is not configured",
-            ))
-        })
+    fn record_refresh(
+        &self,
+        _anime_id: Uuid,
+        _outcome: RefreshOutcome,
+        _refresh_after_days: i64,
+    ) -> BoxFuture<'_, Result<(), PortError>> {
+        not_configured("CatalogueDataPort")
     }
 }
 
@@ -310,10 +375,6 @@ impl WorkflowStarterPort for NoopPort {
         &self,
         _input: StartEntityWorkflowsInput,
     ) -> BoxFuture<'_, Result<usize, PortError>> {
-        Box::pin(async {
-            Err(PortError::non_retryable(
-                "WorkflowStarterPort is not configured",
-            ))
-        })
+        not_configured("WorkflowStarterPort")
     }
 }
